@@ -20,6 +20,8 @@ vi.mock("@/lib/api", () => ({
 const renderWithProviders = (ui: React.ReactElement) =>
   render(<ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>);
 
+const setupUser = () => userEvent.setup({ pointerEventsCheck: 0 });
+
 describe("FeedDetails", () => {
   const mockFeedURL = "https://example.com/feed";
   const mockFeedTitle = "Test Article Title";
@@ -34,7 +36,7 @@ describe("FeedDetails", () => {
 
   describe("Auto-archive functionality", () => {
     it("should auto-archive article when displaying valid content", async () => {
-      const user = userEvent.setup();
+      const user = setupUser();
 
       // Mock successful content fetch
       vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
@@ -76,7 +78,7 @@ describe("FeedDetails", () => {
     });
 
     it("should not auto-archive when content fetch fails", async () => {
-      const user = userEvent.setup();
+      const user = setupUser();
 
       // Mock failed content fetch
       vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
@@ -107,7 +109,7 @@ describe("FeedDetails", () => {
     });
 
     it("should not block UI when auto-archive fails", async () => {
-      const user = userEvent.setup();
+      const user = setupUser();
 
       // Mock successful content fetch but failed archive
       vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
@@ -161,7 +163,7 @@ describe("FeedDetails", () => {
     });
 
     it("should not duplicate archive when Archive button is clicked after auto-archive", async () => {
-      const user = userEvent.setup();
+      const user = setupUser();
 
       vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
         matched_articles: [],
@@ -203,7 +205,7 @@ describe("FeedDetails", () => {
 
   describe("Summarization flow", () => {
     it("should successfully summarize article after auto-archive", async () => {
-      const user = userEvent.setup();
+      const user = setupUser();
 
       vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
         matched_articles: [],

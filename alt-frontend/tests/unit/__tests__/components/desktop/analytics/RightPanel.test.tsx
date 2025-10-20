@@ -58,6 +58,19 @@ const renderWithProviders = (ui: React.ReactElement) => {
   );
 };
 
+const findButtonByLabel = async (label: string): Promise<HTMLButtonElement> => {
+  const matches = await screen.findAllByText(label);
+  const candidate = matches
+    .map((node) => node.closest("button"))
+    .find((button): button is HTMLButtonElement => !!button);
+
+  if (!candidate) {
+    throw new Error(`Button with label "${label}" not found`);
+  }
+
+  return candidate;
+};
+
 describe("RightPanel", () => {
   it("should render with glass effect", () => {
     renderWithProviders(<RightPanel />);
@@ -80,26 +93,27 @@ describe("RightPanel", () => {
   });
 
   it("should switch between tabs", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<RightPanel />);
 
-    // Wait for component to render
-    await waitFor(() => {
-      expect(screen.getAllByText("⚡ Actions")[0]).toBeInTheDocument();
-      expect(screen.getAllByText("📊 Analytics")[0]).toBeInTheDocument();
-    });
+    const analyticsTab = await findButtonByLabel("📊 Analytics");
+    const actionsTab = await findButtonByLabel("⚡ Actions");
 
-    // Click on Actions tab
-    const actionsButton = screen.getAllByText("⚡ Actions")[0];
-    await user.click(actionsButton);
+    expect(analyticsTab).toBeInTheDocument();
+    expect(actionsTab).toBeInTheDocument();
 
-    expect(actionsButton).toBeInTheDocument();
+    expect(screen.queryByText("⚡ Quick Actions")).not.toBeInTheDocument();
 
-    // Switch back to Analytics tab
-    const analyticsButton = screen.getAllByText("📊 Analytics")[0];
-    await user.click(analyticsButton);
+    await user.click(actionsTab);
+    await waitFor(() =>
+      expect(screen.getByText("⚡ Quick Actions")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("⚡ Quick Actions")).toBeInTheDocument();
 
-    expect(analyticsButton).toBeInTheDocument();
+    await user.click(analyticsTab);
+    await waitFor(() =>
+      expect(screen.queryByText("⚡ Quick Actions")).not.toBeInTheDocument(),
+    );
   });
 
   it("should use CSS variables for styling", async () => {

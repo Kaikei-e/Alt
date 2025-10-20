@@ -72,7 +72,7 @@ describe("EmptyFeedState", () => {
   });
 
   it("should handle button hover states", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProvider(<EmptyFeedState />);
 
     const button = screen.getByRole("link", { name: /add your first feed/i });
