@@ -58,8 +58,4 @@ auth-service/deployments/k8s/base/kratos-secrets.yaml
 .serena/
 alt-frontend/playwright-report/index.html
 kratos/kratos.yml
-backups/postgres-backup-20251015_220959.sql
-backups/postgres-backup-20251015_221048.sql
-backups/postgres-backup-20251015_221131.sql
-backups/postgres-backup-20251017_210032.sql
-backups/postgres-backup-20251018_174841.sql
+backups/
