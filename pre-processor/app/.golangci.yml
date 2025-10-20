@@ -1,17 +1,14 @@
+version: 2
+
 run:
   timeout: 5m
   tests: true
-  skip-dirs:
-    - test/mocks
-    - vendor
-  skip-files:
-    - ".*_mock.go"
 
 output:
-  format: colored-line-number
+  formats:
+    - format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
-  uniq-by-line: true
 
 linters-settings:
   errcheck:
@@ -19,7 +16,6 @@ linters-settings:
     check-blank: true
 
   govet:
-    check-shadowing: true
     enable-all: true
 
   gofmt:
@@ -45,9 +41,6 @@ linters-settings:
   gocyclo:
     min-complexity: 15
 
-  golint:
-    min-confidence: 0.8
-
   misspell:
     locale: US
 
@@ -70,8 +63,15 @@ linters:
   enable:
     - gofmt
     - goimports
+    - shadow  # Replaces govet.check-shadowing
 
 issues:
+  exclude-dirs:
+    - test/mocks
+    - vendor
+  exclude-files:
+    - ".*_mock.go"
+  uniq-by-line: true
   exclude-rules:
     - path: _test\.go
       linters:
