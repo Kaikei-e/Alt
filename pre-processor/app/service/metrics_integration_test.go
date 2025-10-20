@@ -19,6 +19,8 @@ import (
 
 // TestMetricsIntegration_EnvoyVsDirect tests metrics collection during real HTTP operations
 func TestMetricsIntegration_EnvoyVsDirect(t *testing.T) {
+	t.Skip("skipping test because FetchArticle is disabled for ethical compliance (article_fetcher.go:131-136)")
+
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -185,6 +187,8 @@ func TestMetricsIntegration_EnvoyVsDirect(t *testing.T) {
 
 // TestMetricsIntegration_ArticleFetching tests metrics during article fetching
 func TestMetricsIntegration_ArticleFetching(t *testing.T) {
+	t.Skip("skipping test because FetchArticle is disabled for ethical compliance (article_fetcher.go:131-136)")
+
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
