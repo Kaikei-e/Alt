@@ -12,7 +12,7 @@ export default function MobileLoading() {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          min-height: 100vh;
+          min-height: 100dvh;
           background-color: var(--app-bg);
         }
         .mobile-loading-spinner {

@@ -112,7 +112,7 @@ export default function ErrorState({
       direction="column"
       justify="center"
       align="center"
-      minH="100vh"
+      minH="100dvh"
       bg="var(--app-bg)"
       p={4}
       textAlign="center"

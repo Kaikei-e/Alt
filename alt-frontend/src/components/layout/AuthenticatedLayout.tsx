@@ -210,7 +210,7 @@ export function AuthenticatedLayout({
   };
 
   return (
-    <Box minH="100vh" bg="var(--background)">
+    <Box minH="100dvh" bg="var(--background)">
       {/* Header */}
       {showHeader && (
         <Box
