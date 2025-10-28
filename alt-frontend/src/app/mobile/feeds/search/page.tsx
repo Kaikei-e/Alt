@@ -15,7 +15,7 @@ export default function SearchFeedsPage() {
   const [searchTime, setSearchTime] = useState<number>();
 
   return (
-    <Box minHeight="100vh" bg="var(--app-bg)" color="var(--foreground)" p={4}>
+    <Box minHeight="100dvh" bg="var(--app-bg)" color="var(--foreground)" p={4}>
       <VStack gap={6} align="stretch" maxWidth="600px" mx="auto">
         {/* Header Section */}
         <VStack gap={3} mt={8} mb={2}>

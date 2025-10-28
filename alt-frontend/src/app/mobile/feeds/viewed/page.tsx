@@ -94,12 +94,12 @@ function ReadFeedsPageContent() {
   // Show skeleton loading state for immediate visual feedback
   if (isInitialLoading) {
     return (
-      <Box minH="100vh" position="relative">
+      <Box minH="100dvh" position="relative">
         <Box
           p={5}
           maxW="container.sm"
           mx="auto"
-          height="100vh"
+          height="100dvh"
           data-testid="read-feeds-skeleton-container"
         >
           {/* Page Title */}
@@ -136,7 +136,7 @@ function ReadFeedsPageContent() {
   }
 
   return (
-    <Box minH="100vh" position="relative">
+    <Box minH="100dvh" position="relative">
       <Box
         aria-live="polite"
         aria-atomic="true"

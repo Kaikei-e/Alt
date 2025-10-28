@@ -20,6 +20,11 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon.png",
   },
   // manifest: "/manifest.json", // Disabled - not using PWA functionality
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    viewportFit: "cover",
+  },
   other: {
     "theme-color": "#1a1a2e",
   },

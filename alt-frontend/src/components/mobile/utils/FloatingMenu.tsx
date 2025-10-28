@@ -207,7 +207,13 @@ export const FloatingMenu = () => {
         placement="bottom"
       >
         <Drawer.Trigger asChild>
-          <Box position="fixed" bottom={6} right={6} zIndex={1000}>
+          <Box
+            position="fixed"
+            bottom={6}
+            right={6}
+            zIndex={1000}
+            pb="env(safe-area-inset-bottom, 0)"
+          >
             <Button
               data-testid="floating-menu-button"
               size="md"

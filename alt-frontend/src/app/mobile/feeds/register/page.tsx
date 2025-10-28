@@ -81,7 +81,7 @@ export default function RegisterFeedsPage() {
   };
 
   return (
-    <Box minHeight="100vh" bg="var(--alt-gradient-bg)" color="white" p={4}>
+    <Box minHeight="100dvh" bg="var(--alt-gradient-bg)" color="white" p={4}>
       <VStack gap={6} align="stretch" maxWidth="500px" mx="auto">
         <Text
           fontSize="2xl"

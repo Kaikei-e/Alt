@@ -9,12 +9,12 @@ import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipe
 import ErrorState from "@/app/mobile/feeds/_components/ErrorState";
 
 const SwipeFeedSkeleton = () => (
-  <Box minH="100vh" position="relative">
+  <Box minH="100dvh" position="relative">
     <Box
       p={5}
       maxW="container.sm"
       mx="auto"
-      height="100vh"
+      height="100dvh"
       data-testid="swipe-skeleton-container"
     >
       <Flex direction="column" gap={4}>
@@ -68,7 +68,7 @@ const SwipeFeedScreen = () => {
 
   if (isOutOfFeeds) {
     return (
-      <Box minH="100vh" position="relative">
+      <Box minH="100dvh" position="relative">
         <EmptyFeedState />
         <FloatingMenu />
       </Box>
@@ -80,7 +80,7 @@ const SwipeFeedScreen = () => {
   }
 
   return (
-    <Box minH="100vh" position="relative">
+    <Box minH="100dvh" position="relative">
       <LiveRegion message={liveRegionMessage} />
 
       <Flex
