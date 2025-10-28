@@ -2,6 +2,7 @@ package alt_db
 
 import (
 	"alt/domain"
+	"alt/utils"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -17,19 +18,59 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 		return errors.New("authentication required")
 	}
 
-	// Get feed ID from feed URL
-	// Handle URL normalization - match with or without trailing slash
-	identifyFeedQuery := `
-                SELECT id FROM feeds
-                WHERE link = $1 OR link = $1 || '/' OR link = RTRIM($1, '/')
-                LIMIT 1
-        `
-
-	// First, check if feed exists WITHOUT starting a transaction
-	var feedID string
-	err = r.pool.QueryRow(ctx, identifyFeedQuery, feedURL.String()).Scan(&feedID)
+	// Normalize the input URL to match against database URLs
+	// This removes tracking parameters (UTM, fbclid, etc.), fragments, and trailing slashes
+	normalizedInputURL, err := utils.NormalizeURL(feedURL.String())
 	if err != nil {
-		logger.SafeError("Error identifying feed", "error", err, "feedURL", feedURL.String())
+		logger.SafeError("Error normalizing input URL", "error", err, "feedURL", feedURL.String())
+		return err
+	}
+
+	// Get all feeds and find matching normalized URL
+	// We need to normalize database URLs at query time since they may contain tracking parameters
+	getAllFeedsQuery := `SELECT id, link FROM feeds`
+
+	rows, err := r.pool.Query(ctx, getAllFeedsQuery)
+	if err != nil {
+		logger.SafeError("Error querying feeds", "error", err)
+		return err
+	}
+	defer rows.Close()
+
+	// Find matching feed by comparing normalized URLs
+	var feedID string
+	var foundMatch bool
+
+	for rows.Next() {
+		var dbFeedID, dbFeedLink string
+		if err := rows.Scan(&dbFeedID, &dbFeedLink); err != nil {
+			logger.SafeError("Error scanning feed row", "error", err)
+			continue
+		}
+
+		// Normalize the database URL
+		normalizedDBURL, err := utils.NormalizeURL(dbFeedLink)
+		if err != nil {
+			logger.SafeInfo("Error normalizing database URL", "error", err, "dbFeedLink", dbFeedLink)
+			continue
+		}
+
+		// Compare normalized URLs
+		if normalizedDBURL == normalizedInputURL {
+			feedID = dbFeedID
+			foundMatch = true
+			logger.SafeInfo("Found matching feed",
+				"feedID", feedID,
+				"inputURL", normalizedInputURL,
+				"dbURL", normalizedDBURL)
+			break
+		}
+	}
+
+	if !foundMatch {
+		logger.SafeError("Feed not found after URL normalization",
+			"normalizedInputURL", normalizedInputURL,
+			"originalInputURL", feedURL.String())
 		return pgx.ErrNoRows
 	}
 
