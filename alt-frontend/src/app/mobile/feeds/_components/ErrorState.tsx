@@ -123,25 +123,26 @@ export default function ErrorState({
         maxW="420px"
         w="100%"
         boxShadow="0 10px 30px -15px rgba(0, 0, 0, 0.3)"
-        border="1px solid rgba(255, 255, 255, 0.2)"
-        bg="rgba(255, 255, 255, 0.05)"
+        border="1px solid"
+        borderColor="whiteAlpha.200"
+        bg="whiteAlpha.50"
         backdropFilter="blur(10px)"
       >
         <Flex justify="center" align="center" mb={5}>
-          <Icon as={icon} boxSize="40px" color="#ff4444" />
+          <Icon as={icon} boxSize="40px" color="red.500" />
         </Flex>
 
         <Text
           fontSize={{ base: "xl", md: "2xl" }}
           fontWeight="bold"
-          color="var(--text-primary)"
+          color="white"
           mb={3}
         >
           {title}
         </Text>
 
         <Text
-          color="var(--text-secondary)"
+          color="whiteAlpha.800"
           mb={8}
           fontSize="md"
           lineHeight="1.6"
@@ -177,13 +178,13 @@ export default function ErrorState({
         </Button>
 
         {process.env.NODE_ENV === "development" && error && (
-          <Box mt={4} p={3} bg="rgba(0, 0, 0, 0.3)" borderRadius="8px">
-            <Text fontSize="xs" color="var(--text-muted)" textAlign="left">
+          <Box mt={4} p={3} bg="blackAlpha.300" borderRadius="8px">
+            <Text fontSize="xs" color="whiteAlpha.700" textAlign="left">
               デバッグ情報:
             </Text>
             <Text
               fontSize="xs"
-              color="var(--text-muted)"
+              color="whiteAlpha.700"
               textAlign="left"
               mt={2}
               fontFamily="monospace"
