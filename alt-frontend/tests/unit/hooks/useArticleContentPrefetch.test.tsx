@@ -365,4 +365,108 @@ describe("useArticleContentPrefetch", () => {
     const cachedContent = result.current.getCachedContent(mockFeeds[1].link);
     expect(cachedContent).toBeNull();
   });
+
+  describe("markAsDismissed", () => {
+    it("should skip prefetch for dismissed articles", async () => {
+      vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+        content: "<p>Article content</p>",
+      });
+      vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+        message: "archived",
+      });
+
+      const { result } = renderHook(() =>
+        useArticleContentPrefetch(mockFeeds, 0, 2),
+      );
+
+      // Mark second article as dismissed
+      result.current.markAsDismissed("https://example.com/article2");
+
+      // Trigger prefetch
+      result.current.triggerPrefetch();
+
+      // Wait for prefetch to complete
+      await waitFor(
+        () => {
+          // Only article3 should be prefetched (article2 is dismissed)
+          expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+            feed_url: "https://example.com/article3",
+          });
+        },
+        { timeout: 5000 },
+      );
+
+      // Article2 should NOT be prefetched
+      expect(feedsApi.getFeedContentOnTheFly).not.toHaveBeenCalledWith({
+        feed_url: "https://example.com/article2",
+      });
+
+      // Only article3 will be prefetched (article2 was skipped)
+      // The loop tries to prefetch 2 articles (indices 1 and 2)
+      // but article2 (index 1) is dismissed, so only article3 (index 2) succeeds
+      expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(1);
+    });
+
+    it("should clear dismissed articles after timeout", async () => {
+      vi.useFakeTimers();
+
+      vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+        content: "<p>Article content</p>",
+      });
+      vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+        message: "archived",
+      });
+
+      const { result } = renderHook(() =>
+        useArticleContentPrefetch(mockFeeds, 0, 2),
+      );
+
+      // Mark article as dismissed
+      result.current.markAsDismissed("https://example.com/article2");
+
+      // Trigger prefetch immediately - article2 should be skipped
+      result.current.triggerPrefetch();
+
+      // Fast-forward past PREFETCH_DELAY but before DISMISSED_CLEANUP_DELAY
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+
+      // Article2 should not be prefetched yet
+      expect(feedsApi.getFeedContentOnTheFly).not.toHaveBeenCalledWith({
+        feed_url: "https://example.com/article2",
+      });
+
+      // Fast-forward past DISMISSED_CLEANUP_DELAY (3000ms)
+      vi.advanceTimersByTime(3000);
+      await Promise.resolve();
+
+      // Clear mock to track new calls
+      vi.clearAllMocks();
+
+      // Trigger prefetch again - now article2 should be prefetchable
+      result.current.triggerPrefetch();
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+
+      // Article2 should now be prefetched
+      expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+        feed_url: "https://example.com/article2",
+      });
+
+      vi.useRealTimers();
+    });
+
+    it("should handle multiple markAsDismissed calls for same article", () => {
+      const { result } = renderHook(() =>
+        useArticleContentPrefetch(mockFeeds, 0, 2),
+      );
+
+      // Mark same article multiple times - should not throw
+      expect(() => {
+        result.current.markAsDismissed("https://example.com/article2");
+        result.current.markAsDismissed("https://example.com/article2");
+        result.current.markAsDismissed("https://example.com/article2");
+      }).not.toThrow();
+    });
+  });
 });

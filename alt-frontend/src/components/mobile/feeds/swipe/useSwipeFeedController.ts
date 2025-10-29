@@ -94,6 +94,7 @@ export const useSwipeFeedController = () => {
   const [liveRegionMessage, setLiveRegionMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [activeFeedId, setActiveFeedId] = useState<string | null>(null);
+  const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
 
   const liveRegionTimeoutRef = useRef<number | null>(null);
   const prefetchCursorRef = useRef<string | null>(null);
@@ -111,8 +112,10 @@ export const useSwipeFeedController = () => {
     if (!data || data.length === 0) {
       return [] as Feed[];
     }
-    return data.flatMap((page) => page?.data ?? []);
-  }, [data]);
+    const allFeeds = data.flatMap((page) => page?.data ?? []);
+    // Filter out read feeds using optimistic update Set
+    return allFeeds.filter((feed) => !readFeeds.has(canonicalize(feed.link)));
+  }, [data, readFeeds]);
 
   const activeIndex = useMemo(() => {
     if (feeds.length === 0) {
@@ -133,11 +136,12 @@ export const useSwipeFeedController = () => {
   const isInitialLoading = (!data || data.length === 0) && isLoading;
 
   // Article content prefetch hook
-  const { triggerPrefetch, getCachedContent } = useArticleContentPrefetch(
-    feeds,
-    activeIndex,
-    2, // Prefetch next 2 articles
-  );
+  const { triggerPrefetch, getCachedContent, markAsDismissed } =
+    useArticleContentPrefetch(
+      feeds,
+      activeIndex,
+      2, // Prefetch next 2 articles
+    );
 
   useEffect(() => {
     if (!statusMessage) {
@@ -229,6 +233,14 @@ export const useSwipeFeedController = () => {
     schedulePrefetch();
   }, [schedulePrefetch, activeIndex, feeds.length]);
 
+  // Trigger article content prefetch when active index changes
+  // This ensures prefetch happens AFTER dismiss and mutate complete
+  useEffect(() => {
+    if (activeIndex >= 0 && feeds.length > 0) {
+      triggerPrefetch();
+    }
+  }, [activeIndex, feeds.length, triggerPrefetch]);
+
   const dismissActiveFeed = useCallback(
     async (_direction: number) => {
       const currentIndex =
@@ -255,15 +267,27 @@ export const useSwipeFeedController = () => {
       setStatusMessage("Feed marked as read");
       announce("Feed marked as read", 1000);
 
+      // Mark article as dismissed BEFORE API call to prevent prefetch race condition
+      const canonicalLink = canonicalize(current.link);
+      markAsDismissed(canonicalLink);
+
+      // Optimistic update: add to readFeeds Set immediately
+      setReadFeeds((prev) => new Set(prev).add(canonicalLink));
+
       try {
-        const canonicalLink = canonicalize(current.link);
         await feedsApi.updateFeedReadStatus(canonicalLink);
         await mutate();
 
-        // Trigger prefetch for next articles after successful dismissal
-        triggerPrefetch();
+        // Prefetch is now triggered by activeIndex useEffect (lines 234-238)
+        // This prevents race condition between read status update and prefetch
       } catch (err) {
         console.error("Failed to mark feed as read", err);
+        // Rollback optimistic update on error
+        setReadFeeds((prev) => {
+          const next = new Set(prev);
+          next.delete(canonicalLink);
+          return next;
+        });
         setActiveFeedId(current.id);
         lastDismissedIdRef.current = null;
         setStatusMessage("Failed to mark feed as read");
@@ -271,7 +295,7 @@ export const useSwipeFeedController = () => {
         throw err;
       }
     },
-    [activeFeedId, announce, feeds, mutate, triggerPrefetch],
+    [activeFeedId, announce, feeds, markAsDismissed, mutate],
   );
 
   const retry = useCallback(async () => {

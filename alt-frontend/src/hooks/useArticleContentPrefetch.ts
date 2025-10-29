@@ -6,10 +6,12 @@ import { feedsApi } from "@/lib/api";
 
 const MAX_CACHE_SIZE = 5;
 const PREFETCH_DELAY = 500; // ms
+const DISMISSED_CLEANUP_DELAY = 3000; // ms - time to keep dismissed articles in exclusion list
 
 export interface UseArticleContentPrefetchResult {
   triggerPrefetch: () => void;
   getCachedContent: (feedUrl: string) => string | null;
+  markAsDismissed: (feedUrl: string) => void;
   contentCacheRef: React.MutableRefObject<Map<string, string | "loading">>;
 }
 
@@ -30,12 +32,24 @@ export const useArticleContentPrefetch = (
   const contentCacheRef = useRef<Map<string, string | "loading">>(new Map());
   const prefetchTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
 
+  // Track recently dismissed articles to prevent prefetch race condition
+  const dismissedArticlesRef = useRef<Set<string>>(new Set());
+  const dismissalTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
   /**
    * Prefetch content for a single article
    */
   const prefetchContent = useCallback(
     async (feed: Feed) => {
       const feedUrl = feed.link;
+
+      // Skip if article is being dismissed (race condition prevention)
+      if (dismissedArticlesRef.current.has(feedUrl)) {
+        console.log(
+          `[useArticleContentPrefetch] Skipping dismissed article: ${feedUrl}`,
+        );
+        return;
+      }
 
       // Skip if already in cache or being prefetched
       if (contentCacheRef.current.has(feedUrl)) {
@@ -119,9 +133,33 @@ export const useArticleContentPrefetch = (
     return cached === "loading" ? null : cached || null;
   }, []);
 
+  /**
+   * Mark an article as dismissed to prevent prefetch race conditions
+   * The article will be excluded from prefetch for DISMISSED_CLEANUP_DELAY ms
+   */
+  const markAsDismissed = useCallback((feedUrl: string): void => {
+    // Add to dismissed set
+    dismissedArticlesRef.current.add(feedUrl);
+
+    // Clear any existing timeout for this URL
+    const existingTimeout = dismissalTimeoutsRef.current.get(feedUrl);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    // Schedule cleanup after delay
+    const timeout = setTimeout(() => {
+      dismissedArticlesRef.current.delete(feedUrl);
+      dismissalTimeoutsRef.current.delete(feedUrl);
+    }, DISMISSED_CLEANUP_DELAY);
+
+    dismissalTimeoutsRef.current.set(feedUrl, timeout);
+  }, []);
+
   return {
     triggerPrefetch,
     getCachedContent,
+    markAsDismissed,
     contentCacheRef,
   };
 };

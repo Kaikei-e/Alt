@@ -3,9 +3,18 @@ import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 
-const { mockUseSWRInfinite, mockUpdateFeedReadStatus } = vi.hoisted(() => ({
+const {
+  mockUseSWRInfinite,
+  mockUpdateFeedReadStatus,
+  mockTriggerPrefetch,
+  mockGetCachedContent,
+  mockMarkAsDismissed,
+} = vi.hoisted(() => ({
   mockUseSWRInfinite: vi.fn(),
   mockUpdateFeedReadStatus: vi.fn(),
+  mockTriggerPrefetch: vi.fn(),
+  mockGetCachedContent: vi.fn(),
+  mockMarkAsDismissed: vi.fn(),
 }));
 
 vi.mock("swr/infinite", () => ({
@@ -14,7 +23,8 @@ vi.mock("swr/infinite", () => ({
 }));
 
 vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual =
+    (await importOriginal()) as typeof import("@/lib/api");
   return {
     ...actual,
     feedsApi: {
@@ -24,6 +34,14 @@ vi.mock("@/lib/api", async (importOriginal) => {
     },
   };
 });
+
+vi.mock("@/hooks/useArticleContentPrefetch", () => ({
+  useArticleContentPrefetch: () => ({
+    triggerPrefetch: mockTriggerPrefetch,
+    getCachedContent: mockGetCachedContent,
+    markAsDismissed: mockMarkAsDismissed,
+  }),
+}));
 
 describe("useSwipeFeedController", () => {
   const feedA = {
@@ -92,6 +110,10 @@ describe("useSwipeFeedController", () => {
 
     mockUpdateFeedReadStatus.mockReset();
     mockUpdateFeedReadStatus.mockResolvedValue({});
+
+    mockTriggerPrefetch.mockReset();
+    mockGetCachedContent.mockReset();
+    mockMarkAsDismissed.mockReset();
   });
 
   it("keeps the next feed active after revalidation", async () => {
@@ -109,5 +131,28 @@ describe("useSwipeFeedController", () => {
     );
     const nextActiveId = swrState.data[0]?.data[0]?.id;
     expect(result.current.activeFeed?.id).toBe(nextActiveId);
+  });
+
+  it("marks article as dismissed before API call", async () => {
+    const { result } = renderHook(() => useSwipeFeedController());
+
+    await act(async () => {
+      await result.current.dismissActiveFeed(1);
+    });
+
+    // markAsDismissed should be called before read status update
+    expect(mockMarkAsDismissed).toHaveBeenCalledWith(
+      "https://example.com/feed-1",
+    );
+    expect(mockMarkAsDismissed).toHaveBeenCalledBefore(
+      mockUpdateFeedReadStatus,
+    );
+  });
+
+  it("triggers prefetch on initial render", () => {
+    renderHook(() => useSwipeFeedController());
+
+    // Prefetch should be called during initial render via activeIndex useEffect
+    expect(mockTriggerPrefetch).toHaveBeenCalled();
   });
 });
