@@ -251,6 +251,9 @@ export const FeedDetails = ({
               data-testid="modal-content"
               tabIndex={-1}
               overflow="hidden"
+              css={{
+                paddingBottom: "env(safe-area-inset-bottom, 0px)",
+              }}
             >
               {/* Header with title only */}
               <Box
