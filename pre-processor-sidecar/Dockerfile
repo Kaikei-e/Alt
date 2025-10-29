@@ -1,5 +1,5 @@
 # Multi-stage build for pre-processor-sidecar OAuth2-enabled CronJob
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ COPY app/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o pre-processor-sidecar ./cmd/main.go
 
 # Final stage
-FROM alpine:latest
+FROM alpine:3.21
 
 # Install CA certificates
 RUN apk --no-cache add ca-certificates

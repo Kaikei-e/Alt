@@ -2,12 +2,12 @@
 FROM ubuntu:24.04
 
 LABEL maintainer="Alt RSS Reader Team"
-LABEL description="OAuth token refresh using refresh tokens only - Deno 2.0"
-LABEL version="2.0.0"
+LABEL description="OAuth token refresh using refresh tokens only - Deno 2.5.4"
+LABEL version="2.5.4"
 
-# Install required dependencies, Deno 2.0, and kubectl
+# Install required dependencies, Deno 2.5.4, and kubectl
 RUN apt-get update && apt-get install -y unzip curl ca-certificates && \
-    curl -fsSL https://deno.land/install.sh | sh && \
+    curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/root/.deno sh -s v2.5.4 && \
     mv /root/.deno/bin/deno /usr/local/bin/deno && \
     chmod +x /usr/local/bin/deno && \
     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
