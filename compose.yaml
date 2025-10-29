@@ -15,7 +15,8 @@ networks:
 
 volumes:
   # Persistent storage volumes for data persistence
-  db_data:                    # PostgreSQL database data
+  db_data:                    # PostgreSQL 16 database data (existing)
+  db_data_17:                 # PostgreSQL 17 database data (new for blue-green deployment)
   kratos_db_data:             # Kratos PostgreSQL database data
   meili_data:                 # MeiliSearch index data
   rask_log_aggregator_data:   # Rask log aggregator data
@@ -144,7 +145,7 @@ services:
     volumes:
       - .env:/app/.env
     environment:
-      - DB_HOST=db
+      - DB_HOST=db  # PostgreSQL 17 (final)
       - DB_PORT=5432
       - DB_USER=${POSTGRES_USER}
       - DB_PASSWORD=${POSTGRES_PASSWORD}
@@ -254,7 +255,7 @@ services:
       context: ./pre-processor
       dockerfile: Dockerfile
     environment:
-      - DB_HOST=db
+      - DB_HOST=db  # PostgreSQL 17 (final)
       - DB_PORT=5432
       - DB_NAME=${DB_NAME}
       - PRE_PROCESSOR_DB_USER=${PRE_PROCESSOR_DB_USER}
@@ -286,7 +287,7 @@ services:
       context: ./search-indexer
       dockerfile: Dockerfile.search-indexer
     environment:
-      - DB_HOST=db
+      - DB_HOST=db  # PostgreSQL 17 (final)
       - DB_PORT=5432
       - DB_NAME=${DB_NAME}
       - DB_SSL_MODE=prefer
@@ -321,7 +322,7 @@ services:
     ports:
       - "9400:9400"
     environment:
-      - DB_HOST=db
+      - DB_HOST=db  # PostgreSQL 17 (final)
       - DB_PORT=5432
       - DB_NAME=${DB_NAME}
       - DB_TAG_GENERATOR_USER=${DB_TAG_GENERATOR_USER}
@@ -341,7 +342,7 @@ services:
         max-size: "10m"
         max-file: "3"
   meilisearch:
-      image: getmeili/meilisearch:v1.15.2
+      image: getmeili/meilisearch:v1.21.0
       restart: unless-stopped
       environment:
         MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
@@ -398,7 +399,7 @@ services:
       APP_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
       APP_CLICKHOUSE_DATABASE: ${CLICKHOUSE_DB}
   clickhouse:
-    image: clickhouse/clickhouse-server:25.6
+    image: clickhouse/clickhouse-server:25.9
     restart: unless-stopped
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-rask_logs}
@@ -422,8 +423,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+  # === PostgreSQL 17 (Production) ===
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
+    container_name: alt-db
     restart: always
     command: >
       postgres
@@ -445,12 +448,12 @@ services:
       SEARCH_INDEXER_DB_USER: ${SEARCH_INDEXER_DB_USER}
       SEARCH_INDEXER_DB_PASSWORD: ${SEARCH_INDEXER_DB_PASSWORD}
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db_data_17:/var/lib/postgresql/data  # PostgreSQL 17 production data
       - ./db/init:/docker-entrypoint-initdb.d:rw
       - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     ports:
-      - "5432:5432"
+      - "5432:5432"  # Production PostgreSQL 17 port
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -467,6 +470,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # Backward compatibility alias - REMOVED (now db is PostgreSQL 17)
 
   kratos-db:
     image: postgres:16-alpine
@@ -485,7 +490,7 @@ services:
       - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     ports:
-      - "5433:5432"
+      - "5434:5432"  # Changed from 5433 due to db-pg17 using 5433
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${KRATOS_DB_USER:-kratos_user} -d ${KRATOS_DB_NAME:-kratos}"]
       interval: 5s
@@ -647,10 +652,10 @@ services:
     build:
       context: ./rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
-    network_mode: "service:db"
+    network_mode: "service:db-pg16"
     <<: *rask-forwarder-env
     environment:
-      TARGET_SERVICE: "db"
+      TARGET_SERVICE: "db-pg16"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -659,7 +664,7 @@ services:
       - logging
 
   kratos-migrate:
-    image: oryd/kratos:v1.2.0
+    image: oryd/kratos:v1.3.0
     command: ["migrate", "sql", "-e", "--yes", "--config", "/etc/config/kratos/kratos.yml"]
     environment:
       - DSN=postgres://${KRATOS_DB_USER:-kratos_user}:${KRATOS_DB_PASSWORD:-kratos_password}@${KRATOS_DB_HOST:-kratos-db}:${KRATOS_DB_PORT:-5432}/${KRATOS_DB_NAME:-kratos}?sslmode=${KRATOS_DB_SSLMODE:-disable}
@@ -679,7 +684,7 @@ services:
       - alt-network
 
   kratos:
-    image: oryd/kratos:v1.2.0
+    image: oryd/kratos:v1.3.0
     command: ["serve", "all", "--config", "/etc/config/kratos/kratos.yml"]
     ports:
       - "4433:4433"  # public
