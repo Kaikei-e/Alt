@@ -212,6 +212,9 @@ export const FloatingMenu = () => {
             bottom={6}
             right={6}
             zIndex={1000}
+            css={{
+              paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
+            }}
           >
             <Button
               data-testid="floating-menu-button"
@@ -288,6 +291,9 @@ export const FloatingMenu = () => {
               maxH="90vh"
               overflowY="auto"
               position="relative"
+              css={{
+                paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
+              }}
               _before={{
                 content: '""',
                 position: "absolute",

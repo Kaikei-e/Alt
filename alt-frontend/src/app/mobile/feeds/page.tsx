@@ -289,7 +289,15 @@ export default function FeedsPage() {
 
       {/* Swipe Mode Button */}
       <Link href="/mobile/feeds/swipe">
-        <Box position="fixed" bottom={6} right={20} zIndex={1000}>
+        <Box
+          position="fixed"
+          bottom={6}
+          right={20}
+          zIndex={1000}
+          css={{
+            paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
+          }}
+        >
           <Button
             data-testid="swipe-mode-button"
             size="md"
