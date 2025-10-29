@@ -118,29 +118,30 @@ export default function ErrorState({
       textAlign="center"
     >
       <Box
-        className="glass"
         p={{ base: 6, md: 8 }}
         borderRadius="24px"
         maxW="420px"
         w="100%"
         boxShadow="0 10px 30px -15px rgba(0, 0, 0, 0.3)"
-        border="1px solid var(--alt-glass-border)"
+        border="1px solid rgba(255, 255, 255, 0.2)"
+        bg="rgba(255, 255, 255, 0.05)"
+        backdropFilter="blur(10px)"
       >
         <Flex justify="center" align="center" mb={5}>
-          <Icon as={icon} boxSize="40px" color="var(--alt-text-error)" />
+          <Icon as={icon} boxSize="40px" color="#ff4444" />
         </Flex>
 
         <Text
           fontSize={{ base: "xl", md: "2xl" }}
           fontWeight="bold"
-          color="var(--alt-text-primary)"
+          color="var(--text-primary)"
           mb={3}
         >
           {title}
         </Text>
 
         <Text
-          color="var(--alt-text-secondary)"
+          color="var(--text-secondary)"
           mb={8}
           fontSize="md"
           lineHeight="1.6"
@@ -151,7 +152,7 @@ export default function ErrorState({
         <Button
           onClick={handleRetry}
           loading={isRetrying || isLoading}
-          loadingText="Retrying..."
+          loadingText="再試行中..."
           size="lg"
           w="100%"
           borderRadius="16px"
@@ -172,8 +173,25 @@ export default function ErrorState({
           }}
           transition="all 0.2s"
         >
-          Retry
+          再試行
         </Button>
+
+        {process.env.NODE_ENV === "development" && error && (
+          <Box mt={4} p={3} bg="rgba(0, 0, 0, 0.3)" borderRadius="8px">
+            <Text fontSize="xs" color="var(--text-muted)" textAlign="left">
+              デバッグ情報:
+            </Text>
+            <Text
+              fontSize="xs"
+              color="var(--text-muted)"
+              textAlign="left"
+              mt={2}
+              fontFamily="monospace"
+            >
+              {error.message}
+            </Text>
+          </Box>
+        )}
       </Box>
     </Flex>
   );
