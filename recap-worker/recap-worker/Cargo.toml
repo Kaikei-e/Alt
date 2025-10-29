@@ -1,0 +1,10 @@
+[package]
+name = "recap-worker"
+version = "0.1.0"
+edition = "2024"
+description = "Alt 7days Recap batch worker (CPU-centric) with Axum control plane and Prometheus/OTLP telemetry."
+repository = "https://github.com/Kaikei-e/Alt"
+
+[dependencies]
+axum = { version = "0.8.6", features = ["macros", "json", "tokio"] }
+serde_json = "1.0"
