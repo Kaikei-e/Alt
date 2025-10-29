@@ -49,6 +49,7 @@ const renderCard = (
         feed={feed}
         statusMessage={overrides.statusMessage ?? null}
         onDismiss={overrides.onDismiss ?? vi.fn()}
+        getCachedContent={overrides.getCachedContent}
       />
     </ChakraProvider>,
   );
@@ -158,5 +159,96 @@ describe("SwipeFeedCard", () => {
     );
 
     expect(screen.queryByTestId("summary-section")).not.toBeInTheDocument();
+  });
+
+  it("uses cached content when available instead of fetching", async () => {
+    const { feedsApi } = await import("@/lib/api");
+    const cachedContent = "<p>Cached article content</p>";
+    const getCachedContent = vi.fn().mockReturnValue(cachedContent);
+
+    renderCard(baseFeed, { getCachedContent });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("action-footer")[0]).toBeDefined();
+    });
+    const actionFooter = screen.getAllByTestId("action-footer")[0];
+    const contentToggle = within(actionFooter).getByTestId(
+      "toggle-content-button",
+    );
+
+    await act(async () => {
+      fireEvent.click(contentToggle);
+    });
+
+    // getCachedContent should have been called
+    expect(getCachedContent).toHaveBeenCalledWith(baseFeed.link);
+
+    // API should not have been called since we had cached content
+    expect(feedsApi.getFeedContentOnTheFly).not.toHaveBeenCalled();
+
+    // Content should be displayed
+    const contentSection = await screen.findByTestId("content-section");
+    expect(contentSection).toHaveTextContent("Cached article content");
+  });
+
+  it("falls back to fetching when cache miss occurs", async () => {
+    const { feedsApi } = await import("@/lib/api");
+    const getCachedContent = vi.fn().mockReturnValue(null); // Cache miss
+    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+      content: "<p>Fetched article content</p>",
+    });
+    vi.mocked(feedsApi.archiveContent).mockResolvedValue({ message: "ok" });
+
+    renderCard(baseFeed, { getCachedContent });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("action-footer")[0]).toBeDefined();
+    });
+    const actionFooter = screen.getAllByTestId("action-footer")[0];
+    const contentToggle = within(actionFooter).getByTestId(
+      "toggle-content-button",
+    );
+
+    await act(async () => {
+      fireEvent.click(contentToggle);
+    });
+
+    // getCachedContent should have been called
+    expect(getCachedContent).toHaveBeenCalledWith(baseFeed.link);
+
+    // Since cache missed, API should have been called
+    await waitFor(() => {
+      expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+        feed_url: baseFeed.link,
+      });
+    });
+
+    const contentSection = await screen.findByTestId("content-section");
+    expect(contentSection).toHaveTextContent("Fetched article content");
+  });
+
+  it("does not call getCachedContent when prop is not provided", async () => {
+    const { feedsApi } = await import("@/lib/api");
+    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+      content: "<p>Fetched content</p>",
+    });
+    vi.mocked(feedsApi.archiveContent).mockResolvedValue({ message: "ok" });
+
+    renderCard(baseFeed); // No getCachedContent prop
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("action-footer")[0]).toBeDefined();
+    });
+    const actionFooter = screen.getAllByTestId("action-footer")[0];
+    const contentToggle = within(actionFooter).getByTestId(
+      "toggle-content-button",
+    );
+    fireEvent.click(contentToggle);
+
+    await waitFor(() => {
+      expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+        feed_url: baseFeed.link,
+      });
+    });
   });
 });

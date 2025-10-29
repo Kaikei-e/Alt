@@ -10,6 +10,7 @@ import useSWRInfinite from "swr/infinite";
 import { feedsApi } from "@/lib/api";
 import { CursorResponse } from "@/schema/common";
 import { Feed } from "@/schema/feed";
+import { useArticleContentPrefetch } from "@/hooks/useArticleContentPrefetch";
 
 const PAGE_SIZE = 20;
 const PREFETCH_THRESHOLD = 10;
@@ -131,6 +132,13 @@ export const useSwipeFeedController = () => {
   const hasMore = Boolean(lastPage?.next_cursor);
   const isInitialLoading = (!data || data.length === 0) && isLoading;
 
+  // Article content prefetch hook
+  const { triggerPrefetch, getCachedContent } = useArticleContentPrefetch(
+    feeds,
+    activeIndex,
+    2, // Prefetch next 2 articles
+  );
+
   useEffect(() => {
     if (!statusMessage) {
       return;
@@ -251,6 +259,9 @@ export const useSwipeFeedController = () => {
         const canonicalLink = canonicalize(current.link);
         await feedsApi.updateFeedReadStatus(canonicalLink);
         await mutate();
+
+        // Trigger prefetch for next articles after successful dismissal
+        triggerPrefetch();
       } catch (err) {
         console.error("Failed to mark feed as read", err);
         setActiveFeedId(current.id);
@@ -260,7 +271,7 @@ export const useSwipeFeedController = () => {
         throw err;
       }
     },
-    [activeFeedId, announce, feeds, mutate],
+    [activeFeedId, announce, feeds, mutate, triggerPrefetch],
   );
 
   const retry = useCallback(async () => {
@@ -279,5 +290,6 @@ export const useSwipeFeedController = () => {
     statusMessage,
     dismissActiveFeed,
     retry,
+    getCachedContent,
   };
 };

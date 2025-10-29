@@ -54,6 +54,7 @@ const SwipeFeedScreen = () => {
     statusMessage,
     dismissActiveFeed,
     retry,
+    getCachedContent,
   } = useSwipeFeedController();
 
   if (isInitialLoading) {
@@ -99,6 +100,7 @@ const SwipeFeedScreen = () => {
           feed={activeFeed}
           statusMessage={statusMessage}
           onDismiss={dismissActiveFeed}
+          getCachedContent={getCachedContent}
         />
       </Flex>
 

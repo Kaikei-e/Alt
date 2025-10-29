@@ -51,6 +51,7 @@ type SwipeFeedCardProps = {
   feed: Feed;
   statusMessage: string | null;
   onDismiss: (direction: number) => Promise<void> | void;
+  getCachedContent?: (feedUrl: string) => string | null;
 };
 
 const buildContentStyles = (): CSSObject => ({
@@ -82,7 +83,7 @@ const normalizeDirection = (direction: number) => {
   return direction;
 };
 
-const SwipeFeedCard = ({ feed, statusMessage, onDismiss }: SwipeFeedCardProps) => {
+const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: SwipeFeedCardProps) => {
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
@@ -167,6 +168,17 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss }: SwipeFeedCardProps) =
 
   const handleToggleContent = useCallback(async () => {
     if (!isContentExpanded && !fullContent) {
+      // Check cache first if getCachedContent is available
+      const cachedContent = getCachedContent?.(feed.link);
+
+      if (cachedContent) {
+        // Use cached content instantly
+        setFullContent(cachedContent);
+        setIsContentExpanded(true);
+        return;
+      }
+
+      // Cache miss or no cache available - fetch normally
       setIsLoadingContent(true);
       setContentError(null);
 
@@ -191,7 +203,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss }: SwipeFeedCardProps) =
     }
 
     setIsContentExpanded((prev) => !prev);
-  }, [feed.link, feed.title, fullContent, isContentExpanded]);
+  }, [feed.link, feed.title, fullContent, isContentExpanded, getCachedContent]);
 
   const handleToggleSummary = useCallback(async () => {
     if (!isSummaryExpanded && !summary) {
