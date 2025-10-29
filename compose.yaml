@@ -652,10 +652,10 @@ services:
     build:
       context: ./rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
-    network_mode: "service:db-pg16"
+    network_mode: "service:db"
     <<: *rask-forwarder-env
     environment:
-      TARGET_SERVICE: "db-pg16"
+      TARGET_SERVICE: "db"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
