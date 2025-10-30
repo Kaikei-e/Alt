@@ -92,23 +92,45 @@ const DesktopStyledFeedCard = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isFavorited, setIsFavorited] = useState(feed.isFavorited);
-  const [tags, setTags] = useState<FeedTag[]>([]);
+  const [tags, setTags] = useState<FeedTag[]>(() => {
+    // Initialize tags from feed.metadata.tags if available
+    if (feed.metadata.tags && feed.metadata.tags.length > 0) {
+      return feed.metadata.tags.map((tagName, index) => ({
+        id: `${feed.id}-tag-${index}`,
+        name: tagName,
+        created_at: new Date().toISOString(),
+      }));
+    }
+    return [];
+  });
+  const [isLoadingTags, setIsLoadingTags] = useState(false);
   const [showAllTags, setShowAllTags] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   useEffect(() => {
+    // Only fetch tags from API if feed.metadata.tags is empty or doesn't exist
+    if (feed.metadata.tags && feed.metadata.tags.length > 0) {
+      // Tags already available from metadata, no need to fetch
+      return;
+    }
+
     const fetchTags = async () => {
+      setIsLoadingTags(true);
       try {
         const response = await feedsApi.fetchFeedTags(feed.link);
-        setTags(response.tags);
+        if (response.tags && response.tags.length > 0) {
+          setTags(response.tags);
+        }
       } catch (error) {
         console.error("Failed to fetch tags for feed:", feed.link, error);
         // Set empty tags on error to prevent UI issues
         setTags([]);
+      } finally {
+        setIsLoadingTags(false);
       }
     };
     fetchTags();
-  }, [feed.link]);
+  }, [feed.link, feed.metadata.tags]);
 
   const handleViewArticle = useCallback(() => {
     window.open(feed.link, "_blank");
@@ -276,42 +298,51 @@ const DesktopStyledFeedCard = ({
 
         {/* Tags and Metadata */}
         <HStack justify="space-between" align="center" wrap="wrap">
-          <HStack gap={2} wrap="wrap">
-            {(showAllTags ? tags : tags.slice(0, 5)).map((tag) => (
-              <Badge
-                key={tag.id}
-                bg="var(--accent-tertiary)"
-                color="white"
-                fontSize="xs"
-                px={2}
-                py={1}
-                borderRadius="md"
-              >
-                {tag.name}
-              </Badge>
-            ))}
-            {tags.length > 5 && (
-              <Badge
-                bg="var(--surface-border)"
-                color="var(--text-muted)"
-                fontSize="xs"
-                px={2}
-                py={1}
-                borderRadius="md"
-                cursor="pointer"
-                _hover={{
-                  bg: "var(--accent-secondary)",
-                  color: "white",
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowAllTags(!showAllTags);
-                }}
-              >
-                {showAllTags ? "Show Less" : `+${tags.length - 5}`}
-              </Badge>
-            )}
-          </HStack>
+          {tags.length > 0 && (
+            <HStack gap={2} wrap="wrap">
+              {(showAllTags ? tags : tags.slice(0, 5)).map((tag) => (
+                <Badge
+                  key={tag.id}
+                  bg="var(--accent-tertiary)"
+                  color="white"
+                  fontSize="xs"
+                  px={2}
+                  py={1}
+                  borderRadius="md"
+                >
+                  {tag.name}
+                </Badge>
+              ))}
+              {tags.length > 5 && (
+                <Badge
+                  bg="var(--surface-border)"
+                  color="var(--text-muted)"
+                  fontSize="xs"
+                  px={2}
+                  py={1}
+                  borderRadius="md"
+                  cursor="pointer"
+                  _hover={{
+                    bg: "var(--accent-secondary)",
+                    color: "white",
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowAllTags(!showAllTags);
+                  }}
+                >
+                  {showAllTags ? "Show Less" : `+${tags.length - 5}`}
+                </Badge>
+              )}
+            </HStack>
+          )}
+          {isLoadingTags && (
+            <HStack gap={2}>
+              <Text fontSize="xs" color="var(--text-muted)">
+                Loading tags...
+              </Text>
+            </HStack>
+          )}
 
           <HStack gap={4} fontSize="xs" color="var(--text-muted)">
             <HStack gap={1}>
