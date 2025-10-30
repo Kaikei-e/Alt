@@ -151,6 +151,12 @@ func (h *jobHandler) runSummarizationLoop() {
 
 // runQualityCheckLoop runs the quality check loop.
 func (h *jobHandler) runQualityCheckLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logger.Error("panic in runQualityCheckLoop", "panic", r)
+		}
+	}()
+
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
@@ -230,6 +236,12 @@ func (h *jobHandler) processSummarizationBatch() {
 
 // processQualityCheckBatch processes a batch of articles for quality checking.
 func (h *jobHandler) processQualityCheckBatch() {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logger.Error("panic in processQualityCheckBatch", "panic", r)
+		}
+	}()
+
 	result, err := h.qualityChecker.CheckQuality(h.ctx, h.batchSize)
 	if err != nil {
 		h.logger.Error("quality check failed", "error", err)

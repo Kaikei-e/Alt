@@ -24,7 +24,7 @@ var (
 	// qualityCheckerAPIURL can be overridden in tests
 	qualityCheckerAPIURL = "http://news-creator:11434/api/generate"
 	modelName            = "gemma3:4b"
-	lowScoreThreshold    = 24 // 30点満点の80% (24/30)
+	lowScoreThreshold    = 7 // 7 is the lowest score that is acceptable
 )
 
 type judgePrompt struct {
