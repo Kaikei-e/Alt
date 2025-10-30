@@ -9,7 +9,7 @@ import { ContentType, analyzeContent } from "./contentTypeDetector";
 import sanitizeHtml from "sanitize-html";
 
 export interface RenderingStrategy {
-  render(content: string): ReactNode;
+  render(content: string, articleUrl?: string): ReactNode;
   shouldUse(content: string, declaredType?: string): boolean;
 }
 
@@ -24,7 +24,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     return analysis.type === ContentType.HTML;
   }
 
-  render(content: string): ReactNode {
+  render(content: string, articleUrl?: string): ReactNode {
     // Step 1: Decode HTML entities BEFORE sanitization (XPLAN11 solution)
     const decodedHTML = this.decodeHtmlEntities(content);
 
@@ -74,7 +74,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     });
 
     // Step 3: Enhanced HTML with custom CSS for images and links
-    const enhancedHTML = this.enhanceHTMLElements(sanitizedHTML);
+    const enhancedHTML = this.enhanceHTMLElements(sanitizedHTML, articleUrl);
 
     // Step 4: Return using dangerouslySetInnerHTML with proxy image handler
     return <HTMLContentRenderer html={enhancedHTML} />;
@@ -105,8 +105,9 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
    * Enhance HTML elements with proper attributes (XPLAN11: Post-sanitization)
    * COEP Bypass: Convert external image URLs to proxy URLs with POST API support
    * Fixed: Proper URL decoding order to prevent double encoding
+   * Fixed: Resolve relative image paths against article URL
    */
-  private enhanceHTMLElements(html: string): string {
+  private enhanceHTMLElements(html: string, articleUrl?: string): string {
     return (
       html
         // Step 1: Convert external image URLs to proxy URLs (COEP bypass)
@@ -115,14 +116,16 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
           (match, before, src, after) => {
             // Fix: Decode HTML entities BEFORE converting to proxy URL
             const decodedSrc = this.decodeHtmlEntitiesFromUrl(src);
-            const proxiedSrc = this.convertToProxyUrl(decodedSrc);
+            // Fix: Resolve relative paths against article URL
+            const resolvedSrc = this.resolveRelativeImageUrl(decodedSrc, articleUrl);
+            const proxiedSrc = this.convertToProxyUrl(resolvedSrc);
 
             // If this is a proxy URL, add special attributes for lazy loading (CSP compliant - no inline handlers)
             if (proxiedSrc.startsWith("data:image/proxy,")) {
               const originalUrl = decodeURIComponent(
                 proxiedSrc.replace("data:image/proxy,", ""),
               );
-              return `<img${before}src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-proxy-url="${originalUrl}" data-fallback-src="${this.escapeHtml(decodedSrc)}"${after} loading="lazy" style="opacity:0;transition:opacity 0.3s" class="proxy-image">`;
+              return `<img${before}src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-proxy-url="${originalUrl}" data-fallback-src="${this.escapeHtml(resolvedSrc)}"${after} loading="lazy" style="opacity:0;transition:opacity 0.3s" class="proxy-image">`;
             }
 
             return `<img${before}src="${proxiedSrc}"${after} loading="lazy">`;
@@ -137,6 +140,39 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   }
 
   /**
+   * Resolve relative image URL against article URL
+   * Converts relative paths like "./image.png" to absolute URLs
+   * @param imageUrl - Image URL (may be relative)
+   * @param articleUrl - Base URL for resolving relative paths
+   * @returns Absolute URL or original URL if already absolute
+   */
+  private resolveRelativeImageUrl(imageUrl: string, articleUrl?: string): string {
+    if (!articleUrl || !imageUrl) {
+      return imageUrl;
+    }
+
+    // If already absolute URL, return as-is
+    if (
+      imageUrl.startsWith("http://") ||
+      imageUrl.startsWith("https://") ||
+      imageUrl.startsWith("data:") ||
+      imageUrl.startsWith("/")
+    ) {
+      return imageUrl;
+    }
+
+    try {
+      // Resolve relative URL against article URL
+      const baseUrl = new URL(articleUrl);
+      const resolvedUrl = new URL(imageUrl, baseUrl);
+      return resolvedUrl.toString();
+    } catch (error) {
+      // If URL resolution fails, return original URL
+      return imageUrl;
+    }
+  }
+
+  /**
    * Convert external image URL to proxy URL for COEP bypass
    * Phase 4: Updated to use POST /v1/images/fetch endpoint with Envoy proxy support
    * @param imageUrl - Original image URL
@@ -147,9 +183,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
       // Performance: Skip obviously local or data URLs
       if (
         imageUrl.startsWith("data:") ||
-        imageUrl.startsWith("/") ||
-        imageUrl.startsWith("./") ||
-        imageUrl.startsWith("../")
+        imageUrl.startsWith("/")
       ) {
         return imageUrl;
       }
@@ -403,7 +437,7 @@ export class TextRenderingStrategy implements RenderingStrategy {
     );
   }
 
-  render(content: string): ReactNode {
+  render(content: string, articleUrl?: string): ReactNode {
     // Split content into paragraphs and preserve line breaks
     const paragraphs = content
       .split(/\n\s*\n/) // Split on double line breaks
@@ -437,7 +471,7 @@ export class MarkdownRenderingStrategy implements RenderingStrategy {
     return analysis.type === ContentType.MARKDOWN;
   }
 
-  render(content: string): ReactNode {
+  render(content: string, articleUrl?: string): ReactNode {
     // Basic markdown-to-HTML conversion
     let html = content
       // Headers
@@ -510,9 +544,10 @@ export class RenderingStrategyRegistry {
    * Render content using the appropriate strategy
    * @param content - Content to render
    * @param declaredType - Optional declared content type
+   * @param articleUrl - Optional article URL for resolving relative image paths
    * @returns Rendered React nodes
    */
-  render(content: string, declaredType?: string): ReactNode {
+  render(content: string, declaredType?: string, articleUrl?: string): ReactNode {
     if (!content || content.trim().length === 0) {
       return (
         <span style={{ fontStyle: "italic", color: "#888" }}>
@@ -522,7 +557,7 @@ export class RenderingStrategyRegistry {
     }
 
     const strategy = this.selectStrategy(content, declaredType);
-    return strategy.render(content);
+    return strategy.render(content, articleUrl);
   }
 }
 

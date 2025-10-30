@@ -15,7 +15,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Archive, ExternalLink, Sparkles, X } from "lucide-react";
 import { feedsApi } from "@/lib/api";
-import RenderFeedDetails from "@/components/mobile/RenderFeedDetails";
+import { DesktopRenderFeedDetails } from "./DesktopRenderFeedDetails";
 import type {
   FeedContentOnTheFlyResponse,
   FetchArticleSummaryResponse,
@@ -304,10 +304,11 @@ export const DesktopFeedDetailsModal = ({
                     </Text>
                   </Flex>
                 ) : (
-                  <RenderFeedDetails
+                  <DesktopRenderFeedDetails
                     feedDetails={activeFeedDetails}
                     isLoading={isLoading}
                     error={error}
+                    articleUrl={feedLink}
                   />
                 )}
 

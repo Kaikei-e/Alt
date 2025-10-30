@@ -14,6 +14,7 @@ interface SmartContentRendererProps {
   maxHeight?: string;
   showMetadata?: boolean;
   onError?: (error: Error) => void;
+  articleUrl?: string;
 }
 
 interface ContentMetadataProps {
@@ -111,6 +112,7 @@ export const SmartContentRenderer: React.FC<SmartContentRendererProps> = memo(
     maxHeight = "none",
     showMetadata = false,
     onError,
+    articleUrl,
   }) => {
     // Memoize content analysis for performance
     const analysis = useMemo(() => {
@@ -138,7 +140,7 @@ export const SmartContentRenderer: React.FC<SmartContentRendererProps> = memo(
       }
 
       try {
-        return renderingRegistry.render(content, contentType);
+        return renderingRegistry.render(content, contentType, articleUrl);
       } catch (error) {
         console.error("Content rendering failed:", error);
         onError?.(error as Error);
