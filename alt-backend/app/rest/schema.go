@@ -60,6 +60,23 @@ type SearchArticlesResponse struct {
 	Content string `json:"content"`
 }
 
+// ArticlesWithCursorResponse represents the paginated response for articles with cursor
+type ArticlesWithCursorResponse struct {
+	Items      []ArticleResponse `json:"items"`
+	NextCursor *string           `json:"next_cursor,omitempty"`
+	HasMore    bool              `json:"has_more"`
+}
+
+// ArticleResponse represents a single article in the response
+type ArticleResponse struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	URL         string   `json:"url"`
+	Content     string   `json:"content"`
+	PublishedAt string   `json:"published_at"`
+	Tags        []string `json:"tags"`
+}
+
 type FeedTagsResponse struct {
 	FeedID string            `json:"feed_id"`
 	Tags   []FeedTagResponse `json:"tags"`

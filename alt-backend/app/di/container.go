@@ -4,7 +4,9 @@ import (
 	"alt/config"
 	"alt/driver/alt_db"
 	"alt/driver/csrf_token_driver"
+	"alt/driver/search_indexer"
 	"alt/gateway/archive_article_gateway"
+	"alt/gateway/article_gateway"
 	"alt/gateway/config_gateway"
 	"alt/gateway/csrf_token_gateway"
 	"alt/gateway/error_handler_gateway"
@@ -21,13 +23,13 @@ import (
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/update_feed_status_gateway"
-	"alt/driver/search_indexer"
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
 	"alt/port/rate_limiter_port"
 	"alt/usecase/archive_article_usecase"
 	"alt/usecase/csrf_token_usecase"
 	"alt/usecase/fetch_article_usecase"
+	"alt/usecase/fetch_articles_usecase"
 	"alt/usecase/fetch_feed_details_usecase"
 	"alt/usecase/fetch_feed_stats_usecase"
 	"alt/usecase/fetch_feed_tags_usecase"
@@ -80,6 +82,7 @@ type ApplicationComponents struct {
 	CSRFTokenUsecase                    *csrf_token_usecase.CSRFTokenUsecase
 	ArticleUsecase                      fetch_article_usecase.ArticleUsecase
 	ArchiveArticleUsecase               *archive_article_usecase.ArchiveArticleUsecase
+	FetchArticlesCursorUsecase          *fetch_articles_usecase.FetchArticlesCursorUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -156,6 +159,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	archiveArticleGatewayImpl := archive_article_gateway.NewArchiveArticleGateway(altDBRepository)
 	archiveArticleUsecase := archive_article_usecase.NewArchiveArticleUsecase(fetchArticleGatewayImpl, archiveArticleGatewayImpl)
 
+	// Fetch articles with cursor components
+	fetchArticlesGatewayImpl := article_gateway.NewFetchArticlesGateway(pool)
+	fetchArticlesCursorUsecase := fetch_articles_usecase.NewFetchArticlesCursorUsecase(fetchArticlesGatewayImpl)
+
 	// Fetch inoreader summary components
 	fetchInoreaderSummaryGatewayImpl := fetch_inoreader_summary_gateway.NewInoreaderSummaryGateway(altDBRepository)
 	fetchInoreaderSummaryUsecase := fetch_inoreader_summary_usecase.NewFetchInoreaderSummaryUsecase(fetchInoreaderSummaryGatewayImpl)
@@ -205,5 +212,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		CSRFTokenUsecase:                    csrfTokenUsecase,
 		ArticleUsecase:                      fetchArticleUsecase,
 		ArchiveArticleUsecase:               archiveArticleUsecase,
+		FetchArticlesCursorUsecase:          fetchArticlesCursorUsecase,
 	}
 }
