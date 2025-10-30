@@ -3,15 +3,57 @@
 import React from "react";
 import { Box, Text, Spinner } from "@chakra-ui/react";
 import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
-import { RightPanel } from "@/components/desktop/analytics/RightPanel";
 import { Suspense } from "react";
 import { DesktopArticleTimeline } from "@/components/desktop/timeline/DesktopArticleTimeline";
 
 function DesktopArticlesContent() {
+  const sidebarNavItems = [
+    {
+      id: 1,
+      label: "Dashboard",
+      iconName: "Home",
+      href: "/desktop/home",
+      active: false,
+    },
+    {
+      id: 2,
+      label: "Feeds",
+      iconName: "Rss",
+      href: "/desktop/feeds",
+      active: false,
+    },
+    {
+      id: 3,
+      label: "Articles",
+      iconName: "FileText",
+      href: "/desktop/articles",
+      active: true,
+    },
+    {
+      id: 4,
+      label: "Search",
+      iconName: "Search",
+      href: "/desktop/articles/search",
+      active: false,
+    },
+    {
+      id: 5,
+      label: "Settings",
+      iconName: "Settings",
+      href: "/desktop/settings",
+      active: false,
+    },
+  ];
+
   return (
-    <DesktopLayout>
+    <DesktopLayout
+      sidebarProps={{
+        navItems: sidebarNavItems,
+        logoText: "Alt Dashboard",
+        logoSubtext: "RSS Management Hub",
+      }}
+    >
       <DesktopArticleTimeline />
-      <RightPanel />
     </DesktopLayout>
   );
 }

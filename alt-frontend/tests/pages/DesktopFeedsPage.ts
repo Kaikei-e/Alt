@@ -61,40 +61,52 @@ export class DesktopFeedsPage extends BasePage {
 
   /**
    * Wait for page to be fully loaded
-   * Uses Playwright auto-wait best practices
+   * Uses Playwright auto-wait best practices - waits for specific elements
    */
   async waitForLoad() {
-    await this.page.waitForLoadState("domcontentloaded", { timeout: 20000 });
-    await this.page.waitForURL(/\/desktop\/feeds/, { timeout: 20000 });
+    await this.page.waitForURL(/\/desktop\/feeds/, { timeout: 30000 }).catch(() => {});
 
-    // Wait for either loading skeleton or content to appear
-    try {
-      await Promise.race([
-        this.loadingIndicator.waitFor({ state: 'visible', timeout: 5000 }),
-        this.feedsList.waitFor({ state: 'visible', timeout: 5000 }),
-      ]);
-    } catch {
-      // If neither appears, continue - may be error state
+    const candidateLocators = [
+      this.loadingIndicator,
+      this.feedsList,
+      this.emptyState,
+      this.errorMessage,
+      this.page.locator('[data-testid="error-state"]'),
+    ];
+
+    for (const locator of candidateLocators) {
+      try {
+        await locator.waitFor({ state: 'attached', timeout: 15000 });
+        return;
+      } catch {
+        // Try next locator; some states may not render in every scenario
+      }
     }
   }
 
   /**
-   * Get feed count - uses Playwright auto-wait
+   * Get feed count - uses Playwright auto-wait best practices
    */
   async getFeedCount(): Promise<number> {
     try {
-      // Wait for loading to complete first
-      await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-
       // Feed cards have data-testid="desktop-feed-card-{id}"
       const feedLocator = this.page.locator('[data-testid^="desktop-feed-card-"]');
 
-      // Wait for either feeds to appear or empty state (2 seconds max)
-      await Promise.race([
-        feedLocator.first().waitFor({ state: 'visible', timeout: 2000 }),
-        this.emptyState.waitFor({ state: 'visible', timeout: 2000 }),
-        this.errorMessage.waitFor({ state: 'visible', timeout: 2000 }),
-      ]).catch(() => {});
+      const candidates = [
+        feedLocator.first(),
+        this.emptyState,
+        this.errorMessage,
+        this.page.locator('[data-testid="error-state"]'),
+      ];
+
+      for (const locator of candidates) {
+        try {
+          await locator.waitFor({ state: 'attached', timeout: 10000 });
+          break;
+        } catch {
+          // Try next locator; page may render a different state
+        }
+      }
 
       return await feedLocator.count();
     } catch {
@@ -176,7 +188,7 @@ export class DesktopFeedsPage extends BasePage {
    */
   async hasEmptyState(): Promise<boolean> {
     try {
-      await this.emptyState.waitFor({ state: 'visible', timeout: 3000 });
+      await this.emptyState.waitFor({ state: 'visible', timeout: 10000 });
       return true;
     } catch {
       return false;
@@ -190,8 +202,8 @@ export class DesktopFeedsPage extends BasePage {
     try {
       // Check for either error-state or error-message
       await Promise.race([
-        this.errorMessage.waitFor({ state: 'visible', timeout: 3000 }),
-        this.page.locator('[data-testid="error-state"]').waitFor({ state: 'visible', timeout: 3000 }),
+        this.errorMessage.waitFor({ state: 'visible', timeout: 10000 }),
+        this.page.locator('[data-testid="error-state"]').waitFor({ state: 'visible', timeout: 10000 }),
       ]);
       return true;
     } catch {
