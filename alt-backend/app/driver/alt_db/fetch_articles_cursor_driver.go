@@ -42,17 +42,15 @@ func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *t
 				a.title,
 				a.url,
 				a.content,
-				a.published_at,
+				a.created_at as published_at,
 				a.created_at,
-				COALESCE(ARRAY_AGG(t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL), '{}') as tags
+				COALESCE(ARRAY_AGG(ft.tag_name) FILTER (WHERE ft.tag_name IS NOT NULL), '{}') as tags
 			FROM articles a
-			JOIN feeds f ON a.feed_id = f.id
-			JOIN user_feeds uf ON f.id = uf.feed_id
 			LEFT JOIN article_tags at ON a.id = at.article_id
-			LEFT JOIN tags t ON at.tag_id = t.id
-			WHERE uf.user_id = $1
-			GROUP BY a.id, a.title, a.url, a.content, a.published_at, a.created_at
-			ORDER BY a.published_at DESC, a.id DESC
+			LEFT JOIN feed_tags ft ON at.feed_tag_id = ft.id
+			WHERE a.user_id = $1
+			GROUP BY a.id, a.title, a.url, a.content, a.created_at
+			ORDER BY a.created_at DESC, a.id DESC
 			LIMIT $2
 		`
 		args = []interface{}{user.UserID, limit}
@@ -64,18 +62,16 @@ func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *t
 				a.title,
 				a.url,
 				a.content,
-				a.published_at,
+				a.created_at as published_at,
 				a.created_at,
-				COALESCE(ARRAY_AGG(t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL), '{}') as tags
+				COALESCE(ARRAY_AGG(ft.tag_name) FILTER (WHERE ft.tag_name IS NOT NULL), '{}') as tags
 			FROM articles a
-			JOIN feeds f ON a.feed_id = f.id
-			JOIN user_feeds uf ON f.id = uf.feed_id
 			LEFT JOIN article_tags at ON a.id = at.article_id
-			LEFT JOIN tags t ON at.tag_id = t.id
-			WHERE uf.user_id = $1
-			AND a.published_at < $2
-			GROUP BY a.id, a.title, a.url, a.content, a.published_at, a.created_at
-			ORDER BY a.published_at DESC, a.id DESC
+			LEFT JOIN feed_tags ft ON at.feed_tag_id = ft.id
+			WHERE a.user_id = $1
+			AND a.created_at < $2
+			GROUP BY a.id, a.title, a.url, a.content, a.created_at
+			ORDER BY a.created_at DESC, a.id DESC
 			LIMIT $3
 		`
 		args = []interface{}{user.UserID, cursor, limit}
