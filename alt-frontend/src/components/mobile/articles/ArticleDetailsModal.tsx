@@ -36,20 +36,32 @@ const buildContentStyles = (): CSSObject => ({
     maxWidth: "100%",
     height: "auto",
     borderRadius: "8px",
-    marginBottom: "0.75rem",
+    marginTop: "1rem",
+    marginBottom: "1rem",
   },
   "& h1, & h2, & h3, & h4, & h5, & h6": {
     fontWeight: "bold",
-    marginTop: "0.75rem",
-    marginBottom: "0.5rem",
+    marginTop: "1.5rem",
+    marginBottom: "0.75rem",
+    color: "var(--alt-text-primary)",
   },
   "& p": {
-    marginBottom: "0.5rem",
-    lineHeight: 1.7,
+    marginBottom: "1rem",
+    lineHeight: 1.8,
+    color: "var(--alt-text-primary)",
   },
   "& ul, & ol": {
-    marginLeft: "1.25rem",
-    marginBottom: "0.75rem",
+    marginLeft: "1.5rem",
+    marginBottom: "1rem",
+    lineHeight: 1.8,
+  },
+  "& li": {
+    marginBottom: "0.5rem",
+    color: "var(--alt-text-primary)",
+  },
+  "& a": {
+    color: "var(--alt-primary)",
+    textDecoration: "underline",
   },
 });
 
@@ -86,16 +98,14 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
       setContentError(null);
 
       try {
+        // Backend already handles: DB check → fetch if not found → save to DB → return content
+        // No need to call archiveContent separately
         const contentResponse = await feedsApi.getFeedContentOnTheFly({
           feed_url: article.url,
         });
 
         if (contentResponse.content) {
           setFullContent(contentResponse);
-          // Auto-archive article when displaying content
-          feedsApi
-            .archiveContent(article.url, article.title)
-            .catch((err) => console.warn("Failed to auto-archive article:", err));
         } else {
           setContentError("記事全文を取得できませんでした");
         }
@@ -193,6 +203,8 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
             data-testid="article-modal-content"
           >
             <Dialog.Header
+              position="relative"
+              zIndex="2"
               borderBottom="1px solid var(--alt-glass-border)"
               px={6}
               py={4}
@@ -212,12 +224,9 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
                   </Dialog.Title>
                   {publishedLabel && (
                     <Text
-                      fontSize="xs"
+                      fontSize="sm"
                       color="var(--alt-text-secondary)"
                       mt={2}
-                      textTransform="uppercase"
-                      letterSpacing="0.05em"
-                      opacity={0.8}
                     >
                       {publishedLabel}
                     </Text>
@@ -242,7 +251,7 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
 
             <Dialog.Body
               px={6}
-              py={4}
+              py={6}
               maxH="60vh"
               overflowY="auto"
               css={scrollAreaStyles}
@@ -251,26 +260,25 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
               {isLoadingContent ? (
                 <HStack justify="center" py={8}>
                   <Spinner size="md" color="var(--alt-primary)" />
-                  <Text color="var(--alt-text-primary)" fontSize="sm" opacity={0.9}>
+                  <Text color="var(--alt-text-secondary)" fontSize="sm">
                     記事を読み込み中...
                   </Text>
                 </HStack>
               ) : contentError ? (
-                <Text color="var(--alt-text-primary)" fontSize="sm" textAlign="center" py={8} opacity={0.9}>
+                <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center" py={8}>
                   {contentError}
                 </Text>
               ) : fullContent?.content ? (
                 <Box
                   fontSize="sm"
                   color="var(--alt-text-primary)"
-                  lineHeight="1.8"
-                  opacity={0.95}
+                  lineHeight="1.7"
                   dangerouslySetInnerHTML={{ __html: fullContent.content }}
                   css={buildContentStyles()}
                   data-testid="article-full-content"
                 />
               ) : (
-                <Text fontSize="sm" color="var(--alt-text-primary)" lineHeight="1.8" opacity={0.95}>
+                <Text fontSize="sm" color="var(--alt-text-primary)" lineHeight="1.7">
                   {article.content}
                 </Text>
               )}
@@ -279,7 +287,7 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
               {showSummary && (
                 <Box
                   mt={6}
-                  p={4}
+                  p={5}
                   bg="rgba(255, 255, 255, 0.03)"
                   borderRadius="12px"
                   border="1px solid var(--alt-glass-border)"
@@ -290,7 +298,7 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
                     fontSize="xs"
                     color="var(--alt-text-secondary)"
                     fontWeight="bold"
-                    mb={2}
+                    mb={3}
                     textTransform="uppercase"
                     letterSpacing="1px"
                   >
@@ -346,7 +354,7 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
                     <Text
                       fontSize="sm"
                       color="var(--alt-text-primary)"
-                      lineHeight="1.7"
+                      lineHeight="1.8"
                       whiteSpace="pre-wrap"
                     >
                       {summary}
