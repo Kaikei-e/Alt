@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -28,6 +29,10 @@ func (m *MockPgxIface) QueryRow(ctx context.Context, sql string, args ...any) pg
 		return m.queryRowFunc(ctx, sql, args...)
 	}
 	return &mocks.MockRow{}
+}
+
+func (m *MockPgxIface) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
+	return pgconn.NewCommandTag(""), errors.New("not implemented")
 }
 
 func (m *MockPgxIface) Begin(ctx context.Context) (pgx.Tx, error) {
