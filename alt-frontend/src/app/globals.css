@@ -81,6 +81,13 @@
   --surface-hover: rgba(255, 255, 255, 0.15);
   --surface-blur: 20px;
 
+  /* Glass effect variables (matching surface styles) */
+  --alt-glass: var(--surface-bg);
+  --alt-glass-border: var(--surface-border);
+  --alt-glass-hover: var(--surface-hover);
+  --alt-glass-blur: var(--surface-blur);
+  --alt-glass-shadow: rgba(0, 0, 0, 0.1);
+
   --app-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
   --accent-gradient: linear-gradient(
     45deg,
@@ -117,6 +124,13 @@
   --surface-hover: rgba(255, 255, 255, 0.15);
   --surface-blur: 20px;
 
+  /* Glass effect variables */
+  --alt-glass: var(--surface-bg);
+  --alt-glass-border: var(--surface-border);
+  --alt-glass-hover: var(--surface-hover);
+  --alt-glass-blur: var(--surface-blur);
+  --alt-glass-shadow: rgba(0, 0, 0, 0.1);
+
   /* Backgrounds */
   --app-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
   --accent-gradient: linear-gradient(
@@ -151,6 +165,13 @@
   --surface-border: rgba(139, 119, 101, 0.3); /* ボーダーを濃く */
   --surface-hover: rgba(255, 253, 250, 0.6); /* hover時の変化を明確に */
   --surface-blur: 12px; /* ブラーを調整 */
+
+  /* Glass effect variables */
+  --alt-glass: var(--surface-bg);
+  --alt-glass-border: var(--surface-border);
+  --alt-glass-hover: var(--surface-hover);
+  --alt-glass-blur: var(--surface-blur);
+  --alt-glass-shadow: rgba(139, 119, 101, 0.15);
 
   /* Backgrounds - より洗練されたグラデーション */
   --app-bg: linear-gradient(
@@ -198,6 +219,13 @@
   --surface-border: #e0e0e0;
   --surface-hover: #f8f8f8;
   --surface-blur: 0px; /* No blur for paper theme */
+
+  /* Glass effect variables (solid for paper theme) */
+  --alt-glass: var(--surface-bg);
+  --alt-glass-border: var(--surface-border);
+  --alt-glass-hover: var(--surface-hover);
+  --alt-glass-blur: 0px;
+  --alt-glass-shadow: rgba(0, 0, 0, 0.08);
 
   /* Backgrounds - clean white paper */
   --app-bg: #ffffff;
