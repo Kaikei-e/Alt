@@ -3,6 +3,7 @@
 import { Box, Button, Flex, Text } from "@chakra-ui/react";
 import { memo, useMemo } from "react";
 import type { Article } from "@/schema/article";
+import { sanitizeContent } from "@/utils/contentSanitizer";
 
 interface ArticleViewCardProps {
   article: Article;
@@ -27,7 +28,8 @@ export const ArticleViewCard = memo(function ArticleViewCard({
   // Truncate content for preview (first 150 characters)
   const contentPreview = useMemo(() => {
     if (!article.content) return "";
-    const plainText = article.content.replace(/<[^>]*>/g, "");
+    // Use sanitizeContent to safely remove all HTML tags
+    const plainText = sanitizeContent(article.content, { allowedTags: [] });
     return plainText.length > 150 ? plainText.substring(0, 150) + "..." : plainText;
   }, [article.content]);
 
