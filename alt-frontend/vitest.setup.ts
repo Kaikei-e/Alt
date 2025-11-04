@@ -7,18 +7,9 @@ import { vi } from "vitest";
 
 global.React = React;
 
-// 問題のあるパッケージをモック
-vi.mock("webidl-conversions", () => ({
-  default: {
-    get: vi.fn(() => ({})),
-    set: vi.fn(() => ({})),
-  },
-}));
-
-vi.mock("whatwg-url", () => ({
-  URL: global.URL,
-  URLSearchParams: global.URLSearchParams,
-}));
+// webidl-conversionsとwhatwg-urlはモックしない
+// ベストプラクティス: 外部依存（API、データベース、ネットワーク）のみモック
+// これらのライブラリは実際の実装を使用し、jsdom環境で正常に動作するはず
 
 // より包括的なWeb APIポリフィル
 if (typeof global.HTMLElement === "undefined") {
@@ -143,16 +134,35 @@ if (typeof window !== "undefined") {
   });
 }
 
-// ResizeObserver のモック
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-})) as typeof ResizeObserver;
+// ResizeObserver のモック（コンストラクタクラス形式）
+class ResizeObserverMock {
+  observe: ReturnType<typeof vi.fn>;
+  unobserve: ReturnType<typeof vi.fn>;
+  disconnect: ReturnType<typeof vi.fn>;
 
-// IntersectionObserver のモック
-global.IntersectionObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-})) as typeof IntersectionObserver;
+  constructor(callback?: ResizeObserverCallback) {
+    this.observe = vi.fn();
+    this.unobserve = vi.fn();
+    this.disconnect = vi.fn();
+  }
+}
+
+global.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+
+// IntersectionObserver のモック（コンストラクタクラス形式）
+class IntersectionObserverMock {
+  observe: ReturnType<typeof vi.fn>;
+  unobserve: ReturnType<typeof vi.fn>;
+  disconnect: ReturnType<typeof vi.fn>;
+
+  constructor(
+    callback?: IntersectionObserverCallback,
+    options?: IntersectionObserverInit
+  ) {
+    this.observe = vi.fn();
+    this.unobserve = vi.fn();
+    this.disconnect = vi.fn();
+  }
+}
+
+global.IntersectionObserver = IntersectionObserverMock as unknown as typeof IntersectionObserver;
