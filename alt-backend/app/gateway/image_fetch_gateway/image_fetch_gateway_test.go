@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/utils/errors"
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -83,9 +84,9 @@ func TestImageFetchGateway_FetchImage_SSRF_PrivateNetworks(t *testing.T) {
 			// Accept either the expected error or other security-related errors
 			if !strings.Contains(err.Error(), tt.expectedErr) {
 				// For the malicious.com test, allow both TOCTOU and redirect blocking errors
-				if tt.name == "non-whitelisted domain" && 
-				   (strings.Contains(err.Error(), "redirects not allowed for security reasons") ||
-					strings.Contains(err.Error(), "TOCTOU attack detected")) {
+				if tt.name == "non-whitelisted domain" &&
+					(strings.Contains(err.Error(), "redirects not allowed for security reasons") ||
+						strings.Contains(err.Error(), "TOCTOU attack detected")) {
 					// This is acceptable - different security protections may trigger
 				} else {
 					t.Errorf("Expected error to contain '%s', but got: %s", tt.expectedErr, err.Error())
@@ -132,9 +133,9 @@ func TestImageFetchGateway_FetchImage_SSRF_Advanced(t *testing.T) {
 			// Accept either the expected error or other security-related errors
 			if !strings.Contains(err.Error(), tt.expectedErr) {
 				// For the malicious.com test, allow both TOCTOU and redirect blocking errors
-				if strings.Contains(tt.imageURL, "malicious.com") && 
-				   (strings.Contains(err.Error(), "redirects not allowed for security reasons") ||
-					strings.Contains(err.Error(), "TOCTOU attack detected")) {
+				if strings.Contains(tt.imageURL, "malicious.com") &&
+					(strings.Contains(err.Error(), "redirects not allowed for security reasons") ||
+						strings.Contains(err.Error(), "TOCTOU attack detected")) {
 					// This is acceptable - different security protections may trigger
 				} else {
 					t.Errorf("Expected error to contain '%s', but got: %s", tt.expectedErr, err.Error())
@@ -437,7 +438,7 @@ func TestIsPrivateIP_EnhancedValidation(t *testing.T) {
 // These tests will fail initially as the current implementation doesn't prevent DNS rebinding
 func TestImageFetchGateway_DNSRebindingAttacks(t *testing.T) {
 	gateway := NewImageFetchGateway(&http.Client{Timeout: 10 * time.Second})
-	
+
 	tests := []struct {
 		name        string
 		imageURL    string
@@ -451,7 +452,7 @@ func TestImageFetchGateway_DNSRebindingAttacks(t *testing.T) {
 			description: "Domain that resolves to localhost should be blocked",
 		},
 		{
-			name:        "DNS rebinding to private IP via domain", 
+			name:        "DNS rebinding to private IP via domain",
 			imageURL:    "https://rebind.network/image.jpg", // This could resolve to 192.168.1.1
 			expectedErr: "DNS rebinding attack detected",
 			description: "Domain that resolves to private IP should be blocked",
@@ -459,7 +460,7 @@ func TestImageFetchGateway_DNSRebindingAttacks(t *testing.T) {
 		{
 			name:        "Subdomain rebinding attack",
 			imageURL:    "https://127.0.0.1.evil.com/image.jpg",
-			expectedErr: "DNS rebinding attack detected", 
+			expectedErr: "DNS rebinding attack detected",
 			description: "Subdomain that contains private IP should be blocked",
 		},
 	}
@@ -470,7 +471,7 @@ func TestImageFetchGateway_DNSRebindingAttacks(t *testing.T) {
 			require.NoError(t, err)
 
 			got, err := gateway.FetchImage(context.Background(), testURL, domain.NewImageFetchOptions())
-			
+
 			// Verify that DNS rebinding attacks are blocked
 			assert.Error(t, err)
 			if strings.Contains(err.Error(), "DNS rebinding attack detected") ||
@@ -483,7 +484,7 @@ func TestImageFetchGateway_DNSRebindingAttacks(t *testing.T) {
 			} else {
 				t.Errorf("WARNING: DNS rebinding attack possible - %s", tt.description)
 			}
-			
+
 			_ = got // Ignore result for now
 		})
 	}
@@ -493,7 +494,7 @@ func TestImageFetchGateway_DNSRebindingAttacks(t *testing.T) {
 // These tests will fail initially as current implementation has TOCTOU vulnerabilities
 func TestImageFetchGateway_TOCTOUAttacks(t *testing.T) {
 	gateway := NewImageFetchGateway(&http.Client{Timeout: 10 * time.Second})
-	
+
 	tests := []struct {
 		name        string
 		imageURL    string
@@ -503,12 +504,12 @@ func TestImageFetchGateway_TOCTOUAttacks(t *testing.T) {
 		{
 			name:        "TOCTOU DNS resolution change",
 			imageURL:    "https://toctou-attack.example.com/image.jpg",
-			expectedErr: "TOCTOU attack detected", 
+			expectedErr: "TOCTOU attack detected",
 			description: "URL validated but DNS resolution changed before request",
 		},
 		{
 			name:        "Race condition in validation",
-			imageURL:    "https://race-condition.example.com/image.jpg", 
+			imageURL:    "https://race-condition.example.com/image.jpg",
 			expectedErr: "validation race condition detected",
 			description: "Validation bypassed through race condition",
 		},
@@ -520,7 +521,7 @@ func TestImageFetchGateway_TOCTOUAttacks(t *testing.T) {
 			require.NoError(t, err)
 
 			got, err := gateway.FetchImage(context.Background(), testURL, domain.NewImageFetchOptions())
-			
+
 			// Verify that TOCTOU attacks are blocked
 			assert.Error(t, err)
 			if strings.Contains(err.Error(), "TOCTOU attack detected") ||
@@ -531,7 +532,7 @@ func TestImageFetchGateway_TOCTOUAttacks(t *testing.T) {
 			} else {
 				t.Errorf("WARNING: TOCTOU attack possible - %s", tt.description)
 			}
-			
+
 			_ = got
 		})
 	}
@@ -541,7 +542,7 @@ func TestImageFetchGateway_TOCTOUAttacks(t *testing.T) {
 // These tests will fail initially as current implementation may not handle Unicode properly
 func TestImageFetchGateway_UnicodeBypass(t *testing.T) {
 	gateway := NewImageFetchGateway(&http.Client{Timeout: 10 * time.Second})
-	
+
 	tests := []struct {
 		name        string
 		imageURL    string
@@ -555,7 +556,7 @@ func TestImageFetchGateway_UnicodeBypass(t *testing.T) {
 			description: "Punycode encoded localhost should be blocked",
 		},
 		{
-			name:        "Unicode domain bypass", 
+			name:        "Unicode domain bypass",
 			imageURL:    "https://еxample.com/image.jpg", // Cyrillic 'е' instead of 'e'
 			expectedErr: "unicode bypass detected",
 			description: "Unicode confusable domains should be blocked",
@@ -574,7 +575,7 @@ func TestImageFetchGateway_UnicodeBypass(t *testing.T) {
 			require.NoError(t, err)
 
 			got, err := gateway.FetchImage(context.Background(), testURL, domain.NewImageFetchOptions())
-			
+
 			// Verify that Unicode bypass attacks are blocked
 			if err != nil {
 				if strings.Contains(err.Error(), "unicode bypass detected") ||
@@ -588,7 +589,7 @@ func TestImageFetchGateway_UnicodeBypass(t *testing.T) {
 			} else {
 				t.Errorf("WARNING: Unicode bypass possible - %s", tt.description)
 			}
-			
+
 			_ = got
 		})
 	}
@@ -598,7 +599,7 @@ func TestImageFetchGateway_UnicodeBypass(t *testing.T) {
 // These tests will fail initially as current implementation may miss IPv6 variations
 func TestImageFetchGateway_IPv6Variations(t *testing.T) {
 	gateway := NewImageFetchGateway(&http.Client{Timeout: 10 * time.Second})
-	
+
 	tests := []struct {
 		name        string
 		imageURL    string
@@ -615,7 +616,7 @@ func TestImageFetchGateway_IPv6Variations(t *testing.T) {
 			name:        "IPv6 localhost long form",
 			imageURL:    "https://[0000:0000:0000:0000:0000:0000:0000:0001]/image.jpg",
 			expectedErr: "access to private networks not allowed",
-			description: "IPv6 localhost full form should be blocked", 
+			description: "IPv6 localhost full form should be blocked",
 		},
 		{
 			name:        "IPv6 unique local address",
@@ -625,25 +626,51 @@ func TestImageFetchGateway_IPv6Variations(t *testing.T) {
 		},
 		{
 			name:        "IPv6 link local address",
-			imageURL:    "https://[fe80::1]/image.jpg", 
+			imageURL:    "https://[fe80::1]/image.jpg",
 			expectedErr: "access to private networks not allowed",
 			description: "IPv6 link local addresses should be blocked",
 		},
 		{
 			name:        "IPv4-mapped IPv6 localhost",
 			imageURL:    "https://[::ffff:127.0.0.1]/image.jpg",
-			expectedErr: "access to private networks not allowed", 
+			expectedErr: "access to private networks not allowed",
 			description: "IPv4-mapped IPv6 localhost should be blocked",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testURL, err := url.Parse(tt.imageURL)
-			require.NoError(t, err)
+			var testURL *url.URL
+			var err error
+
+			// Handle IPv4-mapped IPv6 address format that url.Parse doesn't support
+			if strings.Contains(tt.imageURL, "::ffff:127.0.0.1") {
+				// Parse IPv4-mapped IPv6 address manually
+				// Extract scheme, path from URL string
+				if strings.HasPrefix(tt.imageURL, "https://") {
+					ipv6Addr := "::ffff:127.0.0.1"
+					path := strings.TrimPrefix(tt.imageURL, "https://[::ffff:127.0.0.1]")
+
+					// Parse the IPv6 address
+					ip := net.ParseIP(ipv6Addr)
+					require.NotNil(t, ip, "Failed to parse IPv4-mapped IPv6 address")
+
+					// Manually construct URL
+					testURL = &url.URL{
+						Scheme: "https",
+						Host:   "[" + ip.String() + "]",
+						Path:   path,
+					}
+				} else {
+					require.Fail(t, "Unsupported URL format for IPv4-mapped IPv6")
+				}
+			} else {
+				testURL, err = url.Parse(tt.imageURL)
+				require.NoError(t, err, "Failed to parse URL")
+			}
 
 			got, err := gateway.FetchImage(context.Background(), testURL, domain.NewImageFetchOptions())
-			
+
 			// Verify that IPv6 variation attacks are blocked
 			assert.Error(t, err)
 			if strings.Contains(err.Error(), "access to private networks not allowed") ||
@@ -653,7 +680,7 @@ func TestImageFetchGateway_IPv6Variations(t *testing.T) {
 			} else {
 				t.Errorf("WARNING: IPv6 variation bypass possible - %s", tt.description)
 			}
-			
+
 			_ = got
 		})
 	}
@@ -663,7 +690,7 @@ func TestImageFetchGateway_IPv6Variations(t *testing.T) {
 // These tests should pass with current implementation but we're adding more coverage
 func TestImageFetchGateway_AdditionalMetadataEndpoints(t *testing.T) {
 	gateway := NewImageFetchGateway(&http.Client{Timeout: 10 * time.Second})
-	
+
 	tests := []struct {
 		name        string
 		imageURL    string
@@ -677,7 +704,7 @@ func TestImageFetchGateway_AdditionalMetadataEndpoints(t *testing.T) {
 			description: "Oracle Cloud metadata should be blocked",
 		},
 		{
-			name:        "DigitalOcean metadata endpoint", 
+			name:        "DigitalOcean metadata endpoint",
 			imageURL:    "http://169.254.169.254/metadata/v1/",
 			expectedErr: "access to metadata endpoint not allowed",
 			description: "DigitalOcean metadata should be blocked",
@@ -685,7 +712,7 @@ func TestImageFetchGateway_AdditionalMetadataEndpoints(t *testing.T) {
 		{
 			name:        "OpenStack metadata endpoint",
 			imageURL:    "http://169.254.169.254/openstack/",
-			expectedErr: "access to metadata endpoint not allowed", 
+			expectedErr: "access to metadata endpoint not allowed",
 			description: "OpenStack metadata should be blocked",
 		},
 		{
@@ -698,7 +725,7 @@ func TestImageFetchGateway_AdditionalMetadataEndpoints(t *testing.T) {
 			name:        "Docker metadata endpoint",
 			imageURL:    "http://172.17.0.1/v1.40/info",
 			expectedErr: "access to private networks not allowed",
-			description: "Docker daemon API should be blocked", 
+			description: "Docker daemon API should be blocked",
 		},
 	}
 
@@ -708,7 +735,7 @@ func TestImageFetchGateway_AdditionalMetadataEndpoints(t *testing.T) {
 			require.NoError(t, err)
 
 			got, err := gateway.FetchImage(context.Background(), testURL, domain.NewImageFetchOptions())
-			
+
 			// Verify metadata endpoints are blocked
 			assert.Error(t, err)
 			assert.Nil(t, got)
