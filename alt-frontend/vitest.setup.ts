@@ -1,9 +1,10 @@
 // vitest.setup.ts
 import "@testing-library/jest-dom";
-import { vi } from "vitest";
 
 // React をグローバルに設定
 import React from "react";
+import { vi } from "vitest";
+
 global.React = React;
 
 // 問題のあるパッケージをモック
