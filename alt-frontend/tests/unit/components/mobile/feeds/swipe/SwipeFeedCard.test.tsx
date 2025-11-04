@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
-import { act } from "react";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SwipeFeedCard from "@/components/mobile/feeds/swipe/SwipeFeedCard";
-import { Feed } from "@/schema/feed";
+import type { Feed } from "@/schema/feed";
 
 vi.mock("@/lib/api", () => ({
   feedsApi: {
@@ -61,7 +61,7 @@ const baseFeed: Feed = {
 
 const renderCard = (
   feed: Feed = baseFeed,
-  overrides: Partial<React.ComponentProps<typeof SwipeFeedCard>> = {},
+  overrides: Partial<React.ComponentProps<typeof SwipeFeedCard>> = {}
 ) => {
   return render(
     <ChakraProvider value={defaultSystem}>
@@ -71,7 +71,7 @@ const renderCard = (
         onDismiss={overrides.onDismiss ?? vi.fn()}
         getCachedContent={overrides.getCachedContent}
       />
-    </ChakraProvider>,
+    </ChakraProvider>
   );
 };
 
@@ -106,13 +106,14 @@ describe("SwipeFeedCard", () => {
 
     // Wait for component to fully render with AnimatePresence
     // MotionBoxのレンダリングを待つため、より長いタイムアウトを使用
-    await waitFor(() => {
-      expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
-    }, { timeout: 3000 });
-    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
-    const summaryToggle = within(actionFooter).getByTestId(
-      "toggle-summary-button",
+    await waitFor(
+      () => {
+        expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
+      },
+      { timeout: 3000 }
     );
+    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
+    const summaryToggle = within(actionFooter).getByTestId("toggle-summary-button");
     await act(async () => {
       fireEvent.click(summaryToggle);
     });
@@ -133,25 +134,23 @@ describe("SwipeFeedCard", () => {
     renderCard();
 
     // Wait for component to fully render
-    await waitFor(() => {
-      expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
-    }, { timeout: 3000 });
-    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
-    const contentToggle = within(actionFooter).getByTestId(
-      "toggle-content-button",
+    await waitFor(
+      () => {
+        expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
+      },
+      { timeout: 3000 }
     );
+    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
+    const contentToggle = within(actionFooter).getByTestId("toggle-content-button");
     fireEvent.click(contentToggle);
 
     await waitFor(() =>
       expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
         feed_url: baseFeed.link,
-      }),
+      })
     );
     await waitFor(() =>
-      expect(feedsApi.archiveContent).toHaveBeenCalledWith(
-        baseFeed.link,
-        baseFeed.title,
-      ),
+      expect(feedsApi.archiveContent).toHaveBeenCalledWith(baseFeed.link, baseFeed.title)
     );
     const contentSection = await screen.findByTestId("content-section");
     expect(contentSection).toHaveTextContent("Full article");
@@ -161,14 +160,20 @@ describe("SwipeFeedCard", () => {
     renderCard(baseFeed, { statusMessage: "Feed marked as read" });
 
     // Wait for action-footer to render first, then check for status message
-    await waitFor(() => {
-      expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
     await screen.findByTestId("action-footer", {}, { timeout: 3000 });
 
-    await waitFor(() => {
-      expect(screen.getByText("Feed marked as read")).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByText("Feed marked as read")).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
   });
 
   it("resets expanded state when feed changes", async () => {
@@ -192,13 +197,14 @@ describe("SwipeFeedCard", () => {
     const { rerender } = renderCard();
 
     // Wait for component to fully render
-    await waitFor(() => {
-      expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
-    }, { timeout: 3000 });
-    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
-    const summaryToggle = within(actionFooter).getByTestId(
-      "toggle-summary-button",
+    await waitFor(
+      () => {
+        expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
+      },
+      { timeout: 3000 }
     );
+    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
+    const summaryToggle = within(actionFooter).getByTestId("toggle-summary-button");
     await act(async () => {
       fireEvent.click(summaryToggle);
     });
@@ -211,7 +217,7 @@ describe("SwipeFeedCard", () => {
     rerender(
       <ChakraProvider value={defaultSystem}>
         <SwipeFeedCard feed={nextFeed} statusMessage={null} onDismiss={vi.fn()} />
-      </ChakraProvider>,
+      </ChakraProvider>
     );
 
     expect(screen.queryByTestId("summary-section")).not.toBeInTheDocument();
@@ -226,9 +232,7 @@ describe("SwipeFeedCard", () => {
 
     // Wait for component to fully render
     const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
-    const contentToggle = within(actionFooter).getByTestId(
-      "toggle-content-button",
-    );
+    const contentToggle = within(actionFooter).getByTestId("toggle-content-button");
 
     await act(async () => {
       fireEvent.click(contentToggle);
@@ -256,13 +260,14 @@ describe("SwipeFeedCard", () => {
     renderCard(baseFeed, { getCachedContent });
 
     // Wait for component to fully render
-    await waitFor(() => {
-      expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
-    }, { timeout: 3000 });
-    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
-    const contentToggle = within(actionFooter).getByTestId(
-      "toggle-content-button",
+    await waitFor(
+      () => {
+        expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
+      },
+      { timeout: 3000 }
     );
+    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
+    const contentToggle = within(actionFooter).getByTestId("toggle-content-button");
 
     await act(async () => {
       fireEvent.click(contentToggle);
@@ -292,13 +297,14 @@ describe("SwipeFeedCard", () => {
     renderCard(baseFeed); // No getCachedContent prop
 
     // Wait for component to fully render
-    await waitFor(() => {
-      expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
-    }, { timeout: 3000 });
-    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
-    const contentToggle = within(actionFooter).getByTestId(
-      "toggle-content-button",
+    await waitFor(
+      () => {
+        expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
+      },
+      { timeout: 3000 }
     );
+    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
+    const contentToggle = within(actionFooter).getByTestId("toggle-content-button");
     fireEvent.click(contentToggle);
 
     await waitFor(() => {

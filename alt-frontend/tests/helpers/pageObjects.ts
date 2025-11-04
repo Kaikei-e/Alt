@@ -1,4 +1,4 @@
-import { Page, expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
 /**
  * Login Page Object Model
@@ -21,9 +21,7 @@ export class LoginPage {
     if (message) {
       await expect(this.page.getByText(message)).toBeVisible();
     } else {
-      await expect(
-        this.page.getByText(/credentials are invalid/i),
-      ).toBeVisible();
+      await expect(this.page.getByText(/credentials are invalid/i)).toBeVisible();
     }
   }
 }

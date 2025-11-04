@@ -1,8 +1,9 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
 import { headers } from "next/headers";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { serverFetch } from "../../../src/server-fetch";
 
 // Mock next/headers
@@ -44,7 +45,7 @@ describe("serverFetch", () => {
   describe("successful requests", () => {
     it("should make request with cookie from headers", async () => {
       const mockHeaders = createMockHeaders(
-        "ory_kratos_session=session-value; other_cookie=other-value",
+        "ory_kratos_session=session-value; other_cookie=other-value"
       );
       vi.mocked(headers).mockResolvedValue(mockHeaders);
 
@@ -56,17 +57,13 @@ describe("serverFetch", () => {
 
       const result = await serverFetch("/test-endpoint");
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        "http://alt-backend:9000/test-endpoint",
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Cookie:
-              "ory_kratos_session=session-value; other_cookie=other-value",
-          },
-          cache: "no-store",
+      expect(mockFetch).toHaveBeenCalledWith("http://alt-backend:9000/test-endpoint", {
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: "ory_kratos_session=session-value; other_cookie=other-value",
         },
-      );
+        cache: "no-store",
+      });
       expect(result).toEqual({ data: "test-data" });
     });
 
@@ -82,16 +79,13 @@ describe("serverFetch", () => {
 
       const result = await serverFetch("/test-endpoint");
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        "http://alt-backend:9000/test-endpoint",
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Cookie: "",
-          },
-          cache: "no-store",
+      expect(mockFetch).toHaveBeenCalledWith("http://alt-backend:9000/test-endpoint", {
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: "",
         },
-      );
+        cache: "no-store",
+      });
       expect(result).toEqual({ data: "test-data" });
     });
 
@@ -107,20 +101,17 @@ describe("serverFetch", () => {
 
       await serverFetch("/test-endpoint");
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        "http://alt-backend:9000/test-endpoint",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Cookie: "test_cookie=test_value",
-            "X-Custom-Header": "custom-value",
-            Authorization: "Bearer token",
-          },
-          body: JSON.stringify({ test: "data" }),
-          cache: "no-store",
+      expect(mockFetch).toHaveBeenCalledWith("http://alt-backend:9000/test-endpoint", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: "test_cookie=test_value",
+          "X-Custom-Header": "custom-value",
+          Authorization: "Bearer token",
         },
-      );
+        body: JSON.stringify({ test: "data" }),
+        cache: "no-store",
+      });
     });
   });
 
@@ -135,9 +126,7 @@ describe("serverFetch", () => {
       };
       mockFetch.mockResolvedValue(mockResponse);
 
-      await expect(serverFetch("/not-found")).rejects.toThrow(
-        "API 404 for /not-found",
-      );
+      await expect(serverFetch("/not-found")).rejects.toThrow("API 404 for /not-found");
     });
 
     it("should throw error when response is not ok (500)", async () => {
@@ -150,9 +139,7 @@ describe("serverFetch", () => {
       };
       mockFetch.mockResolvedValue(mockResponse);
 
-      await expect(serverFetch("/server-error")).rejects.toThrow(
-        "API 500 for /server-error",
-      );
+      await expect(serverFetch("/server-error")).rejects.toThrow("API 500 for /server-error");
     });
 
     it("should throw error when response is not ok (401 Unauthorized)", async () => {
@@ -166,7 +153,7 @@ describe("serverFetch", () => {
       mockFetch.mockResolvedValue(mockResponse);
 
       await expect(serverFetch("/protected-endpoint")).rejects.toThrow(
-        "API 401 for /protected-endpoint",
+        "API 401 for /protected-endpoint"
       );
     });
 
@@ -176,9 +163,7 @@ describe("serverFetch", () => {
 
       mockFetch.mockRejectedValue(new Error("Network error"));
 
-      await expect(serverFetch("/test-endpoint")).rejects.toThrow(
-        "Network error",
-      );
+      await expect(serverFetch("/test-endpoint")).rejects.toThrow("Network error");
     });
   });
 
@@ -197,7 +182,7 @@ describe("serverFetch", () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://alt-backend:9000/api/users",
-        expect.any(Object),
+        expect.any(Object)
       );
     });
 
@@ -216,7 +201,7 @@ describe("serverFetch", () => {
       // Current implementation simply concatenates, so no slash is added
       expect(mockFetch).toHaveBeenCalledWith(
         "http://alt-backend:9000api/users",
-        expect.any(Object),
+        expect.any(Object)
       );
     });
 
@@ -234,7 +219,7 @@ describe("serverFetch", () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://alt-backend:9000/api/feeds?page=2&limit=10&category=tech",
-        expect.any(Object),
+        expect.any(Object)
       );
     });
   });

@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
-import React from "react";
+
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
-import { ThemeProvider } from "../../../src/providers/ThemeProvider";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import React from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThemeToggle } from "../../../src/components/ThemeToggle";
+import { ThemeProvider } from "../../../src/providers/ThemeProvider";
 
 // Mock ChakraUI components for testing - keep some mocks but use real ChakraProvider
 vi.mock("@chakra-ui/react", async () => {
@@ -113,7 +114,7 @@ describe("Theme Integration", () => {
         <ThemeProvider>
           <ThemeToggle />
         </ThemeProvider>
-      </ChakraProvider>,
+      </ChakraProvider>
     );
 
     // Wait for component to mount and theme to be resolved
@@ -123,7 +124,7 @@ describe("Theme Integration", () => {
         expect(toggleButton).toBeInTheDocument();
         expect(toggleButton).toBeDefined();
       },
-      { timeout: 3000 },
+      { timeout: 3000 }
     );
 
     // Verify default theme is alt-paper

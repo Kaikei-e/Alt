@@ -3,11 +3,11 @@
  * Tests for ReDoS and HTML sanitization vulnerabilities
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   analyzeContent,
-  needsSanitization,
   detectContentType,
+  needsSanitization,
 } from "../../../../src/utils/contentTypeDetector";
 
 describe("contentTypeDetector Security Tests", () => {

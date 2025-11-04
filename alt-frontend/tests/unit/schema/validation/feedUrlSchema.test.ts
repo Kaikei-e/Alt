@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import * as v from "valibot";
+import { describe, expect, it } from "vitest";
 import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
 
 describe("Feed URL Schema", () => {
@@ -44,7 +44,7 @@ describe("Feed URL Schema", () => {
         expect(result.success).toBe(false);
         if (!result.success) {
           expect(result.issues[0].message).toBe(
-            "URL does not appear to be a valid RSS or Atom feed",
+            "URL does not appear to be a valid RSS or Atom feed"
           );
         }
       });

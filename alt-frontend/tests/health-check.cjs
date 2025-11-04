@@ -50,11 +50,7 @@ async function main() {
 
   try {
     // Check mock auth service
-    await checkServer(
-      "http://localhost:4545/sessions/whoami",
-      "Mock Auth Service",
-      15000,
-    );
+    await checkServer("http://localhost:4545/sessions/whoami", "Mock Auth Service", 15000);
 
     // Check Next.js app
     await checkServer("http://localhost:3010", "Next.js App", 60000);

@@ -1,5 +1,5 @@
-import { renderHook, act } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWindowSize } from "../../../src/hooks/useWindowSize";
 
 describe("useWindowSize", () => {
@@ -42,10 +42,7 @@ describe("useWindowSize", () => {
   it("should register resize event listener", () => {
     renderHook(() => useWindowSize());
 
-    expect(window.addEventListener).toHaveBeenCalledWith(
-      "resize",
-      expect.any(Function),
-    );
+    expect(window.addEventListener).toHaveBeenCalledWith("resize", expect.any(Function));
   });
 
   it("should update window size on resize", () => {
@@ -81,10 +78,7 @@ describe("useWindowSize", () => {
 
     unmount();
 
-    expect(window.removeEventListener).toHaveBeenCalledWith(
-      "resize",
-      expect.any(Function),
-    );
+    expect(window.removeEventListener).toHaveBeenCalledWith("resize", expect.any(Function));
   });
 
   it("should handle multiple resize events", () => {

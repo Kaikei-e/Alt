@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { Clock, Eye, Rss } from "lucide-react";
+import { describe, expect, it } from "vitest";
+import type { FeedStatsSummary } from "@/schema/feedStats";
 import { transformFeedStats } from "../../../src/utils/dataTransformers";
-import { FeedStatsSummary } from "@/schema/feedStats";
-import { Rss, Eye, Clock } from "lucide-react";
 
 describe("dataTransformers", () => {
   describe("transformFeedStats", () => {

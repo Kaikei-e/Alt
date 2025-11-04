@@ -1,16 +1,15 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { NextRequest } from "next/server";
+
 import type { Session } from "@ory/client";
+import type { NextRequest } from "next/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let GET: (req?: NextRequest) => Promise<Response> | Response;
 
 try {
-  ({ GET } = await import(
-    "../../../../src/app/api/fe-auth/validate/route"
-  ));
+  ({ GET } = await import("../../../../src/app/api/fe-auth/validate/route"));
 } catch {
   // Route not available in this workspace; tests will be skipped.
 }
@@ -136,7 +135,7 @@ describeIfRoute("GET /api/fe-auth/validate", () => {
       () =>
         ({
           toSession: mockToSession,
-        }) as any,
+        }) as any
     );
 
     const response = await getHandler();

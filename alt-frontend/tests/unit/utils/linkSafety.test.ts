@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  sanitizeUrl,
-  addSecurityAttributes,
-  isExternalLink,
-} from "../../../src/utils/linkSafety";
+import { addSecurityAttributes, isExternalLink, sanitizeUrl } from "../../../src/utils/linkSafety";
 
 // Mock window.location for testing
 Object.defineProperty(window, "location", {
@@ -16,11 +12,7 @@ Object.defineProperty(window, "location", {
 describe("Link Safety Utilities", () => {
   describe("sanitizeUrl", () => {
     it("should return safe URLs unchanged", () => {
-      const safeUrls = [
-        "https://example.com",
-        "http://example.com",
-        "https://example.com/path",
-      ];
+      const safeUrls = ["https://example.com", "http://example.com", "https://example.com/path"];
 
       safeUrls.forEach((url) => {
         expect(sanitizeUrl(url)).toBe(url);

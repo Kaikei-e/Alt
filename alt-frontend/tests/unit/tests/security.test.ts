@@ -1,4 +1,4 @@
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
 import { securityHeaders } from "@/config/security";
 
 describe("Security Headers", () => {
@@ -26,7 +26,7 @@ describe("Security Headers", () => {
   test("should include Strict-Transport-Security header", () => {
     const headers = securityHeaders("test-nonce");
     expect(headers["Strict-Transport-Security"]).toBe(
-      "max-age=31536000; includeSubDomains; preload",
+      "max-age=31536000; includeSubDomains; preload"
     );
   });
 
@@ -38,7 +38,7 @@ describe("Security Headers", () => {
   test("should include Permissions-Policy header", () => {
     const headers = securityHeaders("test-nonce");
     expect(headers["Permissions-Policy"]).toBe(
-      "camera=(), microphone=(), geolocation=(), payment=()",
+      "camera=(), microphone=(), geolocation=(), payment=()"
     );
   });
 

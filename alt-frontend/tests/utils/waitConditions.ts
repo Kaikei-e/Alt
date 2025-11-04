@@ -1,4 +1,4 @@
-import { Page, Locator, expect } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
  * Utility functions for improved wait conditions and test stability
@@ -44,7 +44,7 @@ export async function waitForElementStable(element: Locator, timeout = 5000) {
  */
 export async function waitForPageReady(
   page: Page,
-  options: { timeout?: number; waitForSelector?: string } = {},
+  options: { timeout?: number; waitForSelector?: string } = {}
 ) {
   const { timeout = 30000, waitForSelector } = options;
 
@@ -81,14 +81,9 @@ export async function retryOperation<T>(
     initialDelay?: number;
     maxDelay?: number;
     backoffFactor?: number;
-  } = {},
+  } = {}
 ): Promise<T> {
-  const {
-    maxRetries = 3,
-    initialDelay = 100,
-    maxDelay = 5000,
-    backoffFactor = 2,
-  } = options;
+  const { maxRetries = 3, initialDelay = 100, maxDelay = 5000, backoffFactor = 2 } = options;
 
   let lastError: Error;
   let delay = initialDelay;
@@ -117,7 +112,7 @@ export async function retryOperation<T>(
 export async function waitForUrlChange(
   page: Page,
   fromUrl: string,
-  timeout = 10000,
+  timeout = 10000
 ): Promise<string> {
   const startTime = Date.now();
 
@@ -138,7 +133,7 @@ export async function waitForUrlChange(
 export async function waitForTextContent(
   element: Locator,
   expectedText: string | RegExp,
-  timeout = 10000,
+  timeout = 10000
 ): Promise<void> {
   await expect(element).toContainText(expectedText, { timeout });
 }
@@ -146,18 +141,12 @@ export async function waitForTextContent(
 /**
  * Wait for form to be ready for interaction
  */
-export async function waitForFormReady(
-  page: Page,
-  formSelector = "form",
-  timeout = 10000,
-) {
+export async function waitForFormReady(page: Page, formSelector = "form", timeout = 10000) {
   const form = page.locator(formSelector);
   await form.waitFor({ state: "visible", timeout });
 
   // Wait for all visible form inputs to be ready (exclude hidden inputs like CSRF tokens)
-  const inputs = form.locator(
-    "input:not([type='hidden']), select, textarea, button",
-  );
+  const inputs = form.locator("input:not([type='hidden']), select, textarea, button");
   const inputCount = await inputs.count();
 
   for (let i = 0; i < inputCount; i++) {
@@ -176,7 +165,7 @@ export async function waitForFormReady(
  */
 export async function safeClick(
   element: Locator,
-  options: { timeout?: number; force?: boolean } = {},
+  options: { timeout?: number; force?: boolean } = {}
 ) {
   const { timeout = 10000, force = false } = options;
 
@@ -200,7 +189,7 @@ export async function safeClick(
 export async function safeFill(
   element: Locator,
   value: string,
-  options: { timeout?: number } = {},
+  options: { timeout?: number } = {}
 ) {
   const { timeout = 10000 } = options;
 
@@ -226,13 +215,9 @@ export async function waitForAuthRedirect(
     timeout?: number;
     expectedFlow?: RegExp;
     debugLogging?: boolean;
-  } = {},
+  } = {}
 ): Promise<string> {
-  const {
-    timeout = 30000,
-    expectedFlow = /\/auth\/login\?flow=/,
-    debugLogging = false,
-  } = options;
+  const { timeout = 30000, expectedFlow = /\/auth\/login\?flow=/, debugLogging = false } = options;
 
   const mockPort = process.env.PW_MOCK_PORT || "4545";
   const startTime = Date.now();
@@ -240,32 +225,24 @@ export async function waitForAuthRedirect(
 
   if (debugLogging) {
     console.log(`[waitForAuthRedirect] Starting from URL: ${startUrl}`);
-    console.log(
-      `[waitForAuthRedirect] Waiting for redirect to pattern: ${expectedFlow}`,
-    );
+    console.log(`[waitForAuthRedirect] Waiting for redirect to pattern: ${expectedFlow}`);
     console.log(`[waitForAuthRedirect] Using mock port: ${mockPort}`);
   }
 
   try {
     // First wait for potential redirect to mock auth server
-    const authServerPattern = new RegExp(
-      `localhost:${mockPort}.*login\\/browser`,
-    );
+    const authServerPattern = new RegExp(`localhost:${mockPort}.*login\\/browser`);
 
     // Check if we need to go through the mock auth server first
     if (!expectedFlow.test(startUrl)) {
       try {
         await page.waitForURL(authServerPattern, { timeout: timeout / 2 });
         if (debugLogging) {
-          console.log(
-            `[waitForAuthRedirect] Redirected to mock auth server: ${page.url()}`,
-          );
+          console.log(`[waitForAuthRedirect] Redirected to mock auth server: ${page.url()}`);
         }
       } catch (error) {
         if (debugLogging) {
-          console.log(
-            `[waitForAuthRedirect] No redirect to mock auth server, continuing...`,
-          );
+          console.log(`[waitForAuthRedirect] No redirect to mock auth server, continuing...`);
         }
         // It's okay if we don't go through mock server, continue to final URL check
       }
@@ -276,12 +253,8 @@ export async function waitForAuthRedirect(
 
     const finalUrl = page.url();
     if (debugLogging) {
-      console.log(
-        `[waitForAuthRedirect] Successfully redirected to: ${finalUrl}`,
-      );
-      console.log(
-        `[waitForAuthRedirect] Total time: ${Date.now() - startTime}ms`,
-      );
+      console.log(`[waitForAuthRedirect] Successfully redirected to: ${finalUrl}`);
+      console.log(`[waitForAuthRedirect] Total time: ${Date.now() - startTime}ms`);
     }
 
     // Verify the page loaded properly
@@ -297,12 +270,12 @@ export async function waitForAuthRedirect(
     console.error(`[waitForAuthRedirect] Expected pattern: ${expectedFlow}`);
     console.error(
       `[waitForAuthRedirect] Original error:`,
-      error instanceof Error ? error.message : String(error),
+      error instanceof Error ? error.message : String(error)
     );
 
     // Add more context to the error
     const enhancedError = new Error(
-      `Auth redirect failed: Expected URL matching ${expectedFlow}, but got ${currentUrl} after ${elapsedTime}ms. Original: ${error instanceof Error ? error.message : String(error)}`,
+      `Auth redirect failed: Expected URL matching ${expectedFlow}, but got ${currentUrl} after ${elapsedTime}ms. Original: ${error instanceof Error ? error.message : String(error)}`
     );
     enhancedError.stack = error instanceof Error ? error.stack : undefined;
     throw enhancedError;
@@ -318,13 +291,13 @@ export async function waitForAuthComplete(
   options: {
     timeout?: number;
     debugLogging?: boolean;
-  } = {},
+  } = {}
 ): Promise<void> {
   const { timeout = 20000, debugLogging = false } = options;
 
   if (debugLogging) {
     console.log(
-      `[waitForAuthComplete] Waiting for completion, destination: ${expectedDestination}`,
+      `[waitForAuthComplete] Waiting for completion, destination: ${expectedDestination}`
     );
   }
 
@@ -335,9 +308,7 @@ export async function waitForAuthComplete(
   await waitForPageReady(page, { timeout: 10000 });
 
   if (debugLogging) {
-    console.log(
-      `[waitForAuthComplete] Auth completed successfully: ${page.url()}`,
-    );
+    console.log(`[waitForAuthComplete] Auth completed successfully: ${page.url()}`);
   }
 }
 
@@ -351,7 +322,7 @@ export async function waitForApiResponse(
     timeout?: number;
     status?: number;
     method?: string;
-  } = {},
+  } = {}
 ): Promise<any> {
   const { timeout = 15000, status = 200, method } = options;
 
@@ -367,7 +338,7 @@ export async function waitForApiResponse(
 
       return matchesUrl && matchesStatus && matchesMethod;
     },
-    { timeout },
+    { timeout }
   );
 }
 
@@ -380,7 +351,7 @@ export async function waitForNavigation(
   options: {
     timeout?: number;
     waitUntil?: "load" | "domcontentloaded" | "networkidle";
-  } = {},
+  } = {}
 ): Promise<void> {
   const { timeout = 30000, waitUntil = "domcontentloaded" } = options;
 
@@ -396,7 +367,7 @@ export async function waitForNavigation(
   } catch (error) {
     const currentUrl = page.url();
     throw new Error(
-      `Navigation failed: Expected ${urlPattern}, got ${currentUrl}. ${error instanceof Error ? error.message : String(error)}`,
+      `Navigation failed: Expected ${urlPattern}, got ${currentUrl}. ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }

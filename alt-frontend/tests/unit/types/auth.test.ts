@@ -1,12 +1,12 @@
-import { describe, it, expect } from "vitest";
-import {
-  User,
+import { describe, expect, it } from "vitest";
+import type {
   AuthState,
+  CSRFToken,
   LoginFlow,
+  Message,
   RegistrationFlow,
   UINode,
-  Message,
-  CSRFToken,
+  User,
 } from "../../../src/types/auth";
 
 describe("Auth Types", () => {
@@ -194,19 +194,8 @@ describe("Auth Types", () => {
     });
 
     it("should support all node types and groups", () => {
-      const nodeTypes: Array<UINode["type"]> = [
-        "input",
-        "img",
-        "a",
-        "script",
-        "text",
-      ];
-      const nodeGroups: Array<UINode["group"]> = [
-        "default",
-        "password",
-        "oidc",
-        "lookup_secret",
-      ];
+      const nodeTypes: Array<UINode["type"]> = ["input", "img", "a", "script", "text"];
+      const nodeGroups: Array<UINode["group"]> = ["default", "password", "oidc", "lookup_secret"];
 
       // Type checking ensures these are valid
       expect(nodeTypes).toContain("input");

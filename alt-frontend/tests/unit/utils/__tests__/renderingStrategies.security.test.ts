@@ -3,8 +3,8 @@
  * Tests for double unescaping and DOM XSS vulnerabilities
  */
 
-import { describe, it, expect } from "vitest";
 import sanitizeHtml from "sanitize-html";
+import { describe, expect, it } from "vitest";
 import { HTMLRenderingStrategy } from "../../../../src/utils/renderingStrategies";
 
 describe("renderingStrategies Security Tests", () => {
@@ -21,8 +21,7 @@ describe("renderingStrategies Security Tests", () => {
 
     it("should decode HTML entities in URLs exactly once", () => {
       const renderer = new HTMLRenderingStrategy();
-      const urlWithEntities =
-        "http://example.com?param=&amp;quot;value&amp;quot;";
+      const urlWithEntities = "http://example.com?param=&amp;quot;value&amp;quot;";
 
       const result = renderer.decodeHtmlEntitiesFromUrl(urlWithEntities);
       expect(result).toBe('http://example.com?param="value"');
@@ -151,8 +150,7 @@ describe("renderingStrategies Security Tests", () => {
       // Test URLs with various XSS patterns
       const testUrls = [
         {
-          input:
-            'http://example.com?param=&lt;script&gt;alert("XSS")&lt;/script&gt;',
+          input: 'http://example.com?param=&lt;script&gt;alert("XSS")&lt;/script&gt;',
           description: "URL with encoded script tags",
         },
         {
@@ -209,9 +207,7 @@ describe("renderingStrategies Security Tests", () => {
         expect(result).not.toContain("alert(");
         expect(result).not.toContain("onerror=");
 
-        console.log(
-          `Double-decoding test ${description}: "${input}" -> "${result}"`,
-        );
+        console.log(`Double-decoding test ${description}: "${input}" -> "${result}"`);
       });
     });
 
@@ -271,17 +267,7 @@ describe("renderingStrategies Security Tests", () => {
       `;
 
       const result = sanitizeHtml(mixedContent, {
-        allowedTags: [
-          "p",
-          "br",
-          "strong",
-          "b",
-          "em",
-          "i",
-          "u",
-          "a",
-          "img",
-        ],
+        allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "a", "img"],
         allowedAttributes: {
           a: ["href", "title", "target", "rel"],
           img: ["src", "alt"],
@@ -317,9 +303,7 @@ describe("renderingStrategies Security Tests", () => {
           },
           disallowedTagsMode: "discard",
           exclusiveFilter(frame) {
-            return Object.keys(frame.attribs ?? {}).some((attr) =>
-              /^on/i.test(attr),
-            );
+            return Object.keys(frame.attribs ?? {}).some((attr) => /^on/i.test(attr));
           },
         });
 

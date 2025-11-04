@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { SanitizedFeed } from "@/schema/feed";
 import { searchFeeds, simpleSearch } from "../../../src/searchUtils";
-import { SanitizedFeed } from "@/schema/feed";
 
 describe("Search Utils", () => {
   const mockFeeds: SanitizedFeed[] = [

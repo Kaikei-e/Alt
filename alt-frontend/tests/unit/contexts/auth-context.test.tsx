@@ -1,13 +1,14 @@
 /**
  * @vitest-environment jsdom
  */
-import React from "react";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { AuthProvider, useAuth } from "../../../src/contexts/auth-context";
+import React from "react";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { authAPI } from "@/lib/api/auth-client";
 import type { User } from "@/types/auth";
+import { AuthProvider, useAuth } from "../../../src/contexts/auth-context";
 
 // Mock the auth API client
 vi.mock("@/lib/api/auth-client", () => ({
@@ -23,8 +24,7 @@ vi.mock("@/lib/api/auth-client", () => ({
 
 // Test component to access auth context
 function TestComponent({ testId = "" }: { testId?: string }) {
-  const { user, isAuthenticated, isLoading, error, login, register, logout } =
-    useAuth();
+  const { user, isAuthenticated, isLoading, error, login, register, logout } = useAuth();
 
   const handleLogin = async () => {
     try {
@@ -52,16 +52,12 @@ function TestComponent({ testId = "" }: { testId?: string }) {
 
   return (
     <div data-testid={`container${testId}`}>
-      <div data-testid={`loading${testId}`}>
-        {isLoading ? "loading" : "not-loading"}
-      </div>
+      <div data-testid={`loading${testId}`}>{isLoading ? "loading" : "not-loading"}</div>
       <div data-testid={`authenticated${testId}`}>
         {isAuthenticated ? "authenticated" : "not-authenticated"}
       </div>
       <div data-testid={`user${testId}`}>{user ? user.email : "no-user"}</div>
-      <div data-testid={`error${testId}`}>
-        {error ? error.message : "no-error"}
-      </div>
+      <div data-testid={`error${testId}`}>{error ? error.message : "no-error"}</div>
       <button onClick={handleLogin}>Login</button>
       <button onClick={handleRegister}>Register</button>
       <button onClick={handleLogout}>Logout</button>
@@ -85,21 +81,18 @@ describe("AuthContext", () => {
     });
   };
 
-  const consoleSpies: Array<ReturnType<typeof vi.spyOn>> = [];
-  const noop = () => {};
-  consoleSpies.push(
-    vi.spyOn(console, "groupCollapsed").mockImplementation(noop),
-  );
-  consoleSpies.push(vi.spyOn(console, "groupEnd").mockImplementation(noop));
-  consoleSpies.push(vi.spyOn(console, "log").mockImplementation(noop));
-  consoleSpies.push(vi.spyOn(console, "info").mockImplementation(noop));
-  consoleSpies.push(vi.spyOn(console, "debug").mockImplementation(noop));
-  consoleSpies.push(vi.spyOn(console, "warn").mockImplementation(noop));
-  consoleSpies.push(vi.spyOn(console, "error").mockImplementation(noop));
+  beforeAll(() => {
+    vi.spyOn(console, "groupCollapsed").mockImplementation(() => {});
+    vi.spyOn(console, "groupEnd").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
 
   afterAll(() => {
-    consoleSpies.forEach((spy) => spy.mockRestore());
-    consoleSpies.length = 0;
+    vi.restoreAllMocks();
   });
 
   beforeEach(() => {
@@ -126,26 +119,26 @@ describe("AuthContext", () => {
       render(
         <AuthProvider>
           <TestComponent testId="-init" />
-        </AuthProvider>,
+        </AuthProvider>
       );
 
       // Wait for initial authentication check to complete
-      await waitFor(() => {
-        expect(authAPI.getCurrentUser).toHaveBeenCalled();
-      });
+      await waitFor(
+        () => {
+          expect(authAPI.getCurrentUser).toHaveBeenCalled();
+        },
+        { timeout: 3000 }
+      );
 
       // Should update to authenticated state
-      await waitFor(() => {
-        expect(screen.getByTestId("loading-init")).toHaveTextContent(
-          "not-loading",
-        );
-        expect(screen.getByTestId("authenticated-init")).toHaveTextContent(
-          "authenticated",
-        );
-        expect(screen.getByTestId("user-init")).toHaveTextContent(
-          "test@example.com",
-        );
-      });
+      await waitFor(
+        () => {
+          expect(screen.getByTestId("loading-init")).toHaveTextContent("not-loading");
+          expect(screen.getByTestId("authenticated-init")).toHaveTextContent("authenticated");
+          expect(screen.getByTestId("user-init")).toHaveTextContent("test@example.com");
+        },
+        { timeout: 3000 }
+      );
     });
 
     it("should handle unauthenticated state", async () => {
@@ -154,18 +147,17 @@ describe("AuthContext", () => {
       render(
         <AuthProvider>
           <TestComponent testId="-unauth" />
-        </AuthProvider>,
+        </AuthProvider>
       );
 
-      await waitFor(() => {
-        expect(screen.getByTestId("loading-unauth")).toHaveTextContent(
-          "not-loading",
-        );
-        expect(screen.getByTestId("authenticated-unauth")).toHaveTextContent(
-          "not-authenticated",
-        );
-        expect(screen.getByTestId("user-unauth")).toHaveTextContent("no-user");
-      });
+      await waitFor(
+        () => {
+          expect(screen.getByTestId("loading-unauth")).toHaveTextContent("not-loading");
+          expect(screen.getByTestId("authenticated-unauth")).toHaveTextContent("not-authenticated");
+          expect(screen.getByTestId("user-unauth")).toHaveTextContent("no-user");
+        },
+        { timeout: 3000 }
+      );
     });
 
     // Note: Complex authentication error retry logic test removed
@@ -175,11 +167,9 @@ describe("AuthContext", () => {
   describe("useAuth hook", () => {
     it("should throw error when used outside AuthProvider", () => {
       // Mock console.error to prevent error output in tests
-      const consoleError = vi
-        .spyOn(console, "error")
-        .mockImplementation((message, ...args) => {
-          console.log(message, args);
-        });
+      const consoleError = vi.spyOn(console, "error").mockImplementation((message, ...args) => {
+        console.log(message, args);
+      });
 
       expect(() => {
         render(<TestComponent />);
@@ -193,37 +183,46 @@ describe("AuthContext", () => {
 
       vi.mocked(authAPI.getCurrentUser).mockResolvedValue(null);
       vi.mocked(authAPI.initiateLogin).mockRejectedValue(
-        new Error("Login flow initiated via redirect"),
+        new Error("Login flow initiated via redirect")
       );
 
       render(
         <AuthProvider>
           <TestComponent testId="-login-redirect" />
-        </AuthProvider>,
+        </AuthProvider>
       );
 
       // Wait for initial load to complete
-      await waitFor(() => {
-        expect(
-          screen.getByTestId("authenticated-login-redirect"),
-        ).toHaveTextContent("not-authenticated");
-      });
+      await waitFor(
+        () => {
+          expect(screen.getByTestId("authenticated-login-redirect")).toHaveTextContent(
+            "not-authenticated"
+          );
+        },
+        { timeout: 3000 }
+      );
 
       // Click login button
       const loginButton = screen.getByText("Login");
       await user.click(loginButton);
 
       // Should call login API method and get redirect error
-      await waitFor(() => {
-        expect(authAPI.initiateLogin).toHaveBeenCalled();
-      });
+      await waitFor(
+        () => {
+          expect(authAPI.initiateLogin).toHaveBeenCalled();
+        },
+        { timeout: 3000 }
+      );
 
       // Since current implementation redirects, should show error
-      await waitFor(() => {
-        expect(screen.getByTestId("error-login-redirect")).toHaveTextContent(
-          "Login flow initiated via redirect",
-        );
-      });
+      await waitFor(
+        () => {
+          expect(screen.getByTestId("error-login-redirect")).toHaveTextContent(
+            "Login flow initiated via redirect"
+          );
+        },
+        { timeout: 3000 }
+      );
     });
 
     it("should handle login error", async () => {
@@ -231,21 +230,22 @@ describe("AuthContext", () => {
       const errorMessage = "メールアドレスまたはパスワードが正しくありません";
 
       vi.mocked(authAPI.getCurrentUser).mockResolvedValue(null);
-      vi.mocked(authAPI.initiateLogin).mockRejectedValue(
-        new Error("Invalid credentials"),
-      );
+      vi.mocked(authAPI.initiateLogin).mockRejectedValue(new Error("Invalid credentials"));
 
       render(
         <AuthProvider>
           <TestComponent testId="-login-error" />
-        </AuthProvider>,
+        </AuthProvider>
       );
 
-      await waitFor(() => {
-        expect(
-          screen.getByTestId("authenticated-login-error"),
-        ).toHaveTextContent("not-authenticated");
-      });
+      await waitFor(
+        () => {
+          expect(screen.getByTestId("authenticated-login-error")).toHaveTextContent(
+            "not-authenticated"
+          );
+        },
+        { timeout: 3000 }
+      );
 
       const loginButton = screen.getByText("Login");
       await user.click(loginButton);
@@ -253,14 +253,12 @@ describe("AuthContext", () => {
       // Wait for the error to be displayed in the UI
       await waitFor(
         () => {
-          expect(screen.getByTestId("error-login-error")).toHaveTextContent(
-            errorMessage,
+          expect(screen.getByTestId("error-login-error")).toHaveTextContent(errorMessage);
+          expect(screen.getByTestId("authenticated-login-error")).toHaveTextContent(
+            "not-authenticated"
           );
-          expect(
-            screen.getByTestId("authenticated-login-error"),
-          ).toHaveTextContent("not-authenticated");
         },
-        { timeout: 5000 },
+        { timeout: 5000 }
       );
 
       // Ensure the error is properly handled and doesn't cause unhandled rejections
@@ -272,34 +270,43 @@ describe("AuthContext", () => {
 
       vi.mocked(authAPI.getCurrentUser).mockResolvedValue(null);
       vi.mocked(authAPI.initiateRegistration).mockRejectedValue(
-        new Error("Registration flow initiated via redirect"),
+        new Error("Registration flow initiated via redirect")
       );
 
       render(
         <AuthProvider>
           <TestComponent testId="-reg-redirect" />
-        </AuthProvider>,
+        </AuthProvider>
       );
 
-      await waitFor(() => {
-        expect(
-          screen.getByTestId("authenticated-reg-redirect"),
-        ).toHaveTextContent("not-authenticated");
-      });
+      await waitFor(
+        () => {
+          expect(screen.getByTestId("authenticated-reg-redirect")).toHaveTextContent(
+            "not-authenticated"
+          );
+        },
+        { timeout: 3000 }
+      );
 
       const registerButton = screen.getByText("Register");
       await user.click(registerButton);
 
-      await waitFor(() => {
-        expect(authAPI.initiateRegistration).toHaveBeenCalled();
-      });
+      await waitFor(
+        () => {
+          expect(authAPI.initiateRegistration).toHaveBeenCalled();
+        },
+        { timeout: 3000 }
+      );
 
       // Since registration redirects, we expect the error to be handled
-      await waitFor(() => {
-        expect(screen.getByTestId("error-reg-redirect")).toHaveTextContent(
-          "Registration flow initiated via redirect",
-        );
-      });
+      await waitFor(
+        () => {
+          expect(screen.getByTestId("error-reg-redirect")).toHaveTextContent(
+            "Registration flow initiated via redirect"
+          );
+        },
+        { timeout: 3000 }
+      );
     });
 
     it("should handle registration error", async () => {
@@ -307,21 +314,22 @@ describe("AuthContext", () => {
       const errorMessage = "登録処理中にエラーが発生しました";
 
       vi.mocked(authAPI.getCurrentUser).mockResolvedValue(null);
-      vi.mocked(authAPI.initiateRegistration).mockRejectedValue(
-        new Error("Registration failed"),
-      );
+      vi.mocked(authAPI.initiateRegistration).mockRejectedValue(new Error("Registration failed"));
 
       render(
         <AuthProvider>
           <TestComponent testId="-reg-error" />
-        </AuthProvider>,
+        </AuthProvider>
       );
 
-      await waitFor(() => {
-        expect(screen.getByTestId("authenticated-reg-error")).toHaveTextContent(
-          "not-authenticated",
-        );
-      });
+      await waitFor(
+        () => {
+          expect(screen.getByTestId("authenticated-reg-error")).toHaveTextContent(
+            "not-authenticated"
+          );
+        },
+        { timeout: 3000 }
+      );
 
       const registerButton = screen.getByText("Register");
       await user.click(registerButton);
@@ -329,14 +337,12 @@ describe("AuthContext", () => {
       // Wait for the error to be displayed in the UI
       await waitFor(
         () => {
-          expect(screen.getByTestId("error-reg-error")).toHaveTextContent(
-            errorMessage,
+          expect(screen.getByTestId("error-reg-error")).toHaveTextContent(errorMessage);
+          expect(screen.getByTestId("authenticated-reg-error")).toHaveTextContent(
+            "not-authenticated"
           );
-          expect(
-            screen.getByTestId("authenticated-reg-error"),
-          ).toHaveTextContent("not-authenticated");
         },
-        { timeout: 5000 },
+        { timeout: 5000 }
       );
 
       // Ensure the error is properly handled and doesn't cause unhandled rejections

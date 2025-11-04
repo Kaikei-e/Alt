@@ -1,8 +1,9 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+
 import { NextRequest } from "next/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { middleware } from "../../src/middleware";
 
 // Mock environment variables
@@ -24,7 +25,7 @@ describe("middleware", () => {
 
     it("should allow access to Kratos proxy paths", async () => {
       const request = new NextRequest(
-        "https://curionoah.com/ory/self-service/registration/browser",
+        "https://curionoah.com/ory/self-service/registration/browser"
       );
       const response = await middleware(request);
 
@@ -46,9 +47,7 @@ describe("middleware", () => {
     });
 
     it("should allow access to _next paths", async () => {
-      const request = new NextRequest(
-        "https://curionoah.com/_next/static/test.js",
-      );
+      const request = new NextRequest("https://curionoah.com/_next/static/test.js");
       const response = await middleware(request);
 
       expect(response.status).toBe(200);
@@ -87,9 +86,7 @@ describe("middleware", () => {
 
   describe("unauthenticated access without guard cookie", () => {
     it("should redirect to Kratos login flow with return_to parameter", async () => {
-      const request = new NextRequest(
-        "https://curionoah.com/desktop/home?test=123",
-      );
+      const request = new NextRequest("https://curionoah.com/desktop/home?test=123");
 
       const response = await middleware(request);
 
@@ -98,30 +95,25 @@ describe("middleware", () => {
       const location = response.headers.get("location");
       expect(location).toContain("/ory/self-service/login/browser");
       expect(location).toContain(
-        "return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome%3Ftest%3D123",
+        "return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome%3Ftest%3D123"
       );
     });
 
     it("should handle paths with search parameters correctly", async () => {
-      const request = new NextRequest(
-        "https://curionoah.com/desktop/feeds?category=tech&page=2",
-      );
+      const request = new NextRequest("https://curionoah.com/desktop/feeds?category=tech&page=2");
 
       const response = await middleware(request);
 
       const location = response.headers.get("location");
       expect(location).toContain("/ory/self-service/login/browser");
       expect(location).toContain(
-        "return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Ffeeds%3Fcategory%3Dtech%26page%3D2",
+        "return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Ffeeds%3Fcategory%3Dtech%26page%3D2"
       );
     });
 
     it("should not redirect when coming from login flow (prevent redirect loop)", async () => {
       const request = new NextRequest("https://curionoah.com/home");
-      request.headers.set(
-        "referer",
-        "https://curionoah.com/auth/login?flow=abc123",
-      );
+      request.headers.set("referer", "https://curionoah.com/auth/login?flow=abc123");
 
       const response = await middleware(request);
 
@@ -130,10 +122,7 @@ describe("middleware", () => {
 
     it("should not redirect when coming from Kratos (prevent redirect loop)", async () => {
       const request = new NextRequest("https://curionoah.com/home");
-      request.headers.set(
-        "referer",
-        "https://curionoah.com/ory/self-service/login/browser",
-      );
+      request.headers.set("referer", "https://curionoah.com/ory/self-service/login/browser");
 
       const response = await middleware(request);
 
@@ -149,9 +138,7 @@ describe("middleware", () => {
 
       const location = response.headers.get("location");
       expect(location).toContain("/ory/self-service/login/browser");
-      expect(location).toContain(
-        "return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome",
-      );
+      expect(location).toContain("return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome");
     });
 
     it("should handle paths without search parameters", async () => {
@@ -161,9 +148,7 @@ describe("middleware", () => {
 
       const location = response.headers.get("location");
       expect(location).toContain("/ory/self-service/login/browser");
-      expect(location).toContain(
-        "return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fsettings",
-      );
+      expect(location).toContain("return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fsettings");
     });
   });
 });

@@ -1,10 +1,6 @@
 import { test as base, expect } from "@playwright/test";
-import { LoginPage, DesktopPage } from "../pages";
-import {
-  setupBackendAPIMocks,
-  setupAPIErrorMocks,
-  setupSlowAPIMocks,
-} from "../helpers/apiMocks";
+import { setupAPIErrorMocks, setupBackendAPIMocks, setupSlowAPIMocks } from "../helpers/apiMocks";
+import { DesktopPage, LoginPage } from "../pages";
 
 /**
  * Extended test fixtures with automatic API mocking

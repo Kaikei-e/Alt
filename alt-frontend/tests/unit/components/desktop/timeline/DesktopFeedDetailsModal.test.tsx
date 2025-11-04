@@ -13,8 +13,8 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
-import { feedsApi as mockedFeedsApi } from "@/lib/api";
 import { DesktopFeedDetailsModal } from "@/components/desktop/timeline/DesktopFeedDetailsModal";
+import { feedsApi as mockedFeedsApi } from "@/lib/api";
 
 type MockFeedsApi = {
   getFeedContentOnTheFly: ReturnType<typeof vi.fn>;
@@ -30,9 +30,7 @@ const renderWithChakra = (ui: React.ReactElement) =>
   render(<ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>);
 
 const findActiveModal = async (): Promise<HTMLElement> => {
-  const modals = await screen.findAllByTestId(
-    "desktop-feed-details-modal-feed-1",
-  );
+  const modals = await screen.findAllByTestId("desktop-feed-details-modal-feed-1");
 
   const activeModal =
     modals.find((modal) => modal.getAttribute("data-state") === "open") ??
@@ -75,13 +73,13 @@ describe("DesktopFeedDetailsModal", () => {
         feedLink={feedLink}
         feedTitle={feedTitle}
         feedId="feed-1"
-      />,
+      />
     );
 
     await waitFor(() =>
       expect(mockFeedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
         feed_url: feedLink,
-      }),
+      })
     );
 
     const headerLink = await screen.findByRole("link", {
@@ -89,18 +87,14 @@ describe("DesktopFeedDetailsModal", () => {
     });
     expect(headerLink).toHaveAttribute("href", feedLink);
 
-    await waitFor(() =>
-      expect(screen.getByText("Full article content")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("Full article content")).toBeInTheDocument());
 
     const modal = await findActiveModal();
 
     expect(
-      await within(modal).findByTestId("desktop-feed-details-archive-feed-1"),
+      await within(modal).findByTestId("desktop-feed-details-archive-feed-1")
     ).toBeInTheDocument();
-    expect(
-      await within(modal).findByTestId("desktop-feed-details-ai-feed-1"),
-    ).toBeInTheDocument();
+    expect(await within(modal).findByTestId("desktop-feed-details-ai-feed-1")).toBeInTheDocument();
   });
 
   it("triggers API actions from footer controls", async () => {
@@ -124,33 +118,22 @@ describe("DesktopFeedDetailsModal", () => {
         feedLink={feedLink}
         feedTitle={feedTitle}
         feedId="feed-1"
-      />,
+      />
     );
 
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const modal = await findActiveModal();
 
-    const archiveButton = await within(modal).findByTestId(
-      "desktop-feed-details-archive-feed-1",
-    );
+    const archiveButton = await within(modal).findByTestId("desktop-feed-details-archive-feed-1");
     await user.click(archiveButton);
     await waitFor(() =>
-      expect(mockFeedsApi.archiveContent).toHaveBeenCalledWith(
-        feedLink,
-        feedTitle,
-      ),
+      expect(mockFeedsApi.archiveContent).toHaveBeenCalledWith(feedLink, feedTitle)
     );
 
-    const summarizeButton = within(modal).getByTestId(
-      "desktop-feed-details-ai-feed-1",
-    );
+    const summarizeButton = within(modal).getByTestId("desktop-feed-details-ai-feed-1");
     await user.click(summarizeButton);
-    await waitFor(() =>
-      expect(mockFeedsApi.summarizeArticle).toHaveBeenCalledWith(feedLink),
-    );
+    await waitFor(() => expect(mockFeedsApi.summarizeArticle).toHaveBeenCalledWith(feedLink));
 
-    await waitFor(() =>
-      expect(screen.getByText("AI generated summary")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("AI generated summary")).toBeInTheDocument());
   });
 });

@@ -1,4 +1,4 @@
-import { test as setup, expect } from "@playwright/test";
+import { expect, test as setup } from "@playwright/test";
 
 const authFile = "playwright/.auth/user.json";
 
@@ -53,9 +53,7 @@ setup("authenticate via API", async ({ request, context }) => {
     const flowData = await flowDetailsResponse.json();
     console.log("[AUTH-SETUP] Flow data received");
 
-    const csrfNode = flowData.ui.nodes.find(
-      (node: any) => node.attributes.name === "csrf_token"
-    );
+    const csrfNode = flowData.ui.nodes.find((node: any) => node.attributes.name === "csrf_token");
     const csrfToken = csrfNode?.attributes.value;
 
     if (!csrfToken) {
@@ -123,7 +121,9 @@ setup("authenticate via API", async ({ request, context }) => {
       throw new Error("Auth file has no cookies");
     }
 
-    console.log(`[AUTH-SETUP] ✅ Authentication completed successfully with ${authData.cookies.length} cookie(s)`);
+    console.log(
+      `[AUTH-SETUP] ✅ Authentication completed successfully with ${authData.cookies.length} cookie(s)`
+    );
   } catch (error) {
     console.error("[AUTH-SETUP] ❌ Authentication failed:", error);
     throw error;

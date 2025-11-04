@@ -1,5 +1,5 @@
 import { test as base, expect } from "@playwright/test";
-import { LoginPage, DesktopPage } from "../pages";
+import { DesktopPage, LoginPage } from "../pages";
 
 /**
  * Test fixtures with page objects and enhanced test isolation
@@ -75,8 +75,7 @@ const customExpect = base.expect.extend({
 
     if (pass) {
       return {
-        message: () =>
-          `Expected page not to be on auth flow, but was on: ${url}`,
+        message: () => `Expected page not to be on auth flow, but was on: ${url}`,
         pass: true,
       };
     } else {

@@ -1,4 +1,4 @@
-import { Page, Route } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 
 /**
  * Centralized API mock data and helpers for Playwright tests
@@ -187,7 +187,7 @@ export async function mockEndpoint(
   page: Page,
   pattern: string,
   response: any,
-  status: number = 200,
+  status: number = 200
 ) {
   await page.route(pattern, async (route: Route) => {
     await route.fulfill({

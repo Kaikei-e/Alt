@@ -5,15 +5,10 @@ export class WaitTracker {
 
   record(waitMs: number) {
     const now = Date.now();
-    this.timestamps = this.timestamps
-      .filter((ts) => now - ts < this.thresholdMs)
-      .concat(now);
+    this.timestamps = this.timestamps.filter((ts) => now - ts < this.thresholdMs).concat(now);
 
     if (this.timestamps.length > 5) {
-      console.warn(
-        `[WaitTracker] Excessive waits detected within ${this.thresholdMs}ms window`,
-      );
+      console.warn(`[WaitTracker] Excessive waits detected within ${this.thresholdMs}ms window`);
     }
   }
 }
-

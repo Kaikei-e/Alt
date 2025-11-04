@@ -1,4 +1,4 @@
-import { Page, Locator, expect } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { BasePage } from "./BasePage";
 
 /**
@@ -30,9 +30,7 @@ export class ArticlesPage extends BasePage {
     this.searchButton = page.getByRole("link", { name: /search/i });
     this.emptyState = page.locator('[data-testid="empty-state"]');
     this.errorMessage = page.locator('[data-testid="error-message"]');
-    this.loadingIndicator = page.locator(
-      '[data-testid="desktop-timeline-skeleton"]',
-    );
+    this.loadingIndicator = page.locator('[data-testid="desktop-timeline-skeleton"]');
   }
 
   /**
@@ -68,14 +66,10 @@ export class ArticlesPage extends BasePage {
     try {
       await this.page.waitForTimeout(1000);
 
-      const items = await this.page
-        .locator('[data-testid^="article-"]')
-        .count();
+      const items = await this.page.locator('[data-testid^="article-"]').count();
 
       if (items === 0) {
-        const isLoading = await this.loadingIndicator
-          .isVisible()
-          .catch(() => false);
+        const isLoading = await this.loadingIndicator.isVisible().catch(() => false);
         const hasError = await this.errorMessage.isVisible().catch(() => false);
 
         if (!isLoading && !hasError) {

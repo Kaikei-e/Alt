@@ -1,4 +1,4 @@
-import { Page, expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { BasePage } from "./BasePage";
 
 /**
@@ -69,9 +69,7 @@ export class DesktopPage extends BasePage {
    */
   async verifyOnDesktopPage(pageName: string) {
     const pattern =
-      pageName === "home"
-        ? /\/desktop\/(home|dashboard)/
-        : new RegExp(`/desktop/${pageName}`);
+      pageName === "home" ? /\/desktop\/(home|dashboard)/ : new RegExp(`/desktop/${pageName}`);
 
     // Wait for URL only - element checks removed for reliability
     await expect(this.page).toHaveURL(pattern, { timeout: 10000 });
@@ -85,7 +83,7 @@ export class DesktopPage extends BasePage {
    */
   async verifyNavigationVisible() {
     const navigation = this.page.locator(
-      '[data-testid="desktop-navigation"], nav[aria-label="Main navigation"], [aria-label="Main navigation"]',
+      '[data-testid="desktop-navigation"], nav[aria-label="Main navigation"], [aria-label="Main navigation"]'
     );
     await expect(navigation.first()).toBeVisible({ timeout: 7000 });
   }
@@ -112,9 +110,7 @@ export class DesktopPage extends BasePage {
   async isLoggedIn(): Promise<boolean> {
     try {
       if (await this.elementExists('[data-testid="user-menu"]')) {
-        await expect(
-          this.page.locator('[data-testid="user-menu"]'),
-        ).toBeVisible({ timeout: 2000 });
+        await expect(this.page.locator('[data-testid="user-menu"]')).toBeVisible({ timeout: 2000 });
         return true;
       }
       const logoutButton = this.page.getByRole("button", {
@@ -156,12 +152,7 @@ export class DesktopPage extends BasePage {
    * Navigate between pages and verify session is maintained
    */
   async testNavigation() {
-    const routes = [
-      "/desktop/home",
-      "/desktop/feeds",
-      "/desktop/articles",
-      "/desktop/settings",
-    ];
+    const routes = ["/desktop/home", "/desktop/feeds", "/desktop/articles", "/desktop/settings"];
 
     for (const route of routes) {
       await this.goto(route);

@@ -1,11 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { escapeHtml, escapeForDisplay } from "../../../src/utils/htmlEscape";
+import { describe, expect, it } from "vitest";
+import { escapeForDisplay, escapeHtml } from "../../../src/utils/htmlEscape";
 
 describe("HTML Escape Utilities", () => {
   describe("escapeHtml", () => {
     it("should escape HTML special characters", () => {
       expect(escapeHtml('<script>alert("xss")</script>')).toBe(
-        "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;",
+        "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;"
       );
     });
 
@@ -49,7 +49,7 @@ describe("HTML Escape Utilities", () => {
     it("should escape HTML for safe display", () => {
       const query = '<script>alert("search")</script>';
       expect(escapeForDisplay(query)).toBe(
-        "&lt;script&gt;alert(&quot;search&quot;)&lt;/script&gt;",
+        "&lt;script&gt;alert(&quot;search&quot;)&lt;/script&gt;"
       );
     });
 

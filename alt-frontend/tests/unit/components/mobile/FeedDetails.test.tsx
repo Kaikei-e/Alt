@@ -1,10 +1,10 @@
-import React from "react";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type React from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FeedDetails } from "@/components/mobile/FeedDetails";
 import { feedsApi } from "@/lib/api";
-import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
 // Mock the feedsApi
 vi.mock("@/lib/api", () => ({
@@ -53,9 +53,7 @@ describe("FeedDetails", () => {
         message: "article archived",
       });
 
-      renderWithProviders(
-        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
-      );
+      renderWithProviders(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
 
       // Click "Show Details" button
       const showButton = screen.getByText("Show Details");
@@ -70,10 +68,7 @@ describe("FeedDetails", () => {
 
       // Verify auto-archive was called
       await waitFor(() => {
-        expect(feedsApi.archiveContent).toHaveBeenCalledWith(
-          mockFeedURL,
-          mockFeedTitle,
-        );
+        expect(feedsApi.archiveContent).toHaveBeenCalledWith(mockFeedURL, mockFeedTitle);
       });
     });
 
@@ -91,9 +86,7 @@ describe("FeedDetails", () => {
         content: "",
       });
 
-      renderWithProviders(
-        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
-      );
+      renderWithProviders(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
 
       // Click "Show Details" button
       const showButton = screen.getByText("Show Details");
@@ -122,15 +115,11 @@ describe("FeedDetails", () => {
         content: "This is the article content",
       });
 
-      vi.mocked(feedsApi.archiveContent).mockRejectedValue(
-        new Error("Archive failed"),
-      );
+      vi.mocked(feedsApi.archiveContent).mockRejectedValue(new Error("Archive failed"));
 
       const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      renderWithProviders(
-        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
-      );
+      renderWithProviders(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
 
       // Click "Show Details" button
       const showButton = screen.getByText("Show Details");
@@ -151,7 +140,7 @@ describe("FeedDetails", () => {
       await waitFor(() => {
         expect(consoleWarnSpy).toHaveBeenCalledWith(
           "Failed to auto-archive article:",
-          expect.any(Error),
+          expect.any(Error)
         );
       });
 
@@ -179,9 +168,7 @@ describe("FeedDetails", () => {
         message: "article archived",
       });
 
-      renderWithProviders(
-        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
-      );
+      renderWithProviders(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
 
       // Click "Show Details" button
       const showButton = screen.getByText("Show Details");
@@ -228,9 +215,7 @@ describe("FeedDetails", () => {
         feed_url: mockFeedURL,
       });
 
-      renderWithProviders(
-        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
-      );
+      renderWithProviders(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
 
       // Click "Show Details"
       const showButton = screen.getByText("Show Details");

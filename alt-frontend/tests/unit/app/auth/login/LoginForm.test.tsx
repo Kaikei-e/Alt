@@ -1,11 +1,12 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import LoginForm from "../../../../../src/app/auth/login/LoginForm";
+
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import LoginForm from "../../../../../src/app/auth/login/LoginForm";
 
 // Oryクライアントのモック
 vi.mock("@ory/client", () => {
@@ -52,8 +53,7 @@ const renderWithProviders = (ui: React.ReactElement) =>
   render(<ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>);
 
 const LOADING_TEXT = "フローを読み込んでいます…";
-const NETWORK_ERROR_TEXT =
-  "ネットワークエラーが発生しました。ページを再読み込みしてください。";
+const NETWORK_ERROR_TEXT = "ネットワークエラーが発生しました。ページを再読み込みしてください。";
 const IDENTIFIER_LABEL = "メールアドレス";
 const PASSWORD_LABEL = "パスワード";
 const SUBMIT_LABEL = "ログイン";
@@ -151,11 +151,7 @@ describe("LoginForm", () => {
       const mockFlow = {
         id: "test-flow-id",
         ui: {
-          nodes: [
-            createIdentifierNode(),
-            createPasswordNode(),
-            createSubmitNode(),
-          ],
+          nodes: [createIdentifierNode(), createPasswordNode(), createSubmitNode()],
         },
       };
 
@@ -191,11 +187,7 @@ describe("LoginForm", () => {
         ui: {
           action: "/self-service/login",
           method: "POST",
-          nodes: [
-            createIdentifierNode(),
-            createPasswordNode(),
-            createSubmitNode(),
-          ],
+          nodes: [createIdentifierNode(), createPasswordNode(), createSubmitNode()],
         },
       };
 
@@ -227,17 +219,12 @@ describe("LoginForm", () => {
         expect(screen.getByLabelText(IDENTIFIER_LABEL)).toBeInTheDocument();
       });
 
-      await user.type(
-        screen.getByLabelText(IDENTIFIER_LABEL),
-        "test@example.com",
-      );
+      await user.type(screen.getByLabelText(IDENTIFIER_LABEL), "test@example.com");
       await user.type(screen.getByLabelText(PASSWORD_LABEL), "password123");
       await user.click(screen.getByRole("button", { name: SUBMIT_LABEL }));
 
       await waitFor(() => {
-        expect(mockLocation.replace).toHaveBeenCalledWith(
-          "https://curionoah.com/",
-        );
+        expect(mockLocation.replace).toHaveBeenCalledWith("https://curionoah.com/");
       });
     });
 
@@ -250,11 +237,7 @@ describe("LoginForm", () => {
         ui: {
           action: "/self-service/login",
           method: "POST",
-          nodes: [
-            createIdentifierNode(),
-            createPasswordNode(),
-            createSubmitNode(),
-          ],
+          nodes: [createIdentifierNode(), createPasswordNode(), createSubmitNode()],
         },
       };
 
@@ -284,18 +267,13 @@ describe("LoginForm", () => {
         expect(screen.getByLabelText(IDENTIFIER_LABEL)).toBeInTheDocument();
       });
 
-      await user.type(
-        screen.getByLabelText(IDENTIFIER_LABEL),
-        "wrong@example.com",
-      );
+      await user.type(screen.getByLabelText(IDENTIFIER_LABEL), "wrong@example.com");
       await user.type(screen.getByLabelText(PASSWORD_LABEL), "wrongpassword");
       await user.click(screen.getByRole("button", { name: SUBMIT_LABEL }));
 
       await waitFor(() => {
         // ログインが失敗した場合、ボタンは再度有効になる
-        expect(
-          screen.getByRole("button", { name: SUBMIT_LABEL }),
-        ).not.toBeDisabled();
+        expect(screen.getByRole("button", { name: SUBMIT_LABEL })).not.toBeDisabled();
       });
     });
   });
@@ -337,9 +315,7 @@ describe("LoginForm", () => {
 
       await waitFor(() => {
         expect(mockLocation.replace).toHaveBeenCalled();
-        expect(mockLocation.replace.mock.calls[0][0]).toBe(
-          KRATOS_LOGIN_FLOW_URL,
-        );
+        expect(mockLocation.replace.mock.calls[0][0]).toBe(KRATOS_LOGIN_FLOW_URL);
       });
     });
 
@@ -352,11 +328,7 @@ describe("LoginForm", () => {
         ui: {
           action: "/self-service/login",
           method: "POST",
-          nodes: [
-            createIdentifierNode(),
-            createPasswordNode(),
-            createSubmitNode(),
-          ],
+          nodes: [createIdentifierNode(), createPasswordNode(), createSubmitNode()],
         },
       };
 
@@ -392,18 +364,13 @@ describe("LoginForm", () => {
         expect(screen.getByLabelText(IDENTIFIER_LABEL)).toBeInTheDocument();
       });
 
-      await user.type(
-        screen.getByLabelText(IDENTIFIER_LABEL),
-        "test@example.com",
-      );
+      await user.type(screen.getByLabelText(IDENTIFIER_LABEL), "test@example.com");
       await user.type(screen.getByLabelText(PASSWORD_LABEL), "password123");
       await user.click(screen.getByRole("button", { name: SUBMIT_LABEL }));
 
       await waitFor(() => {
         expect(mockLocation.replace).toHaveBeenCalled();
-        expect(mockLocation.replace.mock.calls[0][0]).toBe(
-          KRATOS_LOGIN_FLOW_URL,
-        );
+        expect(mockLocation.replace.mock.calls[0][0]).toBe(KRATOS_LOGIN_FLOW_URL);
       });
     });
 
@@ -433,9 +400,7 @@ describe("LoginForm", () => {
 
       await waitFor(() => {
         expect(mockLocation.replace).toHaveBeenCalled();
-        expect(mockLocation.replace.mock.calls[0][0]).toBe(
-          KRATOS_LOGIN_FLOW_URL,
-        );
+        expect(mockLocation.replace.mock.calls[0][0]).toBe(KRATOS_LOGIN_FLOW_URL);
       });
     });
   });

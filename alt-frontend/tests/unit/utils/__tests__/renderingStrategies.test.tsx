@@ -2,7 +2,7 @@
  * HTML Rendering Strategies Tests
  * TDD tests for fixing HTML image parsing issues
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { HTMLRenderingStrategy } from "../../../../src/utils/renderingStrategies";
 
 describe("HTMLRenderingStrategy", () => {

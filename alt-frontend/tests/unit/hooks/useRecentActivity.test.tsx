@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
-import { useRecentActivity } from "../../../src/hooks/useRecentActivity";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { feedsApi } from "@/lib/api";
+import { useRecentActivity } from "../../../src/hooks/useRecentActivity";
 
 // Mock the auth context directly with a simple authenticated user
 vi.mock("@/contexts/auth-context", () => ({
@@ -71,9 +71,7 @@ describe("useRecentActivity", () => {
   });
 
   it("should handle API error gracefully", async () => {
-    vi.mocked(feedsApi.getRecentActivity).mockRejectedValue(
-      new Error("API Error"),
-    );
+    vi.mocked(feedsApi.getRecentActivity).mockRejectedValue(new Error("API Error"));
 
     const { result } = renderHook(() => useRecentActivity());
 

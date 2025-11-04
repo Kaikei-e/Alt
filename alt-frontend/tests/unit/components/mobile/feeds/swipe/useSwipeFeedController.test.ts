@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 
@@ -23,8 +23,7 @@ vi.mock("swr/infinite", () => ({
 }));
 
 vi.mock("@/lib/api", async (importOriginal) => {
-  const actual =
-    (await importOriginal()) as typeof import("@/lib/api");
+  const actual = (await importOriginal()) as typeof import("@/lib/api");
   return {
     ...actual,
     feedsApi: {
@@ -126,9 +125,7 @@ describe("useSwipeFeedController", () => {
       await result.current.dismissActiveFeed(1);
     });
 
-    expect(mockUpdateFeedReadStatus).toHaveBeenCalledWith(
-      "https://example.com/feed-1",
-    );
+    expect(mockUpdateFeedReadStatus).toHaveBeenCalledWith("https://example.com/feed-1");
     const nextActiveId = swrState.data[0]?.data[0]?.id;
     expect(result.current.activeFeed?.id).toBe(nextActiveId);
   });
@@ -141,12 +138,8 @@ describe("useSwipeFeedController", () => {
     });
 
     // markAsDismissed should be called before read status update
-    expect(mockMarkAsDismissed).toHaveBeenCalledWith(
-      "https://example.com/feed-1",
-    );
-    expect(mockMarkAsDismissed).toHaveBeenCalledBefore(
-      mockUpdateFeedReadStatus,
-    );
+    expect(mockMarkAsDismissed).toHaveBeenCalledWith("https://example.com/feed-1");
+    expect(mockMarkAsDismissed).toHaveBeenCalledBefore(mockUpdateFeedReadStatus);
   });
 
   it("triggers prefetch on initial render", () => {

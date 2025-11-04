@@ -1,41 +1,47 @@
-import React from "react";
-import { render, screen } from "@testing-library/react";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import type React from "react";
+import { describe, expect, it } from "vitest";
 import { TrendingTopics } from "@/components/desktop/analytics/TrendingTopics";
 import { mockTrendingTopics } from "@/data/mockAnalyticsData";
-import { describe, it, expect } from "vitest";
 
 const renderWithChakra = (ui: React.ReactElement) => {
   return render(<ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>);
 };
 
 describe("TrendingTopics", () => {
-  it("should display trending topics correctly", () => {
-    renderWithChakra(
-      <TrendingTopics topics={mockTrendingTopics} isLoading={false} />,
-    );
+  it("should display trending topics correctly", async () => {
+    renderWithChakra(<TrendingTopics topics={mockTrendingTopics} isLoading={false} />);
 
-    expect(screen.getByText("#AI")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("#AI")).toBeInTheDocument();
+    });
     expect(screen.getByText("#React")).toBeInTheDocument();
     expect(screen.getByText("45 articles")).toBeInTheDocument();
   });
 
   it("should show glass effect styling", () => {
-    renderWithChakra(
-      <TrendingTopics topics={mockTrendingTopics} isLoading={false} />,
-    );
+    renderWithChakra(<TrendingTopics topics={mockTrendingTopics} isLoading={false} />);
 
     const glassElements = document.querySelectorAll(".glass");
     expect(glassElements.length).toBeGreaterThan(0);
   });
 
-  it("should display trend indicators correctly", () => {
-    renderWithChakra(
-      <TrendingTopics topics={mockTrendingTopics} isLoading={false} />,
+  it("should display trend indicators correctly", async () => {
+    const { container } = renderWithChakra(
+      <TrendingTopics topics={mockTrendingTopics} isLoading={false} />
     );
 
-    expect(screen.getAllByText("+23%")[0]).toBeInTheDocument(); // AI trend
-    expect(screen.getAllByText("+12%")[0]).toBeInTheDocument(); // React trend
+    // テキストが複数の要素に分割されている可能性があるため、container全体のテキストを確認
+    await waitFor(
+      () => {
+        // "+23%"は "+", "23", "%" として分割されている可能性がある
+        // 親要素全体のテキストコンテンツを確認
+        expect(container.textContent).toContain("+23%");
+        expect(container.textContent).toContain("+12%");
+      },
+      { timeout: 3000 }
+    );
   });
 
   it("should show loading state", () => {
@@ -46,18 +52,35 @@ describe("TrendingTopics", () => {
     expect(spinner).toBeInTheDocument();
   });
 
-  it("should limit displayed topics to 6", () => {
+  it("should limit displayed topics to 6", async () => {
     const manyTopics = Array.from({ length: 10 }, (_, i) => ({
       ...mockTrendingTopics[0],
-      id: `topic-${i}`,
       tag: `Topic${i}`,
+      id: `topic-${i}`, // idプロパティを追加
     }));
 
     renderWithChakra(<TrendingTopics topics={manyTopics} isLoading={false} />);
 
-    // Should only show first 6 topics
-    expect(screen.getByText("#Topic0")).toBeInTheDocument();
-    expect(screen.getByText("#Topic5")).toBeInTheDocument();
-    expect(screen.queryByText("#Topic6")).not.toBeInTheDocument();
+    // Wait for component to render, then check that only first 6 topics are shown
+    await waitFor(
+      () => {
+        expect(screen.getByText("#Topic0")).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("#Topic5")).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
+
+    await waitFor(
+      () => {
+        expect(screen.queryByText("#Topic6")).not.toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
   });
 });

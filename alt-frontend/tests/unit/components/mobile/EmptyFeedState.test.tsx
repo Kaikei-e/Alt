@@ -1,9 +1,9 @@
-import { render, screen, cleanup } from "@testing-library/react";
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "./test-env";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { userEvent } from "@testing-library/user-event";
 import EmptyFeedState from "@/components/mobile/EmptyFeedState";
-import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
@@ -16,9 +16,7 @@ vi.mock("next/navigation", () => ({
 
 // Helper function to render with ChakraProvider
 const renderWithProvider = (component: React.ReactElement) => {
-  return render(
-    <ChakraProvider value={defaultSystem}>{component}</ChakraProvider>,
-  );
+  return render(<ChakraProvider value={defaultSystem}>{component}</ChakraProvider>);
 };
 
 describe("EmptyFeedState", () => {
@@ -30,14 +28,10 @@ describe("EmptyFeedState", () => {
     renderWithProvider(<EmptyFeedState />);
 
     // Check for main heading
-    expect(
-      screen.getByRole("heading", { name: /no feeds yet/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /no feeds yet/i })).toBeInTheDocument();
 
     // Check for descriptive text
-    expect(
-      screen.getByText(/start by adding your first rss feed/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/start by adding your first rss feed/i)).toBeInTheDocument();
   });
 
   it("should display icon", () => {
@@ -48,18 +42,13 @@ describe("EmptyFeedState", () => {
     expect(iconContainer).toBeInTheDocument();
   });
 
-  it("should render call-to-action button", () => {
+  it("should render call-to-action with correct link", () => {
     renderWithProvider(<EmptyFeedState />);
 
-    // Check for CTA button
-    const button = screen.getByRole("link", { name: /add your first feed/i });
-    expect(button).toBeInTheDocument();
-  });
-
-  it("should have correct link to feed registration", () => {
-    renderWithProvider(<EmptyFeedState />);
-
+    // Link component renders as <a> tag with button styling
+    // Check for CTA link (not button, as Link wraps the Button component)
     const link = screen.getByRole("link", { name: /add your first feed/i });
+    expect(link).toBeInTheDocument();
     expect(link).toHaveAttribute("href", "/mobile/feeds/register");
   });
 
@@ -71,14 +60,15 @@ describe("EmptyFeedState", () => {
     expect(container).toBeInTheDocument();
   });
 
-  it("should handle button hover states", async () => {
+  it("should handle link hover states", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProvider(<EmptyFeedState />);
 
-    const button = screen.getByRole("link", { name: /add your first feed/i });
+    // Link component renders as <a> tag and should be interactive
+    const link = screen.getByRole("link", { name: /add your first feed/i });
 
-    // Button should be interactive
-    await user.hover(button);
-    expect(button).toBeInTheDocument();
+    // Link should be interactive
+    await user.hover(link);
+    expect(link).toBeInTheDocument();
   });
 });

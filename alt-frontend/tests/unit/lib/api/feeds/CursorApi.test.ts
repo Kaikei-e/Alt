@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { CursorApi } from "../../../../../src/lib/api/feeds/CursorApi";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClient } from "../../../../../src/lib/api/core/ApiClient";
+import { CursorApi } from "../../../../../src/lib/api/feeds/CursorApi";
 
 // Mock ApiClient
 vi.mock("../core/ApiClient");
@@ -23,7 +23,7 @@ describe("CursorApi", () => {
       mockApiClient,
       "/api/items",
       transformer,
-      10, // default cache TTL
+      10 // default cache TTL
     );
   });
 
@@ -64,7 +64,7 @@ describe("CursorApi", () => {
 
       expect(mockApiClient.get).toHaveBeenCalledWith(
         "/api/items?limit=10&cursor=cursor123",
-        15, // increased cache TTL for cursored requests
+        15 // increased cache TTL for cursored requests
       );
 
       expect(result).toEqual({
@@ -75,11 +75,11 @@ describe("CursorApi", () => {
 
     it("should validate limit constraints", async () => {
       await expect(cursorApi.fetchWithCursor(undefined, 0)).rejects.toThrow(
-        "Limit must be between 1 and 100",
+        "Limit must be between 1 and 100"
       );
 
       await expect(cursorApi.fetchWithCursor(undefined, 101)).rejects.toThrow(
-        "Limit must be between 1 and 100",
+        "Limit must be between 1 and 100"
       );
     });
 
@@ -137,14 +137,14 @@ describe("CursorApi", () => {
       await cursorApi.fetchWithCursor();
       expect(mockApiClient.get).toHaveBeenCalledWith(
         expect.any(String),
-        10, // default TTL
+        10 // default TTL
       );
 
       // Cursor request
       await cursorApi.fetchWithCursor("cursor123");
       expect(mockApiClient.get).toHaveBeenCalledWith(
         expect.any(String),
-        15, // increased TTL
+        15 // increased TTL
       );
     });
   });

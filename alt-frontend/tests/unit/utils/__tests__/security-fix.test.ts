@@ -4,7 +4,7 @@
  * Following the TDD Red-Green-Refactor cycle
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { needsSanitization } from "../../../../src/utils/contentTypeDetector";
 import { HTMLRenderingStrategy } from "../../../../src/utils/renderingStrategies";
 
@@ -67,8 +67,7 @@ describe.skip("Security Fix Tests - TDD", () => {
         const renderer = new HTMLRenderingStrategy();
 
         // Test with HTML content that contains dangerous elements
-        const htmlWithDangerousContent =
-          'Hello <script>alert("xss")</script> world';
+        const htmlWithDangerousContent = 'Hello <script>alert("xss")</script> world';
         const result = renderer.decodeHtmlEntities(htmlWithDangerousContent);
 
         // DOMPurify correctly removes entire script element (including content) for security

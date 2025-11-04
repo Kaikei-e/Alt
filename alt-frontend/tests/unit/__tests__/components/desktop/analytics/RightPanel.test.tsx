@@ -1,10 +1,10 @@
-import React from "react";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import type React from "react";
+import { describe, expect, it, vi } from "vitest";
 import { RightPanel } from "@/components/desktop/analytics/RightPanel";
 import { ThemeProvider } from "@/providers/ThemeProvider";
-import { describe, it, expect, vi } from "vitest";
 
 // Mock matchMedia
 Object.defineProperty(window, "matchMedia", {
@@ -54,7 +54,7 @@ const renderWithProviders = (ui: React.ReactElement) => {
   return render(
     <ThemeProvider>
       <ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>
-    </ThemeProvider>,
+    </ThemeProvider>
   );
 };
 
@@ -105,15 +105,11 @@ describe("RightPanel", () => {
     expect(screen.queryByText("⚡ Quick Actions")).not.toBeInTheDocument();
 
     await user.click(actionsTab);
-    await waitFor(() =>
-      expect(screen.getByText("⚡ Quick Actions")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("⚡ Quick Actions")).toBeInTheDocument());
     expect(screen.queryByText("⚡ Quick Actions")).toBeInTheDocument();
 
     await user.click(analyticsTab);
-    await waitFor(() =>
-      expect(screen.queryByText("⚡ Quick Actions")).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByText("⚡ Quick Actions")).not.toBeInTheDocument());
   });
 
   it("should use CSS variables for styling", async () => {

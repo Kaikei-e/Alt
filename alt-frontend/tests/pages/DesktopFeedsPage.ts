@@ -1,4 +1,4 @@
-import { Page, Locator, expect } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { BasePage } from "./BasePage";
 
 /**
@@ -46,9 +46,7 @@ export class DesktopFeedsPage extends BasePage {
     this.errorMessage = page.locator('[data-testid="error-message"]');
 
     // Line 805: skeleton shown during isInitialLoading
-    this.loadingIndicator = page.locator(
-      '[data-testid="desktop-timeline-skeleton"]',
-    );
+    this.loadingIndicator = page.locator('[data-testid="desktop-timeline-skeleton"]');
   }
 
   /**
@@ -76,7 +74,7 @@ export class DesktopFeedsPage extends BasePage {
 
     for (const locator of candidateLocators) {
       try {
-        await locator.waitFor({ state: 'attached', timeout: 15000 });
+        await locator.waitFor({ state: "attached", timeout: 15000 });
         return;
       } catch {
         // Try next locator; some states may not render in every scenario
@@ -101,7 +99,7 @@ export class DesktopFeedsPage extends BasePage {
 
       for (const locator of candidates) {
         try {
-          await locator.waitFor({ state: 'attached', timeout: 10000 });
+          await locator.waitFor({ state: "attached", timeout: 10000 });
           break;
         } catch {
           // Try next locator; page may render a different state
@@ -148,7 +146,7 @@ export class DesktopFeedsPage extends BasePage {
     const targetFeed = feeds.nth(index);
 
     // Just verify the feed card is visible
-    await targetFeed.waitFor({ state: 'visible', timeout: 15000 });
+    await targetFeed.waitFor({ state: "visible", timeout: 15000 });
   }
 
   /**
@@ -164,7 +162,7 @@ export class DesktopFeedsPage extends BasePage {
    */
   async isSidebarVisible(): Promise<boolean> {
     try {
-      await this.sidebar.waitFor({ state: 'visible', timeout: 10000 });
+      await this.sidebar.waitFor({ state: "visible", timeout: 10000 });
       return true;
     } catch {
       return false;
@@ -176,7 +174,7 @@ export class DesktopFeedsPage extends BasePage {
    */
   async isRightPanelVisible(): Promise<boolean> {
     try {
-      await this.rightPanel.waitFor({ state: 'visible', timeout: 10000 });
+      await this.rightPanel.waitFor({ state: "visible", timeout: 10000 });
       return true;
     } catch {
       return false;
@@ -188,7 +186,7 @@ export class DesktopFeedsPage extends BasePage {
    */
   async hasEmptyState(): Promise<boolean> {
     try {
-      await this.emptyState.waitFor({ state: 'visible', timeout: 10000 });
+      await this.emptyState.waitFor({ state: "visible", timeout: 10000 });
       return true;
     } catch {
       return false;
@@ -202,8 +200,10 @@ export class DesktopFeedsPage extends BasePage {
     try {
       // Check for either error-state or error-message
       await Promise.race([
-        this.errorMessage.waitFor({ state: 'visible', timeout: 10000 }),
-        this.page.locator('[data-testid="error-state"]').waitFor({ state: 'visible', timeout: 10000 }),
+        this.errorMessage.waitFor({ state: "visible", timeout: 10000 }),
+        this.page
+          .locator('[data-testid="error-state"]')
+          .waitFor({ state: "visible", timeout: 10000 }),
       ]);
       return true;
     } catch {
