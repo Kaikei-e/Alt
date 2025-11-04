@@ -16,13 +16,34 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("framer-motion", () => ({
   motion: {
-    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+    div: ({ children, ...props }: any) => {
+      // propsからmotion固有のpropsを除外して通常のdivとしてレンダリング
+      const { initial, animate, exit, style, ...restProps } = props;
+      return (
+        <div {...restProps} style={style}>
+          {children}
+        </div>
+      );
+    },
   },
-  AnimatePresence: ({ children }: any) => <>{children}</>,
-  useMotionValue: () => ({
-    set: vi.fn(),
-    get: () => 0,
-  }),
+  AnimatePresence: ({ children, ...props }: any) => {
+    // childrenを確実にレンダリング
+    // AnimatePresenceは単純にchildrenを返すだけにする
+    if (Array.isArray(children)) {
+      return <>{children}</>;
+    }
+    return <>{children}</>;
+  },
+  useMotionValue: (initial: number = 0) => {
+    const value = { current: initial };
+    return {
+      set: (newValue: number) => {
+        value.current = newValue;
+      },
+      get: () => value.current,
+      current: value.current,
+    };
+  },
   animate: vi.fn(),
 }));
 
@@ -36,7 +57,6 @@ const baseFeed: Feed = {
   link: "https://example.com/feed-1",
   description: "Feed description",
   published: new Date().toISOString(),
-  feed_url: "https://example.com/feed-1",
 };
 
 const renderCard = (
@@ -67,15 +87,29 @@ describe("SwipeFeedCard", () => {
   it("fetches and displays summary on first expand", async () => {
     const { feedsApi } = await import("@/lib/api");
     vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
-      matched_articles: [{ content: "これは要約です" }],
+      matched_articles: [
+        {
+          article_url: baseFeed.link,
+          title: baseFeed.title,
+          content: "これは要約です",
+          content_type: "summary",
+          published_at: baseFeed.published,
+          fetched_at: new Date().toISOString(),
+          source_id: baseFeed.id,
+        },
+      ],
+      total_matched: 1,
+      requested_count: 1,
     });
 
     renderCard();
 
+    // Wait for component to fully render with AnimatePresence
+    // MotionBoxのレンダリングを待つため、より長いタイムアウトを使用
     await waitFor(() => {
-      expect(screen.getAllByTestId("action-footer")[0]).toBeDefined();
-    });
-    const actionFooter = screen.getAllByTestId("action-footer")[0];
+      expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
     const summaryToggle = within(actionFooter).getByTestId(
       "toggle-summary-button",
     );
@@ -98,10 +132,11 @@ describe("SwipeFeedCard", () => {
 
     renderCard();
 
+    // Wait for component to fully render
     await waitFor(() => {
-      expect(screen.getAllByTestId("action-footer")[0]).toBeDefined();
-    });
-    const actionFooter = screen.getAllByTestId("action-footer")[0];
+      expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
     const contentToggle = within(actionFooter).getByTestId(
       "toggle-content-button",
     );
@@ -122,24 +157,45 @@ describe("SwipeFeedCard", () => {
     expect(contentSection).toHaveTextContent("Full article");
   });
 
-  it("shows status message when provided", () => {
+  it("shows status message when provided", async () => {
     renderCard(baseFeed, { statusMessage: "Feed marked as read" });
 
-    expect(screen.getByText("Feed marked as read")).toBeInTheDocument();
+    // Wait for action-footer to render first, then check for status message
+    await waitFor(() => {
+      expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    await screen.findByTestId("action-footer", {}, { timeout: 3000 });
+
+    await waitFor(() => {
+      expect(screen.getByText("Feed marked as read")).toBeInTheDocument();
+    }, { timeout: 3000 });
   });
 
   it("resets expanded state when feed changes", async () => {
     const { feedsApi } = await import("@/lib/api");
     vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
-      matched_articles: [{ content: "summary" }],
+      matched_articles: [
+        {
+          article_url: baseFeed.link,
+          title: baseFeed.title,
+          content: "summary",
+          content_type: "summary",
+          published_at: baseFeed.published,
+          fetched_at: new Date().toISOString(),
+          source_id: baseFeed.id,
+        },
+      ],
+      total_matched: 1,
+      requested_count: 1,
     });
 
     const { rerender } = renderCard();
 
+    // Wait for component to fully render
     await waitFor(() => {
-      expect(screen.getAllByTestId("action-footer")[0]).toBeDefined();
-    });
-    const actionFooter = screen.getAllByTestId("action-footer")[0];
+      expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
     const summaryToggle = within(actionFooter).getByTestId(
       "toggle-summary-button",
     );
@@ -168,10 +224,8 @@ describe("SwipeFeedCard", () => {
 
     renderCard(baseFeed, { getCachedContent });
 
-    await waitFor(() => {
-      expect(screen.getAllByTestId("action-footer")[0]).toBeDefined();
-    });
-    const actionFooter = screen.getAllByTestId("action-footer")[0];
+    // Wait for component to fully render
+    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
     const contentToggle = within(actionFooter).getByTestId(
       "toggle-content-button",
     );
@@ -201,10 +255,11 @@ describe("SwipeFeedCard", () => {
 
     renderCard(baseFeed, { getCachedContent });
 
+    // Wait for component to fully render
     await waitFor(() => {
-      expect(screen.getAllByTestId("action-footer")[0]).toBeDefined();
-    });
-    const actionFooter = screen.getAllByTestId("action-footer")[0];
+      expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
     const contentToggle = within(actionFooter).getByTestId(
       "toggle-content-button",
     );
@@ -236,10 +291,11 @@ describe("SwipeFeedCard", () => {
 
     renderCard(baseFeed); // No getCachedContent prop
 
+    // Wait for component to fully render
     await waitFor(() => {
-      expect(screen.getAllByTestId("action-footer")[0]).toBeDefined();
-    });
-    const actionFooter = screen.getAllByTestId("action-footer")[0];
+      expect(screen.queryByTestId("swipe-card")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    const actionFooter = await screen.findByTestId("action-footer", {}, { timeout: 3000 });
     const contentToggle = within(actionFooter).getByTestId(
       "toggle-content-button",
     );

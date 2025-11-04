@@ -1,4 +1,5 @@
 // Main API entry point - provides backward compatibility with original api.ts
+// Updated: Added getArticlesWithCursor for article pagination
 import { ApiClient, defaultApiConfig } from "./core/ApiClient";
 import { CacheManager, defaultCacheConfig } from "./cache/CacheManager";
 import { AuthInterceptor, LoginBanner } from "./auth";
@@ -36,9 +37,10 @@ export const feedsApi = {
   checkHealth: feedsApiInstance.checkHealth.bind(feedsApiInstance),
 
   // Cursor-based APIs
-  getFeedsWithCursor: feedsApiInstance.getFeedsWithCursor,
-  getFavoriteFeedsWithCursor: feedsApiInstance.getFavoriteFeedsWithCursor,
-  getReadFeedsWithCursor: feedsApiInstance.getReadFeedsWithCursor,
+  getFeedsWithCursor: feedsApiInstance.getFeedsWithCursor.bind(feedsApiInstance),
+  getFavoriteFeedsWithCursor: feedsApiInstance.getFavoriteFeedsWithCursor.bind(feedsApiInstance),
+  getReadFeedsWithCursor: feedsApiInstance.getReadFeedsWithCursor.bind(feedsApiInstance),
+  getArticlesWithCursor: feedsApiInstance.getArticlesWithCursor.bind(feedsApiInstance),
 
   // Legacy pagination methods
   getFeeds: feedsApiInstance.getFeeds.bind(feedsApiInstance),
@@ -56,6 +58,8 @@ export const feedsApi = {
   // Article summaries
   getArticleSummary: feedsApiInstance.getArticleSummary.bind(feedsApiInstance),
   getFeedDetails: feedsApiInstance.getFeedDetails.bind(feedsApiInstance),
+  archiveContent: feedsApiInstance.archiveContent.bind(feedsApiInstance),
+  summarizeArticle: feedsApiInstance.summarizeArticle.bind(feedsApiInstance),
 
   // Feed content on the fly
   getFeedContentOnTheFly:
@@ -90,4 +94,4 @@ export const feedsApi = {
 
   // Cache management
   clearCache: feedsApiInstance.clearCache.bind(feedsApiInstance),
-} as const;
+};

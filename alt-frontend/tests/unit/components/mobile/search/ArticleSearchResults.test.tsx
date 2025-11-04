@@ -16,23 +16,23 @@ vi.mock("@/components/mobile/ArticleCard", () => ({
   ),
 }));
 
+const createMockArticle = (
+  id: string,
+  overrides: Partial<Article> = {},
+): Article => ({
+  id,
+  title: `Test Article ${id}`,
+  content: `Content ${id}`,
+  url: `https://example.com/articles/${id}`,
+  published_at: "2024-01-01T00:00:00.000Z",
+  ...overrides,
+});
+
 describe("ArticleSearchResults", () => {
   const mockArticles: Article[] = [
-    {
-      id: "1",
-      title: "Test Article 1",
-      content: "Content 1",
-    },
-    {
-      id: "2",
-      title: "Test Article 2",
-      content: "Content 2",
-    },
-    {
-      id: "3",
-      title: "Test Article 3",
-      content: "Content 3",
-    },
+    createMockArticle("1"),
+    createMockArticle("2"),
+    createMockArticle("3"),
   ];
 
   const defaultProps = {
@@ -60,7 +60,7 @@ describe("ArticleSearchResults", () => {
         <ArticleSearchResults {...defaultProps} isLoading={true} />,
       );
 
-      expect(screen.getByText(/searching articles/i)).toBeInTheDocument();
+      expect(screen.getByText("Searching articles...")).toBeInTheDocument();
     });
 
     it("should not display results when loading", () => {
@@ -73,7 +73,7 @@ describe("ArticleSearchResults", () => {
       );
 
       expect(screen.queryByTestId("article-card-1")).not.toBeInTheDocument();
-      expect(screen.getByText(/searching articles/i)).toBeInTheDocument();
+      expect(screen.getByText("Searching articles...")).toBeInTheDocument();
     });
 
     it("should display loading message", () => {
@@ -82,7 +82,7 @@ describe("ArticleSearchResults", () => {
       );
 
       // Check that loading text is present
-      expect(screen.getByText(/searching articles/i)).toBeInTheDocument();
+      expect(screen.getByText("Searching articles...")).toBeInTheDocument();
     });
   });
 
@@ -123,9 +123,9 @@ describe("ArticleSearchResults", () => {
         />,
       );
 
-      expect(screen.getByText(/no articles found/i)).toBeInTheDocument();
+      expect(screen.getByText("No articles found")).toBeInTheDocument();
       expect(
-        screen.getByText(/no articles match "test query"/i),
+        screen.getByText(/No articles match "test query"/),
       ).toBeInTheDocument();
     });
 
@@ -139,7 +139,7 @@ describe("ArticleSearchResults", () => {
       );
 
       expect(
-        screen.getByText(/try different keywords or check your spelling/i),
+        screen.getByText(/Try different keywords or check your spelling/),
       ).toBeInTheDocument();
     });
 
@@ -153,7 +153,7 @@ describe("ArticleSearchResults", () => {
         />,
       );
 
-      expect(screen.getByText(new RegExp(query, "i"))).toBeInTheDocument();
+      expect(screen.getByText(new RegExp(query))).toBeInTheDocument();
     });
   });
 
@@ -181,7 +181,7 @@ describe("ArticleSearchResults", () => {
         />,
       );
 
-      expect(screen.getByText(/found 3 articles/i)).toBeInTheDocument();
+      expect(screen.getByText("Found 3 articles")).toBeInTheDocument();
     });
 
     it("should use singular form for single result", () => {
@@ -194,7 +194,7 @@ describe("ArticleSearchResults", () => {
         />,
       );
 
-      expect(screen.getByText(/found 1 article$/i)).toBeInTheDocument();
+      expect(screen.getByText("Found 1 article")).toBeInTheDocument();
     });
 
     it("should display all article titles", () => {
@@ -252,7 +252,7 @@ describe("ArticleSearchResults", () => {
         />,
       );
 
-      expect(screen.getByText(/search completed in 250ms/i)).toBeInTheDocument();
+      expect(screen.getByText("Search completed in 250ms")).toBeInTheDocument();
     });
 
     it("should not display search time when undefined", () => {
@@ -265,7 +265,7 @@ describe("ArticleSearchResults", () => {
         />,
       );
 
-      expect(screen.queryByText(/search completed/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Search completed/)).not.toBeInTheDocument();
     });
 
     it("should display search time with correct formatting", () => {
@@ -290,7 +290,7 @@ describe("ArticleSearchResults", () => {
         />,
       );
 
-      const metadata = screen.getByText(/found 3 articles/i);
+      const metadata = screen.getByText("Found 3 articles");
       expect(metadata).toBeInTheDocument();
     });
   });
@@ -305,8 +305,8 @@ describe("ArticleSearchResults", () => {
         />,
       );
 
-      expect(screen.getByText(/no articles found/i)).toBeInTheDocument();
-      expect(screen.queryByTestId(/article-card/i)).not.toBeInTheDocument();
+      expect(screen.getByText("No articles found")).toBeInTheDocument();
+      expect(screen.queryByTestId(/article-card/)).not.toBeInTheDocument();
     });
 
     it("should handle very long search queries", () => {
@@ -319,7 +319,7 @@ describe("ArticleSearchResults", () => {
         />,
       );
 
-      expect(screen.getByText(/no articles found/i)).toBeInTheDocument();
+      expect(screen.getByText("No articles found")).toBeInTheDocument();
     });
 
     it("should handle zero search time", () => {
@@ -336,11 +336,13 @@ describe("ArticleSearchResults", () => {
     });
 
     it("should handle large result sets", () => {
-      const largeResults = Array.from({ length: 100 }, (_, i) => ({
-        id: `${i}`,
-        title: `Article ${i}`,
-        content: `Content ${i}`,
-      }));
+      const largeResults = Array.from({ length: 100 }, (_, i) =>
+        createMockArticle(`${i}`, {
+          title: `Article ${i}`,
+          content: `Content ${i}`,
+          url: `https://example.com/articles/${i}`,
+        }),
+      );
 
       renderWithChakra(
         <ArticleSearchResults
@@ -350,17 +352,16 @@ describe("ArticleSearchResults", () => {
         />,
       );
 
-      expect(screen.getByText(/found 100 articles/i)).toBeInTheDocument();
+      expect(screen.getByText("Found 100 articles")).toBeInTheDocument();
       expect(screen.getByTestId("article-card-0")).toBeInTheDocument();
       expect(screen.getByTestId("article-card-99")).toBeInTheDocument();
     });
 
     it("should handle articles with special characters in title", () => {
-      const specialArticle: Article = {
-        id: "special",
+      const specialArticle = createMockArticle("special", {
         title: "Test <script>alert('xss')</script> Article",
         content: "Content with & special chars",
-      };
+      });
 
       renderWithChakra(
         <ArticleSearchResults
@@ -372,7 +373,7 @@ describe("ArticleSearchResults", () => {
 
       // React automatically escapes HTML, so we should see the raw text
       expect(
-        screen.getByText(/Test <script>alert\('xss'\)<\/script> Article/i),
+        screen.getByText(/Test <script>alert\('xss'\)<\/script> Article/),
       ).toBeInTheDocument();
     });
   });
@@ -400,7 +401,7 @@ describe("ArticleSearchResults", () => {
         />,
       );
 
-      const metadata = screen.getByText(/found 3 articles/i);
+      const metadata = screen.getByText("Found 3 articles");
       const firstCard = screen.getByTestId("article-card-1");
 
       // Metadata should appear before the first card in DOM order
@@ -452,7 +453,7 @@ describe("ArticleSearchResults", () => {
 
       // Check that results are readable
       expect(screen.getByText("Test Article 1")).toBeInTheDocument();
-      expect(screen.getByText(/found 3 articles/i)).toBeInTheDocument();
+      expect(screen.getByText("Found 3 articles")).toBeInTheDocument();
     });
 
     it("should communicate loading state to screen readers", () => {
@@ -460,7 +461,7 @@ describe("ArticleSearchResults", () => {
         <ArticleSearchResults {...defaultProps} isLoading={true} />,
       );
 
-      const loadingText = screen.getByText(/searching articles/i);
+      const loadingText = screen.getByText("Searching articles...");
       expect(loadingText).toBeInTheDocument();
     });
   });

@@ -22,6 +22,7 @@ export class FeedsApi {
   private feedsCursorApi: CursorApi<BackendFeedItem, SanitizedFeed>;
   private favoritesCursorApi: CursorApi<BackendFeedItem, SanitizedFeed>;
   private readCursorApi: CursorApi<BackendFeedItem, SanitizedFeed>;
+  private articlesCursorApi: CursorApi<Article, Article>;
 
   // Cursor-based API functions
   public getFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
@@ -33,6 +34,7 @@ export class FeedsApi {
     cursor?: string,
     limit?: number,
   ) => Promise<any>;
+  public getArticlesWithCursor: (cursor?: string, limit?: number) => Promise<any>;
 
   constructor(private apiClient: ApiClient) {
     const transformFeedItem = (item: BackendFeedItem): SanitizedFeed => {
@@ -60,10 +62,19 @@ export class FeedsApi {
       10,
     );
 
+    // Articles cursor API - no transformation needed
+    this.articlesCursorApi = new CursorApi(
+      apiClient,
+      "/v1/articles/fetch/cursor",
+      (item: Article) => item, // No transformation needed
+      20,
+    );
+
     // Initialize the cursor functions after the CursorApi instances are created
     this.getFeedsWithCursor = this.feedsCursorApi.createFunction();
     this.getFavoriteFeedsWithCursor = this.favoritesCursorApi.createFunction();
     this.getReadFeedsWithCursor = this.readCursorApi.createFunction();
+    this.getArticlesWithCursor = this.articlesCursorApi.createFunction();
   }
 
   // Health check

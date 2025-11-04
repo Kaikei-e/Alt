@@ -39,6 +39,7 @@ export const feedsApi = {
   getFeedsWithCursor: feedsApiInstance.getFeedsWithCursor,
   getFavoriteFeedsWithCursor: feedsApiInstance.getFavoriteFeedsWithCursor,
   getReadFeedsWithCursor: feedsApiInstance.getReadFeedsWithCursor,
+  getArticlesWithCursor: feedsApiInstance.getArticlesWithCursor,
 
   // Legacy pagination methods
   getFeeds: feedsApiInstance.getFeeds.bind(feedsApiInstance),
