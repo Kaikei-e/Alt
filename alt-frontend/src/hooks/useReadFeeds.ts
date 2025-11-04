@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Feed } from "@/schema/feed";
-import { feedsApi } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { feedsApi } from "@/lib/api";
+import type { Feed } from "@/schema/feed";
 
 export interface UseReadFeedsResult {
   feeds: Feed[];
@@ -41,10 +41,7 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
         // Mark as being prefetched
         prefetchCacheRef.current.set(nextCursor, "loading");
 
-        const response = await feedsApi.getReadFeedsWithCursor(
-          nextCursor,
-          initialLimit,
-        );
+        const response = await feedsApi.getReadFeedsWithCursor(nextCursor, initialLimit);
 
         // Cache the response
         prefetchCacheRef.current.set(nextCursor, response);
@@ -60,7 +57,7 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
         prefetchCacheRef.current.delete(nextCursor);
       }
     },
-    [initialLimit, enablePrefetch],
+    [initialLimit, enablePrefetch]
   );
 
   const loadFeeds = useCallback(
@@ -73,11 +70,7 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
         let response: { data: Feed[]; next_cursor: string | null };
 
         // Check if we have prefetched data (only if prefetch is enabled)
-        if (
-          enablePrefetch &&
-          currentCursor &&
-          prefetchCacheRef.current.has(currentCursor)
-        ) {
+        if (enablePrefetch && currentCursor && prefetchCacheRef.current.has(currentCursor)) {
           const cachedResponse = prefetchCacheRef.current.get(currentCursor);
           if (cachedResponse !== "loading") {
             response = cachedResponse as {
@@ -87,17 +80,11 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
             prefetchCacheRef.current.delete(currentCursor); // Use and remove from cache
           } else {
             // If cache is loading, fetch normally
-            response = await feedsApi.getReadFeedsWithCursor(
-              currentCursor,
-              initialLimit,
-            );
+            response = await feedsApi.getReadFeedsWithCursor(currentCursor, initialLimit);
           }
         } else {
           // No cache, fetch normally
-          response = await feedsApi.getReadFeedsWithCursor(
-            currentCursor,
-            initialLimit,
-          );
+          response = await feedsApi.getReadFeedsWithCursor(currentCursor, initialLimit);
         }
 
         if (resetData) {
@@ -129,7 +116,7 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
         setIsLoading(false);
       }
     },
-    [cursor, initialLimit, prefetchNextPage, enablePrefetch],
+    [cursor, initialLimit, prefetchNextPage, enablePrefetch]
   );
 
   const loadMore = useCallback(() => {
@@ -157,11 +144,7 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
         setIsLoading(true);
         setError(null);
 
-
-        const response = await feedsApi.getReadFeedsWithCursor(
-          undefined,
-          initialLimit,
-        );
+        const response = await feedsApi.getReadFeedsWithCursor(undefined, initialLimit);
         setFeeds(response.data);
         setCursor(response.next_cursor || undefined);
         setHasMore(response.next_cursor !== null);
@@ -177,7 +160,7 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
         console.error("[useReadFeeds] Error loading feeds:", error);
 
         // Handle 404 as empty dataset (no feeds yet) instead of error
-        if (error.message?.includes('404') || error.message?.includes('Not Found')) {
+        if (error.message?.includes("404") || error.message?.includes("Not Found")) {
           setFeeds([]);
           setCursor(undefined);
           setHasMore(false);

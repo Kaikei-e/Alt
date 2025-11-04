@@ -1,41 +1,37 @@
-import React, { useMemo } from "react";
-import { DesktopLayout } from "../layout/DesktopLayout";
-import { PageHeader } from "./PageHeader";
-import { StatsGrid } from "./StatsGrid";
-import { ActivityFeed } from "./ActivityFeed";
-import { QuickActionsPanel } from "./QuickActionsPanel";
-import { CallToActionBar } from "./CallToActionBar";
+import {
+  ArrowRight,
+  BarChart3,
+  Bookmark,
+  Download,
+  Filter,
+  Home,
+  Plus,
+  Rss,
+  Search,
+  Settings,
+} from "lucide-react";
+import type React from "react";
+import { useMemo } from "react";
 import { useHomeStats } from "@/hooks/useHomeStats";
 import { useRecentActivity } from "@/hooks/useRecentActivity";
 import { transformFeedStats } from "@/utils/dataTransformers";
-import {
-  Home,
-  Rss,
-  BarChart3,
-  Settings,
-  ArrowRight,
-  Download,
-  Plus,
-  Search,
-  Bookmark,
-  Filter,
-} from "lucide-react";
+import { DesktopLayout } from "../layout/DesktopLayout";
+import { ActivityFeed } from "./ActivityFeed";
+import { CallToActionBar } from "./CallToActionBar";
+import { PageHeader } from "./PageHeader";
+import { QuickActionsPanel } from "./QuickActionsPanel";
+import { StatsGrid } from "./StatsGrid";
 
 export const DesktopHomePage: React.FC = () => {
   // Fetch real data from hooks
-  const { feedStats, isLoadingStats, statsError, unreadCount, refreshStats } =
-    useHomeStats();
+  const { feedStats, isLoadingStats, statsError, unreadCount, refreshStats } = useHomeStats();
 
-  const {
-    activities,
-    isLoading: isLoadingActivity,
-    error: activityError,
-  } = useRecentActivity();
+  const { activities, isLoading: isLoadingActivity, error: activityError } = useRecentActivity();
 
   // Transform feed stats to stats card format
   const statsData = useMemo(
     () => transformFeedStats(feedStats, unreadCount),
-    [feedStats, unreadCount],
+    [feedStats, unreadCount]
   );
 
   // Mock sidebar navigation items (keep as before since this doesn't come from API)
@@ -119,10 +115,7 @@ export const DesktopHomePage: React.FC = () => {
   if (statsError || activityError) {
     return (
       <DesktopLayout sidebarProps={sidebarProps}>
-        <div
-          className="flex flex-col gap-8"
-          data-testid="desktop-home-container"
-        >
+        <div className="flex flex-col gap-8" data-testid="desktop-home-container">
           <PageHeader
             title="Dashboard Overview"
             description="Monitor your RSS feeds and AI-powered content insights"
@@ -144,10 +137,7 @@ export const DesktopHomePage: React.FC = () => {
 
   return (
     <DesktopLayout sidebarProps={sidebarProps}>
-      <div
-        className="flex flex-col gap-8"
-        data-testid="desktop-home-container"
-      >
+      <div className="flex flex-col gap-8" data-testid="desktop-home-container">
         <PageHeader
           title="Dashboard Overview"
           description="Monitor your RSS feeds and AI-powered content insights"

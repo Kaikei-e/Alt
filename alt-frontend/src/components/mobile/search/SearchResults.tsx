@@ -1,11 +1,11 @@
 "use client";
 
-import { Box, VStack, Text, HStack, Heading, Spinner, Button } from "@chakra-ui/react";
+import { Box, Button, Heading, HStack, Spinner, Text, VStack } from "@chakra-ui/react";
 import Link from "next/link";
 import { useState } from "react";
-import { BackendFeedItem, FetchArticleSummaryResponse } from "@/schema/feed";
-import { FeedsApi } from "@/lib/api/feeds/FeedsApi";
 import { ApiClient } from "@/lib/api/core/ApiClient";
+import { FeedsApi } from "@/lib/api/feeds/FeedsApi";
+import type { BackendFeedItem, FetchArticleSummaryResponse } from "@/schema/feed";
 
 interface SearchResultsProps {
   results: BackendFeedItem[];
@@ -69,16 +69,18 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
       if (summarizeResponse.success && summarizeResponse.summary) {
         // Create a FetchArticleSummaryResponse from the summarize response
         const summaryData: FetchArticleSummaryResponse = {
-          matched_articles: [{
-            article_url: result.link || "",
-            title: result.title,
-            author: result.author?.name || result.authors?.[0]?.name,
-            content: summarizeResponse.summary,
-            content_type: "summary",
-            published_at: result.published || new Date().toISOString(),
-            fetched_at: new Date().toISOString(),
-            source_id: summarizeResponse.article_id,
-          }],
+          matched_articles: [
+            {
+              article_url: result.link || "",
+              title: result.title,
+              author: result.author?.name || result.authors?.[0]?.name,
+              content: summarizeResponse.summary,
+              content_type: "summary",
+              published_at: result.published || new Date().toISOString(),
+              fetched_at: new Date().toISOString(),
+              source_id: summarizeResponse.article_id,
+            },
+          ],
           total_matched: 1,
           requested_count: 1,
         };
@@ -339,13 +341,7 @@ const EmptyState = ({ searchQuery }: { searchQuery: string }) => (
   </Box>
 );
 
-const SearchStats = ({
-  count,
-  searchTime,
-}: {
-  count: number;
-  searchTime?: number;
-}) => (
+const SearchStats = ({ count, searchTime }: { count: number; searchTime?: number }) => (
   <HStack justify="space-between" align="center" mb={4}>
     <Text color="var(--alt-primary)" fontWeight="700" fontSize="lg">
       Search Results ({count})
@@ -389,11 +385,7 @@ export const SearchResults = ({
       <Box as="ul" role="list" aria-label="Search results">
         <VStack gap={4} align="stretch">
           {results.map((result, index) => (
-            <Box
-              as="li"
-              key={result.link || `result-${index}`}
-              listStyleType="none"
-            >
+            <Box as="li" key={result.link || `result-${index}`} listStyleType="none">
               <SearchResultItem result={result} />
             </Box>
           ))}

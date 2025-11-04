@@ -1,12 +1,12 @@
 "use client";
 
-import { SearchArticles } from "@/components/mobile/search/SearchArticles";
-import { ArticleSearchResults } from "@/components/mobile/search/ArticleSearchResults";
-import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
-import { Box, VStack, Text } from "@chakra-ui/react";
-import { useState, Suspense } from "react";
-import { Article } from "@/schema/article";
 import { CircularProgress } from "@chakra-ui/progress";
+import { Box, Text, VStack } from "@chakra-ui/react";
+import { Suspense, useState } from "react";
+import { ArticleSearchResults } from "@/components/mobile/search/ArticleSearchResults";
+import { SearchArticles } from "@/components/mobile/search/SearchArticles";
+import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
+import type { Article } from "@/schema/article";
 
 export default function SearchPage() {
   const [articles, setArticles] = useState<Article[]>([]);
@@ -36,8 +36,7 @@ export default function SearchPage() {
             maxWidth="400px"
             lineHeight="1.7"
           >
-            Explore articles from your subscribed feeds with powerful full-text
-            search
+            Explore articles from your subscribed feeds with powerful full-text search
           </Text>
         </VStack>
 
@@ -73,12 +72,7 @@ export default function SearchPage() {
             border="2px solid #dc2626"
             boxShadow="var(--shadow-sm)"
           >
-            <Text
-              color="#dc2626"
-              fontSize="sm"
-              textAlign="center"
-              fontWeight="medium"
-            >
+            <Text color="#dc2626" fontSize="sm" textAlign="center" fontWeight="medium">
               {error}
             </Text>
           </Box>
@@ -101,14 +95,9 @@ export default function SearchPage() {
             border="2px solid var(--surface-border)"
             boxShadow="var(--shadow-sm)"
           >
-            <Text
-              color="var(--text-secondary)"
-              fontSize="sm"
-              textAlign="center"
-              lineHeight="1.7"
-            >
-              💡 Try searching for topics like &quot;AI&quot;,
-              &quot;technology&quot;, or &quot;news&quot;
+            <Text color="var(--text-secondary)" fontSize="sm" textAlign="center" lineHeight="1.7">
+              💡 Try searching for topics like &quot;AI&quot;, &quot;technology&quot;, or
+              &quot;news&quot;
             </Text>
           </Box>
         )}

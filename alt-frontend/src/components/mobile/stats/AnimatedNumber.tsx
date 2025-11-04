@@ -1,6 +1,6 @@
 "use client";
 
-import { Text, Box, TextProps } from "@chakra-ui/react";
+import { Box, Text, type TextProps } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 
 interface AnimatedNumberProps {
@@ -30,9 +30,7 @@ export function AnimatedNumber({
     if (displayValue === value) return;
 
     // Check for reduced motion preference
-    const reducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     if (reducedMotion) {
       // Skip animation for accessibility
@@ -51,7 +49,7 @@ export function AnimatedNumber({
       const progress = Math.min(elapsed / duration, 1);
 
       // Easing function (ease-out cubic)
-      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      const easedProgress = 1 - (1 - progress) ** 3;
 
       const currentValue = startValue + difference * easedProgress;
       setDisplayValue(Math.round(currentValue));
@@ -105,9 +103,7 @@ export function AnimatedNumber({
         aria-live="assertive"
         aria-atomic="true"
       >
-        {isAnimating
-          ? `Updating value to ${formattedValue}`
-          : `Current value: ${formattedValue}`}
+        {isAnimating ? `Updating value to ${formattedValue}` : `Current value: ${formattedValue}`}
       </Box>
     </>
   );

@@ -1,9 +1,10 @@
 // src/test-utils.tsx
-import React from "react";
-import { render, RenderOptions, cleanup } from "@testing-library/react";
+
 import { ChakraProvider, createSystem, defaultConfig } from "@chakra-ui/react";
-import { vi } from "vitest";
+import { cleanup, type RenderOptions, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type React from "react";
+import { vi } from "vitest";
 
 // Create a minimal system for testing
 const testSystem = createSystem(defaultConfig);
@@ -14,10 +15,7 @@ const TestWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 // Enhanced render function with automatic cleanup
-const customRender = (
-  ui: React.ReactElement,
-  options?: Omit<RenderOptions, "wrapper">,
-) => {
+const customRender = (ui: React.ReactElement, options?: Omit<RenderOptions, "wrapper">) => {
   // Force cleanup before rendering
   cleanup();
 
@@ -38,10 +36,7 @@ const customRender = (
 export const renderWithProviders = customRender;
 
 // Helper to safely get unique elements
-export const getSafeElement = (
-  getByTestId: (id: string) => HTMLElement,
-  testId: string,
-) => {
+export const getSafeElement = (getByTestId: (id: string) => HTMLElement, testId: string) => {
   try {
     return getByTestId(testId);
   } catch (error) {
@@ -56,7 +51,7 @@ export const getSafeElement = (
 // Helper to wait for unique element
 export const waitForUniqueElement = async (
   testId: string,
-  timeout: number = 3000,
+  timeout: number = 3000
 ): Promise<HTMLElement> => {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
@@ -72,8 +67,8 @@ export const waitForUniqueElement = async (
       if (Date.now() - startTime > timeout) {
         reject(
           new Error(
-            `Timeout waiting for unique element with testId "${testId}". Found ${elements.length} elements.`,
-          ),
+            `Timeout waiting for unique element with testId "${testId}". Found ${elements.length} elements.`
+          )
         );
         return;
       }

@@ -26,17 +26,13 @@ export default function DesktopError({
   return (
     <div className="desktop-error-container">
       <h2 className="desktop-error-title">デスクトップエラー</h2>
-      <p className="desktop-error-message">
-        デスクトップページでエラーが発生しました。
-      </p>
+      <p className="desktop-error-message">デスクトップページでエラーが発生しました。</p>
       <button onClick={handleReset} className="desktop-error-button">
         再試行
       </button>
       {process.env.NODE_ENV === "development" && (
         <details className="desktop-error-details">
-          <summary className="desktop-error-summary">
-            エラー詳細 (開発環境のみ)
-          </summary>
+          <summary className="desktop-error-summary">エラー詳細 (開発環境のみ)</summary>
           <pre className="desktop-error-pre">{error.stack}</pre>
         </details>
       )}

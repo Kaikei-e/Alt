@@ -1,10 +1,10 @@
-import { Button, Flex, Text, Box } from "@chakra-ui/react";
-import { SanitizedFeed } from "@/schema/feed";
-import Link from "next/link";
-import { useCallback, useMemo, KeyboardEvent } from "react";
-import { FeedDetails } from "./FeedDetails";
-import { truncateFeedDescription } from "@/lib/utils/textUtils";
+import { Box, Button, Flex, Text } from "@chakra-ui/react";
 import { SquareArrowOutUpRight } from "lucide-react";
+import Link from "next/link";
+import { type KeyboardEvent, useCallback, useMemo } from "react";
+import { truncateFeedDescription } from "@/lib/utils/textUtils";
+import type { SanitizedFeed } from "@/schema/feed";
+import { FeedDetails } from "./FeedDetails";
 
 type FeedCardProps = {
   feed: SanitizedFeed;
@@ -12,15 +12,11 @@ type FeedCardProps = {
   setIsReadStatus: (feedLink: string) => void; // 親のonMarkAsReadを呼び出すため、feedLinkを渡す
 };
 
-const FeedCard = function FeedCard({
-  feed,
-  isReadStatus,
-  setIsReadStatus,
-}: FeedCardProps) {
+const FeedCard = function FeedCard({ feed, isReadStatus, setIsReadStatus }: FeedCardProps) {
   // Memoize expensive description truncation calculation
   const truncatedDescription = useMemo(
     () => truncateFeedDescription(feed.description),
-    [feed.description],
+    [feed.description]
   );
 
   const handleReadStatus = useCallback(
@@ -29,7 +25,7 @@ const FeedCard = function FeedCard({
       setIsReadStatus(url);
       // setIsReadStatusは親のonMarkAsReadを呼び出す
     },
-    [setIsReadStatus],
+    [setIsReadStatus]
   );
 
   const handleKeyDown = useCallback(
@@ -39,7 +35,7 @@ const FeedCard = function FeedCard({
         handleReadStatus(feed.link);
       }
     },
-    [feed.link, handleReadStatus],
+    [feed.link, handleReadStatus]
   );
 
   // Don't render if already read
@@ -104,22 +100,13 @@ const FeedCard = function FeedCard({
           </Flex>
 
           {/* Description */}
-          <Text
-            fontSize="xs"
-            color="var(--text-primary)"
-            lineHeight="1.5"
-            wordBreak="break-word"
-          >
+          <Text fontSize="xs" color="var(--text-primary)" lineHeight="1.5" wordBreak="break-word">
             {truncatedDescription}
           </Text>
 
           {/* Author name (if available) */}
           {feed.author && (
-            <Text
-              fontSize="xs"
-              color="var(--text-secondary)"
-              fontStyle="italic"
-            >
+            <Text fontSize="xs" color="var(--text-secondary)" fontStyle="italic">
               by {feed.author}
             </Text>
           )}

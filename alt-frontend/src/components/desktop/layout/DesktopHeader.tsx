@@ -1,10 +1,10 @@
 "use client";
 
-import React from "react";
-import { Flex, Heading, Input, Box } from "@chakra-ui/react";
+import { Box, Flex, Heading, Input } from "@chakra-ui/react";
 import { Search } from "lucide-react";
-import { DesktopHeaderProps } from "@/types/desktop-feeds";
+import type React from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import type { DesktopHeaderProps } from "@/types/desktop-feeds";
 
 export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
   searchQuery = "",
@@ -20,11 +20,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
     >
       {/* 左側：ロゴと統計 */}
       <Flex align="center" gap={6}>
-        <Heading
-          size="lg"
-          color="var(--text-primary)"
-          fontFamily="var(--font-display)"
-        >
+        <Heading size="lg" color="var(--text-primary)" fontFamily="var(--font-display)">
           Alt / Feeds
         </Heading>
       </Flex>

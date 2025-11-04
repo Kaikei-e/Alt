@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useRef, useCallback, useMemo } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { Box, Text, VStack } from "@chakra-ui/react";
-import { Feed } from "@/schema/feed";
-import { DesktopFeed } from "@/types/desktop-feed";
-import { DesktopFeedCard } from "./DesktopFeedCard";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import type React from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useVirtualizationMetrics } from "@/hooks/useVirtualizationMetrics";
+import type { Feed } from "@/schema/feed";
+import type { DesktopFeed } from "@/types/desktop-feed";
+import { DesktopFeedCard } from "./DesktopFeedCard";
 
 interface VirtualDesktopTimelineProps {
   feeds: Feed[];
@@ -29,9 +30,7 @@ const estimateDesktopItemSize = (feed: Feed): number => {
   const metadataHeight = 60; // Metadata section
   const actionHeight = 50; // Action buttons
 
-  return (
-    baseHeight + titleHeight + descriptionHeight + metadataHeight + actionHeight
-  );
+  return baseHeight + titleHeight + descriptionHeight + metadataHeight + actionHeight;
 };
 
 // Transform Feed to DesktopFeed
@@ -92,7 +91,7 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
   // Filter out read feeds
   const visibleFeeds = useMemo(
     () => desktopFeeds.filter((feed) => !readFeeds.has(feed.id)),
-    [desktopFeeds, readFeeds],
+    [desktopFeeds, readFeeds]
   );
 
   // Dynamic size estimation
@@ -103,7 +102,7 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
       }
       return 320; // Default desktop card height
     },
-    [visibleFeeds, enableDynamicSizing],
+    [visibleFeeds, enableDynamicSizing]
   );
 
   // Measurement function for dynamic sizing
@@ -115,7 +114,7 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
       }
       return 0;
     },
-    [enableDynamicSizing],
+    [enableDynamicSizing]
   );
 
   // Create virtualizer with desktop-specific settings
@@ -132,35 +131,35 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
     (feedId: string) => {
       onMarkAsRead(feedId);
     },
-    [onMarkAsRead],
+    [onMarkAsRead]
   );
 
   const handleToggleFavorite = useCallback(
     (feedId: string) => {
       onToggleFavorite(feedId);
     },
-    [onToggleFavorite],
+    [onToggleFavorite]
   );
 
   const handleToggleBookmark = useCallback(
     (feedId: string) => {
       onToggleBookmark(feedId);
     },
-    [onToggleBookmark],
+    [onToggleBookmark]
   );
 
   const handleReadLater = useCallback(
     (feedId: string) => {
       onReadLater(feedId);
     },
-    [onReadLater],
+    [onReadLater]
   );
 
   const handleViewArticle = useCallback(
     (feedId: string) => {
       onViewArticle(feedId);
     },
-    [onViewArticle],
+    [onViewArticle]
   );
 
   // Empty state handling

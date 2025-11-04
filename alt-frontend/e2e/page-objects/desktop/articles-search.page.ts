@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Desktop Articles Search Page Object
@@ -25,32 +25,30 @@ export class DesktopArticlesSearchPage extends BasePage {
     super(page);
 
     // Initialize locators
-    this.pageHeading = page.getByRole('heading', { name: /search/i });
-    this.searchInput = page.getByRole('searchbox').or(
-      page.getByPlaceholder(/search/i)
-    );
-    this.searchButton = page.getByRole('button', { name: /search/i });
-    this.resultsList = page.getByRole('list').filter({
-      has: page.getByRole('article'),
+    this.pageHeading = page.getByRole("heading", { name: /search/i });
+    this.searchInput = page.getByRole("searchbox").or(page.getByPlaceholder(/search/i));
+    this.searchButton = page.getByRole("button", { name: /search/i });
+    this.resultsList = page.getByRole("list").filter({
+      has: page.getByRole("article"),
     });
-    this.filterPanel = page.getByRole('region', { name: /filter/i }).or(
-      page.locator('[data-testid="filter-panel"]')
-    );
+    this.filterPanel = page
+      .getByRole("region", { name: /filter/i })
+      .or(page.locator('[data-testid="filter-panel"]'));
     this.feedFilter = page.getByLabel(/feed|source/i);
     this.dateFilter = page.getByLabel(/date|time/i);
     this.statusFilter = page.getByLabel(/status/i);
     this.sortSelect = page.getByLabel(/sort|order/i);
     this.noResultsMessage = page.getByText(/no results|not found|no articles found/i);
     this.resultCount = page.locator('[data-testid="result-count"]');
-    this.clearButton = page.getByRole('button', { name: /clear|reset/i });
-    this.sidebar = page.getByRole('navigation', { name: /sidebar/i });
+    this.clearButton = page.getByRole("button", { name: /clear|reset/i });
+    this.sidebar = page.getByRole("navigation", { name: /sidebar/i });
   }
 
   /**
    * Navigate to search page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/desktop/articles/search');
+    await this.page.goto("/desktop/articles/search");
     await this.waitForLoad();
   }
 
@@ -76,7 +74,7 @@ export class DesktopArticlesSearchPage extends BasePage {
    */
   async searchWithEnter(query: string): Promise<void> {
     await this.searchInput.fill(query);
-    await this.searchInput.press('Enter');
+    await this.searchInput.press("Enter");
     await this.waitForLoadingToComplete();
   }
 
@@ -96,7 +94,7 @@ export class DesktopArticlesSearchPage extends BasePage {
    */
   async getResultsCount(): Promise<number> {
     try {
-      return await this.resultsList.getByRole('article').count();
+      return await this.resultsList.getByRole("article").count();
     } catch {
       return 0;
     }
@@ -116,7 +114,7 @@ export class DesktopArticlesSearchPage extends BasePage {
    * Click on result by index
    */
   async clickResult(index: number): Promise<void> {
-    const results = this.resultsList.getByRole('article');
+    const results = this.resultsList.getByRole("article");
     await results.nth(index).click();
   }
 
@@ -124,9 +122,7 @@ export class DesktopArticlesSearchPage extends BasePage {
    * Click on result by title
    */
   async clickResultByTitle(title: string): Promise<void> {
-    const result = this.resultsList
-      .getByRole('article')
-      .filter({ hasText: title });
+    const result = this.resultsList.getByRole("article").filter({ hasText: title });
     await result.click();
   }
 
@@ -153,7 +149,7 @@ export class DesktopArticlesSearchPage extends BasePage {
   /**
    * Apply status filter
    */
-  async filterByStatus(status: 'read' | 'unread' | 'all'): Promise<void> {
+  async filterByStatus(status: "read" | "unread" | "all"): Promise<void> {
     if ((await this.statusFilter.count()) > 0) {
       await this.statusFilter.selectOption(status);
       await this.waitForLoadingToComplete();
@@ -186,8 +182,8 @@ export class DesktopArticlesSearchPage extends BasePage {
    * Get all result titles
    */
   async getResultTitles(): Promise<string[]> {
-    const results = this.resultsList.getByRole('article');
-    const headings = results.getByRole('heading');
+    const results = this.resultsList.getByRole("article");
+    const headings = results.getByRole("heading");
     return await headings.allTextContents();
   }
 
@@ -208,7 +204,7 @@ export class DesktopArticlesSearchPage extends BasePage {
    */
   async openFilterPanel(): Promise<void> {
     if (!(await this.isFilterPanelVisible())) {
-      const filterToggle = this.page.getByRole('button', {
+      const filterToggle = this.page.getByRole("button", {
         name: /filter|show filters/i,
       });
 

@@ -1,8 +1,8 @@
 "use client";
 
+import { ArrowRight, Download } from "lucide-react";
 import { CallToActionBar } from "@/components/desktop/home/CallToActionBar";
 import { ThemeProvider } from "@/providers/ThemeProvider";
-import { ArrowRight, Download } from "lucide-react";
 
 export default function CallToActionBarTest() {
   const ctaActions = [

@@ -13,9 +13,9 @@ export class CursorPagination<T> {
   constructor(
     private fetchFn: (
       cursor?: string,
-      limit?: number,
+      limit?: number
     ) => Promise<{ data: T[]; next_cursor: string | null }>,
-    private limit: number = 20,
+    private limit: number = 20
   ) {}
 
   get data() {
@@ -76,8 +76,7 @@ export class CursorPagination<T> {
       this._cursor = response.next_cursor;
       this._hasMore = response.next_cursor !== null;
     } catch (err) {
-      this._error =
-        err instanceof Error ? err.message : "Failed to load more data";
+      this._error = err instanceof Error ? err.message : "Failed to load more data";
     } finally {
       this._isLoading = false;
     }

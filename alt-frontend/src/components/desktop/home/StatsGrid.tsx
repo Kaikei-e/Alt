@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { Grid, Box, Text } from "@chakra-ui/react";
-import { Rss, FileText, Zap } from "lucide-react";
+import { Box, Grid, Text } from "@chakra-ui/react";
+import { FileText, Rss, Zap } from "lucide-react";
+import type React from "react";
 import { StatsCard } from "./StatsCard";
 
 interface StatsGridProps {
@@ -19,11 +19,7 @@ interface StatsGridProps {
   error?: string | null;
 }
 
-export const StatsGrid: React.FC<StatsGridProps> = ({
-  stats,
-  isLoading = false,
-  error = null,
-}) => {
+export const StatsGrid: React.FC<StatsGridProps> = ({ stats, isLoading = false, error = null }) => {
   if (error) {
     return (
       <Box
@@ -40,12 +36,7 @@ export const StatsGrid: React.FC<StatsGridProps> = ({
   }
 
   return (
-    <Grid
-      data-testid="stats-grid"
-      templateColumns="repeat(3, 1fr)"
-      gap={6}
-      w="full"
-    >
+    <Grid data-testid="stats-grid" templateColumns="repeat(3, 1fr)" gap={6} w="full">
       {stats.length > 0
         ? stats.map((stat) => (
             <StatsCard
@@ -64,25 +55,13 @@ export const StatsGrid: React.FC<StatsGridProps> = ({
             <StatsCard
               key={`loading-${index}`}
               icon={index === 0 ? Rss : index === 1 ? FileText : Zap}
-              label={
-                index === 0
-                  ? "Total Feeds"
-                  : index === 1
-                    ? "AI Processed"
-                    : "Unread Articles"
-              }
+              label={index === 0 ? "Total Feeds" : index === 1 ? "AI Processed" : "Unread Articles"}
               value={0}
               trend={index === 0 ? "+12%" : index === 1 ? "+89%" : "+5%"}
               trendLabel={
-                index === 0
-                  ? "from last week"
-                  : index === 1
-                    ? "efficiency boost"
-                    : "new today"
+                index === 0 ? "from last week" : index === 1 ? "efficiency boost" : "new today"
               }
-              color={
-                index === 0 ? "primary" : index === 1 ? "secondary" : "tertiary"
-              }
+              color={index === 0 ? "primary" : index === 1 ? "secondary" : "tertiary"}
               isLoading={isLoading}
             />
           ))}

@@ -6,7 +6,7 @@ export async function whoami() {
   const c = await cookies();
   const KRATOS_INTERNAL = process.env.KRATOS_INTERNAL_URL;
   if (!KRATOS_INTERNAL) throw new Error("KRATOS_INTERNAL_URL missing");
-  return fetch(KRATOS_INTERNAL + "/sessions/whoami", {
+  return fetch(`${KRATOS_INTERNAL}/sessions/whoami`, {
     headers: { cookie: c.toString(), accept: "application/json" },
     cache: "no-store",
   });

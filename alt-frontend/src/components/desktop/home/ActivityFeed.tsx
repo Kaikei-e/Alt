@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { Box, VStack, HStack, Text, Icon } from "@chakra-ui/react";
+import { Box, HStack, Icon, Text, VStack } from "@chakra-ui/react";
 import { Activity } from "lucide-react";
+import type React from "react";
 import { ActivityItem } from "./ActivityItem";
 
 interface ActivityFeedProps {
@@ -32,12 +32,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
       display="flex"
       flexDirection="column"
     >
-      <HStack
-        data-testid="activity-header"
-        mb={4}
-        align="center"
-        justify="space-between"
-      >
+      <HStack data-testid="activity-header" mb={4} align="center" justify="space-between">
         <HStack>
           <Icon as={Activity} color="var(--alt-primary)" boxSize={5} />
           <Text fontSize="lg" fontWeight="semibold" color="var(--text-primary)">

@@ -1,18 +1,10 @@
 "use client";
 
-import {
-  Box,
-  Button,
-  Input,
-  VStack,
-  Text,
-  Container,
-  Heading,
-} from "@chakra-ui/react";
+import { Box, Button, Container, Heading, Input, Text, VStack } from "@chakra-ui/react";
 import { useState } from "react";
+import * as v from "valibot";
 import { feedsApi } from "@/lib/api";
 import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
-import * as v from "valibot";
 
 export default function DesktopRegisterFeedsPage() {
   const [feedUrl, setFeedUrl] = useState("");
@@ -99,23 +91,11 @@ export default function DesktopRegisterFeedsPage() {
           </Text>
         </Box>
 
-        <Box
-          className="glass"
-          p={8}
-          borderRadius="18px"
-          maxW="500px"
-          mx="auto"
-          w="full"
-        >
+        <Box className="glass" p={8} borderRadius="18px" maxW="500px" mx="auto" w="full">
           <form onSubmit={handleSubmit}>
             <VStack gap={6}>
               <Box width="full">
-                <Text
-                  color="gray.700"
-                  mb={3}
-                  fontSize="md"
-                  fontWeight="semibold"
-                >
+                <Text color="gray.700" mb={3} fontSize="md" fontWeight="semibold">
                   Feed URL
                 </Text>
                 <Input

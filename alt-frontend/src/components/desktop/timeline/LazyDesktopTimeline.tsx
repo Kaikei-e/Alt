@@ -1,7 +1,7 @@
 "use client";
 
-import React, { Suspense } from "react";
 import { Box, Text } from "@chakra-ui/react";
+import React, { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 
 // Lazy load the desktop timeline component
@@ -10,20 +10,8 @@ const DesktopTimeline = React.lazy(() => import("./DesktopTimeline"));
 // Loading fallback component
 const DesktopTimelineLoading = () => (
   <Box w="100%" minH="0" flex={1} bg="var(--app-bg)">
-    <Box
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      h="100vh"
-      p={4}
-    >
-      <Box
-        className="glass"
-        p={8}
-        borderRadius="var(--radius-xl)"
-        textAlign="center"
-        maxW="400px"
-      >
+    <Box display="flex" alignItems="center" justifyContent="center" h="100vh" p={4}>
+      <Box className="glass" p={8} borderRadius="var(--radius-xl)" textAlign="center" maxW="400px">
         <div
           style={{
             width: "32px",
@@ -55,20 +43,8 @@ const DesktopTimelineError = ({
   resetErrorBoundary: () => void;
 }) => (
   <Box w="100%" minH="0" flex={1} bg="var(--app-bg)">
-    <Box
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      h="100vh"
-      p={4}
-    >
-      <Box
-        className="glass"
-        p={8}
-        borderRadius="var(--radius-xl)"
-        textAlign="center"
-        maxW="400px"
-      >
+    <Box display="flex" alignItems="center" justifyContent="center" h="100vh" p={4}>
+      <Box className="glass" p={8} borderRadius="var(--radius-xl)" textAlign="center" maxW="400px">
         <Text fontSize="2xl" mb={4}>
           ⚠️
         </Text>

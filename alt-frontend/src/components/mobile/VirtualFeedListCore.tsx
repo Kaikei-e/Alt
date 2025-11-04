@@ -1,9 +1,10 @@
 "use client";
 
-import { useVirtualizer } from "@tanstack/react-virtual";
-import React, { useRef, useCallback, useEffect } from "react";
 import { Box, Text } from "@chakra-ui/react";
-import { Feed } from "@/schema/feed";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import type React from "react";
+import { useCallback, useEffect, useRef } from "react";
+import type { Feed } from "@/schema/feed";
 import FeedCard from "./FeedCard";
 
 interface VirtualFeedListCoreProps {
@@ -46,7 +47,7 @@ export const VirtualFeedListCore: React.FC<VirtualFeedListCoreProps> = ({
     (feedLink: string) => {
       onMarkAsRead(feedLink);
     },
-    [onMarkAsRead],
+    [onMarkAsRead]
   );
 
   if (feeds.length === 0) {

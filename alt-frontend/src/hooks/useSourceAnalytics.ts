@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { SourceAnalytic } from "@/types/analytics";
+import { useEffect, useState } from "react";
 import { mockSourceAnalytics } from "@/data/mockAnalyticsData";
+import type { SourceAnalytic } from "@/types/analytics";
 
 export const useSourceAnalytics = () => {
   const [sources, setSources] = useState<SourceAnalytic[]>([]);

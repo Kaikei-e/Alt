@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
-import { LoginFlow } from "@ory/client";
+import type { LoginFlow } from "@ory/client";
+import { useEffect, useState } from "react";
 import { kratos } from "@/lib/kratos";
 import {
-  isFlowExpiredError,
-  handleFlowExpiredError,
   getFlowErrorMessage,
+  handleFlowExpiredError,
+  isFlowExpiredError,
 } from "@/lib/kratos-errors";
 
 export function useKratosFlow(flowId: string) {

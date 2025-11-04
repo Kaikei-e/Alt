@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Article } from "@/schema/article";
-import { feedsApi } from "@/lib/api";
-import { Input, Box, VStack, Text } from "@chakra-ui/react";
-import { articleSearchQuerySchema } from "@/schema/validation/articleSearchQuery";
-import * as v from "valibot";
+import { Box, Input, Text, VStack } from "@chakra-ui/react";
 import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import * as v from "valibot";
+import { feedsApi } from "@/lib/api";
+import type { Article } from "@/schema/article";
+import { articleSearchQuerySchema } from "@/schema/validation/articleSearchQuery";
 
 interface SearchArticlesProps {
   articles: Article[];
@@ -110,9 +110,7 @@ export const SearchArticles = ({
       setArticles(response);
     } catch (err) {
       console.error("Search error:", err);
-      setError(
-        err instanceof Error ? err.message : "Search failed. Please try again.",
-      );
+      setError(err instanceof Error ? err.message : "Search failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -195,9 +193,7 @@ export const SearchArticles = ({
                 outline: "none",
               }}
               _hover={{
-                borderColor: validationError
-                  ? "#dc2626"
-                  : "var(--alt-secondary)",
+                borderColor: validationError ? "#dc2626" : "var(--alt-secondary)",
               }}
               borderRadius="0"
               p={4}
@@ -211,12 +207,8 @@ export const SearchArticles = ({
             disabled={isButtonDisabled}
             onClick={handleButtonClick}
             style={{
-              background: isButtonDisabled
-                ? "var(--surface-bg)"
-                : "var(--surface-bg)",
-              color: isButtonDisabled
-                ? "var(--text-muted)"
-                : "var(--text-primary)",
+              background: isButtonDisabled ? "var(--surface-bg)" : "var(--surface-bg)",
+              color: isButtonDisabled ? "var(--text-muted)" : "var(--text-primary)",
               fontWeight: "700",
               padding: "16px 32px",
               borderRadius: "0",

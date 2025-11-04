@@ -1,36 +1,36 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import {
   Box,
   Button,
   Field,
-  Input,
-  VStack,
-  Text,
-  IconButton,
   Flex,
-  Spinner,
   HStack,
+  IconButton,
+  Input,
+  Spinner,
+  Text,
+  VStack,
 } from "@chakra-ui/react";
 import {
+  AlertCircle,
+  CheckCircle,
   Eye,
   EyeOff,
-  User,
-  Mail,
   Lock,
+  Mail,
   RefreshCw,
-  AlertCircle,
   Shield,
-  CheckCircle,
+  User,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import {
-  validateEmail,
-  validatePassword,
-  validateName,
   RateLimiter,
   sanitizeInput,
+  validateEmail,
+  validateName,
+  validatePassword,
 } from "@/lib/security/security-utils";
 
 type AuthMode = "login" | "register";
@@ -41,8 +41,7 @@ interface AuthFormProps {
 }
 
 export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
-  const { login, register, isLoading, error, clearError, retryLastAction } =
-    useAuth();
+  const { login, register, isLoading, error, clearError, retryLastAction } = useAuth();
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -58,9 +57,7 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
     name?: string;
   }>({});
 
-  const [passwordStrength, setPasswordStrength] = useState<
-    "weak" | "medium" | "strong"
-  >("weak");
+  const [passwordStrength, setPasswordStrength] = useState<"weak" | "medium" | "strong">("weak");
   const [isRateLimited, setIsRateLimited] = useState(false);
   const [rateLimitInfo, setRateLimitInfo] = useState<{
     attemptsRemaining: number;
@@ -73,8 +70,7 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
   const [rateLimiter] = useState(() => new RateLimiter());
 
   const handleInputChange =
-    (field: keyof typeof formData) =>
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    (field: keyof typeof formData) => (e: React.ChangeEvent<HTMLInputElement>) => {
       const value = sanitizeInput(e.target.value);
 
       setFormData((prev) => ({
@@ -95,25 +91,24 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
     let fieldError: string | undefined;
 
     switch (field) {
-      case "email":
+      case "email": {
         const emailValidation = validateEmail(value);
-        fieldError = emailValidation.isValid
-          ? undefined
-          : emailValidation.error;
+        fieldError = emailValidation.isValid ? undefined : emailValidation.error;
         break;
+      }
 
-      case "password":
+      case "password": {
         const passwordValidation = validatePassword(value);
-        fieldError = passwordValidation.isValid
-          ? undefined
-          : passwordValidation.error;
+        fieldError = passwordValidation.isValid ? undefined : passwordValidation.error;
         setPasswordStrength(passwordValidation.strength);
         break;
+      }
 
-      case "name":
+      case "name": {
         const nameValidation = validateName(value);
         fieldError = nameValidation.isValid ? undefined : nameValidation.error;
         break;
+      }
     }
 
     setValidationErrors((prev) => ({
@@ -166,8 +161,7 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
   const validateAllFields = (): boolean => {
     const emailValidation = validateEmail(formData.email);
     const passwordValidation = validatePassword(formData.password);
-    const nameValidation =
-      mode === "register" ? validateName(formData.name) : { isValid: true };
+    const nameValidation = mode === "register" ? validateName(formData.name) : { isValid: true };
 
     const errors: typeof validationErrors = {};
 
@@ -197,9 +191,7 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
   };
 
   const isFormValid = () => {
-    const hasValidationErrors = Object.values(validationErrors).some(
-      (error) => error,
-    );
+    const hasValidationErrors = Object.values(validationErrors).some((error) => error);
 
     if (mode === "login") {
       return (
@@ -328,8 +320,7 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
             fontWeight="semibold"
             onClick={() => mode !== "register" && handleModeToggle()}
             _hover={{
-              bg:
-                mode === "register" ? "var(--alt-primary)" : "var(--alt-glass)",
+              bg: mode === "register" ? "var(--alt-primary)" : "var(--alt-glass)",
             }}
           >
             新規登録
@@ -351,12 +342,7 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
                 <VStack gap={2} align="stretch">
                   <Flex align="center" gap={2}>
                     <Shield size={16} color="white" />
-                    <Text
-                      color="white"
-                      fontSize="sm"
-                      fontWeight="semibold"
-                      fontFamily="heading"
-                    >
+                    <Text color="white" fontSize="sm" fontWeight="semibold" fontFamily="heading">
                       アクセス制限
                     </Text>
                   </Flex>
@@ -386,23 +372,14 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
                 <VStack gap={2} align="stretch">
                   <Flex align="center" gap={2}>
                     <Box color={getErrorColor()}>{getErrorIcon()}</Box>
-                    <Text
-                      color={getErrorColor()}
-                      fontSize="sm"
-                      fontFamily="body"
-                      flex={1}
-                    >
+                    <Text color={getErrorColor()} fontSize="sm" fontFamily="body" flex={1}>
                       {error.message}
                     </Text>
                   </Flex>
 
                   {error.isRetryable && (
                     <Flex justify="space-between" align="center">
-                      <Text
-                        fontSize="xs"
-                        color="var(--text-muted)"
-                        fontFamily="body"
-                      >
+                      <Text fontSize="xs" color="var(--text-muted)" fontFamily="body">
                         {error.retryCount !== undefined && error.retryCount > 0
                           ? `再試行回数: ${error.retryCount}/3`
                           : "再試行可能"}
@@ -455,34 +432,21 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
                   placeholder="山田太郎"
                   bg="var(--alt-glass)"
                   border="1px solid"
-                  borderColor={
-                    validationErrors.name
-                      ? "semantic.error"
-                      : "var(--alt-glass-border)"
-                  }
+                  borderColor={validationErrors.name ? "semantic.error" : "var(--alt-glass-border)"}
                   color="var(--text-primary)"
                   _placeholder={{ color: "var(--text-muted)" }}
                   _hover={{
-                    borderColor: validationErrors.name
-                      ? "semantic.error"
-                      : "var(--alt-primary)",
+                    borderColor: validationErrors.name ? "semantic.error" : "var(--alt-primary)",
                   }}
                   _focus={{
-                    borderColor: validationErrors.name
-                      ? "semantic.error"
-                      : "var(--alt-primary)",
+                    borderColor: validationErrors.name ? "semantic.error" : "var(--alt-primary)",
                     boxShadow: validationErrors.name
                       ? "0 0 0 1px semantic.error"
                       : "0 0 0 1px var(--alt-primary)",
                   }}
                 />
                 {validationErrors.name && (
-                  <Text
-                    color="semantic.error"
-                    fontSize="xs"
-                    fontFamily="body"
-                    mt={1}
-                  >
+                  <Text color="semantic.error" fontSize="xs" fontFamily="body" mt={1}>
                     {validationErrors.name}
                   </Text>
                 )}
@@ -512,34 +476,21 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
                 placeholder="you@example.com"
                 bg="var(--alt-glass)"
                 border="1px solid"
-                borderColor={
-                  validationErrors.email
-                    ? "semantic.error"
-                    : "var(--alt-glass-border)"
-                }
+                borderColor={validationErrors.email ? "semantic.error" : "var(--alt-glass-border)"}
                 color="var(--text-primary)"
                 _placeholder={{ color: "var(--text-muted)" }}
                 _hover={{
-                  borderColor: validationErrors.email
-                    ? "semantic.error"
-                    : "var(--alt-primary)",
+                  borderColor: validationErrors.email ? "semantic.error" : "var(--alt-primary)",
                 }}
                 _focus={{
-                  borderColor: validationErrors.email
-                    ? "semantic.error"
-                    : "var(--alt-primary)",
+                  borderColor: validationErrors.email ? "semantic.error" : "var(--alt-primary)",
                   boxShadow: validationErrors.email
                     ? "0 0 0 1px semantic.error"
                     : "0 0 0 1px var(--alt-primary)",
                 }}
               />
               {validationErrors.email && (
-                <Text
-                  color="semantic.error"
-                  fontSize="xs"
-                  fontFamily="body"
-                  mt={1}
-                >
+                <Text color="semantic.error" fontSize="xs" fontFamily="body" mt={1}>
                   {validationErrors.email}
                 </Text>
               )}
@@ -567,15 +518,11 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
                     type={showPassword ? "text" : "password"}
                     value={formData.password}
                     onChange={handleInputChange("password")}
-                    placeholder={
-                      mode === "register" ? "20文字以上" : "••••••••"
-                    }
+                    placeholder={mode === "register" ? "20文字以上" : "••••••••"}
                     bg="var(--alt-glass)"
                     border="1px solid"
                     borderColor={
-                      validationErrors.password
-                        ? "semantic.error"
-                        : "var(--alt-glass-border)"
+                      validationErrors.password ? "semantic.error" : "var(--alt-glass-border)"
                     }
                     color="var(--text-primary)"
                     _placeholder={{ color: "var(--text-muted)" }}
@@ -599,9 +546,7 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
                     right="0.5rem"
                     top="50%"
                     transform="translateY(-50%)"
-                    aria-label={
-                      showPassword ? "パスワードを隠す" : "パスワードを表示"
-                    }
+                    aria-label={showPassword ? "パスワードを隠す" : "パスワードを表示"}
                     variant="ghost"
                     size="sm"
                     color="var(--text-muted)"
@@ -615,11 +560,7 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
                 {/* Password strength indicator for registration */}
                 {mode === "register" && formData.password && (
                   <Flex align="center" justify="space-between">
-                    <Text
-                      fontSize="xs"
-                      color="var(--text-muted)"
-                      fontFamily="body"
-                    >
+                    <Text fontSize="xs" color="var(--text-muted)" fontFamily="body">
                       パスワード強度:
                     </Text>
                     <Text
@@ -681,13 +622,7 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
           </VStack>
         </form>
 
-        <Text
-          mt={4}
-          fontSize="xs"
-          color="var(--text-muted)"
-          textAlign="center"
-          fontFamily="body"
-        >
+        <Text mt={4} fontSize="xs" color="var(--text-muted)" textAlign="center" fontFamily="body">
           続行することで、利用規約とプライバシーポリシーに同意したものとみなされます
         </Text>
       </Box>

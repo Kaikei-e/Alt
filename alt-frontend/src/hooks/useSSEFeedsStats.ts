@@ -1,19 +1,16 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { setupSSEWithReconnect } from "@/lib/apiSse";
 import { PUBLIC_API_BASE_URL } from "@/lib/env.public";
-import { UnsummarizedFeedStatsSummary } from "@/schema/feedStats";
+import type { UnsummarizedFeedStatsSummary } from "@/schema/feedStats";
 
 // Type guard for validating numeric amounts
 const isValidAmount = (value: unknown): value is number => {
-  return (
-    typeof value === "number" && !isNaN(value) && value >= 0 && isFinite(value)
-  );
+  return typeof value === "number" && !isNaN(value) && value >= 0 && isFinite(value);
 };
 
 export const useSSEFeedsStats = () => {
   const [feedAmount, setFeedAmount] = useState(0);
-  const [unsummarizedArticlesAmount, setUnsummarizedArticlesAmount] =
-    useState(0);
+  const [unsummarizedArticlesAmount, setUnsummarizedArticlesAmount] = useState(0);
   const [totalArticlesAmount, setTotalArticlesAmount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -25,8 +22,7 @@ export const useSSEFeedsStats = () => {
     const healthCheck = setInterval(() => {
       const now = Date.now();
       const timeSinceLastData = now - lastDataReceivedRef.current;
-      const readyState =
-        eventSourceRef.current?.readyState ?? EventSource.CLOSED;
+      const readyState = eventSourceRef.current?.readyState ?? EventSource.CLOSED;
 
       // Backend sends data every 5s, so 15s timeout gives buffer for network delays
       const isReceivingData = timeSinceLastData < 15000; // 15s timeout (3x backend interval)
@@ -129,7 +125,7 @@ export const useSSEFeedsStats = () => {
           setIsConnected((prev) => (prev !== true ? true : prev));
           setRetryCount((prev) => (prev !== 0 ? 0 : prev));
         }
-      },
+      }
     );
 
     // Update the event source reference for health checks

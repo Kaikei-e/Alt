@@ -7,10 +7,7 @@ export interface VirtualizationMetrics {
   scrollPerformance: number;
 }
 
-export const useVirtualizationMetrics = (
-  enabled: boolean = true,
-  itemCount: number = 0,
-) => {
+export const useVirtualizationMetrics = (enabled: boolean = true, itemCount: number = 0) => {
   const metricsRef = useRef<VirtualizationMetrics>({
     renderTime: 0,
     itemCount: 0,
@@ -28,8 +25,8 @@ export const useVirtualizationMetrics = (
       renderTime: performance.now() - startTime,
       itemCount,
       memoryUsage:
-        (performance as unknown as { memory?: { usedJSHeapSize?: number } })
-          .memory?.usedJSHeapSize || 0,
+        (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory
+          ?.usedJSHeapSize || 0,
       scrollPerformance: 0,
     };
 

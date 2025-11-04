@@ -1,15 +1,15 @@
 "use client";
 
-import { Flex, Text, Box } from "@chakra-ui/react";
-import { feedsApi } from "@/lib/api";
-import { Feed } from "@/schema/feed";
+import { Box, Flex, Text } from "@chakra-ui/react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import FeedCard from "@/components/mobile/FeedCard";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
-import { useRef, useState, useCallback, useMemo } from "react";
-import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
-import { useCursorPagination } from "@/hooks/useCursorPagination";
-import ErrorState from "../_components/ErrorState";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
+import { useCursorPagination } from "@/hooks/useCursorPagination";
+import { feedsApi } from "@/lib/api";
+import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
+import type { Feed } from "@/schema/feed";
+import ErrorState from "../_components/ErrorState";
 
 const PAGE_SIZE = 20;
 
@@ -35,7 +35,7 @@ export default function FavoriteFeedsPage() {
 
   const visibleFeeds = useMemo(
     () => feeds?.filter((feed) => !readFeeds.has(feed.link)) || [],
-    [feeds, readFeeds],
+    [feeds, readFeeds]
   );
 
   const handleMarkAsRead = useCallback((feedLink: string) => {
@@ -96,9 +96,7 @@ export default function FavoriteFeedsPage() {
   }
 
   if (error) {
-    return (
-      <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />
-    );
+    return <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />;
   }
 
   return (

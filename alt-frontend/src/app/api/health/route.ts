@@ -1,14 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     // TODO.md要件: サーバが受信したCookieの有無をデバッグ用に可視化
     const cookieStore = await cookies();
     const hasOryKratosSession = await cookieStore.has("ory_kratos_session");
-    const hasHostOryKratosSession = await cookieStore.has(
-      "__Host-ory_kratos_session",
-    );
+    const hasHostOryKratosSession = await cookieStore.has("__Host-ory_kratos_session");
     const hasKratosSession = hasOryKratosSession || hasHostOryKratosSession;
 
     // Basic application health checks
@@ -30,9 +28,9 @@ export async function GET(request: NextRequest) {
           // TODO.md要件: X-Has-Session ヘッダで即座に可視化
           "X-Has-Session": hasKratosSession ? "yes" : "no",
         },
-      },
+      }
     );
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       {
         status: "ERROR",
@@ -45,13 +43,13 @@ export async function GET(request: NextRequest) {
           "Content-Type": "application/json",
           "X-Health-Check-Error": "true",
         },
-      },
+      }
     );
   }
 }
 
 // 2025年ベストプラクティス: HEAD requestもサポート
-export async function HEAD(request: NextRequest) {
+export async function HEAD(_request: NextRequest) {
   return new NextResponse(null, {
     status: 200,
     headers: {

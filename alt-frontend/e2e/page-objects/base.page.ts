@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { injectAxe, checkA11y } from 'axe-playwright';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { checkA11y, injectAxe } from "axe-playwright";
 
 /**
  * Base Page Object class that all page objects should extend.
@@ -30,7 +30,7 @@ export abstract class BasePage {
    */
   async isDisplayed(): Promise<boolean> {
     // Default implementation - checks if page is visible
-    const body = this.page.locator('body');
+    const body = this.page.locator("body");
     return await body.isVisible();
   }
 
@@ -67,7 +67,7 @@ export abstract class BasePage {
    * Wait for network to be idle
    */
   async waitForNetworkIdle(): Promise<void> {
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState("networkidle");
   }
 
   /**
@@ -127,7 +127,7 @@ export abstract class BasePage {
    */
   async elementExists(locator: Locator): Promise<boolean> {
     try {
-      await locator.waitFor({ state: 'attached', timeout: 1000 });
+      await locator.waitFor({ state: "attached", timeout: 1000 });
       return true;
     } catch {
       return false;
@@ -152,9 +152,7 @@ export abstract class BasePage {
    * Scroll to bottom of page
    */
   async scrollToBottom(): Promise<void> {
-    await this.page.evaluate(() =>
-      window.scrollTo(0, document.body.scrollHeight)
-    );
+    await this.page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   }
 
   /**
@@ -189,7 +187,7 @@ export abstract class BasePage {
    * Click button by role
    */
   async clickButton(name: string | RegExp): Promise<void> {
-    await this.page.getByRole('button', { name }).click();
+    await this.page.getByRole("button", { name }).click();
   }
 
   /**
@@ -209,7 +207,7 @@ export abstract class BasePage {
    */
   async getErrorMessage(): Promise<string | null> {
     const errorLocators = [
-      this.page.getByRole('alert'),
+      this.page.getByRole("alert"),
       this.page.getByText(/error/i),
       this.page.getByText(/failed/i),
     ];
@@ -231,7 +229,7 @@ export abstract class BasePage {
    */
   async isLoading(): Promise<boolean> {
     const loadingLocators = [
-      this.page.getByRole('status'),
+      this.page.getByRole("status"),
       this.page.getByText(/loading/i),
       this.page.locator('[aria-busy="true"]'),
     ];
@@ -261,6 +259,6 @@ export abstract class BasePage {
       await this.wait(100);
     }
 
-    throw new Error('Loading did not complete within timeout');
+    throw new Error("Loading did not complete within timeout");
   }
 }

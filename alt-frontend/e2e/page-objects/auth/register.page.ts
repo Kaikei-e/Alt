@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Register Page Object
@@ -34,11 +34,11 @@ export class RegisterPage extends BasePage {
     // Submit button is rendered by OryFlowForm
     this.submitButton = page.locator('button[type="submit"]');
 
-    this.loginLink = page.getByRole('link', { name: /log in|login|ログイン/i });
+    this.loginLink = page.getByRole("link", { name: /log in|login|ログイン/i });
 
     // Error messages are rendered in red bordered boxes by OryFlowForm
     this.errorMessage = page.locator('[role="alert"], .chakra-alert, [style*="red"]').first();
-    this.successMessage = page.getByRole('status');
+    this.successMessage = page.getByRole("status");
     this.termsCheckbox = page.getByLabel(/terms|agree|利用規約|同意/i);
   }
 
@@ -47,10 +47,10 @@ export class RegisterPage extends BasePage {
    */
   async goto(): Promise<void> {
     // Navigate and wait for Kratos flow initialization
-    await this.page.goto('/auth/register', { waitUntil: 'networkidle' });
+    await this.page.goto("/auth/register", { waitUntil: "networkidle" });
 
     // Wait for redirect and flow initialization (may redirect to Kratos then back)
-    await this.page.waitForURL('**/auth/register?flow=**', { timeout: 15000 }).catch(() => {
+    await this.page.waitForURL("**/auth/register?flow=**", { timeout: 15000 }).catch(() => {
       // If no redirect with flow, page might already have flow initialized
     });
 
@@ -225,10 +225,9 @@ export class RegisterPage extends BasePage {
   async waitForRegistrationSuccess(): Promise<void> {
     // Wait for redirect or success message
     try {
-      await this.page.waitForURL(
-        url => !url.pathname.includes('/auth/register'),
-        { timeout: 10000 }
-      );
+      await this.page.waitForURL((url) => !url.pathname.includes("/auth/register"), {
+        timeout: 10000,
+      });
     } catch {
       // If no redirect, check for success message
       await expect(this.successMessage).toBeVisible({ timeout: 5000 });

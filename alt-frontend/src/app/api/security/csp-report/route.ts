@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
-    const report = await request.json();
+    const _report = await request.json();
 
     // CSP違反をログに記録
 
@@ -14,10 +14,7 @@ export async function POST(request: NextRequest) {
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     console.error("Error processing CSP report:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 

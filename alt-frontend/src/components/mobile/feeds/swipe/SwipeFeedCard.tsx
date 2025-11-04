@@ -1,27 +1,13 @@
 "use client";
 
-import {
-  Box,
-  Button,
-  Flex,
-  HStack,
-  Link,
-  Spinner,
-  Text,
-  VStack,
-} from "@chakra-ui/react";
+import { Box, Button, Flex, HStack, Link, Spinner, Text, VStack } from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  AnimatePresence,
-  animate,
-  motion,
-  useMotionValue,
-} from "framer-motion";
 import { useDrag } from "@use-gesture/react";
-import { Sparkles, SquareArrowOutUpRight, BookOpen, BotMessageSquare, Archive } from "lucide-react";
+import { AnimatePresence, animate, motion, useMotionValue } from "framer-motion";
+import { Archive, BookOpen, BotMessageSquare, Sparkles, SquareArrowOutUpRight } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { feedsApi } from "@/lib/api";
-import { Feed } from "@/schema/feed";
+import type { Feed } from "@/schema/feed";
 
 const MotionBox = motion.div;
 
@@ -83,7 +69,12 @@ const normalizeDirection = (direction: number) => {
   return direction;
 };
 
-const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: SwipeFeedCardProps) => {
+const SwipeFeedCard = ({
+  feed,
+  statusMessage,
+  onDismiss,
+  getCachedContent,
+}: SwipeFeedCardProps) => {
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
@@ -137,10 +128,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
       }
 
       animationInFlightRef.current = true;
-      const width =
-        typeof window !== "undefined" && window.innerWidth
-          ? window.innerWidth
-          : 480;
+      const width = typeof window !== "undefined" && window.innerWidth ? window.innerWidth : 480;
 
       animate(x, direction * width * 1.2, {
         type: "spring",
@@ -163,7 +151,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
         }, DISMISS_DELAY);
       });
     },
-    [x],
+    [x]
   );
 
   const handleToggleContent = useCallback(async () => {
@@ -212,10 +200,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
 
       try {
         const summaryResponse = await feedsApi.getArticleSummary(feed.link);
-        if (
-          summaryResponse.matched_articles &&
-          summaryResponse.matched_articles.length > 0
-        ) {
+        if (summaryResponse.matched_articles && summaryResponse.matched_articles.length > 0) {
           setSummary(summaryResponse.matched_articles[0].content);
         } else {
           setSummaryError("要約を取得できませんでした");
@@ -267,7 +252,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
         throw error;
       }
     },
-    [onDismiss, playDismissAnimation, resetPosition],
+    [onDismiss, playDismissAnimation, resetPosition]
   );
 
   const dragHandlers = useDrag(
@@ -278,8 +263,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
       }
 
       if (last) {
-        const shouldDismiss =
-          Math.abs(mx) >= SWIPE_DISTANCE || Math.abs(vx) >= SWIPE_VELOCITY;
+        const shouldDismiss = Math.abs(mx) >= SWIPE_DISTANCE || Math.abs(vx) >= SWIPE_VELOCITY;
 
         if (!shouldDismiss) {
           resetPosition();
@@ -298,13 +282,15 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
         duration: SWIPE_DURATION,
       },
       pointer: { touch: true },
-    },
+    }
   );
 
   const bind = () => {
     const handlers = dragHandlers();
-    const { onDrag, onDragStart, onDragEnd, onAnimationStart, ...rest } =
-      handlers as Record<string, unknown>;
+    const { onDrag, onDragStart, onDragEnd, onAnimationStart, ...rest } = handlers as Record<
+      string,
+      unknown
+    >;
     return rest;
   };
 
@@ -335,8 +321,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
           background: "var(--alt-glass)",
           color: "var(--alt-text-primary)",
           border: "2px solid var(--alt-glass-border)",
-          boxShadow:
-            "0 12px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)",
+          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)",
           borderRadius: "1rem",
           padding: "1rem",
           backdropFilter: "blur(20px)",
@@ -438,11 +423,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
                 >
                   概要 / Summary
                 </Text>
-                <Text
-                  fontSize="sm"
-                  color="var(--alt-text-primary)"
-                  lineHeight="1.7"
-                >
+                <Text fontSize="sm" color="var(--alt-text-primary)" lineHeight="1.7">
                   {feed.description}
                 </Text>
               </Box>
@@ -476,11 +457,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
                     </Text>
                   </HStack>
                 ) : contentError ? (
-                  <Text
-                    color="var(--alt-text-secondary)"
-                    fontSize="sm"
-                    textAlign="center"
-                  >
+                  <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center">
                     {contentError}
                   </Text>
                 ) : fullContent ? (
@@ -529,21 +506,13 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
                         要約を生成中...
                       </Text>
                     </HStack>
-                    <Text
-                      color="var(--alt-text-secondary)"
-                      fontSize="xs"
-                      textAlign="center"
-                    >
+                    <Text color="var(--alt-text-secondary)" fontSize="xs" textAlign="center">
                       これには数秒かかる場合があります
                     </Text>
                   </VStack>
                 ) : summaryError ? (
                   <VStack gap={3} w="100%">
-                    <Text
-                      color="var(--alt-text-secondary)"
-                      fontSize="sm"
-                      textAlign="center"
-                    >
+                    <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center">
                       {summaryError}
                     </Text>
                     {summaryError === "要約を取得できませんでした" && (
@@ -578,11 +547,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
                   </Text>
                 ) : (
                   <VStack gap={3} w="100%">
-                    <Text
-                      color="var(--alt-text-secondary)"
-                      fontSize="sm"
-                      textAlign="center"
-                    >
+                    <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center">
                       この記事の要約はまだありません
                     </Text>
                     <Button
@@ -626,11 +591,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
                 size="sm"
                 flex="1"
                 borderRadius="12px"
-                bg={
-                  isContentExpanded
-                    ? "var(--alt-secondary)"
-                    : "var(--alt-primary)"
-                }
+                bg={isContentExpanded ? "var(--alt-secondary)" : "var(--alt-primary)"}
                 color="white"
                 fontWeight="bold"
                 _hover={{
@@ -647,11 +608,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
                 <Flex align="center" gap={2}>
                   <BookOpen size={16} />
                   <Text fontSize="xs">
-                    {isLoadingContent
-                      ? "読込中..."
-                      : isContentExpanded
-                        ? "全文非表示"
-                        : "全文表示"}
+                    {isLoadingContent ? "読込中..." : isContentExpanded ? "全文非表示" : "全文表示"}
                   </Text>
                 </Flex>
               </Button>
@@ -661,11 +618,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
                 size="sm"
                 flex="1"
                 borderRadius="12px"
-                bg={
-                  isSummaryExpanded
-                    ? "var(--alt-secondary)"
-                    : "var(--alt-primary)"
-                }
+                bg={isSummaryExpanded ? "var(--alt-secondary)" : "var(--alt-primary)"}
                 color="white"
                 fontWeight="bold"
                 _hover={{
@@ -682,11 +635,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
                 <Flex align="center" gap={2}>
                   <BotMessageSquare size={16} />
                   <Text fontSize="xs">
-                    {isLoadingSummary
-                      ? "読込中..."
-                      : isSummaryExpanded
-                        ? "要約非表示"
-                        : "要約"}
+                    {isLoadingSummary ? "読込中..." : isSummaryExpanded ? "要約非表示" : "要約"}
                   </Text>
                 </Flex>
               </Button>
@@ -726,20 +675,13 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
               >
                 <Flex align="center" gap={1}>
                   <Archive size={14} />
-                  <Text fontSize="xs">
-                    {isArchiving ? "..." : isArchived ? "✓" : "Archive"}
-                  </Text>
+                  <Text fontSize="xs">{isArchiving ? "..." : isArchived ? "✓" : "Archive"}</Text>
                 </Flex>
               </Button>
             </HStack>
 
             {statusMessage && (
-              <Text
-                fontSize="xs"
-                color="var(--alt-text-secondary)"
-                textAlign="center"
-                mt={2}
-              >
+              <Text fontSize="xs" color="var(--alt-text-secondary)" textAlign="center" mt={2}>
                 {statusMessage}
               </Text>
             )}

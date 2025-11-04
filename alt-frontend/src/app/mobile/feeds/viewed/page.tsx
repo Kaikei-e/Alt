@@ -1,14 +1,14 @@
 "use client";
 
-import { Flex, Text, Box } from "@chakra-ui/react";
-import { Feed } from "@/schema/feed";
+import { Box, Flex, Text } from "@chakra-ui/react";
+import { Component, type ErrorInfo, type ReactNode, useCallback, useRef, useState } from "react";
 import ReadFeedCard from "@/components/mobile/ReadFeedCard";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
-import { useRef, useState, useCallback, Component, ErrorInfo, ReactNode } from "react";
-import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
-import { useReadFeeds } from "@/hooks/useReadFeeds";
-import ErrorState from "../_components/ErrorState";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
+import { useReadFeeds } from "@/hooks/useReadFeeds";
+import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
+import type { Feed } from "@/schema/feed";
+import ErrorState from "../_components/ErrorState";
 
 // Error boundary to catch React errors
 class ViewedFeedsErrorBoundary extends Component<
@@ -56,8 +56,7 @@ function ReadFeedsPageContent() {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Use the useReadFeeds hook for data management
-  const { feeds, isLoading, error, hasMore, loadMore, refresh } =
-    useReadFeeds(20);
+  const { feeds, isLoading, error, hasMore, loadMore, refresh } = useReadFeeds(20);
 
   // Check if this is initial loading (no feeds yet and loading)
   const isInitialLoading = isLoading && feeds.length === 0;
@@ -130,9 +129,7 @@ function ReadFeedsPageContent() {
 
   // Show error state
   if (error) {
-    return (
-      <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />
-    );
+    return <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />;
   }
 
   return (

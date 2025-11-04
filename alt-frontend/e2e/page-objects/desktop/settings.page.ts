@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Desktop Settings Page Object
@@ -41,52 +41,52 @@ export class DesktopSettingsPage extends BasePage {
     super(page);
 
     // Initialize locators
-    this.pageHeading = page.getByRole('heading', { name: /settings/i });
-    this.profileSection = page.getByRole('region', { name: /profile/i });
-    this.appearanceSection = page.getByRole('region', { name: /appearance/i });
-    this.notificationsSection = page.getByRole('region', {
+    this.pageHeading = page.getByRole("heading", { name: /settings/i });
+    this.profileSection = page.getByRole("region", { name: /profile/i });
+    this.appearanceSection = page.getByRole("region", { name: /appearance/i });
+    this.notificationsSection = page.getByRole("region", {
       name: /notifications/i,
     });
-    this.privacySection = page.getByRole('region', { name: /privacy/i });
+    this.privacySection = page.getByRole("region", { name: /privacy/i });
 
     // Profile
     this.nameInput = page.getByLabel(/name|full name/i);
     this.emailInput = page.getByLabel(/email/i);
     this.bioInput = page.getByLabel(/bio|about/i);
     this.avatarUpload = page.getByLabel(/avatar|photo|image/i);
-    this.saveProfileButton = page.getByRole('button', {
+    this.saveProfileButton = page.getByRole("button", {
       name: /save|update.*profile/i,
     });
 
     // Appearance
     this.themeSelect = page.getByLabel(/theme/i);
     this.fontSizeSelect = page.getByLabel(/font.*size/i);
-    this.darkModeToggle = page.getByRole('switch', { name: /dark mode/i });
+    this.darkModeToggle = page.getByRole("switch", { name: /dark mode/i });
 
     // Notifications
-    this.emailNotificationsToggle = page.getByRole('switch', {
+    this.emailNotificationsToggle = page.getByRole("switch", {
       name: /email.*notification/i,
     });
-    this.pushNotificationsToggle = page.getByRole('switch', {
+    this.pushNotificationsToggle = page.getByRole("switch", {
       name: /push.*notification/i,
     });
 
     // Privacy
-    this.publicProfileToggle = page.getByRole('switch', {
+    this.publicProfileToggle = page.getByRole("switch", {
       name: /public.*profile/i,
     });
-    this.analyticsToggle = page.getByRole('switch', { name: /analytics/i });
+    this.analyticsToggle = page.getByRole("switch", { name: /analytics/i });
 
-    this.successMessage = page.getByRole('status');
-    this.errorMessage = page.getByRole('alert');
-    this.sidebar = page.getByRole('navigation', { name: /sidebar/i });
+    this.successMessage = page.getByRole("status");
+    this.errorMessage = page.getByRole("alert");
+    this.sidebar = page.getByRole("navigation", { name: /sidebar/i });
   }
 
   /**
    * Navigate to settings page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/desktop/settings');
+    await this.page.goto("/desktop/settings");
     await this.waitForLoad();
   }
 
@@ -230,9 +230,11 @@ export class DesktopSettingsPage extends BasePage {
   /**
    * Navigate to section
    */
-  async goToSection(section: 'profile' | 'appearance' | 'notifications' | 'privacy'): Promise<void> {
-    const sectionLink = this.page.getByRole('link', {
-      name: new RegExp(section, 'i'),
+  async goToSection(
+    section: "profile" | "appearance" | "notifications" | "privacy"
+  ): Promise<void> {
+    const sectionLink = this.page.getByRole("link", {
+      name: new RegExp(section, "i"),
     });
 
     if ((await sectionLink.count()) > 0) {
@@ -243,7 +245,9 @@ export class DesktopSettingsPage extends BasePage {
   /**
    * Check if section is visible
    */
-  async isSectionVisible(section: 'profile' | 'appearance' | 'notifications' | 'privacy'): Promise<boolean> {
+  async isSectionVisible(
+    section: "profile" | "appearance" | "notifications" | "privacy"
+  ): Promise<boolean> {
     const sectionLocator = {
       profile: this.profileSection,
       appearance: this.appearanceSection,
@@ -263,7 +267,7 @@ export class DesktopSettingsPage extends BasePage {
    * Save all settings
    */
   async saveSettings(): Promise<void> {
-    const saveAllButton = this.page.getByRole('button', {
+    const saveAllButton = this.page.getByRole("button", {
       name: /save|apply.*changes/i,
     });
 

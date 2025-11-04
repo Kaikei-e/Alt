@@ -1,22 +1,14 @@
 "use client";
 
-import React from "react";
 import { Box, Grid, GridItem } from "@chakra-ui/react";
-import { DesktopFeedsLayoutProps } from "@/types/desktop-feeds";
+import type React from "react";
 import { RightPanel } from "@/components/desktop/analytics/RightPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import type { DesktopFeedsLayoutProps } from "@/types/desktop-feeds";
 
-export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
-  children,
-  sidebar,
-}) => {
+export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({ children, sidebar }) => {
   return (
-    <Box
-      minH="100vh"
-      bg="var(--app-bg)"
-      data-testid="desktop-layout"
-      position="relative"
-    >
+    <Box minH="100vh" bg="var(--app-bg)" data-testid="desktop-layout" position="relative">
       {/* Theme Toggle */}
       <Box position="fixed" top={4} right={4} zIndex={1000}>
         <ThemeToggle size="md" />
@@ -39,11 +31,7 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
             mx={0}
           >
             {/* サイドバー */}
-            <GridItem
-              overflowY="auto"
-              overflowX="hidden"
-              display={{ base: "none", md: "block" }}
-            >
+            <GridItem overflowY="auto" overflowX="hidden" display={{ base: "none", md: "block" }}>
               {sidebar}
             </GridItem>
 
@@ -60,11 +48,7 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
             </GridItem>
 
             {/* 右パネル（Analytics） */}
-            <GridItem
-              overflowY="auto"
-              overflowX="hidden"
-              display={{ base: "none", lg: "block" }}
-            >
+            <GridItem overflowY="auto" overflowX="hidden" display={{ base: "none", lg: "block" }}>
               <RightPanel />
             </GridItem>
           </Grid>

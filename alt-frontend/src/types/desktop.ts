@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 
 // 統計カード用の型
 export interface StatsCardData {

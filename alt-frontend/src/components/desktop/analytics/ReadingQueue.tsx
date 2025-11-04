@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { Box, VStack, HStack, Text, Button, Badge } from "@chakra-ui/react";
 import { Progress } from "@chakra-ui/progress";
+import { Badge, Box, Button, HStack, Text, VStack } from "@chakra-ui/react";
+import type React from "react";
 
 export const ReadingQueue: React.FC = () => {
   // Mock data for reading queue
@@ -123,11 +123,7 @@ export const ReadingQueue: React.FC = () => {
                     <Text fontSize="xs" color="var(--text-secondary)">
                       Progress:
                     </Text>
-                    <Text
-                      fontSize="xs"
-                      color="var(--text-primary)"
-                      fontWeight="medium"
-                    >
+                    <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
                       {item.progress}%
                     </Text>
                   </HStack>

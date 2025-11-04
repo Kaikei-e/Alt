@@ -1,5 +1,5 @@
-import { safeUrlSchema } from "@/schema/validation/urlValidation";
 import * as v from "valibot";
+import { safeUrlSchema } from "@/schema/validation/urlValidation";
 
 export interface LinkAttributes {
   rel?: string;

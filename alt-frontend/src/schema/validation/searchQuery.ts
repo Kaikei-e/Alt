@@ -10,6 +10,6 @@ export const searchQuerySchema = v.object({
     v.trim(),
     v.nonEmpty("Please enter a search query"),
     v.minLength(2, "Search query must be at least 2 characters"),
-    v.maxLength(100, "Search query must be at most 100 characters"),
+    v.maxLength(100, "Search query must be at most 100 characters")
   ),
 });

@@ -1,12 +1,12 @@
-import { Page, Route } from '@playwright/test';
+import type { Page } from "@playwright/test";
 import {
-  createMockFeedsResponse,
+  type ArticleData,
+  createMockArticle,
   createMockArticlesResponse,
   createMockFeed,
-  createMockArticle,
-  FeedData,
-  ArticleData,
-} from './test-data';
+  createMockFeedsResponse,
+  type FeedData,
+} from "./test-data";
 
 /**
  * API mock helper functions for E2E tests
@@ -15,20 +15,16 @@ import {
 /**
  * Mock feeds list API endpoint
  */
-export async function mockFeedsApi(
-  page: Page,
-  feeds: FeedData[] | number = 10,
-  hasMore = false
-) {
+export async function mockFeedsApi(page: Page, feeds: FeedData[] | number = 10, hasMore = false) {
   const response =
-    typeof feeds === 'number'
+    typeof feeds === "number"
       ? createMockFeedsResponse(feeds, hasMore)
-      : { feeds, cursor: hasMore ? 'next' : null, hasMore };
+      : { feeds, cursor: hasMore ? "next" : null, hasMore };
 
-  await page.route('**/v1/feeds**', (route) => {
+  await page.route("**/v1/feeds**", (route) => {
     route.fulfill({
       status: 200,
-      contentType: 'application/json',
+      contentType: "application/json",
       body: JSON.stringify(response),
     });
   });
@@ -43,14 +39,14 @@ export async function mockArticlesApi(
   hasMore = false
 ) {
   const response =
-    typeof articles === 'number'
+    typeof articles === "number"
       ? createMockArticlesResponse(articles, hasMore)
-      : { articles, cursor: hasMore ? 'next' : null, hasMore };
+      : { articles, cursor: hasMore ? "next" : null, hasMore };
 
-  await page.route('**/v1/articles**', (route) => {
+  await page.route("**/v1/articles**", (route) => {
     route.fulfill({
       status: 200,
-      contentType: 'application/json',
+      contentType: "application/json",
       body: JSON.stringify(response),
     });
   });
@@ -62,10 +58,10 @@ export async function mockArticlesApi(
 export async function mockFeedApi(page: Page, feed: Partial<FeedData>) {
   const mockFeed = createMockFeed(feed);
 
-  await page.route('**/v1/feeds/*', (route) => {
+  await page.route("**/v1/feeds/*", (route) => {
     route.fulfill({
       status: 200,
-      contentType: 'application/json',
+      contentType: "application/json",
       body: JSON.stringify(mockFeed),
     });
   });
@@ -77,10 +73,10 @@ export async function mockFeedApi(page: Page, feed: Partial<FeedData>) {
 export async function mockArticleApi(page: Page, article: Partial<ArticleData>) {
   const mockArticle = createMockArticle(article);
 
-  await page.route('**/v1/articles/*', (route) => {
+  await page.route("**/v1/articles/*", (route) => {
     route.fulfill({
       status: 200,
-      contentType: 'application/json',
+      contentType: "application/json",
       body: JSON.stringify(mockArticle),
     });
   });
@@ -90,10 +86,10 @@ export async function mockArticleApi(page: Page, article: Partial<ArticleData>) 
  * Mock empty feeds response
  */
 export async function mockEmptyFeeds(page: Page) {
-  await page.route('**/v1/feeds**', (route) => {
+  await page.route("**/v1/feeds**", (route) => {
     route.fulfill({
       status: 200,
-      contentType: 'application/json',
+      contentType: "application/json",
       body: JSON.stringify({ feeds: [], cursor: null, hasMore: false }),
     });
   });
@@ -103,10 +99,10 @@ export async function mockEmptyFeeds(page: Page) {
  * Mock empty articles response
  */
 export async function mockEmptyArticles(page: Page) {
-  await page.route('**/v1/articles**', (route) => {
+  await page.route("**/v1/articles**", (route) => {
     route.fulfill({
       status: 200,
-      contentType: 'application/json',
+      contentType: "application/json",
       body: JSON.stringify({ articles: [], cursor: null, hasMore: false }),
     });
   });
@@ -119,12 +115,12 @@ export async function mockApiError(
   page: Page,
   endpoint: string,
   statusCode = 500,
-  errorMessage = 'Internal Server Error'
+  errorMessage = "Internal Server Error"
 ) {
   await page.route(endpoint, (route) => {
     route.fulfill({
       status: statusCode,
-      contentType: 'application/json',
+      contentType: "application/json",
       body: JSON.stringify({ error: errorMessage }),
     });
   });
@@ -135,7 +131,7 @@ export async function mockApiError(
  */
 export async function mockNetworkTimeout(page: Page, endpoint: string) {
   await page.route(endpoint, (route) => {
-    route.abort('timedout');
+    route.abort("timedout");
   });
 }
 
@@ -144,7 +140,7 @@ export async function mockNetworkTimeout(page: Page, endpoint: string) {
  */
 export async function mockNetworkFailure(page: Page, endpoint: string) {
   await page.route(endpoint, (route) => {
-    route.abort('failed');
+    route.abort("failed");
   });
 }
 
@@ -154,11 +150,11 @@ export async function mockNetworkFailure(page: Page, endpoint: string) {
 export async function mockCreateFeedSuccess(page: Page, feed?: Partial<FeedData>) {
   const mockFeed = createMockFeed(feed);
 
-  await page.route('**/v1/feeds', (route) => {
-    if (route.request().method() === 'POST') {
+  await page.route("**/v1/feeds", (route) => {
+    if (route.request().method() === "POST") {
       route.fulfill({
         status: 201,
-        contentType: 'application/json',
+        contentType: "application/json",
         body: JSON.stringify(mockFeed),
       });
     } else {
@@ -170,15 +166,12 @@ export async function mockCreateFeedSuccess(page: Page, feed?: Partial<FeedData>
 /**
  * Mock feed creation error
  */
-export async function mockCreateFeedError(
-  page: Page,
-  errorMessage = 'Invalid feed URL'
-) {
-  await page.route('**/v1/feeds', (route) => {
-    if (route.request().method() === 'POST') {
+export async function mockCreateFeedError(page: Page, errorMessage = "Invalid feed URL") {
+  await page.route("**/v1/feeds", (route) => {
+    if (route.request().method() === "POST") {
       route.fulfill({
         status: 400,
-        contentType: 'application/json',
+        contentType: "application/json",
         body: JSON.stringify({ error: errorMessage }),
       });
     } else {
@@ -192,10 +185,10 @@ export async function mockCreateFeedError(
  */
 export async function mockUpdateFeedSuccess(page: Page, feedId: string) {
   await page.route(`**/v1/feeds/${feedId}`, (route) => {
-    if (route.request().method() === 'PUT' || route.request().method() === 'PATCH') {
+    if (route.request().method() === "PUT" || route.request().method() === "PATCH") {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
+        contentType: "application/json",
         body: JSON.stringify({ success: true }),
       });
     } else {
@@ -209,7 +202,7 @@ export async function mockUpdateFeedSuccess(page: Page, feedId: string) {
  */
 export async function mockDeleteFeedSuccess(page: Page, feedId: string) {
   await page.route(`**/v1/feeds/${feedId}`, (route) => {
-    if (route.request().method() === 'DELETE') {
+    if (route.request().method() === "DELETE") {
       route.fulfill({
         status: 204,
       });
@@ -224,10 +217,10 @@ export async function mockDeleteFeedSuccess(page: Page, feedId: string) {
  */
 export async function mockMarkAsRead(page: Page, articleId: string) {
   await page.route(`**/v1/articles/${articleId}/read`, (route) => {
-    if (route.request().method() === 'POST') {
+    if (route.request().method() === "POST") {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
+        contentType: "application/json",
         body: JSON.stringify({ success: true }),
       });
     } else {
@@ -241,10 +234,10 @@ export async function mockMarkAsRead(page: Page, articleId: string) {
  */
 export async function mockMarkAsFavorite(page: Page, articleId: string) {
   await page.route(`**/v1/articles/${articleId}/favorite`, (route) => {
-    if (route.request().method() === 'POST') {
+    if (route.request().method() === "POST") {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
+        contentType: "application/json",
         body: JSON.stringify({ success: true }),
       });
     } else {
@@ -257,7 +250,7 @@ export async function mockMarkAsFavorite(page: Page, articleId: string) {
  * Clear all API mocks
  */
 export async function clearApiMocks(page: Page) {
-  await page.unroute('**/*');
+  await page.unroute("**/*");
 }
 
 /**

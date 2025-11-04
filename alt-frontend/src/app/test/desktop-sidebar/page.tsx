@@ -1,9 +1,9 @@
 "use client";
 
+import { BarChart3, Home, Rss, Settings } from "lucide-react";
+import { useState } from "react";
 import { DesktopSidebar } from "@/components/desktop/layout/DesktopSidebar";
 import { ThemeProvider } from "@/providers/ThemeProvider";
-import { Home, Rss, BarChart3, Settings } from "lucide-react";
-import { useState } from "react";
 
 interface FilterState {
   readStatus: "all" | "read" | "unread";
@@ -110,9 +110,7 @@ export default function DesktopSidebarTest() {
             <button
               onClick={() => setMode("feeds-filter")}
               className={`px-3 py-1 rounded text-sm ${
-                mode === "feeds-filter"
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-200"
+                mode === "feeds-filter" ? "bg-blue-500 text-white" : "bg-gray-200"
               }`}
             >
               Feeds Filter

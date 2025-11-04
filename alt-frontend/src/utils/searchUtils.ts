@@ -1,4 +1,4 @@
-import { Feed, SanitizedFeed } from "@/schema/feed";
+import type { Feed, SanitizedFeed } from "@/schema/feed";
 import { escapeHtml } from "@/utils/htmlEscape";
 
 export interface SearchOptions {
@@ -36,7 +36,7 @@ function getCachedRegex(keyword: string): RegExp {
 export function searchFeeds(
   feeds: (Feed | SanitizedFeed)[],
   query: string,
-  options: SearchOptions = {},
+  options: SearchOptions = {}
 ): SearchResult[] {
   if (!query.trim()) {
     return feeds.map((feed) => ({
@@ -83,15 +83,15 @@ export function searchFeeds(
           fieldContent = feed.description.toLowerCase();
           fieldWeight = 1;
           break;
-        case "tags":
+        case "tags": {
           // Handle tags if available in metadata
-          const metadata = (feed as Feed & { metadata?: { tags?: string[] } })
-            .metadata;
+          const metadata = (feed as Feed & { metadata?: { tags?: string[] } }).metadata;
           if (metadata?.tags) {
             fieldContent = metadata.tags.join(" ").toLowerCase();
             fieldWeight = 1.5;
           }
           break;
+        }
       }
 
       if (!fieldContent) continue;
@@ -182,7 +182,7 @@ function escapeRegExp(string: string): string {
  */
 export function simpleSearch(
   feeds: (Feed | SanitizedFeed)[],
-  query: string,
+  query: string
 ): (Feed | SanitizedFeed)[] {
   if (!query.trim()) return feeds;
 
@@ -190,6 +190,6 @@ export function simpleSearch(
   return feeds.filter(
     (feed) =>
       feed.title.toLowerCase().includes(lowercaseQuery) ||
-      feed.description.toLowerCase().includes(lowercaseQuery),
+      feed.description.toLowerCase().includes(lowercaseQuery)
   );
 }

@@ -184,8 +184,8 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
             bg="var(--alt-glass)"
             backdropFilter="blur(20px)"
             border="2px solid var(--alt-glass-border)"
-            borderRadius="20px"
-            boxShadow="0 25px 50px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset"
+            borderRadius="1rem"
+            boxShadow="0 12px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)"
             mx={4}
             my={8}
             maxW="600px"
@@ -193,10 +193,11 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
             data-testid="article-modal-content"
           >
             <Dialog.Header
-              borderBottom="2px solid var(--alt-glass-border)"
+              borderBottom="1px solid var(--alt-glass-border)"
               px={6}
               py={4}
-              bg="rgba(255, 255, 255, 0.02)"
+              bg="rgba(255, 255, 255, 0.03)"
+              backdropFilter="blur(20px)"
             >
               <Flex justify="space-between" align="flex-start" gap={4}>
                 <Box flex="1">
@@ -282,6 +283,7 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
                   bg="rgba(255, 255, 255, 0.03)"
                   borderRadius="12px"
                   border="1px solid var(--alt-glass-border)"
+                  backdropFilter="blur(20px)"
                   data-testid="summary-section"
                 >
                   <Text
@@ -355,12 +357,13 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
             </Dialog.Body>
 
             <Dialog.Footer
-              borderTop="2px solid var(--alt-glass-border)"
+              borderTop="1px solid var(--alt-glass-border)"
               px={6}
               py={4}
               display="flex"
               justifyContent="center"
-              bg="rgba(255, 255, 255, 0.02)"
+              bg="rgba(255, 255, 255, 0.03)"
+              backdropFilter="blur(20px)"
             >
               <Button
                 onClick={handleToggleSummary}

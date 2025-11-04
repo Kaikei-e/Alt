@@ -34,11 +34,7 @@ export class CacheManager {
     return Date.now() - entry.timestamp < entry.ttl;
   }
 
-  set<T>(
-    key: string,
-    data: T,
-    ttlMinutes: number = this.config.defaultTtl / (60 * 1000),
-  ): void {
+  set<T>(key: string, data: T, ttlMinutes: number = this.config.defaultTtl / (60 * 1000)): void {
     // Implement cache size limit
     if (this.cache.size >= this.config.maxSize) {
       this.evictOldestEntry();

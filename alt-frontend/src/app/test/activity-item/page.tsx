@@ -10,11 +10,7 @@ export default function ActivityItemTest() {
         ActivityItem Component Test
       </Text>
       <Box maxW="400px" mx="auto">
-        <ActivityItem
-          type="new_feed"
-          title="New feed added: TechCrunch"
-          time="just now"
-        />
+        <ActivityItem type="new_feed" title="New feed added: TechCrunch" time="just now" />
       </Box>
     </Box>
   );

@@ -1,6 +1,6 @@
-import { Flex, Text, Button, Box, Icon } from "@chakra-ui/react";
+import { Box, Button, Flex, Icon, Text } from "@chakra-ui/react";
+import { AlertTriangle, Clock, Server, WifiOff } from "lucide-react";
 import { useState } from "react";
-import { AlertTriangle, WifiOff, Server, Clock } from "lucide-react";
 
 type ErrorStateProps = {
   error: Error | null;
@@ -9,7 +9,7 @@ type ErrorStateProps = {
 };
 
 const getErrorDetails = (
-  error: Error | null,
+  error: Error | null
 ): { title: string; message: string; icon: React.ElementType } => {
   if (!error) {
     return {
@@ -50,8 +50,7 @@ const getErrorDetails = (
   ) {
     return {
       title: "Rate Limit Exceeded",
-      message:
-        "You're making requests too quickly. Please wait a moment and try again.",
+      message: "You're making requests too quickly. Please wait a moment and try again.",
       icon: Clock,
     };
   }
@@ -68,10 +67,7 @@ const getErrorDetails = (
       icon: Server,
     };
   }
-  if (
-    error instanceof TypeError ||
-    errorMessage.includes("null is not an object")
-  ) {
+  if (error instanceof TypeError || errorMessage.includes("null is not an object")) {
     return {
       title: "Application Error",
       message:
@@ -87,11 +83,7 @@ const getErrorDetails = (
   };
 };
 
-export default function ErrorState({
-  error,
-  onRetry,
-  isLoading,
-}: ErrorStateProps) {
+export default function ErrorState({ error, onRetry, isLoading }: ErrorStateProps) {
   const [isRetrying, setIsRetrying] = useState(false);
   const { title, message, icon } = getErrorDetails(error);
 
@@ -132,21 +124,11 @@ export default function ErrorState({
           <Icon as={icon} boxSize="40px" color="red.500" />
         </Flex>
 
-        <Text
-          fontSize={{ base: "xl", md: "2xl" }}
-          fontWeight="bold"
-          color="white"
-          mb={3}
-        >
+        <Text fontSize={{ base: "xl", md: "2xl" }} fontWeight="bold" color="white" mb={3}>
           {title}
         </Text>
 
-        <Text
-          color="whiteAlpha.800"
-          mb={8}
-          fontSize="md"
-          lineHeight="1.6"
-        >
+        <Text color="whiteAlpha.800" mb={8} fontSize="md" lineHeight="1.6">
           {message}
         </Text>
 

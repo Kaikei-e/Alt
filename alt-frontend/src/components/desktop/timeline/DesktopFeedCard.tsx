@@ -1,20 +1,20 @@
 "use client";
 
-import React, { useState, useCallback, useMemo, KeyboardEvent } from "react";
 import {
-  Box,
-  Flex,
-  Text,
-  Button,
-  VStack,
-  HStack,
   Badge,
+  Box,
+  Button,
+  Flex,
+  HStack,
   IconButton,
   Spinner,
+  Text,
+  VStack,
 } from "@chakra-ui/react";
-import { Heart, Bookmark, Clock, ExternalLink } from "lucide-react";
+import { Bookmark, Clock, ExternalLink, Heart } from "lucide-react";
 import Link from "next/link";
-import { DesktopFeedCardProps } from "@/types/desktop-feed";
+import React, { type KeyboardEvent, useCallback, useMemo, useState } from "react";
+import type { DesktopFeedCardProps } from "@/types/desktop-feed";
 
 const formatTimeAgo = (dateString: string) => {
   const now = new Date();
@@ -64,7 +64,7 @@ export const DesktopFeedCard = function DesktopFeedCard({
         handleViewArticle();
       }
     },
-    [handleViewArticle],
+    [handleViewArticle]
   );
 
   // Memoize priority color calculation
@@ -149,11 +149,7 @@ export const DesktopFeedCard = function DesktopFeedCard({
         <HStack gap={3}>
           <Text fontSize="xl">{feed.metadata.source.icon}</Text>
           <VStack gap={0} align="start">
-            <Text
-              fontSize="sm"
-              fontWeight="semibold"
-              color="var(--text-primary)"
-            >
+            <Text fontSize="sm" fontWeight="semibold" color="var(--text-primary)">
               {feed.metadata.source.name}
             </Text>
             <HStack gap={2} fontSize="xs" color="var(--text-secondary)">
@@ -174,16 +170,10 @@ export const DesktopFeedCard = function DesktopFeedCard({
           transition="opacity var(--transition-speed) ease"
         >
           <IconButton
-            aria-label={
-              feed.isFavorited ? "Remove from favorites" : "Add to favorites"
-            }
+            aria-label={feed.isFavorited ? "Remove from favorites" : "Add to favorites"}
             size="sm"
             variant="ghost"
-            color={
-              feed.isFavorited
-                ? "var(--accent-primary)"
-                : "var(--text-secondary)"
-            }
+            color={feed.isFavorited ? "var(--accent-primary)" : "var(--text-secondary)"}
             bg={feed.isFavorited ? "var(--surface-bg)" : "transparent"}
             onClick={(e) => {
               e.stopPropagation();
@@ -196,11 +186,7 @@ export const DesktopFeedCard = function DesktopFeedCard({
             aria-label={feed.isBookmarked ? "Remove bookmark" : "Add bookmark"}
             size="sm"
             variant="ghost"
-            color={
-              feed.isBookmarked
-                ? "var(--accent-secondary)"
-                : "var(--text-secondary)"
-            }
+            color={feed.isBookmarked ? "var(--accent-secondary)" : "var(--text-secondary)"}
             bg={feed.isBookmarked ? "var(--surface-bg)" : "transparent"}
             onClick={(e) => {
               e.stopPropagation();
@@ -242,12 +228,7 @@ export const DesktopFeedCard = function DesktopFeedCard({
             p={3}
             borderRadius="var(--radius-md)"
           >
-            <Text
-              fontSize="sm"
-              color="var(--text-secondary)"
-              fontStyle="italic"
-              lineHeight="1.6"
-            >
+            <Text fontSize="sm" color="var(--text-secondary)" fontStyle="italic" lineHeight="1.6">
               💬 &quot;{feed.metadata.summary}&quot;
             </Text>
           </Box>
@@ -345,13 +326,7 @@ export const DesktopFeedCard = function DesktopFeedCard({
               cursor: "not-allowed",
             }}
           >
-            {isLoading ? (
-              <Spinner size="xs" />
-            ) : feed.isRead ? (
-              "Read"
-            ) : (
-              "Mark as Read"
-            )}
+            {isLoading ? <Spinner size="xs" /> : feed.isRead ? "Read" : "Mark as Read"}
           </Button>
 
           <Button

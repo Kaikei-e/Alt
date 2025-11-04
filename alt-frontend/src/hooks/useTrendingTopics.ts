@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { TrendingTopic } from "@/types/analytics";
+import { useEffect, useState } from "react";
 import { mockTrendingTopics } from "@/data/mockAnalyticsData";
+import type { TrendingTopic } from "@/types/analytics";
 
 export const useTrendingTopics = () => {
   const [topics, setTopics] = useState<TrendingTopic[]>([]);

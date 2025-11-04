@@ -6,7 +6,7 @@
  * with proper CORS headers to bypass Cross-Origin Embedder Policy restrictions.
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 // Security: Define allowed image domains (whitelist)
 const ALLOWED_DOMAINS = [
@@ -22,15 +22,7 @@ const ALLOWED_DOMAINS = [
 ];
 
 // Security: Define allowed image extensions
-const ALLOWED_EXTENSIONS = [
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".gif",
-  ".webp",
-  ".svg",
-  ".bmp",
-];
+const ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp"];
 
 // Security: Maximum image size (5MB)
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
@@ -45,8 +37,7 @@ function isAllowedDomain(url: string): boolean {
 
     // Check if domain or its parent domain is in whitelist
     return ALLOWED_DOMAINS.some(
-      (allowedDomain) =>
-        domain === allowedDomain || domain.endsWith("." + allowedDomain),
+      (allowedDomain) => domain === allowedDomain || domain.endsWith("." + allowedDomain)
     );
   } catch {
     return false;
@@ -75,11 +66,7 @@ function hasAllowedExtension(url: string): boolean {
       "i.imgur.com",
     ];
 
-    if (
-      imageServices.some(
-        (service) => domain === service || domain.endsWith("." + service),
-      )
-    ) {
+    if (imageServices.some((service) => domain === service || domain.endsWith("." + service))) {
       return true;
     }
 
@@ -165,13 +152,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // Check if request was successful
     if (!response.ok) {
-      return new NextResponse(
-        `Failed to fetch image: ${response.status} ${response.statusText}`,
-        {
-          status: 502,
-          headers: { "Content-Type": "text/plain" },
-        },
-      );
+      return new NextResponse(`Failed to fetch image: ${response.status} ${response.statusText}`, {
+        status: 502,
+        headers: { "Content-Type": "text/plain" },
+      });
     }
 
     // Security: Check content type

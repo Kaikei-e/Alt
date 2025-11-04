@@ -1,2 +1,2 @@
+export { ApiClient, type ApiConfig, defaultApiConfig } from "./ApiClient";
 export { ApiError } from "./ApiError";
-export { ApiClient, defaultApiConfig, type ApiConfig } from "./ApiClient";

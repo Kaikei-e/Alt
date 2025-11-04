@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 import { vi } from "vitest";
 
 // Create a mock function that we'll control

@@ -5,7 +5,7 @@
 // Debounce function to limit expensive operations
 export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
-  wait: number,
+  wait: number
 ): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null;
 
@@ -28,7 +28,7 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
 // Throttle function to limit frequency of expensive operations
 export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
-  limit: number,
+  limit: number
 ): (...args: Parameters<T>) => void {
   let inThrottle: boolean = false;
 
@@ -57,7 +57,7 @@ export function measurePerformance<T>(operation: () => T, label?: string): T {
 export function batchOperations<T, R>(
   items: T[],
   batchSize: number,
-  operation: (batch: T[]) => R[],
+  operation: (batch: T[]) => R[]
 ): R[] {
   const results: R[] = [];
 
@@ -73,7 +73,7 @@ export function batchOperations<T, R>(
 // Simple memoization for expensive computations
 export function memoize<T extends (...args: unknown[]) => unknown>(
   fn: T,
-  getKey?: (...args: Parameters<T>) => string,
+  getKey?: (...args: Parameters<T>) => string
 ): T {
   const cache = new Map<string, unknown>();
 
@@ -108,22 +108,19 @@ export class PerformanceThresholdAnalyzer {
   private static readonly SCROLL_TIME_THRESHOLD = 500; // 0.5 seconds
   private static readonly MEMORY_GROWTH_THRESHOLD = 1.5; // 1.5x growth rate
 
-  static shouldUseVirtualization(
-    itemCount: number,
-    metrics: PerformanceMetrics,
-  ): boolean {
+  static shouldUseVirtualization(itemCount: number, metrics: PerformanceMetrics): boolean {
     // Basic threshold check - below 100 items, virtualization not needed
     if (itemCount < 100) return false;
 
     // Performance degradation check
-    if (metrics.renderTime > this.RENDER_TIME_THRESHOLD) return true;
-    if (metrics.scrollTime > this.SCROLL_TIME_THRESHOLD) return true;
+    if (metrics.renderTime > PerformanceThresholdAnalyzer.RENDER_TIME_THRESHOLD) return true;
+    if (metrics.scrollTime > PerformanceThresholdAnalyzer.SCROLL_TIME_THRESHOLD) return true;
 
     // Memory usage check
-    const expectedMemoryUsage = this.calculateExpectedMemory(itemCount);
+    const expectedMemoryUsage = PerformanceThresholdAnalyzer.calculateExpectedMemory(itemCount);
     if (
       metrics.memoryUsage >
-      expectedMemoryUsage * this.MEMORY_GROWTH_THRESHOLD
+      expectedMemoryUsage * PerformanceThresholdAnalyzer.MEMORY_GROWTH_THRESHOLD
     ) {
       return true;
     }
@@ -148,7 +145,7 @@ export class PerformanceThresholdAnalyzer {
       scrollTime: number;
       memoryUsage: number;
       domNodeCount: number;
-    }>,
+    }>
   ): {
     recommendations: string[];
     thresholds: {
@@ -171,13 +168,13 @@ export class PerformanceThresholdAnalyzer {
 
       if (renderTimeGrowth > 1.5) {
         recommendations.push(
-          `Render time increases significantly at ${current.itemCount} items (${renderTimeGrowth.toFixed(2)}x)`,
+          `Render time increases significantly at ${current.itemCount} items (${renderTimeGrowth.toFixed(2)}x)`
         );
       }
 
       if (memoryGrowth > 1.5) {
         recommendations.push(
-          `Memory usage increases significantly at ${current.itemCount} items (${memoryGrowth.toFixed(2)}x)`,
+          `Memory usage increases significantly at ${current.itemCount} items (${memoryGrowth.toFixed(2)}x)`
         );
       }
     }
@@ -188,19 +185,16 @@ export class PerformanceThresholdAnalyzer {
 
     const problemPoint = sortedResults.find(
       (result) =>
-        result.renderTime > this.RENDER_TIME_THRESHOLD ||
-        result.scrollTime > this.SCROLL_TIME_THRESHOLD,
+        result.renderTime > PerformanceThresholdAnalyzer.RENDER_TIME_THRESHOLD ||
+        result.scrollTime > PerformanceThresholdAnalyzer.SCROLL_TIME_THRESHOLD
     );
 
     if (problemPoint) {
       virtualizationRequired = problemPoint.itemCount;
-      virtualizationRecommended = Math.max(
-        100,
-        Math.floor(problemPoint.itemCount * 0.7),
-      );
+      virtualizationRecommended = Math.max(100, Math.floor(problemPoint.itemCount * 0.7));
 
       recommendations.push(
-        `Performance issues detected at ${problemPoint.itemCount} items - virtualization required`,
+        `Performance issues detected at ${problemPoint.itemCount} items - virtualization required`
       );
     }
 
@@ -220,9 +214,9 @@ export class PerformanceThresholdAnalyzer {
       scrollTime: number;
       memoryUsage: number;
       domNodeCount: number;
-    }>,
+    }>
   ): string {
-    const analysis = this.analyzePerformanceData(results);
+    const analysis = PerformanceThresholdAnalyzer.analyzePerformanceData(results);
 
     let report = "Performance Analysis Report\n";
     report += "================================\n\n";

@@ -1,7 +1,7 @@
 "use client";
 
-import React from "react";
-import { Box, HStack, Text, Icon, Spinner } from "@chakra-ui/react";
+import { Box, HStack, Icon, Spinner, Text } from "@chakra-ui/react";
+import type React from "react";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 
 interface StatsCardProps {
@@ -23,9 +23,7 @@ export const StatsCard: React.FC<StatsCardProps> = ({
   color,
   isLoading = false,
 }) => {
-  const getColorVariable = (
-    colorType: "primary" | "secondary" | "tertiary",
-  ) => {
+  const getColorVariable = (colorType: "primary" | "secondary" | "tertiary") => {
     switch (colorType) {
       case "primary":
         return "var(--alt-primary)";

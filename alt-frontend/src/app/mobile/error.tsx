@@ -26,17 +26,13 @@ export default function MobileError({
   return (
     <div className="mobile-error-container">
       <h2 className="mobile-error-title">モバイルエラー</h2>
-      <p className="mobile-error-message">
-        モバイルページでエラーが発生しました。
-      </p>
+      <p className="mobile-error-message">モバイルページでエラーが発生しました。</p>
       <button onClick={handleReset} className="mobile-error-button">
         再試行
       </button>
       {process.env.NODE_ENV === "development" && (
         <details className="mobile-error-details">
-          <summary className="mobile-error-summary">
-            エラー詳細 (開発環境のみ)
-          </summary>
+          <summary className="mobile-error-summary">エラー詳細 (開発環境のみ)</summary>
           <pre className="mobile-error-pre">{error.stack}</pre>
         </details>
       )}

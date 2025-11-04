@@ -1,9 +1,9 @@
-import { ApiClient } from "../core/ApiClient";
-import { CursorResponse } from "@/schema/common";
+import type { CursorResponse } from "@/schema/common";
+import type { ApiClient } from "../core/ApiClient";
 
 export type CursorFetchFunction<T> = (
   cursor?: string,
-  limit?: number,
+  limit?: number
 ) => Promise<CursorResponse<T>>;
 
 export class CursorApi<BackendType, FrontendType> {
@@ -11,12 +11,12 @@ export class CursorApi<BackendType, FrontendType> {
     private apiClient: ApiClient,
     private endpoint: string,
     private transformer: (item: BackendType) => FrontendType,
-    private defaultCacheTtl: number = 10,
+    private defaultCacheTtl: number = 10
   ) {}
 
   async fetchWithCursor(
     cursor?: string,
-    limit: number = 20,
+    limit: number = 20
   ): Promise<CursorResponse<FrontendType>> {
     // Validate limit constraints
     if (limit < 1 || limit > 100) {
@@ -33,7 +33,7 @@ export class CursorApi<BackendType, FrontendType> {
     const cacheTtl = cursor ? this.defaultCacheTtl + 5 : this.defaultCacheTtl;
     const response = await this.apiClient.get<CursorResponse<BackendType>>(
       `${this.endpoint}?${params.toString()}`,
-      cacheTtl,
+      cacheTtl
     );
 
     // Guard against null or malformed responses

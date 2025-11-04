@@ -34,12 +34,11 @@ export class AuthInterceptor {
   async intercept(
     response: Response,
     originalUrl: string,
-    originalOptions?: RequestInit,
+    originalOptions?: RequestInit
   ): Promise<Response> {
     if (response.status !== 401) {
       return response;
     }
-
 
     // Server-side execution check (critical for Next.js App Directory compatibility)
     if (typeof window === "undefined") {
@@ -63,8 +62,7 @@ export class AuthInterceptor {
             credentials: "include",
           });
         }
-      } catch (recheckError) {
-      }
+      } catch (recheckError) {}
     }
 
     // ここで即遷移しない。ページ上部に「再ログインしてね」バナーを出すだけ。
@@ -79,7 +77,7 @@ export class AuthInterceptor {
       {
         status: 401,
         headers: { "Content-Type": "application/json" },
-      },
+      }
     );
   }
 }

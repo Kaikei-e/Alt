@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { Box, Flex, Text, Icon } from "@chakra-ui/react";
+import { Box, Flex, Icon, Text } from "@chakra-ui/react";
 import type { ElementType } from "react";
+import React from "react";
 
 // Safe number formatter with fallbacks
 const safeFormatNumber = (value: number): string => {

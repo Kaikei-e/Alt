@@ -1,7 +1,7 @@
 "use client";
 
-import { Box, BoxProps } from "@chakra-ui/react";
-import { ReactNode } from "react";
+import { Box, type BoxProps } from "@chakra-ui/react";
+import type { ReactNode } from "react";
 
 interface GlassPanelProps extends Omit<BoxProps, "children"> {
   children: ReactNode;

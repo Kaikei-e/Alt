@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import type { Page } from "@playwright/test";
 
 /**
  * Performance testing utilities for Core Web Vitals and metrics
@@ -69,11 +69,11 @@ export interface PerformanceMetrics {
  */
 export async function measureWebVitals(page: Page): Promise<PerformanceMetrics> {
   // Wait for page to load
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState("networkidle");
 
   // Inject web-vitals library
   await page.addScriptTag({
-    url: 'https://unpkg.com/web-vitals@3/dist/web-vitals.iife.js',
+    url: "https://unpkg.com/web-vitals@3/dist/web-vitals.iife.js",
   });
 
   // Collect metrics
@@ -81,7 +81,7 @@ export async function measureWebVitals(page: Page): Promise<PerformanceMetrics> 
     return new Promise<PerformanceMetrics>((resolve) => {
       const metrics: PerformanceMetrics = {};
 
-      // @ts-ignore - web-vitals is loaded dynamically
+      // @ts-expect-error - web-vitals is loaded dynamically
       const { onLCP, onFID, onCLS, onFCP, onTTFB } = window.webVitals;
 
       let metricsCollected = 0;
@@ -131,12 +131,10 @@ export async function measureWebVitals(page: Page): Promise<PerformanceMetrics> 
  * Measure page load performance using Navigation Timing API
  */
 export async function measurePageLoad(page: Page): Promise<PerformanceMetrics> {
-  await page.waitForLoadState('load');
+  await page.waitForLoadState("load");
 
   return await page.evaluate(() => {
-    const perfData = performance.getEntriesByType(
-      'navigation'
-    )[0] as PerformanceNavigationTiming;
+    const perfData = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
 
     return {
       domContentLoaded: perfData.domContentLoadedEventEnd - perfData.fetchStart,
@@ -152,9 +150,9 @@ export async function measurePageLoad(page: Page): Promise<PerformanceMetrics> {
  */
 export async function measureMemory(page: Page): Promise<number> {
   return await page.evaluate(() => {
-    // @ts-ignore - performance.memory is Chrome-specific
+    // @ts-expect-error - performance.memory is Chrome-specific
     if (performance.memory) {
-      // @ts-ignore
+      // @ts-expect-error
       return performance.memory.usedJSHeapSize;
     }
     return 0;
@@ -166,7 +164,7 @@ export async function measureMemory(page: Page): Promise<number> {
  */
 export async function getResourceMetrics(page: Page) {
   return await page.evaluate(() => {
-    const resources = performance.getEntriesByType('resource');
+    const resources = performance.getEntriesByType("resource");
 
     const metrics = {
       totalResources: resources.length,
@@ -175,16 +173,16 @@ export async function getResourceMetrics(page: Page) {
       images: 0,
       fonts: 0,
       totalSize: 0,
-      slowestResource: { name: '', duration: 0 },
+      slowestResource: { name: "", duration: 0 },
     };
 
     resources.forEach((resource: any) => {
       const type = resource.initiatorType;
 
-      if (type === 'script') metrics.scripts++;
-      else if (type === 'css' || type === 'link') metrics.stylesheets++;
-      else if (type === 'img') metrics.images++;
-      else if (type === 'font') metrics.fonts++;
+      if (type === "script") metrics.scripts++;
+      else if (type === "css" || type === "link") metrics.stylesheets++;
+      else if (type === "img") metrics.images++;
+      else if (type === "font") metrics.fonts++;
 
       if (resource.transferSize) {
         metrics.totalSize += resource.transferSize;
@@ -206,19 +204,19 @@ export async function getResourceMetrics(page: Page) {
  * Check if metrics meet Web Vitals thresholds
  */
 export function evaluateWebVitals(metrics: PerformanceMetrics): {
-  lcp: 'good' | 'needs-improvement' | 'poor';
-  fid: 'good' | 'needs-improvement' | 'poor';
-  cls: 'good' | 'needs-improvement' | 'poor';
-  fcp: 'good' | 'needs-improvement' | 'poor';
+  lcp: "good" | "needs-improvement" | "poor";
+  fid: "good" | "needs-improvement" | "poor";
+  cls: "good" | "needs-improvement" | "poor";
+  fcp: "good" | "needs-improvement" | "poor";
 } {
   const evaluate = (
     value: number | undefined,
     thresholds: { good: number; needsImprovement: number }
   ) => {
-    if (!value) return 'poor';
-    if (value <= thresholds.good) return 'good';
-    if (value <= thresholds.needsImprovement) return 'needs-improvement';
-    return 'poor';
+    if (!value) return "poor";
+    if (value <= thresholds.good) return "good";
+    if (value <= thresholds.needsImprovement) return "needs-improvement";
+    return "poor";
   };
 
   return {
@@ -232,10 +230,7 @@ export function evaluateWebVitals(metrics: PerformanceMetrics): {
 /**
  * Assert Web Vitals are within acceptable range
  */
-export function assertWebVitals(
-  metrics: PerformanceMetrics,
-  strictMode = false
-) {
+export function assertWebVitals(metrics: PerformanceMetrics, strictMode = false) {
   const thresholds = WEB_VITALS_THRESHOLDS;
 
   const maxLCP = strictMode ? thresholds.LCP.good : thresholds.LCP.needsImprovement;
@@ -262,7 +257,7 @@ export function assertWebVitals(
   }
 
   if (errors.length > 0) {
-    throw new Error(`Web Vitals check failed:\n${errors.join('\n')}`);
+    throw new Error(`Web Vitals check failed:\n${errors.join("\n")}`);
   }
 }
 
@@ -272,22 +267,22 @@ export function assertWebVitals(
 export function generatePerformanceReport(metrics: PerformanceMetrics): string {
   const evaluation = evaluateWebVitals(metrics);
 
-  let report = '=== Performance Report ===\n\n';
-  report += 'Core Web Vitals:\n';
-  report += `  LCP: ${metrics.lcp?.toFixed(0) ?? 'N/A'}ms [${evaluation.lcp}]\n`;
-  report += `  FID: ${metrics.fid?.toFixed(0) ?? 'N/A'}ms [${evaluation.fid}]\n`;
-  report += `  CLS: ${metrics.cls?.toFixed(3) ?? 'N/A'} [${evaluation.cls}]\n`;
-  report += `  FCP: ${metrics.fcp?.toFixed(0) ?? 'N/A'}ms [${evaluation.fcp}]\n\n`;
+  let report = "=== Performance Report ===\n\n";
+  report += "Core Web Vitals:\n";
+  report += `  LCP: ${metrics.lcp?.toFixed(0) ?? "N/A"}ms [${evaluation.lcp}]\n`;
+  report += `  FID: ${metrics.fid?.toFixed(0) ?? "N/A"}ms [${evaluation.fid}]\n`;
+  report += `  CLS: ${metrics.cls?.toFixed(3) ?? "N/A"} [${evaluation.cls}]\n`;
+  report += `  FCP: ${metrics.fcp?.toFixed(0) ?? "N/A"}ms [${evaluation.fcp}]\n\n`;
 
   if (metrics.domContentLoaded) {
-    report += 'Navigation Timing:\n';
+    report += "Navigation Timing:\n";
     report += `  DOM Content Loaded: ${metrics.domContentLoaded.toFixed(0)}ms\n`;
-    report += `  Load Complete: ${metrics.loadComplete?.toFixed(0) ?? 'N/A'}ms\n`;
-    report += `  TTFB: ${metrics.timeToFirstByte?.toFixed(0) ?? 'N/A'}ms\n\n`;
+    report += `  Load Complete: ${metrics.loadComplete?.toFixed(0) ?? "N/A"}ms\n`;
+    report += `  TTFB: ${metrics.timeToFirstByte?.toFixed(0) ?? "N/A"}ms\n\n`;
   }
 
   if (metrics.jsHeapSize) {
-    report += 'Memory:\n';
+    report += "Memory:\n";
     report += `  JS Heap Size: ${(metrics.jsHeapSize / 1024 / 1024).toFixed(2)}MB\n`;
   }
 
@@ -334,10 +329,7 @@ export function compareMetrics(
   };
 }
 
-function calculateDiff(
-  baseline: number | undefined,
-  current: number | undefined
-): number {
+function calculateDiff(baseline: number | undefined, current: number | undefined): number {
   if (!baseline || !current) return 0;
   return ((current - baseline) / baseline) * 100;
 }

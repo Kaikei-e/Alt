@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useRef } from "react";
 import { Box } from "@chakra-ui/react";
+import type React from "react";
+import { useRef } from "react";
 import { DesktopFeedCard } from "@/components/desktop/timeline/DesktopFeedCard";
-import { DesktopFeed } from "@/types/desktop-feed";
-import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation";
 import { useFocusManagement } from "@/hooks/useFocusManagement";
+import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation";
+import type { DesktopFeed } from "@/types/desktop-feed";
 
 interface AccessibleDesktopFeedCardProps {
   feed: DesktopFeed;
@@ -19,9 +20,13 @@ interface AccessibleDesktopFeedCardProps {
   onViewArticle: (feedId: string) => void;
 }
 
-export const AccessibleDesktopFeedCard: React.FC<
-  AccessibleDesktopFeedCardProps
-> = ({ feed, index, total, onNavigate, ...props }) => {
+export const AccessibleDesktopFeedCard: React.FC<AccessibleDesktopFeedCardProps> = ({
+  feed,
+  index,
+  total,
+  onNavigate,
+  ...props
+}) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const { focused, handleFocus, handleBlur } = useFocusManagement();
 
@@ -48,16 +53,12 @@ export const AccessibleDesktopFeedCard: React.FC<
       outline={focused ? "2px solid var(--accent-primary)" : "none"}
       outlineOffset="2px"
     >
-      <div
-        id={`feed-${feed.id}-description`}
-        style={{ position: "absolute", left: "-9999px" }}
-      >
+      <div id={`feed-${feed.id}-description`} style={{ position: "absolute", left: "-9999px" }}>
         {feed.metadata.summary || feed.description}
-        Published {feed.metadata.publishedAt} by {feed.metadata.source.name}.
-        Reading time: {feed.metadata.readingTime} minutes.
+        Published {feed.metadata.publishedAt} by {feed.metadata.source.name}. Reading time:{" "}
+        {feed.metadata.readingTime} minutes.
         {feed.isRead ? "Already read." : "Unread."}
-        Priority: {feed.metadata.priority}. Difficulty:{" "}
-        {feed.metadata.difficulty}.
+        Priority: {feed.metadata.priority}. Difficulty: {feed.metadata.difficulty}.
       </div>
 
       <DesktopFeedCard feed={feed} {...props} />

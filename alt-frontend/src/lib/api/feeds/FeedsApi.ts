@@ -1,22 +1,22 @@
-import { ApiClient } from "../core/ApiClient";
-import { CursorApi } from "./CursorApi";
-import { serverFetch } from "../utils/serverFetch";
+import type { Article } from "@/schema/article";
+import type { MessageResponse } from "@/schema/common";
 import {
-  BackendFeedItem,
-  SanitizedFeed,
-  FeedDetails,
-  FeedURLPayload,
-  FetchArticleSummaryResponse,
+  type BackendFeedItem,
+  type FeedContentOnTheFlyResponse,
+  type FeedDetails,
+  type FeedURLPayload,
+  type FetchArticleSummaryResponse,
+  type SanitizedFeed,
   sanitizeFeed,
-  FeedContentOnTheFlyResponse,
 } from "@/schema/feed";
-import { FeedSearchResult } from "@/schema/search";
-import { Article } from "@/schema/article";
-import { FeedStatsSummary } from "@/schema/feedStats";
-import { UnreadCount } from "@/schema/unread";
-import { MessageResponse } from "@/schema/common";
-import { FeedTags } from "@/types/feed-tags";
+import type { FeedStatsSummary } from "@/schema/feedStats";
+import type { FeedSearchResult } from "@/schema/search";
+import type { UnreadCount } from "@/schema/unread";
+import type { FeedTags } from "@/types/feed-tags";
+import type { ApiClient } from "../core/ApiClient";
 import { ApiError } from "../core/ApiError";
+import { serverFetch } from "../utils/serverFetch";
+import { CursorApi } from "./CursorApi";
 
 export class FeedsApi {
   private feedsCursorApi: CursorApi<BackendFeedItem, SanitizedFeed>;
@@ -26,14 +26,8 @@ export class FeedsApi {
 
   // Cursor-based API functions
   public getFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
-  public getFavoriteFeedsWithCursor: (
-    cursor?: string,
-    limit?: number,
-  ) => Promise<any>;
-  public getReadFeedsWithCursor: (
-    cursor?: string,
-    limit?: number,
-  ) => Promise<any>;
+  public getFavoriteFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
+  public getReadFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
   public getArticlesWithCursor: (cursor?: string, limit?: number) => Promise<any>;
 
   constructor(private apiClient: ApiClient) {
@@ -41,25 +35,20 @@ export class FeedsApi {
       return sanitizeFeed(item);
     };
 
-    this.feedsCursorApi = new CursorApi(
-      apiClient,
-      "/v1/feeds/fetch/cursor",
-      transformFeedItem,
-      5,
-    );
+    this.feedsCursorApi = new CursorApi(apiClient, "/v1/feeds/fetch/cursor", transformFeedItem, 5);
 
     this.favoritesCursorApi = new CursorApi(
       apiClient,
       "/v1/feeds/fetch/favorites/cursor",
       transformFeedItem,
-      10,
+      10
     );
 
     this.readCursorApi = new CursorApi(
       apiClient,
       "/v1/feeds/fetch/viewed/cursor",
       transformFeedItem,
-      10,
+      10
     );
 
     // Articles cursor API - no transformation needed
@@ -67,7 +56,7 @@ export class FeedsApi {
       apiClient,
       "/v1/articles/fetch/cursor",
       (item: Article) => item, // No transformation needed
-      20,
+      20
     );
 
     // Initialize the cursor functions after the CursorApi instances are created
@@ -83,14 +72,11 @@ export class FeedsApi {
   }
 
   // Legacy pagination methods
-  async getFeeds(
-    page: number = 1,
-    pageSize: number = 10,
-  ): Promise<SanitizedFeed[]> {
+  async getFeeds(page: number = 1, pageSize: number = 10): Promise<SanitizedFeed[]> {
     const limit = page * pageSize;
     const response = await this.apiClient.get<BackendFeedItem[]>(
       `/v1/feeds/fetch/limit/${limit}`,
-      10,
+      10
     );
 
     if (Array.isArray(response)) {
@@ -102,7 +88,7 @@ export class FeedsApi {
   async getFeedsPage(page: number = 0): Promise<SanitizedFeed[]> {
     const response = await this.apiClient.get<BackendFeedItem[]>(
       `/v1/feeds/fetch/page/${page}`,
-      10,
+      10
     );
 
     if (Array.isArray(response)) {
@@ -112,10 +98,7 @@ export class FeedsApi {
   }
 
   async getAllFeeds(): Promise<SanitizedFeed[]> {
-    const response = await this.apiClient.get<BackendFeedItem[]>(
-      "/v1/feeds/fetch/list",
-      15,
-    );
+    const response = await this.apiClient.get<BackendFeedItem[]>("/v1/feeds/fetch/list", 15);
 
     if (Array.isArray(response)) {
       return response.map(sanitizeFeed);
@@ -124,10 +107,7 @@ export class FeedsApi {
   }
 
   async getSingleFeed(): Promise<SanitizedFeed> {
-    const response = await this.apiClient.get<BackendFeedItem>(
-      "/v1/feeds/fetch/single",
-      5,
-    );
+    const response = await this.apiClient.get<BackendFeedItem>("/v1/feeds/fetch/single", 5);
     return sanitizeFeed(response);
   }
 
@@ -145,15 +125,10 @@ export class FeedsApi {
   }
 
   // Article summaries
-  async getArticleSummary(
-    feedUrl: string,
-  ): Promise<FetchArticleSummaryResponse> {
-    return this.apiClient.post<FetchArticleSummaryResponse>(
-      "/v1/feeds/fetch/summary/provided",
-      {
-        feed_urls: [feedUrl],
-      },
-    );
+  async getArticleSummary(feedUrl: string): Promise<FetchArticleSummaryResponse> {
+    return this.apiClient.post<FetchArticleSummaryResponse>("/v1/feeds/fetch/summary/provided", {
+      feed_urls: [feedUrl],
+    });
   }
 
   async getFeedDetails(payload: FeedURLPayload): Promise<FeedDetails> {
@@ -167,16 +142,11 @@ export class FeedsApi {
       }
       throw new ApiError("No summary found for this article");
     } catch (error) {
-      throw new ApiError(
-        error instanceof Error ? error.message : "Failed to fetch feed details",
-      );
+      throw new ApiError(error instanceof Error ? error.message : "Failed to fetch feed details");
     }
   }
 
-  async archiveContent(
-    feedUrl: string,
-    title?: string,
-  ): Promise<MessageResponse> {
+  async archiveContent(feedUrl: string, title?: string): Promise<MessageResponse> {
     const trimmedTitle = title?.trim();
     const payload: Record<string, unknown> = { feed_url: feedUrl };
     if (trimmedTitle) {
@@ -188,26 +158,22 @@ export class FeedsApi {
 
   // Article summarization
   async summarizeArticle(
-    feedUrl: string,
+    feedUrl: string
   ): Promise<{ success: boolean; summary: string; article_id: string; feed_url: string }> {
     return this.apiClient.post("/v1/feeds/summarize", { feed_url: feedUrl });
   }
 
-  async getFeedContentOnTheFly(
-    payload: FeedURLPayload,
-  ): Promise<FeedContentOnTheFlyResponse> {
+  async getFeedContentOnTheFly(payload: FeedURLPayload): Promise<FeedContentOnTheFlyResponse> {
     const encodedUrl = encodeURIComponent(payload.feed_url);
     return this.apiClient.get<FeedContentOnTheFlyResponse>(
       `/v1/articles/fetch/content?url=${encodedUrl}`,
-      10,
+      10
     );
   }
 
   // Search
   async searchArticles(query: string): Promise<Article[]> {
-    const backendResponse = await this.apiClient.get<Article[]>(
-      `/v1/articles/search?q=${query}`,
-    );
+    const backendResponse = await this.apiClient.get<Article[]>(`/v1/articles/search?q=${query}`);
 
     // Backend already returns lowercase fields, no transformation needed
     return backendResponse;
@@ -215,9 +181,10 @@ export class FeedsApi {
 
   async searchFeeds(query: string): Promise<FeedSearchResult> {
     try {
-      const response = await this.apiClient.post<
-        BackendFeedItem[] | FeedSearchResult
-      >("/v1/feeds/search", { query });
+      const response = await this.apiClient.post<BackendFeedItem[] | FeedSearchResult>(
+        "/v1/feeds/search",
+        { query }
+      );
 
       if (Array.isArray(response)) {
         return { results: response, error: null };
@@ -243,7 +210,7 @@ export class FeedsApi {
   async getTodayUnreadCount(since: string): Promise<UnreadCount> {
     return this.apiClient.get<UnreadCount>(
       `/v1/feeds/count/unreads?since=${encodeURIComponent(since)}`,
-      1,
+      1
     );
   }
 
@@ -256,22 +223,20 @@ export class FeedsApi {
 
   // Prefetch methods
   async prefetchFeeds(pages: number[] = [0, 1]): Promise<void> {
-    const prefetchPromises = pages.map((page) =>
-      this.getFeedsPage(page).catch(() => {}),
-    );
+    const prefetchPromises = pages.map((page) => this.getFeedsPage(page).catch(() => {}));
     await Promise.all(prefetchPromises);
   }
 
   async prefetchFavoriteFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getFavoriteFeedsWithCursor(cursor).catch(() => {}),
+      this.getFavoriteFeedsWithCursor(cursor).catch(() => {})
     );
     await Promise.all(prefetchPromises);
   }
 
   async prefetchReadFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getReadFeedsWithCursor(cursor).catch(() => {}),
+      this.getReadFeedsWithCursor(cursor).catch(() => {})
     );
     await Promise.all(prefetchPromises);
   }

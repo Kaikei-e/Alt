@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { ReadingAnalytics } from "@/types/analytics";
+import { useEffect, useState } from "react";
 import { mockAnalytics } from "@/data/mockAnalyticsData";
+import type { ReadingAnalytics } from "@/types/analytics";
 
 export const useReadingAnalytics = () => {
   const [analytics, setAnalytics] = useState<ReadingAnalytics | null>(null);

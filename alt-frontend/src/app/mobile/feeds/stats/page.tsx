@@ -1,21 +1,16 @@
 "use client";
 
+import { Box, Flex, Text } from "@chakra-ui/react";
+import { FileText, Layers, Rss } from "lucide-react";
 import React from "react";
-import { Flex, Text, Box } from "@chakra-ui/react";
+import { StatCard } from "@/components/mobile/stats/StatCard";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useSSEFeedsStats } from "@/hooks/useSSEFeedsStats";
-import { Rss, FileText, Layers } from "lucide-react";
-import { StatCard } from "@/components/mobile/stats/StatCard";
 
 export default function FeedsStatsPage() {
   // Use the dedicated SSE hook for feeds stats
-  const {
-    feedAmount,
-    unsummarizedArticlesAmount,
-    totalArticlesAmount,
-    isConnected,
-    retryCount,
-  } = useSSEFeedsStats();
+  const { feedAmount, unsummarizedArticlesAmount, totalArticlesAmount, isConnected, retryCount } =
+    useSSEFeedsStats();
 
   return (
     <Box

@@ -1,8 +1,8 @@
-import { BackendFeedItem } from "@/schema/feed";
-import { FeedSearchResult } from "@/schema/search";
+import type { BackendFeedItem } from "@/schema/feed";
+import type { FeedSearchResult } from "@/schema/search";
 
 export const transformFeedSearchResult = (
-  feedSearchResult: FeedSearchResult | BackendFeedItem[],
+  feedSearchResult: FeedSearchResult | BackendFeedItem[]
 ): BackendFeedItem[] => {
   // If the response is directly an array (backend returns array directly)
   if (Array.isArray(feedSearchResult)) {
@@ -10,11 +10,7 @@ export const transformFeedSearchResult = (
   }
 
   // If it's wrapped in FeedSearchResult structure
-  if (
-    feedSearchResult &&
-    typeof feedSearchResult === "object" &&
-    "results" in feedSearchResult
-  ) {
+  if (feedSearchResult && typeof feedSearchResult === "object" && "results" in feedSearchResult) {
     if (Array.isArray(feedSearchResult.results)) {
       return feedSearchResult.results;
     }

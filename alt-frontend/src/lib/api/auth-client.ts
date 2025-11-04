@@ -1,14 +1,9 @@
-import type {
-  User,
-  LoginFlow,
-  RegistrationFlow,
-  UserPreferences,
-} from "@/types/auth";
-import { IDP_ORIGIN } from "@/lib/env.public";
 import {
-  buildBackendIdentityHeaders,
   type BackendIdentityHeaders,
+  buildBackendIdentityHeaders,
 } from "@/lib/auth/backend-headers";
+import { IDP_ORIGIN } from "@/lib/env.public";
+import type { LoginFlow, RegistrationFlow, User, UserPreferences } from "@/types/auth";
 
 // Redirect function interface for dependency injection
 type RedirectFn = (url: string) => void;
@@ -44,11 +39,7 @@ export class AuthAPIClient {
     const isLocal = (value: string) => {
       try {
         const hostname = new URL(value).hostname;
-        return (
-          hostname === "localhost" ||
-          hostname === "127.0.0.1" ||
-          hostname === "0.0.0.0"
-        );
+        return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
       } catch {
         return false;
       }
@@ -99,12 +90,7 @@ export class AuthAPIClient {
     throw new Error("Registration flow initiated via redirect");
   }
 
-  async completeRegistration(
-    _: string,
-    __: string,
-    ___: string,
-    ____?: string,
-  ): Promise<User> {
+  async completeRegistration(_: string, __: string, ___: string, ____?: string): Promise<User> {
     this.redirect(`${this.idpOrigin}/self-service/registration/browser`);
     throw new Error("Registration redirected to Kratos");
   }
@@ -156,8 +142,7 @@ export class AuthAPIClient {
 
       this.currentUser = user;
       this.currentSessionId = data.session?.id ?? null;
-      this.sessionHeaders =
-        buildBackendIdentityHeaders(user, this.currentSessionId) ?? null;
+      this.sessionHeaders = buildBackendIdentityHeaders(user, this.currentSessionId) ?? null;
 
       if (this.debugMode) {
         if (this.sessionHeaders) {
@@ -170,8 +155,7 @@ export class AuthAPIClient {
       if (
         error instanceof Error &&
         error.message &&
-        (error.message.includes("401") ||
-          error.message.includes("Unauthorized"))
+        (error.message.includes("401") || error.message.includes("Unauthorized"))
       ) {
         this.clearSessionState();
         return null; // Not authenticated
@@ -181,9 +165,7 @@ export class AuthAPIClient {
     }
   }
 
-  async getSessionHeaders(
-    refresh = false,
-  ): Promise<BackendIdentityHeaders | null> {
+  async getSessionHeaders(refresh = false): Promise<BackendIdentityHeaders | null> {
     if (refresh) {
       this.clearSessionState();
     }
@@ -246,12 +228,9 @@ export class AuthAPIClient {
   private async makeRequest(
     method: string,
     endpoint: string,
-    body?: unknown,
+    body?: unknown
   ): Promise<{ data: unknown }> {
-    const url = new URL(
-      `${this.baseURL}${endpoint}`,
-      this.resolveAppOrigin(),
-    ).toString();
+    const url = new URL(`${this.baseURL}${endpoint}`, this.resolveAppOrigin()).toString();
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -260,9 +239,7 @@ export class AuthAPIClient {
     // Following Ory Kratos official recommendations for service-to-service communication
 
     // Add CSRF token for unsafe methods (except CSRF endpoint to avoid circular dependency)
-    const isUnsafeMethod = ["POST", "PUT", "PATCH", "DELETE"].includes(
-      method.toUpperCase(),
-    );
+    const isUnsafeMethod = ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
     const isCsrfEndpoint = endpoint.includes("/csrf");
 
     if (isUnsafeMethod && !isCsrfEndpoint) {
@@ -298,9 +275,7 @@ export class AuthAPIClient {
       const response = await fetch(url, config);
 
       if (!response.ok) {
-        const error = new Error(
-          `HTTP ${response.status}: ${method} ${endpoint}`,
-        );
+        const error = new Error(`HTTP ${response.status}: ${method} ${endpoint}`);
         throw this.handleError(error, `${method} ${endpoint}`);
       }
 
@@ -384,60 +359,45 @@ export class AuthAPIClient {
 
       // Kratos固有エラーの判定と適切な変換
       if (error.message.includes("Property email is missing")) {
-        return new Error(
-          `VALIDATION_FAILED: Property email is missing - ${context}`,
-        );
+        return new Error(`VALIDATION_FAILED: Property email is missing - ${context}`);
       }
 
       if (
         error.message.includes("already registered") ||
         error.message.includes("User already exists")
       ) {
-        return new Error(
-          `USER_ALREADY_EXISTS: User already exists - ${context}`,
-        );
+        return new Error(`USER_ALREADY_EXISTS: User already exists - ${context}`);
       }
 
-      if (
-        error.message.includes("flow expired") ||
-        error.message.includes("410")
-      ) {
-        return new Error(
-          `FLOW_EXPIRED: Registration flow expired - ${context}`,
-        );
+      if (error.message.includes("flow expired") || error.message.includes("410")) {
+        return new Error(`FLOW_EXPIRED: Registration flow expired - ${context}`);
       }
 
       if (error.message.includes("502") || error.message.includes("503")) {
-        return new Error(
-          `KRATOS_SERVICE_ERROR: Authentication service unavailable - ${context}`,
-        );
+        return new Error(`KRATOS_SERVICE_ERROR: Authentication service unavailable - ${context}`);
       }
 
       // HTTPステータスコード別の処理
       if (error.message.includes("HTTP 400")) {
-        return new Error(
-          `VALIDATION_FAILED: Bad request - ${context}: ${error.message}`,
-        );
+        return new Error(`VALIDATION_FAILED: Bad request - ${context}: ${error.message}`);
       }
 
       // 🚨 FIX: HTTP 401 専用ハンドリング追加
       if (error.message.includes("HTTP 401")) {
         return new Error(
-          `SESSION_NOT_FOUND: Authentication required - ${context}: ${error.message}`,
+          `SESSION_NOT_FOUND: Authentication required - ${context}: ${error.message}`
         );
       }
 
       // 🚨 FIX: HTTP 404 専用ハンドリング追加
       if (error.message.includes("HTTP 404")) {
         return new Error(
-          `KRATOS_SERVICE_ERROR: Authentication endpoint not found - ${context}: ${error.message}`,
+          `KRATOS_SERVICE_ERROR: Authentication endpoint not found - ${context}: ${error.message}`
         );
       }
 
       if (error.message.includes("HTTP 409")) {
-        return new Error(
-          `USER_ALREADY_EXISTS: Conflict - ${context}: ${error.message}`,
-        );
+        return new Error(`USER_ALREADY_EXISTS: Conflict - ${context}: ${error.message}`);
       }
 
       if (error.message.includes("HTTP 410")) {
@@ -489,21 +449,13 @@ export class AuthAPIClient {
   }
 
   private getMethodDescription(method: string, endpoint: string): string {
-    if (
-      endpoint.includes("/login") &&
-      method === "POST" &&
-      !endpoint.includes("/login/")
-    ) {
+    if (endpoint.includes("/login") && method === "POST" && !endpoint.includes("/login/")) {
       return "Failed to initiate login";
     }
     if (endpoint.includes("/login/") && method === "POST") {
       return "Failed to complete login";
     }
-    if (
-      endpoint.includes("/register") &&
-      method === "POST" &&
-      !endpoint.includes("/register/")
-    ) {
+    if (endpoint.includes("/register") && method === "POST" && !endpoint.includes("/register/")) {
       return "Failed to initiate registration";
     }
     if (endpoint.includes("/register/") && method === "POST") {
@@ -522,9 +474,7 @@ export class AuthAPIClient {
       return "Failed to update profile";
     }
     if (endpoint.includes("/settings")) {
-      return method === "GET"
-        ? "Failed to get user settings"
-        : "Failed to update user settings";
+      return method === "GET" ? "Failed to get user settings" : "Failed to update user settings";
     }
     return `Request failed`;
   }

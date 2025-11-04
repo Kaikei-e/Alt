@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Desktop Feed Register Page Object
@@ -23,28 +23,28 @@ export class DesktopFeedRegisterPage extends BasePage {
     super(page);
 
     // Initialize locators
-    this.pageHeading = page.getByRole('heading', {
+    this.pageHeading = page.getByRole("heading", {
       name: /register feed|add feed|new feed/i,
     });
     this.feedUrlInput = page.getByLabel(/url|feed url|rss url/i);
     this.feedTitleInput = page.getByLabel(/title|feed title|name/i);
     this.feedDescriptionInput = page.getByLabel(/description/i);
     this.categorySelect = page.getByLabel(/category/i);
-    this.submitButton = page.getByRole('button', {
+    this.submitButton = page.getByRole("button", {
       name: /submit|add|register|save/i,
     });
-    this.cancelButton = page.getByRole('button', { name: /cancel|back/i });
-    this.errorMessage = page.getByRole('alert');
-    this.successMessage = page.getByRole('status');
+    this.cancelButton = page.getByRole("button", { name: /cancel|back/i });
+    this.errorMessage = page.getByRole("alert");
+    this.successMessage = page.getByRole("status");
     this.validationMessage = page.locator('[data-testid="validation-message"]');
-    this.validateButton = page.getByRole('button', { name: /validate|check/i });
+    this.validateButton = page.getByRole("button", { name: /validate|check/i });
   }
 
   /**
    * Navigate to feed register page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/desktop/feeds/register');
+    await this.page.goto("/desktop/feeds/register");
     await this.waitForLoad();
   }
 

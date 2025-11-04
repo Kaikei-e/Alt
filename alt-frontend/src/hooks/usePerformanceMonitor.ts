@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  PerformanceThresholdAnalyzer,
-  PerformanceMetrics,
-} from "@/utils/performanceUtils";
+import { type PerformanceMetrics, PerformanceThresholdAnalyzer } from "@/utils/performanceUtils";
 
 export interface PerformanceData {
   renderTime: number;
@@ -11,17 +8,14 @@ export interface PerformanceData {
 }
 
 export const usePerformanceMonitor = (itemCount: number) => {
-  const [performanceData, setPerformanceData] =
-    useState<PerformanceData | null>(null);
+  const [performanceData, setPerformanceData] = useState<PerformanceData | null>(null);
   const [renderStartTime] = useState(() => performance.now());
 
   useEffect(() => {
     const renderTime = performance.now() - renderStartTime;
 
     // Get memory information if available (Chrome only)
-    const memoryInfo = (
-      performance as unknown as { memory?: { usedJSHeapSize?: number } }
-    ).memory;
+    const memoryInfo = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory;
     const memoryUsage = memoryInfo?.usedJSHeapSize || 0;
 
     // Count DOM nodes
@@ -34,8 +28,10 @@ export const usePerformanceMonitor = (itemCount: number) => {
       domNodeCount,
     };
 
-    const shouldVirtualize =
-      PerformanceThresholdAnalyzer.shouldUseVirtualization(itemCount, metrics);
+    const shouldVirtualize = PerformanceThresholdAnalyzer.shouldUseVirtualization(
+      itemCount,
+      metrics
+    );
 
     const performanceDataResult: PerformanceData = {
       renderTime,
@@ -59,9 +55,7 @@ export const usePerformanceMonitor = (itemCount: number) => {
 };
 
 // Hook for measuring scroll performance
-export const useScrollPerformanceMonitor = (
-  containerRef: React.RefObject<HTMLElement>,
-) => {
+export const useScrollPerformanceMonitor = (containerRef: React.RefObject<HTMLElement>) => {
   const [scrollPerformance, setScrollPerformance] = useState<{
     averageScrollTime: number;
     maxScrollTime: number;

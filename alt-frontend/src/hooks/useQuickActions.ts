@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { QuickAction } from "@/types/analytics";
+import type { QuickAction } from "@/types/analytics";
 
 export const useQuickActions = () => {
   const actions: QuickAction[] = useMemo(
@@ -44,7 +44,7 @@ export const useQuickActions = () => {
         },
       },
     ],
-    [],
+    []
   );
 
   const counters = {

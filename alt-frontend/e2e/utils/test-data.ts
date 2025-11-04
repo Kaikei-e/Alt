@@ -7,18 +7,18 @@
  */
 export const testUsers = {
   validUser: {
-    email: 'test@example.com',
-    password: 'password123',
-    name: 'Test User',
+    email: "test@example.com",
+    password: "password123",
+    name: "Test User",
   },
   invalidUser: {
-    email: 'invalid@example.com',
-    password: 'wrongpassword',
+    email: "invalid@example.com",
+    password: "wrongpassword",
   },
   newUser: {
     email: `test-${Date.now()}@example.com`,
-    password: 'newpassword123',
-    name: 'New Test User',
+    password: "newpassword123",
+    name: "New Test User",
   },
 } as const;
 
@@ -27,22 +27,22 @@ export const testUsers = {
  */
 export const testFeeds = {
   techFeed: {
-    url: 'https://example.com/tech.rss',
-    title: 'Technology News',
-    description: 'Latest technology news and updates',
-    category: 'technology',
+    url: "https://example.com/tech.rss",
+    title: "Technology News",
+    description: "Latest technology news and updates",
+    category: "technology",
   },
   newsFeed: {
-    url: 'https://example.com/news.rss',
-    title: 'World News',
-    description: 'Global news coverage',
-    category: 'news',
+    url: "https://example.com/news.rss",
+    title: "World News",
+    description: "Global news coverage",
+    category: "news",
   },
   blogFeed: {
-    url: 'https://example.com/blog.rss',
-    title: 'Tech Blog',
-    description: 'Personal tech blog',
-    category: 'blog',
+    url: "https://example.com/blog.rss",
+    title: "Tech Blog",
+    description: "Personal tech blog",
+    category: "blog",
   },
 } as const;
 
@@ -51,22 +51,22 @@ export const testFeeds = {
  */
 export const testArticles = {
   article1: {
-    title: 'Introduction to Next.js 15',
-    content: 'Next.js 15 brings amazing new features...',
-    url: 'https://example.com/articles/nextjs-15',
-    publishedAt: '2025-01-01T00:00:00Z',
+    title: "Introduction to Next.js 15",
+    content: "Next.js 15 brings amazing new features...",
+    url: "https://example.com/articles/nextjs-15",
+    publishedAt: "2025-01-01T00:00:00Z",
   },
   article2: {
-    title: 'React 19 Released',
-    content: 'React 19 is now available with...',
-    url: 'https://example.com/articles/react-19',
-    publishedAt: '2025-01-02T00:00:00Z',
+    title: "React 19 Released",
+    content: "React 19 is now available with...",
+    url: "https://example.com/articles/react-19",
+    publishedAt: "2025-01-02T00:00:00Z",
   },
   article3: {
-    title: 'TypeScript Best Practices',
-    content: 'Learn the best practices for TypeScript...',
-    url: 'https://example.com/articles/typescript',
-    publishedAt: '2025-01-03T00:00:00Z',
+    title: "TypeScript Best Practices",
+    content: "Learn the best practices for TypeScript...",
+    url: "https://example.com/articles/typescript",
+    publishedAt: "2025-01-03T00:00:00Z",
   },
 } as const;
 
@@ -93,9 +93,9 @@ export function generateRandomFeedUrl(): string {
 export function createMockFeed(overrides?: Partial<FeedData>): FeedData {
   return {
     id: `feed-${Date.now()}`,
-    title: 'Test Feed',
-    description: 'A test feed for E2E testing',
-    url: 'https://example.com/feed.rss',
+    title: "Test Feed",
+    description: "A test feed for E2E testing",
+    url: "https://example.com/feed.rss",
     lastUpdated: new Date().toISOString(),
     unreadCount: 5,
     totalCount: 100,
@@ -109,14 +109,14 @@ export function createMockFeed(overrides?: Partial<FeedData>): FeedData {
 export function createMockArticle(overrides?: Partial<ArticleData>): ArticleData {
   return {
     id: `article-${Date.now()}`,
-    title: 'Test Article',
-    content: 'This is a test article content',
-    url: 'https://example.com/article',
+    title: "Test Article",
+    content: "This is a test article content",
+    url: "https://example.com/article",
     publishedAt: new Date().toISOString(),
     isRead: false,
     isFavorite: false,
-    feedId: 'feed-123',
-    feedTitle: 'Test Feed',
+    feedId: "feed-123",
+    feedTitle: "Test Feed",
     ...overrides,
   };
 }
@@ -190,13 +190,10 @@ export interface ArticlesResponse {
 /**
  * Create mock feeds API response
  */
-export function createMockFeedsResponse(
-  count: number,
-  hasMore = false
-): FeedsResponse {
+export function createMockFeedsResponse(count: number, hasMore = false): FeedsResponse {
   return {
     feeds: createMockFeeds(count),
-    cursor: hasMore ? 'next-cursor' : null,
+    cursor: hasMore ? "next-cursor" : null,
     hasMore,
   };
 }
@@ -204,13 +201,10 @@ export function createMockFeedsResponse(
 /**
  * Create mock articles API response
  */
-export function createMockArticlesResponse(
-  count: number,
-  hasMore = false
-): ArticlesResponse {
+export function createMockArticlesResponse(count: number, hasMore = false): ArticlesResponse {
   return {
     articles: createMockArticles(count),
-    cursor: hasMore ? 'next-cursor' : null,
+    cursor: hasMore ? "next-cursor" : null,
     hasMore,
   };
 }

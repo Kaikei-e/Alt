@@ -1,10 +1,10 @@
-import { UnsummarizedFeedStatsSummary } from "@/schema/feedStats";
-import { SseConfig, defaultSseConfig } from "@/lib/config";
+import { defaultSseConfig, type SseConfig } from "@/lib/config";
+import type { UnsummarizedFeedStatsSummary } from "@/schema/feedStats";
 
 export function setupSSE(
   endpoint: string,
   onData: (data: UnsummarizedFeedStatsSummary) => void,
-  onError?: () => void,
+  onError?: () => void
 ): EventSource | null {
   try {
     const eventSource = new EventSource(endpoint);
@@ -42,7 +42,7 @@ export function setupSSEWithReconnect(
   onData: (data: UnsummarizedFeedStatsSummary) => void,
   onError?: () => void,
   maxReconnectAttempts: number = 3,
-  onOpen?: () => void,
+  onOpen?: () => void
 ): { eventSource: EventSource | null; cleanup: () => void } {
   let eventSource: EventSource | null = null;
   let reconnectAttempts = 0;
@@ -88,10 +88,7 @@ export function setupSSEWithReconnect(
 
         if (reconnectAttempts < maxReconnectAttempts) {
           reconnectAttempts++;
-          const delay = Math.min(
-            Math.pow(2, reconnectAttempts - 1) * 1000,
-            10000,
-          ); // Exponential backoff with max 10s
+          const delay = Math.min(2 ** (reconnectAttempts - 1) * 1000, 10000); // Exponential backoff with max 10s
           reconnectTimeout = setTimeout(connect, delay);
         }
       };
@@ -126,17 +123,14 @@ export class SseClient {
     this.config = config;
   }
 
-  getFeedsStats(
-    onMessage: (data: UnsummarizedFeedStatsSummary) => void,
-    onError?: () => void,
-  ) {
+  getFeedsStats(onMessage: (data: UnsummarizedFeedStatsSummary) => void, onError?: () => void) {
     return setupSSE(
       `${this.config.baseUrl}/v1/sse/feeds/stats`,
       onMessage,
       onError ||
         (() => {
           console.error("SSE error");
-        }),
+        })
     );
   }
 }

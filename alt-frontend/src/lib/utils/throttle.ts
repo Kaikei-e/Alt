@@ -1,6 +1,6 @@
 export function throttle<T extends (...args: never[]) => void>(
   func: T,
-  delay: number,
+  delay: number
 ): (...args: Parameters<T>) => void {
   let timeoutId: NodeJS.Timeout | null = null;
   let lastExecTime = 0;
@@ -28,7 +28,7 @@ export function throttle<T extends (...args: never[]) => void>(
 
 export function debounce<T extends (...args: never[]) => void>(
   func: T,
-  delay: number,
+  delay: number
 ): (...args: Parameters<T>) => void {
   let timeoutId: NodeJS.Timeout | null = null;
 

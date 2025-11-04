@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Desktop Home Page Object
@@ -21,15 +21,15 @@ export class DesktopHomePage extends BasePage {
     super(page);
 
     // Initialize locators
-    this.pageHeading = page.getByRole('heading', { level: 1 }).first();
-    this.sidebar = page.getByRole('navigation', { name: /sidebar|main navigation/i });
-    this.mainContent = page.getByRole('main');
-    this.rightPanel = page.getByRole('complementary', { name: /analytics|stats/i });
-    this.feedsLink = page.getByRole('link', { name: /feeds/i });
-    this.articlesLink = page.getByRole('link', { name: /articles/i });
-    this.analyticsPanel = page.locator('[data-testid="analytics-panel"]').or(
-      page.getByRole('region', { name: /analytics/i })
-    );
+    this.pageHeading = page.getByRole("heading", { level: 1 }).first();
+    this.sidebar = page.getByRole("navigation", { name: /sidebar|main navigation/i });
+    this.mainContent = page.getByRole("main");
+    this.rightPanel = page.getByRole("complementary", { name: /analytics|stats/i });
+    this.feedsLink = page.getByRole("link", { name: /feeds/i });
+    this.articlesLink = page.getByRole("link", { name: /articles/i });
+    this.analyticsPanel = page
+      .locator('[data-testid="analytics-panel"]')
+      .or(page.getByRole("region", { name: /analytics/i }));
     this.trendingTopics = page.locator('[data-testid="trending-topics"]');
     this.readingStats = page.locator('[data-testid="reading-stats"]');
   }
@@ -38,7 +38,7 @@ export class DesktopHomePage extends BasePage {
    * Navigate to desktop home page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/desktop/home');
+    await this.page.goto("/desktop/home");
     await this.waitForLoad();
   }
 

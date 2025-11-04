@@ -1,7 +1,7 @@
-import { ApiError } from "./ApiError";
-import { CacheManager, defaultCacheConfig } from "../cache/CacheManager";
 import { AuthInterceptor, LoginBanner } from "../auth";
 import { authAPI } from "../auth-client";
+import { CacheManager, defaultCacheConfig } from "../cache/CacheManager";
+import { ApiError } from "./ApiError";
 
 export interface ApiConfig {
   baseUrl: string;
@@ -25,7 +25,7 @@ export class ApiClient {
   constructor(
     config: ApiConfig = defaultApiConfig,
     cacheManager?: CacheManager,
-    authInterceptor?: AuthInterceptor,
+    authInterceptor?: AuthInterceptor
   ) {
     this.config = config;
     this.cacheManager = cacheManager || new CacheManager(defaultCacheConfig);
@@ -62,18 +62,15 @@ export class ApiClient {
     }
 
     try {
-      const responsePromise = this.makeRequest(
-        `${this.config.baseUrl}${endpoint}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "max-age=300",
-            "Accept-Encoding": "gzip, deflate, br",
-          },
-          keepalive: true,
+      const responsePromise = this.makeRequest(`${this.config.baseUrl}${endpoint}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "max-age=300",
+          "Accept-Encoding": "gzip, deflate, br",
         },
-      ).then(async (response) => {
+        keepalive: true,
+      }).then(async (response) => {
         const interceptedResponse = await this.authInterceptor.intercept(
           response,
           `${this.config.baseUrl}${endpoint}`,
@@ -85,7 +82,7 @@ export class ApiClient {
               "Accept-Encoding": "gzip, deflate, br",
             },
             keepalive: true,
-          },
+          }
         );
         return interceptedResponse.json();
       });
@@ -123,15 +120,12 @@ export class ApiClient {
       } else if (process.env.NODE_ENV === "development") {
       }
 
-      const response = await this.makeRequest(
-        `${this.config.baseUrl}${endpoint}`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(data),
-          keepalive: true,
-        },
-      );
+      const response = await this.makeRequest(`${this.config.baseUrl}${endpoint}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(data),
+        keepalive: true,
+      });
 
       const interceptedResponse = await this.authInterceptor.intercept(
         response,
@@ -144,7 +138,7 @@ export class ApiClient {
           },
           body: JSON.stringify(data),
           keepalive: true,
-        },
+        }
       );
 
       const result = await interceptedResponse.json();
@@ -161,24 +155,16 @@ export class ApiClient {
       if (error instanceof ApiError) {
         throw error;
       }
-      throw new ApiError(
-        error instanceof Error ? error.message : "Unknown error occurred",
-      );
+      throw new ApiError(error instanceof Error ? error.message : "Unknown error occurred");
     }
   }
 
-  private async makeRequest(
-    url: string,
-    options: RequestInit,
-  ): Promise<Response> {
+  private async makeRequest(url: string, options: RequestInit): Promise<Response> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      this.config.requestTimeout,
-    );
+    const timeoutId = setTimeout(() => controller.abort(), this.config.requestTimeout);
 
     // SSR Cookie handling
-    let enhancedOptions = { ...options };
+    const enhancedOptions = { ...options };
     if (typeof window === "undefined") {
       try {
         const { cookies } = await import("next/headers");
@@ -234,7 +220,7 @@ export class ApiClient {
       if (!response.ok && response.status !== 401) {
         throw new ApiError(
           `API request failed: ${response.status} ${response.statusText}`,
-          response.status,
+          response.status
         );
       }
 
@@ -265,9 +251,7 @@ export class ApiClient {
       if (typeof window !== "undefined") {
         headers = (await authAPI.getSessionHeaders()) ?? {};
       } else {
-        const { getServerSessionHeaders } = await import(
-          "../../auth/server-headers"
-        );
+        const { getServerSessionHeaders } = await import("../../auth/server-headers");
         headers = (await getServerSessionHeaders()) ?? {};
       }
 

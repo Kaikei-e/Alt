@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Login Success Page Object
@@ -15,22 +15,22 @@ export class LoginSuccessPage extends BasePage {
     super(page);
 
     // Initialize locators
-    this.successMessage = page.getByRole('status').or(
-      page.getByText(/success|logged in|welcome/i).first()
-    );
-    this.continueButton = page.getByRole('button', {
+    this.successMessage = page
+      .getByRole("status")
+      .or(page.getByText(/success|logged in|welcome/i).first());
+    this.continueButton = page.getByRole("button", {
       name: /continue|proceed|go to dashboard/i,
     });
-    this.loadingIndicator = page.getByRole('status', { name: /loading/i }).or(
-      page.locator('[aria-busy="true"]')
-    );
+    this.loadingIndicator = page
+      .getByRole("status", { name: /loading/i })
+      .or(page.locator('[aria-busy="true"]'));
   }
 
   /**
    * Navigate to success page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/auth/login/success');
+    await this.page.goto("/auth/login/success");
     await this.waitForLoad();
   }
 
@@ -70,10 +70,7 @@ export class LoginSuccessPage extends BasePage {
    * Wait for automatic redirect
    */
   async waitForRedirect(timeout = 10000): Promise<void> {
-    await this.page.waitForURL(
-      url => !url.pathname.includes('/auth/login/success'),
-      { timeout }
-    );
+    await this.page.waitForURL((url) => !url.pathname.includes("/auth/login/success"), { timeout });
   }
 
   /**

@@ -26,23 +26,17 @@ export class ErrorHandler {
     });
   }
 
-  static handleApiError(
-    error: unknown,
-    context?: Record<string, unknown>,
-  ): ErrorInfo {
-    const errorInfo = this.createErrorInfo(error, context);
-    this.logError(errorInfo);
+  static handleApiError(error: unknown, context?: Record<string, unknown>): ErrorInfo {
+    const errorInfo = ErrorHandler.createErrorInfo(error, context);
+    ErrorHandler.logError(errorInfo);
     return errorInfo;
   }
 
-  private static createErrorInfo(
-    error: unknown,
-    context?: Record<string, unknown>,
-  ): ErrorInfo {
+  private static createErrorInfo(error: unknown, context?: Record<string, unknown>): ErrorInfo {
     if (error instanceof ApiClientError) {
       return {
         message: error.message,
-        severity: this.getSeverityFromStatus(error.status),
+        severity: ErrorHandler.getSeverityFromStatus(error.status),
         code: error.code || error.status?.toString(),
         context,
       };
@@ -70,10 +64,7 @@ export class ErrorHandler {
     return "low";
   }
 
-  static handleValidationError(
-    error: unknown,
-    context?: Record<string, unknown>,
-  ): ErrorInfo {
+  static handleValidationError(error: unknown, context?: Record<string, unknown>): ErrorInfo {
     const errorInfo: ErrorInfo = {
       message: error instanceof Error ? error.message : "Validation failed",
       severity: "low",
@@ -81,14 +72,11 @@ export class ErrorHandler {
       context,
     };
 
-    this.logError(errorInfo);
+    ErrorHandler.logError(errorInfo);
     return errorInfo;
   }
 
-  static handleNetworkError(
-    error: unknown,
-    context?: Record<string, unknown>,
-  ): ErrorInfo {
+  static handleNetworkError(error: unknown, context?: Record<string, unknown>): ErrorInfo {
     const errorInfo: ErrorInfo = {
       message: "Network error occurred. Please check your connection.",
       severity: "medium",
@@ -96,7 +84,7 @@ export class ErrorHandler {
       context,
     };
 
-    this.logError(errorInfo);
+    ErrorHandler.logError(errorInfo);
     return errorInfo;
   }
 
@@ -107,8 +95,7 @@ export class ErrorHandler {
 
     const messageMap: Record<string, string> = {
       VALIDATION_ERROR: error.message,
-      NETWORK_ERROR:
-        "Unable to connect. Please check your internet connection.",
+      NETWORK_ERROR: "Unable to connect. Please check your internet connection.",
       "404": "The requested resource was not found.",
       "500": "Server error. Please try again later.",
       "408": "Request timeout. Please try again.",

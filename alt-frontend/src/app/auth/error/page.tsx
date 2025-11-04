@@ -1,25 +1,25 @@
-'use client';
+"use client";
 
-import { Box, Button, Container, Heading, Link, Text, VStack } from '@chakra-ui/react';
-import NextLink from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { Box, Button, Container, Heading, Link, Text, VStack } from "@chakra-ui/react";
+import NextLink from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 function AuthErrorContent() {
   const searchParams = useSearchParams();
-  const error = searchParams.get('error') || 'unknown';
-  const message = searchParams.get('message') || 'ログインに失敗しました。もう一度お試しください。';
+  const error = searchParams.get("error") || "unknown";
+  const message = searchParams.get("message") || "ログインに失敗しました。もう一度お試しください。";
 
   const getErrorTitle = () => {
     switch (error) {
-      case 'auth_failed':
-        return '認証に失敗しました';
-      case 'session_expired':
-        return 'セッションの有効期限が切れました';
-      case 'invalid_token':
-        return '無効なトークンです';
+      case "auth_failed":
+        return "認証に失敗しました";
+      case "session_expired":
+        return "セッションの有効期限が切れました";
+      case "invalid_token":
+        return "無効なトークンです";
       default:
-        return '認証エラー';
+        return "認証エラー";
     }
   };
 
@@ -63,7 +63,7 @@ function AuthErrorContent() {
             href="/auth/login"
             data-testid="back-to-login-button"
             textDecoration="none"
-            _hover={{ textDecoration: 'none' }}
+            _hover={{ textDecoration: "none" }}
           >
             <Button colorScheme="blue" size="lg" width="full">
               ログインし直す

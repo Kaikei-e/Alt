@@ -1,34 +1,34 @@
 "use client";
 
-import { ReactNode, useState } from "react";
 import {
   Box,
-  Flex,
-  VStack,
-  HStack,
-  Text,
   Button,
-  IconButton,
   CloseButton,
   Drawer,
+  Flex,
+  HStack,
+  IconButton,
   Portal,
   Separator,
+  Text,
   useDisclosure,
+  VStack,
 } from "@chakra-ui/react";
 import {
-  Menu,
-  Home,
+  Activity,
+  Bell,
   BookOpen,
+  Clock,
+  Home,
+  LogOut,
+  Menu,
   Search,
   Settings,
-  LogOut,
   User,
-  Bell,
-  Activity,
-  Clock,
 } from "lucide-react";
-import { useAuth } from "@/contexts/auth-context";
+import { type ReactNode, useState } from "react";
 import { UserProfile } from "@/components/auth/UserProfile";
+import { useAuth } from "@/contexts/auth-context";
 
 interface AuthenticatedLayoutProps {
   children: ReactNode;
@@ -99,8 +99,7 @@ export function AuthenticatedLayout({
   showFooter = true,
   maxWidth = "1200px",
 }: AuthenticatedLayoutProps) {
-  const { user, isAuthenticated, logout, lastActivity, sessionTimeout } =
-    useAuth();
+  const { user, isAuthenticated, logout, lastActivity, sessionTimeout } = useAuth();
   const { open, onOpen, onClose } = useDisclosure();
   const [activeNavItem, setActiveNavItem] = useState<string>("home");
 
@@ -149,8 +148,7 @@ export function AuthenticatedLayout({
       justifyContent={isMobile ? "flex-start" : "center"}
       onClick={() => handleNavItemClick(item)}
       _hover={{
-        bg:
-          activeNavItem === item.id ? "var(--alt-primary)" : "var(--alt-glass)",
+        bg: activeNavItem === item.id ? "var(--alt-primary)" : "var(--alt-glass)",
         transform: "translateY(-1px)",
       }}
       position="relative"
@@ -190,7 +188,7 @@ export function AuthenticatedLayout({
 
     const now = new Date();
     const minutesSinceLastActivity = Math.floor(
-      (now.getTime() - lastActivity.getTime()) / (1000 * 60),
+      (now.getTime() - lastActivity.getTime()) / (1000 * 60)
     );
     const timeRemaining = sessionTimeout - minutesSinceLastActivity;
     const showWarning = timeRemaining <= 5 && timeRemaining > 0;
@@ -248,9 +246,7 @@ export function AuthenticatedLayout({
 
               {/* Desktop Navigation */}
               <HStack gap={2} display={{ base: "none", md: "flex" }}>
-                {getFilteredNavigationItems().map((item) =>
-                  renderNavigationItem(item),
-                )}
+                {getFilteredNavigationItems().map((item) => renderNavigationItem(item))}
               </HStack>
 
               {/* User Menu */}
@@ -302,10 +298,7 @@ export function AuthenticatedLayout({
                       transform: "translateY(-1px)",
                     }}
                     onClick={() => {
-                      const currentUrl =
-                        typeof window !== "undefined"
-                          ? window.location.href
-                          : "/";
+                      const currentUrl = typeof window !== "undefined" ? window.location.href : "/";
                       window.location.href = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`;
                     }}
                   >
@@ -367,9 +360,7 @@ export function AuthenticatedLayout({
                         onClick={() => {
                           onClose();
                           const currentUrl =
-                            typeof window !== "undefined"
-                              ? window.location.href
-                              : "/";
+                            typeof window !== "undefined" ? window.location.href : "/";
                           window.location.href = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`;
                         }}
                         _hover={{
@@ -385,9 +376,7 @@ export function AuthenticatedLayout({
 
                   {/* Mobile Navigation */}
                   <VStack gap={2} align="stretch">
-                    {getFilteredNavigationItems().map((item) =>
-                      renderNavigationItem(item, true),
-                    )}
+                    {getFilteredNavigationItems().map((item) => renderNavigationItem(item, true))}
                   </VStack>
                 </VStack>
               </Drawer.Body>
@@ -413,12 +402,7 @@ export function AuthenticatedLayout({
         >
           <Box maxW={maxWidth} mx="auto" px={4} py={8}>
             <VStack gap={4} textAlign="center">
-              <Text
-                fontSize="lg"
-                fontWeight="bold"
-                fontFamily="heading"
-                color="var(--alt-primary)"
-              >
+              <Text fontSize="lg" fontWeight="bold" fontFamily="heading" color="var(--alt-primary)">
                 Alt
               </Text>
 

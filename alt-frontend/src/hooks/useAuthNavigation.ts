@@ -20,11 +20,7 @@ export interface NavigationState {
   publicItems: NavigationItem[];
   privateItems: NavigationItem[];
   canAccess: (item: NavigationItem) => boolean;
-  navigate: (
-    href: string,
-    requireAuth?: boolean,
-    requiredRole?: string,
-  ) => void;
+  navigate: (href: string, requireAuth?: boolean, requiredRole?: string) => void;
   getActiveItem: (pathname: string) => NavigationItem | null;
 }
 
@@ -122,7 +118,7 @@ export function useAuthNavigation(currentPathname?: string): NavigationState {
 
       return true;
     },
-    [isAuthenticated, user],
+    [isAuthenticated, user]
   );
 
   const navigate = useCallback(
@@ -131,9 +127,7 @@ export function useAuthNavigation(currentPathname?: string): NavigationState {
       if (requireAuth && !isAuthenticated) {
         // Redirect to Kratos browser login with absolute return URL
         const abs =
-          typeof window !== "undefined"
-            ? new URL(href, window.location.origin).toString()
-            : href;
+          typeof window !== "undefined" ? new URL(href, window.location.origin).toString() : href;
         window.location.href = `/auth/login?return_to=${encodeURIComponent(abs)}`;
         return;
       }
@@ -147,72 +141,61 @@ export function useAuthNavigation(currentPathname?: string): NavigationState {
       // Navigate to the href
       window.location.href = href;
     },
-    [isAuthenticated, user],
+    [isAuthenticated, user]
   );
 
-  const getActiveItem = useCallback(
-    (pathname: string): NavigationItem | null => {
-      const findActiveItem = (
-        items: NavigationItem[],
-      ): NavigationItem | null => {
-        for (const item of items) {
-          // Exact match
-          if (item.href === pathname) {
-            return item;
-          }
+  const getActiveItem = useCallback((pathname: string): NavigationItem | null => {
+    const findActiveItem = (items: NavigationItem[]): NavigationItem | null => {
+      for (const item of items) {
+        // Exact match
+        if (item.href === pathname) {
+          return item;
+        }
 
-          // Check if current path starts with item href (for nested routes)
-          if (pathname.startsWith(item.href) && item.href !== "/") {
-            return item;
-          }
+        // Check if current path starts with item href (for nested routes)
+        if (pathname.startsWith(item.href) && item.href !== "/") {
+          return item;
+        }
 
-          // Check children
-          if (item.children) {
-            const childMatch = findActiveItem(item.children);
-            if (childMatch) {
-              return item; // Return parent item for child matches
-            }
+        // Check children
+        if (item.children) {
+          const childMatch = findActiveItem(item.children);
+          if (childMatch) {
+            return item; // Return parent item for child matches
           }
         }
-        return null;
-      };
+      }
+      return null;
+    };
 
-      return findActiveItem(baseNavigationItems);
-    },
-    [],
-  );
+    return findActiveItem(baseNavigationItems);
+  }, []);
 
   const processItems = useCallback(
     (items: NavigationItem[]): NavigationItem[] => {
       return items.map((item) => {
         const processedItem: NavigationItem = {
           ...item,
-          isActive: currentPathname
-            ? getActiveItem(currentPathname)?.id === item.id
-            : false,
+          isActive: currentPathname ? getActiveItem(currentPathname)?.id === item.id : false,
           isDisabled: !canAccess(item),
         };
 
         // Process children if they exist
         if (item.children) {
-          processedItem.children = processItems(item.children).filter((child) =>
-            canAccess(child),
-          );
+          processedItem.children = processItems(item.children).filter((child) => canAccess(child));
         }
 
         return processedItem;
       });
     },
-    [canAccess, getActiveItem, currentPathname],
+    [canAccess, getActiveItem, currentPathname]
   );
 
   const navigationState = useMemo((): NavigationState => {
     const processedItems = processItems(baseNavigationItems);
     const filteredItems = processedItems.filter((item) => canAccess(item));
     const publicItems = processedItems.filter((item) => !item.requireAuth);
-    const privateItems = processedItems.filter(
-      (item) => item.requireAuth && canAccess(item),
-    );
+    const privateItems = processedItems.filter((item) => item.requireAuth && canAccess(item));
 
     return {
       items: processedItems,
@@ -267,7 +250,7 @@ export function useBreadcrumb(currentPathname?: string) {
 
       return breadcrumb;
     },
-    [getActiveItem],
+    [getActiveItem]
   );
 
   return {
@@ -322,7 +305,7 @@ export function useNavigationBadges() {
       messages: 0,
       updates: 1,
     }),
-    [],
+    []
   );
 
   const updateBadge = useCallback((itemId: string, count: number) => {
@@ -334,7 +317,7 @@ export function useNavigationBadges() {
     (itemId: string) => {
       updateBadge(itemId, 0);
     },
-    [updateBadge],
+    [updateBadge]
   );
 
   return {

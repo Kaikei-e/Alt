@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 test.describe("Login Flow Integration", () => {
   test.beforeEach(async ({ page }) => {
@@ -19,9 +19,7 @@ test.describe("Login Flow Integration", () => {
     await expect(page).toHaveURL(/\/auth\/login/);
   });
 
-  test("should handle Kratos flow initialization correctly", async ({
-    page,
-  }) => {
+  test("should handle Kratos flow initialization correctly", async ({ page }) => {
     // Navigate to login page
     await page.goto("/auth/login");
 

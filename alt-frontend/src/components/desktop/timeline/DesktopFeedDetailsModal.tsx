@@ -1,25 +1,13 @@
 "use client";
 
-import {
-  Box,
-  Dialog,
-  Flex,
-  HStack,
-  IconButton,
-  Portal,
-  Spinner,
-  Text,
-} from "@chakra-ui/react";
+import { Box, Dialog, Flex, HStack, IconButton, Portal, Spinner, Text } from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
+import { Archive, ExternalLink, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, ExternalLink, Sparkles, X } from "lucide-react";
 import { feedsApi } from "@/lib/api";
+import type { FeedContentOnTheFlyResponse, FetchArticleSummaryResponse } from "@/schema/feed";
 import { DesktopRenderFeedDetails } from "./DesktopRenderFeedDetails";
-import type {
-  FeedContentOnTheFlyResponse,
-  FetchArticleSummaryResponse,
-} from "@/schema/feed";
 
 interface DesktopFeedDetailsModalProps {
   isOpen: boolean;
@@ -59,10 +47,8 @@ export const DesktopFeedDetailsModal = ({
   feedTitle,
   feedId,
 }: DesktopFeedDetailsModalProps) => {
-  const [content, setContent] =
-    useState<FeedContentOnTheFlyResponse | null>(null);
-  const [articleSummary, setArticleSummary] =
-    useState<FetchArticleSummaryResponse | null>(null);
+  const [content, setContent] = useState<FeedContentOnTheFlyResponse | null>(null);
+  const [articleSummary, setArticleSummary] = useState<FetchArticleSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
@@ -94,12 +80,10 @@ export const DesktopFeedDetailsModal = ({
       setIsLoading(true);
       setError(null);
 
-      const summaryPromise = feedsApi
-        .getArticleSummary(feedLink)
-        .catch((err) => {
-          console.error("Failed to fetch article summary:", err);
-          return null;
-        });
+      const summaryPromise = feedsApi.getArticleSummary(feedLink).catch((err) => {
+        console.error("Failed to fetch article summary:", err);
+        return null;
+      });
 
       const contentPromise = feedsApi
         .getFeedContentOnTheFly({ feed_url: feedLink })
@@ -119,11 +103,8 @@ export const DesktopFeedDetailsModal = ({
         }
 
         const hasSummary =
-          !!summaryResponse?.matched_articles &&
-          summaryResponse.matched_articles.length > 0;
-        const hasContent =
-          !!contentResponse?.content &&
-          contentResponse.content.trim().length > 0;
+          !!summaryResponse?.matched_articles && summaryResponse.matched_articles.length > 0;
+        const hasContent = !!contentResponse?.content && contentResponse.content.trim().length > 0;
 
         if (hasSummary) {
           setArticleSummary(summaryResponse);
@@ -219,15 +200,8 @@ export const DesktopFeedDetailsModal = ({
       }}
     >
       <Portal>
-        <Dialog.Backdrop
-          bg="rgba(5, 10, 25, 0.65)"
-          backdropFilter="blur(14px)"
-        />
-        <Dialog.Positioner
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-        >
+        <Dialog.Backdrop bg="rgba(5, 10, 25, 0.65)" backdropFilter="blur(14px)" />
+        <Dialog.Positioner display="flex" alignItems="center" justifyContent="center">
           <Dialog.Content
             maxW="900px"
             w="94vw"
@@ -247,30 +221,29 @@ export const DesktopFeedDetailsModal = ({
                   color="var(--text-primary)"
                   data-testid={`desktop-feed-details-link-${feedId}`}
                   style={{
-                    textDecoration: 'none',
-                    transition: 'color 0.2s ease'
+                    textDecoration: "none",
+                    transition: "color 0.2s ease",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.color = 'var(--accent-primary)';
+                    e.currentTarget.style.color = "var(--accent-primary)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.color = 'var(--text-primary)';
+                    e.currentTarget.style.color = "var(--text-primary)";
                   }}
                 >
-                  <HStack
-                    fontWeight="semibold"
-                    fontSize="xl"
-                    gap={2}
-                  >
-                  <ExternalLink size={18} />
-                  <Text as="span" style={{
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden'
-                  }}>
-                    {feedTitle}
-                  </Text>
+                  <HStack fontWeight="semibold" fontSize="xl" gap={2}>
+                    <ExternalLink size={18} />
+                    <Text
+                      as="span"
+                      style={{
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {feedTitle}
+                    </Text>
                   </HStack>
                 </Link>
                 <Dialog.CloseTrigger asChild>
@@ -347,11 +320,7 @@ export const DesktopFeedDetailsModal = ({
               </Box>
             </Dialog.Body>
 
-            <Dialog.Footer
-              px={6}
-              py={5}
-              borderTop="1px solid rgba(255, 255, 255, 0.06)"
-            >
+            <Dialog.Footer px={6} py={5} borderTop="1px solid rgba(255, 255, 255, 0.06)">
               <HStack gap={3} w="100%">
                 <Box
                   as="button"
@@ -388,7 +357,7 @@ export const DesktopFeedDetailsModal = ({
                 <Box
                   as="button"
                   flex="1"
-                  onClick={(isSummarizing || !!summary) ? undefined : handleSummarize}
+                  onClick={isSummarizing || !!summary ? undefined : handleSummarize}
                   px={4}
                   py={3}
                   borderRadius="md"
@@ -404,11 +373,11 @@ export const DesktopFeedDetailsModal = ({
                   gap={2}
                   data-testid={`desktop-feed-details-ai-${feedId}`}
                   _hover={{
-                    bg: (isSummarizing || summary) ? undefined : "rgba(255, 255, 255, 0.22)",
-                    transform: (isSummarizing || summary) ? undefined : "translateY(-1px)",
+                    bg: isSummarizing || summary ? undefined : "rgba(255, 255, 255, 0.22)",
+                    transform: isSummarizing || summary ? undefined : "translateY(-1px)",
                   }}
                   _active={{
-                    transform: (isSummarizing || summary) ? undefined : "translateY(0)",
+                    transform: isSummarizing || summary ? undefined : "translateY(0)",
                   }}
                 >
                   {isSummarizing ? (

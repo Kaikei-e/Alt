@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { Flex, Box, Text, Icon } from "@chakra-ui/react";
-import { Plus, Zap, Bookmark, TrendingUp } from "lucide-react";
+import { Box, Flex, Icon, Text } from "@chakra-ui/react";
+import { Bookmark, Plus, TrendingUp, Zap } from "lucide-react";
+import type React from "react";
 
 interface ActivityItemProps {
   type: "new_feed" | "ai_summary" | "bookmark" | "read";
@@ -10,11 +10,7 @@ interface ActivityItemProps {
   time: string;
 }
 
-export const ActivityItem: React.FC<ActivityItemProps> = ({
-  type,
-  title,
-  time,
-}) => {
+export const ActivityItem: React.FC<ActivityItemProps> = ({ type, title, time }) => {
   const getActivityIcon = (activityType: ActivityItemProps["type"]) => {
     switch (activityType) {
       case "new_feed":

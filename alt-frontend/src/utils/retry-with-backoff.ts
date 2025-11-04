@@ -20,15 +20,13 @@ export class RetryWithBackoff {
 
   private default401Retry(error: unknown): boolean {
     if (error instanceof Error) {
-      return (
-        error.message.includes("401") || error.message.includes("unauthorized")
-      );
+      return error.message.includes("401") || error.message.includes("unauthorized");
     }
     return false;
   }
 
   private calculateDelay(attempt: number): number {
-    return Math.min(this.baseDelay * Math.pow(2, attempt), this.maxDelay);
+    return Math.min(this.baseDelay * 2 ** attempt, this.maxDelay);
   }
 
   async execute<T>(fn: () => Promise<T>): Promise<T> {
@@ -65,9 +63,7 @@ export const auth401Retry = new RetryWithBackoff({
   maxDelay: 8000,
   shouldRetry: (error) => {
     if (error instanceof Error) {
-      return (
-        error.message.includes("401") || error.message.includes("unauthorized")
-      );
+      return error.message.includes("401") || error.message.includes("unauthorized");
     }
     return false;
   },

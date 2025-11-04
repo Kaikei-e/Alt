@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Login Page Object
@@ -19,13 +19,13 @@ export class LoginPage extends BasePage {
     super(page);
 
     // Initialize locators using semantic roles
-    this.pageHeading = page.getByRole('heading', { name: /log in|login/i });
+    this.pageHeading = page.getByRole("heading", { name: /log in|login/i });
     this.emailInput = page.getByLabel(/email/i);
     this.passwordInput = page.getByLabel(/password/i);
-    this.submitButton = page.getByRole('button', { name: /log in|login|submit/i });
-    this.registerLink = page.getByRole('link', { name: /sign up|register/i });
-    this.errorMessage = page.getByRole('alert');
-    this.forgotPasswordLink = page.getByRole('link', {
+    this.submitButton = page.getByRole("button", { name: /log in|login|submit/i });
+    this.registerLink = page.getByRole("link", { name: /sign up|register/i });
+    this.errorMessage = page.getByRole("alert");
+    this.forgotPasswordLink = page.getByRole("link", {
       name: /forgot password/i,
     });
   }
@@ -34,7 +34,7 @@ export class LoginPage extends BasePage {
    * Navigate to login page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/auth/login');
+    await this.page.goto("/auth/login");
     await this.waitForLoad();
   }
 
@@ -158,7 +158,7 @@ export class LoginPage extends BasePage {
    */
   async waitForLoginSuccess(): Promise<void> {
     // Wait for redirect away from login page
-    await this.page.waitForURL(url => !url.pathname.includes('/auth/login'), {
+    await this.page.waitForURL((url) => !url.pathname.includes("/auth/login"), {
       timeout: 10000,
     });
   }

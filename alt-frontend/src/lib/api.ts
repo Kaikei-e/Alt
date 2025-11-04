@@ -1,9 +1,10 @@
 // Main API entry point - provides backward compatibility with original api.ts
-import { ApiClient, defaultApiConfig } from "./api/core/ApiClient";
-import { CacheManager, defaultCacheConfig } from "./api/cache/CacheManager";
+
 import { AuthInterceptor, LoginBanner } from "./api/auth";
-import { FeedsApi } from "./api/feeds/FeedsApi";
+import { CacheManager, defaultCacheConfig } from "./api/cache/CacheManager";
+import { ApiClient, defaultApiConfig } from "./api/core/ApiClient";
 import { DesktopApi } from "./api/desktop/DesktopApi";
+import { FeedsApi } from "./api/feeds/FeedsApi";
 
 // Re-export types for external use
 export type { CursorResponse } from "@/schema/common";
@@ -21,11 +22,7 @@ const authInterceptor = new AuthInterceptor({
   onAuthRequired: () => loginBanner.show(),
 });
 
-export const apiClient = new ApiClient(
-  defaultApiConfig,
-  cacheManager,
-  authInterceptor,
-);
+export const apiClient = new ApiClient(defaultApiConfig, cacheManager, authInterceptor);
 
 const feedsApiInstance = new FeedsApi(apiClient);
 const desktopApiInstance = new DesktopApi(apiClient, feedsApiInstance);
@@ -49,10 +46,8 @@ export const feedsApi = {
 
   // Feed management
   registerRssFeed: feedsApiInstance.registerRssFeed.bind(feedsApiInstance),
-  registerFavoriteFeed:
-    feedsApiInstance.registerFavoriteFeed.bind(feedsApiInstance),
-  updateFeedReadStatus:
-    feedsApiInstance.updateFeedReadStatus.bind(feedsApiInstance),
+  registerFavoriteFeed: feedsApiInstance.registerFavoriteFeed.bind(feedsApiInstance),
+  updateFeedReadStatus: feedsApiInstance.updateFeedReadStatus.bind(feedsApiInstance),
 
   // Article summaries
   getArticleSummary: feedsApiInstance.getArticleSummary.bind(feedsApiInstance),
@@ -61,8 +56,7 @@ export const feedsApi = {
   summarizeArticle: feedsApiInstance.summarizeArticle.bind(feedsApiInstance),
 
   // Feed content on the fly
-  getFeedContentOnTheFly:
-    feedsApiInstance.getFeedContentOnTheFly.bind(feedsApiInstance),
+  getFeedContentOnTheFly: feedsApiInstance.getFeedContentOnTheFly.bind(feedsApiInstance),
 
   // Search
   searchArticles: feedsApiInstance.searchArticles.bind(feedsApiInstance),
@@ -71,16 +65,14 @@ export const feedsApi = {
   // Statistics
   getFeedStats: feedsApiInstance.getFeedStats.bind(feedsApiInstance),
   getFeedStatsSSR: feedsApiInstance.getFeedStatsSSR.bind(feedsApiInstance),
-  getTodayUnreadCount:
-    feedsApiInstance.getTodayUnreadCount.bind(feedsApiInstance),
+  getTodayUnreadCount: feedsApiInstance.getTodayUnreadCount.bind(feedsApiInstance),
 
   // Tags
   fetchFeedTags: feedsApiInstance.fetchFeedTags.bind(feedsApiInstance),
 
   // Prefetch methods
   prefetchFeeds: feedsApiInstance.prefetchFeeds.bind(feedsApiInstance),
-  prefetchFavoriteFeeds:
-    feedsApiInstance.prefetchFavoriteFeeds.bind(feedsApiInstance),
+  prefetchFavoriteFeeds: feedsApiInstance.prefetchFavoriteFeeds.bind(feedsApiInstance),
   prefetchReadFeeds: feedsApiInstance.prefetchReadFeeds.bind(feedsApiInstance),
 
   // Desktop API methods
@@ -88,8 +80,7 @@ export const feedsApi = {
   getTestFeeds: desktopApiInstance.getTestFeeds.bind(desktopApiInstance),
   toggleFavorite: desktopApiInstance.toggleFavorite.bind(desktopApiInstance),
   toggleBookmark: desktopApiInstance.toggleBookmark.bind(desktopApiInstance),
-  getRecentActivity:
-    desktopApiInstance.getRecentActivity.bind(desktopApiInstance),
+  getRecentActivity: desktopApiInstance.getRecentActivity.bind(desktopApiInstance),
   getWeeklyStats: desktopApiInstance.getWeeklyStats.bind(desktopApiInstance),
 
   // Cache management

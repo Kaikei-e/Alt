@@ -1,8 +1,7 @@
 // app/api/auth/validate/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
-const KRATOS_URL =
-  process.env.KRATOS_INTERNAL_URL || process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!;
+const KRATOS_URL = process.env.KRATOS_INTERNAL_URL || process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!;
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +21,7 @@ export async function GET(request: NextRequest) {
       // 失敗時は401を返す
       return NextResponse.json(
         { error: "Unauthorized", status: whoamiResponse.status },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -30,9 +29,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(sessionData, { status: 200 });
   } catch (error) {
     console.error("whoami validation failed:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

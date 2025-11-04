@@ -14,5 +14,3 @@ export function requiredPublicEnv(name: string): string {
 
   return value;
 }
-
-

@@ -1,9 +1,9 @@
 "use client";
 
 import { Box, Text } from "@chakra-ui/react";
-import { Suspense } from "react";
+import { Bookmark, Filter, Plus, Search } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { Plus, Search, Bookmark, Filter } from "lucide-react";
+import { Suspense } from "react";
 import QuickActionsPanel from "@/components/desktop/home/QuickActionsPanel";
 
 function QuickActionsPanelTestContent() {

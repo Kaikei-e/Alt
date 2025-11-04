@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Feed } from "@/schema/feed";
-import { feedsApi } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { feedsApi } from "@/lib/api";
+import type { Feed } from "@/schema/feed";
 
 export interface UseFavoriteFeedsResult {
   feeds: Feed[];
@@ -14,9 +14,7 @@ export interface UseFavoriteFeedsResult {
   refresh: () => void;
 }
 
-export const useFavoriteFeeds = (
-  initialLimit: number = 20,
-): UseFavoriteFeedsResult => {
+export const useFavoriteFeeds = (initialLimit: number = 20): UseFavoriteFeedsResult => {
   const enablePrefetch = true;
   const { isAuthenticated } = useAuth();
 
@@ -40,10 +38,7 @@ export const useFavoriteFeeds = (
       try {
         prefetchCacheRef.current.set(nextCursor, "loading");
 
-        const response = await feedsApi.getFavoriteFeedsWithCursor(
-          nextCursor,
-          initialLimit,
-        );
+        const response = await feedsApi.getFavoriteFeedsWithCursor(nextCursor, initialLimit);
 
         prefetchCacheRef.current.set(nextCursor, response);
 
@@ -56,7 +51,7 @@ export const useFavoriteFeeds = (
         prefetchCacheRef.current.delete(nextCursor);
       }
     },
-    [initialLimit, enablePrefetch],
+    [initialLimit, enablePrefetch]
   );
 
   const loadFeeds = useCallback(
@@ -69,11 +64,7 @@ export const useFavoriteFeeds = (
         let response: { data: Feed[]; next_cursor: string | null };
 
         // Try to get from prefetch cache first
-        if (
-          enablePrefetch &&
-          currentCursor &&
-          prefetchCacheRef.current.has(currentCursor)
-        ) {
+        if (enablePrefetch && currentCursor && prefetchCacheRef.current.has(currentCursor)) {
           const cachedResponse = prefetchCacheRef.current.get(currentCursor);
           if (cachedResponse !== "loading") {
             response = cachedResponse as {
@@ -83,17 +74,11 @@ export const useFavoriteFeeds = (
             prefetchCacheRef.current.delete(currentCursor);
           } else {
             // If cache is loading, fetch normally
-            response = await feedsApi.getFavoriteFeedsWithCursor(
-              currentCursor,
-              initialLimit,
-            );
+            response = await feedsApi.getFavoriteFeedsWithCursor(currentCursor, initialLimit);
           }
         } else {
           // No cache, fetch normally
-          response = await feedsApi.getFavoriteFeedsWithCursor(
-            currentCursor,
-            initialLimit,
-          );
+          response = await feedsApi.getFavoriteFeedsWithCursor(currentCursor, initialLimit);
         }
 
         if (resetData) {
@@ -123,7 +108,7 @@ export const useFavoriteFeeds = (
         setIsLoading(false);
       }
     },
-    [cursor, initialLimit, prefetchNextPage, enablePrefetch],
+    [cursor, initialLimit, prefetchNextPage, enablePrefetch]
   );
 
   const loadMore = useCallback(() => {
@@ -156,10 +141,7 @@ export const useFavoriteFeeds = (
           return;
         }
 
-        const response = await feedsApi.getFavoriteFeedsWithCursor(
-          undefined,
-          initialLimit,
-        );
+        const response = await feedsApi.getFavoriteFeedsWithCursor(undefined, initialLimit);
         setFeeds(response.data);
         setCursor(response.next_cursor || undefined);
         setHasMore(response.next_cursor !== null);

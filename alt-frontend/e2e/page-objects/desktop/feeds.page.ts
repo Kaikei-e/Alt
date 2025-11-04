@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Desktop Feeds Page Object
@@ -23,7 +23,9 @@ export class DesktopFeedsPage extends BasePage {
 
     // Initialize locators - using data-testid from DesktopTimeline
     // Use sidebar's "Feeds" link as the heading indicator
-    this.pageHeading = page.locator('[data-testid="desktop-navigation"]').getByRole('link', { name: /feeds/i });
+    this.pageHeading = page
+      .locator('[data-testid="desktop-navigation"]')
+      .getByRole("link", { name: /feeds/i });
 
     // DesktopTimeline renders feed cards in a container
     // Use the main content area which always exists
@@ -31,14 +33,15 @@ export class DesktopFeedsPage extends BasePage {
 
     // Add feed functionality - navigate to register page via sidebar or direct link
     // The register link is in the sidebar navigation
-    this.addFeedButton = page.getByRole('link', { name: /register/i }).or(
-      page.getByRole('button', { name: /add|register|new feed|\+|追加/i })
-    );
+    this.addFeedButton = page
+      .getByRole("link", { name: /register/i })
+      .or(page.getByRole("button", { name: /add|register|new feed|\+|追加/i }));
 
     // Search functionality via sidebar "Search" link
-    this.searchInput = page.getByRole('link', { name: /search/i }).or(
-      page.getByRole('searchbox')
-    ).or(page.getByPlaceholder(/search/i));
+    this.searchInput = page
+      .getByRole("link", { name: /search/i })
+      .or(page.getByRole("searchbox"))
+      .or(page.getByPlaceholder(/search/i));
 
     // Sidebar with desktop-navigation testid
     this.sidebar = page.locator('[data-testid="desktop-navigation"]');
@@ -57,7 +60,7 @@ export class DesktopFeedsPage extends BasePage {
    * Navigate to feeds page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/desktop/feeds');
+    await this.page.goto("/desktop/feeds");
     await this.waitForLoad();
   }
 
@@ -67,15 +70,15 @@ export class DesktopFeedsPage extends BasePage {
    */
   async waitForLoad(): Promise<void> {
     // Wait for the main layout to be ready
-    await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 });
+    await this.page.waitForLoadState("domcontentloaded", { timeout: 10000 });
 
     // Wait for URL to be correct
     await this.page.waitForURL(/\/desktop\/feeds/, { timeout: 10000 });
 
     // Wait for feed list or loading indicator to be visible
     await Promise.race([
-      this.feedsList.waitFor({ state: 'attached', timeout: 5000 }),
-      this.loadingIndicator.waitFor({ state: 'visible', timeout: 5000 })
+      this.feedsList.waitFor({ state: "attached", timeout: 5000 }),
+      this.loadingIndicator.waitFor({ state: "visible", timeout: 5000 }),
     ]).catch(() => {});
   }
 
@@ -86,9 +89,12 @@ export class DesktopFeedsPage extends BasePage {
     try {
       // Wait for either feed cards to appear or loading to finish
       await Promise.race([
-        this.page.locator('[data-testid^="desktop-feed-card-"]').first().waitFor({ state: 'attached', timeout: 3000 }),
-        this.loadingIndicator.waitFor({ state: 'hidden', timeout: 3000 }),
-        this.page.waitForLoadState('networkidle', { timeout: 3000 })
+        this.page
+          .locator('[data-testid^="desktop-feed-card-"]')
+          .first()
+          .waitFor({ state: "attached", timeout: 3000 }),
+        this.loadingIndicator.waitFor({ state: "hidden", timeout: 3000 }),
+        this.page.waitForLoadState("networkidle", { timeout: 3000 }),
       ]).catch(() => {});
 
       // Feed cards have data-testid="desktop-feed-card-{id}"
@@ -105,14 +111,14 @@ export class DesktopFeedsPage extends BasePage {
    */
   async clickAddFeed(): Promise<void> {
     // Navigate directly to register page since there's no "add" button on this page
-    await this.page.goto('/desktop/feeds/register');
+    await this.page.goto("/desktop/feeds/register");
     await this.page.waitForURL(/\/desktop\/feeds\/register/);
   }
 
   /**
    * Search for feeds (navigate to search page)
    */
-  async searchFeed(query: string): Promise<void> {
+  async searchFeed(_query: string): Promise<void> {
     // Click search link in sidebar to navigate to search page
     await this.searchInput.click();
     await this.page.waitForURL(/\/desktop\/articles\/search/);
@@ -222,11 +228,11 @@ export class DesktopFeedsPage extends BasePage {
       .locator('[data-testid^="desktop-feed-card-"]')
       .filter({ hasText: feedTitle });
 
-    const deleteButton = feed.getByRole('button', { name: /delete|remove/i });
+    const deleteButton = feed.getByRole("button", { name: /delete|remove/i });
     await deleteButton.click();
 
     // Confirm deletion if dialog appears
-    const confirmButton = this.page.getByRole('button', {
+    const confirmButton = this.page.getByRole("button", {
       name: /confirm|yes|delete/i,
     });
 
@@ -243,7 +249,7 @@ export class DesktopFeedsPage extends BasePage {
       .locator('[data-testid^="desktop-feed-card-"]')
       .filter({ hasText: feedTitle });
 
-    const favoriteButton = feed.getByRole('button', { name: /favorite|star|いいね/i });
+    const favoriteButton = feed.getByRole("button", { name: /favorite|star|いいね/i });
     await favoriteButton.click();
   }
 }

@@ -14,7 +14,7 @@ export function useInfiniteScroll(
     throttleDelay?: number;
     rootMargin?: string;
     threshold?: number;
-  },
+  }
 ) {
   const callbackRef = useRef(callback);
   const throttledCallbackRef = useRef<(() => void) | null>(null);
@@ -65,7 +65,7 @@ export function useInfiniteScroll(
         {
           rootMargin,
           threshold,
-        },
+        }
       );
 
       observer.observe(element);

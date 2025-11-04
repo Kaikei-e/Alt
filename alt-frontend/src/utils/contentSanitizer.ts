@@ -27,7 +27,7 @@ const DEFAULT_OPTIONS: Required<SanitizerOptions> = {
  */
 export function sanitizeContent(
   content: string | null | undefined,
-  options: SanitizerOptions = {},
+  options: SanitizerOptions = {}
 ): string {
   if (!content) return "";
 

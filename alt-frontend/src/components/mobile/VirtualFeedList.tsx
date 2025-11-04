@@ -1,7 +1,7 @@
 "use client";
 
 import { Flex } from "@chakra-ui/react";
-import { Feed } from "@/schema/feed";
+import type { Feed } from "@/schema/feed";
 import FeedCard from "./FeedCard";
 
 interface VirtualFeedListProps {

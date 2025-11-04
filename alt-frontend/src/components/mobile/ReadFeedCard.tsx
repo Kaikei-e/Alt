@@ -1,9 +1,9 @@
-import { Flex, Text, Box } from "@chakra-ui/react";
-import { Feed } from "@/schema/feed";
+import { Box, Flex, Text } from "@chakra-ui/react";
 import Link from "next/link";
 import { memo } from "react";
-import { FeedDetails } from "./FeedDetails";
 import { truncateFeedDescription } from "@/lib/utils/textUtils";
+import type { Feed } from "@/schema/feed";
+import { FeedDetails } from "./FeedDetails";
 
 type ReadFeedCardProps = {
   feed: Feed;

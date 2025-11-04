@@ -3,8 +3,8 @@
  * Intelligently determines the format of content for optimal rendering
  */
 
-import { sanitizeContent } from "./contentSanitizer";
 import sanitizeHtml from "sanitize-html";
+import { sanitizeContent } from "./contentSanitizer";
 
 export enum ContentType {
   HTML = "html",
@@ -19,10 +19,7 @@ export enum ContentType {
  * @param declaredType - Optional declared content type from API
  * @returns The detected ContentType
  */
-export const detectContentType = (
-  content: string,
-  declaredType?: string,
-): ContentType => {
+export const detectContentType = (content: string, declaredType?: string): ContentType => {
   // 1. Use declared type if explicitly provided and valid
   if (declaredType) {
     const normalizedType = declaredType.toLowerCase();
@@ -83,7 +80,7 @@ function hasHtmlTags(content: string): boolean {
       inTag = false;
     } else if (inTag) {
       // Count characters in tag (letters, numbers, spaces, common attributes, URLs)
-      if (/[a-zA-Z0-9\s='"\/\-&;:?.]/.test(char)) {
+      if (/[a-zA-Z0-9\s='"/\-&;:?.]/.test(char)) {
         tagChars++;
         // Prevent extremely long "tags" (likely not real HTML)
         if (tagChars > 100) {
@@ -227,10 +224,7 @@ export interface ContentAnalysis {
   estimatedReadingTime: number; // in minutes
 }
 
-export const analyzeContent = (
-  content: string,
-  declaredType?: string,
-): ContentAnalysis => {
+export const analyzeContent = (content: string, declaredType?: string): ContentAnalysis => {
   if (!content || typeof content !== "string") {
     return {
       type: ContentType.TEXT,
@@ -265,9 +259,7 @@ export const analyzeContent = (
   const textOnly = safeStripHtml(content);
 
   // Fix empty string word count issue
-  const wordCount = textOnly
-    ? textOnly.split(/\s+/).filter((word) => word.length > 0).length
-    : 0;
+  const wordCount = textOnly ? textOnly.split(/\s+/).filter((word) => word.length > 0).length : 0;
 
   // Average reading speed: 200 words per minute
   const estimatedReadingTime = Math.max(1, Math.ceil(wordCount / 200));

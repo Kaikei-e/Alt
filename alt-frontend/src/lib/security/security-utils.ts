@@ -6,8 +6,7 @@
 // Input validation patterns
 export const ValidationPatterns = {
   email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-  password:
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+  password: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
   name: /^[a-zA-Z\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]{1,100}$/,
 } as const;
 
@@ -22,7 +21,7 @@ export const SecurityConfig = {
 
 // Input sanitization
 export function sanitizeInput(input: string): string {
-  return input.trim().replace(/[<>\"'&]/g, (match) => {
+  return input.trim().replace(/[<>"'&]/g, (match) => {
     const entityMap: Record<string, string> = {
       "<": "&lt;",
       ">": "&gt;",
@@ -119,15 +118,13 @@ export function validateName(name: string): {
 
 // Rate limiting utilities
 export class RateLimiter {
-  private attempts: Map<
-    string,
-    { count: number; firstAttempt: number; lockedUntil?: number }
-  > = new Map();
+  private attempts: Map<string, { count: number; firstAttempt: number; lockedUntil?: number }> =
+    new Map();
 
   constructor(
     private maxAttempts: number = SecurityConfig.maxLoginAttempts,
     private windowMs: number = 15 * 60 * 1000, // 15 minutes
-    private lockoutMs: number = SecurityConfig.lockoutDuration,
+    private lockoutMs: number = SecurityConfig.lockoutDuration
   ) {}
 
   isBlocked(identifier: string): boolean {
@@ -200,19 +197,18 @@ export class SecureStorage {
 
   static setItem(key: string, value: string, encrypt: boolean = true): void {
     try {
-      const storageKey = this.prefix + key;
-      const storageValue = encrypt ? this.encrypt(value) : value;
+      const storageKey = SecureStorage.prefix + key;
+      const storageValue = encrypt ? SecureStorage.encrypt(value) : value;
       localStorage.setItem(storageKey, storageValue);
-    } catch (error) {
-    }
+    } catch (error) {}
   }
 
   static getItem(key: string, decrypt: boolean = true): string | null {
     try {
-      const storageKey = this.prefix + key;
+      const storageKey = SecureStorage.prefix + key;
       const value = localStorage.getItem(storageKey);
       if (!value) return null;
-      return decrypt ? this.decrypt(value) : value;
+      return decrypt ? SecureStorage.decrypt(value) : value;
     } catch (error) {
       return null;
     }
@@ -220,10 +216,9 @@ export class SecureStorage {
 
   static removeItem(key: string): void {
     try {
-      const storageKey = this.prefix + key;
+      const storageKey = SecureStorage.prefix + key;
       localStorage.removeItem(storageKey);
-    } catch (error) {
-    }
+    } catch (error) {}
   }
 
   static clearAll(): void {
@@ -231,13 +226,12 @@ export class SecureStorage {
       const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith(this.prefix)) {
+        if (key && key.startsWith(SecureStorage.prefix)) {
           keysToRemove.push(key);
         }
       }
       keysToRemove.forEach((key) => localStorage.removeItem(key));
-    } catch (error) {
-    }
+    } catch (error) {}
   }
 
   private static encrypt(value: string): string {
@@ -263,18 +257,12 @@ export class SecureStorage {
 export function generateNonce(): string {
   const array = new Uint8Array(16);
   crypto.getRandomValues(array);
-  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
-    "",
-  );
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 // Security headers validation
 export function validateSecurityHeaders(response: Response): boolean {
-  const requiredHeaders = [
-    "x-frame-options",
-    "x-content-type-options",
-    "x-xss-protection",
-  ];
+  const requiredHeaders = ["x-frame-options", "x-content-type-options", "x-xss-protection"];
 
   return requiredHeaders.every((header) => response.headers.has(header));
 }
@@ -284,24 +272,24 @@ export class CSRFManager {
   private static token: string | null = null;
 
   static setToken(token: string): void {
-    this.token = token;
+    CSRFManager.token = token;
     SecureStorage.setItem("csrf_token", token);
   }
 
   static getToken(): string | null {
-    if (this.token) return this.token;
+    if (CSRFManager.token) return CSRFManager.token;
 
-    this.token = SecureStorage.getItem("csrf_token");
-    return this.token;
+    CSRFManager.token = SecureStorage.getItem("csrf_token");
+    return CSRFManager.token;
   }
 
   static clearToken(): void {
-    this.token = null;
+    CSRFManager.token = null;
     SecureStorage.removeItem("csrf_token");
   }
 
   static getHeaders(): Record<string, string> {
-    const token = this.getToken();
+    const token = CSRFManager.getToken();
     return token ? { [SecurityConfig.csrfTokenHeader]: token } : {};
   }
 }

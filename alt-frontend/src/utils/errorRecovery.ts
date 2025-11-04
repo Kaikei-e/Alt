@@ -15,7 +15,7 @@ export class ErrorRecoveryManager {
 
   constructor(
     config: Partial<ErrorRecoveryConfig> = {},
-    timeProvider: () => number = () => Date.now(),
+    timeProvider: () => number = () => Date.now()
   ) {
     this.config = {
       initialBackoff: 5000, // 5秒
@@ -39,10 +39,7 @@ export class ErrorRecoveryManager {
     }
 
     // バックオフ時間を増加（エラー毎に）
-    this.currentBackoff = Math.min(
-      this.currentBackoff * 2,
-      this.config.maxBackoff,
-    );
+    this.currentBackoff = Math.min(this.currentBackoff * 2, this.config.maxBackoff);
   }
 
   recordSuccess(): void {
@@ -67,10 +64,7 @@ export class ErrorRecoveryManager {
     }
 
     // バックオフ期間中は無効化（エラーが発生している場合のみ）
-    if (
-      this.lastErrorTime > 0 &&
-      this.timeProvider() - this.lastErrorTime < this.currentBackoff
-    ) {
+    if (this.lastErrorTime > 0 && this.timeProvider() - this.lastErrorTime < this.currentBackoff) {
       return true;
     }
 

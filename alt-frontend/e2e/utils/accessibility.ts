@@ -1,5 +1,5 @@
-import { Page, expect } from '@playwright/test';
-import { injectAxe, checkA11y, getViolations } from 'axe-playwright';
+import { expect, type Page } from "@playwright/test";
+import { checkA11y, getViolations, injectAxe } from "axe-playwright";
 
 /**
  * Accessibility testing utilities using axe-core
@@ -8,7 +8,7 @@ import { injectAxe, checkA11y, getViolations } from 'axe-playwright';
 /**
  * WCAG 2.1 conformance levels
  */
-export type ConformanceLevel = 'A' | 'AA' | 'AAA';
+export type ConformanceLevel = "A" | "AA" | "AAA";
 
 /**
  * Axe configuration options
@@ -31,30 +31,27 @@ export interface A11yCheckOptions {
  */
 export const COMMON_A11Y_RULES = {
   // WCAG 2.1 Level A
-  imageAlt: 'image-alt',
-  buttonName: 'button-name',
-  linkName: 'link-name',
-  formLabelAssociated: 'label',
-  htmlHasLang: 'html-has-lang',
+  imageAlt: "image-alt",
+  buttonName: "button-name",
+  linkName: "link-name",
+  formLabelAssociated: "label",
+  htmlHasLang: "html-has-lang",
 
   // WCAG 2.1 Level AA
-  colorContrast: 'color-contrast',
-  validLang: 'valid-lang',
+  colorContrast: "color-contrast",
+  validLang: "valid-lang",
 
   // ARIA
-  ariaAllowedAttr: 'aria-allowed-attr',
-  ariaRequiredAttr: 'aria-required-attr',
-  ariaRoles: 'aria-roles',
-  ariaValidAttrValue: 'aria-valid-attr-value',
+  ariaAllowedAttr: "aria-allowed-attr",
+  ariaRequiredAttr: "aria-required-attr",
+  ariaRoles: "aria-roles",
+  ariaValidAttrValue: "aria-valid-attr-value",
 } as const;
 
 /**
  * Check accessibility of the current page
  */
-export async function checkPageA11y(
-  page: Page,
-  options: A11yCheckOptions = {}
-): Promise<void> {
+export async function checkPageA11y(page: Page, options: A11yCheckOptions = {}): Promise<void> {
   try {
     // Inject axe-core
     await injectAxe(page);
@@ -68,7 +65,7 @@ export async function checkPageA11y(
       axeOptions: axeConfig,
     });
   } catch (error) {
-    console.error('Accessibility check failed:', error);
+    console.error("Accessibility check failed:", error);
     throw error;
   }
 }
@@ -76,10 +73,7 @@ export async function checkPageA11y(
 /**
  * Get accessibility violations without throwing
  */
-export async function getA11yViolations(
-  page: Page,
-  options: A11yCheckOptions = {}
-) {
+export async function getA11yViolations(page: Page, options: A11yCheckOptions = {}) {
   await injectAxe(page);
   const axeConfig = buildAxeConfig(options);
   return await getViolations(page, undefined, axeConfig);
@@ -108,19 +102,19 @@ export async function checkElementA11y(
 function buildAxeConfig(options: A11yCheckOptions) {
   const config: any = {
     runOnly: {
-      type: 'tag',
+      type: "tag",
       values: [] as string[],
     },
   };
 
   // Set WCAG level
-  const level = options.level || 'AA';
+  const level = options.level || "AA";
   config.runOnly.values.push(`wcag2${level.toLowerCase()}`);
 
   // Add/remove specific rules
   if (options.includedRules && options.includedRules.length > 0) {
     config.runOnly = {
-      type: 'rule',
+      type: "rule",
       values: options.includedRules,
     };
   }
@@ -144,14 +138,14 @@ function buildAxeConfig(options: A11yCheckOptions) {
  */
 export async function checkKeyboardNavigation(page: Page): Promise<void> {
   // Check tab navigation
-  await page.keyboard.press('Tab');
+  await page.keyboard.press("Tab");
 
   // Get focused element
   const focusedElement = await page.evaluate(() => {
     const active = document.activeElement;
     return {
       tagName: active?.tagName,
-      hasVisibleFocus: window.getComputedStyle(active!).outline !== 'none',
+      hasVisibleFocus: window.getComputedStyle(active!).outline !== "none",
     };
   });
 
@@ -161,20 +155,13 @@ export async function checkKeyboardNavigation(page: Page): Promise<void> {
 /**
  * Check focus indicators
  */
-export async function checkFocusIndicators(
-  page: Page,
-  selector: string
-): Promise<void> {
+export async function checkFocusIndicators(page: Page, selector: string): Promise<void> {
   const element = page.locator(selector);
   await element.focus();
 
   const hasVisibleFocus = await element.evaluate((el) => {
     const styles = window.getComputedStyle(el);
-    return (
-      styles.outline !== 'none' ||
-      styles.boxShadow !== 'none' ||
-      styles.border !== 'none'
-    );
+    return styles.outline !== "none" || styles.boxShadow !== "none" || styles.border !== "none";
   });
 
   expect(hasVisibleFocus).toBeTruthy();
@@ -208,10 +195,7 @@ export async function checkAriaAttributes(page: Page): Promise<void> {
  */
 export async function checkFormA11y(page: Page): Promise<void> {
   await checkPageA11y(page, {
-    includedRules: [
-      COMMON_A11Y_RULES.formLabelAssociated,
-      COMMON_A11Y_RULES.buttonName,
-    ],
+    includedRules: [COMMON_A11Y_RULES.formLabelAssociated, COMMON_A11Y_RULES.buttonName],
   });
 }
 
@@ -229,11 +213,9 @@ export async function checkImageA11y(page: Page): Promise<void> {
  */
 export async function checkHeadingStructure(page: Page): Promise<void> {
   const headings = await page.evaluate(() => {
-    const headingElements = Array.from(
-      document.querySelectorAll('h1, h2, h3, h4, h5, h6')
-    );
+    const headingElements = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6"));
     return headingElements.map((h) => ({
-      level: parseInt(h.tagName.substring(1)),
+      level: parseInt(h.tagName.substring(1), 10),
       text: h.textContent?.trim(),
     }));
   });
@@ -264,8 +246,7 @@ export async function checkLandmarkRegions(page: Page): Promise<void> {
       hasMain: document.querySelector('main, [role="main"]') !== null,
       hasNav: document.querySelector('nav, [role="navigation"]') !== null,
       hasHeader: document.querySelector('header, [role="banner"]') !== null,
-      hasFooter:
-        document.querySelector('footer, [role="contentinfo"]') !== null,
+      hasFooter: document.querySelector('footer, [role="contentinfo"]') !== null,
     };
   });
 
@@ -278,7 +259,7 @@ export async function checkLandmarkRegions(page: Page): Promise<void> {
 export async function checkSkipLinks(page: Page): Promise<void> {
   const skipLink = page.locator('a[href^="#"]').first();
 
-  if (await skipLink.count() > 0) {
+  if ((await skipLink.count()) > 0) {
     await skipLink.focus();
     await expect(skipLink).toBeVisible();
   }
@@ -294,7 +275,7 @@ export async function generateA11yReport(
   const violations = await getA11yViolations(page, options);
 
   if (violations.length === 0) {
-    return 'No accessibility violations found!';
+    return "No accessibility violations found!";
   }
 
   let report = `Found ${violations.length} accessibility violations:\n\n`;

@@ -1,5 +1,5 @@
+import type { UpdateLoginFlowBody } from "@ory/client";
 import { useState } from "react";
-import { UpdateLoginFlowBody } from "@ory/client";
 import { kratos } from "@/lib/kratos";
 
 export function useLoginSubmit(flowId: string) {
@@ -25,10 +25,7 @@ export function useLoginSubmit(flowId: string) {
       });
 
       // 成功時のリダイレクト処理 - ブラウザフローの場合は自動でリダイレクトされる
-      if (
-        "return_to" in response.data &&
-        typeof response.data.return_to === "string"
-      ) {
+      if ("return_to" in response.data && typeof response.data.return_to === "string") {
         window.location.href = response.data.return_to;
       } else {
         window.location.href = "/";
@@ -47,9 +44,7 @@ export function useLoginSubmit(flowId: string) {
             .join(", ");
           setError(errorMessages);
         } else {
-          setError(
-            "Login failed. Please check your credentials and try again.",
-          );
+          setError("Login failed. Please check your credentials and try again.");
         }
       } else {
         setError("Login failed. Please check your credentials and try again.");

@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Mobile Feeds Page Object
@@ -22,29 +22,27 @@ export class MobileFeedsPage extends BasePage {
     super(page);
 
     // Initialize locators
-    this.pageHeading = page.getByRole('heading', { name: /feeds/i });
-    this.feedsList = page.getByRole('list').filter({
-      has: page.getByRole('article').or(page.getByRole('listitem')),
+    this.pageHeading = page.getByRole("heading", { name: /feeds/i });
+    this.feedsList = page.getByRole("list").filter({
+      has: page.getByRole("article").or(page.getByRole("listitem")),
     });
-    this.floatingMenuButton = page.getByRole('button', {
+    this.floatingMenuButton = page.getByRole("button", {
       name: /menu|options|more/i,
     });
-    this.floatingMenu = page.getByRole('menu').or(
-      page.locator('[data-testid="floating-menu"]')
-    );
-    this.floatingMenuItems = this.floatingMenu.getByRole('menuitem');
-    this.addFeedButton = page.getByRole('button', { name: /add|new feed/i });
-    this.searchButton = page.getByRole('button', { name: /search/i });
-    this.loadingIndicator = page.getByRole('status', { name: /loading/i });
+    this.floatingMenu = page.getByRole("menu").or(page.locator('[data-testid="floating-menu"]'));
+    this.floatingMenuItems = this.floatingMenu.getByRole("menuitem");
+    this.addFeedButton = page.getByRole("button", { name: /add|new feed/i });
+    this.searchButton = page.getByRole("button", { name: /search/i });
+    this.loadingIndicator = page.getByRole("status", { name: /loading/i });
     this.emptyState = page.getByText(/no feeds|empty/i);
-    this.errorMessage = page.getByRole('alert');
+    this.errorMessage = page.getByRole("alert");
   }
 
   /**
    * Navigate to mobile feeds page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/mobile/feeds');
+    await this.page.goto("/mobile/feeds");
     await this.waitForLoad();
   }
 
@@ -73,7 +71,7 @@ export class MobileFeedsPage extends BasePage {
    */
   async getVisibleFeedCount(): Promise<number> {
     try {
-      return await this.feedsList.getByRole('article').count();
+      return await this.feedsList.getByRole("article").count();
     } catch {
       return 0;
     }
@@ -83,7 +81,7 @@ export class MobileFeedsPage extends BasePage {
    * Get first feed
    */
   async getFirstFeed(): Promise<Locator> {
-    return this.feedsList.getByRole('article').first();
+    return this.feedsList.getByRole("article").first();
   }
 
   /**
@@ -124,7 +122,7 @@ export class MobileFeedsPage extends BasePage {
    */
   async closeFloatingMenu(): Promise<void> {
     // Click outside or press escape
-    await this.page.keyboard.press('Escape');
+    await this.page.keyboard.press("Escape");
     await expect(this.floatingMenu).not.toBeVisible();
   }
 
@@ -145,7 +143,7 @@ export class MobileFeedsPage extends BasePage {
     if ((await this.addFeedButton.count()) > 0) {
       await this.addFeedButton.click();
     } else {
-      await this.selectMenuItem('Add Feed');
+      await this.selectMenuItem("Add Feed");
     }
 
     await this.page.waitForURL(/\/mobile\/feeds\/register/);
@@ -158,7 +156,7 @@ export class MobileFeedsPage extends BasePage {
     if ((await this.searchButton.count()) > 0) {
       await this.searchButton.click();
     } else {
-      await this.selectMenuItem('Search');
+      await this.selectMenuItem("Search");
     }
 
     await this.page.waitForURL(/\/mobile\/feeds\/search/);
@@ -168,7 +166,7 @@ export class MobileFeedsPage extends BasePage {
    * Navigate to favorites
    */
   async goToFavorites(): Promise<void> {
-    await this.selectMenuItem('Favorites');
+    await this.selectMenuItem("Favorites");
     await this.page.waitForURL(/\/mobile\/feeds\/favorites/);
   }
 
@@ -176,7 +174,7 @@ export class MobileFeedsPage extends BasePage {
    * Navigate to stats
    */
   async goToStats(): Promise<void> {
-    await this.selectMenuItem('Stats');
+    await this.selectMenuItem("Stats");
     await this.page.waitForURL(/\/mobile\/feeds\/stats/);
   }
 
@@ -222,7 +220,7 @@ export class MobileFeedsPage extends BasePage {
    * Tap on feed
    */
   async tapFeed(index: number): Promise<void> {
-    const feeds = this.feedsList.getByRole('article');
+    const feeds = this.feedsList.getByRole("article");
     await feeds.nth(index).click();
   }
 
@@ -230,7 +228,7 @@ export class MobileFeedsPage extends BasePage {
    * Long press on feed
    */
   async longPressFeed(index: number): Promise<void> {
-    const feeds = this.feedsList.getByRole('article');
+    const feeds = this.feedsList.getByRole("article");
     const feed = feeds.nth(index);
 
     await feed.click({ delay: 1000 }); // Long press

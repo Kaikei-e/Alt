@@ -1,16 +1,9 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MutableRefObject,
-} from "react";
+import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWRInfinite from "swr/infinite";
-import { feedsApi } from "@/lib/api";
-import { CursorResponse } from "@/schema/common";
-import { Feed } from "@/schema/feed";
 import { useArticleContentPrefetch } from "@/hooks/useArticleContentPrefetch";
+import { feedsApi } from "@/lib/api";
+import type { CursorResponse } from "@/schema/common";
+import type { Feed } from "@/schema/feed";
 
 const PAGE_SIZE = 20;
 const PREFETCH_THRESHOLD = 10;
@@ -22,13 +15,9 @@ const canonicalize = (url: string) => {
   try {
     const parsed = new URL(url);
     parsed.hash = "";
-    [
-      "utm_source",
-      "utm_medium",
-      "utm_campaign",
-      "utm_term",
-      "utm_content",
-    ].forEach((param) => parsed.searchParams.delete(param));
+    ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"].forEach((param) =>
+      parsed.searchParams.delete(param)
+    );
     if (parsed.pathname !== "/" && parsed.pathname.endsWith("/")) {
       parsed.pathname = parsed.pathname.slice(0, -1);
     }
@@ -40,7 +29,7 @@ const canonicalize = (url: string) => {
 
 const getKey = (
   pageIndex: number,
-  previousPageData: CursorResponse<Feed> | null,
+  previousPageData: CursorResponse<Feed> | null
 ): SwrKey | null => {
   if (previousPageData && !previousPageData.next_cursor) {
     return null;
@@ -57,7 +46,7 @@ const getKey = (
 const fetchPage = async (
   _: string,
   cursor: string | undefined,
-  limit: number,
+  limit: number
 ): Promise<CursorResponse<Feed>> => {
   return feedsApi.getFeedsWithCursor(cursor, limit);
 };
@@ -76,7 +65,7 @@ const clearTimeoutRef = (timeoutRef: MutableRefObject<number | null>) => {
 const scheduleTimeout = (
   timeoutRef: MutableRefObject<number | null>,
   callback: () => void,
-  duration: number,
+  duration: number
 ) => {
   if (typeof window === "undefined") {
     callback();
@@ -100,13 +89,16 @@ export const useSwipeFeedController = () => {
   const prefetchCursorRef = useRef<string | null>(null);
   const lastDismissedIdRef = useRef<string | null>(null);
 
-  const { data, error, isLoading, isValidating, setSize, mutate } =
-    useSWRInfinite(getKey, fetchPage, {
+  const { data, error, isLoading, isValidating, setSize, mutate } = useSWRInfinite(
+    getKey,
+    fetchPage,
+    {
       revalidateOnFocus: false,
       revalidateFirstPage: false,
       parallel: true,
       initialSize: INITIAL_PAGE_COUNT,
-    });
+    }
+  );
 
   const feeds = useMemo(() => {
     if (!data || data.length === 0) {
@@ -136,12 +128,11 @@ export const useSwipeFeedController = () => {
   const isInitialLoading = (!data || data.length === 0) && isLoading;
 
   // Article content prefetch hook
-  const { triggerPrefetch, getCachedContent, markAsDismissed } =
-    useArticleContentPrefetch(
-      feeds,
-      activeIndex,
-      2, // Prefetch next 2 articles
-    );
+  const { triggerPrefetch, getCachedContent, markAsDismissed } = useArticleContentPrefetch(
+    feeds,
+    activeIndex,
+    2 // Prefetch next 2 articles
+  );
 
   useEffect(() => {
     if (!statusMessage) {
@@ -175,8 +166,7 @@ export const useSwipeFeedController = () => {
       return;
     }
 
-    const hasActiveFeed =
-      activeFeedId !== null && feeds.some((feed) => feed.id === activeFeedId);
+    const hasActiveFeed = activeFeedId !== null && feeds.some((feed) => feed.id === activeFeedId);
 
     if (hasActiveFeed) {
       if (
@@ -198,15 +188,16 @@ export const useSwipeFeedController = () => {
     setActiveFeedId(feeds[0].id);
   }, [activeFeedId, feeds]);
 
-  const announce = useCallback(
-    (message: string, duration: number) => {
-      setLiveRegionMessage(message);
-      scheduleTimeout(liveRegionTimeoutRef, () => {
+  const announce = useCallback((message: string, duration: number) => {
+    setLiveRegionMessage(message);
+    scheduleTimeout(
+      liveRegionTimeoutRef,
+      () => {
         setLiveRegionMessage("");
-      }, duration);
-    },
-    [],
-  );
+      },
+      duration
+    );
+  }, []);
 
   const schedulePrefetch = useCallback(() => {
     if (!hasMore || !lastPage) {
@@ -244,9 +235,7 @@ export const useSwipeFeedController = () => {
   const dismissActiveFeed = useCallback(
     async (_direction: number) => {
       const currentIndex =
-        activeFeedId !== null
-          ? feeds.findIndex((feed) => feed.id === activeFeedId)
-          : 0;
+        activeFeedId !== null ? feeds.findIndex((feed) => feed.id === activeFeedId) : 0;
       const resolvedIndex = currentIndex === -1 ? 0 : currentIndex;
       const current = feeds[resolvedIndex];
 
@@ -295,7 +284,7 @@ export const useSwipeFeedController = () => {
         throw err;
       }
     },
-    [activeFeedId, announce, feeds, markAsDismissed, mutate],
+    [activeFeedId, announce, feeds, markAsDismissed, mutate]
   );
 
   const retry = useCallback(async () => {

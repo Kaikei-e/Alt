@@ -1,9 +1,8 @@
 "use client";
 
-import React from "react";
-import { Box, Text, Spinner } from "@chakra-ui/react";
+import { Box, Spinner, Text } from "@chakra-ui/react";
+import React, { Suspense } from "react";
 import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
-import { Suspense } from "react";
 import { DesktopArticleTimeline } from "@/components/desktop/timeline/DesktopArticleTimeline";
 
 function DesktopArticlesContent() {
@@ -59,19 +58,8 @@ function DesktopArticlesContent() {
 }
 
 const LoadingFallback = () => (
-  <Box
-    h="100vh"
-    display="flex"
-    alignItems="center"
-    justifyContent="center"
-    bg="var(--app-bg)"
-  >
-    <Box
-      className="glass"
-      p={8}
-      borderRadius="var(--radius-xl)"
-      textAlign="center"
-    >
+  <Box h="100vh" display="flex" alignItems="center" justifyContent="center" bg="var(--app-bg)">
+    <Box className="glass" p={8} borderRadius="var(--radius-xl)" textAlign="center">
       <Spinner size="lg" color="var(--accent-primary)" mb={4} />
       <Text color="var(--text-primary)" fontSize="lg">
         Loading Alt Articles...

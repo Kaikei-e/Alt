@@ -1,12 +1,12 @@
 "use client";
 
-import { Box, VStack, Text } from "@chakra-ui/react";
+import { Box, Text, VStack } from "@chakra-ui/react";
 import { useState } from "react";
-import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
-import SearchWindow from "@/components/mobile/search/SearchWindow";
 import SearchResults from "@/components/mobile/search/SearchResults";
-import { BackendFeedItem } from "@/schema/feed";
-import { SearchQuery } from "@/schema/validation/searchQuery";
+import SearchWindow from "@/components/mobile/search/SearchWindow";
+import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
+import type { BackendFeedItem } from "@/schema/feed";
+import type { SearchQuery } from "@/schema/validation/searchQuery";
 
 export default function SearchFeedsPage() {
   const [searchQuery, setSearchQuery] = useState<SearchQuery>({ query: "" });
@@ -75,14 +75,9 @@ export default function SearchFeedsPage() {
             border="2px solid var(--surface-border)"
             boxShadow="var(--shadow-sm)"
           >
-            <Text
-              color="var(--text-secondary)"
-              fontSize="sm"
-              textAlign="center"
-              lineHeight="1.7"
-            >
-              💡 Try searching for topics like &quot;AI&quot;,
-              &quot;technology&quot;, or &quot;news&quot;
+            <Text color="var(--text-secondary)" fontSize="sm" textAlign="center" lineHeight="1.7">
+              💡 Try searching for topics like &quot;AI&quot;, &quot;technology&quot;, or
+              &quot;news&quot;
             </Text>
           </Box>
         )}

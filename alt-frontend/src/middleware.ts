@@ -1,6 +1,6 @@
 // src/middleware.ts
 // Ory Kratos authentication middleware following official best practices
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 const PUBLIC_ROUTES = [
   /^\/auth(\/|$)/,
@@ -47,8 +47,7 @@ export async function middleware(req: NextRequest) {
 
   // Validate session with auth-hub (uses 5min cache)
   try {
-    const authHubUrl =
-      process.env.AUTH_HUB_INTERNAL_URL || "http://auth-hub:8888";
+    const authHubUrl = process.env.AUTH_HUB_INTERNAL_URL || "http://auth-hub:8888";
 
     // Pass the actual cookie value, preserving the original cookie name
     const cookieHeader = `ory_kratos_session=${effectiveSessionCookie.value}`;

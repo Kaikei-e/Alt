@@ -1,11 +1,11 @@
 "use client";
 
-import { Box, Button, Input, VStack, Text } from "@chakra-ui/react";
+import { Box, Button, Input, Text, VStack } from "@chakra-ui/react";
 import { useState } from "react";
+import * as v from "valibot";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { feedsApi } from "@/lib/api";
 import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
-import * as v from "valibot";
 
 export default function RegisterFeedsPage() {
   const [feedUrl, setFeedUrl] = useState("");
@@ -93,11 +93,7 @@ export default function RegisterFeedsPage() {
           Register RSS Feed
         </Text>
 
-        <Text
-          textAlign="center"
-          color="var(--alt-text-secondary)"
-          fontSize="sm"
-        >
+        <Text textAlign="center" color="var(--alt-text-secondary)" fontSize="sm">
           Enter the URL of an RSS feed to add it to your collection
         </Text>
 
@@ -110,12 +106,7 @@ export default function RegisterFeedsPage() {
           <form onSubmit={handleSubmit}>
             <VStack gap={4}>
               <Box width="full">
-                <Text
-                  color="var(--text-primary)"
-                  mb={2}
-                  fontSize="sm"
-                  fontWeight="medium"
-                >
+                <Text color="var(--text-primary)" mb={2} fontSize="sm" fontWeight="medium">
                   Feed URL
                 </Text>
                 <Input
@@ -128,9 +119,7 @@ export default function RegisterFeedsPage() {
                   color="var(--text-primary)"
                   _placeholder={{ color: "var(--text-muted)" }}
                   _focus={{
-                    borderColor: validationError
-                      ? "var(--alt-error)"
-                      : "var(--alt-primary)",
+                    borderColor: validationError ? "var(--alt-error)" : "var(--alt-primary)",
                     boxShadow: `0 0 0 1px ${validationError ? "var(--alt-error)" : "var(--alt-primary)"}`,
                   }}
                 />
@@ -167,11 +156,7 @@ export default function RegisterFeedsPage() {
 
               {message && (
                 <Text
-                  color={
-                    message.type === "success"
-                      ? "var(--alt-success)"
-                      : "var(--alt-error)"
-                  }
+                  color={message.type === "success" ? "var(--alt-success)" : "var(--alt-error)"}
                   textAlign="center"
                   fontSize="sm"
                   fontWeight="medium"
@@ -183,12 +168,7 @@ export default function RegisterFeedsPage() {
           </form>
         </Box>
 
-        <Text
-          textAlign="center"
-          color="var(--alt-text-secondary)"
-          fontSize="xs"
-          mt={4}
-        >
+        <Text textAlign="center" color="var(--alt-text-secondary)" fontSize="xs" mt={4}>
           Make sure the URL points to a valid RSS or Atom feed
         </Text>
       </VStack>

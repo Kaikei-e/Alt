@@ -1,22 +1,16 @@
 "use client";
 
 import { Box, Flex } from "@chakra-ui/react";
-import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
+import ErrorState from "@/app/mobile/feeds/_components/ErrorState";
 import EmptyFeedState from "@/components/mobile/EmptyFeedState";
-import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import SwipeFeedCard from "@/components/mobile/feeds/swipe/SwipeFeedCard";
 import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
-import ErrorState from "@/app/mobile/feeds/_components/ErrorState";
+import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
+import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 
 const SwipeFeedSkeleton = () => (
   <Box minH="100dvh" position="relative">
-    <Box
-      p={5}
-      maxW="container.sm"
-      mx="auto"
-      height="100dvh"
-      data-testid="swipe-skeleton-container"
-    >
+    <Box p={5} maxW="container.sm" mx="auto" height="100dvh" data-testid="swipe-skeleton-container">
       <Flex direction="column" gap={4}>
         {Array.from({ length: 5 }).map((_, index) => (
           <SkeletonFeedCard key={`swipe-skeleton-${index}`} />

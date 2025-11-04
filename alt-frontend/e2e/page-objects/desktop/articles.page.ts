@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Desktop Articles Page Object
@@ -26,29 +26,29 @@ export class DesktopArticlesPage extends BasePage {
     super(page);
 
     // Initialize locators
-    this.pageHeading = page.getByRole('heading', { name: /articles/i });
-    this.articlesList = page.getByRole('list').filter({
-      has: page.getByRole('article'),
+    this.pageHeading = page.getByRole("heading", { name: /articles/i });
+    this.articlesList = page.getByRole("list").filter({
+      has: page.getByRole("article"),
     });
-    this.articleContent = page.getByRole('article').first();
-    this.searchLink = page.getByRole('link', { name: /search/i });
-    this.filterButton = page.getByRole('button', { name: /filter/i });
+    this.articleContent = page.getByRole("article").first();
+    this.searchLink = page.getByRole("link", { name: /search/i });
+    this.filterButton = page.getByRole("button", { name: /filter/i });
     this.sortSelect = page.getByLabel(/sort|order/i);
-    this.favoriteIcon = page.getByRole('button', { name: /favorite|star/i });
-    this.readIcon = page.getByRole('button', { name: /mark.*read/i });
-    this.sidebar = page.getByRole('navigation', { name: /sidebar/i });
-    this.rightPanel = page.getByRole('complementary');
+    this.favoriteIcon = page.getByRole("button", { name: /favorite|star/i });
+    this.readIcon = page.getByRole("button", { name: /mark.*read/i });
+    this.sidebar = page.getByRole("navigation", { name: /sidebar/i });
+    this.rightPanel = page.getByRole("complementary");
     this.emptyState = page.getByText(/no articles|empty/i);
-    this.loadingIndicator = page.getByRole('status', { name: /loading/i });
-    this.paginationNext = page.getByRole('button', { name: /next/i });
-    this.paginationPrev = page.getByRole('button', { name: /previous|prev/i });
+    this.loadingIndicator = page.getByRole("status", { name: /loading/i });
+    this.paginationNext = page.getByRole("button", { name: /next/i });
+    this.paginationPrev = page.getByRole("button", { name: /previous|prev/i });
   }
 
   /**
    * Navigate to articles page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/desktop/articles');
+    await this.page.goto("/desktop/articles");
     await this.waitForLoad();
   }
 
@@ -77,7 +77,7 @@ export class DesktopArticlesPage extends BasePage {
    */
   async getArticleCount(): Promise<number> {
     try {
-      return await this.articlesList.getByRole('article').count();
+      return await this.articlesList.getByRole("article").count();
     } catch {
       return 0;
     }
@@ -87,7 +87,7 @@ export class DesktopArticlesPage extends BasePage {
    * Open article by index
    */
   async openArticle(index: number): Promise<void> {
-    const articles = this.articlesList.getByRole('article');
+    const articles = this.articlesList.getByRole("article");
     await articles.nth(index).click();
   }
 
@@ -95,9 +95,7 @@ export class DesktopArticlesPage extends BasePage {
    * Open article by title
    */
   async openArticleByTitle(title: string): Promise<void> {
-    const article = this.articlesList
-      .getByRole('article')
-      .filter({ hasText: title });
+    const article = this.articlesList.getByRole("article").filter({ hasText: title });
     await article.click();
   }
 
@@ -166,8 +164,8 @@ export class DesktopArticlesPage extends BasePage {
    * Get all article titles
    */
   async getArticleTitles(): Promise<string[]> {
-    const articles = this.articlesList.getByRole('article');
-    const headings = articles.getByRole('heading');
+    const articles = this.articlesList.getByRole("article");
+    const headings = articles.getByRole("heading");
     return await headings.allTextContents();
   }
 
@@ -223,7 +221,7 @@ export class DesktopArticlesPage extends BasePage {
   /**
    * Filter by status (read/unread)
    */
-  async filterByStatus(status: 'read' | 'unread' | 'all'): Promise<void> {
+  async filterByStatus(status: "read" | "unread" | "all"): Promise<void> {
     await this.openFilter();
 
     const statusFilter = this.page.getByLabel(/status/i);

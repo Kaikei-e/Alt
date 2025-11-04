@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Auth Error Page Object
@@ -18,21 +18,21 @@ export class AuthErrorPage extends BasePage {
     super(page);
 
     // Initialize locators - use data-testid for reliable selection
-    this.pageHeading = page.getByRole('heading', {
+    this.pageHeading = page.getByRole("heading", {
       name: /error|エラー|認証|something went wrong/i,
     });
     this.errorMessage = page.locator('[data-testid="error-message"]');
     this.errorDetails = page.locator('[data-testid="error-details"]');
-    this.retryButton = page.getByRole('button', { name: /retry|try again|再試行/i });
+    this.retryButton = page.getByRole("button", { name: /retry|try again|再試行/i });
     this.backToLoginButton = page.locator('[data-testid="back-to-login-button"]');
-    this.homeButton = page.getByRole('link', { name: /home|back home|ホーム/i });
+    this.homeButton = page.getByRole("link", { name: /home|back home|ホーム/i });
   }
 
   /**
    * Navigate to error page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/auth/error');
+    await this.page.goto("/auth/error");
     await this.waitForLoad();
   }
 
@@ -47,7 +47,7 @@ export class AuthErrorPage extends BasePage {
    * Get error message text
    */
   async getErrorMessage(): Promise<string> {
-    return (await this.errorMessage.textContent()) || '';
+    return (await this.errorMessage.textContent()) || "";
   }
 
   /**

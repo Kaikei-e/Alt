@@ -1,5 +1,5 @@
-import { test as base, devices } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Page } from "@playwright/test";
+import { test as base, devices } from "@playwright/test";
 
 /**
  * Desktop fixture type
@@ -25,7 +25,7 @@ export const test = base.extend<DesktopFixture>({
   desktopPage: async ({ browser }, use) => {
     // Create a new context with desktop Chrome configuration
     const context = await browser.newContext({
-      ...devices['Desktop Chrome'],
+      ...devices["Desktop Chrome"],
       viewport: DESKTOP_VIEWPORTS.fullHd,
     });
 
@@ -38,4 +38,4 @@ export const test = base.extend<DesktopFixture>({
   },
 });
 
-export { expect } from '@playwright/test';
+export { expect } from "@playwright/test";

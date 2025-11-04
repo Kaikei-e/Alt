@@ -1,38 +1,29 @@
 "use client";
 
 import {
-  Box,
-  Button,
-  Text,
-  VStack,
-  HStack,
-  Drawer,
-  Portal,
-  Flex,
-} from "@chakra-ui/react";
-import {
   Accordion,
-  AccordionItem,
   AccordionButton,
-  AccordionPanel,
   AccordionIcon,
+  AccordionItem,
+  AccordionPanel,
 } from "@chakra-ui/accordion";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState, useCallback, useEffect } from "react";
+import { Box, Button, Drawer, Flex, HStack, Portal, Text, VStack } from "@chakra-ui/react";
 import {
+  ChartBar,
+  Eye,
+  Home,
+  Infinity,
+  Menu,
+  Newspaper,
+  Plus,
   Rss,
   Search,
-  Plus,
-  Eye,
-  ChartBar,
-  Home,
-  Newspaper,
   Star,
-  Menu,
   X,
-  Infinity,
 } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { ThemeToggle } from "../../ThemeToggle";
 
 type MenuCategory = "feeds" | "other" | "articles";
@@ -70,7 +61,7 @@ export const FloatingMenu = () => {
       // Focus management for accessibility
       setTimeout(() => {
         const firstAccordionButton = document.querySelector(
-          '[data-testid="tab-feeds"]',
+          '[data-testid="tab-feeds"]'
         ) as HTMLElement;
         if (firstAccordionButton) {
           firstAccordionButton.focus();
@@ -142,10 +133,17 @@ export const FloatingMenu = () => {
       description: "Find specific feeds",
     },
     {
+      label: "View Articles",
+      href: "/mobile/articles/view",
+      category: "articles",
+      icon: <Newspaper size={18} />,
+      description: "Browse all articles",
+    },
+    {
       label: "Search Articles",
       href: "/mobile/articles/search",
       category: "articles",
-      icon: <Newspaper size={18} />,
+      icon: <Search size={18} />,
       description: "Search through articles",
     },
     {
@@ -174,7 +172,7 @@ export const FloatingMenu = () => {
     (href: string): boolean => {
       return pathname === href;
     },
-    [pathname],
+    [pathname]
   );
 
   // Group menu items into categories for accordion UI
@@ -201,11 +199,7 @@ export const FloatingMenu = () => {
 
   return (
     <>
-      <Drawer.Root
-        open={isOpen}
-        onOpenChange={(e) => setIsOpen(e.open)}
-        placement="bottom"
-      >
+      <Drawer.Root open={isOpen} onOpenChange={(e) => setIsOpen(e.open)} placement="bottom">
         <Drawer.Trigger asChild>
           <Box
             position="fixed"
@@ -393,17 +387,10 @@ export const FloatingMenu = () => {
                                   {cat.icon}
                                 </Box>
                                 <Box textAlign="left">
-                                  <Text
-                                    fontWeight="bold"
-                                    fontSize="lg"
-                                    color="var(--text-primary)"
-                                  >
+                                  <Text fontWeight="bold" fontSize="lg" color="var(--text-primary)">
                                     {cat.title}
                                   </Text>
-                                  <Text
-                                    fontSize="sm"
-                                    color="var(--text-primary)"
-                                  >
+                                  <Text fontSize="sm" color="var(--text-primary)">
                                     {cat.items.length} items
                                   </Text>
                                 </Box>
@@ -411,9 +398,7 @@ export const FloatingMenu = () => {
                               <AccordionIcon
                                 color="var(--text-primary)"
                                 transition="transform 0.2s"
-                                transform={
-                                  isExpanded ? "rotate(180deg)" : "rotate(0deg)"
-                                }
+                                transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
                               />
                             </AccordionButton>
                           </h2>
@@ -432,11 +417,7 @@ export const FloatingMenu = () => {
                                       mx="auto"
                                       maxW="320px"
                                       w="85%"
-                                      bg={
-                                        isActive
-                                          ? "var(--alt-glass)"
-                                          : "var(--alt-glass)"
-                                      }
+                                      bg={isActive ? "var(--alt-glass)" : "var(--alt-glass)"}
                                       borderRadius="10px"
                                       border={`1px solid ${
                                         isActive
@@ -445,13 +426,10 @@ export const FloatingMenu = () => {
                                       }`}
                                       p={3}
                                       _hover={{
-                                        bg: isActive
-                                          ? "var(--alt-glass)"
-                                          : "var(--alt-glass)",
+                                        bg: isActive ? "var(--alt-glass)" : "var(--alt-glass)",
                                         borderColor: "var(--alt-glass-border)",
                                         transform: "translateY(-1px)",
-                                        boxShadow:
-                                          "0 2px 8px var(--alt-glass-shadow)",
+                                        boxShadow: "0 2px 8px var(--alt-glass-shadow)",
                                       }}
                                       _active={{ transform: "translateY(0px)" }}
                                       transition="all 0.2s ease"
@@ -484,19 +462,14 @@ export const FloatingMenu = () => {
                                           {item.icon}
                                         </Box>
                                         <Box flex="1">
-                                          <HStack
-                                            justify="space-between"
-                                            align="center"
-                                          >
+                                          <HStack justify="space-between" align="center">
                                             <Text
                                               color={
                                                 isActive
                                                   ? "var(--text-primary)"
                                                   : "var(--alt-secondary)"
                                               }
-                                              fontWeight={
-                                                isActive ? "semibold" : "medium"
-                                              }
+                                              fontWeight={isActive ? "semibold" : "medium"}
                                               fontSize="sm"
                                               lineHeight="1.2"
                                             >

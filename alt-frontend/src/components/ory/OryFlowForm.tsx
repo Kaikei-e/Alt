@@ -1,16 +1,6 @@
 "use client";
 
-import type { FormEvent, ReactNode } from "react";
-import NextLink from "next/link";
-import {
-  Box,
-  Button,
-  Flex,
-  Image,
-  Input,
-  Link as ChakraLink,
-  Text,
-} from "@chakra-ui/react";
+import { Box, Button, Link as ChakraLink, Flex, Image, Input, Text } from "@chakra-ui/react";
 import type {
   LoginFlow,
   RegistrationFlow,
@@ -20,6 +10,8 @@ import type {
   UiNodeInputAttributes,
   UiNodeTextAttributes,
 } from "@ory/client";
+import NextLink from "next/link";
+import type { FormEvent, ReactNode } from "react";
 
 export interface OryFlowFormProps {
   flow: LoginFlow | RegistrationFlow | null;
@@ -68,11 +60,7 @@ const renderImageNode = (node: UiNode) => {
   return <Image src={attrs.src} alt="" />;
 };
 
-const renderInputNode = (
-  node: UiNode,
-  index: number,
-  isSubmitting?: boolean,
-) => {
+const renderInputNode = (node: UiNode, index: number, isSubmitting?: boolean) => {
   const attrs = node.attributes as UiNodeInputAttributes;
 
   if (!attrs?.name) {
@@ -82,12 +70,7 @@ const renderInputNode = (
   if (attrs.type === "hidden") {
     const value = typeof attrs.value === "string" ? attrs.value : "";
     return (
-      <input
-        key={`hidden-${index}-${attrs.name}`}
-        type="hidden"
-        name={attrs.name}
-        value={value}
-      />
+      <input key={`hidden-${index}-${attrs.name}`} type="hidden" name={attrs.name} value={value} />
     );
   }
 
@@ -97,9 +80,7 @@ const renderInputNode = (
       if (typeof window === "undefined") return;
       const trigger = attrs.onclickTrigger;
       if (trigger) {
-        const triggerFn = (window as unknown as Record<string, unknown>)[
-          trigger
-        ];
+        const triggerFn = (window as unknown as Record<string, unknown>)[trigger];
         if (typeof triggerFn === "function") {
           (triggerFn as () => void)();
         }
@@ -126,8 +107,7 @@ const renderInputNode = (
   }
 
   if (attrs.type === "checkbox") {
-    const checked =
-      attrs.value === true || attrs.value === "true" || attrs.value === "on";
+    const checked = attrs.value === true || attrs.value === "true" || attrs.value === "on";
     return (
       <Flex
         key={`checkbox-${index}-${attrs.name}`}
@@ -150,8 +130,7 @@ const renderInputNode = (
     );
   }
 
-  const defaultValue =
-    typeof attrs.value === "string" ? attrs.value : undefined;
+  const defaultValue = typeof attrs.value === "string" ? attrs.value : undefined;
   const label = attrs.label?.text ?? node.meta?.label?.text ?? attrs.name;
   const inputId = `ory-input-${attrs.name}-${index}`;
 
@@ -193,11 +172,7 @@ const renderInputNode = (
   );
 };
 
-const renderNode = (
-  node: UiNode,
-  index: number,
-  isSubmitting?: boolean,
-): ReactNode => {
+const renderNode = (node: UiNode, index: number, isSubmitting?: boolean): ReactNode => {
   switch (node.type) {
     case "input":
       return renderInputNode(node, index, isSubmitting);
@@ -232,13 +207,7 @@ export const OryFlowForm = ({
     if (error) {
       return (
         <Box>
-          <Box
-            p={3}
-            border="1px solid"
-            borderColor="red.300"
-            bg="red.100"
-            borderRadius="md"
-          >
+          <Box p={3} border="1px solid" borderColor="red.300" bg="red.100" borderRadius="md">
             <Text fontSize="sm" color="red.700">
               {error}
             </Text>
@@ -270,32 +239,20 @@ export const OryFlowForm = ({
       noValidate
       style={{ width: "100%" }}
     >
-      {hiddenNodes.map((node, index) =>
-        renderInputNode(node, index, isSubmitting),
-      )}
+      {hiddenNodes.map((node, index) => renderInputNode(node, index, isSubmitting))}
 
       <Flex direction="column" gap={4} width="100%">
         {error && (
-          <Box
-            p={3}
-            border="1px solid"
-            borderColor="red.300"
-            bg="red.100"
-            borderRadius="md"
-          >
+          <Box p={3} border="1px solid" borderColor="red.300" bg="red.100" borderRadius="md">
             <Text fontSize="sm" color="red.700">
               {error}
             </Text>
           </Box>
         )}
 
-        {flow.ui.messages?.length ? (
-          <Box>{renderMessages(flow.ui.messages)}</Box>
-        ) : null}
+        {flow.ui.messages?.length ? <Box>{renderMessages(flow.ui.messages)}</Box> : null}
 
-        {visibleNodes.map((node, index) =>
-          renderNode(node, index, isSubmitting),
-        )}
+        {visibleNodes.map((node, index) => renderNode(node, index, isSubmitting))}
       </Flex>
     </form>
   );

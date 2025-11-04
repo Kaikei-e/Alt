@@ -1,15 +1,15 @@
-import { ApiClient } from "../core/ApiClient";
-import { FeedsApi } from "../feeds/FeedsApi";
-import { DesktopFeedsResponse, DesktopFeed } from "@/types/desktop-feed";
-import { ActivityResponse, WeeklyStats } from "@/types/desktop";
-import { MessageResponse } from "@/schema/common";
 import { mockDesktopFeeds } from "@/data/mockDesktopFeeds";
-import { sanitizeFeed, BackendFeedItem } from "@/schema/feed";
+import type { MessageResponse } from "@/schema/common";
+import { type BackendFeedItem, sanitizeFeed } from "@/schema/feed";
+import type { ActivityResponse, WeeklyStats } from "@/types/desktop";
+import type { DesktopFeed, DesktopFeedsResponse } from "@/types/desktop-feed";
+import type { ApiClient } from "../core/ApiClient";
+import type { FeedsApi } from "../feeds/FeedsApi";
 
 export class DesktopApi {
   constructor(
     private apiClient: ApiClient,
-    private feedsApi: FeedsApi,
+    private feedsApi: FeedsApi
   ) {}
 
   // Desktop Feed Methods
@@ -27,7 +27,7 @@ export class DesktopApi {
       }>(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
 
       const transformedFeeds = (response.data || []).map((item) =>
-        sanitizeFeed(item as BackendFeedItem),
+        sanitizeFeed(item as BackendFeedItem)
       );
 
       return {
@@ -49,7 +49,7 @@ export class DesktopApi {
 
   // Test-compatible cursor API for E2E tests
   async getTestFeeds(
-    cursor?: string | null,
+    cursor?: string | null
   ): Promise<{ data: DesktopFeed[]; next_cursor: string | null }> {
     return new Promise((resolve) => {
       const pageSize = 20;
@@ -59,38 +59,27 @@ export class DesktopApi {
 
       resolve({
         data: paginatedFeeds,
-        next_cursor:
-          endIndex < mockDesktopFeeds.length ? endIndex.toString() : null,
+        next_cursor: endIndex < mockDesktopFeeds.length ? endIndex.toString() : null,
       });
     });
   }
 
   // Mock methods for development/testing
-  async toggleFavorite(
-    _feedId: string,
-    isFavorited: boolean,
-  ): Promise<MessageResponse> {
+  async toggleFavorite(_feedId: string, isFavorited: boolean): Promise<MessageResponse> {
     return new Promise((resolve) => {
       setTimeout(() => {
         resolve({
-          message: isFavorited
-            ? "Added to favorites"
-            : "Removed from favorites",
+          message: isFavorited ? "Added to favorites" : "Removed from favorites",
         });
       }, 200);
     });
   }
 
-  async toggleBookmark(
-    _feedId: string,
-    isBookmarked: boolean,
-  ): Promise<MessageResponse> {
+  async toggleBookmark(_feedId: string, isBookmarked: boolean): Promise<MessageResponse> {
     return new Promise((resolve) => {
       setTimeout(() => {
         resolve({
-          message: isBookmarked
-            ? "Added to bookmarks"
-            : "Removed from bookmarks",
+          message: isBookmarked ? "Added to bookmarks" : "Removed from bookmarks",
         });
       }, 200);
     });

@@ -1,5 +1,5 @@
-import { test as base, devices } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Page } from "@playwright/test";
+import { test as base, devices } from "@playwright/test";
 
 /**
  * Mobile fixture type
@@ -12,11 +12,11 @@ export type MobileFixture = {
  * Supported mobile device configurations
  */
 export const MOBILE_DEVICES = {
-  iphone13: devices['iPhone 13'],
-  iphone13Pro: devices['iPhone 13 Pro'],
-  iphoneSE: devices['iPhone SE'],
-  pixel5: devices['Pixel 5'],
-  galaxyS9: devices['Galaxy S9+'],
+  iphone13: devices["iPhone 13"],
+  iphone13Pro: devices["iPhone 13 Pro"],
+  iphoneSE: devices["iPhone SE"],
+  pixel5: devices["Pixel 5"],
+  galaxyS9: devices["Galaxy S9+"],
 } as const;
 
 /**
@@ -52,9 +52,7 @@ export const test = base.extend<MobileFixture>({
 /**
  * Create a custom mobile fixture with specific device
  */
-export function createMobileFixture(
-  deviceName: keyof typeof MOBILE_DEVICES
-) {
+export function createMobileFixture(deviceName: keyof typeof MOBILE_DEVICES) {
   return base.extend<MobileFixture>({
     mobilePage: async ({ browser }, use) => {
       const context = await browser.newContext({
@@ -70,4 +68,4 @@ export function createMobileFixture(
   });
 }
 
-export { expect } from '@playwright/test';
+export { expect } from "@playwright/test";

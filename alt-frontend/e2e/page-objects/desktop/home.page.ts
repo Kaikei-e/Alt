@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { expect, type Locator, type Page } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Home Page Object
@@ -20,21 +20,21 @@ export class HomePage extends BasePage {
     super(page);
 
     // Initialize locators
-    this.pageHeading = page.getByRole('heading', { level: 1 }).first();
+    this.pageHeading = page.getByRole("heading", { level: 1 }).first();
     this.welcomeMessage = page.getByText(/welcome/i);
-    this.desktopCard = page.getByRole('link', { name: /desktop/i });
-    this.mobileCard = page.getByRole('link', { name: /mobile/i });
-    this.logoutButton = page.getByRole('button', { name: /log out|logout/i });
-    this.settingsLink = page.getByRole('link', { name: /settings/i });
-    this.themeToggle = page.getByRole('button', { name: /theme|dark mode|light mode/i });
-    this.userMenu = page.getByRole('button', { name: /user menu|account/i });
+    this.desktopCard = page.getByRole("link", { name: /desktop/i });
+    this.mobileCard = page.getByRole("link", { name: /mobile/i });
+    this.logoutButton = page.getByRole("button", { name: /log out|logout/i });
+    this.settingsLink = page.getByRole("link", { name: /settings/i });
+    this.themeToggle = page.getByRole("button", { name: /theme|dark mode|light mode/i });
+    this.userMenu = page.getByRole("button", { name: /user menu|account/i });
   }
 
   /**
    * Navigate to home page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/home');
+    await this.page.goto("/home");
     await this.waitForLoad();
   }
 

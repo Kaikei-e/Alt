@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { feedsApi } from "@/lib/api";
-import { useTodayUnreadCount } from "./useTodayUnreadCount";
-import { FeedStatsSummary } from "@/schema/feedStats";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { feedsApi } from "@/lib/api";
+import type { FeedStatsSummary } from "@/schema/feedStats";
+import { useTodayUnreadCount } from "./useTodayUnreadCount";
 
 export interface UseHomeStatsReturn {
   // 基本統計

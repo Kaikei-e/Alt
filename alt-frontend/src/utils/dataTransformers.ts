@@ -1,13 +1,13 @@
-import { FeedStatsSummary } from "@/schema/feedStats";
-import { StatsCardData } from "@/types/desktop";
-import { Rss, Eye, Clock } from "lucide-react";
+import { Clock, Eye, Rss } from "lucide-react";
+import type { FeedStatsSummary } from "@/schema/feedStats";
+import type { StatsCardData } from "@/types/desktop";
 
 /**
  * Transform feed stats and unread count to stats card data format
  */
 export const transformFeedStats = (
   feedStats: FeedStatsSummary | null,
-  unreadCount: number,
+  unreadCount: number
 ): StatsCardData[] => {
   return [
     {

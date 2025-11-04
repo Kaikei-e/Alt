@@ -1,12 +1,12 @@
 "use client";
 
+import { Box, HStack, Skeleton, Text, VStack } from "@chakra-ui/react";
 import React, { Suspense } from "react";
-import { Box, Text, VStack, HStack, Skeleton } from "@chakra-ui/react";
 import { ErrorBoundary } from "react-error-boundary";
 
 // Lazy load the right panel component
 const RightPanel = React.lazy(() =>
-  import("./RightPanel").then((module) => ({ default: module.RightPanel })),
+  import("./RightPanel").then((module) => ({ default: module.RightPanel }))
 );
 
 // Loading fallback component
@@ -57,12 +57,7 @@ const RightPanelLoading = () => (
         <Skeleton height="18px" width="50%" mb={3} />
         <HStack gap={2} wrap="wrap">
           {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton
-              key={index}
-              height="24px"
-              width="60px"
-              borderRadius="full"
-            />
+            <Skeleton key={index} height="24px" width="60px" borderRadius="full" />
           ))}
         </HStack>
       </Box>
@@ -88,13 +83,7 @@ const RightPanelError = ({
     alignItems="center"
     justifyContent="center"
   >
-    <Box
-      className="glass"
-      p={6}
-      borderRadius="var(--radius-lg)"
-      textAlign="center"
-      maxW="280px"
-    >
+    <Box className="glass" p={6} borderRadius="var(--radius-lg)" textAlign="center" maxW="280px">
       <Text fontSize="xl" mb={3}>
         ⚠️
       </Text>

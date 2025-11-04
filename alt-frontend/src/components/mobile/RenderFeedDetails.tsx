@@ -1,11 +1,8 @@
-import { HStack, Text, Box } from "@chakra-ui/react";
+import { Box, HStack, Text } from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
-import type {
-  FeedContentOnTheFlyResponse,
-  FetchArticleSummaryResponse,
-} from "@/schema/feed";
-import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
 import sanitizeHtml from "sanitize-html";
+import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
+import type { FeedContentOnTheFlyResponse, FetchArticleSummaryResponse } from "@/schema/feed";
 
 const fallbackContentStyles: CSSObject = {
   "& table": {
@@ -28,9 +25,7 @@ const fallbackContentStyles: CSSObject = {
 };
 
 // Union type for feedDetails
-type RenderFeedDetailsProps =
-  | FeedContentOnTheFlyResponse
-  | FetchArticleSummaryResponse;
+type RenderFeedDetailsProps = FeedContentOnTheFlyResponse | FetchArticleSummaryResponse;
 
 interface RenderFeedDetailsComponentProps {
   feedDetails?: RenderFeedDetailsProps | null;
@@ -38,20 +33,11 @@ interface RenderFeedDetailsComponentProps {
   error?: string | null;
 }
 
-const RenderFeedDetails = ({
-  feedDetails,
-  isLoading,
-  error,
-}: RenderFeedDetailsComponentProps) => {
+const RenderFeedDetails = ({ feedDetails, isLoading, error }: RenderFeedDetailsComponentProps) => {
   // Loading state
   if (isLoading) {
     return (
-      <Text
-        fontStyle="italic"
-        color="var(--alt-text-secondary)"
-        textAlign="center"
-        py={8}
-      >
+      <Text fontStyle="italic" color="var(--alt-text-secondary)" textAlign="center" py={8}>
         Loading summary...
       </Text>
     );
@@ -60,12 +46,7 @@ const RenderFeedDetails = ({
   // Error state
   if (error) {
     return (
-      <Text
-        fontStyle="italic"
-        color="var(--alt-text-secondary)"
-        textAlign="center"
-        py={8}
-      >
+      <Text fontStyle="italic" color="var(--alt-text-secondary)" textAlign="center" py={8}>
         {error}
       </Text>
     );
@@ -74,12 +55,7 @@ const RenderFeedDetails = ({
   // No data available
   if (!feedDetails) {
     return (
-      <Text
-        fontStyle="italic"
-        color="var(--alt-text-secondary)"
-        textAlign="center"
-        py={8}
-      >
+      <Text fontStyle="italic" color="var(--alt-text-secondary)" textAlign="center" py={8}>
         No summary available for this article
       </Text>
     );
@@ -104,13 +80,7 @@ const RenderFeedDetails = ({
           borderRadius="12px"
           border="1px solid rgba(255, 255, 255, 0.1)"
         >
-          <Text
-            fontSize="xl"
-            fontWeight="bold"
-            color="var(--text-primary)"
-            mb={2}
-            lineHeight="1.4"
-          >
+          <Text fontSize="xl" fontWeight="bold" color="var(--text-primary)" mb={2} lineHeight="1.4">
             {article.title}
           </Text>
 
@@ -249,12 +219,7 @@ const RenderFeedDetails = ({
 
   // No data available
   return (
-    <Text
-      fontStyle="italic"
-      color="var(--alt-text-secondary)"
-      textAlign="center"
-      py={8}
-    >
+    <Text fontStyle="italic" color="var(--alt-text-secondary)" textAlign="center" py={8}>
       No summary available for this article
     </Text>
   );

@@ -1,8 +1,8 @@
 "use client";
 
-import { ReactNode } from "react";
-import { Box, VStack, Text, Spinner, Button, Flex } from "@chakra-ui/react";
-import { RefreshCw, AlertCircle, Wifi } from "lucide-react";
+import { Box, Button, Flex, Spinner, Text, VStack } from "@chakra-ui/react";
+import { AlertCircle, RefreshCw, Wifi } from "lucide-react";
+import type { ReactNode } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { AuthForm } from "./AuthForm";
 import { UserProfile } from "./UserProfile";
@@ -22,15 +22,8 @@ export function AuthGuard({
   fallback,
   requireAuth = false,
 }: AuthGuardProps) {
-  const {
-    isAuthenticated,
-    isLoading,
-    error,
-    user,
-    refresh,
-    retryLastAction,
-    clearError,
-  } = useAuth();
+  const { isAuthenticated, isLoading, error, user, refresh, retryLastAction, clearError } =
+    useAuth();
 
   // Show loading state
   if (isLoading) {
@@ -141,9 +134,7 @@ export function AuthGuard({
               >
                 <Flex align="center" gap={1}>
                   <RefreshCw size={12} />
-                  <Text fontSize="xs">
-                    {error.isRetryable ? "再試行" : "更新"}
-                  </Text>
+                  <Text fontSize="xs">{error.isRetryable ? "再試行" : "更新"}</Text>
                 </Flex>
               </Button>
 
@@ -162,12 +153,7 @@ export function AuthGuard({
             </Flex>
 
             {error.retryCount !== undefined && error.retryCount > 0 && (
-              <Text
-                fontSize="xs"
-                color="var(--text-muted)"
-                textAlign="center"
-                fontFamily="body"
-              >
+              <Text fontSize="xs" color="var(--text-muted)" textAlign="center" fontFamily="body">
                 再試行回数: {error.retryCount}/3
               </Text>
             )}

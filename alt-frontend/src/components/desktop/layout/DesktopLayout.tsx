@@ -1,7 +1,7 @@
-import React from "react";
 import { Box, Flex } from "@chakra-ui/react";
-import { DesktopSidebar } from "./DesktopSidebar";
+import type React from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { DesktopSidebar } from "./DesktopSidebar";
 
 interface DesktopLayoutProps {
   children: React.ReactNode;
@@ -30,12 +30,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
   sidebarProps,
 }) => {
   return (
-    <Box
-      minH="100vh"
-      bg="var(--app-bg)"
-      position="relative"
-      data-testid="desktop-shell"
-    >
+    <Box minH="100vh" bg="var(--app-bg)" position="relative" data-testid="desktop-shell">
       {/* Theme Toggle - only show when no right panel */}
       {!showRightPanel && (
         <Box position="fixed" top={4} right={4} zIndex={1000}>

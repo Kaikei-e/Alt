@@ -10,9 +10,7 @@ interface SecurityValidationResult {
   };
 }
 
-export async function validateSecurityHeaders(
-  url: string,
-): Promise<SecurityValidationResult> {
+export async function validateSecurityHeaders(url: string): Promise<SecurityValidationResult> {
   try {
     const response = await fetch(url, { method: "HEAD" });
     const headers = response.headers;
@@ -32,7 +30,7 @@ export async function validateSecurityHeaders(
     };
   } catch (error) {
     throw new Error(
-      `Security validation failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      `Security validation failed: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   }
 }

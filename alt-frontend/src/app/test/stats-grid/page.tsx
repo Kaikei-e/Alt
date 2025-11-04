@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Text } from "@chakra-ui/react";
-import { TrendingUp, Zap, Bookmark } from "lucide-react";
+import { Bookmark, TrendingUp, Zap } from "lucide-react";
 import StatsGrid from "@/components/desktop/home/StatsGrid";
 
 export default function StatsGridTest() {

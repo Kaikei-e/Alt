@@ -1,7 +1,7 @@
 // Backward compatibility re-export for legacy imports
 export {
-  feedsApi,
-  apiClient,
   ApiClientError,
+  apiClient,
+  feedsApi,
   serverFetch,
 } from "./lib/api/index";

@@ -1,6 +1,7 @@
 // Debug endpoint for cookie visibility - TODO.md要件
-import { NextRequest, NextResponse } from "next/server";
+
 import { cookies } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,8 +17,7 @@ export async function GET(request: NextRequest) {
     };
 
     const hasAnySession =
-      sessionCookies.ory_kratos_session ||
-      sessionCookies.host_ory_kratos_session;
+      sessionCookies.ory_kratos_session || sessionCookies.host_ory_kratos_session;
 
     // Get all cookie names for debugging
     const allCookieNames = Array.from(cookieStore.getAll()).map((cookie) => ({
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
           "Content-Type": "application/json",
           "X-Has-Session": "error",
         },
-      },
+      }
     );
   }
 }

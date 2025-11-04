@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import NextLink from "next/link";
 import { Button, Icon, Text } from "@chakra-ui/react";
+import NextLink from "next/link";
+import type React from "react";
 
 interface ActionButtonProps {
   icon: React.ComponentType<{ size?: number }>;
@@ -45,12 +45,7 @@ export const ActionButton: React.FC<ActionButtonProps> = ({
         }}
         transition="all var(--transition-speed) ease"
       >
-        <Icon
-          as={icon}
-          color="var(--alt-primary)"
-          boxSize={5}
-          aria-hidden="true"
-        />
+        <Icon as={icon} color="var(--alt-primary)" boxSize={5} aria-hidden="true" />
         <Text
           fontSize="sm"
           fontWeight="medium"

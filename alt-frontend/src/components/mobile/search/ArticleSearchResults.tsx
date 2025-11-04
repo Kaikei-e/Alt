@@ -1,9 +1,9 @@
 "use client";
 
-import { Box, VStack, Text } from "@chakra-ui/react";
-import { ArticleCard } from "@/components/mobile/ArticleCard";
 import { CircularProgress } from "@chakra-ui/progress";
-import { Article } from "@/schema/article";
+import { Box, Text, VStack } from "@chakra-ui/react";
+import { ArticleCard } from "@/components/mobile/ArticleCard";
+import type { Article } from "@/schema/article";
 
 interface ArticleSearchResultsProps {
   results: Article[];
@@ -55,22 +55,12 @@ export const ArticleSearchResults = ({
         boxShadow="var(--shadow-sm)"
       >
         <VStack gap={3}>
-          <Text
-            color="var(--text-primary)"
-            fontSize="lg"
-            fontWeight="600"
-            textAlign="center"
-          >
+          <Text color="var(--text-primary)" fontSize="lg" fontWeight="600" textAlign="center">
             No articles found
           </Text>
-          <Text
-            color="var(--text-secondary)"
-            fontSize="sm"
-            textAlign="center"
-            lineHeight="1.7"
-          >
-            No articles match &quot;{searchQuery}&quot;. Try different keywords
-            or check your spelling.
+          <Text color="var(--text-secondary)" fontSize="sm" textAlign="center" lineHeight="1.7">
+            No articles match &quot;{searchQuery}&quot;. Try different keywords or check your
+            spelling.
           </Text>
         </VStack>
       </Box>

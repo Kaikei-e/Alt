@@ -100,21 +100,11 @@
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(
-    to right,
-    transparent,
-    rgba(255, 0, 110, 0.4),
-    transparent
-  );
+  background: linear-gradient(to right, transparent, rgba(255, 0, 110, 0.4), transparent);
 }
 
 .accentBorderPurple::before {
-  background: linear-gradient(
-    to right,
-    transparent,
-    rgba(131, 56, 236, 0.4),
-    transparent
-  );
+  background: linear-gradient(to right, transparent, rgba(131, 56, 236, 0.4), transparent);
 }
 
 /* Touch-friendly interactions */

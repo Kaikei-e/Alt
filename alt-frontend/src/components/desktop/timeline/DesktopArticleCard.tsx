@@ -1,10 +1,10 @@
 "use client";
 
-import React from "react";
-import { Box, Text, HStack, Badge, VStack } from "@chakra-ui/react";
+import { Badge, Box, HStack, Text, VStack } from "@chakra-ui/react";
 import { ExternalLink } from "lucide-react";
-import { Article } from "@/schema/article";
 import Link from "next/link";
+import type React from "react";
+import type { Article } from "@/schema/article";
 
 interface DesktopArticleCardProps {
   article: Article;
@@ -21,9 +21,7 @@ const formatTimeAgo = (dateString: string) => {
   return `${Math.floor(diffInSeconds / 86400)}日前`;
 };
 
-export const DesktopArticleCard: React.FC<DesktopArticleCardProps> = ({
-  article,
-}) => {
+export const DesktopArticleCard: React.FC<DesktopArticleCardProps> = ({ article }) => {
   return (
     <Box
       className="glass"
@@ -43,12 +41,7 @@ export const DesktopArticleCard: React.FC<DesktopArticleCardProps> = ({
         {/* Header with title and link */}
         <HStack gap={2} align="flex-start">
           <VStack gap={1} align="stretch" flex={1}>
-            <Text
-              fontSize="lg"
-              fontWeight="semibold"
-              color="var(--text-primary)"
-              lineHeight="1.4"
-            >
+            <Text fontSize="lg" fontWeight="semibold" color="var(--text-primary)" lineHeight="1.4">
               {article.title}
             </Text>
             <Text fontSize="xs" color="var(--text-secondary)">
@@ -110,4 +103,3 @@ export const DesktopArticleCard: React.FC<DesktopArticleCardProps> = ({
     </Box>
   );
 };
-

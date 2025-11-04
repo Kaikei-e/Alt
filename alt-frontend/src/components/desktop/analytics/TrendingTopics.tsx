@@ -1,27 +1,19 @@
 "use client";
 
-import React from "react";
-import { Box, VStack, HStack, Text, Spinner, Flex } from "@chakra-ui/react";
-import { TrendingTopic } from "@/types/analytics";
+import { Box, Flex, HStack, Spinner, Text, VStack } from "@chakra-ui/react";
+import type React from "react";
+import type { TrendingTopic } from "@/types/analytics";
 
 interface TrendingTopicsProps {
   topics: TrendingTopic[];
   isLoading: boolean;
 }
 
-export const TrendingTopics: React.FC<TrendingTopicsProps> = ({
-  topics,
-  isLoading,
-}) => {
+export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ topics, isLoading }) => {
   if (isLoading) {
     return (
       <Box className="glass" p={4} borderRadius="var(--radius-lg)">
-        <Text
-          fontSize="sm"
-          fontWeight="bold"
-          color="var(--text-primary)"
-          mb={3}
-        >
+        <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)" mb={3}>
           🔥 Trending Topics
         </Text>
         <Flex justify="center" align="center" h="60px">
@@ -80,27 +72,13 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({
             cursor="pointer"
           >
             <HStack gap={2}>
-              <Text
-                fontSize="xs"
-                color="var(--text-muted)"
-                fontWeight="bold"
-                minW="16px"
-              >
+              <Text fontSize="xs" color="var(--text-muted)" fontWeight="bold" minW="16px">
                 #{index + 1}
               </Text>
               <VStack gap={0} align="start">
                 <HStack gap={1}>
-                  <Box
-                    w="6px"
-                    h="6px"
-                    bg={topic.color}
-                    borderRadius="var(--radius-full)"
-                  />
-                  <Text
-                    fontSize="xs"
-                    color="var(--text-primary)"
-                    fontWeight="medium"
-                  >
+                  <Box w="6px" h="6px" bg={topic.color} borderRadius="var(--radius-full)" />
+                  <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
                     #{topic.tag}
                   </Text>
                 </HStack>
@@ -114,11 +92,7 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({
               <Text fontSize="xs" color={getTrendColor(topic.trend)}>
                 {getTrendIcon(topic.trend)}
               </Text>
-              <Text
-                fontSize="xs"
-                color={getTrendColor(topic.trend)}
-                fontWeight="medium"
-              >
+              <Text fontSize="xs" color={getTrendColor(topic.trend)} fontWeight="medium">
                 {topic.trendValue > 0 ? "+" : ""}
                 {topic.trendValue}%
               </Text>

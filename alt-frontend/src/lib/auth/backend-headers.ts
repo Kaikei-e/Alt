@@ -2,8 +2,7 @@ import type { User } from "@/types/auth";
 
 export type BackendIdentityHeaders = Record<string, string>;
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const isUuid = (value: unknown): value is string => {
   return typeof value === "string" && UUID_PATTERN.test(value);
@@ -11,7 +10,7 @@ export const isUuid = (value: unknown): value is string => {
 
 export const buildBackendIdentityHeaders = (
   user: User | null | undefined,
-  sessionId: string | null | undefined,
+  sessionId: string | null | undefined
 ): BackendIdentityHeaders | null => {
   if (!user) {
     if (process.env.NODE_ENV === "development") {

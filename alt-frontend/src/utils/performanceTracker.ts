@@ -43,10 +43,8 @@ export class SimplePerformanceTracker {
     const recent = this.metrics.slice(-5);
     const older = this.metrics.slice(0, 5);
 
-    const recentAvg =
-      recent.reduce((sum, m) => sum + m.renderTime, 0) / recent.length;
-    const olderAvg =
-      older.reduce((sum, m) => sum + m.renderTime, 0) / older.length;
+    const recentAvg = recent.reduce((sum, m) => sum + m.renderTime, 0) / recent.length;
+    const olderAvg = older.reduce((sum, m) => sum + m.renderTime, 0) / older.length;
 
     // 50%以上の性能悪化
     return recentAvg > olderAvg * 1.5;

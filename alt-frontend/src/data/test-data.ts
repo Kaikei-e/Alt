@@ -1,4 +1,4 @@
-import { DesktopFeed, FilterState } from "@/types/desktop-feed";
+import type { DesktopFeed, FilterState } from "@/types/desktop-feed";
 
 export const mockDesktopFeeds: DesktopFeed[] = [
   {

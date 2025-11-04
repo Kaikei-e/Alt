@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/contexts/auth-context";
 import { feedsApi } from "@/lib/api";
 import { getStartOfLocalDayUTC } from "@/lib/utils/time";
-import { useAuth } from "@/contexts/auth-context";
 
 export const useTodayUnreadCount = () => {
   const [count, setCount] = useState(0);

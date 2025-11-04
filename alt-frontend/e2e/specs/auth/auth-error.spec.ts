@@ -1,14 +1,14 @@
-import { test, expect } from '@playwright/test';
-import { AuthErrorPage } from '../../page-objects/auth/auth-error.page';
+import { expect, test } from "@playwright/test";
+import { AuthErrorPage } from "../../page-objects/auth/auth-error.page";
 
-test.describe('Auth Error Page', () => {
+test.describe("Auth Error Page", () => {
   let errorPage: AuthErrorPage;
 
   test.beforeEach(async ({ page }) => {
     errorPage = new AuthErrorPage(page);
   });
 
-  test('should display error page with message', async () => {
+  test("should display error page with message", async () => {
     await errorPage.goto();
 
     // Check error message is visible
@@ -19,7 +19,7 @@ test.describe('Auth Error Page', () => {
     expect(message).toBeTruthy();
   });
 
-  test('should have back to login button', async () => {
+  test("should have back to login button", async () => {
     await errorPage.goto();
 
     // Check if back to login button exists
@@ -27,7 +27,7 @@ test.describe('Auth Error Page', () => {
     expect(hasButton).toBeTruthy();
   });
 
-  test('should navigate back to login', async () => {
+  test("should navigate back to login", async () => {
     await errorPage.goto();
 
     if (await errorPage.hasBackToLoginButton()) {
@@ -38,7 +38,7 @@ test.describe('Auth Error Page', () => {
     }
   });
 
-  test('should have retry button if applicable', async ({}, testInfo) => {
+  test("should have retry button if applicable", async ({}, testInfo) => {
     await errorPage.goto();
 
     const hasRetry = await errorPage.hasRetryButton();
@@ -50,7 +50,7 @@ test.describe('Auth Error Page', () => {
     }
   });
 
-  test('should handle retry action', async ({}, testInfo) => {
+  test("should handle retry action", async ({}, testInfo) => {
     await errorPage.goto();
 
     if (!(await errorPage.hasRetryButton())) {
@@ -63,7 +63,7 @@ test.describe('Auth Error Page', () => {
     // Exact behavior depends on implementation
   });
 
-  test('should display error details if available', async () => {
+  test("should display error details if available", async () => {
     await errorPage.goto();
 
     const details = await errorPage.getErrorDetails();
@@ -75,61 +75,59 @@ test.describe('Auth Error Page', () => {
     }
   });
 
-  test('should navigate from failed login to error page', async ({ page }) => {
+  test("should navigate from failed login to error page", async ({ page }) => {
     // Simulate a failed login that redirects to error page
-    await page.goto('/auth/login');
+    await page.goto("/auth/login");
 
     // Wait for Kratos flow to initialize (form is rendered dynamically)
     await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 15000 });
     await page.waitForSelector('input[name="identifier"]', {
-      state: 'visible',
+      state: "visible",
       timeout: 15000,
     });
     await page.waitForSelector('input[name="password"]', {
-      state: 'visible',
+      state: "visible",
       timeout: 15000,
     });
     await page.waitForSelector('button[type="submit"]', {
-      state: 'visible',
+      state: "visible",
       timeout: 15000,
     });
 
     // Mock an authentication error
-    await page.route('**/auth/**', route => {
+    await page.route("**/auth/**", (route) => {
       route.fulfill({
         status: 500,
-        body: JSON.stringify({ error: 'Authentication failed' }),
+        body: JSON.stringify({ error: "Authentication failed" }),
       });
     });
 
     // Fill and submit login form
-    await page.fill('input[name="identifier"]', 'test@example.com');
-    await page.fill('input[name="password"]', 'password123');
+    await page.fill('input[name="identifier"]', "test@example.com");
+    await page.fill('input[name="password"]', "password123");
     await page.click('button[type="submit"]');
 
     // Might redirect to error page or show inline error
     // This depends on implementation
   });
 
-  test('should be accessible', async () => {
+  test("should be accessible", async () => {
     await errorPage.goto();
     await errorPage.checkA11y();
   });
 
-  test('should have proper heading structure', async ({ page }) => {
+  test("should have proper heading structure", async ({ page }) => {
     await errorPage.goto();
 
-    const headings = await page
-      .locator('h1, h2, h3, h4, h5, h6')
-      .allTextContents();
+    const headings = await page.locator("h1, h2, h3, h4, h5, h6").allTextContents();
 
     // Should have at least one heading
     expect(headings.length).toBeGreaterThan(0);
   });
 
-  test('should handle different error types', async ({ page }) => {
+  test("should handle different error types", async ({ page }) => {
     // Test with different error parameters in URL
-    const errorTypes = ['auth_failed', 'session_expired', 'invalid_token'];
+    const errorTypes = ["auth_failed", "session_expired", "invalid_token"];
 
     for (const errorType of errorTypes) {
       await page.goto(`/auth/error?error=${errorType}`);

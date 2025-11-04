@@ -1,4 +1,4 @@
-import { SanitizedFeed } from "@/schema/feed";
+import type { SanitizedFeed } from "@/schema/feed";
 
 export interface DesktopFeed extends SanitizedFeed {
   metadata: FeedMetadata;

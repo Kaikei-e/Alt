@@ -3,14 +3,11 @@
  * Desktop専用のフィード詳細表示コンポーネント
  * mobileコンポーネントとの分離により、desktop固有のスタイルと動作を実現
  */
-import { HStack, Text, Box } from "@chakra-ui/react";
+import { Box, HStack, Text } from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
-import type {
-  FeedContentOnTheFlyResponse,
-  FetchArticleSummaryResponse,
-} from "@/schema/feed";
-import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
 import sanitizeHtml from "sanitize-html";
+import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
+import type { FeedContentOnTheFlyResponse, FetchArticleSummaryResponse } from "@/schema/feed";
 
 // Desktop向けのスタイル設定（より大きなフォントサイズとパディング）
 const desktopContentStyles: CSSObject = {
@@ -62,9 +59,7 @@ const desktopContentStyles: CSSObject = {
 };
 
 // Union type for feedDetails
-type DesktopRenderFeedDetailsProps =
-  | FeedContentOnTheFlyResponse
-  | FetchArticleSummaryResponse;
+type DesktopRenderFeedDetailsProps = FeedContentOnTheFlyResponse | FetchArticleSummaryResponse;
 
 interface DesktopRenderFeedDetailsComponentProps {
   feedDetails?: DesktopRenderFeedDetailsProps | null;
@@ -82,18 +77,8 @@ export const DesktopRenderFeedDetails = ({
   // Loading state
   if (isLoading) {
     return (
-      <Box
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-        minH="200px"
-      >
-        <Text
-          fontStyle="italic"
-          color="var(--text-secondary)"
-          textAlign="center"
-          fontSize="lg"
-        >
+      <Box display="flex" alignItems="center" justifyContent="center" minH="200px">
+        <Text fontStyle="italic" color="var(--text-secondary)" textAlign="center" fontSize="lg">
           Loading article content...
         </Text>
       </Box>
@@ -113,12 +98,7 @@ export const DesktopRenderFeedDetails = ({
         borderRadius="12px"
         border="1px solid rgba(255, 99, 71, 0.3)"
       >
-        <Text
-          fontStyle="italic"
-          color="var(--text-primary)"
-          textAlign="center"
-          fontSize="md"
-        >
+        <Text fontStyle="italic" color="var(--text-primary)" textAlign="center" fontSize="md">
           {error}
         </Text>
       </Box>
@@ -128,18 +108,8 @@ export const DesktopRenderFeedDetails = ({
   // No data available
   if (!feedDetails) {
     return (
-      <Box
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-        minH="200px"
-      >
-        <Text
-          fontStyle="italic"
-          color="var(--text-secondary)"
-          textAlign="center"
-          fontSize="lg"
-        >
+      <Box display="flex" alignItems="center" justifyContent="center" minH="200px">
+        <Text fontStyle="italic" color="var(--text-secondary)" textAlign="center" fontSize="lg">
           No content available for this article
         </Text>
       </Box>
@@ -318,18 +288,8 @@ export const DesktopRenderFeedDetails = ({
 
   // No data available
   return (
-    <Box
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      minH="200px"
-    >
-      <Text
-        fontStyle="italic"
-        color="var(--text-secondary)"
-        textAlign="center"
-        fontSize="lg"
-      >
+    <Box display="flex" alignItems="center" justifyContent="center" minH="200px">
+      <Text fontStyle="italic" color="var(--text-secondary)" textAlign="center" fontSize="lg">
         No content available for this article
       </Text>
     </Box>
@@ -337,4 +297,3 @@ export const DesktopRenderFeedDetails = ({
 };
 
 export default DesktopRenderFeedDetails;
-
