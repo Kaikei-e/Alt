@@ -204,7 +204,7 @@ func handleFetchArticlesCursor(container *di.ApplicationComponents) echo.Handler
 		}
 
 		response := ArticlesWithCursorResponse{
-			Items:      articleResponses,
+			Data:       articleResponses,
 			NextCursor: nextCursor,
 			HasMore:    hasMore,
 		}

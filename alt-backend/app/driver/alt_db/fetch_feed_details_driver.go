@@ -9,19 +9,41 @@ import (
 func (r *AltDBRepository) FetchFeedSummary(ctx context.Context, feedURL *url.URL) (*domain.FeedSummary, error) {
 	query := `
 		SELECT
-			summary
+			s.summary_japanese
 		FROM
-			article_summaries
+			article_summaries s
 		LEFT JOIN
-			articles
+			articles a
 		ON
-			article_summaries.article_id = articles.id
+			s.article_id = a.id
 		WHERE
-			articles.url = $1
+			a.url = $1
+		LIMIT 1
 	`
 
 	var summary domain.FeedSummary
 	err := r.pool.QueryRow(ctx, query, feedURL.String()).Scan(&summary.Summary)
+	if err != nil {
+		return nil, err
+	}
+
+	return &summary, nil
+}
+
+// FetchArticleSummaryByArticleID fetches an article summary by article ID
+func (r *AltDBRepository) FetchArticleSummaryByArticleID(ctx context.Context, articleID string) (*domain.FeedSummary, error) {
+	query := `
+		SELECT
+			summary_japanese
+		FROM
+			article_summaries
+		WHERE
+			article_id = $1
+		LIMIT 1
+	`
+
+	var summary domain.FeedSummary
+	err := r.pool.QueryRow(ctx, query, articleID).Scan(&summary.Summary)
 	if err != nil {
 		return nil, err
 	}

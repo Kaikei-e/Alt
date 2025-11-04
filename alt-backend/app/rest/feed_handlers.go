@@ -762,23 +762,40 @@ func handleSummarizeFeed(container *di.ApplicationComponents, cfg *config.Config
 		logger.Logger.Info("Processing summarization request", "feed_url", req.FeedURL)
 
 		// Fetch article content (you might need to fetch from DB or URL)
-		// For now, we'll create a simple implementation that fetches the content
 		articleContent, articleID, articleTitle, err := fetchArticleContent(c.Request().Context(), req.FeedURL, container)
 		if err != nil {
 			logger.Logger.Error("Failed to fetch article content", "error", err, "url", req.FeedURL)
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch article content")
 		}
 
-		// Call pre-processor summarization API
-		summary, err := callPreProcessorSummarize(c.Request().Context(), articleContent, articleID, articleTitle, cfg.PreProcessor.URL)
-		if err != nil {
-			logger.Logger.Error("Failed to summarize article", "error", err, "url", req.FeedURL)
-			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate summary")
+		// Step 1: Try to fetch existing summary from database
+		var summary string
+		existingSummary, err := container.AltDBRepository.FetchArticleSummaryByArticleID(c.Request().Context(), articleID)
+		if err == nil && existingSummary != nil && existingSummary.Summary != "" {
+			logger.Logger.Info("Found existing summary in database", "article_id", articleID, "feed_url", req.FeedURL)
+			summary = existingSummary.Summary
+		} else {
+			// Step 2: Generate new summary if not found in database
+			logger.Logger.Info("No existing summary found, generating new summary", "article_id", articleID, "feed_url", req.FeedURL)
+
+			summary, err = callPreProcessorSummarize(c.Request().Context(), articleContent, articleID, articleTitle, cfg.PreProcessor.URL)
+			if err != nil {
+				logger.Logger.Error("Failed to summarize article", "error", err, "url", req.FeedURL)
+				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate summary")
+			}
+
+			// Step 3: Save the generated summary to database
+			if err := container.AltDBRepository.SaveArticleSummary(c.Request().Context(), articleID, articleTitle, summary); err != nil {
+				logger.Logger.Error("Failed to save article summary to database", "error", err, "article_id", articleID, "feed_url", req.FeedURL)
+				// Continue even if save fails - we still have the summary to return
+			} else {
+				logger.Logger.Info("Article summary saved to database", "article_id", articleID, "feed_url", req.FeedURL)
+			}
 		}
 
-		logger.Logger.Info("Article summarized successfully", "feed_url", req.FeedURL)
+		logger.Logger.Info("Article summarized successfully", "feed_url", req.FeedURL, "from_cache", existingSummary != nil)
 
-		// Return response
+		// Step 4: Return response
 		response := map[string]interface{}{
 			"success":    true,
 			"summary":    summary,

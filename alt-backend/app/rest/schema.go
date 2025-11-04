@@ -62,7 +62,7 @@ type SearchArticlesResponse struct {
 
 // ArticlesWithCursorResponse represents the paginated response for articles with cursor
 type ArticlesWithCursorResponse struct {
-	Items      []ArticleResponse `json:"items"`
+	Data       []ArticleResponse `json:"data"`
 	NextCursor *string           `json:"next_cursor,omitempty"`
 	HasMore    bool              `json:"has_more"`
 }
