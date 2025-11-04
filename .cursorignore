@@ -4,7 +4,6 @@
 **/dist/**
 **/build/**
 *.lock
-*.png
 *.mp4
 **/.pytest_cache/**
 **/.venv/**
