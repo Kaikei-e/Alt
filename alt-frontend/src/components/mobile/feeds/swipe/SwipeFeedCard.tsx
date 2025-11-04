@@ -384,13 +384,25 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss, getCachedContent }: Swi
                 border="1px solid"
                 borderRadius="md"
                 p={2}
+                flex="1"
+                minWidth={0}
                 _hover={{
                   bg: "rgba(255, 255, 255, 0.05)",
                   borderColor: "var(--alt-primary)",
                 }}
               >
-                <SquareArrowOutUpRight color="var(--alt-primary)" size={20} />
-                <Text as="h2" fontSize="xl" fontWeight="bold" flex="1">
+                <Box flexShrink={0}>
+                  <SquareArrowOutUpRight color="var(--alt-primary)" size={20} />
+                </Box>
+                <Text
+                  as="h2"
+                  fontSize="xl"
+                  fontWeight="bold"
+                  flex="1"
+                  wordBreak="break-word"
+                  whiteSpace="normal"
+                  minWidth={0}
+                >
                   {feed.title}
                 </Text>
               </Link>
