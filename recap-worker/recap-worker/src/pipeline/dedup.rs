@@ -57,7 +57,7 @@ impl DedupStage for HashDedupStage {
 
 fn normalize_text(text: &str) -> String {
     text.split_whitespace()
-        .map(|fragment| fragment.to_lowercase())
+        .map(str::to_lowercase)
         .collect::<Vec<_>>()
         .join(" ")
 }

@@ -156,7 +156,7 @@ impl PipelineBuilder {
                 .unwrap_or_else(|| Arc::new(SummarySelectStage::new())),
             dispatch: self
                 .dispatch
-                .unwrap_or_else(|| Arc::new(NewsCreatorDispatchStage::new())),
+                .expect("dispatch stage must be configured before build"),
             persist: self
                 .persist
                 .unwrap_or_else(|| Arc::new(persist::UnimplementedPersistStage)),

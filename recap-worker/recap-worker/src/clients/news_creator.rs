@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use reqwest::{Client, Url};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 pub(crate) struct NewsCreatorClient {
@@ -38,6 +39,34 @@ impl NewsCreatorClient {
 
         Ok(())
     }
+
+    pub(crate) async fn summarize(&self, payload: impl Serialize) -> Result<NewsCreatorSummary> {
+        let url = self
+            .base_url
+            .join("v1/recap/summarize")
+            .context("failed to build news-creator summarize URL")?;
+
+        let response = self
+            .client
+            .post(url)
+            .json(&payload)
+            .timeout(Duration::from_secs(60))
+            .send()
+            .await
+            .context("news-creator summarize request failed")?
+            .error_for_status()
+            .context("news-creator summarize endpoint returned error status")?;
+
+        response
+            .json::<NewsCreatorSummary>()
+            .await
+            .context("failed to deserialize news-creator response")
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct NewsCreatorSummary {
+    pub(crate) response_id: String,
 }
 
 #[cfg(test)]
@@ -76,5 +105,25 @@ mod tests {
 
         let error = client.health_check().await.expect_err("should fail");
         assert!(error.to_string().contains("error status"));
+    }
+
+    #[tokio::test]
+    async fn summarize_parses_response() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/recap/summarize"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "response_id": "resp-123"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new(server.uri()).expect("client should build");
+        let summary = client
+            .summarize(&serde_json::json!({"job_id": "00000000-0000-0000-0000-000000000000"}))
+            .await
+            .expect("summarize succeeds");
+
+        assert_eq!(summary.response_id, "resp-123");
     }
 }

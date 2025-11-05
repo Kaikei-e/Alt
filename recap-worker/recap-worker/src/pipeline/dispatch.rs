@@ -34,7 +34,7 @@ impl NewsCreatorDispatchStage {
         Self { client }
     }
 
-    fn build_payload(&self, summary: &SelectedSummary) -> LlmPayload {
+    fn build_payload(summary: &SelectedSummary) -> LlmPayload {
         let mut grouped: std::collections::HashMap<&str, Vec<LlmEvidenceArticle>> =
             std::collections::HashMap::new();
 
@@ -80,9 +80,8 @@ impl DispatchStage for NewsCreatorDispatchStage {
             });
         }
 
-        let client = NewsCreatorClient::get();
-        let payload = self.build_payload(&summary);
-        let response = client.summarize(payload).await?;
+        let payload = Self::build_payload(&summary);
+        let response = self.client.summarize(payload).await?;
 
         Ok(DispatchResult {
             job_id: job.job_id,

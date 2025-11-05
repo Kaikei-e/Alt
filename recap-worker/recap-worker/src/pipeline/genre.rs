@@ -37,7 +37,7 @@ impl BalancedGenreStage {
         Self
     }
 
-    fn resolve_genres(&self, job: &JobContext) -> Vec<String> {
+    fn resolve_genres(job: &JobContext) -> Vec<String> {
         if job.genres().is_empty() {
             return vec!["general".to_string()];
         }
@@ -57,7 +57,7 @@ impl GenreStage for BalancedGenreStage {
         job: &JobContext,
         corpus: DeduplicatedCorpus,
     ) -> anyhow::Result<GenreBundle> {
-        let genres = self.resolve_genres(job);
+        let genres = Self::resolve_genres(job);
         let mut wheel: VecDeque<String> = genres.iter().cloned().collect();
 
         let mut assignments = Vec::with_capacity(corpus.articles.len());

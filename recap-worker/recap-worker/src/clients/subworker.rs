@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use reqwest::{Client, Url};
+use reqwest::{Client, StatusCode, Url};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -66,7 +66,16 @@ impl SubworkerClient {
             .get(url)
             .send()
             .await
-            .context("subworker corpus request failed")?
+            .context("subworker corpus request failed")?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(SubworkerCorpus {
+                job_id,
+                articles: Vec::new(),
+            });
+        }
+
+        let response = response
             .error_for_status()
             .context("subworker corpus endpoint returned error status")?;
 
@@ -156,7 +165,10 @@ mod tests {
             .await;
 
         let client = SubworkerClient::new(server.uri()).expect("client should build");
-        let error = client.fetch_corpus(job_id).await.expect_err("should fail");
-        assert!(error.to_string().contains("error status"));
+        let corpus = client
+            .fetch_corpus(job_id)
+            .await
+            .expect("404 should return empty corpus");
+        assert!(corpus.articles.is_empty());
     }
 }
