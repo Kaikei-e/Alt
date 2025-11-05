@@ -59,3 +59,4 @@ auth-service/deployments/k8s/base/kratos-secrets.yaml
 alt-frontend/playwright-report/index.html
 kratos/kratos.yml
 backups/
+.vscode/tasks.json

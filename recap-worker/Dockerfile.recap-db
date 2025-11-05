@@ -1,0 +1,5 @@
+FROM postgres:17-alpine
+
+COPY ./recap-worker/recap-db/init /docker-entrypoint-initdb.d
+
+CMD ["postgres"]

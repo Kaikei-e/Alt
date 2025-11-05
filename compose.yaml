@@ -22,6 +22,7 @@ volumes:
   rask_log_aggregator_data:   # Rask log aggregator data
   clickhouse_data:            # ClickHouse database data
   news_creator_models:        # Ollama models for news-creator
+  recap_db_data:              # Recap Worker PostgreSQL database data
 x-rask-env: &rask-env
   environment:
     RASK_CONFIG: |
@@ -312,6 +313,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
   tag-generator:
     <<: *shared-env-file
     build:
@@ -341,6 +343,65 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  recap-worker:
+    <<: *shared-env-file
+    build:
+      context: ./recap-worker
+      dockerfile: Dockerfile.recap-worker
+    profiles:
+      - recap
+    networks:
+      - alt-network
+    environment:
+      - DATABASE_URL=postgres://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:${RECAP_DB_PORT}/${RECAP_DB_NAME}
+      - RECAP_DB_DSN=${RECAP_DB_DSN}
+      - RECAP_DB_HOST=recap-db
+      - RECAP_DB_PORT=${RECAP_DB_PORT}
+      - RECAP_DB_USER=${RECAP_DB_USER}
+      - RECAP_DB_PASSWORD=${RECAP_DB_PASSWORD}
+      - RECAP_DB_NAME=${RECAP_DB_NAME}
+      - NEWS_CREATOR_BASE_URL=http://news-creator:11434
+      - SUBWORKER_BASE_URL=http://recap-subworker:8002
+    depends_on:
+      recap-db:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "9005:9005"
+    labels:
+      - rask.group=recap-worker
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  recap-subworker:
+    <<: *shared-env-file
+    build:
+      context: ./recap-subworker
+      dockerfile: Dockerfile.recap-subworker
+    profiles:
+      - recap
+    networks:
+      - alt-network
+    environment:
+      - RECAP_SUBWORKER_BASE_URL=http://recap-subworker:8002
+    ports:
+      - "8002:8002"
+    depends_on:
+      recap-worker:
+        condition: service_started
+    restart: unless-stopped
+    labels:
+      - rask.group=recap-subworker
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   meilisearch:
       image: getmeili/meilisearch:v1.21.0
       restart: unless-stopped
@@ -502,6 +563,45 @@ services:
     tty: true
     labels:
       - rask.group=kratos-db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # === Recap Worker PostgreSQL 18 ===
+  recap-db:
+    image: postgres:18-alpine
+    container_name: recap-db
+    profiles:
+      - recap
+    restart: always
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    environment:
+      POSTGRES_DB: ${RECAP_DB_NAME}
+      POSTGRES_USER: ${RECAP_DB_USER}
+      POSTGRES_PASSWORD: ${RECAP_DB_PASSWORD}
+    volumes:
+      - recap_db_data:/var/lib/postgresql/data
+      - ./recap-worker/recap-db/init:/docker-entrypoint-initdb.d:rw
+      - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    ports:
+      - "5435:5432" # Using a different port to avoid conflict
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${RECAP_DB_USER} -d ${RECAP_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - alt-network
+    tty: true
+    labels:
+      - rask.group=recap-db
     logging:
       driver: "json-file"
       options:
@@ -758,4 +858,3 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
