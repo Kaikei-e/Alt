@@ -1,0 +1,21 @@
+pub(crate) mod admin;
+pub(crate) mod generate;
+pub(crate) mod health;
+pub(crate) mod metrics;
+
+use axum::{
+    Router,
+    routing::{get, post},
+};
+
+use crate::app::AppState;
+
+pub(crate) fn router(state: AppState) -> Router {
+    Router::new()
+        .route("/health/ready", get(health::ready))
+        .route("/health/live", get(health::live))
+        .route("/metrics", get(metrics::exporter))
+        .route("/admin/jobs/retry", post(admin::retry_jobs))
+        .route("/v1/generate/recaps/7days", post(generate::trigger_7days))
+        .with_state(state)
+}
