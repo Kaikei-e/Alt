@@ -20,18 +20,94 @@ pub(crate) trait SelectStage: Send + Sync {
     ) -> anyhow::Result<SelectedSummary>;
 }
 
-pub(crate) struct UnimplementedSelectStage;
+#[derive(Debug, Clone)]
+pub(crate) struct SummarySelectStage {
+    max_articles_per_genre: usize,
+}
+
+impl SummarySelectStage {
+    pub(crate) fn new() -> Self {
+        Self {
+            max_articles_per_genre: 5,
+        }
+    }
+
+    fn trim_assignments(&self, bundle: GenreBundle) -> Vec<GenreAssignment> {
+        let mut per_genre_count = std::collections::HashMap::new();
+        let mut selected = Vec::new();
+
+        for assignment in bundle.assignments {
+            let count = per_genre_count
+                .entry(assignment.genre.clone())
+                .or_insert(0usize);
+            if *count >= self.max_articles_per_genre {
+                continue;
+            }
+            *count += 1;
+            selected.push(assignment);
+        }
+
+        selected
+    }
+}
+
+impl Default for SummarySelectStage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[async_trait]
-impl SelectStage for UnimplementedSelectStage {
+impl SelectStage for SummarySelectStage {
     async fn select(
         &self,
         job: &JobContext,
-        _bundle: GenreBundle,
+        bundle: GenreBundle,
     ) -> anyhow::Result<SelectedSummary> {
-        anyhow::bail!(
-            "select stage not implemented for job {job}",
-            job = job.job_id
-        );
+        let assignments = self.trim_assignments(bundle);
+
+        Ok(SelectedSummary {
+            job_id: job.job_id,
+            assignments,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pipeline::genre::GenreAssignment;
+    use crate::pipeline::preprocess::PreprocessedArticle;
+
+    fn assignment(genre: &str) -> GenreAssignment {
+        GenreAssignment {
+            genre: genre.into(),
+            article: PreprocessedArticle {
+                id: Uuid::new_v4(),
+                title: "title".into(),
+                body: "body".into(),
+                language: "en".into(),
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn trims_to_max_per_genre() {
+        let stage = SummarySelectStage {
+            max_articles_per_genre: 1,
+        };
+        let job = JobContext::new(Uuid::new_v4(), vec![]);
+        let bundle = GenreBundle {
+            job_id: job.job_id,
+            assignments: vec![assignment("ai"), assignment("ai"), assignment("security")],
+        };
+
+        let selected = stage
+            .select(&job, bundle)
+            .await
+            .expect("selection succeeds");
+
+        assert_eq!(selected.assignments.len(), 2);
+        assert!(selected.assignments.iter().any(|a| a.genre == "ai"));
     }
 }
