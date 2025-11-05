@@ -45,3 +45,18 @@ func NormalizeURL(rawURL string) (string, error) {
 
 	return parsedURL.String(), nil
 }
+
+// URLsEqual compares two normalized URLs with case-insensitive percent-encoding.
+// This handles the issue where Go's url.Parse() may capitalize percent-encoding
+// (e.g., %e3 becomes %E3), causing comparison failures with URLs stored in lowercase.
+//
+// Example:
+//
+//	url1: "https://example.com/path%e3%81%82"
+//	url2: "https://example.com/path%E3%81%82"
+//	result: true (they represent the same URL)
+func URLsEqual(url1, url2 string) bool {
+	// Convert both URLs to lowercase for case-insensitive comparison
+	// This handles percent-encoding case differences (%e3 vs %E3)
+	return strings.EqualFold(url1, url2)
+}

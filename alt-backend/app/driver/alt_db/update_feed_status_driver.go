@@ -19,7 +19,6 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 	}
 
 	// Normalize the input URL to match against database URLs
-	// This removes tracking parameters (UTM, fbclid, etc.), fragments, and trailing slashes
 	normalizedInputURL, err := utils.NormalizeURL(feedURL.String())
 	if err != nil {
 		logger.SafeError("Error normalizing input URL", "error", err, "feedURL", feedURL.String())
@@ -27,7 +26,6 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 	}
 
 	// Get all feeds and find matching normalized URL
-	// We need to normalize database URLs at query time since they may contain tracking parameters
 	getAllFeedsQuery := `SELECT id, link FROM feeds`
 
 	rows, err := r.pool.Query(ctx, getAllFeedsQuery)
@@ -55,8 +53,8 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 			continue
 		}
 
-		// Compare normalized URLs
-		if normalizedDBURL == normalizedInputURL {
+		// Compare normalized URLs (case-insensitive for percent-encoding)
+		if utils.URLsEqual(normalizedDBURL, normalizedInputURL) {
 			feedID = dbFeedID
 			foundMatch = true
 			logger.SafeInfo("Found matching feed",
@@ -97,9 +95,9 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
         SET is_read = TRUE, read_at = CURRENT_TIMESTAMP
         `
 	if _, err = tx.Exec(ctx, updateFeedStatusQuery, feedID, user.UserID); err != nil {
-		logger.SafeError("Error updating feed status", 
-			"error", err, 
-			"user_id", user.UserID, 
+		logger.SafeError("Error updating feed status",
+			"error", err,
+			"user_id", user.UserID,
 			"feed_id", feedID)
 		return err
 	}
@@ -110,9 +108,9 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 		return err
 	}
 
-	logger.SafeInfo("feed status updated successfully", 
-		"user_id", user.UserID, 
-		"feed_id", feedID, 
+	logger.SafeInfo("feed status updated successfully",
+		"user_id", user.UserID,
+		"feed_id", feedID,
 		"is_read", true)
 	return nil
 }
