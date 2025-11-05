@@ -68,6 +68,7 @@ impl ComponentRegistry {
         let pipeline = Arc::new(PipelineOrchestrator::new(
             Arc::clone(&config),
             (*subworker_client).clone(),
+            Arc::clone(&news_creator_client),
             Arc::clone(&recap_dao),
         ));
         let scheduler = Scheduler::new(Arc::clone(&pipeline), Arc::clone(&config));

@@ -3,7 +3,10 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::{
-    clients::SubworkerClient, config::Config, scheduler::JobContext, store::dao::RecapDao,
+    clients::{NewsCreatorClient, SubworkerClient},
+    config::Config,
+    scheduler::JobContext,
+    store::dao::RecapDao,
 };
 
 pub(crate) mod dedup;
@@ -52,6 +55,7 @@ impl PipelineOrchestrator {
     pub(crate) fn new(
         config: Arc<Config>,
         subworker: SubworkerClient,
+        news_creator: Arc<NewsCreatorClient>,
         recap_dao: Arc<RecapDao>,
     ) -> Self {
         PipelineBuilder::new(config)
@@ -60,7 +64,7 @@ impl PipelineOrchestrator {
             .with_dedup_stage(Arc::new(HashDedupStage::new()))
             .with_genre_stage(Arc::new(BalancedGenreStage::new()))
             .with_select_stage(Arc::new(SummarySelectStage::new()))
-            .with_dispatch_stage(Arc::new(NewsCreatorDispatchStage::new()))
+            .with_dispatch_stage(Arc::new(NewsCreatorDispatchStage::new(news_creator)))
             .with_persist_stage(Arc::new(persist::LoggingPersistStage::new(recap_dao)))
             .build()
     }
