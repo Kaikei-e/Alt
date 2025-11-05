@@ -3,10 +3,11 @@
 import { Box, Button, Dialog, Flex, HStack, Portal, Spinner, Text, VStack } from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
 import { Sparkles, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { feedsApi } from "@/lib/api";
 import type { Article } from "@/schema/article";
 import { type FeedContentOnTheFlyResponse, FetchArticleSummaryResponse } from "@/schema/feed";
+import { renderingRegistry } from "@/utils/renderingStrategies";
 
 interface ArticleDetailsModalProps {
   article: Article;
@@ -75,6 +76,14 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+
+  const sanitizedFullContent = useMemo(() => {
+    if (!fullContent?.content) {
+      return null;
+    }
+
+    return renderingRegistry.render(fullContent.content, undefined, article.url);
+  }, [article.url, fullContent?.content]);
 
   const publishedLabel = article.published_at
     ? new Date(article.published_at).toLocaleString()
@@ -268,15 +277,16 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
                 <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center" py={8}>
                   {contentError}
                 </Text>
-              ) : fullContent?.content ? (
+              ) : sanitizedFullContent ? (
                 <Box
                   fontSize="sm"
                   color="var(--alt-text-primary)"
                   lineHeight="1.7"
-                  dangerouslySetInnerHTML={{ __html: fullContent.content }}
                   css={buildContentStyles()}
                   data-testid="article-full-content"
-                />
+                >
+                  {sanitizedFullContent}
+                </Box>
               ) : (
                 <Text fontSize="sm" color="var(--alt-text-primary)" lineHeight="1.7">
                   {article.content}
