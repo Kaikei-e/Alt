@@ -8,6 +8,7 @@ import { Archive, BookOpen, BotMessageSquare, Sparkles, SquareArrowOutUpRight } 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { feedsApi } from "@/lib/api";
 import type { Feed } from "@/schema/feed";
+import { renderingRegistry } from "@/utils/renderingStrategies";
 
 const MotionBox = motion.div;
 
@@ -92,6 +93,14 @@ const SwipeFeedCard = ({
   const x = useMotionValue(0);
   const xRef = useRef(x);
   const animationInFlightRef = useRef(false);
+
+  const sanitizedFullContent = useMemo(() => {
+    if (!fullContent) {
+      return null;
+    }
+
+    return renderingRegistry.render(fullContent, undefined, feed.link);
+  }, [feed.link, fullContent]);
 
   useEffect(() => {
     setIsSummaryExpanded(false);
@@ -460,14 +469,15 @@ const SwipeFeedCard = ({
                   <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center">
                     {contentError}
                   </Text>
-                ) : fullContent ? (
+                ) : sanitizedFullContent ? (
                   <Box
                     fontSize="sm"
                     color="var(--alt-text-primary)"
                     lineHeight="1.7"
-                    dangerouslySetInnerHTML={{ __html: fullContent }}
                     css={buildContentStyles()}
-                  />
+                  >
+                    {sanitizedFullContent}
+                  </Box>
                 ) : null}
               </Box>
             )}
