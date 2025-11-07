@@ -12,6 +12,7 @@ type Config struct {
 	Logging      LoggingConfig      `json:"logging"`
 	HTTP         HTTPConfig         `json:"http"`
 	PreProcessor PreProcessorConfig `json:"pre_processor"`
+	Recap        RecapConfig        `json:"recap"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -25,6 +26,15 @@ type Config struct {
 type PreProcessorConfig struct {
 	Enabled bool   `json:"enabled" env:"PRE_PROCESSOR_ENABLED" default:"true"`
 	URL     string `json:"url" env:"PRE_PROCESSOR_URL" default:"http://pre-processor:9200"`
+}
+
+type RecapConfig struct {
+	DefaultPageSize int `json:"default_page_size" env:"RECAP_DEFAULT_PAGE_SIZE" default:"500"`
+	MaxPageSize     int `json:"max_page_size" env:"RECAP_MAX_PAGE_SIZE" default:"2000"`
+	MaxRangeDays    int `json:"max_range_days" env:"RECAP_MAX_RANGE_DAYS" default:"8"`
+	RateLimitRPS    int `json:"rate_limit_rps" env:"RECAP_RATE_LIMIT_RPS" default:"4"`
+	RateLimitBurst  int `json:"rate_limit_burst" env:"RECAP_RATE_LIMIT_BURST" default:"8"`
+	MaxArticleBytes int `json:"max_article_bytes" env:"RECAP_MAX_ARTICLE_BYTES" default:"2097152"`
 }
 
 type ServerConfig struct {

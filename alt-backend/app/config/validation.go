@@ -32,6 +32,10 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("HTTP config validation failed: %w", err)
 	}
 
+	if err := validateRecapConfig(&config.Recap); err != nil {
+		return fmt.Errorf("recap config validation failed: %w", err)
+	}
+
 	return nil
 }
 
@@ -199,6 +203,34 @@ func validateDOSProtectionConfig(config *DOSProtectionConfig) error {
 		return fmt.Errorf("circuit breaker config validation failed: %w", err)
 	}
 
+	return nil
+}
+
+func validateRecapConfig(config *RecapConfig) error {
+	if config.DefaultPageSize <= 0 {
+		return fmt.Errorf("default page size must be positive, got %d", config.DefaultPageSize)
+	}
+	if config.MaxPageSize <= 0 {
+		return fmt.Errorf("max page size must be positive, got %d", config.MaxPageSize)
+	}
+	if config.MaxPageSize < config.DefaultPageSize {
+		return fmt.Errorf("max page size must be >= default page size (got max=%d, default=%d)", config.MaxPageSize, config.DefaultPageSize)
+	}
+	if config.MaxRangeDays <= 0 {
+		return fmt.Errorf("max range days must be positive, got %d", config.MaxRangeDays)
+	}
+	if config.RateLimitRPS <= 0 {
+		return fmt.Errorf("rate limit RPS must be positive, got %d", config.RateLimitRPS)
+	}
+	if config.RateLimitBurst <= 0 {
+		return fmt.Errorf("rate limit burst must be positive, got %d", config.RateLimitBurst)
+	}
+	if config.RateLimitBurst < config.RateLimitRPS {
+		return fmt.Errorf("rate limit burst must be >= RPS (burst=%d, rps=%d)", config.RateLimitBurst, config.RateLimitRPS)
+	}
+	if config.MaxArticleBytes <= 0 {
+		return fmt.Errorf("max article bytes must be positive, got %d", config.MaxArticleBytes)
+	}
 	return nil
 }
 
