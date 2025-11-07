@@ -18,15 +18,38 @@ serde_json = "1.0"
 thiserror = "1.0"
 tokio = { version = "1.43", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+tracing-opentelemetry = "0.27"
+opentelemetry = { version = "0.27", features = ["trace"] }
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "http-proto"] }
 uuid = { version = "1.10", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["clock", "std"] }
 unicode-normalization = "0.1"
+unicode-segmentation = "1.12"
 whatlang = { version = "0.16", default-features = false }
-sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio", "postgres", "macros", "uuid", "chrono"] }
+ammonia = "4.0"
+html2text = "0.13"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "macros", "uuid", "chrono"] }
+jsonschema = "0.26"
+rand = "0.8"
+md5 = "0.7"
+num_cpus = "1.16"
+prometheus = "0.13"
 
 [dev-dependencies]
+futures = "0.3"
+hyper = "1.0"
+hyper-util = { version = "0.1", features = ["client", "http1", "http2", "server"] }
 rstest = "0.22"
 tokio = { version = "1.43", features = ["rt", "macros"] }
 wiremock = "0.6"
+criterion = { version = "0.5", features = ["html_reports"] }
+testcontainers = "0.16"
+
+[[bench]]
+name = "performance"
+harness = false
