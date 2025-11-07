@@ -1,8 +1,14 @@
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tracing::{debug, warn};
+use uuid::Uuid;
+
+use crate::clients::subworker::ClusteringResponse;
+use crate::schema::{news_creator::SUMMARY_RESPONSE_SCHEMA, validate_json};
 
 #[derive(Debug, Clone)]
 pub(crate) struct NewsCreatorClient {
@@ -62,11 +68,190 @@ impl NewsCreatorClient {
             .await
             .context("failed to deserialize news-creator response")
     }
+
+    /// クラスタリング結果から日本語要約を生成する。
+    ///
+    /// # Arguments
+    /// * `request` - 要約リクエスト
+    ///
+    /// # Returns
+    /// 日本語要約レスポンス（JSON Schema検証済み）
+    pub(crate) async fn generate_summary(
+        &self,
+        request: &SummaryRequest,
+    ) -> Result<SummaryResponse> {
+        let url = self
+            .base_url
+            .join("v1/summary/generate")
+            .context("failed to build summary generation URL")?;
+
+        debug!(
+            job_id = %request.job_id,
+            genre = %request.genre,
+            cluster_count = request.clusters.len(),
+            "sending summary generation request to news-creator"
+        );
+
+        let response = self
+            .client
+            .post(url)
+            .json(request)
+            .header("X-Job-ID", request.job_id.to_string())
+            .timeout(Duration::from_secs(120)) // LLM処理のため長めのタイムアウト
+            .send()
+            .await
+            .context("summary generation request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "summary generation endpoint returned error status {}: {}",
+                status,
+                body
+            ));
+        }
+
+        // レスポンスをJSONとして取得
+        let response_json: Value = response
+            .json()
+            .await
+            .context("failed to deserialize summary response as JSON")?;
+
+        // JSON Schemaで検証
+        let validation = validate_json(&SUMMARY_RESPONSE_SCHEMA, &response_json);
+        if !validation.valid {
+            warn!(
+                job_id = %request.job_id,
+                genre = %request.genre,
+                errors = ?validation.errors,
+                "summary response failed JSON Schema validation"
+            );
+            return Err(anyhow!(
+                "summary response validation failed: {:?}",
+                validation.errors
+            ));
+        }
+
+        debug!(
+            job_id = %request.job_id,
+            genre = %request.genre,
+            "summary response passed JSON Schema validation"
+        );
+
+        // 検証済みのJSONを構造体にデシリアライズ
+        serde_json::from_value(response_json)
+            .context("failed to deserialize validated summary response")
+    }
+
+    /// クラスタリングレスポンスから要約リクエストを構築する。
+    ///
+    /// # Arguments
+    /// * `job_id` - ジョブID
+    /// * `clustering` - クラスタリング結果
+    /// * `max_sentences_per_cluster` - クラスターごとの最大文数
+    ///
+    /// # Returns
+    /// 要約リクエスト
+    pub(crate) fn build_summary_request(
+        job_id: Uuid,
+        clustering: &ClusteringResponse,
+        max_sentences_per_cluster: usize,
+    ) -> SummaryRequest {
+        let clusters = clustering
+            .clusters
+            .iter()
+            .map(|cluster| {
+                // 各クラスターから代表的な文を選択（最大N文）
+                let representative_sentences: Vec<String> = cluster
+                    .sentences
+                    .iter()
+                    .take(max_sentences_per_cluster)
+                    .map(|s| s.text.clone())
+                    .collect();
+
+                ClusterInput {
+                    cluster_id: cluster.cluster_id,
+                    representative_sentences,
+                    top_terms: Some(cluster.top_terms.clone()),
+                }
+            })
+            .collect();
+
+        SummaryRequest {
+            job_id,
+            genre: clustering.genre.clone(),
+            clusters,
+            options: Some(SummaryOptions {
+                max_bullets: Some(5),
+                temperature: Some(0.7),
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct NewsCreatorSummary {
     pub(crate) response_id: String,
+}
+
+/// 日本語要約リクエスト。
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct SummaryRequest {
+    pub(crate) job_id: Uuid,
+    pub(crate) genre: String,
+    pub(crate) clusters: Vec<ClusterInput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) options: Option<SummaryOptions>,
+}
+
+/// クラスター入力データ。
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ClusterInput {
+    pub(crate) cluster_id: usize,
+    pub(crate) representative_sentences: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) top_terms: Option<Vec<String>>,
+}
+
+/// 要約生成オプション。
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct SummaryOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) max_bullets: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) temperature: Option<f64>,
+}
+
+/// 日本語要約レスポンス。
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct SummaryResponse {
+    pub(crate) job_id: Uuid,
+    pub(crate) genre: String,
+    pub(crate) summary: Summary,
+    pub(crate) metadata: SummaryMetadata,
+}
+
+/// 要約内容。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct Summary {
+    pub(crate) title: String,
+    pub(crate) bullets: Vec<String>,
+    pub(crate) language: String,
+}
+
+/// 要約メタデータ。
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct SummaryMetadata {
+    pub(crate) model: String,
+    #[serde(default)]
+    pub(crate) temperature: Option<f64>,
+    #[serde(default)]
+    pub(crate) prompt_tokens: Option<usize>,
+    #[serde(default)]
+    pub(crate) completion_tokens: Option<usize>,
+    #[serde(default)]
+    pub(crate) processing_time_ms: Option<usize>,
 }
 
 #[cfg(test)]

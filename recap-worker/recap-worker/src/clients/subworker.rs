@@ -1,9 +1,14 @@
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use reqwest::{Client, StatusCode, Url};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tracing::{debug, warn};
 use uuid::Uuid;
+
+use crate::pipeline::evidence::EvidenceCorpus;
+use crate::schema::{subworker::CLUSTERING_RESPONSE_SCHEMA, validate_json};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SubworkerClient {
@@ -24,6 +29,46 @@ pub(crate) struct SubworkerArticle {
 pub(crate) struct SubworkerCorpus {
     pub(crate) job_id: Uuid,
     pub(crate) articles: Vec<SubworkerArticle>,
+}
+
+/// クラスタリングレスポンス。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ClusteringResponse {
+    pub(crate) job_id: Uuid,
+    pub(crate) genre: String,
+    pub(crate) clusters: Vec<Cluster>,
+    pub(crate) metadata: ClusteringMetadata,
+}
+
+/// クラスター。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct Cluster {
+    pub(crate) cluster_id: usize,
+    pub(crate) sentences: Vec<ClusterSentence>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) centroid: Option<Vec<f64>>,
+    pub(crate) top_terms: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) coherence_score: Option<f64>,
+}
+
+/// クラスター内の文。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ClusterSentence {
+    pub(crate) sentence_id: usize,
+    pub(crate) text: String,
+    pub(crate) source_article_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) embedding: Option<Vec<f64>>,
+}
+
+/// クラスタリングメタデータ。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ClusteringMetadata {
+    pub(crate) total_sentences: usize,
+    pub(crate) cluster_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) processing_time_ms: Option<usize>,
 }
 
 impl SubworkerClient {
@@ -83,6 +128,82 @@ impl SubworkerClient {
             .json::<SubworkerCorpus>()
             .await
             .context("failed to deserialize subworker corpus response")
+    }
+
+    /// 証拠コーパスを送信してクラスタリング結果を取得する。
+    ///
+    /// # Arguments
+    /// * `job_id` - ジョブID
+    /// * `corpus` - 証拠コーパス
+    ///
+    /// # Returns
+    /// クラスタリング結果（JSON Schema検証済み）
+    pub(crate) async fn cluster_corpus(
+        &self,
+        job_id: Uuid,
+        corpus: &EvidenceCorpus,
+    ) -> Result<ClusteringResponse> {
+        let url = self
+            .base_url
+            .join(&format!("cluster/{}", corpus.genre))
+            .context("failed to build clustering URL")?;
+
+        debug!(
+            job_id = %job_id,
+            genre = %corpus.genre,
+            article_count = corpus.articles.len(),
+            "sending evidence corpus to subworker"
+        );
+
+        let response = self
+            .client
+            .post(url)
+            .json(corpus)
+            .header("X-Job-ID", job_id.to_string())
+            .send()
+            .await
+            .context("clustering request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "clustering endpoint returned error status {}: {}",
+                status,
+                body
+            ));
+        }
+
+        // レスポンスをJSONとして取得
+        let response_json: Value = response
+            .json()
+            .await
+            .context("failed to deserialize clustering response as JSON")?;
+
+        // JSON Schemaで検証
+        let validation = validate_json(&CLUSTERING_RESPONSE_SCHEMA, &response_json);
+        if !validation.valid {
+            warn!(
+                job_id = %job_id,
+                genre = %corpus.genre,
+                errors = ?validation.errors,
+                "clustering response failed JSON Schema validation"
+            );
+            return Err(anyhow!(
+                "clustering response validation failed: {:?}",
+                validation.errors
+            ));
+        }
+
+        debug!(
+            job_id = %job_id,
+            genre = %corpus.genre,
+            "clustering response passed JSON Schema validation"
+        );
+
+        // 検証済みのJSONを構造体にデシリアライズ
+        serde_json::from_value(response_json)
+            .context("failed to deserialize validated clustering response")
     }
 }
 
