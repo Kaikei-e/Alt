@@ -1,79 +1,120 @@
-use anyhow::{Context, Result};
-use metrics::{Counter, counter};
-use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
-use once_cell::sync::OnceCell;
+/// Prometheusメトリクス定義。
+use prometheus::{
+    register_counter_with_registry, register_gauge_with_registry, register_histogram_with_registry,
+    Counter, Gauge, Histogram, Registry,
+};
+use std::sync::Arc;
 
-static PROMETHEUS_HANDLE: OnceCell<PrometheusHandle> = OnceCell::new();
+/// メトリクスコレクター。
+#[derive(Debug, Clone)]
+pub(crate) struct Metrics {
+    // カウンター
+    pub(crate) articles_fetched: Counter,
+    pub(crate) articles_processed: Counter,
+    pub(crate) articles_dropped: Counter,
+    pub(crate) clusters_created: Counter,
+    pub(crate) summaries_generated: Counter,
+    pub(crate) jobs_completed: Counter,
+    pub(crate) jobs_failed: Counter,
+    pub(crate) retries_total: Counter,
 
-#[derive(Clone)]
-pub struct Telemetry {
-    handle: PrometheusHandle,
-    ready_counter: Counter,
-    live_counter: Counter,
-    admin_retry_counter: Counter,
-    manual_generate_counter: Counter,
+    // ヒストグラム
+    pub(crate) fetch_duration: Histogram,
+    pub(crate) preprocess_duration: Histogram,
+    pub(crate) dedup_duration: Histogram,
+    pub(crate) clustering_duration: Histogram,
+    pub(crate) summary_duration: Histogram,
+    pub(crate) job_duration: Histogram,
+
+    // ゲージ
+    pub(crate) active_jobs: Gauge,
+    pub(crate) queue_size: Gauge,
 }
 
-impl Telemetry {
-    pub(crate) fn new() -> Result<Self> {
-        let handle = PROMETHEUS_HANDLE
-            .get_or_try_init(|| {
-                let handle = PrometheusBuilder::new()
-                    .install_recorder()
-                    .context("failed to install Prometheus recorder")?;
-
-                metrics::describe_counter!(
-                    "recap_worker_health_ready_total",
-                    "Number of readiness checks performed"
-                );
-                metrics::describe_counter!(
-                    "recap_worker_health_live_total",
-                    "Number of liveness checks performed"
-                );
-                metrics::describe_counter!(
-                    "recap_worker_admin_retry_total",
-                    "Number of admin retry invocations"
-                );
-                metrics::describe_counter!(
-                    "recap_worker_generate_manual_total",
-                    "Number of manual 7days recap generation requests"
-                );
-
-                Ok::<PrometheusHandle, anyhow::Error>(handle)
-            })?
-            .clone();
-
-        let ready_counter = counter!("recap_worker_health_ready_total");
-        let live_counter = counter!("recap_worker_health_live_total");
-        let admin_retry_counter = counter!("recap_worker_admin_retry_total");
-        let manual_generate_counter = counter!("recap_worker_generate_manual_total");
-
+impl Metrics {
+    /// 新しいメトリクスコレクターを作成する。
+    pub(crate) fn new(registry: Arc<Registry>) -> Result<Self, prometheus::Error> {
         Ok(Self {
-            handle,
-            ready_counter,
-            live_counter,
-            admin_retry_counter,
-            manual_generate_counter,
+            articles_fetched: register_counter_with_registry!(
+                "recap_articles_fetched_total",
+                "Total number of articles fetched",
+                registry
+            )?,
+            articles_processed: register_counter_with_registry!(
+                "recap_articles_processed_total",
+                "Total number of articles processed",
+                registry
+            )?,
+            articles_dropped: register_counter_with_registry!(
+                "recap_articles_dropped_total",
+                "Total number of articles dropped",
+                registry
+            )?,
+            clusters_created: register_counter_with_registry!(
+                "recap_clusters_created_total",
+                "Total number of clusters created",
+                registry
+            )?,
+            summaries_generated: register_counter_with_registry!(
+                "recap_summaries_generated_total",
+                "Total number of summaries generated",
+                registry
+            )?,
+            jobs_completed: register_counter_with_registry!(
+                "recap_jobs_completed_total",
+                "Total number of jobs completed",
+                registry
+            )?,
+            jobs_failed: register_counter_with_registry!(
+                "recap_jobs_failed_total",
+                "Total number of jobs failed",
+                registry
+            )?,
+            retries_total: register_counter_with_registry!(
+                "recap_retries_total",
+                "Total number of retries",
+                registry
+            )?,
+            fetch_duration: register_histogram_with_registry!(
+                "recap_fetch_duration_seconds",
+                "Duration of fetch operations",
+                registry
+            )?,
+            preprocess_duration: register_histogram_with_registry!(
+                "recap_preprocess_duration_seconds",
+                "Duration of preprocessing operations",
+                registry
+            )?,
+            dedup_duration: register_histogram_with_registry!(
+                "recap_dedup_duration_seconds",
+                "Duration of deduplication operations",
+                registry
+            )?,
+            clustering_duration: register_histogram_with_registry!(
+                "recap_clustering_duration_seconds",
+                "Duration of clustering operations",
+                registry
+            )?,
+            summary_duration: register_histogram_with_registry!(
+                "recap_summary_duration_seconds",
+                "Duration of summary generation",
+                registry
+            )?,
+            job_duration: register_histogram_with_registry!(
+                "recap_job_duration_seconds",
+                "Duration of entire job processing",
+                registry
+            )?,
+            active_jobs: register_gauge_with_registry!(
+                "recap_active_jobs",
+                "Number of currently active jobs",
+                registry
+            )?,
+            queue_size: register_gauge_with_registry!(
+                "recap_queue_size",
+                "Number of jobs in queue",
+                registry
+            )?,
         })
-    }
-
-    pub(crate) fn render_prometheus(&self) -> String {
-        self.handle.render()
-    }
-
-    pub(crate) fn record_ready_probe(&self) {
-        self.ready_counter.increment(1);
-    }
-
-    pub(crate) fn record_live_probe(&self) {
-        self.live_counter.increment(1);
-    }
-
-    pub(crate) fn record_admin_retry_invocation(&self) {
-        self.admin_retry_counter.increment(1);
-    }
-
-    pub(crate) fn record_manual_generate_invocation(&self) {
-        self.manual_generate_counter.increment(1);
     }
 }
