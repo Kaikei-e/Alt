@@ -1,3 +1,5 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -153,6 +155,117 @@ impl DiagnosticEntry {
         Self {
             key: key.into(),
             value,
+        }
+    }
+}
+
+/// Raw記事のバックアップデータ。
+///
+/// alt-backendから取得した生データをそのまま保存するための構造体。
+#[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
+pub(crate) struct RawArticle {
+    pub(crate) article_id: String,
+    pub(crate) title: Option<String>,
+    pub(crate) fulltext_html: String,
+    pub(crate) published_at: Option<DateTime<Utc>>,
+    pub(crate) source_url: Option<String>,
+    pub(crate) lang_hint: Option<String>,
+    pub(crate) normalized_hash: String,
+}
+
+impl RawArticle {
+    #[must_use]
+    #[allow(dead_code)]
+    pub(crate) fn new(
+        article_id: impl Into<String>,
+        title: Option<String>,
+        fulltext_html: impl Into<String>,
+        published_at: Option<DateTime<Utc>>,
+        source_url: Option<String>,
+        lang_hint: Option<String>,
+        normalized_hash: impl Into<String>,
+    ) -> Self {
+        Self {
+            article_id: article_id.into(),
+            title,
+            fulltext_html: fulltext_html.into(),
+            published_at,
+            source_url,
+            lang_hint,
+            normalized_hash: normalized_hash.into(),
+        }
+    }
+}
+
+/// 前処理統計データ。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct PreprocessMetrics {
+    pub(crate) job_id: Uuid,
+    pub(crate) total_articles_fetched: i32,
+    pub(crate) articles_processed: i32,
+    pub(crate) articles_dropped_empty: i32,
+    pub(crate) articles_html_cleaned: i32,
+    pub(crate) total_characters: i64,
+    pub(crate) avg_chars_per_article: Option<f64>,
+    pub(crate) languages_detected: Value, // JSON object { "ja": 100, "en": 50, ... }
+}
+
+impl PreprocessMetrics {
+    #[must_use]
+    pub(crate) fn new(
+        job_id: Uuid,
+        total_articles_fetched: usize,
+        articles_processed: usize,
+        articles_dropped_empty: usize,
+        articles_html_cleaned: usize,
+        total_characters: usize,
+        languages_detected: Value,
+    ) -> Self {
+        let avg_chars_per_article = if articles_processed > 0 {
+            Some(total_characters as f64 / articles_processed as f64)
+        } else {
+            None
+        };
+
+        Self {
+            job_id,
+            total_articles_fetched: total_articles_fetched as i32,
+            articles_processed: articles_processed as i32,
+            articles_dropped_empty: articles_dropped_empty as i32,
+            articles_html_cleaned: articles_html_cleaned as i32,
+            total_characters: total_characters as i64,
+            avg_chars_per_article,
+            languages_detected,
+        }
+    }
+}
+
+/// 最終セクション（日本語要約）。
+#[derive(Debug, Clone)]
+pub(crate) struct RecapFinalSection {
+    pub(crate) job_id: Uuid,
+    pub(crate) genre: String,
+    pub(crate) title_ja: String,
+    pub(crate) bullets_ja: Vec<String>,
+    pub(crate) model_name: String,
+}
+
+impl RecapFinalSection {
+    #[must_use]
+    pub(crate) fn new(
+        job_id: Uuid,
+        genre: impl Into<String>,
+        title_ja: impl Into<String>,
+        bullets_ja: Vec<String>,
+        model_name: impl Into<String>,
+    ) -> Self {
+        Self {
+            job_id,
+            genre: genre.into(),
+            title_ja: title_ja.into(),
+            bullets_ja,
+            model_name: model_name.into(),
         }
     }
 }

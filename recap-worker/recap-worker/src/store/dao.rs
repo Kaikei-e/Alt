@@ -1,10 +1,12 @@
 use anyhow::{Context, Result, ensure};
 use serde_json::Value;
 use sqlx::types::Json;
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, PgConnection, Row};
+use uuid::Uuid;
 
+use crate::util::idempotency::try_acquire_job_lock;
 use super::models::{
-    DiagnosticEntry, NewSubworkerRun, PersistedCluster, PersistedGenre, SubworkerRunStatus,
+    DiagnosticEntry, NewSubworkerRun, PersistedCluster, PersistedGenre, RawArticle, SubworkerRunStatus,
 };
 
 #[derive(Debug, Clone)]
@@ -15,6 +17,157 @@ pub(crate) struct RecapDao {
 impl RecapDao {
     pub(crate) fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    /// アドバイザリロックを取得し、新しいジョブを作成する。
+    ///
+    /// ロックが取得できない場合は、既に他のワーカーがそのジョブを実行中であることを示します。
+    ///
+    /// # Returns
+    /// - `Ok(Some(job_id))`: ロック取得成功、ジョブ作成完了
+    /// - `Ok(None)`: ロック取得失敗、他のワーカーが実行中
+    /// - `Err`: データベースエラー
+    pub async fn create_job_with_lock(&self, job_id: Uuid, note: Option<&str>) -> Result<Option<Uuid>> {
+        let mut tx = self.pool.begin().await.context("failed to begin transaction")?;
+
+        // Try to acquire advisory lock
+        let lock_acquired = try_acquire_job_lock(&mut *tx, job_id)
+            .await
+            .context("failed to acquire advisory lock")?;
+
+        if !lock_acquired {
+            // Another worker is already processing this job
+            tx.rollback().await.context("failed to rollback transaction")?;
+            return Ok(None);
+        }
+
+        // Create job record
+        sqlx::query(
+            r"
+            INSERT INTO recap_jobs (job_id, kicked_at, note)
+            VALUES ($1, NOW(), $2)
+            ON CONFLICT (job_id) DO NOTHING
+            ",
+        )
+        .bind(job_id)
+        .bind(note)
+        .execute(&mut *tx)
+        .await
+        .context("failed to insert recap_jobs record")?;
+
+        tx.commit().await.context("failed to commit transaction")?;
+
+        Ok(Some(job_id))
+    }
+
+    /// 指定されたjob_idのジョブが存在するかチェックする。
+    pub async fn job_exists(&self, job_id: Uuid) -> Result<bool> {
+        let row = sqlx::query("SELECT EXISTS(SELECT 1 FROM recap_jobs WHERE job_id = $1) as exists")
+            .bind(job_id)
+            .fetch_one(&self.pool)
+            .await
+            .context("failed to check job existence")?;
+
+        let exists: bool = row.try_get("exists").context("failed to get exists result")?;
+        Ok(exists)
+    }
+
+    /// Raw記事をバックアップテーブルに保存する。
+    pub async fn backup_raw_articles(&self, job_id: Uuid, articles: &[RawArticle]) -> Result<()> {
+        if articles.is_empty() {
+            return Ok(());
+        }
+
+        let mut tx = self.pool.begin().await.context("failed to begin transaction")?;
+
+        for article in articles {
+            sqlx::query(
+                r"
+                INSERT INTO recap_job_articles
+                    (job_id, article_id, title, fulltext_html, published_at, source_url, lang_hint, normalized_hash)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT (job_id, article_id) DO NOTHING
+                ",
+            )
+            .bind(job_id)
+            .bind(&article.article_id)
+            .bind(&article.title)
+            .bind(&article.fulltext_html)
+            .bind(article.published_at)
+            .bind(&article.source_url)
+            .bind(&article.lang_hint)
+            .bind(&article.normalized_hash)
+            .execute(&mut *tx)
+            .await
+            .context("failed to insert raw article")?;
+        }
+
+        tx.commit().await.context("failed to commit raw articles")?;
+
+        Ok(())
+    }
+
+    /// 前処理統計を保存する。
+    pub async fn save_preprocess_metrics(&self, metrics: &PreprocessMetrics) -> Result<()> {
+        sqlx::query(
+            r"
+            INSERT INTO recap_preprocess_metrics
+                (job_id, total_articles_fetched, articles_processed, articles_dropped_empty,
+                 articles_html_cleaned, total_characters, avg_chars_per_article, languages_detected)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (job_id) DO UPDATE SET
+                total_articles_fetched = EXCLUDED.total_articles_fetched,
+                articles_processed = EXCLUDED.articles_processed,
+                articles_dropped_empty = EXCLUDED.articles_dropped_empty,
+                articles_html_cleaned = EXCLUDED.articles_html_cleaned,
+                total_characters = EXCLUDED.total_characters,
+                avg_chars_per_article = EXCLUDED.avg_chars_per_article,
+                languages_detected = EXCLUDED.languages_detected
+            ",
+        )
+        .bind(metrics.job_id)
+        .bind(metrics.total_articles_fetched)
+        .bind(metrics.articles_processed)
+        .bind(metrics.articles_dropped_empty)
+        .bind(metrics.articles_html_cleaned)
+        .bind(metrics.total_characters)
+        .bind(metrics.avg_chars_per_article)
+        .bind(&metrics.languages_detected)
+        .execute(&self.pool)
+        .await
+        .context("failed to save preprocess metrics")?;
+
+        Ok(())
+    }
+
+    /// 最終セクションを保存する。
+    pub async fn save_final_section(&self, section: &RecapFinalSection) -> Result<i64> {
+        let bullets_json = serde_json::to_value(&section.bullets_ja)
+            .context("failed to serialize bullets")?;
+
+        let row = sqlx::query(
+            r"
+            INSERT INTO recap_final_sections
+                (job_id, genre, title_ja, bullets_ja, model_name)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (job_id, genre) DO UPDATE SET
+                title_ja = EXCLUDED.title_ja,
+                bullets_ja = EXCLUDED.bullets_ja,
+                model_name = EXCLUDED.model_name,
+                updated_at = NOW()
+            RETURNING id
+            ",
+        )
+        .bind(section.job_id)
+        .bind(&section.genre)
+        .bind(&section.title_ja)
+        .bind(bullets_json)
+        .bind(&section.model_name)
+        .fetch_one(&self.pool)
+        .await
+        .context("failed to insert final section")?;
+
+        Ok(row.get("id"))
     }
 
     #[allow(dead_code)]
@@ -249,12 +402,13 @@ impl RecapDao {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::models::PersistedSentence;
     use sqlx::{Executor, Row, postgres::PgPoolOptions};
     use uuid::Uuid;
 
     async fn setup_schema(pool: &PgPool) -> Result<()> {
         pool.execute(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS recap_subworker_runs (
                 id BIGSERIAL PRIMARY KEY,
                 job_id UUID NOT NULL,
@@ -304,7 +458,7 @@ mod tests {
                 response_id TEXT,
                 PRIMARY KEY (job_id, genre)
             );
-            "#,
+            ",
         )
         .await?;
         Ok(())
