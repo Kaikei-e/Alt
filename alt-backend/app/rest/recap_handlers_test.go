@@ -71,9 +71,8 @@ func TestHandleRecapArticles_InvalidParams(t *testing.T) {
 	cfg := &config.Config{Recap: config.RecapConfig{DefaultPageSize: 500, MaxPageSize: 2000, RateLimitRPS: 5, RateLimitBurst: 5}}
 
 	handler := handleRecapArticles(container, cfg, newRecapRateLimiter(5, 5))
-	err := handler(c)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "from is required")
+	require.NoError(t, handler(c))
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestHandleRecapArticles_RateLimited(t *testing.T) {
@@ -92,8 +91,7 @@ func TestHandleRecapArticles_RateLimited(t *testing.T) {
 	req2 := httptest.NewRequest(http.MethodGet, "/v1/recap/articles?from=2025-11-01T00:00:00Z&to=2025-11-02T00:00:00Z", nil)
 	rec2 := httptest.NewRecorder()
 	c2 := e.NewContext(req2, rec2)
-	err := handler(c2)
-	require.NoError(t, err)
+	require.NoError(t, handler(c2))
 	assert.Equal(t, http.StatusTooManyRequests, rec2.Code)
 }
 
