@@ -107,8 +107,7 @@ mod tests {
 
     use super::{DEFAULT_GENRES, normalize_genres};
     use crate::{
-        api,
-        app::ComponentRegistry,
+        app::{build_router, ComponentRegistry},
         config::{Config, ENV_MUTEX},
     };
 
@@ -118,7 +117,7 @@ mod tests {
             " AI ".to_string(),
             "security".to_string(),
             "ai".to_string(),
-            "".to_string(),
+            String::new(),
         ];
         let normalized = normalize_genres(genres);
         assert_eq!(normalized, vec!["ai".to_string(), "security".to_string()]);
@@ -126,20 +125,22 @@ mod tests {
 
     #[tokio::test]
     async fn trigger_returns_accepted_with_default_genres() {
-        let _lock = ENV_MUTEX.lock().expect("env mutex");
-        unsafe {
-            std::env::set_var(
-                "RECAP_DB_DSN",
-                "postgres://recap:recap@localhost:5432/recap",
-            );
-            std::env::set_var("NEWS_CREATOR_BASE_URL", "http://localhost:18001/");
-            std::env::set_var("SUBWORKER_BASE_URL", "http://localhost:18002/");
+        {
+            let _lock = ENV_MUTEX.lock().expect("env mutex");
+            unsafe {
+                std::env::set_var(
+                    "RECAP_DB_DSN",
+                    "postgres://recap:recap@localhost:5432/recap",
+                );
+                std::env::set_var("NEWS_CREATOR_BASE_URL", "http://localhost:18001/");
+                std::env::set_var("SUBWORKER_BASE_URL", "http://localhost:18002/");
+            }
         }
 
         let config = Config::from_env().expect("config loads");
         let registry = ComponentRegistry::build(config).expect("registry builds");
 
-        let app = api::router(registry);
+        let app = build_router(registry);
 
         let request = Request::post("/v1/generate/recaps/7days")
             .header("content-type", "application/json")
@@ -150,7 +151,8 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::ACCEPTED);
 
-        let body_bytes = hyper::body::to_bytes(response.into_body())
+        let body = response.into_body();
+        let body_bytes = axum::body::to_bytes(body, usize::MAX)
             .await
             .expect("body bytes");
         let payload: serde_json::Value = serde_json::from_slice(&body_bytes).expect("valid json");
