@@ -127,3 +127,26 @@ type ImageFetchErrorResponse struct {
 	Message string      `json:"message"`
 	Details interface{} `json:"details,omitempty"`
 }
+
+type RecapRangeResponse struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+type RecapArticleResponse struct {
+	ArticleID   string  `json:"article_id"`
+	Title       *string `json:"title,omitempty"`
+	FullText    string  `json:"fulltext"`
+	PublishedAt *string `json:"published_at,omitempty"`
+	SourceURL   *string `json:"source_url,omitempty"`
+	LangHint    *string `json:"lang_hint,omitempty"`
+}
+
+type RecapArticlesResponse struct {
+	Range    RecapRangeResponse     `json:"range"`
+	Total    int                    `json:"total"`
+	Page     int                    `json:"page"`
+	PageSize int                    `json:"page_size"`
+	HasMore  bool                   `json:"has_more"`
+	Articles []RecapArticleResponse `json:"articles"`
+}
