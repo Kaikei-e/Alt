@@ -78,4 +78,5 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	fetchArticleRoutes(v1, container)
 	registerImageRoutes(v1, container)
 	registerSSERoutes(v1, container, cfg)
+	registerRecapRoutes(v1, container, cfg)
 }
