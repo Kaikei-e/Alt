@@ -8,5 +8,6 @@ pub mod config;
 pub mod observability;
 pub(crate) mod pipeline;
 pub(crate) mod scheduler;
+pub(crate) mod schema;
 pub(crate) mod store;
 pub(crate) mod util;
