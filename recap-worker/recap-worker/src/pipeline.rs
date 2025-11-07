@@ -11,10 +11,13 @@ use crate::{
 
 pub(crate) mod dedup;
 pub(crate) mod dispatch;
+pub(crate) mod evidence;
 pub(crate) mod fetch;
 pub(crate) mod genre;
+pub(crate) mod genre_keywords;
 pub(crate) mod persist;
 pub(crate) mod preprocess;
+pub(crate) mod summarizer;
 pub(crate) mod select;
 
 use dedup::{DedupStage, HashDedupStage};
