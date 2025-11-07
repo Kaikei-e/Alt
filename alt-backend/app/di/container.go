@@ -20,6 +20,7 @@ import (
 	"alt/gateway/fetch_inoreader_summary_gateway"
 	"alt/gateway/image_fetch_gateway"
 	"alt/gateway/rate_limiter_gateway"
+	"alt/gateway/recap_articles_gateway"
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/update_feed_status_gateway"
@@ -37,6 +38,7 @@ import (
 	"alt/usecase/fetch_inoreader_summary_usecase"
 	"alt/usecase/image_fetch_usecase"
 	"alt/usecase/reading_status"
+	"alt/usecase/recap_articles_usecase"
 	"alt/usecase/register_favorite_feed_usecase"
 	"alt/usecase/register_feed_usecase"
 	"alt/usecase/search_article_usecase"
@@ -83,6 +85,7 @@ type ApplicationComponents struct {
 	ArticleUsecase                      fetch_article_usecase.ArticleUsecase
 	ArchiveArticleUsecase               *archive_article_usecase.ArchiveArticleUsecase
 	FetchArticlesCursorUsecase          *fetch_articles_usecase.FetchArticlesCursorUsecase
+	RecapArticlesUsecase                *recap_articles_usecase.RecapArticlesUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -162,6 +165,13 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	// Fetch articles with cursor components
 	fetchArticlesGatewayImpl := article_gateway.NewFetchArticlesGateway(pool)
 	fetchArticlesCursorUsecase := fetch_articles_usecase.NewFetchArticlesCursorUsecase(fetchArticlesGatewayImpl)
+	recapArticlesGateway := recap_articles_gateway.NewGateway(altDBRepository)
+	recapUsecaseCfg := recap_articles_usecase.Config{
+		DefaultPageSize: cfg.Recap.DefaultPageSize,
+		MaxPageSize:     cfg.Recap.MaxPageSize,
+		MaxRangeDays:    cfg.Recap.MaxRangeDays,
+	}
+	recapArticlesUsecase := recap_articles_usecase.NewRecapArticlesUsecase(recapArticlesGateway, recapUsecaseCfg)
 
 	// Fetch inoreader summary components
 	fetchInoreaderSummaryGatewayImpl := fetch_inoreader_summary_gateway.NewInoreaderSummaryGateway(altDBRepository)
@@ -213,5 +223,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ArticleUsecase:                      fetchArticleUsecase,
 		ArchiveArticleUsecase:               archiveArticleUsecase,
 		FetchArticlesCursorUsecase:          fetchArticlesCursorUsecase,
+		RecapArticlesUsecase:                recapArticlesUsecase,
 	}
 }
