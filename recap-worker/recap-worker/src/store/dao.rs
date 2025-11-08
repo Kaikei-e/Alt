@@ -1,13 +1,14 @@
 use anyhow::{Context, Result, ensure};
 use serde_json::Value;
 use sqlx::types::Json;
-use sqlx::{PgPool, PgConnection, Row};
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-use crate::util::idempotency::try_acquire_job_lock;
 use super::models::{
-    DiagnosticEntry, NewSubworkerRun, PersistedCluster, PersistedGenre, RawArticle, SubworkerRunStatus,
+    DiagnosticEntry, NewSubworkerRun, PersistedCluster, PersistedGenre, RawArticle,
+    SubworkerRunStatus,
 };
+use crate::util::idempotency::try_acquire_job_lock;
 
 #[derive(Debug, Clone)]
 pub(crate) struct RecapDao {
@@ -27,8 +28,17 @@ impl RecapDao {
     /// - `Ok(Some(job_id))`: ロック取得成功、ジョブ作成完了
     /// - `Ok(None)`: ロック取得失敗、他のワーカーが実行中
     /// - `Err`: データベースエラー
-    pub async fn create_job_with_lock(&self, job_id: Uuid, note: Option<&str>) -> Result<Option<Uuid>> {
-        let mut tx = self.pool.begin().await.context("failed to begin transaction")?;
+    #[allow(dead_code)]
+    pub async fn create_job_with_lock(
+        &self,
+        job_id: Uuid,
+        note: Option<&str>,
+    ) -> Result<Option<Uuid>> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .context("failed to begin transaction")?;
 
         // Try to acquire advisory lock
         let lock_acquired = try_acquire_job_lock(&mut *tx, job_id)
@@ -37,7 +47,9 @@ impl RecapDao {
 
         if !lock_acquired {
             // Another worker is already processing this job
-            tx.rollback().await.context("failed to rollback transaction")?;
+            tx.rollback()
+                .await
+                .context("failed to rollback transaction")?;
             return Ok(None);
         }
 
@@ -61,14 +73,18 @@ impl RecapDao {
     }
 
     /// 指定されたjob_idのジョブが存在するかチェックする。
+    #[allow(dead_code)]
     pub async fn job_exists(&self, job_id: Uuid) -> Result<bool> {
-        let row = sqlx::query("SELECT EXISTS(SELECT 1 FROM recap_jobs WHERE job_id = $1) as exists")
-            .bind(job_id)
-            .fetch_one(&self.pool)
-            .await
-            .context("failed to check job existence")?;
+        let row =
+            sqlx::query("SELECT EXISTS(SELECT 1 FROM recap_jobs WHERE job_id = $1) as exists")
+                .bind(job_id)
+                .fetch_one(&self.pool)
+                .await
+                .context("failed to check job existence")?;
 
-        let exists: bool = row.try_get("exists").context("failed to get exists result")?;
+        let exists: bool = row
+            .try_get("exists")
+            .context("failed to get exists result")?;
         Ok(exists)
     }
 
@@ -78,7 +94,11 @@ impl RecapDao {
             return Ok(());
         }
 
-        let mut tx = self.pool.begin().await.context("failed to begin transaction")?;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .context("failed to begin transaction")?;
 
         for article in articles {
             sqlx::query(
@@ -108,7 +128,10 @@ impl RecapDao {
     }
 
     /// 前処理統計を保存する。
-    pub async fn save_preprocess_metrics(&self, metrics: &PreprocessMetrics) -> Result<()> {
+    pub async fn save_preprocess_metrics(
+        &self,
+        metrics: &crate::store::models::PreprocessMetrics,
+    ) -> Result<()> {
         sqlx::query(
             r"
             INSERT INTO recap_preprocess_metrics
@@ -141,9 +164,13 @@ impl RecapDao {
     }
 
     /// 最終セクションを保存する。
-    pub async fn save_final_section(&self, section: &RecapFinalSection) -> Result<i64> {
-        let bullets_json = serde_json::to_value(&section.bullets_ja)
-            .context("failed to serialize bullets")?;
+    #[allow(dead_code)]
+    pub async fn save_final_section(
+        &self,
+        section: &crate::store::models::RecapFinalSection,
+    ) -> Result<i64> {
+        let bullets_json =
+            serde_json::to_value(&section.bullets_ja).context("failed to serialize bullets")?;
 
         let row = sqlx::query(
             r"
@@ -374,6 +401,7 @@ impl RecapDao {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn upsert_genre(&self, genre: &PersistedGenre) -> Result<()> {
         ensure!(
             !genre.genre.trim().is_empty(),

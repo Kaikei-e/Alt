@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PersistedGenre {
     pub(crate) job_id: Uuid,
@@ -10,6 +11,7 @@ pub(crate) struct PersistedGenre {
     pub(crate) response_id: Option<String>,
 }
 
+#[allow(dead_code)]
 impl PersistedGenre {
     pub(crate) fn new(job_id: Uuid, genre: impl Into<String>) -> Self {
         Self {
@@ -242,6 +244,7 @@ impl PreprocessMetrics {
 }
 
 /// 最終セクション（日本語要約）。
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct RecapFinalSection {
     pub(crate) job_id: Uuid,
@@ -251,6 +254,7 @@ pub(crate) struct RecapFinalSection {
     pub(crate) model_name: String,
 }
 
+#[allow(dead_code)]
 impl RecapFinalSection {
     #[must_use]
     pub(crate) fn new(
