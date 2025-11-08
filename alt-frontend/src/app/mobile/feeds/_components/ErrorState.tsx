@@ -135,7 +135,7 @@ export default function ErrorState({ error, onRetry, isLoading }: ErrorStateProp
         <Button
           onClick={handleRetry}
           loading={isRetrying || isLoading}
-          loadingText="再試行中..."
+          loadingText="Retrying..."
           size="lg"
           w="100%"
           borderRadius="16px"
@@ -156,13 +156,13 @@ export default function ErrorState({ error, onRetry, isLoading }: ErrorStateProp
           }}
           transition="all 0.2s"
         >
-          再試行
+          Retry
         </Button>
 
         {process.env.NODE_ENV === "development" && error && (
           <Box mt={4} p={3} bg="blackAlpha.300" borderRadius="8px">
             <Text fontSize="xs" color="whiteAlpha.700" textAlign="left">
-              デバッグ情報:
+              Debug info:
             </Text>
             <Text
               fontSize="xs"
