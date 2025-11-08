@@ -375,6 +375,10 @@ mod tests {
             language: "en".to_string(),
             char_count: body.chars().count(),
             is_html_cleaned: false,
+            tokens: body
+                .split_whitespace()
+                .map(|token| token.to_lowercase())
+                .collect(),
         }
     }
 

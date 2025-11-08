@@ -4,10 +4,13 @@ use std::sync::Arc;
 use ammonia::clean;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde_json::json;
 use tokio::sync::Semaphore;
 use tracing::{debug, info};
 use unicode_normalization::UnicodeNormalization;
+use unicode_segmentation::UnicodeSegmentation;
 use uuid::Uuid;
 use whatlang::detect;
 
@@ -25,6 +28,7 @@ pub(crate) struct PreprocessedArticle {
     pub(crate) language: String,
     pub(crate) char_count: usize,
     pub(crate) is_html_cleaned: bool,
+    pub(crate) tokens: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -204,6 +208,7 @@ pub(crate) fn preprocess_article(article: FetchedArticle) -> Result<Option<Prepr
     });
 
     let char_count = trimmed.chars().count();
+    let tokens = tokenize_text(trimmed, &language);
 
     Ok(Some(PreprocessedArticle {
         id: article.id,
@@ -212,8 +217,55 @@ pub(crate) fn preprocess_article(article: FetchedArticle) -> Result<Option<Prepr
         language,
         char_count,
         is_html_cleaned,
+        tokens,
     }))
 }
+
+fn tokenize_text(text: &str, lang: &str) -> Vec<String> {
+    if lang.starts_with("ja") {
+        return tokenize_japanese(text);
+    }
+
+    tokenize_latin_like(text)
+}
+
+fn tokenize_japanese(text: &str) -> Vec<String> {
+    let filtered: Vec<char> = text
+        .chars()
+        .filter(|c| !c.is_whitespace() && c.is_alphanumeric())
+        .collect();
+
+    if filtered.is_empty() {
+        return Vec::new();
+    }
+
+    if filtered.len() == 1 {
+        return vec![filtered.into_iter().collect()];
+    }
+
+    let mut tokens = Vec::with_capacity(filtered.len().saturating_sub(1));
+    for window in filtered.windows(2) {
+        let token: String = window.iter().collect();
+        tokens.push(token);
+    }
+    tokens
+}
+
+fn tokenize_latin_like(text: &str) -> Vec<String> {
+    let mut results = Vec::new();
+    for word in text.unicode_words() {
+        let cleaned = NON_WORD_BOUNDARY.replace_all(word, "");
+        let candidate = cleaned.trim().to_lowercase();
+        if candidate.len() >= 2 {
+            results.push(candidate);
+        }
+    }
+    results
+}
+
+static NON_WORD_BOUNDARY: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^[\p{Punctuation}\p{Symbol}]+|[\p{Punctuation}\p{Symbol}]+$"#).unwrap()
+});
 
 /// HTMLをサニタイズしてプレーンテキストに変換する。
 ///
@@ -308,6 +360,7 @@ mod tests {
         } else {
             assert!(!result.language.is_empty());
         }
+        assert!(!result.tokens.is_empty());
     }
 
     #[test]
@@ -315,6 +368,20 @@ mod tests {
         let result = preprocess_article(article("art-1", "   ", None, None))
             .expect("preprocessing should succeed");
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn preprocess_article_tokenizes_japanese() {
+        let fetched = article(
+            "art-ja",
+            "東京大学で量子コンピューターの研究が進んでいます。",
+            Some("タイトル"),
+            Some("ja"),
+        );
+        let result = preprocess_article(fetched)
+            .expect("preprocessing should succeed")
+            .expect("article should remain");
+        assert!(result.tokens.iter().any(|t| t.contains("東京")));
     }
 
     #[test]

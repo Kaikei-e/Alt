@@ -346,6 +346,7 @@ mod tests {
                     language: "en".to_string(),
                     char_count: 9,
                     is_html_cleaned: false,
+                    tokens: vec!["processed".to_string()],
                 }],
             })
         }
