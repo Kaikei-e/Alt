@@ -27,6 +27,8 @@ pub struct Config {
     otel_sampling_ratio: f64,
     recap_window_days: u32,
     recap_genres: Vec<String>,
+    genre_classifier_weights_path: Option<String>,
+    genre_classifier_threshold: f32,
 }
 
 #[derive(Debug, Error)]
@@ -80,6 +82,8 @@ impl Config {
             "RECAP_GENRES",
             "tech,economy,ai,policy,security,science,product,design,devops,culture",
         )?;
+        let genre_classifier_weights_path = env::var("RECAP_GENRE_MODEL_WEIGHTS").ok();
+        let genre_classifier_threshold = parse_f64("RECAP_GENRE_MODEL_THRESHOLD", 0.5)? as f32;
 
         Ok(Self {
             http_bind,
@@ -100,6 +104,8 @@ impl Config {
             otel_sampling_ratio,
             recap_window_days,
             recap_genres,
+            genre_classifier_weights_path,
+            genre_classifier_threshold,
         })
     }
 
@@ -191,6 +197,16 @@ impl Config {
     #[must_use]
     pub fn recap_genres(&self) -> &[String] {
         &self.recap_genres
+    }
+
+    #[must_use]
+    pub fn genre_classifier_weights_path(&self) -> Option<&str> {
+        self.genre_classifier_weights_path.as_deref()
+    }
+
+    #[must_use]
+    pub fn genre_classifier_threshold(&self) -> f32 {
+        self.genre_classifier_threshold
     }
 }
 

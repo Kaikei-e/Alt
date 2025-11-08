@@ -3,8 +3,10 @@
 
 pub(crate) mod api;
 pub mod app;
+pub mod classification;
 pub(crate) mod clients;
 pub mod config;
+pub mod evaluation;
 pub mod observability;
 pub mod pipeline;
 pub(crate) mod scheduler;

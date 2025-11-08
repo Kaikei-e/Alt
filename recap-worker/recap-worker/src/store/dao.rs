@@ -503,19 +503,17 @@ impl RecapDao {
                 .fetch_one(&self.pool)
                 .await
                 {
-                    Ok(article_row) => {
-                        match article_row.try_get::<i64, _>("article_count") {
-                            Ok(article_count) => i32::try_from(article_count).unwrap_or(i32::MAX),
-                            Err(get_err) => {
-                                tracing::warn!(
-                                    "Failed to read article count for job {}: {}. Falling back to 0.",
-                                    job_id,
-                                    get_err
-                                );
-                                0
-                            }
+                    Ok(article_row) => match article_row.try_get::<i64, _>("article_count") {
+                        Ok(article_count) => i32::try_from(article_count).unwrap_or(i32::MAX),
+                        Err(get_err) => {
+                            tracing::warn!(
+                                "Failed to read article count for job {}: {}. Falling back to 0.",
+                                job_id,
+                                get_err
+                            );
+                            0
                         }
-                    }
+                    },
                     Err(err) => {
                         tracing::warn!(
                             "Failed to count recap job articles for job {}: {}. Falling back to 0.",
