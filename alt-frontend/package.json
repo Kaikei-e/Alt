@@ -33,7 +33,7 @@
   "dependencies": {
     "@chakra-ui/accordion": "^2.3.1",
     "@chakra-ui/progress": "^2.2.0",
-    "@chakra-ui/react": "^3.28.1",
+    "@chakra-ui/react": "^3.29.0",
     "@chakra-ui/transition": "^2.1.0",
     "@emotion/cache": "^11.14.0",
     "@emotion/react": "^11.14.0",
@@ -69,7 +69,7 @@
     "@types/react-lazy-load-image-component": "^1.6.4",
     "@types/sanitize-html": "^2.16.0",
     "@vitejs/plugin-react": "^5.1.0",
-    "@vitest/browser": "^4.0.6",
+    "@vitest/browser": "^4.0.8",
     "axe-core": "^4.11.0",
     "axe-playwright": "^2.2.2",
     "dotenv": "^17.2.3",
@@ -82,8 +82,8 @@
     "playwright": "^1.56.1",
     "prettier": "3.6.2",
     "typescript": "^5.9.3",
-    "vite": "^7.1.12",
-    "vitest": "^4.0.6"
+    "vite": "^7.2.2",
+    "vitest": "^4.0.8"
   },
   "engines": {
     "node": "24"
