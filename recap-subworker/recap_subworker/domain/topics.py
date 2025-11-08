@@ -66,6 +66,20 @@ def _has_alphanumeric_mixed(text: str) -> bool:
     return bool(_ALPHANUMERIC_MIXED_PATTERN.search(text))
 
 
+def _is_simple_alpha_phrase(text: str) -> bool:
+    """Return True if text comprises only alphabetic tokens plus spaces/hyphens."""
+
+    if not text:
+        return False
+    collapsed = text.replace(" ", "").replace("-", "")
+    if not collapsed or not collapsed.isalpha():
+        return False
+    for part in re.split(r"[\s-]+", text):
+        if part and not part.isalpha():
+            return False
+    return True
+
+
 def _is_informative(term: str, stopwords: set[str]) -> bool:
     """Check if a term is informative and should be included.
 
@@ -87,26 +101,22 @@ def _is_informative(term: str, stopwords: set[str]) -> bool:
     if _has_alphanumeric_mixed(stripped):
         return False
 
-    # Stage 3: spaCy validation (high-precision check)
-    nlp = _get_spacy_nlp()
-    if nlp is not None:
-        try:
-            # Process the term as a single token
-            doc = nlp(stripped)
-            if doc:
-                token = doc[0]
-                # Reject if token is alphanumeric (contains both digits and letters)
-                if token.is_alnum and not token.is_alpha and not token.is_digit:
-                    return False
-                # Reject if it's a space-separated ngram containing digits
-                if " " in stripped:
-                    parts = stripped.split()
-                    for part in parts:
-                        if part.isdigit() or _has_alphanumeric_mixed(part):
-                            return False
-        except Exception:
-            # If spaCy fails, fall back to regex validation
-            pass
+    # Stage 3: spaCy validation (high-precision check) - only when necessary
+    if not _is_simple_alpha_phrase(stripped):
+        nlp = _get_spacy_nlp()
+        if nlp is not None:
+            try:
+                doc = nlp(stripped)
+                if doc:
+                    # Reject if any token mixes digits and letters.
+                    if any(tok.is_alnum and not tok.is_alpha and not tok.is_digit for tok in doc):
+                        return False
+                    # Reject if spaCy identifies numeric components inside phrases.
+                    if any(tok.text.isdigit() or _has_alphanumeric_mixed(tok.text) for tok in doc):
+                        return False
+            except Exception:
+                # If spaCy fails, fall back to regex validation only.
+                pass
 
     # Stage 4: Token-based validation
     tokens = _tokenize_feature(stripped)
