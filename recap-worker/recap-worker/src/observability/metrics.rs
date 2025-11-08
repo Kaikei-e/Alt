@@ -1,39 +1,39 @@
 /// Prometheusメトリクス定義。
 use prometheus::{
-    register_counter_with_registry, register_gauge_with_registry, register_histogram_with_registry,
-    Counter, Gauge, Histogram, Registry,
+    Counter, Gauge, Histogram, Registry, register_counter_with_registry,
+    register_gauge_with_registry, register_histogram_with_registry,
 };
 use std::sync::Arc;
 
 /// メトリクスコレクター。
 #[derive(Debug, Clone)]
-pub(crate) struct Metrics {
+pub struct Metrics {
     // カウンター
-    pub(crate) articles_fetched: Counter,
-    pub(crate) articles_processed: Counter,
-    pub(crate) articles_dropped: Counter,
-    pub(crate) clusters_created: Counter,
-    pub(crate) summaries_generated: Counter,
-    pub(crate) jobs_completed: Counter,
-    pub(crate) jobs_failed: Counter,
-    pub(crate) retries_total: Counter,
+    pub articles_fetched: Counter,
+    pub articles_processed: Counter,
+    pub articles_dropped: Counter,
+    pub clusters_created: Counter,
+    pub summaries_generated: Counter,
+    pub jobs_completed: Counter,
+    pub jobs_failed: Counter,
+    pub retries_total: Counter,
 
     // ヒストグラム
-    pub(crate) fetch_duration: Histogram,
-    pub(crate) preprocess_duration: Histogram,
-    pub(crate) dedup_duration: Histogram,
-    pub(crate) clustering_duration: Histogram,
-    pub(crate) summary_duration: Histogram,
-    pub(crate) job_duration: Histogram,
+    pub fetch_duration: Histogram,
+    pub preprocess_duration: Histogram,
+    pub dedup_duration: Histogram,
+    pub clustering_duration: Histogram,
+    pub summary_duration: Histogram,
+    pub job_duration: Histogram,
 
     // ゲージ
-    pub(crate) active_jobs: Gauge,
-    pub(crate) queue_size: Gauge,
+    pub active_jobs: Gauge,
+    pub queue_size: Gauge,
 }
 
 impl Metrics {
     /// 新しいメトリクスコレクターを作成する。
-    pub(crate) fn new(registry: Arc<Registry>) -> Result<Self, prometheus::Error> {
+    pub fn new(registry: Arc<Registry>) -> Result<Self, prometheus::Error> {
         Ok(Self {
             articles_fetched: register_counter_with_registry!(
                 "recap_articles_fetched_total",

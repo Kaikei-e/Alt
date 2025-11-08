@@ -1,10 +1,11 @@
 /// 構造化JSON形式ログ。
 use serde_json::json;
 use tracing::{Event, Subscriber};
-use tracing_subscriber::layer::Context;
 use tracing_subscriber::Layer;
+use tracing_subscriber::layer::Context;
 
 /// 重要イベントの構造化ログレイヤー。
+#[allow(dead_code)]
 pub(crate) struct StructuredLogLayer;
 
 impl<S: Subscriber> Layer<S> for StructuredLogLayer {
