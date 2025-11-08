@@ -2,28 +2,30 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
+use crate::pipeline::evidence::EvidenceBundle;
 use crate::{
+    clients::alt_backend::{AltBackendClient, AltBackendConfig},
     clients::{NewsCreatorClient, SubworkerClient},
     config::Config,
     scheduler::JobContext,
     store::dao::RecapDao,
+    util::retry::RetryConfig,
 };
 
-pub(crate) mod dedup;
+pub mod dedup;
 pub(crate) mod dispatch;
 pub(crate) mod evidence;
 pub(crate) mod fetch;
 pub(crate) mod genre;
 pub(crate) mod genre_keywords;
 pub(crate) mod persist;
-pub(crate) mod preprocess;
-pub(crate) mod summarizer;
+pub mod preprocess;
 pub(crate) mod select;
 
 use dedup::{DedupStage, HashDedupStage};
-use dispatch::{DispatchStage, NewsCreatorDispatchStage};
-use fetch::{FetchStage, HttpFetchStage};
-use genre::{BalancedGenreStage, GenreStage};
+use dispatch::{DispatchStage, MlLlmDispatchStage};
+use fetch::{AltBackendFetchStage, FetchStage};
+use genre::{GenreStage, KeywordGenreStage};
 use persist::PersistStage;
 use preprocess::{PreprocessStage, TextPreprocessStage};
 use select::{SelectStage, SummarySelectStage};
@@ -61,14 +63,46 @@ impl PipelineOrchestrator {
         news_creator: Arc<NewsCreatorClient>,
         recap_dao: Arc<RecapDao>,
     ) -> Self {
+        let alt_backend_config = AltBackendConfig {
+            base_url: config.alt_backend_base_url().to_string(),
+            connect_timeout: config.alt_backend_connect_timeout(),
+            total_timeout: config.alt_backend_total_timeout(),
+            service_token: config.alt_backend_service_token().map(|s| s.to_string()),
+        };
+        let alt_backend_client = Arc::new(
+            AltBackendClient::new(alt_backend_config).expect("failed to create alt-backend client"),
+        );
+        let retry_config = RetryConfig {
+            max_attempts: config.http_max_retries(),
+            base_delay_ms: config.http_backoff_base_ms(),
+            max_delay_ms: config.http_backoff_cap_ms(),
+        };
+        let subworker_client = Arc::new(subworker);
+        let cpu_count = num_cpus::get();
+        let max_concurrent = (cpu_count * 3) / 2;
+        let window_days = config.recap_window_days();
+
         PipelineBuilder::new(config)
-            .with_fetch_stage(Arc::new(HttpFetchStage::new(subworker)))
-            .with_preprocess_stage(Arc::new(TextPreprocessStage::new()))
-            .with_dedup_stage(Arc::new(HashDedupStage::new()))
-            .with_genre_stage(Arc::new(BalancedGenreStage::new()))
+            .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
+                alt_backend_client,
+                Arc::clone(&recap_dao),
+                retry_config,
+                window_days,
+            )))
+            .with_preprocess_stage(Arc::new(TextPreprocessStage::new(
+                max_concurrent.max(2),
+                Arc::clone(&recap_dao),
+            )))
+            .with_dedup_stage(Arc::new(HashDedupStage::new(cpu_count.max(2), 0.8, 100)))
+            .with_genre_stage(Arc::new(KeywordGenreStage::with_defaults()))
             .with_select_stage(Arc::new(SummarySelectStage::new()))
-            .with_dispatch_stage(Arc::new(NewsCreatorDispatchStage::new(news_creator)))
-            .with_persist_stage(Arc::new(persist::LoggingPersistStage::new(recap_dao)))
+            .with_dispatch_stage(Arc::new(MlLlmDispatchStage::new(
+                subworker_client,
+                news_creator,
+            )))
+            .with_persist_stage(Arc::new(persist::FinalSectionPersistStage::new(
+                Arc::clone(&recap_dao),
+            )))
             .build()
     }
 
@@ -84,9 +118,19 @@ impl PipelineOrchestrator {
         let deduplicated = self.stages.dedup.deduplicate(job, preprocessed).await?;
         let genre_bundle = self.stages.genre.assign(job, deduplicated).await?;
         let selected = self.stages.select.select(job, genre_bundle).await?;
-        let dispatched = self.stages.dispatch.dispatch(job, selected).await?;
+        // SelectedSummaryからEvidenceBundleに変換
+        use crate::pipeline::genre::GenreBundle;
+        let evidence_bundle = EvidenceBundle::from_genre_bundle(
+            job.job_id,
+            GenreBundle {
+                job_id: selected.job_id,
+                assignments: selected.assignments,
+                genre_distribution: std::collections::HashMap::new(),
+            },
+        );
+        let dispatched = self.stages.dispatch.dispatch(job, evidence_bundle).await?;
         let persisted = self.stages.persist.persist(job, dispatched).await?;
-        tracing::debug!(job_id = %job.job_id, stored = persisted.stored, "recap pipeline completed");
+        tracing::debug!(job_id = %job.job_id, genres_stored = persisted.genres_stored, genres_failed = persisted.genres_failed, "recap pipeline completed");
         Ok(persisted)
     }
 }
@@ -147,13 +191,13 @@ impl PipelineBuilder {
                 .unwrap_or_else(|| panic!("fetch stage must be configured before build")),
             preprocess: self
                 .preprocess
-                .unwrap_or_else(|| Arc::new(TextPreprocessStage::new())),
+                .unwrap_or_else(|| panic!("preprocess stage must be configured before build")),
             dedup: self
                 .dedup
-                .unwrap_or_else(|| Arc::new(HashDedupStage::new())),
+                .unwrap_or_else(|| panic!("dedup stage must be configured before build")),
             genre: self
                 .genre
-                .unwrap_or_else(|| Arc::new(BalancedGenreStage::new())),
+                .unwrap_or_else(|| Arc::new(KeywordGenreStage::with_defaults())),
             select: self
                 .select
                 .unwrap_or_else(|| Arc::new(SummarySelectStage::new())),
@@ -162,7 +206,7 @@ impl PipelineBuilder {
                 .expect("dispatch stage must be configured before build"),
             persist: self
                 .persist
-                .unwrap_or_else(|| Arc::new(persist::UnimplementedPersistStage)),
+                .unwrap_or_else(|| panic!("persist stage must be configured before build")),
         };
 
         PipelineOrchestrator {
@@ -202,6 +246,7 @@ mod tests {
             );
             std::env::set_var("NEWS_CREATOR_BASE_URL", "http://localhost:8001/");
             std::env::set_var("SUBWORKER_BASE_URL", "http://localhost:8002/");
+            std::env::set_var("ALT_BACKEND_BASE_URL", "http://localhost:9000/");
         }
         Arc::new(Config::from_env().expect("config should load for tests"))
     }
@@ -228,7 +273,7 @@ mod tests {
             .await
             .expect("pipeline should succeed");
 
-        assert!(result.stored);
+        assert!(result.genres_stored > 0);
 
         let stages = order.lock().expect("order lock").clone();
         assert_eq!(
@@ -262,10 +307,12 @@ mod tests {
             Ok(FetchedCorpus {
                 job_id: job.job_id,
                 articles: vec![FetchedArticle {
-                    id: Uuid::new_v4(),
-                    title: "Title".into(),
-                    body: "Body".into(),
-                    language: Some("en".into()),
+                    id: Uuid::new_v4().to_string(),
+                    title: Some("Title".to_string()),
+                    body: "Body".to_string(),
+                    language: Some("en".to_string()),
+                    published_at: None,
+                    source_url: None,
                 }],
             })
         }
@@ -293,10 +340,12 @@ mod tests {
             Ok(PreprocessedCorpus {
                 job_id: job.job_id,
                 articles: vec![PreprocessedArticle {
-                    id: Uuid::new_v4(),
-                    title: "Title".into(),
-                    body: "Processed".into(),
-                    language: "en".into(),
+                    id: Uuid::new_v4().to_string(),
+                    title: Some("Title".to_string()),
+                    body: "Processed".to_string(),
+                    language: "en".to_string(),
+                    char_count: 9,
+                    is_html_cleaned: false,
                 }],
             })
         }
@@ -323,7 +372,18 @@ mod tests {
             self.order.lock().expect("order lock").push("dedup");
             Ok(DeduplicatedCorpus {
                 job_id: corpus.job_id,
-                articles: corpus.articles,
+                articles: corpus
+                    .articles
+                    .into_iter()
+                    .map(|article| super::dedup::DeduplicatedArticle {
+                        id: article.id,
+                        title: article.title,
+                        sentences: vec![article.body],
+                        sentence_hashes: vec![],
+                        language: article.language,
+                    })
+                    .collect(),
+                stats: super::dedup::DedupStats::default(),
             })
         }
     }
@@ -347,12 +407,15 @@ mod tests {
         ) -> anyhow::Result<GenreBundle> {
             assert_eq!(corpus.articles.len(), 1);
             self.order.lock().expect("order lock").push("genre");
+            let article = corpus.articles.into_iter().next().expect("article");
             Ok(GenreBundle {
                 job_id: corpus.job_id,
                 assignments: vec![GenreAssignment {
-                    genre: "science".into(),
-                    article: corpus.articles.into_iter().next().expect("article"),
+                    genres: vec!["science".to_string()],
+                    genre_scores: std::collections::HashMap::from([("science".to_string(), 10)]),
+                    article,
                 }],
+                genre_distribution: std::collections::HashMap::from([("science".to_string(), 1)]),
             })
         }
     }
@@ -397,14 +460,16 @@ mod tests {
     impl DispatchStage for RecordingDispatch {
         async fn dispatch(
             &self,
-            _job: &JobContext,
-            summary: SelectedSummary,
+            job: &JobContext,
+            evidence: EvidenceBundle,
         ) -> anyhow::Result<DispatchResult> {
-            assert_eq!(summary.assignments.len(), 1);
+            assert_eq!(evidence.genres().len(), 1);
             self.order.lock().expect("order lock").push("dispatch");
             Ok(DispatchResult {
-                job_id: summary.job_id,
-                response_id: Some("resp-123".to_string()),
+                job_id: job.job_id,
+                genre_results: std::collections::HashMap::new(),
+                success_count: 1,
+                failure_count: 0,
             })
         }
     }
@@ -427,9 +492,12 @@ mod tests {
             result: DispatchResult,
         ) -> anyhow::Result<PersistResult> {
             assert_eq!(result.job_id, job.job_id);
-            assert_eq!(result.response_id.as_deref(), Some("resp-123"));
             self.order.lock().expect("order lock").push("persist");
-            Ok(PersistResult { stored: true })
+            Ok(PersistResult {
+                job_id: job.job_id,
+                genres_stored: 1,
+                genres_failed: 0,
+            })
         }
     }
 }

@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 #[cfg(test)]
 pub(crate) static ENV_MUTEX: Lazy<std::sync::Mutex<()>> = Lazy::new(|| std::sync::Mutex::new(()));
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     http_bind: SocketAddr,
     llm_max_concurrency: NonZeroUsize,
@@ -16,6 +16,7 @@ pub struct Config {
     news_creator_base_url: String,
     subworker_base_url: String,
     alt_backend_base_url: String,
+    alt_backend_service_token: Option<String>,
     alt_backend_connect_timeout: Duration,
     alt_backend_read_timeout: Duration,
     alt_backend_total_timeout: Duration,
@@ -56,6 +57,7 @@ impl Config {
         let news_creator_base_url = env_var("NEWS_CREATOR_BASE_URL")?;
         let subworker_base_url = env_var("SUBWORKER_BASE_URL")?;
         let alt_backend_base_url = env_var("ALT_BACKEND_BASE_URL")?;
+        let alt_backend_service_token = env::var("ALT_BACKEND_SERVICE_TOKEN").ok();
 
         // HTTP timeout settings (defaults based on memo.md recommendations)
         let alt_backend_connect_timeout =
@@ -87,6 +89,7 @@ impl Config {
             news_creator_base_url,
             subworker_base_url,
             alt_backend_base_url,
+            alt_backend_service_token,
             alt_backend_connect_timeout,
             alt_backend_read_timeout,
             alt_backend_total_timeout,
@@ -133,6 +136,11 @@ impl Config {
     #[must_use]
     pub fn alt_backend_base_url(&self) -> &str {
         &self.alt_backend_base_url
+    }
+
+    #[must_use]
+    pub fn alt_backend_service_token(&self) -> Option<&str> {
+        self.alt_backend_service_token.as_deref()
     }
 
     #[must_use]

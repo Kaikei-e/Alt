@@ -5,15 +5,11 @@ use tracing::{info, warn};
 use recap_worker::{
     app::{ComponentRegistry, build_router},
     config::Config,
-    observability,
 };
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    if let Err(error) = observability::tracing::init() {
-        eprintln!("failed to initialise tracing: {error:#}");
-    }
-
+    // Tracing initialization is handled by Telemetry::new()
     let config = Config::from_env().context("failed to load configuration")?;
     let bind_addr = config.http_bind();
     let registry =
@@ -29,6 +25,9 @@ async fn main() -> anyhow::Result<()> {
     if let Err(error) = axum::serve(listener, router).await {
         warn!(error = %error, "server exited with error");
     }
+
+    // シャットダウン時にトレースをフラッシュ（将来実装）
+    // observability::shutdown_tracing();
 
     Ok(())
 }

@@ -104,6 +104,8 @@ mod tests {
                 );
                 std::env::set_var("NEWS_CREATOR_BASE_URL", "http://localhost:8001/");
                 std::env::set_var("SUBWORKER_BASE_URL", "http://localhost:8002/");
+                std::env::set_var("ALT_BACKEND_BASE_URL", "http://localhost:9000/");
+                std::env::remove_var("ALT_BACKEND_SERVICE_TOKEN");
             }
 
             Config::from_env().expect("config loads")
