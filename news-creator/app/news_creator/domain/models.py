@@ -1,7 +1,8 @@
 """Domain models for News Creator service."""
 
-from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, Union
+from dataclasses import dataclass
+from typing import Dict, Any, List, Optional, Union
+from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -69,3 +70,82 @@ class LLMGenerateResponse:
     prompt_eval_count: Optional[int] = None
     eval_count: Optional[int] = None
     total_duration: Optional[int] = None  # in nanoseconds
+
+
+class RecapClusterInput(BaseModel):
+    """Cluster information passed from recap-worker."""
+
+    cluster_id: int = Field(ge=0)
+    representative_sentences: List[str] = Field(
+        min_length=1,
+        max_length=10,
+        description="Representative sentences extracted by the subworker",
+    )
+    top_terms: Optional[List[str]] = Field(default=None)
+
+    @field_validator("representative_sentences", mode="after")
+    @classmethod
+    def strip_sentences(cls, sentences: List[str]) -> List[str]:
+        cleaned: List[str] = []
+        for sentence in sentences:
+            stripped = sentence.strip()
+            if stripped:
+                cleaned.append(stripped)
+        if not cleaned:
+            raise ValueError("representative_sentences must contain at least one sentence")
+        return cleaned
+
+
+class RecapSummaryOptions(BaseModel):
+    """Optional parameters to steer recap summary generation."""
+
+    max_bullets: Optional[int] = Field(default=5, ge=1, le=10)
+    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+
+
+class RecapSummaryRequest(BaseModel):
+    """Request payload posted by recap-worker."""
+
+    job_id: UUID
+    genre: str = Field(min_length=1)
+    clusters: List[RecapClusterInput] = Field(min_length=1, max_length=20)
+    options: Optional[RecapSummaryOptions] = None
+
+
+class RecapSummary(BaseModel):
+    """Structured summary expected by recap-worker."""
+
+    title: str = Field(min_length=1, max_length=200)
+    bullets: List[str] = Field(min_length=1, max_length=10)
+    language: str = Field(pattern="^ja$")
+
+    @field_validator("bullets", mode="after")
+    @classmethod
+    def validate_bullets(cls, bullets: List[str]) -> List[str]:
+        cleaned: List[str] = []
+        for bullet in bullets:
+            stripped = bullet.strip()
+            if stripped:
+                cleaned.append(stripped)
+        if not cleaned:
+            raise ValueError("bullets must contain at least one non-empty item")
+        return cleaned
+
+
+class RecapSummaryMetadata(BaseModel):
+    """Metadata describing the generation."""
+
+    model: str = Field(min_length=1)
+    temperature: Optional[float] = None
+    prompt_tokens: Optional[int] = Field(default=None, ge=0)
+    completion_tokens: Optional[int] = Field(default=None, ge=0)
+    processing_time_ms: Optional[int] = Field(default=None, ge=0)
+
+
+class RecapSummaryResponse(BaseModel):
+    """Response returned to recap-worker."""
+
+    job_id: UUID
+    genre: str
+    summary: RecapSummary
+    metadata: RecapSummaryMetadata

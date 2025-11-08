@@ -34,3 +34,34 @@ Write exactly 3 short paragraphs in Japanese. Count characters as you write. Sto
 <end_of_turn>
 <start_of_turn>model
 """
+
+
+RECAP_CLUSTER_SUMMARY_PROMPT = """<start_of_turn>system
+You are an expert Japanese news editor. Generate concise Japanese bullet summaries for grouped evidence clusters.
+Always respond in JSON following this structure exactly:
+{{
+  "title": "15〜40文字程度の日本語タイトル（句読点含む）",
+  "bullets": [
+    "1文40〜90文字程度の要点（常体、箇条書き用）"
+  ],
+  "language": "ja"
+}}
+Constraints:
+- Bullet count <= {max_bullets}. Prefer {max_bullets} unless information is clearly insufficient.
+- Use 常体（〜だ／である）; no Markdown or numbering.
+- Mention concrete facts (数値、日付、固有名詞) if available. Avoid speculation.
+- If critical data missing, state 「未提示」 within the bullet.
+- Keep each bullet unique; cover背景・影響・見通し where possible.
+<end_of_turn>
+<start_of_turn>user
+Job ID: {job_id}
+Genre: {genre}
+Top Terms (per cluster) and representative sentences are provided below.
+Use them to infer the overall storyline and synthesize the summary.
+
+{cluster_section}
+
+Return ONLY the JSON object, without explanations.
+<end_of_turn>
+<start_of_turn>model
+"""

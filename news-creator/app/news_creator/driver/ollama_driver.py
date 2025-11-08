@@ -1,5 +1,6 @@
 """Ollama HTTP client driver."""
 
+import asyncio
 import json
 import logging
 from typing import Dict, Any, Optional
@@ -37,7 +38,7 @@ class OllamaDriver:
 
     async def generate(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Call Ollama generate API.
+        Call Ollama generate API with retry logic.
 
         Args:
             payload: Request payload for /api/generate endpoint
@@ -47,7 +48,7 @@ class OllamaDriver:
 
         Raises:
             ValueError: If payload is invalid
-            RuntimeError: If Ollama service returns error
+            RuntimeError: If Ollama service returns error after retries
         """
         if not payload.get("prompt"):
             raise ValueError("payload must contain 'prompt'")
@@ -56,31 +57,100 @@ class OllamaDriver:
             await self.initialize()
 
         url = f"{self.config.llm_service_url.rstrip('/')}/api/generate"
-        logger.debug("Calling Ollama API", extra={"url": url, "model": payload.get("model")})
+        model = payload.get("model", "unknown")
 
-        try:
-            async with self.session.post(url, json=payload) as response:
-                text_body = await response.text()
+        # Retry configuration
+        max_retries = 3
+        base_delay = 1.0  # seconds
 
-                if response.status != 200:
-                    logger.error(
-                        "Ollama API returned error",
+        for attempt in range(max_retries + 1):
+            try:
+                if attempt > 0:
+                    # Exponential backoff with jitter
+                    delay = base_delay * (2 ** (attempt - 1))
+                    jitter = delay * 0.1  # 10% jitter
+                    wait_time = delay + jitter
+                    logger.info(
+                        f"Retrying Ollama API call (attempt {attempt + 1}/{max_retries + 1})",
                         extra={
-                            "status": response.status,
-                            "body": text_body[:500],
+                            "url": url,
+                            "model": model,
+                            "wait_time_seconds": wait_time,
                         },
                     )
-                    raise RuntimeError(f"Ollama API error: HTTP {response.status}")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.debug("Calling Ollama API", extra={"url": url, "model": model})
 
-                try:
-                    return json.loads(text_body)
-                except json.JSONDecodeError as err:
-                    logger.error("Failed to decode Ollama response", extra={"error": str(err)})
-                    raise RuntimeError("Failed to decode Ollama response") from err
+                async with self.session.post(url, json=payload) as response:
+                    text_body = await response.text()
 
-        except aiohttp.ClientError as err:
-            logger.error("Ollama API request failed", extra={"error": str(err)})
-            raise RuntimeError(f"Ollama API request failed: {err}") from err
+                    if response.status != 200:
+                        error_msg = (
+                            f"Ollama API returned error: HTTP {response.status}. "
+                            f"Response body: {text_body[:500]}"
+                        )
+                        logger.error(
+                            error_msg,
+                            extra={
+                                "status": response.status,
+                                "body": text_body[:500],
+                                "url": url,
+                                "model": model,
+                                "attempt": attempt + 1,
+                            },
+                        )
+
+                        # Retry on 5xx errors (server errors) or 502/503 (bad gateway/service unavailable)
+                        if response.status >= 500 or response.status in (502, 503):
+                            if attempt < max_retries:
+                                logger.warning(
+                                    f"Retryable error {response.status}, will retry",
+                                    extra={
+                                        "status": response.status,
+                                        "attempt": attempt + 1,
+                                        "max_retries": max_retries + 1,
+                                    },
+                                )
+                                continue
+
+                        raise RuntimeError(f"Ollama API error: HTTP {response.status} - {text_body[:200]}")
+
+                    try:
+                        return json.loads(text_body)
+                    except json.JSONDecodeError as err:
+                        error_msg = f"Failed to decode Ollama response: {str(err)}. Body: {text_body[:200]}"
+                        logger.error(error_msg, extra={"error": str(err), "body_preview": text_body[:200]})
+                        raise RuntimeError(error_msg) from err
+
+            except aiohttp.ClientError as err:
+                error_msg = f"Ollama API request failed: {err}"
+                logger.error(
+                    error_msg,
+                    extra={
+                        "error": str(err),
+                        "url": url,
+                        "model": model,
+                        "attempt": attempt + 1,
+                    },
+                )
+
+                # Retry on connection errors
+                if attempt < max_retries:
+                    logger.warning(
+                        f"Connection error, will retry",
+                        extra={
+                            "error": str(err),
+                            "attempt": attempt + 1,
+                            "max_retries": max_retries + 1,
+                        },
+                    )
+                    continue
+
+                raise RuntimeError(error_msg) from err
+
+        # Should not reach here, but just in case
+        raise RuntimeError(f"Ollama API failed after {max_retries + 1} attempts")
 
     async def list_tags(self) -> Dict[str, Any]:
         """
