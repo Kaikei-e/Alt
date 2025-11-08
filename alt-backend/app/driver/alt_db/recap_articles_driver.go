@@ -20,15 +20,13 @@ SELECT
     a.title,
     COALESCE(NULLIF(a.content, ''), '') AS fulltext,
     a.url,
-    COALESCE(a.published_at, a.created_at) AS published_at,
-    LOWER(f.language) AS lang_hint
+    a.created_at AS published_at,
+    NULL::text AS lang_hint
 FROM articles a
-LEFT JOIN feeds f ON f.id = a.feed_id
-WHERE COALESCE(a.published_at, a.created_at) BETWEEN $1 AND $2
-  AND ($3::text IS NULL OR LOWER(f.language) = $3::text)
-ORDER BY COALESCE(a.published_at, a.created_at) DESC, a.id DESC
-OFFSET $4
-LIMIT $5`
+WHERE a.created_at BETWEEN $1 AND $2
+ORDER BY a.created_at DESC, a.id DESC
+OFFSET $3
+LIMIT $4`
 
 const maxRecapArticleBytes = 2 * 1024 * 1024 // 2MB safeguard per PLAN5
 
@@ -43,12 +41,7 @@ func (r *AltDBRepository) FetchRecapArticles(ctx context.Context, query domain.R
 
 	offset := (query.Page - 1) * query.PageSize
 
-	var langParam interface{}
-	if query.LangHint != nil {
-		langParam = *query.LangHint
-	}
-
-	rows, err := r.pool.Query(ctx, recapArticlesQuery, query.From, query.To, langParam, offset, query.PageSize)
+	rows, err := r.pool.Query(ctx, recapArticlesQuery, query.From, query.To, offset, query.PageSize)
 	if err != nil {
 		logger.SafeError("recap articles query failed", "error", err, "from", query.From, "to", query.To)
 		return nil, fmt.Errorf("fetch recap articles: %w", err)
