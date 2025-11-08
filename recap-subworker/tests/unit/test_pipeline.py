@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from recap_subworker.domain.models import ArticlePayload, EvidenceRequest
+from recap_subworker.domain.models import ClusterDocument, EvidenceRequest
 from recap_subworker.infra.config import Settings
 from recap_subworker.services.clusterer import ClusterResult, HDBSCANSettings
 from recap_subworker.services.pipeline import EvidencePipeline
@@ -41,10 +41,10 @@ def test_pipeline_basic_flow():
     request = EvidenceRequest(
         job_id="job",
         genre="ai",
-        articles=[
-            ArticlePayload(
-                source_id="art1",
-                paragraphs=["Paragraph one. Second sentence."],
+        documents=[
+            ClusterDocument(
+                article_id="art1",
+                paragraphs=["Paragraph one is sufficiently lengthy to satisfy validation."],
             )
         ],
     )
