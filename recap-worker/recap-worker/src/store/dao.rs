@@ -472,15 +472,10 @@ impl RecapDao {
     ) -> Result<Option<RecapJob>> {
         let row = sqlx::query(
             r#"
-            SELECT
-                job_id,
-                MIN(started_at) AS started_at,
-                MAX(finished_at) AS finished_at
-            FROM recap_subworker_runs
-            WHERE status = 'succeeded'
-              AND finished_at IS NOT NULL
+            SELECT job_id, MAX(created_at) AS created_at
+            FROM recap_outputs
             GROUP BY job_id
-            ORDER BY finished_at DESC
+            ORDER BY MAX(created_at) DESC
             LIMIT 1
             "#,
         )
@@ -491,14 +486,13 @@ impl RecapDao {
         match row {
             Some(row) => {
                 let job_id: Uuid = row.try_get("job_id")?;
-                let started_at: DateTime<Utc> = row.try_get("started_at")?;
-                let finished_at: DateTime<Utc> = row.try_get("finished_at")?;
+                let created_at: DateTime<Utc> = row.try_get("created_at")?;
 
                 let window_duration = Duration::days(i64::from(window_days));
-                let window_end = finished_at;
+                let window_end = created_at;
                 let window_start = window_end - window_duration;
 
-                let article_row = sqlx::query(
+                let total_articles = match sqlx::query(
                     r#"
                     SELECT COUNT(*) AS article_count
                     FROM recap_job_articles
@@ -508,14 +502,33 @@ impl RecapDao {
                 .bind(job_id)
                 .fetch_one(&self.pool)
                 .await
-                .context("failed to count recap job articles")?;
-
-                let article_count: i64 = article_row.try_get("article_count")?;
-                let total_articles = i32::try_from(article_count).unwrap_or(i32::MAX);
+                {
+                    Ok(article_row) => {
+                        match article_row.try_get::<i64, _>("article_count") {
+                            Ok(article_count) => i32::try_from(article_count).unwrap_or(i32::MAX),
+                            Err(get_err) => {
+                                tracing::warn!(
+                                    "Failed to read article count for job {}: {}. Falling back to 0.",
+                                    job_id,
+                                    get_err
+                                );
+                                0
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            "Failed to count recap job articles for job {}: {}. Falling back to 0.",
+                            job_id,
+                            err
+                        );
+                        0
+                    }
+                };
 
                 Ok(Some(RecapJob {
                     job_id,
-                    started_at,
+                    started_at: created_at,
                     window_start,
                     window_end,
                     total_articles: Some(total_articles),
