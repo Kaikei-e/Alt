@@ -194,6 +194,20 @@ cargo bench
 
 ## Database Schema
 
+### Atlas Migrations
+
+`recap-db` のスキーマは `recap-migration-atlas/` で管理する Atlas マイグレーションに移行しました。Docker を使って適用する例:
+
+```bash
+docker build -t recap-db-migrator ./recap-migration-atlas/docker
+docker run --rm \
+  -e DATABASE_URL="postgres://recap_user:recap_db_pass_DO_NOT_USE_THIS@recap-db:5432/recap" \
+  -e ATLAS_REVISIONS_SCHEMA=public \
+  recap-db-migrator apply
+```
+
+既存のデータベースを引き継ぐ場合は `MIGRATE_BASELINE_VERSION=20240101000300` を指定して `status` コマンドを実行し、Atlas のガイダンスに従って baseline を設定してください。
+
 ### Key Tables
 
 - **`recap_jobs`**: Job metadata with advisory lock tracking
