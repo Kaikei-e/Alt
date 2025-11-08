@@ -24,8 +24,12 @@ CREATE INDEX IF NOT EXISTS idx_recap_job_articles_job
 
 -- 前処理の統計（CPUバウンド：重複率、文数、除外理由など）
 CREATE TABLE IF NOT EXISTS recap_preprocess_metrics (
-    job_id   UUID NOT NULL REFERENCES recap_jobs(job_id) ON DELETE CASCADE,
-    metric   TEXT NOT NULL,
-    value    JSONB NOT NULL,
-    PRIMARY KEY (job_id, metric)
+    job_id                  UUID PRIMARY KEY REFERENCES recap_jobs(job_id) ON DELETE CASCADE,
+    total_articles_fetched  INTEGER NOT NULL,
+    articles_processed      INTEGER NOT NULL,
+    articles_dropped_empty  INTEGER NOT NULL,
+    articles_html_cleaned   INTEGER NOT NULL,
+    total_characters        BIGINT NOT NULL,
+    avg_chars_per_article   DOUBLE PRECISION,
+    languages_detected      JSONB NOT NULL DEFAULT '{}'::jsonb
 );
