@@ -19,7 +19,6 @@ pub(crate) struct NewsCreatorClient {
 impl NewsCreatorClient {
     pub(crate) fn new(base_url: impl Into<String>) -> Result<Self> {
         let client = Client::builder()
-            .http2_prior_knowledge()
             .timeout(Duration::from_secs(5))
             .build()
             .context("failed to build news-creator client")?;
@@ -163,6 +162,7 @@ impl NewsCreatorClient {
         let clusters = clustering
             .clusters
             .iter()
+            .filter(|cluster| cluster.cluster_id >= 0)
             .map(|cluster| {
                 // 各クラスターから代表的な文を選択（最大N文）
                 let representative_sentences: Vec<String> = cluster
@@ -219,7 +219,7 @@ pub(crate) struct SummaryRequest {
 /// クラスター入力データ。
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ClusterInput {
-    pub(crate) cluster_id: usize,
+    pub(crate) cluster_id: i32,
     pub(crate) representative_sentences: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) top_terms: Option<Vec<String>>,

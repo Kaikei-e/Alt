@@ -56,8 +56,8 @@ pub(crate) static CLUSTERING_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
                 "properties": {
                     "cluster_id": {
                         "type": "integer",
-                        "minimum": 0,
-                        "description": "Unique cluster identifier within this job"
+                        "minimum": -1,
+                        "description": "Unique cluster identifier within this job (-1 may be used for noise clusters)"
                     },
                     "size": {
                         "type": "integer",
@@ -135,7 +135,7 @@ mod tests {
             "cluster_count": 1,
             "clusters": [
                 {
-                    "cluster_id": 0,
+                    "cluster_id": -1,
                     "size": 3,
                     "label": "ai",
                     "top_terms": ["machine", "learning", "ai"],

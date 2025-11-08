@@ -92,7 +92,7 @@ impl fmt::Display for ClusterJobStatus {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ClusterInfo {
-    pub(crate) cluster_id: usize,
+    pub(crate) cluster_id: i32,
     pub(crate) size: usize,
     #[serde(default)]
     pub(crate) label: Option<String>,
@@ -405,18 +405,19 @@ fn build_cluster_job_request(corpus: &EvidenceCorpus) -> ClusterJobRequest<'_> {
 
 fn build_paragraph(sentences: &[String]) -> String {
     if sentences.is_empty() {
-        return "No content available.".repeat(2);
+        return "No content available.\nNo content available.".to_string();
     }
 
-    let mut paragraph = sentences.join(" ");
-    let filler = sentences.last().unwrap();
+    let mut lines: Vec<String> = sentences.to_vec();
+    let filler = lines.last().cloned().unwrap();
 
-    while paragraph.len() < MIN_PARAGRAPH_LEN {
-        paragraph.push(' ');
-        paragraph.push_str(filler);
+    while lines.iter().map(|s| s.len()).sum::<usize>() + lines.len().saturating_sub(1)
+        < MIN_PARAGRAPH_LEN
+    {
+        lines.push(filler.clone());
     }
 
-    paragraph
+    lines.join("\n")
 }
 
 #[cfg(test)]
@@ -452,5 +453,26 @@ mod tests {
 
         let error = client.ping().await.expect_err("ping should fail");
         assert!(error.to_string().contains("error status"));
+    }
+
+    #[test]
+    fn build_paragraph_uses_newlines_and_extends_length() {
+        let sentences = vec![
+            "This sentence is plenty long for clustering purposes.".to_string(),
+            "Another sufficiently detailed sentence to pass validation.".to_string(),
+        ];
+
+        let paragraph = build_paragraph(&sentences);
+        assert!(paragraph.contains('\n'));
+        assert!(paragraph.len() >= MIN_PARAGRAPH_LEN);
+        let parts: Vec<&str> = paragraph.split('\n').collect();
+        assert!(parts.iter().all(|part| !part.trim().is_empty()));
+    }
+
+    #[test]
+    fn build_paragraph_falls_back_for_empty_articles() {
+        let paragraph = build_paragraph(&[]);
+        assert!(paragraph.contains('\n'));
+        assert!(paragraph.len() >= MIN_PARAGRAPH_LEN);
     }
 }
