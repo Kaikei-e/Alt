@@ -79,6 +79,7 @@ class EvidencePipeline:
         if not sentences:
             logger.info("pipeline.no-sentences")
             return response
+        logger.info("pipeline.sentences.collected", sentences=len(sentences))
 
         if len(sentences) > request.constraints.max_total_sentences:
             sentences = sentences[: request.constraints.max_total_sentences]
@@ -94,6 +95,11 @@ class EvidencePipeline:
         embed_duration = time.perf_counter() - embed_start
         EMBED_SECONDS.observe(embed_duration)
         response.diagnostics.embedding_ms = embed_duration * 1000
+        logger.info(
+            "pipeline.embedding.complete",
+            sentences=len(sentence_texts),
+            embedding_ms=response.diagnostics.embedding_ms,
+        )
 
         keep_indices, removed = selectors.prune_duplicates(
             embeddings, threshold=request.constraints.dedup_threshold
@@ -101,12 +107,23 @@ class EvidencePipeline:
         DEDUP_REMOVED.inc(removed)
         sentences = [sentences[idx] for idx in keep_indices]
         embeddings = embeddings[keep_indices]
+        logger.info(
+            "pipeline.dedup.complete",
+            kept=len(sentences),
+            removed=removed,
+        )
 
         if not sentences:
             logger.warning("pipeline.exhausted-after-dedup")
             return response
 
         cluster_params = self._compute_cluster_params(len(sentences), request.constraints)
+        logger.info(
+            "pipeline.cluster.start",
+            sentence_count=len(sentences),
+            min_cluster_size=cluster_params[0],
+            min_samples=cluster_params[1],
+        )
         cluster_start = time.perf_counter()
         cluster_result = self.clusterer.cluster(
             embeddings,
@@ -122,8 +139,16 @@ class EvidencePipeline:
             response.diagnostics.noise_ratio = noise / float(cluster_result.labels.size)
 
         unique_labels, cluster_indices = self._group_clusters(cluster_result.labels)
+        logger.info(
+            "pipeline.cluster.complete",
+            cluster_count=len(unique_labels),
+            hdbscan_ms=response.diagnostics.hdbscan_ms,
+            noise_ratio=response.diagnostics.noise_ratio,
+        )
         corpora = ["\n".join(sentences[idx].text for idx in indices) for indices in cluster_indices]
+        logger.info("pipeline.topics.start", corpora=len(corpora))
         top_terms = self._compute_topics(corpora)
+        logger.info("pipeline.topics.complete", corpora=len(corpora))
         clusters, budget_tokens = self._build_clusters(
             sentences,
             embeddings,
@@ -142,6 +167,12 @@ class EvidencePipeline:
         response.diagnostics.dedup_pairs = removed
         response.diagnostics.umap_used = cluster_result.used_umap
         response.diagnostics.hdbscan = cluster_result.params
+        logger.info(
+            "pipeline.clusters.built",
+            clusters=len(response.clusters),
+            representatives=response.evidence_budget.sentences,
+            budget_tokens=budget_tokens,
+        )
 
         REQUEST_PROCESS_SECONDS.observe(time.perf_counter() - start_time)
         logger.info(
