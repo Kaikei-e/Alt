@@ -1,10 +1,12 @@
 use anyhow::{Context, Result, ensure};
+use chrono::Duration;
 use serde_json::Value;
 use sqlx::types::{
     Json,
     chrono::{DateTime, Utc},
 };
 use sqlx::{PgPool, Row};
+use std::convert::TryFrom;
 use uuid::Uuid;
 
 use super::models::{
@@ -469,27 +471,56 @@ impl RecapDao {
         window_days: i32,
     ) -> Result<Option<RecapJob>> {
         let row = sqlx::query(
-            r"
-            SELECT job_id, started_at, window_start, window_end, total_articles
-            FROM recap_jobs
-            WHERE window_days = $1 AND status = 'completed'
-            ORDER BY started_at DESC
+            r#"
+            SELECT
+                job_id,
+                MIN(started_at) AS started_at,
+                MAX(finished_at) AS finished_at
+            FROM recap_subworker_runs
+            WHERE status = 'succeeded'
+              AND finished_at IS NOT NULL
+            GROUP BY job_id
+            ORDER BY finished_at DESC
             LIMIT 1
-            ",
+            "#,
         )
-        .bind(window_days)
         .fetch_optional(&self.pool)
         .await
         .context("failed to fetch latest completed job")?;
 
         match row {
-            Some(row) => Ok(Some(RecapJob {
-                job_id: row.try_get("job_id")?,
-                started_at: row.try_get("started_at")?,
-                window_start: row.try_get("window_start")?,
-                window_end: row.try_get("window_end")?,
-                total_articles: row.try_get("total_articles").ok(),
-            })),
+            Some(row) => {
+                let job_id: Uuid = row.try_get("job_id")?;
+                let started_at: DateTime<Utc> = row.try_get("started_at")?;
+                let finished_at: DateTime<Utc> = row.try_get("finished_at")?;
+
+                let window_duration = Duration::days(i64::from(window_days));
+                let window_end = finished_at;
+                let window_start = window_end - window_duration;
+
+                let article_row = sqlx::query(
+                    r#"
+                    SELECT COUNT(*) AS article_count
+                    FROM recap_job_articles
+                    WHERE job_id = $1
+                    "#,
+                )
+                .bind(job_id)
+                .fetch_one(&self.pool)
+                .await
+                .context("failed to count recap job articles")?;
+
+                let article_count: i64 = article_row.try_get("article_count")?;
+                let total_articles = i32::try_from(article_count).unwrap_or(i32::MAX);
+
+                Ok(Some(RecapJob {
+                    job_id,
+                    started_at,
+                    window_start,
+                    window_end,
+                    total_articles: Some(total_articles),
+                }))
+            }
             None => Ok(None),
         }
     }
@@ -497,15 +528,12 @@ impl RecapDao {
     /// Get all genres for a job with their summaries
     pub(crate) async fn get_genres_by_job(&self, job_id: Uuid) -> Result<Vec<GenreWithSummary>> {
         let rows = sqlx::query(
-            r"
-            SELECT
-                rs.genre as genre_name,
-                rr.summary_ja
-            FROM recap_sections rs
-            LEFT JOIN recap_responses rr ON rs.response_id = rr.id
-            WHERE rs.job_id = $1
-            ORDER BY rs.genre
-            ",
+            r#"
+            SELECT genre AS genre_name, summary_ja
+            FROM recap_outputs
+            WHERE job_id = $1
+            ORDER BY genre
+            "#,
         )
         .bind(job_id)
         .fetch_all(&self.pool)
@@ -552,12 +580,12 @@ impl RecapDao {
 
         // Get clusters
         let cluster_rows = sqlx::query(
-            r"
-            SELECT cluster_id, top_terms
+            r#"
+            SELECT id, cluster_id, top_terms
             FROM recap_subworker_clusters
             WHERE run_id = $1
             ORDER BY cluster_id
-            ",
+            "#,
         )
         .bind(run_id)
         .fetch_all(&self.pool)
@@ -566,47 +594,59 @@ impl RecapDao {
 
         let mut clusters = Vec::new();
         for cluster_row in cluster_rows {
+            let cluster_row_id: i64 = cluster_row.try_get("id")?;
             let cluster_id: i32 = cluster_row.try_get("cluster_id")?;
             let top_terms_json: Json<Value> = cluster_row.try_get("top_terms")?;
             let top_terms: Option<Vec<String>> = serde_json::from_value(top_terms_json.0).ok();
 
             // Get evidence (sentences) for this cluster
             let evidence_rows = sqlx::query(
-                r"
+                r#"
                 SELECT
-                    s.article_id,
-                    ra.title,
-                    ra.source_url,
-                    ra.published_at,
-                    ra.lang_hint
+                    s.source_article_id,
+                    MAX(ra.title) AS title,
+                    MAX(ra.source_url) AS source_url,
+                    MAX(ra.published_at) AS published_at,
+                    MAX(ra.lang_hint) AS lang_hint
                 FROM recap_subworker_sentences s
-                JOIN recap_raw_articles ra ON s.article_id = ra.article_id AND s.job_id = ra.job_id
-                WHERE s.run_id = $1 AND s.cluster_id = $2
-                GROUP BY s.article_id, ra.title, ra.source_url, ra.published_at, ra.lang_hint
-                ORDER BY ra.published_at DESC
+                LEFT JOIN recap_job_articles ra
+                    ON ra.job_id = $2 AND ra.article_id = s.source_article_id
+                WHERE s.cluster_row_id = $1
+                GROUP BY s.source_article_id
+                ORDER BY MAX(ra.published_at) DESC NULLS LAST, s.source_article_id
                 LIMIT 10
-                ",
+                "#,
             )
-            .bind(run_id)
-            .bind(cluster_id)
+            .bind(cluster_row_id)
+            .bind(job_id)
             .fetch_all(&self.pool)
             .await
             .context("failed to fetch evidence")?;
 
             let mut evidence = Vec::new();
             for ev_row in evidence_rows {
+                let title = ev_row
+                    .try_get::<Option<String>, _>("title")
+                    .unwrap_or(None)
+                    .unwrap_or_default();
+                let source_url = ev_row
+                    .try_get::<Option<String>, _>("source_url")
+                    .unwrap_or(None)
+                    .unwrap_or_default();
+                let published_at = ev_row
+                    .try_get::<Option<DateTime<Utc>>, _>("published_at")
+                    .unwrap_or(None)
+                    .unwrap_or_else(|| Utc::now());
+                let lang = ev_row
+                    .try_get::<Option<String>, _>("lang_hint")
+                    .unwrap_or(None);
+
                 evidence.push(ClusterEvidence {
-                    article_id: ev_row.try_get("article_id")?,
-                    title: ev_row
-                        .try_get::<Option<String>, _>("title")?
-                        .unwrap_or_default(),
-                    source_url: ev_row
-                        .try_get::<Option<String>, _>("source_url")?
-                        .unwrap_or_default(),
-                    published_at: ev_row
-                        .try_get::<Option<DateTime<Utc>>, _>("published_at")?
-                        .unwrap_or_else(|| Utc::now()),
-                    lang: ev_row.try_get("lang_hint").ok(),
+                    article_id: ev_row.try_get::<String, _>("source_article_id")?,
+                    title,
+                    source_url,
+                    published_at,
+                    lang,
                 });
             }
 
