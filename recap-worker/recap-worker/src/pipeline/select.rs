@@ -28,7 +28,7 @@ pub(crate) struct SummarySelectStage {
 impl SummarySelectStage {
     pub(crate) fn new() -> Self {
         Self {
-            max_articles_per_genre: 5,
+            max_articles_per_genre: 20,
         }
     }
 

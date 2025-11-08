@@ -31,17 +31,19 @@ const SUBWORKER_TIMEOUT_SECS: u64 = 120;
 const MIN_DOCUMENTS_PER_GENRE: usize = 10;
 
 /// クラスタリングレスポンス (POST/GET `/v1/runs`).
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ClusteringResponse {
     pub(crate) run_id: i64,
-    pub(crate) _job_id: Uuid,
+    pub(crate) job_id: Uuid,
     pub(crate) genre: String,
     pub(crate) status: ClusterJobStatus,
     #[serde(default)]
-    pub(crate) _cluster_count: usize,
+    pub(crate) cluster_count: usize,
+    #[serde(default)]
     pub(crate) clusters: Vec<ClusterInfo>,
     #[serde(default)]
-    pub(crate) _diagnostics: Value,
+    pub(crate) diagnostics: Value,
 }
 
 impl ClusteringResponse {
@@ -87,33 +89,34 @@ impl fmt::Display for ClusterJobStatus {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ClusterInfo {
     pub(crate) cluster_id: usize,
+    pub(crate) size: usize,
     #[serde(default)]
-    pub(crate) _size: usize,
-    #[serde(default)]
-    pub(crate) _label: Option<String>,
+    pub(crate) label: Option<String>,
     #[serde(default)]
     pub(crate) top_terms: Vec<String>,
     #[serde(default)]
-    pub(crate) _stats: Value,
+    pub(crate) stats: Value,
     #[serde(default)]
     pub(crate) representatives: Vec<ClusterRepresentative>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ClusterRepresentative {
     #[serde(default)]
-    pub(crate) _article_id: String,
+    pub(crate) article_id: String,
     #[serde(default)]
-    pub(crate) _paragraph_idx: Option<i32>,
+    pub(crate) paragraph_idx: Option<i32>,
     #[serde(rename = "sentence_text")]
     pub(crate) text: String,
     #[serde(default)]
-    pub(crate) _lang: Option<String>,
+    pub(crate) lang: Option<String>,
     #[serde(default)]
-    pub(crate) _score: Option<f32>,
+    pub(crate) score: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
