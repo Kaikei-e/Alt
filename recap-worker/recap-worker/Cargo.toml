@@ -5,6 +5,10 @@ edition = "2024"
 description = "Alt 7days Recap batch worker (CPU-centric) with Axum control plane and Prometheus/OTLP telemetry."
 repository = "https://github.com/Kaikei-e/Alt"
 
+[features]
+default = []
+with-sudachi = []
+
 [dependencies]
 anyhow = "1.0"
 async-trait = "0.1"
@@ -43,6 +47,7 @@ prometheus = "0.13"
 rayon = "1.11"
 rustc-hash = "1.1"
 smallvec = "1.13"
+regex = "1.11"
 
 [dev-dependencies]
 futures = "0.3"
