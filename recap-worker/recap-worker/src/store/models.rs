@@ -273,3 +273,39 @@ impl RecapFinalSection {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub(crate) struct RecapOutput {
+    pub(crate) job_id: Uuid,
+    pub(crate) genre: String,
+    pub(crate) response_id: String,
+    pub(crate) title_ja: String,
+    pub(crate) summary_ja: String,
+    pub(crate) bullets_ja: Value,
+    pub(crate) body_json: Value,
+}
+
+#[allow(dead_code)]
+impl RecapOutput {
+    #[must_use]
+    pub(crate) fn new(
+        job_id: Uuid,
+        genre: impl Into<String>,
+        response_id: impl Into<String>,
+        title_ja: impl Into<String>,
+        summary_ja: impl Into<String>,
+        bullets_ja: Value,
+        body_json: Value,
+    ) -> Self {
+        Self {
+            job_id,
+            genre: genre.into(),
+            response_id: response_id.into(),
+            title_ja: title_ja.into(),
+            summary_ja: summary_ja.into(),
+            bullets_ja,
+            body_json,
+        }
+    }
+}

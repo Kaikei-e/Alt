@@ -197,6 +197,40 @@ impl RecapDao {
         Ok(row.get("id"))
     }
 
+    /// 生成済みリキャップ出力を保存する。
+    #[allow(dead_code)]
+    pub async fn upsert_recap_output(
+        &self,
+        output: &crate::store::models::RecapOutput,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO recap_outputs
+                (job_id, genre, response_id, title_ja, summary_ja, bullets_ja, body_json)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (job_id, genre) DO UPDATE SET
+                response_id = EXCLUDED.response_id,
+                title_ja = EXCLUDED.title_ja,
+                summary_ja = EXCLUDED.summary_ja,
+                bullets_ja = EXCLUDED.bullets_ja,
+                body_json = EXCLUDED.body_json,
+                updated_at = NOW()
+            "#,
+        )
+        .bind(output.job_id)
+        .bind(&output.genre)
+        .bind(&output.response_id)
+        .bind(&output.title_ja)
+        .bind(&output.summary_ja)
+        .bind(Json(output.bullets_ja.clone()))
+        .bind(Json(output.body_json.clone()))
+        .execute(&self.pool)
+        .await
+        .context("failed to upsert recap_outputs record")?;
+
+        Ok(())
+    }
+
     #[allow(dead_code)]
     pub(crate) async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> Result<i64> {
         ensure!(
@@ -430,7 +464,8 @@ impl RecapDao {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::models::PersistedSentence;
+    use crate::store::models::{PersistedSentence, RecapOutput};
+    use serde_json::Value;
     use sqlx::{Executor, Row, postgres::PgPoolOptions};
     use uuid::Uuid;
 
@@ -484,6 +519,19 @@ mod tests {
                 job_id UUID NOT NULL,
                 genre TEXT NOT NULL,
                 response_id TEXT,
+                PRIMARY KEY (job_id, genre)
+            );
+
+            CREATE TABLE IF NOT EXISTS recap_outputs (
+                job_id UUID NOT NULL,
+                genre TEXT NOT NULL,
+                response_id TEXT NOT NULL,
+                title_ja TEXT NOT NULL,
+                summary_ja TEXT NOT NULL,
+                bullets_ja JSONB NOT NULL,
+                body_json JSONB NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY (job_id, genre)
             );
             ",
@@ -551,6 +599,61 @@ mod tests {
 
         let response_id: Option<String> = row.get("response_id");
         assert_eq!(response_id.as_deref(), Some("resp-1"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn upsert_recap_output_inserts() -> Result<()> {
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&database_url)
+            .await?;
+        setup_schema(&pool).await?;
+        let dao = RecapDao::new(pool.clone());
+
+        let job_id = Uuid::new_v4();
+        let output = RecapOutput::new(
+            job_id,
+            "science",
+            "resp-123",
+            "サマリータイトル",
+            "箇条書き1\n箇条書き2",
+            serde_json::json!([
+                { "text": "箇条書き1", "sources": [] },
+                { "text": "箇条書き2", "sources": [] }
+            ]),
+            serde_json::json!({
+                "title": "サマリータイトル",
+                "bullets": ["箇条書き1", "箇条書き2"],
+                "language": "ja"
+            }),
+        );
+
+        dao.upsert_recap_output(&output).await?;
+
+        let row = sqlx::query(
+            "SELECT response_id, title_ja, summary_ja, bullets_ja, body_json \
+             FROM recap_outputs WHERE job_id = $1 AND genre = $2",
+        )
+        .bind(job_id)
+        .bind("science")
+        .fetch_one(&pool)
+        .await?;
+
+        let response_id: String = row.get("response_id");
+        let title: String = row.get("title_ja");
+        let summary: String = row.get("summary_ja");
+        let bullets: Value = row.get("bullets_ja");
+        let body: Value = row.get("body_json");
+
+        assert_eq!(response_id, "resp-123");
+        assert_eq!(title, "サマリータイトル");
+        assert_eq!(summary, "箇条書き1\n箇条書き2");
+        assert_eq!(bullets["0"]["text"], "箇条書き1");
+        assert_eq!(body["title"], "サマリータイトル");
         Ok(())
     }
 
