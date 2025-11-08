@@ -1,0 +1,73 @@
+[
+  {
+    "id": "ai-ja-001",
+    "lang": "ja",
+    "title": "生成AIで自律走行アルゴリズムを刷新",
+    "body": "国内スタートアップが生成型AIと自動運転制御を統合した新しい車載OSを発表し、サプライヤー各社が試験導入を始めた。",
+    "expected_genres": ["ai", "tech", "business"]
+  },
+  {
+    "id": "business-ja-002",
+    "lang": "ja",
+    "title": "大型資本提携で物流再編",
+    "body": "商社とEC事業者が共同持株会社を立ち上げ、調達コストの圧縮と決算の安定化を狙う。",
+    "expected_genres": ["business", "world"]
+  },
+  {
+    "id": "politics-ja-003",
+    "lang": "ja",
+    "title": "与野党が公共投資の法案に合意",
+    "body": "与党と野党の政調会長が深夜まで協議し、次期通常国会でインフラ政策を巡る修正案を共同提出することで合意した。",
+    "expected_genres": ["politics", "world"]
+  },
+  {
+    "id": "health-ja-004",
+    "lang": "ja",
+    "title": "希少疾病薬の治験で国内初の成功例",
+    "body": "大学病院の臨床チームが希少疾患の患者を対象にゲノム編集療法を実施し、副作用の抑制と症状改善を示した。",
+    "expected_genres": ["health", "science"]
+  },
+  {
+    "id": "sports-ja-005",
+    "lang": "ja",
+    "title": "女子サッカー代表が国際大会で決勝進出",
+    "body": "新監督のもとで戦術を一新した日本代表は、準決勝でPK戦を制し世界ランキング上位の強豪を破った。",
+    "expected_genres": ["sports"]
+  },
+  {
+    "id": "science-ja-006",
+    "lang": "ja",
+    "title": "量子センサーで火山活動をリアルタイム観測",
+    "body": "研究チームが量子干渉計を活用した観測網を設置し、マグマの微細な動きを可視化することで噴火予測の精度を高めた。",
+    "expected_genres": ["science", "tech"]
+  },
+  {
+    "id": "entertainment-ja-007",
+    "lang": "ja",
+    "title": "アニメ映画が世界興収記録を更新",
+    "body": "劇伴を担当した作曲家はストリーミングサービスでの配信拡大を見据えてサウンドトラックを再リマスターした。",
+    "expected_genres": ["entertainment", "business"]
+  },
+  {
+    "id": "tech-en-008",
+    "lang": "en",
+    "title": "Edge platform introduces confidential computing runtime",
+    "body": "The cloud provider shipped a confidential computing runtime that isolates workloads through memory encryption and zero trust attestation.",
+    "expected_genres": ["tech", "security"]
+  },
+  {
+    "id": "ai-en-009",
+    "lang": "en",
+    "title": "Multimodal reasoning agent breaks benchmark records",
+    "body": "A new transformer-based agent scores state of the art on scientific question answering and autonomous coding benchmarks.",
+    "expected_genres": ["ai", "science"]
+  },
+  {
+    "id": "world-en-010",
+    "lang": "en",
+    "title": "Summit brokers ceasefire framework",
+    "body": "Diplomats from multiple nations negotiated humanitarian corridors and pledged reconstruction aid after months of conflict.",
+    "expected_genres": ["world", "politics"]
+  }
+]
+
