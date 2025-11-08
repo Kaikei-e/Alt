@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
@@ -82,14 +83,19 @@ async def test_generate_summary_success():
 
 
 @pytest.mark.asyncio
-async def test_generate_summary_invalid_json_raises_runtime_error():
+async def test_generate_summary_falls_back_to_text_when_no_json():
     config = Mock()
     config.summary_num_predict = 300
     config.llm_temperature = 0.2
 
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
-        response="### no json payload ###",
+        response="""
+        レポート：主要な出来事
+        - 経済の回復が進展
+        - 政府は追加予算を承認
+        - 市場は先行き不透明と評価
+        """,
         model="gemma3:4b",
     )
 
@@ -106,6 +112,48 @@ async def test_generate_summary_invalid_json_raises_runtime_error():
 
     usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
 
-    with pytest.raises(RuntimeError):
-        await usecase.generate_summary(request)
+    response = await usecase.generate_summary(request)
+
+    assert response.summary.title.startswith("レポート")
+    assert response.summary.language == "ja"
+    assert len(response.summary.bullets) >= 1
+
+
+@pytest.mark.asyncio
+async def test_generate_summary_trims_excess_bullets():
+    config = Mock()
+    config.summary_num_predict = 400
+    config.llm_temperature = 0.5
+
+    bullets = [f"要点{i}" for i in range(1, 13)]
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=json.dumps(
+            {
+                "title": "要約",
+                "bullets": bullets,
+                "language": "ja",
+            }
+        ),
+        model="gemma3:4b",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="science",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=["Example sentence."],
+            )
+        ],
+        options=RecapSummaryOptions(max_bullets=8, temperature=0.3),
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+
+    response = await usecase.generate_summary(request)
+
+    assert len(response.summary.bullets) == 8
 

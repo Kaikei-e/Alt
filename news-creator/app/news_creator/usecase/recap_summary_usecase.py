@@ -57,7 +57,7 @@ class RecapSummaryUsecase:
             options=llm_options,
         )
 
-        summary_payload = self._parse_summary_json(llm_response.response)
+        summary_payload = self._parse_summary_json(llm_response.response, max_bullets)
         summary = RecapSummary(**summary_payload)
 
         metadata = RecapSummaryMetadata(
@@ -113,21 +113,36 @@ class RecapSummaryUsecase:
             return request.options.max_bullets
         return 5
 
-    def _parse_summary_json(self, content: str) -> Dict[str, Any]:
+    def _parse_summary_json(self, content: str, max_bullets: int) -> Dict[str, Any]:
         if not content:
             raise RuntimeError("LLM returned empty response for recap summary")
 
-        candidate = self._extract_json_object(content)
+        candidate: Optional[str] = None
+        try:
+            candidate = self._extract_json_object(content)
+        except RuntimeError as exc:
+            logger.warning(
+                "Structured JSON not found in recap summary response; falling back to heuristic parsing",
+                extra={"content_preview": content[:200]},
+            )
+            fallback = self._fallback_summary_from_text(content, max_bullets)
+            return self._sanitize_summary_payload(fallback, max_bullets)
+
+        if candidate is None:
+            fallback = self._fallback_summary_from_text(content, max_bullets)
+            return self._sanitize_summary_payload(fallback, max_bullets)
+
         try:
             parsed = json.loads(candidate)
         except json.JSONDecodeError as exc:
             logger.error("Failed to parse recap summary JSON", extra={"content": content})
-            raise RuntimeError("LLM returned invalid JSON for recap summary") from exc
+            fallback = self._fallback_summary_from_text(content, max_bullets)
+            return self._sanitize_summary_payload(fallback, max_bullets)
 
         if not isinstance(parsed, dict):
             raise RuntimeError("LLM response must be a JSON object")
 
-        return parsed
+        return self._sanitize_summary_payload(parsed, max_bullets)
 
     def _extract_json_object(self, text: str) -> str:
         first_brace = text.find("{")
@@ -135,6 +150,86 @@ class RecapSummaryUsecase:
         if first_brace == -1 or last_brace == -1 or first_brace >= last_brace:
             raise RuntimeError("Could not locate JSON object in LLM response")
         return text[first_brace : last_brace + 1]
+
+    def _fallback_summary_from_text(self, text: str, max_bullets: int) -> Dict[str, Any]:
+        lines = [line.strip() for line in text.splitlines()]
+        non_empty = [line for line in lines if line]
+
+        if not non_empty:
+            raise RuntimeError("LLM returned empty response for recap summary")
+
+        title = non_empty[0][:200]
+        bullet_candidates: List[str] = []
+
+        for line in non_empty[1:]:
+            cleaned = line.lstrip("-*•●・ 　")
+            if cleaned:
+                bullet_candidates.append(cleaned)
+
+        if not bullet_candidates:
+            # Use remaining lines if the first line was the only content
+            bullet_candidates = [
+                line.lstrip("-*•●・ 　") for line in non_empty[1:max_bullets + 1] if line
+            ]
+        if not bullet_candidates:
+            bullet_candidates = [title]
+
+        return {
+            "title": title,
+            "bullets": bullet_candidates,
+            "language": "ja",
+        }
+
+    def _sanitize_summary_payload(
+        self,
+        payload: Dict[str, Any],
+        max_bullets: int,
+    ) -> Dict[str, Any]:
+        summary_section = payload.get("summary")
+        if isinstance(summary_section, dict):
+            payload = summary_section
+
+        title = payload.get("title")
+        if not isinstance(title, str) or not title.strip():
+            title = "主要トピックのまとめ"
+        title = title.strip()[:200]
+
+        bullets_field = payload.get("bullets")
+        if isinstance(bullets_field, list):
+            bullets = [
+                str(bullet).strip()
+                for bullet in bullets_field
+                if isinstance(bullet, (str, int, float)) and str(bullet).strip()
+            ]
+        else:
+            bullets = []
+
+        language = payload.get("language")
+        if not isinstance(language, str) or not language.strip():
+            language = "ja"
+
+        max_allowed = min(max(1, max_bullets), 10)
+        if len(bullets) > max_allowed:
+            logger.debug(
+                "Trimming recap summary bullets to schema limit",
+                extra={
+                    "original_count": len(bullets),
+                    "trimmed_to": max_allowed,
+                },
+            )
+            bullets = bullets[:max_allowed]
+
+        # Ensure at least one bullet is present
+        if not bullets:
+            bullets = [title]
+
+        sanitized = {
+            "title": title,
+            "bullets": [bullet[:500] for bullet in bullets],
+            "language": language,
+        }
+
+        return sanitized
 
     @staticmethod
     def _nanoseconds_to_milliseconds(value: Optional[int]) -> Optional[int]:
