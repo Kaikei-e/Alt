@@ -1,43 +1,15 @@
 "use client";
 
 import { Box, Flex, Text } from "@chakra-ui/react";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import ErrorState from "@/app/mobile/feeds/_components/ErrorState";
 import EmptyFeedState from "@/components/mobile/EmptyFeedState";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import RecapTimeline from "@/components/mobile/recap/RecapTimeline";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
-import { useAuth } from "@/contexts/auth-context";
 import { useRecapData } from "@/hooks/useRecapData";
 
 export default function RecapSevenDaysPage() {
-  const router = useRouter();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { data, isInitialLoading, error, retry } = useRecapData();
-
-  // 認証チェック（Middlewareが主、クライアント側は補助）
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.push("/auth/login");
-    }
-  }, [isAuthenticated, authLoading, router]);
-
-  // Auth loading
-  if (authLoading) {
-    return (
-      <Box minH="100dvh" position="relative">
-        <Box p={5} maxW="container.sm" mx="auto" height="100dvh" data-testid="recap-auth-loading">
-          <Flex direction="column" gap={4}>
-            {Array.from({ length: 3 }).map((_, index) => (
-              <SkeletonFeedCard key={`skeleton-${index}`} />
-            ))}
-          </Flex>
-        </Box>
-        <FloatingMenu />
-      </Box>
-    );
-  }
 
   // Initial loading skeleton
   if (isInitialLoading) {

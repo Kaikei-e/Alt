@@ -54,7 +54,7 @@ const RecapCard = ({ genre }: RecapCardProps) => {
           {/* トピックChips */}
           {genre.topTerms.length > 0 && (
             <Flex gap={2} wrap="wrap">
-              {genre.topTerms.slice(0, 3).map((term, idx) => (
+              {genre.topTerms.slice(0, 5).map((term, idx) => (
                 <Box
                   key={idx}
                   px={3}
