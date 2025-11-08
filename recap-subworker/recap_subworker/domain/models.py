@@ -3,36 +3,99 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Iterable, Literal, Optional
+from typing import Any, Iterable, Literal, Optional
 
-from pydantic import BaseModel, Field, HttpUrl, ConfigDict
+from pydantic import BaseModel, Field, HttpUrl, ConfigDict, field_validator
 
 
-class ArticlePayload(BaseModel):
-    """Incoming article with paragraphs and metadata."""
+RunStatusLiteral = Literal["running", "succeeded", "partial", "failed"]
 
-    model_config = ConfigDict(str_strip_whitespace=True)
 
-    source_id: str = Field(..., max_length=128)
-    url: Optional[HttpUrl] = Field(default=None)
-    lang_hint: Optional[str] = Field(default=None, max_length=8)
+class ClusterJobParams(BaseModel):
+    """Incoming clustering parameters exposed via the public API."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_sentences_total: int = Field(..., ge=100, le=10_000)
+    umap_n_components: int = Field(..., ge=0, le=128)
+    hdbscan_min_cluster_size: int = Field(..., ge=3, le=500)
+    mmr_lambda: float = Field(..., ge=0.0, le=1.0)
+
+
+class ClusterDocument(BaseModel):
+    """HTTP payload describing an article/document to be clustered."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    article_id: str = Field(..., max_length=128)
     title: Optional[str] = Field(default=None, max_length=512)
+    lang_hint: Optional[str] = Field(default=None, max_length=8)
     published_at: Optional[datetime] = Field(default=None)
-    paragraphs: list[str] = Field(default_factory=list, min_length=1)
+    source_url: Optional[HttpUrl] = Field(default=None)
+    paragraphs: list[str] = Field(..., min_length=1)
+
+    @field_validator("paragraphs")
+    @classmethod
+    def _validate_paragraphs(cls, value: list[str]) -> list[str]:
+        cleaned = [paragraph.strip() for paragraph in value if paragraph and paragraph.strip()]
+        if not cleaned or any(len(paragraph) < 30 for paragraph in cleaned):
+            raise ValueError("paragraph text must be at least 30 characters")
+        return cleaned
+
+
+class ClusterJobPayload(BaseModel):
+    """Request body for POST /v1/runs."""
+
+    params: ClusterJobParams
+    documents: list[ClusterDocument] = Field(..., min_length=10)
+
+
+class ClusterSentencePayload(BaseModel):
+    """Representative sentence returned to recap-worker."""
+
+    article_id: str
+    paragraph_idx: Optional[int] = Field(default=None, ge=0)
+    sentence_text: str = Field(..., min_length=20)
+    lang: Optional[str] = Field(default=None, max_length=8)
+    score: float = Field(default=0.0)
+
+
+class ClusterInfo(BaseModel):
+    """Cluster information serialized in API responses."""
+
+    cluster_id: int
+    size: int = Field(..., ge=1)
+    label: Optional[str] = Field(default=None, max_length=128)
+    top_terms: list[str] = Field(default_factory=list)
+    stats: dict[str, Any] = Field(default_factory=dict)
+    representatives: list[ClusterSentencePayload] = Field(default_factory=list)
+
+
+class ClusterJobResponse(BaseModel):
+    """Response payload for GET/POST run endpoints."""
+
+    run_id: int
+    job_id: str
+    genre: str
+    status: RunStatusLiteral
+    cluster_count: int = Field(..., ge=0)
+    clusters: list[ClusterInfo] = Field(default_factory=list)
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
 class EvidenceConstraints(BaseModel):
     """Processing constraints supplied by the caller."""
 
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     max_sentences_per_cluster: int = Field(7, ge=1, le=50)
     max_total_sentences: int = Field(120, ge=1, le=20_000)
     max_tokens_budget: int = Field(6000, ge=256, le=200_000)
     dedup_threshold: float = Field(0.92, ge=0.0, le=1.0)
     mmr_lambda: float = Field(0.3, ge=0.0, le=1.0)
-    heading_terms: int = Field(5, ge=1, le=20)
-    umap: dict = Field(default_factory=lambda: {"enabled": False})
+    hdbscan_min_cluster_size: int = Field(5, ge=2)
+    hdbscan_min_samples: Optional[int] = Field(default=None, ge=1)
+    umap_n_components: int = Field(0, ge=0)
 
 
 class TelemetryEnvelope(BaseModel):
@@ -49,12 +112,12 @@ class EvidenceRequest(BaseModel):
 
     job_id: str = Field(..., max_length=64)
     genre: str = Field(..., max_length=32)
-    articles: list[ArticlePayload] = Field(..., min_length=1)
+    documents: list[ClusterDocument] = Field(..., min_length=1)
     constraints: EvidenceConstraints = Field(default_factory=EvidenceConstraints)
     telemetry: Optional[TelemetryEnvelope] = Field(default=None)
 
     def total_paragraphs(self) -> int:
-        return sum(len(article.paragraphs) for article in self.articles)
+        return sum(len(document.paragraphs) for document in self.documents)
 
 
 class RepresentativeSource(BaseModel):
@@ -121,6 +184,10 @@ class Diagnostics(BaseModel):
     umap_used: bool = False
     hdbscan: Optional[HDBSCANSettings] = None
     partial: bool = False
+    total_sentences: int = 0
+    embedding_ms: Optional[float] = None
+    hdbscan_ms: Optional[float] = None
+    noise_ratio: Optional[float] = None
 
 
 class EvidenceResponse(BaseModel):
