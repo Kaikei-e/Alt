@@ -3,6 +3,42 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+// Job model for completed recap jobs
+#[derive(Debug, Clone)]
+pub(crate) struct RecapJob {
+    pub(crate) job_id: Uuid,
+    pub(crate) started_at: DateTime<Utc>,
+    pub(crate) window_start: DateTime<Utc>,
+    pub(crate) window_end: DateTime<Utc>,
+    pub(crate) total_articles: Option<i32>,
+}
+
+// Genre with summary
+#[derive(Debug, Clone)]
+pub(crate) struct GenreWithSummary {
+    pub(crate) job_id: Uuid,
+    pub(crate) genre_name: String,
+    pub(crate) summary_ja: Option<String>,
+}
+
+// Cluster with evidence
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ClusterWithEvidence {
+    pub(crate) cluster_id: i32,
+    pub(crate) top_terms: Option<Vec<String>>,
+    pub(crate) evidence: Vec<ClusterEvidence>,
+}
+
+// Evidence link
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ClusterEvidence {
+    pub(crate) article_id: String,
+    pub(crate) title: String,
+    pub(crate) source_url: String,
+    pub(crate) published_at: DateTime<Utc>,
+    pub(crate) lang: Option<String>,
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PersistedGenre {

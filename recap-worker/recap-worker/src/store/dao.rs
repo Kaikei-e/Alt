@@ -5,8 +5,8 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use super::models::{
-    DiagnosticEntry, NewSubworkerRun, PersistedCluster, PersistedGenre, RawArticle,
-    SubworkerRunStatus,
+    ClusterEvidence, ClusterWithEvidence, DiagnosticEntry, GenreWithSummary, NewSubworkerRun,
+    PersistedCluster, PersistedGenre, RawArticle, RecapJob, SubworkerRunStatus,
 };
 use crate::util::idempotency::try_acquire_job_lock;
 
@@ -458,6 +458,163 @@ impl RecapDao {
         .context("failed to upsert recap section")?;
 
         Ok(())
+    }
+
+    /// Get the latest completed recap job for a given window
+    pub(crate) async fn get_latest_completed_job(
+        &self,
+        window_days: i32,
+    ) -> Result<Option<RecapJob>> {
+        let row = sqlx::query(
+            r"
+            SELECT job_id, started_at, window_start, window_end, total_articles
+            FROM recap_jobs
+            WHERE window_days = $1 AND status = 'completed'
+            ORDER BY started_at DESC
+            LIMIT 1
+            ",
+        )
+        .bind(window_days)
+        .fetch_optional(&self.pool)
+        .await
+        .context("failed to fetch latest completed job")?;
+
+        match row {
+            Some(row) => Ok(Some(RecapJob {
+                job_id: row.try_get("job_id")?,
+                started_at: row.try_get("started_at")?,
+                window_start: row.try_get("window_start")?,
+                window_end: row.try_get("window_end")?,
+                total_articles: row.try_get("total_articles").ok(),
+            })),
+            None => Ok(None),
+        }
+    }
+
+    /// Get all genres for a job with their summaries
+    pub(crate) async fn get_genres_by_job(&self, job_id: Uuid) -> Result<Vec<GenreWithSummary>> {
+        let rows = sqlx::query(
+            r"
+            SELECT
+                rs.job_id,
+                rs.genre as genre_name,
+                rr.summary_ja
+            FROM recap_sections rs
+            LEFT JOIN recap_responses rr ON rs.response_id = rr.id
+            WHERE rs.job_id = $1
+            ORDER BY rs.genre
+            ",
+        )
+        .bind(job_id)
+        .fetch_all(&self.pool)
+        .await
+        .context("failed to fetch genres by job")?;
+
+        let mut genres = Vec::new();
+        for row in rows {
+            genres.push(GenreWithSummary {
+                job_id: row.try_get("job_id")?,
+                genre_name: row.try_get("genre_name")?,
+                summary_ja: row.try_get("summary_ja").ok(),
+            });
+        }
+
+        Ok(genres)
+    }
+
+    /// Get all clusters for a genre with evidence
+    pub(crate) async fn get_clusters_by_genre(
+        &self,
+        job_id: Uuid,
+        genre_name: &str,
+    ) -> Result<Vec<ClusterWithEvidence>> {
+        // First get the run_id for this genre
+        let run_row = sqlx::query(
+            r"
+            SELECT id
+            FROM recap_subworker_runs
+            WHERE job_id = $1 AND genre = $2 AND status = 'succeeded'
+            ORDER BY started_at DESC
+            LIMIT 1
+            ",
+        )
+        .bind(job_id)
+        .bind(genre_name)
+        .fetch_optional(&self.pool)
+        .await
+        .context("failed to fetch subworker run")?;
+
+        let run_id: i64 = match run_row {
+            Some(row) => row.try_get("id")?,
+            None => return Ok(Vec::new()),
+        };
+
+        // Get clusters
+        let cluster_rows = sqlx::query(
+            r"
+            SELECT cluster_id, top_terms
+            FROM recap_subworker_clusters
+            WHERE run_id = $1
+            ORDER BY cluster_id
+            ",
+        )
+        .bind(run_id)
+        .fetch_all(&self.pool)
+        .await
+        .context("failed to fetch clusters")?;
+
+        let mut clusters = Vec::new();
+        for cluster_row in cluster_rows {
+            let cluster_id: i32 = cluster_row.try_get("cluster_id")?;
+            let top_terms_json: Json<Value> = cluster_row.try_get("top_terms")?;
+            let top_terms: Option<Vec<String>> = serde_json::from_value(top_terms_json.0).ok();
+
+            // Get evidence (sentences) for this cluster
+            let evidence_rows = sqlx::query(
+                r"
+                SELECT
+                    s.article_id,
+                    ra.title,
+                    ra.source_url,
+                    ra.published_at,
+                    ra.lang_hint
+                FROM recap_subworker_sentences s
+                JOIN recap_raw_articles ra ON s.article_id = ra.article_id AND s.job_id = ra.job_id
+                WHERE s.run_id = $1 AND s.cluster_id = $2
+                GROUP BY s.article_id, ra.title, ra.source_url, ra.published_at, ra.lang_hint
+                ORDER BY ra.published_at DESC
+                LIMIT 10
+                ",
+            )
+            .bind(run_id)
+            .bind(cluster_id)
+            .fetch_all(&self.pool)
+            .await
+            .context("failed to fetch evidence")?;
+
+            let mut evidence = Vec::new();
+            for ev_row in evidence_rows {
+                evidence.push(ClusterEvidence {
+                    article_id: ev_row.try_get("article_id")?,
+                    title: ev_row.try_get::<Option<String>, _>("title")?.unwrap_or_default(),
+                    source_url: ev_row
+                        .try_get::<Option<String>, _>("source_url")?
+                        .unwrap_or_default(),
+                    published_at: ev_row
+                        .try_get::<Option<DateTime<Utc>>, _>("published_at")?
+                        .unwrap_or_else(|| Utc::now()),
+                    lang: ev_row.try_get("lang_hint").ok(),
+                });
+            }
+
+            clusters.push(ClusterWithEvidence {
+                cluster_id,
+                top_terms,
+                evidence,
+            });
+        }
+
+        Ok(clusters)
     }
 }
 
