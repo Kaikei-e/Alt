@@ -10,6 +10,9 @@ use uuid::Uuid;
 
 use super::genre::{GenreAssignment, GenreBundle};
 
+/// Subworkerが受け付ける文の最小文字数（空白除外）。
+const MIN_SENTENCE_LENGTH_CHARS: usize = 20;
+
 /// ジャンル別の証拠コーパス。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct EvidenceCorpus {
@@ -131,21 +134,55 @@ fn build_corpus_for_genre(genre: &str, assignments: &[&GenreAssignment]) -> Evid
     let mut articles = Vec::new();
     let mut total_sentences = 0;
     let mut language_counts: HashMap<String, usize> = HashMap::new();
+    let mut dropped_articles = 0usize;
+    let mut dropped_sentences = 0usize;
 
     for assignment in assignments {
         let article = &assignment.article;
-        let sentence_count = article.sentences.len();
-        total_sentences += sentence_count;
+        let filtered_sentences: Vec<String> = article
+            .sentences
+            .iter()
+            .filter(|sentence| sentence_has_required_length(sentence))
+            .cloned()
+            .collect();
+
+        let original_count = article.sentences.len();
+        if filtered_sentences.is_empty() {
+            dropped_articles += 1;
+            dropped_sentences += original_count;
+            debug!(
+                article_id = %article.id,
+                genre = %genre,
+                original_sentences = original_count,
+                "skipped article: all sentences shorter than minimum length"
+            );
+            continue;
+        }
+
+        let removed_here = original_count.saturating_sub(filtered_sentences.len());
+        if removed_here > 0 {
+            dropped_sentences += removed_here;
+        }
+        total_sentences += filtered_sentences.len();
 
         *language_counts.entry(article.language.clone()).or_insert(0) += 1;
 
         articles.push(EvidenceArticle {
             article_id: article.id.clone(),
             title: article.title.clone(),
-            sentences: article.sentences.clone(),
+            sentences: filtered_sentences,
             language: article.language.clone(),
             genre_scores: Some(assignment.genre_scores.clone()),
         });
+    }
+
+    if dropped_articles > 0 || dropped_sentences > 0 {
+        debug!(
+            genre = %genre,
+            dropped_articles,
+            dropped_sentences,
+            "filtered short sentences before subworker dispatch"
+        );
     }
 
     // 最も多い言語を特定
@@ -168,6 +205,11 @@ fn build_corpus_for_genre(genre: &str, assignments: &[&GenreAssignment]) -> Evid
         total_sentences,
         metadata,
     }
+}
+
+fn sentence_has_required_length(sentence: &str) -> bool {
+    let non_whitespace_chars = sentence.chars().filter(|c| !c.is_whitespace()).count();
+    non_whitespace_chars >= MIN_SENTENCE_LENGTH_CHARS
 }
 
 #[cfg(test)]
@@ -206,14 +248,27 @@ mod tests {
     fn evidence_bundle_groups_by_genre() {
         let job_id = Uuid::new_v4();
         let assignments = vec![
-            create_assignment("art-1", vec!["ai", "tech"], vec!["Sentence 1."], "en"),
+            create_assignment(
+                "art-1",
+                vec!["ai", "tech"],
+                vec!["This sentence is sufficiently descriptive for clustering validation."],
+                "en",
+            ),
             create_assignment(
                 "art-2",
                 vec!["tech"],
-                vec!["Sentence 2.", "Sentence 3."],
+                vec![
+                    "Another sentence that easily clears the minimum character threshold.",
+                    "Yet another sentence that meets the subworker requirements for processing.",
+                ],
                 "en",
             ),
-            create_assignment("art-3", vec!["ai"], vec!["Sentence 4."], "ja"),
+            create_assignment(
+                "art-3",
+                vec!["ai"],
+                vec!["これは要件を満たす十分に長い日本語の文です。"],
+                "ja",
+            ),
         ];
 
         let bundle = GenreBundle {
@@ -244,9 +299,26 @@ mod tests {
     fn corpus_metadata_tracks_languages() {
         let job_id = Uuid::new_v4();
         let assignments = vec![
-            create_assignment("art-1", vec!["ai"], vec!["Sentence 1."], "en"),
-            create_assignment("art-2", vec!["ai"], vec!["Sentence 2."], "en"),
-            create_assignment("art-3", vec!["ai"], vec!["Sentence 3."], "ja"),
+            create_assignment(
+                "art-1",
+                vec!["ai"],
+                vec!["This sentence comfortably exceeds the minimum character count required."],
+                "en",
+            ),
+            create_assignment(
+                "art-2",
+                vec!["ai"],
+                vec![
+                    "Another sentence that easily passes the minimum length check for the worker.",
+                ],
+                "en",
+            ),
+            create_assignment(
+                "art-3",
+                vec!["ai"],
+                vec!["こちらも条件を満たす十分な長さの日本語の文です。"],
+                "ja",
+            ),
         ];
 
         let bundle = GenreBundle {
@@ -269,8 +341,21 @@ mod tests {
     fn evidence_bundle_utility_methods() {
         let job_id = Uuid::new_v4();
         let assignments = vec![
-            create_assignment("art-1", vec!["ai"], vec!["S1.", "S2."], "en"),
-            create_assignment("art-2", vec!["tech"], vec!["S3."], "en"),
+            create_assignment(
+                "art-1",
+                vec!["ai"],
+                vec![
+                    "First sentence that meets the threshold with comfortable margin for safety.",
+                    "Second sentence that is also long enough to stay compliant with validation rules.",
+                ],
+                "en",
+            ),
+            create_assignment(
+                "art-2",
+                vec!["tech"],
+                vec!["Third sentence that is sufficiently verbose for the new validation checks."],
+                "en",
+            ),
         ];
 
         let bundle = GenreBundle {
@@ -292,7 +377,7 @@ mod tests {
         let assignments = vec![create_assignment(
             "art-1",
             vec!["ai", "tech"],
-            vec!["Sentence."],
+            vec!["This sentence is long enough to survive filtering before subworker dispatch."],
             "en",
         )];
 
@@ -310,5 +395,38 @@ mod tests {
         let scores = article.genre_scores.as_ref().unwrap();
         assert!(scores.contains_key("ai"));
         assert!(scores.contains_key("tech"));
+    }
+
+    #[test]
+    fn short_sentences_are_filtered_out() {
+        let job_id = Uuid::new_v4();
+        let assignments = vec![create_assignment(
+            "art-1",
+            vec!["ai"],
+            vec![
+                "Apple Inc.",
+                "Short.",
+                "これは短い。",
+                "This sentence clearly satisfies the minimum length requirement imposed by the subworker schema.",
+            ],
+            "en",
+        )];
+
+        let bundle = GenreBundle {
+            job_id,
+            assignments,
+            genre_distribution: HashMap::new(),
+        };
+
+        let evidence = EvidenceBundle::from_genre_bundle(job_id, bundle);
+        let ai_corpus = evidence.get_corpus("ai").unwrap();
+
+        assert_eq!(ai_corpus.articles.len(), 1);
+        assert_eq!(ai_corpus.articles[0].sentences.len(), 1);
+        assert_eq!(
+            ai_corpus.articles[0].sentences[0],
+            "This sentence clearly satisfies the minimum length requirement imposed by the subworker schema."
+        );
+        assert_eq!(ai_corpus.total_sentences, 1);
     }
 }
