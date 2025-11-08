@@ -111,3 +111,76 @@ def test_get_stopwords_includes_nltk_and_news_domain():
     assert "after" in terms
     assert "been" in terms
 
+
+def test_extract_topics_filters_alphanumeric_mixed_strings():
+    """Test filtering of alphanumeric mixed strings like '11novemberfor', '000 avoidable'."""
+    corpus = [
+        "The product has 100 parameters and 11novemberfor testing",
+        "We found 000 avoidable errors and 11 lowest scores in the system",
+    ]
+
+    result = topics.extract_topics(corpus, top_n=5, bm25_weighting=False)
+
+    assert result
+    first_cluster = result[0]
+    # Alphanumeric mixed strings should be removed
+    noise_terms = {
+        "100 parameters",
+        "11novemberfor",
+        "000 avoidable",
+        "11 lowest",
+        "100",
+        "11",
+        "000",
+    }
+    for noise in noise_terms:
+        assert noise not in first_cluster, f"Found alphanumeric mixed term: {noise}"
+
+    # Informative terms should remain
+    informative_terms = {"product", "parameters", "testing", "errors", "scores", "system"}
+    found_informative = any(term in first_cluster for term in informative_terms)
+    assert found_informative, "No informative terms found in results"
+
+
+def test_extract_topics_filters_numeric_ngrams():
+    """Test filtering of ngrams containing numbers like '11 lowest', '00 jumpe'."""
+    corpus = [
+        "The system shows 11 lowest values and 00 jumpe errors",
+        "We need to fix 12 apps and 30m parameters",
+    ]
+
+    result = topics.extract_topics(corpus, top_n=5, bm25_weighting=False)
+
+    assert result
+    first_cluster = result[0]
+    # Numeric ngrams should be removed
+    numeric_ngrams = {"11 lowest", "00 jumpe", "12 apps", "30m parameters", "11", "00", "12", "30m"}
+    for ngram in numeric_ngrams:
+        assert ngram not in first_cluster, f"Found numeric ngram: {ngram}"
+
+    # Informative terms should remain
+    informative_terms = {"system", "values", "errors", "parameters"}
+    found_informative = any(term in first_cluster for term in informative_terms)
+    assert found_informative, "No informative terms found in results"
+
+
+def test_is_informative_rejects_alphanumeric_mixed():
+    """Test that _is_informative rejects alphanumeric mixed strings."""
+    stopword_set = stopwords.get_stopwords()
+
+    # Should reject alphanumeric mixed strings
+    assert not topics._is_informative("11novemberfor", stopword_set)
+    assert not topics._is_informative("100parameters", stopword_set)
+    assert not topics._is_informative("abc123def", stopword_set)
+    assert not topics._is_informative("11 lowest", stopword_set)
+    assert not topics._is_informative("000 avoidable", stopword_set)
+
+    # Should accept pure alphabetic strings
+    assert topics._is_informative("technology", stopword_set)
+    assert topics._is_informative("innovation", stopword_set)
+    assert topics._is_informative("machine learning", stopword_set)
+
+    # Should reject pure numeric strings
+    assert not topics._is_informative("123", stopword_set)
+    assert not topics._is_informative("11", stopword_set)
+
