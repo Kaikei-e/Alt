@@ -9,6 +9,7 @@ import {
 } from "@chakra-ui/accordion";
 import { Box, Button, Drawer, Flex, HStack, Portal, Text, VStack } from "@chakra-ui/react";
 import {
+  CalendarRange,
   ChartBar,
   Eye,
   Home,
@@ -26,7 +27,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ThemeToggle } from "../../ThemeToggle";
 
-type MenuCategory = "feeds" | "other" | "articles";
+type MenuCategory = "feeds" | "recap" | "articles" | "other";
 
 interface MenuItem {
   label: string;
@@ -133,6 +134,13 @@ export const FloatingMenu = () => {
       description: "Find specific feeds",
     },
     {
+      label: "7-Day Recap",
+      href: "/mobile/recap/7days",
+      category: "recap",
+      icon: <CalendarRange size={18} />,
+      description: "Review the weekly highlights",
+    },
+    {
       label: "View Articles",
       href: "/mobile/articles/view",
       category: "articles",
@@ -182,6 +190,12 @@ export const FloatingMenu = () => {
       items: menuItems.filter((i) => i.category === "feeds"),
       icon: <Rss size={16} />,
       gradient: "var(--app-bg)",
+    },
+    {
+      title: "Recap",
+      items: menuItems.filter((i) => i.category === "recap"),
+      icon: <CalendarRange size={16} />,
+      gradient: "var(--accent-gradient)",
     },
     {
       title: "Articles",
