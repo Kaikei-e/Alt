@@ -236,7 +236,7 @@ pub(crate) struct SummaryOptions {
 
 /// 日本語要約レスポンス。
 #[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SummaryResponse {
     pub(crate) job_id: Uuid,
     pub(crate) genre: String,
@@ -254,7 +254,7 @@ pub(crate) struct Summary {
 
 /// 要約メタデータ。
 #[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SummaryMetadata {
     pub(crate) model: String,
     #[serde(default)]
