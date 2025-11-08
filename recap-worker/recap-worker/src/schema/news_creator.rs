@@ -2,7 +2,7 @@
 ///
 /// 日本語要約生成のレスポンススキーマを定義します。
 use once_cell::sync::Lazy;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// News-Creator summary responseのJSON Schema。
 pub(crate) static SUMMARY_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
@@ -89,6 +89,7 @@ pub(crate) static SUMMARY_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
 });
 
 /// News-Creator summary requestのJSON Schema。
+#[allow(dead_code)]
 pub(crate) static SUMMARY_REQUEST_SCHEMA: Lazy<Value> = Lazy::new(|| {
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",

@@ -2,17 +2,22 @@
 ///
 /// クラスタリング結果のスキーマを定義します。
 use once_cell::sync::Lazy;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Subworker clustering responseのJSON Schema。
 pub(crate) static CLUSTERING_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://alt.dev/schemas/subworker/clustering-response.json",
-        "title": "Subworker Clustering Response",
-        "description": "Response schema for subworker clustering API",
+        "$id": "https://alt.dev/schemas/subworker/cluster-job-response.json",
+        "title": "Subworker Run Response",
+        "description": "Response schema for recap-subworker run endpoints",
         "type": "object",
         "properties": {
+            "run_id": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Unique identifier for the subworker run"
+            },
             "job_id": {
                 "type": "string",
                 "format": "uuid",
@@ -22,35 +27,28 @@ pub(crate) static CLUSTERING_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
                 "type": "string",
                 "description": "Genre of the processed corpus"
             },
+            "status": {
+                "type": "string",
+                "enum": ["running", "succeeded", "partial", "failed"],
+                "description": "Run status"
+            },
+            "cluster_count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Total cluster count"
+            },
             "clusters": {
                 "type": "array",
                 "description": "Array of identified clusters",
-                "items": {
-                    "$ref": "#/$defs/cluster"
-                },
+                "items": { "$ref": "#/$defs/cluster" },
                 "minItems": 0
             },
-            "metadata": {
+            "diagnostics": {
                 "type": "object",
-                "description": "Processing metadata",
-                "properties": {
-                    "total_sentences": {
-                        "type": "integer",
-                        "minimum": 0
-                    },
-                    "cluster_count": {
-                        "type": "integer",
-                        "minimum": 0
-                    },
-                    "processing_time_ms": {
-                        "type": "integer",
-                        "minimum": 0
-                    }
-                },
-                "required": ["total_sentences", "cluster_count"]
+                "description": "Diagnostic metadata captured during processing"
             }
         },
-        "required": ["job_id", "genre", "clusters", "metadata"],
+        "required": ["run_id", "job_id", "genre", "status", "cluster_count", "clusters", "diagnostics"],
         "$defs": {
             "cluster": {
                 "type": "object",
@@ -61,64 +59,61 @@ pub(crate) static CLUSTERING_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
                         "minimum": 0,
                         "description": "Unique cluster identifier within this job"
                     },
-                    "sentences": {
-                        "type": "array",
-                        "description": "Sentences in this cluster",
-                        "items": {
-                            "$ref": "#/$defs/sentence"
-                        },
-                        "minItems": 1
+                    "size": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Number of supporting sentences"
                     },
-                    "centroid": {
-                        "type": "array",
-                        "description": "Cluster centroid vector (optional)",
-                        "items": {
-                            "type": "number"
-                        }
+                    "label": {
+                        "type": ["null", "string"],
+                        "description": "Optional short label for the cluster"
                     },
                     "top_terms": {
                         "type": "array",
                         "description": "Most representative terms for this cluster",
-                        "items": {
-                            "type": "string"
-                        }
+                        "items": { "type": "string" }
                     },
-                    "coherence_score": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 1,
-                        "description": "Cluster coherence score (0-1)"
+                    "stats": {
+                        "type": "object",
+                        "description": "Additional cluster statistics"
+                    },
+                    "representatives": {
+                        "type": "array",
+                        "description": "Representative sentences for this cluster",
+                        "items": { "$ref": "#/$defs/representative" },
+                        "minItems": 0
                     }
                 },
-                "required": ["cluster_id", "sentences", "top_terms"]
+                "required": ["cluster_id", "size", "label", "top_terms", "stats", "representatives"]
             },
-            "sentence": {
+            "representative": {
                 "type": "object",
-                "description": "A sentence with its source article",
+                "description": "Representative sentence payload",
                 "properties": {
-                    "sentence_id": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "description": "Sentence ID within source article"
-                    },
-                    "text": {
-                        "type": "string",
-                        "minLength": 1,
-                        "description": "Sentence text"
-                    },
-                    "source_article_id": {
+                    "article_id": {
                         "type": "string",
                         "description": "ID of the source article"
                     },
-                    "embedding": {
-                        "type": "array",
-                        "description": "Sentence embedding vector (optional)",
-                        "items": {
-                            "type": "number"
-                        }
+                    "paragraph_idx": {
+                        "type": ["null", "integer"],
+                        "minimum": 0,
+                        "description": "Paragraph index within the article"
+                    },
+                    "sentence_text": {
+                        "type": "string",
+                        "minLength": 20,
+                        "description": "Representative sentence text"
+                    },
+                    "lang": {
+                        "type": ["null", "string"],
+                        "description": "Language hint for the sentence"
+                    },
+                    "score": {
+                        "type": ["null", "number"],
+                        "description": "Heuristic confidence score"
                     }
                 },
-                "required": ["sentence_id", "text", "source_article_id"]
+                "required": ["article_id", "sentence_text"]
             }
         }
     })
@@ -131,28 +126,35 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn schema_accepts_valid_clustering_response() {
+    fn schema_accepts_valid_response() {
         let response = json!({
+            "run_id": 42,
             "job_id": "550e8400-e29b-41d4-a716-446655440000",
             "genre": "ai",
+            "status": "succeeded",
+            "cluster_count": 1,
             "clusters": [
                 {
                     "cluster_id": 0,
-                    "sentences": [
+                    "size": 3,
+                    "label": "ai",
+                    "top_terms": ["machine", "learning", "ai"],
+                    "stats": {
+                        "avg_sim": 0.87
+                    },
+                    "representatives": [
                         {
-                            "sentence_id": 0,
-                            "text": "Machine learning is advancing rapidly.",
-                            "source_article_id": "art-1"
+                            "article_id": "art-1",
+                            "paragraph_idx": 0,
+                            "sentence_text": "Machine learning is advancing rapidly and impacting industry.",
+                            "lang": "en",
+                            "score": 0.95
                         }
                     ],
                     "top_terms": ["machine", "learning", "ai"]
                 }
             ],
-            "metadata": {
-                "total_sentences": 100,
-                "cluster_count": 5,
-                "processing_time_ms": 1500
-            }
+            "diagnostics": {}
         });
 
         let result = validate_json(&CLUSTERING_RESPONSE_SCHEMA, &response);
@@ -162,9 +164,10 @@ mod tests {
     #[test]
     fn schema_rejects_missing_required_fields() {
         let response = json!({
+            "run_id": 1,
             "job_id": "550e8400-e29b-41d4-a716-446655440000",
             "genre": "ai"
-            // missing clusters and metadata
+            // missing status, cluster_count, clusters, diagnostics
         });
 
         let result = validate_json(&CLUSTERING_RESPONSE_SCHEMA, &response);
@@ -172,21 +175,29 @@ mod tests {
     }
 
     #[test]
-    fn schema_validates_cluster_structure() {
+    fn schema_validates_representatives() {
         let response = json!({
+            "run_id": 1,
             "job_id": "550e8400-e29b-41d4-a716-446655440000",
             "genre": "ai",
+            "status": "partial",
+            "cluster_count": 1,
             "clusters": [
                 {
                     "cluster_id": 0,
-                    "sentences": [], // empty sentences array should be invalid (minItems: 1)
-                    "top_terms": ["term"]
+                    "size": 1,
+                    "label": null,
+                    "top_terms": [],
+                    "stats": {},
+                    "representatives": [
+                        {
+                            "article_id": "art-1",
+                            "sentence_text": "Too short."
+                        }
+                    ]
                 }
             ],
-            "metadata": {
-                "total_sentences": 0,
-                "cluster_count": 0
-            }
+            "diagnostics": {}
         });
 
         let result = validate_json(&CLUSTERING_RESPONSE_SCHEMA, &response);
