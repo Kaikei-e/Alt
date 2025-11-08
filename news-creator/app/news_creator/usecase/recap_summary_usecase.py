@@ -85,8 +85,9 @@ class RecapSummaryUsecase:
         )
 
     def _build_prompt(self, request: RecapSummaryRequest, max_bullets: int) -> str:
+        max_clusters = max(3, min(len(request.clusters), max_bullets + 2))
         cluster_lines: List[str] = []
-        for cluster in request.clusters:
+        for cluster in request.clusters[:max_clusters]:
             top_terms = ", ".join(cluster.top_terms or []) or "未提示"
             sentences = "\n".join(f"- {sentence}" for sentence in cluster.representative_sentences)
             cluster_block = textwrap.dedent(
@@ -174,9 +175,20 @@ class RecapSummaryUsecase:
         if not bullet_candidates:
             bullet_candidates = [title]
 
+        merged_bullets: List[str] = []
+        chunk_size = 2
+        for idx in range(0, len(bullet_candidates), chunk_size):
+            chunk = bullet_candidates[idx : idx + chunk_size]
+            merged_text = " ".join(chunk).strip()
+            if merged_text:
+                merged_bullets.append(merged_text)
+
+        if not merged_bullets:
+            merged_bullets = bullet_candidates
+
         return {
             "title": title,
-            "bullets": bullet_candidates,
+            "bullets": merged_bullets,
             "language": "ja",
         }
 

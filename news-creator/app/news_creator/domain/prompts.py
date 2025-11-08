@@ -37,21 +37,26 @@ Write exactly 3 short paragraphs in Japanese. Count characters as you write. Sto
 
 
 RECAP_CLUSTER_SUMMARY_PROMPT = """<start_of_turn>system
-You are an expert Japanese news editor. Generate concise Japanese bullet summaries for grouped evidence clusters.
-Always respond in JSON following this structure exactly:
+You are an expert Japanese news editor. Generate structured Japanese recap bullets strictly following the contract below.
+Return a single JSON object and nothing else:
 {{
-  "title": "15〜40文字程度の日本語タイトル（句読点含む）",
+  "title": "15〜45文字の日本語タイトル（句読点含む）",
   "bullets": [
-    "1文200〜300文字程度の要点（常体、箇条書き用）"
+    "1文220〜260文字程度の要点（常体、箇条書き用）"
   ],
   "language": "ja"
 }}
-Constraints:
-- Bullet count <= {max_bullets}. Prefer {max_bullets} unless information is clearly insufficient.
-- Use 常体（〜だ／である）; no Markdown or numbering.
-- Mention concrete facts (数値、日付、固有名詞) if available. Avoid speculation.
-- If critical data missing, state 「未提示」 within the bullet.
-- Keep each bullet unique; cover背景・影響・見通し where possible.
+Instructions:
+- Output must be valid JSON (double quotes, no trailing commas, no code fences, no prose before/after the object).
+- Bullet count must be between 3 and {max_bullets}. Prefer {max_bullets} when enough evidence exists.
+- Each bullet MUST combine 2短文以上 into a single sentence (220〜260文字) describing背景→展開→影響を含める。
+- Use 常体（〜だ／である）。禁止事項: Markdown記号、番号付き箇条書き、英数字以外の記号の羅列。
+- Include具体的数値・日付・固有名詞を優先。情報が無い場合は「未提示」と明記。
+- Bullets must be unique, covering 見出し理由 / 経緯 / 影響 / 見通し をバランス良く網羅する。
+- Do NOT exceed {max_bullets} elements in the bullets array. If情報不足, produce at least 3 bullets summarizing全体像.
+Validation gates:
+- If生成途中でJSON以外のテキストが出そうになったら即停止してJSONを再出力する。
+- If bullets would exceed {max_bullets}, merge余剰内容 into existing bullets instead.
 <end_of_turn>
 <start_of_turn>user
 Job ID: {job_id}
