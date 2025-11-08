@@ -45,7 +45,7 @@ _LOGGER = structlog.get_logger(__name__)
 @dataclass
 class SentenceRecord:
     text: str
-    source_id: str
+    article_id: str
     url: str | None
     paragraph_idx: int
     sentence_idx: int
@@ -70,7 +70,7 @@ class EvidencePipeline:
                 logger = logger.bind(request_id=request.telemetry.request_id)
             if request.telemetry.prompt_version:
                 logger = logger.bind(prompt_version=request.telemetry.prompt_version)
-        logger.info("pipeline.start", articles=len(request.articles))
+        logger.info("pipeline.start", documents=len(request.documents))
         payload_dict = request.model_dump(mode="json")
         validate_request(payload_dict)
 
@@ -84,12 +84,16 @@ class EvidencePipeline:
             sentences = sentences[: request.constraints.max_total_sentences]
             response.diagnostics.partial = True
 
+        response.diagnostics.total_sentences = len(sentences)
+
         sentence_texts = [record.text for record in sentences]
         REQUEST_EMBED_SENTENCES.observe(len(sentence_texts))
 
         embed_start = time.perf_counter()
         embeddings = self.embedder.encode(sentence_texts)
-        EMBED_SECONDS.observe(time.perf_counter() - embed_start)
+        embed_duration = time.perf_counter() - embed_start
+        EMBED_SECONDS.observe(embed_duration)
+        response.diagnostics.embedding_ms = embed_duration * 1000
 
         keep_indices, removed = selectors.prune_duplicates(
             embeddings, threshold=request.constraints.dedup_threshold
@@ -102,14 +106,20 @@ class EvidencePipeline:
             logger.warning("pipeline.exhausted-after-dedup")
             return response
 
-        cluster_params = self._compute_cluster_params(len(sentences))
+        cluster_params = self._compute_cluster_params(len(sentences), request.constraints)
         cluster_start = time.perf_counter()
         cluster_result = self.clusterer.cluster(
             embeddings,
             min_cluster_size=cluster_params[0],
             min_samples=cluster_params[1],
         )
-        HDBSCAN_SECONDS.observe(time.perf_counter() - cluster_start)
+        hdbscan_duration = time.perf_counter() - cluster_start
+        HDBSCAN_SECONDS.observe(hdbscan_duration)
+        response.diagnostics.hdbscan_ms = hdbscan_duration * 1000
+
+        if cluster_result.labels.size > 0:
+            noise = int((cluster_result.labels < 0).sum())
+            response.diagnostics.noise_ratio = noise / float(cluster_result.labels.size)
 
         unique_labels, cluster_indices = self._group_clusters(cluster_result.labels)
         corpora = ["\n".join(sentences[idx].text for idx in indices) for indices in cluster_indices]
@@ -152,28 +162,32 @@ class EvidencePipeline:
         sentences: list[SentenceRecord] = []
         tokens_budget = request.constraints.max_tokens_budget
         accumulated_tokens = 0
-        for article in request.articles:
+        for document in request.documents:
             sentence_counter = 0
-            for paragraph_idx, paragraph in enumerate(article.paragraphs):
+            for paragraph_idx, paragraph in enumerate(document.paragraphs):
                 for sentence in self._split_paragraph(paragraph):
                     if len(sentence) < 2:
                         continue
                     estimate = self._estimate_tokens(sentence)
                     if accumulated_tokens + estimate > tokens_budget:
                         return sentences
+                    if sentence_counter >= self.settings.max_sentences_per_doc:
+                        break
                     sentences.append(
                         SentenceRecord(
                             text=sentence,
-                            source_id=article.source_id,
-                            url=article.url if article.url else None,
+                            article_id=document.article_id,
+                            url=document.source_url if document.source_url else None,
                             paragraph_idx=paragraph_idx,
                             sentence_idx=sentence_counter,
-                            lang=article.lang_hint,
+                            lang=document.lang_hint,
                             tokens_estimate=estimate,
                         )
                     )
                     sentence_counter += 1
                     accumulated_tokens += estimate
+                if sentence_counter >= self.settings.max_sentences_per_doc:
+                    break
         return sentences
 
     def _split_paragraph(self, paragraph: str) -> list[str]:
@@ -189,10 +203,11 @@ class EvidencePipeline:
     def _estimate_tokens(self, sentence: str) -> int:
         return max(1, math.ceil(len(sentence) / 4))
 
-    def _compute_cluster_params(self, sentence_count: int) -> tuple[int, int]:
+    def _compute_cluster_params(self, sentence_count: int, constraints) -> tuple[int, int]:
         base = max(2, sentence_count // 20)
-        min_cluster_size = max(2, base)
-        min_samples = max(1, min_cluster_size // 2)
+        min_cluster_size = constraints.hdbscan_min_cluster_size or base
+        min_cluster_size = max(2, min_cluster_size)
+        min_samples = constraints.hdbscan_min_samples or max(1, min_cluster_size // 2)
         return min_cluster_size, min_samples
 
     def _group_clusters(self, labels: np.ndarray) -> tuple[list[int], list[list[int]]]:
@@ -241,7 +256,7 @@ class EvidencePipeline:
                         embedding_ref=f"e/{cluster_id}/{pos}",
                         reasons=["centrality", "mmr-diversity"],
                         source=RepresentativeSource(
-                            source_id=sentence.source_id,
+                            source_id=sentence.article_id,
                             url=sentence.url,
                             paragraph_idx=sentence.paragraph_idx,
                         ),
@@ -262,7 +277,7 @@ class EvidencePipeline:
                     size=len(indices),
                     label=ClusterLabel(top_terms=label_terms),
                     representatives=representatives,
-                    supporting_ids=sorted({sentences[idx].source_id for idx in indices}),
+                    supporting_ids=sorted({sentences[idx].article_id for idx in indices}),
                     stats=ClusterStats(
                         avg_sim=avg_sim,
                         token_count=sum(sentences[idx].tokens_estimate for idx in indices),
