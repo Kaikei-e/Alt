@@ -107,7 +107,7 @@ mod tests {
 
     use super::{DEFAULT_GENRES, normalize_genres};
     use crate::{
-        app::{build_router, ComponentRegistry},
+        app::{ComponentRegistry, build_router},
         config::{Config, ENV_MUTEX},
     };
 
@@ -125,7 +125,7 @@ mod tests {
 
     #[tokio::test]
     async fn trigger_returns_accepted_with_default_genres() {
-        {
+        let config = {
             let _lock = ENV_MUTEX.lock().expect("env mutex");
             unsafe {
                 std::env::set_var(
@@ -134,10 +134,12 @@ mod tests {
                 );
                 std::env::set_var("NEWS_CREATOR_BASE_URL", "http://localhost:18001/");
                 std::env::set_var("SUBWORKER_BASE_URL", "http://localhost:18002/");
+                std::env::set_var("ALT_BACKEND_BASE_URL", "http://localhost:19000/");
+                std::env::remove_var("ALT_BACKEND_SERVICE_TOKEN");
             }
-        }
+            Config::from_env().expect("config loads")
+        };
 
-        let config = Config::from_env().expect("config loads");
         let registry = ComponentRegistry::build(config).expect("registry builds");
 
         let app = build_router(registry);
@@ -166,10 +168,15 @@ mod tests {
         let genres = payload["genres"].as_array().expect("genres array");
         assert_eq!(genres.len(), DEFAULT_GENRES.len());
 
-        unsafe {
-            std::env::remove_var("RECAP_DB_DSN");
-            std::env::remove_var("NEWS_CREATOR_BASE_URL");
-            std::env::remove_var("SUBWORKER_BASE_URL");
+        {
+            let _lock = ENV_MUTEX.lock().expect("env mutex cleanup");
+            unsafe {
+                std::env::remove_var("RECAP_DB_DSN");
+                std::env::remove_var("NEWS_CREATOR_BASE_URL");
+                std::env::remove_var("SUBWORKER_BASE_URL");
+                std::env::remove_var("ALT_BACKEND_BASE_URL");
+                std::env::remove_var("ALT_BACKEND_SERVICE_TOKEN");
+            }
         }
     }
 }
