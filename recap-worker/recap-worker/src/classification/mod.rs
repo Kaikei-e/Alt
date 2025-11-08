@@ -1,10 +1,12 @@
 //! ジャンル分類のための高水準API。
-use std::collections::HashMap;
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 use anyhow::Result;
 
-use crate::pipeline::genre_keywords::GenreKeywords;
+use crate::{
+    classification::keywords::{accumulate_scores, default_matcher, KeywordMatcher},
+    pipeline::genre_keywords::GenreKeywords,
+};
 
 mod features;
 mod model;
@@ -49,6 +51,7 @@ pub struct GenreClassifier {
     feature_extractor: FeatureExtractor,
     model: HybridModel,
     score_threshold: f32,
+    keyword_matcher: KeywordMatcher,
 }
 
 impl GenreClassifier {
@@ -71,6 +74,7 @@ impl GenreClassifier {
             feature_extractor: FeatureExtractor::new(),
             model,
             score_threshold,
+            keyword_matcher: default_matcher(),
         }
     }
 
@@ -95,12 +99,24 @@ impl GenreClassifier {
         } = self
             .pipeline
             .preprocess(title.trim(), body.trim(), _language);
-        let keyword_scores = self.keywords.score_text(&normalized);
-        let mut combined_scores = keyword_scores
+        let keyword_map = self.keywords.score_text(&normalized);
+        let matcher_scores = self.keyword_matcher.find_matches(&normalized);
+        let mut combined_scores = keyword_map
             .iter()
             .map(|(genre, score)| (genre.clone(), *score as f32))
             .into_iter()
             .collect::<HashMap<_, _>>();
+
+        let boost = accumulate_scores(
+            &crate::classification::keywords::DEFAULT_KEYWORDS,
+            &matcher_scores,
+        );
+        for (genre, extra) in boost {
+            combined_scores
+                .entry(genre)
+                .and_modify(|value| *value += extra as f32)
+                .or_insert(extra as f32);
+        }
 
         let feature_vector: FeatureVector = self.feature_extractor.extract(&tokens);
         let blend_weight = 0.35;
@@ -124,7 +140,7 @@ impl GenreClassifier {
 
         let mut filtered: Vec<String> = Vec::new();
         for (genre, score) in ranked.iter() {
-            let keyword_support = keyword_scores.get(genre).copied().unwrap_or(0);
+            let keyword_support = keyword_map.get(genre).copied().unwrap_or(0);
             let required = if keyword_support > 0 {
                 self.score_threshold
             } else {
