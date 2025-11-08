@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import math
 from dataclasses import dataclass
 from typing import Iterable, Literal, Sequence
 
@@ -10,7 +12,7 @@ import numpy as np
 from ..infra.cache import LRUCache
 
 
-BackendLiteral = Literal["sentence-transformers", "onnx"]
+BackendLiteral = Literal["sentence-transformers", "onnx", "hash"]
 
 
 @dataclass(slots=True)
@@ -30,6 +32,7 @@ class Embedder:
         self.config = config
         self._model = None
         self._cache = LRUCache[str, np.ndarray](config.cache_size)
+        self._hash_dimension = 256
 
     def _load_sentence_transformer(self):
         from sentence_transformers import SentenceTransformer  # lazy import
@@ -41,10 +44,13 @@ class Embedder:
             return
         if self.config.backend == "sentence-transformers":
             self._model = self._load_sentence_transformer()
-        else:
+        elif self.config.backend == "onnx":
             # For now we re-use SentenceTransformer while keeping the backend flag so that
             # configuration remains forward compatible with a true ONNX implementation.
             self._model = self._load_sentence_transformer()
+        else:
+            # hash backend does not require lazy model initialization
+            self._model = None
 
     def encode(self, sentences: Sequence[str]) -> np.ndarray:
         """Generate embeddings for sentences."""
@@ -56,16 +62,22 @@ class Embedder:
         vectors = {}
         if pending:
             self._ensure_model()
-            model = self._model
-            assert model is not None
-            embeddings = model.encode(  # type: ignore[attr-defined]
-                pending,
-                batch_size=self.config.batch_size,
-                normalize_embeddings=True,
-            )
-            for sentence, vector in zip(pending, embeddings):
-                vectors[sentence] = np.asarray(vector, dtype=np.float32)
-                self._cache.set(sentence, vectors[sentence])
+            if self.config.backend == "hash":
+                for sentence in pending:
+                    vector = self._hash_sentence(sentence)
+                    vectors[sentence] = vector
+                    self._cache.set(sentence, vector)
+            else:
+                model = self._model
+                assert model is not None
+                embeddings = model.encode(  # type: ignore[attr-defined]
+                    pending,
+                    batch_size=self.config.batch_size,
+                    normalize_embeddings=True,
+                )
+                for sentence, vector in zip(pending, embeddings):
+                    vectors[sentence] = np.asarray(vector, dtype=np.float32)
+                    self._cache.set(sentence, vectors[sentence])
         return np.vstack([cached.get(s) or vectors.get(s) for s in sentences])
 
     def _fetch_cached(self, sentences: Sequence[str]) -> dict[str, np.ndarray]:
@@ -89,3 +101,13 @@ class Embedder:
         """Release resources (if any)."""
 
         self._model = None
+
+    def _hash_sentence(self, sentence: str) -> np.ndarray:
+        digest = hashlib.sha256(sentence.encode("utf-8")).digest()
+        seed = int.from_bytes(digest[:8], "little")
+        rng = np.random.default_rng(seed)
+        vector = rng.normal(loc=0.0, scale=1.0, size=self._hash_dimension)
+        norm = np.linalg.norm(vector)
+        if not math.isfinite(norm) or norm == 0.0:
+            return np.zeros(self._hash_dimension, dtype=np.float32)
+        return (vector / norm).astype(np.float32)

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         "BAAI/bge-m3-distill-8l",
         description="Fallback model identifier for reduced CPU usage",
     )
-    model_backend: Literal["sentence-transformers", "onnx"] = Field(
+    model_backend: Literal["sentence-transformers", "onnx", "hash"] = Field(
         "sentence-transformers",
         description="Embedding backend selection",
     )
