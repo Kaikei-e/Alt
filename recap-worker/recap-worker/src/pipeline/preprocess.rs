@@ -179,7 +179,7 @@ impl PreprocessStage for TextPreprocessStage {
 /// 2. プレーン化（html2textで変換）
 /// 3. Unicode正規化（NFC）
 /// 4. 言語検出
-fn preprocess_article(article: FetchedArticle) -> Result<Option<PreprocessedArticle>> {
+pub(crate) fn preprocess_article(article: FetchedArticle) -> Result<Option<PreprocessedArticle>> {
     // 1. HTMLサニタイズとプレーン化
     let (cleaned_body, is_html_cleaned) = clean_html(&article.body)?;
 

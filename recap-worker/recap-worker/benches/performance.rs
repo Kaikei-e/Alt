@@ -1,34 +1,28 @@
 /// 7日・10k記事の性能ベンチマーク。
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use recap_worker::pipeline::dedup::HashDedupStage;
-use recap_worker::pipeline::preprocess::TextPreprocessStage;
-use recap_worker::store::dao::RecapDao;
-use std::sync::Arc;
-use uuid::Uuid;
+use recap_worker::analysis::{keyword_scores, preprocess_documents, synthetic_bodies};
 
 fn bench_preprocessing(c: &mut Criterion) {
-    // モックDAO（実際のDB接続なし）
-    // let dao = Arc::new(RecapDao::new_mock());
-    // let stage = TextPreprocessStage::with_default_concurrency(dao);
-
-    c.bench_function("preprocess_10k_articles", |b| {
+    let bodies = synthetic_bodies(1024, 6);
+    c.bench_function("preprocess_articles_1k", |b| {
         b.iter(|| {
-            // 10k記事の前処理をシミュレート
-            black_box(10000);
+            let (count, processed) = preprocess_documents(&bodies);
+            black_box((count, processed.len()));
         });
     });
 }
 
-fn bench_deduplication(c: &mut Criterion) {
-    let stage = HashDedupStage::with_defaults();
+fn bench_keyword_scoring(c: &mut Criterion) {
+    let bodies = synthetic_bodies(512, 5);
+    let (_, processed) = preprocess_documents(&bodies);
 
-    c.bench_function("dedup_10k_articles", |b| {
+    c.bench_function("keyword_scoring_500_docs", |b| {
         b.iter(|| {
-            // 10k記事の重複排除をシミュレート
-            black_box(10000);
+            let scores = keyword_scores(&processed);
+            black_box(scores.len());
         });
     });
 }
 
-criterion_group!(benches, bench_preprocessing, bench_deduplication);
+criterion_group!(benches, bench_preprocessing, bench_keyword_scoring);
 criterion_main!(benches);

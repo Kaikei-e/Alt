@@ -1,6 +1,7 @@
 #![deny(warnings, clippy::all, clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
+pub mod analysis;
 pub(crate) mod api;
 pub mod app;
 pub mod classification;
