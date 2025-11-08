@@ -29,6 +29,7 @@ OFFSET $3
 LIMIT $4`
 
 const maxRecapArticleBytes = 2 * 1024 * 1024 // 2MB safeguard per PLAN5
+const maxRecapPageSize = 10000               // Maximum allowed page size to prevent DoS via excessive memory allocation
 
 // FetchRecapArticles retrieves recap-ready articles with deterministic ordering.
 func (r *AltDBRepository) FetchRecapArticles(ctx context.Context, query domain.RecapArticlesQuery) (*domain.RecapArticlesPage, error) {
@@ -37,6 +38,10 @@ func (r *AltDBRepository) FetchRecapArticles(ctx context.Context, query domain.R
 	}
 	if query.Page <= 0 || query.PageSize <= 0 {
 		return nil, errors.New("page and page_size must be positive")
+	}
+	// Prevent DoS attack via excessive memory allocation (CWE-770)
+	if query.PageSize > maxRecapPageSize {
+		return nil, fmt.Errorf("page_size exceeds maximum allowed value of %d", maxRecapPageSize)
 	}
 
 	offset := (query.Page - 1) * query.PageSize
