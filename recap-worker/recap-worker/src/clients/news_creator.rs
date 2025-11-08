@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -46,6 +46,8 @@ impl NewsCreatorClient {
         Ok(())
     }
 
+    /// 旧バージョンの要約メソッド。
+    #[allow(dead_code)]
     pub(crate) async fn summarize(&self, payload: impl Serialize) -> Result<NewsCreatorSummary> {
         let url = self
             .base_url
@@ -164,10 +166,17 @@ impl NewsCreatorClient {
             .map(|cluster| {
                 // 各クラスターから代表的な文を選択（最大N文）
                 let representative_sentences: Vec<String> = cluster
-                    .sentences
+                    .representatives
                     .iter()
                     .take(max_sentences_per_cluster)
-                    .map(|s| s.text.clone())
+                    .filter_map(|rep| {
+                        let text = rep.text.trim();
+                        if text.is_empty() {
+                            None
+                        } else {
+                            Some(text.to_string())
+                        }
+                    })
                     .collect();
 
                 ClusterInput {
@@ -190,6 +199,8 @@ impl NewsCreatorClient {
     }
 }
 
+/// 旧バージョンの要約レスポンス。
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub(crate) struct NewsCreatorSummary {
     pub(crate) response_id: String,
@@ -224,12 +235,13 @@ pub(crate) struct SummaryOptions {
 }
 
 /// 日本語要約レスポンス。
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct SummaryResponse {
     pub(crate) job_id: Uuid,
     pub(crate) genre: String,
     pub(crate) summary: Summary,
-    pub(crate) metadata: SummaryMetadata,
+    metadata: SummaryMetadata,
 }
 
 /// 要約内容。
@@ -241,17 +253,18 @@ pub(crate) struct Summary {
 }
 
 /// 要約メタデータ。
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct SummaryMetadata {
     pub(crate) model: String,
     #[serde(default)]
-    pub(crate) temperature: Option<f64>,
+    temperature: Option<f64>,
     #[serde(default)]
-    pub(crate) prompt_tokens: Option<usize>,
+    prompt_tokens: Option<usize>,
     #[serde(default)]
-    pub(crate) completion_tokens: Option<usize>,
+    completion_tokens: Option<usize>,
     #[serde(default)]
-    pub(crate) processing_time_ms: Option<usize>,
+    processing_time_ms: Option<usize>,
 }
 
 #[cfg(test)]

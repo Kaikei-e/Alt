@@ -1,9 +1,12 @@
+use std::cmp;
+use std::fmt;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
-use reqwest::{Client, StatusCode, Url};
+use anyhow::{Context, Result, anyhow};
+use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio::time::sleep;
 use tracing::{debug, warn};
 use uuid::Uuid;
 
@@ -16,65 +19,134 @@ pub(crate) struct SubworkerClient {
     base_url: Url,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
-pub(crate) struct SubworkerArticle {
-    pub(crate) id: Uuid,
-    pub(crate) title: String,
-    pub(crate) body: String,
-    #[serde(default)]
-    pub(crate) language: Option<String>,
-}
+const DEFAULT_MAX_SENTENCES_TOTAL: usize = 2_000;
+const DEFAULT_UMAP_N_COMPONENTS: usize = 25;
+const DEFAULT_HDBSCAN_MIN_CLUSTER_SIZE: usize = 5;
+const DEFAULT_MMR_LAMBDA: f32 = 0.35;
+const MIN_PARAGRAPH_LEN: usize = 30;
+const MAX_POLL_ATTEMPTS: usize = 30;
+const INITIAL_POLL_INTERVAL_MS: u64 = 500;
+const MAX_POLL_INTERVAL_MS: u64 = 5_000;
+const SUBWORKER_TIMEOUT_SECS: u64 = 120;
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
-pub(crate) struct SubworkerCorpus {
-    pub(crate) job_id: Uuid,
-    pub(crate) articles: Vec<SubworkerArticle>,
-}
-
-/// クラスタリングレスポンス。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// クラスタリングレスポンス (POST/GET `/v1/runs`).
+#[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ClusteringResponse {
-    pub(crate) job_id: Uuid,
+    pub(crate) run_id: i64,
+    pub(crate) _job_id: Uuid,
     pub(crate) genre: String,
-    pub(crate) clusters: Vec<Cluster>,
-    pub(crate) metadata: ClusteringMetadata,
+    pub(crate) status: ClusterJobStatus,
+    #[serde(default)]
+    pub(crate) _cluster_count: usize,
+    pub(crate) clusters: Vec<ClusterInfo>,
+    #[serde(default)]
+    pub(crate) _diagnostics: Value,
 }
 
-/// クラスター。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct Cluster {
+impl ClusteringResponse {
+    fn is_success(&self) -> bool {
+        self.status.is_success()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ClusterJobStatus {
+    Running,
+    Succeeded,
+    Partial,
+    Failed,
+}
+
+impl ClusterJobStatus {
+    fn is_running(&self) -> bool {
+        matches!(self, ClusterJobStatus::Running)
+    }
+
+    fn is_success(&self) -> bool {
+        matches!(
+            self,
+            ClusterJobStatus::Succeeded | ClusterJobStatus::Partial
+        )
+    }
+
+    fn is_terminal(&self) -> bool {
+        !self.is_running()
+    }
+}
+
+impl fmt::Display for ClusterJobStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ClusterJobStatus::Running => write!(f, "running"),
+            ClusterJobStatus::Succeeded => write!(f, "succeeded"),
+            ClusterJobStatus::Partial => write!(f, "partial"),
+            ClusterJobStatus::Failed => write!(f, "failed"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct ClusterInfo {
     pub(crate) cluster_id: usize,
-    pub(crate) sentences: Vec<ClusterSentence>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) centroid: Option<Vec<f64>>,
+    #[serde(default)]
+    pub(crate) _size: usize,
+    #[serde(default)]
+    pub(crate) _label: Option<String>,
+    #[serde(default)]
     pub(crate) top_terms: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) coherence_score: Option<f64>,
+    #[serde(default)]
+    pub(crate) _stats: Value,
+    #[serde(default)]
+    pub(crate) representatives: Vec<ClusterRepresentative>,
 }
 
-/// クラスター内の文。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct ClusterSentence {
-    pub(crate) sentence_id: usize,
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct ClusterRepresentative {
+    #[serde(default)]
+    pub(crate) _article_id: String,
+    #[serde(default)]
+    pub(crate) _paragraph_idx: Option<i32>,
+    #[serde(rename = "sentence_text")]
     pub(crate) text: String,
-    pub(crate) source_article_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) embedding: Option<Vec<f64>>,
+    #[serde(default)]
+    pub(crate) _lang: Option<String>,
+    #[serde(default)]
+    pub(crate) _score: Option<f32>,
 }
 
-/// クラスタリングメタデータ。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct ClusteringMetadata {
-    pub(crate) total_sentences: usize,
-    pub(crate) cluster_count: usize,
+#[derive(Debug, Clone, Serialize)]
+struct ClusterJobRequest<'a> {
+    params: ClusterJobParams,
+    documents: Vec<ClusterDocument<'a>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ClusterJobParams {
+    max_sentences_total: usize,
+    umap_n_components: usize,
+    hdbscan_min_cluster_size: usize,
+    mmr_lambda: f32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ClusterDocument<'a> {
+    article_id: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) processing_time_ms: Option<usize>,
+    title: Option<&'a String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lang_hint: Option<&'a String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    published_at: Option<&'a String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_url: Option<&'a String>,
+    paragraphs: Vec<String>,
 }
 
 impl SubworkerClient {
     pub(crate) fn new(endpoint: impl Into<String>) -> Result<Self> {
         let client = Client::builder()
-            .timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(SUBWORKER_TIMEOUT_SECS))
             .build()
             .context("failed to build subworker client")?;
 
@@ -100,36 +172,6 @@ impl SubworkerClient {
         Ok(())
     }
 
-    pub(crate) async fn fetch_corpus(&self, job_id: Uuid) -> Result<SubworkerCorpus> {
-        let url = self
-            .base_url
-            .join(&format!("jobs/{job_id}"))
-            .context("failed to build subworker jobs URL")?;
-
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .context("subworker corpus request failed")?;
-
-        if response.status() == StatusCode::NOT_FOUND {
-            return Ok(SubworkerCorpus {
-                job_id,
-                articles: Vec::new(),
-            });
-        }
-
-        let response = response
-            .error_for_status()
-            .context("subworker corpus endpoint returned error status")?;
-
-        response
-            .json::<SubworkerCorpus>()
-            .await
-            .context("failed to deserialize subworker corpus response")
-    }
-
     /// 証拠コーパスを送信してクラスタリング結果を取得する。
     ///
     /// # Arguments
@@ -143,10 +185,7 @@ impl SubworkerClient {
         job_id: Uuid,
         corpus: &EvidenceCorpus,
     ) -> Result<ClusteringResponse> {
-        let url = self
-            .base_url
-            .join(&format!("cluster/{}", corpus.genre))
-            .context("failed to build clustering URL")?;
+        let runs_url = build_runs_url(&self.base_url)?;
 
         debug!(
             job_id = %job_id,
@@ -155,11 +194,16 @@ impl SubworkerClient {
             "sending evidence corpus to subworker"
         );
 
+        let request_payload = build_cluster_job_request(corpus);
+        let idempotency_key = format!("{}::{}", job_id, corpus.genre);
+
         let response = self
             .client
-            .post(url)
-            .json(corpus)
-            .header("X-Job-ID", job_id.to_string())
+            .post(runs_url.clone())
+            .json(&request_payload)
+            .header("X-Alt-Job-Id", job_id.to_string())
+            .header("X-Alt-Genre", &corpus.genre)
+            .header("Idempotency-Key", idempotency_key)
             .send()
             .await
             .context("clustering request failed")?;
@@ -202,9 +246,158 @@ impl SubworkerClient {
         );
 
         // 検証済みのJSONを構造体にデシリアライズ
-        serde_json::from_value(response_json)
-            .context("failed to deserialize validated clustering response")
+        let mut run: ClusteringResponse = serde_json::from_value(response_json)
+            .context("failed to deserialize validated clustering response")?;
+
+        if run.status.is_running() {
+            run = self.poll_run(run.run_id).await?;
+        }
+
+        if !run.is_success() {
+            return Err(anyhow!(
+                "clustering run {} finished with status {}",
+                run.run_id,
+                run.status
+            ));
+        }
+
+        Ok(run)
     }
+
+    async fn poll_run(&self, run_id: i64) -> Result<ClusteringResponse> {
+        let run_url = build_run_url(&self.base_url, run_id)?;
+
+        for attempt in 0..MAX_POLL_ATTEMPTS {
+            let response = self
+                .client
+                .get(run_url.clone())
+                .send()
+                .await
+                .context("clustering run polling request failed")?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                return Err(anyhow!(
+                    "run polling endpoint returned error status {}: {}",
+                    status,
+                    body
+                ));
+            }
+
+            let response_json: Value = response
+                .json()
+                .await
+                .context("failed to deserialize polling response as JSON")?;
+
+            let validation = validate_json(&CLUSTERING_RESPONSE_SCHEMA, &response_json);
+            if !validation.valid {
+                warn!(
+                    run_id,
+                    errors = ?validation.errors,
+                    "polling response failed JSON Schema validation"
+                );
+                return Err(anyhow!(
+                    "run polling response validation failed: {:?}",
+                    validation.errors
+                ));
+            }
+
+            let run: ClusteringResponse = serde_json::from_value(response_json)
+                .context("failed to deserialize validated polling response")?;
+
+            if run.status.is_terminal() {
+                if !run.is_success() {
+                    warn!(
+                        run_id,
+                        status = %run.status,
+                        "clustering run completed with non-success status"
+                    );
+                }
+                return Ok(run);
+            }
+
+            debug!(
+                run_id,
+                attempt,
+                status = %run.status,
+                "clustering run still in progress"
+            );
+
+            let backoff = cmp::min(
+                INITIAL_POLL_INTERVAL_MS * (1_u64 << attempt.min(10)),
+                MAX_POLL_INTERVAL_MS,
+            );
+            sleep(Duration::from_millis(backoff)).await;
+        }
+
+        Err(anyhow!(
+            "clustering run {} did not complete within timeout",
+            run_id
+        ))
+    }
+}
+
+fn build_runs_url(base: &Url) -> Result<Url> {
+    let mut url = base.clone();
+    url.path_segments_mut()
+        .map_err(|_| anyhow!("subworker base URL must be absolute"))?
+        .extend(["v1", "runs"]);
+    Ok(url)
+}
+
+fn build_run_url(base: &Url, run_id: i64) -> Result<Url> {
+    let mut url = base.clone();
+    url.path_segments_mut()
+        .map_err(|_| anyhow!("subworker base URL must be absolute"))?
+        .extend(["v1", "runs", &run_id.to_string()]);
+    Ok(url)
+}
+
+fn build_cluster_job_request(corpus: &EvidenceCorpus) -> ClusterJobRequest<'_> {
+    let max_sentences_total = corpus
+        .total_sentences
+        .max(MIN_PARAGRAPH_LEN)
+        .min(DEFAULT_MAX_SENTENCES_TOTAL);
+
+    let documents = corpus
+        .articles
+        .iter()
+        .map(|article| ClusterDocument {
+            article_id: &article.article_id,
+            title: article.title.as_ref(),
+            lang_hint: Some(&article.language),
+            published_at: None,
+            source_url: None,
+            paragraphs: vec![build_paragraph(&article.sentences)],
+        })
+        .collect();
+
+    ClusterJobRequest {
+        params: ClusterJobParams {
+            max_sentences_total,
+            umap_n_components: DEFAULT_UMAP_N_COMPONENTS,
+            hdbscan_min_cluster_size: DEFAULT_HDBSCAN_MIN_CLUSTER_SIZE,
+            mmr_lambda: DEFAULT_MMR_LAMBDA,
+        },
+        documents,
+    }
+}
+
+fn build_paragraph(sentences: &[String]) -> String {
+    if sentences.is_empty() {
+        return "No content available.".repeat(2);
+    }
+
+    let mut paragraph = sentences.join(" ");
+    let filler = sentences.last().unwrap();
+
+    while paragraph.len() < MIN_PARAGRAPH_LEN {
+        paragraph.push(' ');
+        paragraph.push_str(filler);
+    }
+
+    paragraph
 }
 
 #[cfg(test)]
@@ -240,56 +433,5 @@ mod tests {
 
         let error = client.ping().await.expect_err("ping should fail");
         assert!(error.to_string().contains("error status"));
-    }
-
-    #[tokio::test]
-    async fn fetch_corpus_returns_articles() {
-        let server = MockServer::start().await;
-        let job_id = Uuid::new_v4();
-        let body = serde_json::json!({
-            "job_id": job_id,
-            "articles": [
-                {
-                    "id": Uuid::new_v4(),
-                    "title": "Title",
-                    "body": "Body",
-                    "language": "en"
-                }
-            ]
-        });
-
-        Mock::given(method("GET"))
-            .and(path(format!("/jobs/{job_id}").as_str()))
-            .respond_with(ResponseTemplate::new(200).set_body_json(body.clone()))
-            .mount(&server)
-            .await;
-
-        let client = SubworkerClient::new(server.uri()).expect("client should build");
-        let corpus = client
-            .fetch_corpus(job_id)
-            .await
-            .expect("fetch should succeed");
-
-        let expected: SubworkerCorpus = serde_json::from_value(body).expect("valid body");
-        assert_eq!(corpus, expected);
-    }
-
-    #[tokio::test]
-    async fn fetch_corpus_propagates_error_status() {
-        let server = MockServer::start().await;
-        let job_id = Uuid::new_v4();
-
-        Mock::given(method("GET"))
-            .and(path(format!("/jobs/{job_id}").as_str()))
-            .respond_with(ResponseTemplate::new(404))
-            .mount(&server)
-            .await;
-
-        let client = SubworkerClient::new(server.uri()).expect("client should build");
-        let corpus = client
-            .fetch_corpus(job_id)
-            .await
-            .expect("404 should return empty corpus");
-        assert!(corpus.articles.is_empty());
     }
 }
