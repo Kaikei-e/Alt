@@ -98,7 +98,7 @@ export default function RecapSevenDaysPage() {
             bgGradient="var(--accent-gradient)"
             bgClip="text"
           >
-            7-Day Recap
+            7 Days Recap
           </Text>
           <Text fontSize="xs" color="var(--text-secondary)">
             Executed: {new Date(data.executedAt).toLocaleString("en-US")}
