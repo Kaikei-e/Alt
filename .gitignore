@@ -60,3 +60,4 @@ alt-frontend/playwright-report/index.html
 kratos/kratos.yml
 backups/
 .vscode/tasks.json
+recap-worker/recap-worker/.sqlx/offline.toml
