@@ -5,9 +5,7 @@
 #[cfg(test)]
 mod tests {
     use recap_worker::pipeline::dedup::HashDedupStage;
-    use recap_worker::pipeline::preprocess::TextPreprocessStage;
     use recap_worker::util::text::{hash_text, is_near_duplicate, split_sentences};
-    use uuid::Uuid;
 
     #[test]
     fn test_unicode_normalization() {
@@ -54,7 +52,7 @@ mod tests {
 
     #[test]
     fn test_dedup_stage_creation() {
-        let stage = HashDedupStage::with_defaults();
+        let _stage = HashDedupStage::with_defaults();
         // ステージが正常に作成されることを確認
         assert!(true);
     }
