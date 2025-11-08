@@ -5,6 +5,7 @@ import { CacheManager, defaultCacheConfig } from "./api/cache/CacheManager";
 import { ApiClient, defaultApiConfig } from "./api/core/ApiClient";
 import { DesktopApi } from "./api/desktop/DesktopApi";
 import { FeedsApi } from "./api/feeds/FeedsApi";
+import { RecapApi } from "./api/recap/RecapApi";
 
 // Re-export types for external use
 export type { CursorResponse } from "@/schema/common";
@@ -26,6 +27,7 @@ export const apiClient = new ApiClient(defaultApiConfig, cacheManager, authInter
 
 const feedsApiInstance = new FeedsApi(apiClient);
 const desktopApiInstance = new DesktopApi(apiClient, feedsApiInstance);
+const recapApiInstance = new RecapApi(apiClient);
 
 // Combine all APIs into the main feedsApi object for backward compatibility
 export const feedsApi = {
@@ -85,4 +87,9 @@ export const feedsApi = {
 
   // Cache management
   clearCache: feedsApiInstance.clearCache.bind(feedsApiInstance),
+} as const;
+
+// Recap API
+export const recapApi = {
+  get7DaysRecap: recapApiInstance.get7DaysRecap.bind(recapApiInstance),
 } as const;
