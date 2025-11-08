@@ -19,9 +19,11 @@ from fastapi import FastAPI
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.gateway.ollama_gateway import OllamaGateway
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
+from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
 from news_creator.handler import (
     create_summarize_router,
     create_generate_router,
+    create_recap_summary_router,
     create_health_router,
 )
 
@@ -43,6 +45,10 @@ class DependencyContainer:
 
         # Usecase layer
         self.summarize_usecase = SummarizeUsecase(
+            config=self.config,
+            llm_provider=self.ollama_gateway,
+        )
+        self.recap_summary_usecase = RecapSummaryUsecase(
             config=self.config,
             llm_provider=self.ollama_gateway,
         )
@@ -86,6 +92,10 @@ app.include_router(
 app.include_router(
     create_generate_router(container.ollama_gateway),
     tags=["generation"]
+)
+app.include_router(
+    create_recap_summary_router(container.recap_summary_usecase),
+    tags=["recap-summary"]
 )
 app.include_router(
     create_health_router(container.ollama_gateway),
