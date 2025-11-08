@@ -390,6 +390,7 @@ services:
     networks:
       - alt-network
     environment:
+      - RECAP_SUBWORKER_DB_URL=postgresql+asyncpg://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:${RECAP_DB_PORT}/${RECAP_DB_NAME}
       - RECAP_SUBWORKER_BASE_URL=http://recap-subworker:8002
     ports:
       - "8002:8002"
