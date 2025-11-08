@@ -59,13 +59,13 @@ class Embedder:
             return np.empty((0, 0), dtype=np.float32)
         cached = self._fetch_cached(sentences)
         pending = [s for s in sentences if s not in cached]
-        vectors = {}
+        fresh: dict[str, np.ndarray] = {}
         if pending:
             self._ensure_model()
             if self.config.backend == "hash":
                 for sentence in pending:
                     vector = self._hash_sentence(sentence)
-                    vectors[sentence] = vector
+                    fresh[sentence] = vector
                     self._cache.set(sentence, vector)
             else:
                 model = self._model
@@ -76,9 +76,32 @@ class Embedder:
                     normalize_embeddings=True,
                 )
                 for sentence, vector in zip(pending, embeddings):
-                    vectors[sentence] = np.asarray(vector, dtype=np.float32)
-                    self._cache.set(sentence, vectors[sentence])
-        return np.vstack([cached.get(s) or vectors.get(s) for s in sentences])
+                    stored = np.asarray(vector, dtype=np.float32)
+                    fresh[sentence] = stored
+                    self._cache.set(sentence, stored)
+
+        merged: dict[str, np.ndarray] = {}
+        merged.update(cached)
+        merged.update(fresh)
+
+        ordered_vectors: list[np.ndarray] = []
+        for sentence in sentences:
+            vector = merged.get(sentence)
+            if vector is not None:
+                ordered_vectors.append(vector)
+                continue
+
+            if self.config.backend != "hash":
+                raise KeyError(f"embedding missing for sentence: {sentence[:32]}")
+
+            vector = self._hash_sentence(sentence)
+            self._cache.set(sentence, vector)
+            merged[sentence] = vector
+            ordered_vectors.append(vector)
+
+        if not ordered_vectors:
+            return np.empty((0, 0), dtype=np.float32)
+        return np.vstack(ordered_vectors)
 
     def _fetch_cached(self, sentences: Sequence[str]) -> dict[str, np.ndarray]:
         cached: dict[str, np.ndarray] = {}
