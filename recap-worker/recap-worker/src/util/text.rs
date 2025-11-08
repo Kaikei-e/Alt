@@ -8,7 +8,7 @@ use xxhash_rust::xxh3::xxh3_64;
 ///
 /// XXH3は高速で衝突率が低いハッシュアルゴリズムです。
 #[must_use]
-pub(crate) fn hash_text(text: &str) -> u64 {
+pub fn hash_text(text: &str) -> u64 {
     xxh3_64(text.as_bytes())
 }
 
@@ -16,7 +16,7 @@ pub(crate) fn hash_text(text: &str) -> u64 {
 ///
 /// Unicode UAX#29に準拠した文境界検出を使用します。
 #[must_use]
-pub(crate) fn split_sentences(text: &str) -> Vec<String> {
+pub fn split_sentences(text: &str) -> Vec<String> {
     text.unicode_sentences()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -54,12 +54,7 @@ pub(crate) fn rolling_hash_windows(text: &str, window_size: usize) -> Vec<u64> {
 /// # Returns
 /// 近似重複の場合はtrue
 #[must_use]
-pub(crate) fn is_near_duplicate(
-    text1: &str,
-    text2: &str,
-    window_size: usize,
-    threshold: f64,
-) -> bool {
+pub fn is_near_duplicate(text1: &str, text2: &str, window_size: usize, threshold: f64) -> bool {
     if text1.is_empty() || text2.is_empty() {
         return false;
     }
@@ -71,18 +66,34 @@ pub(crate) fn is_near_duplicate(
         return false;
     }
 
-    // Jaccard類似度を計算
-    let set1: std::collections::HashSet<_> = hashes1.into_iter().collect();
-    let set2: std::collections::HashSet<_> = hashes2.into_iter().collect();
+    use std::collections::HashMap;
 
-    let intersection = set1.intersection(&set2).count();
-    let union = set1.union(&set2).count();
+    let mut counts1: HashMap<u64, usize> = HashMap::new();
+    for hash in hashes1 {
+        *counts1.entry(hash).or_insert(0) += 1;
+    }
 
-    if union == 0 {
+    let mut counts2: HashMap<u64, usize> = HashMap::new();
+    for hash in hashes2 {
+        *counts2.entry(hash).or_insert(0) += 1;
+    }
+
+    let mut intersection = 0usize;
+    for (hash, count1) in &counts1 {
+        if let Some(count2) = counts2.get(hash) {
+            intersection += (*count1).min(*count2);
+        }
+    }
+
+    let total1: usize = counts1.values().sum();
+    let total2: usize = counts2.values().sum();
+    let denominator = total1 + total2;
+
+    if denominator == 0 {
         return false;
     }
 
-    let similarity = intersection as f64 / union as f64;
+    let similarity = (2 * intersection) as f64 / denominator as f64;
     similarity >= threshold
 }
 

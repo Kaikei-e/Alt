@@ -28,6 +28,7 @@ impl Default for RetryConfig {
 
 impl RetryConfig {
     /// 新しい再試行設定を作成する。
+    #[allow(dead_code)]
     #[must_use]
     pub(crate) const fn new(max_attempts: usize, base_delay_ms: u64, max_delay_ms: u64) -> Self {
         Self {
@@ -53,7 +54,7 @@ impl RetryConfig {
         // 指数バックオフ: base * 2^(attempt-1)
         let exponential_delay = self
             .base_delay_ms
-            .saturating_mul(1_u64.saturating_shl((attempt - 1) as u32));
+            .saturating_mul(1_u64 << ((attempt - 1) as u32).min(63));
 
         // 上限でキャップ
         let capped_delay = exponential_delay.min(self.max_delay_ms);
