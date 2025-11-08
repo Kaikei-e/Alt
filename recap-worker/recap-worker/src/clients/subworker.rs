@@ -28,6 +28,7 @@ const MAX_POLL_ATTEMPTS: usize = 30;
 const INITIAL_POLL_INTERVAL_MS: u64 = 500;
 const MAX_POLL_INTERVAL_MS: u64 = 5_000;
 const SUBWORKER_TIMEOUT_SECS: u64 = 120;
+const MIN_DOCUMENTS_PER_GENRE: usize = 10;
 
 /// クラスタリングレスポンス (POST/GET `/v1/runs`).
 #[derive(Debug, Clone, Deserialize)]
@@ -196,6 +197,21 @@ impl SubworkerClient {
 
         let request_payload = build_cluster_job_request(corpus);
         let idempotency_key = format!("{}::{}", job_id, corpus.genre);
+        let document_count = request_payload.documents.len();
+
+        if document_count < MIN_DOCUMENTS_PER_GENRE {
+            warn!(
+                job_id = %job_id,
+                genre = %corpus.genre,
+                document_count,
+                "skipping clustering because document count is below minimum"
+            );
+            return Err(anyhow!(
+                "insufficient documents for clustering: expected >= {}, found {}",
+                MIN_DOCUMENTS_PER_GENRE,
+                document_count
+            ));
+        }
 
         let response = self
             .client
