@@ -24,6 +24,7 @@ pub struct ComponentRegistry {
     scheduler: Scheduler,
     news_creator_client: Arc<NewsCreatorClient>,
     subworker_client: Arc<SubworkerClient>,
+    recap_dao: Arc<RecapDao>,
 }
 
 impl AppState {
@@ -47,6 +48,10 @@ impl AppState {
 
     pub(crate) fn subworker_client(&self) -> Arc<SubworkerClient> {
         Arc::clone(&self.registry.subworker_client)
+    }
+
+    pub(crate) fn dao(&self) -> Arc<RecapDao> {
+        Arc::clone(&self.registry.recap_dao)
     }
 }
 
@@ -78,6 +83,7 @@ impl ComponentRegistry {
             scheduler,
             news_creator_client,
             subworker_client,
+            recap_dao,
         })
     }
 }

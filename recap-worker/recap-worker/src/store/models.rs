@@ -16,7 +16,6 @@ pub(crate) struct RecapJob {
 // Genre with summary
 #[derive(Debug, Clone)]
 pub(crate) struct GenreWithSummary {
-    pub(crate) job_id: Uuid,
     pub(crate) genre_name: String,
     pub(crate) summary_ja: Option<String>,
 }

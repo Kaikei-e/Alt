@@ -5,8 +5,8 @@ pub(crate) mod health;
 pub(crate) mod metrics;
 
 use axum::{
-    routing::{get, post},
     Router,
+    routing::{get, post},
 };
 
 use crate::app::AppState;

@@ -1,6 +1,9 @@
 use anyhow::{Context, Result, ensure};
 use serde_json::Value;
-use sqlx::types::Json;
+use sqlx::types::{
+    Json,
+    chrono::{DateTime, Utc},
+};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -496,7 +499,6 @@ impl RecapDao {
         let rows = sqlx::query(
             r"
             SELECT
-                rs.job_id,
                 rs.genre as genre_name,
                 rr.summary_ja
             FROM recap_sections rs
@@ -513,7 +515,6 @@ impl RecapDao {
         let mut genres = Vec::new();
         for row in rows {
             genres.push(GenreWithSummary {
-                job_id: row.try_get("job_id")?,
                 genre_name: row.try_get("genre_name")?,
                 summary_ja: row.try_get("summary_ja").ok(),
             });
@@ -596,7 +597,9 @@ impl RecapDao {
             for ev_row in evidence_rows {
                 evidence.push(ClusterEvidence {
                     article_id: ev_row.try_get("article_id")?,
-                    title: ev_row.try_get::<Option<String>, _>("title")?.unwrap_or_default(),
+                    title: ev_row
+                        .try_get::<Option<String>, _>("title")?
+                        .unwrap_or_default(),
                     source_url: ev_row
                         .try_get::<Option<String>, _>("source_url")?
                         .unwrap_or_default(),
