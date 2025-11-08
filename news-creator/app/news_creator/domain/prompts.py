@@ -42,7 +42,7 @@ Always respond in JSON following this structure exactly:
 {{
   "title": "15〜40文字程度の日本語タイトル（句読点含む）",
   "bullets": [
-    "1文40〜90文字程度の要点（常体、箇条書き用）"
+    "1文200〜300文字程度の要点（常体、箇条書き用）"
   ],
   "language": "ja"
 }}
