@@ -1,5 +1,5 @@
 /// 7日・10k記事の性能ベンチマーク。
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use recap_worker::pipeline::dedup::HashDedupStage;
 use recap_worker::pipeline::preprocess::TextPreprocessStage;
 use recap_worker::store::dao::RecapDao;
