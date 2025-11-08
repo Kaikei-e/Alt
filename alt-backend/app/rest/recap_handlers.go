@@ -27,6 +27,10 @@ func registerRecapRoutes(v1 *echo.Group, container *di.ApplicationComponents, cf
 	// Apply service auth middleware to recap routes
 	recap := v1.Group("/recap", serviceAuthMiddleware.RequireServiceAuth())
 	recap.GET("/articles", handleRecapArticles(container, cfg, limiter))
+
+	// 7-day recap endpoint (publicly accessible)
+	recapHandler := NewRecapHandler(container.RecapUsecase)
+	v1.GET("/recap/7days", recapHandler.GetSevenDayRecap)
 }
 
 func handleRecapArticles(container *di.ApplicationComponents, cfg *config.Config, limiter *recapRateLimiter) echo.HandlerFunc {

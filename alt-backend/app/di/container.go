@@ -21,6 +21,7 @@ import (
 	"alt/gateway/image_fetch_gateway"
 	"alt/gateway/rate_limiter_gateway"
 	"alt/gateway/recap_articles_gateway"
+	"alt/gateway/recap_gateway"
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/update_feed_status_gateway"
@@ -39,6 +40,7 @@ import (
 	"alt/usecase/image_fetch_usecase"
 	"alt/usecase/reading_status"
 	"alt/usecase/recap_articles_usecase"
+	"alt/usecase/recap_usecase"
 	"alt/usecase/register_favorite_feed_usecase"
 	"alt/usecase/register_feed_usecase"
 	"alt/usecase/search_article_usecase"
@@ -86,6 +88,7 @@ type ApplicationComponents struct {
 	ArchiveArticleUsecase               *archive_article_usecase.ArchiveArticleUsecase
 	FetchArticlesCursorUsecase          *fetch_articles_usecase.FetchArticlesCursorUsecase
 	RecapArticlesUsecase                *recap_articles_usecase.RecapArticlesUsecase
+	RecapUsecase                        *recap_usecase.RecapUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -173,6 +176,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	}
 	recapArticlesUsecase := recap_articles_usecase.NewRecapArticlesUsecase(recapArticlesGateway, recapUsecaseCfg)
 
+	// Recap 7-day summary components
+	recapGateway := recap_gateway.NewRecapGateway()
+	recapUsecase := recap_usecase.NewRecapUsecase(recapGateway)
+
 	// Fetch inoreader summary components
 	fetchInoreaderSummaryGatewayImpl := fetch_inoreader_summary_gateway.NewInoreaderSummaryGateway(altDBRepository)
 	fetchInoreaderSummaryUsecase := fetch_inoreader_summary_usecase.NewFetchInoreaderSummaryUsecase(fetchInoreaderSummaryGatewayImpl)
@@ -224,5 +231,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ArchiveArticleUsecase:               archiveArticleUsecase,
 		FetchArticlesCursorUsecase:          fetchArticlesCursorUsecase,
 		RecapArticlesUsecase:                recapArticlesUsecase,
+		RecapUsecase:                        recapUsecase,
 	}
 }
