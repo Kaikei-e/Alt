@@ -392,6 +392,7 @@ services:
     environment:
       - RECAP_SUBWORKER_DB_URL=postgresql+asyncpg://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:${RECAP_DB_PORT}/${RECAP_DB_NAME}
       - RECAP_SUBWORKER_BASE_URL=http://recap-subworker:8002
+      - RECAP_SUBWORKER_MODEL_BACKEND=hash
     ports:
       - "8002:8002"
     depends_on:
