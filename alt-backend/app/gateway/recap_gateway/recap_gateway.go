@@ -48,7 +48,7 @@ func (g *RecapGateway) GetSevenDayRecap(ctx context.Context) (*domain.RecapSumma
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("no 7-day recap found")
+		return nil, domain.ErrRecapNotFound
 	}
 
 	if resp.StatusCode != http.StatusOK {

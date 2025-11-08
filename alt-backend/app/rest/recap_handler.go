@@ -1,8 +1,11 @@
 package rest
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 
+	"alt/domain"
 	"alt/usecase/recap_usecase"
 
 	"github.com/labstack/echo/v4"
@@ -23,9 +26,12 @@ func (h *RecapHandler) GetSevenDayRecap(c echo.Context) error {
 
 	recap, err := h.recapUsecase.GetSevenDayRecap(ctx)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "Failed to fetch 7-day recap",
-		})
+		if errors.Is(err, domain.ErrRecapNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{
+				"error": "No 7-day recap available yet",
+			})
+		}
+		return handleError(c, fmt.Errorf("failed to fetch 7-day recap: %w", err), "recap_summary")
 	}
 
 	return c.JSON(http.StatusOK, recap)

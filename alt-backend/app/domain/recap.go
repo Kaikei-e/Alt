@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 type RecapGenre struct {
 	Genre         string         `json:"genre"`
@@ -27,3 +30,5 @@ type RecapSummary struct {
 	TotalArticles int          `json:"total_articles"`
 	Genres        []RecapGenre `json:"genres"`
 }
+
+var ErrRecapNotFound = errors.New("recap not found")
