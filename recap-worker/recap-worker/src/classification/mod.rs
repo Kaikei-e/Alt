@@ -4,6 +4,8 @@ use std::{collections::HashMap, path::Path};
 use anyhow::Result;
 
 use crate::pipeline::genre_keywords::GenreKeywords;
+
+mod keywords;
 use keywords::{accumulate_scores, default_matcher, KeywordMatcher, DEFAULT_KEYWORDS};
 
 mod features;
@@ -105,10 +107,7 @@ impl GenreClassifier {
             .into_iter()
             .collect::<HashMap<_, _>>();
 
-        let boost = accumulate_scores(
-            &DEFAULT_KEYWORDS,
-            &matcher_scores,
-        );
+        let boost = accumulate_scores(&DEFAULT_KEYWORDS, &matcher_scores);
         for (genre, extra) in boost {
             combined_scores
                 .entry(genre)

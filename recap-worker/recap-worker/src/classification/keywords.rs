@@ -1,11 +1,10 @@
 //! 高速なジャンルキーワード照合データ構造。
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
-use fst::{automaton::Str, IntoStreamer, Map, MapBuilder};
+use fst::{IntoStreamer, Map, Streamer};
 use once_cell::sync::Lazy;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io;
-use std::iter::FromIterator;
+use std::sync::Arc;
 
 /// ジャンルごとのキーワード定義。
 #[derive(Debug, Clone)]
@@ -19,7 +18,7 @@ pub struct KeywordEntry {
 #[derive(Debug)]
 pub struct KeywordMatcher {
     ac: AhoCorasick,
-    map: Map<Vec<u8>>,
+    map: Arc<Map<Vec<u8>>>,
 }
 
 impl KeywordMatcher {
@@ -28,7 +27,8 @@ impl KeywordMatcher {
         let ac = AhoCorasickBuilder::new()
             .match_kind(MatchKind::LeftmostLongest)
             .ascii_case_insensitive(true)
-            .build(&patterns)?;
+            .build(&patterns)
+            .map_err(to_io)?;
 
         let mut kv_pairs: Vec<(Vec<u8>, u64)> = entries
             .iter()
@@ -37,29 +37,20 @@ impl KeywordMatcher {
             .collect();
         kv_pairs.sort_unstable();
 
-        let mut buffer = Vec::new();
-        {
-            let mut builder = MapBuilder::new(&mut buffer)?;
-            for (key, value) in kv_pairs {
-                builder.insert(&key, value)?;
-            }
-            builder.finish()?;
-        }
+        let map = build_map(kv_pairs)?;
 
-        let map = Map::new(buffer)?;
-
-        Ok(Self { ac, map })
+        Ok(Self {
+            ac,
+            map: Arc::new(map),
+        })
     }
 
     #[must_use]
-    pub fn find_matches<'a>(&self, text: &'a str) -> Vec<Match<'a>> {
+    pub fn find_matches(&self, text: &str) -> Vec<Match> {
         let mut results = Vec::new();
         for mat in self.ac.find_iter(text) {
             if let Some(idx) = self.lookup_index(&text[mat.start()..mat.end()]) {
-                results.push(Match {
-                    index: idx,
-                    span: mat,
-                });
+                results.push(Match { index: idx });
             }
         }
         results
@@ -68,27 +59,20 @@ impl KeywordMatcher {
     fn lookup_index(&self, phrase: &str) -> Option<u64> {
         let lower = phrase.to_lowercase();
         let bytes = lower.as_bytes();
-        self.map
-            .range()
-            .ge(Str::from(bytes))
-            .into_stream()
-            .next()
-            .and_then(|(key, value)| {
-                // verify exact match
-                if key == bytes {
-                    Some(value)
-                } else {
-                    None
-                }
-            })
+        let mut stream = self.map.range().into_stream();
+        while let Some((key, value)) = stream.next() {
+            if key == bytes {
+                return Some(value);
+            }
+        }
+        None
     }
 }
 
 /// 一致情報。
 #[derive(Debug, Clone)]
-pub struct Match<'a> {
+pub struct Match {
     pub index: u64,
-    pub span: aho_corasick::Match,
 }
 
 /// コンパイル済みのデフォルト辞書。
@@ -165,7 +149,7 @@ pub fn default_matcher() -> KeywordMatcher {
 
 /// マッチ結果からジャンルごとの加重スコアを計算する。
 #[must_use]
-pub fn accumulate_scores(entries: &[KeywordEntry], matches: &[Match<'_>]) -> HashMap<String, u32> {
+pub fn accumulate_scores(entries: &[KeywordEntry], matches: &[Match]) -> HashMap<String, u32> {
     let mut scores: HashMap<String, u32> = HashMap::new();
     for m in matches {
         if let Some(entry) = entries.get(m.index as usize) {
@@ -173,4 +157,12 @@ pub fn accumulate_scores(entries: &[KeywordEntry], matches: &[Match<'_>]) -> Has
         }
     }
     scores
+}
+
+fn build_map(pairs: Vec<(Vec<u8>, u64)>) -> io::Result<Map<Vec<u8>>> {
+    Map::from_iter(pairs).map_err(to_io)
+}
+
+fn to_io<E: std::error::Error + Send + Sync + 'static>(err: E) -> io::Error {
+    io::Error::new(io::ErrorKind::Other, err)
 }
