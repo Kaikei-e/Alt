@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use tracing::{debug, info, warn};
@@ -8,9 +8,9 @@ use uuid::Uuid;
 
 use crate::{
     clients::alt_backend::{AltBackendArticle, AltBackendClient},
-    store::{dao::RecapDao, models::RawArticle},
-    util::retry::{is_retryable_error, RetryConfig},
     scheduler::JobContext,
+    store::{dao::RecapDao, models::RawArticle},
+    util::retry::{RetryConfig, is_retryable_error},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,6 +112,20 @@ impl AltBackendFetchStage {
 #[async_trait]
 impl FetchStage for AltBackendFetchStage {
     async fn fetch(&self, job: &JobContext) -> Result<FetchedCorpus> {
+        let lock_result = self
+            .dao
+            .create_job_with_lock(job.job_id, None)
+            .await
+            .map_err(|err| {
+                tracing::error!(job_id = %job.job_id, error = ?err, "failed to create recap job record");
+                err
+            })
+            .context("failed to create recap job record")?;
+
+        if lock_result.is_none() {
+            bail!("recap job {} is already being processed", job.job_id);
+        }
+
         // 取得期間を計算（現在時刻からwindow_days日前まで）
         let to = Utc::now();
         let from = to - Duration::days(i64::from(self.window_days));
@@ -152,10 +166,10 @@ impl FetchStage for AltBackendFetchStage {
             articles: articles
                 .into_iter()
                 .map(|article| FetchedArticle {
-                    id: article.id,
+                    id: article.article_id,
                     title: article.title,
-                    body: article.content,
-                    language: article.lang,
+                    body: article.fulltext,
+                    language: article.lang_hint,
                     published_at: article.published_at,
                     source_url: article.source_url,
                 })
@@ -170,15 +184,15 @@ fn convert_to_raw_articles(articles: &[AltBackendArticle]) -> Vec<RawArticle> {
         .iter()
         .map(|article| {
             // 正規化ハッシュを計算（現時点では単純なハッシュ、後でXXH3に置き換え）
-            let normalized_hash = format!("{:x}", md5::compute(&article.content));
+            let normalized_hash = format!("{:x}", md5::compute(&article.fulltext));
 
             RawArticle::new(
-                article.id.clone(),
+                article.article_id.clone(),
                 article.title.clone(),
-                article.content.clone(),
+                article.fulltext.clone(),
                 article.published_at,
                 article.source_url.clone(),
-                article.lang.clone(),
+                article.lang_hint.clone(),
                 normalized_hash,
             )
         })
@@ -192,12 +206,12 @@ mod tests {
     #[test]
     fn convert_to_raw_articles_creates_valid_entries() {
         let articles = vec![AltBackendArticle {
-            id: "art-1".to_string(),
+            article_id: "art-1".to_string(),
             title: Some("Title".to_string()),
-            content: "Content".to_string(),
+            fulltext: "Content".to_string(),
             published_at: None,
             source_url: Some("https://example.com".to_string()),
-            lang: Some("en".to_string()),
+            lang_hint: Some("en".to_string()),
         }];
 
         let raw = convert_to_raw_articles(&articles);

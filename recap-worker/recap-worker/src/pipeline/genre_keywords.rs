@@ -3,20 +3,6 @@
 /// 各ジャンルに対して、マルチリンガル（日本語・英語）のキーワードセットを定義します。
 use std::collections::HashMap;
 
-/// サポートするジャンルの一覧。
-pub(crate) const GENRES: &[&str] = &[
-    "ai",
-    "tech",
-    "business",
-    "science",
-    "entertainment",
-    "sports",
-    "politics",
-    "health",
-    "world",
-    "other",
-];
-
 /// ジャンル別キーワードマップ。
 #[derive(Debug, Clone)]
 pub(crate) struct GenreKeywords {

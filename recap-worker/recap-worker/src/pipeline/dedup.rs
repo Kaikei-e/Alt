@@ -1,14 +1,17 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use rayon::prelude::*;
+use rustc_hash::{FxHashMap, FxHashSet};
+use smallvec::SmallVec;
 use tokio::sync::Semaphore;
 use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::scheduler::JobContext;
-use crate::util::text::{hash_text, is_near_duplicate, split_sentences};
+use crate::util::text::{hash_text, rolling_hash_windows, split_sentences};
 
 use super::preprocess::{PreprocessedArticle, PreprocessedCorpus};
 
@@ -51,7 +54,7 @@ pub(crate) trait DedupStage: Send + Sync {
 
 /// XXH3ハッシュと文分割による重複排除ステージ。
 #[derive(Debug, Clone)]
-pub(crate) struct HashDedupStage {
+pub struct HashDedupStage {
     semaphore: Arc<Semaphore>,
     near_duplicate_threshold: f64,
     window_size: usize,
@@ -77,7 +80,7 @@ impl HashDedupStage {
     }
 
     /// デフォルトパラメータで作成する。
-    pub(crate) fn with_defaults() -> Self {
+    pub fn with_defaults() -> Self {
         let cpu_count = num_cpus::get();
         Self::new(cpu_count.max(2), 0.8, 100)
     }
@@ -108,32 +111,83 @@ impl DedupStage for HashDedupStage {
             ..Default::default()
         };
 
-        // 記事ハッシュで重複チェック
-        let mut article_hashes: HashMap<u64, String> = HashMap::new();
-        let mut unique_articles = Vec::with_capacity(total_articles);
+        let articles = corpus.articles;
+        let signatures = build_signatures(&articles, self.window_size);
 
-        for article in corpus.articles {
-            // 記事本文全体のハッシュ
-            let article_hash = hash_text(&article.body);
+        let mut keep_flags = vec![true; total_articles];
+        let mut unique_signatures: Vec<ArticleSignature> = Vec::new();
+        let mut exact_hashes: FxHashMap<u64, usize> = FxHashMap::default();
+        let mut window_index: FxHashMap<u64, SmallVec<[usize; 8]>> = FxHashMap::default();
 
-            // 既存の記事と近似重複チェック
-            let is_duplicate = article_hashes.values().any(|existing_body| {
-                is_near_duplicate(
-                    &article.body,
-                    existing_body,
-                    self.window_size,
-                    self.near_duplicate_threshold,
-                )
-            });
+        let mut processed_articles = 0usize;
+
+        for signature in signatures.into_iter() {
+            processed_articles += 1;
+
+            if let Some(&unique_idx) = exact_hashes.get(&signature.primary_hash) {
+                let existing_idx = unique_signatures[unique_idx].index;
+                if articles[existing_idx].body == articles[signature.index].body {
+                    keep_flags[signature.index] = false;
+                    stats.duplicate_articles += 1;
+                    debug!(
+                        article_id = %articles[signature.index].id,
+                        "dropped duplicate article (exact match)"
+                    );
+                    continue;
+                }
+            }
+
+            let mut candidates: FxHashSet<usize> = FxHashSet::default();
+            for hash in signature.window_keys.iter() {
+                if let Some(indices) = window_index.get(hash) {
+                    candidates.extend(indices.iter().copied());
+                }
+            }
+
+            let mut is_duplicate = false;
+            for unique_idx in candidates {
+                let other = &unique_signatures[unique_idx];
+                if window_similarity(other, &signature) >= self.near_duplicate_threshold {
+                    keep_flags[signature.index] = false;
+                    stats.duplicate_articles += 1;
+                    debug!(
+                        article_id = %articles[signature.index].id,
+                        "dropped duplicate article (near match)"
+                    );
+                    is_duplicate = true;
+                    break;
+                }
+            }
 
             if is_duplicate {
-                stats.duplicate_articles += 1;
+                continue;
+            }
+
+            let unique_idx = unique_signatures.len();
+            for hash in signature.window_keys.iter() {
+                window_index
+                    .entry(*hash)
+                    .or_insert_with(SmallVec::new)
+                    .push(unique_idx);
+            }
+            exact_hashes.insert(signature.primary_hash, unique_idx);
+            unique_signatures.push(signature);
+
+            if processed_articles % DEDUP_PROGRESS_INTERVAL == 0 {
                 debug!(
-                    article_id = %article.id,
-                    "dropped duplicate article"
+                    job_id = %job.job_id,
+                    processed = processed_articles,
+                    total = total_articles,
+                    unique_so_far = unique_signatures.len(),
+                    "deduplication progress"
                 );
-            } else {
-                article_hashes.insert(article_hash, article.body.clone());
+            }
+        }
+
+        let mut unique_articles = Vec::with_capacity(total_articles - stats.duplicate_articles);
+
+        for (idx, article) in articles.into_iter().enumerate() {
+            if keep_flags[idx] {
                 unique_articles.push(article);
             }
         }
@@ -147,7 +201,10 @@ impl DedupStage for HashDedupStage {
             let semaphore = Arc::clone(&self.semaphore);
 
             let task = tokio::spawn(async move {
-                let _permit = semaphore.acquire().await.expect("semaphore should not be closed");
+                let _permit = semaphore
+                    .acquire()
+                    .await
+                    .expect("semaphore should not be closed");
 
                 tokio::task::spawn_blocking(move || deduplicate_sentences(article))
                     .await
@@ -159,7 +216,7 @@ impl DedupStage for HashDedupStage {
 
         let results = futures::future::join_all(tasks).await;
 
-        let mut articles = Vec::with_capacity(results.len());
+        let mut deduped_articles = Vec::with_capacity(results.len());
 
         for result in results {
             match result {
@@ -167,7 +224,7 @@ impl DedupStage for HashDedupStage {
                     stats.total_sentences += sentence_stats.0;
                     stats.unique_sentences += sentence_stats.1;
                     stats.duplicate_sentences += sentence_stats.2;
-                    articles.push(article);
+                    deduped_articles.push(article);
                 }
                 Err(e) => {
                     debug!(error = ?e, "sentence dedup task failed");
@@ -186,9 +243,83 @@ impl DedupStage for HashDedupStage {
 
         Ok(DeduplicatedCorpus {
             job_id: job.job_id,
-            articles,
+            articles: deduped_articles,
             stats,
         })
+    }
+}
+
+const MAX_WINDOW_SAMPLE: usize = 256;
+const DEDUP_PROGRESS_INTERVAL: usize = 200;
+
+#[derive(Debug, Clone)]
+struct ArticleSignature {
+    index: usize,
+    primary_hash: u64,
+    window_keys: SmallVec<[u64; MAX_WINDOW_SAMPLE]>,
+    window_histogram: FxHashMap<u64, u32>,
+    total_windows: u32,
+}
+
+fn build_signatures(articles: &[PreprocessedArticle], window_size: usize) -> Vec<ArticleSignature> {
+    articles
+        .par_iter()
+        .enumerate()
+        .map(|(index, article)| ArticleSignature::new(index, article, window_size))
+        .collect()
+}
+
+impl ArticleSignature {
+    fn new(index: usize, article: &PreprocessedArticle, window_size: usize) -> Self {
+        let primary_hash = hash_text(&article.body);
+        let mut window_keys: SmallVec<[u64; MAX_WINDOW_SAMPLE]> = SmallVec::new();
+        let mut histogram: FxHashMap<u64, u32> = FxHashMap::default();
+
+        let windows = rolling_hash_windows(&article.body, window_size);
+        let step = (windows.len() / MAX_WINDOW_SAMPLE).max(1);
+
+        for (idx, hash) in windows.into_iter().enumerate() {
+            if idx % step != 0 {
+                continue;
+            }
+            if window_keys.len() >= MAX_WINDOW_SAMPLE {
+                break;
+            }
+            *histogram.entry(hash).or_insert(0) += 1;
+            window_keys.push(hash);
+        }
+
+        if window_keys.is_empty() {
+            window_keys.push(primary_hash);
+            histogram.insert(primary_hash, 1);
+        }
+
+        let total_windows = window_keys.len() as u32;
+
+        Self {
+            index,
+            primary_hash,
+            window_keys,
+            window_histogram: histogram,
+            total_windows,
+        }
+    }
+}
+
+fn window_similarity(a: &ArticleSignature, b: &ArticleSignature) -> f64 {
+    let mut intersection = 0u32;
+
+    for (hash, count_a) in &a.window_histogram {
+        if let Some(count_b) = b.window_histogram.get(hash) {
+            intersection += (*count_a).min(*count_b);
+        }
+    }
+
+    let total = a.total_windows + b.total_windows;
+    if total == 0 {
+        0.0
+    } else {
+        (2 * intersection) as f64 / total as f64
     }
 }
 
@@ -196,7 +327,9 @@ impl DedupStage for HashDedupStage {
 ///
 /// # Returns
 /// (DeduplicatedArticle, (total_sentences, unique_sentences, duplicate_sentences))
-fn deduplicate_sentences(article: PreprocessedArticle) -> (DeduplicatedArticle, (usize, usize, usize)) {
+fn deduplicate_sentences(
+    article: PreprocessedArticle,
+) -> (DeduplicatedArticle, (usize, usize, usize)) {
     let sentences = split_sentences(&article.body);
     let total_sentences = sentences.len();
 
@@ -224,7 +357,10 @@ fn deduplicate_sentences(article: PreprocessedArticle) -> (DeduplicatedArticle, 
         language: article.language,
     };
 
-    (dedup_article, (total_sentences, unique_count, duplicate_count))
+    (
+        dedup_article,
+        (total_sentences, unique_count, duplicate_count),
+    )
 }
 
 #[cfg(test)]

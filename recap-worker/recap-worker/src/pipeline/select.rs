@@ -37,8 +37,14 @@ impl SummarySelectStage {
         let mut selected = Vec::new();
 
         for assignment in bundle.assignments {
+            // 最初のジャンルを使用（複数ジャンルがある場合は最初のもの）
+            let primary_genre = assignment
+                .genres
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "other".to_string());
             let count = per_genre_count
-                .entry(assignment.genre.clone())
+                .entry(primary_genre.clone())
                 .or_insert(0usize);
             if *count >= self.max_articles_per_genre {
                 continue;
@@ -76,17 +82,18 @@ impl SelectStage for SummarySelectStage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::genre::GenreAssignment;
-    use crate::pipeline::preprocess::PreprocessedArticle;
 
     fn assignment(genre: &str) -> GenreAssignment {
+        use super::super::dedup::DeduplicatedArticle;
         GenreAssignment {
-            genre: genre.into(),
-            article: PreprocessedArticle {
-                id: Uuid::new_v4(),
-                title: "title".into(),
-                body: "body".into(),
-                language: "en".into(),
+            genres: vec![genre.to_string()],
+            genre_scores: std::collections::HashMap::from([(genre.to_string(), 10)]),
+            article: DeduplicatedArticle {
+                id: Uuid::new_v4().to_string(),
+                title: Some("title".to_string()),
+                sentences: vec!["body".to_string()],
+                sentence_hashes: vec![],
+                language: "en".to_string(),
             },
         }
     }
@@ -100,6 +107,7 @@ mod tests {
         let bundle = GenreBundle {
             job_id: job.job_id,
             assignments: vec![assignment("ai"), assignment("ai"), assignment("security")],
+            genre_distribution: std::collections::HashMap::new(),
         };
 
         let selected = stage
@@ -108,6 +116,11 @@ mod tests {
             .expect("selection succeeds");
 
         assert_eq!(selected.assignments.len(), 2);
-        assert!(selected.assignments.iter().any(|a| a.genre == "ai"));
+        assert!(
+            selected
+                .assignments
+                .iter()
+                .any(|a| a.genres.contains(&"ai".to_string()))
+        );
     }
 }

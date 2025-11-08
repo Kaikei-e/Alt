@@ -40,9 +40,10 @@ pub(crate) struct CorpusMetadata {
 }
 
 /// ジャンル別にグループ化された証拠コーパスのコレクション。
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct EvidenceBundle {
-    pub(crate) job_id: Uuid,
+    job_id: Uuid,
     pub(crate) corpora: HashMap<String, EvidenceCorpus>,
 }
 
@@ -91,13 +92,17 @@ impl EvidenceBundle {
             corpora.insert(genre.clone(), corpus);
         }
 
+        let evidence_bundle = Self { job_id, corpora };
+
         info!(
             job_id = %job_id,
-            genre_count = corpora.len(),
+            genre_count = evidence_bundle.genres().len(),
+            total_articles = evidence_bundle.total_articles(),
+            total_sentences = evidence_bundle.total_sentences(),
             "completed evidence corpus construction"
         );
 
-        Self { job_id, corpora }
+        evidence_bundle
     }
 
     /// 特定のジャンルのコーパスを取得する。

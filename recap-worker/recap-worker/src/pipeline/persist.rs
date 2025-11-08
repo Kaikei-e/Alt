@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use tracing::{debug, info, warn};
 
@@ -20,14 +20,11 @@ pub(crate) struct PersistResult {
 
 #[async_trait]
 pub(crate) trait PersistStage: Send + Sync {
-    async fn persist(
-        &self,
-        job: &JobContext,
-        result: DispatchResult,
-    ) -> Result<PersistResult>;
+    async fn persist(&self, job: &JobContext, result: DispatchResult) -> Result<PersistResult>;
 }
 
 /// 最終確定物をJSONBフィールドに保存するPersistStage。
+#[allow(dead_code)]
 pub(crate) struct FinalSectionPersistStage {
     dao: Arc<RecapDao>,
 }
@@ -40,11 +37,7 @@ impl FinalSectionPersistStage {
 
 #[async_trait]
 impl PersistStage for FinalSectionPersistStage {
-    async fn persist(
-        &self,
-        job: &JobContext,
-        result: DispatchResult,
-    ) -> Result<PersistResult> {
+    async fn persist(&self, job: &JobContext, result: DispatchResult) -> Result<PersistResult> {
         info!(
             job_id = %job.job_id,
             genre_count = result.genre_results.len(),
@@ -87,25 +80,26 @@ impl PersistStage for FinalSectionPersistStage {
             }
         }
 
-        info!(
-            job_id = %job.job_id,
-            genres_stored = genres_stored,
-            genres_failed = genres_failed,
-            "completed persisting final sections"
-        );
-
-        Ok(PersistResult {
+        let persist_result = PersistResult {
             job_id: job.job_id,
             genres_stored,
             genres_failed,
-        })
+        };
+
+        info!(
+            job_id = %persist_result.job_id,
+            genres_stored = persist_result.genres_stored,
+            genres_failed = persist_result.genres_failed,
+            "completed persisting final sections"
+        );
+
+        Ok(persist_result)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     #[test]
     fn persist_result_tracks_success_and_failure() {

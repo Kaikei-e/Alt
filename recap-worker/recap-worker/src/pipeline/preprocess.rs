@@ -46,7 +46,7 @@ pub(crate) trait PreprocessStage: Send + Sync {
 ///
 /// spawn_blockingでCPUバインド処理をオフロードし、セマフォで同時実行数を制限します。
 #[derive(Debug, Clone)]
-pub(crate) struct TextPreprocessStage {
+pub struct TextPreprocessStage {
     semaphore: Arc<Semaphore>,
     dao: Arc<RecapDao>,
 }
@@ -62,13 +62,6 @@ impl TextPreprocessStage {
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
             dao,
         }
-    }
-
-    /// デフォルトの並列数で作成する（CPUコア数の1.5倍）。
-    pub(crate) fn with_default_concurrency(dao: Arc<RecapDao>) -> Self {
-        let cpu_count = num_cpus::get();
-        let max_concurrent = (cpu_count * 3) / 2; // 1.5倍
-        Self::new(max_concurrent.max(2), dao) // 最低2
     }
 }
 
@@ -93,7 +86,10 @@ impl PreprocessStage for TextPreprocessStage {
 
             let task = tokio::spawn(async move {
                 // セマフォで同時実行数を制限
-                let _permit = semaphore.acquire().await.expect("semaphore should not be closed");
+                let _permit = semaphore
+                    .acquire()
+                    .await
+                    .expect("semaphore should not be closed");
 
                 // CPUバインド処理をspawn_blockingでオフロード
                 tokio::task::spawn_blocking(move || preprocess_article(article))
@@ -116,7 +112,7 @@ impl PreprocessStage for TextPreprocessStage {
 
         for result in results {
             match result {
-                Ok(Ok(Some(article))) => {
+                Ok(Ok(Ok(Some(article)))) => {
                     total_characters += article.char_count;
                     if article.is_html_cleaned {
                         html_cleaned_count += 1;
@@ -126,15 +122,19 @@ impl PreprocessStage for TextPreprocessStage {
                     articles.push(article);
                     processed_count += 1;
                 }
-                Ok(Ok(None)) => {
+                Ok(Ok(Ok(None))) => {
                     dropped_count += 1;
                 }
-                Ok(Err(e)) => {
+                Ok(Ok(Err(e))) => {
                     debug!(error = ?e, "article preprocessing failed, dropping");
                     dropped_count += 1;
                 }
+                Ok(Err(e)) => {
+                    debug!(error = ?e, "blocking task failed, dropping");
+                    dropped_count += 1;
+                }
                 Err(e) => {
-                    debug!(error = ?e, "preprocessing task failed, dropping");
+                    debug!(error = ?e, "spawn task failed, dropping");
                     dropped_count += 1;
                 }
             }
@@ -181,7 +181,7 @@ impl PreprocessStage for TextPreprocessStage {
 /// 4. 言語検出
 fn preprocess_article(article: FetchedArticle) -> Result<Option<PreprocessedArticle>> {
     // 1. HTMLサニタイズとプレーン化
-    let (cleaned_body, is_html_cleaned) = clean_html(&article.body);
+    let (cleaned_body, is_html_cleaned) = clean_html(&article.body)?;
 
     // 2. Unicode正規化（NFC）
     let normalized = cleaned_body.nfc().collect::<String>();
@@ -199,11 +199,7 @@ fn preprocess_article(article: FetchedArticle) -> Result<Option<PreprocessedArti
 
     // 4. タイトル処理
     let title = article.title.map(|t| {
-        let cleaned_title = if contains_html_tags(&t) {
-            clean(&t)
-        } else {
-            t
-        };
+        let cleaned_title = if contains_html_tags(&t) { clean(&t) } else { t };
         cleaned_title.nfc().collect::<String>()
     });
 
@@ -223,23 +219,54 @@ fn preprocess_article(article: FetchedArticle) -> Result<Option<PreprocessedArti
 ///
 /// # Returns
 /// (cleaned_text, was_html) のタプル
-fn clean_html(text: &str) -> (String, bool) {
+fn clean_html(text: &str) -> Result<(String, bool)> {
     if !contains_html_tags(text) {
-        return (text.to_string(), false);
+        return Ok((text.to_string(), false));
     }
 
     // ammoniaで安全にHTMLタグを除去
     let sanitized = clean(text);
 
     // html2textでよりクリーンなプレーンテキストに変換
-    let plain = html2text::from_read(sanitized.as_bytes(), 80);
+    let plain = html2text::from_read(sanitized.as_bytes(), 80)
+        .map_err(|e| anyhow::anyhow!("html2text conversion failed: {}", e))?;
 
-    (plain, true)
+    Ok((plain, true))
 }
 
 /// テキストがHTMLタグを含むかどうかを簡易チェック。
 fn contains_html_tags(text: &str) -> bool {
-    text.contains('<') && text.contains('>')
+    let bytes = text.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i < len {
+        if bytes[i] == b'<' {
+            if i + 1 >= len {
+                i += 1;
+                continue;
+            }
+
+            let next = bytes[i + 1];
+            if next.is_ascii_whitespace() {
+                i += 1;
+                continue;
+            }
+
+            if next == b'/' || next == b'!' || next == b'?' || next.is_ascii_alphabetic() {
+                let mut j = i + 2;
+                while j < len {
+                    if bytes[j] == b'>' {
+                        return true;
+                    }
+                    j += 1;
+                }
+            }
+        }
+        i += 1;
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -248,7 +275,12 @@ mod tests {
     use chrono::Utc;
     use rstest::rstest;
 
-    fn article(id: &str, body: &str, title: Option<&str>, language: Option<&str>) -> FetchedArticle {
+    fn article(
+        id: &str,
+        body: &str,
+        title: Option<&str>,
+        language: Option<&str>,
+    ) -> FetchedArticle {
         FetchedArticle {
             id: id.to_string(),
             title: title.map(|t| t.to_string()),
@@ -288,7 +320,7 @@ mod tests {
     #[test]
     fn clean_html_removes_tags() {
         let html = "<p>This is <strong>bold</strong> text.</p>";
-        let (cleaned, was_html) = clean_html(html);
+        let (cleaned, was_html) = clean_html(html).unwrap();
         assert!(was_html);
         assert!(!cleaned.contains("<p>"));
         assert!(!cleaned.contains("<strong>"));
@@ -297,7 +329,7 @@ mod tests {
     #[test]
     fn clean_html_preserves_plain_text() {
         let plain = "This is plain text.";
-        let (cleaned, was_html) = clean_html(plain);
+        let (cleaned, was_html) = clean_html(plain).unwrap();
         assert!(!was_html);
         assert_eq!(cleaned, plain);
     }

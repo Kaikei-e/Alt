@@ -8,8 +8,8 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
-        subworker::{ClusteringResponse, SubworkerClient},
         NewsCreatorClient,
+        subworker::{ClusteringResponse, SubworkerClient},
     },
     scheduler::JobContext,
 };
@@ -36,11 +36,7 @@ pub(crate) struct GenreResult {
 
 #[async_trait]
 pub(crate) trait DispatchStage: Send + Sync {
-    async fn dispatch(
-        &self,
-        job: &JobContext,
-        evidence: EvidenceBundle,
-    ) -> Result<DispatchResult>;
+    async fn dispatch(&self, job: &JobContext, evidence: EvidenceBundle) -> Result<DispatchResult>;
 }
 
 /// SubworkerとNews-Creatorを連携させるディスパッチステージ。
@@ -80,10 +76,7 @@ impl MlLlmDispatchStage {
         );
 
         // Step 1: Subworkerでクラスタリング
-        let clustering_result = self
-            .subworker_client
-            .cluster_corpus(job_id, evidence)
-            .await;
+        let clustering_result = self.subworker_client.cluster_corpus(job_id, evidence).await;
 
         let clustering_response = match clustering_result {
             Ok(response) => {
@@ -138,8 +131,7 @@ impl MlLlmDispatchStage {
                     clustering_response,
                     summary_response_id: Some(format!(
                         "{}-{}",
-                        summary_response.job_id,
-                        summary_response.genre
+                        summary_response.job_id, summary_response.genre
                     )),
                     error: None,
                 }
@@ -164,11 +156,7 @@ impl MlLlmDispatchStage {
 
 #[async_trait]
 impl DispatchStage for MlLlmDispatchStage {
-    async fn dispatch(
-        &self,
-        job: &JobContext,
-        evidence: EvidenceBundle,
-    ) -> Result<DispatchResult> {
+    async fn dispatch(&self, job: &JobContext, evidence: EvidenceBundle) -> Result<DispatchResult> {
         let genres = evidence.genres();
         let genre_count = genres.len();
 
@@ -220,6 +208,15 @@ impl DispatchStage for MlLlmDispatchStage {
         for result in results {
             match result {
                 Ok((genre, genre_result)) => {
+                    debug!(
+                        job_id = %job.job_id,
+                        genre = %genre_result.genre,
+                        has_clustering = genre_result.clustering_response.is_some(),
+                        has_summary = genre_result.summary_response_id.is_some(),
+                        has_error = genre_result.error.is_some(),
+                        "processed genre result"
+                    );
+
                     if genre_result.error.is_none() {
                         success_count += 1;
                     } else {
@@ -234,19 +231,22 @@ impl DispatchStage for MlLlmDispatchStage {
             }
         }
 
-        info!(
-            job_id = %job.job_id,
-            success_count = success_count,
-            failure_count = failure_count,
-            "completed ML/LLM dispatch"
-        );
-
-        Ok(DispatchResult {
+        let dispatch_result = DispatchResult {
             job_id: job.job_id,
             genre_results,
             success_count,
             failure_count,
-        })
+        };
+
+        info!(
+            job_id = %dispatch_result.job_id,
+            success_count = dispatch_result.success_count,
+            failure_count = dispatch_result.failure_count,
+            genre_count = dispatch_result.genre_results.len(),
+            "completed ML/LLM dispatch"
+        );
+
+        Ok(dispatch_result)
     }
 }
 

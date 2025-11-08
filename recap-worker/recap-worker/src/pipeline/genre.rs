@@ -13,7 +13,7 @@ use super::genre_keywords::GenreKeywords;
 /// ジャンル付き記事。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GenreAssignment {
-    pub(crate) genres: Vec<String>,          // 1〜3個のジャンル
+    pub(crate) genres: Vec<String>,                  // 1〜3個のジャンル
     pub(crate) genre_scores: HashMap<String, usize>, // 全スコア
     pub(crate) article: DeduplicatedArticle,
 }
@@ -28,11 +28,7 @@ pub(crate) struct GenreBundle {
 
 #[async_trait]
 pub(crate) trait GenreStage: Send + Sync {
-    async fn assign(
-        &self,
-        job: &JobContext,
-        corpus: DeduplicatedCorpus,
-    ) -> Result<GenreBundle>;
+    async fn assign(&self, job: &JobContext, corpus: DeduplicatedCorpus) -> Result<GenreBundle>;
 }
 
 /// キーワードベースのジャンル付与ステージ。
@@ -65,7 +61,10 @@ impl KeywordGenreStage {
     }
 
     /// 記事にジャンルを付与する。
-    fn assign_genres(&self, article: &DeduplicatedArticle) -> (Vec<String>, HashMap<String, usize>) {
+    fn assign_genres(
+        &self,
+        article: &DeduplicatedArticle,
+    ) -> (Vec<String>, HashMap<String, usize>) {
         // タイトルと本文を結合
         let combined_text = format!(
             "{} {}",
@@ -98,11 +97,7 @@ impl Default for KeywordGenreStage {
 
 #[async_trait]
 impl GenreStage for KeywordGenreStage {
-    async fn assign(
-        &self,
-        job: &JobContext,
-        corpus: DeduplicatedCorpus,
-    ) -> Result<GenreBundle> {
+    async fn assign(&self, job: &JobContext, corpus: DeduplicatedCorpus) -> Result<GenreBundle> {
         let total_articles = corpus.articles.len();
         info!(
             job_id = %job.job_id,
@@ -151,8 +146,8 @@ impl GenreStage for KeywordGenreStage {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::dedup::DedupStats;
+    use super::*;
 
     fn article(id: &str, title: Option<&str>, sentences: Vec<&str>) -> DeduplicatedArticle {
         DeduplicatedArticle {
