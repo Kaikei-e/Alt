@@ -31,6 +31,7 @@ pub(crate) struct GenreResult {
     pub(crate) genre: String,
     pub(crate) clustering_response: Option<ClusteringResponse>,
     pub(crate) summary_response_id: Option<String>,
+    pub(crate) summary_response: Option<crate::clients::news_creator::SummaryResponse>,
     pub(crate) error: Option<String>,
 }
 
@@ -99,6 +100,7 @@ impl MlLlmDispatchStage {
                     genre: genre.to_string(),
                     clustering_response: None,
                     summary_response_id: None,
+                    summary_response: None,
                     error: Some(format!("Clustering failed: {}", e)),
                 };
             }
@@ -126,13 +128,12 @@ impl MlLlmDispatchStage {
                     bullet_count = summary_response.summary.bullets.len(),
                     "summary generation completed successfully"
                 );
+                let summary_id = format!("{}-{}", summary_response.job_id, summary_response.genre);
                 GenreResult {
                     genre: genre.to_string(),
                     clustering_response,
-                    summary_response_id: Some(format!(
-                        "{}-{}",
-                        summary_response.job_id, summary_response.genre
-                    )),
+                    summary_response_id: Some(summary_id),
+                    summary_response: Some(summary_response),
                     error: None,
                 }
             }
@@ -147,6 +148,7 @@ impl MlLlmDispatchStage {
                     genre: genre.to_string(),
                     clustering_response,
                     summary_response_id: None,
+                    summary_response: None,
                     error: Some(format!("Summary generation failed: {}", e)),
                 }
             }
@@ -260,6 +262,7 @@ mod tests {
             genre: "ai".to_string(),
             clustering_response: None,
             summary_response_id: None,
+            summary_response: None,
             error: None,
         };
 
@@ -269,6 +272,7 @@ mod tests {
             genre: "tech".to_string(),
             clustering_response: None,
             summary_response_id: None,
+            summary_response: None,
             error: Some("Failed".to_string()),
         };
 

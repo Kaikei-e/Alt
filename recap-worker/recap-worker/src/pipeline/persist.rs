@@ -1,14 +1,17 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use tracing::{debug, info, warn};
 
-use crate::store::dao::RecapDao;
-
 use crate::scheduler::JobContext;
+use crate::store::{
+    dao::RecapDao,
+    models::{PersistedGenre, RecapOutput},
+};
 
 use super::dispatch::DispatchResult;
+use serde_json::json;
 
 /// 永続化結果。
 #[derive(Debug, Clone)]
@@ -60,10 +63,84 @@ impl PersistStage for FinalSectionPersistStage {
                 continue;
             }
 
-            // クラスタリング結果と要約レスポンスIDが両方ある場合のみ保存
-            // （Note: 実際の要約データはDispatchStage内で既にNews-Creatorから取得している想定）
-            // 現時点では、要約レスポンスIDがあれば成功とみなす
-            if genre_result.summary_response_id.is_some() {
+            let summary_response = match (
+                &genre_result.summary_response_id,
+                &genre_result.summary_response,
+            ) {
+                (Some(_), Some(response)) => response,
+                (None, _) => {
+                    warn!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        "genre missing summary response id"
+                    );
+                    genres_failed += 1;
+                    continue;
+                }
+                (_, None) => {
+                    warn!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        "genre missing summary payload"
+                    );
+                    genres_failed += 1;
+                    continue;
+                }
+            };
+
+            let summary_id = genre_result
+                .summary_response_id
+                .as_ref()
+                .expect("checked above")
+                .clone();
+
+            let bullet_values = summary_response
+                .summary
+                .bullets
+                .iter()
+                .map(|bullet| json!({ "text": bullet, "sources": [] }))
+                .collect::<Vec<_>>();
+            let bullets_json = serde_json::Value::Array(bullet_values);
+
+            let summary_text = summary_response.summary.bullets.join("\n");
+            let body_json = serde_json::to_value(summary_response)
+                .context("failed to convert summary response to JSON")?;
+
+            let output = RecapOutput::new(
+                job.job_id,
+                genre.as_str(),
+                summary_id.clone(),
+                summary_response.summary.title.clone(),
+                summary_text,
+                bullets_json,
+                body_json,
+            );
+
+            let mut persisted_successfully = true;
+
+            if let Err(err) = self.dao.upsert_recap_output(&output).await {
+                warn!(
+                    job_id = %job.job_id,
+                    genre = %genre,
+                    error = ?err,
+                    "failed to persist recap output"
+                );
+                persisted_successfully = false;
+            }
+
+            let persisted_genre =
+                PersistedGenre::new(job.job_id, genre.as_str()).with_response_id(Some(summary_id));
+            if let Err(err) = self.dao.upsert_genre(&persisted_genre).await {
+                warn!(
+                    job_id = %job.job_id,
+                    genre = %genre,
+                    error = ?err,
+                    "failed to persist recap section pointer"
+                );
+                persisted_successfully = false;
+            }
+
+            if persisted_successfully {
                 debug!(
                     job_id = %job.job_id,
                     genre = %genre,
@@ -71,11 +148,6 @@ impl PersistStage for FinalSectionPersistStage {
                 );
                 genres_stored += 1;
             } else {
-                warn!(
-                    job_id = %job.job_id,
-                    genre = %genre,
-                    "genre missing summary response"
-                );
                 genres_failed += 1;
             }
         }
