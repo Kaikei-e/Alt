@@ -7,19 +7,6 @@ use uuid::Uuid;
 
 use crate::{app::AppState, scheduler::JobContext};
 
-const DEFAULT_GENRES: &[&str] = &[
-    "ai",
-    "security",
-    "business",
-    "science",
-    "health",
-    "economy",
-    "climate",
-    "politics",
-    "technology",
-    "culture",
-];
-
 #[derive(Debug, Deserialize)]
 pub(crate) struct GenerateRecapRequest {
     #[serde(default)]
@@ -56,7 +43,7 @@ pub(crate) async fn trigger_7days(
             (normalized, true)
         }
         None => (
-            DEFAULT_GENRES.iter().copied().map(str::to_owned).collect(),
+            state.config().recap_genres().to_vec(),
             false,
         ),
     };
@@ -105,7 +92,7 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    use super::{DEFAULT_GENRES, normalize_genres};
+    use super::normalize_genres;
     use crate::{
         app::{ComponentRegistry, build_router},
         config::{Config, ENV_MUTEX},
@@ -124,7 +111,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn trigger_returns_accepted_with_default_genres() {
+    async fn trigger_returns_accepted_with_configured_defaults() {
         let config = {
             let _lock = ENV_MUTEX.lock().expect("env mutex");
             unsafe {
@@ -135,6 +122,7 @@ mod tests {
                 std::env::set_var("NEWS_CREATOR_BASE_URL", "http://localhost:18001/");
                 std::env::set_var("SUBWORKER_BASE_URL", "http://localhost:18002/");
                 std::env::set_var("ALT_BACKEND_BASE_URL", "http://localhost:19000/");
+                std::env::set_var("RECAP_GENRES", "ai,space");
                 std::env::remove_var("ALT_BACKEND_SERVICE_TOKEN");
             }
             Config::from_env().expect("config loads")
@@ -165,8 +153,13 @@ mod tests {
                 .and_then(|id| Uuid::parse_str(id).ok())
                 .is_some()
         );
-        let genres = payload["genres"].as_array().expect("genres array");
-        assert_eq!(genres.len(), DEFAULT_GENRES.len());
+        let genres = payload["genres"]
+            .as_array()
+            .expect("genres array")
+            .iter()
+            .map(|value| value.as_str().expect("genre str").to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(genres, vec!["ai".to_string(), "space".to_string()]);
 
         {
             let _lock = ENV_MUTEX.lock().expect("env mutex cleanup");
@@ -176,6 +169,7 @@ mod tests {
                 std::env::remove_var("SUBWORKER_BASE_URL");
                 std::env::remove_var("ALT_BACKEND_BASE_URL");
                 std::env::remove_var("ALT_BACKEND_SERVICE_TOKEN");
+                std::env::remove_var("RECAP_GENRES");
             }
         }
     }

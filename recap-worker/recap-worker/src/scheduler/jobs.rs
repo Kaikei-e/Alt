@@ -22,7 +22,7 @@ impl JobContext {
 }
 
 #[derive(Clone)]
-pub(crate) struct Scheduler {
+pub struct Scheduler {
     pipeline: Arc<PipelineOrchestrator>,
     config: Arc<Config>,
 }
