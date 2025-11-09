@@ -20,6 +20,7 @@ pub(crate) struct AppState {
 }
 
 pub struct ComponentRegistry {
+    config: Arc<Config>,
     telemetry: Telemetry,
     scheduler: Scheduler,
     news_creator_client: Arc<NewsCreatorClient>,
@@ -40,6 +41,10 @@ impl AppState {
 
     pub(crate) fn scheduler(&self) -> &Scheduler {
         &self.registry.scheduler
+    }
+
+    pub(crate) fn config(&self) -> &Config {
+        &self.registry.config
     }
 
     pub(crate) fn news_creator_client(&self) -> Arc<NewsCreatorClient> {
@@ -79,12 +84,21 @@ impl ComponentRegistry {
         let scheduler = Scheduler::new(Arc::clone(&pipeline), Arc::clone(&config));
 
         Ok(Self {
+            config,
             telemetry,
             scheduler,
             news_creator_client,
             subworker_client,
             recap_dao,
         })
+    }
+
+    pub fn scheduler(&self) -> &Scheduler {
+        &self.scheduler
+    }
+
+    pub fn config(&self) -> Arc<Config> {
+        Arc::clone(&self.config)
     }
 }
 

@@ -10,7 +10,7 @@ pub mod config;
 pub mod evaluation;
 pub mod observability;
 pub mod pipeline;
-pub(crate) mod scheduler;
+pub mod scheduler;
 pub(crate) mod schema;
 pub(crate) mod store;
 pub mod util;
