@@ -3,7 +3,7 @@
 import { Box, Flex, Text, VStack } from "@chakra-ui/react";
 import React, { useCallback, useRef } from "react";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
-import { feedsApi } from "@/lib/api";
+import { articleApi } from "@/lib/api";
 import type { Article } from "@/schema/article";
 import { DesktopArticleCard } from "./DesktopArticleCard";
 
@@ -22,7 +22,7 @@ const DesktopArticleTimeline = () => {
     error,
     isInitialLoading,
     loadMore,
-  } = useCursorPagination<Article>(feedsApi.getArticlesWithCursor, {
+  } = useCursorPagination<Article>(articleApi.getArticlesWithCursor, {
     limit: PAGE_SIZE,
     autoLoad: true,
   });

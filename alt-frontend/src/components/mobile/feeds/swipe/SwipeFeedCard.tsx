@@ -6,7 +6,7 @@ import { useDrag } from "@use-gesture/react";
 import { AnimatePresence, animate, motion, useMotionValue } from "framer-motion";
 import { Archive, BookOpen, BotMessageSquare, Sparkles, SquareArrowOutUpRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { feedsApi } from "@/lib/api";
+import { articleApi } from "@/lib/api";
 import type { Feed } from "@/schema/feed";
 import { renderingRegistry } from "@/utils/renderingStrategies";
 
@@ -180,12 +180,12 @@ const SwipeFeedCard = ({
       setContentError(null);
 
       try {
-        const contentResponse = await feedsApi.getFeedContentOnTheFly({
+        const contentResponse = await articleApi.getFeedContentOnTheFly({
           feed_url: feed.link,
         });
         if (contentResponse.content) {
           setFullContent(contentResponse.content);
-          feedsApi
+          articleApi
             .archiveContent(feed.link, feed.title)
             .catch((err) => console.warn("Failed to auto-archive article:", err));
         } else {
@@ -208,7 +208,7 @@ const SwipeFeedCard = ({
       setSummaryError(null);
 
       try {
-        const summaryResponse = await feedsApi.getArticleSummary(feed.link);
+        const summaryResponse = await articleApi.getArticleSummary(feed.link);
         if (summaryResponse.matched_articles && summaryResponse.matched_articles.length > 0) {
           setSummary(summaryResponse.matched_articles[0].content);
         } else {
@@ -230,7 +230,7 @@ const SwipeFeedCard = ({
     setSummaryError(null);
 
     try {
-      const summarizeResponse = await feedsApi.summarizeArticle(feed.link);
+      const summarizeResponse = await articleApi.summarizeArticle(feed.link);
       console.log("[SwipeFeedCard] Summarize response:", summarizeResponse);
 
       if (summarizeResponse.success && summarizeResponse.summary) {
@@ -656,7 +656,7 @@ const SwipeFeedCard = ({
                   if (!feed.link) return;
                   try {
                     setIsArchiving(true);
-                    await feedsApi.archiveContent(feed.link, feed.title);
+                    await articleApi.archiveContent(feed.link, feed.title);
                     setIsArchived(true);
                   } catch (e) {
                     console.error("Error archiving feed:", e);

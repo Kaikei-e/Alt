@@ -6,7 +6,7 @@ import FeedCard from "@/components/mobile/FeedCard";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
-import { feedsApi } from "@/lib/api";
+import { feedApi } from "@/lib/api";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import type { Feed } from "@/schema/feed";
 import ErrorState from "../_components/ErrorState";
@@ -28,7 +28,7 @@ export default function FavoriteFeedsPage() {
     isInitialLoading,
     loadMore,
     refresh,
-  } = useCursorPagination<Feed>(feedsApi.getFavoriteFeedsWithCursor, {
+  } = useCursorPagination<Feed>(feedApi.getFavoriteFeedsWithCursor, {
     limit: PAGE_SIZE,
     autoLoad: true,
   });

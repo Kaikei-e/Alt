@@ -1,11 +1,6 @@
-import type { Article } from "@/schema/article";
 import type { MessageResponse } from "@/schema/common";
 import {
   type BackendFeedItem,
-  type FeedContentOnTheFlyResponse,
-  type FeedDetails,
-  type FeedURLPayload,
-  type FetchArticleSummaryResponse,
   type SanitizedFeed,
   sanitizeFeed,
 } from "@/schema/feed";
@@ -18,17 +13,15 @@ import { ApiError } from "../core/ApiError";
 import { serverFetch } from "../utils/serverFetch";
 import { CursorApi } from "./CursorApi";
 
-export class FeedsApi {
+export class FeedApi {
   private feedsCursorApi: CursorApi<BackendFeedItem, SanitizedFeed>;
   private favoritesCursorApi: CursorApi<BackendFeedItem, SanitizedFeed>;
   private readCursorApi: CursorApi<BackendFeedItem, SanitizedFeed>;
-  private articlesCursorApi: CursorApi<Article, Article>;
 
   // Cursor-based API functions
   public getFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
   public getFavoriteFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
   public getReadFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
-  public getArticlesWithCursor: (cursor?: string, limit?: number) => Promise<any>;
 
   constructor(private apiClient: ApiClient) {
     const transformFeedItem = (item: BackendFeedItem): SanitizedFeed => {
@@ -51,19 +44,10 @@ export class FeedsApi {
       10
     );
 
-    // Articles cursor API - no transformation needed
-    this.articlesCursorApi = new CursorApi(
-      apiClient,
-      "/v1/articles/fetch/cursor",
-      (item: Article) => item, // No transformation needed
-      20
-    );
-
     // Initialize the cursor functions after the CursorApi instances are created
     this.getFeedsWithCursor = this.feedsCursorApi.createFunction();
     this.getFavoriteFeedsWithCursor = this.favoritesCursorApi.createFunction();
     this.getReadFeedsWithCursor = this.readCursorApi.createFunction();
-    this.getArticlesWithCursor = this.articlesCursorApi.createFunction();
   }
 
   // Health check
@@ -122,61 +106,6 @@ export class FeedsApi {
 
   async updateFeedReadStatus(url: string): Promise<MessageResponse> {
     return this.apiClient.post("/v1/feeds/read", { feed_url: url });
-  }
-
-  // Article summaries
-  async getArticleSummary(feedUrl: string): Promise<FetchArticleSummaryResponse> {
-    return this.apiClient.post<FetchArticleSummaryResponse>("/v1/feeds/fetch/summary/provided", {
-      feed_urls: [feedUrl],
-    });
-  }
-
-  async getFeedDetails(payload: FeedURLPayload): Promise<FeedDetails> {
-    try {
-      const response = await this.getArticleSummary(payload.feed_url);
-      if (response.matched_articles.length > 0) {
-        return {
-          feed_url: payload.feed_url,
-          summary: response.matched_articles[0].content,
-        };
-      }
-      throw new ApiError("No summary found for this article");
-    } catch (error) {
-      throw new ApiError(error instanceof Error ? error.message : "Failed to fetch feed details");
-    }
-  }
-
-  async archiveContent(feedUrl: string, title?: string): Promise<MessageResponse> {
-    const trimmedTitle = title?.trim();
-    const payload: Record<string, unknown> = { feed_url: feedUrl };
-    if (trimmedTitle) {
-      payload.title = trimmedTitle;
-    }
-
-    return this.apiClient.post("/v1/articles/archive", payload);
-  }
-
-  // Article summarization
-  async summarizeArticle(
-    feedUrl: string
-  ): Promise<{ success: boolean; summary: string; article_id: string; feed_url: string }> {
-    return this.apiClient.post("/v1/feeds/summarize", { feed_url: feedUrl });
-  }
-
-  async getFeedContentOnTheFly(payload: FeedURLPayload): Promise<FeedContentOnTheFlyResponse> {
-    const encodedUrl = encodeURIComponent(payload.feed_url);
-    return this.apiClient.get<FeedContentOnTheFlyResponse>(
-      `/v1/articles/fetch/content?url=${encodedUrl}`,
-      10
-    );
-  }
-
-  // Search
-  async searchArticles(query: string): Promise<Article[]> {
-    const backendResponse = await this.apiClient.get<Article[]>(`/v1/articles/search?q=${query}`);
-
-    // Backend already returns lowercase fields, no transformation needed
-    return backendResponse;
   }
 
   async searchFeeds(query: string): Promise<FeedSearchResult> {

@@ -5,7 +5,7 @@ import type { CSSObject } from "@emotion/react";
 import { Archive, ExternalLink, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { feedsApi } from "@/lib/api";
+import { articleApi } from "@/lib/api";
 import type { FeedContentOnTheFlyResponse, FetchArticleSummaryResponse } from "@/schema/feed";
 import { DesktopRenderFeedDetails } from "./DesktopRenderFeedDetails";
 
@@ -80,12 +80,12 @@ export const DesktopFeedDetailsModal = ({
       setIsLoading(true);
       setError(null);
 
-      const summaryPromise = feedsApi.getArticleSummary(feedLink).catch((err) => {
+      const summaryPromise = articleApi.getArticleSummary(feedLink).catch((err) => {
         console.error("Failed to fetch article summary:", err);
         return null;
       });
 
-      const contentPromise = feedsApi
+      const contentPromise = articleApi
         .getFeedContentOnTheFly({ feed_url: feedLink })
         .catch((err) => {
           console.error("Failed to fetch article content:", err);
@@ -113,7 +113,7 @@ export const DesktopFeedDetailsModal = ({
         if (hasContent) {
           setContent(contentResponse);
           try {
-            await feedsApi.archiveContent(feedLink, feedTitle);
+            await articleApi.archiveContent(feedLink, feedTitle);
             if (!isCancelled) {
               setIsArchived(true);
             }
@@ -147,7 +147,7 @@ export const DesktopFeedDetailsModal = ({
     setIsArchiving(true);
 
     try {
-      await feedsApi.archiveContent(feedLink, feedTitle);
+      await articleApi.archiveContent(feedLink, feedTitle);
       setIsArchived(true);
     } catch (err) {
       console.error("Failed to archive feed:", err);
@@ -164,7 +164,7 @@ export const DesktopFeedDetailsModal = ({
     setSummaryError(null);
 
     try {
-      const result = await feedsApi.summarizeArticle(feedLink);
+      const result = await articleApi.summarizeArticle(feedLink);
       const trimmed = result.summary?.trim();
 
       if (trimmed) {

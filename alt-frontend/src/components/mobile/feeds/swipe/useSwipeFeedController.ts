@@ -1,7 +1,7 @@
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWRInfinite from "swr/infinite";
 import { useArticleContentPrefetch } from "@/hooks/useArticleContentPrefetch";
-import { feedsApi } from "@/lib/api";
+import { feedApi } from "@/lib/api";
 import type { CursorResponse } from "@/schema/common";
 import type { Feed } from "@/schema/feed";
 
@@ -48,7 +48,7 @@ const fetchPage = async (
   cursor: string | undefined,
   limit: number
 ): Promise<CursorResponse<Feed>> => {
-  return feedsApi.getFeedsWithCursor(cursor, limit);
+  return feedApi.getFeedsWithCursor(cursor, limit);
 };
 
 const clearTimeoutRef = (timeoutRef: MutableRefObject<number | null>) => {
@@ -264,7 +264,7 @@ export const useSwipeFeedController = () => {
       setReadFeeds((prev) => new Set(prev).add(canonicalLink));
 
       try {
-        await feedsApi.updateFeedReadStatus(canonicalLink);
+        await feedApi.updateFeedReadStatus(canonicalLink);
         await mutate();
 
         // Prefetch is now triggered by activeIndex useEffect (lines 234-238)

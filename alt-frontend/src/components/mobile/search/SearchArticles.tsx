@@ -4,7 +4,7 @@ import { Box, Input, Text, VStack } from "@chakra-ui/react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import * as v from "valibot";
-import { feedsApi } from "@/lib/api";
+import { articleApi } from "@/lib/api";
 import type { Article } from "@/schema/article";
 import { articleSearchQuerySchema } from "@/schema/validation/articleSearchQuery";
 
@@ -50,7 +50,7 @@ export const SearchArticles = ({
           setError(null);
           setValidationError(null);
           setIsLoading(true);
-          feedsApi
+          articleApi
             .searchArticles(urlQuery)
             .then((response) => {
               setArticles(response);
@@ -106,7 +106,7 @@ export const SearchArticles = ({
 
     try {
       setArticles([]);
-      const response = await feedsApi.searchArticles(query.trim());
+      const response = await articleApi.searchArticles(query.trim());
       setArticles(response);
     } catch (err) {
       console.error("Search error:", err);

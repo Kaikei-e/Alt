@@ -1,4 +1,4 @@
-import { ApiClientError, feedsApi } from "@/lib/api";
+import { ApiClientError, feedApi } from "@/lib/api";
 import type { DesktopFeed } from "@/types/desktop-feed";
 import { sanitizeFeedContent } from "@/utils/contentSanitizer";
 
@@ -164,8 +164,8 @@ export class DesktopFeedsApi {
   }
 
   async markAsRead(feedId: string): Promise<void> {
-    // 既存のfeedsApiを利用
-    await feedsApi.updateFeedReadStatus(feedId);
+    // 既存のfeedApiを利用
+    await feedApi.updateFeedReadStatus(feedId);
     this.invalidateFeedCaches();
   }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { feedsApi } from "@/lib/api";
+import { feedApi } from "@/lib/api";
 import { getStartOfLocalDayUTC } from "@/lib/utils/time";
 
 export const useTodayUnreadCount = () => {
@@ -22,7 +22,7 @@ export const useTodayUnreadCount = () => {
         }
 
         const since = getStartOfLocalDayUTC().toISOString();
-        const result = await feedsApi.getTodayUnreadCount(since);
+        const result = await feedApi.getTodayUnreadCount(since);
         setCount(result.count);
       } catch {
         setCount(0);

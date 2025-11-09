@@ -1,11 +1,13 @@
 // Main API entry point - provides backward compatibility with original api.ts
 // Updated: Added getArticlesWithCursor for article pagination
 
+import { ArticleApi } from "./articles/ArticleApi";
 import { AuthInterceptor, LoginBanner } from "./auth";
 import { CacheManager, defaultCacheConfig } from "./cache/CacheManager";
 import { ApiClient, defaultApiConfig } from "./core/ApiClient";
 import { DesktopApi } from "./desktop/DesktopApi";
-import { FeedsApi } from "./feeds/FeedsApi";
+import { FeedApi } from "./feeds/FeedApi";
+import { RecapApi } from "./recap/RecapApi";
 
 // Re-export types for external use
 export type { CursorResponse } from "@/schema/common";
@@ -25,64 +27,12 @@ const authInterceptor = new AuthInterceptor({
 
 export const apiClient = new ApiClient(defaultApiConfig, cacheManager, authInterceptor);
 
-const feedsApiInstance = new FeedsApi(apiClient);
-const desktopApiInstance = new DesktopApi(apiClient, feedsApiInstance);
+const feedApiInstance = new FeedApi(apiClient);
+const articleApiInstance = new ArticleApi(apiClient);
+const desktopApiInstance = new DesktopApi(apiClient, feedApiInstance);
+const recapApiInstance = new RecapApi(apiClient);
 
-// Combine all APIs into the main feedsApi object for backward compatibility
-export const feedsApi = {
-  // Health check
-  checkHealth: feedsApiInstance.checkHealth.bind(feedsApiInstance),
-
-  // Cursor-based APIs
-  getFeedsWithCursor: feedsApiInstance.getFeedsWithCursor.bind(feedsApiInstance),
-  getFavoriteFeedsWithCursor: feedsApiInstance.getFavoriteFeedsWithCursor.bind(feedsApiInstance),
-  getReadFeedsWithCursor: feedsApiInstance.getReadFeedsWithCursor.bind(feedsApiInstance),
-  getArticlesWithCursor: feedsApiInstance.getArticlesWithCursor.bind(feedsApiInstance),
-
-  // Legacy pagination methods
-  getFeeds: feedsApiInstance.getFeeds.bind(feedsApiInstance),
-  getFeedsPage: feedsApiInstance.getFeedsPage.bind(feedsApiInstance),
-  getAllFeeds: feedsApiInstance.getAllFeeds.bind(feedsApiInstance),
-  getSingleFeed: feedsApiInstance.getSingleFeed.bind(feedsApiInstance),
-
-  // Feed management
-  registerRssFeed: feedsApiInstance.registerRssFeed.bind(feedsApiInstance),
-  registerFavoriteFeed: feedsApiInstance.registerFavoriteFeed.bind(feedsApiInstance),
-  updateFeedReadStatus: feedsApiInstance.updateFeedReadStatus.bind(feedsApiInstance),
-
-  // Article summaries
-  getArticleSummary: feedsApiInstance.getArticleSummary.bind(feedsApiInstance),
-  getFeedDetails: feedsApiInstance.getFeedDetails.bind(feedsApiInstance),
-  archiveContent: feedsApiInstance.archiveContent.bind(feedsApiInstance),
-  summarizeArticle: feedsApiInstance.summarizeArticle.bind(feedsApiInstance),
-
-  // Feed content on the fly
-  getFeedContentOnTheFly: feedsApiInstance.getFeedContentOnTheFly.bind(feedsApiInstance),
-  // Search
-  searchArticles: feedsApiInstance.searchArticles.bind(feedsApiInstance),
-  searchFeeds: feedsApiInstance.searchFeeds.bind(feedsApiInstance),
-
-  // Statistics
-  getFeedStats: feedsApiInstance.getFeedStats.bind(feedsApiInstance),
-  getFeedStatsSSR: feedsApiInstance.getFeedStatsSSR.bind(feedsApiInstance),
-  getTodayUnreadCount: feedsApiInstance.getTodayUnreadCount.bind(feedsApiInstance),
-
-  // Tags
-  fetchFeedTags: feedsApiInstance.fetchFeedTags.bind(feedsApiInstance),
-
-  // Prefetch methods
-  prefetchFeeds: feedsApiInstance.prefetchFeeds.bind(feedsApiInstance),
-  prefetchFavoriteFeeds: feedsApiInstance.prefetchFavoriteFeeds.bind(feedsApiInstance),
-  prefetchReadFeeds: feedsApiInstance.prefetchReadFeeds.bind(feedsApiInstance),
-
-  // Desktop API methods
-  getDesktopFeeds: desktopApiInstance.getDesktopFeeds.bind(desktopApiInstance),
-  getTestFeeds: desktopApiInstance.getTestFeeds.bind(desktopApiInstance),
-  toggleFavorite: desktopApiInstance.toggleFavorite.bind(desktopApiInstance),
-  toggleBookmark: desktopApiInstance.toggleBookmark.bind(desktopApiInstance),
-  getRecentActivity: desktopApiInstance.getRecentActivity.bind(desktopApiInstance),
-  getWeeklyStats: desktopApiInstance.getWeeklyStats.bind(desktopApiInstance),
-
-  // Cache management
-  clearCache: feedsApiInstance.clearCache.bind(feedsApiInstance),
-};
+export const feedApi = feedApiInstance;
+export const articleApi = articleApiInstance;
+export const desktopApi = desktopApiInstance;
+export const recapApi = recapApiInstance;

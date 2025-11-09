@@ -4,7 +4,7 @@ import { Badge, Box, Button, Flex, HStack, IconButton, Text, VStack } from "@cha
 import { Bookmark, BookOpen, Clock, ExternalLink, Eye, Heart } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
-import { feedsApi } from "@/lib/api";
+import { articleApi, feedApi } from "@/lib/api";
 import type { Feed } from "@/schema/feed";
 import type { DesktopFeed } from "@/types/desktop-feed";
 import type { FeedTag } from "@/types/feed-tags";
@@ -102,7 +102,7 @@ const DesktopStyledFeedCard = ({
     const fetchTags = async () => {
       setIsLoadingTags(true);
       try {
-        const response = await feedsApi.fetchFeedTags(feed.link);
+        const response = await feedApi.fetchFeedTags(feed.link);
         if (response.tags && response.tags.length > 0) {
           setTags(response.tags);
         }
@@ -125,7 +125,7 @@ const DesktopStyledFeedCard = ({
     async (e: React.MouseEvent) => {
       e.stopPropagation();
 
-      const res = await feedsApi.registerFavoriteFeed(feed.link);
+      const res = await feedApi.registerFavoriteFeed(feed.link);
       if (res.message !== "favorite feed registered") {
         console.error(res.message);
         return;
@@ -139,7 +139,7 @@ const DesktopStyledFeedCard = ({
     try {
       // Auto-archive article to ensure DB persistence before summarization
       // Matches the pattern from mobile FeedDetails component
-      await feedsApi.archiveContent(link, title);
+      await articleApi.archiveContent(link, title);
     } catch (err) {
       console.warn("Failed to auto-archive article:", err);
       // Don't block UI on archive failure
@@ -533,7 +533,7 @@ export default function DesktopTimeline() {
     isInitialLoading,
     loadMore,
     refresh,
-  } = useCursorPagination<Feed>(feedsApi.getFeedsWithCursor, {
+  } = useCursorPagination<Feed>(feedApi.getFeedsWithCursor, {
     limit: PAGE_SIZE,
     autoLoad: true,
   });
@@ -557,7 +557,7 @@ export default function DesktopTimeline() {
       return newSet;
     });
     try {
-      await feedsApi.updateFeedReadStatus(feedId);
+      await feedApi.updateFeedReadStatus(feedId);
     } catch (err) {
       console.error("Failed to update feed read status:", err);
     }

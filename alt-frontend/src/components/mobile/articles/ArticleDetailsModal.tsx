@@ -4,7 +4,7 @@ import { Box, Button, Dialog, Flex, HStack, Portal, Spinner, Text, VStack } from
 import type { CSSObject } from "@emotion/react";
 import { Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { feedsApi } from "@/lib/api";
+import { articleApi } from "@/lib/api";
 import type { Article } from "@/schema/article";
 import { type FeedContentOnTheFlyResponse, FetchArticleSummaryResponse } from "@/schema/feed";
 import { renderingRegistry } from "@/utils/renderingStrategies";
@@ -109,7 +109,7 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
       try {
         // Backend already handles: DB check → fetch if not found → save to DB → return content
         // No need to call archiveContent separately
-        const contentResponse = await feedsApi.getFeedContentOnTheFly({
+        const contentResponse = await articleApi.getFeedContentOnTheFly({
           feed_url: article.url,
         });
 
@@ -135,7 +135,7 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
       setSummaryError(null);
 
       try {
-        const summaryResponse = await feedsApi.getArticleSummary(article.url);
+        const summaryResponse = await articleApi.getArticleSummary(article.url);
         if (summaryResponse.matched_articles && summaryResponse.matched_articles.length > 0) {
           setSummary(summaryResponse.matched_articles[0].content);
         } else {
@@ -157,7 +157,7 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
     setSummaryError(null);
 
     try {
-      const summarizeResponse = await feedsApi.summarizeArticle(article.url);
+      const summarizeResponse = await articleApi.summarizeArticle(article.url);
 
       if (summarizeResponse.success && summarizeResponse.summary) {
         setSummary(summarizeResponse.summary);

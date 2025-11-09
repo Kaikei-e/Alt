@@ -3,8 +3,7 @@
 import { Box, Button, Heading, HStack, Spinner, Text, VStack } from "@chakra-ui/react";
 import Link from "next/link";
 import { useState } from "react";
-import { ApiClient } from "@/lib/api/core/ApiClient";
-import { FeedsApi } from "@/lib/api/feeds/FeedsApi";
+import { articleApi } from "@/lib/api";
 import type { BackendFeedItem, FetchArticleSummaryResponse } from "@/schema/feed";
 
 interface SearchResultsProps {
@@ -17,9 +16,6 @@ interface SearchResultsProps {
 interface SearchResultItemProps {
   result: BackendFeedItem;
 }
-
-const apiClient = new ApiClient();
-const feedsApi = new FeedsApi(apiClient);
 
 const SearchResultItem = ({ result }: SearchResultItemProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -44,7 +40,7 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
       setSummaryError(null);
 
       try {
-        const summaryResponse = await feedsApi.getArticleSummary(result.link);
+        const summaryResponse = await articleApi.getArticleSummary(result.link);
         setSummary(summaryResponse);
       } catch (error) {
         console.error("Error fetching summary:", error);
@@ -64,7 +60,7 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
 
     try {
       // Call the summarize API - it returns the summary directly
-      const summarizeResponse = await feedsApi.summarizeArticle(result.link);
+      const summarizeResponse = await articleApi.summarizeArticle(result.link);
 
       if (summarizeResponse.success && summarizeResponse.summary) {
         // Create a FetchArticleSummaryResponse from the summarize response
