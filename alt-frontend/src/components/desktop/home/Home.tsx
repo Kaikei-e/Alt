@@ -33,7 +33,7 @@ import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 import Loading from "@/components/mobile/utils/Loading";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useTodayUnreadCount } from "@/hooks/useTodayUnreadCount";
-import { feedsApi } from "@/lib/api";
+import { feedApi } from "@/lib/api";
 import type { FeedStatsSummary } from "@/schema/feedStats";
 
 export default function DesktopHome() {
@@ -54,9 +54,9 @@ export default function DesktopHome() {
       try {
         setIsLoading(true);
         // TODO.md: 依存データ fetch も cache: 'no-store' に（特に認証に依存するもの）
-        feedsApi.clearCache(); // キャッシュクリアで no-store 効果を確保
+        feedApi.clearCache(); // キャッシュクリアで no-store 効果を確保
         // TODO.md: 一時的にコメントアウトして500問題を特定
-        // const data = await feedsApi.getFeedStats();
+        // const data = await feedApi.getFeedStats();
         // setFeedStats(data);
 
         // Mock data for testing

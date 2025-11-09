@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { feedsApi } from "@/lib/api";
+import { desktopApi } from "@/lib/api";
 import { getRelativeTime } from "@/lib/utils/time";
 import type { ActivityData } from "@/types/desktop";
 
@@ -30,7 +30,7 @@ export const useRecentActivity = (limit: number = 10): UseRecentActivityReturn =
           return;
         }
 
-        const activityData = await feedsApi.getRecentActivity(limit);
+        const activityData = await desktopApi.getRecentActivity(limit);
 
         // Transform the API response to the expected format
         const transformedActivities: ActivityData[] = activityData.map((activity) => ({

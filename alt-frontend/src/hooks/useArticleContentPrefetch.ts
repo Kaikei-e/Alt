@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import { feedsApi } from "@/lib/api";
+import { articleApi } from "@/lib/api";
 import type { Feed } from "@/schema/feed";
 
 const MAX_CACHE_SIZE = 5;
@@ -58,7 +58,7 @@ export const useArticleContentPrefetch = (
       contentCacheRef.current.set(feedUrl, "loading");
 
       // Fetch full article content
-      const response = await feedsApi.getFeedContentOnTheFly({
+      const response = await articleApi.getFeedContentOnTheFly({
         feed_url: feedUrl,
       });
 
@@ -67,7 +67,7 @@ export const useArticleContentPrefetch = (
         contentCacheRef.current.set(feedUrl, response.content);
 
         // Archive article in background (non-blocking)
-        feedsApi.archiveContent(feedUrl, feed.title).catch((err) => {
+        articleApi.archiveContent(feedUrl, feed.title).catch((err) => {
           console.warn(`[useArticleContentPrefetch] Failed to archive article: ${feedUrl}`, err);
         });
       } else {

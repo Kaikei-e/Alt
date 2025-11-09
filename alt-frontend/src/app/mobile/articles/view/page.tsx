@@ -8,7 +8,7 @@ import { ArticleViewCard } from "@/components/mobile/articles/ArticleViewCard";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
-import { feedsApi } from "@/lib/api";
+import { articleApi } from "@/lib/api";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import type { Article } from "@/schema/article";
 
@@ -30,7 +30,7 @@ export default function ArticlesViewPage() {
     isInitialLoading,
     loadMore,
     refresh,
-  } = useCursorPagination<Article>(feedsApi.getArticlesWithCursor, {
+  } = useCursorPagination<Article>(articleApi.getArticlesWithCursor, {
     limit: PAGE_SIZE,
     autoLoad: true,
   });

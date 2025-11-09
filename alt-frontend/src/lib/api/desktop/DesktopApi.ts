@@ -4,12 +4,12 @@ import { type BackendFeedItem, sanitizeFeed } from "@/schema/feed";
 import type { ActivityResponse, WeeklyStats } from "@/types/desktop";
 import type { DesktopFeed, DesktopFeedsResponse } from "@/types/desktop-feed";
 import type { ApiClient } from "../core/ApiClient";
-import type { FeedsApi } from "../feeds/FeedsApi";
+import type { FeedApi } from "../feeds/FeedApi";
 
 export class DesktopApi {
   constructor(
     private apiClient: ApiClient,
-    private feedsApi: FeedsApi
+    private feedsApi: FeedApi
   ) {}
 
   // Desktop Feed Methods

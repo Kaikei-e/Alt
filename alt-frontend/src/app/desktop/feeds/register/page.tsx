@@ -3,7 +3,7 @@
 import { Box, Button, Container, Heading, Input, Text, VStack } from "@chakra-ui/react";
 import { useState } from "react";
 import * as v from "valibot";
-import { feedsApi } from "@/lib/api";
+import { feedApi } from "@/lib/api";
 import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
 
 export default function DesktopRegisterFeedsPage() {
@@ -56,7 +56,7 @@ export default function DesktopRegisterFeedsPage() {
     setValidationError(null);
 
     try {
-      const response = await feedsApi.registerRssFeed(feedUrl.trim());
+      const response = await feedApi.registerRssFeed(feedUrl.trim());
       if (response.message) {
         setMessage({
           type: "success",

@@ -2,7 +2,7 @@ import { Box, Button, HStack, Text } from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
 import { Archive, Star, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { feedsApi } from "@/lib/api";
+import { articleApi, feedApi } from "@/lib/api";
 import type { FeedContentOnTheFlyResponse, FetchArticleSummaryResponse } from "@/schema/feed";
 import RenderFeedDetails from "./RenderFeedDetails";
 
@@ -88,12 +88,12 @@ export const FeedDetails = ({ feedURL, feedTitle, initialData }: FeedDetailsProp
     setError(null);
 
     // Fetch both summary and content independently
-    const summaryPromise = feedsApi.getArticleSummary(feedURL).catch((err) => {
+    const summaryPromise = articleApi.getArticleSummary(feedURL).catch((err) => {
       console.error("Error fetching article summary:", err);
       return null;
     });
 
-    const detailsPromise = feedsApi
+    const detailsPromise = articleApi
       .getFeedContentOnTheFly({
         feed_url: feedURL,
       })
@@ -120,7 +120,7 @@ export const FeedDetails = ({ feedURL, feedTitle, initialData }: FeedDetailsProp
 
         // Auto-archive article when displaying content
         // This ensures the article exists in DB before summarization
-        feedsApi.archiveContent(feedURL, feedTitle).catch((err) => {
+        articleApi.archiveContent(feedURL, feedTitle).catch((err) => {
           console.warn("Failed to auto-archive article:", err);
           // Don't block UI on archive failure
         });
@@ -392,7 +392,7 @@ export const FeedDetails = ({ feedURL, feedTitle, initialData }: FeedDetailsProp
                     if (!feedURL) return;
                     try {
                       setIsFavoriting(true);
-                      await feedsApi.registerFavoriteFeed(feedURL);
+                      await feedApi.registerFavoriteFeed(feedURL);
                       setIsBookmarked(true);
                     } catch (e) {
                       console.error("Failed to favorite feed", e);
@@ -420,7 +420,7 @@ export const FeedDetails = ({ feedURL, feedTitle, initialData }: FeedDetailsProp
                     if (!feedURL) return;
                     try {
                       setIsArchiving(true);
-                      await feedsApi.archiveContent(feedURL, feedTitle);
+                      await articleApi.archiveContent(feedURL, feedTitle);
                       setIsArchived(true);
                     } catch (e) {
                       console.error("Error archiving feed:", e);
@@ -450,7 +450,7 @@ export const FeedDetails = ({ feedURL, feedTitle, initialData }: FeedDetailsProp
                     setIsSummarizing(true);
                     setSummaryError(null);
                     try {
-                      const result = await feedsApi.summarizeArticle(feedURL);
+                      const result = await articleApi.summarizeArticle(feedURL);
                       const trimmedSummary = result.summary?.trim();
 
                       if (trimmedSummary) {
