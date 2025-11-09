@@ -1,2 +1,2 @@
 export { CursorApi } from "./CursorApi";
-export { FeedsApi } from "./FeedsApi";
+export { FeedApi } from "./FeedApi";
