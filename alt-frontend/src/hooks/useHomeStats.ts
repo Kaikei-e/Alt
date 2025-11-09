@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { feedsApi } from "@/lib/api";
+import { feedApi } from "@/lib/api";
 import type { FeedStatsSummary } from "@/schema/feedStats";
 import { useTodayUnreadCount } from "./useTodayUnreadCount";
 
@@ -45,7 +45,7 @@ export const useHomeStats = (): UseHomeStatsReturn => {
         return;
       }
 
-      const stats = await feedsApi.getFeedStats();
+      const stats = await feedApi.getFeedStats();
       setFeedStats(stats);
     } catch {
       setStatsError("Failed to fetch feed stats");

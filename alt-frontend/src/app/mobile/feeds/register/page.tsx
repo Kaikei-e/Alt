@@ -4,7 +4,7 @@ import { Box, Button, Input, Text, VStack } from "@chakra-ui/react";
 import { useState } from "react";
 import * as v from "valibot";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
-import { feedsApi } from "@/lib/api";
+import { feedApi } from "@/lib/api";
 import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
 
 export default function RegisterFeedsPage() {
@@ -57,7 +57,7 @@ export default function RegisterFeedsPage() {
     setValidationError(null);
 
     try {
-      const response = await feedsApi.registerRssFeed(feedUrl.trim());
+      const response = await feedApi.registerRssFeed(feedUrl.trim());
       if (response.message) {
         setMessage({
           type: "success",

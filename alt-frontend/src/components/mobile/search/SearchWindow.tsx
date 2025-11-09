@@ -1,7 +1,7 @@
 import { Box, Button, Input, Text, VStack } from "@chakra-ui/react";
 import { useState } from "react";
 import * as v from "valibot";
-import { feedsApi } from "@/lib/api";
+import { feedApi } from "@/lib/api";
 import { transformFeedSearchResult } from "@/lib/utils/transformFeedSearchResult";
 import type { BackendFeedItem } from "@/schema/feed";
 import { type SearchQuery, searchQuerySchema } from "@/schema/validation/searchQuery";
@@ -65,7 +65,7 @@ const SearchWindow = ({
       const validatedQuery = validationResult.output.query;
 
       // 3. Call API
-      const results = await feedsApi.searchFeeds(validatedQuery);
+      const results = await feedApi.searchFeeds(validatedQuery);
 
       if (results.error) {
         setError(results.error);

@@ -11,7 +11,7 @@ import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import VirtualFeedList from "@/components/mobile/VirtualFeedList";
 import { useAuth } from "@/contexts/auth-context";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
-import { feedsApi } from "@/lib/api";
+import { feedApi } from "@/lib/api";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import type { Feed } from "@/schema/feed";
 import ErrorState from "./_components/ErrorState";
@@ -67,7 +67,7 @@ export default function FeedsPage() {
     isInitialLoading,
     loadMore,
     refresh,
-  } = useCursorPagination<Feed>(feedsApi.getFeedsWithCursor, {
+  } = useCursorPagination<Feed>(feedApi.getFeedsWithCursor, {
     limit: PAGE_SIZE,
     autoLoad: true,
   });
@@ -92,7 +92,7 @@ export default function FeedsPage() {
 
     // サーバ更新（失敗時はロールバック）
     try {
-      await feedsApi.updateFeedReadStatus(link);
+      await feedApi.updateFeedReadStatus(link);
     } catch (e) {
       startTransition(() => {
         setReadFeeds((prev) => {
