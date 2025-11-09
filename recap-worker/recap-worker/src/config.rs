@@ -80,7 +80,7 @@ impl Config {
         let recap_window_days = parse_u32("RECAP_WINDOW_DAYS", 7)?;
         let recap_genres = parse_csv(
             "RECAP_GENRES",
-            "tech,economy,ai,policy,security,science,product,design,devops,culture",
+            "tech,ai,business,science,politics,health,sports,entertainment,world,security,product,design,culture,environment,lifestyle",
         )?;
         let genre_classifier_weights_path = env::var("RECAP_GENRE_MODEL_WEIGHTS").ok();
         let genre_classifier_threshold = parse_f64("RECAP_GENRE_MODEL_THRESHOLD", 0.5)? as f32;

@@ -68,6 +68,48 @@
     "title": "Summit brokers ceasefire framework",
     "body": "Diplomats from multiple nations negotiated humanitarian corridors and pledged reconstruction aid after months of conflict.",
     "expected_genres": ["world", "politics"]
+  },
+  {
+    "id": "security-en-011",
+    "lang": "en",
+    "title": "Zero-day vulnerability discovered in popular web framework",
+    "body": "Security researchers identified a critical zero-day vulnerability that allows remote code execution through encrypted authentication tokens.",
+    "expected_genres": ["security", "tech"]
+  },
+  {
+    "id": "product-ja-012",
+    "lang": "ja",
+    "title": "新プロダクトのベータ版をリリース",
+    "body": "スタートアップがユーザー体験を大幅に改善した新プロダクトのベータ版を公開し、早期アクセスユーザーから好評を得ている。",
+    "expected_genres": ["product", "tech"]
+  },
+  {
+    "id": "design-en-013",
+    "lang": "en",
+    "title": "Award-winning UI design transforms user engagement",
+    "body": "The new interface design featuring minimalist typography and intuitive layout increased user engagement by 40%.",
+    "expected_genres": ["design", "product"]
+  },
+  {
+    "id": "culture-ja-014",
+    "lang": "ja",
+    "title": "伝統文化の継承をテーマにした美術展が開催",
+    "body": "国内の美術館で、歴史的な伝統文化を現代的な視点で再解釈した作品を集めた特別展が開幕した。",
+    "expected_genres": ["culture", "entertainment"]
+  },
+  {
+    "id": "environment-en-015",
+    "lang": "en",
+    "title": "Renewable energy initiative reduces carbon emissions",
+    "body": "A new solar and wind power project is expected to cut carbon emissions by 30% while promoting sustainable development.",
+    "expected_genres": ["environment", "science"]
+  },
+  {
+    "id": "lifestyle-ja-016",
+    "lang": "ja",
+    "title": "健康的なライフスタイルを支援する新サービス",
+    "body": "フィットネスとウェルネスを統合したアプリがリリースされ、ユーザーの健康的な生活習慣の形成をサポートする。",
+    "expected_genres": ["lifestyle", "health"]
   }
 ]
 

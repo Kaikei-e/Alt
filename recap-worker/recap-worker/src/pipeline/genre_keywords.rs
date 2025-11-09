@@ -381,6 +381,280 @@ impl GenreKeywords {
             .collect(),
         );
 
+        // Security - セキュリティ、サイバーセキュリティ、情報セキュリティなど
+        keywords.insert(
+            "security".to_string(),
+            vec![
+                // 英語
+                "security",
+                "cybersecurity",
+                "information security",
+                "data protection",
+                "privacy",
+                "encryption",
+                "authentication",
+                "vulnerability",
+                "malware",
+                "ransomware",
+                "phishing",
+                "firewall",
+                "intrusion",
+                "breach",
+                "hack",
+                "zero-day",
+                "patch",
+                "compliance",
+                // 日本語
+                "セキュリティ",
+                "情報セキュリティ",
+                "サイバーセキュリティ",
+                "暗号化",
+                "認証",
+                "脆弱性",
+                "マルウェア",
+                "ランサムウェア",
+                "フィッシング",
+                "ファイアウォール",
+                "侵入",
+                "漏洩",
+                "ハッキング",
+                "ゼロデイ",
+                "パッチ",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        );
+
+        // Product - プロダクト、製品、サービスなど
+        keywords.insert(
+            "product".to_string(),
+            vec![
+                // 英語
+                "product",
+                "product management",
+                "product launch",
+                "product design",
+                "user experience",
+                "ux",
+                "user interface",
+                "ui",
+                "feature",
+                "release",
+                "beta",
+                "alpha",
+                "roadmap",
+                "sprint",
+                "agile",
+                "scrum",
+                // 日本語
+                "プロダクト",
+                "製品",
+                "サービス",
+                "商品",
+                "リリース",
+                "機能",
+                "ユーザー体験",
+                "ユーザーインターフェース",
+                "ベータ",
+                "アルファ",
+                "ロードマップ",
+                "スプリント",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        );
+
+        // Design - デザイン、UI/UX、グラフィックデザインなど
+        keywords.insert(
+            "design".to_string(),
+            vec![
+                // 英語
+                "design",
+                "graphic design",
+                "ui design",
+                "ux design",
+                "web design",
+                "interior design",
+                "fashion design",
+                "industrial design",
+                "typography",
+                "illustration",
+                "branding",
+                "logo",
+                "color",
+                "layout",
+                "prototype",
+                "wireframe",
+                "mockup",
+                // 日本語
+                "デザイン",
+                "グラフィックデザイン",
+                "UIデザイン",
+                "UXデザイン",
+                "ウェブデザイン",
+                "インテリアデザイン",
+                "ファッションデザイン",
+                "工業デザイン",
+                "タイポグラフィ",
+                "イラスト",
+                "ブランディング",
+                "ロゴ",
+                "色彩",
+                "レイアウト",
+                "プロトタイプ",
+                "ワイヤーフレーム",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        );
+
+        // Culture - 文化、人文科学、文学、歴史など
+        keywords.insert(
+            "culture".to_string(),
+            vec![
+                // 英語
+                "culture",
+                "cultural",
+                "literature",
+                "history",
+                "philosophy",
+                "art",
+                "museum",
+                "heritage",
+                "tradition",
+                "custom",
+                "festival",
+                "ceremony",
+                "religion",
+                "spiritual",
+                "anthropology",
+                "sociology",
+                "archaeology",
+                // 日本語
+                "文化",
+                "文化的",
+                "文学",
+                "歴史",
+                "哲学",
+                "芸術",
+                "美術館",
+                "博物館",
+                "遺産",
+                "伝統",
+                "習慣",
+                "祭り",
+                "宗教",
+                "精神的",
+                "人類学",
+                "社会学",
+                "考古学",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        );
+
+        // Environment - 環境、気候変動、エコロジーなど
+        keywords.insert(
+            "environment".to_string(),
+            vec![
+                // 英語
+                "environment",
+                "environmental",
+                "climate",
+                "climate change",
+                "global warming",
+                "carbon",
+                "emission",
+                "renewable energy",
+                "solar",
+                "wind power",
+                "sustainability",
+                "eco-friendly",
+                "green",
+                "pollution",
+                "conservation",
+                "biodiversity",
+                "ecosystem",
+                "recycling",
+                // 日本語
+                "環境",
+                "環境的",
+                "気候",
+                "気候変動",
+                "地球温暖化",
+                "カーボン",
+                "排出",
+                "再生可能エネルギー",
+                "太陽光",
+                "風力",
+                "持続可能性",
+                "エコフレンドリー",
+                "グリーン",
+                "汚染",
+                "保護",
+                "生物多様性",
+                "生態系",
+                "リサイクル",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        );
+
+        // Lifestyle - ライフスタイル、生活、ファッション、旅行など
+        keywords.insert(
+            "lifestyle".to_string(),
+            vec![
+                // 英語
+                "lifestyle",
+                "life",
+                "living",
+                "fashion",
+                "travel",
+                "tourism",
+                "food",
+                "cooking",
+                "recipe",
+                "restaurant",
+                "dining",
+                "wellness",
+                "fitness",
+                "yoga",
+                "meditation",
+                "home",
+                "interior",
+                "decoration",
+                "beauty",
+                "cosmetics",
+                // 日本語
+                "ライフスタイル",
+                "生活",
+                "ファッション",
+                "旅行",
+                "観光",
+                "料理",
+                "レシピ",
+                "レストラン",
+                "食事",
+                "ウェルネス",
+                "フィットネス",
+                "ヨガ",
+                "瞑想",
+                "ホーム",
+                "インテリア",
+                "装飾",
+                "美容",
+                "化粧品",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        );
+
         // Other - その他（明確にカテゴライズできないもの）
         keywords.insert(
             "other".to_string(),
