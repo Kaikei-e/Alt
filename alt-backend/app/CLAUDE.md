@@ -6,6 +6,8 @@
 
 ## About alt-backend
 
+> For a living status snapshot (current routes, integrations, operational notes), see `docs/alt-backend.md` in the repo root.
+
 This is the **core backend service** of the Alt RSS reader microservice architecture, built with **Go 1.24+**, **Echo framework**, and **Clean Architecture** principles. The service follows Test-Driven Development (TDD) and implements a five-layer clean architecture pattern.
 
 **Critical Guidelines:**

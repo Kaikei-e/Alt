@@ -2,6 +2,8 @@
 
 ## About This Service
 
+> Implementation snapshot (DI wiring, router list, Ollama integration) lives in `docs/news-creator.md`.
+
 The news-creator is a Python FastAPI service that generates summaries and derivative content from processed articles using a Large Language Model (LLM). **This service has been refactored to follow Clean Architecture principles**, ensuring maintainability, testability, and scalability.
 
 - **Language**: Python 3.11+

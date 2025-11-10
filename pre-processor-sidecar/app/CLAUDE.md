@@ -2,6 +2,8 @@
 
 ## About This Service
 
+> Detailed scheduler/token rotation status is captured in `docs/pre-processor-sidecar.md`.
+
 The pre-processor-sidecar is a Go scheduler responsible for orchestrating RSS ingestion via the Inoreader API. It runs as a Kubernetes CronJob by default and can switch to a long-running Deployment in "schedule-mode" for debugging.
 
 - **Language**: Go 1.24+
@@ -103,4 +105,3 @@ func (s *TokenService) RefreshToken(ctx context.Context) (*oauth2.Token, error) 
 -   [Testing Kubernetes CronJobs](https://codingexplorations.com/blog/mastering-go-in-the-cloud-cronjobs-oauth2-and-concurrency)
 -   [Go `singleflight` Package](https://pkg.go.dev/golang.org/x/sync/singleflight)
 -   [OAuth2 for Go](https://pkg.go.dev/golang.org/x/oauth2)
-

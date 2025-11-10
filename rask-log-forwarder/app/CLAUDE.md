@@ -2,6 +2,8 @@
 
 ## About rask-log-forwarder
 
+> Current deployment/operational profile (auto discovery, buffer tuning, retry strategy) is mirrored in `docs/rask-log-forwarder.md`.
+
 **rask-log-forwarder** is an ultra-high-performance sidecar container that runs alongside each Alt microservice, tailing its logs, performing zero-copy parsing, and forwarding them in batches. It is built with **Rust 1.87+ (2024 Edition)**, SIMD JSON parsing, and lock-free data structures.
 
 **Core Capabilities:**

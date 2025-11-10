@@ -6,6 +6,8 @@
 
 ## About search-indexer
 
+> Companion status doc (`docs/search-indexer.md`) outlines the current indexing loop, tokenizer usage, and Meilisearch expectations.
+
 This is the **search indexing service** of the Alt RSS reader platform, built with **Go 1.24+** and **Meilisearch**. The service indexes processed articles for fast full-text search capabilities.
 
 **Critical Guidelines:**
@@ -248,4 +250,3 @@ curl "http://localhost:9300/v1/search?q=test&limit=10"
 - [Meilisearch Go Client](https://github.com/meilisearch/meilisearch-go)
 - [Meilisearch Documentation](https://www.meilisearch.com/docs)
 - [Testing Asynchronous Operations](https://www.meilisearch.com/docs/learn/advanced/asynchronous_operations)
-

@@ -5,6 +5,8 @@
 
 ## About Rask
 
+> For the live ingestion/ClickHouse wiring snapshot, see `docs/rask-log-aggregator.md`.
+
 **Rask** (Norwegian for "fast") is a high-performance log aggregation service built with **Rust 1.87+ (2024 Edition)**, the **Axum framework**, and **Clean Architecture** principles. It is designed for extreme throughput and low-latency processing.
 
 **Core Responsibilities:**

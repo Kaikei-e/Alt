@@ -2,6 +2,8 @@
 
 ## About This Service
 
+> Snapshot of the current CLI commands, health logic, and K8s secret workflow lives in `docs/auth-token-manager.md`.
+
 This is a Deno-based microservice responsible for OAuth2 token management, specifically for refreshing Inoreader API tokens. It is built with a Test-Driven Development (TDD) first approach, ensuring reliability and security.
 
 - **Runtime**: Deno 2.x with TypeScript

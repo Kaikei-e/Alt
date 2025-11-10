@@ -2,6 +2,8 @@
 
 ## About auth-hub
 
+> Need the latest operational profile (cache TTLs, Nginx integration notes)? See `docs/auth-hub.md`.
+
 **auth-hub** is a lightweight authentication proxy service that implements the Identity-Aware Proxy (IAP) pattern for the Alt RSS reader project. It bridges Nginx's `auth_request` module with Ory Kratos session validation, extracting user identity information and forwarding it as HTTP headers to backend services.
 
 **Core Responsibility:** Centralize authentication at the edge, eliminating the need for backend services to call Kratos directly.

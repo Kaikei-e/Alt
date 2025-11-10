@@ -6,6 +6,8 @@
 
 ## About alt-frontend
 
+> For an up-to-date implementation summary (routing tree, testing matrix, build tooling), read `docs/alt-frontend.md`.
+
 This is the **frontend service** of the Alt RSS reader platform, built with **Next.js 15**, **React 19**, **TypeScript 5.9**, and **Chakra UI**. The service follows Test-Driven Development (TDD) and implements modern React patterns with server-side rendering capabilities.
 
 **Critical Guidelines:**

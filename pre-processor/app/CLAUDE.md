@@ -6,6 +6,8 @@
 
 ## About pre-processor
 
+> For a point-in-time state brief covering disabled jobs, News Creator wiring, and config knobs, check `docs/pre-processor.md`.
+
 This is the **pre-processing service** of the Alt RSS reader platform, built with **Go 1.24+** and **Clean Architecture** principles. The service handles feed processing, article summarization, and quality checking with a focus on performance and reliability.
 
 **Critical Guidelines:**

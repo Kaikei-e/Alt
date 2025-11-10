@@ -93,19 +93,19 @@ Run only the suites relevant to your changes plus any dependent smoke tests.
 
 ## Service-Level Documentation
 
-Each service maintains its own `CLAUDE.md` with details:
+Each service maintains its own `CLAUDE.md` (process/architecture guardrails) and a companion `docs/*.md` snapshot that describes the current implementation state:
 
-- `alt-backend/app/CLAUDE.md`
-- `alt-frontend/CLAUDE.md`
-- `auth-hub/CLAUDE.md`
-- `pre-processor/app/CLAUDE.md`
-- `pre-processor-sidecar/app/CLAUDE.md`
-- `search-indexer/app/CLAUDE.md`
-- `tag-generator/app/CLAUDE.md`
-- `news-creator/app/CLAUDE.md`
-- `rask-log-aggregator/app/CLAUDE.md`
-- `rask-log-forwarder/app/CLAUDE.md`
-- `auth-token-manager/CLAUDE.md`
+- Backend API – `alt-backend/app/CLAUDE.md` + `docs/alt-backend.md`
+- Frontend – `alt-frontend/CLAUDE.md` + `docs/alt-frontend.md`
+- Auth Hub – `auth-hub/CLAUDE.md` + `docs/auth-hub.md`
+- Auth Token Manager – `auth-token-manager/CLAUDE.md` + `docs/auth-token-manager.md`
+- Pre-processor – `pre-processor/app/CLAUDE.md` + `docs/pre-processor.md`
+- Pre-processor Sidecar – `pre-processor-sidecar/app/CLAUDE.md` + `docs/pre-processor-sidecar.md`
+- News Creator – `news-creator/app/CLAUDE.md` + `docs/news-creator.md`
+- Tag Generator – `tag-generator/app/CLAUDE.md` + `docs/tag-generator.md`
+- Search Indexer – `search-indexer/app/CLAUDE.md` + `docs/search-indexer.md`
+- Rask Log Forwarder – `rask-log-forwarder/app/CLAUDE.md` + `docs/rask-log-forwarder.md`
+- Rask Log Aggregator – `rask-log-aggregator/app/CLAUDE.md` + `docs/rask-log-aggregator.md`
 
 If you add a new service, scaffold its doc with architecture notes, env vars, test commands, and integration points.
 

@@ -6,6 +6,8 @@
 
 ## About tag-generator
 
+> For the latest batch-loop behavior, cursor safeguards, and structlog config, read `docs/tag-generator.md`.
+
 This is the **tag generation service** of the Alt RSS reader platform, built with **Python 3.13+** and **FastAPI**. The service automatically generates relevant tags for RSS feed articles using machine learning models.
 
 **Critical Guidelines:**
