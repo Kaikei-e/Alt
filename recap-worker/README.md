@@ -36,15 +36,16 @@ per genre]
 ## Key Modules & Directories
 | Path | Purpose |
 | --- | --- |
-| `recap-worker/src/app.rs` | Component registry (Config, DAO, telemetry, scheduler, HTTP clients). |
-| `recap-worker/src/api/*.rs` | Axum handlers for health, metrics, admin retry, fetch, and manual generation. |
-| `recap-worker/src/pipeline/` | Pipeline stages (`fetch`, `preprocess`, `dedup`, `genre`, `select`, `dispatch`, `persist`, `evidence`). |
-| `recap-worker/src/clients/` | HTTP clients for alt-backend, recap-subworker, and news-creator (with JSON Schema validation). |
-| `recap-worker/src/classification/` | Hybrid genre classifier (keywords + lightweight embedding model). |
-| `recap-worker/src/observability/` | Prometheus metrics, structured logging, tracing bootstrap. |
-| `recap-worker/src/store/` | `RecapDao`, data models, advisory-lock helpers, persistence logic. |
-| `recap-migration-atlas/` | Source of truth Atlas migrations, Dockerized runner, and schema definitions. |
-| `docs/` | Deep dives (`dedup_analysis.md`, `dedup_optimization_design.md`, `subworker_404_investigation.md`). |
+| [`recap-worker/src/app.rs`](recap-worker/src/app.rs) | Component registry (Config, DAO, telemetry, scheduler, HTTP clients). |
+| [`recap-worker/src/api/*.rs`](recap-worker/src/api) | Axum handlers for health, metrics, admin retry, fetch, and manual generation. |
+| [`recap-worker/src/pipeline/`](recap-worker/src/pipeline) | Pipeline stages (`fetch`, `preprocess`, `dedup`, `genre`, `select`, `dispatch`, `persist`, `evidence`). |
+| [`recap-worker/src/clients/`](recap-worker/src/clients) | HTTP clients for alt-backend, recap-subworker, and news-creator (with JSON Schema validation). |
+| [`recap-worker/src/classification/`](recap-worker/src/classification) | Hybrid genre classifier (keywords + lightweight embedding model). |
+| [`recap-worker/src/observability/`](recap-worker/src/observability) | Prometheus metrics, structured logging, tracing bootstrap. |
+| [`recap-worker/src/store/`](recap-worker/src/store) | `RecapDao`, data models, advisory-lock helpers, persistence logic. |
+| [`recap-migration-atlas/`](../recap-migration-atlas) | Source of truth Atlas migrations, Dockerized runner, and schema definitions. |
+| [`docs/`](recap-worker/docs) | Deep dives (`dedup_analysis.md`, `dedup_optimization_design.md`, `subworker_404_investigation.md`). |
+| [`docs/recap-worker.md`](../docs/recap-worker.md) | High-level service snapshot, runbook, integrations, and LLM notes (recommended entry point). |
 
 ## Control Plane APIs
 | Method & Path | Description |
