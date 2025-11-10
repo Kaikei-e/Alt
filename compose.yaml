@@ -195,7 +195,6 @@ services:
     build:
       context: ./news-creator
       dockerfile: Dockerfile.creator
-    runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - OLLAMA_HOME=/home/ollama-user/.ollama
@@ -217,6 +216,13 @@ services:
     depends_on:
       news-creator-volume-init:
         condition: service_completed_successfully
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/health"]
       interval: 30s
