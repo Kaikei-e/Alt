@@ -1,21 +1,53 @@
-FROM python:3.12-slim
+# Multi-stage build for optimized image size
+FROM python:3.12-slim AS builder
+
+ENV UV_LINK_MODE=copy
+
+WORKDIR /app
+
+# Install build dependencies only
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN pip install --no-cache-dir uv==0.9.7
+
+# Copy dependency files
+COPY pyproject.toml README.md ./
+
+# Install dependencies
+RUN uv sync --no-dev \
+    && uv cache prune || true
+
+# Runtime stage - minimal image
+FROM python:3.12-slim AS runtime
 
 ENV UV_LINK_MODE=copy \
     PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
+# Install only runtime dependencies (no build tools)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential gcc g++ libpq-dev \
- && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
+# Install uv (lightweight, needed for uv run)
 RUN pip install --no-cache-dir uv==0.9.7
 
+# Copy virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
+
+# Copy application code
 COPY pyproject.toml README.md ./
 COPY recap_subworker ./recap_subworker
-
-RUN uv sync --no-dev \
- && uv cache prune || true
 
 EXPOSE 8002
 
