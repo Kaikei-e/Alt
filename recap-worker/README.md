@@ -1,331 +1,152 @@
 # Recap Worker
 
-A production-ready Rust 2024 edition batch worker for generating 7-day recaps of articles from the Alt platform. This service orchestrates the entire pipeline from article fetching to final Japanese summary generation using ML clustering and LLM summarization.
+Recap Worker is Alt's Rust 2024 batch processor that turns seven days of raw articles into curated Japanese summaries. It orchestrates every hop—from fetching source material to clustering, LLM summarization, and JSONB persistence—while exposing an Axum control plane for health probes, manual runs, metrics, and admin tooling.
 
-## Overview
+## At a Glance
+- **End-to-end pipeline**: Fetch → Preprocess → Dedup → Genre tagging → Evidence building → ML clustering → LLM summarization → Persistence.
+- **Rust async stack**: Axum, Tokio, sqlx, reqwest, tracing, Prometheus metrics, Tokio-based schedulers.
+- **Strict contracts**: JSON Schema validation for recap-subworker (ML) and news-creator (LLM) responses.
+- **Compose-first**: Runs under Docker Compose alongside alt-backend, recap-db (PostgreSQL 16), recap-subworker, and news-creator.
+- **Atlas migrations**: Definitive schema lives in `recap-migration-atlas/` (see below).
 
-The Recap Worker is responsible for:
-
-1. **Fetching articles** from `alt-backend` (last 7 days) and backing up raw data to `recap-db`
-2. **CPU-intensive preprocessing** (Unicode normalization, HTML sanitization, sentence segmentation, deduplication)
-3. **Genre classification** using keyword-based heuristics (10 genres)
-4. **Evidence corpus construction** per genre for ML processing
-5. **ML clustering** via `recap-subworker` (Python) with JSON Schema validation
-6. **LLM summarization** via `news-creator` (Gemma 3:4B) for Japanese summaries
-7. **Persistence** of final sections to PostgreSQL with JSONB storage
-
-## Architecture
-
-```
-┌─────────────┐
-│  Scheduler  │ (Cron/K8s/Compose)
-│  (04:00 JST)│
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Recap Worker (Rust)                       │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
-│  │  Fetch   │→ │ Preprocess│→ │  Dedup   │→ │  Genre   │    │
-│  │  Stage   │  │   Stage   │  │  Stage   │  │  Stage   │    │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘    │
-│       │             │              │              │          │
-│       ▼             ▼              ▼              ▼          │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │         Evidence Corpus Construction                 │  │
-│  └────────────────────┬─────────────────────────────────┘  │
-│                       │                                      │
-│                       ▼                                      │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │              Dispatch Stage (Parallel)                │  │
-│  │  ┌──────────────┐         ┌──────────────┐           │  │
-│  │  │  Subworker   │────────▶│ News-Creator │           │  │
-│  │  │ (Clustering) │         │ (Summarize)  │           │  │
-│  │  └──────────────┘         └──────────────┘           │  │
-│  └────────────────────┬─────────────────────────────────┘  │
-│                       │                                      │
-│                       ▼                                      │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │              Persist Stage (JSONB)                    │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-       │                    │                    │
-       ▼                    ▼                    ▼
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│ alt-backend │    │ recap-db    │    │ Subworker   │
-│   (HTTP)    │    │ (PostgreSQL)│    │  (Python)   │
-└─────────────┘    └─────────────┘    └─────────────┘
+## System Flow
+```mermaid
+flowchart TD
+    Scheduler[Daily JST Daemon<br/>04:00 @ UTC+9] -->|JobContext + genres| API
+    Admin[Manual trigger / retry<br/>POST /v1/generate…] --> API
+    subgraph Axum Control Plane
+        API((Router)) -->|dispatch job| Pipeline
+        API --> Health[/Health + Metrics/]
+    end
+    Pipeline --> FetchStage[Fetch & backup<br/>alt-backend]
+    FetchStage --> PreStage[Preprocess<br/>HTML clean + lang detect]
+    PreStage --> DedupStage[Dedup<br/>XXH3 + sentence filters]
+    DedupStage --> GenreStage[Genre tagging]
+    GenreStage --> Evidence[Evidence bundle
+per genre]
+    Evidence --> Dispatch[Dispatch Stage]
+    Dispatch -->|Evidence corpus| Subworker
+    Dispatch -->|Clusters| NewsCreator
+    Subworker -->|Clustering JSON| Dispatch
+    NewsCreator -->|Summary JSON| Dispatch
+    Dispatch --> Persist[Persist Stage<br/>recap_outputs]
+    Persist --> RecapDB[(recap-db / PostgreSQL)]
 ```
 
-## Features
+## Key Modules & Directories
+| Path | Purpose |
+| --- | --- |
+| `recap-worker/src/app.rs` | Component registry (Config, DAO, telemetry, scheduler, HTTP clients). |
+| `recap-worker/src/api/*.rs` | Axum handlers for health, metrics, admin retry, fetch, and manual generation. |
+| `recap-worker/src/pipeline/` | Pipeline stages (`fetch`, `preprocess`, `dedup`, `genre`, `select`, `dispatch`, `persist`, `evidence`). |
+| `recap-worker/src/clients/` | HTTP clients for alt-backend, recap-subworker, and news-creator (with JSON Schema validation). |
+| `recap-worker/src/classification/` | Hybrid genre classifier (keywords + lightweight embedding model). |
+| `recap-worker/src/observability/` | Prometheus metrics, structured logging, tracing bootstrap. |
+| `recap-worker/src/store/` | `RecapDao`, data models, advisory-lock helpers, persistence logic. |
+| `recap-migration-atlas/` | Source of truth Atlas migrations, Dockerized runner, and schema definitions. |
+| `docs/` | Deep dives (`dedup_analysis.md`, `dedup_optimization_design.md`, `subworker_404_investigation.md`). |
 
-### ✅ Core Pipeline
-- **Fetch Stage**: Paginated article retrieval from alt-backend with retry logic
-- **Preprocess Stage**: Unicode normalization, HTML sanitization, sentence segmentation
-- **Dedup Stage**: XXH3 hash-based article and sentence-level deduplication
-- **Genre Stage**: Keyword-based heuristics for 10-genre classification
-- **Evidence Corpus**: Genre-grouped article corpus construction
-- **Dispatch Stage**: Parallel ML clustering and LLM summarization
-- **Persist Stage**: Final section storage with JSONB fields
-
-### ✅ Infrastructure
-- **PostgreSQL Advisory Locks**: Duplicate execution prevention
-- **OpenTelemetry Integration**: Distributed tracing with OTLP exporter
-- **JSON Schema 2020-12**: Strict contract validation for Subworker/News-Creator
-- **JSONB GIN Indexes**: Fast queries on JSON data
-- **Exponential Backoff Retry**: Network failure resilience
-- **Idempotency-Key Headers**: Idempotent HTTP requests
-
-### ✅ Observability
-- **Prometheus Metrics**: Counters, histograms, and gauges
-- **Structured JSON Logging**: Important events in JSON format
-- **Error Classification**: Retryable/Non-retryable/Fatal error handling
-- **Partial Success Handling**: Genre-level failure detection and retry logic
-
-## Quick Start
-
-### Prerequisites
-
-- Rust 1.87+ (2024 edition)
-- PostgreSQL 16+
-- Docker & Docker Compose (for local development)
-
-### Environment Variables
-
-See [ENVIRONMENT.md](./ENVIRONMENT.md) for complete environment variable documentation.
-
-**Required:**
-```bash
-RECAP_DB_DSN=postgresql://user:pass@localhost:5432/recap_db
-ALT_BACKEND_BASE_URL=http://alt-backend:9000
-SUBWORKER_BASE_URL=http://recap-subworker:8080
-NEWS_CREATOR_BASE_URL=http://news-creator:8000
-```
-
-**Optional (with defaults):**
-```bash
-RECAP_WORKER_HTTP_BIND=0.0.0.0:9005
-RECAP_WINDOW_DAYS=7
-RECAP_GENRES=tech,economy,ai,policy,security,science,product,design,devops,culture
-HTTP_MAX_RETRIES=3
-HTTP_BACKOFF_BASE_MS=250
-HTTP_BACKOFF_CAP_MS=10000
-OTEL_EXPORTER_ENDPOINT=http://otel-collector:4317
-OTEL_SAMPLING_RATIO=1.0
-```
-
-### Building
-
-```bash
-cd recap-worker/recap-worker
-cargo build --release
-```
-
-### Running
-
-```bash
-# Set environment variables
-export RECAP_DB_DSN="postgresql://..."
-export ALT_BACKEND_BASE_URL="http://..."
-# ... other required vars
-
-# Run the worker
-cargo run --release
-```
-
-### Testing
-
-```bash
-# Unit tests
-cargo test
-
-# Integration tests (requires Docker)
-cargo test --test integration_test
-
-# Performance benchmarks
-cargo bench
-```
+## Control Plane APIs
+| Method & Path | Description |
+| --- | --- |
+| `GET /health/live` | Liveness probe (internal counter + telemetry tick). |
+| `GET /health/ready` | Readiness probe; pings recap-subworker + news-creator before returning `200`. |
+| `GET /metrics` | Prometheus exposition containing pipeline counters, histograms, and gauges. |
+| `POST /v1/generate/recaps/7days` | Manually enqueue a recap job (optionally pass custom `genres`). Returns `202 Accepted` + `job_id`. |
+| `GET /v1/recaps/7days` | Fetch latest persisted recap (job metadata + per-genre sections + evidence links). |
+| `POST /admin/jobs/retry` | Fire-and-forget retry using default Config genres; useful when a batch degraded. |
 
 ## Pipeline Stages
+1. **Fetch (`AltBackendFetchStage`)**
+   - Pulls paginated articles from alt-backend for the configured `RECAP_WINDOW_DAYS` backfill.
+   - Wraps requests in exponential backoff (`util::retry`), backs up raw HTML to `recap_job_articles`, and acquires advisory locks to avoid duplicate runs.
+2. **Preprocess (`TextPreprocessStage`)**
+   - Offloads CPU-heavy normalization via `tokio::task::spawn_blocking` plus semaphore-constrained concurrency.
+   - Ammonia cleans HTML, `html2text` strips markup, `whatlang` provides language hints, and tokens are generated for downstream classifiers.
+   - Metrics persisted in `recap_preprocess_metrics` (totals, dropped counts, language distribution).
+3. **Dedup (`HashDedupStage`)**
+   - Exact + near-duplicate detection using XXH3 hashes and rolling-window similarity; performs sentence-level dedup with per-article stats.
+4. **Genre (`KeywordGenreStage`)**
+   - Keyword heuristics (multilingual) assign 1–3 genres per article; genre distributions captured for instrumentation. Classifier utilities live in `classification/`.
+5. **Evidence (`evidence.rs`)**
+   - Groups deduplicated articles per genre, filters short sentences, and tracks metadata (language mix, counts). Output feeds ML dispatch.
+6. **Dispatch (`MlLlmDispatchStage`)**
+   - Parallel per-genre flow: send evidence corpus to recap-subworker (`/v1/runs`), poll until success, then build summary requests for news-creator (`/v1/summary/generate`). Responses pass JSON Schema verification before returning.
+7. **Persist (`FinalSectionPersistStage`)**
+   - Serializes LLM output to `recap_outputs` (JSONB) and `recap_sections`, storing human-readable summary text, bullets, and the full struct for downstream consumers.
 
-### 1. Fetch Stage
-- Fetches articles from `alt-backend` with pagination
-- Implements exponential backoff retry with jitter
-- Backs up raw articles to `recap_job_articles` table
-- Configurable timeouts (connect: 3s, read: 20s, total: 30s)
+## Scheduling & Job Lifecycle
+- **Automatic daily batch**: `scheduler::daemon::spawn_jst_batch_daemon` fires at 04:00 JST using `RECAP_GENRES` defaults. Missing defaults result in a warning and skip auto runs.
+- **Manual generation**: Invoke `POST /v1/generate/recaps/7days` with optional `{"genres": ["ai", ...]}`; the handler dedupes/normalizes input before queueing the job.
+- **Admin retries**: `POST /admin/jobs/retry` triggers a best-effort rerun using the existing scheduler (useful after fixing upstream outages).
+- **Job context**: `JobContext` carries `job_id` + genre list throughout the pipeline for logging and persistence.
 
-### 2. Preprocess Stage
-- **Unicode Normalization**: NFC form
-- **HTML Sanitization**: `ammonia` + `html2text` for plain text conversion
-- **Language Detection**: `whatlang` for language hints
-- **CPU Offloading**: `tokio::task::spawn_blocking` with semaphore concurrency control
-- **Metrics Collection**: Articles processed, HTML cleaned, language distribution
+## External Services & Contracts
+| Service | Purpose | Contract Notes |
+| --- | --- | --- |
+| `alt-backend` | Article source (`/v1/recap/articles`). | Auth via `X-Service-Token` (optional). Paginated; Recap Worker backs up every article into PostgreSQL. |
+| `recap-subworker` | ML clustering + representative selection. | REST interface at `/v1/runs`. Requests derived from evidence corpus; responses validated against `schema::subworker::CLUSTERING_RESPONSE_SCHEMA`. Includes retry/poll loop with idempotency headers. |
+| `news-creator` | Japanese bullet summaries via LLM (Gemma 3:4B). | `/v1/summary/generate` with optional `SummaryOptions`. Responses validated against `schema::news_creator::SUMMARY_RESPONSE_SCHEMA` before persistence. |
 
-### 3. Dedup Stage
-- **Article-level Deduplication**: XXH3 hash-based exact and near-duplicate detection
-- **Sentence-level Deduplication**: Per-article sentence hash deduplication
-- **Rolling Window**: Jaccard similarity for near-duplicate detection
-- **Statistics**: Tracks unique/duplicate articles and sentences
-
-### 4. Genre Stage
-- **Keyword Heuristics**: Multilingual (Japanese/English) keyword matching
-- **10 Genres**: ai, tech, business, science, entertainment, sports, politics, health, world, other
-- **Multi-label Assignment**: 1-3 genres per article
-- **Distribution Tracking**: Genre-level article counts
-
-### 5. Evidence Corpus
-- Groups articles by genre
-- Constructs evidence corpus with metadata (language distribution, sentence counts)
-- Prepares data for Subworker ML processing
-
-### 6. Dispatch Stage
-- **Parallel Processing**: One task per genre
-- **Subworker Integration**: Sends evidence corpus, receives clustering results
-- **News-Creator Integration**: Sends clusters, receives Japanese summaries
-- **JSON Schema Validation**: Validates all external service responses
-- **Error Handling**: Genre-level failure isolation
-
-### 7. Persist Stage
-- Saves final sections to `recap_final_sections` table
-- Uses JSONB for flexible storage
-- Tracks success/failure per genre
-
-## Database Schema
-
-### Atlas Migrations
-
-`recap-db` のスキーマは `recap-migration-atlas/` で管理する Atlas マイグレーションに移行しました。Docker を使って適用する例:
-
-```bash
-docker build -t recap-db-migrator ./recap-migration-atlas/docker
-docker run --rm \
-  -e DATABASE_URL="postgres://recap_user:recap_db_pass_DO_NOT_USE_THIS@recap-db:5432/recap" \
-  -e ATLAS_REVISIONS_SCHEMA=public \
-  recap-db-migrator apply
-```
-
-既存のデータベースを引き継ぐ場合は `MIGRATE_BASELINE_VERSION=20240101000300` を指定して `status` コマンドを実行し、Atlas のガイダンスに従って baseline を設定してください。
-
-### Key Tables
-
-- **`recap_jobs`**: Job metadata with advisory lock tracking
-- **`recap_job_articles`**: Raw article backups (source of truth)
-- **`recap_preprocess_metrics`**: Preprocessing statistics
-- **`recap_subworker_runs`**: Subworker execution records
-- **`recap_subworker_clusters`**: ML clustering results (JSONB `top_terms`)
-- **`recap_subworker_sentences`**: Sentence-level cluster assignments
-- **`recap_final_sections`**: Final Japanese summaries (JSONB `bullets_ja`)
-
-### Indexes
-
-- **GIN indexes** on JSONB fields for fast queries:
-  - `recap_subworker_clusters.top_terms`
-  - `recap_subworker_runs.request_payload`, `response_payload`
-  - `recap_outputs.output_json`
-
-## Error Handling
-
-### Error Classification
-
-- **Retryable**: Network timeouts, 5xx errors, database connection issues
-- **Non-retryable**: 4xx errors (except auth), validation failures
-- **Fatal**: Authentication errors, configuration errors
-
-### Partial Success
-
-- Genre-level failure isolation
-- Missing genre detection for retry
-- Retryability determination based on error types
+## Configuration & Environment
+Full reference lives in [ENVIRONMENT.md](./ENVIRONMENT.md). Highlights:
+- **Database**: `RECAP_DB_DSN` (PostgreSQL 16). Connection pooling via `sqlx::postgres::PgPoolOptions`.
+- **External endpoints**: `ALT_BACKEND_BASE_URL`, `SUBWORKER_BASE_URL`, `NEWS_CREATOR_BASE_URL`.
+- **Batch parameters**: `RECAP_WINDOW_DAYS`, `RECAP_GENRES`, `LLM_MAX_CONCURRENCY`, `LLM_PROMPT_VERSION`.
+- **HTTP resiliency**: `HTTP_MAX_RETRIES`, `HTTP_BACKOFF_BASE_MS`, `HTTP_BACKOFF_CAP_MS`, per-client timeout overrides.
+- **Observability**: `OTEL_EXPORTER_ENDPOINT`, `OTEL_SAMPLING_RATIO`, `RUST_LOG`.
 
 ## Observability
+- **Metrics**: `GET /metrics` surfaces counters (`recap_articles_fetched_total`, `recap_clusters_created_total`, `recap_jobs_failed_total`), histograms (`recap_fetch_duration_seconds`, `recap_job_duration_seconds`, etc.), and gauges (`recap_active_jobs`, `recap_queue_size`). See `observability/metrics.rs`.
+- **Tracing**: `observability::Telemetry` initializes JSON-formatted tracing logs. OTLP export can be enabled once collector availability is confirmed (see `observability/tracing.rs`).
+- **Structured logging**: Important events (WARN/ERROR/INFO) emit JSON via `StructuredLogLayer`; redaction helpers live in `util::redact`.
+- **Health probes**: `GET /health/live` + `GET /health/ready` integrate with Compose/Infra load balancers.
 
-### Prometheus Metrics
+## Database & Migrations
+- **Authoritative migrations**: `recap-migration-atlas/migrations/*.sql` with `atlas.hcl` + `schema.hcl`. Use the Docker helper in `recap-migration-atlas/docker/` (`docker build -t recap-db-migrator …`).
+- **Legacy init scripts**: `recap-worker/recap-db/init/*.sql` remain for local bootstraps but defer to Atlas in CI/CD.
+- **Recent change (2025-11-08)**: `20251108000100_update_recap_preprocess_metrics.sql` migrated legacy metric kv-pairs into typed columns expected by `RecapDao::save_preprocess_metrics`.
 
-- **Counters**: `recap_articles_fetched_total`, `recap_jobs_completed_total`, `recap_retries_total`
-- **Histograms**: `recap_fetch_duration_seconds`, `recap_preprocess_duration_seconds`, `recap_job_duration_seconds`
-- **Gauges**: `recap_active_jobs`, `recap_queue_size`
+## Development Workflow
+1. **Prerequisites**: Rust 1.87+, `cargo`, PostgreSQL 16, Docker/Compose for integration tests.
+2. **Bootstrap**:
+   ```bash
+   cd recap-worker/recap-worker
+   cargo fmt && cargo clippy --all-targets --all-features
+   ```
+3. **Run locally**:
+   ```bash
+   export RECAP_DB_DSN=postgres://recap:recap@localhost:5432/recap
+   export ALT_BACKEND_BASE_URL=http://localhost:9000/
+   export SUBWORKER_BASE_URL=http://localhost:18002/
+   export NEWS_CREATOR_BASE_URL=http://localhost:18003/
+   cargo run --release
+   ```
+4. **Testing & Benchmarks**:
+   - Unit + doc tests: `cargo test`
+   - Golden-set classifier regression: `cargo test --test classification_metrics`
+   - Integration skeleton (requires Testcontainers): `cargo test --test integration_test -- --ignored`
+   - Performance bench (preprocessing + keyword scoring): `cargo bench -p recap-worker --bench performance`
+5. **Scripts**:
+   - Retrain genre classifier weights from labelled data: `python scripts/retrain_genre_classifier.py tests/data/golden_classification.json new_weights.json`
 
-### OpenTelemetry Tracing
+## Troubleshooting & Maintenance
+- **Common issues**: See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for DB locks, HTTP timeouts, schema validation failures, and observability tips.
+- **Dedup performance**: `docs/dedup_analysis.md` and `docs/dedup_optimization_design.md` outline current hotspots and planned improvements.
+- **Service contract drift**: `docs/subworker_404_investigation.md` documents the `/v1/runs` endpoint switch and headers required to avoid `404` responses.
+- **Atlas hashes**: Update `atlas.sum` via `recap-migration-atlas/docker/scripts/hash.sh` whenever migrations change.
 
-- Spans for each pipeline stage
-- OTLP exporter to collector
-- Configurable sampling ratio
-
-### Structured Logging
-
-- JSON format for important events (ERROR/WARN/INFO)
-- Includes timestamp, level, target, message, and fields
-
-## Configuration
-
-See [ENVIRONMENT.md](./ENVIRONMENT.md) for detailed configuration options.
-
-## Troubleshooting
-
-See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for common issues and solutions.
-
-## Development
-
-### SQLx Offline Mode
-
+## Reference Commands
 ```bash
-# Prepare queries for offline compilation
-cargo sqlx prepare --check
+# Health & metrics
+curl http://localhost:9005/health/ready
+curl http://localhost:9005/metrics | grep recap_jobs
 
-# Or with database connection
-DATABASE_URL=postgresql://... cargo sqlx prepare
+# Inspect latest job metadata (psql)
+psql $RECAP_DB_DSN -c "SELECT * FROM recap_jobs ORDER BY kicked_at DESC LIMIT 5;"
+
+# Tail worker logs
+docker compose logs -f recap-worker
 ```
 
-### Running Tests
-
-```bash
-# Unit tests
-cargo test
-
-# Integration tests (requires testcontainers)
-cargo test --test integration_test -- --ignored
-
-# All tests
-cargo test --all-features
-```
-
-### Code Quality
-
-```bash
-# Format
-cargo fmt
-
-# Lint
-cargo clippy --all-targets --all-features -- -D warnings
-```
-
-## Performance
-
-### Benchmarks
-
-Run performance benchmarks:
-
-```bash
-cargo bench
-```
-
-Target performance (7 days, ~10k articles):
-- Fetch: < 5 minutes
-- Preprocess: < 10 minutes
-- Dedup: < 2 minutes
-- Genre: < 1 minute
-- Dispatch (per genre): < 30 seconds
-- Total: < 20 minutes
-
-## License
-
-See LICENSE file in the repository root.
-
-## References
-
-- [PostgreSQL Advisory Locks](https://www.postgresql.org/docs/current/functions-admin.html)
-- [Tower Retry Policy](https://tower-rs.github.io/tower/tower/retry/trait.Policy.html)
-- [JSON Schema Validation](https://docs.rs/jsonschema)
-- [OpenTelemetry Rust](https://opentelemetry.io/docs/languages/rust/)
+Stay aligned with the Compose-first workflow, keep tests green, and run only the minimal set of stages necessary for safe, fast iterations.
