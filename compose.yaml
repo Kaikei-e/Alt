@@ -15,8 +15,9 @@ networks:
 
 volumes:
   # Persistent storage volumes for data persistence
-  db_data:                    # PostgreSQL 16 database data (existing)
-  db_data_17:                 # PostgreSQL 17 database data (new for blue-green deployment)
+  # NOTE: db_data (PostgreSQL 16) is no longer used - removed to save memory
+  # If you need to clean up old volumes, run: make docker-remove-old-volumes
+  db_data_17:                 # PostgreSQL 17 database data (current production)
   kratos_db_data:             # Kratos PostgreSQL database data
   meili_data:                 # MeiliSearch index data
   rask_log_aggregator_data:   # Rask log aggregator data
