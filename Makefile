@@ -1,5 +1,8 @@
 # Makefile
 
+# Docker context - use 'default' which has the most data and volumes
+DOCKER_CONTEXT := default
+
 # .env ファイルの名前
 ENV_FILE := ./.env
 # .env テンプレートファイルの名前
@@ -35,6 +38,8 @@ $(ENV_FILE): $(ENV_TEMPLATE)
 
 # docker-compose up --build -d を実行するターゲット
 up: $(ENV_FILE)
+	@echo "Setting Docker context to $(DOCKER_CONTEXT) (has most data/volumes)..."
+	@docker context use $(DOCKER_CONTEXT) || true
 	@echo "Starting Docker Compose services..."
 	docker compose up --build -d
 
@@ -50,11 +55,15 @@ up-with-news-creator: $(ENV_FILE)
 
 # Dockerイメージをビルドするターゲット (個別実行も可能)
 build: $(ENV_FILE)
+	@echo "Setting Docker context to $(DOCKER_CONTEXT)..."
+	@docker context use $(DOCKER_CONTEXT) || true
 	@echo "Building Docker images..."
 	docker compose build
 
 # サービスを停止するターゲット
 down:
+	@echo "Setting Docker context to $(DOCKER_CONTEXT)..."
+	@docker context use $(DOCKER_CONTEXT) || true
 	@echo "Stopping Docker Compose services..."
 	docker compose down
 
