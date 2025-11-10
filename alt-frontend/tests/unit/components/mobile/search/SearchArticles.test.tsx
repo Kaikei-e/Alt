@@ -3,12 +3,15 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SearchArticles } from "@/components/mobile/search/SearchArticles";
-import { feedsApi } from "@/lib/api";
+import { articleApi } from "@/lib/api";
 import type { Article } from "@/schema/article";
 import "../test-env";
 
-// Mock feedsApi
+// Mock articleApi (component uses articleApi.searchArticles)
 vi.mock("@/lib/api", () => ({
+  articleApi: {
+    searchArticles: vi.fn(),
+  },
   feedsApi: {
     searchArticles: vi.fn(),
   },
@@ -135,7 +138,7 @@ describe("SearchArticles", () => {
     });
 
     it("should trigger search on Enter key press", async () => {
-      const mockedSearchArticles = vi.mocked(feedsApi.searchArticles);
+      const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
       mockedSearchArticles.mockResolvedValueOnce(mockArticles);
 
       const setArticles = vi.fn();
@@ -147,7 +150,7 @@ describe("SearchArticles", () => {
       fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
 
       await waitFor(() => {
-        expect(feedsApi.searchArticles).toHaveBeenCalledWith("valid query");
+        expect(articleApi.searchArticles).toHaveBeenCalledWith("valid query");
       });
     });
 
@@ -171,7 +174,7 @@ describe("SearchArticles", () => {
 
   describe("Search Functionality", () => {
     it("should call searchArticles API when valid query is submitted", async () => {
-      const mockedSearchArticles = vi.mocked(feedsApi.searchArticles);
+      const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
       mockedSearchArticles.mockResolvedValueOnce(mockArticles);
 
       const setArticles = vi.fn();
@@ -183,13 +186,13 @@ describe("SearchArticles", () => {
       fireEvent.click(button);
 
       await waitFor(() => {
-        expect(feedsApi.searchArticles).toHaveBeenCalledWith("test query");
+        expect(articleApi.searchArticles).toHaveBeenCalledWith("test query");
         expect(setArticles).toHaveBeenCalledWith(mockArticles);
       });
     });
 
     it("should trim whitespace from query before searching", async () => {
-      const mockedSearchArticles = vi.mocked(feedsApi.searchArticles);
+      const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
       mockedSearchArticles.mockResolvedValueOnce(mockArticles);
 
       renderWithChakra(<SearchArticles {...defaultProps} query="  test query  " />);
@@ -198,12 +201,12 @@ describe("SearchArticles", () => {
       fireEvent.click(button);
 
       await waitFor(() => {
-        expect(feedsApi.searchArticles).toHaveBeenCalledWith("test query");
+        expect(articleApi.searchArticles).toHaveBeenCalledWith("test query");
       });
     });
 
     it("should clear articles before new search", async () => {
-      const mockedSearchArticles = vi.mocked(feedsApi.searchArticles);
+      const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
       mockedSearchArticles.mockResolvedValueOnce(mockArticles);
 
       const setArticles = vi.fn();
@@ -218,7 +221,7 @@ describe("SearchArticles", () => {
     });
 
     it("should clear errors before new search", async () => {
-      const mockedSearchArticles = vi.mocked(feedsApi.searchArticles);
+      const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
       mockedSearchArticles.mockResolvedValueOnce(mockArticles);
 
       const setError = vi.fn();
@@ -238,7 +241,7 @@ describe("SearchArticles", () => {
 
   describe("Error Handling", () => {
     it("should display API error when search fails", async () => {
-      const mockedSearchArticles = vi.mocked(feedsApi.searchArticles);
+      const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
       mockedSearchArticles.mockRejectedValueOnce(new Error("Network error occurred"));
 
       const setError = vi.fn();
@@ -254,7 +257,7 @@ describe("SearchArticles", () => {
     });
 
     it("should display generic error message for non-Error objects", async () => {
-      const mockedSearchArticles = vi.mocked(feedsApi.searchArticles);
+      const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
       mockedSearchArticles.mockRejectedValueOnce("Unknown error");
 
       const setError = vi.fn();
@@ -291,7 +294,7 @@ describe("SearchArticles", () => {
     });
 
     it("should prevent search when already loading", async () => {
-      const mockedSearchArticles = vi.mocked(feedsApi.searchArticles);
+      const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
       let resolveSearch: () => void;
       const searchPromise = new Promise<Article[]>((resolve) => {
         resolveSearch = () => resolve(mockArticles);
@@ -315,7 +318,7 @@ describe("SearchArticles", () => {
       });
 
       // API should only be called once even if we try to click again
-      expect(feedsApi.searchArticles).toHaveBeenCalledTimes(1);
+      expect(articleApi.searchArticles).toHaveBeenCalledTimes(1);
 
       // Resolve the search
       resolveSearch!();
@@ -324,7 +327,7 @@ describe("SearchArticles", () => {
 
   describe("Form Submission", () => {
     it("should prevent default form submission", async () => {
-      const mockedSearchArticles = vi.mocked(feedsApi.searchArticles);
+      const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
       mockedSearchArticles.mockResolvedValueOnce(mockArticles);
 
       renderWithChakra(<SearchArticles {...defaultProps} query="test" />);
@@ -369,7 +372,7 @@ describe("SearchArticles", () => {
           }) as any
       );
 
-      const mockedSearchArticles = vi.mocked(feedsApi.searchArticles);
+      const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
       mockedSearchArticles.mockResolvedValueOnce(mockArticles);
 
       const setQuery = vi.fn();
@@ -381,7 +384,7 @@ describe("SearchArticles", () => {
 
       await waitFor(() => {
         expect(setQuery).toHaveBeenCalledWith("url query");
-        expect(feedsApi.searchArticles).toHaveBeenCalledWith("url query");
+        expect(articleApi.searchArticles).toHaveBeenCalledWith("url query");
       });
     });
 
@@ -396,7 +399,7 @@ describe("SearchArticles", () => {
           }) as any
       );
 
-      const mockedSearchArticles = vi.mocked(feedsApi.searchArticles);
+      const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
 
       renderWithChakra(<SearchArticles {...defaultProps} />);
 

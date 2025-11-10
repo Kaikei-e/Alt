@@ -5,12 +5,18 @@ import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArticleDetailsModal } from "@/components/mobile/articles/ArticleDetailsModal";
 import SwipeFeedCard from "@/components/mobile/feeds/swipe/SwipeFeedCard";
-import { feedsApi } from "@/lib/api";
+import { articleApi } from "@/lib/api";
 import type { Article } from "@/schema/article";
 import type { Feed } from "@/schema/feed";
 import "../test-env";
 
 vi.mock("@/lib/api", () => ({
+  articleApi: {
+    getFeedContentOnTheFly: vi.fn(),
+    getArticleSummary: vi.fn(),
+    summarizeArticle: vi.fn(),
+    archiveContent: vi.fn(),
+  },
   feedsApi: {
     getFeedContentOnTheFly: vi.fn(),
     getArticleSummary: vi.fn(),
@@ -45,18 +51,18 @@ describe("Article rendering security", () => {
 
     const maliciousContent = '<p>hello</p><script>window.__xss = true;</script>';
 
-    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+    vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: maliciousContent,
     });
 
     renderWithProviders(
-      <ArticleDetailsModal article={article} isOpen onClose={() => {}} />
+      <ArticleDetailsModal article={article} isOpen onClose={() => { }} />
     );
 
     const contentNode = await screen.findByTestId("article-full-content");
 
     await waitFor(() => {
-      expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+      expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
         feed_url: article.url,
       });
     });
@@ -74,21 +80,16 @@ describe("Article rendering security", () => {
       link: "https://example.com/feed", // link used for fetching full content
       author: "Author",
       description: "Feed description",
-      content: "Preview content",
-      published_at: new Date().toISOString(),
-      tags: [],
-      feed_url: "https://example.com/rss",
-      source: "Example Source",
-      source_url: "https://example.com",
+      published: new Date().toISOString(),
     };
 
     const maliciousContent = '<div>content</div><script>window.__cardXss = true;</script>';
 
-    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+    vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: maliciousContent,
     });
 
-    vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+    vi.mocked(articleApi.archiveContent).mockResolvedValue({
       message: "archived",
     });
 
@@ -102,7 +103,7 @@ describe("Article rendering security", () => {
     const contentSection = await screen.findByTestId("content-section");
 
     await waitFor(() => {
-      expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+      expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
         feed_url: feed.link,
       });
     });

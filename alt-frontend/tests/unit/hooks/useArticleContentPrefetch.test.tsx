@@ -1,11 +1,15 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useArticleContentPrefetch } from "@/hooks/useArticleContentPrefetch";
-import { feedsApi } from "@/lib/api";
+import { articleApi } from "@/lib/api";
 import type { Feed } from "@/schema/feed";
 
 // Mock the API
 vi.mock("@/lib/api", () => ({
+  articleApi: {
+    getFeedContentOnTheFly: vi.fn(),
+    archiveContent: vi.fn(),
+  },
   feedsApi: {
     getFeedContentOnTheFly: vi.fn(),
     archiveContent: vi.fn(),
@@ -70,10 +74,10 @@ describe("useArticleContentPrefetch", () => {
   });
 
   it("should prefetch next 2 articles when triggered", async () => {
-    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+    vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: "<p>Article content</p>",
     });
-    vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+    vi.mocked(articleApi.archiveContent).mockResolvedValue({
       message: "archived",
     });
 
@@ -84,24 +88,24 @@ describe("useArticleContentPrefetch", () => {
     // Wait for prefetch to complete (real timers)
     await waitFor(
       () => {
-        expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(2);
+        expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(2);
       },
       { timeout: 5000 }
     );
 
-    expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+    expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
       feed_url: "https://example.com/article2",
     });
-    expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+    expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
       feed_url: "https://example.com/article3",
     });
   });
 
   it("should prefetch next 3 articles when prefetchAhead is 3", async () => {
-    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+    vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: "<p>Article content</p>",
     });
-    vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+    vi.mocked(articleApi.archiveContent).mockResolvedValue({
       message: "archived",
     });
 
@@ -111,28 +115,28 @@ describe("useArticleContentPrefetch", () => {
 
     await waitFor(
       () => {
-        expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(3);
+        expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(3);
       },
       { timeout: 5000 }
     );
 
-    expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+    expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
       feed_url: "https://example.com/article2",
     });
-    expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+    expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
       feed_url: "https://example.com/article3",
     });
-    expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+    expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
       feed_url: "https://example.com/article4",
     });
   });
 
   it("should return cached content when available", async () => {
     const mockContent = "<p>Cached article content</p>";
-    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+    vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: mockContent,
     });
-    vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+    vi.mocked(articleApi.archiveContent).mockResolvedValue({
       message: "archived",
     });
 
@@ -150,8 +154,8 @@ describe("useArticleContentPrefetch", () => {
   });
 
   it("should handle prefetch errors gracefully without crashing", async () => {
-    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.mocked(feedsApi.getFeedContentOnTheFly).mockRejectedValue(new Error("Network error"));
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    vi.mocked(articleApi.getFeedContentOnTheFly).mockRejectedValue(new Error("Network error"));
 
     const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 2));
 
@@ -171,10 +175,10 @@ describe("useArticleContentPrefetch", () => {
   });
 
   it("should not prefetch duplicate URLs", async () => {
-    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+    vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: "<p>Content</p>",
     });
-    vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+    vi.mocked(articleApi.archiveContent).mockResolvedValue({
       message: "archived",
     });
 
@@ -186,27 +190,27 @@ describe("useArticleContentPrefetch", () => {
     // Wait for prefetch to complete
     await waitFor(
       () => {
-        expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(2);
+        expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(2);
       },
       { timeout: 5000 }
     );
 
     // Trigger again - should not fetch duplicates
-    const callCountBefore = vi.mocked(feedsApi.getFeedContentOnTheFly).mock.calls.length;
+    const callCountBefore = vi.mocked(articleApi.getFeedContentOnTheFly).mock.calls.length;
     result.current.triggerPrefetch();
 
     // Wait a bit
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
     // Should still be 2 calls (no new calls)
-    expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(callCountBefore);
+    expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(callCountBefore);
   });
 
   it("should clean up cache when size exceeds limit", async () => {
-    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+    vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: "<p>Article content</p>",
     });
-    vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+    vi.mocked(articleApi.archiveContent).mockResolvedValue({
       message: "archived",
     });
 
@@ -250,10 +254,10 @@ describe("useArticleContentPrefetch", () => {
   });
 
   it("should archive articles in background non-blocking", async () => {
-    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+    vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: "<p>Article content</p>",
     });
-    vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+    vi.mocked(articleApi.archiveContent).mockResolvedValue({
       message: "archived",
     });
 
@@ -264,7 +268,7 @@ describe("useArticleContentPrefetch", () => {
     // Wait for archive to be called (at least once)
     await waitFor(
       () => {
-        expect(feedsApi.archiveContent).toHaveBeenCalled();
+        expect(articleApi.archiveContent).toHaveBeenCalled();
       },
       { timeout: 5000 }
     );
@@ -273,18 +277,18 @@ describe("useArticleContentPrefetch", () => {
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Check that articles were archived
-    expect(feedsApi.archiveContent).toHaveBeenCalledWith(
+    expect(articleApi.archiveContent).toHaveBeenCalledWith(
       expect.stringContaining("example.com/article"),
       expect.any(String)
     );
   });
 
   it("should not block on archive failures", async () => {
-    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: "<p>Article content</p>",
     });
-    vi.mocked(feedsApi.archiveContent).mockRejectedValue(new Error("Archive failed"));
+    vi.mocked(articleApi.archiveContent).mockRejectedValue(new Error("Archive failed"));
 
     const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 2));
 
@@ -319,7 +323,7 @@ describe("useArticleContentPrefetch", () => {
   });
 
   it("should return null for loading content", async () => {
-    vi.mocked(feedsApi.getFeedContentOnTheFly).mockImplementation(
+    vi.mocked(articleApi.getFeedContentOnTheFly).mockImplementation(
       () =>
         new Promise((resolve) => {
           setTimeout(() => resolve({ content: "<p>Content</p>" }), 5000);
@@ -340,10 +344,10 @@ describe("useArticleContentPrefetch", () => {
 
   describe("markAsDismissed", () => {
     it("should skip prefetch for dismissed articles", async () => {
-      vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+      vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
         content: "<p>Article content</p>",
       });
-      vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+      vi.mocked(articleApi.archiveContent).mockResolvedValue({
         message: "archived",
       });
 
@@ -359,7 +363,7 @@ describe("useArticleContentPrefetch", () => {
       await waitFor(
         () => {
           // Only article3 should be prefetched (article2 is dismissed)
-          expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+          expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
             feed_url: "https://example.com/article3",
           });
         },
@@ -367,23 +371,23 @@ describe("useArticleContentPrefetch", () => {
       );
 
       // Article2 should NOT be prefetched
-      expect(feedsApi.getFeedContentOnTheFly).not.toHaveBeenCalledWith({
+      expect(articleApi.getFeedContentOnTheFly).not.toHaveBeenCalledWith({
         feed_url: "https://example.com/article2",
       });
 
       // Only article3 will be prefetched (article2 was skipped)
       // The loop tries to prefetch 2 articles (indices 1 and 2)
       // but article2 (index 1) is dismissed, so only article3 (index 2) succeeds
-      expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(1);
+      expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(1);
     });
 
     it("should clear dismissed articles after timeout", async () => {
       vi.useFakeTimers();
 
-      vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+      vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
         content: "<p>Article content</p>",
       });
-      vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+      vi.mocked(articleApi.archiveContent).mockResolvedValue({
         message: "archived",
       });
 
@@ -400,7 +404,7 @@ describe("useArticleContentPrefetch", () => {
       await Promise.resolve();
 
       // Article2 should not be prefetched yet
-      expect(feedsApi.getFeedContentOnTheFly).not.toHaveBeenCalledWith({
+      expect(articleApi.getFeedContentOnTheFly).not.toHaveBeenCalledWith({
         feed_url: "https://example.com/article2",
       });
 
@@ -417,7 +421,7 @@ describe("useArticleContentPrefetch", () => {
       await Promise.resolve();
 
       // Article2 should now be prefetched
-      expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+      expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
         feed_url: "https://example.com/article2",
       });
 

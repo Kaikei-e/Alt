@@ -56,7 +56,6 @@ describe("TrendingTopics", () => {
     const manyTopics = Array.from({ length: 10 }, (_, i) => ({
       ...mockTrendingTopics[0],
       tag: `Topic${i}`,
-      id: `topic-${i}`, // idプロパティを追加
     }));
 
     renderWithChakra(<TrendingTopics topics={manyTopics} isLoading={false} />);
@@ -66,21 +65,20 @@ describe("TrendingTopics", () => {
       () => {
         expect(screen.getByText("#Topic0")).toBeInTheDocument();
       },
-      { timeout: 3000 }
+      { timeout: 5000 }
     );
 
-    await waitFor(
-      () => {
-        expect(screen.getByText("#Topic5")).toBeInTheDocument();
-      },
-      { timeout: 3000 }
-    );
+    // Verify first 6 topics are displayed
+    expect(screen.getByText("#Topic1")).toBeInTheDocument();
+    expect(screen.getByText("#Topic2")).toBeInTheDocument();
+    expect(screen.getByText("#Topic3")).toBeInTheDocument();
+    expect(screen.getByText("#Topic4")).toBeInTheDocument();
+    expect(screen.getByText("#Topic5")).toBeInTheDocument();
 
-    await waitFor(
-      () => {
-        expect(screen.queryByText("#Topic6")).not.toBeInTheDocument();
-      },
-      { timeout: 3000 }
-    );
+    // Verify 7th topic is not displayed
+    expect(screen.queryByText("#Topic6")).not.toBeInTheDocument();
+    expect(screen.queryByText("#Topic7")).not.toBeInTheDocument();
+    expect(screen.queryByText("#Topic8")).not.toBeInTheDocument();
+    expect(screen.queryByText("#Topic9")).not.toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FeedsApi } from "../../../../../src/lib/api/feeds/FeedsApi";
-import type { Article } from "../../../../../src/schema/article";
+import { ArticleApi } from "@/lib/api/articles/ArticleApi";
+import type { Article } from "@/schema/article";
 
 const createMockArticle = (id: string, overrides: Partial<Article> = {}): Article => ({
   id,
@@ -11,9 +11,9 @@ const createMockArticle = (id: string, overrides: Partial<Article> = {}): Articl
   ...overrides,
 });
 
-describe("FeedsApi.searchArticles", () => {
+describe("ArticleApi.searchArticles", () => {
   let mockApiClient: any;
-  let feedsApi: FeedsApi;
+  let articleApi: ArticleApi;
 
   beforeEach(() => {
     mockApiClient = {
@@ -22,7 +22,7 @@ describe("FeedsApi.searchArticles", () => {
       clearCache: vi.fn(),
     } as any;
 
-    feedsApi = new FeedsApi(mockApiClient);
+    articleApi = new ArticleApi(mockApiClient);
   });
 
   it("should return backend response with lowercase fields directly", async () => {
@@ -30,7 +30,7 @@ describe("FeedsApi.searchArticles", () => {
 
     mockApiClient.get.mockResolvedValueOnce(mockBackendResponse);
 
-    const result = await feedsApi.searchArticles("test query");
+    const result = await articleApi.searchArticles("test query");
 
     expect(mockApiClient.get).toHaveBeenCalledWith("/v1/articles/search?q=test query");
 
@@ -40,7 +40,7 @@ describe("FeedsApi.searchArticles", () => {
   it("should handle empty results", async () => {
     mockApiClient.get.mockResolvedValueOnce([]);
 
-    const result = await feedsApi.searchArticles("nonexistent");
+    const result = await articleApi.searchArticles("nonexistent");
 
     expect(result).toEqual([]);
   });
@@ -55,7 +55,7 @@ describe("FeedsApi.searchArticles", () => {
 
     mockApiClient.get.mockResolvedValueOnce(mockBackendResponse);
 
-    const result = await feedsApi.searchArticles("single");
+    const result = await articleApi.searchArticles("single");
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual(
@@ -69,7 +69,7 @@ describe("FeedsApi.searchArticles", () => {
   it("should properly encode query parameters", async () => {
     mockApiClient.get.mockResolvedValueOnce([]);
 
-    await feedsApi.searchArticles("test query with spaces");
+    await articleApi.searchArticles("test query with spaces");
 
     expect(mockApiClient.get).toHaveBeenCalledWith("/v1/articles/search?q=test query with spaces");
   });
@@ -78,7 +78,7 @@ describe("FeedsApi.searchArticles", () => {
     const error = new Error("Backend error");
     mockApiClient.get.mockRejectedValueOnce(error);
 
-    await expect(feedsApi.searchArticles("test")).rejects.toThrow("Backend error");
+    await expect(articleApi.searchArticles("test")).rejects.toThrow("Backend error");
   });
 
   it("should correctly pass through all fields from backend response", async () => {
@@ -91,7 +91,7 @@ describe("FeedsApi.searchArticles", () => {
 
     mockApiClient.get.mockResolvedValueOnce(mockBackendResponse);
 
-    const result = await feedsApi.searchArticles("special");
+    const result = await articleApi.searchArticles("special");
 
     expect(result[0].id).toBe("test-id-123");
     expect(result[0].title).toBe("Article Title with Special Chars: !@#$%");

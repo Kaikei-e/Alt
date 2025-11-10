@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { feedsApi } from "@/lib/api";
+import { desktopApi } from "@/lib/api";
 import { useRecentActivity } from "../../../src/hooks/useRecentActivity";
 
 // Mock the auth context directly with a simple authenticated user
@@ -18,6 +18,9 @@ vi.mock("@/contexts/auth-context", () => ({
 
 // Mock the API
 vi.mock("@/lib/api", () => ({
+  desktopApi: {
+    getRecentActivity: vi.fn(),
+  },
   feedsApi: {
     getRecentActivity: vi.fn(),
   },
@@ -52,7 +55,7 @@ describe("useRecentActivity", () => {
       },
     ];
 
-    vi.mocked(feedsApi.getRecentActivity).mockResolvedValue(mockActivities);
+    vi.mocked(desktopApi.getRecentActivity).mockResolvedValue(mockActivities);
 
     const { result } = renderHook(() => useRecentActivity());
 
@@ -71,7 +74,7 @@ describe("useRecentActivity", () => {
   });
 
   it("should handle API error gracefully", async () => {
-    vi.mocked(feedsApi.getRecentActivity).mockRejectedValue(new Error("API Error"));
+    vi.mocked(desktopApi.getRecentActivity).mockRejectedValue(new Error("API Error"));
 
     const { result } = renderHook(() => useRecentActivity());
 
@@ -93,7 +96,7 @@ describe("useRecentActivity", () => {
       },
     ];
 
-    vi.mocked(feedsApi.getRecentActivity).mockResolvedValue(mockActivities);
+    vi.mocked(desktopApi.getRecentActivity).mockResolvedValue(mockActivities);
 
     const { result } = renderHook(() => useRecentActivity());
 
@@ -114,12 +117,12 @@ describe("useRecentActivity", () => {
       },
     ];
 
-    vi.mocked(feedsApi.getRecentActivity).mockResolvedValue(mockActivities);
+    vi.mocked(desktopApi.getRecentActivity).mockResolvedValue(mockActivities);
 
     renderHook(() => useRecentActivity(5));
 
     await waitFor(() => {
-      expect(feedsApi.getRecentActivity).toHaveBeenCalledWith(5);
+      expect(desktopApi.getRecentActivity).toHaveBeenCalledWith(5);
     });
   });
 });

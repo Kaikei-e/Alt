@@ -6,6 +6,10 @@ import FeedsPage from "@/app/mobile/feeds/page";
 
 // Mock dependencies
 vi.mock("@/lib/api", () => ({
+  feedApi: {
+    getFeedsWithCursor: vi.fn(),
+    updateFeedReadStatus: vi.fn(),
+  },
   feedsApi: {
     getFeedsWithCursor: vi.fn(),
     updateFeedReadStatus: vi.fn(),

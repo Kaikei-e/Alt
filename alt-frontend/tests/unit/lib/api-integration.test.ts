@@ -1,30 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { ApiClientError, apiClient, feedsApi, serverFetch } from "../../../src/api";
+import { ApiClientError, apiClient, feedApi, desktopApi, serverFetch } from "@/lib/api";
 
 describe("API Integration", () => {
   it("should export all required API components", () => {
-    expect(feedsApi).toBeDefined();
+    expect(feedApi).toBeDefined();
     expect(apiClient).toBeDefined();
     expect(ApiClientError).toBeDefined();
     expect(serverFetch).toBeDefined();
   });
 
-  it("should have all main feedsApi methods", () => {
-    expect(typeof feedsApi.checkHealth).toBe("function");
-    expect(typeof feedsApi.getFeeds).toBe("function");
-    expect(typeof feedsApi.getFeedsWithCursor).toBe("function");
-    expect(typeof feedsApi.registerRssFeed).toBe("function");
-    expect(typeof feedsApi.searchFeeds).toBe("function");
-    expect(typeof feedsApi.getFeedStats).toBe("function");
-    expect(typeof feedsApi.clearCache).toBe("function");
+  it("should have all main feedApi methods", () => {
+    expect(typeof feedApi.checkHealth).toBe("function");
+    expect(typeof feedApi.getFeeds).toBe("function");
+    expect(typeof feedApi.getFeedsWithCursor).toBe("function");
+    expect(typeof feedApi.registerRssFeed).toBe("function");
+    expect(typeof feedApi.searchFeeds).toBe("function");
+    expect(typeof feedApi.getFeedStats).toBe("function");
+    expect(typeof feedApi.clearCache).toBe("function");
   });
 
   it("should have desktop-specific methods", () => {
-    expect(typeof feedsApi.getDesktopFeeds).toBe("function");
-    expect(typeof feedsApi.getTestFeeds).toBe("function");
-    expect(typeof feedsApi.toggleFavorite).toBe("function");
-    expect(typeof feedsApi.getRecentActivity).toBe("function");
-    expect(typeof feedsApi.getWeeklyStats).toBe("function");
+    expect(typeof desktopApi.getDesktopFeeds).toBe("function");
+    expect(typeof desktopApi.getTestFeeds).toBe("function");
+    expect(typeof desktopApi.toggleFavorite).toBe("function");
+    expect(typeof desktopApi.getRecentActivity).toBe("function");
+    expect(typeof desktopApi.getWeeklyStats).toBe("function");
   });
 
   it("should maintain ApiClientError constructor compatibility", () => {

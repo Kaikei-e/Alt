@@ -4,10 +4,19 @@ import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FeedDetails } from "@/components/mobile/FeedDetails";
-import { feedsApi } from "@/lib/api";
+import { articleApi } from "@/lib/api";
 
-// Mock the feedsApi
+// Mock the API
 vi.mock("@/lib/api", () => ({
+  articleApi: {
+    getArticleSummary: vi.fn(),
+    getFeedContentOnTheFly: vi.fn(),
+    archiveContent: vi.fn(),
+    summarizeArticle: vi.fn(),
+  },
+  feedApi: {
+    registerFavoriteFeed: vi.fn(),
+  },
   feedsApi: {
     getArticleSummary: vi.fn(),
     getFeedContentOnTheFly: vi.fn(),
@@ -39,17 +48,17 @@ describe("FeedDetails", () => {
       const user = setupUser();
 
       // Mock successful content fetch
-      vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
+      vi.mocked(articleApi.getArticleSummary).mockResolvedValue({
         matched_articles: [],
         total_matched: 0,
         requested_count: 0,
       });
 
-      vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+      vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
         content: "This is the article content",
       });
 
-      vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+      vi.mocked(articleApi.archiveContent).mockResolvedValue({
         message: "article archived",
       });
 
@@ -61,14 +70,14 @@ describe("FeedDetails", () => {
 
       // Wait for content to be displayed
       await waitFor(() => {
-        expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+        expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
           feed_url: mockFeedURL,
         });
       });
 
       // Verify auto-archive was called
       await waitFor(() => {
-        expect(feedsApi.archiveContent).toHaveBeenCalledWith(mockFeedURL, mockFeedTitle);
+        expect(articleApi.archiveContent).toHaveBeenCalledWith(mockFeedURL, mockFeedTitle);
       });
     });
 
@@ -76,13 +85,13 @@ describe("FeedDetails", () => {
       const user = setupUser();
 
       // Mock failed content fetch
-      vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
+      vi.mocked(articleApi.getArticleSummary).mockResolvedValue({
         matched_articles: [],
         total_matched: 0,
         requested_count: 0,
       });
 
-      vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+      vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
         content: "",
       });
 
@@ -94,30 +103,30 @@ describe("FeedDetails", () => {
 
       // Wait for error state
       await waitFor(() => {
-        expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalled();
+        expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalled();
       });
 
       // Verify auto-archive was NOT called (no valid content)
-      expect(feedsApi.archiveContent).not.toHaveBeenCalled();
+      expect(articleApi.archiveContent).not.toHaveBeenCalled();
     });
 
     it("should not block UI when auto-archive fails", async () => {
       const user = setupUser();
 
       // Mock successful content fetch but failed archive
-      vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
+      vi.mocked(articleApi.getArticleSummary).mockResolvedValue({
         matched_articles: [],
         total_matched: 0,
         requested_count: 0,
       });
 
-      vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+      vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
         content: "This is the article content",
       });
 
-      vi.mocked(feedsApi.archiveContent).mockRejectedValue(new Error("Archive failed"));
+      vi.mocked(articleApi.archiveContent).mockRejectedValue(new Error("Archive failed"));
 
-      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
 
       renderWithProviders(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
 
@@ -133,7 +142,7 @@ describe("FeedDetails", () => {
 
       // Verify archive was attempted
       await waitFor(() => {
-        expect(feedsApi.archiveContent).toHaveBeenCalled();
+        expect(articleApi.archiveContent).toHaveBeenCalled();
       });
 
       // Verify error was logged but UI is not blocked
@@ -154,17 +163,17 @@ describe("FeedDetails", () => {
     it("should not duplicate archive when Archive button is clicked after auto-archive", async () => {
       const user = setupUser();
 
-      vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
+      vi.mocked(articleApi.getArticleSummary).mockResolvedValue({
         matched_articles: [],
         total_matched: 0,
         requested_count: 0,
       });
 
-      vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+      vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
         content: "This is the article content",
       });
 
-      vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+      vi.mocked(articleApi.archiveContent).mockResolvedValue({
         message: "article archived",
       });
 
@@ -176,7 +185,7 @@ describe("FeedDetails", () => {
 
       // Wait for auto-archive to complete
       await waitFor(() => {
-        expect(feedsApi.archiveContent).toHaveBeenCalledTimes(1);
+        expect(articleApi.archiveContent).toHaveBeenCalledTimes(1);
       });
 
       // Click Archive button manually (use getAllByTitle and get first one)
@@ -185,7 +194,7 @@ describe("FeedDetails", () => {
 
       // Archive should be called again (backend handles deduplication)
       await waitFor(() => {
-        expect(feedsApi.archiveContent).toHaveBeenCalledTimes(2);
+        expect(articleApi.archiveContent).toHaveBeenCalledTimes(2);
       });
     });
   });
@@ -194,21 +203,21 @@ describe("FeedDetails", () => {
     it("should successfully summarize article after auto-archive", async () => {
       const user = setupUser();
 
-      vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
+      vi.mocked(articleApi.getArticleSummary).mockResolvedValue({
         matched_articles: [],
         total_matched: 0,
         requested_count: 0,
       });
 
-      vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+      vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
         content: "This is the article content",
       });
 
-      vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+      vi.mocked(articleApi.archiveContent).mockResolvedValue({
         message: "article archived",
       });
 
-      vi.mocked(feedsApi.summarizeArticle).mockResolvedValue({
+      vi.mocked(articleApi.summarizeArticle).mockResolvedValue({
         success: true,
         summary: "これは記事の要約です",
         article_id: "test-article-id",
@@ -223,7 +232,7 @@ describe("FeedDetails", () => {
 
       // Wait for auto-archive
       await waitFor(() => {
-        expect(feedsApi.archiveContent).toHaveBeenCalled();
+        expect(articleApi.archiveContent).toHaveBeenCalled();
       });
 
       // Click "要約" button (use getAllByText and get first one)
@@ -232,7 +241,7 @@ describe("FeedDetails", () => {
 
       // Verify summarization was called
       await waitFor(() => {
-        expect(feedsApi.summarizeArticle).toHaveBeenCalledWith(mockFeedURL);
+        expect(articleApi.summarizeArticle).toHaveBeenCalledWith(mockFeedURL);
       });
 
       // Verify summary is displayed

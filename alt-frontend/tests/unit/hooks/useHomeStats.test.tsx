@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { feedsApi } from "@/lib/api";
+import { feedApi } from "@/lib/api";
 import { useHomeStats } from "../../../src/hooks/useHomeStats";
 
 // Mock the auth context directly with a simple authenticated user
@@ -26,6 +26,10 @@ vi.mock("../../../src/hooks/useTodayUnreadCount", () => ({
 
 // Mock the API
 vi.mock("@/lib/api", () => ({
+  feedApi: {
+    getFeedStats: vi.fn(),
+    getTodayUnreadCount: vi.fn(),
+  },
   feedsApi: {
     getFeedStats: vi.fn(),
     getTodayUnreadCount: vi.fn(),
@@ -66,7 +70,7 @@ describe("useHomeStats", () => {
       isLoading: false,
     });
 
-    vi.mocked(feedsApi.getFeedStats).mockResolvedValue(mockFeedStats);
+    vi.mocked(feedApi.getFeedStats).mockResolvedValue(mockFeedStats);
 
     const { result } = renderHook(() => useHomeStats());
 
@@ -86,7 +90,7 @@ describe("useHomeStats", () => {
       isLoading: false,
     });
 
-    vi.mocked(feedsApi.getFeedStats).mockRejectedValue(new Error("API Error"));
+    vi.mocked(feedApi.getFeedStats).mockRejectedValue(new Error("API Error"));
 
     const { result } = renderHook(() => useHomeStats());
 
@@ -110,7 +114,7 @@ describe("useHomeStats", () => {
       isLoading: false,
     });
 
-    vi.mocked(feedsApi.getFeedStats).mockResolvedValue(mockFeedStats);
+    vi.mocked(feedApi.getFeedStats).mockResolvedValue(mockFeedStats);
 
     const { result } = renderHook(() => useHomeStats());
 
@@ -137,7 +141,7 @@ describe("useHomeStats", () => {
       isLoading: false,
     });
 
-    vi.mocked(feedsApi.getFeedStats).mockResolvedValue(mockFeedStats);
+    vi.mocked(feedApi.getFeedStats).mockResolvedValue(mockFeedStats);
 
     const { result } = renderHook(() => useHomeStats());
 
@@ -149,6 +153,6 @@ describe("useHomeStats", () => {
 
     // Call refreshStats and verify it triggers another API call
     await result.current.refreshStats();
-    expect(feedsApi.getFeedStats).toHaveBeenCalledTimes(2);
+    expect(feedApi.getFeedStats).toHaveBeenCalledTimes(2);
   });
 });
