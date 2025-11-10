@@ -407,140 +407,62 @@ fn build_cluster_job_request(corpus: &EvidenceCorpus) -> ClusterJobRequest<'_> {
 /// 改行で分割した各パラグラフが30文字以上になることを保証する。
 /// Unicode文字数を使用して正確にカウントする。
 fn build_paragraph(sentences: &[String]) -> String {
-    if sentences.is_empty() {
-        // フォールバックテキストも30文字以上にする
-        // 各ラインが30文字以上になるまで繰り返す
-        let fallback = "No content available.";
-        let mut result = fallback.to_string();
-        loop {
-            let all_valid = result.lines().all(|l| l.chars().count() >= MIN_PARAGRAPH_LEN);
-            if all_valid {
-                break;
-            }
-            result.push('\n');
-            result.push_str(fallback);
+    fn ensure_min_length(mut line: String) -> String {
+        let mut filler = line.trim().to_string();
+        if filler.is_empty() {
+            filler = "No content available.".to_string();
         }
-        return result;
+
+        if line.trim().is_empty() {
+            line = filler.clone();
+        }
+
+        while line.chars().count() < MIN_PARAGRAPH_LEN {
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(&filler);
+        }
+
+        line
     }
 
-    // 各文を順番に処理し、lines()で分割した各ラインが30文字以上になることを保証
-    let mut all_lines: Vec<String> = Vec::new();
+    if sentences.is_empty() {
+        let line = ensure_min_length(String::new());
+        return format!("{line}\n{line}");
+    }
+
+    let mut lines = Vec::new();
+    let mut current = String::new();
 
     for sentence in sentences {
-        let sentence_chars = sentence.chars().count();
+        let trimmed = sentence.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
 
-        if sentence_chars >= MIN_PARAGRAPH_LEN {
-            // 文が30文字以上なら、そのまま追加
-            all_lines.push(sentence.clone());
-        } else {
-            // 文が30文字未満の場合、前のラインと結合するか、繰り返す
-            if let Some(last_line) = all_lines.last_mut() {
-                // 前のラインと結合して30文字以上になるか確認
-                // 結合後の各ラインが30文字以上になることを保証
-                let combined = format!("{}\n{}", last_line, sentence);
-                let all_lines_valid = combined.lines().all(|l| l.chars().count() >= MIN_PARAGRAPH_LEN);
-                if all_lines_valid {
-                    *last_line = combined;
-                } else {
-                    // 結合しても30文字未満なら、繰り返して30文字以上にする
-                    // 各ラインが30文字以上になるまで繰り返す
-                    let mut extended = format!("{}\n{}", last_line, sentence);
-                    let filler = extended.clone();
-                    loop {
-                        let all_valid = extended.lines().all(|l| l.chars().count() >= MIN_PARAGRAPH_LEN);
-                        if all_valid {
-                            break;
-                        }
-                        extended.push('\n');
-                        extended.push_str(&filler);
-                    }
-                    *last_line = extended;
-                }
-            } else {
-                // 最初の文が30文字未満の場合、繰り返して30文字以上にする
-                // 各ラインが30文字以上になるまで繰り返す
-                let mut extended = sentence.clone();
-                let filler = sentence.clone();
-                loop {
-                    let all_valid = extended.lines().all(|l| l.chars().count() >= MIN_PARAGRAPH_LEN);
-                    if all_valid {
-                        break;
-                    }
-                    extended.push('\n');
-                    extended.push_str(&filler);
-                }
-                all_lines.push(extended);
-            }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(trimmed);
+
+        if current.chars().count() >= MIN_PARAGRAPH_LEN {
+            let line = ensure_min_length(std::mem::take(&mut current));
+            lines.push(line);
         }
     }
 
-    // 最終確認: すべてのラインが30文字以上であることを保証
-    let mut final_lines: Vec<String> = Vec::new();
-    for line_group in all_lines {
-        let lines: Vec<&str> = line_group.lines().collect();
-        for line in lines {
-            let line_chars = line.chars().count();
-            if line_chars >= MIN_PARAGRAPH_LEN {
-                final_lines.push(line.to_string());
-            } else {
-                // 30文字未満のラインがある場合、前のラインと結合するか、繰り返す
-                if let Some(last_line) = final_lines.last_mut() {
-                    // 結合後の各ラインが30文字以上になることを保証
-                    let combined = format!("{}\n{}", last_line, line);
-                    let all_lines_valid = combined.lines().all(|l| l.chars().count() >= MIN_PARAGRAPH_LEN);
-                    if all_lines_valid {
-                        *last_line = combined;
-                    } else {
-                        // 結合しても30文字未満なら、繰り返して30文字以上にする
-                        // 各ラインが30文字以上になるまで繰り返す
-                        let mut extended = format!("{}\n{}", last_line, line);
-                        let filler = extended.clone();
-                        loop {
-                            let all_valid = extended.lines().all(|l| l.chars().count() >= MIN_PARAGRAPH_LEN);
-                            if all_valid {
-                                break;
-                            }
-                            extended.push('\n');
-                            extended.push_str(&filler);
-                        }
-                        *last_line = extended;
-                    }
-                } else {
-                    // 最初のラインが30文字未満の場合、繰り返して30文字以上にする
-                    // 各ラインが30文字以上になるまで繰り返す
-                    let mut extended = line.to_string();
-                    let filler = line.to_string();
-                    loop {
-                        let all_valid = extended.lines().all(|l| l.chars().count() >= MIN_PARAGRAPH_LEN);
-                        if all_valid {
-                            break;
-                        }
-                        extended.push('\n');
-                        extended.push_str(&filler);
-                    }
-                    final_lines.push(extended);
-                }
-            }
-        }
+    if !current.trim().is_empty() {
+        let line = ensure_min_length(std::mem::take(&mut current));
+        lines.push(line);
     }
 
-    if final_lines.is_empty() {
-        // 万が一すべてのラインが空になった場合のフォールバック
-        // 各ラインが30文字以上になるまで繰り返す
-        let fallback = "No content available.";
-        let mut result = fallback.to_string();
-        loop {
-            let all_valid = result.lines().all(|l| l.chars().count() >= MIN_PARAGRAPH_LEN);
-            if all_valid {
-                break;
-            }
-            result.push('\n');
-            result.push_str(fallback);
-        }
-        return result;
+    if lines.is_empty() {
+        let line = ensure_min_length(String::new());
+        return format!("{line}\n{line}");
     }
 
-    final_lines.join("\n")
+    lines.join("\n")
 }
 
 #[cfg(test)]
@@ -734,8 +656,10 @@ mod tests {
     fn build_paragraph_verifies_each_split_paragraph() {
         // 複数の長い文で、分割後の各パラグラフが30文字以上であることを確認
         let sentences = vec![
-            "This is a very long sentence that exceeds the minimum paragraph length requirement.".to_string(),
-            "Another long sentence that also exceeds the minimum requirement for paragraph length.".to_string(),
+            "This is a very long sentence that exceeds the minimum paragraph length requirement."
+                .to_string(),
+            "Another long sentence that also exceeds the minimum requirement for paragraph length."
+                .to_string(),
             "A third sentence that is also sufficiently long to meet the requirements.".to_string(),
         ];
 

@@ -685,12 +685,29 @@ impl GenreKeywords {
     #[must_use]
     pub(crate) fn score_text(&self, text: &str) -> HashMap<String, usize> {
         let lowercased = text.to_lowercase();
+        let tokens: Vec<&str> = lowercased
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|token| !token.is_empty())
+            .collect();
         let mut scores: HashMap<String, usize> = HashMap::new();
 
         for (genre, keywords) in &self.keywords {
             let mut score = 0;
             for keyword in keywords {
-                if lowercased.contains(&keyword.to_lowercase()) {
+                let keyword_lower = keyword.to_lowercase();
+                let is_non_ascii_keyword =
+                    keyword_lower.chars().any(|c| !c.is_ascii_alphanumeric());
+
+                let matched = if keyword_lower.contains(' ') {
+                    lowercased.contains(&keyword_lower)
+                } else {
+                    tokens.iter().any(|token| token == &keyword_lower)
+                        || (keyword_lower.len() >= 4
+                            && tokens.iter().any(|token| token.starts_with(&keyword_lower)))
+                        || (is_non_ascii_keyword && lowercased.contains(&keyword_lower))
+                };
+
+                if matched {
                     score += 1;
                 }
             }

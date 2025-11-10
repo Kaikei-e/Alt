@@ -76,7 +76,12 @@ impl KeywordGenreStage {
         let genre_scores = self.keywords.score_text(&combined_text);
 
         // スコアの高い順に最大max_genres個を選択
-        let mut top_genres = self.keywords.top_genres(&combined_text, self.max_genres);
+        let mut top_genres: Vec<(String, usize)> = self
+            .keywords
+            .top_genres(&combined_text, self.max_genres)
+            .into_iter()
+            .filter(|(_, score)| *score > 0)
+            .collect();
 
         // 最低min_genres個は確保（スコアがなければ"other"を追加）
         if top_genres.len() < self.min_genres {

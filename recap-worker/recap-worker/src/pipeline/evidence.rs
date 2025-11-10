@@ -40,6 +40,7 @@ pub(crate) struct CorpusMetadata {
     pub(crate) sentence_count: usize,
     pub(crate) primary_language: String,
     pub(crate) language_distribution: HashMap<String, usize>,
+    pub(crate) character_count: usize,
 }
 
 /// ジャンル別にグループ化された証拠コーパスのコレクション。
@@ -89,6 +90,7 @@ impl EvidenceBundle {
                 genre = %genre,
                 article_count = corpus.articles.len(),
                 sentence_count = corpus.total_sentences,
+                character_count = corpus.metadata.character_count,
                 "built evidence corpus for genre"
             );
 
@@ -102,6 +104,7 @@ impl EvidenceBundle {
             genre_count = evidence_bundle.genres().len(),
             total_articles = evidence_bundle.total_articles(),
             total_sentences = evidence_bundle.total_sentences(),
+            total_characters = evidence_bundle.total_characters(),
             "completed evidence corpus construction"
         );
 
@@ -127,12 +130,21 @@ impl EvidenceBundle {
     pub(crate) fn total_sentences(&self) -> usize {
         self.corpora.values().map(|c| c.total_sentences).sum()
     }
+
+    /// コーパスの総文字数を取得する。
+    pub(crate) fn total_characters(&self) -> usize {
+        self.corpora
+            .values()
+            .map(|c| c.metadata.character_count)
+            .sum()
+    }
 }
 
 /// 特定のジャンルに対する証拠コーパスを構築する。
 fn build_corpus_for_genre(genre: &str, assignments: &[&GenreAssignment]) -> EvidenceCorpus {
     let mut articles = Vec::new();
     let mut total_sentences = 0;
+    let mut total_characters = 0;
     let mut language_counts: HashMap<String, usize> = HashMap::new();
     let mut dropped_articles = 0usize;
     let mut dropped_sentences = 0usize;
@@ -164,6 +176,10 @@ fn build_corpus_for_genre(genre: &str, assignments: &[&GenreAssignment]) -> Evid
             dropped_sentences += removed_here;
         }
         total_sentences += filtered_sentences.len();
+        total_characters += filtered_sentences
+            .iter()
+            .map(|sentence| sentence.chars().count())
+            .sum::<usize>();
 
         *language_counts.entry(article.language.clone()).or_insert(0) += 1;
 
@@ -197,6 +213,7 @@ fn build_corpus_for_genre(genre: &str, assignments: &[&GenreAssignment]) -> Evid
         sentence_count: total_sentences,
         primary_language,
         language_distribution: language_counts,
+        character_count: total_characters,
     };
 
     EvidenceCorpus {
@@ -288,11 +305,35 @@ mod tests {
         let ai_corpus = evidence.get_corpus("ai").unwrap();
         assert_eq!(ai_corpus.articles.len(), 2);
         assert_eq!(ai_corpus.total_sentences, 2);
+        let expected_ai_chars: usize = ai_corpus
+            .articles
+            .iter()
+            .map(|article| {
+                article
+                    .sentences
+                    .iter()
+                    .map(|sentence| sentence.chars().count())
+                    .sum::<usize>()
+            })
+            .sum();
+        assert_eq!(ai_corpus.metadata.character_count, expected_ai_chars);
 
         // techジャンルには2つの記事（art-1とart-2）
         let tech_corpus = evidence.get_corpus("tech").unwrap();
         assert_eq!(tech_corpus.articles.len(), 2);
         assert_eq!(tech_corpus.total_sentences, 3);
+        let expected_tech_chars: usize = tech_corpus
+            .articles
+            .iter()
+            .map(|article| {
+                article
+                    .sentences
+                    .iter()
+                    .map(|sentence| sentence.chars().count())
+                    .sum::<usize>()
+            })
+            .sum();
+        assert_eq!(tech_corpus.metadata.character_count, expected_tech_chars);
     }
 
     #[test]
@@ -335,6 +376,18 @@ mod tests {
         assert_eq!(ai_corpus.metadata.primary_language, "en");
         assert_eq!(ai_corpus.metadata.language_distribution.get("en"), Some(&2));
         assert_eq!(ai_corpus.metadata.language_distribution.get("ja"), Some(&1));
+        let expected_characters: usize = ai_corpus
+            .articles
+            .iter()
+            .map(|article| {
+                article
+                    .sentences
+                    .iter()
+                    .map(|sentence| sentence.chars().count())
+                    .sum::<usize>()
+            })
+            .sum();
+        assert_eq!(ai_corpus.metadata.character_count, expected_characters);
     }
 
     #[test]
@@ -369,6 +422,19 @@ mod tests {
         assert_eq!(evidence.genres().len(), 2);
         assert_eq!(evidence.total_articles(), 2);
         assert_eq!(evidence.total_sentences(), 3);
+        let expected_characters: usize = evidence
+            .corpora
+            .values()
+            .flat_map(|corpus| corpus.articles.iter())
+            .map(|article| {
+                article
+                    .sentences
+                    .iter()
+                    .map(|sentence| sentence.chars().count())
+                    .sum::<usize>()
+            })
+            .sum();
+        assert_eq!(evidence.total_characters(), expected_characters);
     }
 
     #[test]

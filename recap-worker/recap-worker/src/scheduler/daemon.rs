@@ -5,7 +5,7 @@ use tokio::{task::JoinHandle, time::sleep};
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::scheduler::{cadence::DailyCadence, JobContext, Scheduler};
+use crate::scheduler::{JobContext, Scheduler, cadence::DailyCadence};
 
 const JST_OFFSET_HOURS: i32 = 9;
 const BATCH_HOUR: u32 = 4;

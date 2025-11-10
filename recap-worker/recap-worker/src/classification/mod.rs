@@ -6,7 +6,7 @@ use anyhow::Result;
 use crate::pipeline::genre_keywords::GenreKeywords;
 
 mod keywords;
-use keywords::{accumulate_scores, default_matcher, KeywordMatcher, DEFAULT_KEYWORDS};
+use keywords::{DEFAULT_KEYWORDS, KeywordMatcher, accumulate_scores, default_matcher};
 
 mod features;
 mod model;

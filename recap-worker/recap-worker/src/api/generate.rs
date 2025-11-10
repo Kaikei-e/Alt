@@ -42,10 +42,7 @@ pub(crate) async fn trigger_7days(
             }
             (normalized, true)
         }
-        None => (
-            state.config().recap_genres().to_vec(),
-            false,
-        ),
+        None => (state.config().recap_genres().to_vec(), false),
     };
 
     let job_id = Uuid::new_v4();

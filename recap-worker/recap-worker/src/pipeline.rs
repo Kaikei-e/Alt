@@ -99,6 +99,7 @@ impl PipelineOrchestrator {
             .with_dispatch_stage(Arc::new(MlLlmDispatchStage::new(
                 subworker_client,
                 news_creator,
+                max_concurrent,
             )))
             .with_persist_stage(Arc::new(persist::FinalSectionPersistStage::new(
                 Arc::clone(&recap_dao),
