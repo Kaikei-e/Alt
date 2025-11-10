@@ -1,0 +1,45 @@
+# Search Indexer
+
+_Last reviewed: November 10, 2025_
+
+**Location:** `search-indexer/app`
+
+## Role
+- Go 1.24 service that batches newly processed articles into Meilisearch while exposing `/v1/search` for the frontend.
+- Combines a continuous indexing loop with a lightweight net/http server so ingestion + query share infra.
+
+## Service Snapshot
+| Component | Purpose |
+| --- | --- |
+| `driver/database_driver.go` | Connects to Postgres (config/env driven, 10s timeout). |
+| `driver/meilisearch_driver.go` | Wraps Meilisearch client for retries and task status. |
+| `gateway/article_repository_gateway.go` | Fetches batches (created_at + ID cursors). |
+| `gateway/search_engine_gateway.go` | Ensures index exists, applies searchable/filterable attributes. |
+| `tokenize` package | Initializes tokenizer (MeCab-based) for consistent tokenization. |
+| `rest/search_articles.go` | HTTP handler for `/v1/search`. |
+
+## Code Status
+- `main.go` bootstraps tokenizer, database driver, Meilisearch client, and usecases; also registers `/v1/search`.
+- `runIndexLoop` manages cursor state (`lastCreatedAt`, `lastID`), processes batches of 200 docs (`INDEX_BATCH_SIZE`), sleeps `INDEX_INTERVAL` (60s) when empty, and retries after errors with `INDEX_RETRY_INTERVAL` (60s).
+- `initMeilisearchClient` retries 5 times with 5s delay, verifying `Health()` before continuing.
+- Search handler instantiates `rest.SearchArticles` using the Meilisearch index; no caching layer yet.
+
+## Integrations & Data
+- Env vars: `MEILISEARCH_HOST`, optional `MEILISEARCH_API_KEY`, DB credentials consumed by `driver.NewDatabaseDriverFromConfig`.
+- Tokenizer ensures ingestion-time segmentation matches query-time scoring; update once when adjusting languages.
+- Gateway ensures index UID `articles` with ranking/searchable/filterable attributes; update both ingestion + query paths if renaming.
+
+## Testing & Tooling
+- `go test ./...` for unit tests (usecases/gateways). Integration tests can run against local Meilisearch via `docker compose`.
+- When modifying index schema, add unit tests verifying `EnsureIndex` updates searchable/filterable attributes.
+- Consider adding `MEILISEARCH_HOST=http://localhost:7700` to `.env` for local testing.
+
+## Operational Runbook
+1. Set `MEILISEARCH_HOST` and DB envs, then run `go run main.go`.
+2. Confirm index health: `curl http://localhost:7700/health`.
+3. Query endpoint: `curl "http://localhost:9300/v1/search?q=test&limit=10"`.
+4. Scaling: ensure only one pod runs the indexing loop; others can run query mode only by disabling `runIndexLoop`.
+
+## LLM Notes
+- When editing indexing logic, specify whether change belongs in `usecase/index_articles.go`, `gateway`, or `driver`.
+- Provide explicit constants (`INDEX_BATCH_SIZE`, `INDEX_INTERVAL`) so generated code respects existing tuning knobs.
