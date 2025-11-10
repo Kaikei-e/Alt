@@ -71,14 +71,14 @@ const RecapCard = ({ genre }: RecapCardProps) => {
             </Flex>
           )}
 
-          {/* 要約プレビュー（2行） */}
+          {/* 要約プレビュー。改行された文章のそれぞれ先頭100文字を表示する（2行） */}
           <Text
             fontSize="sm"
             color="var(--text-primary)"
             lineHeight="1.6"
             {...(!isExpanded && { noOfLines: 2 })}
           >
-            {genre.summary}
+            {genre.summary.split("\n").map((line) => line.slice(0, 100)).join("\n")}
           </Text>
 
           {/* 展開ボタン */}
