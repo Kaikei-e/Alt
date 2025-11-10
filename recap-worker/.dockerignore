@@ -1,0 +1,104 @@
+# =============================================================================
+# Docker Build Context Optimization for recap-worker
+# Target: Exclude Rust build artifacts and development files
+# =============================================================================
+
+# CRITICAL: Rust Build Artifacts (11GB+)
+target/
+**/target/
+*.rs.bk
+Cargo.lock.bak
+
+# Development Caches
+.cargo/
+.rustc/
+*.pdb
+
+# Version Control
+.git/
+.gitignore
+.gitattributes
+.svn/
+.hg/
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed in container)
+README*.md
+CHANGELOG*.md
+CONTRIBUTING.md
+docs/
+*.md
+!Dockerfile*.md
+
+# Testing
+tests/
+benches/
+*.test
+*.bench
+
+# Environment and Configuration
+.env
+.env.*
+!.env.example
+secrets/
+*.key
+*.pem
+*.crt
+
+# Logs and Temporary Files
+logs/
+*.log
+*.log.*
+tmp/
+temp/
+.tmp/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+.jenkins/
+
+# Docker files (except the one being used)
+Dockerfile*
+!Dockerfile.recap-worker
+!Dockerfile.recap-db
+docker-compose*.yml
+.dockerignore
+
+# Scripts (development only)
+scripts/
+*.sh
+
+# Backup and Archive Files
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*.tar
+*.tar.gz
+*.zip
+*.rar
+
+# OS Generated
+.directory
+.fuse_hidden*
+.nfs*
+
+# =============================================================================
+# EXPECTED RESULT:
+# - Build context: 11GB+ → ~1-2MB (99.9% reduction)
+# - Build time: Faster Docker builds
+# - Network transfer: Minimal bandwidth usage
+# =============================================================================
+
