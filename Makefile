@@ -134,4 +134,51 @@ migrate-status:
 	@echo "Checking migration status..."
 	@docker compose run --rm migrate status
 
-.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status
+recap-migrate:
+	@echo "Applying recap-worker database migrations..."
+	@docker compose run --rm recap-worker sqlx migrate run
+
+recap-migrate-status:
+	@echo "Checking recap-worker database migration status..."
+	@docker compose run --rm recap-worker sqlx migrate info
+
+# Docker disk space management targets
+docker-cleanup:
+	@echo "Running Docker disk space cleanup..."
+	@./scripts/docker-cleanup.sh
+
+docker-cleanup-install:
+	@echo "Installing Docker cleanup systemd timer..."
+	@sudo cp scripts/docker-cleanup.service /etc/systemd/system/
+	@sudo cp scripts/docker-cleanup.timer /etc/systemd/system/
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable docker-cleanup.timer
+	@sudo systemctl start docker-cleanup.timer
+	@echo "Docker cleanup timer installed and started."
+	@echo "To check status: sudo systemctl status docker-cleanup.timer"
+	@echo "To view logs: sudo journalctl -u docker-cleanup.service"
+
+docker-cleanup-uninstall:
+	@echo "Uninstalling Docker cleanup systemd timer..."
+	@sudo systemctl stop docker-cleanup.timer || true
+	@sudo systemctl disable docker-cleanup.timer || true
+	@sudo rm -f /etc/systemd/system/docker-cleanup.service
+	@sudo rm -f /etc/systemd/system/docker-cleanup.timer
+	@sudo systemctl daemon-reload
+	@echo "Docker cleanup timer uninstalled."
+
+docker-cleanup-status:
+	@echo "Docker cleanup timer status:"
+	@sudo systemctl status docker-cleanup.timer --no-pager || true
+	@echo ""
+	@echo "Last cleanup run:"
+	@sudo journalctl -u docker-cleanup.service -n 20 --no-pager || true
+
+docker-disk-usage:
+	@echo "Current Docker disk usage:"
+	@docker system df
+	@echo ""
+	@echo "Detailed breakdown:"
+	@docker system df -v
+
+.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage
