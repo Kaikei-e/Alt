@@ -112,7 +112,7 @@ class RecapSummaryUsecase:
     def _resolve_max_bullets(self, request: RecapSummaryRequest) -> int:
         if request.options and request.options.max_bullets is not None:
             return request.options.max_bullets
-        return 5
+        return 10
 
     def _parse_summary_json(self, content: str, max_bullets: int) -> Dict[str, Any]:
         if not content:

@@ -42,14 +42,14 @@ Return a single JSON object and nothing else:
 {{
   "title": "15〜45文字の日本語タイトル（句読点含む）",
   "bullets": [
-    "1文220〜260文字程度の要点（常体、箇条書き用）"
+    "1文400〜500文字程度の要点（常体、箇条書き用）"
   ],
   "language": "ja"
 }}
 Instructions:
 - Output must be valid JSON (double quotes, no trailing commas, no code fences, no prose before/after the object).
 - Bullet count must be between 3 and {max_bullets}. Prefer {max_bullets} when enough evidence exists.
-- Each bullet MUST combine 2短文以上 into a single sentence (220〜260文字) describing背景→展開→影響を含める。
+- Each bullet MUST combine 2短文以上 into a single sentence (400〜500文字) describing背景→展開→影響を含める。
 - Use 常体（〜だ／である）。禁止事項: Markdown記号、番号付き箇条書き、英数字以外の記号の羅列。
 - Include具体的数値・日付・固有名詞を優先。情報が無い場合は「未提示」と明記。
 - Bullets must be unique, covering 見出し理由 / 経緯 / 影響 / 見通し をバランス良く網羅する。
