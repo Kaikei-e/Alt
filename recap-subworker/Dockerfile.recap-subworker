@@ -51,4 +51,4 @@ COPY recap_subworker ./recap_subworker
 
 EXPOSE 8002
 
-CMD ["uv", "run", "recap-subworker"]
+CMD ["uv", "run", "gunicorn", "-c", "recap_subworker/infra/gunicorn_conf.py", "recap_subworker.app.main:create_app"]
