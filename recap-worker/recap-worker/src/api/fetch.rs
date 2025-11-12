@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 use tracing::{error, info};
@@ -21,6 +23,19 @@ pub(crate) struct EvidenceLinkResponse {
     source_url: String,
     published_at: String,
     lang: String,
+}
+
+fn dedupe_evidence_links(links: Vec<EvidenceLinkResponse>) -> Vec<EvidenceLinkResponse> {
+    let mut seen_ids = HashSet::new();
+    let mut unique_links = Vec::with_capacity(links.len());
+
+    for link in links.into_iter() {
+        if seen_ids.insert(link.article_id.clone()) {
+            unique_links.push(link);
+        }
+    }
+
+    unique_links
 }
 
 #[derive(Debug, Serialize)]
@@ -143,7 +158,7 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
             top_terms: all_top_terms,
             article_count: total_article_count,
             cluster_count: clusters.len() as i32,
-            evidence_links,
+            evidence_links: dedupe_evidence_links(evidence_links),
         });
     }
 
@@ -158,4 +173,34 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
 
     info!("Successfully fetched 7-day recap for job {}", job.job_id);
     (StatusCode::OK, Json(response)).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_link(article_id: &str, title: &str) -> EvidenceLinkResponse {
+        EvidenceLinkResponse {
+            article_id: article_id.to_string(),
+            title: title.to_string(),
+            source_url: format!("https://example.com/{article_id}"),
+            published_at: "2025-11-11T00:00:00Z".to_string(),
+            lang: "ja".to_string(),
+        }
+    }
+
+    #[test]
+    fn dedupe_evidence_links_removes_duplicates_and_preserves_order() {
+        let links = vec![
+            make_link("a", "First"),
+            make_link("b", "Second"),
+            make_link("a", "First Duplicate"),
+            make_link("c", "Third"),
+        ];
+
+        let deduped = dedupe_evidence_links(links);
+        let article_ids: Vec<_> = deduped.iter().map(|link| link.article_id.as_str()).collect();
+
+        assert_eq!(article_ids, vec!["a", "b", "c"]);
+    }
 }
