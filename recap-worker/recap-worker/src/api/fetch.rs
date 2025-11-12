@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, time::Instant};
 
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
@@ -57,6 +57,8 @@ struct ErrorResponse {
 /// 最新の7日間Recapデータを取得する
 pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoResponse {
     info!("Fetching latest 7-day recap");
+    let metrics = state.telemetry().metrics();
+    let handler_start = Instant::now();
 
     // 最新のジョブを取得
     let dao = state.dao();
@@ -100,23 +102,30 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
         }
     };
 
+    let cluster_query_start = Instant::now();
+    let mut clusters_by_genre = match dao.get_clusters_by_job(job.job_id).await {
+        Ok(map) => map,
+        Err(e) => {
+            error!("Failed to fetch clusters for job {}: {}", job.job_id, e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch cluster data".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+    metrics
+        .api_cluster_query_duration
+        .observe(cluster_query_start.elapsed().as_secs_f64());
+
     // レスポンス構築
     let mut genre_responses = Vec::new();
     for genre in genres {
-        // クラスターを取得
-        let clusters = match dao
-            .get_clusters_by_genre(job.job_id, &genre.genre_name)
-            .await
-        {
-            Ok(clusters) => clusters,
-            Err(e) => {
-                error!(
-                    "Failed to fetch clusters for genre {}: {}",
-                    genre.genre_name, e
-                );
-                continue;
-            }
-        };
+        let clusters = clusters_by_genre
+            .remove(&genre.genre_name)
+            .unwrap_or_default();
 
         // トップターム、記事数、クラスター数を集計
         let mut all_top_terms = Vec::new();
@@ -152,13 +161,25 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
         all_top_terms.dedup();
         all_top_terms.truncate(5);
 
+        let deduped_links = {
+            let before = evidence_links.len();
+            let deduped = dedupe_evidence_links(evidence_links);
+            let removed = before.saturating_sub(deduped.len());
+            if removed > 0 {
+                metrics
+                    .api_evidence_duplicates
+                    .inc_by(removed as u64);
+            }
+            deduped
+        };
+
         genre_responses.push(RecapGenreResponse {
             genre: genre.genre_name.clone(),
             summary: genre.summary_ja.clone().unwrap_or_default(),
             top_terms: all_top_terms,
             article_count: total_article_count,
             cluster_count: clusters.len() as i32,
-            evidence_links: dedupe_evidence_links(evidence_links),
+            evidence_links: deduped_links,
         });
     }
 
@@ -172,6 +193,9 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
     };
 
     info!("Successfully fetched 7-day recap for job {}", job.job_id);
+    metrics
+        .api_latest_fetch_duration
+        .observe(handler_start.elapsed().as_secs_f64());
     (StatusCode::OK, Json(response)).into_response()
 }
 

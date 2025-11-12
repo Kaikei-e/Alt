@@ -17,6 +17,7 @@ pub struct Metrics {
     pub jobs_completed: Counter,
     pub jobs_failed: Counter,
     pub retries_total: Counter,
+    pub api_evidence_duplicates: Counter,
 
     // ヒストグラム
     pub fetch_duration: Histogram,
@@ -25,6 +26,8 @@ pub struct Metrics {
     pub clustering_duration: Histogram,
     pub summary_duration: Histogram,
     pub job_duration: Histogram,
+    pub api_latest_fetch_duration: Histogram,
+    pub api_cluster_query_duration: Histogram,
 
     // ゲージ
     pub active_jobs: Gauge,
@@ -75,6 +78,11 @@ impl Metrics {
                 "Total number of retries",
                 registry
             )?,
+            api_evidence_duplicates: register_counter_with_registry!(
+                "recap_api_evidence_duplicates_total",
+                "Number of duplicate evidence links filtered at the API layer",
+                registry
+            )?,
             fetch_duration: register_histogram_with_registry!(
                 "recap_fetch_duration_seconds",
                 "Duration of fetch operations",
@@ -103,6 +111,16 @@ impl Metrics {
             job_duration: register_histogram_with_registry!(
                 "recap_job_duration_seconds",
                 "Duration of entire job processing",
+                registry
+            )?,
+            api_latest_fetch_duration: register_histogram_with_registry!(
+                "recap_api_latest_fetch_duration_seconds",
+                "Duration of GET /v1/recaps/7days handler",
+                registry
+            )?,
+            api_cluster_query_duration: register_histogram_with_registry!(
+                "recap_api_cluster_query_duration_seconds",
+                "Duration spent loading cluster evidence inside GET /v1/recaps/7days",
                 registry
             )?,
             active_jobs: register_gauge_with_registry!(

@@ -6,7 +6,7 @@ use sqlx::types::{
     chrono::{DateTime, Utc},
 };
 use sqlx::{PgPool, Row};
-use std::convert::TryFrom;
+use std::{collections::HashMap, convert::TryFrom};
 use uuid::Uuid;
 
 use super::models::{
@@ -562,113 +562,203 @@ impl RecapDao {
         Ok(genres)
     }
 
-    /// Get all clusters for a genre with evidence
-    pub(crate) async fn get_clusters_by_genre(
+    /// Load all clusters grouped by genre in a single query.
+    pub(crate) async fn get_clusters_by_job(
         &self,
         job_id: Uuid,
-        genre_name: &str,
-    ) -> Result<Vec<ClusterWithEvidence>> {
-        // First get the run_id for this genre
-        let run_row = sqlx::query(
-            r"
-            SELECT id
-            FROM recap_subworker_runs
-            WHERE job_id = $1 AND genre = $2 AND status = 'succeeded'
-            ORDER BY started_at DESC
-            LIMIT 1
-            ",
-        )
-        .bind(job_id)
-        .bind(genre_name)
-        .fetch_optional(&self.pool)
-        .await
-        .context("failed to fetch subworker run")?;
-
-        let run_id: i64 = match run_row {
-            Some(row) => row.try_get("id")?,
-            None => return Ok(Vec::new()),
-        };
-
-        // Get clusters
-        let cluster_rows = sqlx::query(
+    ) -> Result<HashMap<String, Vec<ClusterWithEvidence>>> {
+        let rows = sqlx::query(
             r#"
-            SELECT id, cluster_id, top_terms
-            FROM recap_subworker_clusters
-            WHERE run_id = $1
-            ORDER BY cluster_id
+            WITH latest_runs AS (
+                SELECT id, genre
+                FROM (
+                    SELECT id,
+                           genre,
+                           ROW_NUMBER() OVER (PARTITION BY genre ORDER BY started_at DESC) AS rn
+                    FROM recap_subworker_runs
+                    WHERE job_id = $1 AND status = 'succeeded'
+                ) ranked
+                WHERE rn = 1
+            )
+            SELECT
+                lr.genre,
+                c.id AS cluster_row_id,
+                c.cluster_id,
+                c.top_terms,
+                ce.article_id AS evidence_article_id,
+                ce.title AS evidence_title,
+                ce.source_url AS evidence_source_url,
+                ce.published_at AS evidence_published_at,
+                ce.lang AS evidence_lang,
+                ce.rank AS evidence_rank,
+                ra.title AS article_title,
+                ra.source_url AS article_source_url,
+                ra.published_at AS article_published_at,
+                ra.lang_hint AS article_lang_hint
+            FROM latest_runs lr
+            JOIN recap_subworker_clusters c ON c.run_id = lr.id
+            LEFT JOIN recap_cluster_evidence ce ON ce.cluster_row_id = c.id
+            LEFT JOIN recap_job_articles ra
+                ON ra.job_id = $1 AND ra.article_id = ce.article_id
+            ORDER BY lr.genre, c.cluster_id, ce.rank NULLS LAST
             "#,
         )
-        .bind(run_id)
+        .bind(job_id)
         .fetch_all(&self.pool)
         .await
-        .context("failed to fetch clusters")?;
+        .context("failed to fetch cluster bundle")?;
 
-        let mut clusters = Vec::new();
-        for cluster_row in cluster_rows {
-            let cluster_row_id: i64 = cluster_row.try_get("id")?;
-            let cluster_id: i32 = cluster_row.try_get("cluster_id")?;
-            let top_terms_json: Json<Value> = cluster_row.try_get("top_terms")?;
+        let mut clusters_by_row: HashMap<i64, (String, ClusterWithEvidence)> = HashMap::new();
+
+        for row in rows {
+            let genre: String = row.try_get("genre")?;
+            let cluster_row_id: i64 = row.try_get("cluster_row_id")?;
+            let cluster_id: i32 = row.try_get("cluster_id")?;
+            let top_terms_json: Json<Value> = row.try_get("top_terms")?;
             let top_terms: Option<Vec<String>> = serde_json::from_value(top_terms_json.0).ok();
 
-            // Get evidence (sentences) for this cluster
-            let evidence_rows = sqlx::query(
-                r#"
-                SELECT
-                    s.source_article_id,
-                    MAX(ra.title) AS title,
-                    MAX(ra.source_url) AS source_url,
-                    MAX(ra.published_at) AS published_at,
-                    MAX(ra.lang_hint) AS lang_hint
-                FROM recap_subworker_sentences s
-                LEFT JOIN recap_job_articles ra
-                    ON ra.job_id = $2 AND ra.article_id = s.source_article_id
-                WHERE s.cluster_row_id = $1
-                GROUP BY s.source_article_id
-                ORDER BY MAX(ra.published_at) DESC NULLS LAST, s.source_article_id
-                LIMIT 10
-                "#,
-            )
-            .bind(cluster_row_id)
-            .bind(job_id)
-            .fetch_all(&self.pool)
-            .await
-            .context("failed to fetch evidence")?;
+            let entry = clusters_by_row
+                .entry(cluster_row_id)
+                .or_insert_with(|| {
+                    (
+                        genre.clone(),
+                        ClusterWithEvidence {
+                            cluster_id,
+                            top_terms: top_terms.clone(),
+                            evidence: Vec::new(),
+                        },
+                    )
+                });
 
-            let mut evidence = Vec::new();
-            for ev_row in evidence_rows {
-                let title = ev_row
-                    .try_get::<Option<String>, _>("title")
-                    .unwrap_or(None)
+            if let Some(article_id) = row
+                .try_get::<Option<String>, _>("evidence_article_id")?
+            {
+                let title = row
+                    .try_get::<Option<String>, _>("evidence_title")?
+                    .or_else(|| row.try_get::<Option<String>, _>("article_title").ok().flatten())
                     .unwrap_or_default();
-                let source_url = ev_row
-                    .try_get::<Option<String>, _>("source_url")
-                    .unwrap_or(None)
+                let source_url = row
+                    .try_get::<Option<String>, _>("evidence_source_url")?
+                    .or_else(|| row.try_get::<Option<String>, _>("article_source_url").ok().flatten())
                     .unwrap_or_default();
-                let published_at = ev_row
-                    .try_get::<Option<DateTime<Utc>>, _>("published_at")
-                    .unwrap_or(None)
+                let published_at = row
+                    .try_get::<Option<DateTime<Utc>>, _>("evidence_published_at")?
+                    .or_else(|| row.try_get::<Option<DateTime<Utc>>, _>("article_published_at").ok().flatten())
                     .unwrap_or_else(|| Utc::now());
-                let lang = ev_row
-                    .try_get::<Option<String>, _>("lang_hint")
-                    .unwrap_or(None);
+                let lang = row
+                    .try_get::<Option<String>, _>("evidence_lang")?
+                    .or_else(|| row.try_get::<Option<String>, _>("article_lang_hint").ok().flatten());
 
-                evidence.push(ClusterEvidence {
-                    article_id: ev_row.try_get::<String, _>("source_article_id")?,
+                entry.1.evidence.push(ClusterEvidence {
+                    article_id,
                     title,
                     source_url,
                     published_at,
                     lang,
                 });
             }
+        }
 
-            clusters.push(ClusterWithEvidence {
-                cluster_id,
-                top_terms,
-                evidence,
+        let missing: Vec<i64> = clusters_by_row
+            .iter()
+            .filter(|(_, entry)| entry.1.evidence.is_empty())
+            .map(|(cluster_row_id, _)| *cluster_row_id)
+            .collect();
+
+        if !missing.is_empty() {
+            let fallback = self
+                .fetch_evidence_from_sentences(job_id, &missing)
+                .await?;
+
+            for (cluster_row_id, evidence) in fallback {
+                if let Some(entry) = clusters_by_row.get_mut(&cluster_row_id) {
+                    entry.1.evidence = evidence;
+                }
+            }
+        }
+
+        let mut genre_map: HashMap<String, Vec<ClusterWithEvidence>> = HashMap::new();
+        for (_, (genre, cluster)) in clusters_by_row.into_iter() {
+            genre_map.entry(genre).or_default().push(cluster);
+        }
+
+        for clusters in genre_map.values_mut() {
+            clusters.sort_by_key(|c| c.cluster_id);
+        }
+
+        Ok(genre_map)
+    }
+
+    async fn fetch_evidence_from_sentences(
+        &self,
+        job_id: Uuid,
+        cluster_row_ids: &[i64],
+    ) -> Result<HashMap<i64, Vec<ClusterEvidence>>> {
+        if cluster_row_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let rows = sqlx::query(
+            r#"
+            WITH ranked AS (
+                SELECT
+                    s.cluster_row_id,
+                    s.source_article_id,
+                    MAX(ra.title) AS title,
+                    MAX(ra.source_url) AS source_url,
+                    MAX(ra.published_at) AS published_at,
+                    MAX(ra.lang_hint) AS lang_hint,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY s.cluster_row_id
+                        ORDER BY MAX(ra.published_at) DESC NULLS LAST, s.source_article_id
+                    ) AS rn
+                FROM recap_subworker_sentences s
+                LEFT JOIN recap_job_articles ra
+                    ON ra.job_id = $1 AND ra.article_id = s.source_article_id
+                WHERE s.cluster_row_id = ANY($2)
+                GROUP BY s.cluster_row_id, s.source_article_id
+            )
+            SELECT *
+            FROM ranked
+            WHERE rn <= 10
+            ORDER BY cluster_row_id, rn
+            "#,
+        )
+        .bind(job_id)
+        .bind(cluster_row_ids)
+        .fetch_all(&self.pool)
+        .await
+        .context("failed to fetch fallback evidence")?;
+
+        let mut grouped: HashMap<i64, Vec<ClusterEvidence>> = HashMap::new();
+        for row in rows {
+            let cluster_row_id: i64 = row.try_get("cluster_row_id")?;
+            let title = row
+                .try_get::<Option<String>, _>("title")
+                .unwrap_or(None)
+                .unwrap_or_default();
+            let source_url = row
+                .try_get::<Option<String>, _>("source_url")
+                .unwrap_or(None)
+                .unwrap_or_default();
+            let published_at = row
+                .try_get::<Option<DateTime<Utc>>, _>("published_at")
+                .unwrap_or(None)
+                .unwrap_or_else(|| Utc::now());
+            let lang = row
+                .try_get::<Option<String>, _>("lang_hint")
+                .unwrap_or(None);
+
+            grouped.entry(cluster_row_id).or_default().push(ClusterEvidence {
+                article_id: row.try_get::<String, _>("source_article_id")?,
+                title,
+                source_url,
+                published_at,
+                lang,
             });
         }
 
-        Ok(clusters)
+        Ok(grouped)
     }
 }
 
