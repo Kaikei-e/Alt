@@ -78,7 +78,7 @@ const RecapCard = ({ genre }: RecapCardProps) => {
             lineHeight="1.6"
             {...(!isExpanded && { noOfLines: 2 })}
           >
-            {genre.summary.split("\n").map((line) => line.slice(0, 100)).join("\n")}
+            {genre.summary.split("\n").map((line) => line.slice(0, 100)).join("...\n")}
           </Text>
 
           {/* 展開ボタン */}
