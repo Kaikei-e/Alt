@@ -7,7 +7,7 @@ _Last reviewed: November 12, 2025_
 ## Role
 - FastAPI + Gunicorn service that receives per-genre corpora from Recap Worker and returns clustering metadata + representative sentences for Gemma-based summary generation.
 - Provides `/v1/runs` (submission + polling) and `/admin/warmup` APIs, backed by Postgres (`recap-db`) for run state, diagnostics, and evidence storage.
-- Runs entirely on CPU (BGE-M3 embeddings + UMAP/HDBSCAN) with optional ONNX/distill backends.
+- Runs entirely on CPU (BGE-M3 embeddings + UMAP/HDBSCAN) with optional ONNX/distill backends, and now guarantees each article contributes to at most one cluster per genre.
 
 ## Runtime Snapshot
 | Layer | Details |
@@ -17,7 +17,7 @@ _Last reviewed: November 12, 2025_
 | Pipeline Execution | `PipelineTaskRunner` launches a dedicated `ProcessPoolExecutor` (spawn) when `RECAP_SUBWORKER_PIPELINE_MODE=processpool`. Each worker process loads its own embedder/pipeline so CPU-bound clustering can’t hang ASGI threads. In-process mode falls back to a shared `EvidencePipeline`. |
 | Embeddings | `sentence-transformers` (default `BAAI/bge-m3`) with LRU cache + optional distill or ONNX runtime (`RECAP_SUBWORKER_MODEL_BACKEND`). |
 | Clustering | `umap-learn` + `hdbscan` + c-TF-IDF topic extraction, dedup via cosine threshold (default 0.92) and MMR selection per cluster. |
-| Persistence | Async SQLAlchemy DAO inserts run rows, clusters, diagnostics; advisory locking handled upstream by Recap Worker. |
+| Persistence | Async SQLAlchemy DAO inserts run rows, clusters, diagnostics, and the new `recap_cluster_evidence` records that hold de-duplicated representative links; advisory locking handled upstream by Recap Worker. |
 
 ## Key Environment Variables (see `recap_subworker/infra/config.py`)
 | Variable | Default | Purpose |
@@ -40,13 +40,14 @@ Compose (`compose.yaml`) enables `RECAP_SUBWORKER_PIPELINE_MODE=processpool` by 
 3. Background worker executes:
    - Validate schema and sentence budget.
    - Embed sentences (batch size = `RECAP_SUBWORKER_BATCH_SIZE`).
-   - Deduplicate, cluster, and select representatives.
-   - Persist clusters + diagnostics; mark status `succeeded` / `partial` / `failed`.
+   - Deduplicate, cluster, and select representatives while skipping any article already claimed by an earlier cluster in the same genre.
+   - Persist clusters, `recap_cluster_evidence`, and diagnostics; mark status `succeeded` / `partial` / `failed`.
 4. Recap Worker polls `GET /v1/runs/{run_id}` until status ready. Any timeout/failure is surfaced via diagnostics and Recap Worker skips that genre.
 5. `/admin/warmup` triggers embedder warmup (in worker pool when available) to avoid first-request latency.
 
 ## Observability & Operations
 - Metrics: Prometheus via `prometheus-fastapi-instrumentator` (`/metrics`) including embedding seconds, HDBSCAN latency, dedup counts.
+- Evidence-level metrics (dedup removed, per-cluster sizes) now reflect the per-genre cap because duplicates are filtered before persistence; inspect `recap_cluster_evidence` row counts when diagnosing empty evidence links upstream.
 - Logs: JSON via `structlog`; include `job_id`, `genre`, `run_id`. Warnings emitted when queue depth exceeds `RECAP_SUBWORKER_QUEUE_WARNING_THRESHOLD` or when pipeline timeouts occur.
 - Health: `/health/live` + `/health/ready` (FastAPI standard). Always verify `/health/ready` before triggering recap-worker manual batches; otherwise you’ll see `Connection refused` for all genres.
 - Warmup: `curl -X POST http://localhost:8002/admin/warmup` (optionally include sample sentences in body) after container start to prime embeddings.
@@ -63,6 +64,5 @@ CI note: the repo currently blocks network egress in some environments; set `UV_
 
 ## Troubleshooting
 - **All genres fail with `Connection refused`**: recap-worker started before recap-subworker finished booting. Wait for gunicorn workers to log `Application startup complete`, confirm `/health/ready`, then retry.
-- **Persistent timeouts per genre**: inspect recap-subworker logs for `run.process.timeout` or `pipeline timed out`. Increase `RECAP_SUBWORKER_RUN_EXECUTION_TIMEOUT_SECONDS` or add capacity (more pipeline processes, larger `MAX_BACKGROUND_RUNS`).
+- **Persistent timeouts per genre**: inspect recap-subworker logs for `run.process.timeout` or `pipeline timed out`. Increase `RECAP_SUBWORKER_RUN_EXECUTION_TIMEOUT_SECONDS` or add capacity (more pipeline processes, larger `MAX_BACKGROUND_RUNS`). If clusters return with zero supporting IDs, confirm `recap_cluster_evidence` is populated (missing rows fall back to sentence queries upstream, which is slower).
 - **High CPU**: Check `PipelineTaskRunner` workers (`ps` inside container). Misbehaving runs can be killed by restarting the service; long term, adjust clustering params (`HDBSCAN` min cluster size/samples) or embedder backend.
-
