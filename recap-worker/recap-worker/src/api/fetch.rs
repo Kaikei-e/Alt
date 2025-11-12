@@ -168,7 +168,7 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
             if removed > 0 {
                 metrics
                     .api_evidence_duplicates
-                    .inc_by(removed as u64);
+                    .inc_by(removed as f64);
             }
             deduped
         };
