@@ -1,6 +1,4 @@
-use std::cmp;
-use std::fmt;
-use std::time::Duration;
+use std::{cmp, collections::HashMap, fmt, time::Duration};
 
 use anyhow::{Context, Result, anyhow};
 use reqwest::{Client, Url};
@@ -10,7 +8,7 @@ use tokio::time::sleep;
 use tracing::{debug, warn};
 use uuid::Uuid;
 
-use crate::pipeline::evidence::EvidenceCorpus;
+use crate::pipeline::evidence::{ArticleFeatureSignal, CorpusMetadata, EvidenceCorpus};
 use crate::schema::{subworker::CLUSTERING_RESPONSE_SCHEMA, validate_json};
 
 #[derive(Debug, Clone)]
@@ -29,6 +27,24 @@ const INITIAL_POLL_INTERVAL_MS: u64 = 500;
 const MAX_POLL_INTERVAL_MS: u64 = 5_000;
 const SUBWORKER_TIMEOUT_SECS: u64 = 120;
 const MIN_DOCUMENTS_PER_GENRE: usize = 10;
+const MAX_ERROR_MESSAGE_LENGTH: usize = 500;
+
+/// エラーメッセージを要約して切り詰める。
+fn truncate_error_message(msg: &str) -> String {
+    if msg.len() <= MAX_ERROR_MESSAGE_LENGTH {
+        return msg.to_string();
+    }
+    format!(
+        "{}... (truncated, {} chars)",
+        &msg[..MAX_ERROR_MESSAGE_LENGTH],
+        msg.len()
+    )
+}
+
+/// バリデーションエラーのリストを要約する。
+fn summarize_validation_errors(errors: &[String]) -> Vec<String> {
+    errors.iter().map(|e| truncate_error_message(e)).collect()
+}
 
 /// クラスタリングレスポンス (POST/GET `/v1/runs`).
 #[allow(dead_code)]
@@ -123,6 +139,8 @@ pub(crate) struct ClusterRepresentative {
 struct ClusterJobRequest<'a> {
     params: ClusterJobParams,
     documents: Vec<ClusterDocument<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<&'a CorpusMetadata>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -145,6 +163,12 @@ struct ClusterDocument<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     source_url: Option<&'a String>,
     paragraphs: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    genre_scores: Option<&'a HashMap<String, usize>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    confidence: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signals: Option<&'a ArticleFeatureSignal>,
 }
 
 impl SubworkerClient {
@@ -230,10 +254,11 @@ impl SubworkerClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
+            let truncated_body = truncate_error_message(&body);
             return Err(anyhow!(
                 "clustering endpoint returned error status {}: {}",
                 status,
-                body
+                truncated_body
             ));
         }
 
@@ -246,15 +271,21 @@ impl SubworkerClient {
         // JSON Schemaで検証
         let validation = validate_json(&CLUSTERING_RESPONSE_SCHEMA, &response_json);
         if !validation.valid {
+            let summarized_errors = summarize_validation_errors(&validation.errors);
             warn!(
                 job_id = %job_id,
                 genre = %corpus.genre,
-                errors = ?validation.errors,
+                error_count = validation.errors.len(),
+                first_error = %summarized_errors.first().map(|s| s.as_str()).unwrap_or("unknown"),
                 "clustering response failed JSON Schema validation"
             );
             return Err(anyhow!(
-                "clustering response validation failed: {:?}",
-                validation.errors
+                "clustering response validation failed: {} errors (first: {})",
+                validation.errors.len(),
+                summarized_errors
+                    .first()
+                    .map(|s| s.as_str())
+                    .unwrap_or("unknown")
             ));
         }
 
@@ -297,10 +328,11 @@ impl SubworkerClient {
             if !response.status().is_success() {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
+                let truncated_body = truncate_error_message(&body);
                 return Err(anyhow!(
                     "run polling endpoint returned error status {}: {}",
                     status,
-                    body
+                    truncated_body
                 ));
             }
 
@@ -311,14 +343,20 @@ impl SubworkerClient {
 
             let validation = validate_json(&CLUSTERING_RESPONSE_SCHEMA, &response_json);
             if !validation.valid {
+                let summarized_errors = summarize_validation_errors(&validation.errors);
                 warn!(
                     run_id,
-                    errors = ?validation.errors,
+                    error_count = validation.errors.len(),
+                    first_error = %summarized_errors.first().map(|s| s.as_str()).unwrap_or("unknown"),
                     "polling response failed JSON Schema validation"
                 );
                 return Err(anyhow!(
-                    "run polling response validation failed: {:?}",
-                    validation.errors
+                    "run polling response validation failed: {} errors (first: {})",
+                    validation.errors.len(),
+                    summarized_errors
+                        .first()
+                        .map(|s| s.as_str())
+                        .unwrap_or("unknown")
                 ));
             }
 
@@ -389,6 +427,9 @@ fn build_cluster_job_request(corpus: &EvidenceCorpus) -> ClusterJobRequest<'_> {
             published_at: None,
             source_url: None,
             paragraphs: vec![build_paragraph(&article.sentences)],
+            genre_scores: article.genre_scores.as_ref(),
+            confidence: article.confidence,
+            signals: article.signals.as_ref(),
         })
         .collect();
 
@@ -400,6 +441,7 @@ fn build_cluster_job_request(corpus: &EvidenceCorpus) -> ClusterJobRequest<'_> {
             mmr_lambda: DEFAULT_MMR_LAMBDA,
         },
         documents,
+        metadata: Some(&corpus.metadata),
     }
 }
 
