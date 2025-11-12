@@ -108,7 +108,7 @@ class RecapSummaryRequest(BaseModel):
 
     job_id: UUID
     genre: str = Field(min_length=1)
-    clusters: List[RecapClusterInput] = Field(min_length=1, max_length=20)
+    clusters: List[RecapClusterInput] = Field(min_length=1, max_length=100)
     options: Optional[RecapSummaryOptions] = None
 
 
