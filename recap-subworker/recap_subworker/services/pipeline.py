@@ -331,9 +331,9 @@ class EvidencePipeline:
             representatives: list[RepresentativeSentence] = []
             cluster_article_ids: list[str] = []
 
-            def _push_sentence(sentence_idx: int) -> int:
+            def _push_sentence(sentence_idx: int, *, allow_reuse: bool = False) -> int:
                 sentence = sentences[sentence_idx]
-                if sentence.article_id in used_articles:
+                if not allow_reuse and sentence.article_id in used_articles:
                     return 0
                 pos = len(representatives)
                 representatives.append(
@@ -350,7 +350,8 @@ class EvidencePipeline:
                     )
                 )
                 cluster_article_ids.append(sentence.article_id)
-                used_articles.add(sentence.article_id)
+                if not allow_reuse:
+                    used_articles.add(sentence.article_id)
                 return sentence.tokens_estimate
 
             for local_idx in selected_local:
@@ -369,6 +370,11 @@ class EvidencePipeline:
                         if len(representatives) >= max_sentences_per_cluster:
                             break
 
+            if not representatives and indices:
+                tokens_added = _push_sentence(indices[0], allow_reuse=True)
+                if tokens_added:
+                    budget_tokens += tokens_added
+
             avg_sim = None
             if cluster_embeddings.shape[0] > 1:
                 sim_matrix = cluster_embeddings @ cluster_embeddings.T
@@ -384,7 +390,7 @@ class EvidencePipeline:
                     size=len(indices),
                     label=ClusterLabel(top_terms=label_terms),
                     representatives=representatives,
-                    supporting_ids=cluster_article_ids,
+                    supporting_ids=self._dedup_preserve_order(cluster_article_ids),
                     stats=ClusterStats(
                         avg_sim=avg_sim,
                         token_count=sum(sentences[idx].tokens_estimate for idx in indices),
@@ -392,6 +398,16 @@ class EvidencePipeline:
                 )
             )
         return clusters, budget_tokens
+
+    def _dedup_preserve_order(self, values: list[str]) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for value in values:
+            if value in seen:
+                continue
+            seen.add(value)
+            ordered.append(value)
+        return ordered
 
     def _adjust_dedup_threshold(
         self,

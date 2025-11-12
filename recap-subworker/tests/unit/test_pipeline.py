@@ -75,7 +75,7 @@ def test_pipeline_basic_flow():
     assert response.evidence_budget.sentences > 0
 
 
-def test_pipeline_prevents_article_reuse_across_clusters():
+def test_pipeline_keeps_clusters_non_empty_even_when_articles_reused():
     settings = Settings(model_id="fake", max_sentences_per_cluster=1)
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
     pipeline.clusterer = SplitClusterer()  # type: ignore[assignment]
@@ -88,23 +88,15 @@ def test_pipeline_prevents_article_reuse_across_clusters():
             ClusterDocument(
                 article_id="dup",
                 paragraphs=[
-                    "First sentence easily exceeds thirty characters. Second sentence also satisfies the minimum length requirement."
+                    "First sentence easily exceeds thirty characters. Second sentence also satisfies the minimum length requirement. Third sentence keeps the cluster occupied when reuse is required."
                 ],
-            ),
-            ClusterDocument(
-                article_id="unique",
-                paragraphs=["Another paragraph with adequate length for processing to keep counts realistic."],
-            ),
+            )
         ],
     )
 
     response = pipeline.run(request)
 
     assert len(response.clusters) >= 2
-    first_cluster = response.clusters[0]
-    second_cluster = response.clusters[1]
-
-    assert first_cluster.representatives, "first cluster should include at least one sentence"
-    assert second_cluster.representatives == [], "second cluster using duplicate article should be empty"
-    assert first_cluster.supporting_ids == ["dup"]
-    assert second_cluster.supporting_ids == [], "supporting ids should not repeat duplicates"
+    for cluster in response.clusters[:2]:
+        assert cluster.representatives, "cluster should retain at least one representative even after reuse"
+        assert cluster.supporting_ids == ["dup"], "fallback should not introduce additional article ids"
