@@ -1,4 +1,5 @@
 //! 言語別のトークナイズと正規化処理。
+use lindera::tokenizer::{Tokenizer as LinderaTokenizer, TokenizerConfig as LinderaConfig};
 use regex::Regex;
 use unicode_normalization::UnicodeNormalization;
 use unicode_segmentation::UnicodeSegmentation;
@@ -117,6 +118,7 @@ fn apply_augmented_tokens(tokens: &mut Vec<String>, mapping: &[(&str, &[&str])])
 
 #[derive(Debug)]
 struct JapaneseTokenizer {
+    lindera: Option<LinderaAdapter>,
     #[cfg(feature = "with-sudachi")]
     sudachi: Option<SudachiAdapter>,
     fallback_word_re: Regex,
@@ -125,6 +127,7 @@ struct JapaneseTokenizer {
 impl JapaneseTokenizer {
     fn new() -> Self {
         Self {
+            lindera: LinderaAdapter::new(),
             #[cfg(feature = "with-sudachi")]
             sudachi: SudachiAdapter::new(),
             fallback_word_re: Regex::new(r"[^\p{L}\p{N}]+").expect("compile fallback regex"),
@@ -132,6 +135,13 @@ impl JapaneseTokenizer {
     }
 
     fn tokenize(&self, text: &str) -> Vec<String> {
+        if let Some(adapter) = &self.lindera {
+            if let Some(tokens) = adapter.tokenize(text) {
+                if !tokens.is_empty() {
+                    return tokens;
+                }
+            }
+        }
         #[cfg(feature = "with-sudachi")]
         if let Some(adapter) = &self.sudachi {
             if let Some(tokens) = adapter.tokenize(text) {
@@ -188,6 +198,41 @@ impl SudachiAdapter {
             .filter(|token| !token.trim().is_empty())
             .collect::<Vec<_>>();
         Some(morphemes)
+    }
+}
+
+struct LinderaAdapter {
+    tokenizer: LinderaTokenizer,
+}
+
+impl LinderaAdapter {
+    fn new() -> Option<Self> {
+        let config = LinderaConfig::default();
+        LinderaTokenizer::from_config(config)
+            .ok()
+            .map(|tokenizer| Self { tokenizer })
+    }
+
+    fn tokenize(&self, text: &str) -> Option<Vec<String>> {
+        let tokens = self.tokenizer.tokenize(text).ok()?;
+        let mut results: Vec<String> = Vec::with_capacity(tokens.len());
+        for token in tokens {
+            let surface = token.get_text().trim();
+            if !surface.is_empty() {
+                results.push(surface.to_string());
+            }
+        }
+        if results.is_empty() {
+            None
+        } else {
+            Some(results)
+        }
+    }
+}
+
+impl std::fmt::Debug for LinderaAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LinderaAdapter").finish()
     }
 }
 

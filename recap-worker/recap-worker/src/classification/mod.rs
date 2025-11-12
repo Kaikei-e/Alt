@@ -40,6 +40,10 @@ impl ClassificationLanguage {
 pub struct ClassificationResult {
     pub top_genres: Vec<String>,
     pub scores: HashMap<String, f32>,
+    pub ranking: Vec<(String, f32)>,
+    pub feature_snapshot: FeatureVector,
+    pub keyword_hits: HashMap<String, usize>,
+    pub token_count: usize,
 }
 
 /// ジャンル分類器の外部インターフェース。
@@ -52,6 +56,7 @@ pub struct GenreClassifier {
     model: HybridModel,
     score_threshold: f32,
     keyword_matcher: KeywordMatcher,
+    genre_thresholds: HashMap<String, f32>,
 }
 
 impl GenreClassifier {
@@ -75,6 +80,7 @@ impl GenreClassifier {
             model,
             score_threshold,
             keyword_matcher: default_matcher(),
+            genre_thresholds: default_thresholds(),
         }
     }
 
@@ -116,7 +122,7 @@ impl GenreClassifier {
         }
 
         let feature_vector: FeatureVector = self.feature_extractor.extract(&tokens);
-        let blend_weight = 0.35;
+        let blend_weight = 0.4;
         for (genre, score) in self.model.predict(&feature_vector)? {
             let blended = score * blend_weight;
             combined_scores
@@ -135,14 +141,11 @@ impl GenreClassifier {
             .collect::<Vec<_>>();
         ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
+        let bm25_peak = feature_vector.max_bm25().unwrap_or(0.0);
         let mut filtered: Vec<String> = Vec::new();
         for (genre, score) in ranked.iter() {
             let keyword_support = keyword_map.get(genre).copied().unwrap_or(0);
-            let required = if keyword_support > 0 {
-                self.score_threshold
-            } else {
-                self.score_threshold * 1.25
-            };
+            let required = self.threshold_for(genre, keyword_support, &feature_vector, bm25_peak);
             if *score >= required {
                 if genre == "world" && keyword_support < 2 {
                     continue;
@@ -171,6 +174,61 @@ impl GenreClassifier {
         Ok(ClassificationResult {
             top_genres: filtered,
             scores: combined_scores,
+            ranking: ranked,
+            feature_snapshot: feature_vector,
+            keyword_hits: keyword_map,
+            token_count: tokens.len(),
         })
     }
+
+    fn threshold_for(
+        &self,
+        genre: &str,
+        keyword_support: usize,
+        features: &FeatureVector,
+        bm25_peak: f32,
+    ) -> f32 {
+        let mut base = self
+            .genre_thresholds
+            .get(genre)
+            .copied()
+            .unwrap_or(self.score_threshold);
+
+        if keyword_support == 0 {
+            base += 0.08;
+        } else if keyword_support >= 3 {
+            base -= 0.05;
+        }
+
+        if bm25_peak > 1.6 {
+            base -= 0.05;
+        } else if bm25_peak < 0.45 {
+            base += 0.04;
+        }
+
+        let tfidf_sum: f32 = features.tfidf.iter().sum();
+        if tfidf_sum < 0.4 {
+            base += 0.05;
+        } else if tfidf_sum > 1.4 {
+            base -= 0.03;
+        }
+
+        base.clamp(0.5, 0.9)
+    }
+}
+
+fn default_thresholds() -> HashMap<String, f32> {
+    HashMap::from([
+        ("ai".to_string(), 0.68),
+        ("tech".to_string(), 0.72),
+        ("business".to_string(), 0.74),
+        ("science".to_string(), 0.7),
+        ("entertainment".to_string(), 0.72),
+        ("sports".to_string(), 0.65),
+        ("politics".to_string(), 0.72),
+        ("health".to_string(), 0.7),
+        ("world".to_string(), 0.74),
+        ("security".to_string(), 0.7),
+        ("other".to_string(), 0.6),
+    ])
 }
