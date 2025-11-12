@@ -25,7 +25,7 @@ pub(crate) mod select;
 use dedup::{DedupStage, HashDedupStage};
 use dispatch::{DispatchStage, MlLlmDispatchStage};
 use fetch::{AltBackendFetchStage, FetchStage};
-use genre::{GenreStage, KeywordGenreStage};
+use genre::{GenreStage, HybridGenreStage};
 use persist::PersistStage;
 use preprocess::{PreprocessStage, TextPreprocessStage};
 use select::{SelectStage, SummarySelectStage};
@@ -94,7 +94,7 @@ impl PipelineOrchestrator {
                 Arc::clone(&recap_dao),
             )))
             .with_dedup_stage(Arc::new(HashDedupStage::new(cpu_count.max(2), 0.8, 100)))
-            .with_genre_stage(Arc::new(KeywordGenreStage::with_defaults()))
+            .with_genre_stage(Arc::new(HybridGenreStage::with_defaults()))
             .with_select_stage(Arc::new(SummarySelectStage::new()))
             .with_dispatch_stage(Arc::new(MlLlmDispatchStage::new(
                 subworker_client,
@@ -198,7 +198,7 @@ impl PipelineBuilder {
                 .unwrap_or_else(|| panic!("dedup stage must be configured before build")),
             genre: self
                 .genre
-                .unwrap_or_else(|| Arc::new(KeywordGenreStage::with_defaults())),
+                .unwrap_or_else(|| Arc::new(HybridGenreStage::with_defaults())),
             select: self
                 .select
                 .unwrap_or_else(|| Arc::new(SummarySelectStage::new())),
@@ -230,7 +230,7 @@ mod tests {
         dedup::{DedupStage, DeduplicatedCorpus},
         dispatch::{DispatchResult, DispatchStage},
         fetch::{FetchStage, FetchedArticle, FetchedCorpus},
-        genre::{GenreAssignment, GenreBundle, GenreStage},
+        genre::{FeatureProfile, GenreAssignment, GenreBundle, GenreStage},
         persist::{PersistResult, PersistStage},
         preprocess::{PreprocessStage, PreprocessedArticle, PreprocessedCorpus},
         select::{SelectStage, SelectedSummary},
@@ -415,6 +415,11 @@ mod tests {
                 assignments: vec![GenreAssignment {
                     genres: vec!["science".to_string()],
                     genre_scores: std::collections::HashMap::from([("science".to_string(), 10)]),
+                    genre_confidence: std::collections::HashMap::from([(
+                        "science".to_string(),
+                        0.8,
+                    )]),
+                    feature_profile: FeatureProfile::default(),
                     article,
                 }],
                 genre_distribution: std::collections::HashMap::from([("science".to_string(), 1)]),

@@ -31,6 +31,10 @@ pub(crate) struct EvidenceArticle {
     pub(crate) language: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) genre_scores: Option<HashMap<String, usize>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) confidence: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) signals: Option<ArticleFeatureSignal>,
 }
 
 /// コーパスのメタデータ。
@@ -41,6 +45,24 @@ pub(crate) struct CorpusMetadata {
     pub(crate) primary_language: String,
     pub(crate) language_distribution: HashMap<String, usize>,
     pub(crate) character_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) classifier: Option<ClassifierStats>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct ArticleFeatureSignal {
+    pub(crate) tfidf_sum: f32,
+    pub(crate) bm25_peak: f32,
+    pub(crate) token_count: usize,
+    pub(crate) keyword_hits: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct ClassifierStats {
+    pub(crate) avg_confidence: f32,
+    pub(crate) max_confidence: f32,
+    pub(crate) min_confidence: f32,
+    pub(crate) coverage_ratio: f32,
 }
 
 /// ジャンル別にグループ化された証拠コーパスのコレクション。
@@ -148,6 +170,8 @@ fn build_corpus_for_genre(genre: &str, assignments: &[&GenreAssignment]) -> Evid
     let mut language_counts: HashMap<String, usize> = HashMap::new();
     let mut dropped_articles = 0usize;
     let mut dropped_sentences = 0usize;
+    let mut confidences: Vec<f32> = Vec::new();
+    let mut supporting_articles = 0usize;
 
     for assignment in assignments {
         let article = &assignment.article;
@@ -183,12 +207,29 @@ fn build_corpus_for_genre(genre: &str, assignments: &[&GenreAssignment]) -> Evid
 
         *language_counts.entry(article.language.clone()).or_insert(0) += 1;
 
+        let keyword_hits = assignment.genre_scores.get(genre).copied().unwrap_or(0);
+        if keyword_hits > 0 {
+            supporting_articles += 1;
+        }
+
+        let confidence = assignment.genre_confidence.get(genre).copied();
+        if let Some(conf) = confidence {
+            confidences.push(conf.clamp(0.0, 1.0));
+        }
+
         articles.push(EvidenceArticle {
             article_id: article.id.clone(),
             title: article.title.clone(),
             sentences: filtered_sentences,
             language: article.language.clone(),
             genre_scores: Some(assignment.genre_scores.clone()),
+            confidence,
+            signals: Some(ArticleFeatureSignal {
+                tfidf_sum: assignment.feature_profile.tfidf_sum,
+                bm25_peak: assignment.feature_profile.bm25_peak,
+                token_count: assignment.feature_profile.token_count,
+                keyword_hits,
+            }),
         });
     }
 
@@ -208,12 +249,33 @@ fn build_corpus_for_genre(genre: &str, assignments: &[&GenreAssignment]) -> Evid
         .map(|(lang, _)| lang.clone())
         .unwrap_or_else(|| "und".to_string());
 
+    let classifier = if !confidences.is_empty() {
+        let sum = confidences.iter().sum::<f32>();
+        let avg = sum / confidences.len() as f32;
+        let max = confidences.iter().copied().fold(0.0, f32::max);
+        let min = confidences.iter().copied().fold(1.0, f32::min);
+        let coverage_ratio = if !articles.is_empty() {
+            supporting_articles as f32 / articles.len() as f32
+        } else {
+            0.0
+        };
+        Some(ClassifierStats {
+            avg_confidence: avg,
+            max_confidence: max,
+            min_confidence: min,
+            coverage_ratio,
+        })
+    } else {
+        None
+    };
+
     let metadata = CorpusMetadata {
         article_count: articles.len(),
         sentence_count: total_sentences,
         primary_language,
         language_distribution: language_counts,
         character_count: total_characters,
+        classifier,
     };
 
     EvidenceCorpus {
@@ -232,6 +294,7 @@ fn sentence_has_required_length(sentence: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::super::dedup::DeduplicatedArticle;
+    use super::super::genre::FeatureProfile;
     use super::*;
 
     fn create_assignment(
@@ -240,6 +303,7 @@ mod tests {
         sentences: Vec<&str>,
         language: &str,
     ) -> GenreAssignment {
+        let token_count = sentences.len();
         let article = DeduplicatedArticle {
             id: id.to_string(),
             title: Some(format!("Title {}", id)),
@@ -253,10 +317,18 @@ mod tests {
             .enumerate()
             .map(|(i, g)| (g.to_string(), 10 - i))
             .collect();
+        let genre_confidence = genres.iter().map(|g| (g.to_string(), 0.8)).collect();
+        let feature_profile = FeatureProfile {
+            tfidf_sum: 1.0,
+            bm25_peak: 0.9,
+            token_count,
+        };
 
         GenreAssignment {
             genres: genres.into_iter().map(String::from).collect(),
             genre_scores,
+            genre_confidence,
+            feature_profile,
             article,
         }
     }

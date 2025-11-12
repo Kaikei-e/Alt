@@ -5,7 +5,7 @@ use crate::scheduler::JobContext;
 
 use super::genre::{GenreAssignment, GenreBundle};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SelectedSummary {
     pub(crate) job_id: Uuid,
     pub(crate) assignments: Vec<GenreAssignment>,
@@ -36,7 +36,16 @@ impl SummarySelectStage {
         let mut per_genre_count = std::collections::HashMap::new();
         let mut selected = Vec::new();
 
-        for assignment in bundle.assignments {
+        let mut ranked = bundle.assignments;
+        ranked.sort_by(|a, b| {
+            let score_a = Self::confidence(a);
+            let score_b = Self::confidence(b);
+            score_b
+                .partial_cmp(&score_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        for assignment in ranked {
             // 最初のジャンルを使用（複数ジャンルがある場合は最初のもの）
             let primary_genre = assignment
                 .genres
@@ -52,8 +61,28 @@ impl SummarySelectStage {
             *count += 1;
             selected.push(assignment);
         }
-
         selected
+    }
+
+    fn confidence(assignment: &GenreAssignment) -> f32 {
+        if assignment.genres.is_empty() {
+            return 0.0;
+        }
+        let primary = &assignment.genres[0];
+        let keyword_component =
+            assignment.genre_scores.get(primary).copied().unwrap_or(0) as f32 / 100.0;
+        let classifier_component = assignment
+            .genre_confidence
+            .get(primary)
+            .copied()
+            .unwrap_or(keyword_component);
+        let base = classifier_component.max(keyword_component);
+        let diversity_penalty = if assignment.genre_scores.len() > 3 {
+            0.05 * (assignment.genre_scores.len() as f32 - 3.0)
+        } else {
+            0.0
+        };
+        (base - diversity_penalty).max(0.0)
     }
 }
 
@@ -81,6 +110,7 @@ impl SelectStage for SummarySelectStage {
 
 #[cfg(test)]
 mod tests {
+    use super::super::genre::FeatureProfile;
     use super::*;
 
     fn assignment(genre: &str) -> GenreAssignment {
@@ -88,6 +118,8 @@ mod tests {
         GenreAssignment {
             genres: vec![genre.to_string()],
             genre_scores: std::collections::HashMap::from([(genre.to_string(), 10)]),
+            genre_confidence: std::collections::HashMap::from([(genre.to_string(), 0.75)]),
+            feature_profile: FeatureProfile::default(),
             article: DeduplicatedArticle {
                 id: Uuid::new_v4().to_string(),
                 title: Some("title".to_string()),

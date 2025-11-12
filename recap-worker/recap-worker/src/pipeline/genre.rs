@@ -5,25 +5,35 @@ use async_trait::async_trait;
 use tracing::{debug, info};
 use uuid::Uuid;
 
+use crate::classification::{ClassificationLanguage, GenreClassifier};
 use crate::scheduler::JobContext;
 
 use super::dedup::{DeduplicatedArticle, DeduplicatedCorpus};
 use super::genre_keywords::GenreKeywords;
 
 /// ジャンル付き記事。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct GenreAssignment {
     pub(crate) genres: Vec<String>,                  // 1〜3個のジャンル
     pub(crate) genre_scores: HashMap<String, usize>, // 全スコア
+    pub(crate) genre_confidence: HashMap<String, f32>,
+    pub(crate) feature_profile: FeatureProfile,
     pub(crate) article: DeduplicatedArticle,
 }
 
 /// ジャンル別の記事グループ。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct GenreBundle {
     pub(crate) job_id: Uuid,
     pub(crate) assignments: Vec<GenreAssignment>,
     pub(crate) genre_distribution: HashMap<String, usize>, // ジャンル別記事数
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct FeatureProfile {
+    pub(crate) tfidf_sum: f32,
+    pub(crate) bm25_peak: f32,
+    pub(crate) token_count: usize,
 }
 
 #[async_trait]
@@ -34,14 +44,15 @@ pub(crate) trait GenreStage: Send + Sync {
 /// キーワードベースのジャンル付与ステージ。
 ///
 /// タイトル+本文からキーワードマッチングで1〜3個のジャンルを付与します。
-#[derive(Debug, Clone)]
-pub(crate) struct KeywordGenreStage {
-    keywords: GenreKeywords,
+#[derive(Debug)]
+pub(crate) struct HybridGenreStage {
+    classifier: GenreClassifier,
+    fallback_keywords: GenreKeywords,
     min_genres: usize,
     max_genres: usize,
 }
 
-impl KeywordGenreStage {
+impl HybridGenreStage {
     /// 新しいKeywordGenreStageを作成する。
     ///
     /// # Arguments
@@ -49,7 +60,8 @@ impl KeywordGenreStage {
     /// * `max_genres` - 最大ジャンル数（デフォルト: 3）
     pub(crate) fn new(min_genres: usize, max_genres: usize) -> Self {
         Self {
-            keywords: GenreKeywords::default_keywords(),
+            classifier: GenreClassifier::new_default(),
+            fallback_keywords: GenreKeywords::default_keywords(),
             min_genres,
             max_genres,
         }
@@ -64,44 +76,94 @@ impl KeywordGenreStage {
     fn assign_genres(
         &self,
         article: &DeduplicatedArticle,
-    ) -> (Vec<String>, HashMap<String, usize>) {
-        // タイトルと本文を結合
-        let combined_text = format!(
-            "{} {}",
-            article.title.as_deref().unwrap_or(""),
-            article.sentences.join(" ")
-        );
+    ) -> anyhow::Result<(
+        Vec<String>,
+        HashMap<String, usize>,
+        HashMap<String, f32>,
+        FeatureProfile,
+    )> {
+        let title = article.title.as_deref().unwrap_or("");
+        let body = article.sentences.join(" ");
+        let language = ClassificationLanguage::from_code(&article.language);
 
-        // キーワードマッチングでスコアを計算
-        let genre_scores = self.keywords.score_text(&combined_text);
+        let classification = self.classifier.predict(title, &body, language)?;
+        let mut genres = classification.top_genres.clone();
 
-        // スコアの高い順に最大max_genres個を選択
-        let mut top_genres: Vec<(String, usize)> = self
-            .keywords
-            .top_genres(&combined_text, self.max_genres)
-            .into_iter()
-            .filter(|(_, score)| *score > 0)
-            .collect();
-
-        // 最低min_genres個は確保（スコアがなければ"other"を追加）
-        if top_genres.len() < self.min_genres {
-            top_genres.push(("other".to_string(), 0));
+        // 最低ジャンル数を満たすまでランキングから補完
+        if genres.len() < self.min_genres {
+            for (candidate, _) in &classification.ranking {
+                if genres.contains(candidate) {
+                    continue;
+                }
+                genres.push(candidate.clone());
+                if genres.len() == self.min_genres {
+                    break;
+                }
+            }
         }
 
-        let genres = top_genres.into_iter().map(|(g, _)| g).collect();
+        if genres.is_empty() {
+            genres.push("other".to_string());
+        }
 
-        (genres, genre_scores)
+        if genres.len() > self.max_genres {
+            genres.truncate(self.max_genres);
+        }
+
+        let mut genre_scores = classification.keyword_hits.clone();
+        for genre in &genres {
+            genre_scores.entry(genre.clone()).or_insert_with(|| {
+                classification
+                    .scores
+                    .get(genre)
+                    .map(|score| (score.max(0.0) * 100.0).round() as usize)
+                    .unwrap_or(0)
+            });
+        }
+
+        if genre_scores.is_empty() {
+            // フォールバックとしてキーワードスコアを計算
+            let combined = format!("{title} {body}");
+            genre_scores = self.fallback_keywords.score_text(&combined);
+        }
+
+        let low_support = genres
+            .iter()
+            .all(|genre| genre_scores.get(genre).copied().unwrap_or(0) == 0);
+        if low_support {
+            genres.clear();
+            genres.push("other".to_string());
+            genre_scores.entry("other".to_string()).or_insert(100);
+        }
+
+        let mut genre_confidence: HashMap<String, f32> = classification
+            .scores
+            .iter()
+            .map(|(genre, score)| (genre.clone(), score.clamp(0.0, 1.0)))
+            .collect();
+        for genre in &genres {
+            genre_confidence.entry(genre.clone()).or_insert(0.0);
+        }
+
+        let tfidf_sum: f32 = classification.feature_snapshot.tfidf.iter().sum();
+        let feature_profile = FeatureProfile {
+            tfidf_sum,
+            bm25_peak: classification.feature_snapshot.max_bm25().unwrap_or(0.0),
+            token_count: classification.token_count,
+        };
+
+        Ok((genres, genre_scores, genre_confidence, feature_profile))
     }
 }
 
-impl Default for KeywordGenreStage {
+impl Default for HybridGenreStage {
     fn default() -> Self {
         Self::with_defaults()
     }
 }
 
 #[async_trait]
-impl GenreStage for KeywordGenreStage {
+impl GenreStage for HybridGenreStage {
     async fn assign(&self, job: &JobContext, corpus: DeduplicatedCorpus) -> Result<GenreBundle> {
         let total_articles = corpus.articles.len();
         info!(
@@ -114,7 +176,8 @@ impl GenreStage for KeywordGenreStage {
         let mut genre_distribution: HashMap<String, usize> = HashMap::new();
 
         for article in corpus.articles {
-            let (genres, genre_scores) = self.assign_genres(&article);
+            let (genres, genre_scores, genre_confidence, feature_profile) =
+                self.assign_genres(&article)?;
 
             debug!(
                 article_id = %article.id,
@@ -130,6 +193,8 @@ impl GenreStage for KeywordGenreStage {
             assignments.push(GenreAssignment {
                 genres,
                 genre_scores,
+                genre_confidence,
+                feature_profile,
                 article,
             });
         }
@@ -166,7 +231,7 @@ mod tests {
 
     #[tokio::test]
     async fn assigns_genres_based_on_keywords() {
-        let stage = KeywordGenreStage::with_defaults();
+        let stage = HybridGenreStage::with_defaults();
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
             job_id: job.job_id,
@@ -185,23 +250,30 @@ mod tests {
             stats: DedupStats::default(),
         };
 
-        let bundle = stage
-            .assign(&job, corpus)
-            .await
-            .expect("genre assignment succeeds");
+        let bundle = stage.assign(&job, corpus).await.unwrap();
 
         assert_eq!(bundle.assignments.len(), 2);
 
         // 最初の記事はAI関連のキーワードを含む
-        assert!(bundle.assignments[0].genres.contains(&"ai".to_string()));
+        assert!(
+            bundle.assignments[0]
+                .genres
+                .iter()
+                .any(|genre| genre == "ai" || genre == "tech")
+        );
 
         // 2番目の記事はスポーツ関連のキーワードを含む
-        assert!(bundle.assignments[1].genres.contains(&"sports".to_string()));
+        assert!(
+            bundle.assignments[1]
+                .genres
+                .iter()
+                .any(|genre| genre == "sports")
+        );
     }
 
     #[tokio::test]
     async fn assigns_at_least_one_genre() {
-        let stage = KeywordGenreStage::with_defaults();
+        let stage = HybridGenreStage::with_defaults();
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
             job_id: job.job_id,
@@ -213,10 +285,7 @@ mod tests {
             stats: DedupStats::default(),
         };
 
-        let bundle = stage
-            .assign(&job, corpus)
-            .await
-            .expect("genre assignment succeeds");
+        let bundle = stage.assign(&job, corpus).await.unwrap();
 
         assert_eq!(bundle.assignments.len(), 1);
         assert!(!bundle.assignments[0].genres.is_empty());
@@ -226,7 +295,7 @@ mod tests {
 
     #[tokio::test]
     async fn respects_max_genres_limit() {
-        let stage = KeywordGenreStage::new(1, 2);
+        let stage = HybridGenreStage::new(1, 2);
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
             job_id: job.job_id,
@@ -238,10 +307,7 @@ mod tests {
             stats: DedupStats::default(),
         };
 
-        let bundle = stage
-            .assign(&job, corpus)
-            .await
-            .expect("genre assignment succeeds");
+        let bundle = stage.assign(&job, corpus).await.unwrap();
 
         assert_eq!(bundle.assignments.len(), 1);
         // 最大2ジャンル
