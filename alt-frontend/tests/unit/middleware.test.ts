@@ -46,6 +46,17 @@ describe("middleware", () => {
       expect(response.status).toBe(200);
     });
 
+    it("should NOT allow unauthenticated access to /api/debug/** paths", async () => {
+      const request = new NextRequest("https://curionoah.com/api/debug/cookies");
+      const response = await middleware(request);
+
+      // Should redirect to landing page (303) when unauthenticated
+      expect(response.status).toBe(303);
+      const location = response.headers.get("location");
+      expect(location).toContain("/public/landing");
+      expect(location).toContain("return_to=");
+    });
+
     it("should allow access to _next paths", async () => {
       const request = new NextRequest("https://curionoah.com/_next/static/test.js");
       const response = await middleware(request);
@@ -65,6 +76,27 @@ describe("middleware", () => {
     it("should allow access when ory_kratos_session cookie exists", async () => {
       const request = new NextRequest("https://curionoah.com/desktop/home");
       request.cookies.set("ory_kratos_session", "test-session-value");
+
+      // Mock auth-hub session validation
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+      });
+
+      const response = await middleware(request);
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should allow authenticated access to /api/debug/cookies", async () => {
+      const request = new NextRequest("https://curionoah.com/api/debug/cookies");
+      request.cookies.set("ory_kratos_session", "test-session-value");
+
+      // Mock auth-hub session validation
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+      });
 
       const response = await middleware(request);
 

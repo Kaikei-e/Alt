@@ -71,9 +71,14 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
           "height",
           "loading",
           "data-proxy-url",
-          "onload",
-          "onerror",
         ],
+      },
+      allowedStyles: {
+        "*": {
+          opacity: [/^[01]$/, /^0\.\d+$/],
+          transition: [/^opacity\s+\d+\.?\d*s$/],
+          border: [/^2px\s+solid\s+#[0-9a-fA-F]{6}$/],
+        },
       },
       allowedSchemes: ["http", "https", "data"],
       allowedSchemesByTag: {
@@ -635,8 +640,8 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
       // Clean up any remaining event listeners
       proxyImages.forEach((img) => {
         const imgElement = img as HTMLImageElement;
-        imgElement.removeEventListener("load", () => {});
-        imgElement.removeEventListener("error", () => {});
+        imgElement.removeEventListener("load", () => { });
+        imgElement.removeEventListener("error", () => { });
       });
     };
   }, [html]);

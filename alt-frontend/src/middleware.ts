@@ -18,8 +18,11 @@ const PUBLIC_ROUTES = [
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
-  // Allow public routes
-  if (PUBLIC_ROUTES.some((pattern) => pattern.test(pathname))) {
+  // Exclude /api/debug/** from public routes even though /api/** is public
+  if (pathname.startsWith("/api/debug/")) {
+    // This path requires authentication, continue to auth check below
+  } else if (PUBLIC_ROUTES.some((pattern) => pattern.test(pathname))) {
+    // Allow public routes
     return NextResponse.next();
   }
 
