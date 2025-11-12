@@ -178,6 +178,65 @@ table "recap_subworker_sentences" {
   }
 }
 
+table "recap_cluster_evidence" {
+  schema = schema.public
+  column "id" {
+    null = false
+    type = bigserial
+  }
+  column "cluster_row_id" {
+    null = false
+    type = bigint
+  }
+  column "article_id" {
+    null = false
+    type = text
+  }
+  column "title" {
+    null = true
+    type = text
+  }
+  column "source_url" {
+    null = true
+    type = text
+  }
+  column "published_at" {
+    null = true
+    type = timestamptz
+  }
+  column "lang" {
+    null = true
+    type = text
+  }
+  column "rank" {
+    null    = false
+    type    = smallint
+    default = 0
+  }
+  column "created_at" {
+    null    = false
+    type    = timestamptz
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.id]
+  }
+  foreign_key "recap_cluster_evidence_cluster_row_id_fkey" {
+    columns     = [column.cluster_row_id]
+    ref_columns = [table.recap_subworker_clusters.column.id]
+    on_delete   = CASCADE
+  }
+  unique "uniq_recap_cluster_evidence_article" {
+    columns = [column.cluster_row_id, column.article_id]
+  }
+  index "idx_recap_cluster_evidence_cluster_rank" {
+    columns = [column.cluster_row_id, column.rank]
+  }
+  index "idx_recap_cluster_evidence_article" {
+    columns = [column.article_id]
+  }
+}
+
 table "recap_subworker_diagnostics" {
   schema = schema.public
   column "run_id" {
