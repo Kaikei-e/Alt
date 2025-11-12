@@ -15,6 +15,7 @@ from ..db.dao import (
     DiagnosticEntry,
     NewRun,
     PersistedCluster,
+    PersistedEvidence,
     PersistedSentence,
     RunRecord,
     SubworkerDAO,
@@ -251,7 +252,8 @@ class RunManager:
     ) -> list[PersistedCluster]:
         persisted: list[PersistedCluster] = []
         for cluster in response.clusters:
-            sentences = []
+            sentences: list[PersistedSentence] = []
+            evidence_rows: list[PersistedEvidence] = []
             for idx, sentence in enumerate(cluster.representatives):
                 sentences.append(
                     PersistedSentence(
@@ -261,6 +263,16 @@ class RunManager:
                         sentence_text=sentence.text,
                         lang=sentence.lang or "unknown",
                         score=max(0.0, 1.0 - idx * 0.05),
+                    )
+                )
+                evidence_rows.append(
+                    PersistedEvidence(
+                        article_id=sentence.source.source_id,
+                        title=None,
+                        source_url=sentence.source.url,
+                        published_at=None,
+                        lang=sentence.lang,
+                        rank=idx,
                     )
                 )
             stats: dict[str, Any] = {}
@@ -276,6 +288,7 @@ class RunManager:
                     top_terms=cluster.label.top_terms,
                     stats=stats,
                     sentences=sentences,
+                    evidence=evidence_rows,
                 )
             )
         return persisted

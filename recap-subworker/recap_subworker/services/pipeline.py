@@ -321,17 +321,21 @@ class EvidencePipeline:
     ) -> tuple[list[EvidenceCluster], int]:
         clusters: list[EvidenceCluster] = []
         budget_tokens = 0
+        used_articles: set[str] = set()
         for cluster_offset, (cluster_id, indices) in enumerate(zip(unique_labels, cluster_indices)):
             cluster_embeddings = embeddings[indices]
             selected_local = selectors.mmr_select(
                 cluster_embeddings, k=max_sentences_per_cluster, lambda_param=mmr_lambda
             )
             MMR_SELECTED.inc(len(selected_local))
-            representatives = []
-            for pos, local_idx in enumerate(selected_local):
-                sentence_idx = indices[local_idx]
+            representatives: list[RepresentativeSentence] = []
+            cluster_article_ids: list[str] = []
+
+            def _push_sentence(sentence_idx: int) -> int:
                 sentence = sentences[sentence_idx]
-                budget_tokens += sentence.tokens_estimate
+                if sentence.article_id in used_articles:
+                    return 0
+                pos = len(representatives)
                 representatives.append(
                     RepresentativeSentence(
                         text=sentence.text,
@@ -345,6 +349,26 @@ class EvidencePipeline:
                         ),
                     )
                 )
+                cluster_article_ids.append(sentence.article_id)
+                used_articles.add(sentence.article_id)
+                return sentence.tokens_estimate
+
+            for local_idx in selected_local:
+                sentence_idx = indices[local_idx]
+                tokens_added = _push_sentence(sentence_idx)
+                if tokens_added:
+                    budget_tokens += tokens_added
+                    if len(representatives) >= max_sentences_per_cluster:
+                        break
+
+            if len(representatives) < max_sentences_per_cluster:
+                for sentence_idx in indices:
+                    tokens_added = _push_sentence(sentence_idx)
+                    if tokens_added:
+                        budget_tokens += tokens_added
+                        if len(representatives) >= max_sentences_per_cluster:
+                            break
+
             avg_sim = None
             if cluster_embeddings.shape[0] > 1:
                 sim_matrix = cluster_embeddings @ cluster_embeddings.T
@@ -360,7 +384,7 @@ class EvidencePipeline:
                     size=len(indices),
                     label=ClusterLabel(top_terms=label_terms),
                     representatives=representatives,
-                    supporting_ids=sorted({sentences[idx].article_id for idx in indices}),
+                    supporting_ids=cluster_article_ids,
                     stats=ClusterStats(
                         avg_sim=avg_sim,
                         token_count=sum(sentences[idx].tokens_estimate for idx in indices),

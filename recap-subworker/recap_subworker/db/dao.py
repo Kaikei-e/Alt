@@ -2,21 +2,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Iterable, Optional
 from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
     Column,
+    DateTime,
     Float,
     Integer,
     MetaData,
+    SmallInteger,
     String,
     Table,
     Text,
     insert,
     select,
+    text,
     update,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID, insert as pg_insert
@@ -71,6 +75,20 @@ diagnostics_table = Table(
     Column("value", JSONB, nullable=False),
 )
 
+cluster_evidence_table = Table(
+    "recap_cluster_evidence",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("cluster_row_id", BigInteger, nullable=False),
+    Column("article_id", Text, nullable=False),
+    Column("title", Text),
+    Column("source_url", Text),
+    Column("published_at", DateTime(timezone=True)),
+    Column("lang", String(8)),
+    Column("rank", SmallInteger, nullable=False, default=0),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+)
+
 
 @dataclass(slots=True)
 class NewRun:
@@ -110,6 +128,17 @@ class PersistedCluster:
     top_terms: list[str]
     stats: dict[str, Any]
     sentences: list[PersistedSentence]
+    evidence: list["PersistedEvidence"] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class PersistedEvidence:
+    article_id: str
+    title: Optional[str]
+    source_url: Optional[str]
+    published_at: Optional[datetime]
+    lang: Optional[str]
+    rank: int
 
 
 @dataclass(slots=True)
@@ -227,35 +256,63 @@ class SubworkerDAO:
             )
             result = await self.session.execute(stmt)
             cluster_row_id = int(result.scalar_one())
-            if not cluster.sentences:
-                continue
-            sentence_rows = [
-                {
-                    "cluster_row_id": cluster_row_id,
-                    "source_article_id": sentence.article_id,
-                    "paragraph_idx": sentence.paragraph_idx,
-                    "sentence_id": sentence.sentence_id,
-                    "sentence_text": sentence.sentence_text,
-                    "lang": sentence.lang,
-                    "score": sentence.score,
-                }
-                for sentence in cluster.sentences
-            ]
-            sentence_insert = pg_insert(sentences_table).values(sentence_rows)
-            on_conflict = sentence_insert.on_conflict_do_update(
-                index_elements=[
-                    sentences_table.c.cluster_row_id,
-                    sentences_table.c.source_article_id,
-                    sentences_table.c.sentence_id,
-                ],
-                set_={
-                    "sentence_text": sentence_insert.excluded.sentence_text,
-                    "lang": sentence_insert.excluded.lang,
-                    "score": sentence_insert.excluded.score,
-                    "paragraph_idx": sentence_insert.excluded.paragraph_idx,
-                },
-            )
-            await self.session.execute(on_conflict)
+            if cluster.sentences:
+                sentence_rows = [
+                    {
+                        "cluster_row_id": cluster_row_id,
+                        "source_article_id": sentence.article_id,
+                        "paragraph_idx": sentence.paragraph_idx,
+                        "sentence_id": sentence.sentence_id,
+                        "sentence_text": sentence.sentence_text,
+                        "lang": sentence.lang,
+                        "score": sentence.score,
+                    }
+                    for sentence in cluster.sentences
+                ]
+                sentence_insert = pg_insert(sentences_table).values(sentence_rows)
+                on_conflict = sentence_insert.on_conflict_do_update(
+                    index_elements=[
+                        sentences_table.c.cluster_row_id,
+                        sentences_table.c.source_article_id,
+                        sentences_table.c.sentence_id,
+                    ],
+                    set_={
+                        "sentence_text": sentence_insert.excluded.sentence_text,
+                        "lang": sentence_insert.excluded.lang,
+                        "score": sentence_insert.excluded.score,
+                        "paragraph_idx": sentence_insert.excluded.paragraph_idx,
+                    },
+                )
+                await self.session.execute(on_conflict)
+
+            if cluster.evidence:
+                evidence_rows = [
+                    {
+                        "cluster_row_id": cluster_row_id,
+                        "article_id": evidence.article_id,
+                        "title": evidence.title,
+                        "source_url": evidence.source_url,
+                        "published_at": evidence.published_at,
+                        "lang": evidence.lang,
+                        "rank": evidence.rank,
+                    }
+                    for evidence in cluster.evidence
+                ]
+                evidence_insert = pg_insert(cluster_evidence_table).values(evidence_rows)
+                evidence_conflict = evidence_insert.on_conflict_do_update(
+                    index_elements=[
+                        cluster_evidence_table.c.cluster_row_id,
+                        cluster_evidence_table.c.article_id,
+                    ],
+                    set_={
+                        "title": evidence_insert.excluded.title,
+                        "source_url": evidence_insert.excluded.source_url,
+                        "published_at": evidence_insert.excluded.published_at,
+                        "lang": evidence_insert.excluded.lang,
+                        "rank": evidence_insert.excluded.rank,
+                    },
+                )
+                await self.session.execute(evidence_conflict)
 
     async def upsert_diagnostics(self, run_id: int, entries: Iterable[DiagnosticEntry]) -> None:
         for entry in entries:
@@ -302,6 +359,7 @@ __all__ = [
     "NewRun",
     "RunRecord",
     "PersistedCluster",
+    "PersistedEvidence",
     "PersistedSentence",
     "DiagnosticEntry",
 ]
