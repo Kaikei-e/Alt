@@ -6,7 +6,19 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Optional
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Column, Float, Integer, MetaData, String, Table, Text, insert, select, update
+from sqlalchemy import (
+    BigInteger,
+    Column,
+    Float,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    insert,
+    select,
+    update,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 

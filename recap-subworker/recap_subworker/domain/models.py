@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Iterable, Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, HttpUrl, ConfigDict, field_validator
 
@@ -33,6 +33,9 @@ class ClusterDocument(BaseModel):
     published_at: Optional[datetime] = Field(default=None)
     source_url: Optional[HttpUrl] = Field(default=None)
     paragraphs: list[str] = Field(..., min_length=1)
+    genre_scores: Optional[dict[str, int]] = Field(default=None)
+    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    signals: Optional["ArticleSignals"] = Field(default=None)
 
     @field_validator("paragraphs")
     @classmethod
@@ -48,6 +51,42 @@ class ClusterJobPayload(BaseModel):
 
     params: ClusterJobParams
     documents: list[ClusterDocument] = Field(..., min_length=10)
+    metadata: Optional["CorpusMetadata"] = Field(default=None)
+
+
+class ArticleSignals(BaseModel):
+    """Lightweight feature diagnostics from recap-worker."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tfidf_sum: Optional[float] = Field(default=None)
+    bm25_peak: Optional[float] = Field(default=None)
+    token_count: Optional[int] = Field(default=None, ge=0)
+    keyword_hits: Optional[int] = Field(default=None, ge=0)
+
+
+class CorpusClassifierStats(BaseModel):
+    """Aggregate classifier statistics for confidence-aware tuning."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    avg_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    max_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    coverage_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class CorpusMetadata(BaseModel):
+    """Corpus-level metadata captured upstream."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    article_count: int = Field(..., ge=0)
+    sentence_count: int = Field(..., ge=0)
+    primary_language: str = Field(..., max_length=16)
+    language_distribution: dict[str, int] = Field(default_factory=dict)
+    character_count: int = Field(..., ge=0)
+    classifier: Optional[CorpusClassifierStats] = Field(default=None)
 
 
 class ClusterSentencePayload(BaseModel):
@@ -115,6 +154,7 @@ class EvidenceRequest(BaseModel):
     documents: list[ClusterDocument] = Field(..., min_length=1)
     constraints: EvidenceConstraints = Field(default_factory=EvidenceConstraints)
     telemetry: Optional[TelemetryEnvelope] = Field(default=None)
+    metadata: Optional["CorpusMetadata"] = Field(default=None)
 
     def total_paragraphs(self) -> int:
         return sum(len(document.paragraphs) for document in self.documents)
@@ -214,6 +254,11 @@ class HealthResponse(BaseModel):
     status: Literal["ok"]
     model_id: str
     backend: str
+
+
+ClusterDocument.model_rebuild()
+ClusterJobPayload.model_rebuild()
+EvidenceRequest.model_rebuild()
 
 
 def build_response_template(request: EvidenceRequest) -> EvidenceResponse:

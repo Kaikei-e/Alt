@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from ...domain.models import EvidenceRequest, EvidenceResponse
-from ..deps import get_pipeline_dep
+from ..deps import get_pipeline_dep, get_pipeline_runner_dep
 
 
 router = APIRouter(tags=["evidence"])
@@ -15,5 +15,8 @@ router = APIRouter(tags=["evidence"])
 async def cluster_evidence(
     payload: EvidenceRequest,
     pipeline=Depends(get_pipeline_dep),
+    runner=Depends(get_pipeline_runner_dep),
 ) -> EvidenceResponse:
+    if runner is not None:
+        return await runner.run(payload)
     return pipeline.run(payload)

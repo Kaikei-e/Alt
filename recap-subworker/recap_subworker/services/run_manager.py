@@ -30,6 +30,7 @@ from ..domain.models import (
     EvidenceResponse,
 )
 from ..infra.config import Settings
+from .pipeline_runner import PipelineTaskRunner
 from .pipeline import EvidencePipeline
 
 
@@ -70,12 +71,17 @@ class RunManager:
         session_factory: SessionFactory,
         dao_factory: DaoFactory = SubworkerDAO,
         pipeline: EvidencePipeline | None = None,
+        pipeline_runner: PipelineTaskRunner | None = None,
     ) -> None:
         self.settings = settings
         self._session_factory = session_factory
         self._dao_factory = dao_factory
         self._tasks: set[asyncio.Task] = set()
         self._pipeline = pipeline
+        self._pipeline_runner = pipeline_runner
+        self._background_slots = asyncio.Semaphore(settings.max_background_runs)
+        self._run_timeout = settings.run_execution_timeout_seconds
+        self._queue_warning_threshold = settings.queue_warning_threshold
 
     async def create_run(self, submission: RunSubmission) -> RunRecord:
         """Insert a new run or reuse an existing idempotent run."""
@@ -98,7 +104,9 @@ class RunManager:
                     stored_hash = existing.request_payload.get("request_hash")
                     if stored_hash and stored_hash != request_hash:
                         await session.rollback()
-                        raise IdempotencyMismatchError("request payload differs for idempotency key")
+                        raise IdempotencyMismatchError(
+                            "request payload differs for idempotency key"
+                        )
                     await session.rollback()
                     return existing
 
@@ -131,12 +139,36 @@ class RunManager:
 
     def _schedule_background(self, record: RunRecord) -> None:
         loop = asyncio.get_running_loop()
-        task = loop.create_task(self._process_run(record.run_id))
+        queue_depth = len(self._tasks) + 1
+        if queue_depth >= self._queue_warning_threshold:
+            LOGGER.warning("run.queue.backlog", queue_depth=queue_depth)
+        task = loop.create_task(self._guarded_process_run(record.run_id))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
+    async def _guarded_process_run(self, run_id: int) -> None:
+        try:
+            await self._process_run(run_id)
+        except Exception:  # pragma: no cover - logged upstream
+            LOGGER.exception("run.process.failed", run_id=run_id)
+
     async def _process_run(self, run_id: int) -> None:
-        if self._pipeline is None:
+        if self._pipeline is None and self._pipeline_runner is None:
+            LOGGER.warning("pipeline unavailable; skipping run", run_id=run_id)
+            return
+
+        async with self._background_slots:
+            try:
+                await asyncio.wait_for(self._process_run_inner(run_id), timeout=self._run_timeout)
+            except asyncio.TimeoutError:
+                await self._handle_failure(run_id, f"pipeline timed out after {self._run_timeout}s")
+                LOGGER.error("run.process.timeout", run_id=run_id, timeout_s=self._run_timeout)
+            except Exception as exc:
+                await self._handle_failure(run_id, str(exc))
+                raise
+
+    async def _process_run_inner(self, run_id: int) -> None:
+        if self._pipeline is None and self._pipeline_runner is None:
             LOGGER.warning("pipeline unavailable; skipping run", run_id=run_id)
             return
 
@@ -172,9 +204,8 @@ class RunManager:
                     status,
                 )
                 await session.commit()
-        except Exception as exc:  # pragma: no cover - logged and handled
-            await self._handle_failure(run_id, str(exc))
-            LOGGER.exception("run.process.failed", run_id=run_id)
+        except Exception:
+            raise
 
     async def get_run(self, run_id: int) -> Optional[RunRecord]:
         async with self._session_factory() as session:
@@ -184,30 +215,40 @@ class RunManager:
             return record
 
     async def _execute_pipeline(self, request: EvidenceRequest) -> EvidenceResponse:
+        if self._pipeline_runner is not None:
+            return await self._pipeline_runner.run(request)
         loop = asyncio.get_running_loop()
         assert self._pipeline is not None
         return await loop.run_in_executor(None, self._pipeline.run, request)
 
-    def _build_pipeline_request(self, record: RunRecord, payload: ClusterJobPayload) -> EvidenceRequest:
+    def _build_pipeline_request(
+        self, record: RunRecord, payload: ClusterJobPayload
+    ) -> EvidenceRequest:
         constraints = EvidenceConstraints(
             max_sentences_per_cluster=self.settings.max_sentences_per_cluster,
-            max_total_sentences=min(payload.params.max_sentences_total, self.settings.max_total_sentences),
+            max_total_sentences=min(
+                payload.params.max_sentences_total, self.settings.max_total_sentences
+            ),
             max_tokens_budget=self.settings.max_tokens_budget,
             dedup_threshold=self.settings.dedup_threshold,
             mmr_lambda=payload.params.mmr_lambda,
             hdbscan_min_cluster_size=payload.params.hdbscan_min_cluster_size
             or self.settings.default_hdbscan_min_cluster_size,
             hdbscan_min_samples=self.settings.default_hdbscan_min_samples,
-            umap_n_components=payload.params.umap_n_components or self.settings.default_umap_n_components,
+            umap_n_components=payload.params.umap_n_components
+            or self.settings.default_umap_n_components,
         )
         return EvidenceRequest(
             job_id=str(record.job_id),
             genre=record.genre,
             documents=payload.documents,
             constraints=constraints,
+            metadata=payload.metadata,
         )
 
-    def _persisted_clusters_from_response(self, response: EvidenceResponse) -> list[PersistedCluster]:
+    def _persisted_clusters_from_response(
+        self, response: EvidenceResponse
+    ) -> list[PersistedCluster]:
         persisted: list[PersistedCluster] = []
         for cluster in response.clusters:
             sentences = []
@@ -322,7 +363,9 @@ class RunManager:
             entries.append(DiagnosticEntry(metric=key, value=value))
         if diag.hdbscan is not None:
             entries.append(
-                DiagnosticEntry(metric="hdbscan_min_cluster_size", value=diag.hdbscan.min_cluster_size)
+                DiagnosticEntry(
+                    metric="hdbscan_min_cluster_size", value=diag.hdbscan.min_cluster_size
+                )
             )
             entries.append(
                 DiagnosticEntry(metric="hdbscan_min_samples", value=diag.hdbscan.min_samples)

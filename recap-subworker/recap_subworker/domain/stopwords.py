@@ -163,4 +163,3 @@ def get_stopwords() -> Set[str]:
     stopwords.update(_iterate_extra_terms())
 
     return stopwords
-

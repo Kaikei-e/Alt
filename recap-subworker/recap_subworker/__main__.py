@@ -5,8 +5,6 @@ from typing import Final
 
 import uvicorn
 
-from .app.main import create_app
-
 DEFAULT_HOST: Final[str] = "0.0.0.0"
 DEFAULT_PORT: Final[int] = 8002
 

@@ -10,14 +10,30 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Runtime configuration derived from environment variables."""
 
-    model_config = SettingsConfigDict(env_prefix="RECAP_SUBWORKER_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="RECAP_SUBWORKER_", env_file=".env", extra="ignore"
+    )
 
     db_url: str = Field(
         "postgresql+asyncpg://recap_user:recap@recap-db:5432/recap",
         description="Async SQLAlchemy connection string",
         validation_alias=AliasChoices("RECAP_DB_URL", "RECAP_SUBWORKER_DB_URL"),
     )
-    model_id: str = Field("BAAI/bge-m3", description="Primary sentence-transformer model identifier")
+    http_host: str = Field(
+        "0.0.0.0",
+        description="Bind host for the HTTP server",
+        validation_alias=AliasChoices("HOST", "RECAP_SUBWORKER_HOST"),
+    )
+    http_port: int = Field(
+        8002,
+        ge=1,
+        le=65535,
+        description="Bind port for the HTTP server",
+        validation_alias=AliasChoices("PORT", "RECAP_SUBWORKER_PORT"),
+    )
+    model_id: str = Field(
+        "BAAI/bge-m3", description="Primary sentence-transformer model identifier"
+    )
     distill_model_id: str = Field(
         "BAAI/bge-m3-distill-8l",
         description="Fallback model identifier for reduced CPU usage",
@@ -33,7 +49,9 @@ class Settings(BaseSettings):
         ge=1,
         description="Service-side guardrail for the total number of sentences per request",
     )
-    max_docs_per_genre: int = Field(5000, ge=10, description="Maximum allowed documents per request")
+    max_docs_per_genre: int = Field(
+        5000, ge=10, description="Maximum allowed documents per request"
+    )
     max_sentences_per_doc: int = Field(
         200,
         ge=10,
@@ -78,6 +96,55 @@ class Settings(BaseSettings):
         2,
         ge=1,
         description="Number of worker processes for CPU-heavy tasks",
+    )
+    pipeline_mode: Literal["inprocess", "processpool"] = Field(
+        "inprocess",
+        description="Execution strategy for recap pipeline workloads",
+    )
+    pipeline_worker_processes: int = Field(
+        2,
+        ge=1,
+        description="Number of dedicated pipeline worker processes when process pools are enabled",
+    )
+    max_background_runs: int = Field(
+        2,
+        ge=1,
+        description="Maximum concurrent pipeline runs handled inside this instance",
+    )
+    run_execution_timeout_seconds: int = Field(
+        900,
+        ge=60,
+        description="Hard timeout for a single genre run before it is aborted",
+    )
+    queue_warning_threshold: int = Field(
+        25,
+        ge=1,
+        description="Log a warning when more than this many background runs are queued",
+    )
+    gunicorn_workers: int | None = Field(
+        default=None,
+        ge=1,
+        description="Override for gunicorn worker processes; defaults to 2*CPU+1 when unset",
+    )
+    gunicorn_max_requests: int = Field(
+        400,
+        ge=50,
+        description="Number of requests a worker serves before recycling",
+    )
+    gunicorn_max_requests_jitter: int = Field(
+        50,
+        ge=0,
+        description="Jitter added to max_requests to stagger worker recycling",
+    )
+    gunicorn_worker_timeout: int = Field(
+        120,
+        ge=30,
+        description="Seconds before gunicorn kills an unresponsive worker",
+    )
+    gunicorn_graceful_timeout: int = Field(
+        30,
+        ge=5,
+        description="Grace period for gracefully shutting down workers",
     )
     random_seed: int = Field(42, description="Random seed for stochastic components")
     otel_exporter_otlp_endpoint: str | None = Field(

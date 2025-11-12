@@ -6,12 +6,14 @@ import math
 import re
 import time
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Optional, Sequence
 
 import numpy as np
 import structlog
 
 from ..domain.models import (
+    CorpusClassifierStats,
+    CorpusMetadata,
     EvidenceBudget,
     EvidenceCluster,
     EvidenceRequest,
@@ -40,6 +42,7 @@ from .embedder import Embedder
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?。！？])\s+")
 _LOGGER = structlog.get_logger(__name__)
+_MIN_DOCUMENTS_PER_GENRE = 10
 
 
 @dataclass
@@ -101,9 +104,12 @@ class EvidencePipeline:
             embedding_ms=response.diagnostics.embedding_ms,
         )
 
-        keep_indices, removed = selectors.prune_duplicates(
-            embeddings, threshold=request.constraints.dedup_threshold
+        classifier_stats = request.metadata.classifier if request.metadata else None
+
+        dedup_threshold = self._adjust_dedup_threshold(
+            request.constraints.dedup_threshold, request.metadata
         )
+        keep_indices, removed = selectors.prune_duplicates(embeddings, threshold=dedup_threshold)
         DEDUP_REMOVED.inc(removed)
         sentences = [sentences[idx] for idx in keep_indices]
         embeddings = embeddings[keep_indices]
@@ -111,13 +117,17 @@ class EvidencePipeline:
             "pipeline.dedup.complete",
             kept=len(sentences),
             removed=removed,
+            threshold=dedup_threshold,
         )
 
         if not sentences:
             logger.warning("pipeline.exhausted-after-dedup")
             return response
 
-        cluster_params = self._compute_cluster_params(len(sentences), request.constraints)
+        classifier_stats = request.metadata.classifier if request.metadata else None
+        cluster_params = self._compute_cluster_params(
+            len(sentences), request.constraints, classifier_stats
+        )
         logger.info(
             "pipeline.cluster.start",
             sentence_count=len(sentences),
@@ -187,13 +197,33 @@ class EvidencePipeline:
         examples = list(samples or ["Warmup sentence."])
         batches = math.ceil(len(examples) / max(1, self.settings.batch_size))
         processed = self.embedder.warmup(examples)
-        return WarmupResponse(warmed=processed > 0, batches=batches, backend=self.embedder.config.backend)
+        return WarmupResponse(
+            warmed=processed > 0, batches=batches, backend=self.embedder.config.backend
+        )
 
     def _extract_sentences(self, request: EvidenceRequest) -> list[SentenceRecord]:
         sentences: list[SentenceRecord] = []
         tokens_budget = request.constraints.max_tokens_budget
         accumulated_tokens = 0
+        total_documents = len(request.documents)
+        classifier_stats = request.metadata.classifier if request.metadata else None
+        allow_low_confidence_filter = bool(
+            classifier_stats and classifier_stats.coverage_ratio >= 0.5
+        )
+        filter_low_confidence = (
+            allow_low_confidence_filter and total_documents > _MIN_DOCUMENTS_PER_GENRE
+        )
+        skipped_low_confidence = 0
         for document in request.documents:
+            confidence = getattr(document, "confidence", None)
+            if (
+                filter_low_confidence
+                and confidence is not None
+                and confidence < 0.3
+                and (total_documents - (skipped_low_confidence + 1)) >= _MIN_DOCUMENTS_PER_GENRE
+            ):
+                skipped_low_confidence += 1
+                continue
             sentence_counter = 0
             for paragraph_idx, paragraph in enumerate(document.paragraphs):
                 for sentence in self._split_paragraph(paragraph):
@@ -219,6 +249,11 @@ class EvidencePipeline:
                     accumulated_tokens += estimate
                 if sentence_counter >= self.settings.max_sentences_per_doc:
                     break
+        if skipped_low_confidence:
+            _LOGGER.debug(
+                "pipeline.documents.skipped_low_confidence",
+                skipped=skipped_low_confidence,
+            )
         return sentences
 
     def _split_paragraph(self, paragraph: str) -> list[str]:
@@ -228,17 +263,32 @@ class EvidencePipeline:
         if "\n" in stripped:
             sentences = [part.strip() for part in stripped.splitlines() if part.strip()]
         else:
-            sentences = [part.strip() for part in _SENTENCE_SPLIT_RE.split(stripped) if part.strip()]
+            sentences = [
+                part.strip() for part in _SENTENCE_SPLIT_RE.split(stripped) if part.strip()
+            ]
         return sentences or [stripped]
 
     def _estimate_tokens(self, sentence: str) -> int:
         return max(1, math.ceil(len(sentence) / 4))
 
-    def _compute_cluster_params(self, sentence_count: int, constraints) -> tuple[int, int]:
+    def _compute_cluster_params(
+        self,
+        sentence_count: int,
+        constraints,
+        classifier_stats: Optional[CorpusClassifierStats] = None,
+    ) -> tuple[int, int]:
         base = max(2, sentence_count // 20)
         min_cluster_size = constraints.hdbscan_min_cluster_size or base
         min_cluster_size = max(2, min_cluster_size)
         min_samples = constraints.hdbscan_min_samples or max(1, min_cluster_size // 2)
+        if classifier_stats:
+            if classifier_stats.avg_confidence < 0.35:
+                inferred = max(2, sentence_count // 12)
+                min_cluster_size = max(min_cluster_size, inferred)
+                min_samples = max(1, min_cluster_size // 2)
+            elif classifier_stats.avg_confidence > 0.75 and classifier_stats.coverage_ratio > 0.6:
+                min_cluster_size = max(2, int(float(min_cluster_size) * 0.75))
+                min_samples = max(1, min_samples - 1)
         return min_cluster_size, min_samples
 
     def _group_clusters(self, labels: np.ndarray) -> tuple[list[int], list[list[int]]]:
@@ -253,7 +303,9 @@ class EvidencePipeline:
         if not corpora:
             return []
         if self.process_pool:
-            future = self.process_pool.submit(topics.extract_topics, corpora, 5, bm25_weighting=True)
+            future = self.process_pool.submit(
+                topics.extract_topics, corpora, 5, bm25_weighting=True
+            )
             return future.result()
         return topics.extract_topics(corpora, bm25_weighting=True)
 
@@ -316,3 +368,17 @@ class EvidencePipeline:
                 )
             )
         return clusters, budget_tokens
+
+    def _adjust_dedup_threshold(
+        self,
+        base_threshold: float,
+        metadata: Optional[CorpusMetadata],
+    ) -> float:
+        threshold = base_threshold
+        if metadata and metadata.classifier:
+            stats = metadata.classifier
+            if stats.avg_confidence < 0.35:
+                threshold = min(0.97, threshold + 0.03)
+            elif stats.avg_confidence > 0.75 and stats.coverage_ratio > 0.6:
+                threshold = max(0.82, threshold - 0.04)
+        return float(min(max(threshold, 0.0), 0.99))

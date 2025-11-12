@@ -17,7 +17,9 @@ def sliding_batches(items: Sequence[T], batch_size: int) -> Iterator[Sequence[T]
         yield items[index : index + batch_size]
 
 
-def adaptive_batches(items: Sequence[T], estimate_tokens: Iterable[int], budget: int) -> Iterator[list[T]]:
+def adaptive_batches(
+    items: Sequence[T], estimate_tokens: Iterable[int], budget: int
+) -> Iterator[list[T]]:
     """Yield batches where the sum of estimated tokens stays under *budget*."""
 
     current: list[T] = []

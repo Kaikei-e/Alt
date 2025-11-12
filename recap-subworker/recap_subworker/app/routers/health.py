@@ -18,4 +18,6 @@ async def health(
     settings: Settings = Depends(get_settings_dep),
     embedder: Embedder = Depends(get_embedder_dep),
 ) -> HealthResponse:
-    return HealthResponse(status="ok", model_id=embedder.config.model_id, backend=embedder.config.backend)
+    return HealthResponse(
+        status="ok", model_id=embedder.config.model_id, backend=embedder.config.backend
+    )

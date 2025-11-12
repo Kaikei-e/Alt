@@ -10,6 +10,7 @@ from ..infra.config import Settings
 # Module-level singleton to avoid lru_cache issues with unhashable Settings
 _instrumentator: Instrumentator | None = None
 
+
 def get_instrumentator(settings: Settings) -> Instrumentator:
     """Create or return the shared Instrumentator instance."""
     global _instrumentator

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from uuid import uuid4
 
 import pytest
@@ -14,6 +15,7 @@ from recap_subworker.domain.models import (
     Diagnostics,
     EvidenceBudget,
     EvidenceCluster,
+    EvidenceRequest,
     EvidenceResponse,
     RepresentativeSentence,
     RepresentativeSource,
@@ -89,6 +91,22 @@ class FakeDAO:
         self.failure_status = (run_id, status, error_message)
 
 
+class PipelineRunnerStub:
+    def __init__(self, response, delay: float = 0.0):
+        self.response = response
+        self.delay = delay
+        self.called_with: list[EvidenceRequest] = []
+
+    async def run(self, request):
+        self.called_with.append(request)
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        return self.response
+
+    async def warmup(self):  # pragma: no cover - not used in tests
+        return None
+
+
 @pytest.fixture
 def payload() -> ClusterJobPayload:
     params = ClusterJobParams(max_sentences_total=2000, umap_n_components=25, hdbscan_min_cluster_size=5, mmr_lambda=0.35)
@@ -99,14 +117,21 @@ def payload() -> ClusterJobPayload:
     return ClusterJobPayload(params=params, documents=docs)
 
 
-def make_manager(dao: FakeDAO, session: FakeSession) -> RunManager:
+def make_manager(
+    dao: FakeDAO,
+    session: FakeSession,
+    *,
+    settings: Settings | None = None,
+    pipeline=None,
+    pipeline_runner=None,
+) -> RunManager:
     def session_factory():
         return DummySessionContext(session)
 
     def dao_factory(session):
         return dao
 
-    return RunManager(Settings(), session_factory, dao_factory)
+    return RunManager(settings or Settings(), session_factory, dao_factory, pipeline=pipeline, pipeline_runner=pipeline_runner)
 
 
 @pytest.mark.asyncio
@@ -273,3 +298,73 @@ async def test_process_run_persists_clusters(payload):
     assert dao.persisted_clusters is not None
     assert dao.success_status == (1, 1, "succeeded")
     assert dao.diagnostic_entries is not None
+
+
+@pytest.mark.asyncio
+async def test_process_run_uses_pipeline_runner(payload):
+    session = FakeSession()
+    dao = FakeDAO(session)
+    job_id = uuid4()
+    record = RunRecord(
+        run_id=9,
+        job_id=job_id,
+        genre="tech",
+        status="running",
+        cluster_count=0,
+        request_payload={"payload": payload.model_dump(mode="json")},
+        response_payload=None,
+        error_message=None,
+    )
+    dao.fetched_record = record
+
+    pipeline_response = EvidenceResponse(
+        job_id="job",
+        genre="tech",
+        clusters=[],
+        evidence_budget=EvidenceBudget(sentences=0, tokens_estimated=0),
+        diagnostics=Diagnostics(),
+    )
+    runner = PipelineRunnerStub(pipeline_response)
+    settings = Settings(max_background_runs=1, pipeline_mode="processpool")
+    manager = make_manager(dao, session, settings=settings, pipeline_runner=runner)
+
+    await manager._process_run(9)
+
+    assert runner.called_with
+    assert dao.success_status == (9, 0, "succeeded")
+
+
+@pytest.mark.asyncio
+async def test_process_run_times_out(payload):
+    session = FakeSession()
+    dao = FakeDAO(session)
+    job_id = uuid4()
+    record = RunRecord(
+        run_id=11,
+        job_id=job_id,
+        genre="ai",
+        status="running",
+        cluster_count=0,
+        request_payload={"payload": payload.model_dump(mode="json")},
+        response_payload=None,
+        error_message=None,
+    )
+    dao.fetched_record = record
+
+    pipeline_response = EvidenceResponse(
+        job_id="job",
+        genre="ai",
+        clusters=[],
+        evidence_budget=EvidenceBudget(sentences=0, tokens_estimated=0),
+        diagnostics=Diagnostics(),
+    )
+    runner = PipelineRunnerStub(pipeline_response, delay=0.05)
+    settings = Settings(max_background_runs=1, pipeline_mode="processpool")
+    manager = make_manager(dao, session, settings=settings, pipeline_runner=runner)
+    manager._run_timeout = 0.01
+
+    await manager._process_run(11)
+
+    assert dao.failure_status is not None
+    assert dao.failure_status[0] == 11
+    assert "timed out" in dao.failure_status[2]

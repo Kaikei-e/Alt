@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import hdbscan
 import numpy as np
@@ -41,9 +40,14 @@ class Clusterer:
     ) -> ClusterResult:
         if embeddings.size == 0:
             empty = np.empty((0,), dtype=int)
-            return ClusterResult(empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0))
+            return ClusterResult(
+                empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0)
+            )
 
-        use_umap = bool(self.settings.enable_umap_auto and embeddings.shape[0] >= self.settings.umap_threshold_sentences)
+        use_umap = bool(
+            self.settings.enable_umap_auto
+            and embeddings.shape[0] >= self.settings.umap_threshold_sentences
+        )
         reduced = embeddings
         if use_umap:
             from umap import UMAP  # lazy import
