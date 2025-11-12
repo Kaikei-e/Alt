@@ -2,7 +2,7 @@
 ///
 /// 日本語要約生成のレスポンススキーマを定義します。
 use once_cell::sync::Lazy;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 /// News-Creator summary responseのJSON Schema。
 pub(crate) static SUMMARY_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
@@ -114,7 +114,7 @@ pub(crate) static SUMMARY_REQUEST_SCHEMA: Lazy<Value> = Lazy::new(|| {
                     "$ref": "#/$defs/cluster_input"
                 },
                 "minItems": 1,
-                "maxItems": 20
+                "maxItems": 100
             },
             "options": {
                 "type": "object",
@@ -266,9 +266,9 @@ mod tests {
     }
 
     #[test]
-    fn schema_validates_cluster_limits() {
+    fn schema_accepts_max_clusters() {
         let mut clusters = Vec::new();
-        for i in 0..25 {
+        for i in 0..100 {
             clusters.push(json!({
                 "cluster_id": i,
                 "representative_sentences": ["Sentence."]
@@ -278,7 +278,27 @@ mod tests {
         let request = json!({
             "job_id": "550e8400-e29b-41d4-a716-446655440000",
             "genre": "ai",
-            "clusters": clusters // 25 clusters, but maxItems is 20
+            "clusters": clusters // 100 clusters, maxItems is 100
+        });
+
+        let result = validate_json(&SUMMARY_REQUEST_SCHEMA, &request);
+        assert!(result.valid, "Errors: {:?}", result.errors);
+    }
+
+    #[test]
+    fn schema_validates_cluster_limits() {
+        let mut clusters = Vec::new();
+        for i in 0..101 {
+            clusters.push(json!({
+                "cluster_id": i,
+                "representative_sentences": ["Sentence."]
+            }));
+        }
+
+        let request = json!({
+            "job_id": "550e8400-e29b-41d4-a716-446655440000",
+            "genre": "ai",
+            "clusters": clusters // 101 clusters, but maxItems is 100
         });
 
         let result = validate_json(&SUMMARY_REQUEST_SCHEMA, &request);
