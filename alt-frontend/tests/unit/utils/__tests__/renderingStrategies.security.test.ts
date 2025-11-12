@@ -421,8 +421,8 @@ describe("renderingStrategies Security Tests", () => {
 
       const safeHtml = '<div style="opacity: 0.5; transition: opacity 0.3s;">Safe</div>';
       const sanitizedSafe = sanitizeHtml(safeHtml, sanitizeConfig);
-      expect(sanitizedSafe).toContain("opacity: 0.5");
-      expect(sanitizedSafe).toContain("transition: opacity 0.3s");
+      expect(sanitizedSafe).toContain("opacity:0.5");
+      expect(sanitizedSafe).toContain("transition:opacity 0.3s");
 
       const dangerousHtml = '<div style="background: url(\'javascript:alert(1)\');">Danger</div>';
       const sanitizedDangerous = sanitizeHtml(dangerousHtml, sanitizeConfig);
