@@ -12,10 +12,10 @@ with-sudachi = []
 [dependencies]
 anyhow = "1.0"
 async-trait = "0.1"
-axum = { version = "0.8.6", features = ["macros", "json", "tokio"] }
+axum = { version = "0.8", features = ["macros", "json", "tokio"] }
 metrics = "0.23"
 metrics-exporter-prometheus = "0.15"
-once_cell = "1.20"
+once_cell = "1.21"
 reqwest = { version = "0.12", default-features = false, features = [
   "json",
   "gzip",
@@ -25,7 +25,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
-tokio = { version = "1.43", features = [
+tokio = { version = "1.48", features = [
   "rt-multi-thread",
   "macros",
   "signal",
@@ -54,7 +54,7 @@ unicode-normalization = "0.1"
 unicode-segmentation = "1.12"
 whatlang = { version = "0.16", default-features = false }
 lindera = { version = "0.21", features = ["ipadic"] }
-ammonia = "4.0"
+ammonia = "4.1"
 html2text = "0.13"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 sqlx = { version = "0.8", default-features = false, features = [
@@ -67,12 +67,12 @@ sqlx = { version = "0.8", default-features = false, features = [
 jsonschema = "0.26"
 rand = "0.8"
 md5 = "0.7"
-num_cpus = "1.16"
+num_cpus = "1.17"
 prometheus = "0.13"
 rayon = "1.11"
 rustc-hash = "1.1"
-smallvec = "1.13"
-regex = "1.11"
+smallvec = "1.15"
+regex = "1.12"
 aho-corasick = "1.1"
 fst = "0.4"
 
@@ -86,7 +86,7 @@ hyper-util = { version = "0.1", features = [
   "server",
 ] }
 rstest = "0.22"
-tokio = { version = "1.43", features = ["rt", "macros"] }
+tokio = { version = "1.48", features = ["rt", "macros"] }
 wiremock = "0.6"
 criterion = { version = "0.5", features = ["html_reports"] }
 testcontainers = "0.16"
