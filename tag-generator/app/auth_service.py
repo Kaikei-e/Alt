@@ -77,7 +77,10 @@ except ModuleNotFoundError:
         return decorator
 
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Request
+from typing import Annotated
+
+from tag_fetcher import fetch_tags_by_article_ids
 
 logger = structlog.get_logger(__name__)
 
@@ -321,6 +324,64 @@ async def get_user_preferences(user_context: UserContext) -> dict[str, Any]:
         "tenant_id": user_context.tenant_id,
         "preferences": preferences,
     }
+
+
+def verify_service_token(request: Request) -> None:
+    """Verify X-Service-Token header for service-to-service authentication."""
+    service_token = request.headers.get("X-Service-Token")
+    expected_token = os.getenv("SERVICE_SECRET", "")
+
+    if not expected_token:
+        logger.warning("SERVICE_SECRET not configured, rejecting service token authentication")
+        raise HTTPException(status_code=500, detail="Service authentication not configured")
+
+    if not service_token:
+        logger.warning("Missing X-Service-Token header")
+        raise HTTPException(status_code=401, detail="Missing X-Service-Token header")
+
+    if service_token != expected_token:
+        logger.warning("Invalid service token provided")
+        raise HTTPException(status_code=403, detail="Invalid service token")
+
+
+@app.post("/api/v1/tags/batch")
+async def fetch_tags_batch(
+    request: Request,
+    article_ids: Annotated[list[str], None] = None,
+) -> dict[str, Any]:
+    """
+    Batch fetch tags for multiple articles by their IDs.
+    Service-to-service endpoint (requires X-Service-Token header).
+    """
+    # Verify service token
+    verify_service_token(request)
+
+    # Get article_ids from request body
+    try:
+        body = await request.json()
+        article_ids = body.get("article_ids", [])
+    except Exception as e:
+        logger.error("Failed to parse request body", error=str(e))
+        raise HTTPException(status_code=400, detail="Invalid request body") from e
+
+    if not article_ids or not isinstance(article_ids, list):
+        raise HTTPException(status_code=400, detail="article_ids must be a non-empty list")
+
+    if len(article_ids) > 1000:
+        raise HTTPException(status_code=400, detail="Too many article_ids (max 1000)")
+
+    try:
+        logger.info("Fetching tags in batch", article_count=len(article_ids))
+        tags_by_article = fetch_tags_by_article_ids(article_ids)
+
+        return {
+            "success": True,
+            "tags": tags_by_article,
+        }
+
+    except Exception as e:
+        logger.error("Batch tag fetch failed", error=str(e), article_count=len(article_ids))
+        raise HTTPException(status_code=500, detail=f"Failed to fetch tags: {str(e)}") from e
 
 
 if __name__ == "__main__":
