@@ -375,6 +375,8 @@ services:
       - SUBWORKER_BASE_URL=http://recap-subworker:8002
       - ALT_BACKEND_BASE_URL=${ALT_BACKEND_BASE_URL}
       - ALT_BACKEND_SERVICE_TOKEN=${ALT_BACKEND_SERVICE_TOKEN}
+      - TAG_LABEL_GRAPH_WINDOW=${TAG_LABEL_GRAPH_WINDOW}
+      - TAG_LABEL_GRAPH_TTL_SECONDS=${TAG_LABEL_GRAPH_TTL_SECONDS}
     depends_on:
       recap-db:
         condition: service_healthy
