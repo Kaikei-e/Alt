@@ -53,4 +53,5 @@ print('✅ SBERT model cached')
 PY
 
 COPY app/ .
-CMD ["python", "main.py"]
+# Run FastAPI app for API endpoints (batch processing can run separately if needed)
+CMD ["python", "auth_service.py"]

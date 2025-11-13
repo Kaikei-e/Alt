@@ -79,6 +79,7 @@ except ModuleNotFoundError:
 
 from fastapi import FastAPI, HTTPException, Header, Request
 from typing import Annotated
+from pydantic import BaseModel
 
 from tag_fetcher import fetch_tags_by_article_ids
 
@@ -344,10 +345,15 @@ def verify_service_token(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Invalid service token")
 
 
+class BatchTagsRequest(BaseModel):
+    """Request model for batch tag fetching."""
+    article_ids: list[str]
+
+
 @app.post("/api/v1/tags/batch")
 async def fetch_tags_batch(
     request: Request,
-    article_ids: Annotated[list[str], None] = None,
+    body: BatchTagsRequest,
 ) -> dict[str, Any]:
     """
     Batch fetch tags for multiple articles by their IDs.
@@ -356,15 +362,9 @@ async def fetch_tags_batch(
     # Verify service token
     verify_service_token(request)
 
-    # Get article_ids from request body
-    try:
-        body = await request.json()
-        article_ids = body.get("article_ids", [])
-    except Exception as e:
-        logger.error("Failed to parse request body", error=str(e))
-        raise HTTPException(status_code=400, detail="Invalid request body") from e
+    article_ids = body.article_ids
 
-    if not article_ids or not isinstance(article_ids, list):
+    if not article_ids:
         raise HTTPException(status_code=400, detail="article_ids must be a non-empty list")
 
     if len(article_ids) > 1000:
@@ -387,4 +387,5 @@ async def fetch_tags_batch(
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", "9400"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
