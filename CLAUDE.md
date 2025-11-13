@@ -8,6 +8,8 @@ Alt now runs primarily on Docker Compose using the root `compose.yaml`. Kubernet
 
 Alt is an AI-augmented RSS knowledge platform composed of multiple services:
 
+Before drilling into any microservice directory, open the matching `./docs/<service>.md` snapshot—those files stay closest to current contracts, dependencies, and test surfaces, so the service-level `CLAUDE.md` files can focus on process guardrails.
+
 - **Frontend**: `alt-frontend` (Next.js 15 App Router, React 19, TypeScript 5.9)
 - **Backend & APIs**: `alt-backend` (Go 1.24, Clean Architecture)
 - **Processing & AI**: `pre-processor`, `tag-generator` (Python 3.13), `news-creator` (Ollama runtime)
@@ -92,6 +94,8 @@ Most Go services follow `REST` → `Usecase` → `Port` → `Gateway` → `Drive
 Run only the suites relevant to your changes plus any dependent smoke tests.
 
 ## Service-Level Documentation
+
+Always start with the snapshot under `./docs/<service>.md` before referencing a microservice directory; those files capture the latest contract, dependencies, and testing surface so you enter each service-specific `CLAUDE.md` with the freshest context.
 
 Each service maintains its own `CLAUDE.md` (process/architecture guardrails) and a companion `docs/*.md` snapshot that describes the current implementation state:
 
