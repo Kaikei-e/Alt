@@ -198,7 +198,8 @@ impl NewsCreatorClient {
         }
     }
 
-    /// ジャンルタイブレーク用のLLM推論を実行する。
+    /// ジャンルタイブレーク用のLLM推論を実行する（後方互換性のため保持）。
+    #[allow(dead_code)]
     pub(crate) async fn tie_break_genre(
         &self,
         request: &GenreTieBreakRequest,
@@ -241,7 +242,8 @@ impl NewsCreatorClient {
     }
 }
 
-/// LLMタイブレークに渡す候補。
+/// LLMタイブレークに渡す候補（後方互換性のため保持）。
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct GenreTieBreakCandidate {
     pub(crate) name: String,
@@ -250,7 +252,8 @@ pub(crate) struct GenreTieBreakCandidate {
     pub(crate) classifier_confidence: f32,
 }
 
-/// LLMタイブレークリクエスト。
+/// LLMタイブレークリクエスト（後方互換性のため保持）。
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct GenreTieBreakRequest {
     pub(crate) job_id: Uuid,
@@ -262,7 +265,8 @@ pub(crate) struct GenreTieBreakRequest {
     pub(crate) tags: Vec<TagSignalPayload>,
 }
 
-/// LLMに渡すタグ要約。
+/// LLMに渡すタグ要約（後方互換性のため保持）。
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct TagSignalPayload {
     pub(crate) label: String,
@@ -271,7 +275,8 @@ pub(crate) struct TagSignalPayload {
     pub(crate) source: Option<String>,
 }
 
-/// LLMタイブレーク応答。
+/// LLMタイブレーク応答（後方互換性のため保持）。
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct GenreTieBreakResponse {
     pub(crate) genre: String,

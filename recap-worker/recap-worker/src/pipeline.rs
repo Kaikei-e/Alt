@@ -30,7 +30,7 @@ use dispatch::{DispatchStage, MlLlmDispatchStage};
 use fetch::{AltBackendFetchStage, FetchStage};
 use genre::{CoarseGenreStage, GenreStage, RefineRollout, TwoStageGenreStage};
 use genre_refine::{
-    DbTagLabelGraphSource, DefaultRefineEngine, NewsCreatorLlmTieBreaker, RefineConfig,
+    DbTagLabelGraphSource, DefaultRefineEngine, RefineConfig,
     TagLabelGraphSource,
 };
 use persist::PersistStage;
@@ -103,7 +103,6 @@ impl PipelineOrchestrator {
         let rollout = RefineRollout::new(config.genre_refine_rollout_pct());
         let genre_stage: Arc<dyn GenreStage> = if config.genre_refine_enabled() {
             let refine_config = RefineConfig::new(config.genre_refine_require_tags());
-            let llm = Arc::new(NewsCreatorLlmTieBreaker::new(Arc::clone(&news_creator)));
             let graph_loader = Arc::new(DbTagLabelGraphSource::new(
                 Arc::clone(&recap_dao),
                 config.tag_label_graph_window().to_string(),
@@ -115,7 +114,7 @@ impl PipelineOrchestrator {
                 .context("failed to preload tag label graph cache")?;
             let graph_source: Arc<dyn TagLabelGraphSource> = graph_loader;
             let refine_engine =
-                Arc::new(DefaultRefineEngine::new(refine_config, graph_source, llm));
+                Arc::new(DefaultRefineEngine::new(refine_config, graph_source));
             Arc::new(TwoStageGenreStage::new(
                 Arc::clone(&coarse_stage),
                 refine_engine,

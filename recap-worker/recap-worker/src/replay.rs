@@ -60,7 +60,6 @@ pub async fn replay_genre_pipeline(config: ReplayConfig) -> Result<()> {
     let refine_engine = Arc::new(DefaultRefineEngine::new(
         RefineConfig::new(config.require_tags),
         graph_source,
-        Arc::new(ReplayGreedyLlm::default()),
     ));
 
     let file = File::open(&config.dataset)
@@ -216,6 +215,7 @@ fn strategy_label(strategy: RefineStrategy) -> String {
     match strategy {
         RefineStrategy::TagConsistency => "tag_consistency",
         RefineStrategy::GraphBoost => "graph_boost",
+        RefineStrategy::WeightedScore => "weighted_score",
         RefineStrategy::LlmTieBreak => "llm_tie_break",
         RefineStrategy::FallbackOther => "fallback_other",
         RefineStrategy::CoarseOnly => "coarse_only",
@@ -277,6 +277,7 @@ struct ReplayRecord {
     graph_context: Option<Vec<GraphEdgeRecord>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 struct ReplayGreedyLlm;
 

@@ -119,6 +119,7 @@ impl TagLabelGraphSource for StaticEvaluationGraph {
 }
 
 /// Lightweight LLM stub that deterministically picks the highest-scoring candidate.
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 struct GreedyEvaluationLlm;
 
@@ -264,10 +265,7 @@ pub async fn evaluate_two_stage(
         config.tag_confidence_gate = value;
     }
     if let Some(value) = settings.llm_tie_break_margin {
-        config.llm_tie_break_margin = value;
-    }
-    if let Some(value) = settings.llm_min_confidence {
-        config.llm_min_confidence = value;
+        config.weighted_tie_break_margin = value;
     }
 
     let tag_gate = config.tag_confidence_gate;
@@ -276,7 +274,6 @@ pub async fn evaluate_two_stage(
     let engine = Arc::new(DefaultRefineEngine::new(
         config,
         graph_source,
-        Arc::new(GreedyEvaluationLlm::default()),
     ));
 
     let mut coarse_calc = MetricsCalculator::new();

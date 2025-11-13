@@ -86,6 +86,7 @@ impl TagFallbackMode {
 #[derive(Debug)]
 pub(crate) struct RefineInput<'a> {
     pub(crate) job: &'a JobContext,
+    #[allow(dead_code)]
     pub(crate) article: &'a DeduplicatedArticle,
     pub(crate) candidates: &'a [GenreCandidate],
     pub(crate) tag_profile: &'a TagProfile,
@@ -97,7 +98,9 @@ pub(crate) struct RefineInput<'a> {
 pub(crate) enum RefineStrategy {
     TagConsistency,
     GraphBoost,
-    LlmTieBreak,
+    WeightedScore,
+    #[allow(dead_code)]
+    LlmTieBreak, // 後方互換性のため保持
     FallbackOther,
     CoarseOnly,
 }
@@ -136,7 +139,8 @@ impl RefineOutcome {
     }
 }
 
-/// LLMタイブレーク用応答。
+/// LLMタイブレーク用応答（後方互換性のため保持）。
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LlmDecision {
     pub(crate) genre: String,
@@ -144,6 +148,7 @@ pub(crate) struct LlmDecision {
     pub(crate) trace_id: Option<String>,
 }
 
+#[allow(dead_code)]
 impl LlmDecision {
     #[must_use]
     pub(crate) fn new(genre: impl Into<String>, confidence: f32, trace_id: Option<String>) -> Self {
@@ -155,7 +160,8 @@ impl LlmDecision {
     }
 }
 
-/// LLM呼び出し用インタフェース。
+/// LLM呼び出し用インタフェース（後方互換性のため保持）。
+#[allow(dead_code)]
 #[async_trait]
 pub(crate) trait LlmTieBreaker: Send + Sync {
     async fn tie_break(
@@ -167,18 +173,21 @@ pub(crate) trait LlmTieBreaker: Send + Sync {
     ) -> Result<LlmDecision>;
 }
 
-/// HTTP経由でNews Creator LLMを呼び出す実装。
+/// HTTP経由でNews Creator LLMを呼び出す実装（後方互換性のため保持）。
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct NewsCreatorLlmTieBreaker {
     client: Arc<NewsCreatorClient>,
 }
 
+#[allow(dead_code)]
 impl NewsCreatorLlmTieBreaker {
     pub(crate) fn new(client: Arc<NewsCreatorClient>) -> Self {
         Self { client }
     }
 }
 
+#[allow(dead_code)]
 #[async_trait]
 impl LlmTieBreaker for NewsCreatorLlmTieBreaker {
     async fn tie_break(
@@ -393,8 +402,7 @@ pub(crate) struct RefineConfig {
     pub(crate) require_tags: bool,
     pub(crate) tag_confidence_gate: f32,
     pub(crate) graph_margin: f32,
-    pub(crate) llm_tie_break_margin: f32,
-    pub(crate) llm_min_confidence: f32,
+    pub(crate) weighted_tie_break_margin: f32,
     pub(crate) fallback_genre: String,
 }
 
@@ -405,8 +413,7 @@ impl RefineConfig {
             require_tags,
             tag_confidence_gate: 0.6,
             graph_margin: 0.15,
-            llm_tie_break_margin: 0.1,
-            llm_min_confidence: 0.65,
+            weighted_tie_break_margin: 0.05,
             fallback_genre: "other".to_string(),
         }
     }
@@ -422,16 +429,14 @@ pub(crate) trait RefineEngine: Send + Sync {
 pub(crate) struct DefaultRefineEngine {
     config: RefineConfig,
     graph: Arc<dyn TagLabelGraphSource>,
-    llm: Arc<dyn LlmTieBreaker>,
 }
 
 impl DefaultRefineEngine {
     pub(crate) fn new(
         config: RefineConfig,
         graph: Arc<dyn TagLabelGraphSource>,
-        llm: Arc<dyn LlmTieBreaker>,
     ) -> Self {
-        Self { config, graph, llm }
+        Self { config, graph }
     }
 }
 
@@ -560,35 +565,46 @@ impl RefineEngine for DefaultRefineEngine {
                 ));
             }
 
-            if margin.abs() < self.config.llm_tie_break_margin {
-                let decision = self
-                    .llm
-                    .tie_break(
-                        input.job,
-                        input.article,
-                        input.candidates,
-                        input.tag_profile,
-                    )
-                    .await
-                    .context("llm tie-break failed")?;
+            // マージンが小さい場合、重み付きスコアリングでタイブレーク
+            if margin.abs() < self.config.weighted_tie_break_margin {
+                let mut weighted_scores: Vec<(&GenreCandidate, f32)> = input
+                    .candidates
+                    .iter()
+                    .map(|candidate| {
+                        let normalized = normalize(&candidate.name);
+                        let boost = graph_boosts
+                            .get(&normalized)
+                            .copied()
+                            .unwrap_or_default();
+                        let tag_consistency = tag_consistency_score(
+                            &self.config,
+                            &candidate.name,
+                            &input.tag_profile.top_tags,
+                        );
+                        let weighted_score = compute_weighted_tie_break_score(
+                            &self.config,
+                            candidate,
+                            boost,
+                            tag_consistency,
+                        );
+                        (candidate, weighted_score)
+                    })
+                    .collect();
 
-                if decision.confidence >= self.config.llm_min_confidence {
+                weighted_scores.sort_by(|a, b| {
+                    b.1.partial_cmp(&a.1)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+
+                if let Some((winner, score)) = weighted_scores.first() {
                     return Ok(RefineOutcome::new(
-                        decision.genre.clone(),
-                        decision.confidence.clamp(0.0, 1.0),
-                        RefineStrategy::LlmTieBreak,
-                        decision.trace_id.clone(),
+                        winner.name.clone(),
+                        score.clamp(0.0, 1.0),
+                        RefineStrategy::WeightedScore,
+                        None,
                         graph_boosts_to_owned(&graph_boosts),
                     ));
                 }
-
-                return Ok(RefineOutcome::new(
-                    self.config.fallback_genre.clone(),
-                    decision.confidence.clamp(0.0, 1.0),
-                    RefineStrategy::FallbackOther,
-                    decision.trace_id.clone(),
-                    graph_boosts_to_owned(&graph_boosts),
-                ));
             }
         }
 
@@ -609,6 +625,7 @@ fn graph_boosts_to_owned(boosts: &FxHashMap<String, f32>) -> HashMap<String, f32
         .collect::<HashMap<_, _>>()
 }
 
+#[allow(dead_code)]
 fn build_body_preview(article: &DeduplicatedArticle) -> Option<String> {
     if article.sentences.is_empty() {
         return None;
@@ -717,6 +734,70 @@ fn tag_consistency_winner(
     None
 }
 
+/// タグ一貫性スコアを計算する（強化版）。
+/// タグの信頼度、出現頻度、ジャンル名との部分一致も考慮する。
+fn tag_consistency_score(
+    config: &RefineConfig,
+    candidate_name: &str,
+    tags: &[TagSignal],
+) -> f32 {
+    let normalized_candidate = normalize(candidate_name);
+    let mut score = 0.0;
+    let mut match_count = 0;
+
+    for tag in tags {
+        if tag.confidence < config.tag_confidence_gate {
+            continue;
+        }
+        let normalized_tag = normalize(&tag.label);
+
+        // 完全一致
+        if normalized_tag == normalized_candidate {
+            score += tag.confidence;
+            match_count += 1;
+        }
+        // 部分一致（タグがジャンル名を含む、またはジャンル名がタグを含む）
+        else if normalized_tag.contains(&normalized_candidate)
+            || normalized_candidate.contains(&normalized_tag)
+        {
+            score += tag.confidence * 0.5;
+            match_count += 1;
+        }
+    }
+
+    // 複数のタグが一致する場合、信頼度の合計を返す（最大1.0にクランプ）
+    if match_count > 0 {
+        score.min(1.0)
+    } else {
+        0.0
+    }
+}
+
+/// 重み付きスコアリングでタイブレークを決定する。
+/// 各候補に対して以下の要素を重み付きで評価：
+/// - keyword_support (重み: 0.25)
+/// - classifier_confidence (重み: 0.30)
+/// - graph_boost (重み: 0.25)
+/// - tag_consistency_score (重み: 0.20)
+fn compute_weighted_tie_break_score(
+    _config: &RefineConfig,
+    candidate: &GenreCandidate,
+    graph_boost: f32,
+    tag_consistency: f32,
+) -> f32 {
+    // 各要素を正規化
+    let keyword_score = (candidate.keyword_support as f32 / 10.0).min(1.0); // 最大10で正規化
+    let classifier_score = candidate.classifier_confidence.clamp(0.0, 1.0);
+    let graph_score = graph_boost.clamp(0.0, 1.0);
+    let tag_score = tag_consistency.clamp(0.0, 1.0);
+
+    // 重み付き合計
+    keyword_score * 0.25
+        + classifier_score * 0.30
+        + graph_score * 0.25
+        + tag_score * 0.20
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -794,7 +875,7 @@ mod tests {
         };
         let graph = static_graph(TagLabelGraphCache::empty());
         let engine =
-            DefaultRefineEngine::new(RefineConfig::new(true), graph, Arc::new(FakeLlm::default()));
+            DefaultRefineEngine::new(RefineConfig::new(true), graph);
 
         let outcome = engine
             .refine(RefineInput {
@@ -831,7 +912,6 @@ mod tests {
         let engine = DefaultRefineEngine::new(
             RefineConfig::new(false),
             static_graph(graph),
-            Arc::new(FakeLlm::default()),
         );
 
         let outcome = engine
@@ -863,12 +943,9 @@ mod tests {
             entropy: 0.7,
         };
         let graph = static_graph(TagLabelGraphCache::empty());
-        let fake_llm = FakeLlm::new(vec![Ok(LlmDecision::new(
-            "business",
-            0.9,
-            Some("trace-123".to_string()),
-        ))]);
-        let engine = DefaultRefineEngine::new(RefineConfig::new(false), graph, Arc::new(fake_llm));
+        let mut config = RefineConfig::new(false);
+        config.weighted_tie_break_margin = 0.1; // タイブレークをトリガー
+        let engine = DefaultRefineEngine::new(config, graph);
 
         let outcome = engine
             .refine(RefineInput {
@@ -881,9 +958,9 @@ mod tests {
             .await
             .expect("refine should succeed");
 
-        assert_eq!(outcome.final_genre, "business");
-        assert_eq!(outcome.strategy, RefineStrategy::LlmTieBreak);
-        assert_eq!(outcome.llm_trace_id.as_deref(), Some("trace-123"));
+        // 重み付きスコアリングで決定される（techがclassifier_confidenceが高いため）
+        assert_eq!(outcome.final_genre, "tech");
+        assert_eq!(outcome.strategy, RefineStrategy::WeightedScore);
     }
 
     #[tokio::test]
@@ -894,7 +971,7 @@ mod tests {
         let tag_profile = TagProfile::default();
         let graph = static_graph(TagLabelGraphCache::empty());
         let engine =
-            DefaultRefineEngine::new(RefineConfig::new(true), graph, Arc::new(FakeLlm::default()));
+            DefaultRefineEngine::new(RefineConfig::new(true), graph);
 
         let outcome = engine
             .refine(RefineInput {

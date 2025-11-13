@@ -653,6 +653,7 @@ fn format_strategy(strategy: super::genre_refine::RefineStrategy) -> String {
     match strategy {
         super::genre_refine::RefineStrategy::TagConsistency => "tag_consistency",
         super::genre_refine::RefineStrategy::GraphBoost => "graph_boost",
+        super::genre_refine::RefineStrategy::WeightedScore => "weighted_score",
         super::genre_refine::RefineStrategy::LlmTieBreak => "llm_tie_break",
         super::genre_refine::RefineStrategy::FallbackOther => "fallback_other",
         super::genre_refine::RefineStrategy::CoarseOnly => "coarse_only",
