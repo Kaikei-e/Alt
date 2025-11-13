@@ -45,8 +45,9 @@ async fn main() -> anyhow::Result<()> {
     // Tracing initialization is handled by Telemetry::new()
     let config = Config::from_env().context("failed to load configuration")?;
     let bind_addr = config.http_bind();
-    let registry =
-        ComponentRegistry::build(config.clone()).context("failed to build component registry")?;
+    let registry = ComponentRegistry::build(config.clone())
+        .await
+        .context("failed to build component registry")?;
     let scheduler = registry.scheduler().clone();
     let default_genres = registry.config().recap_genres().to_vec();
 

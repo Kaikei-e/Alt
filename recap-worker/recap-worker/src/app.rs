@@ -65,7 +65,7 @@ impl ComponentRegistry {
     ///
     /// # Errors
     /// Telemetry の初期化や HTTP クライアント構築が失敗した場合はエラーを返す。
-    pub fn build(config: Config) -> Result<Self> {
+    pub async fn build(config: Config) -> Result<Self> {
         let config = Arc::new(config);
         let telemetry = Telemetry::new()?;
         let news_creator_client = Arc::new(NewsCreatorClient::new(config.news_creator_base_url())?);
@@ -75,12 +75,15 @@ impl ComponentRegistry {
             .connect_lazy(config.recap_db_dsn())
             .context("failed to configure recap_db connection pool")?;
         let recap_dao = Arc::new(RecapDao::new(recap_pool));
-        let pipeline = Arc::new(PipelineOrchestrator::new(
-            Arc::clone(&config),
-            (*subworker_client).clone(),
-            Arc::clone(&news_creator_client),
-            Arc::clone(&recap_dao),
-        ));
+        let pipeline = Arc::new(
+            PipelineOrchestrator::new(
+                Arc::clone(&config),
+                (*subworker_client).clone(),
+                Arc::clone(&news_creator_client),
+                Arc::clone(&recap_dao),
+            )
+            .await?,
+        );
         let scheduler = Scheduler::new(Arc::clone(&pipeline), Arc::clone(&config));
 
         Ok(Self {
@@ -130,7 +133,9 @@ mod tests {
 
             Config::from_env().expect("config loads")
         };
-        let registry = ComponentRegistry::build(config).expect("registry builds");
+        let registry = ComponentRegistry::build(config)
+            .await
+            .expect("registry builds");
         let state = AppState::new(registry);
 
         state.telemetry().record_ready_probe();

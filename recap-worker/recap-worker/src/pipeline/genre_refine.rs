@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use tracing::instrument;
+use tokio::sync::RwLock;
+use tracing::{error, instrument};
 
 use crate::clients::news_creator::{
     GenreTieBreakCandidate, GenreTieBreakRequest, GenreTieBreakResponse, NewsCreatorClient,
@@ -15,6 +17,8 @@ use crate::pipeline::dedup::DeduplicatedArticle;
 use crate::pipeline::genre::GenreCandidate;
 use crate::pipeline::tag_signal::TagSignal;
 use crate::scheduler::JobContext;
+use crate::store::dao::RecapDao;
+use crate::store::models::GraphEdgeRecord;
 
 /// タグとジャンルの共起重み。
 #[cfg_attr(not(test), allow(dead_code))]
@@ -250,10 +254,136 @@ impl TagLabelGraphCache {
     }
 
     #[must_use]
+    pub(crate) fn from_records(records: &[GraphEdgeRecord]) -> Self {
+        let mut map: FxHashMap<String, FxHashMap<String, f32>> = FxHashMap::default();
+        for record in records {
+            let genre_key = record.genre.to_lowercase();
+            let tag_key = record.tag.to_lowercase();
+            map.entry(genre_key)
+                .or_insert_with(FxHashMap::default)
+                .insert(tag_key, record.weight);
+        }
+        Self {
+            edges: Arc::new(map),
+        }
+    }
+
+    #[must_use]
     pub(crate) fn weight(&self, genre: &str, tag: &str) -> Option<f32> {
         self.edges
             .get(&genre.to_lowercase())
             .and_then(|tags| tags.get(&tag.to_lowercase()).copied())
+    }
+}
+
+#[async_trait]
+pub(crate) trait TagLabelGraphSource: Send + Sync {
+    async fn snapshot(&self) -> Result<TagLabelGraphCache>;
+}
+
+pub(crate) struct DbTagLabelGraphSource {
+    dao: Arc<RecapDao>,
+    window_label: String,
+    ttl: Duration,
+    state: RwLock<TagLabelGraphState>,
+}
+
+struct TagLabelGraphState {
+    cache: TagLabelGraphCache,
+    loaded_at: Option<Instant>,
+}
+
+impl TagLabelGraphState {
+    fn is_fresh(&self, ttl: Duration) -> bool {
+        self.loaded_at
+            .map(|instant| instant.elapsed() < ttl)
+            .unwrap_or(false)
+    }
+}
+
+impl DbTagLabelGraphSource {
+    pub(crate) fn new(dao: Arc<RecapDao>, window_label: impl Into<String>, ttl: Duration) -> Self {
+        Self {
+            dao,
+            window_label: window_label.into(),
+            ttl,
+            state: RwLock::new(TagLabelGraphState {
+                cache: TagLabelGraphCache::empty(),
+                loaded_at: None,
+            }),
+        }
+    }
+
+    pub(crate) async fn preload(&self) -> Result<()> {
+        self.refresh().await
+    }
+
+    async fn refresh(&self) -> Result<()> {
+        let records = self
+            .dao
+            .load_tag_label_graph(&self.window_label)
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to load tag_label_graph window {}",
+                    self.window_label
+                )
+            })?;
+        let cache = TagLabelGraphCache::from_records(&records);
+        let mut guard = self.state.write().await;
+        guard.cache = cache;
+        guard.loaded_at = Some(Instant::now());
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl TagLabelGraphSource for DbTagLabelGraphSource {
+    async fn snapshot(&self) -> Result<TagLabelGraphCache> {
+        {
+            let guard = self.state.read().await;
+            if guard.is_fresh(self.ttl) {
+                return Ok(guard.cache.clone());
+            }
+        }
+
+        if let Err(err) = self.refresh().await {
+            {
+                let guard = self.state.read().await;
+                if guard.loaded_at.is_some() {
+                    error!(
+                        window = %self.window_label,
+                        error = ?err,
+                        "serving stale tag label graph after refresh failure"
+                    );
+                    return Ok(guard.cache.clone());
+                }
+            }
+            return Err(err);
+        }
+
+        let guard = self.state.read().await;
+        Ok(guard.cache.clone())
+    }
+}
+
+#[cfg(test)]
+pub(crate) struct StaticTagLabelGraphSource {
+    cache: TagLabelGraphCache,
+}
+
+#[cfg(test)]
+impl StaticTagLabelGraphSource {
+    pub(crate) fn new(cache: TagLabelGraphCache) -> Self {
+        Self { cache }
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl TagLabelGraphSource for StaticTagLabelGraphSource {
+    async fn snapshot(&self) -> Result<TagLabelGraphCache> {
+        Ok(self.cache.clone())
     }
 }
 
@@ -291,14 +421,14 @@ pub(crate) trait RefineEngine: Send + Sync {
 /// デフォルト実装。
 pub(crate) struct DefaultRefineEngine {
     config: RefineConfig,
-    graph: TagLabelGraphCache,
+    graph: Arc<dyn TagLabelGraphSource>,
     llm: Arc<dyn LlmTieBreaker>,
 }
 
 impl DefaultRefineEngine {
     pub(crate) fn new(
         config: RefineConfig,
-        graph: TagLabelGraphCache,
+        graph: Arc<dyn TagLabelGraphSource>,
         llm: Arc<dyn LlmTieBreaker>,
     ) -> Self {
         Self { config, graph, llm }
@@ -355,6 +485,14 @@ impl RefineEngine for DefaultRefineEngine {
             ));
         }
 
+        let graph_cache = match self.graph.snapshot().await {
+            Ok(cache) => cache,
+            Err(err) => {
+                error!(error = ?err, "failed to refresh tag label graph, proceeding without boosts");
+                TagLabelGraphCache::empty()
+            }
+        };
+
         let normalized_candidates: Vec<(String, &GenreCandidate)> = input
             .candidates
             .iter()
@@ -385,7 +523,7 @@ impl RefineEngine for DefaultRefineEngine {
         }
 
         let graph_boosts = compute_graph_boosts(
-            &self.graph,
+            &graph_cache,
             &normalized_candidates,
             &input.tag_profile.top_tags,
         );
@@ -588,6 +726,10 @@ mod tests {
     use tokio::sync::Mutex;
     use uuid::Uuid;
 
+    fn static_graph(cache: TagLabelGraphCache) -> Arc<dyn TagLabelGraphSource> {
+        Arc::new(StaticTagLabelGraphSource::new(cache))
+    }
+
     /// テスト用フェイクLLM。
     #[derive(Debug, Default)]
     struct FakeLlm {
@@ -650,7 +792,7 @@ mod tests {
             top_tags: article.tags.clone(),
             entropy: 0.1,
         };
-        let graph = TagLabelGraphCache::empty();
+        let graph = static_graph(TagLabelGraphCache::empty());
         let engine =
             DefaultRefineEngine::new(RefineConfig::new(true), graph, Arc::new(FakeLlm::default()));
 
@@ -688,7 +830,7 @@ mod tests {
         ]);
         let engine = DefaultRefineEngine::new(
             RefineConfig::new(false),
-            graph,
+            static_graph(graph),
             Arc::new(FakeLlm::default()),
         );
 
@@ -720,7 +862,7 @@ mod tests {
             top_tags: tags,
             entropy: 0.7,
         };
-        let graph = TagLabelGraphCache::empty();
+        let graph = static_graph(TagLabelGraphCache::empty());
         let fake_llm = FakeLlm::new(vec![Ok(LlmDecision::new(
             "business",
             0.9,
@@ -750,7 +892,7 @@ mod tests {
         let article = article_with_tags(Vec::new());
         let candidates = vec![candidate("ai", 0.9, 0.88)];
         let tag_profile = TagProfile::default();
-        let graph = TagLabelGraphCache::empty();
+        let graph = static_graph(TagLabelGraphCache::empty());
         let engine =
             DefaultRefineEngine::new(RefineConfig::new(true), graph, Arc::new(FakeLlm::default()));
 

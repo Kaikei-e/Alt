@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::pipeline::evidence::EvidenceBundle;
 use crate::{
@@ -29,7 +29,8 @@ use dispatch::{DispatchStage, MlLlmDispatchStage};
 use fetch::{AltBackendFetchStage, FetchStage};
 use genre::{CoarseGenreStage, GenreStage, TwoStageGenreStage};
 use genre_refine::{
-    DefaultRefineEngine, NewsCreatorLlmTieBreaker, RefineConfig, TagLabelGraphCache,
+    DbTagLabelGraphSource, DefaultRefineEngine, NewsCreatorLlmTieBreaker, RefineConfig,
+    TagLabelGraphSource,
 };
 use persist::PersistStage;
 use preprocess::{PreprocessStage, TextPreprocessStage};
@@ -62,12 +63,12 @@ pub(crate) struct PipelineBuilder {
 }
 
 impl PipelineOrchestrator {
-    pub(crate) fn new(
+    pub(crate) async fn new(
         config: Arc<Config>,
         subworker: SubworkerClient,
         news_creator: Arc<NewsCreatorClient>,
         recap_dao: Arc<RecapDao>,
-    ) -> Self {
+    ) -> Result<Self> {
         let alt_backend_config = AltBackendConfig {
             base_url: config.alt_backend_base_url().to_string(),
             connect_timeout: config.alt_backend_connect_timeout(),
@@ -91,11 +92,18 @@ impl PipelineOrchestrator {
         let genre_stage: Arc<dyn GenreStage> = if config.genre_refine_enabled() {
             let refine_config = RefineConfig::new(config.genre_refine_require_tags());
             let llm = Arc::new(NewsCreatorLlmTieBreaker::new(Arc::clone(&news_creator)));
-            let refine_engine = Arc::new(DefaultRefineEngine::new(
-                refine_config,
-                TagLabelGraphCache::empty(),
-                llm,
+            let graph_loader = Arc::new(DbTagLabelGraphSource::new(
+                Arc::clone(&recap_dao),
+                config.tag_label_graph_window().to_string(),
+                config.tag_label_graph_ttl(),
             ));
+            graph_loader
+                .preload()
+                .await
+                .context("failed to preload tag label graph cache")?;
+            let graph_source: Arc<dyn TagLabelGraphSource> = graph_loader;
+            let refine_engine =
+                Arc::new(DefaultRefineEngine::new(refine_config, graph_source, llm));
             Arc::new(TwoStageGenreStage::new(
                 Arc::clone(&coarse_stage),
                 refine_engine,
@@ -106,7 +114,7 @@ impl PipelineOrchestrator {
             coarse_stage as Arc<dyn GenreStage>
         };
 
-        PipelineBuilder::new(config)
+        Ok(PipelineBuilder::new(config)
             .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
                 alt_backend_client,
                 Arc::clone(&recap_dao),
@@ -128,7 +136,7 @@ impl PipelineOrchestrator {
             .with_persist_stage(Arc::new(persist::FinalSectionPersistStage::new(
                 Arc::clone(&recap_dao),
             )))
-            .build()
+            .build())
     }
 
     #[cfg(test)]

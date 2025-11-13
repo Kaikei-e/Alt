@@ -31,6 +31,8 @@ pub struct Config {
     genre_classifier_threshold: f32,
     genre_refine_enabled: bool,
     genre_refine_require_tags: bool,
+    tag_label_graph_window: String,
+    tag_label_graph_ttl: Duration,
 }
 
 #[derive(Debug, Error)]
@@ -88,6 +90,10 @@ impl Config {
         let genre_classifier_threshold = parse_f64("RECAP_GENRE_MODEL_THRESHOLD", 0.5)? as f32;
         let genre_refine_enabled = parse_bool("RECAP_GENRE_REFINE_ENABLED", false)?;
         let genre_refine_require_tags = parse_bool("RECAP_GENRE_REFINE_REQUIRE_TAGS", true)?;
+        let tag_label_graph_window =
+            env::var("TAG_LABEL_GRAPH_WINDOW").unwrap_or_else(|_| "7d".to_string());
+        let tag_label_graph_ttl =
+            Duration::from_secs(parse_u64("TAG_LABEL_GRAPH_TTL_SECONDS", 900)?);
 
         Ok(Self {
             http_bind,
@@ -112,6 +118,8 @@ impl Config {
             genre_classifier_threshold,
             genre_refine_enabled,
             genre_refine_require_tags,
+            tag_label_graph_window,
+            tag_label_graph_ttl,
         })
     }
 
@@ -223,6 +231,16 @@ impl Config {
     #[must_use]
     pub fn genre_refine_require_tags(&self) -> bool {
         self.genre_refine_require_tags
+    }
+
+    #[must_use]
+    pub fn tag_label_graph_window(&self) -> &str {
+        &self.tag_label_graph_window
+    }
+
+    #[must_use]
+    pub fn tag_label_graph_ttl(&self) -> Duration {
+        self.tag_label_graph_ttl
     }
 }
 
@@ -345,6 +363,8 @@ mod tests {
         remove_env("HTTP_MAX_RETRIES");
         remove_env("HTTP_BACKOFF_BASE_MS");
         remove_env("HTTP_BACKOFF_CAP_MS");
+        remove_env("TAG_LABEL_GRAPH_WINDOW");
+        remove_env("TAG_LABEL_GRAPH_TTL_SECONDS");
         remove_env("OTEL_EXPORTER_ENDPOINT");
         remove_env("OTEL_SAMPLING_RATIO");
         remove_env("RECAP_WINDOW_DAYS");
@@ -393,6 +413,8 @@ mod tests {
         assert!(config.otel_exporter_endpoint().is_none());
         assert_eq!(config.otel_sampling_ratio(), 1.0);
         assert_eq!(config.recap_window_days(), 7);
+        assert_eq!(config.tag_label_graph_window(), "7d");
+        assert_eq!(config.tag_label_graph_ttl(), Duration::from_secs(900));
         assert_eq!(
             config.recap_genres(),
             &[
@@ -435,6 +457,8 @@ mod tests {
         set_env("OTEL_EXPORTER_ENDPOINT", "http://otel:4317");
         set_env("RECAP_WINDOW_DAYS", "14");
         set_env("RECAP_GENRES", "ai,tech");
+        set_env("TAG_LABEL_GRAPH_WINDOW", "30d");
+        set_env("TAG_LABEL_GRAPH_TTL_SECONDS", "600");
 
         let config = Config::from_env().expect("config should load");
 
@@ -462,6 +486,8 @@ mod tests {
         assert_eq!(config.otel_exporter_endpoint(), Some("http://otel:4317"));
         assert_eq!(config.recap_window_days(), 14);
         assert_eq!(config.recap_genres(), &["ai", "tech"]);
+        assert_eq!(config.tag_label_graph_window(), "30d");
+        assert_eq!(config.tag_label_graph_ttl(), Duration::from_secs(600));
     }
 
     #[test]

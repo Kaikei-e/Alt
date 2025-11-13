@@ -125,7 +125,9 @@ mod tests {
             Config::from_env().expect("config loads")
         };
 
-        let registry = ComponentRegistry::build(config).expect("registry builds");
+        let registry = ComponentRegistry::build(config)
+            .await
+            .expect("registry builds");
 
         let app = build_router(registry);
 

@@ -11,7 +11,8 @@ use uuid::Uuid;
 
 use super::models::{
     ClusterEvidence, ClusterWithEvidence, DiagnosticEntry, GenreLearningRecord, GenreWithSummary,
-    NewSubworkerRun, PersistedCluster, PersistedGenre, RawArticle, RecapJob, SubworkerRunStatus,
+    GraphEdgeRecord, NewSubworkerRun, PersistedCluster, PersistedGenre, RawArticle, RecapJob,
+    SubworkerRunStatus,
 };
 use crate::util::idempotency::try_acquire_job_lock;
 
@@ -130,6 +131,32 @@ impl RecapDao {
         tx.commit().await.context("failed to commit raw articles")?;
 
         Ok(())
+    }
+
+    /// タグ-ジャンル共起グラフを読み込む。
+    pub async fn load_tag_label_graph(&self, window_label: &str) -> Result<Vec<GraphEdgeRecord>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT genre, tag, weight
+            FROM tag_label_graph
+            WHERE window_label = $1
+            "#,
+        )
+        .bind(window_label)
+        .fetch_all(&self.pool)
+        .await
+        .context("failed to load tag_label_graph entries")?;
+
+        let mut edges = Vec::with_capacity(rows.len());
+        for row in rows {
+            edges.push(GraphEdgeRecord {
+                genre: row.try_get("genre")?,
+                tag: row.try_get("tag")?,
+                weight: row.try_get::<f32, _>("weight")?,
+            });
+        }
+
+        Ok(edges)
     }
 
     /// ジャンル学習レコードを保存する。
@@ -881,6 +908,17 @@ mod tests {
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY (job_id, article_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS tag_label_graph (
+                window_label TEXT NOT NULL,
+                genre TEXT NOT NULL,
+                tag TEXT NOT NULL,
+                weight REAL NOT NULL,
+                sample_size INTEGER NOT NULL DEFAULT 0,
+                last_observed_at TIMESTAMPTZ,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (window_label, genre, tag)
             );
 
             CREATE TABLE IF NOT EXISTS recap_sections (
