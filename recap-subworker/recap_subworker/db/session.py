@@ -19,7 +19,16 @@ def get_engine(settings: Settings) -> AsyncEngine:
 
     global _ENGINE
     if _ENGINE is None:
-        _ENGINE = create_async_engine(settings.db_url, pool_pre_ping=True)
+        # 接続プール設定: ワーカー数が多い場合でもPostgreSQLの接続上限を超えないように
+        # pool_size=10, max_overflow=5 で各ワーカーが最大15接続まで使用可能
+        # ワーカー数が9の場合、最大135接続（PostgreSQLのデフォルトmax_connections=100を超える可能性がある）
+        # そのため、pool_size=5, max_overflow=5 に設定して、各ワーカーが最大10接続までに制限
+        _ENGINE = create_async_engine(
+            settings.db_url,
+            pool_pre_ping=True,
+            pool_size=50,  # 基本接続プールサイズ
+            max_overflow=10,  # オーバーフロー接続数
+        )
     return _ENGINE
 
 
