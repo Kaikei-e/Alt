@@ -1,0 +1,78 @@
+{
+  "job_id": "9ecf8a22-0e9f-4b94-8aa1-4ab2c1d6c9a1",
+  "article_id": "8b6f68c1-3c20-4c2c-b6b1-648a6f5104cd",
+  "coarse_candidates": [
+    {
+      "genre": "tech",
+      "score": 0.86,
+      "keyword_support": 4,
+      "classifier_confidence": 0.81,
+      "tag_overlap_count": 3
+    },
+    {
+      "genre": "business",
+      "score": 0.72,
+      "keyword_support": 2,
+      "classifier_confidence": 0.65,
+      "graph_boost": 0.08
+    },
+    {
+      "genre": "ai",
+      "score": 0.69,
+      "keyword_support": 1,
+      "classifier_confidence": 0.62
+    }
+  ],
+  "refine_decision": {
+    "final_genre": "tech",
+    "confidence": 0.91,
+    "strategy": "graph_boost",
+    "llm_trace_id": "recap-20251113-TIEBRK-001"
+  },
+  "tag_profile": {
+    "top_tags": [
+      {
+        "label": "生成AI",
+        "confidence": 0.78,
+        "source": "llm",
+        "source_ts": "2025-11-12T18:21:04Z"
+      },
+      {
+        "label": "スタートアップ",
+        "confidence": 0.52,
+        "source": "cooc"
+      }
+    ],
+    "entropy": 0.83
+  },
+  "graph_context": [
+    {
+      "genre": "tech",
+      "tag": "生成AI",
+      "weight": 0.42
+    },
+    {
+      "genre": "business",
+      "tag": "スタートアップ",
+      "weight": 0.27
+    }
+  ],
+  "telemetry": {
+    "coarse_latency_ms": 58.4,
+    "refine_duration_ms": 142.7,
+    "llm_latency_ms": 98.1,
+    "cache_hits": 1
+  },
+  "feedback": {
+    "label": "tech",
+    "notes": "QA一致。サマリも妥当。",
+    "source": "qa_shift_2025w46",
+    "updated_at": "2025-11-13T06:40:02Z"
+  },
+  "timestamps": {
+    "coarse_started_at": "2025-11-13T06:38:11Z",
+    "coarse_completed_at": "2025-11-13T06:38:11Z",
+    "refine_started_at": "2025-11-13T06:38:12Z",
+    "refine_completed_at": "2025-11-13T06:38:12Z"
+  }
+}

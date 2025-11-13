@@ -197,6 +197,87 @@ impl NewsCreatorClient {
             }),
         }
     }
+
+    /// ジャンルタイブレーク用のLLM推論を実行する。
+    pub(crate) async fn tie_break_genre(
+        &self,
+        request: &GenreTieBreakRequest,
+    ) -> Result<GenreTieBreakResponse> {
+        let url = self
+            .base_url
+            .join("v1/genre/tie-break")
+            .context("failed to build genre tie-break URL")?;
+
+        debug!(
+            job_id = %request.job_id,
+            article_id = %request.article_id,
+            candidate_count = request.candidates.len(),
+            "sending genre tie-break request"
+        );
+
+        let response = self
+            .client
+            .post(url)
+            .json(request)
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await
+            .context("genre tie-break request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "genre tie-break endpoint returned error status {}: {}",
+                status,
+                body
+            ));
+        }
+
+        response
+            .json::<GenreTieBreakResponse>()
+            .await
+            .context("failed to deserialize genre tie-break response")
+    }
+}
+
+/// LLMタイブレークに渡す候補。
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct GenreTieBreakCandidate {
+    pub(crate) name: String,
+    pub(crate) score: f32,
+    pub(crate) keyword_support: usize,
+    pub(crate) classifier_confidence: f32,
+}
+
+/// LLMタイブレークリクエスト。
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct GenreTieBreakRequest {
+    pub(crate) job_id: Uuid,
+    pub(crate) article_id: String,
+    pub(crate) language: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) body_preview: Option<String>,
+    pub(crate) candidates: Vec<GenreTieBreakCandidate>,
+    pub(crate) tags: Vec<TagSignalPayload>,
+}
+
+/// LLMに渡すタグ要約。
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct TagSignalPayload {
+    pub(crate) label: String,
+    pub(crate) confidence: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) source: Option<String>,
+}
+
+/// LLMタイブレーク応答。
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct GenreTieBreakResponse {
+    pub(crate) genre: String,
+    pub(crate) confidence: f32,
+    #[serde(default)]
+    pub(crate) trace_id: Option<String>,
 }
 
 /// 旧バージョンの要約レスポンス。

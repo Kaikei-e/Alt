@@ -18,14 +18,19 @@ pub(crate) mod evidence;
 pub(crate) mod fetch;
 pub(crate) mod genre;
 pub(crate) mod genre_keywords;
+pub(crate) mod genre_refine;
 pub(crate) mod persist;
 pub mod preprocess;
 pub(crate) mod select;
+pub(crate) mod tag_signal;
 
 use dedup::{DedupStage, HashDedupStage};
 use dispatch::{DispatchStage, MlLlmDispatchStage};
 use fetch::{AltBackendFetchStage, FetchStage};
-use genre::{GenreStage, HybridGenreStage};
+use genre::{CoarseGenreStage, GenreStage, TwoStageGenreStage};
+use genre_refine::{
+    DefaultRefineEngine, NewsCreatorLlmTieBreaker, RefineConfig, TagLabelGraphCache,
+};
 use persist::PersistStage;
 use preprocess::{PreprocessStage, TextPreprocessStage};
 use select::{SelectStage, SummarySelectStage};
@@ -82,6 +87,25 @@ impl PipelineOrchestrator {
         let max_concurrent = (cpu_count * 3) / 2;
         let window_days = config.recap_window_days();
 
+        let coarse_stage = Arc::new(CoarseGenreStage::with_defaults());
+        let genre_stage: Arc<dyn GenreStage> = if config.genre_refine_enabled() {
+            let refine_config = RefineConfig::new(config.genre_refine_require_tags());
+            let llm = Arc::new(NewsCreatorLlmTieBreaker::new(Arc::clone(&news_creator)));
+            let refine_engine = Arc::new(DefaultRefineEngine::new(
+                refine_config,
+                TagLabelGraphCache::empty(),
+                llm,
+            ));
+            Arc::new(TwoStageGenreStage::new(
+                Arc::clone(&coarse_stage),
+                refine_engine,
+                Arc::clone(&recap_dao),
+                config.genre_refine_require_tags(),
+            ))
+        } else {
+            coarse_stage as Arc<dyn GenreStage>
+        };
+
         PipelineBuilder::new(config)
             .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
                 alt_backend_client,
@@ -94,7 +118,7 @@ impl PipelineOrchestrator {
                 Arc::clone(&recap_dao),
             )))
             .with_dedup_stage(Arc::new(HashDedupStage::new(cpu_count.max(2), 0.8, 100)))
-            .with_genre_stage(Arc::new(HybridGenreStage::with_defaults()))
+            .with_genre_stage(genre_stage)
             .with_select_stage(Arc::new(SummarySelectStage::new()))
             .with_dispatch_stage(Arc::new(MlLlmDispatchStage::new(
                 subworker_client,
@@ -198,7 +222,7 @@ impl PipelineBuilder {
                 .unwrap_or_else(|| panic!("dedup stage must be configured before build")),
             genre: self
                 .genre
-                .unwrap_or_else(|| Arc::new(HybridGenreStage::with_defaults())),
+                .unwrap_or_else(|| Arc::new(CoarseGenreStage::with_defaults())),
             select: self
                 .select
                 .unwrap_or_else(|| Arc::new(SummarySelectStage::new())),
@@ -230,7 +254,7 @@ mod tests {
         dedup::{DedupStage, DeduplicatedCorpus},
         dispatch::{DispatchResult, DispatchStage},
         fetch::{FetchStage, FetchedArticle, FetchedCorpus},
-        genre::{FeatureProfile, GenreAssignment, GenreBundle, GenreStage},
+        genre::{FeatureProfile, GenreAssignment, GenreBundle, GenreCandidate, GenreStage},
         persist::{PersistResult, PersistStage},
         preprocess::{PreprocessStage, PreprocessedArticle, PreprocessedCorpus},
         select::{SelectStage, SelectedSummary},
@@ -314,6 +338,7 @@ mod tests {
                     language: Some("en".to_string()),
                     published_at: None,
                     source_url: None,
+                    tags: Vec::new(),
                 }],
             })
         }
@@ -348,6 +373,7 @@ mod tests {
                     char_count: 9,
                     is_html_cleaned: false,
                     tokens: vec!["processed".to_string()],
+                    tags: Vec::new(),
                 }],
             })
         }
@@ -383,6 +409,7 @@ mod tests {
                         sentences: vec![article.body],
                         sentence_hashes: vec![],
                         language: article.language,
+                        tags: Vec::new(),
                     })
                     .collect(),
                 stats: super::dedup::DedupStats::default(),
@@ -414,6 +441,12 @@ mod tests {
                 job_id: corpus.job_id,
                 assignments: vec![GenreAssignment {
                     genres: vec!["science".to_string()],
+                    candidates: vec![GenreCandidate {
+                        name: "science".to_string(),
+                        score: 0.82,
+                        keyword_support: 5,
+                        classifier_confidence: 0.8,
+                    }],
                     genre_scores: std::collections::HashMap::from([("science".to_string(), 10)]),
                     genre_confidence: std::collections::HashMap::from([(
                         "science".to_string(),

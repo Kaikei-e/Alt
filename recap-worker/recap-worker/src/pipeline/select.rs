@@ -48,9 +48,8 @@ impl SummarySelectStage {
         for assignment in ranked {
             // 最初のジャンルを使用（複数ジャンルがある場合は最初のもの）
             let primary_genre = assignment
-                .genres
-                .first()
-                .cloned()
+                .primary_genre()
+                .map(std::string::ToString::to_string)
                 .unwrap_or_else(|| "other".to_string());
             let count = per_genre_count
                 .entry(primary_genre.clone())
@@ -111,12 +110,19 @@ impl SelectStage for SummarySelectStage {
 #[cfg(test)]
 mod tests {
     use super::super::genre::FeatureProfile;
+    use super::super::genre::GenreCandidate;
     use super::*;
 
     fn assignment(genre: &str) -> GenreAssignment {
         use super::super::dedup::DeduplicatedArticle;
         GenreAssignment {
             genres: vec![genre.to_string()],
+            candidates: vec![GenreCandidate {
+                name: genre.to_string(),
+                score: 0.7,
+                keyword_support: 5,
+                classifier_confidence: 0.75,
+            }],
             genre_scores: std::collections::HashMap::from([(genre.to_string(), 10)]),
             genre_confidence: std::collections::HashMap::from([(genre.to_string(), 0.75)]),
             feature_profile: FeatureProfile::default(),
@@ -126,6 +132,7 @@ mod tests {
                 sentences: vec!["body".to_string()],
                 sentence_hashes: vec![],
                 language: "en".to_string(),
+                tags: Vec::new(),
             },
         }
     }

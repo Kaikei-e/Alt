@@ -10,8 +10,8 @@ use std::{collections::HashMap, convert::TryFrom};
 use uuid::Uuid;
 
 use super::models::{
-    ClusterEvidence, ClusterWithEvidence, DiagnosticEntry, GenreWithSummary, NewSubworkerRun,
-    PersistedCluster, PersistedGenre, RawArticle, RecapJob, SubworkerRunStatus,
+    ClusterEvidence, ClusterWithEvidence, DiagnosticEntry, GenreLearningRecord, GenreWithSummary,
+    NewSubworkerRun, PersistedCluster, PersistedGenre, RawArticle, RecapJob, SubworkerRunStatus,
 };
 use crate::util::idempotency::try_acquire_job_lock;
 
@@ -128,6 +128,41 @@ impl RecapDao {
         }
 
         tx.commit().await.context("failed to commit raw articles")?;
+
+        Ok(())
+    }
+
+    /// ジャンル学習レコードを保存する。
+    pub async fn upsert_genre_learning_record(&self, record: &GenreLearningRecord) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO recap_genre_learning_results
+                (job_id, article_id, coarse_candidates, refine_decision, tag_profile,
+                 graph_context, feedback, telemetry, timestamps)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            ON CONFLICT (job_id, article_id) DO UPDATE SET
+                coarse_candidates = EXCLUDED.coarse_candidates,
+                refine_decision = EXCLUDED.refine_decision,
+                tag_profile = EXCLUDED.tag_profile,
+                graph_context = EXCLUDED.graph_context,
+                feedback = COALESCE(EXCLUDED.feedback, recap_genre_learning_results.feedback),
+                telemetry = EXCLUDED.telemetry,
+                timestamps = EXCLUDED.timestamps,
+                updated_at = NOW()
+            "#,
+        )
+        .bind(record.job_id)
+        .bind(&record.article_id)
+        .bind(Json(record.coarse_candidates.clone()))
+        .bind(Json(record.refine_decision.clone()))
+        .bind(Json(record.tag_profile.clone()))
+        .bind(Json(record.graph_context.clone()))
+        .bind(record.feedback.clone().map(Json))
+        .bind(record.telemetry.clone().map(Json))
+        .bind(Json(record.timestamps.clone()))
+        .execute(&self.pool)
+        .await
+        .context("failed to upsert recap_genre_learning_results")?;
 
         Ok(())
     }
@@ -617,37 +652,49 @@ impl RecapDao {
             let top_terms_json: Json<Value> = row.try_get("top_terms")?;
             let top_terms: Option<Vec<String>> = serde_json::from_value(top_terms_json.0).ok();
 
-            let entry = clusters_by_row
-                .entry(cluster_row_id)
-                .or_insert_with(|| {
-                    (
-                        genre.clone(),
-                        ClusterWithEvidence {
-                            cluster_id,
-                            top_terms: top_terms.clone(),
-                            evidence: Vec::new(),
-                        },
-                    )
-                });
+            let entry = clusters_by_row.entry(cluster_row_id).or_insert_with(|| {
+                (
+                    genre.clone(),
+                    ClusterWithEvidence {
+                        cluster_id,
+                        top_terms: top_terms.clone(),
+                        evidence: Vec::new(),
+                    },
+                )
+            });
 
-            if let Some(article_id) = row
-                .try_get::<Option<String>, _>("evidence_article_id")?
-            {
+            if let Some(article_id) = row.try_get::<Option<String>, _>("evidence_article_id")? {
                 let title = row
                     .try_get::<Option<String>, _>("evidence_title")?
-                    .or_else(|| row.try_get::<Option<String>, _>("article_title").ok().flatten())
+                    .or_else(|| {
+                        row.try_get::<Option<String>, _>("article_title")
+                            .ok()
+                            .flatten()
+                    })
                     .unwrap_or_default();
                 let source_url = row
                     .try_get::<Option<String>, _>("evidence_source_url")?
-                    .or_else(|| row.try_get::<Option<String>, _>("article_source_url").ok().flatten())
+                    .or_else(|| {
+                        row.try_get::<Option<String>, _>("article_source_url")
+                            .ok()
+                            .flatten()
+                    })
                     .unwrap_or_default();
                 let published_at = row
                     .try_get::<Option<DateTime<Utc>>, _>("evidence_published_at")?
-                    .or_else(|| row.try_get::<Option<DateTime<Utc>>, _>("article_published_at").ok().flatten())
+                    .or_else(|| {
+                        row.try_get::<Option<DateTime<Utc>>, _>("article_published_at")
+                            .ok()
+                            .flatten()
+                    })
                     .unwrap_or_else(|| Utc::now());
                 let lang = row
                     .try_get::<Option<String>, _>("evidence_lang")?
-                    .or_else(|| row.try_get::<Option<String>, _>("article_lang_hint").ok().flatten());
+                    .or_else(|| {
+                        row.try_get::<Option<String>, _>("article_lang_hint")
+                            .ok()
+                            .flatten()
+                    });
 
                 entry.1.evidence.push(ClusterEvidence {
                     article_id,
@@ -666,9 +713,7 @@ impl RecapDao {
             .collect();
 
         if !missing.is_empty() {
-            let fallback = self
-                .fetch_evidence_from_sentences(job_id, &missing)
-                .await?;
+            let fallback = self.fetch_evidence_from_sentences(job_id, &missing).await?;
 
             for (cluster_row_id, evidence) in fallback {
                 if let Some(entry) = clusters_by_row.get_mut(&cluster_row_id) {
@@ -749,13 +794,16 @@ impl RecapDao {
                 .try_get::<Option<String>, _>("lang_hint")
                 .unwrap_or(None);
 
-            grouped.entry(cluster_row_id).or_default().push(ClusterEvidence {
-                article_id: row.try_get::<String, _>("source_article_id")?,
-                title,
-                source_url,
-                published_at,
-                lang,
-            });
+            grouped
+                .entry(cluster_row_id)
+                .or_default()
+                .push(ClusterEvidence {
+                    article_id: row.try_get::<String, _>("source_article_id")?,
+                    title,
+                    source_url,
+                    published_at,
+                    lang,
+                });
         }
 
         Ok(grouped)
@@ -765,7 +813,11 @@ impl RecapDao {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::models::{PersistedSentence, RecapOutput};
+    use crate::store::models::{
+        CoarseCandidateRecord, GenreLearningRecord, LearningTimestamps, PersistedSentence,
+        RecapOutput, RefineDecisionRecord, TagProfileRecord, TagSignalRecord,
+    };
+    use chrono::Utc;
     use serde_json::Value;
     use sqlx::{Executor, Row, postgres::PgPoolOptions};
     use uuid::Uuid;
@@ -814,6 +866,21 @@ mod tests {
                 metric TEXT NOT NULL,
                 value JSONB NOT NULL,
                 PRIMARY KEY (run_id, metric)
+            );
+
+            CREATE TABLE IF NOT EXISTS recap_genre_learning_results (
+                job_id UUID NOT NULL,
+                article_id TEXT NOT NULL,
+                coarse_candidates JSONB NOT NULL,
+                refine_decision JSONB NOT NULL,
+                tag_profile JSONB NOT NULL,
+                graph_context JSONB NOT NULL DEFAULT '[]'::JSONB,
+                feedback JSONB,
+                telemetry JSONB,
+                timestamps JSONB NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (job_id, article_id)
             );
 
             CREATE TABLE IF NOT EXISTS recap_sections (
@@ -1081,6 +1148,68 @@ mod tests {
         let value: Value = row.get("value");
         assert_eq!(value, serde_json::json!(2.34));
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn upsert_genre_learning_record_inserts() -> Result<()> {
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&database_url)
+            .await?;
+        setup_schema(&pool).await?;
+        let dao = RecapDao::new(pool.clone());
+
+        let job_id = Uuid::new_v4();
+        let now = Utc::now();
+        let record = GenreLearningRecord::new(
+            job_id,
+            "article-1",
+            vec![CoarseCandidateRecord {
+                genre: "tech".to_string(),
+                score: 0.9,
+                keyword_support: 5,
+                classifier_confidence: 0.88,
+                tag_overlap_count: Some(1),
+                graph_boost: Some(0.1),
+                llm_confidence: None,
+            }],
+            RefineDecisionRecord {
+                final_genre: "tech".to_string(),
+                confidence: 0.9,
+                strategy: "tag_consistency".to_string(),
+                llm_trace_id: None,
+                notes: None,
+            },
+            TagProfileRecord {
+                top_tags: vec![TagSignalRecord {
+                    label: "AI".to_string(),
+                    confidence: 0.8,
+                    source: Some("tag-generator".to_string()),
+                    source_ts: Some(now),
+                }],
+                entropy: 0.0,
+            },
+            LearningTimestamps::new(now, now),
+        );
+
+        dao.upsert_genre_learning_record(&record).await?;
+
+        let row = sqlx::query(
+            r"SELECT job_id, article_id FROM recap_genre_learning_results WHERE job_id = $1",
+        )
+        .bind(job_id)
+        .fetch_one(&pool)
+        .await?;
+
+        let stored_job_id: Uuid = row.get("job_id");
+        let stored_article_id: String = row.get("article_id");
+
+        assert_eq!(stored_job_id, job_id);
+        assert_eq!(stored_article_id, "article-1");
         Ok(())
     }
 }

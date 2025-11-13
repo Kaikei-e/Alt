@@ -344,3 +344,166 @@ impl RecapOutput {
         }
     }
 }
+
+/// Coarse候補の学習向けスナップショット。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct CoarseCandidateRecord {
+    pub(crate) genre: String,
+    pub(crate) score: f32,
+    pub(crate) keyword_support: usize,
+    pub(crate) classifier_confidence: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tag_overlap_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) graph_boost: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) llm_confidence: Option<f32>,
+}
+
+/// Refine判定情報。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct RefineDecisionRecord {
+    pub(crate) final_genre: String,
+    pub(crate) confidence: f32,
+    pub(crate) strategy: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) llm_trace_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) notes: Option<String>,
+}
+
+/// Tag Generator要約。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct TagProfileRecord {
+    pub(crate) top_tags: Vec<TagSignalRecord>,
+    pub(crate) entropy: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct TagSignalRecord {
+    pub(crate) label: String,
+    pub(crate) confidence: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) source_ts: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(from = "(String, String, f32)", into = "(String, String, f32)")]
+pub(crate) struct GraphEdgeRecord {
+    pub(crate) genre: String,
+    pub(crate) tag: String,
+    pub(crate) weight: f32,
+}
+
+impl From<(String, String, f32)> for GraphEdgeRecord {
+    fn from(value: (String, String, f32)) -> Self {
+        Self {
+            genre: value.0,
+            tag: value.1,
+            weight: value.2,
+        }
+    }
+}
+
+impl From<GraphEdgeRecord> for (String, String, f32) {
+    fn from(value: GraphEdgeRecord) -> Self {
+        (value.genre, value.tag, value.weight)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub(crate) struct FeedbackRecord {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) notes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub(crate) struct TelemetryRecord {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) refine_duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) llm_latency_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) coarse_latency_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) cache_hits: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct LearningTimestamps {
+    pub(crate) coarse_started_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) coarse_completed_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) refine_started_at: Option<DateTime<Utc>>,
+    pub(crate) refine_completed_at: DateTime<Utc>,
+}
+
+impl LearningTimestamps {
+    #[must_use]
+    pub(crate) fn new(
+        coarse_started_at: DateTime<Utc>,
+        refine_completed_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            coarse_started_at,
+            coarse_completed_at: Some(coarse_started_at),
+            refine_started_at: Some(refine_completed_at),
+            refine_completed_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct GenreLearningRecord {
+    pub(crate) job_id: Uuid,
+    pub(crate) article_id: String,
+    pub(crate) coarse_candidates: Vec<CoarseCandidateRecord>,
+    pub(crate) refine_decision: RefineDecisionRecord,
+    pub(crate) tag_profile: TagProfileRecord,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) graph_context: Vec<GraphEdgeRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) feedback: Option<FeedbackRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) telemetry: Option<TelemetryRecord>,
+    pub(crate) timestamps: LearningTimestamps,
+}
+
+impl GenreLearningRecord {
+    #[must_use]
+    pub(crate) fn new(
+        job_id: Uuid,
+        article_id: impl Into<String>,
+        coarse_candidates: Vec<CoarseCandidateRecord>,
+        refine_decision: RefineDecisionRecord,
+        tag_profile: TagProfileRecord,
+        timestamps: LearningTimestamps,
+    ) -> Self {
+        Self {
+            job_id,
+            article_id: article_id.into(),
+            coarse_candidates,
+            refine_decision,
+            tag_profile,
+            graph_context: Vec::new(),
+            feedback: None,
+            telemetry: None,
+            timestamps,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn with_telemetry(mut self, telemetry: Option<TelemetryRecord>) -> Self {
+        self.telemetry = telemetry;
+        self
+    }
+}

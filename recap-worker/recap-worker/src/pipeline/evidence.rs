@@ -294,7 +294,7 @@ fn sentence_has_required_length(sentence: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::super::dedup::DeduplicatedArticle;
-    use super::super::genre::FeatureProfile;
+    use super::super::genre::{FeatureProfile, GenreCandidate};
     use super::*;
 
     fn create_assignment(
@@ -303,6 +303,7 @@ mod tests {
         sentences: Vec<&str>,
         language: &str,
     ) -> GenreAssignment {
+        let genre_strings: Vec<String> = genres.iter().map(|g| g.to_string()).collect();
         let token_count = sentences.len();
         let article = DeduplicatedArticle {
             id: id.to_string(),
@@ -310,22 +311,34 @@ mod tests {
             sentences: sentences.into_iter().map(String::from).collect(),
             sentence_hashes: vec![],
             language: language.to_string(),
+            tags: Vec::new(),
         };
 
-        let genre_scores = genres
+        let genre_scores = genre_strings
             .iter()
             .enumerate()
             .map(|(i, g)| (g.to_string(), 10 - i))
             .collect();
-        let genre_confidence = genres.iter().map(|g| (g.to_string(), 0.8)).collect();
+        let genre_confidence = genre_strings.iter().map(|g| (g.to_string(), 0.8)).collect();
         let feature_profile = FeatureProfile {
             tfidf_sum: 1.0,
             bm25_peak: 0.9,
             token_count,
+            tag_overlap_count: 0,
         };
+        let candidates = genre_strings
+            .iter()
+            .map(|g| GenreCandidate {
+                name: g.clone(),
+                score: 0.8,
+                keyword_support: 8,
+                classifier_confidence: 0.75,
+            })
+            .collect();
 
         GenreAssignment {
-            genres: genres.into_iter().map(String::from).collect(),
+            genres: genre_strings,
+            candidates,
             genre_scores,
             genre_confidence,
             feature_profile,

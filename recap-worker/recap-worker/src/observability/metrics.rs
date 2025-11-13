@@ -18,11 +18,15 @@ pub struct Metrics {
     pub jobs_failed: Counter,
     pub retries_total: Counter,
     pub api_evidence_duplicates: Counter,
+    pub genre_refine_graph_hits: Counter,
+    pub genre_refine_fallback_total: Counter,
 
     // ヒストグラム
     pub fetch_duration: Histogram,
     pub preprocess_duration: Histogram,
     pub dedup_duration: Histogram,
+    pub genre_candidate_latency: Histogram,
+    pub genre_refine_llm_latency: Histogram,
     pub clustering_duration: Histogram,
     pub summary_duration: Histogram,
     pub job_duration: Histogram,
@@ -83,6 +87,16 @@ impl Metrics {
                 "Number of duplicate evidence links filtered at the API layer",
                 registry
             )?,
+            genre_refine_graph_hits: register_counter_with_registry!(
+                "recap_genre_graph_hits_total",
+                "Number of times graph-based boosts influenced genre refinement",
+                registry
+            )?,
+            genre_refine_fallback_total: register_counter_with_registry!(
+                "recap_genre_refine_fallback_total",
+                "Number of genre refinement fallbacks to coarse results",
+                registry
+            )?,
             fetch_duration: register_histogram_with_registry!(
                 "recap_fetch_duration_seconds",
                 "Duration of fetch operations",
@@ -96,6 +110,16 @@ impl Metrics {
             dedup_duration: register_histogram_with_registry!(
                 "recap_dedup_duration_seconds",
                 "Duration of deduplication operations",
+                registry
+            )?,
+            genre_candidate_latency: register_histogram_with_registry!(
+                "recap_genre_candidate_latency_seconds",
+                "Latency of coarse genre candidate production per article",
+                registry
+            )?,
+            genre_refine_llm_latency: register_histogram_with_registry!(
+                "recap_genre_refine_llm_latency_seconds",
+                "Latency of LLM tie-breaker calls during genre refinement",
                 registry
             )?,
             clustering_duration: register_histogram_with_registry!(

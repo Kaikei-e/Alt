@@ -13,7 +13,9 @@ use crate::{
     util::retry::{RetryConfig, is_retryable_error},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use super::tag_signal::TagSignal;
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FetchedArticle {
     pub(crate) id: String,
     pub(crate) title: Option<String>,
@@ -21,9 +23,10 @@ pub(crate) struct FetchedArticle {
     pub(crate) language: Option<String>,
     pub(crate) published_at: Option<DateTime<Utc>>,
     pub(crate) source_url: Option<String>,
+    pub(crate) tags: Vec<TagSignal>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FetchedCorpus {
     pub(crate) job_id: Uuid,
     pub(crate) articles: Vec<FetchedArticle>,
@@ -172,6 +175,18 @@ impl FetchStage for AltBackendFetchStage {
                     language: article.lang_hint,
                     published_at: article.published_at,
                     source_url: article.source_url,
+                    tags: article
+                        .tags
+                        .into_iter()
+                        .map(|tag| {
+                            TagSignal::new(
+                                tag.label,
+                                tag.confidence.unwrap_or(0.0),
+                                tag.source,
+                                tag.updated_at,
+                            )
+                        })
+                        .collect(),
                 })
                 .collect(),
         })
@@ -212,6 +227,7 @@ mod tests {
             published_at: None,
             source_url: Some("https://example.com".to_string()),
             lang_hint: Some("en".to_string()),
+            tags: Vec::new(),
         }];
 
         let raw = convert_to_raw_articles(&articles);
@@ -233,6 +249,7 @@ mod tests {
             language: Some("ja".to_string()),
             published_at: None,
             source_url: Some("https://example.com".to_string()),
+            tags: Vec::new(),
         };
 
         assert_eq!(article.id, "art-1");

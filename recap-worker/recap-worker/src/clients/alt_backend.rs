@@ -11,6 +11,17 @@ use tracing::debug;
 
 /// alt-backendから取得した記事の構造。
 #[derive(Debug, Clone, PartialEq, Deserialize)]
+pub(crate) struct AltBackendTag {
+    pub(crate) label: String,
+    #[serde(default)]
+    pub(crate) confidence: Option<f32>,
+    #[serde(default)]
+    pub(crate) source: Option<String>,
+    #[serde(default)]
+    pub(crate) updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct AltBackendArticle {
     pub(crate) article_id: String,
     pub(crate) title: Option<String>,
@@ -18,6 +29,8 @@ pub(crate) struct AltBackendArticle {
     pub(crate) published_at: Option<DateTime<Utc>>,
     pub(crate) source_url: Option<String>,
     pub(crate) lang_hint: Option<String>,
+    #[serde(default)]
+    pub(crate) tags: Vec<AltBackendTag>,
 }
 
 /// alt-backendのページング付き応答。

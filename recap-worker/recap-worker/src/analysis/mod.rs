@@ -216,6 +216,7 @@ pub fn preprocess_documents(bodies: &[String]) -> (usize, Vec<ProcessedDocument>
             }),
             published_at: None,
             source_url: None,
+            tags: Vec::new(),
         };
 
         if let Ok(Some(result)) = preprocess_article(article) {

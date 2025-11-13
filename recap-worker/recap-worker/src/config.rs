@@ -29,6 +29,8 @@ pub struct Config {
     recap_genres: Vec<String>,
     genre_classifier_weights_path: Option<String>,
     genre_classifier_threshold: f32,
+    genre_refine_enabled: bool,
+    genre_refine_require_tags: bool,
 }
 
 #[derive(Debug, Error)]
@@ -84,6 +86,8 @@ impl Config {
         )?;
         let genre_classifier_weights_path = env::var("RECAP_GENRE_MODEL_WEIGHTS").ok();
         let genre_classifier_threshold = parse_f64("RECAP_GENRE_MODEL_THRESHOLD", 0.5)? as f32;
+        let genre_refine_enabled = parse_bool("RECAP_GENRE_REFINE_ENABLED", false)?;
+        let genre_refine_require_tags = parse_bool("RECAP_GENRE_REFINE_REQUIRE_TAGS", true)?;
 
         Ok(Self {
             http_bind,
@@ -106,6 +110,8 @@ impl Config {
             recap_genres,
             genre_classifier_weights_path,
             genre_classifier_threshold,
+            genre_refine_enabled,
+            genre_refine_require_tags,
         })
     }
 
@@ -208,6 +214,16 @@ impl Config {
     pub fn genre_classifier_threshold(&self) -> f32 {
         self.genre_classifier_threshold
     }
+
+    #[must_use]
+    pub fn genre_refine_enabled(&self) -> bool {
+        self.genre_refine_enabled
+    }
+
+    #[must_use]
+    pub fn genre_refine_require_tags(&self) -> bool {
+        self.genre_refine_require_tags
+    }
 }
 
 fn env_var(name: &'static str) -> Result<String, ConfigError> {
@@ -274,6 +290,18 @@ fn parse_f64(name: &'static str, default: f64) -> Result<f64, ConfigError> {
         name,
         source: anyhow::Error::new(error),
     })
+}
+
+fn parse_bool(name: &'static str, default: bool) -> Result<bool, ConfigError> {
+    let raw = env::var(name).unwrap_or_else(|_| default.to_string());
+    match raw.to_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => Err(ConfigError::Invalid {
+            name,
+            source: anyhow::anyhow!("invalid boolean value: {raw}"),
+        }),
+    }
 }
 
 fn parse_csv(name: &'static str, default: &str) -> Result<Vec<String>, ConfigError> {

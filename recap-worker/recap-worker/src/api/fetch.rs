@@ -166,9 +166,7 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
             let deduped = dedupe_evidence_links(evidence_links);
             let removed = before.saturating_sub(deduped.len());
             if removed > 0 {
-                metrics
-                    .api_evidence_duplicates
-                    .inc_by(removed as f64);
+                metrics.api_evidence_duplicates.inc_by(removed as f64);
             }
             deduped
         };
@@ -223,7 +221,10 @@ mod tests {
         ];
 
         let deduped = dedupe_evidence_links(links);
-        let article_ids: Vec<_> = deduped.iter().map(|link| link.article_id.as_str()).collect();
+        let article_ids: Vec<_> = deduped
+            .iter()
+            .map(|link| link.article_id.as_str())
+            .collect();
 
         assert_eq!(article_ids, vec!["a", "b", "c"]);
     }

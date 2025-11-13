@@ -18,9 +18,10 @@ use crate::scheduler::JobContext;
 use crate::store::{dao::RecapDao, models::PreprocessMetrics};
 
 use super::fetch::{FetchedArticle, FetchedCorpus};
+use super::tag_signal::TagSignal;
 
 /// 前処理後の記事データ。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PreprocessedArticle {
     pub(crate) id: String,
     pub(crate) title: Option<String>,
@@ -29,9 +30,10 @@ pub(crate) struct PreprocessedArticle {
     pub(crate) char_count: usize,
     pub(crate) is_html_cleaned: bool,
     pub(crate) tokens: Vec<String>,
+    pub(crate) tags: Vec<TagSignal>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PreprocessedCorpus {
     pub(crate) job_id: Uuid,
     pub(crate) articles: Vec<PreprocessedArticle>,
@@ -218,6 +220,7 @@ pub(crate) fn preprocess_article(article: FetchedArticle) -> Result<Option<Prepr
         char_count,
         is_html_cleaned,
         tokens,
+        tags: article.tags,
     }))
 }
 
@@ -340,6 +343,7 @@ mod tests {
             language: language.map(|l| l.to_string()),
             published_at: Some(Utc::now()),
             source_url: Some("https://example.com".to_string()),
+            tags: Vec::new(),
         }
     }
 

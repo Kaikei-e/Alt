@@ -14,18 +14,20 @@ use crate::scheduler::JobContext;
 use crate::util::text::{hash_text, rolling_hash_windows, split_sentences};
 
 use super::preprocess::{PreprocessedArticle, PreprocessedCorpus};
+use super::tag_signal::TagSignal;
 
 /// 重複排除後の記事データ。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct DeduplicatedArticle {
     pub(crate) id: String,
     pub(crate) title: Option<String>,
     pub(crate) sentences: Vec<String>,
     pub(crate) sentence_hashes: Vec<u64>,
     pub(crate) language: String,
+    pub(crate) tags: Vec<TagSignal>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct DeduplicatedCorpus {
     pub(crate) job_id: Uuid,
     pub(crate) articles: Vec<DeduplicatedArticle>,
@@ -355,6 +357,7 @@ fn deduplicate_sentences(
         sentences: unique_sentences,
         sentence_hashes,
         language: article.language,
+        tags: article.tags,
     };
 
     (
@@ -379,6 +382,7 @@ mod tests {
                 .split_whitespace()
                 .map(|token| token.to_lowercase())
                 .collect(),
+            tags: Vec::new(),
         }
     }
 

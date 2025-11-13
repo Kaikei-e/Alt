@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alt.local/recap/genre_learning.schema.json",
+  "title": "GenreLearningRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "job_id",
+    "article_id",
+    "coarse_candidates",
+    "refine_decision",
+    "tag_profile",
+    "timestamps"
+  ],
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Recap job identifier"
+    },
+    "article_id": {
+      "type": "string",
+      "description": "Source article identifier (uuid string)"
+    },
+    "coarse_candidates": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Sorted coarse stage candidates before refinement",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "genre",
+          "score",
+          "keyword_support"
+        ],
+        "properties": {
+          "genre": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0
+          },
+          "keyword_support": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "classifier_confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "tag_overlap_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "graph_boost": {
+            "type": "number"
+          },
+          "llm_confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "refine_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "final_genre",
+        "confidence",
+        "strategy"
+      ],
+      "properties": {
+        "final_genre": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "tag_consistency",
+            "graph_boost",
+            "llm_tie_break",
+            "fallback_other"
+          ]
+        },
+        "llm_trace_id": {
+          "type": "string",
+          "description": "Trace identifier for downstream LLM call"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "tag_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "top_tags",
+        "entropy"
+      ],
+      "properties": {
+        "top_tags": {
+          "type": "array",
+          "description": "Top tags returned from Tag Generator",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "label",
+              "confidence"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "source": {
+                "type": "string"
+              },
+              "source_ts": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        },
+        "entropy": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "graph_context": {
+      "type": "array",
+      "description": "Subset of tag-label graph edges consulted during refinement",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "genre",
+          "tag",
+          "weight"
+        ],
+        "properties": {
+          "genre": {
+            "type": "string"
+          },
+          "tag": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "feedback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "Human-reviewed canonical genre"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "description": "Reviewer or automated pipeline that supplied feedback"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "refine_duration_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "llm_latency_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "coarse_latency_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cache_hits": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "timestamps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coarse_started_at",
+        "refine_completed_at"
+      ],
+      "properties": {
+        "coarse_started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "coarse_completed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "refine_started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "refine_completed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

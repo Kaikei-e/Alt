@@ -1,24 +1,50 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use tracing::{debug, info};
+use chrono::Utc;
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::classification::{ClassificationLanguage, GenreClassifier};
 use crate::scheduler::JobContext;
+use crate::store::dao::RecapDao;
+use crate::store::models::{
+    CoarseCandidateRecord, GenreLearningRecord, LearningTimestamps, RefineDecisionRecord,
+    TagProfileRecord, TagSignalRecord, TelemetryRecord,
+};
 
 use super::dedup::{DeduplicatedArticle, DeduplicatedCorpus};
 use super::genre_keywords::GenreKeywords;
+use super::genre_refine::{RefineEngine, RefineInput, RefineOutcome, TagFallbackMode, TagProfile};
+use super::tag_signal::TagSignal;
+
+/// Coarseステージで算出されたジャンル候補。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct GenreCandidate {
+    pub(crate) name: String,
+    pub(crate) score: f32,
+    pub(crate) keyword_support: usize,
+    pub(crate) classifier_confidence: f32,
+}
 
 /// ジャンル付き記事。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct GenreAssignment {
-    pub(crate) genres: Vec<String>,                  // 1〜3個のジャンル
+    pub(crate) genres: Vec<String>, // 1〜3個のジャンル
+    pub(crate) candidates: Vec<GenreCandidate>,
     pub(crate) genre_scores: HashMap<String, usize>, // 全スコア
     pub(crate) genre_confidence: HashMap<String, f32>,
     pub(crate) feature_profile: FeatureProfile,
     pub(crate) article: DeduplicatedArticle,
+}
+
+impl GenreAssignment {
+    #[must_use]
+    pub(crate) fn primary_genre(&self) -> Option<&str> {
+        self.genres.first().map(String::as_str)
+    }
 }
 
 /// ジャンル別の記事グループ。
@@ -34,6 +60,7 @@ pub(crate) struct FeatureProfile {
     pub(crate) tfidf_sum: f32,
     pub(crate) bm25_peak: f32,
     pub(crate) token_count: usize,
+    pub(crate) tag_overlap_count: usize,
 }
 
 #[async_trait]
@@ -41,19 +68,124 @@ pub(crate) trait GenreStage: Send + Sync {
     async fn assign(&self, job: &JobContext, corpus: DeduplicatedCorpus) -> Result<GenreBundle>;
 }
 
-/// キーワードベースのジャンル付与ステージ。
+/// Coarse+Refineを統合するステージ。
+pub(crate) struct TwoStageGenreStage {
+    coarse: Arc<CoarseGenreStage>,
+    refine_engine: Arc<dyn RefineEngine>,
+    dao: Arc<RecapDao>,
+    require_tags: bool,
+}
+
+impl TwoStageGenreStage {
+    pub(crate) fn new(
+        coarse: Arc<CoarseGenreStage>,
+        refine_engine: Arc<dyn RefineEngine>,
+        dao: Arc<RecapDao>,
+        require_tags: bool,
+    ) -> Self {
+        Self {
+            coarse,
+            refine_engine,
+            dao,
+            require_tags,
+        }
+    }
+
+    async fn persist_learning_record(
+        &self,
+        job: &JobContext,
+        assignment: &GenreAssignment,
+        tag_profile: &TagProfile,
+        outcome: &RefineOutcome,
+        refine_duration_ms: u64,
+    ) {
+        let tag_profile_record = TagProfileRecord {
+            top_tags: tag_profile
+                .top_tags
+                .iter()
+                .map(|tag| TagSignalRecord {
+                    label: tag.label.clone(),
+                    confidence: tag.confidence,
+                    source: tag.source.clone(),
+                    source_ts: tag.source_ts,
+                })
+                .collect(),
+            entropy: tag_profile.entropy,
+        };
+
+        let graph_boosts = outcome.graph_boosts();
+        let coarse_records: Vec<CoarseCandidateRecord> = assignment
+            .candidates
+            .iter()
+            .map(|candidate| {
+                let normalized = normalize_label(&candidate.name);
+                let boost = graph_boosts.get(&normalized).copied();
+                let llm_conf = if candidate.name.eq_ignore_ascii_case(&outcome.final_genre)
+                    && matches!(
+                        outcome.strategy,
+                        super::genre_refine::RefineStrategy::LlmTieBreak
+                    ) {
+                    Some(outcome.confidence)
+                } else {
+                    None
+                };
+                CoarseCandidateRecord {
+                    genre: candidate.name.clone(),
+                    score: candidate.score,
+                    keyword_support: candidate.keyword_support,
+                    classifier_confidence: candidate.classifier_confidence,
+                    tag_overlap_count: Some(assignment.feature_profile.tag_overlap_count),
+                    graph_boost: boost,
+                    llm_confidence: llm_conf,
+                }
+            })
+            .collect();
+
+        let decision = RefineDecisionRecord {
+            final_genre: outcome.final_genre.clone(),
+            confidence: outcome.confidence,
+            strategy: format_strategy(outcome.strategy),
+            llm_trace_id: outcome.llm_trace_id.clone(),
+            notes: None,
+        };
+
+        let timestamps = LearningTimestamps::new(Utc::now(), Utc::now());
+        let telemetry = TelemetryRecord {
+            refine_duration_ms: Some(refine_duration_ms),
+            llm_latency_ms: None,
+            coarse_latency_ms: None,
+            cache_hits: None,
+        };
+
+        let record = GenreLearningRecord::new(
+            job.job_id,
+            &assignment.article.id,
+            coarse_records,
+            decision,
+            tag_profile_record,
+            timestamps,
+        )
+        .with_telemetry(Some(telemetry));
+
+        if let Err(err) = self.dao.upsert_genre_learning_record(&record).await {
+            warn!(job_id = %job.job_id, article_id = %assignment.article.id, error = ?err, "failed to persist genre learning record");
+        }
+    }
+}
+
+/// キーワードベースのCoarseジャンルステージ。
 ///
-/// タイトル+本文からキーワードマッチングで1〜3個のジャンルを付与します。
+/// タイトル+本文からキーワードマッチングで最大 `max_genres` 件の候補を抽出する。
 #[derive(Debug)]
-pub(crate) struct HybridGenreStage {
+pub(crate) struct CoarseGenreStage {
     classifier: GenreClassifier,
     fallback_keywords: GenreKeywords,
     min_genres: usize,
     max_genres: usize,
 }
 
-impl HybridGenreStage {
-    /// 新しいKeywordGenreStageを作成する。
+impl CoarseGenreStage {
+    /// 新しいCoarseGenreStageを作成する。
     ///
     /// # Arguments
     /// * `min_genres` - 最小ジャンル数（デフォルト: 1）
@@ -72,11 +204,12 @@ impl HybridGenreStage {
         Self::new(1, 3)
     }
 
-    /// 記事にジャンルを付与する。
-    fn assign_genres(
+    /// 記事からジャンル候補を生成する。
+    fn produce_candidates(
         &self,
         article: &DeduplicatedArticle,
     ) -> anyhow::Result<(
+        Vec<GenreCandidate>,
         Vec<String>,
         HashMap<String, usize>,
         HashMap<String, f32>,
@@ -87,31 +220,31 @@ impl HybridGenreStage {
         let language = ClassificationLanguage::from_code(&article.language);
 
         let classification = self.classifier.predict(title, &body, language)?;
-        let mut genres = classification.top_genres.clone();
+        let mut selected_genres = classification.top_genres.clone();
 
         // 最低ジャンル数を満たすまでランキングから補完
-        if genres.len() < self.min_genres {
+        if selected_genres.len() < self.min_genres {
             for (candidate, _) in &classification.ranking {
-                if genres.contains(candidate) {
+                if selected_genres.contains(candidate) {
                     continue;
                 }
-                genres.push(candidate.clone());
-                if genres.len() == self.min_genres {
+                selected_genres.push(candidate.clone());
+                if selected_genres.len() == self.min_genres {
                     break;
                 }
             }
         }
 
-        if genres.is_empty() {
-            genres.push("other".to_string());
+        if selected_genres.is_empty() {
+            selected_genres.push("other".to_string());
         }
 
-        if genres.len() > self.max_genres {
-            genres.truncate(self.max_genres);
+        if selected_genres.len() > self.max_genres {
+            selected_genres.truncate(self.max_genres);
         }
 
         let mut genre_scores = classification.keyword_hits.clone();
-        for genre in &genres {
+        for genre in &selected_genres {
             genre_scores.entry(genre.clone()).or_insert_with(|| {
                 classification
                     .scores
@@ -127,12 +260,12 @@ impl HybridGenreStage {
             genre_scores = self.fallback_keywords.score_text(&combined);
         }
 
-        let low_support = genres
+        let low_support = selected_genres
             .iter()
             .all(|genre| genre_scores.get(genre).copied().unwrap_or(0) == 0);
         if low_support {
-            genres.clear();
-            genres.push("other".to_string());
+            selected_genres.clear();
+            selected_genres.push("other".to_string());
             genre_scores.entry("other".to_string()).or_insert(100);
         }
 
@@ -141,29 +274,71 @@ impl HybridGenreStage {
             .iter()
             .map(|(genre, score)| (genre.clone(), score.clamp(0.0, 1.0)))
             .collect();
-        for genre in &genres {
+        for genre in &selected_genres {
             genre_confidence.entry(genre.clone()).or_insert(0.0);
         }
 
         let tfidf_sum: f32 = classification.feature_snapshot.tfidf.iter().sum();
+        let lowercase_genres: Vec<String> =
+            selected_genres.iter().map(|g| g.to_lowercase()).collect();
+        let tag_overlap_count = article
+            .tags
+            .iter()
+            .filter(|TagSignal { label, .. }| {
+                let normalized = label.to_lowercase();
+                lowercase_genres.iter().any(|g| g == &normalized)
+            })
+            .count();
         let feature_profile = FeatureProfile {
             tfidf_sum,
             bm25_peak: classification.feature_snapshot.max_bm25().unwrap_or(0.0),
             token_count: classification.token_count,
+            tag_overlap_count,
         };
 
-        Ok((genres, genre_scores, genre_confidence, feature_profile))
+        let candidates = selected_genres
+            .iter()
+            .map(|genre| {
+                let keyword_support = genre_scores.get(genre).copied().unwrap_or(0);
+                let classifier_confidence = genre_confidence
+                    .get(genre)
+                    .copied()
+                    .unwrap_or_default()
+                    .clamp(0.0, 1.0);
+                let score = classification
+                    .ranking
+                    .iter()
+                    .find(|(name, _)| name == genre)
+                    .map(|(_, score)| *score)
+                    .unwrap_or(classifier_confidence);
+
+                GenreCandidate {
+                    name: genre.clone(),
+                    score,
+                    keyword_support,
+                    classifier_confidence,
+                }
+            })
+            .collect();
+
+        Ok((
+            candidates,
+            selected_genres,
+            genre_scores,
+            genre_confidence,
+            feature_profile,
+        ))
     }
 }
 
-impl Default for HybridGenreStage {
+impl Default for CoarseGenreStage {
     fn default() -> Self {
         Self::with_defaults()
     }
 }
 
 #[async_trait]
-impl GenreStage for HybridGenreStage {
+impl GenreStage for CoarseGenreStage {
     async fn assign(&self, job: &JobContext, corpus: DeduplicatedCorpus) -> Result<GenreBundle> {
         let total_articles = corpus.articles.len();
         info!(
@@ -176,12 +351,13 @@ impl GenreStage for HybridGenreStage {
         let mut genre_distribution: HashMap<String, usize> = HashMap::new();
 
         for article in corpus.articles {
-            let (genres, genre_scores, genre_confidence, feature_profile) =
-                self.assign_genres(&article)?;
+            let (candidates, genres, genre_scores, genre_confidence, feature_profile) =
+                self.produce_candidates(&article)?;
 
             debug!(
                 article_id = %article.id,
                 genres = ?genres,
+                candidates = ?candidates,
                 "assigned genres to article"
             );
 
@@ -192,6 +368,7 @@ impl GenreStage for HybridGenreStage {
 
             assignments.push(GenreAssignment {
                 genres,
+                candidates,
                 genre_scores,
                 genre_confidence,
                 feature_profile,
@@ -214,6 +391,59 @@ impl GenreStage for HybridGenreStage {
     }
 }
 
+#[async_trait]
+impl GenreStage for TwoStageGenreStage {
+    async fn assign(&self, job: &JobContext, corpus: DeduplicatedCorpus) -> Result<GenreBundle> {
+        let coarse_bundle = self.coarse.assign(job, corpus).await?;
+        let mut assignments = Vec::with_capacity(coarse_bundle.assignments.len());
+        let mut distribution: HashMap<String, usize> = HashMap::new();
+
+        for mut assignment in coarse_bundle.assignments {
+            let tag_profile = TagProfile::from_signals(&assignment.article.tags);
+            let fallback = TagFallbackMode::require_tags(self.require_tags, tag_profile.has_tags());
+            let refine_input = RefineInput {
+                job,
+                article: &assignment.article,
+                candidates: &assignment.candidates,
+                tag_profile: &tag_profile,
+                fallback,
+            };
+
+            let refine_start = std::time::Instant::now();
+            let outcome = self.refine_engine.refine(refine_input).await?;
+            let refine_duration_ms = refine_start.elapsed().as_millis() as u64;
+
+            assignment.genres = vec![outcome.final_genre.clone()];
+            assignment
+                .genre_confidence
+                .insert(outcome.final_genre.clone(), outcome.confidence);
+            assignment
+                .genre_scores
+                .entry(outcome.final_genre.clone())
+                .or_insert_with(|| (outcome.confidence * 100.0).round() as usize);
+
+            *distribution.entry(outcome.final_genre.clone()).or_insert(0) += 1;
+
+            self.persist_learning_record(
+                job,
+                &assignment,
+                &tag_profile,
+                &outcome,
+                refine_duration_ms,
+            )
+            .await;
+
+            assignments.push(assignment);
+        }
+
+        Ok(GenreBundle {
+            job_id: coarse_bundle.job_id,
+            assignments,
+            genre_distribution: distribution,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::dedup::DedupStats;
@@ -226,12 +456,13 @@ mod tests {
             sentences: sentences.into_iter().map(String::from).collect(),
             sentence_hashes: vec![],
             language: "en".to_string(),
+            tags: Vec::new(),
         }
     }
 
     #[tokio::test]
     async fn assigns_genres_based_on_keywords() {
-        let stage = HybridGenreStage::with_defaults();
+        let stage = CoarseGenreStage::with_defaults();
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
             job_id: job.job_id,
@@ -257,23 +488,23 @@ mod tests {
         // 最初の記事はAI関連のキーワードを含む
         assert!(
             bundle.assignments[0]
-                .genres
+                .candidates
                 .iter()
-                .any(|genre| genre == "ai" || genre == "tech")
+                .any(|candidate| candidate.name == "ai" || candidate.name == "tech")
         );
 
         // 2番目の記事はスポーツ関連のキーワードを含む
         assert!(
             bundle.assignments[1]
-                .genres
+                .candidates
                 .iter()
-                .any(|genre| genre == "sports")
+                .any(|candidate| candidate.name == "sports")
         );
     }
 
     #[tokio::test]
     async fn assigns_at_least_one_genre() {
-        let stage = HybridGenreStage::with_defaults();
+        let stage = CoarseGenreStage::with_defaults();
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
             job_id: job.job_id,
@@ -288,14 +519,19 @@ mod tests {
         let bundle = stage.assign(&job, corpus).await.unwrap();
 
         assert_eq!(bundle.assignments.len(), 1);
-        assert!(!bundle.assignments[0].genres.is_empty());
+        assert!(!bundle.assignments[0].candidates.is_empty());
         // キーワードマッチがない場合は"other"が付与される
-        assert!(bundle.assignments[0].genres.contains(&"other".to_string()));
+        assert!(
+            bundle.assignments[0]
+                .candidates
+                .iter()
+                .any(|candidate| candidate.name == "other")
+        );
     }
 
     #[tokio::test]
     async fn respects_max_genres_limit() {
-        let stage = HybridGenreStage::new(1, 2);
+        let stage = CoarseGenreStage::new(1, 2);
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
             job_id: job.job_id,
@@ -311,6 +547,21 @@ mod tests {
 
         assert_eq!(bundle.assignments.len(), 1);
         // 最大2ジャンル
-        assert!(bundle.assignments[0].genres.len() <= 2);
+        assert!(bundle.assignments[0].candidates.len() <= 2);
     }
+}
+
+fn normalize_label(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+
+fn format_strategy(strategy: super::genre_refine::RefineStrategy) -> String {
+    match strategy {
+        super::genre_refine::RefineStrategy::TagConsistency => "tag_consistency",
+        super::genre_refine::RefineStrategy::GraphBoost => "graph_boost",
+        super::genre_refine::RefineStrategy::LlmTieBreak => "llm_tie_break",
+        super::genre_refine::RefineStrategy::FallbackOther => "fallback_other",
+        super::genre_refine::RefineStrategy::CoarseOnly => "coarse_only",
+    }
+    .to_string()
 }
