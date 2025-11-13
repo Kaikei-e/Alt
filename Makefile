@@ -143,6 +143,11 @@ migrate-status:
 	@echo "Checking migration status..."
 	@docker compose run --rm migrate status
 
+backfill-feed-ids:
+	@echo "Backfilling article feed_ids from matching feed links..."
+	@echo "This is a data migration script (not a schema migration)."
+	@docker compose run --rm tag-generator python3 /scripts/backfill_article_feed_ids.py
+
 recap-migrate:
 	@echo "Applying recap-worker database migrations..."
 	@docker compose run --rm recap-worker sqlx migrate run
@@ -190,4 +195,91 @@ docker-disk-usage:
 	@echo "Detailed breakdown:"
 	@docker system df -v
 
-.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage
+# Memory-focused cleanup targets
+docker-cleanup-memory:
+	@echo "=== Docker Memory Cleanup ==="
+	@echo "This will free up memory by removing unused Docker resources."
+	@echo ""
+	@echo "1. Removing stopped containers..."
+	@docker container prune -f || true
+	@echo ""
+	@echo "2. Removing unused images (older than 24h)..."
+	@docker image prune -a -f --filter "until=24h" || true
+	@echo ""
+	@echo "3. Removing build cache..."
+	@docker builder prune -f --filter "until=24h" || true
+	@echo ""
+	@echo "4. Removing unused volumes (excluding active ones)..."
+	@docker volume prune -f || true
+	@echo ""
+	@echo "5. Removing unused networks..."
+	@docker network prune -f || true
+	@echo ""
+	@echo "6. Cleaning up old logs..."
+	@docker compose logs --tail=0 2>/dev/null || true
+	@echo ""
+	@echo "=== Cleanup Complete ==="
+	@echo "Current Docker resource usage:"
+	@docker system df
+
+docker-cleanup-memory-aggressive:
+	@echo "=== Aggressive Docker Memory Cleanup ==="
+	@echo "WARNING: This will remove ALL unused resources, including recent ones."
+	@echo ""
+	@read -p "Are you sure? (yes/no): " confirm && [ "$$confirm" = "yes" ] || exit 1
+	@echo ""
+	@echo "1. Removing all stopped containers..."
+	@docker container prune -f || true
+	@echo ""
+	@echo "2. Removing all unused images..."
+	@docker image prune -a -f || true
+	@echo ""
+	@echo "3. Removing all build cache..."
+	@docker builder prune -a -f || true
+	@echo ""
+	@echo "4. Removing unused volumes (CAREFUL: may remove data)..."
+	@docker volume prune -f || true
+	@echo ""
+	@echo "5. Removing unused networks..."
+	@docker network prune -f || true
+	@echo ""
+	@echo "6. System-wide cleanup..."
+	@docker system prune -a -f --volumes || true
+	@echo ""
+	@echo "=== Aggressive Cleanup Complete ==="
+	@echo "Current Docker resource usage:"
+	@docker system df
+
+docker-remove-old-volumes:
+	@echo "=== Removing Old/Unused Volumes ==="
+	@echo "WARNING: This will remove unused volumes. Active volumes will be preserved."
+	@echo ""
+	@echo "Checking for old db_data volume (PostgreSQL 16, no longer used)..."
+	@if docker volume inspect alt_db_data >/dev/null 2>&1; then \
+		echo "Found old db_data volume. Removing..."; \
+		docker volume rm alt_db_data 2>/dev/null || echo "Could not remove alt_db_data (may be in use)"; \
+	else \
+		echo "No old db_data volume found."; \
+	fi
+	@if docker volume inspect alt-db_data >/dev/null 2>&1; then \
+		echo "Found old db_data volume (alt-db_data). Removing..."; \
+		docker volume rm alt-db_data 2>/dev/null || echo "Could not remove alt-db_data (may be in use)"; \
+	fi
+	@echo ""
+	@echo "Removing all unused volumes (safe - only removes volumes not attached to any container)..."
+	@docker volume prune -f || true
+	@echo "=== Volume Cleanup Complete ==="
+
+docker-memory-stats:
+	@echo "=== Docker Memory Usage Statistics ==="
+	@echo ""
+	@echo "Container memory usage:"
+	@docker stats --no-stream --format "table {{.Container}}\t{{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}" 2>/dev/null || echo "No running containers"
+	@echo ""
+	@echo "Docker system disk usage:"
+	@docker system df
+	@echo ""
+	@echo "Top memory-consuming containers:"
+	@docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}" --sort mem 2>/dev/null | head -10 || echo "No running containers"
+
+.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats
