@@ -148,13 +148,23 @@ backfill-feed-ids:
 	@echo "This is a data migration script (not a schema migration)."
 	@docker compose run --rm tag-generator python3 /scripts/backfill_article_feed_ids.py
 
+recap-migrate-hash:
+	@echo "Regenerating recap-worker atlas.sum checksum file..."
+	@docker compose --profile recap build recap-db-migrator
+	@docker run --rm \
+		-v $(PWD)/recap-migration-atlas/migrations:/migrations:rw \
+		--user 0:0 \
+		--entrypoint /scripts/hash.sh \
+		alt-recap-db-migrator
+	@echo "atlas.sum regenerated successfully. You can now run 'make recap-migrate'."
+
 recap-migrate:
 	@echo "Applying recap-worker database migrations..."
-	@docker compose run --rm recap-worker sqlx migrate run
+	@docker compose --profile recap run --rm recap-db-migrator
 
 recap-migrate-status:
 	@echo "Checking recap-worker database migration status..."
-	@docker compose run --rm recap-worker sqlx migrate info
+	@docker compose --profile recap run --rm recap-db-migrator status
 
 # Docker disk space management targets
 docker-cleanup:
@@ -282,4 +292,4 @@ docker-memory-stats:
 	@echo "Top memory-consuming containers:"
 	@docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}" --sort mem 2>/dev/null | head -10 || echo "No running containers"
 
-.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats
+.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats
