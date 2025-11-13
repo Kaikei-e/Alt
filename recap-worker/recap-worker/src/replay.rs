@@ -41,7 +41,7 @@ pub struct ReplayConfig {
 /// Replay the genre pipeline offline and persist refreshed learning rows.
 pub async fn replay_genre_pipeline(config: ReplayConfig) -> Result<()> {
     let pool = PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(100)
         .connect_lazy(&config.dsn)
         .context("failed to configure postgres pool")?;
     let dao = Arc::new(RecapDao::new(pool));

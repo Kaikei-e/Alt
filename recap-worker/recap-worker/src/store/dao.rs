@@ -194,6 +194,67 @@ impl RecapDao {
         Ok(())
     }
 
+    /// 複数のジャンル学習レコードをバルクでupsertする。
+    ///
+    /// バッチサイズ（100件）ごとにトランザクションを分けて処理することで、
+    /// 接続プールの使用を効率化し、大量データの処理を高速化する。
+    pub async fn upsert_genre_learning_records_bulk(
+        &self,
+        records: &[GenreLearningRecord],
+    ) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+
+        const BATCH_SIZE: usize = 100;
+
+        for chunk in records.chunks(BATCH_SIZE) {
+            let mut tx = self
+                .pool
+                .begin()
+                .await
+                .context("failed to begin transaction for bulk upsert")?;
+
+            for record in chunk {
+                sqlx::query(
+                    r#"
+                    INSERT INTO recap_genre_learning_results
+                        (job_id, article_id, coarse_candidates, refine_decision, tag_profile,
+                         graph_context, feedback, telemetry, timestamps)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                    ON CONFLICT (job_id, article_id) DO UPDATE SET
+                        coarse_candidates = EXCLUDED.coarse_candidates,
+                        refine_decision = EXCLUDED.refine_decision,
+                        tag_profile = EXCLUDED.tag_profile,
+                        graph_context = EXCLUDED.graph_context,
+                        feedback = COALESCE(EXCLUDED.feedback, recap_genre_learning_results.feedback),
+                        telemetry = EXCLUDED.telemetry,
+                        timestamps = EXCLUDED.timestamps,
+                        updated_at = NOW()
+                    "#,
+                )
+                .bind(record.job_id)
+                .bind(&record.article_id)
+                .bind(Json(record.coarse_candidates.clone()))
+                .bind(Json(record.refine_decision.clone()))
+                .bind(Json(record.tag_profile.clone()))
+                .bind(Json(record.graph_context.clone()))
+                .bind(record.feedback.clone().map(Json))
+                .bind(record.telemetry.clone().map(Json))
+                .bind(Json(record.timestamps.clone()))
+                .execute(&mut *tx)
+                .await
+                .context("failed to upsert recap_genre_learning_results record in bulk")?;
+            }
+
+            tx.commit()
+                .await
+                .context("failed to commit bulk upsert transaction")?;
+        }
+
+        Ok(())
+    }
+
     /// 前処理統計を保存する。
     pub async fn save_preprocess_metrics(
         &self,

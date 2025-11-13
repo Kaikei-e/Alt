@@ -124,121 +124,6 @@ impl TwoStageGenreStage {
         }
     }
 
-    async fn persist_learning_record(
-        &self,
-        job: &JobContext,
-        assignment: &GenreAssignment,
-        tag_profile: &TagProfile,
-        outcome: &RefineOutcome,
-        refine_duration_ms: u64,
-    ) {
-        let tag_profile_record = TagProfileRecord {
-            top_tags: tag_profile
-                .top_tags
-                .iter()
-                .map(|tag| TagSignalRecord {
-                    label: tag.label.clone(),
-                    confidence: tag.confidence,
-                    source: tag.source.clone(),
-                    source_ts: tag.source_ts,
-                })
-                .collect(),
-            entropy: tag_profile.entropy,
-        };
-
-        let graph_boosts = outcome.graph_boosts();
-        let coarse_records: Vec<CoarseCandidateRecord> = assignment
-            .candidates
-            .iter()
-            .map(|candidate| {
-                let normalized = normalize_label(&candidate.name);
-                let boost = graph_boosts.get(&normalized).copied();
-                let llm_conf = if candidate.name.eq_ignore_ascii_case(&outcome.final_genre)
-                    && matches!(
-                        outcome.strategy,
-                        super::genre_refine::RefineStrategy::LlmTieBreak
-                    ) {
-                    Some(outcome.confidence)
-                } else {
-                    None
-                };
-                CoarseCandidateRecord {
-                    genre: candidate.name.clone(),
-                    score: candidate.score,
-                    keyword_support: candidate.keyword_support,
-                    classifier_confidence: candidate.classifier_confidence,
-                    tag_overlap_count: Some(assignment.feature_profile.tag_overlap_count),
-                    graph_boost: boost,
-                    llm_confidence: llm_conf,
-                }
-            })
-            .collect();
-
-        let decision = RefineDecisionRecord {
-            final_genre: outcome.final_genre.clone(),
-            confidence: outcome.confidence,
-            strategy: format_strategy(outcome.strategy),
-            llm_trace_id: outcome.llm_trace_id.clone(),
-            notes: None,
-        };
-
-        let timestamps = LearningTimestamps::new(Utc::now(), Utc::now());
-        let telemetry = TelemetryRecord {
-            refine_duration_ms: Some(refine_duration_ms),
-            llm_latency_ms: None,
-            coarse_latency_ms: None,
-            cache_hits: None,
-        };
-
-        let record = GenreLearningRecord::new(
-            job.job_id,
-            &assignment.article.id,
-            coarse_records,
-            decision,
-            tag_profile_record,
-            timestamps,
-        )
-        .with_telemetry(Some(telemetry));
-
-        if let Err(err) = self.dao.upsert_genre_learning_record(&record).await {
-            warn!(job_id = %job.job_id, article_id = %assignment.article.id, error = ?err, "failed to persist genre learning record");
-        }
-    }
-
-    async fn apply_refine_outcome(
-        &self,
-        job: &JobContext,
-        assignment: &mut GenreAssignment,
-        tag_profile: &TagProfile,
-        outcome: &RefineOutcome,
-        refine_duration_ms: u64,
-        distribution: &mut HashMap<String, usize>,
-    ) {
-        let final_genre = outcome.final_genre.clone();
-        assignment.genres = vec![final_genre.clone()];
-        assignment
-            .genre_confidence
-            .insert(final_genre.clone(), outcome.confidence);
-        assignment
-            .genre_scores
-            .entry(final_genre.clone())
-            .or_insert_with(|| (outcome.confidence * 100.0).round() as usize);
-
-        *distribution.entry(final_genre.clone()).or_insert(0) += 1;
-
-        match outcome.strategy {
-            RefineStrategy::GraphBoost => {
-                self.metrics.genre_refine_graph_hits.inc();
-            }
-            RefineStrategy::FallbackOther | RefineStrategy::CoarseOnly => {
-                self.metrics.genre_refine_fallback_total.inc();
-            }
-            _ => {}
-        }
-
-        self.persist_learning_record(job, assignment, tag_profile, outcome, refine_duration_ms)
-            .await;
-    }
 }
 
 /// キーワードベースのCoarseジャンルステージ。
@@ -463,8 +348,6 @@ impl GenreStage for CoarseGenreStage {
 impl GenreStage for TwoStageGenreStage {
     async fn assign(&self, job: &JobContext, corpus: DeduplicatedCorpus) -> Result<GenreBundle> {
         let coarse_bundle = self.coarse.assign(job, corpus).await?;
-        let mut assignments = Vec::with_capacity(coarse_bundle.assignments.len());
-        let mut distribution: HashMap<String, usize> = HashMap::new();
         let refine_allowed = self.rollout.allows(job.job_id);
         if refine_allowed {
             self.metrics.genre_refine_rollout_enabled.inc();
@@ -472,11 +355,22 @@ impl GenreStage for TwoStageGenreStage {
             self.metrics.genre_refine_rollout_skipped.inc();
         }
 
-        for mut assignment in coarse_bundle.assignments {
+        // 並行処理で各assignmentを処理
+        let assignments_count = coarse_bundle.assignments.len();
+        let mut tasks = Vec::with_capacity(assignments_count);
+        let refine_engine = Arc::clone(&self.refine_engine);
+        let require_tags = self.require_tags;
+        let metrics = Arc::clone(&self.metrics);
+        let job_id = job.job_id;
+
+        for assignment in coarse_bundle.assignments {
             let tag_profile = TagProfile::from_signals(&assignment.article.tags);
-            if !refine_allowed {
-                let fallback_candidate =
-                    assignment
+            let refine_engine_clone = Arc::clone(&refine_engine);
+            let metrics_clone = Arc::clone(&metrics);
+
+            let task = tokio::spawn(async move {
+                let outcome = if !refine_allowed {
+                    let fallback_candidate = assignment
                         .candidates
                         .first()
                         .cloned()
@@ -486,48 +380,156 @@ impl GenreStage for TwoStageGenreStage {
                             keyword_support: 0,
                             classifier_confidence: 0.0,
                         });
-                let outcome = RefineOutcome::new(
-                    fallback_candidate.name.clone(),
-                    fallback_candidate.classifier_confidence,
-                    RefineStrategy::CoarseOnly,
-                    None,
-                    HashMap::new(),
-                );
-                self.apply_refine_outcome(
-                    job,
-                    &mut assignment,
-                    &tag_profile,
-                    &outcome,
-                    0,
-                    &mut distribution,
+                    RefineOutcome::new(
+                        fallback_candidate.name.clone(),
+                        fallback_candidate.classifier_confidence,
+                        RefineStrategy::CoarseOnly,
+                        None,
+                        HashMap::new(),
+                    )
+                } else {
+                    let fallback = TagFallbackMode::require_tags(require_tags, tag_profile.has_tags());
+                    let refine_input = RefineInput {
+                        job: &JobContext::new(job_id, vec![]),
+                        article: &assignment.article,
+                        candidates: &assignment.candidates,
+                        tag_profile: &tag_profile,
+                        fallback,
+                    };
+                    let refine_start = std::time::Instant::now();
+                    let outcome = refine_engine_clone.refine(refine_input).await?;
+                    let _refine_duration_ms = refine_start.elapsed().as_millis() as u64;
+                    // メトリクス更新
+                    match outcome.strategy {
+                        RefineStrategy::GraphBoost => {
+                            metrics_clone.genre_refine_graph_hits.inc();
+                        }
+                        RefineStrategy::FallbackOther | RefineStrategy::CoarseOnly => {
+                            metrics_clone.genre_refine_fallback_total.inc();
+                        }
+                        _ => {}
+                    }
+                    outcome
+                };
+
+                // 学習レコードを準備（バルクインサート用）
+                let tag_profile_record = TagProfileRecord {
+                    top_tags: tag_profile
+                        .top_tags
+                        .iter()
+                        .map(|tag| TagSignalRecord {
+                            label: tag.label.clone(),
+                            confidence: tag.confidence,
+                            source: tag.source.clone(),
+                            source_ts: tag.source_ts,
+                        })
+                        .collect(),
+                    entropy: tag_profile.entropy,
+                };
+
+                let graph_boosts = outcome.graph_boosts();
+                let coarse_records: Vec<CoarseCandidateRecord> = assignment
+                    .candidates
+                    .iter()
+                    .map(|candidate| {
+                        let normalized = normalize_label(&candidate.name);
+                        let boost = graph_boosts.get(&normalized).copied();
+                        let llm_conf = if candidate.name.eq_ignore_ascii_case(&outcome.final_genre)
+                            && matches!(
+                                outcome.strategy,
+                                RefineStrategy::LlmTieBreak
+                            ) {
+                            Some(outcome.confidence)
+                        } else {
+                            None
+                        };
+                        CoarseCandidateRecord {
+                            genre: candidate.name.clone(),
+                            score: candidate.score,
+                            keyword_support: candidate.keyword_support,
+                            classifier_confidence: candidate.classifier_confidence,
+                            tag_overlap_count: Some(assignment.feature_profile.tag_overlap_count),
+                            graph_boost: boost,
+                            llm_confidence: llm_conf,
+                        }
+                    })
+                    .collect();
+
+                let decision = RefineDecisionRecord {
+                    final_genre: outcome.final_genre.clone(),
+                    confidence: outcome.confidence,
+                    strategy: format_strategy(outcome.strategy),
+                    llm_trace_id: outcome.llm_trace_id.clone(),
+                    notes: None,
+                };
+
+                let timestamps = LearningTimestamps::new(Utc::now(), Utc::now());
+                let telemetry = TelemetryRecord {
+                    refine_duration_ms: Some(0),
+                    llm_latency_ms: None,
+                    coarse_latency_ms: None,
+                    cache_hits: None,
+                };
+
+                let record = GenreLearningRecord::new(
+                    job_id,
+                    &assignment.article.id,
+                    coarse_records,
+                    decision,
+                    tag_profile_record,
+                    timestamps,
                 )
-                .await;
-                assignments.push(assignment);
-                continue;
+                .with_telemetry(Some(telemetry));
+
+                // 最終的なジャンル割り当てを更新
+                let final_genre = outcome.final_genre.clone();
+                let mut updated_assignment = assignment;
+                updated_assignment.genres = vec![final_genre.clone()];
+                updated_assignment
+                    .genre_confidence
+                    .insert(final_genre.clone(), outcome.confidence);
+                updated_assignment
+                    .genre_scores
+                    .entry(final_genre.clone())
+                    .or_insert_with(|| (outcome.confidence * 100.0).round() as usize);
+
+                Ok::<(GenreAssignment, String, GenreLearningRecord), anyhow::Error>((
+                    updated_assignment,
+                    final_genre,
+                    record,
+                ))
+            });
+
+            tasks.push(task);
+        }
+
+        // すべてのタスクを待機
+        let results = futures::future::join_all(tasks).await;
+        let mut assignments = Vec::with_capacity(assignments_count);
+        let mut distribution: HashMap<String, usize> = HashMap::new();
+        let mut learning_records = Vec::new();
+
+        for result in results {
+            match result {
+                Ok(Ok((assignment, genre, record))) => {
+                    *distribution.entry(genre).or_insert(0) += 1;
+                    assignments.push(assignment);
+                    learning_records.push(record);
+                }
+                Ok(Err(e)) => {
+                    warn!(job_id = %job.job_id, error = ?e, "failed to process assignment");
+                }
+                Err(e) => {
+                    warn!(job_id = %job.job_id, error = ?e, "task panicked");
+                }
             }
+        }
 
-            let fallback = TagFallbackMode::require_tags(self.require_tags, tag_profile.has_tags());
-            let refine_input = RefineInput {
-                job,
-                article: &assignment.article,
-                candidates: &assignment.candidates,
-                tag_profile: &tag_profile,
-                fallback,
-            };
-
-            let refine_start = std::time::Instant::now();
-            let outcome = self.refine_engine.refine(refine_input).await?;
-            let refine_duration_ms = refine_start.elapsed().as_millis() as u64;
-            self.apply_refine_outcome(
-                job,
-                &mut assignment,
-                &tag_profile,
-                &outcome,
-                refine_duration_ms,
-                &mut distribution,
-            )
-            .await;
-            assignments.push(assignment);
+        // バルクインサートで一括保存
+        if !learning_records.is_empty() {
+            if let Err(err) = self.dao.upsert_genre_learning_records_bulk(&learning_records).await {
+                warn!(job_id = %job.job_id, record_count = learning_records.len(), error = ?err, "failed to bulk persist genre learning records");
+            }
         }
 
         Ok(GenreBundle {
