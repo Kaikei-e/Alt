@@ -7,7 +7,10 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::{
-    clients::alt_backend::{AltBackendArticle, AltBackendClient},
+    clients::{
+        alt_backend::{AltBackendArticle, AltBackendClient},
+        tag_generator::TagGeneratorClient,
+    },
     scheduler::JobContext,
     store::{dao::RecapDao, models::RawArticle},
     util::retry::{RetryConfig, is_retryable_error},
@@ -40,6 +43,7 @@ pub(crate) trait FetchStage: Send + Sync {
 /// alt-backendから記事を取得し、Raw記事をDBにバックアップするステージ。
 pub(crate) struct AltBackendFetchStage {
     client: Arc<AltBackendClient>,
+    tag_generator_client: Option<Arc<TagGeneratorClient>>,
     dao: Arc<RecapDao>,
     retry_config: RetryConfig,
     window_days: u32,
@@ -48,12 +52,14 @@ pub(crate) struct AltBackendFetchStage {
 impl AltBackendFetchStage {
     pub(crate) fn new(
         client: Arc<AltBackendClient>,
+        tag_generator_client: Option<Arc<TagGeneratorClient>>,
         dao: Arc<RecapDao>,
         retry_config: RetryConfig,
         window_days: u32,
     ) -> Self {
         Self {
             client,
+            tag_generator_client,
             dao,
             retry_config,
             window_days,
@@ -163,19 +169,37 @@ impl FetchStage for AltBackendFetchStage {
             "backed up raw articles to database"
         );
 
+        // tag-generatorからタグを取得（オプショナル）
+        let mut tags_by_article = std::collections::HashMap::new();
+        if let Some(ref tag_client) = self.tag_generator_client {
+            let article_ids: Vec<String> = articles.iter().map(|a| a.article_id.clone()).collect();
+            match tag_client.fetch_tags_batch(&article_ids).await {
+                Ok(tags) => {
+                    tags_by_article = tags;
+                    info!(
+                        job_id = %job.job_id,
+                        articles_with_tags = tags_by_article.len(),
+                        "fetched tags from tag-generator"
+                    );
+                }
+                Err(err) => {
+                    warn!(
+                        job_id = %job.job_id,
+                        error = ?err,
+                        "failed to fetch tags from tag-generator, continuing without tags"
+                    );
+                }
+            }
+        }
+
         // パイプライン用のデータ構造に変換
         Ok(FetchedCorpus {
             job_id: job.job_id,
             articles: articles
                 .into_iter()
-                .map(|article| FetchedArticle {
-                    id: article.article_id,
-                    title: article.title,
-                    body: article.fulltext,
-                    language: article.lang_hint,
-                    published_at: article.published_at,
-                    source_url: article.source_url,
-                    tags: article
+                .map(|article| {
+                    // alt-backendから取得したタグとtag-generatorから取得したタグをマージ
+                    let mut tags: Vec<TagSignal> = article
                         .tags
                         .into_iter()
                         .map(|tag| {
@@ -186,7 +210,22 @@ impl FetchStage for AltBackendFetchStage {
                                 tag.updated_at,
                             )
                         })
-                        .collect(),
+                        .collect();
+
+                    // tag-generatorから取得したタグを追加（重複チェックなし、後で必要に応じて追加）
+                    if let Some(tag_generator_tags) = tags_by_article.get(&article.article_id) {
+                        tags.extend_from_slice(tag_generator_tags);
+                    }
+
+                    FetchedArticle {
+                        id: article.article_id,
+                        title: article.title,
+                        body: article.fulltext,
+                        language: article.lang_hint,
+                        published_at: article.published_at,
+                        source_url: article.source_url,
+                        tags,
+                    }
                 })
                 .collect(),
         })

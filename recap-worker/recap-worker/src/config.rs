@@ -34,6 +34,10 @@ pub struct Config {
     genre_refine_rollout_pct: u8,
     tag_label_graph_window: String,
     tag_label_graph_ttl: Duration,
+    tag_generator_base_url: String,
+    tag_generator_service_token: Option<String>,
+    tag_generator_connect_timeout: Duration,
+    tag_generator_total_timeout: Duration,
 }
 
 #[derive(Debug, Error)]
@@ -97,6 +101,15 @@ impl Config {
         let tag_label_graph_ttl =
             Duration::from_secs(parse_u64("TAG_LABEL_GRAPH_TTL_SECONDS", 900)?);
 
+        // Tag Generator settings
+        let tag_generator_base_url = env::var("TAG_GENERATOR_BASE_URL")
+            .unwrap_or_else(|_| "http://tag-generator:9400".to_string());
+        let tag_generator_service_token = env::var("TAG_GENERATOR_SERVICE_TOKEN").ok();
+        let tag_generator_connect_timeout =
+            parse_duration_ms("TAG_GENERATOR_CONNECT_TIMEOUT_MS", 3000)?;
+        let tag_generator_total_timeout =
+            parse_duration_ms("TAG_GENERATOR_TOTAL_TIMEOUT_MS", 30000)?;
+
         Ok(Self {
             http_bind,
             llm_max_concurrency,
@@ -123,6 +136,10 @@ impl Config {
             genre_refine_rollout_pct,
             tag_label_graph_window,
             tag_label_graph_ttl,
+            tag_generator_base_url,
+            tag_generator_service_token,
+            tag_generator_connect_timeout,
+            tag_generator_total_timeout,
         })
     }
 
@@ -249,6 +266,26 @@ impl Config {
     #[must_use]
     pub fn tag_label_graph_ttl(&self) -> Duration {
         self.tag_label_graph_ttl
+    }
+
+    #[must_use]
+    pub fn tag_generator_base_url(&self) -> &str {
+        &self.tag_generator_base_url
+    }
+
+    #[must_use]
+    pub fn tag_generator_service_token(&self) -> Option<&str> {
+        self.tag_generator_service_token.as_deref()
+    }
+
+    #[must_use]
+    pub fn tag_generator_connect_timeout(&self) -> Duration {
+        self.tag_generator_connect_timeout
+    }
+
+    #[must_use]
+    pub fn tag_generator_total_timeout(&self) -> Duration {
+        self.tag_generator_total_timeout
     }
 }
 

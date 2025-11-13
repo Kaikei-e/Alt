@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use crate::pipeline::evidence::EvidenceBundle;
 use crate::{
     clients::alt_backend::{AltBackendClient, AltBackendConfig},
-    clients::{NewsCreatorClient, SubworkerClient},
+    clients::{NewsCreatorClient, SubworkerClient, TagGeneratorClient},
     config::Config,
     observability::metrics::Metrics,
     scheduler::JobContext,
@@ -80,6 +80,15 @@ impl PipelineOrchestrator {
         let alt_backend_client = Arc::new(
             AltBackendClient::new(alt_backend_config).expect("failed to create alt-backend client"),
         );
+        let tag_generator_config = crate::clients::tag_generator::TagGeneratorConfig {
+            base_url: config.tag_generator_base_url().to_string(),
+            connect_timeout: config.tag_generator_connect_timeout(),
+            total_timeout: config.tag_generator_total_timeout(),
+            service_token: config.tag_generator_service_token().map(|s| s.to_string()),
+        };
+        let tag_generator_client = TagGeneratorClient::new(tag_generator_config)
+            .ok()
+            .map(Arc::new);
         let retry_config = RetryConfig {
             max_attempts: config.http_max_retries(),
             base_delay_ms: config.http_backoff_base_ms(),
@@ -122,6 +131,7 @@ impl PipelineOrchestrator {
         Ok(PipelineBuilder::new(config)
             .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
                 alt_backend_client,
+                tag_generator_client,
                 Arc::clone(&recap_dao),
                 retry_config,
                 window_days,
