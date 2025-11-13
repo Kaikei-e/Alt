@@ -41,3 +41,6 @@ _Last reviewed: November 10, 2025_
 ## LLM Notes
 - When generating edits, specify whether change touches `ArticleFetcher`, `TagExtractor`, `TagInserter`, or the orchestration service.
 - Provide exact env names (`DB_TAG_GENERATOR_USER`, etc.) and note that DSN assembly lives in `_get_database_dsn()`—LLMs should edit that function rather than duplicating DSN logic elsewhere.
+
+## Supporting Scripts
+- `tag-generator/app/scripts/build_label_graph.py`: builds the rolling `tag_label_graph` used by Recap Worker. The script reads from `recap_genre_learning_results`, aggregates high-confidence tags per genre, and upserts results into `recap-db`. Run it with `RECAP_DB_DSN` (or `--dsn`), optionally overriding windows (`--windows 7,30`), `--max-tags`, and `--min-support`. Use `--dry-run` during verification—successful executions log how many edges were refreshed per window.

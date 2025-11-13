@@ -24,8 +24,8 @@ _Last reviewed: November 12, 2025_
   1. **Fetch:** Pulls articles from alt-backend for `RECAP_WINDOW_DAYS`, backs up raw HTML, and records job metadata.
   2. **Preprocess:** Cleans HTML (ammonia/html2text), normalizes Unicode, detects language (`whatlang`), and tokenizes.
   3. **Dedup:** XXH3 hashing + sentence filters to drop near-duplicates.
-  4. **Genre:** Hybrid heuristic classifier assigns up to 3 genres per article.
- 5. **Evidence:** Bundles articles per genre, capturing language mix + metadata; now enforces per-genre article uniqueness before dispatch so the downstream evidence payload already reflects the final cap.
+  4. **Genre:** Hybrid heuristic classifier assigns up to 3 genres per article. When refinement is enabled, the stage preloads `tag_label_graph` from recap-db using the `TAG_LABEL_GRAPH_WINDOW` window and refreshes the cache every `TAG_LABEL_GRAPH_TTL_SECONDS` seconds so boosts stay current without restarts.
+  5. **Evidence:** Bundles articles per genre, capturing language mix + metadata; now enforces per-genre article uniqueness before dispatch so the downstream evidence payload already reflects the final cap.
  6. **Dispatch:** Sends corpora to recap-subworker (clustering) and news-creator (LLM summary) with strict schema validation + retries; the returned representatives are persisted to `recap_cluster_evidence` once and later reused by the API.
   7. **Persist:** Writes recap sections + evidence to `recap_outputs`/`recap_jobs` tables inside recap-db.
 - JSON Schema contracts for recap-subworker/news-creator responses live alongside clients; failed validation short-circuits persistence and surfaces metrics.
@@ -55,6 +55,7 @@ _Last reviewed: November 12, 2025_
 - Run the Atlas migration that creates `recap_cluster_evidence` before deploying; verify population with `SELECT COUNT(*) FROM recap_cluster_evidence;` after the first recap completes.
 - Monitor GET `/v1/recaps/7days` latency via `recap_api_latest_fetch_duration_seconds` and the new duplicate counter `recap_api_evidence_duplicates_total` to confirm dedup is happening before DTO assembly.
 - Keep JSON Schema versions in sync with downstream services before deploying new payload fields.
+- Grafana: import `observability/grafana/recap-genre-dashboard.json` to surface `genre_tag_agreement_rate`, `recap_genre_tag_missing_ratio`, and `recap_genre_graph_hits_total`. Alertmanager rules live in `observability/alerts/recap-genre-rules.yaml`.
 
 ## LLM Tips
 - Specify stage/module when asking for changes (e.g., “update `src/pipeline/dedup.rs` to tweak XXH3 threshold”).
