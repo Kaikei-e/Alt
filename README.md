@@ -4,7 +4,7 @@
 
 # Alt – Compose-First AI Knowledge Platform
 
-_Last reviewed on October 29, 2025._
+_Last reviewed on November 13, 2025._
 
 > Compose-first knowledge platform that ingests RSS content, enriches it with AI, and serves curated insights with a unified developer workflow across Go, Python, Rust, Deno, and Next.js services.
 
@@ -20,6 +20,10 @@ _Last reviewed on October 29, 2025._
   - [Developer Setup Checklist](#developer-setup-checklist)
 - [Service Catalog](#service-catalog)
 - [Service Deep Dives](#service-deep-dives)
+- [Recap Experience & Pipeline](#recap-experience--pipeline)
+  - [Mobile & API Surfaces](#mobile--api-surfaces)
+  - [Running the Recap Stack](#running-the-recap-stack)
+  - [Pipeline Flow](#pipeline-flow)
 - [Observability & Operations](#observability--operations)
 - [Development Workflow & Testing](#development-workflow--testing)
 - [Testing Playbook](#testing-playbook)
@@ -39,6 +43,8 @@ _Last reviewed on October 29, 2025._
 - Compose-first developer experience: `make up` builds images, runs Atlas migrations, and starts the full stack under Docker Compose v2 profiles.
 - Clean Architecture across languages: Go services follow handler → usecase → port → gateway → driver, while Python, Rust, and Deno counterparts mirror the same contract-first approach.
 - AI enrichment pipeline: pre-processor deduplicates and scores feeds, news-creator produces Ollama summaries, and tag-generator delivers ML-backed topical tags before articles surface in the UI.
+- Recap experience: recap-worker (Rust 2024) + recap-subworker (FastAPI) condense the latest seven days of articles into genre cards, evidence links, and summaries that power the mobile `/mobile/recap/7days` dashboard and backend `/v1/recap/7days` API.
+- Dedicated recap-db (PostgreSQL 16) tracks jobs, cached articles, cluster evidence, and published recaps so reruns are deterministic and audits are replayable via Atlas migrations in `recap-migration-atlas/`.
 - Search-ready delivery: search-indexer batches 200-document upserts into Meilisearch 1.15.2 with tuned searchable/filterable attributes and semantic-ready schema defaults.
 - Observability built in: Rust rask log services stream structured JSON into ClickHouse 25.6, complemented by health endpoints and targeted dashboards.
 - Identity at the edge: auth-hub validates Kratos sessions, emits authoritative `X-Alt-*` headers, and caches them for five minutes so downstream services remain auth-agnostic.
@@ -176,6 +182,7 @@ sequenceDiagram
 | Go API & Proxy | Go 1.25, Echo, `net/http/httputil` | Go 1.25.x | Clean Architecture with GoMock; `testing/synctest`; sidecar enforces HTTPS allowlists and shared timeouts. |
 | Go Data Pipeline | Go 1.25, `mercari/go-circuitbreaker`, `singleflight` | - | Pre-processor, scheduler, search-indexer; rate limit ≥5 s; 200-doc Meilisearch batches. |
 | Python AI Services | Python 3.11/3.14, FastAPI, Ollama, `uv` | Ollama 0.3.x | Clean Architecture; golden prompts; bias detection; Ruff/mypy gates. |
+| Recap pipeline | Rust 1.90 (Axum, Tokio, sqlx), FastAPI 0.115, PostgreSQL recap-db | Rust 1.90 / Python 3.11 | recap-worker orchestrates fetch→preprocess→dedupe→genre→persist; recap-subworker clusters evidence payloads; both depend on news-creator via the `ollama` profile. |
 | Identity & Tokens | Ory Kratos 1.1, auth-hub (Go 1.25), Deno 2.5.4 | - | 5-minute TTL cache; emits `X-Alt-*` headers; Inoreader refresh via `@std/testing/bdd`. |
 | Observability | Rust 1.90 (2024 edition), ClickHouse 25.6 | - | SIMD log forwarder; Axum aggregator; `criterion` benchmarks. |
 | Storage & Search | PostgreSQL 16, Meilisearch 1.15.2 | - | Atlas migrations; tuned searchable/filterable attributes; persisted volumes. |
@@ -207,8 +214,9 @@ sequenceDiagram
 - **Default** – Frontend, backend, PostgreSQL, Kratos, Meilisearch, search-indexer, tag-generator, ClickHouse, rask-log-aggregator.
 - **`--profile ollama`** – Adds news-creator (FastAPI + Ollama) and pre-processor ingestion services with persistent model volume at `news_creator_models`.
 - **`--profile logging`** – Launches rask-log-forwarder sidecars that stream container logs into the aggregator; includes `x-rask-env` defaults.
+- **`--profile recap`** – Starts recap-worker (Rust), recap-subworker (FastAPI), recap-db (PostgreSQL 16), and the recap Atlas migrator. Pair it with `--profile ollama` so news-creator is available to finish summaries.
 
-Enable combinations as needed with `docker compose --profile ollama --profile logging up -d`.
+Enable combinations as needed with `docker compose --profile ollama --profile logging up -d` or `docker compose --profile recap --profile ollama up recap-worker recap-subworker recap-db recap-db-migrator` when testing the Recap stack end-to-end.
 
 ### Developer Setup Checklist
 
@@ -217,6 +225,7 @@ Enable combinations as needed with `docker compose --profile ollama --profile lo
 3. **Prepare environment** – Copy `.env.template` to `.env`, fill local-safe secrets, and confirm `scripts/check-env.js` passes.
 4. **Smoke the stack** – Execute `pnpm -C alt-frontend build`, `go test ./...`, `uv run pytest`, `cargo test`, then `make up`/`make down` to validate orchestration.
 5. **Align practices** – Read root/service `CLAUDE.md`, enable editor format-on-save, install optional pre-commit hooks, and keep credentials out of git.
+6. **Recap-specific prep** – Run `make recap-migrate` (Atlas-backed) once before bringing up the `recap` profile, and confirm `http://localhost:9005/health/ready` plus `http://localhost:8002/health/ready` respond when testing the new mobile Recap surfaces.
 
 ## Service Catalog
 
@@ -234,13 +243,16 @@ The list below summarises each microservice's responsibilities. Consult the dire
 - **`auth-token-manager/`** – Deno 2.5.4 service; Inoreader OAuth2 refresh; `@std/testing/bdd`; sanitized logging.
 - **`rask-log-forwarder/app/`** – Rust 1.90; SIMD JSON parsing; lock-free buffers; disk fallback resilience.
 - **`rask-log-aggregator/app/`** – Rust 1.90 Axum; zero-copy ingestion; `axum-test`; `criterion` benchmarks; ClickHouse sink.
+- **`recap-worker/`** – Rust 2024 Axum service scheduling the 7-day recap job (04:00 JST), dispatching evidence to recap-subworker/news-creator, and persisting outputs into recap-db via sqlx.
+- **`recap-subworker/`** – FastAPI + Gunicorn clustering worker that receives per-genre evidence corpora, runs CPU-bound clustering inside a process pool, and streams representative evidence + diagnostics back to recap-worker.
+- **`recap-migration-atlas/`** – Atlas migrations + hash tooling for recap-db (jobs, outputs, cluster evidence); invoked through `docker compose --profile recap run recap-db-migrator ...` or `make recap-migrate`.
 
 - Every service enforces Red → Green → Refactor and propagates structured logs or request IDs.
 - Use the appendix command cheat sheet for the most common workflows.
 
 ## Service Deep Dives
 
-- **alt-frontend** – Next.js 15 App Router UI with Chakra theming, SWR/react-query caching, and middleware-protected routes; Vitest + Playwright guard quality.
+- **alt-frontend** – Next.js 15 App Router UI with Chakra theming, SWR/react-query caching, middleware-protected routes, and the new mobile `/mobile/recap/7days` experience (Recap/Genres/Articles/Jobs tabs) backed by SWR skeletons and trace propagation.
 - **alt-backend/app** – Go 1.25 Clean Architecture API (handler → usecase → port → gateway → driver) with GoMock tests, Atlas migrations, and slog logging.
 - **alt-backend/sidecar-proxy** – Go HTTP proxy centralising allowlists, timeouts, and header normalisation; exercised with three-part `httptest`.
 - **pre-processor/app** – Go ingestion service fetching RSS feeds, deduping entries, and firing summarisation/tagging with circuit breakers and 5-second pacing.
@@ -252,12 +264,67 @@ The list below summarises each microservice's responsibilities. Consult the dire
 - **auth-token-manager** – Deno 2.5.4 OAuth refresh worker stubbing `fetch` via `@std/testing/bdd` to keep rotations safe.
 - **rask-log-forwarder/app** – Rust sidecar tailing Docker logs with SIMD parsing, lock-free queues, and disk fallback before ClickHouse handoff.
 - **rask-log-aggregator/app** – Rust Axum ingestion API performing zero-copy parsing and persisting structured logs into ClickHouse with `criterion`.
+- **recap-worker** – Rust 2024 Axum runner that acquires a cron window (default 04:00 JST), fetches articles via alt-backend `/v1/recap/articles`, preprocesses/dedupes content, dispatches corpora to recap-subworker + news-creator, and persists summaries/evidence to recap-db for the `/v1/recap/7days` API.
+- **recap-subworker** – FastAPI service that clusters per-genre evidence in a `ProcessPoolExecutor`, enforces queue backpressure, validates JSON Schemas, and returns representative sentences + diagnostics for persistence.
 
 - **Cross-cutting note** – Structured logging, context propagation, deterministic tests, and environment-driven configuration are mandatory across all services. Consult each service’s `CLAUDE.md` for precise commands, env vars, and gotchas before committing changes.
 
+## Recap Experience & Pipeline
+
+recap-worker (Rust 2024) and recap-subworker (FastAPI) now power a dedicated seven-day “Recap” surface that highlights top genres, evidence links, and batch health for mobile users. The pipeline runs under its own Compose profile, persists outputs into recap-db, and exposes lightweight APIs that the frontend can poll or hydrate via SWR.
+
+### Mobile & API Surfaces
+
+- `/mobile/recap/7days` renders the Recap, Genres, Articles, and Jobs tabs defined in `PLAN6.md`, using SWR hooks (`useRecapData`) plus Chakra skeletons so data appears instantly via `stale-while-revalidate`.
+- `GET /v1/recap/7days` (alt-backend) is public and streams the latest recap summary, genre clusters, and evidence bundle straight from recap-db. Latency and cache headers map to SWR defaults so offline states gracefully reuse the cached payload.
+- `GET /v1/recap/articles` is service-authenticated and supplies recap-worker with deterministic article corpora (window, pagination, language filters) before every run. Pair it with `POST /v1/generate/recaps/7days` for manual retries or narrow-genre jobs.
+- `recap-worker` exposes `/health/live`, `/health/ready`, `/metrics`, and admin retries; `recap-subworker` mirrors the health endpoints and publishes queue depth gauges so Grafana, ClickHouse, or CLI checks can flag stalls early.
+
+### Running the Recap Stack
+
+- Run `make recap-migrate` (or `docker compose --profile recap run recap-db-migrator atlas migrate apply`) before enabling the profile so recap-db includes the latest schema (`recap_jobs`, `recap_outputs`, `recap_cluster_evidence`, diagnostics tables).
+- Start everything with GPU + worker profiles, e.g.:
+  ```bash
+  docker compose --profile recap --profile ollama up recap-worker recap-subworker recap-db news-creator -d
+  ```
+- Trigger a job manually via `curl -X POST http://localhost:9005/v1/generate/recaps/7days -H 'Content-Type: application/json' -d '{"genres":[]}'` or wait for the default 04:00 JST scheduler. Watch `docker compose logs -f recap-worker recap-subworker` for per-stage metrics.
+- Once the job completes, `curl http://localhost:9000/v1/recap/7days` should return fresh data and the mobile route will refresh automatically thanks to SWR’s `stale-if-error` fallback.
+
+### Pipeline Flow
+
+```mermaid
+flowchart LR
+    classDef svc fill:#eef2ff,stroke:#4338ca,color:#111827
+    classDef data fill:#ecfccb,stroke:#16a34a,color:#052e16
+    classDef ui fill:#cffafe,stroke:#0891b2,color:#083344
+    classDef ctrl fill:#fde68a,stroke:#d97706,color:#713f12
+
+    Scheduler[[04:00 JST Cron]]:::ctrl
+    Admin[Manual trigger<br/>POST /v1/generate/recaps/7days]:::ctrl
+    Worker{{recap-worker<br/>Rust pipeline}}:::svc
+    AltAPI["alt-backend<br/>/v1/recap/articles"]:::svc
+    Subworker["recap-subworker<br/>FastAPI clustering"]:::svc
+    News["news-creator<br/>LLM summaries"]:::svc
+    RecapDB[(recap-db<br/>PostgreSQL 16)]:::data
+    BackendAPI["alt-backend<br/>/v1/recap/7days"]:::svc
+    Mobile["Mobile UI<br/>/mobile/recap/7days"]:::ui
+
+    Scheduler --> Worker
+    Admin --> Worker
+    Worker --> AltAPI
+    AltAPI --> Worker
+    Worker --> Subworker
+    Subworker --> Worker
+    Worker --> News
+    News --> Worker
+    Worker --> RecapDB
+    RecapDB --> BackendAPI
+    BackendAPI --> Mobile
+```
+
 ## Observability & Operations
 
-- Enable the `logging` profile to run rask-log-forwarder sidecars; defaults stream 1 000-log batches (flush 500 ms) to `http://rask-log-aggregator:9600/v1/aggregate`. ClickHouse data lives in `clickhouse_data` and is accessible via `docker compose exec clickhouse clickhouse-client`.
+- Enable the `logging` profile to run rask-log-forwarder sidecars; defaults stream 1 000-log batches (flush 500 ms) to `http://rask-log-aggregator:9600/v1/aggregate`. When testing Recap, pair the `recap` and `ollama` profiles so recap-worker can reach both recap-db and news-creator. ClickHouse data lives in `clickhouse_data` and is accessible via `docker compose exec clickhouse clickhouse-client`.
 - Monitor core endpoints below; Kratos (`http://localhost:4433/health/ready`) and ClickHouse (`http://localhost:8123/ping`) should also respond during smoke tests.
 
   | Service | Endpoint | Expectation |
@@ -266,6 +333,9 @@ The list below summarises each microservice's responsibilities. Consult the dire
   | Backend | `http://localhost:9000/v1/health` | `{ "status": "ok" }` |
   | Auth Hub | `http://localhost:8888/health` | HTTP 200 |
   | Meilisearch | `http://localhost:7700/health` | `{ "status": "available" }` |
+  | Recap Worker | `http://localhost:9005/health/ready` | Probes recap-subworker + news-creator before `200`; metrics at `/metrics`. |
+  | Recap Subworker | `http://localhost:8002/health/ready` | `200` only when queue + process pool are healthy. |
+  | Recap DB | `docker compose exec recap-db pg_isready -U $RECAP_DB_USER` | `accepting connections` |
 
 - Use `docker compose logs -f <service>` for quick debugging, query ClickHouse for high-volume analysis, and run `backup-postgres.sh` / `backup-postgres-docker.sh` only when the stack is quiesced.
 
@@ -282,9 +352,10 @@ The list below summarises each microservice's responsibilities. Consult the dire
 | Frontend unit | alt-frontend components | `pnpm -C alt-frontend test` | Vitest + Testing Library + `userEvent`. |
 | Frontend e2e | alt-frontend Playwright POM | `pnpm -C alt-frontend test:e2e` | Requires `make up`. |
 | Go services | alt-backend/app, sidecar-proxy, pre-processor/app, pre-processor-sidecar/app, search-indexer/app, auth-hub | `go test ./...` from each directory | Add `-race -cover` when touching concurrency; regenerate mocks via `make generate-mocks`. |
-| Python services | news-creator/app, tag-generator/app | `SERVICE_SECRET=test-secret pytest`; `uv run pytest` | Async tests use `pytest-asyncio`; Ruff and mypy enforce quality gates. |
-| Rust services | rask-log-forwarder/app, rask-log-aggregator/app | `cargo test` | Performance guardrails via `cargo bench`. |
+| Python services | news-creator/app, tag-generator/app, recap-subworker | `SERVICE_SECRET=test-secret pytest`; `uv run pytest` | Async tests use `pytest-asyncio`; Ruff and mypy enforce quality gates; recap-subworker exercises clustering + queue backpressure. |
+| Rust services | recap-worker, rask-log-forwarder/app, rask-log-aggregator/app | `cargo test -p <crate>` | Use `cargo bench` for recap-worker preprocessing + rask hot paths; run `SQLX_OFFLINE=true cargo test -p recap-worker` in CI. |
 | Deno service | auth-token-manager | `deno test` | BDD-style assertions with `@std/testing/bdd`. |
+| Recap pipeline | recap-worker ↔ recap-subworker contract + alt-backend `/v1/recap/*` DTOs | `cargo test -p recap-worker && uv run pytest -q` | Run before modifying JSON Schemas or evidence DTOs; follow with `docker compose --profile recap --profile ollama up` smoke to validate `/v1/recap/7days`. |
 | Compose smoke | Full stack health | `make up` then `curl` health endpoints | Confirms migrations, Meilisearch settings, and auth-hub session flow. |
 
 ## Testing Playbook
@@ -306,6 +377,7 @@ CI expectations: PRs run lint + unit suites per language plus targeted integrati
 - Kratos maintains its own database (`kratos_db_data`) for identity state; never cross-link application tables to Kratos schemas—consume identity via auth-hub headers instead.
 - Meilisearch (`meili_data`) holds denormalised search documents built by `search-indexer`; run `docker compose exec meilisearch index list` to inspect configured indices.
 - ClickHouse (`clickhouse_data`) captures structured logs from rask-aggregator, enabling time-series queries, dashboards, and anomaly alerts.
+- recap-db (`recap_db_data`) is the dedicated PostgreSQL instance for recap-worker; it stores `recap_jobs`, cached articles, cluster evidence, and published summaries. Keep it in sync via `recap-migration-atlas/` + `make recap-migrate` before running the `recap` profile.
 - Backups: `backup-postgres.sh` (local Docker) and `backup-postgres-docker.sh` (Compose-aware) provide snapshot scripts; schedule them before major migrations. ClickHouse backups can be scripted via `clickhouse-client` or S3-based storage (future).
 
 ### Data Model Overview
@@ -317,6 +389,10 @@ erDiagram
     ARTICLES ||--o{ ARTICLE_TAGS : tagged_with
     ARTICLES }o--o{ INGESTION_JOBS : processed_in
     USERS ||--o{ ARTICLES : archived_by
+    ARTICLES ||--o{ RECAP_JOB_ARTICLES : cached_for
+    RECAP_JOB_ARTICLES }o--|| RECAP_JOBS : belongs_to
+    RECAP_JOBS ||--o{ RECAP_OUTPUTS : produces
+    RECAP_OUTPUTS ||--o{ RECAP_CLUSTER_EVIDENCE : references
 ```
 
 ### Storage Guardrails
@@ -325,6 +401,7 @@ erDiagram
 - **Indices** – Postgres indexes `(feed_id, archived)` and `(published_at DESC)` keep queries snappy; adjust Meilisearch filterable attributes when adding new facets.
 - **Migrations** – Preview drift with Atlas when available; keep changes idempotent and reversible.
 - **Resets** – `make down-volumes` clears state; note any seed scripts so teammates can repopulate fixtures quickly.
+- **Recap state** – Use `make recap-migrate` + `docker compose --profile recap run recap-worker sqlx migrate info` after editing `recap-migration-atlas/`; keep JSONB payloads backwards compatible so the public `/v1/recap/7days` API never breaks.
 
 ## Security & Compliance
 
@@ -367,6 +444,7 @@ erDiagram
 | --- | --- | --- |
 | `pnpm dev` fails with missing env vars | `.env` not aligned with `.env.template` | Re-run `cp .env.template .env`, ensure `scripts/check-env.js` passes. |
 | Backend returns 401 despite valid session | auth-hub cache stale or Kratos offline | Restart auth-hub container; verify Kratos `/sessions/whoami` responds; purge cache by restarting service. |
+| Recap dashboard shows skeletons forever | `--profile recap` not running, recap-worker job failed, or recap-db lacks data | Run `docker compose --profile recap --profile ollama up recap-worker recap-subworker recap-db`; trigger `POST /v1/generate/recaps/7days`; inspect `docker compose logs recap-worker`. |
 | Meilisearch searches empty after ingest | search-indexer not running or index misconfigured | Check `docker compose logs search-indexer`; rerun `search-indexer` manually; confirm index settings via Meili dashboard. |
 | Ollama summary timeouts | Model not pulled or GPU unavailable | Run `docker compose --profile ollama logs news-creator`; preload model with `ollama pull gemma:4b`; confirm GPU drivers. |
 | Rust services crash on startup | Insufficient ulimit or missing env | Ensure `LOG_LEVEL` and `RASK_ENDPOINT` set; increase file descriptors via Docker Compose `ulimits`. |
@@ -385,6 +463,7 @@ erDiagram
 - **LLM** – Large Language Model; in this project, Ollama-powered Gemma 3 4B produces article summaries.
 - **Meilisearch** – Lightweight search engine used for full-text indexing and filtering of enriched content.
 - **Rask** – Codename for the Rust observability duo: `rask-log-forwarder` (ingest) and `rask-log-aggregator` (ClickHouse sink).
+- **Recap** – The seven-day batch summarization feature driven by recap-worker (Rust), recap-subworker (FastAPI), recap-db (PostgreSQL), and the mobile `/mobile/recap/7days` UI exposed via `/v1/recap/7days`.
 - **Singleflight** – Go concurrency primitive ensuring only one duplicate request executes; used for token refresh.
 - **TDD** – Test-Driven Development; the Red → Green → Refactor cycle enforced across all services.
 
@@ -406,6 +485,9 @@ make down
 docker compose --profile ollama --profile logging up -d
 pnpm -C alt-frontend test
 cd alt-backend/app && go test ./...
+make recap-migrate
+docker compose --profile recap --profile ollama up recap-worker recap-subworker recap-db -d
+curl http://localhost:9000/v1/recap/7days
 ```
 
 ### Essential Environment Variables
@@ -418,6 +500,8 @@ cd alt-backend/app && go test ./...
 | `NEXT_PUBLIC_APP_ORIGIN`, `NEXT_PUBLIC_RETURN_TO_DEFAULT` | Frontend routing and redirects | `.env.template` |
 | `SIDECAR_PROXY_BASE_URL`, `RASK_ENDPOINT` (+ batching vars) | Outbound proxy and log pipeline config | `.env` or compose `x-rask-env` |
 | `SERVICE_SECRET`, `INOREADER_CLIENT_ID`, `INOREADER_CLIENT_SECRET` | News-creator tests and Inoreader OAuth tokens | Export locally or inject via Secrets |
+| `RECAP_DB_USER`, `RECAP_DB_PASSWORD`, `RECAP_DB_NAME`, `RECAP_DB_PORT` | Recap PostgreSQL credentials shared by recap-worker, recap-subworker, and the migrator | `.env.template`, `recap-migration-atlas/.env.example` |
+| `RECAP_WORKER_URL`, `RECAP_SUBWORKER_BASE_URL`, `RECAP_WINDOW_DAYS` | alt-backend → recap-worker client target plus worker scheduling window | `.env.template` and Compose `recap` profile |
 
 Keep `.env.template` updated with non-sensitive defaults whenever configuration changes, and mirror new variables here.
 
