@@ -48,7 +48,9 @@ class ArticleFetcher:
                 id::text AS id,
                 title,
                 content,
-                created_at
+                created_at,
+                COALESCE(feed_id::text, NULL) AS feed_id,
+                url
             FROM articles
             WHERE
                 (created_at < %s)
@@ -142,7 +144,9 @@ class ArticleFetcher:
                     a.id::text AS id,
                     a.title,
                     a.content,
-                    a.created_at
+                    a.created_at,
+                    COALESCE(a.feed_id::text, NULL) AS feed_id,
+                    a.url
                 FROM articles a
                 INNER JOIN article_tags at ON a.id = at.article_id
                 ORDER BY a.created_at DESC, a.id DESC
@@ -154,7 +158,9 @@ class ArticleFetcher:
                     a.id::text AS id,
                     a.title,
                     a.content,
-                    a.created_at
+                    a.created_at,
+                    COALESCE(a.feed_id::text, NULL) AS feed_id,
+                    a.url
                 FROM articles a
                 LEFT JOIN article_tags at ON a.id = at.article_id
                 WHERE at.article_id IS NULL

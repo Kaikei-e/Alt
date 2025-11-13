@@ -275,13 +275,44 @@ class TagGeneratorService:
         if self.config.enable_gc_collection:
             gc.collect()
 
+    def _get_feed_id_from_url(self, conn: Connection, article_url: str) -> str | None:
+        """
+        Get feed_id from article URL by matching with feed.link.
+
+        Args:
+            conn: Database connection
+            article_url: Article URL string
+
+        Returns:
+            Feed ID as string if found, None otherwise
+        """
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id::text
+                    FROM feeds
+                    WHERE link = %s
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (article_url,),
+                )
+                result = cursor.fetchone()
+                if result:
+                    return result[0]
+                return None
+        except Exception as e:
+            logger.warning("Failed to get feed_id from URL", url=article_url, error=str(e))
+            return None
+
     def _process_single_article(self, conn: Connection, article: dict[str, Any]) -> bool:
         """
         Process a single article for tag extraction and insertion.
 
         Args:
             conn: Database connection
-            article: Article dictionary with id, title, content, created_at
+            article: Article dictionary with id, title, content, created_at, feed_id, url
 
         Returns:
             True if successful, False otherwise
@@ -290,7 +321,23 @@ class TagGeneratorService:
         article_id = article["id"]
         title = article["title"]
         content = article["content"]
-        feed_id = article.get("feed_id", "unknown")
+        feed_id = article.get("feed_id")
+        article_url = article.get("url")
+
+        # If feed_id is missing, try to get it from article URL
+        if not feed_id and article_url:
+            feed_id = self._get_feed_id_from_url(conn, article_url)
+            if feed_id:
+                logger.info("Resolved feed_id from article URL", article_id=article_id, feed_id=feed_id)
+
+        # Skip if feed_id is still missing
+        if not feed_id:
+            logger.warning(
+                "Skipping article: feed_id is missing and could not be resolved from URL",
+                article_id=article_id,
+                url=article_url,
+            )
+            return False
 
         try:
             # Extract tags

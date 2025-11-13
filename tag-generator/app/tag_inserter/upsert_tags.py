@@ -329,19 +329,62 @@ class TagInserter:
 
                 # Step 1: Get feed_id for each article and group tags by feed_id
                 feed_tag_groups = {}
+                skipped_articles = []
                 for article_data in valid_article_tags:
                     article_id = article_data["article_id"]
-                    # Get feed_id for this article
+                    # Get feed_id and url for this article
                     cursor.execute(
-                        "SELECT feed_id FROM articles WHERE id = %s::uuid",
+                        "SELECT feed_id, url FROM articles WHERE id = %s::uuid",
                         (article_id,),
                     )
                     result = cursor.fetchone()
-                    if result and result[0]:
+                    feed_id = None
+                    article_url = None
+
+                    if result:
                         feed_id = result[0]
+                        article_url = result[1]
+
+                    # If feed_id is NULL, try to get it from article URL
+                    if not feed_id and article_url:
+                        cursor.execute(
+                            """
+                            SELECT id
+                            FROM feeds
+                            WHERE link = %s
+                            ORDER BY created_at DESC, id DESC
+                            LIMIT 1
+                            """,
+                            (article_url,),
+                        )
+                        feed_result = cursor.fetchone()
+                        if feed_result:
+                            feed_id = feed_result[0]
+                            logger.info(
+                                "Resolved feed_id from article URL in batch",
+                                article_id=article_id,
+                                feed_id=str(feed_id),
+                            )
+
+                    if feed_id:
                         if feed_id not in feed_tag_groups:
                             feed_tag_groups[feed_id] = set()
                         feed_tag_groups[feed_id].update(article_data["tags"])
+                    else:
+                        skipped_articles.append(article_id)
+                        logger.warning(
+                            "Skipping article: feed_id is missing and could not be resolved from URL",
+                            article_id=article_id,
+                            url=article_url,
+                        )
+
+                if skipped_articles:
+                    results["failed_articles"] += len(skipped_articles)
+                    logger.warning(
+                        "Skipped articles due to missing feed_id",
+                        count=len(skipped_articles),
+                        article_ids=skipped_articles[:10],  # Log first 10 to avoid log spam
+                    )
 
                 # Step 2: Insert tags for each feed_id
                 for feed_id, tags in feed_tag_groups.items():
@@ -364,14 +407,35 @@ class TagInserter:
 
                     # Get feed_id for this article to find the correct tag_id_map
                     cursor.execute(
-                        "SELECT feed_id FROM articles WHERE id = %s::uuid",
+                        "SELECT feed_id, url FROM articles WHERE id = %s::uuid",
                         (article_id,),
                     )
                     result = cursor.fetchone()
-                    if result and result[0]:
-                        feed_id = result[0]
-                        tag_id_map = all_tag_id_maps.get(feed_id, {})
+                    feed_id = None
+                    article_url = None
 
+                    if result:
+                        feed_id = result[0]
+                        article_url = result[1]
+
+                    # If feed_id is NULL, try to get it from article URL
+                    if not feed_id and article_url:
+                        cursor.execute(
+                            """
+                            SELECT id
+                            FROM feeds
+                            WHERE link = %s
+                            ORDER BY created_at DESC, id DESC
+                            LIMIT 1
+                            """,
+                            (article_url,),
+                        )
+                        feed_result = cursor.fetchone()
+                        if feed_result:
+                            feed_id = feed_result[0]
+
+                    if feed_id:
+                        tag_id_map = all_tag_id_maps.get(feed_id, {})
                         for tag in article_tags_list:
                             if tag in tag_id_map:
                                 all_relationships.append((article_id, tag_id_map[tag]))
@@ -511,19 +575,62 @@ class TagInserter:
 
                 # Step 1: Get feed_id for each article and group tags by feed_id
                 feed_tag_groups = {}
+                skipped_articles = []
                 for article_data in valid_article_tags:
                     article_id = article_data["article_id"]
-                    # Get feed_id for this article
+                    # Get feed_id and url for this article
                     cursor.execute(
-                        "SELECT feed_id FROM articles WHERE id = %s::uuid",
+                        "SELECT feed_id, url FROM articles WHERE id = %s::uuid",
                         (article_id,),
                     )
                     result = cursor.fetchone()
-                    if result and result[0]:
+                    feed_id = None
+                    article_url = None
+
+                    if result:
                         feed_id = result[0]
+                        article_url = result[1]
+
+                    # If feed_id is NULL, try to get it from article URL
+                    if not feed_id and article_url:
+                        cursor.execute(
+                            """
+                            SELECT id
+                            FROM feeds
+                            WHERE link = %s
+                            ORDER BY created_at DESC, id DESC
+                            LIMIT 1
+                            """,
+                            (article_url,),
+                        )
+                        feed_result = cursor.fetchone()
+                        if feed_result:
+                            feed_id = feed_result[0]
+                            logger.info(
+                                "Resolved feed_id from article URL in batch (no-commit)",
+                                article_id=article_id,
+                                feed_id=str(feed_id),
+                            )
+
+                    if feed_id:
                         if feed_id not in feed_tag_groups:
                             feed_tag_groups[feed_id] = set()
                         feed_tag_groups[feed_id].update(article_data["tags"])
+                    else:
+                        skipped_articles.append(article_id)
+                        logger.warning(
+                            "Skipping article: feed_id is missing and could not be resolved from URL (no-commit)",
+                            article_id=article_id,
+                            url=article_url,
+                        )
+
+                if skipped_articles:
+                    results["failed_articles"] += len(skipped_articles)
+                    logger.warning(
+                        "Skipped articles due to missing feed_id (no-commit)",
+                        count=len(skipped_articles),
+                        article_ids=skipped_articles[:10],  # Log first 10 to avoid log spam
+                    )
 
                 # Step 2: Insert tags for each feed_id
                 for feed_id, tags in feed_tag_groups.items():
@@ -546,14 +653,35 @@ class TagInserter:
 
                     # Get feed_id for this article to find the correct tag_id_map
                     cursor.execute(
-                        "SELECT feed_id FROM articles WHERE id = %s::uuid",
+                        "SELECT feed_id, url FROM articles WHERE id = %s::uuid",
                         (article_id,),
                     )
                     result = cursor.fetchone()
-                    if result and result[0]:
-                        feed_id = result[0]
-                        tag_id_map = all_tag_id_maps.get(feed_id, {})
+                    feed_id = None
+                    article_url = None
 
+                    if result:
+                        feed_id = result[0]
+                        article_url = result[1]
+
+                    # If feed_id is NULL, try to get it from article URL
+                    if not feed_id and article_url:
+                        cursor.execute(
+                            """
+                            SELECT id
+                            FROM feeds
+                            WHERE link = %s
+                            ORDER BY created_at DESC, id DESC
+                            LIMIT 1
+                            """,
+                            (article_url,),
+                        )
+                        feed_result = cursor.fetchone()
+                        if feed_result:
+                            feed_id = feed_result[0]
+
+                    if feed_id:
+                        tag_id_map = all_tag_id_maps.get(feed_id, {})
                         for tag in article_tags_list:
                             if tag in tag_id_map:
                                 all_relationships.append((article_id, tag_id_map[tag]))
@@ -576,7 +704,7 @@ class TagInserter:
                     )
 
                 # DO NOT commit here - let caller manage transaction
-                results["processed_articles"] = len(valid_article_tags)
+                results["processed_articles"] = len(valid_article_tags) - len(skipped_articles)
                 logger.info(
                     "Successfully batch processed articles (transaction pending)",
                     count=results["processed_articles"],
