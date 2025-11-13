@@ -87,73 +87,83 @@ impl TagGeneratorClient {
             return Ok(HashMap::new());
         }
 
-        debug!(count = article_ids.len(), "fetching tags in batch");
-
+        const MAX_BATCH_SIZE: usize = 1000;
         let url = self
             .base_url
             .join("api/v1/tags/batch")
             .context("failed to build batch tags URL")?;
 
-        let request_body = BatchTagsRequest {
-            article_ids: article_ids.to_vec(),
-        };
-
-        let mut request = self.client.post(url.clone()).json(&request_body);
-
-        // Add service authentication token if configured
-        if let Some(ref token) = self.service_token {
-            request = request.header("X-Service-Token", token);
-        }
-
-        let response = request
-            .send()
-            .await
-            .context("tag-generator batch tags request failed")?;
-
-        let status = response.status();
-
-        if !status.is_success() {
-            let error_body = response.text().await.unwrap_or_default();
-            anyhow::bail!(
-                "tag-generator returned error status {}: {}",
-                status,
-                error_body
-            );
-        }
-
-        let batch_response: BatchTagsResponse = response
-            .json()
-            .await
-            .context("failed to deserialize tag-generator batch tags response")?;
-
-        if !batch_response.success {
-            anyhow::bail!("tag-generator returned success=false");
-        }
-
-        // Convert TagResponse to TagSignal
         let mut result = HashMap::new();
-        for (article_id, tags) in batch_response.tags {
-            let signals: Vec<TagSignal> = tags
-                .into_iter()
-                .map(|tag| {
-                    let updated_at = DateTime::parse_from_rfc3339(&tag.updated_at)
-                        .ok()
-                        .map(|dt| dt.with_timezone(&Utc));
 
-                    TagSignal::new(
-                        tag.tag,
-                        tag.confidence,
-                        Some(tag.source),
-                        updated_at,
-                    )
-                })
-                .collect();
+        // Split article_ids into chunks of MAX_BATCH_SIZE
+        for chunk in article_ids.chunks(MAX_BATCH_SIZE) {
+            debug!(
+                chunk_size = chunk.len(),
+                total = article_ids.len(),
+                "fetching tags in batch chunk"
+            );
 
-            result.insert(article_id, signals);
+            let request_body = BatchTagsRequest {
+                article_ids: chunk.to_vec(),
+            };
+
+            let mut request = self.client.post(url.clone()).json(&request_body);
+
+            // Add service authentication token if configured
+            if let Some(ref token) = self.service_token {
+                request = request.header("X-Service-Token", token);
+            }
+
+            let response = request
+                .send()
+                .await
+                .context("tag-generator batch tags request failed")?;
+
+            let status = response.status();
+
+            if !status.is_success() {
+                let error_body = response.text().await.unwrap_or_default();
+                anyhow::bail!(
+                    "tag-generator returned error status {}: {}",
+                    status,
+                    error_body
+                );
+            }
+
+            let batch_response: BatchTagsResponse = response
+                .json()
+                .await
+                .context("failed to deserialize tag-generator batch tags response")?;
+
+            if !batch_response.success {
+                anyhow::bail!("tag-generator returned success=false");
+            }
+
+            // Convert TagResponse to TagSignal and merge into result
+            for (article_id, tags) in batch_response.tags {
+                let signals: Vec<TagSignal> = tags
+                    .into_iter()
+                    .map(|tag| {
+                        let updated_at = DateTime::parse_from_rfc3339(&tag.updated_at)
+                            .ok()
+                            .map(|dt| dt.with_timezone(&Utc));
+
+                        TagSignal::new(
+                            tag.tag,
+                            tag.confidence,
+                            Some(tag.source),
+                            updated_at,
+                        )
+                    })
+                    .collect();
+
+                result.insert(article_id, signals);
+            }
         }
 
         debug!(
             count = result.len(),
+            total_requested = article_ids.len(),
             "fetched tags for articles",
         );
 
