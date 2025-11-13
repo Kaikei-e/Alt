@@ -1,10 +1,12 @@
 """
 Authentication service integration for tag-generator.
 Implements user-specific tag generation with tenant isolation.
+Also runs background tag generation service for batch processing.
 """
 
 import inspect
 import os
+import threading
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import wraps
@@ -256,22 +258,65 @@ class AuthenticatedTagGeneratorService:
         pass
 
 
-# FastAPI application with authentication
-app = FastAPI(title="Tag Generator Service", version="1.0.0")
-
 # Global service instance
 tag_service = AuthenticatedTagGeneratorService()
+
+# Background tag generation service
+_background_tag_service = None
+_background_thread = None
+
+
+def _run_background_tag_generation():
+    """Run tag generation service in background thread."""
+    global _background_tag_service
+    try:
+        from main import TagGeneratorService, TagGeneratorConfig
+
+        logger.info("Starting background tag generation service")
+        config = TagGeneratorConfig()
+        _background_tag_service = TagGeneratorService(config)
+        _background_tag_service.run_service()
+    except Exception as e:
+        logger.error("Background tag generation service failed", error=str(e), exc_info=True)
+        # Don't raise - allow API server to continue running
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
+    global _background_thread, tag_service
+
+    logger.info("FastAPI lifespan: startup phase")
+
+    # Initialize API service
     await tag_service.initialize()
+    logger.info("API service initialized")
+
+    # Start background tag generation service in a separate thread
+    logger.info("Starting background tag generation service thread")
+    _background_thread = threading.Thread(
+        target=_run_background_tag_generation,
+        daemon=True,
+        name="tag-generation-service"
+    )
+    _background_thread.start()
+    logger.info("Background tag generation service thread started")
+
     yield
+
+    # Cleanup
+    logger.info("FastAPI lifespan: shutdown phase")
     await tag_service.cleanup()
+    # Note: Background thread will be terminated when main process exits
+    logger.info("Tag generator service shutting down")
 
 
-app.router.lifespan_context = lifespan
+# FastAPI application with authentication
+app = FastAPI(
+    title="Tag Generator Service",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 
 @app.post("/api/v1/generate-tags")
