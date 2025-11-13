@@ -15,7 +15,7 @@ _Last reviewed: November 12, 2025_
 | Pipeline (`src/pipeline/`) | Stages: fetch → preprocess → dedup → genre → evidence → dispatch → persist. |
 | Clients (`src/clients/`) | Typed HTTP clients for alt-backend, recap-subworker (`/v1/runs`), and news-creator (LLM summaries) with JSON Schema validation. |
 | Store (`src/store/`) | SQLx DAO with advisory locks, recap job metadata, JSONB outputs, and the new `recap_cluster_evidence` table for pre-deduplicated links. |
-| Observability (`src/observability/`) | Tracing, Prometheus exporter, OTLP wiring. |
+| Observability (`src/observability/`) | Tracing, Prometheus exporter, OTLP wiring plus new counters for genre refine rollout gating (`recap_genre_refine_rollout_enabled_total` / `_skipped_total`), graph boosts, fallbacks, and LLM latency. |
 
 ## Code Status
 - `src/app.rs` assembles config, DAO, telemetry, scheduler, and HTTP clients, then launches both the control plane and pipeline runner.
@@ -56,6 +56,7 @@ _Last reviewed: November 12, 2025_
 - Monitor GET `/v1/recaps/7days` latency via `recap_api_latest_fetch_duration_seconds` and the new duplicate counter `recap_api_evidence_duplicates_total` to confirm dedup is happening before DTO assembly.
 - Keep JSON Schema versions in sync with downstream services before deploying new payload fields.
 - Grafana: import `observability/grafana/recap-genre-dashboard.json` to surface `genre_tag_agreement_rate`, `recap_genre_tag_missing_ratio`, and `recap_genre_graph_hits_total`. Alertmanager rules live in `observability/alerts/recap-genre-rules.yaml`.
+- Rollout controls: use `RECAP_GENRE_REFINE_ENABLED` plus the new `RECAP_GENRE_REFINE_ROLLOUT_PERCENT` (10/50/100) to gate the corpus. The new counters `recap_genre_refine_rollout_enabled_total` and `_skipped_total` plus `recap_genre_refine_graph_hits_total`/`recap_genre_refine_fallback_total`/`recap_genre_refine_llm_latency_seconds` reflect deployment coverage, Graph boosts, fallback hits, and LLM latency respectively. See `docs/recap-genre-rollout-runbook.md` for the Phase 5 playbook.
 
 ## LLM Tips
 - Specify stage/module when asking for changes (e.g., “update `src/pipeline/dedup.rs` to tweak XXH3 threshold”).
