@@ -75,12 +75,14 @@ impl ComponentRegistry {
             .connect_lazy(config.recap_db_dsn())
             .context("failed to configure recap_db connection pool")?;
         let recap_dao = Arc::new(RecapDao::new(recap_pool));
+        let metrics = telemetry.metrics_arc();
         let pipeline = Arc::new(
             PipelineOrchestrator::new(
                 Arc::clone(&config),
                 (*subworker_client).clone(),
                 Arc::clone(&news_creator_client),
                 Arc::clone(&recap_dao),
+                metrics,
             )
             .await?,
         );

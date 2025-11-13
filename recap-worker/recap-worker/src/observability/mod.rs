@@ -29,6 +29,10 @@ impl Telemetry {
         &self.metrics
     }
 
+    pub(crate) fn metrics_arc(&self) -> Arc<Metrics> {
+        Arc::clone(&self.metrics)
+    }
+
     /// 準備完了プローブを記録する。
     pub fn record_ready_probe(&self) {
         ::tracing::info!("service ready probe recorded");

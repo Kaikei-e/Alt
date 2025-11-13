@@ -94,3 +94,7 @@ testcontainers = "0.16"
 [[bench]]
 name = "performance"
 harness = false
+
+[[bin]]
+name = "replay_genre_pipeline"
+path = "../scripts/replay_genre_pipeline.rs"

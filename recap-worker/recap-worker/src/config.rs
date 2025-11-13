@@ -31,6 +31,7 @@ pub struct Config {
     genre_classifier_threshold: f32,
     genre_refine_enabled: bool,
     genre_refine_require_tags: bool,
+    genre_refine_rollout_pct: u8,
     tag_label_graph_window: String,
     tag_label_graph_ttl: Duration,
 }
@@ -90,6 +91,7 @@ impl Config {
         let genre_classifier_threshold = parse_f64("RECAP_GENRE_MODEL_THRESHOLD", 0.5)? as f32;
         let genre_refine_enabled = parse_bool("RECAP_GENRE_REFINE_ENABLED", false)?;
         let genre_refine_require_tags = parse_bool("RECAP_GENRE_REFINE_REQUIRE_TAGS", true)?;
+        let genre_refine_rollout_pct = parse_percentage("RECAP_GENRE_REFINE_ROLLOUT_PERCENT", 100)?;
         let tag_label_graph_window =
             env::var("TAG_LABEL_GRAPH_WINDOW").unwrap_or_else(|_| "7d".to_string());
         let tag_label_graph_ttl =
@@ -118,6 +120,7 @@ impl Config {
             genre_classifier_threshold,
             genre_refine_enabled,
             genre_refine_require_tags,
+            genre_refine_rollout_pct,
             tag_label_graph_window,
             tag_label_graph_ttl,
         })
@@ -234,6 +237,11 @@ impl Config {
     }
 
     #[must_use]
+    pub fn genre_refine_rollout_pct(&self) -> u8 {
+        self.genre_refine_rollout_pct
+    }
+
+    #[must_use]
     pub fn tag_label_graph_window(&self) -> &str {
         &self.tag_label_graph_window
     }
@@ -300,6 +308,21 @@ fn parse_u64(name: &'static str, default: u64) -> Result<u64, ConfigError> {
         name,
         source: anyhow::Error::new(error),
     })
+}
+
+fn parse_percentage(name: &'static str, default: u8) -> Result<u8, ConfigError> {
+    let raw = env::var(name).unwrap_or_else(|_| default.to_string());
+    let parsed = raw.parse::<u8>().map_err(|error| ConfigError::Invalid {
+        name,
+        source: anyhow::Error::new(error),
+    })?;
+    if parsed > 100 {
+        return Err(ConfigError::Invalid {
+            name,
+            source: anyhow::anyhow!("value must be between 0 and 100"),
+        });
+    }
+    Ok(parsed)
 }
 
 fn parse_f64(name: &'static str, default: f64) -> Result<f64, ConfigError> {

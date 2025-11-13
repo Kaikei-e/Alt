@@ -7,6 +7,7 @@ use crate::{
     clients::alt_backend::{AltBackendClient, AltBackendConfig},
     clients::{NewsCreatorClient, SubworkerClient},
     config::Config,
+    observability::metrics::Metrics,
     scheduler::JobContext,
     store::dao::RecapDao,
     util::retry::RetryConfig,
@@ -27,7 +28,7 @@ pub(crate) mod tag_signal;
 use dedup::{DedupStage, HashDedupStage};
 use dispatch::{DispatchStage, MlLlmDispatchStage};
 use fetch::{AltBackendFetchStage, FetchStage};
-use genre::{CoarseGenreStage, GenreStage, TwoStageGenreStage};
+use genre::{CoarseGenreStage, GenreStage, RefineRollout, TwoStageGenreStage};
 use genre_refine::{
     DbTagLabelGraphSource, DefaultRefineEngine, NewsCreatorLlmTieBreaker, RefineConfig,
     TagLabelGraphSource,
@@ -68,6 +69,7 @@ impl PipelineOrchestrator {
         subworker: SubworkerClient,
         news_creator: Arc<NewsCreatorClient>,
         recap_dao: Arc<RecapDao>,
+        metrics: Arc<Metrics>,
     ) -> Result<Self> {
         let alt_backend_config = AltBackendConfig {
             base_url: config.alt_backend_base_url().to_string(),
@@ -89,6 +91,7 @@ impl PipelineOrchestrator {
         let window_days = config.recap_window_days();
 
         let coarse_stage = Arc::new(CoarseGenreStage::with_defaults());
+        let rollout = RefineRollout::new(config.genre_refine_rollout_pct());
         let genre_stage: Arc<dyn GenreStage> = if config.genre_refine_enabled() {
             let refine_config = RefineConfig::new(config.genre_refine_require_tags());
             let llm = Arc::new(NewsCreatorLlmTieBreaker::new(Arc::clone(&news_creator)));
@@ -109,6 +112,8 @@ impl PipelineOrchestrator {
                 refine_engine,
                 Arc::clone(&recap_dao),
                 config.genre_refine_require_tags(),
+                rollout.clone(),
+                Arc::clone(&metrics),
             ))
         } else {
             coarse_stage as Arc<dyn GenreStage>

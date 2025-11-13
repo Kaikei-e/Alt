@@ -20,6 +20,8 @@ pub struct Metrics {
     pub api_evidence_duplicates: Counter,
     pub genre_refine_graph_hits: Counter,
     pub genre_refine_fallback_total: Counter,
+    pub genre_refine_rollout_enabled: Counter,
+    pub genre_refine_rollout_skipped: Counter,
 
     // ヒストグラム
     pub fetch_duration: Histogram,
@@ -95,6 +97,16 @@ impl Metrics {
             genre_refine_fallback_total: register_counter_with_registry!(
                 "recap_genre_refine_fallback_total",
                 "Number of genre refinement fallbacks to coarse results",
+                registry
+            )?,
+            genre_refine_rollout_enabled: register_counter_with_registry!(
+                "recap_genre_refine_rollout_enabled_total",
+                "Jobs where the genre refine gate was opened",
+                registry
+            )?,
+            genre_refine_rollout_skipped: register_counter_with_registry!(
+                "recap_genre_refine_rollout_skipped_total",
+                "Jobs where the genre refine gate was closed by rollout policy",
                 registry
             )?,
             fetch_duration: register_histogram_with_registry!(
