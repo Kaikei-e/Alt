@@ -343,6 +343,7 @@ services:
       - CUDA_VISIBLE_DEVICES=""
     volumes:
       - ./scripts:/scripts:ro
+      - ./tag-generator/models/onnx:/models/onnx:ro
     tty: true
     depends_on:
       db:
