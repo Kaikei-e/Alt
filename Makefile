@@ -86,6 +86,11 @@ clean-env:
 PORT_BASE_DIR := ./alt-backend/app/port
 MOCKS_DIR := ./alt-backend/app/mocks
 
+TAG_GENERATOR_DIR := ./tag-generator
+TAG_ONNX_DIR := $(TAG_GENERATOR_DIR)/models/onnx
+TAG_ONNX_VENV := $(TAG_GENERATOR_DIR)/.onnx-venv
+TAG_ONNX_MODEL := $(TAG_ONNX_DIR)/model.onnx
+
 generate-mocks:
 	@echo "Generating GoMock mocks for all interfaces in $(PORT_BASE_DIR)..."
 	@mkdir -p $(MOCKS_DIR)
@@ -292,4 +297,26 @@ docker-memory-stats:
 	@echo "Top memory-consuming containers:"
 	@docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}" --sort mem 2>/dev/null | head -10 || echo "No running containers"
 
-.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats
+prepare-tag-onnx: $(TAG_ONNX_MODEL)
+	@echo "tag-generator ONNX model is available at $(TAG_ONNX_MODEL)"
+
+$(TAG_ONNX_MODEL):
+	@echo "Preparing SentenceTransformer ONNX model for tag-generator..."
+	@mkdir -p $(TAG_ONNX_DIR)
+	@if [ ! -d $(TAG_ONNX_VENV) ]; then \
+		echo "Creating dedicated virtual environment at $(TAG_ONNX_VENV)..."; \
+		python3 -m venv $(TAG_ONNX_VENV); \
+	fi
+	@echo "Installing conversion dependencies (optimum[onnxruntime])..."
+	@$(TAG_ONNX_VENV)/bin/pip install --upgrade pip >/dev/null
+	@$(TAG_ONNX_VENV)/bin/pip install --quiet "optimum[onnxruntime]>=1.21.0"
+	@echo "Converting SentenceTransformer to ONNX..."
+	@ONNX_OUTPUT_DIR=$(TAG_ONNX_DIR) HF_TOKEN=$(HF_TOKEN) $(TAG_ONNX_VENV)/bin/python $(TAG_GENERATOR_DIR)/scripts/convert_to_onnx.py
+	@echo "✅ ONNX model stored at $(TAG_ONNX_MODEL)"
+
+clean-tag-onnx:
+	@echo "Removing generated ONNX artifacts and virtual environment..."
+	@rm -rf $(TAG_ONNX_DIR) $(TAG_ONNX_VENV)
+	@echo "tag-generator ONNX assets cleaned."
+
+.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx
