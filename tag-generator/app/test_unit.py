@@ -10,7 +10,9 @@ import pytest
 
 from article_fetcher.fetch import ArticleFetcher
 from main import TagGeneratorService
-from tag_extractor.extract import TagExtractionConfig, TagExtractor
+from tag_generator.cascade import CascadeConfig, CascadeController
+from tag_extractor.extract import TagExtractionConfig, TagExtractor, TagExtractionOutcome
+from tag_extractor.input_sanitizer import SanitizedArticleInput, SanitizationResult
 from tag_inserter.upsert_tags import TagInserter
 
 
@@ -330,6 +332,53 @@ class TestTagExtractor:
             mock_extractor.extract_tags.assert_called_once_with("Test Title", "Test Content")
 
 
+    def test_extract_tags_with_metrics_returns_outcome(self):
+        """Should return metrics container from extract_tags_with_metrics."""
+        extractor = TagExtractor()
+        sanitized_input = SanitizedArticleInput(
+            title="Test title",
+            content="Test content with enough length",
+            url=None,
+            original_length=50,
+            sanitized_length=45,
+        )
+        sanitization_result = SanitizationResult(
+            is_valid=True,
+            sanitized_input=sanitized_input,
+            violations=[],
+            warnings=[],
+        )
+
+        with (
+            patch.object(extractor._input_sanitizer, "sanitize", return_value=sanitization_result),
+            patch.object(extractor, "_detect_language", return_value="en"),
+            patch.object(extractor, "_run_extraction", return_value=["tag1", "tag2"]),
+        ):
+            outcome = extractor.extract_tags_with_metrics("Title", "Content")
+
+            assert outcome.tags == ["tag1", "tag2"]
+            assert outcome.language == "en"
+            assert outcome.tag_count == 2
+            assert 0.0 < outcome.confidence <= 1.0
+            assert outcome.model_name == extractor.config.model_name
+
+    def test_extract_tags_with_metrics_handles_invalid_input(self):
+        """Should return empty outcome when sanitization fails."""
+        extractor = TagExtractor()
+        sanitization_result = SanitizationResult(
+            is_valid=False,
+            sanitized_input=None,
+            violations=["invalid"],
+            warnings=[],
+        )
+
+        with patch.object(extractor._input_sanitizer, "sanitize", return_value=sanitization_result):
+            outcome = extractor.extract_tags_with_metrics("Title", "Content")
+
+            assert outcome.tags == []
+            assert outcome.confidence == 0.0
+            assert outcome.language == "und"
+
 class TestArticleFetcher:
     """Unit tests for ArticleFetcher class."""
 
@@ -562,12 +611,12 @@ class TestTagInserter:
 
         # Mock feed_id queries - each article gets a feed_id
         mock_cursor.fetchone.side_effect = [
-            ("feed-uuid-1",),  # uuid-1's feed_id
-            ("feed-uuid-1",),  # uuid-1's feed_id (second query)
-            ("feed-uuid-2",),  # uuid-2's feed_id
-            ("feed-uuid-2",),  # uuid-2's feed_id (second query)
-            ("feed-uuid-3",),  # uuid-3's feed_id
-            ("feed-uuid-3",),  # uuid-3's feed_id (second query)
+            ("feed-uuid-1", None),  # uuid-1's feed_id
+            ("feed-uuid-1", None),  # uuid-1's feed_id (second query)
+            ("feed-uuid-2", None),  # uuid-2's feed_id
+            ("feed-uuid-2", None),  # uuid-2's feed_id (second query)
+            ("feed-uuid-3", None),  # uuid-3's feed_id
+            ("feed-uuid-3", None),  # uuid-3's feed_id (second query)
         ]
 
         # Mock tag ID queries - return UUIDs for tags
@@ -595,6 +644,61 @@ class TestTagInserter:
         # Should process all articles successfully
         # Database calls are mocked, so we just verify success
 
+
+class TestCascadeController:
+    """Unit tests for cascade controller heuristics."""
+
+    def test_should_request_refine_when_confidence_low(self):
+        controller = CascadeController()
+        outcome = TagExtractionOutcome(
+            tags=["tag1"],
+            confidence=0.3,
+            tag_count=1,
+            inference_ms=50.0,
+            language="en",
+            model_name="model",
+            sanitized_length=30,
+        )
+
+        decision = controller.evaluate(outcome)
+
+        assert decision.needs_refine
+        assert decision.reason == "low_confidence"
+
+    def test_should_limit_refine_ratio_when_budget_exhausted(self):
+        config = CascadeConfig(max_refine_ratio=0.0)
+        controller = CascadeController(config)
+        outcome = TagExtractionOutcome(
+            tags=["tag1"],
+            confidence=0.3,
+            tag_count=2,
+            inference_ms=20.0,
+            language="en",
+            model_name="model",
+            sanitized_length=30,
+        )
+
+        decision = controller.evaluate(outcome)
+
+        assert not decision.needs_refine
+        assert decision.reason == "refine_ratio_budget_capped"
+
+    def test_should_exit_when_confidence_high(self):
+        controller = CascadeController()
+        outcome = TagExtractionOutcome(
+            tags=["tag1", "tag2", "tag3", "tag4", "tag5", "tag6"],
+            confidence=0.95,
+            tag_count=6,
+            inference_ms=10.0,
+            language="en",
+            model_name="model",
+            sanitized_length=120,
+        )
+
+        decision = controller.evaluate(outcome)
+
+        assert not decision.needs_refine
+        assert decision.reason == "high_confidence_exit"
 
 class TestTagGeneratorService:
     """Unit tests for TagGeneratorService class."""
@@ -715,11 +819,26 @@ class TestTagGeneratorService:
             "title": "Test Title",
             "content": "Test content",
             "created_at": "2023-01-01T00:00:00Z",
+            "feed_id": "feed-uuid-1",
         }
+
+        outcome = TagExtractionOutcome(
+            tags=["tag1", "tag2"],
+            confidence=0.8,
+            tag_count=2,
+            inference_ms=12.5,
+            language="en",
+            model_name=service.tag_extractor.config.model_name,
+            sanitized_length=100,
+        )
 
         # Mock tag extraction and insertion
         with (
-            patch.object(service.tag_extractor, "extract_tags", return_value=["tag1", "tag2"]) as mock_extract_tags,
+            patch.object(
+                service.tag_extractor,
+                "extract_tags_with_metrics",
+                return_value=outcome,
+            ) as mock_extract_with_metrics,
             patch.object(
                 service.tag_inserter,
                 "upsert_tags",
@@ -729,8 +848,10 @@ class TestTagGeneratorService:
             result = service._process_single_article(mock_conn, article)
 
             assert result is True
-            mock_extract_tags.assert_called_once_with("Test Title", "Test content")
-            mock_upsert_tags.assert_called_once_with(mock_conn, "test-uuid", ["tag1", "tag2"])
+            mock_extract_with_metrics.assert_called_once_with("Test Title", "Test content")
+            mock_upsert_tags.assert_called_once_with(
+                mock_conn, "test-uuid", ["tag1", "tag2"], "feed-uuid-1"
+            )
 
     def test_should_handle_article_processing_errors(self):
         """Should handle errors during article processing gracefully."""
@@ -747,7 +868,7 @@ class TestTagGeneratorService:
         # Mock tag extraction failure
         with patch.object(
             service.tag_extractor,
-            "extract_tags",
+            "extract_tags_with_metrics",
             side_effect=Exception("Extraction failed"),
         ):
             result = service._process_single_article(mock_conn, article)

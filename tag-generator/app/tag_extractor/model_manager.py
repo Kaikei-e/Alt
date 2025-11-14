@@ -7,6 +7,12 @@ import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
+from tag_extractor.onnx_embedder import (
+    OnnxEmbeddingConfig,
+    OnnxEmbeddingModel,
+    OnnxRuntimeMissing,
+)
+
 if TYPE_CHECKING:
     from keybert import KeyBERT  # type: ignore
     from sentence_transformers import SentenceTransformer  # type: ignore
@@ -17,10 +23,10 @@ try:
     from sentence_transformers import SentenceTransformer  # type: ignore
 except ImportError:
     # Fallback for environments without ML dependencies (e.g., production builds)
-    # These will be mocked in tests
     SentenceTransformer = None  # type: ignore
     KeyBERT = None  # type: ignore
     Tagger = None  # type: ignore
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -32,6 +38,12 @@ class ModelConfig:
 
     model_name: str = "paraphrase-multilingual-MiniLM-L12-v2"
     device: str = "cpu"
+    use_onnx: bool = False
+    onnx_model_path: str | None = None
+    onnx_tokenizer_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    onnx_pooling: str = "cls"
+    onnx_batch_size: int = 16
+    onnx_max_length: int = 256
 
 
 class ModelManager:
@@ -79,8 +91,7 @@ class ModelManager:
             if (
                 self._embedder is None
                 or self._config is None
-                or self._config.model_name != config.model_name
-                or self._config.device != config.device
+                or self._config != config
             ):
                 logger.info("Loading models", config=config)
                 self._load_models(config)
@@ -109,17 +120,6 @@ class ModelManager:
     def _load_models(self, config: ModelConfig) -> None:
         """Load ML models (called within lock)."""
         try:
-            # Check if ML dependencies are available
-            if SentenceTransformer is None:
-                logger.error(
-                    "SentenceTransformer not available",
-                    help="Install with: pip install sentence-transformers",
-                    check_import="Try: python -c 'import sentence_transformers'",
-                )
-                raise ImportError("SentenceTransformer not available. Install with: pip install sentence-transformers")
-            if KeyBERT is None:
-                logger.error("KeyBERT not available", help="Install with: pip install keybert")
-                raise ImportError("KeyBERT not available. Install with: pip install keybert")
             if Tagger is None:
                 logger.error(
                     "Tagger (fugashi) not available",
@@ -127,9 +127,34 @@ class ModelManager:
                 )
                 raise ImportError("Tagger not available. Install with: pip install fugashi[unidic-lite]")
 
-            logger.info("Loading SentenceTransformer model", model_name=config.model_name)
-            self._embedder = SentenceTransformer(config.model_name, device=config.device)
-            logger.info("SentenceTransformer loaded successfully")
+            if config.use_onnx:
+                if config.onnx_model_path is None:
+                    raise ValueError("onnx_model_path must be set when use_onnx is True")
+
+                try:
+                    logger.info("Loading ONNX embedder", model_path=config.onnx_model_path)
+                    onnx_config = OnnxEmbeddingConfig(
+                        model_path=config.onnx_model_path,
+                        tokenizer_name=config.onnx_tokenizer_name,
+                        pooling=config.onnx_pooling,
+                        batch_size=config.onnx_batch_size,
+                        max_length=config.onnx_max_length,
+                    )
+                    self._embedder = OnnxEmbeddingModel(onnx_config)
+                except OnnxRuntimeMissing as e:
+                    logger.error("ONNX runtime dependencies missing", error=str(e))
+                    raise
+                except Exception as e:
+                    logger.error("Failed to initialize ONNX embedder", error=str(e))
+                    raise
+            else:
+                if SentenceTransformer is None or KeyBERT is None:
+                    logger.error("SentenceTransformer/KeyBERT dependencies missing")
+                    raise ImportError("SentenceTransformer and KeyBERT are required")
+
+                logger.info("Loading SentenceTransformer model", model_name=config.model_name)
+                self._embedder = SentenceTransformer(config.model_name, device=config.device)
+                logger.info("SentenceTransformer loaded successfully")
 
             logger.info("Loading KeyBERT model")
             self._keybert = KeyBERT(self._embedder)  # pyright: ignore[reportArgumentType]

@@ -72,7 +72,9 @@ ml = [
     "keybert>=0.8.5",
     "transformers>=4.40.0",
     "torch>=2.1.0",
-    "scikit-learn>=1.5.2"
+    "scikit-learn>=1.5.2",
+    "numpy>=1.26.0",
+    "onnxruntime>=1.18.1",
 ]
 
 # NOTE: ML dependencies are in a separate group to allow flexible installation

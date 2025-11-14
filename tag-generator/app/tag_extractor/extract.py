@@ -1,4 +1,5 @@
 import re
+import time
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass
@@ -71,6 +72,25 @@ class TagExtractionConfig:
     )
     extract_compound_words: bool = True
     use_frequency_boost: bool = True
+    use_onnx_runtime: bool = False
+    onnx_model_path: str | None = None
+    onnx_tokenizer_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    onnx_pooling: str = "cls"
+    onnx_batch_size: int = 16
+    onnx_max_length: int = 256
+
+
+@dataclass
+class TagExtractionOutcome:
+    """Metrics-bearing container for tag extraction results."""
+
+    tags: list[str]
+    confidence: float
+    tag_count: int
+    inference_ms: float
+    language: str
+    model_name: str
+    sanitized_length: int
 
 
 class TagExtractor:
@@ -86,10 +106,130 @@ class TagExtractor:
         self._models_loaded = False
         self._input_sanitizer = InputSanitizer(sanitizer_config)
 
+    def _compute_confidence(self, tags: list[str], sanitized_length: int) -> float:
+        """Derive a lightweight confidence score from tag coverage and article size."""
+        if not tags:
+            return 0.0
+
+        coverage = min(len(tags) / max(1, self.config.top_keywords), 1.0)
+        length_factor = min(sanitized_length / 1200.0, 1.0)
+        score = 0.7 * coverage + 0.3 * length_factor
+        return round(max(0.0, min(score, 1.0)), 3)
+
+    def _run_extraction(self, raw_text: str, lang: str) -> list[str]:
+        """Run the primary extraction logic with fallback handling."""
+        try:
+            keywords: list[str]
+
+            if lang == "ja":
+                keywords = self._extract_keywords_japanese(raw_text)
+            else:
+                keywords = self._extract_keywords_english(raw_text)
+
+            if keywords:
+                logger.info("Extraction successful", keywords=keywords)
+                return keywords
+
+            logger.info("Primary extraction yielded no tags, invoking fallback")
+            try:
+                fallback_keywords = self._fallback_extraction(raw_text, lang)
+            except Exception as fallback_error:
+                logger.error("Fallback extraction failed", error=fallback_error)
+                return []
+
+            if fallback_keywords:
+                logger.info("Fallback extraction succeeded", keywords=fallback_keywords)
+                return fallback_keywords
+
+        except Exception as e:
+            logger.error("Extraction error", error=e)
+            try:
+                fallback_keywords = self._fallback_extraction(raw_text, lang)
+            except Exception as fallback_error:
+                logger.error("Fallback extraction failed after exception", error=fallback_error)
+                return []
+
+            if fallback_keywords:
+                logger.info("Emergency fallback successful", keywords=fallback_keywords)
+                return fallback_keywords
+
+        logger.warning("No tags could be extracted")
+        return []
+
+    def extract_tags_with_metrics(self, title: str, content: str) -> TagExtractionOutcome:
+        """
+        Extract tags and capture metrics for cascade decisions.
+        """
+        start_time = time.perf_counter()
+        sanitization_result = self._input_sanitizer.sanitize(title, content)
+
+        if not sanitization_result.is_valid or sanitization_result.sanitized_input is None:
+            logger.warning("Input sanitization failed", violations=sanitization_result.violations)
+            return TagExtractionOutcome(
+                tags=[],
+                confidence=0.0,
+                tag_count=0,
+                inference_ms=0.0,
+                language="und",
+                model_name=self.config.model_name,
+                sanitized_length=0,
+            )
+
+        sanitized_input = sanitization_result.sanitized_input
+        raw_text = f"{sanitized_input.title}\n{sanitized_input.content}".strip()
+        sanitized_length = sanitized_input.sanitized_length
+
+        if len(raw_text) < self.config.min_text_length:
+            logger.info("Sanitized input too short for extraction", char_count=len(raw_text))
+            return TagExtractionOutcome(
+                tags=[],
+                confidence=0.0,
+                tag_count=0,
+                inference_ms=0.0,
+                language="und",
+                model_name=self.config.model_name,
+                sanitized_length=sanitized_length,
+            )
+
+        logger.info(
+            "Processing sanitized text",
+            char_count=len(raw_text),
+            original_length=sanitized_input.original_length,
+            sanitized_length=sanitized_length,
+        )
+
+        lang = self._detect_language(raw_text)
+        logger.info("Detected language", lang=lang)
+        tags = self._run_extraction(raw_text, lang)
+        inference_ms = (time.perf_counter() - start_time) * 1000
+
+        confidence = self._compute_confidence(tags, sanitized_length)
+        outcome = TagExtractionOutcome(
+            tags=tags,
+            confidence=confidence,
+            tag_count=len(tags),
+            inference_ms=inference_ms,
+            language=lang,
+            model_name=self.config.model_name,
+            sanitized_length=sanitized_length,
+        )
+
+        logger.info("Tag extraction metrics", **outcome.__dict__)
+        return outcome
+
     def _lazy_load_models(self) -> None:
         """Lazy load models using the singleton model manager."""
         if not self._models_loaded:
-            model_config = ModelConfig(model_name=self.config.model_name, device=self.config.device)
+            model_config = ModelConfig(
+                model_name=self.config.model_name,
+                device=self.config.device,
+                use_onnx=self.config.use_onnx_runtime,
+                onnx_model_path=self.config.onnx_model_path,
+                onnx_tokenizer_name=self.config.onnx_tokenizer_name,
+                onnx_pooling=self.config.onnx_pooling,
+                onnx_batch_size=self.config.onnx_batch_size,
+                onnx_max_length=self.config.onnx_max_length,
+            )
             self._embedder, self._keybert, self._ja_tagger = self._model_manager.get_models(model_config)
             self._models_loaded = True
             logger.debug("Models loaded via ModelManager")
@@ -354,84 +494,9 @@ class TagExtractor:
 
     def extract_tags(self, title: str, content: str) -> list[str]:
         """
-        Extract tags from title and content with language-specific processing.
-
-        Args:
-            title: The title text
-            content: The content text
-
-        Returns:
-            List of extracted tags
+        Legacy compatibility wrapper that returns only the tag list.
         """
-        # Sanitize input first
-        sanitization_result = self._input_sanitizer.sanitize(title, content)
-
-        if not sanitization_result.is_valid:
-            logger.warning("Input sanitization failed", violations=sanitization_result.violations)
-            return []
-
-        # Use sanitized input
-        sanitized_input = sanitization_result.sanitized_input
-        if sanitized_input is None:
-            logger.error("Sanitized input is None despite valid sanitization")
-            return []
-
-        sanitized_title = sanitized_input.title
-        sanitized_content = sanitized_input.content
-        raw_text = f"{sanitized_title}\n{sanitized_content}"
-
-        # Validate input length
-        if len(raw_text.strip()) < self.config.min_text_length:
-            logger.info(
-                "Sanitized input too short, skipping extraction",
-                char_count=len(raw_text),
-            )
-            return []
-
-        logger.info(
-            "Processing sanitized text",
-            char_count=len(raw_text),
-            original_length=sanitized_input.original_length,
-            sanitized_length=sanitized_input.sanitized_length,
-        )
-
-        # Detect language
-        lang = self._detect_language(raw_text)
-        logger.info("Detected language", lang=lang)
-
-        # Language-specific extraction
-        try:
-            if lang == "ja":
-                # Japanese-specific extraction
-                keywords = self._extract_keywords_japanese(raw_text)
-            else:
-                # English and other languages use KeyBERT
-                keywords = self._extract_keywords_english(raw_text)
-
-            if keywords:
-                logger.info("Extraction successful", keywords=keywords)
-                return keywords
-            else:
-                # Try fallback method
-                logger.info("Primary extraction failed, trying fallback method")
-                fallback_keywords = self._fallback_extraction(raw_text, lang)
-                if fallback_keywords:
-                    logger.info("Fallback extraction successful", keywords=fallback_keywords)
-                    return fallback_keywords
-
-        except Exception as e:
-            logger.error("Extraction error", error=e)
-            # Try fallback on any error
-            try:
-                fallback_keywords = self._fallback_extraction(raw_text, lang)
-                if fallback_keywords:
-                    logger.info(f"Emergency fallback successful: {fallback_keywords}")
-                    return fallback_keywords
-            except Exception as e2:
-                logger.error("Fallback also failed", error=e2)
-
-        logger.warning("No tags could be extracted")
-        return []
+        return self.extract_tags_with_metrics(title, content).tags
 
 
 # Maintain backward compatibility

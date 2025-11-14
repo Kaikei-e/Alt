@@ -13,6 +13,7 @@ from psycopg2.extensions import connection as Connection
 
 from article_fetcher.fetch import ArticleFetcher
 from tag_extractor.extract import TagExtractor
+from tag_generator.cascade import CascadeController
 from tag_generator.logging_config import setup_logging
 from tag_inserter.upsert_tags import TagInserter
 
@@ -52,6 +53,7 @@ class TagGeneratorService:
         self.article_fetcher = ArticleFetcher()
         self.tag_extractor = TagExtractor()
         self.tag_inserter = TagInserter()
+        self.cascade_controller = CascadeController()
 
         # Persistent cursor position for pagination between cycles
         self.last_processed_created_at: str | None = None
@@ -160,7 +162,17 @@ class TagGeneratorService:
         if self.last_processed_created_at and self.last_processed_id:
             # Check for cursor poisoning (timestamp in the future or too old)
             try:
-                cursor_time = datetime.fromisoformat(self.last_processed_created_at.replace("Z", "+00:00"))
+                # Handle timezone-aware and timezone-naive timestamps
+                cursor_str = self.last_processed_created_at
+                if cursor_str.endswith("Z"):
+                    cursor_str = cursor_str.replace("Z", "+00:00")
+
+                cursor_time = datetime.fromisoformat(cursor_str)
+
+                # If timezone-naive, assume UTC
+                if cursor_time.tzinfo is None:
+                    cursor_time = cursor_time.replace(tzinfo=UTC)
+
                 current_time = datetime.now(UTC)
                 time_diff = cursor_time - current_time
 
@@ -224,7 +236,17 @@ class TagGeneratorService:
                             start_time = most_recent_untagged_time.isoformat()
 
                         # Add a small buffer to ensure we catch this article
-                        start_time_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                        # Handle timezone-aware and timezone-naive timestamps
+                        start_time_str = start_time
+                        if start_time_str.endswith("Z"):
+                            start_time_str = start_time_str.replace("Z", "+00:00")
+
+                        start_time_dt = datetime.fromisoformat(start_time_str)
+
+                        # If timezone-naive, assume UTC
+                        if start_time_dt.tzinfo is None:
+                            start_time_dt = start_time_dt.replace(tzinfo=UTC)
+
                         start_time_dt += timedelta(microseconds=1)
                         start_time = start_time_dt.isoformat()
 
@@ -340,11 +362,23 @@ class TagGeneratorService:
             return False
 
         try:
-            # Extract tags
-            tags = self.tag_extractor.extract_tags(title, content)
+            # Extract tags with lightweight metrics for cascade decisions
+            outcome = self.tag_extractor.extract_tags_with_metrics(title, content)
+
+            if not outcome.tags:
+                logger.warning("Skipping article: no tags extracted", article_id=article_id)
+                return False
+
+            # Record cascade decision for metrics / downstream tracing
+            decision = self.cascade_controller.evaluate(outcome)
+            logger.info(
+                "Cascade decision for article",
+                article_id=article_id,
+                **decision.as_dict(),
+            )
 
             # Insert tags
-            result = self.tag_inserter.upsert_tags(conn, article_id, tags, feed_id)
+            result = self.tag_inserter.upsert_tags(conn, article_id, outcome.tags, feed_id)
 
             if result.get("success"):
                 return True
@@ -518,6 +552,7 @@ class TagGeneratorService:
 
         # Prepare batch data for tag insertion
         article_tags_batch = []
+        cascade_refine_requests = 0
 
         # Extract tags for all articles first
         for i, article in enumerate(articles):
@@ -526,10 +561,28 @@ class TagGeneratorService:
                 title = article["title"]
                 content = article["content"]
 
-                tags = self.tag_extractor.extract_tags(title, content)
+                outcome = self.tag_extractor.extract_tags_with_metrics(title, content)
 
-                if tags:  # Only include articles that have tags
-                    article_tags_batch.append({"article_id": article_id, "tags": tags})
+                if not outcome.tags:
+                    continue
+
+                decision = self.cascade_controller.evaluate(outcome)
+                if decision.needs_refine:
+                    cascade_refine_requests += 1
+
+                article_tags_batch.append(
+                    {
+                        "article_id": article_id,
+                        "tags": outcome.tags,
+                        "cascade": decision.as_dict(),
+                    }
+                )
+
+                logger.debug(
+                    "Cascade decision recorded",
+                    article_id=article_id,
+                    **decision.as_dict(),
+                )
 
                 # Log progress during tag extraction
                 if (i + 1) % self.config.progress_log_interval == 0:
@@ -543,6 +596,12 @@ class TagGeneratorService:
                 logger.error(f"Error extracting tags for article {article.get('id', 'unknown')}: {e}")
                 batch_stats["failed"] += 1
                 continue
+
+        logger.info(
+            "Prepared batch with cascade metrics",
+            batch_articles=len(article_tags_batch),
+            refine_candidates=cascade_refine_requests,
+        )
 
         # Perform batch upsert of all tags in the current transaction
         if article_tags_batch:
