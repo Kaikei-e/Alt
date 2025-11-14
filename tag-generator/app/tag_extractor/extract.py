@@ -3,8 +3,8 @@ import re
 import time
 import unicodedata
 from collections import Counter
-from dataclasses import dataclass
-from typing import cast
+from dataclasses import dataclass, field
+from typing import Any, cast
 
 import nltk
 import structlog
@@ -108,6 +108,8 @@ class TagExtractionOutcome:
     language: str
     model_name: str
     sanitized_length: int
+    embedding_backend: str = "unknown"
+    embedding_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class TagExtractor:
@@ -122,6 +124,8 @@ class TagExtractor:
         self._model_manager = get_model_manager()
         self._models_loaded = False
         self._input_sanitizer = InputSanitizer(sanitizer_config)
+        self._embedding_backend: str = "unknown"
+        self._embedding_metadata: dict[str, Any] = {}
 
     def _compute_confidence(self, tags: list[str], sanitized_length: int) -> float:
         """Derive a lightweight confidence score from tag coverage and article size."""
@@ -190,6 +194,8 @@ class TagExtractor:
                 language="und",
                 model_name=self.config.model_name,
                 sanitized_length=0,
+                embedding_backend=self._embedding_backend,
+                embedding_metadata=self._embedding_metadata,
             )
 
         sanitized_input = sanitization_result.sanitized_input
@@ -206,6 +212,8 @@ class TagExtractor:
                 language="und",
                 model_name=self.config.model_name,
                 sanitized_length=sanitized_length,
+                embedding_backend=self._embedding_backend,
+                embedding_metadata=self._embedding_metadata,
             )
 
         logger.info(
@@ -229,9 +237,14 @@ class TagExtractor:
             language=lang,
             model_name=self.config.model_name,
             sanitized_length=sanitized_length,
+            embedding_backend=self._embedding_backend,
+            embedding_metadata=self._embedding_metadata,
         )
 
-        logger.info("Tag extraction metrics", **outcome.__dict__)
+        logger.info(
+            "Tag extraction metrics",
+            **outcome.__dict__,
+        )
         return outcome
 
     def _lazy_load_models(self) -> None:
@@ -249,7 +262,14 @@ class TagExtractor:
             )
             self._embedder, self._keybert, self._ja_tagger = self._model_manager.get_models(model_config)
             self._models_loaded = True
-            logger.debug("Models loaded via ModelManager")
+            runtime_metadata = self._model_manager.get_runtime_metadata()
+            self._embedding_backend = runtime_metadata.get("embedder_backend", "unknown")
+            self._embedding_metadata = runtime_metadata.get("embedder_metadata", {})
+            logger.info(
+                "Models loaded via ModelManager",
+                embedder_backend=self._embedding_backend,
+                embedder_class=type(self._embedder).__name__,
+            )
 
     def _load_stopwords(self) -> None:
         """Load stopwords using the model manager."""

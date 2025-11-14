@@ -78,6 +78,66 @@ class TestModelManager:
         assert ja_tagger is mock_ja_tagger
         assert manager.is_loaded()
 
+    @patch("tag_extractor.model_manager.OnnxEmbeddingModel")
+    @patch("tag_extractor.model_manager.KeyBERT")
+    @patch("tag_extractor.model_manager.Tagger")
+    def test_runtime_metadata_reports_onnx_backend(self, mock_tagger, mock_keybert, mock_onnx):
+        """Ensure runtime metadata exposes ONNX backend details."""
+        mock_embedder = MagicMock()
+        mock_embedder.describe.return_value = {
+            "backend": "onnx",
+            "providers": ["CPUExecutionProvider"],
+            "model_path": "/models/onnx/model.onnx",
+        }
+        mock_kb = MagicMock()
+        mock_ja_tagger = MagicMock()
+
+        mock_onnx.return_value = mock_embedder
+        mock_keybert.return_value = mock_kb
+        mock_tagger.return_value = mock_ja_tagger
+
+        manager = ModelManager()
+        config = ModelConfig(
+            model_name="test-model",
+            device="cpu",
+            use_onnx=True,
+            onnx_model_path="/models/onnx/model.onnx",
+        )
+
+        manager.get_models(config)
+        metadata = manager.get_runtime_metadata()
+
+        assert metadata["embedder_backend"] == "onnx"
+        assert metadata["embedder_metadata"]["model_path"] == "/models/onnx/model.onnx"
+        assert metadata["embedder_metadata"]["providers"] == ["CPUExecutionProvider"]
+
+    @patch("tag_extractor.model_manager.SentenceTransformer")
+    @patch("tag_extractor.model_manager.KeyBERT")
+    @patch("tag_extractor.model_manager.Tagger")
+    def test_runtime_metadata_reports_sentence_transformer_backend(
+        self, mock_tagger, mock_keybert, mock_sentence_transformer
+    ):
+        """Ensure runtime metadata exposes SentenceTransformer backend details."""
+        mock_embedder = MagicMock()
+        mock_embedder.get_sentence_embedding_dimension.return_value = 384
+        mock_kb = MagicMock()
+        mock_ja_tagger = MagicMock()
+
+        mock_sentence_transformer.return_value = mock_embedder
+        mock_keybert.return_value = mock_kb
+        mock_tagger.return_value = mock_ja_tagger
+
+        manager = ModelManager()
+        config = ModelConfig(model_name="test-model", device="cpu", use_onnx=False)
+
+        manager.get_models(config)
+        metadata = manager.get_runtime_metadata()
+
+        assert metadata["embedder_backend"] == "sentence_transformer"
+        assert metadata["embedder_metadata"]["model_name"] == "test-model"
+        assert metadata["embedder_metadata"]["device"] == "cpu"
+        assert metadata["embedder_metadata"]["embedding_dimension"] == 384
+
     def test_get_models_handles_none_models(self):
         """Test that get_models handles None models gracefully."""
         manager = ModelManager()

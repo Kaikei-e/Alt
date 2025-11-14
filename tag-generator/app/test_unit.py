@@ -658,6 +658,8 @@ class TestCascadeController:
             language="en",
             model_name="model",
             sanitized_length=30,
+            embedding_backend="sentence_transformer",
+            embedding_metadata={},
         )
 
         decision = controller.evaluate(outcome)
@@ -676,6 +678,8 @@ class TestCascadeController:
             language="en",
             model_name="model",
             sanitized_length=30,
+            embedding_backend="sentence_transformer",
+            embedding_metadata={},
         )
 
         decision = controller.evaluate(outcome)
@@ -693,6 +697,8 @@ class TestCascadeController:
             language="en",
             model_name="model",
             sanitized_length=120,
+            embedding_backend="sentence_transformer",
+            embedding_metadata={},
         )
 
         decision = controller.evaluate(outcome)
@@ -830,6 +836,8 @@ class TestTagGeneratorService:
             language="en",
             model_name=service.tag_extractor.config.model_name,
             sanitized_length=100,
+            embedding_backend="sentence_transformer",
+            embedding_metadata={},
         )
 
         # Mock tag extraction and insertion

@@ -74,6 +74,8 @@ class ModelManager:
             self._ja_stopwords: set[str] | None = None
             self._en_stopwords: set[str] | None = None
             self._config: ModelConfig | None = None
+            self._embedder_backend: str | None = None
+            self._embedder_metadata: dict[str, Any] = {}
             self._initialized = True
             logger.info("ModelManager singleton initialized")
 
@@ -120,6 +122,8 @@ class ModelManager:
     def _load_models(self, config: ModelConfig) -> None:
         """Load ML models (called within lock)."""
         try:
+            self._embedder_backend = None
+            self._embedder_metadata = {}
             if Tagger is None:
                 logger.error(
                     "Tagger (fugashi) not available",
@@ -146,6 +150,8 @@ class ModelManager:
                     )
                     self._embedder = OnnxEmbeddingModel(onnx_config)
                     logger.info("ONNX embedder loaded successfully", model_path=config.onnx_model_path)
+                    self._embedder_backend = "onnx"
+                    self._embedder_metadata = self._embedder.describe()
                 except OnnxRuntimeMissing as e:
                     logger.error("ONNX runtime dependencies missing", error=str(e))
                     use_onnx = False
@@ -163,10 +169,28 @@ class ModelManager:
                 logger.info("Loading SentenceTransformer model", model_name=config.model_name)
                 self._embedder = SentenceTransformer(config.model_name, device=config.device)
                 logger.info("SentenceTransformer loaded successfully")
+                self._embedder_backend = "sentence_transformer"
+                embedding_dim = None
+                if hasattr(self._embedder, "get_sentence_embedding_dimension"):
+                    try:
+                        embedding_dim = self._embedder.get_sentence_embedding_dimension()  # type: ignore[attr-defined]
+                    except Exception:  # pragma: no cover - best effort metadata
+                        embedding_dim = None
+                self._embedder_metadata = {
+                    "backend": "sentence_transformer",
+                    "model_name": config.model_name,
+                    "device": config.device,
+                }
+                if embedding_dim is not None:
+                    self._embedder_metadata["embedding_dimension"] = embedding_dim
 
             logger.info("Loading KeyBERT model")
             self._keybert = KeyBERT(self._embedder)  # pyright: ignore[reportArgumentType]
-            logger.info("KeyBERT loaded successfully")
+            logger.info(
+                "KeyBERT loaded successfully",
+                embedder_backend=self._embedder_backend,
+                embedder_class=type(self._embedder).__name__,
+            )
 
             logger.info("Loading Japanese tagger")
             self._ja_tagger = Tagger()
@@ -180,6 +204,8 @@ class ModelManager:
             self._embedder = None
             self._keybert = None
             self._ja_tagger = None
+            self._embedder_backend = None
+            self._embedder_metadata = {}
             # Re-raise the original exception
             raise
         except Exception as e:
@@ -192,6 +218,8 @@ class ModelManager:
             self._embedder = None
             self._keybert = None
             self._ja_tagger = None
+            self._embedder_backend = None
+            self._embedder_metadata = {}
             # Re-raise the original exception
             raise
 
@@ -245,7 +273,19 @@ class ModelManager:
             self._ja_stopwords = None
             self._en_stopwords = None
             self._config = None
+            self._embedder_backend = None
+            self._embedder_metadata = {}
             logger.info("Models cleared")
+
+    def get_runtime_metadata(self) -> dict[str, Any]:
+        """Expose runtime metadata about the currently loaded embedder."""
+        with self._models_lock:
+            backend = self._embedder_backend or "unknown"
+            metadata = dict(self._embedder_metadata or {})
+            return {
+                "embedder_backend": backend,
+                "embedder_metadata": metadata,
+            }
 
 
 def get_model_manager() -> ModelManager:
