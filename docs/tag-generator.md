@@ -24,6 +24,7 @@ _Last reviewed: November 14, 2025_
 - Health metrics (total cycles, empty cycles, articles processed) feed into logs for dashboards.
 - `TagExtractor` now returns `TagExtractionOutcome` (tags, confidence, inference latency, sanitized length) and the service uses `CascadeController` to gate whether to refine/re-run downstream work before handing data to `TagInserter`.
 - `TagInserter` exposes both auto-commit and caller-managed batch paths (`batch_upsert_tags`, `batch_upsert_tags_no_commit`) so transactions can stay open until cascade signals settle.
+- `TagExtractor` loads the ONNX Runtime path by default (toggle via `TAG_ONNX_MODEL_PATH`); when the model is missing it transparently falls back to the SentenceTransformer/KeyBERT graph while preserving the cascade diagnostics.
 
 ## Integrations & Data
 - Env vars: `DB_TAG_GENERATOR_USER`, `DB_TAG_GENERATOR_PASSWORD`, `DB_HOST`, `DB_PORT`, `DB_NAME`. Missing vars raise `ValueError`.
