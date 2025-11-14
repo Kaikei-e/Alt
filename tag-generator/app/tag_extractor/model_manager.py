@@ -145,13 +145,15 @@ class ModelManager:
                         max_length=config.onnx_max_length,
                     )
                     self._embedder = OnnxEmbeddingModel(onnx_config)
+                    logger.info("ONNX embedder loaded successfully", model_path=config.onnx_model_path)
                 except OnnxRuntimeMissing as e:
                     logger.error("ONNX runtime dependencies missing", error=str(e))
                     use_onnx = False
                     logger.info("Falling back to SentenceTransformer")
                 except Exception as e:
                     logger.error("Failed to initialize ONNX embedder", error=str(e))
-                    raise
+                    use_onnx = False
+                    logger.info("Falling back to SentenceTransformer due to error")
 
             if not use_onnx:
                 if SentenceTransformer is None or KeyBERT is None:
