@@ -25,6 +25,7 @@ _Last reviewed: November 10, 2025_
 ## Integrations & Data
 - **Env requirements:** `INOREADER_CLIENT_ID`, `INOREADER_CLIENT_SECRET`, `INOREADER_REFRESH_TOKEN` (if pre-seeded), plus Kubernetes metadata (`KUBERNETES_NAMESPACE`, `INOREADER_SECRET_NAME`).
 - **Kubernetes:** Communicates with in-cluster API server through default service account; ensure RBAC grants `get/update` on the referenced secret. Secret payload is JSON—do not alter key names or types.
+- **Pipeline signal:** The refreshed Inoreader tokens feed the pre-processor and recap ingestion loops, so keep the service running before you trigger the `recap` Compose profile or high-frequency summarization jobs.
 - **Network:** HTTP calls to `https://www.inoreader.com/oauth2/token` (configurable via `configOptions.network.base_url`). Retries/backoff configured in `configOptions.retry`.
 
 ## Testing & Tooling

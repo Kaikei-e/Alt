@@ -39,6 +39,7 @@ _Last reviewed: November 10, 2025_
 2. Smoke test: `curl -X POST http://localhost:8001/api/v1/summarize -d '{"article_id":"t","content":"..."}'`.
 3. Monitor logs for `ollama_gateway` entries; latency spikes usually indicate GPU contention.
 4. When rotating models, update `NEWS_CREATOR_MODEL` env, redeploy, then re-run golden tests.
+5. Recap worker relies on this service for cluster summarisation, so include `news-creator` when spinning up `docker compose --profile recap --profile ollama ...` and verify `recap-worker` logs `LLM summary returned` entries after each run.
 
 ## Observability
 - Logging uses `logging` module configured in `main.py`; messages include `operation`, `model`, `prompt_tokens`.

@@ -32,6 +32,11 @@ _Last reviewed: November 10, 2025_
 - **Streaming:** `/v1/sse/*` routes exclude gzip/timeouts to keep connections warm; when adding new event types, ensure middleware skippers continue to cover them.
 - **Defense-in-depth:** `config.RateLimit.DOSProtection` white-lists `/v1/health`, `/v1/sse/*`, `/security/csp-report` while enforcing >=5s spacing for other paths.
 
+## Recap APIs
+- **`RecapGateway` & `RecapUsecase`** – The new `RecapGateway` (configured via `RECAP_WORKER_URL`, default `http://recap-worker:9005`) speaks to the recap-worker `/v1/recaps/7days` endpoint, wraps HTTP errors with context, and returns the domain `RecapSummary`/`RecapGenre`/`EvidenceLink` structs defined in `domain/recap.go`. `RecapUsecase` simply proxies the gateway output so handlers can stay thin, and `domain.ErrRecapNotFound` maps to `404`.
+- **`GET /v1/recap/7days`** – `Rest/recap_handler.go` hosts the public recap summary endpoint; it returns the JSON payload that the frontend and mobile UI consume, handles `ErrRecapNotFound`, and ensures `RecapSummary`/`EvidenceLink` DTOs stay stable before persisting them via `json.NewDecoder`.
+- **`GET /v1/recap/articles`** – Registered inside `registerRecapRoutes`, this handler is wrapped with `middleware_custom.ServiceAuthMiddleware` to enforce `X-Service-Token`/`ALT_BACKEND_SERVICE_TOKEN`, applies `recapRateLimiter` (burst/RPS from `cfg.Recap`), and validates the required `from`/`to` query params plus optional `page`, `page_size`, `fields`, and `lang`. `handleRecapArticles` uses `recapArticlesUsecase` to return `RecapArticlesResponse` (range metadata + article DTOs) so recap-worker receives deterministic corpora before every job.
+
 ## Configuration & Environment
 - `config/config.go` validates server timeouts, rate limits, and downstream hosts; malformed durations or missing envs fail fast during boot.
 - `di/container.go` wires repositories, usecases, middleware helpers, and job schedulers; use this container when adding new handlers to keep lifecycle hooks centralized.

@@ -30,6 +30,7 @@ _Last reviewed: November 10, 2025_
 - Input: Docker Engine API via `bollard`; ensure container has read access to `/var/run/docker.sock`.
 - Output: HTTP POST to Rask Log Aggregator (`/v1/aggregate`), typically behind the logging profile.
 - Optional disk fallback: enable once aggregator enforces durable semantics; requires `sled` volume.
+- When shipping logs from recap-worker, capture the new `recap_genre_refine_*` traces and `recap_api_evidence_duplicates_total` counter to help ClickHouse dashboards explain why certain jobs emit deduped evidence.
 
 ## Testing & Tooling
 - `cargo test` for unit/component coverage, `tests/` for integration with `mockall` + `wiremock`.

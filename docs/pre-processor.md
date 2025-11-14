@@ -28,6 +28,7 @@ _Last reviewed: November 10, 2025_
 - **News Creator:** External API repository hits `http://news-creator:11434/api/v1/summarize` (configurable). Timeout defaults to 240s; adjust via `NEWS_CREATOR_TIMEOUT`.
 - **HTTP fetchers:** Use `HTTPConfig` to control user-agent rotation, Envoy proxying, redirect policy, min content length, and adaptive rate limits (>=5s host spacing).
 - **Circuit breaking:** `service.NewArticleFetcherServiceWithFactory` instantiates `mercari/go-circuitbreaker` wrappers to fail fast on flaky hosts.
+- **Tag label graph:** The deduped articles produced here are fed into tag-generator to rebuild the `tag_label_graph` priors that recap-worker consumes, so run this service before `docker compose --profile recap` and make sure the tag-generator batch endpoints stay healthy.
 
 ## Testing & Tooling
 - `go test ./...` across services, repositories, and handlers. Use `service/testutil` for fixtures and fake HTTP clients.

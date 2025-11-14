@@ -53,6 +53,9 @@ Compose (`compose.yaml`) enables `RECAP_SUBWORKER_PIPELINE_MODE=processpool` by 
 - Warmup: `curl -X POST http://localhost:8002/admin/warmup` (optionally include sample sentences in body) after container start to prime embeddings.
 - Restart behavior: Gunicorn `max_requests/max_requests_jitter` forces periodic worker recycling; if the pipeline worker pool process wedges, `docker compose restart recap-subworker` clears it.
 
+## Recent updates
+- Recap worker now persists deduplicated `recap_cluster_evidence`, so the subworker enforces the per-genre cap before writing evidence and relies on the table to feed the public `/v1/recap/7days` API; check the `recap_cluster_evidence` counts and diagnostics when you adjust clustering thresholds or pipeline timeout figures.
+
 ## Testing
 | Type | Command |
 | --- | --- |

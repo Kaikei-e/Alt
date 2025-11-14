@@ -26,6 +26,7 @@ _Last reviewed: November 10, 2025_
 - **ClickHouse:** Uses HTTP transport. Required env vars: `APP_CLICKHOUSE_HOST`, `APP_CLICKHOUSE_PORT`, `APP_CLICKHOUSE_USER`, `APP_CLICKHOUSE_PASSWORD`, `APP_CLICKHOUSE_DATABASE`.
 - **Forwarder contract:** Payload is newline-delimited JSON; keep batches <1 MB (configurable) to avoid ClickHouse HTTP limits.
 - **Observability:** Tracing via `tracing_subscriber` with env filter; adjust `RUST_LOG` to control verbosity.
+- **Recap metrics:** Ingest `recap_genre_refine_*`, `recap_api_evidence_duplicates_total`, and related counters so ClickHouse dashboards can surface dedup, rollout, and golden dataset guardrails after each recap job.
 
 ## Testing & Tooling
 - `cargo test` for unit coverage; integration tests (see `tests/`) can start a ClickHouse test container or mock exporter.

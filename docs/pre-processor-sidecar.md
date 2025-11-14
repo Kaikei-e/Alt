@@ -38,6 +38,7 @@ _Last reviewed: November 10, 2025_
 2. **Manual run:** `go run cmd/main.go --health-check` to ensure env + secrets resolve before scheduling.
 3. **Continuous monitoring:** Deploy with `--schedule-mode` when debugging rate limits; check logs for `TOKEN_REFRESH` and `ARTICLE_FETCH` events.
 4. **Secret sync:** If tokens rotate in `auth-token-manager`, ensure `ENABLE_SECRET_WATCH=true` so the sidecar reloads without restart.
+5. **Recap readiness:** Fresh tokens keep Pre-processor output available to tag-generator and recap-worker, preventing the `recap` Compose profile from failing due to Inoreader auth errors.
 
 ## Observability
 - Logs (JSON) include `component`, `service`, `subscription_sync_interval`, `article_fetch_interval`.

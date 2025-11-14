@@ -28,6 +28,10 @@ _Last reviewed: November 10, 2025_
 - **Client storage:** Minimal—`localStorage` only stores theme + UI hints; any state that matters to other services must flow through backend APIs.
 - **Third-party:** `lucide-react` icons, `next-themes`, `next-themes` interplay with Chakra handled via shared provider.
 
+## Recap Experience
+- `/mobile/recap/7days` loads data from `GET /v1/recap/7days` via `src/hooks/useRecapData`, and the page now renders Recap, Genres, Articles, and Jobs tabs that honour the new `RecapSummary` payload (genre clusters, evidence_links, totals).
+- `RecapCard`/`RecapSevenDaysPage` updates focus on readability, spacing, and the new evidence link list so summarised sentences + supporting IDs stay legible across mobile breakpoints. The UI keeps trace metadata from `src/lib/api` for consistent diagnostics as the pipeline matures.
+
 ## Tooling & Testing
 - Package pinned to `pnpm@10.18.3`, Node 24 enforced via `engines`.
 - Commands:

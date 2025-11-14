@@ -44,6 +44,7 @@ _Last reviewed: November 10, 2025_
 - Structured logs include `request_id`, `session_id`, and `cache_hit` boolean.
 - Future `handler/metrics.go` will export: cache hit ratio, Kratos latency, validate call rate.
 - For now, use log-based metrics via Loki/ClickHouse to watch `cache_miss` frequency.
+- Recap-worker and alt-backend Recap endpoints rely on the cached headers (`X-Alt-*`) with a 5-minute TTL to hydrate their sinks; keep cache hits high so `/v1/recap/7days` and service-initiated workflows do not trigger repeated Kratos calls.
 
 ## LLM Notes
 - When asking an LLM to modify auth-hub, specify whether change lives in handler, cache, or config.

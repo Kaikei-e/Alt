@@ -14,7 +14,7 @@ _Last reviewed: November 12, 2025_
 | Control Plane | Axum router exposing `/health/live`, `/health/ready`, `/metrics`, `/v1/generate/recaps/7days`, `/admin/jobs/retry`. |
 | Pipeline (`src/pipeline/`) | Stages: fetch → preprocess → dedup → genre → evidence → dispatch → persist. |
 | Clients (`src/clients/`) | Typed HTTP clients for alt-backend, recap-subworker (`/v1/runs`), and news-creator (LLM summaries) with JSON Schema validation. |
-| Store (`src/store/`) | SQLx DAO with advisory locks, recap job metadata, JSONB outputs, and the new `recap_cluster_evidence` table for pre-deduplicated links. |
+| Store (`src/store/`) | SQLx DAO with advisory locks, recap job metadata, JSONB outputs, the `recap_cluster_evidence` table for pre-deduplicated links, `recap_genre_learning_results`, and cached `tag_label_graph` priors for the refine stage. |
 | Observability (`src/observability/`) | Tracing, Prometheus exporter, OTLP wiring plus new counters for genre refine rollout gating (`recap_genre_refine_rollout_enabled_total` / `_skipped_total`), graph boosts, fallbacks, and LLM latency. |
 
 ## Code Status
@@ -30,8 +30,12 @@ _Last reviewed: November 12, 2025_
   7. **Persist:** Writes recap sections + evidence to `recap_outputs`/`recap_jobs` tables inside recap-db.
 - JSON Schema contracts for recap-subworker/news-creator responses live alongside clients; failed validation short-circuits persistence and surfaces metrics.
 
+## Replay & Evaluation
+- `scripts/replay_genre_pipeline.rs` (and the `replay` module under `src/replay.rs`) replays the genre refinement stage using JSONL datasets, reloads `tag_label_graph` (honouring `TAG_LABEL_GRAPH_WINDOW` and `TAG_LABEL_GRAPH_TTL_SECONDS`), and persists tightened rows into `recap_genre_learning_results`. Use flags such as `--dataset`, `--dsn`, `--graph-window`, `--graph-ttl`, `--require-tags`, and `--dry-run` to validate revisions safely.
+- Summary quality is guarded by the golden dataset evaluation stack in `recap-worker/tests/golden_eval.rs` and `src/evaluation/golden.rs`, which loads `recap-worker/resources/golden_runs.json`, computes ROUGE, and fails the suite if precision dips below the acceptable threshold; run `cargo test -p recap-worker tests::golden_eval` (or rerun `scripts/replay_genre_pipeline.rs` after prompt/model tweaks) whenever you tweak summarization prompts or reference evidence.
+
 ## Integrations & Data
-- **recap-db (Postgres 16):** Source of truth for jobs, cached articles, `recap_cluster_evidence`, and final recaps. Schema maintained via Atlas migrations in `recap-migration-atlas/` (see `20251112000100_add_cluster_evidence_table.sql`).
+- **recap-db (Postgres 16):** Source of truth for jobs, cached articles, `recap_cluster_evidence`, `recap_genre_learning_results`, `tag_label_graph`, and final recaps. Schema maintained via Atlas migrations in `recap-migration-atlas/` (see `20251112000100_add_cluster_evidence_table.sql`, `20251113000100_create_tag_label_graph.sql`, `20251113093000_add_genre_learning_results.sql`). Refresh the graph using `scripts/replay_genre_pipeline.rs` or `tag-generator/app/scripts/build_label_graph.py` whenever you adjust `TAG_LABEL_GRAPH_WINDOW`/`TAG_LABEL_GRAPH_TTL_SECONDS`.
 - **recap-subworker:** Receives evidence corpus, returns clustering JSON with trimmed, per-genre-unique representatives.
 - **news-creator:** Generates summaries per cluster/genre.
 - **alt-backend:** Provides raw article feed via authenticated HTTP client.
@@ -47,6 +51,7 @@ _Last reviewed: November 12, 2025_
   - `recap-worker/TROUBLESHOOTING.md`
   - `recap-worker/docs/dedup_analysis.md`
   - `recap-worker/docs/subworker_404_investigation.md`
+- Golden dataset evaluation: `recap-worker/tests/golden_eval.rs` exercises `resources/golden_runs.json` and the ROUGE helpers in `src/evaluation/golden.rs`; run `cargo test -p recap-worker tests::golden_eval` and/or `scripts/replay_genre_pipeline.rs` anytime you change prompts, clustering, or tag priors.
 
 ## Operational Notes
 - Compose profile includes recap-db and recap-subworker; run `docker compose --profile logging --profile ollama up recap-worker recap-db recap-subworker`.
@@ -57,6 +62,7 @@ _Last reviewed: November 12, 2025_
 - Keep JSON Schema versions in sync with downstream services before deploying new payload fields.
 - Grafana: import `observability/grafana/recap-genre-dashboard.json` to surface `genre_tag_agreement_rate`, `recap_genre_tag_missing_ratio`, and `recap_genre_graph_hits_total`. Alertmanager rules live in `observability/alerts/recap-genre-rules.yaml`.
 - Rollout controls: use `RECAP_GENRE_REFINE_ENABLED` plus the new `RECAP_GENRE_REFINE_ROLLOUT_PERCENT` (10/50/100) to gate the corpus. The new counters `recap_genre_refine_rollout_enabled_total` and `_skipped_total` plus `recap_genre_refine_graph_hits_total`/`recap_genre_refine_fallback_total`/`recap_genre_refine_llm_latency_seconds` reflect deployment coverage, Graph boosts, fallback hits, and LLM latency respectively. See `docs/recap-genre-rollout-runbook.md` for the Phase 5 playbook.
+- Replay helper: run `cargo run --bin replay_genre_pipeline -- --dataset path/to/dataset.json --dsn $RECAP_DB_DSN --graph-window 7d --graph-ttl 900` (or use the script alias) to re-run the genre pipeline offline, refresh `recap_genre_learning_results`, and verify `tag_label_graph` outputs when you adjust TTLs or priors. Ensure `TAG_LABEL_GRAPH_WINDOW`/`TAG_LABEL_GRAPH_TTL_SECONDS` stay in sync across `.env`, `tag-generator`, and the running worker.
 
 ## LLM Tips
 - Specify stage/module when asking for changes (e.g., “update `src/pipeline/dedup.rs` to tweak XXH3 threshold”).
