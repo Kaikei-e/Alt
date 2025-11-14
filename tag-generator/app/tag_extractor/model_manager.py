@@ -127,10 +127,14 @@ class ModelManager:
                 )
                 raise ImportError("Tagger not available. Install with: pip install fugashi[unidic-lite]")
 
-            if config.use_onnx:
-                if config.onnx_model_path is None:
-                    raise ValueError("onnx_model_path must be set when use_onnx is True")
+            use_onnx = config.use_onnx
+            if config.use_onnx and not config.onnx_model_path:
+                logger.warning(
+                    "ONNX runtime is enabled but onnx_model_path is not configured; falling back to SentenceTransformer"
+                )
+                use_onnx = False
 
+            if use_onnx:
                 try:
                     logger.info("Loading ONNX embedder", model_path=config.onnx_model_path)
                     onnx_config = OnnxEmbeddingConfig(
@@ -143,11 +147,13 @@ class ModelManager:
                     self._embedder = OnnxEmbeddingModel(onnx_config)
                 except OnnxRuntimeMissing as e:
                     logger.error("ONNX runtime dependencies missing", error=str(e))
-                    raise
+                    use_onnx = False
+                    logger.info("Falling back to SentenceTransformer")
                 except Exception as e:
                     logger.error("Failed to initialize ONNX embedder", error=str(e))
                     raise
-            else:
+
+            if not use_onnx:
                 if SentenceTransformer is None or KeyBERT is None:
                     logger.error("SentenceTransformer/KeyBERT dependencies missing")
                     raise ImportError("SentenceTransformer and KeyBERT are required")

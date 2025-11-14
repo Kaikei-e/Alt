@@ -1,3 +1,4 @@
+import os
 import re
 import time
 import unicodedata
@@ -72,8 +73,8 @@ class TagExtractionConfig:
     )
     extract_compound_words: bool = True
     use_frequency_boost: bool = True
-    use_onnx_runtime: bool = False
-    onnx_model_path: str | None = None
+    use_onnx_runtime: bool = True
+    onnx_model_path: str | None = os.getenv("TAG_ONNX_MODEL_PATH")
     onnx_tokenizer_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     onnx_pooling: str = "cls"
     onnx_batch_size: int = 16
