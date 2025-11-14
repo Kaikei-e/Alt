@@ -56,6 +56,51 @@ _Last reviewed on November 13, 2025._
 
 Alt is designed to keep local parity with production by centering on Docker Compose while preserving historical Kubernetes manifests for reference only.
 
+## Data Flow Overview
+
+- Ingested RSS feeds enter the Go pre-processor, undergo deduplication/sanitation, and emit canonical articles plus summaries for downstream services (`docs/pre-processor.md`).
+- The tag-generator consumes those articles, runs the ONNX-backed extractor with cascade controls, and refreshes the `tag_label_graph` priors that recap-worker uses during genre refinement (`docs/tag-generator.md`).
+- The recap pipeline (worker + subworker + recap-db + news-creator) orchestrates evidence deduction, clustering, LLM summarisation, and persistence of deduplicated proof links plus genre learning results (`docs/recap-worker.md`, `docs/recap-subworker.md`, `docs/recap-db.md`), while `alt-backend` surfaces the curated recap and articles APIs (`docs/alt-backend.md`).
+- Observability services (rask log forwarder/aggregator) capture `recap_genre_refine_*` counters, `recap_api_evidence_duplicates_total`, and related metrics for ClickHouse dashboards (`docs/rask-log-forwarder.md`, `docs/rask-log-aggregator.md`).
+- Identity flows (auth-hub, auth-token-manager) ensure Kratos sessions and Inoreader tokens stay fresh for the entire pipeline, and the frontend renders the `/mobile/recap/7days` experience from the recap summary DTOs (`docs/auth-hub.md`, `docs/auth-token-manager.md`, `docs/alt-frontend.md`).
+
+```mermaid
+flowchart LR
+    subgraph Ingestion
+        RSS[External RSS / Inoreader] --> PreProc[pre-processor<br/>dedupe + summary]
+    end
+    subgraph Tagging
+        PreProc --> TagGen[tag-generator<br/>ONNX + cascade]
+        TagGen --> Graph[tag_label_graph]
+        TagGen --> AltDB[(Postgres `<article_tags>`)]
+    end
+    subgraph RecapPipeline
+        AltBackend[alt-backend<br/>/v1/recap/articles + /v1/recap/7days]
+        RecapWorker[recap-worker<br/>fetch → dedup → genre → evidence]
+        RecapSub[recap-subworker<br/>clustering + dedup]
+        RecapDB[(recap-db<br/>jobs, cluster evidence, graph, learning results)]
+        NewsCreator[news-creator<br/>Ollama summaries]
+        RecapWorker --> RecapSub
+        RecapWorker --> NewsCreator
+        RecapWorker --> RecapDB
+        RecapWorker --> AltBackend
+        RecapSub --> RecapDB
+        NewsCreator --> RecapDB
+        AltBackend --> RecapWorker
+    end
+    subgraph Frontend & Metrics
+        RecapDB --> Frontend[alt-frontend<br/>/mobile/recap/7days]
+        RecapWorker --> Logs[rask-log-forwarder]
+        Logs --> ClickHouse[ClickHouse via rask-log-aggregator]
+        AuthHub[auth-hub<br/>Kratos → X-Alt-*] --> AltBackend
+        AuthToken[auth-token-manager<br/>Inoreader OAuth] --> PreProc
+    end
+    Graph --> RecapWorker
+    PreProc --> AltBackend
+    AuthHub --> Frontend
+    AuthToken --> TagGen
+```
+
 ### Compose Topology
 
 ```mermaid
