@@ -63,3 +63,4 @@ backups/
 recap-worker/recap-worker/.sqlx/offline.toml
 recap-worker/.vscode/settings.json
 recap-subworker/recap_subworker.egg-info
+tag-generator/models/
