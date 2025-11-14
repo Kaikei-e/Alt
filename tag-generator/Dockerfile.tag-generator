@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.13-slim
 
 # Minimal OS deps (mecab etc. omitted for brevity)
 RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/lists/*
@@ -20,6 +20,7 @@ RUN uv pip install --system --no-cache-dir \
     keybert>=0.8.5 \
     transformers>=4.40.0 \
     scikit-learn>=1.5.2 \
+    onnxruntime>=1.21.0 \
     unidic
 
 # Step 2.5: Download unidic dictionary data
@@ -35,7 +36,8 @@ RUN uv pip install --system --no-cache-dir -e .
 RUN python -c "import torch; print(f'✅ PyTorch {torch.__version__}')" && \
     python -c "import sentence_transformers; print(f'✅ SentenceTransformers {sentence_transformers.__version__}')" && \
     python -c "import keybert; print('✅ KeyBERT installed')" && \
-    python -c "import transformers; print(f'✅ Transformers {transformers.__version__}')"
+    python -c "import transformers; print(f'✅ Transformers {transformers.__version__}')" && \
+    python -c "import onnxruntime; print(f'✅ ONNX Runtime {onnxruntime.__version__}')"
 
 # Optional: pre‑cache the SBERT model and download NLTK data
 RUN python - <<'PY'

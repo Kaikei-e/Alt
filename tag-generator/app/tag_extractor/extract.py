@@ -74,11 +74,27 @@ class TagExtractionConfig:
     extract_compound_words: bool = True
     use_frequency_boost: bool = True
     use_onnx_runtime: bool = True
-    onnx_model_path: str | None = os.getenv("TAG_ONNX_MODEL_PATH")
+    onnx_model_path: str | None = None  # Will be set in __post_init__
     onnx_tokenizer_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     onnx_pooling: str = "cls"
     onnx_batch_size: int = 16
     onnx_max_length: int = 256
+
+    def __post_init__(self) -> None:
+        """Set default ONNX model path if not provided."""
+        # Default path: /models/onnx/model.onnx (can be overridden via TAG_ONNX_MODEL_PATH)
+        if self.onnx_model_path is None:
+            self.onnx_model_path = os.getenv("TAG_ONNX_MODEL_PATH", "/models/onnx/model.onnx")
+
+        # Auto-disable ONNX runtime if model file doesn't exist
+        if self.use_onnx_runtime:
+            if not os.path.exists(self.onnx_model_path):
+                logger.info(
+                    "ONNX runtime requested but model file not found; disabling ONNX runtime",
+                    model_path=self.onnx_model_path,
+                    use_onnx_runtime=self.use_onnx_runtime,
+                )
+                self.use_onnx_runtime = False
 
 
 @dataclass

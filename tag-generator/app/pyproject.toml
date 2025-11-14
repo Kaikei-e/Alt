@@ -6,7 +6,7 @@ addopts = [
     "--cov-report=xml",
     "--cov-report=term-missing",
     "--junit-xml=tests/results.xml",
-    "-v"
+    "-v",
 ]
 
 [project]
@@ -17,7 +17,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     # Japanese Text Processing (self-contained)
-    "fugashi[unidic-lite]>=1.5.1",  # includes unidic-lite, no external MecAB needed
+    "fugashi[unidic-lite]>=1.5.1", # includes unidic-lite, no external MecAB needed
 
     # Language Processing (minimal)
     "nltk>=3.9.1",
@@ -62,7 +62,7 @@ dev = [
     "types-psycopg2>=2.9.21.20250516",
 
     # Additional test dependencies for CI
-    "langdetect>=1.0.9"
+    "langdetect>=1.0.9",
 ]
 
 # ML dependencies for production and testing
@@ -74,7 +74,7 @@ ml = [
     "torch>=2.1.0",
     "scikit-learn>=1.5.2",
     "numpy>=1.26.0",
-    "onnxruntime>=1.18.1",
+    "onnxruntime>=1.21.0",
 ]
 
 # NOTE: ML dependencies are in a separate group to allow flexible installation
@@ -82,7 +82,16 @@ ml = [
 # For development: uv sync --group ml
 
 [tool.setuptools.packages]
-find = { include = ["tag_generator", "tag_generator.*", "article_fetcher", "article_fetcher.*", "tag_extractor", "tag_extractor.*", "tag_inserter", "tag_inserter.*"] }
+find = { include = [
+    "tag_generator",
+    "tag_generator.*",
+    "article_fetcher",
+    "article_fetcher.*",
+    "tag_extractor",
+    "tag_extractor.*",
+    "tag_inserter",
+    "tag_inserter.*",
+] }
 
 # Ultra-minimal optimization notes:
 # - Removed ALL heavy ML packages from core dependencies
@@ -93,38 +102,41 @@ find = { include = ["tag_generator", "tag_generator.*", "article_fetcher", "arti
 [tool.ruff]
 target-version = "py313"
 line-length = 120
-exclude = [
-    ".git",
-    "__pycache__",
-    ".venv",
-    "build",
-    "dist",
-    "*.egg-info"
-]
+exclude = [".git", "__pycache__", ".venv", "build", "dist", "*.egg-info"]
 
 [tool.ruff.lint]
 select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "UP",  # pyupgrade
-    "S",   # bandit (security)
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+    "S",  # bandit (security)
 ]
 ignore = [
-    "S101",  # Use of assert detected (OK in tests)
-    "S608",  # Possible SQL injection (handled by ORM)
-    "E501",  # Line too long (handled by formatter when possible)
-    "S110",  # try-except-pass (sometimes needed in cleanup code)
+    "S101", # Use of assert detected (OK in tests)
+    "S608", # Possible SQL injection (handled by ORM)
+    "E501", # Line too long (handled by formatter when possible)
+    "S110", # try-except-pass (sometimes needed in cleanup code)
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "test_*.py" = ["S101", "S603", "S110"]
 "tests/**" = ["S101", "S603", "S110"]
-"auth_service.py" = ["S104"]  # Allow binding to all interfaces for development server
+"auth_service.py" = [
+    "S104",
+] # Allow binding to all interfaces for development server
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv", "__pycache__", "*.egg-info", "build", "dist"]
-skips = ["B101", "B404", "B603", "B110", "B104", "B108", "B602"]  # Skip assert_used, subprocess import, subprocess execution, try_except_pass, hardcoded_bind_all_interfaces, hardcoded_tmp_directory, and subprocess_popen_with_shell_equals_true tests
+skips = [
+    "B101",
+    "B404",
+    "B603",
+    "B110",
+    "B104",
+    "B108",
+    "B602",
+] # Skip assert_used, subprocess import, subprocess execution, try_except_pass, hardcoded_bind_all_interfaces, hardcoded_tmp_directory, and subprocess_popen_with_shell_equals_true tests

@@ -1775,7 +1775,7 @@ dev = [
 ml = [
     { name = "keybert", specifier = ">=0.8.5" },
     { name = "numpy", specifier = ">=1.26.0" },
-    { name = "onnxruntime", specifier = ">=1.18.1" },
+    { name = "onnxruntime", specifier = ">=1.21.0" },
     { name = "scikit-learn", specifier = ">=1.5.2" },
     { name = "sentence-transformers", specifier = ">=3.3.0" },
     { name = "torch", specifier = ">=2.1.0" },
