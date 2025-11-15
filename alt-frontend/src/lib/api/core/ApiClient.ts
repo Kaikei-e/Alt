@@ -3,6 +3,43 @@ import { authAPI } from "../auth-client";
 import { CacheManager, defaultCacheConfig } from "../cache/CacheManager";
 import { ApiError } from "./ApiError";
 
+/**
+ * Maps HTTP status codes to user-friendly error messages
+ * Following existing patterns from errorHandler.ts and ErrorState.tsx
+ */
+function getUserFriendlyErrorMessage(status: number, statusText?: string): string {
+  switch (status) {
+    case 400:
+      return "Invalid request. Please check your input and try again.";
+    case 401:
+      return "Authentication required. Please log in.";
+    case 403:
+      return "You don't have permission to perform this action.";
+    case 404:
+      return "The requested resource was not found.";
+    case 408:
+      return "Request timeout. Please try again later.";
+    case 429:
+      return "Too many requests. Please try again later.";
+    case 500:
+      return "We're having some trouble on our end. Please try again later.";
+    case 502:
+      return "Unable to connect to the service. Please try again later.";
+    case 503:
+      return "Service temporarily unavailable. Please try again later.";
+    case 504:
+      return "Server response timeout. Please try again later.";
+    default:
+      if (status >= 500) {
+        return "We're having some trouble on our end. Please try again later.";
+      }
+      if (status >= 400) {
+        return "Invalid request. Please check your input and try again.";
+      }
+      return "An unexpected error occurred. Please try again later.";
+  }
+}
+
 export interface ApiConfig {
   baseUrl: string;
   requestTimeout: number;
@@ -146,8 +183,27 @@ export class ApiClient {
       // Invalidate related cache entries after POST
       this.cacheManager.invalidate();
 
-      if (result.error) {
-        throw new ApiError(result.error);
+      // Check for error response (backend returns error in various formats)
+      if (result.error || result.code) {
+        const errorCode = result.code || "UNKNOWN_ERROR";
+        const statusCode = interceptedResponse.status;
+        // Prefer backend message if available, otherwise use user-friendly status code message
+        const errorMessage =
+          result.message ||
+          result.error ||
+          getUserFriendlyErrorMessage(statusCode);
+
+        // Log technical details for developers (development only)
+        if (process.env.NODE_ENV === "development") {
+          console.error("[ApiClient] POST request failed", {
+            endpoint,
+            status: statusCode,
+            code: errorCode,
+            message: errorMessage,
+          });
+        }
+
+        throw new ApiError(errorMessage, statusCode, errorCode);
       }
 
       return result as T;
@@ -155,7 +211,15 @@ export class ApiClient {
       if (error instanceof ApiError) {
         throw error;
       }
-      throw new ApiError(error instanceof Error ? error.message : "Unknown error occurred");
+      // Log technical details for developers (development only)
+      if (process.env.NODE_ENV === "development") {
+        console.error("[ApiClient] POST request error", { endpoint, error });
+      }
+      throw new ApiError(
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred. Please try again later."
+      );
     }
   }
 
@@ -218,19 +282,58 @@ export class ApiClient {
 
       // Don't throw error for 401s - let auth interceptor handle them
       if (!response.ok && response.status !== 401) {
-        throw new ApiError(
-          `API request failed: ${response.status} ${response.statusText}`,
-          response.status
-        );
+        // Try to extract error details from response body
+        let errorCode: string | undefined;
+        let errorMessage: string | undefined;
+
+        try {
+          const errorData = await response.clone().json();
+          errorCode = errorData.code;
+          // Prefer backend message if available, otherwise use user-friendly fallback
+          errorMessage = errorData.message || errorData.error;
+        } catch {
+          // If JSON parsing fails, we'll use status code-based message
+        }
+
+        // Log technical details for developers (development only)
+        if (process.env.NODE_ENV === "development") {
+          console.error("[ApiClient] API request failed", {
+            status: response.status,
+            statusText: response.statusText,
+            url,
+            code: errorCode,
+            message: errorMessage,
+          });
+        }
+
+        // Use backend message if available, otherwise use user-friendly status code message
+        const userMessage =
+          errorMessage || getUserFriendlyErrorMessage(response.status, response.statusText);
+
+        throw new ApiError(userMessage, response.status, errorCode);
       }
 
       return response;
     } catch (error) {
       clearTimeout(timeoutId);
       if (error instanceof DOMException && error.name === "AbortError") {
-        throw new ApiError("Request timeout", 408);
+        // Log technical details for developers (development only)
+        if (process.env.NODE_ENV === "development") {
+          console.error("[ApiClient] Request timeout", { url, timeout: this.config.requestTimeout });
+        }
+        throw new ApiError("Request timeout. Please try again later.", 408);
       }
-      throw error;
+      // If it's already an ApiError, re-throw it
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      // For other errors, log and wrap in ApiError
+      if (process.env.NODE_ENV === "development") {
+        console.error("[ApiClient] Request failed", { url, error });
+      }
+      throw new ApiError(
+        error instanceof Error ? error.message : "An unexpected error occurred. Please try again later."
+      );
     }
   }
 

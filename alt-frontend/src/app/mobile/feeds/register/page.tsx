@@ -6,6 +6,7 @@ import * as v from "valibot";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { feedApi } from "@/lib/api";
 import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
+import { ApiError } from "@/lib/api/core/ApiError";
 
 export default function RegisterFeedsPage() {
   const [feedUrl, setFeedUrl] = useState("");
@@ -70,10 +71,27 @@ export default function RegisterFeedsPage() {
           text: "Failed to register feed. Please try again.",
         });
       }
-    } catch {
+    } catch (error) {
+      let errorMessage = "Failed to register feed. Please check the URL and try again.";
+
+      if (error instanceof ApiError) {
+        if (error.code === "TLS_CERTIFICATE_ERROR") {
+          // Use the message from backend which includes suggested URL
+          errorMessage = error.message || "このURLの証明書に問題があります。別のURLを試してください";
+        } else if (error.code === "VALIDATION_ERROR") {
+          errorMessage = error.message || "URLの形式が正しくありません";
+        } else if (error.code === "EXTERNAL_API_ERROR") {
+          errorMessage = "RSSフィードにアクセスできませんでした。URLを確認してください";
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+
       setMessage({
         type: "error",
-        text: "Failed to register feed. Please check the URL and try again.",
+        text: errorMessage,
       });
     }
 
