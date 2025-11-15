@@ -14,13 +14,29 @@ type SwrKey = readonly ["mobile-feed-swipe", string | undefined, number];
 const canonicalize = (url: string) => {
   try {
     const parsed = new URL(url);
+    // Remove fragment (hash)
     parsed.hash = "";
-    ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"].forEach((param) =>
-      parsed.searchParams.delete(param)
-    );
+
+    // Remove tracking parameters (matching backend NormalizeURL)
+    const trackingParams = [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_term",
+      "utm_content",
+      "utm_id",
+      "fbclid",
+      "gclid",
+      "mc_eid",
+      "msclkid",
+    ];
+    trackingParams.forEach((param) => parsed.searchParams.delete(param));
+
+    // Remove trailing slash (except for root path)
     if (parsed.pathname !== "/" && parsed.pathname.endsWith("/")) {
       parsed.pathname = parsed.pathname.slice(0, -1);
     }
+
     return parsed.toString();
   } catch {
     return url;
@@ -106,7 +122,19 @@ export const useSwipeFeedController = () => {
     }
     const allFeeds = data.flatMap((page) => page?.data ?? []);
     // Filter out read feeds using optimistic update Set
-    return allFeeds.filter((feed) => !readFeeds.has(canonicalize(feed.link)));
+    const filtered = allFeeds.filter((feed) => {
+      const canonical = canonicalize(feed.link);
+      const isRead = readFeeds.has(canonical);
+      if (isRead) {
+        console.log("[useSwipeFeedController] Filtering out read feed", {
+          feedId: feed.id,
+          link: feed.link,
+          canonical,
+        });
+      }
+      return !isRead;
+    });
+    return filtered;
   }, [data, readFeeds]);
 
   const activeIndex = useMemo(() => {
@@ -240,7 +268,22 @@ export const useSwipeFeedController = () => {
       const current = feeds[resolvedIndex];
 
       if (!current) {
+        console.warn("[useSwipeFeedController] No current feed to dismiss");
         return;
+      }
+
+      const canonicalLink = canonicalize(current.link);
+      console.log("[useSwipeFeedController] Dismissing feed", {
+        feedId: current.id,
+        originalLink: current.link,
+        canonicalLink,
+        readFeedsSize: readFeeds.size,
+      });
+
+      // Check if already marked as read (prevent duplicate requests)
+      if (readFeeds.has(canonicalLink)) {
+        console.warn("[useSwipeFeedController] Feed already marked as read", { canonicalLink });
+        // Still proceed with UI update
       }
 
       const nextFeed = feeds[resolvedIndex + 1] ?? null;
@@ -257,24 +300,60 @@ export const useSwipeFeedController = () => {
       announce("Feed marked as read", 1000);
 
       // Mark article as dismissed BEFORE API call to prevent prefetch race condition
-      const canonicalLink = canonicalize(current.link);
       markAsDismissed(canonicalLink);
 
       // Optimistic update: add to readFeeds Set immediately
-      setReadFeeds((prev) => new Set(prev).add(canonicalLink));
+      setReadFeeds((prev) => {
+        const next = new Set(prev);
+        next.add(canonicalLink);
+        console.log("[useSwipeFeedController] Added to readFeeds", {
+          canonicalLink,
+          readFeedsSize: next.size,
+        });
+        return next;
+      });
 
       try {
+        console.log("[useSwipeFeedController] Calling updateFeedReadStatus", { canonicalLink });
         await feedApi.updateFeedReadStatus(canonicalLink);
-        await mutate();
+        console.log("[useSwipeFeedController] updateFeedReadStatus succeeded");
+
+        // Mutate with revalidation to ensure backend state is reflected
+        // Use optimisticData to prevent flickering
+        await mutate(
+          (currentData) => {
+            if (!currentData) return currentData;
+            // Filter out the dismissed feed from all pages
+            return currentData.map((page) => {
+              if (!page?.data) return page;
+              const filteredData = page.data.filter(
+                (feed) => canonicalize(feed.link) !== canonicalLink
+              );
+              return {
+                ...page,
+                data: filteredData,
+              };
+            });
+          },
+          { revalidate: true, populateCache: true }
+        );
+        console.log("[useSwipeFeedController] mutate completed");
 
         // Prefetch is now triggered by activeIndex useEffect (lines 234-238)
         // This prevents race condition between read status update and prefetch
       } catch (err) {
-        console.error("Failed to mark feed as read", err);
+        console.error("[useSwipeFeedController] Failed to mark feed as read", {
+          error: err,
+          canonicalLink,
+        });
         // Rollback optimistic update on error
         setReadFeeds((prev) => {
           const next = new Set(prev);
           next.delete(canonicalLink);
+          console.log("[useSwipeFeedController] Rolled back readFeeds", {
+            canonicalLink,
+            readFeedsSize: next.size,
+          });
           return next;
         });
         setActiveFeedId(current.id);
@@ -284,7 +363,7 @@ export const useSwipeFeedController = () => {
         throw err;
       }
     },
-    [activeFeedId, announce, feeds, markAsDismissed, mutate]
+    [activeFeedId, announce, feeds, markAsDismissed, mutate, readFeeds]
   );
 
   const retry = useCallback(async () => {
