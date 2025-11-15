@@ -567,11 +567,35 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 		feed, err := g.feedFetcher.FetchRSSFeed(ctx, link)
 		if err != nil {
 			errStr := err.Error()
+			// Check for connection errors
 			if strings.Contains(errStr, "no such host") || strings.Contains(errStr, "connection refused") {
+				logger.SafeError("RSS feed connection error", "url", link, "error", errStr, "error_type", "connection_error")
 				return stderrors.New("could not reach the RSS feed URL")
 			}
+			// Check for timeout errors
 			if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded") {
+				logger.SafeError("RSS feed timeout error", "url", link, "error", errStr, "error_type", "timeout")
 				return stderrors.New("RSS feed fetch timeout - server took too long to respond")
+			}
+			// Check for 404 Not Found errors
+			if strings.Contains(errStr, "404") || strings.Contains(errStr, "Not Found") || strings.Contains(errStr, "not found") {
+				logger.SafeError("RSS feed not found (404)", "url", link, "error", errStr, "error_type", "http_404", "http_status_code", 404)
+				return stderrors.New("RSS feed not found (404)")
+			}
+			// Check for 403 Forbidden errors
+			if strings.Contains(errStr, "403") || strings.Contains(errStr, "Forbidden") || strings.Contains(errStr, "forbidden") {
+				logger.SafeError("RSS feed access forbidden (403)", "url", link, "error", errStr, "error_type", "http_403", "http_status_code", 403)
+				return stderrors.New("RSS feed access forbidden (403)")
+			}
+			// Check for 400 Bad Request errors
+			if strings.Contains(errStr, "400") || strings.Contains(errStr, "Bad request") || strings.Contains(errStr, "bad request") {
+				logger.SafeError("RSS feed bad request (400)", "url", link, "error", errStr, "error_type", "http_400", "http_status_code", 400)
+				return stderrors.New("RSS feed URL returned bad request (400)")
+			}
+			// Check for redirect loop errors
+			if strings.Contains(errStr, "stopped after") && strings.Contains(errStr, "redirects") {
+				logger.SafeError("RSS feed redirect loop", "url", link, "error", errStr, "error_type", "redirect_loop")
+				return stderrors.New("RSS feed URL redirects too many times")
 			}
 			// Check for TLS certificate errors
 			if strings.Contains(errStr, "tls: failed to verify certificate") || strings.Contains(errStr, "x509: certificate is valid for") {
@@ -592,6 +616,8 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 					context,
 				)
 			}
+			// Default error for unrecognized errors
+			logger.SafeError("RSS feed format error", "url", link, "error", errStr, "error_type", "format_error")
 			return stderrors.New("invalid RSS feed format")
 		}
 
