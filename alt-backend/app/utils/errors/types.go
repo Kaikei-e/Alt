@@ -13,6 +13,8 @@ func (e *AppError) HTTPStatusCode() int {
 		return http.StatusBadGateway
 	case ErrCodeTimeout:
 		return http.StatusGatewayTimeout
+	case ErrCodeTLSCertificate:
+		return http.StatusBadRequest
 	case ErrCodeDatabase:
 		return http.StatusInternalServerError
 	case ErrCodeUnknown:

@@ -2,19 +2,21 @@ package register_feed_gateway
 
 import (
 	"alt/driver/alt_db"
+	"alt/utils/errors"
 	"alt/utils/logger"
 	"alt/utils/metrics"
 	"alt/utils/resilience"
 	"alt/utils/security"
 	"context"
 	"crypto/tls"
-	"errors"
+	stderrors "errors"
 	"fmt"
 	"math"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -553,24 +555,44 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 		// Parse and validate the URL (basic validation)
 		parsedURL, err := url.Parse(link)
 		if err != nil {
-			return errors.New("invalid URL format")
+			return stderrors.New("invalid URL format")
 		}
 
 		// Ensure the URL has a scheme
 		if parsedURL.Scheme == "" {
-			return errors.New("URL must include a scheme (http or https)")
+			return stderrors.New("URL must include a scheme (http or https)")
 		}
 
 		// Try to fetch and parse the RSS feed with retry mechanism
 		feed, err := g.feedFetcher.FetchRSSFeed(ctx, link)
 		if err != nil {
-			if strings.Contains(err.Error(), "no such host") || strings.Contains(err.Error(), "connection refused") {
-				return errors.New("could not reach the RSS feed URL")
+			errStr := err.Error()
+			if strings.Contains(errStr, "no such host") || strings.Contains(errStr, "connection refused") {
+				return stderrors.New("could not reach the RSS feed URL")
 			}
-			if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline exceeded") {
-				return errors.New("RSS feed fetch timeout - server took too long to respond")
+			if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded") {
+				return stderrors.New("RSS feed fetch timeout - server took too long to respond")
 			}
-			return errors.New("invalid RSS feed format")
+			// Check for TLS certificate errors
+			if strings.Contains(errStr, "tls: failed to verify certificate") || strings.Contains(errStr, "x509: certificate is valid for") {
+				suggestedURL := extractSuggestedURLFromCertError(errStr, link)
+				context := map[string]interface{}{
+					"original_url": link,
+					"error_type":   "tls_certificate",
+				}
+				if suggestedURL != "" {
+					context["suggested_url"] = suggestedURL
+				}
+				return errors.NewTLSCertificateContextError(
+					buildTLSErrorMessage(suggestedURL),
+					"gateway",
+					"RegisterFeedGateway",
+					"RegisterRSSFeedLink",
+					err,
+					context,
+				)
+			}
+			return stderrors.New("invalid RSS feed format")
 		}
 
 		if feed.Link == "" {
@@ -585,17 +607,17 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 
 		// Check database connection only after RSS feed validation
 		if g.alt_db == nil {
-			return errors.New("database connection not available")
+			return stderrors.New("database connection not available")
 		}
 
 		err = g.alt_db.RegisterRSSFeedLink(ctx, feed.FeedLink)
 		if err != nil {
-			if errors.Is(err, pgx.ErrTxClosed) {
+			if stderrors.Is(err, pgx.ErrTxClosed) {
 				logger.SafeError("Failed to register RSS feed link", "error", err)
-				return errors.New("failed to register RSS feed link")
+				return stderrors.New("failed to register RSS feed link")
 			}
 			logger.SafeError("Error registering RSS feed link", "error", err)
-			return errors.New("failed to register RSS feed link")
+			return stderrors.New("failed to register RSS feed link")
 		}
 		logger.SafeInfo("RSS feed link registered", "link", link)
 		return nil
@@ -619,4 +641,50 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 // GetMetrics returns the current metrics collector for monitoring and testing
 func (g *RegisterFeedGateway) GetMetrics() *metrics.BasicMetricsCollector {
 	return g.metricsCollector
+}
+
+// extractSuggestedURLFromCertError extracts a suggested URL from TLS certificate error message
+// Example error: "x509: certificate is valid for aar.art-it.asia, www.art-it.asia, not art-it.asia"
+// This function extracts the first valid domain and constructs a suggested URL
+func extractSuggestedURLFromCertError(errStr, originalURL string) string {
+	// Pattern to match: "certificate is valid for domain1, domain2, ..."
+	re := regexp.MustCompile(`certificate is valid for\s+([^,]+(?:,\s*[^,]+)*)`)
+	matches := re.FindStringSubmatch(errStr)
+	if len(matches) < 2 {
+		return ""
+	}
+
+	// Extract the first valid domain (remove leading/trailing spaces)
+	validDomains := strings.Split(matches[1], ",")
+	if len(validDomains) == 0 {
+		return ""
+	}
+
+	firstValidDomain := strings.TrimSpace(validDomains[0])
+	if firstValidDomain == "" {
+		return ""
+	}
+
+	// Parse original URL to preserve scheme and path
+	parsedURL, err := url.Parse(originalURL)
+	if err != nil {
+		// If parsing fails, construct a simple URL with the valid domain
+		return fmt.Sprintf("https://%s", firstValidDomain)
+	}
+
+	// Construct suggested URL with the same scheme and path, but with valid domain
+	suggestedURL := fmt.Sprintf("%s://%s%s", parsedURL.Scheme, firstValidDomain, parsedURL.Path)
+	if parsedURL.RawQuery != "" {
+		suggestedURL += "?" + parsedURL.RawQuery
+	}
+
+	return suggestedURL
+}
+
+// buildTLSErrorMessage builds a user-friendly error message for TLS certificate errors
+func buildTLSErrorMessage(suggestedURL string) string {
+	if suggestedURL != "" {
+		return fmt.Sprintf("このURLの証明書に問題があります。%s を試してください", suggestedURL)
+	}
+	return "このURLの証明書に問題があります。別のURLを試してください"
 }

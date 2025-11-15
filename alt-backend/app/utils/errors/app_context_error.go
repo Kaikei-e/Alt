@@ -46,6 +46,8 @@ func (e *AppContextError) HTTPStatusCode() int {
 		return http.StatusBadGateway
 	case "TIMEOUT_ERROR":
 		return http.StatusGatewayTimeout
+	case "TLS_CERTIFICATE_ERROR":
+		return http.StatusBadRequest
 	case "DATABASE_ERROR":
 		return http.StatusInternalServerError
 	case "UNKNOWN_ERROR":
@@ -181,6 +183,15 @@ func NewTimeoutContextError(message, layer, component, operation string, cause e
 	}
 	context["error_type"] = "timeout"
 	return NewAppContextError("TIMEOUT_ERROR", message, layer, component, operation, cause, context)
+}
+
+// NewTLSCertificateContextError creates a TLS certificate error with context
+func NewTLSCertificateContextError(message, layer, component, operation string, cause error, context map[string]interface{}) *AppContextError {
+	if context == nil {
+		context = make(map[string]interface{})
+	}
+	context["error_type"] = "tls_certificate"
+	return NewAppContextError("TLS_CERTIFICATE_ERROR", message, layer, component, operation, cause, context)
 }
 
 // NewUnknownContextError creates an unknown error with context

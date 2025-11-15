@@ -8,12 +8,13 @@ import (
 type ErrorCode string
 
 const (
-	ErrCodeDatabase    ErrorCode = "DATABASE_ERROR"
-	ErrCodeValidation  ErrorCode = "VALIDATION_ERROR"
-	ErrCodeRateLimit   ErrorCode = "RATE_LIMIT_ERROR"
-	ErrCodeExternalAPI ErrorCode = "EXTERNAL_API_ERROR"
-	ErrCodeTimeout     ErrorCode = "TIMEOUT_ERROR"
-	ErrCodeUnknown     ErrorCode = "UNKNOWN_ERROR"
+	ErrCodeDatabase       ErrorCode = "DATABASE_ERROR"
+	ErrCodeValidation     ErrorCode = "VALIDATION_ERROR"
+	ErrCodeRateLimit      ErrorCode = "RATE_LIMIT_ERROR"
+	ErrCodeExternalAPI    ErrorCode = "EXTERNAL_API_ERROR"
+	ErrCodeTimeout        ErrorCode = "TIMEOUT_ERROR"
+	ErrCodeTLSCertificate ErrorCode = "TLS_CERTIFICATE_ERROR"
+	ErrCodeUnknown        ErrorCode = "UNKNOWN_ERROR"
 )
 
 type AppError struct {
@@ -73,6 +74,15 @@ func ExternalAPIError(message string, cause error, context map[string]interface{
 func TimeoutError(message string, cause error, context map[string]interface{}) *AppError {
 	return &AppError{
 		Code:    ErrCodeTimeout,
+		Message: message,
+		Cause:   cause,
+		Context: context,
+	}
+}
+
+func TLSCertificateError(message string, cause error, context map[string]interface{}) *AppError {
+	return &AppError{
+		Code:    ErrCodeTLSCertificate,
 		Message: message,
 		Cause:   cause,
 		Context: context,
