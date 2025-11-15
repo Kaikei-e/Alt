@@ -12,12 +12,13 @@ import (
 )
 
 const upsertArticleQuery = `
-	INSERT INTO articles (title, content, url, user_id)
-	VALUES ($1, $2, $3, $4)
+	INSERT INTO articles (title, content, url, user_id, feed_id)
+	VALUES ($1, $2, $3, $4, $5)
 	ON CONFLICT (url) DO UPDATE
 	SET title = EXCLUDED.title,
 		content = EXCLUDED.content,
-		user_id = EXCLUDED.user_id
+		user_id = EXCLUDED.user_id,
+		feed_id = COALESCE(EXCLUDED.feed_id, articles.feed_id)
 	RETURNING id
 `
 
@@ -52,8 +53,28 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 		return fmt.Errorf("user context required: %w", err)
 	}
 
+	// Get feed_id from URL if possible
+	var feedID *uuid.UUID
+	feedIDStr, err := r.GetFeedIDByURL(ctx, cleanURL)
+	if err != nil {
+		// If feed not found, log warning but continue (feed_id will be NULL)
+		logger.SafeWarn("feed not found for article URL, article will be saved without feed_id", "url", cleanURL, "error", err)
+	} else {
+		parsedFeedID, err := uuid.Parse(feedIDStr)
+		if err == nil {
+			feedID = &parsedFeedID
+		}
+	}
+
 	var articleID uuid.UUID
-	if err := r.pool.QueryRow(ctx, upsertArticleQuery, cleanTitle, content, cleanURL, userContext.UserID).Scan(&articleID); err != nil {
+	var feedIDValue interface{}
+	if feedID != nil {
+		feedIDValue = *feedID
+	} else {
+		feedIDValue = nil
+	}
+
+	if err := r.pool.QueryRow(ctx, upsertArticleQuery, cleanTitle, content, cleanURL, userContext.UserID, feedIDValue).Scan(&articleID); err != nil {
 		err = fmt.Errorf("upsert article content: %w", err)
 		logger.SafeError("failed to save article", "url", cleanURL, "error", err)
 		return err

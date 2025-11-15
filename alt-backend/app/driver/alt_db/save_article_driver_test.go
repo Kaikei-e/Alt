@@ -33,8 +33,13 @@ func TestAltDBRepository_SaveArticle_Success(t *testing.T) {
 	ctx := domain.SetUserContext(context.Background(), userCtx)
 
 	articleID := uuid.New()
+	// Mock GetFeedIDByURL call - feed not found (will use NULL feed_id)
+	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
+		WithArgs("https://example.com/article").
+		WillReturnError(errors.New("no rows"))
+
 	mock.ExpectQuery(regexp.QuoteMeta(upsertArticleQuery)).
-		WithArgs("Example Title", "<p>content</p>", "https://example.com/article", userID).
+		WithArgs("Example Title", "<p>content</p>", "https://example.com/article", userID, nil).
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(articleID))
 
 	require.NoError(t, repo.SaveArticle(ctx, "https://example.com/article", "Example Title", "<p>content</p>"))
@@ -62,8 +67,13 @@ func TestAltDBRepository_SaveArticle_UsesURLWhenTitleEmpty(t *testing.T) {
 
 	articleID := uuid.New()
 	url := "https://example.com/article"
+	// Mock GetFeedIDByURL call - feed not found (will use NULL feed_id)
+	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
+		WithArgs(url).
+		WillReturnError(errors.New("no rows"))
+
 	mock.ExpectQuery(regexp.QuoteMeta(upsertArticleQuery)).
-		WithArgs(url, "<p>content</p>", url, userID).
+		WithArgs(url, "<p>content</p>", url, userID, nil).
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(articleID))
 
 	require.NoError(t, repo.SaveArticle(ctx, url, "   ", "<p>content</p>"))
@@ -89,8 +99,13 @@ func TestAltDBRepository_SaveArticle_ReturnsErrorOnQueryFailure(t *testing.T) {
 	}
 	ctx := domain.SetUserContext(context.Background(), userCtx)
 
+	// Mock GetFeedIDByURL call - feed not found (will use NULL feed_id)
+	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
+		WithArgs("https://example.com/article").
+		WillReturnError(errors.New("no rows"))
+
 	mock.ExpectQuery(regexp.QuoteMeta(upsertArticleQuery)).
-		WithArgs("Example Title", "<p>content</p>", "https://example.com/article", userID).
+		WithArgs("Example Title", "<p>content</p>", "https://example.com/article", userID, nil).
 		WillReturnError(errors.New("db failed"))
 
 	err = repo.SaveArticle(ctx, "https://example.com/article", "Example Title", "<p>content</p>")
