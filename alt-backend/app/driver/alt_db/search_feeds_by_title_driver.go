@@ -23,7 +23,7 @@ func (a *AltDBRepository) SearchFeedsByTitle(ctx context.Context, query string, 
 	queryString := `
 		SELECT DISTINCT f.id, f.title, f.description, f.link, f.pub_date, f.created_at
 		FROM feeds f
-		INNER JOIN articles a ON f.link = a.url
+		INNER JOIN articles a ON f.id = a.feed_id
 		WHERE a.user_id = $1
 		AND LOWER(f.title) LIKE $2
 		ORDER BY f.pub_date DESC
