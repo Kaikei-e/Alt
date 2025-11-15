@@ -19,6 +19,12 @@ describe("Feed URL Schema", () => {
         { feed_url: "https://example.com/feed.rdf" },
         { feed_url: "https://www.techno-edge.net/rss20/index.rdf" },
         { feed_url: "https://gihyo.jp/feed/rss2" },
+        { feed_url: "https://medicalxpress.com/rss-feed/neuroscience-news/" },
+        { feed_url: "https://example.com/rss-feed" },
+        { feed_url: "https://example.com/rss-feeds/" },
+        { feed_url: "https://example.com/rssfeed/" },
+        { feed_url: "https://example.com/rss_feeds/" },
+        { feed_url: "https://www.thetransmitter.org/feed/the-transmitter-stories/" },
       ];
 
       validRssUrls.forEach((feedUrl) => {
@@ -110,6 +116,47 @@ describe("Feed URL Schema", () => {
       atPrefixedUrls.forEach((feedUrl) => {
         const result = v.safeParse(feedUrlSchema, feedUrl);
         expect(result.success).toBe(true);
+      });
+    });
+
+    it("should accept rss-feed pattern URLs", () => {
+      const rssFeedPatternUrls = [
+        { feed_url: "https://medicalxpress.com/rss-feed/neuroscience-news/" },
+        { feed_url: "https://example.com/rss-feed" },
+        { feed_url: "https://example.com/rss-feed/" },
+        { feed_url: "https://example.com/rss-feeds/" },
+        { feed_url: "https://example.com/rssfeed/" },
+        { feed_url: "https://example.com/rss_feeds/" },
+        { feed_url: "https://example.com/rss-feed/category" },
+        { feed_url: "https://example.com/rss-feed/category/" },
+      ];
+
+      rssFeedPatternUrls.forEach((feedUrl) => {
+        const result = v.safeParse(feedUrlSchema, feedUrl);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.output).toEqual(feedUrl);
+        }
+      });
+    });
+
+    it("should accept feed/atom/rss with path patterns", () => {
+      const feedWithPathUrls = [
+        { feed_url: "https://www.thetransmitter.org/feed/the-transmitter-stories/" },
+        { feed_url: "https://example.com/feed/category/" },
+        { feed_url: "https://example.com/feed/category" },
+        { feed_url: "https://example.com/rss/category/" },
+        { feed_url: "https://example.com/rss/category" },
+        { feed_url: "https://example.com/atom/category/" },
+        { feed_url: "https://example.com/atom/category" },
+      ];
+
+      feedWithPathUrls.forEach((feedUrl) => {
+        const result = v.safeParse(feedUrlSchema, feedUrl);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.output).toEqual(feedUrl);
+        }
       });
     });
   });
