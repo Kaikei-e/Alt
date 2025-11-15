@@ -432,10 +432,7 @@ pub(crate) struct DefaultRefineEngine {
 }
 
 impl DefaultRefineEngine {
-    pub(crate) fn new(
-        config: RefineConfig,
-        graph: Arc<dyn TagLabelGraphSource>,
-    ) -> Self {
+    pub(crate) fn new(config: RefineConfig, graph: Arc<dyn TagLabelGraphSource>) -> Self {
         Self { config, graph }
     }
 }
@@ -572,10 +569,7 @@ impl RefineEngine for DefaultRefineEngine {
                     .iter()
                     .map(|candidate| {
                         let normalized = normalize(&candidate.name);
-                        let boost = graph_boosts
-                            .get(&normalized)
-                            .copied()
-                            .unwrap_or_default();
+                        let boost = graph_boosts.get(&normalized).copied().unwrap_or_default();
                         let tag_consistency = tag_consistency_score(
                             &self.config,
                             &candidate.name,
@@ -591,10 +585,8 @@ impl RefineEngine for DefaultRefineEngine {
                     })
                     .collect();
 
-                weighted_scores.sort_by(|a, b| {
-                    b.1.partial_cmp(&a.1)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
+                weighted_scores
+                    .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
                 if let Some((winner, score)) = weighted_scores.first() {
                     return Ok(RefineOutcome::new(
@@ -736,11 +728,7 @@ fn tag_consistency_winner(
 
 /// タグ一貫性スコアを計算する（強化版）。
 /// タグの信頼度、出現頻度、ジャンル名との部分一致も考慮する。
-fn tag_consistency_score(
-    config: &RefineConfig,
-    candidate_name: &str,
-    tags: &[TagSignal],
-) -> f32 {
+fn tag_consistency_score(config: &RefineConfig, candidate_name: &str, tags: &[TagSignal]) -> f32 {
     let normalized_candidate = normalize(candidate_name);
     let mut score = 0.0;
     let mut match_count = 0;
@@ -766,11 +754,7 @@ fn tag_consistency_score(
     }
 
     // 複数のタグが一致する場合、信頼度の合計を返す（最大1.0にクランプ）
-    if match_count > 0 {
-        score.min(1.0)
-    } else {
-        0.0
-    }
+    if match_count > 0 { score.min(1.0) } else { 0.0 }
 }
 
 /// 重み付きスコアリングでタイブレークを決定する。
@@ -792,10 +776,7 @@ fn compute_weighted_tie_break_score(
     let tag_score = tag_consistency.clamp(0.0, 1.0);
 
     // 重み付き合計
-    keyword_score * 0.25
-        + classifier_score * 0.30
-        + graph_score * 0.25
-        + tag_score * 0.20
+    keyword_score * 0.25 + classifier_score * 0.30 + graph_score * 0.25 + tag_score * 0.20
 }
 
 #[cfg(test)]
@@ -874,8 +855,7 @@ mod tests {
             entropy: 0.1,
         };
         let graph = static_graph(TagLabelGraphCache::empty());
-        let engine =
-            DefaultRefineEngine::new(RefineConfig::new(true), graph);
+        let engine = DefaultRefineEngine::new(RefineConfig::new(true), graph);
 
         let outcome = engine
             .refine(RefineInput {
@@ -909,10 +889,7 @@ mod tests {
             LabelEdge::new("tech", "半導体", 0.5),
             LabelEdge::new("business", "半導体", 0.1),
         ]);
-        let engine = DefaultRefineEngine::new(
-            RefineConfig::new(false),
-            static_graph(graph),
-        );
+        let engine = DefaultRefineEngine::new(RefineConfig::new(false), static_graph(graph));
 
         let outcome = engine
             .refine(RefineInput {
@@ -970,8 +947,7 @@ mod tests {
         let candidates = vec![candidate("ai", 0.9, 0.88)];
         let tag_profile = TagProfile::default();
         let graph = static_graph(TagLabelGraphCache::empty());
-        let engine =
-            DefaultRefineEngine::new(RefineConfig::new(true), graph);
+        let engine = DefaultRefineEngine::new(RefineConfig::new(true), graph);
 
         let outcome = engine
             .refine(RefineInput {

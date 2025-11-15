@@ -5,7 +5,10 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-use super::features::{EMBEDDING_DIM, FeatureVector};
+use super::features::{
+    FeatureVector, EMBEDDING_DIM, FALLBACK_AVG_DOC_LEN, FALLBACK_BM25_B, FALLBACK_BM25_K1,
+    FALLBACK_IDF, FALLBACK_VOCAB,
+};
 
 const DEFAULT_WEIGHTS_JSON: &str = include_str!("../resources/genre_classifier_weights.json");
 
@@ -13,6 +16,16 @@ const DEFAULT_WEIGHTS_JSON: &str = include_str!("../resources/genre_classifier_w
 struct ModelWeights {
     feature_dim: usize,
     embedding_dim: usize,
+    #[serde(default)]
+    feature_vocab: Vec<String>,
+    #[serde(default)]
+    feature_idf: Vec<f32>,
+    #[serde(default)]
+    bm25_k1: Option<f32>,
+    #[serde(default)]
+    bm25_b: Option<f32>,
+    #[serde(default)]
+    average_doc_len: Option<f32>,
     genres: Vec<String>,
     tfidf_weights: Vec<Vec<f32>>,
     embedding_weights: Vec<Vec<f32>>,
@@ -42,6 +55,18 @@ impl ModelWeights {
             );
         }
         anyhow::ensure!(self.bias.len() == self.genres.len(), "bias length mismatch");
+        if !self.feature_vocab.is_empty() {
+            anyhow::ensure!(
+                self.feature_vocab.len() == self.feature_dim,
+                "feature vocab length mismatch"
+            );
+        }
+        if !self.feature_idf.is_empty() {
+            anyhow::ensure!(
+                self.feature_idf.len() == self.feature_dim,
+                "feature idf length mismatch"
+            );
+        }
         Ok(())
     }
 }
@@ -50,6 +75,11 @@ impl ModelWeights {
 pub struct HybridModel {
     genres: Vec<String>,
     feature_dim: usize,
+    feature_vocab: Vec<String>,
+    feature_idf: Vec<f32>,
+    bm25_k1: f32,
+    bm25_b: f32,
+    average_doc_len: f32,
     tfidf_weight: Vec<Vec<f32>>,
     embedding_weight: Vec<Vec<f32>>,
     bias: Vec<f32>,
@@ -71,9 +101,28 @@ impl HybridModel {
             serde_json::from_str(&raw).context("failed to parse classifier weights json")?;
         weights.validate()?;
 
+        let feature_vocab = if weights.feature_vocab.is_empty() {
+            FALLBACK_VOCAB.iter().map(|s| s.to_string()).collect()
+        } else {
+            weights.feature_vocab.clone()
+        };
+        let feature_idf = if weights.feature_idf.is_empty() {
+            FALLBACK_IDF.to_vec()
+        } else {
+            weights.feature_idf.clone()
+        };
+        let bm25_k1 = weights.bm25_k1.unwrap_or(FALLBACK_BM25_K1);
+        let bm25_b = weights.bm25_b.unwrap_or(FALLBACK_BM25_B);
+        let average_doc_len = weights.average_doc_len.unwrap_or(FALLBACK_AVG_DOC_LEN);
+
         Ok(Self {
             genres: weights.genres,
             feature_dim: weights.feature_dim,
+            feature_vocab,
+            feature_idf,
+            bm25_k1,
+            bm25_b,
+            average_doc_len,
             tfidf_weight: weights.tfidf_weights,
             embedding_weight: weights.embedding_weights,
             bias: weights.bias,
@@ -105,5 +154,30 @@ impl HybridModel {
             paired.push((genre.clone(), score));
         }
         Ok(paired)
+    }
+
+    #[must_use]
+    pub fn feature_vocab(&self) -> &[String] {
+        &self.feature_vocab
+    }
+
+    #[must_use]
+    pub fn feature_idf(&self) -> &[f32] {
+        &self.feature_idf
+    }
+
+    #[must_use]
+    pub fn bm25_k1(&self) -> f32 {
+        self.bm25_k1
+    }
+
+    #[must_use]
+    pub fn bm25_b(&self) -> f32 {
+        self.bm25_b
+    }
+
+    #[must_use]
+    pub fn average_doc_len(&self) -> f32 {
+        self.average_doc_len
     }
 }

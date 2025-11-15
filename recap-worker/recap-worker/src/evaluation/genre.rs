@@ -271,10 +271,7 @@ pub async fn evaluate_two_stage(
     let tag_gate = config.tag_confidence_gate;
     let graph_cache = TagLabelGraphCache::from_edges(&collect_graph_edges(samples));
     let graph_source = Arc::new(StaticEvaluationGraph::new(graph_cache));
-    let engine = Arc::new(DefaultRefineEngine::new(
-        config,
-        graph_source,
-    ));
+    let engine = Arc::new(DefaultRefineEngine::new(config, graph_source));
 
     let mut coarse_calc = MetricsCalculator::new();
     let mut tag_calc = MetricsCalculator::new();

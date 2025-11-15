@@ -123,7 +123,6 @@ impl TwoStageGenreStage {
             metrics,
         }
     }
-
 }
 
 /// キーワードベースのCoarseジャンルステージ。
@@ -369,48 +368,49 @@ impl GenreStage for TwoStageGenreStage {
             let metrics_clone = Arc::clone(&metrics);
 
             let task = tokio::spawn(async move {
-                let outcome = if !refine_allowed {
-                    let fallback_candidate = assignment
-                        .candidates
-                        .first()
-                        .cloned()
-                        .unwrap_or_else(|| GenreCandidate {
-                            name: "other".to_string(),
-                            score: 0.0,
-                            keyword_support: 0,
-                            classifier_confidence: 0.0,
-                        });
-                    RefineOutcome::new(
-                        fallback_candidate.name.clone(),
-                        fallback_candidate.classifier_confidence,
-                        RefineStrategy::CoarseOnly,
-                        None,
-                        HashMap::new(),
-                    )
-                } else {
-                    let fallback = TagFallbackMode::require_tags(require_tags, tag_profile.has_tags());
-                    let refine_input = RefineInput {
-                        job: &JobContext::new(job_id, vec![]),
-                        article: &assignment.article,
-                        candidates: &assignment.candidates,
-                        tag_profile: &tag_profile,
-                        fallback,
+                let outcome =
+                    if !refine_allowed {
+                        let fallback_candidate =
+                            assignment.candidates.first().cloned().unwrap_or_else(|| {
+                                GenreCandidate {
+                                    name: "other".to_string(),
+                                    score: 0.0,
+                                    keyword_support: 0,
+                                    classifier_confidence: 0.0,
+                                }
+                            });
+                        RefineOutcome::new(
+                            fallback_candidate.name.clone(),
+                            fallback_candidate.classifier_confidence,
+                            RefineStrategy::CoarseOnly,
+                            None,
+                            HashMap::new(),
+                        )
+                    } else {
+                        let fallback =
+                            TagFallbackMode::require_tags(require_tags, tag_profile.has_tags());
+                        let refine_input = RefineInput {
+                            job: &JobContext::new(job_id, vec![]),
+                            article: &assignment.article,
+                            candidates: &assignment.candidates,
+                            tag_profile: &tag_profile,
+                            fallback,
+                        };
+                        let refine_start = std::time::Instant::now();
+                        let outcome = refine_engine_clone.refine(refine_input).await?;
+                        let _refine_duration_ms = refine_start.elapsed().as_millis() as u64;
+                        // メトリクス更新
+                        match outcome.strategy {
+                            RefineStrategy::GraphBoost => {
+                                metrics_clone.genre_refine_graph_hits.inc();
+                            }
+                            RefineStrategy::FallbackOther | RefineStrategy::CoarseOnly => {
+                                metrics_clone.genre_refine_fallback_total.inc();
+                            }
+                            _ => {}
+                        }
+                        outcome
                     };
-                    let refine_start = std::time::Instant::now();
-                    let outcome = refine_engine_clone.refine(refine_input).await?;
-                    let _refine_duration_ms = refine_start.elapsed().as_millis() as u64;
-                    // メトリクス更新
-                    match outcome.strategy {
-                        RefineStrategy::GraphBoost => {
-                            metrics_clone.genre_refine_graph_hits.inc();
-                        }
-                        RefineStrategy::FallbackOther | RefineStrategy::CoarseOnly => {
-                            metrics_clone.genre_refine_fallback_total.inc();
-                        }
-                        _ => {}
-                    }
-                    outcome
-                };
 
                 // 学習レコードを準備（バルクインサート用）
                 let tag_profile_record = TagProfileRecord {
@@ -435,10 +435,8 @@ impl GenreStage for TwoStageGenreStage {
                         let normalized = normalize_label(&candidate.name);
                         let boost = graph_boosts.get(&normalized).copied();
                         let llm_conf = if candidate.name.eq_ignore_ascii_case(&outcome.final_genre)
-                            && matches!(
-                                outcome.strategy,
-                                RefineStrategy::LlmTieBreak
-                            ) {
+                            && matches!(outcome.strategy, RefineStrategy::LlmTieBreak)
+                        {
                             Some(outcome.confidence)
                         } else {
                             None
@@ -527,7 +525,11 @@ impl GenreStage for TwoStageGenreStage {
 
         // バルクインサートで一括保存
         if !learning_records.is_empty() {
-            if let Err(err) = self.dao.upsert_genre_learning_records_bulk(&learning_records).await {
+            if let Err(err) = self
+                .dao
+                .upsert_genre_learning_records_bulk(&learning_records)
+                .await
+            {
                 warn!(job_id = %job.job_id, record_count = learning_records.len(), error = ?err, "failed to bulk persist genre learning records");
             }
         }

@@ -6,7 +6,7 @@ use anyhow::Result;
 use crate::pipeline::genre_keywords::GenreKeywords;
 
 mod keywords;
-use keywords::{DEFAULT_KEYWORDS, KeywordMatcher, accumulate_scores, default_matcher};
+use keywords::{accumulate_scores, default_matcher, KeywordMatcher, DEFAULT_KEYWORDS};
 
 mod features;
 mod model;
@@ -72,11 +72,23 @@ impl GenreClassifier {
             .ok()
             .and_then(|raw| raw.parse::<f32>().ok())
             .unwrap_or(0.75);
+        let feature_extractor = if model.feature_vocab().is_empty() {
+            FeatureExtractor::fallback()
+        } else {
+            FeatureExtractor::from_metadata(
+                model.feature_vocab(),
+                model.feature_idf(),
+                model.bm25_k1(),
+                model.bm25_b(),
+                model.average_doc_len(),
+            )
+        };
+
         Self {
             keywords: GenreKeywords::default_keywords(),
             top_k: 3,
             pipeline: TokenPipeline::new(),
-            feature_extractor: FeatureExtractor::new(),
+            feature_extractor,
             model,
             score_threshold,
             keyword_matcher: default_matcher(),

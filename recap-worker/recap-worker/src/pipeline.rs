@@ -29,10 +29,7 @@ use dedup::{DedupStage, HashDedupStage};
 use dispatch::{DispatchStage, MlLlmDispatchStage};
 use fetch::{AltBackendFetchStage, FetchStage};
 use genre::{CoarseGenreStage, GenreStage, RefineRollout, TwoStageGenreStage};
-use genre_refine::{
-    DbTagLabelGraphSource, DefaultRefineEngine, RefineConfig,
-    TagLabelGraphSource,
-};
+use genre_refine::{DbTagLabelGraphSource, DefaultRefineEngine, RefineConfig, TagLabelGraphSource};
 use persist::PersistStage;
 use preprocess::{PreprocessStage, TextPreprocessStage};
 use select::{SelectStage, SummarySelectStage};
@@ -113,8 +110,7 @@ impl PipelineOrchestrator {
                 .await
                 .context("failed to preload tag label graph cache")?;
             let graph_source: Arc<dyn TagLabelGraphSource> = graph_loader;
-            let refine_engine =
-                Arc::new(DefaultRefineEngine::new(refine_config, graph_source));
+            let refine_engine = Arc::new(DefaultRefineEngine::new(refine_config, graph_source));
             Arc::new(TwoStageGenreStage::new(
                 Arc::clone(&coarse_stage),
                 refine_engine,

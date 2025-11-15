@@ -148,12 +148,7 @@ impl TagGeneratorClient {
                             .ok()
                             .map(|dt| dt.with_timezone(&Utc));
 
-                        TagSignal::new(
-                            tag.tag,
-                            tag.confidence,
-                            Some(tag.source),
-                            updated_at,
-                        )
+                        TagSignal::new(tag.tag, tag.confidence, Some(tag.source), updated_at)
                     })
                     .collect();
 
@@ -224,8 +219,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = TagGeneratorClient::new(test_config(server.uri()))
-            .expect("client should build");
+        let client =
+            TagGeneratorClient::new(test_config(server.uri())).expect("client should build");
         let tags = client
             .fetch_tags_batch(&["article-1".to_string(), "article-2".to_string()])
             .await
@@ -242,9 +237,11 @@ mod tests {
     async fn fetch_tags_batch_handles_empty_list() {
         let client = TagGeneratorClient::new(test_config("http://localhost:8000".to_string()))
             .expect("client should build");
-        let tags = client.fetch_tags_batch(&[]).await.expect("fetch should succeed");
+        let tags = client
+            .fetch_tags_batch(&[])
+            .await
+            .expect("fetch should succeed");
 
         assert_eq!(tags.len(), 0);
     }
 }
-

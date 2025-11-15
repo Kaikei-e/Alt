@@ -1,37 +1,10 @@
 //! トークン列から特徴量を抽出する。
 use std::collections::HashMap;
 
-const FEATURE_VOCAB: [&str; 19] = [
-    "人工知能",
-    "自動運転",
-    "資金調達",
-    "投資",
-    "決算",
-    "政策",
-    "政府",
-    "遺伝子",
-    "医療",
-    "量子",
-    "サッカー",
-    "音楽",
-    "confidential computing",
-    "cybersecurity",
-    "transformer",
-    "diplomacy",
-    "treaty",
-    "economy",
-    "business",
-];
-
-const FEATURE_IDF: [f32; FEATURE_VOCAB.len()] = [
-    1.6, 1.5, 1.4, 1.3, 1.2, 1.3, 1.2, 1.5, 1.4, 1.5, 1.3, 1.3, 1.2, 1.2, 1.5, 1.4, 1.4, 1.2, 1.2,
-];
-
 pub const EMBEDDING_DIM: usize = 6;
-
-const BM25_K1: f32 = 1.6;
-const BM25_B: f32 = 0.75;
-const AVERAGE_DOC_LEN: f32 = 320.0;
+pub(crate) const FALLBACK_BM25_K1: f32 = 1.6;
+pub(crate) const FALLBACK_BM25_B: f32 = 0.75;
+pub(crate) const FALLBACK_AVG_DOC_LEN: f32 = 320.0;
 
 const EMBEDDING_LOOKUP: [(&str, [f32; EMBEDDING_DIM]); 19] = [
     ("人工知能", [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
@@ -62,19 +35,29 @@ pub struct FeatureVector {
     pub embedding: Vec<f32>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct FeatureExtractor {
-    vocab_index: HashMap<&'static str, usize>,
+    vocab_index: HashMap<String, usize>,
+    idf: Vec<f32>,
+    bm25_k1: f32,
+    bm25_b: f32,
+    average_doc_len: f32,
     embedding_index: HashMap<&'static str, [f32; EMBEDDING_DIM]>,
 }
 
 impl FeatureExtractor {
     #[must_use]
-    pub fn new() -> Self {
-        let vocab_index = FEATURE_VOCAB
+    pub fn from_metadata(
+        vocab: &[String],
+        idf: &[f32],
+        bm25_k1: f32,
+        bm25_b: f32,
+        average_doc_len: f32,
+    ) -> Self {
+        let vocab_index = vocab
             .iter()
             .enumerate()
-            .map(|(idx, term)| (*term, idx))
+            .map(|(idx, term)| (term.clone(), idx))
             .collect();
         let embedding_index = EMBEDDING_LOOKUP
             .iter()
@@ -82,20 +65,38 @@ impl FeatureExtractor {
             .collect();
         Self {
             vocab_index,
+            idf: idf.to_vec(),
+            bm25_k1,
+            bm25_b,
+            average_doc_len,
             embedding_index,
         }
     }
 
     #[must_use]
+    pub fn fallback() -> Self {
+        let vocab: Vec<String> = FALLBACK_VOCAB.iter().map(|s| s.to_string()).collect();
+        let idf: Vec<f32> = FALLBACK_IDF.to_vec();
+        Self::from_metadata(
+            &vocab,
+            &idf,
+            FALLBACK_BM25_K1,
+            FALLBACK_BM25_B,
+            FALLBACK_AVG_DOC_LEN,
+        )
+    }
+
+    #[must_use]
     pub fn extract(&self, tokens: &[String]) -> FeatureVector {
-        let mut raw_counts = vec![0.0f32; FEATURE_VOCAB.len()];
+        let vocab_len = self.idf.len();
+        let mut raw_counts = vec![0.0f32; vocab_len];
         let mut total_hits = 0.0f32;
         let mut embedding = vec![0.0f32; EMBEDDING_DIM];
         let mut embedding_hits = 0.0f32;
 
         for token in tokens {
             let lowered = token.to_lowercase();
-            if let Some(&index) = self.vocab_index.get(lowered.as_str()) {
+            if let Some(&index) = self.vocab_index.get(&lowered) {
                 raw_counts[index] += 1.0;
                 total_hits += 1.0;
             }
@@ -107,12 +108,12 @@ impl FeatureExtractor {
             }
         }
 
-        let mut tfidf = vec![0.0f32; FEATURE_VOCAB.len()];
-        let mut bm25 = vec![0.0f32; FEATURE_VOCAB.len()];
+        let mut tfidf = vec![0.0f32; vocab_len];
+        let mut bm25 = vec![0.0f32; vocab_len];
 
         let doc_len = tokens.len() as f32;
         let length_norm = if doc_len > 0.0 {
-            1.0 - BM25_B + BM25_B * (doc_len / AVERAGE_DOC_LEN)
+            1.0 - self.bm25_b + self.bm25_b * (doc_len / self.average_doc_len)
         } else {
             1.0
         };
@@ -123,11 +124,11 @@ impl FeatureExtractor {
                     continue;
                 }
                 let tf = *raw / total_hits;
-                tfidf[idx] = tf * FEATURE_IDF[idx];
+                tfidf[idx] = tf * self.idf[idx];
 
-                let numerator = (*raw) * (BM25_K1 + 1.0);
-                let denominator = *raw + BM25_K1 * length_norm;
-                bm25[idx] = FEATURE_IDF[idx] * (numerator / denominator);
+                let numerator = (*raw) * (self.bm25_k1 + 1.0);
+                let denominator = *raw + self.bm25_k1 * length_norm;
+                bm25[idx] = self.idf[idx] * (numerator / denominator);
             }
         }
 
@@ -144,6 +145,32 @@ impl FeatureExtractor {
         }
     }
 }
+
+pub(crate) const FALLBACK_VOCAB: [&str; 19] = [
+    "人工知能",
+    "自動運転",
+    "資金調達",
+    "投資",
+    "決算",
+    "政策",
+    "政府",
+    "遺伝子",
+    "医療",
+    "量子",
+    "サッカー",
+    "音楽",
+    "confidential computing",
+    "cybersecurity",
+    "transformer",
+    "diplomacy",
+    "treaty",
+    "economy",
+    "business",
+];
+
+pub(crate) const FALLBACK_IDF: [f32; FALLBACK_VOCAB.len()] = [
+    1.6, 1.5, 1.4, 1.3, 1.2, 1.3, 1.2, 1.5, 1.4, 1.5, 1.3, 1.3, 1.2, 1.2, 1.5, 1.4, 1.4, 1.2, 1.2,
+];
 
 impl FeatureVector {
     #[must_use]
