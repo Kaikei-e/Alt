@@ -793,12 +793,14 @@ mod tests {
     }
 
     /// テスト用フェイクLLM。
+    #[allow(dead_code)]
     #[derive(Debug, Default)]
     struct FakeLlm {
         responses: Mutex<Vec<Result<LlmDecision>>>,
     }
 
     impl FakeLlm {
+        #[allow(dead_code)]
         fn new(responses: Vec<Result<LlmDecision>>) -> Self {
             Self {
                 responses: Mutex::new(responses),

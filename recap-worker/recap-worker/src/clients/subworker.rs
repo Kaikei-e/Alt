@@ -26,7 +26,7 @@ const MAX_POLL_ATTEMPTS: usize = 30;
 const INITIAL_POLL_INTERVAL_MS: u64 = 500;
 const MAX_POLL_INTERVAL_MS: u64 = 5_000;
 const SUBWORKER_TIMEOUT_SECS: u64 = 120;
-const MIN_DOCUMENTS_PER_GENRE: usize = 10;
+const MIN_DOCUMENTS_PER_GENRE: usize = 5;
 const MAX_ERROR_MESSAGE_LENGTH: usize = 500;
 
 /// エラーメッセージを要約して切り詰める。
