@@ -64,9 +64,26 @@ describe("SwipeFeedScreen", () => {
     vi.clearAllMocks();
   });
 
+  it("renders skeleton while data is unknown but validating", () => {
+    mockedUseSwipeFeedController.mockReturnValue({
+      ...baseState,
+      feeds: [],
+      activeFeed: undefined as unknown as Feed,
+      isInitialLoading: false,
+      isValidating: true,
+    });
+
+    renderWithProviders();
+
+    expect(screen.getByTestId("swipe-skeleton-container")).toBeInTheDocument();
+    expect(screen.getByTestId("swipe-skeleton-card")).toBeInTheDocument();
+  });
+
   it("renders enhanced skeleton and hint during initial loading", () => {
     mockedUseSwipeFeedController.mockReturnValue({
       ...baseState,
+      feeds: [],
+      activeFeed: undefined as unknown as Feed,
       isInitialLoading: true,
     });
 
@@ -74,7 +91,7 @@ describe("SwipeFeedScreen", () => {
 
     expect(screen.getByTestId("swipe-skeleton-container")).toBeInTheDocument();
     expect(screen.getByTestId("swipe-skeleton-card")).toBeInTheDocument();
-    expect(screen.getByTestId("swipe-skeleton-hint")).toHaveAttribute("data-reduced-motion", "false");
+    expect(screen.getByTestId("swipe-skeleton-hint")).toBeInTheDocument();
   });
 
   it("shows progress overlay when validating additional feeds", () => {

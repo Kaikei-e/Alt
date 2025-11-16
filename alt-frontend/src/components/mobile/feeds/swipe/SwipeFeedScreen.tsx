@@ -258,16 +258,19 @@ const SwipeFeedScreen = () => {
 
   const prefersReducedMotion = usePrefersReducedMotion();
   const shouldShowOverlay = Boolean(activeFeed) && isValidating;
-
-  if (isInitialLoading) {
-    return <SwipeFeedSkeleton prefersReducedMotion={prefersReducedMotion} />;
-  }
+  const shouldShowSkeleton =
+    isInitialLoading || (!activeFeed && (isValidating || feeds.length === 0));
 
   if (error) {
     return <ErrorState error={error} onRetry={retry} isLoading={isValidating} />;
   }
 
-  const isOutOfFeeds = !activeFeed && !hasMore && !isValidating;
+  if (shouldShowSkeleton) {
+    return <SwipeFeedSkeleton prefersReducedMotion={prefersReducedMotion} />;
+  }
+
+  const isOutOfFeeds =
+    feeds.length === 0 && !isInitialLoading && !isValidating && !hasMore;
 
   if (isOutOfFeeds) {
     return (
@@ -315,3 +318,4 @@ const SwipeFeedScreen = () => {
 };
 
 export default SwipeFeedScreen;
+
