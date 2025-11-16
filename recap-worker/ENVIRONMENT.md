@@ -61,7 +61,7 @@ Complete reference for all environment variables used by Recap Worker.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RECAP_WINDOW_DAYS` | `7` | Lookback window (in days) for the recap job |
-| `RECAP_GENRES` | `tech,ai,business,science,politics,health,sports,entertainment,world,security,product,design,culture,environment,lifestyle,other` | Comma-separated genres processed during each run |
+| `RECAP_GENRES` | `ai,tech,business,politics,health,sports,science,entertainment,world,security,product,design,culture,environment,lifestyle,art_culture,developer_insights,pro_it_media,consumer_tech,global_politics,environment_policy,society_justice,travel_lifestyle,security_policy,business_finance,ai_research,ai_policy,games_puzzles,other` | Comma-separated genres processed during each run |
 
 ### Genre Model & Refinement Controls
 
@@ -122,7 +122,7 @@ LLM_PROMPT_VERSION=recap-ja-v2
 
 # Batch processing
 RECAP_WINDOW_DAYS=7
-RECAP_GENRES=tech,ai,business,science,politics,health,sports,entertainment,world,security,product,design,culture,environment,lifestyle,other
+RECAP_GENRES=ai,tech,business,politics,health,sports,science,entertainment,world,security,product,design,culture,environment,lifestyle,art_culture,developer_insights,pro_it_media,consumer_tech,global_politics,environment_policy,society_justice,travel_lifestyle,security_policy,business_finance,ai_research,ai_policy,games_puzzles,other
 
 # Genre refinement
 RECAP_GENRE_MODEL_WEIGHTS=resources/genre_classifier_weights.json
