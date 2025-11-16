@@ -65,9 +65,12 @@ export class ArticleApi {
 
   async getFeedContentOnTheFly(payload: FeedURLPayload): Promise<FeedContentOnTheFlyResponse> {
     const encodedUrl = encodeURIComponent(payload.feed_url);
+    // Use shorter timeout (15 seconds) to prevent UI freezing
+    // The backend may take 20-44 seconds, but we should fail fast to keep UI responsive
     return this.apiClient.get<FeedContentOnTheFlyResponse>(
       `/v1/articles/fetch/content?url=${encodedUrl}`,
-      10
+      0, // No cache - always fetch fresh
+      15000 // 15 second timeout to prevent UI freezing
     );
   }
 

@@ -74,7 +74,7 @@ export class ApiClient {
       });
   }
 
-  async get<T>(endpoint: string, cacheTtl: number = 5): Promise<T> {
+  async get<T>(endpoint: string, cacheTtl: number = 5, timeout?: number): Promise<T> {
     const cacheKey = this.cacheManager.getCacheKey(endpoint);
 
     if (process.env.NODE_ENV === "development") {
@@ -99,6 +99,7 @@ export class ApiClient {
     }
 
     try {
+      const requestTimeout = timeout ?? this.config.requestTimeout;
       const responsePromise = this.makeRequest(`${this.config.baseUrl}${endpoint}`, {
         method: "GET",
         headers: {
@@ -107,7 +108,7 @@ export class ApiClient {
           "Accept-Encoding": "gzip, deflate, br",
         },
         keepalive: true,
-      }).then(async (response) => {
+      }, requestTimeout).then(async (response) => {
         const interceptedResponse = await this.authInterceptor.intercept(
           response,
           `${this.config.baseUrl}${endpoint}`,
@@ -223,9 +224,10 @@ export class ApiClient {
     }
   }
 
-  private async makeRequest(url: string, options: RequestInit): Promise<Response> {
+  private async makeRequest(url: string, options: RequestInit, timeout?: number): Promise<Response> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.config.requestTimeout);
+    const requestTimeout = timeout ?? this.config.requestTimeout;
+    const timeoutId = setTimeout(() => controller.abort(), requestTimeout);
 
     // SSR Cookie handling
     const enhancedOptions = { ...options };
