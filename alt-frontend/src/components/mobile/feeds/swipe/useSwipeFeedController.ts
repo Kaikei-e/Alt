@@ -100,13 +100,16 @@ export const useSwipeFeedController = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [activeFeedId, setActiveFeedId] = useState<string | null>(null);
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
+  const [isReadFeedsInitialized, setIsReadFeedsInitialized] = useState(false);
 
-  // Initialize readFeeds set from backend on mount
+  // Initialize readFeeds set from backend on mount using cursor-based pagination
+  // Only fetch recent read feeds (latest 100) for optimistic updates
+  // Backend already filters out read feeds, so we don't need all read feeds
   useEffect(() => {
-    // Fetch read feeds from backend to initialize readFeeds set
-    // This ensures that on reload, already-read feeds are excluded
     const initializeReadFeeds = async () => {
       try {
+        // Fetch only the most recent read feeds for optimistic updates
+        // This is sufficient since backend already excludes read feeds from unread feed queries
         const readFeedsResponse = await feedApi.getReadFeedsWithCursor(undefined, 100);
         const readFeedLinks = new Set<string>();
         if (readFeedsResponse?.data) {
@@ -116,8 +119,11 @@ export const useSwipeFeedController = () => {
           });
         }
         setReadFeeds(readFeedLinks);
+        setIsReadFeedsInitialized(true);
       } catch (err) {
         // Continue with empty set if initialization fails
+        // Backend filtering will still work correctly
+        setIsReadFeedsInitialized(true);
       }
     };
 
@@ -128,8 +134,10 @@ export const useSwipeFeedController = () => {
   const prefetchCursorRef = useRef<string | null>(null);
   const lastDismissedIdRef = useRef<string | null>(null);
 
+  // Wait for readFeeds initialization before fetching unread feeds
+  // This ensures consistent behavior and prevents race conditions
   const { data, error, isLoading, isValidating, setSize, mutate } = useSWRInfinite(
-    getKey,
+    isReadFeedsInitialized ? getKey : () => null,
     fetchPage,
     {
       revalidateOnFocus: false,
@@ -143,14 +151,11 @@ export const useSwipeFeedController = () => {
     if (!data || data.length === 0) {
       return [] as Feed[];
     }
+    // Backend already filters out read feeds, so no need for client-side filtering
+    // readFeeds Set is only used for optimistic updates when dismissing feeds
     const allFeeds = data.flatMap((page) => page?.data ?? []);
-    // Filter out read feeds using optimistic update Set
-    const filtered = allFeeds.filter((feed) => {
-      const canonical = canonicalize(feed.link);
-      return !readFeeds.has(canonical);
-    });
-    return filtered;
-  }, [data, readFeeds]);
+    return allFeeds;
+  }, [data]);
 
   const activeIndex = useMemo(() => {
     if (feeds.length === 0) {
