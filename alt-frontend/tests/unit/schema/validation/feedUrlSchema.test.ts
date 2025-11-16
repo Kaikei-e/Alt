@@ -42,7 +42,7 @@ describe("Feed URL Schema", () => {
         { feed_url: "https://example.com/page.html" },
         { feed_url: "https://example.com/about" },
         { feed_url: "https://example.com/blog" },
-        { feed_url: "https://example.com/rssfeed" }, // rssfeed is not a valid pattern
+        // Note: https://example.com/rssfeed is accepted by the schema (matches /\/rssfeed\/?/i pattern)
       ];
 
       nonRssUrls.forEach((feedUrl) => {

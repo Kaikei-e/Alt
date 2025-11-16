@@ -110,7 +110,10 @@ describe("SwipeFeedScreen", () => {
 
     renderWithProviders();
 
-    expect(screen.getByTestId("swipe-skeleton-hint")).toHaveAttribute("data-reduced-motion", "true");
+    const hints = screen.getAllByTestId("swipe-skeleton-hint");
+    const reducedMotionHint = hints.find((hint) => hint.getAttribute("data-reduced-motion") === "true");
+    expect(reducedMotionHint).toBeInTheDocument();
+    expect(reducedMotionHint).toHaveAttribute("data-reduced-motion", "true");
   });
 });
 
