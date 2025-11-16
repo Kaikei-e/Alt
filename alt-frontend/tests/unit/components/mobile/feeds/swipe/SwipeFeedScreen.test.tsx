@@ -1,5 +1,6 @@
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { cleanup, render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SwipeFeedScreen from "@/components/mobile/feeds/swipe/SwipeFeedScreen";
 import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
@@ -17,7 +18,7 @@ const renderWithProviders = () =>
   render(
     <ChakraProvider value={defaultSystem}>
       <SwipeFeedScreen />
-    </ChakraProvider>,
+    </ChakraProvider> as ReactElement,
   );
 
 const mockMatchMedia = (reduceMotion: boolean) => {
