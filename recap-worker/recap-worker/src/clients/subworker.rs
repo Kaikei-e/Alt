@@ -31,13 +31,15 @@ const MAX_ERROR_MESSAGE_LENGTH: usize = 500;
 
 /// エラーメッセージを要約して切り詰める。
 fn truncate_error_message(msg: &str) -> String {
-    if msg.len() <= MAX_ERROR_MESSAGE_LENGTH {
+    let char_count = msg.chars().count();
+    if char_count <= MAX_ERROR_MESSAGE_LENGTH {
         return msg.to_string();
     }
+    let truncated: String = msg.chars().take(MAX_ERROR_MESSAGE_LENGTH).collect();
     format!(
         "{}... (truncated, {} chars)",
-        &msg[..MAX_ERROR_MESSAGE_LENGTH],
-        msg.len()
+        truncated,
+        char_count
     )
 }
 
@@ -719,5 +721,68 @@ mod tests {
                 part
             );
         }
+    }
+
+    #[test]
+    fn truncate_error_message_handles_short_messages() {
+        let msg = "Short error message";
+        let result = truncate_error_message(msg);
+        assert_eq!(result, msg);
+    }
+
+    #[test]
+    fn truncate_error_message_handles_long_ascii_messages() {
+        let msg = "a".repeat(600);
+        let result = truncate_error_message(&msg);
+        assert!(result.starts_with("a"));
+        assert!(result.contains("... (truncated"));
+        assert!(result.contains("600 chars"));
+        // 切り詰められた部分が正確に500文字であることを確認
+        let truncated_part = result.split("...").next().unwrap();
+        assert_eq!(truncated_part.chars().count(), MAX_ERROR_MESSAGE_LENGTH);
+    }
+
+    #[test]
+    fn truncate_error_message_handles_japanese_at_boundary() {
+        // ログで実際に発生したケース: 500文字目が日本語文字の途中
+        // 'れ' (bytes 498..501) や 'ン' (bytes 499..502) が境界に来る
+        let mut msg = "a".repeat(498);
+        msg.push_str("れン");
+        msg.push_str(&"b".repeat(100));
+
+        // パニックが発生しないことを確認
+        let result = truncate_error_message(&msg);
+        assert!(result.contains("... (truncated"));
+        // 切り詰められた部分が文字境界で切れていることを確認
+        let truncated_part = result.split("...").next().unwrap();
+        assert_eq!(truncated_part.chars().count(), MAX_ERROR_MESSAGE_LENGTH);
+        // 文字列が有効なUTF-8であることを確認（パニックしない）
+        assert!(truncated_part.is_char_boundary(truncated_part.len()));
+    }
+
+    #[test]
+    fn truncate_error_message_handles_mixed_languages() {
+        let mut msg = String::new();
+        msg.push_str("This is an English error message. ");
+        msg.push_str("これは日本語のエラーメッセージです。 ");
+        msg.push_str("This is more English text. ");
+        msg.push_str("さらに日本語のテキストが続きます。 ");
+        // 500文字を超えるように繰り返す
+        msg = msg.repeat(20);
+
+        let result = truncate_error_message(&msg);
+        assert!(result.contains("... (truncated"));
+        let truncated_part = result.split("...").next().unwrap();
+        assert_eq!(truncated_part.chars().count(), MAX_ERROR_MESSAGE_LENGTH);
+        // 文字列が有効なUTF-8であることを確認
+        assert!(truncated_part.is_char_boundary(truncated_part.len()));
+    }
+
+    #[test]
+    fn truncate_error_message_preserves_exact_length_messages() {
+        let msg = "a".repeat(MAX_ERROR_MESSAGE_LENGTH);
+        let result = truncate_error_message(&msg);
+        assert_eq!(result, msg);
+        assert!(!result.contains("... (truncated"));
     }
 }
