@@ -1,14 +1,7 @@
 "use client";
 
 import { keyframes } from "@emotion/react";
-import {
-  Box,
-  Flex,
-  HStack,
-  Icon,
-  Text,
-  VStack,
-} from "@chakra-ui/react";
+import { Box, Flex, HStack, Icon, Text, VStack } from "@chakra-ui/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import ErrorState from "@/app/mobile/feeds/_components/ErrorState";
@@ -20,14 +13,20 @@ import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 
 const usePrefersReducedMotion = () => {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
       return false;
     }
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   });
 
   useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
       return;
     }
 
@@ -73,7 +72,11 @@ const loadingBar = keyframes`
   100% { transform: translateX(120%); }
 `;
 
-const SwipeSkeletonHint = ({ prefersReducedMotion }: { prefersReducedMotion: boolean }) => (
+const SwipeSkeletonHint = ({
+  prefersReducedMotion,
+}: {
+  prefersReducedMotion: boolean;
+}) => (
   <VStack
     gap={3}
     align="center"
@@ -92,8 +95,8 @@ const SwipeSkeletonHint = ({ prefersReducedMotion }: { prefersReducedMotion: boo
           prefersReducedMotion
             ? undefined
             : {
-              animation: `${arrowDrift} 1.6s ease-in-out infinite`,
-            }
+                animation: `${arrowDrift} 1.6s ease-in-out infinite`,
+              }
         }
       />
       {Array.from({ length: 3 }).map((_, index) => (
@@ -108,8 +111,8 @@ const SwipeSkeletonHint = ({ prefersReducedMotion }: { prefersReducedMotion: boo
             prefersReducedMotion
               ? undefined
               : {
-                animation: `${dotPulse} 1.8s ${(index + 1) * 0.12}s ease-in-out infinite`,
-              }
+                  animation: `${dotPulse} 1.8s ${(index + 1) * 0.12}s ease-in-out infinite`,
+                }
           }
         />
       ))}
@@ -121,15 +124,19 @@ const SwipeSkeletonHint = ({ prefersReducedMotion }: { prefersReducedMotion: boo
           prefersReducedMotion
             ? undefined
             : {
-              animation: `${arrowDrift} 1.6s ease-in-out infinite reverse`,
-            }
+                animation: `${arrowDrift} 1.6s ease-in-out infinite reverse`,
+              }
         }
       />
     </HStack>
   </VStack>
 );
 
-const SwipeFeedSkeleton = ({ prefersReducedMotion }: { prefersReducedMotion: boolean }) => (
+const SwipeFeedSkeleton = ({
+  prefersReducedMotion,
+}: {
+  prefersReducedMotion: boolean;
+}) => (
   <Box minH="100dvh" position="relative">
     <Box
       p={5}
@@ -196,7 +203,11 @@ const SwipeLoadingOverlay = ({
         mx="auto"
         boxShadow="0 8px 30px rgba(0,0,0,0.35)"
       >
-        <Text fontSize="xs" color="var(--alt-text-secondary)" textAlign="center">
+        <Text
+          fontSize="xs"
+          color="var(--alt-text-secondary)"
+          textAlign="center"
+        >
           新しい記事を読み込んでいます
         </Text>
         <Box
@@ -262,7 +273,9 @@ const SwipeFeedScreen = () => {
     isInitialLoading || (!activeFeed && (isValidating || feeds.length === 0));
 
   if (error) {
-    return <ErrorState error={error} onRetry={retry} isLoading={isValidating} />;
+    return (
+      <ErrorState error={error} onRetry={retry} isLoading={isValidating} />
+    );
   }
 
   if (shouldShowSkeleton) {
@@ -310,7 +323,10 @@ const SwipeFeedScreen = () => {
         />
       </Flex>
 
-      <SwipeLoadingOverlay isVisible={shouldShowOverlay} reduceMotion={prefersReducedMotion} />
+      <SwipeLoadingOverlay
+        isVisible={shouldShowOverlay}
+        reduceMotion={prefersReducedMotion}
+      />
 
       <FloatingMenu />
     </Box>
@@ -318,4 +334,3 @@ const SwipeFeedScreen = () => {
 };
 
 export default SwipeFeedScreen;
-

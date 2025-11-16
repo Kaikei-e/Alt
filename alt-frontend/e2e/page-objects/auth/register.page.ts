@@ -22,7 +22,9 @@ export class RegisterPage extends BasePage {
     super(page);
 
     // Initialize locators - adjusted for OryFlowForm rendering
-    this.pageHeading = page.getByText(/新規登録|sign up|register|create account/i).first();
+    this.pageHeading = page
+      .getByText(/新規登録|sign up|register|create account/i)
+      .first();
 
     // OryFlowForm uses aria-label from Kratos flow configuration
     // Typical Kratos field names: "traits.email", "password", "traits.name"
@@ -37,7 +39,9 @@ export class RegisterPage extends BasePage {
     this.loginLink = page.getByRole("link", { name: /log in|login|ログイン/i });
 
     // Error messages are rendered in red bordered boxes by OryFlowForm
-    this.errorMessage = page.locator('[role="alert"], .chakra-alert, [style*="red"]').first();
+    this.errorMessage = page
+      .locator('[role="alert"], .chakra-alert, [style*="red"]')
+      .first();
     this.successMessage = page.getByRole("status");
     this.termsCheckbox = page.getByLabel(/terms|agree|利用規約|同意/i);
   }
@@ -50,9 +54,11 @@ export class RegisterPage extends BasePage {
     await this.page.goto("/auth/register", { waitUntil: "networkidle" });
 
     // Wait for redirect and flow initialization (may redirect to Kratos then back)
-    await this.page.waitForURL("**/auth/register?flow=**", { timeout: 15000 }).catch(() => {
-      // If no redirect with flow, page might already have flow initialized
-    });
+    await this.page
+      .waitForURL("**/auth/register?flow=**", { timeout: 15000 })
+      .catch(() => {
+        // If no redirect with flow, page might already have flow initialized
+      });
 
     await this.waitForLoad();
   }
@@ -62,9 +68,11 @@ export class RegisterPage extends BasePage {
    */
   async waitForLoad(): Promise<void> {
     // Wait for the form container to be visible
-    await this.page.waitForSelector('form, [role="form"]', { timeout: 15000 }).catch(() => {
-      // Fallback: wait for specific elements
-    });
+    await this.page
+      .waitForSelector('form, [role="form"]', { timeout: 15000 })
+      .catch(() => {
+        // Fallback: wait for specific elements
+      });
 
     // Wait for critical elements - use more flexible timeout
     await expect(this.emailInput).toBeVisible({ timeout: 10000 });
@@ -78,7 +86,7 @@ export class RegisterPage extends BasePage {
     email: string,
     password: string,
     name?: string,
-    confirmPassword?: string
+    confirmPassword?: string,
   ): Promise<void> {
     if (name && (await this.nameInput.count()) > 0) {
       await this.nameInput.fill(name);
@@ -225,9 +233,12 @@ export class RegisterPage extends BasePage {
   async waitForRegistrationSuccess(): Promise<void> {
     // Wait for redirect or success message
     try {
-      await this.page.waitForURL((url) => !url.pathname.includes("/auth/register"), {
-        timeout: 10000,
-      });
+      await this.page.waitForURL(
+        (url) => !url.pathname.includes("/auth/register"),
+        {
+          timeout: 10000,
+        },
+      );
     } catch {
       // If no redirect, check for success message
       await expect(this.successMessage).toBeVisible({ timeout: 5000 });

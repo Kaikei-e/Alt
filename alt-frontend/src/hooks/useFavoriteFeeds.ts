@@ -14,7 +14,9 @@ export interface UseFavoriteFeedsResult {
   refresh: () => void;
 }
 
-export const useFavoriteFeeds = (initialLimit: number = 20): UseFavoriteFeedsResult => {
+export const useFavoriteFeeds = (
+  initialLimit: number = 20,
+): UseFavoriteFeedsResult => {
   const enablePrefetch = true;
   const { isAuthenticated } = useAuth();
 
@@ -38,7 +40,10 @@ export const useFavoriteFeeds = (initialLimit: number = 20): UseFavoriteFeedsRes
       try {
         prefetchCacheRef.current.set(nextCursor, "loading");
 
-        const response = await feedApi.getFavoriteFeedsWithCursor(nextCursor, initialLimit);
+        const response = await feedApi.getFavoriteFeedsWithCursor(
+          nextCursor,
+          initialLimit,
+        );
 
         prefetchCacheRef.current.set(nextCursor, response);
 
@@ -51,7 +56,7 @@ export const useFavoriteFeeds = (initialLimit: number = 20): UseFavoriteFeedsRes
         prefetchCacheRef.current.delete(nextCursor);
       }
     },
-    [initialLimit, enablePrefetch]
+    [initialLimit, enablePrefetch],
   );
 
   const loadFeeds = useCallback(
@@ -64,7 +69,11 @@ export const useFavoriteFeeds = (initialLimit: number = 20): UseFavoriteFeedsRes
         let response: { data: Feed[]; next_cursor: string | null };
 
         // Try to get from prefetch cache first
-        if (enablePrefetch && currentCursor && prefetchCacheRef.current.has(currentCursor)) {
+        if (
+          enablePrefetch &&
+          currentCursor &&
+          prefetchCacheRef.current.has(currentCursor)
+        ) {
           const cachedResponse = prefetchCacheRef.current.get(currentCursor);
           if (cachedResponse !== "loading") {
             response = cachedResponse as {
@@ -74,11 +83,17 @@ export const useFavoriteFeeds = (initialLimit: number = 20): UseFavoriteFeedsRes
             prefetchCacheRef.current.delete(currentCursor);
           } else {
             // If cache is loading, fetch normally
-            response = await feedApi.getFavoriteFeedsWithCursor(currentCursor, initialLimit);
+            response = await feedApi.getFavoriteFeedsWithCursor(
+              currentCursor,
+              initialLimit,
+            );
           }
         } else {
           // No cache, fetch normally
-          response = await feedApi.getFavoriteFeedsWithCursor(currentCursor, initialLimit);
+          response = await feedApi.getFavoriteFeedsWithCursor(
+            currentCursor,
+            initialLimit,
+          );
         }
 
         if (resetData) {
@@ -108,7 +123,7 @@ export const useFavoriteFeeds = (initialLimit: number = 20): UseFavoriteFeedsRes
         setIsLoading(false);
       }
     },
-    [cursor, initialLimit, prefetchNextPage, enablePrefetch]
+    [cursor, initialLimit, prefetchNextPage, enablePrefetch],
   );
 
   const loadMore = useCallback(() => {
@@ -141,7 +156,10 @@ export const useFavoriteFeeds = (initialLimit: number = 20): UseFavoriteFeedsRes
           return;
         }
 
-        const response = await feedApi.getFavoriteFeedsWithCursor(undefined, initialLimit);
+        const response = await feedApi.getFavoriteFeedsWithCursor(
+          undefined,
+          initialLimit,
+        );
         setFeeds(response.data);
         setCursor(response.next_cursor || undefined);
         setHasMore(response.next_cursor !== null);

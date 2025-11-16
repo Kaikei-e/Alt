@@ -64,7 +64,7 @@ export class DesktopFeedRegisterPage extends BasePage {
     url: string,
     title?: string,
     description?: string,
-    category?: string
+    category?: string,
   ): Promise<void> {
     await this.feedUrlInput.fill(url);
 

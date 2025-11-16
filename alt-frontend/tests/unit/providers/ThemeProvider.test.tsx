@@ -8,7 +8,9 @@ import { ThemeProvider } from "../../../src/providers/ThemeProvider";
 
 // Mock next-themes
 vi.mock("next-themes", () => ({
-  ThemeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ThemeProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
   useTheme: () => ({
     theme: "alt-paper",
     setTheme: vi.fn(),
@@ -83,7 +85,7 @@ describe("ThemeProvider", () => {
         <ThemeProvider>
           <TestComponent />
         </ThemeProvider>
-      </NextThemesProvider>
+      </NextThemesProvider>,
     );
 
     // Wait for hydration
@@ -101,7 +103,7 @@ describe("ThemeProvider", () => {
         <ThemeProvider>
           <TestComponent />
         </ThemeProvider>
-      </NextThemesProvider>
+      </NextThemesProvider>,
     );
 
     await act(async () => {
@@ -120,7 +122,7 @@ describe("ThemeProvider", () => {
         <ThemeProvider>
           <TestComponent />
         </ThemeProvider>
-      </NextThemesProvider>
+      </NextThemesProvider>,
     );
 
     await act(async () => {
@@ -139,7 +141,7 @@ describe("ThemeProvider", () => {
         <ThemeProvider>
           <TestComponent />
         </ThemeProvider>
-      </NextThemesProvider>
+      </NextThemesProvider>,
     );
 
     await act(async () => {
@@ -161,7 +163,7 @@ describe("ThemeProvider", () => {
         <ThemeProvider>
           <TestComponent />
         </ThemeProvider>
-      </NextThemesProvider>
+      </NextThemesProvider>,
     );
 
     await act(async () => {
@@ -195,7 +197,7 @@ describe("ThemeProvider", () => {
         <ThemeProvider>
           <TestComponent />
         </ThemeProvider>
-      </NextThemesProvider>
+      </NextThemesProvider>,
     );
 
     await act(async () => {

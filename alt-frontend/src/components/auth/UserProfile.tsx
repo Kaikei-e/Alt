@@ -1,6 +1,15 @@
 "use client";
 
-import { Box, Button, Flex, HStack, Progress, Spinner, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Flex,
+  HStack,
+  Progress,
+  Spinner,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import { Activity, Clock, LogOut, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
@@ -10,7 +19,8 @@ interface UserProfileProps {
 }
 
 export function UserProfile({ onLogout }: UserProfileProps) {
-  const { user, logout, isLoading, lastActivity, sessionTimeout, refresh } = useAuth();
+  const { user, logout, isLoading, lastActivity, sessionTimeout, refresh } =
+    useAuth();
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
 
@@ -20,7 +30,7 @@ export function UserProfile({ onLogout }: UserProfileProps) {
       const updateTimeRemaining = () => {
         const now = new Date();
         const minutesSinceLastActivity = Math.floor(
-          (now.getTime() - lastActivity.getTime()) / (1000 * 60)
+          (now.getTime() - lastActivity.getTime()) / (1000 * 60),
         );
         const remaining = sessionTimeout - minutesSinceLastActivity;
 
@@ -152,10 +162,16 @@ export function UserProfile({ onLogout }: UserProfileProps) {
 
             {sessionTimeout && timeRemaining > 0 && (
               <Box
-                bg={showTimeoutWarning ? "semantic.warning" : "var(--alt-glass)"}
+                bg={
+                  showTimeoutWarning ? "semantic.warning" : "var(--alt-glass)"
+                }
                 color={showTimeoutWarning ? "white" : "var(--text-muted)"}
                 border="1px solid"
-                borderColor={showTimeoutWarning ? "semantic.warning" : "var(--alt-glass-border)"}
+                borderColor={
+                  showTimeoutWarning
+                    ? "semantic.warning"
+                    : "var(--alt-glass-border)"
+                }
                 fontSize="xs"
                 px={2}
                 py={1}

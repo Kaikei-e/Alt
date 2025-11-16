@@ -10,7 +10,11 @@ interface ActivityItemProps {
   time: string;
 }
 
-export const ActivityItem: React.FC<ActivityItemProps> = ({ type, title, time }) => {
+export const ActivityItem: React.FC<ActivityItemProps> = ({
+  type,
+  title,
+  time,
+}) => {
   const getActivityIcon = (activityType: ActivityItemProps["type"]) => {
     switch (activityType) {
       case "new_feed":

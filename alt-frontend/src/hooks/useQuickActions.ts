@@ -44,7 +44,7 @@ export const useQuickActions = () => {
         },
       },
     ],
-    []
+    [],
   );
 
   const counters = {

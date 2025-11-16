@@ -1,5 +1,9 @@
 import { test as base, expect } from "@playwright/test";
-import { setupAPIErrorMocks, setupBackendAPIMocks, setupSlowAPIMocks } from "../helpers/apiMocks";
+import {
+  setupAPIErrorMocks,
+  setupBackendAPIMocks,
+  setupSlowAPIMocks,
+} from "../helpers/apiMocks";
 import { DesktopPage, LoginPage } from "../pages";
 
 /**

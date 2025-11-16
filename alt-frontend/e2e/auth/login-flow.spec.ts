@@ -19,7 +19,9 @@ test.describe("Login Flow Integration", () => {
     await expect(page).toHaveURL(/\/auth\/login/);
   });
 
-  test("should handle Kratos flow initialization correctly", async ({ page }) => {
+  test("should handle Kratos flow initialization correctly", async ({
+    page,
+  }) => {
     // Navigate to login page
     await page.goto("/auth/login");
 
@@ -44,7 +46,10 @@ test.describe("Login Flow Integration", () => {
     await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 15000 });
 
     // Wait for login form
-    await page.waitForSelector('input[name="identifier"]', { state: "visible", timeout: 15000 });
+    await page.waitForSelector('input[name="identifier"]', {
+      state: "visible",
+      timeout: 15000,
+    });
 
     // Fill in credentials
     await page.fill('input[name="identifier"]', "test@example.com");

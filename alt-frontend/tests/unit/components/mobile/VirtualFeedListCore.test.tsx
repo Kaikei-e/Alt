@@ -63,10 +63,14 @@ describe("VirtualFeedListCore", () => {
   });
 
   it("should maintain scroll position during updates", () => {
-    const { rerender, container } = renderWithChakra(<VirtualFeedListCore {...defaultProps} />);
+    const { rerender, container } = renderWithChakra(
+      <VirtualFeedListCore {...defaultProps} />,
+    );
 
     // スクロールコンテナを取得 (within container to isolate)
-    const scrollContainer = within(container).getByTestId("virtual-scroll-container");
+    const scrollContainer = within(container).getByTestId(
+      "virtual-scroll-container",
+    );
 
     // スクロール位置を設定
     Object.defineProperty(scrollContainer, "scrollTop", {
@@ -78,8 +82,11 @@ describe("VirtualFeedListCore", () => {
     // プロパティ更新
     rerender(
       <ChakraProvider value={defaultSystem}>
-        <VirtualFeedListCore {...defaultProps} readFeeds={new Set(["feed-1"])} />
-      </ChakraProvider>
+        <VirtualFeedListCore
+          {...defaultProps}
+          readFeeds={new Set(["feed-1"])}
+        />
+      </ChakraProvider>,
     );
 
     // スクロール位置が保持されている
@@ -93,17 +100,25 @@ describe("VirtualFeedListCore", () => {
   });
 
   it("should render virtual scroll container with proper styling", () => {
-    const { container } = renderWithChakra(<VirtualFeedListCore {...defaultProps} />);
+    const { container } = renderWithChakra(
+      <VirtualFeedListCore {...defaultProps} />,
+    );
 
-    const scrollContainer = within(container).getByTestId("virtual-scroll-container");
+    const scrollContainer = within(container).getByTestId(
+      "virtual-scroll-container",
+    );
     expect(scrollContainer).toBeInTheDocument();
     expect(scrollContainer).toHaveStyle({ height: "600px" });
   });
 
   it("should render virtual content container", () => {
-    const { container } = renderWithChakra(<VirtualFeedListCore {...defaultProps} />);
+    const { container } = renderWithChakra(
+      <VirtualFeedListCore {...defaultProps} />,
+    );
 
-    const contentContainer = within(container).getByTestId("virtual-content-container");
+    const contentContainer = within(container).getByTestId(
+      "virtual-content-container",
+    );
     expect(contentContainer).toBeInTheDocument();
     expect(contentContainer).toHaveStyle({ position: "relative" });
   });
@@ -112,11 +127,13 @@ describe("VirtualFeedListCore", () => {
     const onMarkAsRead = vi.fn();
 
     const { container } = renderWithChakra(
-      <VirtualFeedListCore {...defaultProps} onMarkAsRead={onMarkAsRead} />
+      <VirtualFeedListCore {...defaultProps} onMarkAsRead={onMarkAsRead} />,
     );
 
     // 仮想化コンテナが存在することを確認
-    const scrollContainer = within(container).getByTestId("virtual-scroll-container");
+    const scrollContainer = within(container).getByTestId(
+      "virtual-scroll-container",
+    );
     expect(scrollContainer).toBeInTheDocument();
 
     // onMarkAsRead関数がコンポーネントに渡されていることを確認
@@ -124,10 +141,14 @@ describe("VirtualFeedListCore", () => {
   });
 
   it("should handle overscan parameter correctly", () => {
-    const { container } = renderWithChakra(<VirtualFeedListCore {...defaultProps} overscan={10} />);
+    const { container } = renderWithChakra(
+      <VirtualFeedListCore {...defaultProps} overscan={10} />,
+    );
 
     // 仮想化コンテナが存在することを確認
-    const scrollContainer = within(container).getByTestId("virtual-scroll-container");
+    const scrollContainer = within(container).getByTestId(
+      "virtual-scroll-container",
+    );
     expect(scrollContainer).toBeInTheDocument();
   });
 

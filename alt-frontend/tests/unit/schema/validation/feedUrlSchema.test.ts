@@ -24,7 +24,10 @@ describe("Feed URL Schema", () => {
         { feed_url: "https://example.com/rss-feeds/" },
         { feed_url: "https://example.com/rssfeed/" },
         { feed_url: "https://example.com/rss_feeds/" },
-        { feed_url: "https://www.thetransmitter.org/feed/the-transmitter-stories/" },
+        {
+          feed_url:
+            "https://www.thetransmitter.org/feed/the-transmitter-stories/",
+        },
       ];
 
       validRssUrls.forEach((feedUrl) => {
@@ -50,7 +53,7 @@ describe("Feed URL Schema", () => {
         expect(result.success).toBe(false);
         if (!result.success) {
           expect(result.issues[0].message).toBe(
-            "URL does not appear to be a valid RSS or Atom feed"
+            "URL does not appear to be a valid RSS or Atom feed",
           );
         }
       });
@@ -142,7 +145,10 @@ describe("Feed URL Schema", () => {
 
     it("should accept feed/atom/rss with path patterns", () => {
       const feedWithPathUrls = [
-        { feed_url: "https://www.thetransmitter.org/feed/the-transmitter-stories/" },
+        {
+          feed_url:
+            "https://www.thetransmitter.org/feed/the-transmitter-stories/",
+        },
         { feed_url: "https://example.com/feed/category/" },
         { feed_url: "https://example.com/feed/category" },
         { feed_url: "https://example.com/rss/category/" },

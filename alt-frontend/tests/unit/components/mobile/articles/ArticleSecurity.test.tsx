@@ -49,14 +49,15 @@ describe("Article rendering security", () => {
       published_at: new Date().toISOString(),
     };
 
-    const maliciousContent = '<p>hello</p><script>window.__xss = true;</script>';
+    const maliciousContent =
+      "<p>hello</p><script>window.__xss = true;</script>";
 
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: maliciousContent,
     });
 
     renderWithProviders(
-      <ArticleDetailsModal article={article} isOpen onClose={() => { }} />
+      <ArticleDetailsModal article={article} isOpen onClose={() => {}} />,
     );
 
     const contentNode = await screen.findByTestId("article-full-content");
@@ -83,7 +84,8 @@ describe("Article rendering security", () => {
       published: new Date().toISOString(),
     };
 
-    const maliciousContent = '<div>content</div><script>window.__cardXss = true;</script>';
+    const maliciousContent =
+      "<div>content</div><script>window.__cardXss = true;</script>";
 
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: maliciousContent,
@@ -94,7 +96,7 @@ describe("Article rendering security", () => {
     });
 
     renderWithProviders(
-      <SwipeFeedCard feed={feed} statusMessage={null} onDismiss={vi.fn()} />
+      <SwipeFeedCard feed={feed} statusMessage={null} onDismiss={vi.fn()} />,
     );
 
     const toggleContentButton = screen.getByTestId("toggle-content-button");

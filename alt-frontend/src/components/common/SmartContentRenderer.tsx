@@ -6,7 +6,10 @@
 import { Box, Text } from "@chakra-ui/react";
 import type React from "react";
 import { memo, useMemo } from "react";
-import { analyzeContent, type ContentAnalysis } from "@/utils/contentTypeDetector";
+import {
+  analyzeContent,
+  type ContentAnalysis,
+} from "@/utils/contentTypeDetector";
 import { renderingRegistry } from "@/utils/renderingStrategies";
 
 interface SmartContentRendererProps {
@@ -51,9 +54,13 @@ const ContentMetadata: React.FC<ContentMetadataProps> = memo(({ analysis }) => {
       <Text>
         <strong>Read time:</strong> {analysis.estimatedReadingTime}min
       </Text>
-      {analysis.hasImages && <Text color="var(--accent-primary)">📷 Images</Text>}
+      {analysis.hasImages && (
+        <Text color="var(--accent-primary)">📷 Images</Text>
+      )}
       {analysis.hasLinks && <Text color="var(--accent-primary)">🔗 Links</Text>}
-      {analysis.needsSanitization && <Text color="orange.400">⚠️ Sanitized</Text>}
+      {analysis.needsSanitization && (
+        <Text color="orange.400">⚠️ Sanitized</Text>
+      )}
     </Box>
   );
 });
@@ -90,7 +97,9 @@ const ContentErrorFallback: React.FC<{
       overflow="auto"
       maxHeight="200px"
     >
-      {originalContent.length > 500 ? originalContent.substring(0, 500) + "..." : originalContent}
+      {originalContent.length > 500
+        ? originalContent.substring(0, 500) + "..."
+        : originalContent}
     </Text>
   </Box>
 ));
@@ -140,7 +149,12 @@ export const SmartContentRenderer: React.FC<SmartContentRendererProps> = memo(
       } catch (error) {
         console.error("Content rendering failed:", error);
         onError?.(error as Error);
-        return <ContentErrorFallback error={(error as Error).message} originalContent={content} />;
+        return (
+          <ContentErrorFallback
+            error={(error as Error).message}
+            originalContent={content}
+          />
+        );
       }
     }, [content, contentType, onError]);
 
@@ -259,7 +273,7 @@ export const SmartContentRenderer: React.FC<SmartContentRendererProps> = memo(
         </Box>
       </Box>
     );
-  }
+  },
 );
 
 SmartContentRenderer.displayName = "SmartContentRenderer";

@@ -14,11 +14,14 @@ setup("authenticate via API", async ({ request, context }) => {
     // Step 1: Create login flow via API
     console.log("[AUTH-SETUP] Creating login flow via API");
     const returnTo = `${appBaseUrl}/home`;
-    const flowResponse = await request.get(`${baseUrl}/self-service/login/browser`, {
-      params: { return_to: returnTo },
-      maxRedirects: 0,
-      failOnStatusCode: false,
-    });
+    const flowResponse = await request.get(
+      `${baseUrl}/self-service/login/browser`,
+      {
+        params: { return_to: returnTo },
+        maxRedirects: 0,
+        failOnStatusCode: false,
+      },
+    );
 
     console.log("[AUTH-SETUP] Flow response status:", flowResponse.status());
     console.log("[AUTH-SETUP] Flow response headers:", flowResponse.headers());
@@ -41,19 +44,26 @@ setup("authenticate via API", async ({ request, context }) => {
 
     // Step 2: Get flow details to extract CSRF token
     console.log("[AUTH-SETUP] Getting flow details");
-    const flowDetailsResponse = await request.get(`${baseUrl}/self-service/login/flows`, {
-      params: { id: flowId },
-    });
+    const flowDetailsResponse = await request.get(
+      `${baseUrl}/self-service/login/flows`,
+      {
+        params: { id: flowId },
+      },
+    );
 
     if (!flowDetailsResponse.ok()) {
       const errorBody = await flowDetailsResponse.text();
-      throw new Error(`Failed to get flow details: ${flowDetailsResponse.status()} - ${errorBody}`);
+      throw new Error(
+        `Failed to get flow details: ${flowDetailsResponse.status()} - ${errorBody}`,
+      );
     }
 
     const flowData = await flowDetailsResponse.json();
     console.log("[AUTH-SETUP] Flow data received");
 
-    const csrfNode = flowData.ui.nodes.find((node: any) => node.attributes.name === "csrf_token");
+    const csrfNode = flowData.ui.nodes.find(
+      (node: any) => node.attributes.name === "csrf_token",
+    );
     const csrfToken = csrfNode?.attributes.value;
 
     if (!csrfToken) {
@@ -64,14 +74,17 @@ setup("authenticate via API", async ({ request, context }) => {
 
     // Step 3: Submit login form via API
     console.log("[AUTH-SETUP] Submitting login credentials");
-    const loginResponse = await request.post(`${baseUrl}/self-service/login?flow=${flowId}`, {
-      form: {
-        identifier: "test@example.com",
-        password: "password123",
-        method: "password",
-        csrf_token: csrfToken,
+    const loginResponse = await request.post(
+      `${baseUrl}/self-service/login?flow=${flowId}`,
+      {
+        form: {
+          identifier: "test@example.com",
+          password: "password123",
+          method: "password",
+          csrf_token: csrfToken,
+        },
       },
-    });
+    );
 
     console.log("[AUTH-SETUP] Login response status:", loginResponse.status());
 
@@ -122,7 +135,7 @@ setup("authenticate via API", async ({ request, context }) => {
     }
 
     console.log(
-      `[AUTH-SETUP] ✅ Authentication completed successfully with ${authData.cookies.length} cookie(s)`
+      `[AUTH-SETUP] ✅ Authentication completed successfully with ${authData.cookies.length} cookie(s)`,
     );
   } catch (error) {
     console.error("[AUTH-SETUP] ❌ Authentication failed:", error);

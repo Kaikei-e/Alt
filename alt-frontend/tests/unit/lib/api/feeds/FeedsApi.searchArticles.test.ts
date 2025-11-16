@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ArticleApi } from "@/lib/api/articles/ArticleApi";
 import type { Article } from "@/schema/article";
 
-const createMockArticle = (id: string, overrides: Partial<Article> = {}): Article => ({
+const createMockArticle = (
+  id: string,
+  overrides: Partial<Article> = {},
+): Article => ({
   id,
   title: `Test Article ${id}`,
   content: `This is test content ${id}`,
@@ -26,13 +29,18 @@ describe("ArticleApi.searchArticles", () => {
   });
 
   it("should return backend response with lowercase fields directly", async () => {
-    const mockBackendResponse: Article[] = [createMockArticle("1"), createMockArticle("2")];
+    const mockBackendResponse: Article[] = [
+      createMockArticle("1"),
+      createMockArticle("2"),
+    ];
 
     mockApiClient.get.mockResolvedValueOnce(mockBackendResponse);
 
     const result = await articleApi.searchArticles("test query");
 
-    expect(mockApiClient.get).toHaveBeenCalledWith("/v1/articles/search?q=test query");
+    expect(mockApiClient.get).toHaveBeenCalledWith(
+      "/v1/articles/search?q=test query",
+    );
 
     expect(result).toEqual([createMockArticle("1"), createMockArticle("2")]);
   });
@@ -62,7 +70,7 @@ describe("ArticleApi.searchArticles", () => {
       createMockArticle("single", {
         title: "Single Article",
         content: "Single content",
-      })
+      }),
     );
   });
 
@@ -71,14 +79,18 @@ describe("ArticleApi.searchArticles", () => {
 
     await articleApi.searchArticles("test query with spaces");
 
-    expect(mockApiClient.get).toHaveBeenCalledWith("/v1/articles/search?q=test query with spaces");
+    expect(mockApiClient.get).toHaveBeenCalledWith(
+      "/v1/articles/search?q=test query with spaces",
+    );
   });
 
   it("should handle backend errors", async () => {
     const error = new Error("Backend error");
     mockApiClient.get.mockRejectedValueOnce(error);
 
-    await expect(articleApi.searchArticles("test")).rejects.toThrow("Backend error");
+    await expect(articleApi.searchArticles("test")).rejects.toThrow(
+      "Backend error",
+    );
   });
 
   it("should correctly pass through all fields from backend response", async () => {

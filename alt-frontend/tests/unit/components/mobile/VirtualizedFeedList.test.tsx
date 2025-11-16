@@ -1,5 +1,11 @@
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VirtualizedFeedList } from "@/components/mobile/VirtualizedFeedList";
@@ -35,7 +41,12 @@ vi.mock("react-error-boundary", () => ({
       return children;
     } catch (error) {
       if (onError) onError(error as Error);
-      return <FallbackComponent error={error as Error} resetErrorBoundary={vi.fn()} />;
+      return (
+        <FallbackComponent
+          error={error as Error}
+          resetErrorBoundary={vi.fn()}
+        />
+      );
     }
   },
 }));
@@ -44,7 +55,7 @@ vi.mock("react-error-boundary", () => ({
 vi.mock("@/components/mobile/VirtualFeedListImpl", () => ({
   VirtualFeedListImpl: () => {
     throw new Error(
-      "useContext returned `undefined`. Seems you forgot to wrap component within <ChakraProvider />"
+      "useContext returned `undefined`. Seems you forgot to wrap component within <ChakraProvider />",
     );
   },
 }));
@@ -125,7 +136,7 @@ describe("VirtualizedFeedList", () => {
     expect(() => {
       renderWithChakra(<VirtualizedFeedList {...defaultProps} />);
     }).toThrow(
-      "useContext returned `undefined`. Seems you forgot to wrap component within <ChakraProvider />"
+      "useContext returned `undefined`. Seems you forgot to wrap component within <ChakraProvider />",
     );
   });
 
@@ -133,7 +144,9 @@ describe("VirtualizedFeedList", () => {
     const { shouldUseVirtualization } = await import("@/utils/featureFlags");
     vi.mocked(shouldUseVirtualization).mockReturnValue(false);
 
-    const { container } = renderWithChakra(<VirtualizedFeedList {...defaultProps} feeds={[]} />);
+    const { container } = renderWithChakra(
+      <VirtualizedFeedList {...defaultProps} feeds={[]} />,
+    );
 
     // Should render fallback with empty feeds
     const fallbackElement = within(container).getByTestId("feed-list-fallback");
@@ -148,10 +161,12 @@ describe("VirtualizedFeedList", () => {
     const readFeeds = new Set(["https://test1.com"]);
 
     const { container } = renderWithChakra(
-      <VirtualizedFeedList {...defaultProps} readFeeds={readFeeds} />
+      <VirtualizedFeedList {...defaultProps} readFeeds={readFeeds} />,
     );
 
-    expect(within(container).getByTestId("feed-list-fallback")).toBeInTheDocument();
+    expect(
+      within(container).getByTestId("feed-list-fallback"),
+    ).toBeInTheDocument();
   });
 
   it("should call onMarkAsRead callback", async () => {
@@ -161,10 +176,12 @@ describe("VirtualizedFeedList", () => {
     const onMarkAsRead = vi.fn();
 
     const { container } = renderWithChakra(
-      <VirtualizedFeedList {...defaultProps} onMarkAsRead={onMarkAsRead} />
+      <VirtualizedFeedList {...defaultProps} onMarkAsRead={onMarkAsRead} />,
     );
 
     // Component should render without error
-    expect(within(container).getByTestId("feed-list-fallback")).toBeInTheDocument();
+    expect(
+      within(container).getByTestId("feed-list-fallback"),
+    ).toBeInTheDocument();
   });
 });

@@ -54,7 +54,7 @@ const renderWithProviders = (ui: React.ReactElement) => {
   return render(
     <ThemeProvider>
       <ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>
-    </ThemeProvider>
+    </ThemeProvider>,
   );
 };
 
@@ -105,11 +105,15 @@ describe("RightPanel", () => {
     expect(screen.queryByText("⚡ Quick Actions")).not.toBeInTheDocument();
 
     await user.click(actionsTab);
-    await waitFor(() => expect(screen.getByText("⚡ Quick Actions")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("⚡ Quick Actions")).toBeInTheDocument(),
+    );
     expect(screen.queryByText("⚡ Quick Actions")).toBeInTheDocument();
 
     await user.click(analyticsTab);
-    await waitFor(() => expect(screen.queryByText("⚡ Quick Actions")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByText("⚡ Quick Actions")).not.toBeInTheDocument(),
+    );
   });
 
   it("should use CSS variables for styling", async () => {

@@ -1,12 +1,25 @@
 "use client";
 
-import { Box, Button, Dialog, Flex, HStack, Portal, Spinner, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Dialog,
+  Flex,
+  HStack,
+  Portal,
+  Spinner,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
 import { Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { articleApi } from "@/lib/api";
 import type { Article } from "@/schema/article";
-import { type FeedContentOnTheFlyResponse, FetchArticleSummaryResponse } from "@/schema/feed";
+import {
+  type FeedContentOnTheFlyResponse,
+  FetchArticleSummaryResponse,
+} from "@/schema/feed";
 import { renderingRegistry } from "@/utils/renderingStrategies";
 
 interface ArticleDetailsModalProps {
@@ -66,8 +79,13 @@ const buildContentStyles = (): CSSObject => ({
   },
 });
 
-export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetailsModalProps) => {
-  const [fullContent, setFullContent] = useState<FeedContentOnTheFlyResponse | null>(null);
+export const ArticleDetailsModal = ({
+  article,
+  isOpen,
+  onClose,
+}: ArticleDetailsModalProps) => {
+  const [fullContent, setFullContent] =
+    useState<FeedContentOnTheFlyResponse | null>(null);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
 
@@ -82,7 +100,11 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
       return null;
     }
 
-    return renderingRegistry.render(fullContent.content, undefined, article.url);
+    return renderingRegistry.render(
+      fullContent.content,
+      undefined,
+      article.url,
+    );
   }, [article.url, fullContent?.content]);
 
   const publishedLabel = article.published_at
@@ -136,7 +158,10 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
 
       try {
         const summaryResponse = await articleApi.getArticleSummary(article.url);
-        if (summaryResponse.matched_articles && summaryResponse.matched_articles.length > 0) {
+        if (
+          summaryResponse.matched_articles &&
+          summaryResponse.matched_articles.length > 0
+        ) {
           setSummary(summaryResponse.matched_articles[0].content);
         } else {
           setSummaryError("要約を取得できませんでした");
@@ -274,7 +299,12 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
                   </Text>
                 </HStack>
               ) : contentError ? (
-                <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center" py={8}>
+                <Text
+                  color="var(--alt-text-secondary)"
+                  fontSize="sm"
+                  textAlign="center"
+                  py={8}
+                >
                   {contentError}
                 </Text>
               ) : sanitizedFullContent ? (
@@ -288,7 +318,11 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
                   {sanitizedFullContent}
                 </Box>
               ) : (
-                <Text fontSize="sm" color="var(--alt-text-primary)" lineHeight="1.7">
+                <Text
+                  fontSize="sm"
+                  color="var(--alt-text-primary)"
+                  lineHeight="1.7"
+                >
                   {article.content}
                 </Text>
               )}
@@ -330,13 +364,21 @@ export const ArticleDetailsModal = ({ article, isOpen, onClose }: ArticleDetails
                           要約を生成中...
                         </Text>
                       </HStack>
-                      <Text color="var(--alt-text-secondary)" fontSize="xs" textAlign="center">
+                      <Text
+                        color="var(--alt-text-secondary)"
+                        fontSize="xs"
+                        textAlign="center"
+                      >
                         これには数秒かかる場合があります
                       </Text>
                     </VStack>
                   ) : summaryError ? (
                     <VStack gap={3} w="100%">
-                      <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center">
+                      <Text
+                        color="var(--alt-text-secondary)"
+                        fontSize="sm"
+                        textAlign="center"
+                      >
                         {summaryError}
                       </Text>
                       {summaryError === "要約を取得できませんでした" && (

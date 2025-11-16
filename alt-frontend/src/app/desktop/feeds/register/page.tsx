@@ -1,6 +1,14 @@
 "use client";
 
-import { Box, Button, Container, Heading, Input, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Container,
+  Heading,
+  Input,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import { useState } from "react";
 import * as v from "valibot";
 import { feedApi } from "@/lib/api";
@@ -71,16 +79,20 @@ export default function DesktopRegisterFeedsPage() {
         });
       }
     } catch (error) {
-      let errorMessage = "Failed to register feed. Please check the URL and try again.";
+      let errorMessage =
+        "Failed to register feed. Please check the URL and try again.";
 
       if (error instanceof ApiError) {
         if (error.code === "TLS_CERTIFICATE_ERROR") {
           // Use the message from backend which includes suggested URL
-          errorMessage = error.message || "このURLの証明書に問題があります。別のURLを試してください";
+          errorMessage =
+            error.message ||
+            "このURLの証明書に問題があります。別のURLを試してください";
         } else if (error.code === "VALIDATION_ERROR") {
           errorMessage = error.message || "URLの形式が正しくありません";
         } else if (error.code === "EXTERNAL_API_ERROR") {
-          errorMessage = "RSSフィードにアクセスできませんでした。URLを確認してください";
+          errorMessage =
+            "RSSフィードにアクセスできませんでした。URLを確認してください";
         } else if (error.message) {
           errorMessage = error.message;
         }
@@ -109,11 +121,23 @@ export default function DesktopRegisterFeedsPage() {
           </Text>
         </Box>
 
-        <Box className="glass" p={8} borderRadius="18px" maxW="500px" mx="auto" w="full">
+        <Box
+          className="glass"
+          p={8}
+          borderRadius="18px"
+          maxW="500px"
+          mx="auto"
+          w="full"
+        >
           <form onSubmit={handleSubmit}>
             <VStack gap={6}>
               <Box width="full">
-                <Text color="gray.700" mb={3} fontSize="md" fontWeight="semibold">
+                <Text
+                  color="gray.700"
+                  mb={3}
+                  fontSize="md"
+                  fontWeight="semibold"
+                >
                   Feed URL
                 </Text>
                 <Input

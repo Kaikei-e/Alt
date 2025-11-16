@@ -2,7 +2,7 @@ import * as v from "valibot";
 
 export const safeUrlSchema = v.pipe(
   v.string("Invalid or unsafe URL"),
-  v.check(isValidAndSafeUrl, "Invalid or unsafe URL")
+  v.check(isValidAndSafeUrl, "Invalid or unsafe URL"),
 );
 
 // セキュリティテスト用にexport
@@ -55,7 +55,11 @@ function isValidAndSafeUrl(url: string): boolean {
     if (process.env.NODE_ENV === "production") {
       const localhostPatterns = ["localhost", "127.0.0.1", "0.0.0.0", "::1"];
 
-      if (localhostPatterns.some((pattern) => parsedUrl.hostname.includes(pattern))) {
+      if (
+        localhostPatterns.some((pattern) =>
+          parsedUrl.hostname.includes(pattern),
+        )
+      ) {
         return false;
       }
     }

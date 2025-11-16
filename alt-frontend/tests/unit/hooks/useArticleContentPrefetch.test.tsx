@@ -67,7 +67,9 @@ describe("useArticleContentPrefetch", () => {
   });
 
   it("should initialize with empty cache", () => {
-    const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0));
+    const { result } = renderHook(() =>
+      useArticleContentPrefetch(mockFeeds, 0),
+    );
 
     const cachedContent = result.current.getCachedContent(mockFeeds[0].link);
     expect(cachedContent).toBeNull();
@@ -81,7 +83,9 @@ describe("useArticleContentPrefetch", () => {
       message: "archived",
     });
 
-    const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 2));
+    const { result } = renderHook(() =>
+      useArticleContentPrefetch(mockFeeds, 0, 2),
+    );
 
     result.current.triggerPrefetch();
 
@@ -90,7 +94,7 @@ describe("useArticleContentPrefetch", () => {
       () => {
         expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(2);
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
 
     expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
@@ -109,7 +113,9 @@ describe("useArticleContentPrefetch", () => {
       message: "archived",
     });
 
-    const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 3));
+    const { result } = renderHook(() =>
+      useArticleContentPrefetch(mockFeeds, 0, 3),
+    );
 
     result.current.triggerPrefetch();
 
@@ -117,7 +123,7 @@ describe("useArticleContentPrefetch", () => {
       () => {
         expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(3);
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
 
     expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
@@ -140,24 +146,34 @@ describe("useArticleContentPrefetch", () => {
       message: "archived",
     });
 
-    const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 2));
+    const { result } = renderHook(() =>
+      useArticleContentPrefetch(mockFeeds, 0, 2),
+    );
 
     result.current.triggerPrefetch();
 
     await waitFor(
       () => {
-        const cachedContent = result.current.getCachedContent("https://example.com/article2");
+        const cachedContent = result.current.getCachedContent(
+          "https://example.com/article2",
+        );
         expect(cachedContent).toBe(mockContent);
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
   });
 
   it("should handle prefetch errors gracefully without crashing", async () => {
-    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
-    vi.mocked(articleApi.getFeedContentOnTheFly).mockRejectedValue(new Error("Network error"));
+    const consoleWarnSpy = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => {});
+    vi.mocked(articleApi.getFeedContentOnTheFly).mockRejectedValue(
+      new Error("Network error"),
+    );
 
-    const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 2));
+    const { result } = renderHook(() =>
+      useArticleContentPrefetch(mockFeeds, 0, 2),
+    );
 
     result.current.triggerPrefetch();
 
@@ -165,7 +181,9 @@ describe("useArticleContentPrefetch", () => {
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
     // Should not throw error
-    expect(() => result.current.getCachedContent(mockFeeds[1].link)).not.toThrow();
+    expect(() =>
+      result.current.getCachedContent(mockFeeds[1].link),
+    ).not.toThrow();
 
     // Cache should not contain failed prefetch
     const cachedContent = result.current.getCachedContent(mockFeeds[1].link);
@@ -182,7 +200,9 @@ describe("useArticleContentPrefetch", () => {
       message: "archived",
     });
 
-    const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 2));
+    const { result } = renderHook(() =>
+      useArticleContentPrefetch(mockFeeds, 0, 2),
+    );
 
     // Trigger prefetch once
     result.current.triggerPrefetch();
@@ -192,18 +212,21 @@ describe("useArticleContentPrefetch", () => {
       () => {
         expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(2);
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
 
     // Trigger again - should not fetch duplicates
-    const callCountBefore = vi.mocked(articleApi.getFeedContentOnTheFly).mock.calls.length;
+    const callCountBefore = vi.mocked(articleApi.getFeedContentOnTheFly).mock
+      .calls.length;
     result.current.triggerPrefetch();
 
     // Wait a bit
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
     // Should still be 2 calls (no new calls)
-    expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(callCountBefore);
+    expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledTimes(
+      callCountBefore,
+    );
   });
 
   it("should clean up cache when size exceeds limit", async () => {
@@ -215,19 +238,22 @@ describe("useArticleContentPrefetch", () => {
     });
 
     const { result, rerender } = renderHook(
-      ({ feeds, activeIndex }) => useArticleContentPrefetch(feeds, activeIndex, 2),
+      ({ feeds, activeIndex }) =>
+        useArticleContentPrefetch(feeds, activeIndex, 2),
       {
         initialProps: { feeds: mockFeeds, activeIndex: 0 },
-      }
+      },
     );
 
     // Prefetch first 2 articles
     result.current.triggerPrefetch();
     await waitFor(
       () => {
-        expect(result.current.contentCacheRef.current.size).toBeGreaterThanOrEqual(2);
+        expect(
+          result.current.contentCacheRef.current.size,
+        ).toBeGreaterThanOrEqual(2);
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
 
     // Move to next index and prefetch more
@@ -235,9 +261,11 @@ describe("useArticleContentPrefetch", () => {
     result.current.triggerPrefetch();
     await waitFor(
       () => {
-        expect(result.current.contentCacheRef.current.size).toBeGreaterThanOrEqual(3);
+        expect(
+          result.current.contentCacheRef.current.size,
+        ).toBeGreaterThanOrEqual(3);
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
 
     // Move to next index and prefetch more (should trigger cleanup)
@@ -246,10 +274,12 @@ describe("useArticleContentPrefetch", () => {
     await waitFor(
       () => {
         // Cache should be limited to 5 entries
-        expect(result.current.contentCacheRef.current.size).toBeLessThanOrEqual(5);
+        expect(result.current.contentCacheRef.current.size).toBeLessThanOrEqual(
+          5,
+        );
         expect(result.current.contentCacheRef.current.size).toBeGreaterThan(0);
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
   });
 
@@ -261,7 +291,9 @@ describe("useArticleContentPrefetch", () => {
       message: "archived",
     });
 
-    const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 2));
+    const { result } = renderHook(() =>
+      useArticleContentPrefetch(mockFeeds, 0, 2),
+    );
 
     result.current.triggerPrefetch();
 
@@ -270,7 +302,7 @@ describe("useArticleContentPrefetch", () => {
       () => {
         expect(articleApi.archiveContent).toHaveBeenCalled();
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
 
     // Wait a bit longer for the second archive
@@ -279,28 +311,36 @@ describe("useArticleContentPrefetch", () => {
     // Check that articles were archived
     expect(articleApi.archiveContent).toHaveBeenCalledWith(
       expect.stringContaining("example.com/article"),
-      expect.any(String)
+      expect.any(String),
     );
   });
 
   it("should not block on archive failures", async () => {
-    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const consoleWarnSpy = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => {});
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: "<p>Article content</p>",
     });
-    vi.mocked(articleApi.archiveContent).mockRejectedValue(new Error("Archive failed"));
+    vi.mocked(articleApi.archiveContent).mockRejectedValue(
+      new Error("Archive failed"),
+    );
 
-    const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 2));
+    const { result } = renderHook(() =>
+      useArticleContentPrefetch(mockFeeds, 0, 2),
+    );
 
     result.current.triggerPrefetch();
 
     // Content should still be cached despite archive failure
     await waitFor(
       () => {
-        const cachedContent = result.current.getCachedContent("https://example.com/article2");
+        const cachedContent = result.current.getCachedContent(
+          "https://example.com/article2",
+        );
         expect(cachedContent).toBe("<p>Article content</p>");
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
 
     consoleWarnSpy.mockRestore();
@@ -310,7 +350,9 @@ describe("useArticleContentPrefetch", () => {
     // Create an empty feed list
     const emptyFeedList: Feed[] = [];
 
-    const { result } = renderHook(() => useArticleContentPrefetch(emptyFeedList, 0, 2));
+    const { result } = renderHook(() =>
+      useArticleContentPrefetch(emptyFeedList, 0, 2),
+    );
 
     // Should not throw when triggering prefetch with empty list
     expect(() => result.current.triggerPrefetch()).not.toThrow();
@@ -327,10 +369,12 @@ describe("useArticleContentPrefetch", () => {
       () =>
         new Promise((resolve) => {
           setTimeout(() => resolve({ content: "<p>Content</p>" }), 5000);
-        })
+        }),
     );
 
-    const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 1));
+    const { result } = renderHook(() =>
+      useArticleContentPrefetch(mockFeeds, 0, 1),
+    );
 
     result.current.triggerPrefetch();
 
@@ -351,7 +395,9 @@ describe("useArticleContentPrefetch", () => {
         message: "archived",
       });
 
-      const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 2));
+      const { result } = renderHook(() =>
+        useArticleContentPrefetch(mockFeeds, 0, 2),
+      );
 
       // Mark second article as dismissed
       result.current.markAsDismissed("https://example.com/article2");
@@ -367,7 +413,7 @@ describe("useArticleContentPrefetch", () => {
             feed_url: "https://example.com/article3",
           });
         },
-        { timeout: 5000 }
+        { timeout: 5000 },
       );
 
       // Article2 should NOT be prefetched
@@ -391,7 +437,9 @@ describe("useArticleContentPrefetch", () => {
         message: "archived",
       });
 
-      const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 2));
+      const { result } = renderHook(() =>
+        useArticleContentPrefetch(mockFeeds, 0, 2),
+      );
 
       // Mark article as dismissed
       result.current.markAsDismissed("https://example.com/article2");
@@ -429,7 +477,9 @@ describe("useArticleContentPrefetch", () => {
     });
 
     it("should handle multiple markAsDismissed calls for same article", () => {
-      const { result } = renderHook(() => useArticleContentPrefetch(mockFeeds, 0, 2));
+      const { result } = renderHook(() =>
+        useArticleContentPrefetch(mockFeeds, 0, 2),
+      );
 
       // Mark same article multiple times - should not throw
       expect(() => {

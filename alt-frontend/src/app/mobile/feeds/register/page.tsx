@@ -72,16 +72,20 @@ export default function RegisterFeedsPage() {
         });
       }
     } catch (error) {
-      let errorMessage = "Failed to register feed. Please check the URL and try again.";
+      let errorMessage =
+        "Failed to register feed. Please check the URL and try again.";
 
       if (error instanceof ApiError) {
         if (error.code === "TLS_CERTIFICATE_ERROR") {
           // Use the message from backend which includes suggested URL
-          errorMessage = error.message || "このURLの証明書に問題があります。別のURLを試してください";
+          errorMessage =
+            error.message ||
+            "このURLの証明書に問題があります。別のURLを試してください";
         } else if (error.code === "VALIDATION_ERROR") {
           errorMessage = error.message || "URLの形式が正しくありません";
         } else if (error.code === "EXTERNAL_API_ERROR") {
-          errorMessage = "RSSフィードにアクセスできませんでした。URLを確認してください";
+          errorMessage =
+            "RSSフィードにアクセスできませんでした。URLを確認してください";
         } else if (error.message) {
           errorMessage = error.message;
         }
@@ -111,7 +115,11 @@ export default function RegisterFeedsPage() {
           Register RSS Feed
         </Text>
 
-        <Text textAlign="center" color="var(--alt-text-secondary)" fontSize="sm">
+        <Text
+          textAlign="center"
+          color="var(--alt-text-secondary)"
+          fontSize="sm"
+        >
           Enter the URL of an RSS feed to add it to your collection
         </Text>
 
@@ -124,7 +132,12 @@ export default function RegisterFeedsPage() {
           <form onSubmit={handleSubmit}>
             <VStack gap={4}>
               <Box width="full">
-                <Text color="var(--text-primary)" mb={2} fontSize="sm" fontWeight="medium">
+                <Text
+                  color="var(--text-primary)"
+                  mb={2}
+                  fontSize="sm"
+                  fontWeight="medium"
+                >
                   Feed URL
                 </Text>
                 <Input
@@ -137,7 +150,9 @@ export default function RegisterFeedsPage() {
                   color="var(--text-primary)"
                   _placeholder={{ color: "var(--text-muted)" }}
                   _focus={{
-                    borderColor: validationError ? "var(--alt-error)" : "var(--alt-primary)",
+                    borderColor: validationError
+                      ? "var(--alt-error)"
+                      : "var(--alt-primary)",
                     boxShadow: `0 0 0 1px ${validationError ? "var(--alt-error)" : "var(--alt-primary)"}`,
                   }}
                 />
@@ -174,7 +189,11 @@ export default function RegisterFeedsPage() {
 
               {message && (
                 <Text
-                  color={message.type === "success" ? "var(--alt-success)" : "var(--alt-error)"}
+                  color={
+                    message.type === "success"
+                      ? "var(--alt-success)"
+                      : "var(--alt-error)"
+                  }
                   textAlign="center"
                   fontSize="sm"
                   fontWeight="medium"
@@ -186,7 +205,12 @@ export default function RegisterFeedsPage() {
           </form>
         </Box>
 
-        <Text textAlign="center" color="var(--alt-text-secondary)" fontSize="xs" mt={4}>
+        <Text
+          textAlign="center"
+          color="var(--alt-text-secondary)"
+          fontSize="xs"
+          mt={4}
+        >
           Make sure the URL points to a valid RSS or Atom feed
         </Text>
       </VStack>

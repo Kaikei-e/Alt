@@ -35,7 +35,7 @@ export default function FavoriteFeedsPage() {
 
   const visibleFeeds = useMemo(
     () => feeds?.filter((feed) => !readFeeds.has(feed.link)) || [],
-    [feeds, readFeeds]
+    [feeds, readFeeds],
   );
 
   const handleMarkAsRead = useCallback((feedLink: string) => {
@@ -96,7 +96,9 @@ export default function FavoriteFeedsPage() {
   }
 
   if (error) {
-    return <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />;
+    return (
+      <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />
+    );
   }
 
   return (

@@ -1,6 +1,12 @@
 "use client";
 
-import { Box, Button, Text, useBreakpointValue, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Text,
+  useBreakpointValue,
+  VStack,
+} from "@chakra-ui/react";
 import { Moon, Sun } from "lucide-react";
 import React from "react";
 import { useTheme } from "../hooks/useTheme";
@@ -16,7 +22,10 @@ const THEME_ICONS = {
   "alt-paper": Sun,
 };
 
-export const ThemeToggle: React.FC<ThemeToggleProps> = ({ size = "md", showLabel = false }) => {
+export const ThemeToggle: React.FC<ThemeToggleProps> = ({
+  size = "md",
+  showLabel = false,
+}) => {
   const { currentTheme, toggleTheme } = useTheme();
 
   // Wait for the theme to be resolved before rendering
@@ -63,7 +72,12 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ size = "md", showLabel
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
     const { key, code } = event;
-    if (key === " " || key === "Spacebar" || code === "Space" || key === "Enter") {
+    if (
+      key === " " ||
+      key === "Spacebar" ||
+      code === "Space" ||
+      key === "Enter"
+    ) {
       event.preventDefault();
       handleToggle();
     }
@@ -82,10 +96,12 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ size = "md", showLabel
     return <Box w={currentStyles.button} h={currentStyles.button} />;
   }
 
-  const IconComponent = THEME_ICONS[currentTheme as keyof typeof THEME_ICONS] || Sun;
+  const IconComponent =
+    THEME_ICONS[currentTheme as keyof typeof THEME_ICONS] || Sun;
   const nextTheme = currentTheme === "alt-paper" ? "vaporwave" : "alt-paper";
   const nextThemeLabel = nextTheme === "vaporwave" ? "Vaporwave" : "Alt Paper";
-  const currentThemeLabel = currentTheme === "vaporwave" ? "Vaporwave" : "Alt Paper";
+  const currentThemeLabel =
+    currentTheme === "vaporwave" ? "Vaporwave" : "Alt Paper";
 
   // Use CSS variables from global.css that work with data-style attribute
   const buttonStyles = {
@@ -120,7 +136,9 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ size = "md", showLabel
     fontSize: currentStyles.icon,
   };
 
-  const buttonContent = IconComponent ? <IconComponent style={iconStyles} /> : null;
+  const buttonContent = IconComponent ? (
+    <IconComponent style={iconStyles} />
+  ) : null;
 
   if (showLabel) {
     return (

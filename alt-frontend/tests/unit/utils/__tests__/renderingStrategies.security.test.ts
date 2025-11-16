@@ -21,7 +21,8 @@ describe("renderingStrategies Security Tests", () => {
 
     it("should decode HTML entities in URLs exactly once", () => {
       const renderer = new HTMLRenderingStrategy();
-      const urlWithEntities = "http://example.com?param=&amp;quot;value&amp;quot;";
+      const urlWithEntities =
+        "http://example.com?param=&amp;quot;value&amp;quot;";
 
       const result = renderer.decodeHtmlEntitiesFromUrl(urlWithEntities);
       expect(result).toBe('http://example.com?param="value"');
@@ -150,7 +151,8 @@ describe("renderingStrategies Security Tests", () => {
       // Test URLs with various XSS patterns
       const testUrls = [
         {
-          input: 'http://example.com?param=&lt;script&gt;alert("XSS")&lt;/script&gt;',
+          input:
+            'http://example.com?param=&lt;script&gt;alert("XSS")&lt;/script&gt;',
           description: "URL with encoded script tags",
         },
         {
@@ -207,7 +209,9 @@ describe("renderingStrategies Security Tests", () => {
         expect(result).not.toContain("alert(");
         expect(result).not.toContain("onerror=");
 
-        console.log(`Double-decoding test ${description}: "${input}" -> "${result}"`);
+        console.log(
+          `Double-decoding test ${description}: "${input}" -> "${result}"`,
+        );
       });
     });
 
@@ -303,7 +307,9 @@ describe("renderingStrategies Security Tests", () => {
           },
           disallowedTagsMode: "discard",
           exclusiveFilter(frame) {
-            return Object.keys(frame.attribs ?? {}).some((attr) => /^on/i.test(attr));
+            return Object.keys(frame.attribs ?? {}).some((attr) =>
+              /^on/i.test(attr),
+            );
           },
         });
 
@@ -331,7 +337,8 @@ describe("renderingStrategies Security Tests", () => {
 
       // Test that the sanitization configuration excludes event handlers
       // by checking the actual sanitization happens in the render method
-      const testHtml = '<img src="test.jpg" onload="alert(1)" onerror="alert(1)">';
+      const testHtml =
+        '<img src="test.jpg" onload="alert(1)" onerror="alert(1)">';
       const renderResult = renderer.render(testHtml);
       expect(renderResult).toBeDefined();
 
@@ -372,7 +379,15 @@ describe("renderingStrategies Security Tests", () => {
         allowedAttributes: {
           "*": ["class", "id", "style", "data-*"],
           a: ["href", "target", "rel", "title"],
-          img: ["src", "alt", "title", "width", "height", "loading", "data-proxy-url"],
+          img: [
+            "src",
+            "alt",
+            "title",
+            "width",
+            "height",
+            "loading",
+            "data-proxy-url",
+          ],
         },
         allowedSchemes: ["http", "https", "data"],
         allowedSchemesByTag: {
@@ -383,7 +398,7 @@ describe("renderingStrategies Security Tests", () => {
 
       const sanitized = sanitizeHtml(
         '<img src="test.jpg" onload="alert(1)" onerror="alert(1)">',
-        sanitizeConfig
+        sanitizeConfig,
       );
 
       expect(sanitized).not.toContain("onload");
@@ -419,12 +434,14 @@ describe("renderingStrategies Security Tests", () => {
         },
       };
 
-      const safeHtml = '<div style="opacity: 0.5; transition: opacity 0.3s;">Safe</div>';
+      const safeHtml =
+        '<div style="opacity: 0.5; transition: opacity 0.3s;">Safe</div>';
       const sanitizedSafe = sanitizeHtml(safeHtml, sanitizeConfig);
       expect(sanitizedSafe).toContain("opacity:0.5");
       expect(sanitizedSafe).toContain("transition:opacity 0.3s");
 
-      const dangerousHtml = '<div style="background: url(\'javascript:alert(1)\');">Danger</div>';
+      const dangerousHtml =
+        "<div style=\"background: url('javascript:alert(1)');\">Danger</div>";
       const sanitizedDangerous = sanitizeHtml(dangerousHtml, sanitizeConfig);
       expect(sanitizedDangerous).not.toContain("javascript:");
       expect(sanitizedDangerous).not.toContain("alert(");

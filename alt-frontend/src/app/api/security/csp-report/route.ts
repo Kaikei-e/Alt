@@ -14,7 +14,10 @@ export async function POST(request: NextRequest) {
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     console.error("Error processing CSP report:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 

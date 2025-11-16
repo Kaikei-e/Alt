@@ -7,7 +7,10 @@ interface DynamicSizingMetrics {
   errorCount: number;
 }
 
-export const useDynamicSizingMetrics = (isEnabled: boolean, itemCount: number) => {
+export const useDynamicSizingMetrics = (
+  isEnabled: boolean,
+  itemCount: number,
+) => {
   const metricsRef = useRef<DynamicSizingMetrics>({
     measurementCount: 0,
     averageMeasurementTime: 0,

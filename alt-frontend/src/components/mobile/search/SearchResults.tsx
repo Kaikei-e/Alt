@@ -1,10 +1,21 @@
 "use client";
 
-import { Box, Button, Heading, HStack, Spinner, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Heading,
+  HStack,
+  Spinner,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import Link from "next/link";
 import { useState } from "react";
 import { articleApi } from "@/lib/api";
-import type { BackendFeedItem, FetchArticleSummaryResponse } from "@/schema/feed";
+import type {
+  BackendFeedItem,
+  FetchArticleSummaryResponse,
+} from "@/schema/feed";
 
 interface SearchResultsProps {
   results: BackendFeedItem[];
@@ -19,7 +30,9 @@ interface SearchResultItemProps {
 
 const SearchResultItem = ({ result }: SearchResultItemProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [summary, setSummary] = useState<FetchArticleSummaryResponse | null>(null);
+  const [summary, setSummary] = useState<FetchArticleSummaryResponse | null>(
+    null,
+  );
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
@@ -222,13 +235,21 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
                     要約を生成中...
                   </Text>
                 </HStack>
-                <Text color="var(--text-muted)" fontSize="xs" textAlign="center">
+                <Text
+                  color="var(--text-muted)"
+                  fontSize="xs"
+                  textAlign="center"
+                >
                   これには数秒かかる場合があります
                 </Text>
               </VStack>
             ) : summaryError ? (
               <VStack gap={3} width="100%">
-                <Text color="var(--text-secondary)" fontSize="sm" textAlign="center">
+                <Text
+                  color="var(--text-secondary)"
+                  fontSize="sm"
+                  textAlign="center"
+                >
                   {summaryError}
                 </Text>
                 {summaryError === "要約を取得できませんでした" && (
@@ -247,7 +268,8 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
                   </Button>
                 )}
               </VStack>
-            ) : summary?.matched_articles && summary.matched_articles.length > 0 ? (
+            ) : summary?.matched_articles &&
+              summary.matched_articles.length > 0 ? (
               <VStack align="start" gap={2} width="100%">
                 <Text
                   fontSize="sm"
@@ -271,7 +293,11 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
               </VStack>
             ) : (
               <VStack gap={3} width="100%">
-                <Text color="var(--text-secondary)" fontSize="sm" textAlign="center">
+                <Text
+                  color="var(--text-secondary)"
+                  fontSize="sm"
+                  textAlign="center"
+                >
                   この記事の要約はまだありません
                 </Text>
                 <Button
@@ -337,7 +363,13 @@ const EmptyState = ({ searchQuery }: { searchQuery: string }) => (
   </Box>
 );
 
-const SearchStats = ({ count, searchTime }: { count: number; searchTime?: number }) => (
+const SearchStats = ({
+  count,
+  searchTime,
+}: {
+  count: number;
+  searchTime?: number;
+}) => (
   <HStack justify="space-between" align="center" mb={4}>
     <Text color="var(--alt-primary)" fontWeight="700" fontSize="lg">
       Search Results ({count})
@@ -381,7 +413,11 @@ export const SearchResults = ({
       <Box as="ul" role="list" aria-label="Search results">
         <VStack gap={4} align="stretch">
           {results.map((result, index) => (
-            <Box as="li" key={result.link || `result-${index}`} listStyleType="none">
+            <Box
+              as="li"
+              key={result.link || `result-${index}`}
+              listStyleType="none"
+            >
               <SearchResultItem result={result} />
             </Box>
           ))}

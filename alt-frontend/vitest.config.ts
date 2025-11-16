@@ -14,7 +14,10 @@ const parsePositiveInteger = (value: string | undefined, fallback: number) => {
 
 const selectedPool = resolvePool(process.env.VITEST_POOL);
 const maxWorkers = parsePositiveInteger(process.env.VITEST_MAX_WORKERS, 1);
-const maxConcurrency = parsePositiveInteger(process.env.VITEST_MAX_CONCURRENCY, maxWorkers);
+const maxConcurrency = parsePositiveInteger(
+  process.env.VITEST_MAX_CONCURRENCY,
+  maxWorkers,
+);
 
 export default mergeConfig(
   viteConfig,
@@ -87,5 +90,5 @@ export default mergeConfig(
       // Reporter optimization for CI
       reporters: process.env.CI ? ["verbose"] : ["default"],
     },
-  })
+  }),
 );

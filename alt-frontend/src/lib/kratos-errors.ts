@@ -42,7 +42,7 @@ export function handleFlowExpiredError(error: unknown): void {
     const currentUrl = window.location.href;
     const returnTo = encodeURIComponent(currentUrl.split("?")[0]);
     window.location.replace(
-      `${process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL}/self-service/login/browser?return_to=${returnTo}`
+      `${process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL}/self-service/login/browser?return_to=${returnTo}`,
     );
   }
 }
@@ -55,7 +55,8 @@ export function getFlowErrorMessage(error: unknown): string {
   if (error && typeof error === "object") {
     const kratosError = error as any;
     return (
-      kratosError.response?.data?.error?.message || "Error loading login form. Please try again."
+      kratosError.response?.data?.error?.message ||
+      "Error loading login form. Please try again."
     );
   }
 

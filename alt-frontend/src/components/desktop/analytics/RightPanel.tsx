@@ -15,7 +15,9 @@ import { SourceAnalytics } from "./SourceAnalytics";
 import { TrendingTopics } from "./TrendingTopics";
 
 export const RightPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"analytics" | "actions">("analytics");
+  const [activeTab, setActiveTab] = useState<"analytics" | "actions">(
+    "analytics",
+  );
   const { analytics, isLoading: analyticsLoading } = useReadingAnalytics();
   const { topics, isLoading: topicsLoading } = useTrendingTopics();
   const { sources, isLoading: sourcesLoading } = useSourceAnalytics();
@@ -55,14 +57,23 @@ export const RightPanel: React.FC = () => {
           variant="ghost"
           size="sm"
           borderRadius={0}
-          color={activeTab === "analytics" ? "var(--text-primary)" : "var(--text-secondary)"}
-          bg={activeTab === "analytics" ? "var(--accent-primary)" : "transparent"}
+          color={
+            activeTab === "analytics"
+              ? "var(--text-primary)"
+              : "var(--text-secondary)"
+          }
+          bg={
+            activeTab === "analytics" ? "var(--accent-primary)" : "transparent"
+          }
           fontSize="sm"
           fontWeight="medium"
           onClick={() => setActiveTab("analytics")}
           transition="all 0.2s ease"
           _hover={{
-            bg: activeTab === "analytics" ? "var(--accent-primary)" : "var(--surface-bg)",
+            bg:
+              activeTab === "analytics"
+                ? "var(--accent-primary)"
+                : "var(--surface-bg)",
             opacity: activeTab === "analytics" ? 1 : 0.8,
           }}
         >
@@ -73,14 +84,21 @@ export const RightPanel: React.FC = () => {
           variant="ghost"
           size="sm"
           borderRadius={0}
-          color={activeTab === "actions" ? "var(--text-primary)" : "var(--text-secondary)"}
+          color={
+            activeTab === "actions"
+              ? "var(--text-primary)"
+              : "var(--text-secondary)"
+          }
           bg={activeTab === "actions" ? "var(--accent-primary)" : "transparent"}
           fontSize="sm"
           fontWeight="medium"
           onClick={() => setActiveTab("actions")}
           transition="all 0.2s ease"
           _hover={{
-            bg: activeTab === "actions" ? "var(--accent-primary)" : "var(--surface-bg)",
+            bg:
+              activeTab === "actions"
+                ? "var(--accent-primary)"
+                : "var(--surface-bg)",
             opacity: activeTab === "actions" ? 1 : 0.8,
           }}
         >
@@ -113,7 +131,10 @@ export const RightPanel: React.FC = () => {
       >
         {activeTab === "analytics" && (
           <VStack gap={4} p={4} align="stretch">
-            <ReadingAnalytics analytics={analytics} isLoading={analyticsLoading} />
+            <ReadingAnalytics
+              analytics={analytics}
+              isLoading={analyticsLoading}
+            />
 
             <TrendingTopics topics={topics} isLoading={topicsLoading} />
 

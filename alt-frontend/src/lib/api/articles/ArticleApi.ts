@@ -13,23 +13,31 @@ import { CursorApi } from "../feeds/CursorApi";
 export class ArticleApi {
   private articlesCursorApi: CursorApi<Article, Article>;
 
-  public getArticlesWithCursor: (cursor?: string, limit?: number) => Promise<any>;
+  public getArticlesWithCursor: (
+    cursor?: string,
+    limit?: number,
+  ) => Promise<any>;
 
   constructor(private apiClient: ApiClient) {
     this.articlesCursorApi = new CursorApi(
       apiClient,
       "/v1/articles/fetch/cursor",
       (item: Article) => item,
-      20
+      20,
     );
 
     this.getArticlesWithCursor = this.articlesCursorApi.createFunction();
   }
 
-  async getArticleSummary(feedUrl: string): Promise<FetchArticleSummaryResponse> {
-    return this.apiClient.post<FetchArticleSummaryResponse>("/v1/feeds/fetch/summary/provided", {
-      feed_urls: [feedUrl],
-    });
+  async getArticleSummary(
+    feedUrl: string,
+  ): Promise<FetchArticleSummaryResponse> {
+    return this.apiClient.post<FetchArticleSummaryResponse>(
+      "/v1/feeds/fetch/summary/provided",
+      {
+        feed_urls: [feedUrl],
+      },
+    );
   }
 
   async getFeedDetails(payload: FeedURLPayload): Promise<FeedDetails> {
@@ -43,11 +51,16 @@ export class ArticleApi {
       }
       throw new ApiError("No summary found for this article");
     } catch (error) {
-      throw new ApiError(error instanceof Error ? error.message : "Failed to fetch feed details");
+      throw new ApiError(
+        error instanceof Error ? error.message : "Failed to fetch feed details",
+      );
     }
   }
 
-  async archiveContent(feedUrl: string, title?: string): Promise<MessageResponse> {
+  async archiveContent(
+    feedUrl: string,
+    title?: string,
+  ): Promise<MessageResponse> {
     const trimmedTitle = title?.trim();
     const payload: Record<string, unknown> = { feed_url: feedUrl };
     if (trimmedTitle) {
@@ -58,24 +71,33 @@ export class ArticleApi {
   }
 
   async summarizeArticle(
-    feedUrl: string
-  ): Promise<{ success: boolean; summary: string; article_id: string; feed_url: string }> {
+    feedUrl: string,
+  ): Promise<{
+    success: boolean;
+    summary: string;
+    article_id: string;
+    feed_url: string;
+  }> {
     return this.apiClient.post("/v1/feeds/summarize", { feed_url: feedUrl });
   }
 
-  async getFeedContentOnTheFly(payload: FeedURLPayload): Promise<FeedContentOnTheFlyResponse> {
+  async getFeedContentOnTheFly(
+    payload: FeedURLPayload,
+  ): Promise<FeedContentOnTheFlyResponse> {
     const encodedUrl = encodeURIComponent(payload.feed_url);
     // Use shorter timeout (15 seconds) to prevent UI freezing
     // The backend may take 20-44 seconds, but we should fail fast to keep UI responsive
     return this.apiClient.get<FeedContentOnTheFlyResponse>(
       `/v1/articles/fetch/content?url=${encodedUrl}`,
       0, // No cache - always fetch fresh
-      15000 // 15 second timeout to prevent UI freezing
+      15000, // 15 second timeout to prevent UI freezing
     );
   }
 
   async searchArticles(query: string): Promise<Article[]> {
-    const backendResponse = await this.apiClient.get<Article[]>(`/v1/articles/search?q=${query}`);
+    const backendResponse = await this.apiClient.get<Article[]>(
+      `/v1/articles/search?q=${query}`,
+    );
 
     return backendResponse;
   }

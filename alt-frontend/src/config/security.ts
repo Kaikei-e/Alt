@@ -50,7 +50,12 @@ function buildCSPHeader(isDevelopment: boolean, nonce: string): string {
     "report-uri /security/csp-report", // CSP違反レポート
   ];
 
-  return [...baseDirectives, ...scriptDirectives, ...styleDirectives, ...connectDirectives]
+  return [
+    ...baseDirectives,
+    ...scriptDirectives,
+    ...styleDirectives,
+    ...connectDirectives,
+  ]
     .join("; ")
     .replace(/\s{2,}/g, " ")
     .trim();
@@ -74,7 +79,8 @@ export function securityHeaders(nonce: string): Record<string, string> {
     "Referrer-Policy": config.referrerPolicy,
     "X-XSS-Protection": "0", // 現代のブラウザーでは無効化が推奨
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "Permissions-Policy":
+      "camera=(), microphone=(), geolocation=(), payment=()",
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Embedder-Policy": "unsafe-none", // COEP緩和: 外部画像フォールバック表示を可能にする
   };

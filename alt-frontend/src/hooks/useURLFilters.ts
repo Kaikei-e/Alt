@@ -10,7 +10,7 @@ export const useURLFilters = (
   filters: FilterState,
   onFilterChange: (filters: FilterState) => void,
   searchQuery: string,
-  onSearchChange: (query: string) => void
+  onSearchChange: (query: string) => void,
 ) => {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -20,22 +20,42 @@ export const useURLFilters = (
     if (!searchParams) return;
 
     // Helper function to validate enum values
-    const validateReadStatus = (value: string | null): FilterState["readStatus"] => {
-      const validValues: FilterState["readStatus"][] = ["all", "read", "unread"];
+    const validateReadStatus = (
+      value: string | null,
+    ): FilterState["readStatus"] => {
+      const validValues: FilterState["readStatus"][] = [
+        "all",
+        "read",
+        "unread",
+      ];
       return validValues.includes(value as FilterState["readStatus"])
         ? (value as FilterState["readStatus"])
         : "all";
     };
 
-    const validatePriority = (value: string | null): FilterState["priority"] => {
-      const validValues: FilterState["priority"][] = ["all", "high", "medium", "low"];
+    const validatePriority = (
+      value: string | null,
+    ): FilterState["priority"] => {
+      const validValues: FilterState["priority"][] = [
+        "all",
+        "high",
+        "medium",
+        "low",
+      ];
       return validValues.includes(value as FilterState["priority"])
         ? (value as FilterState["priority"])
         : "all";
     };
 
-    const validateTimeRange = (value: string | null): FilterState["timeRange"] => {
-      const validValues: FilterState["timeRange"][] = ["all", "today", "week", "month"];
+    const validateTimeRange = (
+      value: string | null,
+    ): FilterState["timeRange"] => {
+      const validValues: FilterState["timeRange"][] = [
+        "all",
+        "today",
+        "week",
+        "month",
+      ];
       return validValues.includes(value as FilterState["timeRange"])
         ? (value as FilterState["timeRange"])
         : "all";
@@ -101,10 +121,12 @@ export const useURLFilters = (
       }
 
       // Update URL without triggering a navigation
-      const newURL = params.toString() ? `?${params.toString()}` : "/desktop/feeds";
+      const newURL = params.toString()
+        ? `?${params.toString()}`
+        : "/desktop/feeds";
       router.replace(newURL, { scroll: false });
     },
-    [router]
+    [router],
   );
 
   // Debounced URL update to avoid too many history entries

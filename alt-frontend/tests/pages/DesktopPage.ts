@@ -69,7 +69,9 @@ export class DesktopPage extends BasePage {
    */
   async verifyOnDesktopPage(pageName: string) {
     const pattern =
-      pageName === "home" ? /\/desktop\/(home|dashboard)/ : new RegExp(`/desktop/${pageName}`);
+      pageName === "home"
+        ? /\/desktop\/(home|dashboard)/
+        : new RegExp(`/desktop/${pageName}`);
 
     // Wait for URL only - element checks removed for reliability
     await expect(this.page).toHaveURL(pattern, { timeout: 10000 });
@@ -83,7 +85,7 @@ export class DesktopPage extends BasePage {
    */
   async verifyNavigationVisible() {
     const navigation = this.page.locator(
-      '[data-testid="desktop-navigation"], nav[aria-label="Main navigation"], [aria-label="Main navigation"]'
+      '[data-testid="desktop-navigation"], nav[aria-label="Main navigation"], [aria-label="Main navigation"]',
     );
     await expect(navigation.first()).toBeVisible({ timeout: 7000 });
   }
@@ -97,7 +99,9 @@ export class DesktopPage extends BasePage {
     await this.page.waitForLoadState("domcontentloaded", { timeout: 10000 });
 
     // Check we're not redirected to public pages
-    await expect(this.page).not.toHaveURL(/\/public\/landing/, { timeout: 5000 });
+    await expect(this.page).not.toHaveURL(/\/public\/landing/, {
+      timeout: 5000,
+    });
     await expect(this.page).not.toHaveURL(/\/auth\/login/, { timeout: 5000 });
 
     // Small buffer for React hydration
@@ -110,7 +114,9 @@ export class DesktopPage extends BasePage {
   async isLoggedIn(): Promise<boolean> {
     try {
       if (await this.elementExists('[data-testid="user-menu"]')) {
-        await expect(this.page.locator('[data-testid="user-menu"]')).toBeVisible({ timeout: 2000 });
+        await expect(
+          this.page.locator('[data-testid="user-menu"]'),
+        ).toBeVisible({ timeout: 2000 });
         return true;
       }
       const logoutButton = this.page.getByRole("button", {
@@ -152,7 +158,12 @@ export class DesktopPage extends BasePage {
    * Navigate between pages and verify session is maintained
    */
   async testNavigation() {
-    const routes = ["/desktop/home", "/desktop/feeds", "/desktop/articles", "/desktop/settings"];
+    const routes = [
+      "/desktop/home",
+      "/desktop/feeds",
+      "/desktop/articles",
+      "/desktop/settings",
+    ];
 
     for (const route of routes) {
       await this.goto(route);

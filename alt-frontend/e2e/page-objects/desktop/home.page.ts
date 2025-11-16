@@ -26,7 +26,9 @@ export class HomePage extends BasePage {
     this.mobileCard = page.getByRole("link", { name: /mobile/i });
     this.logoutButton = page.getByRole("button", { name: /log out|logout/i });
     this.settingsLink = page.getByRole("link", { name: /settings/i });
-    this.themeToggle = page.getByRole("button", { name: /theme|dark mode|light mode/i });
+    this.themeToggle = page.getByRole("button", {
+      name: /theme|dark mode|light mode/i,
+    });
     this.userMenu = page.getByRole("button", { name: /user menu|account/i });
   }
 

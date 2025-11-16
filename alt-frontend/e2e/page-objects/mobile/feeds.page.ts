@@ -29,7 +29,9 @@ export class MobileFeedsPage extends BasePage {
     this.floatingMenuButton = page.getByRole("button", {
       name: /menu|options|more/i,
     });
-    this.floatingMenu = page.getByRole("menu").or(page.locator('[data-testid="floating-menu"]'));
+    this.floatingMenu = page
+      .getByRole("menu")
+      .or(page.locator('[data-testid="floating-menu"]'));
     this.floatingMenuItems = this.floatingMenu.getByRole("menuitem");
     this.addFeedButton = page.getByRole("button", { name: /add|new feed/i });
     this.searchButton = page.getByRole("button", { name: /search/i });
@@ -100,7 +102,10 @@ export class MobileFeedsPage extends BasePage {
 
     if (box) {
       // Swipe left
-      await this.page.mouse.move(box.x + box.width - 10, box.y + box.height / 2);
+      await this.page.mouse.move(
+        box.x + box.width - 10,
+        box.y + box.height / 2,
+      );
       await this.page.mouse.down();
       await this.page.mouse.move(box.x + 10, box.y + box.height / 2);
       await this.page.mouse.up();

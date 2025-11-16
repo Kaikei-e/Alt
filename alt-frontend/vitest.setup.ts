@@ -157,7 +157,7 @@ class IntersectionObserverMock {
 
   constructor(
     callback?: IntersectionObserverCallback,
-    options?: IntersectionObserverInit
+    options?: IntersectionObserverInit,
   ) {
     this.observe = vi.fn();
     this.unobserve = vi.fn();
@@ -165,4 +165,5 @@ class IntersectionObserverMock {
   }
 }
 
-global.IntersectionObserver = IntersectionObserverMock as unknown as typeof IntersectionObserver;
+global.IntersectionObserver =
+  IntersectionObserverMock as unknown as typeof IntersectionObserver;

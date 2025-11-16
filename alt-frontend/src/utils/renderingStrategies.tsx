@@ -125,25 +125,33 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     return (
       html
         // Step 1: Convert external image URLs to proxy URLs (COEP bypass)
-        .replace(/<img([^>]*?)src="([^"]*?)"([^>]*?)>/gi, (match, before, src, after) => {
-          // Fix: Decode HTML entities BEFORE converting to proxy URL
-          const decodedSrc = this.decodeHtmlEntitiesFromUrl(src);
-          // Fix: Resolve relative paths against article URL
-          const resolvedSrc = this.resolveRelativeImageUrl(decodedSrc, articleUrl);
-          const proxiedSrc = this.convertToProxyUrl(resolvedSrc);
+        .replace(
+          /<img([^>]*?)src="([^"]*?)"([^>]*?)>/gi,
+          (match, before, src, after) => {
+            // Fix: Decode HTML entities BEFORE converting to proxy URL
+            const decodedSrc = this.decodeHtmlEntitiesFromUrl(src);
+            // Fix: Resolve relative paths against article URL
+            const resolvedSrc = this.resolveRelativeImageUrl(
+              decodedSrc,
+              articleUrl,
+            );
+            const proxiedSrc = this.convertToProxyUrl(resolvedSrc);
 
-          // If this is a proxy URL, add special attributes for lazy loading (CSP compliant - no inline handlers)
-          if (proxiedSrc.startsWith("data:image/proxy,")) {
-            const originalUrl = decodeURIComponent(proxiedSrc.replace("data:image/proxy,", ""));
-            return `<img${before}src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-proxy-url="${originalUrl}" data-fallback-src="${this.escapeHtml(resolvedSrc)}"${after} loading="lazy" style="opacity:0;transition:opacity 0.3s" class="proxy-image">`;
-          }
+            // If this is a proxy URL, add special attributes for lazy loading (CSP compliant - no inline handlers)
+            if (proxiedSrc.startsWith("data:image/proxy,")) {
+              const originalUrl = decodeURIComponent(
+                proxiedSrc.replace("data:image/proxy,", ""),
+              );
+              return `<img${before}src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-proxy-url="${originalUrl}" data-fallback-src="${this.escapeHtml(resolvedSrc)}"${after} loading="lazy" style="opacity:0;transition:opacity 0.3s" class="proxy-image">`;
+            }
 
-          return `<img${before}src="${proxiedSrc}"${after} loading="lazy">`;
-        })
+            return `<img${before}src="${proxiedSrc}"${after} loading="lazy">`;
+          },
+        )
         // Step 2: Add security attributes to all links
         .replace(
           /<a([^>]*?)href="([^"]*?)"([^>]*?)>/gi,
-          '<a$1href="$2"$3 target="_blank" rel="noopener noreferrer nofollow">'
+          '<a$1href="$2"$3 target="_blank" rel="noopener noreferrer nofollow">',
         )
     );
   }
@@ -155,7 +163,10 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
    * @param articleUrl - Base URL for resolving relative paths
    * @returns Absolute URL or original URL if already absolute
    */
-  private resolveRelativeImageUrl(imageUrl: string, articleUrl?: string): string {
+  private resolveRelativeImageUrl(
+    imageUrl: string,
+    articleUrl?: string,
+  ): string {
     if (!articleUrl || !imageUrl) {
       return imageUrl;
     }
@@ -213,7 +224,8 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
 
       // Check if this is an external domain that needs proxying
       const needsProxy = externalDomains.some(
-        (domain) => url.hostname === domain || url.hostname.endsWith("." + domain)
+        (domain) =>
+          url.hostname === domain || url.hostname.endsWith("." + domain),
       );
 
       // Only proxy HTTPS URLs from allowed domains
@@ -370,9 +382,13 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     }
 
     // SECURITY: Block dangerous URL schemes immediately
-    const dangerousSchemes = /^(javascript|vbscript|data:text\/html|file|ftp):/i;
+    const dangerousSchemes =
+      /^(javascript|vbscript|data:text\/html|file|ftp):/i;
     const trimmedUrl = url.trim();
-    if (dangerousSchemes.test(trimmedUrl) || trimmedUrl.startsWith("data:text/html,")) {
+    if (
+      dangerousSchemes.test(trimmedUrl) ||
+      trimmedUrl.startsWith("data:text/html,")
+    ) {
       return ""; // Block completely
     }
 
@@ -400,12 +416,18 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
         return "";
       }
 
-      if (dangerousSchemes.test(normalized) || normalized.startsWith("data:text/html,")) {
+      if (
+        dangerousSchemes.test(normalized) ||
+        normalized.startsWith("data:text/html,")
+      ) {
         return "";
       }
 
       const maliciousPatterns = /<script|<iframe|onerror=|onload=|javascript:/i;
-      if (maliciousPatterns.test(normalized) || suspiciousPatterns.test(normalized)) {
+      if (
+        maliciousPatterns.test(normalized) ||
+        suspiciousPatterns.test(normalized)
+      ) {
         return "";
       }
 
@@ -427,7 +449,9 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
 export class TextRenderingStrategy implements RenderingStrategy {
   shouldUse(content: string, declaredType?: string): boolean {
     const analysis = analyzeContent(content, declaredType);
-    return analysis.type === ContentType.TEXT || analysis.type === ContentType.PLAIN;
+    return (
+      analysis.type === ContentType.TEXT || analysis.type === ContentType.PLAIN
+    );
   }
 
   render(content: string, articleUrl?: string): ReactNode {
@@ -477,7 +501,7 @@ export class MarkdownRenderingStrategy implements RenderingStrategy {
       // Links
       .replace(
         /\[([^\]]+)\]\(([^)]+)\)/g,
-        '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+        '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
       )
       // Line breaks
       .replace(/\n/g, "<br />");
@@ -540,9 +564,17 @@ export class RenderingStrategyRegistry {
    * @param articleUrl - Optional article URL for resolving relative image paths
    * @returns Rendered React nodes
    */
-  render(content: string, declaredType?: string, articleUrl?: string): ReactNode {
+  render(
+    content: string,
+    declaredType?: string,
+    articleUrl?: string,
+  ): ReactNode {
     if (!content || content.trim().length === 0) {
-      return <span style={{ fontStyle: "italic", color: "#888" }}>No content available</span>;
+      return (
+        <span style={{ fontStyle: "italic", color: "#888" }}>
+          No content available
+        </span>
+      );
     }
 
     const strategy = this.selectStrategy(content, declaredType);
@@ -626,7 +658,7 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
       {
         rootMargin: "50px", // Start loading images 50px before they come into view
         threshold: 0.1,
-      }
+      },
     );
 
     // Observe all proxy images
@@ -640,8 +672,8 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
       // Clean up any remaining event listeners
       proxyImages.forEach((img) => {
         const imgElement = img as HTMLImageElement;
-        imgElement.removeEventListener("load", () => { });
-        imgElement.removeEventListener("error", () => { });
+        imgElement.removeEventListener("load", () => {});
+        imgElement.removeEventListener("error", () => {});
       });
     };
   }, [html]);
@@ -702,7 +734,10 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
  * @param img - Image element to update
  * @param originalUrl - Original image URL to fetch
  */
-async function loadProxyImage(img: HTMLImageElement, originalUrl: string): Promise<void> {
+async function loadProxyImage(
+  img: HTMLImageElement,
+  originalUrl: string,
+): Promise<void> {
   try {
     // Show loading state
     img.style.opacity = "0.5";
@@ -723,7 +758,9 @@ async function loadProxyImage(img: HTMLImageElement, originalUrl: string): Promi
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Failed to fetch image: ${response.status} ${response.statusText}`,
+      );
     }
 
     // Get the binary image data
@@ -759,6 +796,9 @@ async function loadProxyImage(img: HTMLImageElement, originalUrl: string): Promi
     img.src = "data:image/gif;base64,invalid";
 
     // Store error details for debugging
-    img.setAttribute("data-proxy-error", error instanceof Error ? error.message : "Unknown error");
+    img.setAttribute(
+      "data-proxy-error",
+      error instanceof Error ? error.message : "Unknown error",
+    );
   }
 }

@@ -34,7 +34,7 @@ export class AuthInterceptor {
   async intercept(
     response: Response,
     originalUrl: string,
-    originalOptions?: RequestInit
+    originalOptions?: RequestInit,
   ): Promise<Response> {
     if (response.status !== 401) {
       return response;
@@ -77,7 +77,7 @@ export class AuthInterceptor {
       {
         status: 401,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
   }
 }

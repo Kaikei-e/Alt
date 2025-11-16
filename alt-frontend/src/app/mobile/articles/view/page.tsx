@@ -106,7 +106,9 @@ export default function ArticlesViewPage() {
 
   // Show error state
   if (error) {
-    return <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />;
+    return (
+      <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />
+    );
   }
 
   return (
@@ -169,7 +171,12 @@ export default function ArticlesViewPage() {
             borderRadius="16px"
             border="1px solid var(--alt-glass-border)"
           >
-            <Text fontSize="lg" color="var(--alt-text-primary)" fontWeight="semibold" mb={2}>
+            <Text
+              fontSize="lg"
+              color="var(--alt-text-primary)"
+              fontWeight="semibold"
+              mb={2}
+            >
               No Articles Found
             </Text>
             <Text fontSize="sm" color="var(--alt-text-secondary)">

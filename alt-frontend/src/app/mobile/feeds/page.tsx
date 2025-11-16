@@ -4,7 +4,14 @@ import { Box, Button, Flex, Text } from "@chakra-ui/react";
 import { Infinity } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import EmptyFeedState from "@/components/mobile/EmptyFeedState";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
@@ -23,10 +30,15 @@ const canonicalize = (url: string) => {
   try {
     const u = new URL(url);
     u.hash = "";
-    ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"].forEach((k) =>
-      u.searchParams.delete(k)
-    );
-    if (u.pathname !== "/" && u.pathname.endsWith("/")) u.pathname = u.pathname.slice(0, -1);
+    [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_term",
+      "utm_content",
+    ].forEach((k) => u.searchParams.delete(k));
+    if (u.pathname !== "/" && u.pathname.endsWith("/"))
+      u.pathname = u.pathname.slice(0, -1);
     return u.toString();
   } catch {
     return url;
@@ -75,8 +87,9 @@ export default function FeedsPage() {
   // Memoize visible feeds to prevent unnecessary recalculations
   // Canonicalize feed.link to match the canonicalized keys in readFeeds Set
   const visibleFeeds = useMemo(
-    () => feeds?.filter((feed) => !readFeeds.has(canonicalize(feed.link))) || [],
-    [feeds, readFeeds]
+    () =>
+      feeds?.filter((feed) => !readFeeds.has(canonicalize(feed.link))) || [],
+    [feeds, readFeeds],
   );
 
   // Handle marking feed as read with optimistic update + API call (TODO.mdの指示に基づく)
@@ -137,7 +150,13 @@ export default function FeedsPage() {
   if (authLoading) {
     return (
       <Box minH="100dvh" position="relative">
-        <Box p={5} maxW="container.sm" mx="auto" height="100dvh" data-testid="feeds-auth-loading">
+        <Box
+          p={5}
+          maxW="container.sm"
+          mx="auto"
+          height="100dvh"
+          data-testid="feeds-auth-loading"
+        >
           <Flex direction="column" gap={4}>
             {Array.from({ length: 5 }).map((_, index) => (
               <SkeletonFeedCard key={`skeleton-${index}`} />
@@ -189,7 +208,9 @@ export default function FeedsPage() {
 
   // Show error state
   if (error) {
-    return <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />;
+    return (
+      <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />
+    );
   }
 
   return (

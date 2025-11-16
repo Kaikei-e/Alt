@@ -1,7 +1,14 @@
 "use client";
 
 import { Box, Flex, Text } from "@chakra-ui/react";
-import { Component, type ErrorInfo, type ReactNode, useCallback, useRef, useState } from "react";
+import {
+  Component,
+  type ErrorInfo,
+  type ReactNode,
+  useCallback,
+  useRef,
+  useState,
+} from "react";
 import ReadFeedCard from "@/components/mobile/ReadFeedCard";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
@@ -56,7 +63,8 @@ function ReadFeedsPageContent() {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Use the useReadFeeds hook for data management
-  const { feeds, isLoading, error, hasMore, loadMore, refresh } = useReadFeeds(20);
+  const { feeds, isLoading, error, hasMore, loadMore, refresh } =
+    useReadFeeds(20);
 
   // Check if this is initial loading (no feeds yet and loading)
   const isInitialLoading = isLoading && feeds.length === 0;
@@ -129,7 +137,9 @@ function ReadFeedsPageContent() {
 
   // Show error state
   if (error) {
-    return <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />;
+    return (
+      <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />
+    );
   }
 
   return (

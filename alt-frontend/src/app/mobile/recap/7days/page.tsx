@@ -91,4 +91,3 @@ export default function RecapSevenDaysPage() {
     </Box>
   );
 }
-

@@ -107,7 +107,7 @@ test.describe("Desktop Feeds Page", () => {
 
     // Look for search input
     const searchInput = page.locator(
-      'input[type="search"], input[placeholder*="search" i], input[aria-label*="search" i]'
+      'input[type="search"], input[placeholder*="search" i], input[aria-label*="search" i]',
     );
     const hasSearch = (await searchInput.count()) > 0;
 
@@ -212,7 +212,9 @@ test.describe("Desktop Feeds Page", () => {
     await feedsPage.navigateToFeeds();
     await feedsPage.waitForLoad();
 
-    const headings = await page.locator("h1, h2, h3, h4, h5, h6").allTextContents();
+    const headings = await page
+      .locator("h1, h2, h3, h4, h5, h6")
+      .allTextContents();
 
     // Should have at least one heading (or zero if minimal layout)
     expect(headings.length).toBeGreaterThanOrEqual(0);
@@ -239,7 +241,7 @@ test.describe("Desktop Feeds Page", () => {
       focused.tagName === "A" ||
         focused.tagName === "BUTTON" ||
         focused.role === "button" ||
-        focused.role === "link"
+        focused.role === "link",
     ).toBeTruthy();
   });
 
@@ -322,7 +324,7 @@ test.describe("Desktop Feeds Page", () => {
 
       // Handle confirmation dialog if present (Playwright auto-waits)
       const confirmButton = page.locator(
-        'button:has-text("Confirm"), button:has-text("Delete"), button:has-text("Yes")'
+        'button:has-text("Confirm"), button:has-text("Delete"), button:has-text("Yes")',
       );
       if ((await confirmButton.count()) > 0) {
         await confirmButton.click();

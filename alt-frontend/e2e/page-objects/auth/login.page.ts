@@ -22,7 +22,9 @@ export class LoginPage extends BasePage {
     this.pageHeading = page.getByRole("heading", { name: /log in|login/i });
     this.emailInput = page.getByLabel(/email/i);
     this.passwordInput = page.getByLabel(/password/i);
-    this.submitButton = page.getByRole("button", { name: /log in|login|submit/i });
+    this.submitButton = page.getByRole("button", {
+      name: /log in|login|submit/i,
+    });
     this.registerLink = page.getByRole("link", { name: /sign up|register/i });
     this.errorMessage = page.getByRole("alert");
     this.forgotPasswordLink = page.getByRole("link", {

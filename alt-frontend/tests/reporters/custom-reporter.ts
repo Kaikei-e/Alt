@@ -63,9 +63,11 @@ class CustomReporter implements Reporter {
 
   onBegin(config: FullConfig, suite: Suite) {
     this.startTime = Date.now();
-    console.log(`\n🚀 Starting Playwright tests with ${config.workers} workers`);
     console.log(
-      `📋 Running ${suite.allTests().length} tests across ${config.projects.length} projects`
+      `\n🚀 Starting Playwright tests with ${config.workers} workers`,
+    );
+    console.log(
+      `📋 Running ${suite.allTests().length} tests across ${config.projects.length} projects`,
     );
 
     // Initialize project metrics
@@ -108,10 +110,16 @@ class CustomReporter implements Reporter {
     this.metrics.projectMetrics[projectName].duration += duration;
 
     // Track slowest/fastest tests
-    if (!this.metrics.slowestTest || duration > this.metrics.slowestTest.duration) {
+    if (
+      !this.metrics.slowestTest ||
+      duration > this.metrics.slowestTest.duration
+    ) {
       this.metrics.slowestTest = { name: testName, duration };
     }
-    if (!this.metrics.fastestTest || duration < this.metrics.fastestTest.duration) {
+    if (
+      !this.metrics.fastestTest ||
+      duration < this.metrics.fastestTest.duration
+    ) {
       this.metrics.fastestTest = { name: testName, duration };
     }
 
@@ -141,12 +149,19 @@ class CustomReporter implements Reporter {
     });
 
     // Real-time feedback
-    const icon = result.status === "passed" ? "✅" : result.status === "failed" ? "❌" : "⏭️";
+    const icon =
+      result.status === "passed"
+        ? "✅"
+        : result.status === "failed"
+          ? "❌"
+          : "⏭️";
     const durationMs = `${duration.toFixed(0)}ms`;
     console.log(`${icon} ${testName} (${durationMs})`);
 
     if (result.status === "failed" && result.error) {
-      console.log(`   💥 ${result.error.message?.split("\n")[0] || "Unknown error"}`);
+      console.log(
+        `   💥 ${result.error.message?.split("\n")[0] || "Unknown error"}`,
+      );
     }
   }
 
@@ -156,7 +171,9 @@ class CustomReporter implements Reporter {
 
     // Calculate average duration
     this.metrics.averageDuration =
-      this.metrics.totalTests > 0 ? this.metrics.totalDuration / this.metrics.totalTests : 0;
+      this.metrics.totalTests > 0
+        ? this.metrics.totalDuration / this.metrics.totalTests
+        : 0;
 
     this.printSummary(totalRunTime, result.status);
     this.generateReports();
@@ -180,7 +197,9 @@ class CustomReporter implements Reporter {
     // Overall results
     console.log(`📊 Overall: ${passedTests}/${totalTests} passed`);
     console.log(`⏱️  Total time: ${(totalRunTime / 1000).toFixed(2)}s`);
-    console.log(`📈 Average test time: ${this.metrics.averageDuration.toFixed(0)}ms`);
+    console.log(
+      `📈 Average test time: ${this.metrics.averageDuration.toFixed(0)}ms`,
+    );
 
     if (failedTests > 0) {
       console.log(`❌ Failed: ${failedTests}`);
@@ -192,38 +211,42 @@ class CustomReporter implements Reporter {
     // Performance insights
     if (this.metrics.slowestTest) {
       console.log(
-        `🐌 Slowest: ${this.metrics.slowestTest.name} (${this.metrics.slowestTest.duration.toFixed(0)}ms)`
+        `🐌 Slowest: ${this.metrics.slowestTest.name} (${this.metrics.slowestTest.duration.toFixed(0)}ms)`,
       );
     }
     if (this.metrics.fastestTest) {
       console.log(
-        `⚡ Fastest: ${this.metrics.fastestTest.name} (${this.metrics.fastestTest.duration.toFixed(0)}ms)`
+        `⚡ Fastest: ${this.metrics.fastestTest.name} (${this.metrics.fastestTest.duration.toFixed(0)}ms)`,
       );
     }
 
     // Project breakdown
     console.log("\n📋 Project Breakdown:");
-    Object.entries(this.metrics.projectMetrics).forEach(([project, metrics]) => {
-      const total = metrics.passed + metrics.failed + metrics.skipped;
-      if (total > 0) {
-        const passRate = ((metrics.passed / total) * 100).toFixed(1);
-        console.log(
-          `  ${project}: ${metrics.passed}/${total} (${passRate}%) - ${(metrics.duration / 1000).toFixed(1)}s`
-        );
-      }
-    });
+    Object.entries(this.metrics.projectMetrics).forEach(
+      ([project, metrics]) => {
+        const total = metrics.passed + metrics.failed + metrics.skipped;
+        if (total > 0) {
+          const passRate = ((metrics.passed / total) * 100).toFixed(1);
+          console.log(
+            `  ${project}: ${metrics.passed}/${total} (${passRate}%) - ${(metrics.duration / 1000).toFixed(1)}s`,
+          );
+        }
+      },
+    );
 
     // Browser breakdown
     console.log("\n🌐 Browser Breakdown:");
-    Object.entries(this.metrics.browserMetrics).forEach(([browser, metrics]) => {
-      const total = metrics.passed + metrics.failed;
-      if (total > 0) {
-        const passRate = ((metrics.passed / total) * 100).toFixed(1);
-        console.log(
-          `  ${browser}: ${metrics.passed}/${total} (${passRate}%) - ${(metrics.duration / 1000).toFixed(1)}s`
-        );
-      }
-    });
+    Object.entries(this.metrics.browserMetrics).forEach(
+      ([browser, metrics]) => {
+        const total = metrics.passed + metrics.failed;
+        if (total > 0) {
+          const passRate = ((metrics.passed / total) * 100).toFixed(1);
+          console.log(
+            `  ${browser}: ${metrics.passed}/${total} (${passRate}%) - ${(metrics.duration / 1000).toFixed(1)}s`,
+          );
+        }
+      },
+    );
 
     console.log("=".repeat(60));
 
@@ -257,13 +280,18 @@ class CustomReporter implements Reporter {
       },
     };
 
-    writeFileSync(join(reportDir, "test-metrics.json"), JSON.stringify(report, null, 2));
+    writeFileSync(
+      join(reportDir, "test-metrics.json"),
+      JSON.stringify(report, null, 2),
+    );
 
     // Generate simple HTML dashboard
     this.generateHtmlReport(reportDir, report);
 
     console.log(`📈 Reports generated in: ${reportDir}`);
-    console.log(`📊 View metrics: file://${process.cwd()}/${reportDir}/dashboard.html`);
+    console.log(
+      `📊 View metrics: file://${process.cwd()}/${reportDir}/dashboard.html`,
+    );
   }
 
   private generateHtmlReport(reportDir: string, report: any) {
@@ -323,7 +351,7 @@ class CustomReporter implements Reporter {
                 <td class="status-skipped">${metrics.skipped}</td>
                 <td>${(metrics.duration / 1000).toFixed(2)}s</td>
             </tr>
-        `
+        `,
           )
           .join("")}
     </table>
@@ -342,7 +370,7 @@ class CustomReporter implements Reporter {
                 <td>${test.browser}</td>
                 <td>${test.error ? test.error.substring(0, 100) + "..." : ""}</td>
             </tr>
-        `
+        `,
           )
           .join("")}
     </table>

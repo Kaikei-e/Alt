@@ -3,12 +3,14 @@ import { NextResponse } from "next/server";
 export async function GET(request: Request) {
   const responseHeaders = new Headers();
 
-  const fallbackOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN || "https://curionoah.com";
+  const fallbackOrigin =
+    process.env.NEXT_PUBLIC_APP_ORIGIN || "https://curionoah.com";
 
   let protocol = "https";
   try {
     protocol =
-      request.headers.get("x-forwarded-proto") || new URL(request.url).protocol.replace(":", "");
+      request.headers.get("x-forwarded-proto") ||
+      new URL(request.url).protocol.replace(":", "");
   } catch {
     protocol = "https";
   }
@@ -23,7 +25,9 @@ export async function GET(request: Request) {
   }
 
   const apexDomain =
-    hostname === "localhost" || hostname === "127.0.0.1" ? hostname : `.${hostname}`;
+    hostname === "localhost" || hostname === "127.0.0.1"
+      ? hostname
+      : `.${hostname}`;
   const secureFlag = isSecure ? "; Secure" : "";
 
   const buildCookie = (domain: string) =>

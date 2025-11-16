@@ -1,7 +1,7 @@
-import { test, expect } from '@playwright/test';
-import { LandingPage } from '../../page-objects/public/landing.page';
+import { test, expect } from "@playwright/test";
+import { LandingPage } from "../../page-objects/public/landing.page";
 
-test.describe('Landing Page', () => {
+test.describe("Landing Page", () => {
   let landingPage: LandingPage;
 
   test.beforeEach(async ({ page }) => {
@@ -9,35 +9,35 @@ test.describe('Landing Page', () => {
     await landingPage.goto();
   });
 
-  test('should display landing page with main elements', async () => {
+  test("should display landing page with main elements", async () => {
     // Check main elements are visible
     await expect(landingPage.pageHeading).toBeVisible();
     await expect(landingPage.loginButton).toBeVisible();
     await expect(landingPage.registerButton).toBeVisible();
   });
 
-  test('should have proper page title', async () => {
+  test("should have proper page title", async () => {
     const title = await landingPage.getTitle();
     expect(title).toBeTruthy();
     expect(title.length).toBeGreaterThan(0);
   });
 
-  test('should navigate to login page', async () => {
+  test("should navigate to login page", async () => {
     await landingPage.clickLogin();
 
     // Verify navigation to login page
     await expect(landingPage.page).toHaveURL(/\/auth\/login/);
   });
 
-  test('should navigate to register page', async () => {
+  test("should navigate to register page", async () => {
     await landingPage.clickRegister();
 
     // Register button goes to /api/auth/register which redirects
     // Just verify the button click works and navigation happens
-    await landingPage.page.waitForLoadState('networkidle');
+    await landingPage.page.waitForLoadState("networkidle");
   });
 
-  test('should display hero section', async () => {
+  test("should display hero section", async () => {
     const isVisible = await landingPage.isHeroVisible();
 
     // Hero section might or might not exist depending on design
@@ -46,7 +46,7 @@ test.describe('Landing Page', () => {
     }
   });
 
-  test('should display features section', async () => {
+  test("should display features section", async () => {
     const areVisible = await landingPage.areFeaturesVisible();
 
     // Features section might or might not exist
@@ -59,7 +59,7 @@ test.describe('Landing Page', () => {
     }
   });
 
-  test('should display CTA section', async () => {
+  test("should display CTA section", async () => {
     const isVisible = await landingPage.isCtaVisible();
 
     if (isVisible) {
@@ -71,7 +71,7 @@ test.describe('Landing Page', () => {
     }
   });
 
-  test('should have working scroll to top', async () => {
+  test("should have working scroll to top", async () => {
     // Scroll to bottom
     await landingPage.scrollToBottom();
 
@@ -83,7 +83,7 @@ test.describe('Landing Page', () => {
     expect(scrollY).toBe(0);
   });
 
-  test('should be responsive on mobile viewport', async ({ page }) => {
+  test("should be responsive on mobile viewport", async ({ page }) => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
 
@@ -96,7 +96,7 @@ test.describe('Landing Page', () => {
     await expect(landingPage.registerButton).toBeVisible();
   });
 
-  test('should be responsive on tablet viewport', async ({ page }) => {
+  test("should be responsive on tablet viewport", async ({ page }) => {
     // Set tablet viewport
     await page.setViewportSize({ width: 768, height: 1024 });
 
@@ -108,7 +108,7 @@ test.describe('Landing Page', () => {
     await expect(landingPage.loginButton).toBeVisible();
   });
 
-  test('should be responsive on desktop viewport', async ({ page }) => {
+  test("should be responsive on desktop viewport", async ({ page }) => {
     // Set desktop viewport
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -120,51 +120,53 @@ test.describe('Landing Page', () => {
     await expect(landingPage.loginButton).toBeVisible();
   });
 
-  test('should be accessible', async () => {
+  test("should be accessible", async () => {
     // Skip this test temporarily as the nested interactive elements (NextLink+Button)
     // are a known pattern in the codebase and acceptable for this use case
     // The buttons are fully functional and accessible via keyboard/screen readers
     test.skip();
   });
 
-  test('should have proper heading structure', async ({ page }) => {
+  test("should have proper heading structure", async ({ page }) => {
     const headings = await page
-      .locator('h1, h2, h3, h4, h5, h6')
+      .locator("h1, h2, h3, h4, h5, h6")
       .allTextContents();
 
     // Should have at least one h1
-    const h1Count = await page.locator('h1').count();
+    const h1Count = await page.locator("h1").count();
     expect(h1Count).toBeGreaterThanOrEqual(1);
     expect(h1Count).toBeLessThanOrEqual(1); // Only one h1
   });
 
-  test('should have keyboard navigation', async ({ page }) => {
+  test("should have keyboard navigation", async ({ page }) => {
     // Focus on the first button (Theme Toggle)
-    const firstButton = page.locator('button').first();
+    const firstButton = page.locator("button").first();
     await firstButton.focus();
 
-    const isFocused = await firstButton.evaluate(el => el === document.activeElement);
+    const isFocused = await firstButton.evaluate(
+      (el) => el === document.activeElement,
+    );
     expect(isFocused).toBe(true);
   });
 
-  test('should load without JavaScript errors', async ({ page }) => {
+  test("should load without JavaScript errors", async ({ page }) => {
     const errors: string[] = [];
 
-    page.on('pageerror', (error) => {
+    page.on("pageerror", (error) => {
       const message = error.message;
 
       // Filter out development/framework-related errors that don't affect production
       const isDevError =
-        message.includes('HMR') ||
-        message.includes('webpack') ||
-        message.includes('hot-update') ||
-        message.includes('DevTools') ||
-        message.includes('React DevTools') ||
-        message.includes('Chakra UI') ||
-        message.includes('framer-motion') ||
-        message.includes('AnimatedNumber') ||
-        message.includes('_app') ||
-        message.includes('__next');
+        message.includes("HMR") ||
+        message.includes("webpack") ||
+        message.includes("hot-update") ||
+        message.includes("DevTools") ||
+        message.includes("React DevTools") ||
+        message.includes("Chakra UI") ||
+        message.includes("framer-motion") ||
+        message.includes("AnimatedNumber") ||
+        message.includes("_app") ||
+        message.includes("__next");
 
       if (!isDevError) {
         errors.push(message);
@@ -177,10 +179,10 @@ test.describe('Landing Page', () => {
     expect(errors).toHaveLength(0);
   });
 
-  test('should load all critical resources', async ({ page }) => {
+  test("should load all critical resources", async ({ page }) => {
     const failedRequests: string[] = [];
 
-    page.on('requestfailed', (request) => {
+    page.on("requestfailed", (request) => {
       failedRequests.push(request.url());
     });
 
@@ -189,24 +191,24 @@ test.describe('Landing Page', () => {
     // Should have no failed critical resources
     // Filter out non-critical failures (analytics, etc.)
     const criticalFailures = failedRequests.filter(
-      url => !url.includes('analytics') && !url.includes('tracking')
+      (url) => !url.includes("analytics") && !url.includes("tracking"),
     );
 
     expect(criticalFailures).toHaveLength(0);
   });
 
-  test('should have proper meta tags', async ({ page }) => {
+  test("should have proper meta tags", async ({ page }) => {
     await landingPage.goto();
 
     // Check for important meta tags
     const description = await page
       .locator('meta[name="description"]')
-      .getAttribute('content');
+      .getAttribute("content");
     expect(description).toBeTruthy();
 
     const viewport = await page
       .locator('meta[name="viewport"]')
-      .getAttribute('content');
+      .getAttribute("content");
     expect(viewport).toBeTruthy();
   });
 });

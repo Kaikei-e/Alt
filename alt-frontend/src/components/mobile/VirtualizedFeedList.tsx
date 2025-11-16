@@ -5,7 +5,10 @@ import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import type { Feed } from "@/schema/feed";
-import { FeatureFlagManager, shouldUseVirtualization } from "@/utils/featureFlags";
+import {
+  FeatureFlagManager,
+  shouldUseVirtualization,
+} from "@/utils/featureFlags";
 import { SimpleFeedList } from "./SimpleFeedList";
 import { VirtualFeedListImpl } from "./VirtualFeedListImpl";
 
@@ -24,7 +27,10 @@ const VirtualizationErrorFallback: React.FC<{
   onMarkAsRead: (feedLink: string) => void;
 }> = ({ error, feeds, readFeeds, onMarkAsRead }) => {
   useEffect(() => {
-    console.error("Virtualization failed, falling back to simple rendering:", error);
+    console.error(
+      "Virtualization failed, falling back to simple rendering:",
+      error,
+    );
 
     // Disable virtualization in feature flags
     FeatureFlagManager.getInstance().updateFlags({
@@ -35,7 +41,14 @@ const VirtualizationErrorFallback: React.FC<{
   return (
     <Box>
       {process.env.NODE_ENV === "development" && (
-        <Box bg="red.100" border="1px solid" borderColor="red.300" p={2} mb={4} borderRadius="md">
+        <Box
+          bg="red.100"
+          border="1px solid"
+          borderColor="red.300"
+          p={2}
+          mb={4}
+          borderRadius="md"
+        >
           <Text fontSize="sm" color="red.800">
             仮想化でエラーが発生しました。通常表示にフォールバックします。
           </Text>
@@ -44,12 +57,18 @@ const VirtualizationErrorFallback: React.FC<{
           </Text>
         </Box>
       )}
-      <SimpleFeedList feeds={feeds} readFeeds={readFeeds} onMarkAsRead={onMarkAsRead} />
+      <SimpleFeedList
+        feeds={feeds}
+        readFeeds={readFeeds}
+        onMarkAsRead={onMarkAsRead}
+      />
     </Box>
   );
 };
 
-export const VirtualizedFeedList: React.FC<VirtualizedFeedListProps> = (props) => {
+export const VirtualizedFeedList: React.FC<VirtualizedFeedListProps> = (
+  props,
+) => {
   const [useVirtualization, setUseVirtualization] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
   const { feeds } = props;
@@ -80,7 +99,9 @@ export const VirtualizedFeedList: React.FC<VirtualizedFeedListProps> = (props) =
   // Use virtualization with error boundary
   return (
     <ErrorBoundary
-      FallbackComponent={(errorProps) => <VirtualizationErrorFallback {...errorProps} {...props} />}
+      FallbackComponent={(errorProps) => (
+        <VirtualizationErrorFallback {...errorProps} {...props} />
+      )}
       onError={handleVirtualizationError}
       onReset={() => setErrorCount(0)}
     >

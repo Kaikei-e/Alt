@@ -35,12 +35,21 @@ export class FeatureFlagManager {
     };
 
     const envFlags: FeatureFlags = {
-      enableVirtualization: parseFlag(process.env.NEXT_PUBLIC_ENABLE_VIRTUALIZATION),
-      forceVirtualization: process.env.NEXT_PUBLIC_FORCE_VIRTUALIZATION === "true",
-      enableDynamicSizing: parseFlag(process.env.NEXT_PUBLIC_ENABLE_DYNAMIC_SIZING),
-      enableDesktopVirtualization: parseFlag(process.env.NEXT_PUBLIC_ENABLE_DESKTOP_VIRTUALIZATION),
+      enableVirtualization: parseFlag(
+        process.env.NEXT_PUBLIC_ENABLE_VIRTUALIZATION,
+      ),
+      forceVirtualization:
+        process.env.NEXT_PUBLIC_FORCE_VIRTUALIZATION === "true",
+      enableDynamicSizing: parseFlag(
+        process.env.NEXT_PUBLIC_ENABLE_DYNAMIC_SIZING,
+      ),
+      enableDesktopVirtualization: parseFlag(
+        process.env.NEXT_PUBLIC_ENABLE_DESKTOP_VIRTUALIZATION,
+      ),
       debugMode: process.env.NODE_ENV === "development",
-      virtualizationThreshold: parseInt(process.env.NEXT_PUBLIC_VIRTUALIZATION_THRESHOLD || "200"),
+      virtualizationThreshold: parseInt(
+        process.env.NEXT_PUBLIC_VIRTUALIZATION_THRESHOLD || "200",
+      ),
     };
 
     // Override from localStorage in debug mode
@@ -110,7 +119,10 @@ export class FeatureFlagManager {
   }
 }
 
-export function shouldUseVirtualization(itemCount: number, flags?: FeatureFlags): boolean {
+export function shouldUseVirtualization(
+  itemCount: number,
+  flags?: FeatureFlags,
+): boolean {
   const featureFlags = flags || FeatureFlagManager.getInstance().getFlags();
 
   // Force virtualization takes highest priority

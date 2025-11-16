@@ -15,7 +15,11 @@ import {
 /**
  * Mock feeds list API endpoint
  */
-export async function mockFeedsApi(page: Page, feeds: FeedData[] | number = 10, hasMore = false) {
+export async function mockFeedsApi(
+  page: Page,
+  feeds: FeedData[] | number = 10,
+  hasMore = false,
+) {
   const response =
     typeof feeds === "number"
       ? createMockFeedsResponse(feeds, hasMore)
@@ -36,7 +40,7 @@ export async function mockFeedsApi(page: Page, feeds: FeedData[] | number = 10, 
 export async function mockArticlesApi(
   page: Page,
   articles: ArticleData[] | number = 20,
-  hasMore = false
+  hasMore = false,
 ) {
   const response =
     typeof articles === "number"
@@ -70,7 +74,10 @@ export async function mockFeedApi(page: Page, feed: Partial<FeedData>) {
 /**
  * Mock single article API endpoint
  */
-export async function mockArticleApi(page: Page, article: Partial<ArticleData>) {
+export async function mockArticleApi(
+  page: Page,
+  article: Partial<ArticleData>,
+) {
   const mockArticle = createMockArticle(article);
 
   await page.route("**/v1/articles/*", (route) => {
@@ -115,7 +122,7 @@ export async function mockApiError(
   page: Page,
   endpoint: string,
   statusCode = 500,
-  errorMessage = "Internal Server Error"
+  errorMessage = "Internal Server Error",
 ) {
   await page.route(endpoint, (route) => {
     route.fulfill({
@@ -147,7 +154,10 @@ export async function mockNetworkFailure(page: Page, endpoint: string) {
 /**
  * Mock successful feed creation
  */
-export async function mockCreateFeedSuccess(page: Page, feed?: Partial<FeedData>) {
+export async function mockCreateFeedSuccess(
+  page: Page,
+  feed?: Partial<FeedData>,
+) {
   const mockFeed = createMockFeed(feed);
 
   await page.route("**/v1/feeds", (route) => {
@@ -166,7 +176,10 @@ export async function mockCreateFeedSuccess(page: Page, feed?: Partial<FeedData>
 /**
  * Mock feed creation error
  */
-export async function mockCreateFeedError(page: Page, errorMessage = "Invalid feed URL") {
+export async function mockCreateFeedError(
+  page: Page,
+  errorMessage = "Invalid feed URL",
+) {
   await page.route("**/v1/feeds", (route) => {
     if (route.request().method() === "POST") {
       route.fulfill({
@@ -185,7 +198,10 @@ export async function mockCreateFeedError(page: Page, errorMessage = "Invalid fe
  */
 export async function mockUpdateFeedSuccess(page: Page, feedId: string) {
   await page.route(`**/v1/feeds/${feedId}`, (route) => {
-    if (route.request().method() === "PUT" || route.request().method() === "PATCH") {
+    if (
+      route.request().method() === "PUT" ||
+      route.request().method() === "PATCH"
+    ) {
       route.fulfill({
         status: 200,
         contentType: "application/json",

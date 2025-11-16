@@ -6,7 +6,10 @@ import { memo, Suspense, useCallback, useMemo } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { RightPanel } from "@/components/desktop/analytics/RightPanel";
 import { DesktopFeedsLayout } from "@/components/desktop/layout/DesktopFeedsLayout";
-import { DefaultSidebarProps, DesktopSidebar } from "@/components/desktop/layout/DesktopSidebar";
+import {
+  DefaultSidebarProps,
+  DesktopSidebar,
+} from "@/components/desktop/layout/DesktopSidebar";
 import { DesktopFeedCard } from "@/components/desktop/timeline/DesktopFeedCard";
 import { desktopFeedsApi } from "@/lib/api/desktop-feeds";
 import type { DesktopFeed, FilterState } from "@/types/desktop-feed";
@@ -22,7 +25,12 @@ const MemoizedFeedCard = memo(DesktopFeedCard);
 
 // エラーフォールバック
 const ErrorFallback = ({ error }: { error: Error }) => (
-  <Box className="glass" p={8} borderRadius="var(--radius-xl)" textAlign="center">
+  <Box
+    className="glass"
+    p={8}
+    borderRadius="var(--radius-xl)"
+    textAlign="center"
+  >
     <Text color="var(--alt-error)" fontWeight="bold" mb={2}>
       An error occurred
     </Text>
@@ -36,18 +44,42 @@ const ErrorFallback = ({ error }: { error: Error }) => (
 const SkeletonLoader = () => (
   <VStack gap={4}>
     {Array.from({ length: 3 }).map((_, i) => (
-      <Box key={i} className="glass" p={6} borderRadius="var(--radius-xl)" w="full" h="200px">
+      <Box
+        key={i}
+        className="glass"
+        p={6}
+        borderRadius="var(--radius-xl)"
+        w="full"
+        h="200px"
+      >
         <Flex direction="column" gap={4}>
-          <Box h="20px" bg="var(--surface-border)" borderRadius="var(--radius-md)" />
-          <Box h="16px" bg="var(--surface-border)" borderRadius="var(--radius-md)" w="80%" />
-          <Box h="16px" bg="var(--surface-border)" borderRadius="var(--radius-md)" w="60%" />
+          <Box
+            h="20px"
+            bg="var(--surface-border)"
+            borderRadius="var(--radius-md)"
+          />
+          <Box
+            h="16px"
+            bg="var(--surface-border)"
+            borderRadius="var(--radius-md)"
+            w="80%"
+          />
+          <Box
+            h="16px"
+            bg="var(--surface-border)"
+            borderRadius="var(--radius-md)"
+            w="60%"
+          />
         </Flex>
       </Box>
     ))}
   </VStack>
 );
 
-export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({ feeds, filters }) => {
+export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({
+  feeds,
+  filters,
+}) => {
   // レスポンシブ値
   const feedCardVariant = useBreakpointValue({
     base: "compact",
@@ -58,15 +90,24 @@ export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({ fe
   // メモ化されたフィルタリング済みフィード
   const filteredFeeds = useMemo(() => {
     return feeds.filter((feed) => {
-      if (filters.readStatus !== "all" && (filters.readStatus === "read") !== feed.isRead) {
+      if (
+        filters.readStatus !== "all" &&
+        (filters.readStatus === "read") !== feed.isRead
+      ) {
         return false;
       }
 
-      if (filters.sources.length > 0 && !filters.sources.includes(feed.metadata.source.id)) {
+      if (
+        filters.sources.length > 0 &&
+        !filters.sources.includes(feed.metadata.source.id)
+      ) {
         return false;
       }
 
-      if (filters.priority !== "all" && feed.metadata.priority !== filters.priority) {
+      if (
+        filters.priority !== "all" &&
+        feed.metadata.priority !== filters.priority
+      ) {
         return false;
       }
 
@@ -86,7 +127,7 @@ export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({ fe
         await desktopFeedsApi.toggleFavorite(feedId, !feed.isFavorited);
       }
     },
-    [feeds]
+    [feeds],
   );
 
   const handleToggleBookmark = useCallback(
@@ -96,7 +137,7 @@ export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({ fe
         await desktopFeedsApi.toggleBookmark(feedId, !feed.isBookmarked);
       }
     },
-    [feeds]
+    [feeds],
   );
 
   const handleReadLater = useCallback((feedId: string) => {}, []);
@@ -108,7 +149,7 @@ export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({ fe
         window.open(feed.link, "_blank");
       }
     },
-    [feeds]
+    [feeds],
   );
 
   return (
@@ -142,7 +183,12 @@ export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({ fe
           ))}
 
           {filteredFeeds.length === 0 && (
-            <Box className="glass" p={8} borderRadius="var(--radius-xl)" textAlign="center">
+            <Box
+              className="glass"
+              p={8}
+              borderRadius="var(--radius-xl)"
+              textAlign="center"
+            >
               <Text fontSize="2xl" mb={2}>
                 📭
               </Text>

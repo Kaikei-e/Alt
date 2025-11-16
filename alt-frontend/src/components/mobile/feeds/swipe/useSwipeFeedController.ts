@@ -1,4 +1,11 @@
-import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type MutableRefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import useSWRInfinite from "swr/infinite";
 import { useArticleContentPrefetch } from "@/hooks/useArticleContentPrefetch";
 import { feedApi } from "@/lib/api";
@@ -45,7 +52,7 @@ const canonicalize = (url: string) => {
 
 const getKey = (
   pageIndex: number,
-  previousPageData: CursorResponse<Feed> | null
+  previousPageData: CursorResponse<Feed> | null,
 ): SwrKey | null => {
   if (previousPageData && !previousPageData.next_cursor) {
     return null;
@@ -62,7 +69,7 @@ const getKey = (
 const fetchPage = async (
   _: string,
   cursor: string | undefined,
-  limit: number
+  limit: number,
 ): Promise<CursorResponse<Feed>> => {
   return feedApi.getFeedsWithCursor(cursor, limit);
 };
@@ -81,7 +88,7 @@ const clearTimeoutRef = (timeoutRef: MutableRefObject<number | null>) => {
 const scheduleTimeout = (
   timeoutRef: MutableRefObject<number | null>,
   callback: () => void,
-  duration: number
+  duration: number,
 ) => {
   if (typeof window === "undefined") {
     callback();
@@ -110,7 +117,10 @@ export const useSwipeFeedController = () => {
       try {
         // Fetch only the most recent read feeds for optimistic updates
         // This is sufficient since backend already excludes read feeds from unread feed queries
-        const readFeedsResponse = await feedApi.getReadFeedsWithCursor(undefined, 100);
+        const readFeedsResponse = await feedApi.getReadFeedsWithCursor(
+          undefined,
+          100,
+        );
         const readFeedLinks = new Set<string>();
         if (readFeedsResponse?.data) {
           readFeedsResponse.data.forEach((feed: Feed) => {
@@ -136,16 +146,13 @@ export const useSwipeFeedController = () => {
 
   // Wait for readFeeds initialization before fetching unread feeds
   // This ensures consistent behavior and prevents race conditions
-  const { data, error, isLoading, isValidating, setSize, mutate } = useSWRInfinite(
-    isReadFeedsInitialized ? getKey : () => null,
-    fetchPage,
-    {
+  const { data, error, isLoading, isValidating, setSize, mutate } =
+    useSWRInfinite(isReadFeedsInitialized ? getKey : () => null, fetchPage, {
       revalidateOnFocus: false,
       revalidateFirstPage: false,
       parallel: true,
       initialSize: INITIAL_PAGE_COUNT,
-    }
-  );
+    });
 
   const feeds = useMemo(() => {
     if (!data || data.length === 0) {
@@ -176,11 +183,12 @@ export const useSwipeFeedController = () => {
   const isInitialLoading = (!data || data.length === 0) && isLoading;
 
   // Article content prefetch hook
-  const { triggerPrefetch, getCachedContent, markAsDismissed } = useArticleContentPrefetch(
-    feeds,
-    activeIndex,
-    2 // Prefetch next 2 articles
-  );
+  const { triggerPrefetch, getCachedContent, markAsDismissed } =
+    useArticleContentPrefetch(
+      feeds,
+      activeIndex,
+      2, // Prefetch next 2 articles
+    );
 
   useEffect(() => {
     if (!statusMessage) {
@@ -214,7 +222,8 @@ export const useSwipeFeedController = () => {
       return;
     }
 
-    const hasActiveFeed = activeFeedId !== null && feeds.some((feed) => feed.id === activeFeedId);
+    const hasActiveFeed =
+      activeFeedId !== null && feeds.some((feed) => feed.id === activeFeedId);
 
     if (hasActiveFeed) {
       if (
@@ -243,7 +252,7 @@ export const useSwipeFeedController = () => {
       () => {
         setLiveRegionMessage("");
       },
-      duration
+      duration,
     );
   }, []);
 
@@ -283,7 +292,9 @@ export const useSwipeFeedController = () => {
   const dismissActiveFeed = useCallback(
     async (_direction: number) => {
       const currentIndex =
-        activeFeedId !== null ? feeds.findIndex((feed) => feed.id === activeFeedId) : 0;
+        activeFeedId !== null
+          ? feeds.findIndex((feed) => feed.id === activeFeedId)
+          : 0;
       const resolvedIndex = currentIndex === -1 ? 0 : currentIndex;
       const current = feeds[resolvedIndex];
 
@@ -336,7 +347,7 @@ export const useSwipeFeedController = () => {
             const filtered = currentData.map((page) => {
               if (!page?.data) return page;
               const filteredData = page.data.filter(
-                (feed) => canonicalize(feed.link) !== canonicalLink
+                (feed) => canonicalize(feed.link) !== canonicalLink,
               );
               return {
                 ...page,
@@ -345,7 +356,7 @@ export const useSwipeFeedController = () => {
             });
             return filtered;
           },
-          { revalidate: false, populateCache: true }
+          { revalidate: false, populateCache: true },
         );
 
         // Prefetch is now triggered by activeIndex useEffect (lines 234-238)
@@ -364,7 +375,7 @@ export const useSwipeFeedController = () => {
         throw err;
       }
     },
-    [activeFeedId, announce, feeds, markAsDismissed, mutate, readFeeds]
+    [activeFeedId, announce, feeds, markAsDismissed, mutate, readFeeds],
   );
 
   const retry = useCallback(async () => {

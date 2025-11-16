@@ -1,5 +1,10 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import { safeClick, safeFill, waitForFormReady, waitForTextContent } from "../utils/waitConditions";
+import {
+  safeClick,
+  safeFill,
+  waitForFormReady,
+  waitForTextContent,
+} from "../utils/waitConditions";
 import { BasePage } from "./BasePage";
 
 /**
@@ -19,7 +24,7 @@ export class LoginPage extends BasePage {
     this.passwordInput = this.page.locator('input[name="password"]');
     this.signInButton = this.page.locator('button[type="submit"]');
     this.errorMessage = this.page.locator(
-      '[data-testid="error-message"], .error-message, [role="alert"]'
+      '[data-testid="error-message"], .error-message, [role="alert"]',
     );
     this.loadingIndicator = this.page.getByText(/loading|準備しています/i);
   }
@@ -110,7 +115,7 @@ export class LoginPage extends BasePage {
   async performLogin(
     email = "test@example.com",
     password = "password123",
-    expectedUrl?: string | RegExp
+    expectedUrl?: string | RegExp,
   ) {
     await this.login(email, password);
     await this.waitForLoginSuccess(expectedUrl);
@@ -120,7 +125,9 @@ export class LoginPage extends BasePage {
    * Verify login page elements are present
    */
   async verifyLoginPageElements() {
-    await expect(this.page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+    await expect(
+      this.page.getByRole("heading", { name: "Welcome back" }),
+    ).toBeVisible();
     await expect(this.emailInput).toBeVisible();
     await expect(this.passwordInput).toBeVisible();
     await expect(this.signInButton).toBeVisible();

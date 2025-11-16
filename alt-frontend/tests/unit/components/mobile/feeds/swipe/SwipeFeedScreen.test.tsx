@@ -17,12 +17,13 @@ const renderWithProviders = () =>
   render(
     <ChakraProvider value={defaultSystem}>
       <SwipeFeedScreen />
-    </ChakraProvider>
+    </ChakraProvider>,
   );
 
 const mockMatchMedia = (reduceMotion: boolean) => {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: query === "(prefers-reduced-motion: reduce)" ? reduceMotion : false,
+    matches:
+      query === "(prefers-reduced-motion: reduce)" ? reduceMotion : false,
     media: query,
     onchange: null,
     addListener: vi.fn(),
@@ -132,9 +133,10 @@ describe("SwipeFeedScreen", () => {
     renderWithProviders();
 
     const hints = screen.getAllByTestId("swipe-skeleton-hint");
-    const reducedMotionHint = hints.find((hint) => hint.getAttribute("data-reduced-motion") === "true");
+    const reducedMotionHint = hints.find(
+      (hint) => hint.getAttribute("data-reduced-motion") === "true",
+    );
     expect(reducedMotionHint).toBeInTheDocument();
     expect(reducedMotionHint).toHaveAttribute("data-reduced-motion", "true");
   });
 });
-

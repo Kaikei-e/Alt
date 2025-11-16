@@ -20,28 +20,39 @@ export class FeedApi {
 
   // Cursor-based API functions
   public getFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
-  public getFavoriteFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
-  public getReadFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
+  public getFavoriteFeedsWithCursor: (
+    cursor?: string,
+    limit?: number,
+  ) => Promise<any>;
+  public getReadFeedsWithCursor: (
+    cursor?: string,
+    limit?: number,
+  ) => Promise<any>;
 
   constructor(private apiClient: ApiClient) {
     const transformFeedItem = (item: BackendFeedItem): SanitizedFeed => {
       return sanitizeFeed(item);
     };
 
-    this.feedsCursorApi = new CursorApi(apiClient, "/v1/feeds/fetch/cursor", transformFeedItem, 5);
+    this.feedsCursorApi = new CursorApi(
+      apiClient,
+      "/v1/feeds/fetch/cursor",
+      transformFeedItem,
+      5,
+    );
 
     this.favoritesCursorApi = new CursorApi(
       apiClient,
       "/v1/feeds/fetch/favorites/cursor",
       transformFeedItem,
-      10
+      10,
     );
 
     this.readCursorApi = new CursorApi(
       apiClient,
       "/v1/feeds/fetch/viewed/cursor",
       transformFeedItem,
-      10
+      10,
     );
 
     // Initialize the cursor functions after the CursorApi instances are created
@@ -56,11 +67,14 @@ export class FeedApi {
   }
 
   // Legacy pagination methods
-  async getFeeds(page: number = 1, pageSize: number = 10): Promise<SanitizedFeed[]> {
+  async getFeeds(
+    page: number = 1,
+    pageSize: number = 10,
+  ): Promise<SanitizedFeed[]> {
     const limit = page * pageSize;
     const response = await this.apiClient.get<BackendFeedItem[]>(
       `/v1/feeds/fetch/limit/${limit}`,
-      10
+      10,
     );
 
     if (Array.isArray(response)) {
@@ -72,7 +86,7 @@ export class FeedApi {
   async getFeedsPage(page: number = 0): Promise<SanitizedFeed[]> {
     const response = await this.apiClient.get<BackendFeedItem[]>(
       `/v1/feeds/fetch/page/${page}`,
-      10
+      10,
     );
 
     if (Array.isArray(response)) {
@@ -82,7 +96,10 @@ export class FeedApi {
   }
 
   async getAllFeeds(): Promise<SanitizedFeed[]> {
-    const response = await this.apiClient.get<BackendFeedItem[]>("/v1/feeds/fetch/list", 15);
+    const response = await this.apiClient.get<BackendFeedItem[]>(
+      "/v1/feeds/fetch/list",
+      15,
+    );
 
     if (Array.isArray(response)) {
       return response.map(sanitizeFeed);
@@ -91,7 +108,10 @@ export class FeedApi {
   }
 
   async getSingleFeed(): Promise<SanitizedFeed> {
-    const response = await this.apiClient.get<BackendFeedItem>("/v1/feeds/fetch/single", 5);
+    const response = await this.apiClient.get<BackendFeedItem>(
+      "/v1/feeds/fetch/single",
+      5,
+    );
     return sanitizeFeed(response);
   }
 
@@ -110,10 +130,9 @@ export class FeedApi {
 
   async searchFeeds(query: string): Promise<FeedSearchResult> {
     try {
-      const response = await this.apiClient.post<BackendFeedItem[] | FeedSearchResult>(
-        "/v1/feeds/search",
-        { query }
-      );
+      const response = await this.apiClient.post<
+        BackendFeedItem[] | FeedSearchResult
+      >("/v1/feeds/search", { query });
 
       if (Array.isArray(response)) {
         return { results: response, error: null };
@@ -139,7 +158,7 @@ export class FeedApi {
   async getTodayUnreadCount(since: string): Promise<UnreadCount> {
     return this.apiClient.get<UnreadCount>(
       `/v1/feeds/count/unreads?since=${encodeURIComponent(since)}`,
-      1
+      1,
     );
   }
 
@@ -152,20 +171,22 @@ export class FeedApi {
 
   // Prefetch methods
   async prefetchFeeds(pages: number[] = [0, 1]): Promise<void> {
-    const prefetchPromises = pages.map((page) => this.getFeedsPage(page).catch(() => {}));
+    const prefetchPromises = pages.map((page) =>
+      this.getFeedsPage(page).catch(() => {}),
+    );
     await Promise.all(prefetchPromises);
   }
 
   async prefetchFavoriteFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getFavoriteFeedsWithCursor(cursor).catch(() => {})
+      this.getFavoriteFeedsWithCursor(cursor).catch(() => {}),
     );
     await Promise.all(prefetchPromises);
   }
 
   async prefetchReadFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getReadFeedsWithCursor(cursor).catch(() => {})
+      this.getReadFeedsWithCursor(cursor).catch(() => {}),
     );
     await Promise.all(prefetchPromises);
   }

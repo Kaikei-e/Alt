@@ -68,7 +68,12 @@ export function PrivateRoute({
               >
                 認証状態を確認中...
               </Text>
-              <Text color="var(--text-muted)" fontSize="sm" fontFamily="body" textAlign="center">
+              <Text
+                color="var(--text-muted)"
+                fontSize="sm"
+                fontFamily="body"
+                textAlign="center"
+              >
                 アクセス権限を確認しています
               </Text>
             </VStack>
@@ -130,7 +135,12 @@ export function PrivateRoute({
                   >
                     ログインが必要です
                   </Text>
-                  <Text fontSize="sm" color="var(--text-muted)" fontFamily="body" maxW="400px">
+                  <Text
+                    fontSize="sm"
+                    color="var(--text-muted)"
+                    fontFamily="body"
+                    maxW="400px"
+                  >
                     このコンテンツにアクセスするには、ログインまたはアカウント作成が必要です
                   </Text>
                 </VStack>
@@ -145,7 +155,12 @@ export function PrivateRoute({
                     w="full"
                     maxW="400px"
                   >
-                    <Text color="semantic.error" fontSize="sm" fontFamily="body" textAlign="center">
+                    <Text
+                      color="semantic.error"
+                      fontSize="sm"
+                      fontFamily="body"
+                      textAlign="center"
+                    >
                       {error.message}
                     </Text>
                   </Box>
@@ -261,7 +276,12 @@ export function PrivateRoute({
                 >
                   アクセス権限がありません
                 </Text>
-                <Text fontSize="sm" color="var(--text-muted)" fontFamily="body" maxW="400px">
+                <Text
+                  fontSize="sm"
+                  color="var(--text-muted)"
+                  fontFamily="body"
+                  maxW="400px"
+                >
                   このコンテンツにアクセスするには「{requiredRole}
                   」権限が必要です
                 </Text>
@@ -327,7 +347,7 @@ export function PrivateRoute({
 // Higher-order component for wrapping pages
 export function withPrivateRoute<P extends object>(
   WrappedComponent: React.ComponentType<P>,
-  options?: Omit<PrivateRouteProps, "children">
+  options?: Omit<PrivateRouteProps, "children">,
 ) {
   return function PrivateRouteWrapper(props: P) {
     return (
@@ -342,7 +362,8 @@ export function withPrivateRoute<P extends object>(
 export function usePrivateRoute(requiredRole?: string) {
   const { user, isAuthenticated, isLoading } = useAuth();
 
-  const hasAccess = isAuthenticated && user && (!requiredRole || user.role === requiredRole);
+  const hasAccess =
+    isAuthenticated && user && (!requiredRole || user.role === requiredRole);
 
   return {
     hasAccess,

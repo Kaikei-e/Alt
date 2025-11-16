@@ -7,7 +7,7 @@ import type { StatsCardData } from "@/types/desktop";
  */
 export const transformFeedStats = (
   feedStats: FeedStatsSummary | null,
-  unreadCount: number
+  unreadCount: number,
 ): StatsCardData[] => {
   return [
     {

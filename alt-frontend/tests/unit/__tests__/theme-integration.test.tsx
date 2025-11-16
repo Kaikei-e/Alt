@@ -114,7 +114,7 @@ describe("Theme Integration", () => {
         <ThemeProvider>
           <ThemeToggle />
         </ThemeProvider>
-      </ChakraProvider>
+      </ChakraProvider>,
     );
 
     // Wait for component to mount and theme to be resolved
@@ -124,7 +124,7 @@ describe("Theme Integration", () => {
         expect(toggleButton).toBeInTheDocument();
         expect(toggleButton).toBeDefined();
       },
-      { timeout: 3000 }
+      { timeout: 3000 },
     );
 
     // Verify default theme is alt-paper

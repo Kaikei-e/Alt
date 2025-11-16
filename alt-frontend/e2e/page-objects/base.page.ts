@@ -118,7 +118,10 @@ export abstract class BasePage {
   /**
    * Wait for a specific URL pattern
    */
-  async waitForUrl(urlPattern: string | RegExp, timeout = 10000): Promise<void> {
+  async waitForUrl(
+    urlPattern: string | RegExp,
+    timeout = 10000,
+  ): Promise<void> {
     await this.page.waitForURL(urlPattern, { timeout });
   }
 
@@ -152,7 +155,9 @@ export abstract class BasePage {
    * Scroll to bottom of page
    */
   async scrollToBottom(): Promise<void> {
-    await this.page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await this.page.evaluate(() =>
+      window.scrollTo(0, document.body.scrollHeight),
+    );
   }
 
   /**

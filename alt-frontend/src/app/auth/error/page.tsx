@@ -1,6 +1,14 @@
 "use client";
 
-import { Box, Button, Container, Heading, Link, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Container,
+  Heading,
+  Link,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import NextLink from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
@@ -8,7 +16,9 @@ import { Suspense } from "react";
 function AuthErrorContent() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error") || "unknown";
-  const message = searchParams.get("message") || "ログインに失敗しました。もう一度お試しください。";
+  const message =
+    searchParams.get("message") ||
+    "ログインに失敗しました。もう一度お試しください。";
 
   const getErrorTitle = () => {
     switch (error) {

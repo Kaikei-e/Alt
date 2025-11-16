@@ -75,9 +75,14 @@ export default function SearchFeedsPage() {
             border="2px solid var(--surface-border)"
             boxShadow="var(--shadow-sm)"
           >
-            <Text color="var(--text-secondary)" fontSize="sm" textAlign="center" lineHeight="1.7">
-              💡 Try searching for topics like &quot;AI&quot;, &quot;technology&quot;, or
-              &quot;news&quot;
+            <Text
+              color="var(--text-secondary)"
+              fontSize="sm"
+              textAlign="center"
+              lineHeight="1.7"
+            >
+              💡 Try searching for topics like &quot;AI&quot;,
+              &quot;technology&quot;, or &quot;news&quot;
             </Text>
           </Box>
         )}

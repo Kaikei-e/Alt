@@ -23,7 +23,9 @@ export const StatsCard: React.FC<StatsCardProps> = ({
   color,
   isLoading = false,
 }) => {
-  const getColorVariable = (colorType: "primary" | "secondary" | "tertiary") => {
+  const getColorVariable = (
+    colorType: "primary" | "secondary" | "tertiary",
+  ) => {
     switch (colorType) {
       case "primary":
         return "var(--alt-primary)";

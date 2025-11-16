@@ -1,7 +1,10 @@
 // src/lib/server-fetch.ts
 import { headers } from "next/headers";
 
-export async function serverFetch<T>(endpoint: string, init: RequestInit = {}): Promise<T> {
+export async function serverFetch<T>(
+  endpoint: string,
+  init: RequestInit = {},
+): Promise<T> {
   const h = await headers();
   const cookie = h.get("cookie") ?? "";
   const url = `${process.env.API_URL}${endpoint}`; // e.g. http://alt-backend:9000

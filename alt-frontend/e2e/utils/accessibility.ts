@@ -51,7 +51,10 @@ export const COMMON_A11Y_RULES = {
 /**
  * Check accessibility of the current page
  */
-export async function checkPageA11y(page: Page, options: A11yCheckOptions = {}): Promise<void> {
+export async function checkPageA11y(
+  page: Page,
+  options: A11yCheckOptions = {},
+): Promise<void> {
   try {
     // Inject axe-core
     await injectAxe(page);
@@ -73,7 +76,10 @@ export async function checkPageA11y(page: Page, options: A11yCheckOptions = {}):
 /**
  * Get accessibility violations without throwing
  */
-export async function getA11yViolations(page: Page, options: A11yCheckOptions = {}) {
+export async function getA11yViolations(
+  page: Page,
+  options: A11yCheckOptions = {},
+) {
   await injectAxe(page);
   const axeConfig = buildAxeConfig(options);
   return await getViolations(page, undefined, axeConfig);
@@ -85,7 +91,7 @@ export async function getA11yViolations(page: Page, options: A11yCheckOptions = 
 export async function checkElementA11y(
   page: Page,
   selector: string,
-  options: A11yCheckOptions = {}
+  options: A11yCheckOptions = {},
 ): Promise<void> {
   await injectAxe(page);
   const axeConfig = buildAxeConfig(options);
@@ -155,13 +161,20 @@ export async function checkKeyboardNavigation(page: Page): Promise<void> {
 /**
  * Check focus indicators
  */
-export async function checkFocusIndicators(page: Page, selector: string): Promise<void> {
+export async function checkFocusIndicators(
+  page: Page,
+  selector: string,
+): Promise<void> {
   const element = page.locator(selector);
   await element.focus();
 
   const hasVisibleFocus = await element.evaluate((el) => {
     const styles = window.getComputedStyle(el);
-    return styles.outline !== "none" || styles.boxShadow !== "none" || styles.border !== "none";
+    return (
+      styles.outline !== "none" ||
+      styles.boxShadow !== "none" ||
+      styles.border !== "none"
+    );
   });
 
   expect(hasVisibleFocus).toBeTruthy();
@@ -195,7 +208,10 @@ export async function checkAriaAttributes(page: Page): Promise<void> {
  */
 export async function checkFormA11y(page: Page): Promise<void> {
   await checkPageA11y(page, {
-    includedRules: [COMMON_A11Y_RULES.formLabelAssociated, COMMON_A11Y_RULES.buttonName],
+    includedRules: [
+      COMMON_A11Y_RULES.formLabelAssociated,
+      COMMON_A11Y_RULES.buttonName,
+    ],
   });
 }
 
@@ -213,7 +229,9 @@ export async function checkImageA11y(page: Page): Promise<void> {
  */
 export async function checkHeadingStructure(page: Page): Promise<void> {
   const headings = await page.evaluate(() => {
-    const headingElements = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+    const headingElements = Array.from(
+      document.querySelectorAll("h1, h2, h3, h4, h5, h6"),
+    );
     return headingElements.map((h) => ({
       level: parseInt(h.tagName.substring(1), 10),
       text: h.textContent?.trim(),
@@ -246,7 +264,8 @@ export async function checkLandmarkRegions(page: Page): Promise<void> {
       hasMain: document.querySelector('main, [role="main"]') !== null,
       hasNav: document.querySelector('nav, [role="navigation"]') !== null,
       hasHeader: document.querySelector('header, [role="banner"]') !== null,
-      hasFooter: document.querySelector('footer, [role="contentinfo"]') !== null,
+      hasFooter:
+        document.querySelector('footer, [role="contentinfo"]') !== null,
     };
   });
 
@@ -270,7 +289,7 @@ export async function checkSkipLinks(page: Page): Promise<void> {
  */
 export async function generateA11yReport(
   page: Page,
-  options: A11yCheckOptions = {}
+  options: A11yCheckOptions = {},
 ): Promise<string> {
   const violations = await getA11yViolations(page, options);
 

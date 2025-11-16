@@ -74,7 +74,9 @@ describe("useRecentActivity", () => {
   });
 
   it("should handle API error gracefully", async () => {
-    vi.mocked(desktopApi.getRecentActivity).mockRejectedValue(new Error("API Error"));
+    vi.mocked(desktopApi.getRecentActivity).mockRejectedValue(
+      new Error("API Error"),
+    );
 
     const { result } = renderHook(() => useRecentActivity());
 

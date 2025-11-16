@@ -30,7 +30,12 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
   sidebarProps,
 }) => {
   return (
-    <Box minH="100vh" bg="var(--app-bg)" position="relative" data-testid="desktop-shell">
+    <Box
+      minH="100vh"
+      bg="var(--app-bg)"
+      position="relative"
+      data-testid="desktop-shell"
+    >
       {/* Theme Toggle - only show when no right panel */}
       {!showRightPanel && (
         <Box position="fixed" top={4} right={4} zIndex={1000}>

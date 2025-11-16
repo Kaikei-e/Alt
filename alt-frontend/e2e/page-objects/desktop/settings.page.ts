@@ -231,7 +231,7 @@ export class DesktopSettingsPage extends BasePage {
    * Navigate to section
    */
   async goToSection(
-    section: "profile" | "appearance" | "notifications" | "privacy"
+    section: "profile" | "appearance" | "notifications" | "privacy",
   ): Promise<void> {
     const sectionLink = this.page.getByRole("link", {
       name: new RegExp(section, "i"),
@@ -246,7 +246,7 @@ export class DesktopSettingsPage extends BasePage {
    * Check if section is visible
    */
   async isSectionVisible(
-    section: "profile" | "appearance" | "notifications" | "privacy"
+    section: "profile" | "appearance" | "notifications" | "privacy",
   ): Promise<boolean> {
     const sectionLocator = {
       profile: this.profileSection,

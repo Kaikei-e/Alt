@@ -11,7 +11,9 @@ const renderWithChakra = (ui: React.ReactElement) => {
 
 describe("TrendingTopics", () => {
   it("should display trending topics correctly", async () => {
-    renderWithChakra(<TrendingTopics topics={mockTrendingTopics} isLoading={false} />);
+    renderWithChakra(
+      <TrendingTopics topics={mockTrendingTopics} isLoading={false} />,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("#AI")).toBeInTheDocument();
@@ -21,7 +23,9 @@ describe("TrendingTopics", () => {
   });
 
   it("should show glass effect styling", () => {
-    renderWithChakra(<TrendingTopics topics={mockTrendingTopics} isLoading={false} />);
+    renderWithChakra(
+      <TrendingTopics topics={mockTrendingTopics} isLoading={false} />,
+    );
 
     const glassElements = document.querySelectorAll(".glass");
     expect(glassElements.length).toBeGreaterThan(0);
@@ -29,7 +33,7 @@ describe("TrendingTopics", () => {
 
   it("should display trend indicators correctly", async () => {
     const { container } = renderWithChakra(
-      <TrendingTopics topics={mockTrendingTopics} isLoading={false} />
+      <TrendingTopics topics={mockTrendingTopics} isLoading={false} />,
     );
 
     // テキストが複数の要素に分割されている可能性があるため、container全体のテキストを確認
@@ -40,7 +44,7 @@ describe("TrendingTopics", () => {
         expect(container.textContent).toContain("+23%");
         expect(container.textContent).toContain("+12%");
       },
-      { timeout: 3000 }
+      { timeout: 3000 },
     );
   });
 
@@ -65,7 +69,7 @@ describe("TrendingTopics", () => {
       () => {
         expect(screen.getByText("#Topic0")).toBeInTheDocument();
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
 
     // Verify first 6 topics are displayed

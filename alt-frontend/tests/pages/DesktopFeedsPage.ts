@@ -46,7 +46,9 @@ export class DesktopFeedsPage extends BasePage {
     this.errorMessage = page.locator('[data-testid="error-message"]');
 
     // Line 805: skeleton shown during isInitialLoading
-    this.loadingIndicator = page.locator('[data-testid="desktop-timeline-skeleton"]');
+    this.loadingIndicator = page.locator(
+      '[data-testid="desktop-timeline-skeleton"]',
+    );
   }
 
   /**
@@ -62,7 +64,9 @@ export class DesktopFeedsPage extends BasePage {
    * Uses Playwright auto-wait best practices - waits for specific elements
    */
   async waitForLoad() {
-    await this.page.waitForURL(/\/desktop\/feeds/, { timeout: 30000 }).catch(() => {});
+    await this.page
+      .waitForURL(/\/desktop\/feeds/, { timeout: 30000 })
+      .catch(() => {});
 
     const candidateLocators = [
       this.loadingIndicator,
@@ -88,7 +92,9 @@ export class DesktopFeedsPage extends BasePage {
   async getFeedCount(): Promise<number> {
     try {
       // Feed cards have data-testid="desktop-feed-card-{id}"
-      const feedLocator = this.page.locator('[data-testid^="desktop-feed-card-"]');
+      const feedLocator = this.page.locator(
+        '[data-testid^="desktop-feed-card-"]',
+      );
 
       const candidates = [
         feedLocator.first(),

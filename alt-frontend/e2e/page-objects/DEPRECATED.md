@@ -18,20 +18,22 @@ All new E2E tests should use the Page Object Models from `/tests/pages/` instead
 ### Migration Guide
 
 **Before** (using `/e2e/page-objects/`):
+
 ```typescript
-import { LoginPage } from '../../page-objects/auth/login.page';
-import { DesktopFeedsPage } from '../../page-objects/desktop/feeds.page';
+import { LoginPage } from "../../page-objects/auth/login.page";
+import { DesktopFeedsPage } from "../../page-objects/desktop/feeds.page";
 
 const loginPage = new LoginPage(page);
 await loginPage.goto();
 ```
 
 **After** (using `/tests/pages/`):
+
 ```typescript
-import { LoginPage, DesktopFeedsPage } from '../../../tests/pages';
+import { LoginPage, DesktopFeedsPage } from "../../../tests/pages";
 
 const loginPage = new LoginPage(page);
-await loginPage.goto('/auth/login');
+await loginPage.goto("/auth/login");
 ```
 
 ### Available Page Objects in `/tests/pages/`

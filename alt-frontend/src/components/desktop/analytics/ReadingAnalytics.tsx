@@ -1,7 +1,15 @@
 "use client";
 
 import { Progress } from "@chakra-ui/progress";
-import { Box, Flex, HStack, SimpleGrid, Spinner, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Flex,
+  HStack,
+  SimpleGrid,
+  Spinner,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import type React from "react";
 import type { ReadingAnalytics as IReadingAnalytics } from "@/types/analytics";
 
@@ -10,7 +18,10 @@ interface ReadingAnalyticsProps {
   isLoading: boolean;
 }
 
-export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({ analytics, isLoading }) => {
+export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
+  analytics,
+  isLoading,
+}) => {
   if (isLoading) {
     return (
       <Box className="glass" p={4} borderRadius="var(--radius-lg)">
@@ -37,7 +48,12 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({ analytics, i
     <VStack gap={4} align="stretch">
       {/* 今日の統計 */}
       <Box className="glass" p={4} borderRadius="var(--radius-lg)">
-        <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)" mb={3}>
+        <Text
+          fontSize="sm"
+          fontWeight="bold"
+          color="var(--text-primary)"
+          mb={3}
+        >
           📈 Today&apos;s Reading
         </Text>
 
@@ -149,7 +165,9 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({ analytics, i
                 bg="var(--accent-primary)"
                 opacity={
                   0.3 +
-                  (day.articles / Math.max(...week.dailyBreakdown.map((d) => d.articles))) * 0.7
+                  (day.articles /
+                    Math.max(...week.dailyBreakdown.map((d) => d.articles))) *
+                    0.7
                 }
                 borderRadius="var(--radius-xs)"
                 h={`${(day.articles / Math.max(...week.dailyBreakdown.map((d) => d.articles))) * 100}%`}
@@ -162,7 +180,12 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({ analytics, i
 
       {/* カテゴリ分布 */}
       <Box className="glass" p={4} borderRadius="var(--radius-lg)">
-        <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)" mb={3}>
+        <Text
+          fontSize="sm"
+          fontWeight="bold"
+          color="var(--text-primary)"
+          mb={3}
+        >
           🎯 Categories
         </Text>
 
@@ -170,13 +193,22 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({ analytics, i
           {today.topCategories.slice(0, 4).map((category) => (
             <HStack key={category.category} justify="space-between" w="full">
               <HStack gap={2}>
-                <Box w="8px" h="8px" bg={category.color} borderRadius="var(--radius-full)" />
+                <Box
+                  w="8px"
+                  h="8px"
+                  bg={category.color}
+                  borderRadius="var(--radius-full)"
+                />
                 <Text fontSize="xs" color="var(--text-secondary)">
                   {category.category}
                 </Text>
               </HStack>
               <HStack gap={2}>
-                <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+                <Text
+                  fontSize="xs"
+                  color="var(--text-primary)"
+                  fontWeight="medium"
+                >
                   {category.count}
                 </Text>
                 <Text fontSize="xs" color="var(--text-muted)">

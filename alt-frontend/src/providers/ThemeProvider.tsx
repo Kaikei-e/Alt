@@ -17,7 +17,8 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   const contextValue = {
     currentTheme,
     toggleTheme: () => {
-      const nextTheme = currentTheme === "alt-paper" ? "vaporwave" : "alt-paper";
+      const nextTheme =
+        currentTheme === "alt-paper" ? "vaporwave" : "alt-paper";
       setTheme(nextTheme);
     },
     setTheme,
@@ -25,8 +26,13 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
-    if (typeof document !== "undefined") document.body.setAttribute("data-style", currentTheme);
+    if (typeof document !== "undefined")
+      document.body.setAttribute("data-style", currentTheme);
   }, [currentTheme]);
 
-  return <ThemeContext.Provider value={contextValue}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={contextValue}>
+      {children}
+    </ThemeContext.Provider>
+  );
 };

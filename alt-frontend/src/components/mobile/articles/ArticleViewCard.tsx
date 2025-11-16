@@ -30,7 +30,9 @@ export const ArticleViewCard = memo(function ArticleViewCard({
     if (!article.content) return "";
     // Use sanitizeContent to safely remove all HTML tags
     const plainText = sanitizeContent(article.content, { allowedTags: [] });
-    return plainText.length > 150 ? plainText.substring(0, 150) + "..." : plainText;
+    return plainText.length > 150
+      ? plainText.substring(0, 150) + "..."
+      : plainText;
   }, [article.content]);
 
   return (
@@ -45,7 +47,8 @@ export const ArticleViewCard = memo(function ArticleViewCard({
       transition="all 0.2s ease"
       _hover={{
         transform: "translateY(-2px)",
-        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1) inset",
+        boxShadow:
+          "0 8px 24px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1) inset",
         borderColor: "var(--alt-primary)",
       }}
       data-testid={`article-card-${article.id}`}
@@ -76,7 +79,13 @@ export const ArticleViewCard = memo(function ArticleViewCard({
 
       {/* Content Preview */}
       {contentPreview && (
-        <Text fontSize="sm" color="var(--alt-text-primary)" lineHeight="1.6" mb={4} opacity={0.9}>
+        <Text
+          fontSize="sm"
+          color="var(--alt-text-primary)"
+          lineHeight="1.6"
+          mb={4}
+          opacity={0.9}
+        >
           {contentPreview}
         </Text>
       )}

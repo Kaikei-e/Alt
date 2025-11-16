@@ -4,7 +4,10 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import type { Feed } from "@/schema/feed";
-import { FeatureFlagManager, shouldUseVirtualization } from "@/utils/featureFlags";
+import {
+  FeatureFlagManager,
+  shouldUseVirtualization,
+} from "@/utils/featureFlags";
 import DesktopTimeline from "./DesktopTimeline";
 import { VirtualDesktopTimeline } from "./VirtualDesktopTimeline";
 
@@ -18,11 +21,15 @@ interface VirtualDesktopTimelineImplProps {
   onViewArticle: (feedId: string) => void;
 }
 
-const DesktopTimelineFallback: React.FC<VirtualDesktopTimelineImplProps> = () => {
+const DesktopTimelineFallback: React.FC<
+  VirtualDesktopTimelineImplProps
+> = () => {
   return <DesktopTimeline />;
 };
 
-export const VirtualDesktopTimelineImpl: React.FC<VirtualDesktopTimelineImplProps> = (props) => {
+export const VirtualDesktopTimelineImpl: React.FC<
+  VirtualDesktopTimelineImplProps
+> = (props) => {
   const [useVirtualization, setUseVirtualization] = useState(false);
   const [containerHeight, setContainerHeight] = useState(800);
   const [virtualizationError, setVirtualizationError] = useState(false);
@@ -36,7 +43,7 @@ export const VirtualDesktopTimelineImpl: React.FC<VirtualDesktopTimelineImplProp
       const padding = 40;
       const calculatedHeight = Math.max(
         600,
-        window.innerHeight - headerHeight - footerHeight - padding
+        window.innerHeight - headerHeight - footerHeight - padding,
       );
       setContainerHeight(calculatedHeight);
     };
@@ -49,7 +56,8 @@ export const VirtualDesktopTimelineImpl: React.FC<VirtualDesktopTimelineImplProp
   // Virtualization enable/disable logic
   useEffect(() => {
     const flags = FeatureFlagManager.getInstance().getFlags();
-    const desktopVirtualizationEnabled = flags.enableDesktopVirtualization !== false;
+    const desktopVirtualizationEnabled =
+      flags.enableDesktopVirtualization !== false;
     const shouldVirtualize =
       shouldUseVirtualization(feeds.length, flags) &&
       desktopVirtualizationEnabled &&

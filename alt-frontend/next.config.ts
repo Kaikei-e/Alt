@@ -5,7 +5,9 @@ import { createRequire } from "module";
 // require below still works when the file is treated as an ES module.
 const require = createRequire(import.meta.url);
 
-let withBundleAnalyzer: (config: Record<string, unknown>) => Record<string, unknown> = (c) => c;
+let withBundleAnalyzer: (
+  config: Record<string, unknown>,
+) => Record<string, unknown> = (c) => c;
 
 // Build-time env validation (fail fast if missing/malformed)
 const mustPublicOrigin = (k: string) => {
@@ -19,22 +21,34 @@ const mustPublicOrigin = (k: string) => {
   }
 
   // Allow HTTP in test/development environments
-  const isTestOrDev = process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development";
-  const isLocalhost = origin.includes("localhost") || origin.includes("127.0.0.1");
+  const isTestOrDev =
+    process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development";
+  const isLocalhost =
+    origin.includes("localhost") || origin.includes("127.0.0.1");
 
   const url = new URL(v);
   const hostIsLocal =
-    url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "0.0.0.0";
+    url.hostname === "localhost" ||
+    url.hostname === "127.0.0.1" ||
+    url.hostname === "0.0.0.0";
 
   if (!isTestOrDev && !origin.startsWith("https://") && !hostIsLocal) {
-    throw new Error(`[ENV] ${k} must be HTTPS origin in production (got: ${origin})`);
+    throw new Error(
+      `[ENV] ${k} must be HTTPS origin in production (got: ${origin})`,
+    );
   }
 
   // In test/dev, allow localhost HTTP origins
-  if ((isTestOrDev && isLocalhost) || origin.startsWith("https://") || hostIsLocal) {
+  if (
+    (isTestOrDev && isLocalhost) ||
+    origin.startsWith("https://") ||
+    hostIsLocal
+  ) {
     // Valid
   } else if (!origin.startsWith("https://") && !origin.startsWith("http://")) {
-    throw new Error(`[ENV] ${k} must be a valid HTTP/HTTPS origin (got: ${origin})`);
+    throw new Error(
+      `[ENV] ${k} must be a valid HTTP/HTTPS origin (got: ${origin})`,
+    );
   }
 
   if (/\.cluster\.local(\b|:|\/)/i.test(origin)) {
@@ -56,7 +70,7 @@ const resolveKratosProxyDestination = () => {
     return `${url.origin}${base}/:path*`;
   } catch {
     console.warn(
-      "[next.config] Falling back to default Kratos proxy destination due to invalid URL"
+      "[next.config] Falling back to default Kratos proxy destination due to invalid URL",
     );
     return fallback;
   }
@@ -74,7 +88,9 @@ if (process.env.ANALYZE === "true") {
     withBundleAnalyzer = nextBundleAnalyzer({ enabled: true });
   } catch {
     // Module might not be installed in production; log once and continue.
-    console.warn("[@next/bundle-analyzer] not installed; skipping bundle analysis.");
+    console.warn(
+      "[@next/bundle-analyzer] not installed; skipping bundle analysis.",
+    );
   }
 }
 
@@ -99,7 +115,8 @@ const nextConfig = {
   // 環境変数の明示的な設定（ミドルウェアで確実にアクセスできるよう保証）
   env: {
     KRATOS_INTERNAL_URL:
-      process.env.KRATOS_INTERNAL_URL || "http://kratos-public.alt-auth.svc.cluster.local:4433",
+      process.env.KRATOS_INTERNAL_URL ||
+      "http://kratos-public.alt-auth.svc.cluster.local:4433",
     KRATOS_PUBLIC_URL: process.env.KRATOS_PUBLIC_URL || "https://curionoah.com",
   },
 
@@ -175,7 +192,10 @@ const nextConfig = {
   },
 
   // Enhanced webpack optimization for performance
-  webpack: (config: any, { isServer, dev }: { isServer: boolean; dev: boolean }) => {
+  webpack: (
+    config: any,
+    { isServer, dev }: { isServer: boolean; dev: boolean },
+  ) => {
     // Production optimizations only
     if (!isServer && !dev) {
       // Enhanced tree shaking

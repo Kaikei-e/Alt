@@ -20,7 +20,11 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
     >
       {/* 左側：ロゴと統計 */}
       <Flex align="center" gap={6}>
-        <Heading size="lg" color="var(--text-primary)" fontFamily="var(--font-display)">
+        <Heading
+          size="lg"
+          color="var(--text-primary)"
+          fontFamily="var(--font-display)"
+        >
           Alt / Feeds
         </Heading>
       </Flex>

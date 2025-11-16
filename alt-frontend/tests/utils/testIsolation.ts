@@ -86,7 +86,7 @@ export async function withRetry<T>(
     backoffFactor?: number;
     maxDelay?: number;
     shouldRetry?: (error: Error) => boolean;
-  } = {}
+  } = {},
 ): Promise<T> {
   const {
     maxAttempts = 3,
@@ -111,7 +111,7 @@ export async function withRetry<T>(
 
       console.log(
         `[RETRY] Attempt ${attempt} failed, retrying in ${delay}ms:`,
-        error instanceof Error ? error.message : String(error)
+        error instanceof Error ? error.message : String(error),
       );
       await new Promise((resolve) => setTimeout(resolve, delay));
       delay = Math.min(delay * backoffFactor, maxDelay);
@@ -130,7 +130,9 @@ export class TestConditionVerifier {
   /**
    * Verify auth flow state with detailed debugging
    */
-  async verifyAuthFlowState(expectedState: "login" | "authenticated" | "expired"): Promise<void> {
+  async verifyAuthFlowState(
+    expectedState: "login" | "authenticated" | "expired",
+  ): Promise<void> {
     const url = this.page.url();
     const cookies = await this.page.context().cookies();
 
@@ -150,10 +152,14 @@ export class TestConditionVerifier {
         break;
       case "authenticated":
         if (!/\/desktop/.test(url)) {
-          throw new Error(`Expected to be authenticated (on desktop), but URL is: ${url}`);
+          throw new Error(
+            `Expected to be authenticated (on desktop), but URL is: ${url}`,
+          );
         }
         if (!sessionCookie) {
-          throw new Error(`Expected session cookie but none found. URL: ${url}`);
+          throw new Error(
+            `Expected session cookie but none found. URL: ${url}`,
+          );
         }
         break;
       case "expired":

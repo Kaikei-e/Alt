@@ -5,7 +5,8 @@ test.describe("Authenticated Desktop Navigation", () => {
   let desktopPage: DesktopPage;
 
   const baseURL =
-    process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${process.env.PW_APP_PORT || "3010"}`;
+    process.env.PLAYWRIGHT_BASE_URL ??
+    `http://localhost:${process.env.PW_APP_PORT || "3010"}`;
 
   test.beforeEach(async ({ page }) => {
     desktopPage = new DesktopPage(page);
@@ -85,9 +86,13 @@ test.describe("Authenticated Desktop Navigation", () => {
     await expect(page).not.toHaveURL(/\/auth\/login/, { timeout: 5000 });
   });
 
-  test("should handle direct navigation to protected routes", async ({ page }) => {
+  test("should handle direct navigation to protected routes", async ({
+    page,
+  }) => {
     // Test direct navigation - simplified URL check only
-    await page.goto("/desktop/feeds/register", { waitUntil: "domcontentloaded" });
+    await page.goto("/desktop/feeds/register", {
+      waitUntil: "domcontentloaded",
+    });
     await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
     await expect(page).toHaveURL("/desktop/feeds/register", { timeout: 10000 });
   });

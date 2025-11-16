@@ -60,8 +60,8 @@ const SwipeSkeletonCard = ({ reduceMotion }: { reduceMotion: boolean }) => (
         reduceMotion
           ? { opacity: 0.4 }
           : {
-            animation: `${peekFloat} 3.2s ease-in-out infinite`,
-          }
+              animation: `${peekFloat} 3.2s ease-in-out infinite`,
+            }
       }
     />
     <Box

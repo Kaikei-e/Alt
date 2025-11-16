@@ -42,7 +42,10 @@ describe("useWindowSize", () => {
   it("should register resize event listener", () => {
     renderHook(() => useWindowSize());
 
-    expect(window.addEventListener).toHaveBeenCalledWith("resize", expect.any(Function));
+    expect(window.addEventListener).toHaveBeenCalledWith(
+      "resize",
+      expect.any(Function),
+    );
   });
 
   it("should update window size on resize", () => {
@@ -78,7 +81,10 @@ describe("useWindowSize", () => {
 
     unmount();
 
-    expect(window.removeEventListener).toHaveBeenCalledWith("resize", expect.any(Function));
+    expect(window.removeEventListener).toHaveBeenCalledWith(
+      "resize",
+      expect.any(Function),
+    );
   });
 
   it("should handle multiple resize events", () => {

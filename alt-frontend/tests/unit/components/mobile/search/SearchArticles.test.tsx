@@ -1,5 +1,11 @@
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SearchArticles } from "@/components/mobile/search/SearchArticles";
@@ -29,7 +35,10 @@ vi.mock("next/navigation", () => ({
   })),
 }));
 
-const createMockArticle = (id: string, overrides: Partial<Article> = {}): Article => ({
+const createMockArticle = (
+  id: string,
+  overrides: Partial<Article> = {},
+): Article => ({
   id,
   title: `Test Article ${id}`,
   content: `Content ${id}`,
@@ -39,7 +48,10 @@ const createMockArticle = (id: string, overrides: Partial<Article> = {}): Articl
 });
 
 describe("SearchArticles", () => {
-  const mockArticles: Article[] = [createMockArticle("1"), createMockArticle("2")];
+  const mockArticles: Article[] = [
+    createMockArticle("1"),
+    createMockArticle("2"),
+  ];
 
   const defaultProps = {
     articles: [],
@@ -69,21 +81,27 @@ describe("SearchArticles", () => {
     it("should render search input and button", () => {
       renderWithChakra(<SearchArticles {...defaultProps} />);
 
-      expect(screen.getByPlaceholderText("Search for articles...")).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText("Search for articles..."),
+      ).toBeInTheDocument();
       expect(screen.getByRole("button")).toBeInTheDocument();
     });
 
     it("should render with placeholder text", () => {
       renderWithChakra(<SearchArticles {...defaultProps} />);
 
-      const input = screen.getByPlaceholderText("Search for articles...") as HTMLInputElement;
+      const input = screen.getByPlaceholderText(
+        "Search for articles...",
+      ) as HTMLInputElement;
       expect(input).toHaveAttribute("placeholder", "Search for articles...");
     });
 
     it("should display current query value", () => {
       renderWithChakra(<SearchArticles {...defaultProps} query="test query" />);
 
-      const input = screen.getByPlaceholderText("Search for articles...") as HTMLInputElement;
+      const input = screen.getByPlaceholderText(
+        "Search for articles...",
+      ) as HTMLInputElement;
       expect(input).toHaveValue("test query");
     });
   });
@@ -117,7 +135,9 @@ describe("SearchArticles", () => {
   describe("User Interaction", () => {
     it("should call setQuery when input changes", () => {
       const setQuery = vi.fn();
-      renderWithChakra(<SearchArticles {...defaultProps} setQuery={setQuery} />);
+      renderWithChakra(
+        <SearchArticles {...defaultProps} setQuery={setQuery} />,
+      );
 
       const input = screen.getByPlaceholderText("Search for articles...");
       fireEvent.change(input, { target: { value: "new query" } });
@@ -128,7 +148,11 @@ describe("SearchArticles", () => {
     it("should clear error when user starts typing", () => {
       const setError = vi.fn();
       renderWithChakra(
-        <SearchArticles {...defaultProps} error="Previous error" setError={setError} />
+        <SearchArticles
+          {...defaultProps}
+          error="Previous error"
+          setError={setError}
+        />,
       );
 
       const input = screen.getByPlaceholderText("Search for articles...");
@@ -143,7 +167,11 @@ describe("SearchArticles", () => {
 
       const setArticles = vi.fn();
       renderWithChakra(
-        <SearchArticles {...defaultProps} query="valid query" setArticles={setArticles} />
+        <SearchArticles
+          {...defaultProps}
+          query="valid query"
+          setArticles={setArticles}
+        />,
       );
 
       const input = screen.getByPlaceholderText("Search for articles...");
@@ -179,7 +207,11 @@ describe("SearchArticles", () => {
 
       const setArticles = vi.fn();
       renderWithChakra(
-        <SearchArticles {...defaultProps} query="test query" setArticles={setArticles} />
+        <SearchArticles
+          {...defaultProps}
+          query="test query"
+          setArticles={setArticles}
+        />,
       );
 
       const button = screen.getByRole("button");
@@ -195,7 +227,9 @@ describe("SearchArticles", () => {
       const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
       mockedSearchArticles.mockResolvedValueOnce(mockArticles);
 
-      renderWithChakra(<SearchArticles {...defaultProps} query="  test query  " />);
+      renderWithChakra(
+        <SearchArticles {...defaultProps} query="  test query  " />,
+      );
 
       const button = screen.getByRole("button");
       fireEvent.click(button);
@@ -210,7 +244,13 @@ describe("SearchArticles", () => {
       mockedSearchArticles.mockResolvedValueOnce(mockArticles);
 
       const setArticles = vi.fn();
-      renderWithChakra(<SearchArticles {...defaultProps} query="test" setArticles={setArticles} />);
+      renderWithChakra(
+        <SearchArticles
+          {...defaultProps}
+          query="test"
+          setArticles={setArticles}
+        />,
+      );
 
       const button = screen.getByRole("button");
       fireEvent.click(button);
@@ -226,11 +266,18 @@ describe("SearchArticles", () => {
 
       const setError = vi.fn();
       renderWithChakra(
-        <SearchArticles {...defaultProps} query="test" error="Previous error" setError={setError} />
+        <SearchArticles
+          {...defaultProps}
+          query="test"
+          error="Previous error"
+          setError={setError}
+        />,
       );
 
       // Wait for button to be available
-      const button = await waitFor(() => screen.getByRole("button"), { timeout: 3000 });
+      const button = await waitFor(() => screen.getByRole("button"), {
+        timeout: 3000,
+      });
       fireEvent.click(button);
 
       await waitFor(() => {
@@ -242,13 +289,19 @@ describe("SearchArticles", () => {
   describe("Error Handling", () => {
     it("should display API error when search fails", async () => {
       const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
-      mockedSearchArticles.mockRejectedValueOnce(new Error("Network error occurred"));
+      mockedSearchArticles.mockRejectedValueOnce(
+        new Error("Network error occurred"),
+      );
 
       const setError = vi.fn();
-      renderWithChakra(<SearchArticles {...defaultProps} query="test" setError={setError} />);
+      renderWithChakra(
+        <SearchArticles {...defaultProps} query="test" setError={setError} />,
+      );
 
       // Wait for button to be available
-      const button = await waitFor(() => screen.getByRole("button"), { timeout: 3000 });
+      const button = await waitFor(() => screen.getByRole("button"), {
+        timeout: 3000,
+      });
       fireEvent.click(button);
 
       await waitFor(() => {
@@ -261,19 +314,27 @@ describe("SearchArticles", () => {
       mockedSearchArticles.mockRejectedValueOnce("Unknown error");
 
       const setError = vi.fn();
-      renderWithChakra(<SearchArticles {...defaultProps} query="test" setError={setError} />);
+      renderWithChakra(
+        <SearchArticles {...defaultProps} query="test" setError={setError} />,
+      );
 
       // Wait for button to be available
-      const button = await waitFor(() => screen.getByRole("button"), { timeout: 3000 });
+      const button = await waitFor(() => screen.getByRole("button"), {
+        timeout: 3000,
+      });
       fireEvent.click(button);
 
       await waitFor(() => {
-        expect(setError).toHaveBeenCalledWith("Search failed. Please try again.");
+        expect(setError).toHaveBeenCalledWith(
+          "Search failed. Please try again.",
+        );
       });
     });
 
     it("should render API error message when provided", async () => {
-      renderWithChakra(<SearchArticles {...defaultProps} error="API error occurred" />);
+      renderWithChakra(
+        <SearchArticles {...defaultProps} error="API error occurred" />,
+      );
 
       // Wait for error message to render (error && !validationError condition)
       await waitFor(() => {
@@ -289,7 +350,9 @@ describe("SearchArticles", () => {
 
       // Simulate loading by checking button text during loading
       // Note: We can't directly set isLoading prop since it's internal state
-      const button = await waitFor(() => screen.getByRole("button"), { timeout: 3000 });
+      const button = await waitFor(() => screen.getByRole("button"), {
+        timeout: 3000,
+      });
       expect(button.textContent).toBe("Search");
     });
 
@@ -303,11 +366,17 @@ describe("SearchArticles", () => {
 
       const setIsLoading = vi.fn();
       renderWithChakra(
-        <SearchArticles {...defaultProps} query="test" setIsLoading={setIsLoading} />
+        <SearchArticles
+          {...defaultProps}
+          query="test"
+          setIsLoading={setIsLoading}
+        />,
       );
 
       // Wait for button to be available
-      const button = await waitFor(() => screen.getByRole("button"), { timeout: 3000 });
+      const button = await waitFor(() => screen.getByRole("button"), {
+        timeout: 3000,
+      });
 
       // First click starts loading
       fireEvent.click(button);
@@ -332,7 +401,9 @@ describe("SearchArticles", () => {
 
       renderWithChakra(<SearchArticles {...defaultProps} query="test" />);
 
-      const button = await waitFor(() => screen.getByRole("button"), { timeout: 3000 });
+      const button = await waitFor(() => screen.getByRole("button"), {
+        timeout: 3000,
+      });
       const form = button.closest("form");
       expect(form).toBeInTheDocument();
 
@@ -350,7 +421,9 @@ describe("SearchArticles", () => {
     it("should validate query on form submission", async () => {
       renderWithChakra(<SearchArticles {...defaultProps} query="" />);
 
-      const button = await waitFor(() => screen.getByRole("button"), { timeout: 3000 });
+      const button = await waitFor(() => screen.getByRole("button"), {
+        timeout: 3000,
+      });
       const form = button.closest("form");
       fireEvent.submit(form!);
 
@@ -362,14 +435,16 @@ describe("SearchArticles", () => {
 
   describe("URL Query Parameters", () => {
     it("should load query from URL parameters on mount", async () => {
-      const mockGet = vi.fn((param: string) => (param === "q" ? "url query" : null));
+      const mockGet = vi.fn((param: string) =>
+        param === "q" ? "url query" : null,
+      );
       // Re-import and mock useSearchParams before rendering
       const { useSearchParams } = await import("next/navigation");
       vi.mocked(useSearchParams).mockImplementation(
         () =>
           ({
             get: mockGet,
-          }) as any
+          }) as any,
       );
 
       const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
@@ -379,7 +454,11 @@ describe("SearchArticles", () => {
       const setArticles = vi.fn();
 
       renderWithChakra(
-        <SearchArticles {...defaultProps} setQuery={setQuery} setArticles={setArticles} />
+        <SearchArticles
+          {...defaultProps}
+          setQuery={setQuery}
+          setArticles={setArticles}
+        />,
       );
 
       await waitFor(() => {
@@ -396,7 +475,7 @@ describe("SearchArticles", () => {
         () =>
           ({
             get: mockGet,
-          }) as any
+          }) as any,
       );
 
       const mockedSearchArticles = vi.mocked(articleApi.searchArticles);
@@ -414,10 +493,15 @@ describe("SearchArticles", () => {
     it("should have accessible form elements", async () => {
       renderWithChakra(<SearchArticles {...defaultProps} />);
 
-      const input = await waitFor(() => screen.getByPlaceholderText("Search for articles..."), {
+      const input = await waitFor(
+        () => screen.getByPlaceholderText("Search for articles..."),
+        {
+          timeout: 3000,
+        },
+      );
+      const button = await waitFor(() => screen.getByRole("button"), {
         timeout: 3000,
       });
-      const button = await waitFor(() => screen.getByRole("button"), { timeout: 3000 });
 
       expect(input).toHaveAttribute("type", "text");
       expect(button).toHaveAttribute("type", "submit");
@@ -426,9 +510,12 @@ describe("SearchArticles", () => {
     it("should have proper placeholder text", async () => {
       renderWithChakra(<SearchArticles {...defaultProps} />);
 
-      const input = (await waitFor(() => screen.getByPlaceholderText("Search for articles..."), {
-        timeout: 3000,
-      })) as HTMLInputElement;
+      const input = (await waitFor(
+        () => screen.getByPlaceholderText("Search for articles..."),
+        {
+          timeout: 3000,
+        },
+      )) as HTMLInputElement;
       expect(input).toHaveAttribute("placeholder", "Search for articles...");
     });
 
@@ -436,9 +523,12 @@ describe("SearchArticles", () => {
       renderWithChakra(<SearchArticles {...defaultProps} />);
 
       expect(screen.getByTestId("search-window")).toBeInTheDocument();
-      const input = await waitFor(() => screen.getByPlaceholderText("Search for articles..."), {
-        timeout: 3000,
-      });
+      const input = await waitFor(
+        () => screen.getByPlaceholderText("Search for articles..."),
+        {
+          timeout: 3000,
+        },
+      );
       expect(input).toBeInTheDocument();
     });
   });

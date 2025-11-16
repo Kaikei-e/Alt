@@ -19,4 +19,3 @@ const RecapTimeline = ({ genres }: RecapTimelineProps) => {
 };
 
 export default RecapTimeline;
-

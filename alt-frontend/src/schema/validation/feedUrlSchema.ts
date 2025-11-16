@@ -13,7 +13,7 @@ export const feedUrlSchema = v.object({
     v.check((url) => {
       // Additional validation for RSS/Atom feeds
       return isLikelyRssFeed(url);
-    }, "URL does not appear to be a valid RSS or Atom feed")
+    }, "URL does not appear to be a valid RSS or Atom feed"),
   ),
 });
 

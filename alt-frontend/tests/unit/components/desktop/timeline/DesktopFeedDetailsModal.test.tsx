@@ -35,7 +35,9 @@ const renderWithChakra = (ui: React.ReactElement) =>
   render(<ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>);
 
 const findActiveModal = async (): Promise<HTMLElement> => {
-  const modals = await screen.findAllByTestId("desktop-feed-details-modal-feed-1");
+  const modals = await screen.findAllByTestId(
+    "desktop-feed-details-modal-feed-1",
+  );
 
   const activeModal =
     modals.find((modal) => modal.getAttribute("data-state") === "open") ??
@@ -73,17 +75,17 @@ describe("DesktopFeedDetailsModal", () => {
     renderWithChakra(
       <DesktopFeedDetailsModal
         isOpen
-        onClose={() => { }}
+        onClose={() => {}}
         feedLink={feedLink}
         feedTitle={feedTitle}
         feedId="feed-1"
-      />
+      />,
     );
 
     await waitFor(() =>
       expect(mockArticleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
         feed_url: feedLink,
-      })
+      }),
     );
 
     const headerLink = await screen.findByRole("link", {
@@ -91,14 +93,18 @@ describe("DesktopFeedDetailsModal", () => {
     });
     expect(headerLink).toHaveAttribute("href", feedLink);
 
-    await waitFor(() => expect(screen.getByText("Full article content")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Full article content")).toBeInTheDocument(),
+    );
 
     const modal = await findActiveModal();
 
     expect(
-      await within(modal).findByTestId("desktop-feed-details-archive-feed-1")
+      await within(modal).findByTestId("desktop-feed-details-archive-feed-1"),
     ).toBeInTheDocument();
-    expect(await within(modal).findByTestId("desktop-feed-details-ai-feed-1")).toBeInTheDocument();
+    expect(
+      await within(modal).findByTestId("desktop-feed-details-ai-feed-1"),
+    ).toBeInTheDocument();
   });
 
   it("triggers API actions from footer controls", async () => {
@@ -121,26 +127,37 @@ describe("DesktopFeedDetailsModal", () => {
     renderWithChakra(
       <DesktopFeedDetailsModal
         isOpen
-        onClose={() => { }}
+        onClose={() => {}}
         feedLink={feedLink}
         feedTitle={feedTitle}
         feedId="feed-1"
-      />
+      />,
     );
 
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const modal = await findActiveModal();
 
-    const archiveButton = await within(modal).findByTestId("desktop-feed-details-archive-feed-1");
+    const archiveButton = await within(modal).findByTestId(
+      "desktop-feed-details-archive-feed-1",
+    );
     await user.click(archiveButton);
     await waitFor(() =>
-      expect(mockArticleApi.archiveContent).toHaveBeenCalledWith(feedLink, feedTitle)
+      expect(mockArticleApi.archiveContent).toHaveBeenCalledWith(
+        feedLink,
+        feedTitle,
+      ),
     );
 
-    const summarizeButton = within(modal).getByTestId("desktop-feed-details-ai-feed-1");
+    const summarizeButton = within(modal).getByTestId(
+      "desktop-feed-details-ai-feed-1",
+    );
     await user.click(summarizeButton);
-    await waitFor(() => expect(mockArticleApi.summarizeArticle).toHaveBeenCalledWith(feedLink));
+    await waitFor(() =>
+      expect(mockArticleApi.summarizeArticle).toHaveBeenCalledWith(feedLink),
+    );
 
-    await waitFor(() => expect(screen.getByText("AI generated summary")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("AI generated summary")).toBeInTheDocument(),
+    );
   });
 });

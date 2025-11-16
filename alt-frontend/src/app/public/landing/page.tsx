@@ -101,7 +101,12 @@ export default async function PublicLandingPage() {
               </HStack>
             </Button>
           </NextLink>
-          <NextLink href="/api/auth/register" prefetch={false} passHref legacyBehavior>
+          <NextLink
+            href="/api/auth/register"
+            prefetch={false}
+            passHref
+            legacyBehavior
+          >
             <Button
               as="a"
               variant="outline"

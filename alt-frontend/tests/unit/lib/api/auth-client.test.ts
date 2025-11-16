@@ -28,7 +28,7 @@ const createMockHeaders = (data: Record<string, string> = {}): MockHeaders => ({
 });
 
 const createMockResponse = <T = unknown>(
-  overrides: Partial<MockFetchResponse<T>> = {}
+  overrides: Partial<MockFetchResponse<T>> = {},
 ): MockFetchResponse<T> => ({
   ok: overrides.ok ?? true,
   status: overrides.status ?? 200,
@@ -85,7 +85,7 @@ describe("AuthAPIClient", () => {
               user: mockUser,
               session: { id: "44444444-4444-4444-4444-444444444444" },
             }),
-        })
+        }),
       );
 
       const first = await client.getSessionHeaders();
@@ -128,7 +128,7 @@ describe("AuthAPIClient", () => {
                 user: firstUser,
                 session: { id: "99999999-9999-9999-9999-999999999999" },
               }),
-          })
+          }),
         )
         .mockResolvedValueOnce(
           createMockResponse({
@@ -138,7 +138,7 @@ describe("AuthAPIClient", () => {
                 user: secondUser,
                 session: { id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" },
               }),
-          })
+          }),
         );
 
       await client.getSessionHeaders();
@@ -187,7 +187,9 @@ describe("AuthAPIClient", () => {
         writable: true,
       });
 
-      await expect(client.initiateLogin()).rejects.toThrow("Login flow initiated via redirect");
+      await expect(client.initiateLogin()).rejects.toThrow(
+        "Login flow initiated via redirect",
+      );
     });
   });
 
@@ -200,7 +202,7 @@ describe("AuthAPIClient", () => {
       });
 
       await expect(
-        client.completeLogin("flow-123", "test@example.com", "password123")
+        client.completeLogin("flow-123", "test@example.com", "password123"),
       ).rejects.toThrow("Login redirected to Kratos");
     });
   });
@@ -214,7 +216,7 @@ describe("AuthAPIClient", () => {
       });
 
       await expect(client.initiateRegistration()).rejects.toThrow(
-        "Registration flow initiated via redirect"
+        "Registration flow initiated via redirect",
       );
     });
   });
@@ -228,7 +230,12 @@ describe("AuthAPIClient", () => {
       });
 
       await expect(
-        client.completeRegistration("flow-456", "newuser@example.com", "password123", "New User")
+        client.completeRegistration(
+          "flow-456",
+          "newuser@example.com",
+          "password123",
+          "New User",
+        ),
       ).rejects.toThrow("Registration redirected to Kratos");
     });
   });
@@ -239,20 +246,23 @@ describe("AuthAPIClient", () => {
       mockFetch
         .mockResolvedValueOnce(
           createMockResponse({
-            json: () => Promise.resolve({ data: { csrf_token: "csrf-token-123" } }),
-          })
+            json: () =>
+              Promise.resolve({ data: { csrf_token: "csrf-token-123" } }),
+          }),
         )
         // Mock actual logout request
         .mockResolvedValueOnce(
           createMockResponse({
             json: () => Promise.resolve({}),
-          })
+          }),
         );
 
       await client.logout();
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
-      expect((client as unknown as { sessionHeaders: unknown }).sessionHeaders).toBeNull();
+      expect(
+        (client as unknown as { sessionHeaders: unknown }).sessionHeaders,
+      ).toBeNull();
     });
   });
 
@@ -274,7 +284,7 @@ describe("AuthAPIClient", () => {
               user: mockUser,
               session: { id: "11111111-1111-1111-1111-111111111111" },
             }),
-        })
+        }),
       );
 
       const result = await client.getCurrentUser();
@@ -285,7 +295,7 @@ describe("AuthAPIClient", () => {
           method: "GET",
           credentials: "include",
           cache: "no-store",
-        })
+        }),
       );
       expect(result).toEqual(mockUser);
       expect(await client.getSessionHeaders()).toEqual({
@@ -304,13 +314,15 @@ describe("AuthAPIClient", () => {
           ok: false,
           status: 401,
           statusText: "Unauthorized",
-        })
+        }),
       );
 
       const result = await client.getCurrentUser();
 
       expect(result).toBeNull();
-      expect((client as unknown as { sessionHeaders: unknown }).sessionHeaders).toBeNull();
+      expect(
+        (client as unknown as { sessionHeaders: unknown }).sessionHeaders,
+      ).toBeNull();
     });
 
     it("should throw error for other HTTP errors", async () => {
@@ -319,11 +331,15 @@ describe("AuthAPIClient", () => {
           ok: false,
           status: 500,
           statusText: "Internal Server Error",
-        })
+        }),
       );
 
-      await expect(client.getCurrentUser()).rejects.toThrow("Failed to get current user");
-      expect((client as unknown as { sessionHeaders: unknown }).sessionHeaders).toBeNull();
+      await expect(client.getCurrentUser()).rejects.toThrow(
+        "Failed to get current user",
+      );
+      expect(
+        (client as unknown as { sessionHeaders: unknown }).sessionHeaders,
+      ).toBeNull();
     });
 
     it("should fallback to app origin env when window origin is unavailable", async () => {
@@ -342,14 +358,14 @@ describe("AuthAPIClient", () => {
         mockFetch.mockResolvedValueOnce(
           createMockResponse({
             json: () => Promise.resolve({ ok: true, user: null }),
-          })
+          }),
         );
 
         const result = await client.getCurrentUser();
 
         expect(mockFetch).toHaveBeenCalledWith(
           "https://app.fallback.local/api/fe-auth/validate",
-          expect.objectContaining({ method: "GET" })
+          expect.objectContaining({ method: "GET" }),
         );
         expect(result).toBeNull();
       } finally {
@@ -365,7 +381,7 @@ describe("AuthAPIClient", () => {
       mockFetch.mockResolvedValueOnce(
         createMockResponse({
           json: () => Promise.resolve({ data: { csrf_token: mockCSRFToken } }),
-        })
+        }),
       );
 
       const result = await client.getCSRFToken();
@@ -375,7 +391,7 @@ describe("AuthAPIClient", () => {
         expect.objectContaining({
           method: "POST",
           credentials: "include",
-        })
+        }),
       );
       expect(result).toBe(mockCSRFToken);
     });
@@ -387,7 +403,7 @@ describe("AuthAPIClient", () => {
           status: 500,
           statusText: "Internal Server Error",
           headers: createMockHeaders(),
-        })
+        }),
       );
 
       const result = await client.getCSRFToken();
@@ -399,7 +415,7 @@ describe("AuthAPIClient", () => {
         expect.objectContaining({
           status: 500,
           statusText: "Internal Server Error",
-        })
+        }),
       );
     });
   });
@@ -419,14 +435,15 @@ describe("AuthAPIClient", () => {
       mockFetch
         .mockResolvedValueOnce(
           createMockResponse({
-            json: () => Promise.resolve({ data: { csrf_token: "csrf-token-123" } }),
-          })
+            json: () =>
+              Promise.resolve({ data: { csrf_token: "csrf-token-123" } }),
+          }),
         )
         // Mock actual profile update request
         .mockResolvedValueOnce(
           createMockResponse({
             json: () => Promise.resolve({ data: mockUser }),
-          })
+          }),
         );
 
       const profileUpdate = { name: "Updated Name" };
@@ -443,7 +460,7 @@ describe("AuthAPIClient", () => {
       mockFetch.mockResolvedValueOnce(
         createMockResponse({
           json: () => Promise.resolve({ data: mockSettings }),
-        })
+        }),
       );
 
       const result = await client.getUserSettings();
@@ -453,7 +470,7 @@ describe("AuthAPIClient", () => {
         expect.objectContaining({
           method: "GET",
           credentials: "include",
-        })
+        }),
       );
       expect(result).toEqual(mockSettings);
     });
@@ -465,14 +482,15 @@ describe("AuthAPIClient", () => {
       mockFetch
         .mockResolvedValueOnce(
           createMockResponse({
-            json: () => Promise.resolve({ data: { csrf_token: "csrf-token-123" } }),
-          })
+            json: () =>
+              Promise.resolve({ data: { csrf_token: "csrf-token-123" } }),
+          }),
         )
         // Mock actual settings update request
         .mockResolvedValueOnce(
           createMockResponse({
             json: () => Promise.resolve({}),
-          })
+          }),
         );
 
       const settings: UserPreferences = { theme: "light", language: "ja" };
@@ -490,14 +508,15 @@ describe("AuthAPIClient", () => {
       mockFetch
         .mockResolvedValueOnce(
           createMockResponse({
-            json: () => Promise.resolve({ data: { csrf_token: mockCSRFToken } }),
-          })
+            json: () =>
+              Promise.resolve({ data: { csrf_token: mockCSRFToken } }),
+          }),
         )
         // Mock actual request
         .mockResolvedValueOnce(
           createMockResponse({
             json: () => Promise.resolve({}),
-          })
+          }),
         );
 
       await client.logout();
@@ -506,7 +525,7 @@ describe("AuthAPIClient", () => {
       expect(mockFetch).toHaveBeenNthCalledWith(
         1,
         expect.stringMatching(/\/api\/auth\/csrf$/),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
 
       // Should have made logout request with CSRF token
@@ -517,7 +536,7 @@ describe("AuthAPIClient", () => {
           headers: expect.objectContaining({
             "X-CSRF-Token": mockCSRFToken,
           }),
-        })
+        }),
       );
     });
 
@@ -529,13 +548,13 @@ describe("AuthAPIClient", () => {
             ok: false,
             status: 500,
             statusText: "Internal Server Error",
-          })
+          }),
         )
         // Mock actual request
         .mockResolvedValueOnce(
           createMockResponse({
             json: () => Promise.resolve({}),
-          })
+          }),
         );
 
       await client.logout();
@@ -546,7 +565,7 @@ describe("AuthAPIClient", () => {
         expect.stringMatching(/\/api\/auth\/logout$/),
         expect.objectContaining({
           method: "POST",
-        })
+        }),
       );
     });
   });

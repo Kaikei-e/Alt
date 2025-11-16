@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 
 test.describe("Session Management", () => {
   const baseURL =
-    process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${process.env.PW_APP_PORT || "3010"}`;
+    process.env.PLAYWRIGHT_BASE_URL ??
+    `http://localhost:${process.env.PW_APP_PORT || "3010"}`;
 
   test("should maintain session after browser refresh", async ({ page }) => {
     // Navigate to a protected page (should be authenticated via setup)
@@ -29,7 +30,9 @@ test.describe("Session Management", () => {
 
     // Check that session cookie is set
     const cookies = await page.context().cookies();
-    const sessionCookie = cookies.find((cookie) => cookie.name === "ory_kratos_session");
+    const sessionCookie = cookies.find(
+      (cookie) => cookie.name === "ory_kratos_session",
+    );
     expect(sessionCookie).toBeDefined();
     expect(sessionCookie?.httpOnly).toBe(true);
   });
@@ -54,14 +57,19 @@ test.describe("Session Management", () => {
       ]);
 
       // Try to access a protected page - should redirect to landing
-      await page.goto("/desktop/home", { waitUntil: "domcontentloaded", timeout: 30000 });
+      await page.goto("/desktop/home", {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
       await page.waitForURL(/\/public\/landing/, { timeout: 30000 });
     } finally {
       await context.close();
     }
   });
 
-  test("should preserve return_to parameter for protected routes", async ({ browser }) => {
+  test("should preserve return_to parameter for protected routes", async ({
+    browser,
+  }) => {
     // Create a new context without authentication
     const context = await browser.newContext({ baseURL });
     const page = await context.newPage();
@@ -71,7 +79,9 @@ test.describe("Session Management", () => {
       const targetRoute = "/desktop/feeds";
 
       // Navigate and wait for redirect to landing page
-      await page.goto(targetRoute, { waitUntil: "networkidle", timeout: 30000 }).catch(() => {});
+      await page
+        .goto(targetRoute, { waitUntil: "networkidle", timeout: 30000 })
+        .catch(() => {});
       await page.waitForURL(/\/public\/landing/, { timeout: 15000 });
 
       const landingUrl = new URL(page.url());
@@ -94,16 +104,26 @@ test.describe("Session Management", () => {
 
   test("should handle concurrent sessions correctly", async ({ browser }) => {
     // Create two different browser contexts using the authenticated storage state
-    const context1 = await browser.newContext({ storageState: "playwright/.auth/user.json" });
-    const context2 = await browser.newContext({ storageState: "playwright/.auth/user.json" });
+    const context1 = await browser.newContext({
+      storageState: "playwright/.auth/user.json",
+    });
+    const context2 = await browser.newContext({
+      storageState: "playwright/.auth/user.json",
+    });
 
     const page1 = await context1.newPage();
     const page2 = await context2.newPage();
 
     try {
       // Both pages should be able to access protected routes
-      await page1.goto("/desktop/home", { waitUntil: "domcontentloaded", timeout: 15000 });
-      await page2.goto("/desktop/feeds", { waitUntil: "domcontentloaded", timeout: 15000 });
+      await page1.goto("/desktop/home", {
+        waitUntil: "domcontentloaded",
+        timeout: 15000,
+      });
+      await page2.goto("/desktop/feeds", {
+        waitUntil: "domcontentloaded",
+        timeout: 15000,
+      });
 
       // Both should maintain their sessions
       await expect(page1).toHaveURL(/\/desktop\/home/, { timeout: 10000 });

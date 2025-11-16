@@ -1,7 +1,23 @@
 "use client";
 
-import { Badge, Box, Button, Flex, HStack, IconButton, Text, VStack } from "@chakra-ui/react";
-import { Bookmark, BookOpen, Clock, ExternalLink, Eye, Heart } from "lucide-react";
+import {
+  Badge,
+  Box,
+  Button,
+  Flex,
+  HStack,
+  IconButton,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
+import {
+  Bookmark,
+  BookOpen,
+  Clock,
+  ExternalLink,
+  Eye,
+  Heart,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
 import { articleApi, feedApi } from "@/lib/api";
@@ -132,7 +148,7 @@ const DesktopStyledFeedCard = ({
       }
       setIsFavorited(true);
     },
-    [feed.link]
+    [feed.link],
   );
 
   const handleOpenSummary = useCallback(async (link: string, title: string) => {
@@ -184,7 +200,11 @@ const DesktopStyledFeedCard = ({
         <HStack gap={4}>
           <Text fontSize="xl">{feed.metadata.source.icon}</Text>
           <VStack gap={0} align="start">
-            <Text fontSize="sm" fontWeight="semibold" color="var(--text-primary)">
+            <Text
+              fontSize="sm"
+              fontWeight="semibold"
+              color="var(--text-primary)"
+            >
               {feed.metadata.source.name}
             </Text>
             <HStack gap={2} fontSize="xs" color="var(--text-secondary)">
@@ -205,12 +225,18 @@ const DesktopStyledFeedCard = ({
           transition="opacity var(--transition-speed) ease"
         >
           <IconButton
-            aria-label={isFavorited ? "Remove from favorites" : "Add to favorites"}
+            aria-label={
+              isFavorited ? "Remove from favorites" : "Add to favorites"
+            }
             size="sm"
             variant="outline"
-            color={isFavorited ? "var(--accent-primary)" : "var(--text-secondary)"}
+            color={
+              isFavorited ? "var(--accent-primary)" : "var(--text-secondary)"
+            }
             bg={isFavorited ? "var(--surface-bg)" : "transparent"}
-            fill={isFavorited ? "var(--accent-primary)" : "var(--text-secondary)"}
+            fill={
+              isFavorited ? "var(--accent-primary)" : "var(--text-secondary)"
+            }
             onClick={(e) => {
               e.stopPropagation();
               handleToggleFavorite(e);
@@ -342,7 +368,9 @@ const DesktopStyledFeedCard = ({
           <HStack gap={2}>
             <Text fontSize="xs" color="var(--text-muted)">
               {(() => {
-                const d = new Date(feed.published || feed.metadata?.publishedAt || "");
+                const d = new Date(
+                  feed.published || feed.metadata?.publishedAt || "",
+                );
                 return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
               })()}
             </Text>
@@ -392,7 +420,11 @@ const DesktopStyledFeedCard = ({
                   onMarkAsRead();
                 }}
               >
-                <Text fontSize="sm" fontWeight="semibold" color="var(--text-primary)">
+                <Text
+                  fontSize="sm"
+                  fontWeight="semibold"
+                  color="var(--text-primary)"
+                >
                   Mark as Read
                 </Text>
               </Button>
@@ -425,46 +457,131 @@ const DesktopSkeletonCard = () => (
   >
     <Flex justify="space-between" align="center" mb={4}>
       <HStack gap={4}>
-        <Box width="32px" height="32px" backgroundColor="var(--surface-bg)" borderRadius="50%" />
+        <Box
+          width="32px"
+          height="32px"
+          backgroundColor="var(--surface-bg)"
+          borderRadius="50%"
+        />
         <VStack gap={1} align="start">
-          <Box height="16px" backgroundColor="var(--surface-bg)" borderRadius="4px" width="100px" />
-          <Box height="12px" backgroundColor="var(--surface-bg)" borderRadius="4px" width="120px" />
+          <Box
+            height="16px"
+            backgroundColor="var(--surface-bg)"
+            borderRadius="4px"
+            width="100px"
+          />
+          <Box
+            height="12px"
+            backgroundColor="var(--surface-bg)"
+            borderRadius="4px"
+            width="120px"
+          />
         </VStack>
       </HStack>
       <HStack gap={2}>
-        <Box width="24px" height="24px" backgroundColor="var(--surface-bg)" borderRadius="50%" />
-        <Box width="24px" height="24px" backgroundColor="var(--surface-bg)" borderRadius="50%" />
+        <Box
+          width="24px"
+          height="24px"
+          backgroundColor="var(--surface-bg)"
+          borderRadius="50%"
+        />
+        <Box
+          width="24px"
+          height="24px"
+          backgroundColor="var(--surface-bg)"
+          borderRadius="50%"
+        />
       </HStack>
     </Flex>
 
     <VStack gap={4} align="stretch">
       <HStack gap={3} align="flex-start">
-        <Box width="24px" height="24px" backgroundColor="var(--surface-bg)" borderRadius="4px" />
-        <Box height="24px" backgroundColor="var(--surface-bg)" borderRadius="4px" flex={1} />
+        <Box
+          width="24px"
+          height="24px"
+          backgroundColor="var(--surface-bg)"
+          borderRadius="4px"
+        />
+        <Box
+          height="24px"
+          backgroundColor="var(--surface-bg)"
+          borderRadius="4px"
+          flex={1}
+        />
       </HStack>
 
       <VStack gap={2} align="stretch">
-        <Box height="16px" backgroundColor="var(--surface-bg)" borderRadius="4px" width="100%" />
-        <Box height="16px" backgroundColor="var(--surface-bg)" borderRadius="4px" width="90%" />
-        <Box height="16px" backgroundColor="var(--surface-bg)" borderRadius="4px" width="75%" />
+        <Box
+          height="16px"
+          backgroundColor="var(--surface-bg)"
+          borderRadius="4px"
+          width="100%"
+        />
+        <Box
+          height="16px"
+          backgroundColor="var(--surface-bg)"
+          borderRadius="4px"
+          width="90%"
+        />
+        <Box
+          height="16px"
+          backgroundColor="var(--surface-bg)"
+          borderRadius="4px"
+          width="75%"
+        />
       </VStack>
 
       <HStack justify="space-between" align="center">
         <HStack gap={3}>
-          <Box height="20px" backgroundColor="var(--surface-bg)" borderRadius="4px" width="60px" />
-          <Box height="20px" backgroundColor="var(--surface-bg)" borderRadius="4px" width="80px" />
+          <Box
+            height="20px"
+            backgroundColor="var(--surface-bg)"
+            borderRadius="4px"
+            width="60px"
+          />
+          <Box
+            height="20px"
+            backgroundColor="var(--surface-bg)"
+            borderRadius="4px"
+            width="80px"
+          />
         </HStack>
         <HStack gap={2}>
-          <Box height="18px" backgroundColor="var(--surface-bg)" borderRadius="4px" width="40px" />
-          <Box height="18px" backgroundColor="var(--surface-bg)" borderRadius="4px" width="40px" />
+          <Box
+            height="18px"
+            backgroundColor="var(--surface-bg)"
+            borderRadius="4px"
+            width="40px"
+          />
+          <Box
+            height="18px"
+            backgroundColor="var(--surface-bg)"
+            borderRadius="4px"
+            width="40px"
+          />
         </HStack>
       </HStack>
 
       <HStack justify="space-between" align="center">
-        <Box height="12px" backgroundColor="var(--surface-bg)" borderRadius="4px" width="150px" />
+        <Box
+          height="12px"
+          backgroundColor="var(--surface-bg)"
+          borderRadius="4px"
+          width="150px"
+        />
         <HStack gap={2}>
-          <Box height="24px" backgroundColor="var(--surface-bg)" borderRadius="4px" width="100px" />
-          <Box width="24px" height="24px" backgroundColor="var(--surface-bg)" borderRadius="50%" />
+          <Box
+            height="24px"
+            backgroundColor="var(--surface-bg)"
+            borderRadius="4px"
+            width="100px"
+          />
+          <Box
+            width="24px"
+            height="24px"
+            backgroundColor="var(--surface-bg)"
+            borderRadius="50%"
+          />
         </HStack>
       </HStack>
     </VStack>
@@ -476,7 +593,7 @@ const useEnhancedInfiniteScroll = (
   callback: () => void,
   sentinelRef: React.RefObject<HTMLDivElement | null>,
   scrollContainerRef: React.RefObject<HTMLDivElement | null>,
-  resetKey?: number | string
+  resetKey?: number | string,
 ) => {
   useEffect(() => {
     let observer: IntersectionObserver | null = null;
@@ -502,7 +619,7 @@ const useEnhancedInfiniteScroll = (
           root: scrollContainer, // 明示的にスクロールコンテナを指定
           rootMargin: "200px 0px", // より早めにトリガー
           threshold: 0.1,
-        }
+        },
       );
 
       observer.observe(sentinelElement);
@@ -546,7 +663,7 @@ export default function DesktopTimeline() {
   // Memoize visible feeds to prevent unnecessary recalculations
   const visibleFeeds = useMemo(
     () => desktopFeeds.filter((feed) => !readFeeds.has(feed.id)),
-    [desktopFeeds, readFeeds]
+    [desktopFeeds, readFeeds],
   );
 
   // Handle marking feed as read
@@ -584,10 +701,21 @@ export default function DesktopTimeline() {
   }, [hasMore, isLoading, loadMore, feeds?.length]);
 
   // Use enhanced infinite scroll
-  useEnhancedInfiniteScroll(handleLoadMore, sentinelRef, scrollContainerRef, feeds?.length || 0);
+  useEnhancedInfiniteScroll(
+    handleLoadMore,
+    sentinelRef,
+    scrollContainerRef,
+    feeds?.length || 0,
+  );
 
   // Debug effect
-  useEffect(() => {}, [feeds?.length, visibleFeeds.length, hasMore, isLoading, isInitialLoading]);
+  useEffect(() => {}, [
+    feeds?.length,
+    visibleFeeds.length,
+    hasMore,
+    isLoading,
+    isInitialLoading,
+  ]);
 
   // Show skeleton loading state
   if (isInitialLoading) {
@@ -632,7 +760,12 @@ export default function DesktopTimeline() {
             <Text fontSize="2xl" mb={3}>
               ⚠️
             </Text>
-            <Text color="var(--text-primary)" fontSize="lg" mb={3} data-testid="error-message">
+            <Text
+              color="var(--text-primary)"
+              fontSize="lg"
+              mb={3}
+              data-testid="error-message"
+            >
               Failed to load feeds
             </Text>
             <Text color="var(--text-secondary)" fontSize="sm" mb={4}>
@@ -765,7 +898,11 @@ export default function DesktopTimeline() {
                 <Text fontSize="lg" mb={1}>
                   📭
                 </Text>
-                <Text color="var(--text-secondary)" fontSize="sm" fontWeight="medium">
+                <Text
+                  color="var(--text-secondary)"
+                  fontSize="sm"
+                  fontWeight="medium"
+                >
                   You have reached the end of your feed
                 </Text>
               </Box>

@@ -35,7 +35,9 @@ function validateEnvironment() {
 
   if (missing.length > 0) {
     console.log("❌ Missing required environment variables:", missing);
-    console.log("💡 Create or update .env.test so that all required variables are defined.");
+    console.log(
+      "💡 Create or update .env.test so that all required variables are defined.",
+    );
     process.exit(1);
   }
 

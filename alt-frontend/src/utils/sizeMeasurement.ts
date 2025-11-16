@@ -12,7 +12,10 @@ export class SizeMeasurementManager {
 
   constructor(private onError?: (error: Error) => void) {}
 
-  async measureElement(element: HTMLElement, key: string): Promise<MeasurementResult | null> {
+  async measureElement(
+    element: HTMLElement,
+    key: string,
+  ): Promise<MeasurementResult | null> {
     try {
       // 既にキャッシュに存在する場合
       const cached = this.measurementCache.get(key);

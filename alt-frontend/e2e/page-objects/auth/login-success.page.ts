@@ -70,7 +70,10 @@ export class LoginSuccessPage extends BasePage {
    * Wait for automatic redirect
    */
   async waitForRedirect(timeout = 10000): Promise<void> {
-    await this.page.waitForURL((url) => !url.pathname.includes("/auth/login/success"), { timeout });
+    await this.page.waitForURL(
+      (url) => !url.pathname.includes("/auth/login/success"),
+      { timeout },
+    );
   }
 
   /**

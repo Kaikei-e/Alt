@@ -5,7 +5,11 @@ import { DesktopPage, LoginPage } from "../pages";
  * Login helper function that performs the complete login flow
  * @deprecated Use LoginPage.performLogin() instead
  */
-export async function loginUser(page: Page, email = "test@example.com", password = "password123") {
+export async function loginUser(
+  page: Page,
+  email = "test@example.com",
+  password = "password123",
+) {
   const loginPage = new LoginPage(page);
 
   // Access a protected route to trigger auth flow
@@ -24,7 +28,11 @@ export async function loginUser(page: Page, email = "test@example.com", password
 /**
  * Quick login using Page Object Model
  */
-export async function quickLogin(page: Page, email = "test@example.com", password = "password123") {
+export async function quickLogin(
+  page: Page,
+  email = "test@example.com",
+  password = "password123",
+) {
   const loginPage = new LoginPage(page);
   await loginPage.performLogin(email, password);
 }
@@ -47,7 +55,10 @@ export async function verifyAuthenticated(page: Page) {
 /**
  * Test fixture for authenticated page context
  */
-export async function withAuthenticatedContext(page: Page, testFn: () => Promise<void>) {
+export async function withAuthenticatedContext(
+  page: Page,
+  testFn: () => Promise<void>,
+) {
   await verifyAuthenticated(page);
   await testFn();
 }

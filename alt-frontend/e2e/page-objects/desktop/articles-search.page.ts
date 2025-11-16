@@ -26,7 +26,9 @@ export class DesktopArticlesSearchPage extends BasePage {
 
     // Initialize locators
     this.pageHeading = page.getByRole("heading", { name: /search/i });
-    this.searchInput = page.getByRole("searchbox").or(page.getByPlaceholder(/search/i));
+    this.searchInput = page
+      .getByRole("searchbox")
+      .or(page.getByPlaceholder(/search/i));
     this.searchButton = page.getByRole("button", { name: /search/i });
     this.resultsList = page.getByRole("list").filter({
       has: page.getByRole("article"),
@@ -38,7 +40,9 @@ export class DesktopArticlesSearchPage extends BasePage {
     this.dateFilter = page.getByLabel(/date|time/i);
     this.statusFilter = page.getByLabel(/status/i);
     this.sortSelect = page.getByLabel(/sort|order/i);
-    this.noResultsMessage = page.getByText(/no results|not found|no articles found/i);
+    this.noResultsMessage = page.getByText(
+      /no results|not found|no articles found/i,
+    );
     this.resultCount = page.locator('[data-testid="result-count"]');
     this.clearButton = page.getByRole("button", { name: /clear|reset/i });
     this.sidebar = page.getByRole("navigation", { name: /sidebar/i });
@@ -122,7 +126,9 @@ export class DesktopArticlesSearchPage extends BasePage {
    * Click on result by title
    */
   async clickResultByTitle(title: string): Promise<void> {
-    const result = this.resultsList.getByRole("article").filter({ hasText: title });
+    const result = this.resultsList
+      .getByRole("article")
+      .filter({ hasText: title });
     await result.click();
   }
 

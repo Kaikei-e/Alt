@@ -78,7 +78,10 @@ const RecapCard = ({ genre }: RecapCardProps) => {
             lineHeight="1.6"
             {...(!isExpanded && { noOfLines: 2 })}
           >
-            {genre.summary.split("\n").map((line) => line.slice(0, 100)).join("...\n")}
+            {genre.summary
+              .split("\n")
+              .map((line) => line.slice(0, 100))
+              .join("...\n")}
           </Text>
 
           {/* 展開ボタン */}
@@ -123,7 +126,12 @@ const RecapCard = ({ genre }: RecapCardProps) => {
                 >
                   Full Summary
                 </Text>
-                <Text fontSize="sm" color="var(--text-primary)" lineHeight="1.7" whiteSpace="pre-wrap">
+                <Text
+                  fontSize="sm"
+                  color="var(--text-primary)"
+                  lineHeight="1.7"
+                  whiteSpace="pre-wrap"
+                >
                   {genre.summary}
                 </Text>
               </Box>
@@ -188,4 +196,3 @@ const RecapCard = ({ genre }: RecapCardProps) => {
 };
 
 export default RecapCard;
-

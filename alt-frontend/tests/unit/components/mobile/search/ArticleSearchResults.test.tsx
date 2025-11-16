@@ -16,7 +16,10 @@ vi.mock("@/components/mobile/ArticleCard", () => ({
   ),
 }));
 
-const createMockArticle = (id: string, overrides: Partial<Article> = {}): Article => ({
+const createMockArticle = (
+  id: string,
+  overrides: Partial<Article> = {},
+): Article => ({
   id,
   title: `Test Article ${id}`,
   content: `Content ${id}`,
@@ -53,14 +56,20 @@ describe("ArticleSearchResults", () => {
 
   describe("Loading State", () => {
     it("should display loading spinner when isLoading is true", () => {
-      renderWithChakra(<ArticleSearchResults {...defaultProps} isLoading={true} />);
+      renderWithChakra(
+        <ArticleSearchResults {...defaultProps} isLoading={true} />,
+      );
 
       expect(screen.getByText("Searching articles...")).toBeInTheDocument();
     });
 
     it("should not display results when loading", () => {
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} isLoading={true} results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          isLoading={true}
+          results={mockArticles}
+        />,
       );
 
       expect(screen.queryByTestId("article-card-1")).not.toBeInTheDocument();
@@ -68,7 +77,9 @@ describe("ArticleSearchResults", () => {
     });
 
     it("should display loading message", () => {
-      renderWithChakra(<ArticleSearchResults {...defaultProps} isLoading={true} />);
+      renderWithChakra(
+        <ArticleSearchResults {...defaultProps} isLoading={true} />,
+      );
 
       // Check that loading text is present
       expect(screen.getByText("Searching articles...")).toBeInTheDocument();
@@ -77,7 +88,9 @@ describe("ArticleSearchResults", () => {
 
   describe("Empty State - No Query", () => {
     it("should render nothing when no search query is provided", () => {
-      renderWithChakra(<ArticleSearchResults {...defaultProps} searchQuery="" />);
+      renderWithChakra(
+        <ArticleSearchResults {...defaultProps} searchQuery="" />,
+      );
 
       // Component returns null when no query, so no article content should be present
       expect(screen.queryByText(/found/i)).not.toBeInTheDocument();
@@ -87,7 +100,11 @@ describe("ArticleSearchResults", () => {
 
     it("should not render when query is empty even with results", () => {
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="" results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery=""
+          results={mockArticles}
+        />,
       );
 
       // Component returns null when no query, even with results
@@ -99,24 +116,42 @@ describe("ArticleSearchResults", () => {
   describe("Empty State - No Results", () => {
     it("should display no results message when query exists but results are empty", () => {
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test query" results={[]} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test query"
+          results={[]}
+        />,
       );
 
       expect(screen.getByText("No articles found")).toBeInTheDocument();
-      expect(screen.getByText(/No articles match "test query"/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/No articles match "test query"/),
+      ).toBeInTheDocument();
     });
 
     it("should suggest trying different keywords when no results", () => {
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="nonexistent" results={[]} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="nonexistent"
+          results={[]}
+        />,
       );
 
-      expect(screen.getByText(/Try different keywords or check your spelling/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Try different keywords or check your spelling/),
+      ).toBeInTheDocument();
     });
 
     it("should display the search query in empty state message", () => {
       const query = "specific search term";
-      renderWithChakra(<ArticleSearchResults {...defaultProps} searchQuery={query} results={[]} />);
+      renderWithChakra(
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery={query}
+          results={[]}
+        />,
+      );
 
       expect(screen.getByText(new RegExp(query))).toBeInTheDocument();
     });
@@ -125,7 +160,11 @@ describe("ArticleSearchResults", () => {
   describe("Results Display", () => {
     it("should render article cards when results are provided", () => {
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={mockArticles}
+        />,
       );
 
       expect(screen.getByTestId("article-card-1")).toBeInTheDocument();
@@ -135,7 +174,11 @@ describe("ArticleSearchResults", () => {
 
     it("should display correct number of results", () => {
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={mockArticles}
+        />,
       );
 
       expect(screen.getByText("Found 3 articles")).toBeInTheDocument();
@@ -144,7 +187,11 @@ describe("ArticleSearchResults", () => {
     it("should use singular form for single result", () => {
       const singleArticle = [mockArticles[0]];
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={singleArticle} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={singleArticle}
+        />,
       );
 
       expect(screen.getByText("Found 1 article")).toBeInTheDocument();
@@ -152,7 +199,11 @@ describe("ArticleSearchResults", () => {
 
     it("should display all article titles", () => {
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={mockArticles}
+        />,
       );
 
       expect(screen.getByText("Test Article 1")).toBeInTheDocument();
@@ -162,7 +213,11 @@ describe("ArticleSearchResults", () => {
 
     it("should display all article content", () => {
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={mockArticles}
+        />,
       );
 
       expect(screen.getByText("Content 1")).toBeInTheDocument();
@@ -172,10 +227,16 @@ describe("ArticleSearchResults", () => {
 
     it("should render articles in the order provided", () => {
       const { container } = renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={mockArticles}
+        />,
       );
 
-      const cards = container.querySelectorAll('[data-testid^="article-card-"]');
+      const cards = container.querySelectorAll(
+        '[data-testid^="article-card-"]',
+      );
       expect(cards[0]).toHaveAttribute("data-testid", "article-card-1");
       expect(cards[1]).toHaveAttribute("data-testid", "article-card-2");
       expect(cards[2]).toHaveAttribute("data-testid", "article-card-3");
@@ -190,7 +251,7 @@ describe("ArticleSearchResults", () => {
           searchQuery="test"
           results={mockArticles}
           searchTime={250}
-        />
+        />,
       );
 
       expect(screen.getByText("Search completed in 250ms")).toBeInTheDocument();
@@ -203,7 +264,7 @@ describe("ArticleSearchResults", () => {
           searchQuery="test"
           results={mockArticles}
           searchTime={undefined}
-        />
+        />,
       );
 
       expect(screen.queryByText(/Search completed/)).not.toBeInTheDocument();
@@ -216,15 +277,21 @@ describe("ArticleSearchResults", () => {
           searchQuery="test"
           results={mockArticles}
           searchTime={1234}
-        />
+        />,
       );
 
-      expect(screen.getByText("Search completed in 1234ms")).toBeInTheDocument();
+      expect(
+        screen.getByText("Search completed in 1234ms"),
+      ).toBeInTheDocument();
     });
 
     it("should display results count in metadata", () => {
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={mockArticles}
+        />,
       );
 
       const metadata = screen.getByText("Found 3 articles");
@@ -234,7 +301,13 @@ describe("ArticleSearchResults", () => {
 
   describe("Edge Cases", () => {
     it("should handle empty results array gracefully", () => {
-      renderWithChakra(<ArticleSearchResults {...defaultProps} searchQuery="test" results={[]} />);
+      renderWithChakra(
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={[]}
+        />,
+      );
 
       expect(screen.getByText("No articles found")).toBeInTheDocument();
       expect(screen.queryByTestId(/article-card/)).not.toBeInTheDocument();
@@ -243,7 +316,11 @@ describe("ArticleSearchResults", () => {
     it("should handle very long search queries", () => {
       const longQuery = "a".repeat(100);
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery={longQuery} results={[]} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery={longQuery}
+          results={[]}
+        />,
       );
 
       expect(screen.getByText("No articles found")).toBeInTheDocument();
@@ -256,7 +333,7 @@ describe("ArticleSearchResults", () => {
           searchQuery="test"
           results={mockArticles}
           searchTime={0}
-        />
+        />,
       );
 
       expect(screen.getByText("Search completed in 0ms")).toBeInTheDocument();
@@ -268,11 +345,15 @@ describe("ArticleSearchResults", () => {
           title: `Article ${i}`,
           content: `Content ${i}`,
           url: `https://example.com/articles/${i}`,
-        })
+        }),
       );
 
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={largeResults} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={largeResults}
+        />,
       );
 
       expect(screen.getByText("Found 100 articles")).toBeInTheDocument();
@@ -287,18 +368,28 @@ describe("ArticleSearchResults", () => {
       });
 
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={[specialArticle]} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={[specialArticle]}
+        />,
       );
 
       // React automatically escapes HTML, so we should see the raw text
-      expect(screen.getByText(/Test <script>alert\('xss'\)<\/script> Article/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Test <script>alert\('xss'\)<\/script> Article/),
+      ).toBeInTheDocument();
     });
   });
 
   describe("Component Structure", () => {
     it("should use VStack for layout", () => {
       const { container } = renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={mockArticles}
+        />,
       );
 
       const vstack = container.querySelector(".chakra-stack");
@@ -307,7 +398,11 @@ describe("ArticleSearchResults", () => {
 
     it("should display metadata before article cards", () => {
       const { container } = renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={mockArticles}
+        />,
       );
 
       const metadata = screen.getByText("Found 3 articles");
@@ -315,13 +410,18 @@ describe("ArticleSearchResults", () => {
 
       // Metadata should appear before the first card in DOM order
       expect(
-        metadata.compareDocumentPosition(firstCard) & Node.DOCUMENT_POSITION_FOLLOWING
+        metadata.compareDocumentPosition(firstCard) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
     });
 
     it("should have proper gap spacing with Chakra VStack", () => {
       const { container } = renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={mockArticles}
+        />,
       );
 
       const vstack = container.querySelector(".chakra-stack");
@@ -334,7 +434,11 @@ describe("ArticleSearchResults", () => {
   describe("Accessibility", () => {
     it("should have proper semantic structure", () => {
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={mockArticles}
+        />,
       );
 
       // Should have proper text hierarchy
@@ -344,7 +448,11 @@ describe("ArticleSearchResults", () => {
 
     it("should have readable content", () => {
       renderWithChakra(
-        <ArticleSearchResults {...defaultProps} searchQuery="test" results={mockArticles} />
+        <ArticleSearchResults
+          {...defaultProps}
+          searchQuery="test"
+          results={mockArticles}
+        />,
       );
 
       // Check that results are readable
@@ -353,7 +461,9 @@ describe("ArticleSearchResults", () => {
     });
 
     it("should communicate loading state to screen readers", () => {
-      renderWithChakra(<ArticleSearchResults {...defaultProps} isLoading={true} />);
+      renderWithChakra(
+        <ArticleSearchResults {...defaultProps} isLoading={true} />,
+      );
 
       const loadingText = screen.getByText("Searching articles...");
       expect(loadingText).toBeInTheDocument();

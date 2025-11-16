@@ -64,7 +64,9 @@ describe("useHomeStats", () => {
       summarized_feed: { amount: 18 },
     };
 
-    const { useTodayUnreadCount } = await import("../../../src/hooks/useTodayUnreadCount");
+    const { useTodayUnreadCount } = await import(
+      "../../../src/hooks/useTodayUnreadCount"
+    );
     vi.mocked(useTodayUnreadCount).mockReturnValue({
       count: 156,
       isLoading: false,
@@ -84,7 +86,9 @@ describe("useHomeStats", () => {
   });
 
   it("should handle API error gracefully", async () => {
-    const { useTodayUnreadCount } = await import("../../../src/hooks/useTodayUnreadCount");
+    const { useTodayUnreadCount } = await import(
+      "../../../src/hooks/useTodayUnreadCount"
+    );
     vi.mocked(useTodayUnreadCount).mockReturnValue({
       count: 0,
       isLoading: false,
@@ -108,7 +112,9 @@ describe("useHomeStats", () => {
       summarized_feed: { amount: 18 },
     };
 
-    const { useTodayUnreadCount } = await import("../../../src/hooks/useTodayUnreadCount");
+    const { useTodayUnreadCount } = await import(
+      "../../../src/hooks/useTodayUnreadCount"
+    );
     vi.mocked(useTodayUnreadCount).mockReturnValue({
       count: 156,
       isLoading: false,
@@ -135,7 +141,9 @@ describe("useHomeStats", () => {
       summarized_feed: { amount: 18 },
     };
 
-    const { useTodayUnreadCount } = await import("../../../src/hooks/useTodayUnreadCount");
+    const { useTodayUnreadCount } = await import(
+      "../../../src/hooks/useTodayUnreadCount"
+    );
     vi.mocked(useTodayUnreadCount).mockReturnValue({
       count: 156,
       isLoading: false,

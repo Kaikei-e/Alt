@@ -3,7 +3,10 @@ import type { CSSObject } from "@emotion/react";
 import { Archive, Star, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { articleApi, feedApi } from "@/lib/api";
-import type { FeedContentOnTheFlyResponse, FetchArticleSummaryResponse } from "@/schema/feed";
+import type {
+  FeedContentOnTheFlyResponse,
+  FetchArticleSummaryResponse,
+} from "@/schema/feed";
 import RenderFeedDetails from "./RenderFeedDetails";
 
 const scrollAreaStyles: CSSObject = {
@@ -29,13 +32,19 @@ interface FeedDetailsProps {
   initialData?: FetchArticleSummaryResponse | FeedContentOnTheFlyResponse;
 }
 
-export const FeedDetails = ({ feedURL, feedTitle, initialData }: FeedDetailsProps) => {
-  const [articleSummary, setArticleSummary] = useState<FetchArticleSummaryResponse | null>(
-    initialData && "matched_articles" in initialData ? initialData : null
-  );
-  const [feedDetails, setFeedDetails] = useState<FeedContentOnTheFlyResponse | null>(
-    initialData && "content" in initialData ? initialData : null
-  );
+export const FeedDetails = ({
+  feedURL,
+  feedTitle,
+  initialData,
+}: FeedDetailsProps) => {
+  const [articleSummary, setArticleSummary] =
+    useState<FetchArticleSummaryResponse | null>(
+      initialData && "matched_articles" in initialData ? initialData : null,
+    );
+  const [feedDetails, setFeedDetails] =
+    useState<FeedContentOnTheFlyResponse | null>(
+      initialData && "content" in initialData ? initialData : null,
+    );
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFavoriting, setIsFavoriting] = useState(false);
@@ -88,10 +97,12 @@ export const FeedDetails = ({ feedURL, feedTitle, initialData }: FeedDetailsProp
     setError(null);
 
     // Fetch both summary and content independently
-    const summaryPromise = articleApi.getArticleSummary(feedURL).catch((err) => {
-      console.error("Error fetching article summary:", err);
-      return null;
-    });
+    const summaryPromise = articleApi
+      .getArticleSummary(feedURL)
+      .catch((err) => {
+        console.error("Error fetching article summary:", err);
+        return null;
+      });
 
     const detailsPromise = articleApi
       .getFeedContentOnTheFly({
@@ -103,13 +114,19 @@ export const FeedDetails = ({ feedURL, feedTitle, initialData }: FeedDetailsProp
       });
 
     try {
-      const [summary, details] = await Promise.all([summaryPromise, detailsPromise]);
+      const [summary, details] = await Promise.all([
+        summaryPromise,
+        detailsPromise,
+      ]);
 
       // Check if summary has valid content
       const hasValidSummary =
-        summary && summary.matched_articles && summary.matched_articles.length > 0;
+        summary &&
+        summary.matched_articles &&
+        summary.matched_articles.length > 0;
       // Check if details has valid content
-      const hasValidDetails = details && details.content && details.content.trim() !== "";
+      const hasValidDetails =
+        details && details.content && details.content.trim() !== "";
 
       if (hasValidSummary) {
         setArticleSummary(summary);
@@ -363,7 +380,11 @@ export const FeedDetails = ({ feedURL, feedTitle, initialData }: FeedDetailsProp
                     >
                       要約エラー / Summary Error
                     </Text>
-                    <Text fontSize="sm" color="var(--text-primary)" lineHeight="1.7">
+                    <Text
+                      fontSize="sm"
+                      color="var(--text-primary)"
+                      lineHeight="1.7"
+                    >
                       {summaryError}
                     </Text>
                   </Box>
@@ -461,7 +482,9 @@ export const FeedDetails = ({ feedURL, feedTitle, initialData }: FeedDetailsProp
                       }
                     } catch (e) {
                       console.error("Failed to summarize article", e);
-                      setSummaryError("要約の生成に失敗しました。もう一度お試しください。");
+                      setSummaryError(
+                        "要約の生成に失敗しました。もう一度お試しください。",
+                      );
                     } finally {
                       setIsSummarizing(false);
                     }

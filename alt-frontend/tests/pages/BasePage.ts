@@ -19,9 +19,10 @@ export class BasePage {
    */
   async waitForElement(
     selector: string | Locator,
-    options?: { timeout?: number }
+    options?: { timeout?: number },
   ): Promise<Locator> {
-    const element = typeof selector === "string" ? this.page.locator(selector) : selector;
+    const element =
+      typeof selector === "string" ? this.page.locator(selector) : selector;
     await expect(element).toBeVisible(options);
     return element;
   }
@@ -79,7 +80,9 @@ export class BasePage {
    * Scroll to bottom of page
    */
   async scrollToBottom() {
-    await this.page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await this.page.evaluate(() =>
+      window.scrollTo(0, document.body.scrollHeight),
+    );
   }
 
   /**

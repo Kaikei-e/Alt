@@ -10,14 +10,22 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
-import { ChevronLeft, ChevronRight, FileText, Home, Rss, Search, Settings } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Home,
+  Rss,
+  Search,
+  Settings,
+} from "lucide-react";
 import NextLink from "next/link";
 import type React from "react";
 
 // Icon resolver function to avoid Server/Client boundary issues
 const getIconComponent = (
   iconName?: string,
-  defaultIcon?: React.ComponentType<{ size?: number }>
+  defaultIcon?: React.ComponentType<{ size?: number }>,
 ) => {
   if (defaultIcon) return defaultIcon;
 
@@ -119,7 +127,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 }) => {
   if (mode === "feeds-filter") {
     return (
-      <Box className="glass" h="full" p="var(--space-4)" data-testid="desktop-sidebar-filters">
+      <Box
+        className="glass"
+        h="full"
+        p="var(--space-4)"
+        data-testid="desktop-sidebar-filters"
+      >
         {/* Header with collapse toggle */}
         <Flex justify="space-between" align="center" mb={6}>
           <Text
@@ -145,7 +158,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               transition="all var(--transition-speed) ease"
               data-testid="sidebar-collapse-toggle"
             >
-              {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+              {isCollapsed ? (
+                <ChevronRight size={16} />
+              ) : (
+                <ChevronLeft size={16} />
+              )}
             </IconButton>
           )}
         </Flex>
@@ -271,8 +288,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         id={`source-${source.id}`}
                         checked={activeFilters?.sources.includes(source.id)}
                         onChange={() => {
-                          const newSources = activeFilters?.sources.includes(source.id)
-                            ? activeFilters.sources.filter((id) => id !== source.id)
+                          const newSources = activeFilters?.sources.includes(
+                            source.id,
+                          )
+                            ? activeFilters.sources.filter(
+                                (id) => id !== source.id,
+                              )
                             : [...(activeFilters?.sources || []), source.id];
                           onFilterChange?.({
                             ...activeFilters!,
@@ -294,7 +315,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       <Text fontSize="sm" color="var(--text-secondary)">
                         {source.icon}
                       </Text>
-                      <Text fontSize="sm" color="var(--text-secondary)" flex={1}>
+                      <Text
+                        fontSize="sm"
+                        color="var(--text-secondary)"
+                        flex={1}
+                      >
                         {source.name}
                       </Text>
                       <Badge
@@ -361,7 +386,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         onChange={() =>
                           onFilterChange?.({
                             ...activeFilters!,
-                            timeRange: range as "all" | "today" | "week" | "month",
+                            timeRange: range as
+                              | "all"
+                              | "today"
+                              | "week"
+                              | "month",
                           })
                         }
                         style={{
@@ -467,7 +496,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 borderColor: "var(--alt-primary)",
               }}
             >
-              <Icon as={getIconComponent(item.iconName, item.icon)} boxSize={5} />
+              <Icon
+                as={getIconComponent(item.iconName, item.icon)}
+                boxSize={5}
+              />
               <Text fontSize="sm" fontWeight="medium">
                 {item.label}
               </Text>

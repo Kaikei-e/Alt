@@ -20,7 +20,9 @@ export class MobileFeedsSearchPage extends BasePage {
     super(page);
 
     // Initialize locators
-    this.searchInput = page.getByRole("searchbox").or(page.getByPlaceholder(/search/i));
+    this.searchInput = page
+      .getByRole("searchbox")
+      .or(page.getByPlaceholder(/search/i));
     this.searchButton = page.getByRole("button", { name: /search/i });
     this.backButton = page.getByRole("button", { name: /back/i });
     this.clearButton = page.getByRole("button", { name: /clear/i });

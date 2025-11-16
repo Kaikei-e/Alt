@@ -22,9 +22,13 @@ export class DesktopHomePage extends BasePage {
 
     // Initialize locators
     this.pageHeading = page.getByRole("heading", { level: 1 }).first();
-    this.sidebar = page.getByRole("navigation", { name: /sidebar|main navigation/i });
+    this.sidebar = page.getByRole("navigation", {
+      name: /sidebar|main navigation/i,
+    });
     this.mainContent = page.getByRole("main");
-    this.rightPanel = page.getByRole("complementary", { name: /analytics|stats/i });
+    this.rightPanel = page.getByRole("complementary", {
+      name: /analytics|stats/i,
+    });
     this.feedsLink = page.getByRole("link", { name: /feeds/i });
     this.articlesLink = page.getByRole("link", { name: /articles/i });
     this.analyticsPanel = page
@@ -127,7 +131,9 @@ export class DesktopHomePage extends BasePage {
    */
   async getTrendingTopics(): Promise<string[]> {
     if (await this.hasTrendingTopics()) {
-      return await this.trendingTopics.locator('li, [role="listitem"]').allTextContents();
+      return await this.trendingTopics
+        .locator('li, [role="listitem"]')
+        .allTextContents();
     }
     return [];
   }

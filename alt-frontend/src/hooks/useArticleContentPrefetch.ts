@@ -26,7 +26,7 @@ export interface UseArticleContentPrefetchResult {
 export const useArticleContentPrefetch = (
   feeds: Feed[],
   activeIndex: number,
-  prefetchAhead: number = 2
+  prefetchAhead: number = 2,
 ): UseArticleContentPrefetchResult => {
   // Cache for prefetched article content
   const contentCacheRef = useRef<Map<string, string | "loading">>(new Map());
@@ -44,7 +44,9 @@ export const useArticleContentPrefetch = (
 
     // Skip if article is being dismissed (race condition prevention)
     if (dismissedArticlesRef.current.has(feedUrl)) {
-      console.log(`[useArticleContentPrefetch] Skipping dismissed article: ${feedUrl}`);
+      console.log(
+        `[useArticleContentPrefetch] Skipping dismissed article: ${feedUrl}`,
+      );
       return;
     }
 
@@ -68,7 +70,10 @@ export const useArticleContentPrefetch = (
 
         // Archive article in background (non-blocking)
         articleApi.archiveContent(feedUrl, feed.title).catch((err) => {
-          console.warn(`[useArticleContentPrefetch] Failed to archive article: ${feedUrl}`, err);
+          console.warn(
+            `[useArticleContentPrefetch] Failed to archive article: ${feedUrl}`,
+            err,
+          );
         });
       } else {
         // Remove from cache if no content
@@ -84,7 +89,10 @@ export const useArticleContentPrefetch = (
     } catch (error) {
       // Remove failed prefetch from cache
       contentCacheRef.current.delete(feedUrl);
-      console.warn(`[useArticleContentPrefetch] Failed to prefetch content: ${feedUrl}`, error);
+      console.warn(
+        `[useArticleContentPrefetch] Failed to prefetch content: ${feedUrl}`,
+        error,
+      );
     }
   }, []);
 
@@ -104,7 +112,7 @@ export const useArticleContentPrefetch = (
           () => {
             prefetchContent(nextFeed);
           },
-          PREFETCH_DELAY * i // Stagger requests
+          PREFETCH_DELAY * i, // Stagger requests
         );
         prefetchTimeoutsRef.current.push(timeout);
       }

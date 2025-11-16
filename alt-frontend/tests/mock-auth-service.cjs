@@ -40,7 +40,12 @@ function log(message, data = null) {
 }
 
 // Response helper with delay
-async function sendResponse(res, statusCode, data, contentType = "application/json") {
+async function sendResponse(
+  res,
+  statusCode,
+  data,
+  contentType = "application/json",
+) {
   if (config.responseDelay > 0) {
     await new Promise((resolve) => setTimeout(resolve, config.responseDelay));
   }
@@ -183,10 +188,13 @@ const server = http.createServer(async (req, res) => {
   // Enhanced CORS headers with more comprehensive support
   res.setHeader("Access-Control-Allow-Origin", "http://localhost:3010");
   res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+  );
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, Cookie, X-Requested-With, Accept, Origin, User-Agent, DNT, Cache-Control, X-Mx-ReqToken, Keep-Alive, X-Requested-With, If-Modified-Since"
+    "Content-Type, Authorization, Cookie, X-Requested-With, Accept, Origin, User-Agent, DNT, Cache-Control, X-Mx-ReqToken, Keep-Alive, X-Requested-With, If-Modified-Since",
   );
   res.setHeader("Access-Control-Expose-Headers", "Set-Cookie");
   res.setHeader("Access-Control-Max-Age", "86400"); // 24 hours
@@ -214,7 +222,7 @@ const server = http.createServer(async (req, res) => {
       res.statusCode = 303;
       res.setHeader(
         "Location",
-        `http://localhost:3010/auth/login?flow=${flow.id}&return_to=${encodeURIComponent(returnTo)}`
+        `http://localhost:3010/auth/login?flow=${flow.id}&return_to=${encodeURIComponent(returnTo)}`,
       );
       res.end();
       return;
@@ -246,7 +254,7 @@ const server = http.createServer(async (req, res) => {
           res,
           410,
           "The login flow expired 1.234 minutes ago. Please try again.",
-          "self_service_flow_expired"
+          "self_service_flow_expired",
         );
         return;
       }
@@ -258,7 +266,8 @@ const server = http.createServer(async (req, res) => {
 
     // Handle login form submission
     if (req.method === "POST" && path.startsWith("/self-service/login")) {
-      const flowMatch = path.match(/flow=([^&]+)/) || (query.flow ? [null, query.flow] : null);
+      const flowMatch =
+        path.match(/flow=([^&]+)/) || (query.flow ? [null, query.flow] : null);
       if (!flowMatch) {
         res.statusCode = 400;
         res.setHeader("Content-Type", "application/json");
@@ -286,9 +295,10 @@ const server = http.createServer(async (req, res) => {
               id: "self_service_flow_expired",
               code: 410,
               status: "Gone",
-              message: "The login flow expired during submission. Please try again.",
+              message:
+                "The login flow expired during submission. Please try again.",
             },
-          })
+          }),
         );
         return;
       }
@@ -297,7 +307,9 @@ const server = http.createServer(async (req, res) => {
         if (err) {
           res.statusCode = 400;
           res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify({ error: { message: "Invalid request data" } }));
+          res.end(
+            JSON.stringify({ error: { message: "Invalid request data" } }),
+          );
           return;
         }
 
@@ -313,15 +325,19 @@ const server = http.createServer(async (req, res) => {
                 id: "security_csrf_violation",
                 code: 403,
                 status: "Forbidden",
-                message: "A security violation was detected. Please retry the flow.",
+                message:
+                  "A security violation was detected. Please retry the flow.",
               },
-            })
+            }),
           );
           return;
         }
 
         // Check credentials
-        if (identifier === "wrong@example.com" || password === "wrongpassword") {
+        if (
+          identifier === "wrong@example.com" ||
+          password === "wrongpassword"
+        ) {
           // Return updated flow with error
           const updatedFlow = { ...flowData.flow };
           updatedFlow.ui.messages = [
@@ -359,7 +375,7 @@ const server = http.createServer(async (req, res) => {
         // Set session cookie with Domain=localhost to share across ports
         res.setHeader(
           "Set-Cookie",
-          `ory_kratos_session=${sessionId}; Domain=localhost; HttpOnly; Path=/; SameSite=Lax`
+          `ory_kratos_session=${sessionId}; Domain=localhost; HttpOnly; Path=/; SameSite=Lax`,
         );
         res.statusCode = 200;
         res.setHeader("Content-Type", "application/json");
@@ -379,10 +395,11 @@ const server = http.createServer(async (req, res) => {
               },
               {
                 action: "redirect_browser_to",
-                redirect_browser_to: flowData.flow.return_to || "http://localhost:3010/",
+                redirect_browser_to:
+                  flowData.flow.return_to || "http://localhost:3010/",
               },
             ],
-          })
+          }),
         );
       });
       return;
@@ -396,7 +413,9 @@ const server = http.createServer(async (req, res) => {
       if (!sessionMatch) {
         res.statusCode = 401;
         res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify({ error: { message: "No active session found" } }));
+        res.end(
+          JSON.stringify({ error: { message: "No active session found" } }),
+        );
         return;
       }
 
@@ -427,7 +446,9 @@ const server = http.createServer(async (req, res) => {
         log("No session cookie found");
         res.statusCode = 401;
         res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify({ error: { message: "No active session found" } }));
+        res.end(
+          JSON.stringify({ error: { message: "No active session found" } }),
+        );
         return;
       }
 
@@ -536,10 +557,12 @@ setInterval(
     }
 
     if (cleanedSessions > 0 || cleanedFlows > 0) {
-      log(`Cleanup: Removed ${cleanedSessions} expired sessions and ${cleanedFlows} expired flows`);
+      log(
+        `Cleanup: Removed ${cleanedSessions} expired sessions and ${cleanedFlows} expired flows`,
+      );
     }
   },
-  5 * 60 * 1000
+  5 * 60 * 1000,
 );
 
 // Gracefully shut down on termination signals

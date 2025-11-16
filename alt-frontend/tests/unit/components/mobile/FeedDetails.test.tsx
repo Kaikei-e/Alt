@@ -62,7 +62,9 @@ describe("FeedDetails", () => {
         message: "article archived",
       });
 
-      renderWithProviders(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
+      renderWithProviders(
+        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
+      );
 
       // Click "Show Details" button
       const showButton = screen.getByText("Show Details");
@@ -77,7 +79,10 @@ describe("FeedDetails", () => {
 
       // Verify auto-archive was called
       await waitFor(() => {
-        expect(articleApi.archiveContent).toHaveBeenCalledWith(mockFeedURL, mockFeedTitle);
+        expect(articleApi.archiveContent).toHaveBeenCalledWith(
+          mockFeedURL,
+          mockFeedTitle,
+        );
       });
     });
 
@@ -95,7 +100,9 @@ describe("FeedDetails", () => {
         content: "",
       });
 
-      renderWithProviders(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
+      renderWithProviders(
+        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
+      );
 
       // Click "Show Details" button
       const showButton = screen.getByText("Show Details");
@@ -124,11 +131,17 @@ describe("FeedDetails", () => {
         content: "This is the article content",
       });
 
-      vi.mocked(articleApi.archiveContent).mockRejectedValue(new Error("Archive failed"));
+      vi.mocked(articleApi.archiveContent).mockRejectedValue(
+        new Error("Archive failed"),
+      );
 
-      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+      const consoleWarnSpy = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => {});
 
-      renderWithProviders(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
+      renderWithProviders(
+        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
+      );
 
       // Click "Show Details" button
       const showButton = screen.getByText("Show Details");
@@ -149,7 +162,7 @@ describe("FeedDetails", () => {
       await waitFor(() => {
         expect(consoleWarnSpy).toHaveBeenCalledWith(
           "Failed to auto-archive article:",
-          expect.any(Error)
+          expect.any(Error),
         );
       });
 
@@ -177,7 +190,9 @@ describe("FeedDetails", () => {
         message: "article archived",
       });
 
-      renderWithProviders(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
+      renderWithProviders(
+        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
+      );
 
       // Click "Show Details" button
       const showButton = screen.getByText("Show Details");
@@ -224,7 +239,9 @@ describe("FeedDetails", () => {
         feed_url: mockFeedURL,
       });
 
-      renderWithProviders(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
+      renderWithProviders(
+        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
+      );
 
       // Click "Show Details"
       const showButton = screen.getByText("Show Details");

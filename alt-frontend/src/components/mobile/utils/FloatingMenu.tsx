@@ -7,7 +7,16 @@ import {
   AccordionItem,
   AccordionPanel,
 } from "@chakra-ui/accordion";
-import { Box, Button, Drawer, Flex, HStack, Portal, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Drawer,
+  Flex,
+  HStack,
+  Portal,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import {
   CalendarRange,
   ChartBar,
@@ -62,7 +71,7 @@ export const FloatingMenu = () => {
       // Focus management for accessibility
       setTimeout(() => {
         const firstAccordionButton = document.querySelector(
-          '[data-testid="tab-feeds"]'
+          '[data-testid="tab-feeds"]',
         ) as HTMLElement;
         if (firstAccordionButton) {
           firstAccordionButton.focus();
@@ -180,7 +189,7 @@ export const FloatingMenu = () => {
     (href: string): boolean => {
       return pathname === href;
     },
-    [pathname]
+    [pathname],
   );
 
   // Group menu items into categories for accordion UI
@@ -213,7 +222,11 @@ export const FloatingMenu = () => {
 
   return (
     <>
-      <Drawer.Root open={isOpen} onOpenChange={(e) => setIsOpen(e.open)} placement="bottom">
+      <Drawer.Root
+        open={isOpen}
+        onOpenChange={(e) => setIsOpen(e.open)}
+        placement="bottom"
+      >
         <Drawer.Trigger asChild>
           <Box
             position="fixed"
@@ -300,7 +313,8 @@ export const FloatingMenu = () => {
               overflowY="auto"
               position="relative"
               css={{
-                paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
+                paddingBottom:
+                  "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
               }}
               _before={{
                 content: '""',
@@ -401,10 +415,17 @@ export const FloatingMenu = () => {
                                   {cat.icon}
                                 </Box>
                                 <Box textAlign="left">
-                                  <Text fontWeight="bold" fontSize="lg" color="var(--text-primary)">
+                                  <Text
+                                    fontWeight="bold"
+                                    fontSize="lg"
+                                    color="var(--text-primary)"
+                                  >
                                     {cat.title}
                                   </Text>
-                                  <Text fontSize="sm" color="var(--text-primary)">
+                                  <Text
+                                    fontSize="sm"
+                                    color="var(--text-primary)"
+                                  >
                                     {cat.items.length} items
                                   </Text>
                                 </Box>
@@ -412,7 +433,9 @@ export const FloatingMenu = () => {
                               <AccordionIcon
                                 color="var(--text-primary)"
                                 transition="transform 0.2s"
-                                transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+                                transform={
+                                  isExpanded ? "rotate(180deg)" : "rotate(0deg)"
+                                }
                               />
                             </AccordionButton>
                           </h2>
@@ -431,7 +454,11 @@ export const FloatingMenu = () => {
                                       mx="auto"
                                       maxW="320px"
                                       w="85%"
-                                      bg={isActive ? "var(--alt-glass)" : "var(--alt-glass)"}
+                                      bg={
+                                        isActive
+                                          ? "var(--alt-glass)"
+                                          : "var(--alt-glass)"
+                                      }
                                       borderRadius="10px"
                                       border={`1px solid ${
                                         isActive
@@ -440,10 +467,13 @@ export const FloatingMenu = () => {
                                       }`}
                                       p={3}
                                       _hover={{
-                                        bg: isActive ? "var(--alt-glass)" : "var(--alt-glass)",
+                                        bg: isActive
+                                          ? "var(--alt-glass)"
+                                          : "var(--alt-glass)",
                                         borderColor: "var(--alt-glass-border)",
                                         transform: "translateY(-1px)",
-                                        boxShadow: "0 2px 8px var(--alt-glass-shadow)",
+                                        boxShadow:
+                                          "0 2px 8px var(--alt-glass-shadow)",
                                       }}
                                       _active={{ transform: "translateY(0px)" }}
                                       transition="all 0.2s ease"
@@ -476,14 +506,19 @@ export const FloatingMenu = () => {
                                           {item.icon}
                                         </Box>
                                         <Box flex="1">
-                                          <HStack justify="space-between" align="center">
+                                          <HStack
+                                            justify="space-between"
+                                            align="center"
+                                          >
                                             <Text
                                               color={
                                                 isActive
                                                   ? "var(--text-primary)"
                                                   : "var(--alt-secondary)"
                                               }
-                                              fontWeight={isActive ? "semibold" : "medium"}
+                                              fontWeight={
+                                                isActive ? "semibold" : "medium"
+                                              }
                                               fontSize="sm"
                                               lineHeight="1.2"
                                             >

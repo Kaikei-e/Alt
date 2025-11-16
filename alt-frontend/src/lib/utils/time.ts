@@ -1,5 +1,7 @@
 export function getStartOfLocalDayUTC(date: Date = new Date()): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
 }
 
 export function getRelativeTime(timestamp: string): string {

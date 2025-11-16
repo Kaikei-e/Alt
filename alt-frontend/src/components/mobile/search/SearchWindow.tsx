@@ -4,7 +4,10 @@ import * as v from "valibot";
 import { feedApi } from "@/lib/api";
 import { transformFeedSearchResult } from "@/lib/utils/transformFeedSearchResult";
 import type { BackendFeedItem } from "@/schema/feed";
-import { type SearchQuery, searchQuerySchema } from "@/schema/validation/searchQuery";
+import {
+  type SearchQuery,
+  searchQuerySchema,
+} from "@/schema/validation/searchQuery";
 
 interface SearchWindowProps {
   searchQuery: SearchQuery;
@@ -32,7 +35,8 @@ const SearchWindow = ({
     const validationResult = v.safeParse(searchQuerySchema, query);
     if (!validationResult.success) {
       const firstError =
-        validationResult.issues?.[0]?.message || "Please enter a valid search query";
+        validationResult.issues?.[0]?.message ||
+        "Please enter a valid search query";
       setValidationError(firstError);
       return false;
     }
@@ -57,7 +61,8 @@ const SearchWindow = ({
 
       if (!validationResult.success) {
         const firstError =
-          validationResult.issues?.[0]?.message || "Please enter a valid search query";
+          validationResult.issues?.[0]?.message ||
+          "Please enter a valid search query";
         setValidationError(firstError);
         return;
       }
@@ -83,7 +88,9 @@ const SearchWindow = ({
       setSearchTime?.(searchTime);
     } catch (err) {
       console.error("Search error:", err);
-      setError(err instanceof Error ? err.message : "Search failed. Please try again.");
+      setError(
+        err instanceof Error ? err.message : "Search failed. Please try again.",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -106,7 +113,12 @@ const SearchWindow = ({
       <form onSubmit={handleFormSubmit}>
         <VStack gap={4}>
           <Box width="full">
-            <Text color="var(--text-secondary)" mb={2} fontSize="sm" fontWeight="medium">
+            <Text
+              color="var(--text-secondary)"
+              mb={2}
+              fontSize="sm"
+              fontWeight="medium"
+            >
               Search Query
             </Text>
             <Input
@@ -138,7 +150,9 @@ const SearchWindow = ({
                 outline: "none",
               }}
               _hover={{
-                borderColor: validationError ? "#dc2626" : "var(--alt-secondary)",
+                borderColor: validationError
+                  ? "#dc2626"
+                  : "var(--alt-secondary)",
               }}
             />
           </Box>
@@ -172,13 +186,23 @@ const SearchWindow = ({
           </Button>
 
           {validationError && (
-            <Text color="#dc2626" textAlign="center" fontSize="sm" fontWeight="medium">
+            <Text
+              color="#dc2626"
+              textAlign="center"
+              fontSize="sm"
+              fontWeight="medium"
+            >
               {validationError}
             </Text>
           )}
 
           {error && (
-            <Text color="#dc2626" textAlign="center" fontSize="sm" fontWeight="medium">
+            <Text
+              color="#dc2626"
+              textAlign="center"
+              fontSize="sm"
+              fontWeight="medium"
+            >
               {error}
             </Text>
           )}

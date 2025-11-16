@@ -23,9 +23,15 @@ export class AuthErrorPage extends BasePage {
     });
     this.errorMessage = page.locator('[data-testid="error-message"]');
     this.errorDetails = page.locator('[data-testid="error-details"]');
-    this.retryButton = page.getByRole("button", { name: /retry|try again|再試行/i });
-    this.backToLoginButton = page.locator('[data-testid="back-to-login-button"]');
-    this.homeButton = page.getByRole("link", { name: /home|back home|ホーム/i });
+    this.retryButton = page.getByRole("button", {
+      name: /retry|try again|再試行/i,
+    });
+    this.backToLoginButton = page.locator(
+      '[data-testid="back-to-login-button"]',
+    );
+    this.homeButton = page.getByRole("link", {
+      name: /home|back home|ホーム/i,
+    });
   }
 
   /**

@@ -24,14 +24,19 @@ import { StatsGrid } from "./StatsGrid";
 
 export const DesktopHomePage: React.FC = () => {
   // Fetch real data from hooks
-  const { feedStats, isLoadingStats, statsError, unreadCount, refreshStats } = useHomeStats();
+  const { feedStats, isLoadingStats, statsError, unreadCount, refreshStats } =
+    useHomeStats();
 
-  const { activities, isLoading: isLoadingActivity, error: activityError } = useRecentActivity();
+  const {
+    activities,
+    isLoading: isLoadingActivity,
+    error: activityError,
+  } = useRecentActivity();
 
   // Transform feed stats to stats card format
   const statsData = useMemo(
     () => transformFeedStats(feedStats, unreadCount),
-    [feedStats, unreadCount]
+    [feedStats, unreadCount],
   );
 
   // Mock sidebar navigation items (keep as before since this doesn't come from API)
@@ -115,7 +120,10 @@ export const DesktopHomePage: React.FC = () => {
   if (statsError || activityError) {
     return (
       <DesktopLayout sidebarProps={sidebarProps}>
-        <div className="flex flex-col gap-8" data-testid="desktop-home-container">
+        <div
+          className="flex flex-col gap-8"
+          data-testid="desktop-home-container"
+        >
           <PageHeader
             title="Dashboard Overview"
             description="Monitor your RSS feeds and AI-powered content insights"

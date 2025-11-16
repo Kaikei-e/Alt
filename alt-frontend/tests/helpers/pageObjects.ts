@@ -21,7 +21,9 @@ export class LoginPage {
     if (message) {
       await expect(this.page.getByText(message)).toBeVisible();
     } else {
-      await expect(this.page.getByText(/credentials are invalid/i)).toBeVisible();
+      await expect(
+        this.page.getByText(/credentials are invalid/i),
+      ).toBeVisible();
     }
   }
 }

@@ -57,7 +57,11 @@ export default function EmptyFeedState() {
 
           {/* RSS Icon */}
           <Box position="relative" zIndex={1}>
-            <Rss size={56} color="var(--alt-text-secondary)" strokeWidth={1.5} />
+            <Rss
+              size={56}
+              color="var(--alt-text-secondary)"
+              strokeWidth={1.5}
+            />
           </Box>
 
           {/* Sparkle decorations */}
@@ -91,9 +95,14 @@ export default function EmptyFeedState() {
             No Feeds Yet
           </Text>
 
-          <Text fontSize="md" color="var(--alt-text-secondary)" lineHeight="1.6" px={4}>
-            Start by adding your first RSS feed to begin reading articles from your favorite
-            sources.
+          <Text
+            fontSize="md"
+            color="var(--alt-text-secondary)"
+            lineHeight="1.6"
+            px={4}
+          >
+            Start by adding your first RSS feed to begin reading articles from
+            your favorite sources.
           </Text>
         </VStack>
 
@@ -132,8 +141,9 @@ export default function EmptyFeedState() {
           w="100%"
         >
           <Text fontSize="sm" color="var(--alt-text-secondary)">
-            <strong>Tip:</strong> You can find RSS feeds from your favorite blogs, news sites, or
-            podcasts. Look for the RSS icon or &quot;/feed&quot; in the URL.
+            <strong>Tip:</strong> You can find RSS feeds from your favorite
+            blogs, news sites, or podcasts. Look for the RSS icon or
+            &quot;/feed&quot; in the URL.
           </Text>
         </Box>
       </VStack>

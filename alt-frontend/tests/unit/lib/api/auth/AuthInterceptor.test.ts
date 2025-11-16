@@ -46,7 +46,10 @@ describe("AuthInterceptor", () => {
         headers: { "Content-Type": "application/json" },
       });
 
-      const result = await interceptor.intercept(mockResponse, "https://api.test.com/data");
+      const result = await interceptor.intercept(
+        mockResponse,
+        "https://api.test.com/data",
+      );
 
       expect(result).toBe(mockResponse);
       expect(mockOnAuthRequired).not.toHaveBeenCalled();
@@ -58,7 +61,10 @@ describe("AuthInterceptor", () => {
         headers: { "Content-Type": "application/json" },
       });
 
-      const result = await interceptor.intercept(mockResponse, "https://api.test.com/data");
+      const result = await interceptor.intercept(
+        mockResponse,
+        "https://api.test.com/data",
+      );
 
       expect(result).toBe(mockResponse);
       expect(mockOnAuthRequired).not.toHaveBeenCalled();
@@ -77,7 +83,10 @@ describe("AuthInterceptor", () => {
         headers: { "Content-Type": "application/json" },
       });
 
-      const result = await interceptor.intercept(mockResponse, "https://api.test.com/data");
+      const result = await interceptor.intercept(
+        mockResponse,
+        "https://api.test.com/data",
+      );
 
       expect(result).toBe(mockResponse);
       expect(mockOnAuthRequired).not.toHaveBeenCalled();
@@ -96,7 +105,7 @@ describe("AuthInterceptor", () => {
         new Response('{"status": "ok"}', {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
       );
 
       // Mock original request recreation
@@ -106,12 +115,19 @@ describe("AuthInterceptor", () => {
       });
       mockFetch.mockResolvedValueOnce(mockOriginalResponse);
 
-      const result = await interceptor.intercept(mockResponse, "https://api.test.com/data", {
-        method: "GET",
-        headers: { Authorization: "Bearer token" },
-      });
+      const result = await interceptor.intercept(
+        mockResponse,
+        "https://api.test.com/data",
+        {
+          method: "GET",
+          headers: { Authorization: "Bearer token" },
+        },
+      );
 
-      expect(vi.mocked(sessionStorage.setItem)).toHaveBeenCalledWith("alt:recheck-whoami", "1");
+      expect(vi.mocked(sessionStorage.setItem)).toHaveBeenCalledWith(
+        "alt:recheck-whoami",
+        "1",
+      );
       expect(mockFetch).toHaveBeenCalledWith("/api/auth/recheck", {
         credentials: "include",
         signal: expect.any(AbortSignal),
@@ -156,7 +172,7 @@ describe("AuthInterceptor", () => {
         new Response('{"error": "Unauthorized"}', {
           status: 401,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
       );
 
       await interceptor.intercept(mockResponse, "https://api.test.com/data");

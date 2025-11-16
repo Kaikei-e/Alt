@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ApiClientError, apiClient, feedApi, desktopApi, serverFetch } from "@/lib/api";
+import {
+  ApiClientError,
+  apiClient,
+  feedApi,
+  desktopApi,
+  serverFetch,
+} from "@/lib/api";
 
 describe("API Integration", () => {
   it("should export all required API components", () => {

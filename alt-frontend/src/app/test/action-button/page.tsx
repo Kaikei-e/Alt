@@ -11,7 +11,11 @@ export default function ActionButtonTest() {
         ActionButton Component Test
       </Text>
       <Box display="flex" justifyContent="center">
-        <ActionButton label="Add Feed" icon={Plus} href="/desktop/feeds/register" />
+        <ActionButton
+          label="Add Feed"
+          icon={Plus}
+          href="/desktop/feeds/register"
+        />
       </Box>
     </Box>
   );

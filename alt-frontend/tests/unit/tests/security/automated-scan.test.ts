@@ -3,7 +3,10 @@ import { join } from "path";
 import { describe, expect, test } from "vitest";
 
 // ヘルパー関数：再帰的にファイルを取得
-async function getFilesRecursively(dir: string, extensions: string[]): Promise<string[]> {
+async function getFilesRecursively(
+  dir: string,
+  extensions: string[],
+): Promise<string[]> {
   const files: string[] = [];
 
   try {
@@ -15,7 +18,10 @@ async function getFilesRecursively(dir: string, extensions: string[]): Promise<s
       if (entry.isDirectory()) {
         const subFiles = await getFilesRecursively(fullPath, extensions);
         files.push(...subFiles);
-      } else if (entry.isFile() && extensions.some((ext) => entry.name.endsWith(ext))) {
+      } else if (
+        entry.isFile() &&
+        extensions.some((ext) => entry.name.endsWith(ext))
+      ) {
         files.push(fullPath);
       }
     }
@@ -82,7 +88,9 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
           content.includes("dangerouslySetInnerHTML") &&
           !hasSanitizedDangerouslySetInnerHTML(content)
         ) {
-          vulnerabilities.push(`${relativePath}: dangerouslySetInnerHTML usage detected`);
+          vulnerabilities.push(
+            `${relativePath}: dangerouslySetInnerHTML usage detected`,
+          );
         }
 
         if (content.includes("innerHTML")) {
@@ -94,24 +102,37 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
         }
 
         if (content.includes("Function(")) {
-          vulnerabilities.push(`${relativePath}: Function() constructor usage detected`);
+          vulnerabilities.push(
+            `${relativePath}: Function() constructor usage detected`,
+          );
         }
 
         if (content.includes("setTimeout(") && content.includes("string")) {
-          vulnerabilities.push(`${relativePath}: setTimeout with string detected`);
+          vulnerabilities.push(
+            `${relativePath}: setTimeout with string detected`,
+          );
         }
 
         if (content.includes("setInterval(") && content.includes("string")) {
-          vulnerabilities.push(`${relativePath}: setInterval with string detected`);
+          vulnerabilities.push(
+            `${relativePath}: setInterval with string detected`,
+          );
         }
 
         // 直接DOM操作の検出
         if (content.includes("document.write")) {
-          vulnerabilities.push(`${relativePath}: document.write usage detected`);
+          vulnerabilities.push(
+            `${relativePath}: document.write usage detected`,
+          );
         }
 
-        if (content.includes("document.createElement(") && content.includes("script")) {
-          vulnerabilities.push(`${relativePath}: dynamic script creation detected`);
+        if (
+          content.includes("document.createElement(") &&
+          content.includes("script")
+        ) {
+          vulnerabilities.push(
+            `${relativePath}: dynamic script creation detected`,
+          );
         }
       }
 
@@ -125,7 +146,7 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
       const actualVulnerabilities = vulnerabilities.filter(
         (v) =>
           !v.includes("setTimeout with string detected") &&
-          !v.includes("setInterval with string detected") // 偽陽性のパターン
+          !v.includes("setInterval with string detected"), // 偽陽性のパターン
       );
 
       expect(actualVulnerabilities).toHaveLength(0);
@@ -141,22 +162,35 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
         const relativePath = filePath.replace(process.cwd(), "");
 
         // 危険なURL処理パターンを検出
-        if (content.includes("window.location.href =") && !content.includes("validateUrl")) {
-          vulnerabilities.push(`${relativePath}: unsafe URL assignment detected`);
+        if (
+          content.includes("window.location.href =") &&
+          !content.includes("validateUrl")
+        ) {
+          vulnerabilities.push(
+            `${relativePath}: unsafe URL assignment detected`,
+          );
         }
 
-        if (content.includes("window.open(") && !content.includes("validateUrl")) {
+        if (
+          content.includes("window.open(") &&
+          !content.includes("validateUrl")
+        ) {
           vulnerabilities.push(`${relativePath}: unsafe window.open detected`);
         }
 
-        if (content.includes("location.replace(") && !content.includes("validateUrl")) {
-          vulnerabilities.push(`${relativePath}: unsafe location.replace detected`);
+        if (
+          content.includes("location.replace(") &&
+          !content.includes("validateUrl")
+        ) {
+          vulnerabilities.push(
+            `${relativePath}: unsafe location.replace detected`,
+          );
         }
 
         // router.push with dynamic content
         if (content.includes("router.push(") && content.includes("${")) {
           vulnerabilities.push(
-            `${relativePath}: potential unsafe router.push with template literal`
+            `${relativePath}: potential unsafe router.push with template literal`,
           );
         }
       }
@@ -183,20 +217,28 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
 
         // API入力検証の確認
         if (content.includes("req.body") && !content.includes("validate")) {
-          vulnerabilities.push(`${relativePath}: API endpoint without input validation detected`);
+          vulnerabilities.push(
+            `${relativePath}: API endpoint without input validation detected`,
+          );
         }
 
         if (content.includes("req.query") && !content.includes("validate")) {
-          vulnerabilities.push(`${relativePath}: Query parameter without validation detected`);
+          vulnerabilities.push(
+            `${relativePath}: Query parameter without validation detected`,
+          );
         }
 
         if (content.includes("req.params") && !content.includes("validate")) {
-          vulnerabilities.push(`${relativePath}: Path parameter without validation detected`);
+          vulnerabilities.push(
+            `${relativePath}: Path parameter without validation detected`,
+          );
         }
 
         // SQLインジェクション対策の確認
         if (content.includes("query(") && content.includes("${")) {
-          vulnerabilities.push(`${relativePath}: potential SQL injection via template literal`);
+          vulnerabilities.push(
+            `${relativePath}: potential SQL injection via template literal`,
+          );
         }
       }
 
@@ -220,12 +262,16 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
 
         // インラインスタイルの検出
         if (content.includes("style=")) {
-          vulnerabilities.push(`${relativePath}: inline style detected - may violate CSP`);
+          vulnerabilities.push(
+            `${relativePath}: inline style detected - may violate CSP`,
+          );
         }
 
         // インラインイベントハンドラの検出
         if (content.includes("onClick=") && content.includes("()")) {
-          vulnerabilities.push(`${relativePath}: inline event handler detected`);
+          vulnerabilities.push(
+            `${relativePath}: inline event handler detected`,
+          );
         }
       }
 
@@ -250,16 +296,31 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
         const relativePath = filePath.replace(process.cwd(), "");
 
         // セキュリティヘッダーの確認
-        if (content.includes("security") && !content.includes("Content-Security-Policy")) {
-          vulnerabilities.push(`${relativePath}: missing Content-Security-Policy configuration`);
+        if (
+          content.includes("security") &&
+          !content.includes("Content-Security-Policy")
+        ) {
+          vulnerabilities.push(
+            `${relativePath}: missing Content-Security-Policy configuration`,
+          );
         }
 
-        if (content.includes("security") && !content.includes("X-Frame-Options")) {
-          vulnerabilities.push(`${relativePath}: missing X-Frame-Options configuration`);
+        if (
+          content.includes("security") &&
+          !content.includes("X-Frame-Options")
+        ) {
+          vulnerabilities.push(
+            `${relativePath}: missing X-Frame-Options configuration`,
+          );
         }
 
-        if (content.includes("security") && !content.includes("Strict-Transport-Security")) {
-          vulnerabilities.push(`${relativePath}: missing Strict-Transport-Security configuration`);
+        if (
+          content.includes("security") &&
+          !content.includes("Strict-Transport-Security")
+        ) {
+          vulnerabilities.push(
+            `${relativePath}: missing Strict-Transport-Security configuration`,
+          );
         }
       }
 
@@ -297,7 +358,9 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
 
         for (const pattern of secretPatterns) {
           if (pattern.test(content)) {
-            vulnerabilities.push(`${relativePath}: potential hardcoded secret detected`);
+            vulnerabilities.push(
+              `${relativePath}: potential hardcoded secret detected`,
+            );
             break;
           }
         }
@@ -338,7 +401,9 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
       for (const [packageName, version] of Object.entries(allDependencies)) {
         for (const vulnerable of knownVulnerablePackages) {
           if (vulnerable.includes(packageName)) {
-            vulnerabilities.push(`${packageName}@${version}: known vulnerable package detected`);
+            vulnerabilities.push(
+              `${packageName}@${version}: known vulnerable package detected`,
+            );
           }
         }
       }
@@ -371,13 +436,15 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
         ...packageData.devDependencies,
       };
 
-      for (const [packageName, requiredVersion] of Object.entries(securityPackageRequirements)) {
+      for (const [packageName, requiredVersion] of Object.entries(
+        securityPackageRequirements,
+      )) {
         if (allDependencies[packageName]) {
           const currentVersion = allDependencies[packageName];
           // 簡単なバージョン比較（実際の実装では semver を使用）
           if (!currentVersion.includes(requiredVersion.replace("^", ""))) {
             vulnerabilities.push(
-              `${packageName}: requires ${requiredVersion}, found ${currentVersion}`
+              `${packageName}: requires ${requiredVersion}, found ${currentVersion}`,
             );
           }
         }
@@ -405,12 +472,17 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
 
         // try-catch ブロックでの適切なエラーハンドリング
         if (content.includes("try {") && content.includes("catch")) {
-          const tryBlocks = content.match(/try\s*{[\s\S]*?catch\s*\([^)]*\)\s*{[\s\S]*?}/g);
+          const tryBlocks = content.match(
+            /try\s*{[\s\S]*?catch\s*\([^)]*\)\s*{[\s\S]*?}/g,
+          );
           if (tryBlocks) {
             for (const block of tryBlocks) {
-              if (block.includes("console.error") && block.includes("error.message")) {
+              if (
+                block.includes("console.error") &&
+                block.includes("error.message")
+              ) {
                 vulnerabilities.push(
-                  `${relativePath}: potential information disclosure in error logging`
+                  `${relativePath}: potential information disclosure in error logging`,
                 );
               }
             }
@@ -420,7 +492,7 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
         // 適切でないPromiseの処理
         if (content.includes(".catch(") && content.includes("console.log")) {
           vulnerabilities.push(
-            `${relativePath}: potential information disclosure in Promise error handling`
+            `${relativePath}: potential information disclosure in Promise error handling`,
           );
         }
       }
@@ -444,13 +516,23 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
         const relativePath = filePath.replace(process.cwd(), "");
 
         // any型の使用を検出
-        if (content.includes(": any") && !content.includes("// eslint-disable")) {
-          vulnerabilities.push(`${relativePath}: unsafe 'any' type usage detected`);
+        if (
+          content.includes(": any") &&
+          !content.includes("// eslint-disable")
+        ) {
+          vulnerabilities.push(
+            `${relativePath}: unsafe 'any' type usage detected`,
+          );
         }
 
         // 型アサーションの安全でない使用
-        if (content.includes("as unknown as") && !content.includes("// @ts-expect-error")) {
-          vulnerabilities.push(`${relativePath}: unsafe type assertion detected`);
+        if (
+          content.includes("as unknown as") &&
+          !content.includes("// @ts-expect-error")
+        ) {
+          vulnerabilities.push(
+            `${relativePath}: unsafe type assertion detected`,
+          );
         }
 
         // 非nullアサーション演算子の使用
@@ -461,7 +543,9 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
         ) {
           const nonNullAssertions = content.match(/\w+![.\w]/g);
           if (nonNullAssertions && nonNullAssertions.length > 0) {
-            vulnerabilities.push(`${relativePath}: non-null assertion operator usage detected`);
+            vulnerabilities.push(
+              `${relativePath}: non-null assertion operator usage detected`,
+            );
           }
         }
       }
@@ -490,12 +574,16 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
         if (content.includes("window.") && content.includes("=")) {
           const windowAssignments = content.match(/window\.\w+\s*=/g);
           if (windowAssignments) {
-            vulnerabilities.push(`${relativePath}: global window object modification detected`);
+            vulnerabilities.push(
+              `${relativePath}: global window object modification detected`,
+            );
           }
         }
 
         if (content.includes("global.") && content.includes("=")) {
-          vulnerabilities.push(`${relativePath}: global object modification detected`);
+          vulnerabilities.push(
+            `${relativePath}: global object modification detected`,
+          );
         }
 
         // プロトタイプ汚染の検出
@@ -523,13 +611,19 @@ describe.skip("Automated Security Scan - PROTECTED", () => {
         const relativePath = filePath.replace(process.cwd(), "");
 
         // 環境変数の直接使用を検出
-        if (content.includes("process.env.") && !content.includes("NEXT_PUBLIC_")) {
+        if (
+          content.includes("process.env.") &&
+          !content.includes("NEXT_PUBLIC_")
+        ) {
           const envUsages = content.match(/process\.env\.\w+/g);
           if (envUsages) {
             for (const usage of envUsages) {
-              if (!usage.includes("NODE_ENV") && !usage.includes("NEXT_PUBLIC_")) {
+              if (
+                !usage.includes("NODE_ENV") &&
+                !usage.includes("NEXT_PUBLIC_")
+              ) {
                 vulnerabilities.push(
-                  `${relativePath}: potential server-side environment variable exposure: ${usage}`
+                  `${relativePath}: potential server-side environment variable exposure: ${usage}`,
                 );
               }
             }

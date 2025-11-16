@@ -13,12 +13,14 @@
 ## 🎯 実装目標
 
 ### Primary Goals
+
 1. **全ページの基本動作保証**: 31ページすべての正常レンダリングとコア機能の動作確認
 2. **ユーザーフロー検証**: 認証→フィード登録→記事閲覧のE2Eシナリオ
 3. **クロスブラウザ互換性**: Chrome/Firefox/Webkit（必要に応じて）での動作保証
 4. **リグレッション防止**: CI/CDパイプラインでの自動実行
 
 ### Secondary Goals
+
 1. **アクセシビリティ検証**: ARIA属性、キーボードナビゲーション
 2. **パフォーマンス監視**: Core Web Vitals基準の遵守
 3. **エラーハンドリング**: 404、API障害、認証エラーの適切な処理
@@ -114,7 +116,7 @@ alt-frontend/e2e/
 
 ```typescript
 // e2e/page-objects/base.page.ts
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator, expect } from "@playwright/test";
 
 export abstract class BasePage {
   readonly page: Page;
@@ -161,8 +163,8 @@ export abstract class BasePage {
 
 ```typescript
 // e2e/page-objects/desktop/feeds.page.ts
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { Page, Locator, expect } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 export class DesktopFeedsPage extends BasePage {
   // Locators - prefer getByRole over testId
@@ -175,16 +177,22 @@ export class DesktopFeedsPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.pageHeading = page.getByRole('heading', { name: /feeds/i });
-    this.feedsList = page.getByRole('list').filter({ has: page.getByRole('article') });
-    this.addFeedButton = page.getByRole('button', { name: /add feed|register/i });
-    this.searchInput = page.getByRole('searchbox');
-    this.sidebar = page.getByRole('navigation', { name: /sidebar/i });
-    this.rightPanel = page.getByRole('complementary', { name: /analytics|stats/i });
+    this.pageHeading = page.getByRole("heading", { name: /feeds/i });
+    this.feedsList = page
+      .getByRole("list")
+      .filter({ has: page.getByRole("article") });
+    this.addFeedButton = page.getByRole("button", {
+      name: /add feed|register/i,
+    });
+    this.searchInput = page.getByRole("searchbox");
+    this.sidebar = page.getByRole("navigation", { name: /sidebar/i });
+    this.rightPanel = page.getByRole("complementary", {
+      name: /analytics|stats/i,
+    });
   }
 
   async goto(): Promise<void> {
-    await this.page.goto('/desktop/feeds');
+    await this.page.goto("/desktop/feeds");
     await this.waitForLoad();
   }
 
@@ -194,11 +202,11 @@ export class DesktopFeedsPage extends BasePage {
     await expect(this.feedsList).toBeVisible();
 
     // Wait for network idle (optional)
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState("networkidle");
   }
 
   async getFeedCount(): Promise<number> {
-    const items = await this.feedsList.getByRole('article').count();
+    const items = await this.feedsList.getByRole("article").count();
     return items;
   }
 
@@ -209,11 +217,13 @@ export class DesktopFeedsPage extends BasePage {
 
   async searchFeed(query: string): Promise<void> {
     await this.searchInput.fill(query);
-    await this.searchInput.press('Enter');
+    await this.searchInput.press("Enter");
   }
 
   async selectFeed(feedTitle: string): Promise<void> {
-    const feed = this.feedsList.getByRole('article').filter({ hasText: feedTitle });
+    const feed = this.feedsList
+      .getByRole("article")
+      .filter({ hasText: feedTitle });
     await feed.click();
   }
 
@@ -235,10 +245,10 @@ export class DesktopFeedsPage extends BasePage {
 
 ```typescript
 // e2e/specs/desktop/feeds.spec.ts
-import { test, expect } from '@playwright/test';
-import { DesktopFeedsPage } from '../../page-objects/desktop/feeds.page';
+import { test, expect } from "@playwright/test";
+import { DesktopFeedsPage } from "../../page-objects/desktop/feeds.page";
 
-test.describe('Desktop Feeds Page', () => {
+test.describe("Desktop Feeds Page", () => {
   let feedsPage: DesktopFeedsPage;
 
   test.beforeEach(async ({ page }) => {
@@ -246,7 +256,7 @@ test.describe('Desktop Feeds Page', () => {
     await feedsPage.goto();
   });
 
-  test('should display page with correct layout', async () => {
+  test("should display page with correct layout", async () => {
     // Check main content
     await expect(feedsPage.pageHeading).toBeVisible();
     await expect(feedsPage.feedsList).toBeVisible();
@@ -256,7 +266,7 @@ test.describe('Desktop Feeds Page', () => {
     expect(await feedsPage.isRightPanelVisible()).toBeTruthy();
   });
 
-  test('should load and display feeds', async () => {
+  test("should load and display feeds", async () => {
     // Wait for feeds to load
     await feedsPage.waitForLoad();
 
@@ -265,32 +275,32 @@ test.describe('Desktop Feeds Page', () => {
     expect(count).toBeGreaterThan(0);
   });
 
-  test('should navigate to add feed page', async () => {
+  test("should navigate to add feed page", async () => {
     await feedsPage.clickAddFeed();
 
     // Verify navigation
     await expect(feedsPage.page).toHaveURL(/\/desktop\/feeds\/register/);
   });
 
-  test('should search feeds', async () => {
-    const searchQuery = 'technology';
+  test("should search feeds", async () => {
+    const searchQuery = "technology";
     await feedsPage.searchFeed(searchQuery);
 
     // Verify search results (implementation depends on actual behavior)
     await expect(feedsPage.feedsList).toBeVisible();
   });
 
-  test('should be accessible', async () => {
+  test("should be accessible", async () => {
     await feedsPage.checkA11y();
   });
 
-  test('should handle empty state gracefully', async ({ page }) => {
+  test("should handle empty state gracefully", async ({ page }) => {
     // Mock empty response
-    await page.route('**/v1/feeds**', route => {
+    await page.route("**/v1/feeds**", (route) => {
       route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ feeds: [], cursor: null })
+        contentType: "application/json",
+        body: JSON.stringify({ feeds: [], cursor: null }),
       });
     });
 
@@ -300,9 +310,9 @@ test.describe('Desktop Feeds Page', () => {
     await expect(page.getByText(/no feeds|empty/i)).toBeVisible();
   });
 
-  test('should handle API errors gracefully', async ({ page }) => {
+  test("should handle API errors gracefully", async ({ page }) => {
     // Mock error response
-    await page.route('**/v1/feeds**', route => {
+    await page.route("**/v1/feeds**", (route) => {
       route.fulfill({ status: 500 });
     });
 
@@ -310,7 +320,7 @@ test.describe('Desktop Feeds Page', () => {
 
     // Check error message and retry button
     await expect(page.getByText(/error|failed/i)).toBeVisible();
-    await expect(page.getByRole('button', { name: /retry/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /retry/i })).toBeVisible();
   });
 });
 ```
@@ -319,12 +329,12 @@ test.describe('Desktop Feeds Page', () => {
 
 ```typescript
 // e2e/specs/mobile/feeds.spec.ts
-import { test, expect, devices } from '@playwright/test';
-import { MobileFeedsPage } from '../../page-objects/mobile/feeds.page';
+import { test, expect, devices } from "@playwright/test";
+import { MobileFeedsPage } from "../../page-objects/mobile/feeds.page";
 
-test.use(devices['iPhone 13']);
+test.use(devices["iPhone 13"]);
 
-test.describe('Mobile Feeds Page', () => {
+test.describe("Mobile Feeds Page", () => {
   let feedsPage: MobileFeedsPage;
 
   test.beforeEach(async ({ page }) => {
@@ -332,7 +342,7 @@ test.describe('Mobile Feeds Page', () => {
     await feedsPage.goto();
   });
 
-  test('should display virtualized feed list', async () => {
+  test("should display virtualized feed list", async () => {
     await expect(feedsPage.feedsList).toBeVisible();
 
     // Check virtual scrolling
@@ -344,7 +354,7 @@ test.describe('Mobile Feeds Page', () => {
     expect(afterScrollCount).toBeGreaterThan(initialCount);
   });
 
-  test('should mark feed as read via swipe', async () => {
+  test("should mark feed as read via swipe", async () => {
     const firstFeed = await feedsPage.getFirstFeed();
     const feedTitle = await firstFeed.textContent();
 
@@ -354,14 +364,14 @@ test.describe('Mobile Feeds Page', () => {
     await expect(firstFeed).not.toBeVisible();
   });
 
-  test('should open floating menu', async () => {
+  test("should open floating menu", async () => {
     await feedsPage.openFloatingMenu();
 
     await expect(feedsPage.floatingMenu).toBeVisible();
     await expect(feedsPage.floatingMenuItems).toHaveCount(4); // Adjust based on actual menu
   });
 
-  test('should handle infinite scroll', async () => {
+  test("should handle infinite scroll", async () => {
     // Scroll to trigger loading
     await feedsPage.scrollToBottom();
 
@@ -373,12 +383,12 @@ test.describe('Mobile Feeds Page', () => {
     await expect(feedsPage.loadingIndicator).not.toBeVisible();
   });
 
-  test('should be responsive on different screen sizes', async ({ page }) => {
+  test("should be responsive on different screen sizes", async ({ page }) => {
     // Test on different viewports
     const viewports = [
-      { width: 375, height: 667 },  // iPhone SE
-      { width: 390, height: 844 },  // iPhone 13
-      { width: 428, height: 926 },  // iPhone 13 Pro Max
+      { width: 375, height: 667 }, // iPhone SE
+      { width: 390, height: 844 }, // iPhone 13
+      { width: 428, height: 926 }, // iPhone 13 Pro Max
     ];
 
     for (const viewport of viewports) {
@@ -394,18 +404,20 @@ test.describe('Mobile Feeds Page', () => {
 
 ```typescript
 // e2e/specs/e2e-flows/daily-workflow.spec.ts
-import { test, expect } from '@playwright/test';
-import { LoginPage } from '../../page-objects/auth/login.page';
-import { DesktopHomePage } from '../../page-objects/desktop/home.page';
-import { DesktopFeedsPage } from '../../page-objects/desktop/feeds.page';
-import { DesktopArticlesPage } from '../../page-objects/desktop/articles.page';
+import { test, expect } from "@playwright/test";
+import { LoginPage } from "../../page-objects/auth/login.page";
+import { DesktopHomePage } from "../../page-objects/desktop/home.page";
+import { DesktopFeedsPage } from "../../page-objects/desktop/feeds.page";
+import { DesktopArticlesPage } from "../../page-objects/desktop/articles.page";
 
-test.describe('Daily User Workflow', () => {
-  test('user logs in, browses feeds, reads articles, and logs out', async ({ page }) => {
+test.describe("Daily User Workflow", () => {
+  test("user logs in, browses feeds, reads articles, and logs out", async ({
+    page,
+  }) => {
     // Step 1: Login
     const loginPage = new LoginPage(page);
     await loginPage.goto();
-    await loginPage.login('test@example.com', 'password123');
+    await loginPage.login("test@example.com", "password123");
 
     // Step 2: Navigate to home
     const homePage = new DesktopHomePage(page);
@@ -417,7 +429,7 @@ test.describe('Daily User Workflow', () => {
     await expect(feedsPage.feedsList).toBeVisible();
 
     // Step 4: Select a feed
-    await feedsPage.selectFeed('Technology News');
+    await feedsPage.selectFeed("Technology News");
 
     // Step 5: Read articles
     const articlesPage = new DesktopArticlesPage(page);
@@ -442,51 +454,51 @@ test.describe('Daily User Workflow', () => {
 
 ### Authentication Pages (5 pages)
 
-| Page | Path | Test Scenarios | Priority |
-|------|------|----------------|----------|
-| Landing | `/public/landing` | Display, Login CTA, Register CTA, Responsive | High |
-| Login | `/auth/login` | Display form, Valid login, Invalid credentials, Flow init | High |
-| Register | `/auth/register` | Display form, Valid registration, Validation errors | High |
-| Login Success | `/auth/login/success` | Redirect to home, Session creation | Medium |
-| Auth Error | `/auth/error` | Display error, Retry button, Error types | Medium |
+| Page          | Path                  | Test Scenarios                                            | Priority |
+| ------------- | --------------------- | --------------------------------------------------------- | -------- |
+| Landing       | `/public/landing`     | Display, Login CTA, Register CTA, Responsive              | High     |
+| Login         | `/auth/login`         | Display form, Valid login, Invalid credentials, Flow init | High     |
+| Register      | `/auth/register`      | Display form, Valid registration, Validation errors       | High     |
+| Login Success | `/auth/login/success` | Redirect to home, Session creation                        | Medium   |
+| Auth Error    | `/auth/error`         | Display error, Retry button, Error types                  | Medium   |
 
 **Test Count**: 15-20 tests
 
 ### Desktop Pages (8 pages)
 
-| Page | Path | Test Scenarios | Priority |
-|------|------|----------------|----------|
-| Root Home | `/home` | Display, Navigation cards, Logout, Theme toggle | High |
-| Desktop Home | `/desktop/home` | Layout, Sidebar, Analytics panel | High |
-| Feeds | `/desktop/feeds` | List display, Add feed, Search, Empty/Error states | Critical |
-| Feed Register | `/desktop/feeds/register` | Form display, URL validation, Submit, Cancel | High |
-| Articles | `/desktop/articles` | List display, Filters, Pagination, Read article | Critical |
-| Article Search | `/desktop/articles/search` | Search input, Results, Filters, No results | High |
-| Settings | `/desktop/settings` | Display settings, Update profile, Theme change | Medium |
+| Page           | Path                       | Test Scenarios                                     | Priority |
+| -------------- | -------------------------- | -------------------------------------------------- | -------- |
+| Root Home      | `/home`                    | Display, Navigation cards, Logout, Theme toggle    | High     |
+| Desktop Home   | `/desktop/home`            | Layout, Sidebar, Analytics panel                   | High     |
+| Feeds          | `/desktop/feeds`           | List display, Add feed, Search, Empty/Error states | Critical |
+| Feed Register  | `/desktop/feeds/register`  | Form display, URL validation, Submit, Cancel       | High     |
+| Articles       | `/desktop/articles`        | List display, Filters, Pagination, Read article    | Critical |
+| Article Search | `/desktop/articles/search` | Search input, Results, Filters, No results         | High     |
+| Settings       | `/desktop/settings`        | Display settings, Update profile, Theme change     | Medium   |
 
 **Test Count**: 50-60 tests
 
 ### Mobile Pages (7 pages)
 
-| Page | Path | Test Scenarios | Priority |
-|------|------|----------------|----------|
-| Feeds | `/mobile/feeds` | Virtual list, Infinite scroll, Swipe actions, Menu | Critical |
-| Favorites | `/mobile/feeds/favorites` | Display favorites, Remove favorite, Empty state | High |
-| Viewed | `/mobile/feeds/viewed` | Display history, Clear history | Medium |
-| Stats | `/mobile/feeds/stats` | Display statistics, Charts, Period selector | Medium |
-| Feed Register | `/mobile/feeds/register` | Mobile form, Validation, Submit | High |
-| Feed Search | `/mobile/feeds/search` | Mobile search, Results, Filters | High |
-| Article Search | `/mobile/articles/search` | Mobile search, Results, Responsive | High |
+| Page           | Path                      | Test Scenarios                                     | Priority |
+| -------------- | ------------------------- | -------------------------------------------------- | -------- |
+| Feeds          | `/mobile/feeds`           | Virtual list, Infinite scroll, Swipe actions, Menu | Critical |
+| Favorites      | `/mobile/feeds/favorites` | Display favorites, Remove favorite, Empty state    | High     |
+| Viewed         | `/mobile/feeds/viewed`    | Display history, Clear history                     | Medium   |
+| Stats          | `/mobile/feeds/stats`     | Display statistics, Charts, Period selector        | Medium   |
+| Feed Register  | `/mobile/feeds/register`  | Mobile form, Validation, Submit                    | High     |
+| Feed Search    | `/mobile/feeds/search`    | Mobile search, Results, Filters                    | High     |
+| Article Search | `/mobile/articles/search` | Mobile search, Results, Responsive                 | High     |
 
 **Test Count**: 40-50 tests
 
 ### E2E User Flows (3 scenarios)
 
-| Scenario | Coverage | Priority |
-|----------|----------|----------|
-| Onboarding | Register → Login → Add feed → View articles | Critical |
-| Daily Workflow | Login → Browse feeds → Read → Favorite → Logout | High |
-| Cross-platform | Desktop → Mobile switch, Data consistency | Medium |
+| Scenario       | Coverage                                        | Priority |
+| -------------- | ----------------------------------------------- | -------- |
+| Onboarding     | Register → Login → Add feed → View articles     | Critical |
+| Daily Workflow | Login → Browse feeds → Read → Favorite → Logout | High     |
+| Cross-platform | Desktop → Mobile switch, Data consistency       | Medium   |
 
 **Test Count**: 10-15 tests
 
@@ -507,6 +519,7 @@ test.describe('Daily User Workflow', () => {
 ## 🛠️ Implementation Phases
 
 ### Phase 1: Foundation (Day 1)
+
 **Goal**: Set up infrastructure
 
 - ✅ Create directory structure
@@ -518,6 +531,7 @@ test.describe('Daily User Workflow', () => {
 **Deliverables**: 5-7 files
 
 ### Phase 2: Authentication Tests (Day 1-2)
+
 **Goal**: Secure foundation
 
 - ✅ `LoginPage` POM
@@ -528,6 +542,7 @@ test.describe('Daily User Workflow', () => {
 **Deliverables**: 3 POMs + 3-4 spec files
 
 ### Phase 3: Desktop Core Pages (Day 2-3)
+
 **Goal**: Critical user paths
 
 - ✅ `DesktopHomePage` POM
@@ -539,6 +554,7 @@ test.describe('Daily User Workflow', () => {
 **Deliverables**: 7 POMs + 7 spec files
 
 ### Phase 4: Mobile Pages (Day 3-4)
+
 **Goal**: Mobile experience validation
 
 - ✅ `MobileFeedsPage` POM (with virtual scroll helpers)
@@ -549,6 +565,7 @@ test.describe('Daily User Workflow', () => {
 **Deliverables**: 7 POMs + 7 spec files
 
 ### Phase 5: E2E Flows & Edge Cases (Day 4-5)
+
 **Goal**: Complete coverage
 
 - ✅ User flow scenarios (onboarding, daily workflow, cross-platform)
@@ -559,6 +576,7 @@ test.describe('Daily User Workflow', () => {
 **Deliverables**: 3-5 spec files
 
 ### Phase 6: CI/CD Integration & Documentation (Day 5)
+
 **Goal**: Production readiness
 
 - ✅ Update playwright.config.ts (if needed)
@@ -585,40 +603,40 @@ export default defineConfig({
 
     // Desktop Pages (authenticated)
     {
-      name: 'desktop-pages',
+      name: "desktop-pages",
       use: {
-        ...devices['Desktop Chrome'],
-        storageState: 'playwright/.auth/user.json',
+        ...devices["Desktop Chrome"],
+        storageState: "playwright/.auth/user.json",
       },
-      dependencies: ['setup'],
-      testMatch: 'e2e/specs/desktop/**/*.spec.ts',
+      dependencies: ["setup"],
+      testMatch: "e2e/specs/desktop/**/*.spec.ts",
     },
 
     // Mobile Pages (authenticated)
     {
-      name: 'mobile-pages',
+      name: "mobile-pages",
       use: {
-        ...devices['iPhone 13'],
-        storageState: 'playwright/.auth/user.json',
+        ...devices["iPhone 13"],
+        storageState: "playwright/.auth/user.json",
       },
-      dependencies: ['setup'],
-      testMatch: 'e2e/specs/mobile/**/*.spec.ts',
+      dependencies: ["setup"],
+      testMatch: "e2e/specs/mobile/**/*.spec.ts",
     },
 
     // Public Pages (no auth)
     {
-      name: 'public-pages',
-      use: { ...devices['Desktop Chrome'] },
-      testMatch: 'e2e/specs/public/**/*.spec.ts',
+      name: "public-pages",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: "e2e/specs/public/**/*.spec.ts",
     },
 
     // E2E User Flows
     {
-      name: 'e2e-flows',
+      name: "e2e-flows",
       use: {
-        ...devices['Desktop Chrome'],
+        ...devices["Desktop Chrome"],
       },
-      testMatch: 'e2e/specs/e2e-flows/**/*.spec.ts',
+      testMatch: "e2e/specs/e2e-flows/**/*.spec.ts",
       fullyParallel: false, // Run sequentially
     },
   ],
@@ -630,12 +648,14 @@ export default defineConfig({
 ## 📊 Success Metrics
 
 ### Quantitative Metrics
+
 - **Test Coverage**: 95%+ of user-facing pages
 - **Pass Rate**: 98%+ in CI/CD
 - **Execution Time**: < 10 minutes (parallel)
 - **Flakiness**: < 2% retry rate
 
 ### Qualitative Metrics
+
 - **Maintainability**: Clear POM structure, easy to update
 - **Readability**: Tests serve as living documentation
 - **Reliability**: Consistent results across environments
@@ -676,40 +696,44 @@ pnpm exec playwright test --ui
 ## 📚 Best Practices Applied
 
 ### 1. Locator Strategy (Priority Order)
+
 ```typescript
 // ✅ Best: Semantic roles
-page.getByRole('button', { name: 'Submit' })
+page.getByRole("button", { name: "Submit" });
 
 // ✅ Good: Labels
-page.getByLabel('Email address')
+page.getByLabel("Email address");
 
 // ⚠️ OK: Test IDs (when semantic not available)
-page.getByTestId('submit-button')
+page.getByTestId("submit-button");
 
 // ❌ Avoid: CSS selectors
-page.locator('.btn-primary')
+page.locator(".btn-primary");
 ```
 
 ### 2. Auto-waiting & Assertions
+
 ```typescript
 // ✅ Playwright auto-waits
-await expect(page.getByRole('heading')).toBeVisible();
+await expect(page.getByRole("heading")).toBeVisible();
 
 // ❌ Manual waits (avoid unless necessary)
 await page.waitForTimeout(1000);
 ```
 
 ### 3. Test Isolation
+
 ```typescript
 // ✅ Each test is independent
 test.beforeEach(async ({ page }) => {
-  await page.goto('/clean-state');
+  await page.goto("/clean-state");
 });
 
 // ❌ Tests depend on each other (avoid)
 ```
 
 ### 4. Page Object Encapsulation
+
 ```typescript
 // ✅ Actions in POM
 async login(email: string, password: string) {
@@ -722,11 +746,12 @@ async login(email: string, password: string) {
 ```
 
 ### 5. Error Handling
+
 ```typescript
 // ✅ Graceful failures
-test('handles API error', async ({ page }) => {
-  await page.route('**/api/**', route => route.abort());
-  await expect(page.getByText('Error')).toBeVisible();
+test("handles API error", async ({ page }) => {
+  await page.route("**/api/**", (route) => route.abort());
+  await expect(page.getByText("Error")).toBeVisible();
 });
 ```
 
@@ -735,6 +760,7 @@ test('handles API error', async ({ page }) => {
 ## 🔍 Maintenance Guide
 
 ### Adding New Page Tests
+
 1. Create POM in `page-objects/[category]/[page-name].page.ts`
 2. Extend `BasePage` class
 3. Define locators using semantic roles
@@ -742,6 +768,7 @@ test('handles API error', async ({ page }) => {
 5. Add to appropriate project in `playwright.config.ts`
 
 ### Updating Existing Tests
+
 1. Check if POM needs updates (UI changes)
 2. Update locators if selectors changed
 3. Add new test cases for new features
@@ -749,6 +776,7 @@ test('handles API error', async ({ page }) => {
 5. Update snapshots if visual changes expected
 
 ### Debugging Failures
+
 1. Check HTML report: `pnpm exec playwright show-report`
 2. View trace: Click on failed test in report
 3. Check screenshots/videos in `test-results/`
@@ -775,21 +803,21 @@ test('handles API error', async ({ page }) => {
 // e2e/utils/test-data.ts
 export const testUsers = {
   validUser: {
-    email: 'test@example.com',
-    password: 'password123'
+    email: "test@example.com",
+    password: "password123",
   },
   invalidUser: {
-    email: 'invalid@example.com',
-    password: 'wrongpassword'
-  }
+    email: "invalid@example.com",
+    password: "wrongpassword",
+  },
 };
 
 export const testFeeds = {
   techFeed: {
-    url: 'https://example.com/tech.rss',
-    title: 'Technology News',
-    category: 'technology'
-  }
+    url: "https://example.com/tech.rss",
+    title: "Technology News",
+    category: "technology",
+  },
 };
 ```
 

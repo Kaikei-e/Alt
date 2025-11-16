@@ -9,7 +9,7 @@ import type { FeedApi } from "../feeds/FeedApi";
 export class DesktopApi {
   constructor(
     private apiClient: ApiClient,
-    private feedsApi: FeedApi
+    private feedsApi: FeedApi,
   ) {}
 
   // Desktop Feed Methods
@@ -27,7 +27,7 @@ export class DesktopApi {
       }>(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
 
       const transformedFeeds = (response.data || []).map((item) =>
-        sanitizeFeed(item as BackendFeedItem)
+        sanitizeFeed(item as BackendFeedItem),
       );
 
       return {
@@ -49,7 +49,7 @@ export class DesktopApi {
 
   // Test-compatible cursor API for E2E tests
   async getTestFeeds(
-    cursor?: string | null
+    cursor?: string | null,
   ): Promise<{ data: DesktopFeed[]; next_cursor: string | null }> {
     return new Promise((resolve) => {
       const pageSize = 20;
@@ -59,27 +59,38 @@ export class DesktopApi {
 
       resolve({
         data: paginatedFeeds,
-        next_cursor: endIndex < mockDesktopFeeds.length ? endIndex.toString() : null,
+        next_cursor:
+          endIndex < mockDesktopFeeds.length ? endIndex.toString() : null,
       });
     });
   }
 
   // Mock methods for development/testing
-  async toggleFavorite(_feedId: string, isFavorited: boolean): Promise<MessageResponse> {
+  async toggleFavorite(
+    _feedId: string,
+    isFavorited: boolean,
+  ): Promise<MessageResponse> {
     return new Promise((resolve) => {
       setTimeout(() => {
         resolve({
-          message: isFavorited ? "Added to favorites" : "Removed from favorites",
+          message: isFavorited
+            ? "Added to favorites"
+            : "Removed from favorites",
         });
       }, 200);
     });
   }
 
-  async toggleBookmark(_feedId: string, isBookmarked: boolean): Promise<MessageResponse> {
+  async toggleBookmark(
+    _feedId: string,
+    isBookmarked: boolean,
+  ): Promise<MessageResponse> {
     return new Promise((resolve) => {
       setTimeout(() => {
         resolve({
-          message: isBookmarked ? "Added to bookmarks" : "Removed from bookmarks",
+          message: isBookmarked
+            ? "Added to bookmarks"
+            : "Removed from bookmarks",
         });
       }, 200);
     });

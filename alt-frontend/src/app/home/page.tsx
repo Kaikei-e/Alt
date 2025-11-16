@@ -1,6 +1,14 @@
 "use client";
 
-import { Box, Button, Grid, Heading, HStack, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Grid,
+  Heading,
+  HStack,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import { BarChart3, LogOut, Rss, Settings, Users } from "lucide-react";
 import NextLink from "next/link";
 import { useAuth } from "@/contexts/auth-context";
@@ -17,11 +25,22 @@ export default function HomePage() {
     }
   };
   return (
-    <Box minH="100vh" p={6} bg="var(--app-bg)" role="main" aria-label="Alt RSS Reader Dashboard">
+    <Box
+      minH="100vh"
+      p={6}
+      bg="var(--app-bg)"
+      role="main"
+      aria-label="Alt RSS Reader Dashboard"
+    >
       <VStack gap={8} maxW="1200px" mx="auto">
         {/* Header */}
         <HStack w="full" justify="space-between" align="center">
-          <Heading as="h1" size="xl" color="var(--alt-primary)" fontFamily="heading">
+          <Heading
+            as="h1"
+            size="xl"
+            color="var(--alt-primary)"
+            fontFamily="heading"
+          >
             Alt Dashboard
           </Heading>
           <HStack gap={4}>
@@ -56,7 +75,12 @@ export default function HomePage() {
 
         {/* Welcome Message */}
         <Box textAlign="center" py={8}>
-          <Text fontSize="2xl" color="var(--text-primary)" fontFamily="body" mb={4}>
+          <Text
+            fontSize="2xl"
+            color="var(--text-primary)"
+            fontFamily="body"
+            mb={4}
+          >
             Alt RSS Reader へようこそ！
           </Text>
           <Text
@@ -72,7 +96,11 @@ export default function HomePage() {
         </Box>
 
         {/* Quick Actions Grid */}
-        <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap={6} w="full">
+        <Grid
+          templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }}
+          gap={6}
+          w="full"
+        >
           {/* Feed Management */}
           <Box
             bg="var(--alt-glass)"
@@ -88,7 +116,12 @@ export default function HomePage() {
             transition="all 0.2s ease"
           >
             <VStack gap={4} align="center">
-              <Box color="var(--alt-primary)" p={3} borderRadius="full" bg="var(--alt-glass)">
+              <Box
+                color="var(--alt-primary)"
+                p={3}
+                borderRadius="full"
+                bg="var(--alt-glass)"
+              >
                 <Rss size={32} />
               </Box>
               <VStack gap={2} textAlign="center">
@@ -138,7 +171,12 @@ export default function HomePage() {
             transition="all 0.2s ease"
           >
             <VStack gap={4} align="center">
-              <Box color="var(--alt-primary)" p={3} borderRadius="full" bg="var(--alt-glass)">
+              <Box
+                color="var(--alt-primary)"
+                p={3}
+                borderRadius="full"
+                bg="var(--alt-glass)"
+              >
                 <BarChart3 size={32} />
               </Box>
               <VStack gap={2} textAlign="center">
@@ -188,7 +226,12 @@ export default function HomePage() {
             transition="all 0.2s ease"
           >
             <VStack gap={4} align="center">
-              <Box color="var(--alt-primary)" p={3} borderRadius="full" bg="var(--alt-glass)">
+              <Box
+                color="var(--alt-primary)"
+                p={3}
+                borderRadius="full"
+                bg="var(--alt-glass)"
+              >
                 <Users size={32} />
               </Box>
               <VStack gap={2} textAlign="center">
@@ -232,7 +275,12 @@ export default function HomePage() {
           borderColor="var(--alt-glass-border)"
           w="full"
         >
-          <Text fontSize="sm" color="var(--text-primary)" opacity={0.6} fontFamily="body">
+          <Text
+            fontSize="sm"
+            color="var(--text-primary)"
+            opacity={0.6}
+            fontFamily="body"
+          >
             Alt RSS Reader - AI-powered RSS management
           </Text>
         </Box>

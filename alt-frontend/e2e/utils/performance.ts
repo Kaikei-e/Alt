@@ -67,7 +67,9 @@ export interface PerformanceMetrics {
 /**
  * Measure Core Web Vitals
  */
-export async function measureWebVitals(page: Page): Promise<PerformanceMetrics> {
+export async function measureWebVitals(
+  page: Page,
+): Promise<PerformanceMetrics> {
   // Wait for page to load
   await page.waitForLoadState("networkidle");
 
@@ -134,7 +136,9 @@ export async function measurePageLoad(page: Page): Promise<PerformanceMetrics> {
   await page.waitForLoadState("load");
 
   return await page.evaluate(() => {
-    const perfData = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
+    const perfData = performance.getEntriesByType(
+      "navigation",
+    )[0] as PerformanceNavigationTiming;
 
     return {
       domContentLoaded: perfData.domContentLoadedEventEnd - perfData.fetchStart,
@@ -211,7 +215,7 @@ export function evaluateWebVitals(metrics: PerformanceMetrics): {
 } {
   const evaluate = (
     value: number | undefined,
-    thresholds: { good: number; needsImprovement: number }
+    thresholds: { good: number; needsImprovement: number },
   ) => {
     if (!value) return "poor";
     if (value <= thresholds.good) return "good";
@@ -230,13 +234,24 @@ export function evaluateWebVitals(metrics: PerformanceMetrics): {
 /**
  * Assert Web Vitals are within acceptable range
  */
-export function assertWebVitals(metrics: PerformanceMetrics, strictMode = false) {
+export function assertWebVitals(
+  metrics: PerformanceMetrics,
+  strictMode = false,
+) {
   const thresholds = WEB_VITALS_THRESHOLDS;
 
-  const maxLCP = strictMode ? thresholds.LCP.good : thresholds.LCP.needsImprovement;
-  const maxFID = strictMode ? thresholds.FID.good : thresholds.FID.needsImprovement;
-  const maxCLS = strictMode ? thresholds.CLS.good : thresholds.CLS.needsImprovement;
-  const maxFCP = strictMode ? thresholds.FCP.good : thresholds.FCP.needsImprovement;
+  const maxLCP = strictMode
+    ? thresholds.LCP.good
+    : thresholds.LCP.needsImprovement;
+  const maxFID = strictMode
+    ? thresholds.FID.good
+    : thresholds.FID.needsImprovement;
+  const maxCLS = strictMode
+    ? thresholds.CLS.good
+    : thresholds.CLS.needsImprovement;
+  const maxFCP = strictMode
+    ? thresholds.FCP.good
+    : thresholds.FCP.needsImprovement;
 
   const errors: string[] = [];
 
@@ -294,7 +309,7 @@ export function generatePerformanceReport(metrics: PerformanceMetrics): string {
  */
 export async function monitorPerformance(
   page: Page,
-  duration = 5000
+  duration = 5000,
 ): Promise<PerformanceMetrics[]> {
   const metrics: PerformanceMetrics[] = [];
   const interval = 1000; // Collect metrics every second
@@ -314,7 +329,7 @@ export async function monitorPerformance(
  */
 export function compareMetrics(
   baseline: PerformanceMetrics,
-  current: PerformanceMetrics
+  current: PerformanceMetrics,
 ): {
   lcp: number;
   fid: number;
@@ -329,7 +344,10 @@ export function compareMetrics(
   };
 }
 
-function calculateDiff(baseline: number | undefined, current: number | undefined): number {
+function calculateDiff(
+  baseline: number | undefined,
+  current: number | undefined,
+): number {
   if (!baseline || !current) return 0;
   return ((current - baseline) / baseline) * 100;
 }

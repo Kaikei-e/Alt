@@ -5,7 +5,7 @@ describe("HTML Escape Utilities", () => {
   describe("escapeHtml", () => {
     it("should escape HTML special characters", () => {
       expect(escapeHtml('<script>alert("xss")</script>')).toBe(
-        "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;"
+        "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;",
       );
     });
 
@@ -49,7 +49,7 @@ describe("HTML Escape Utilities", () => {
     it("should escape HTML for safe display", () => {
       const query = '<script>alert("search")</script>';
       expect(escapeForDisplay(query)).toBe(
-        "&lt;script&gt;alert(&quot;search&quot;)&lt;/script&gt;"
+        "&lt;script&gt;alert(&quot;search&quot;)&lt;/script&gt;",
       );
     });
 

@@ -11,7 +11,9 @@ const renderWithChakra = (ui: React.ReactElement) => {
 
 describe("ReadingAnalytics", () => {
   it("should display today stats correctly", async () => {
-    renderWithChakra(<ReadingAnalytics analytics={mockAnalytics} isLoading={false} />);
+    renderWithChakra(
+      <ReadingAnalytics analytics={mockAnalytics} isLoading={false} />,
+    );
 
     // Wait for component to render and use more specific text matching
     await waitFor(() => {
@@ -22,14 +24,18 @@ describe("ReadingAnalytics", () => {
   });
 
   it("should show glass effect styling", () => {
-    renderWithChakra(<ReadingAnalytics analytics={mockAnalytics} isLoading={false} />);
+    renderWithChakra(
+      <ReadingAnalytics analytics={mockAnalytics} isLoading={false} />,
+    );
 
     const glassElements = document.querySelectorAll(".glass");
     expect(glassElements.length).toBeGreaterThan(0);
   });
 
   it("should render articles text properly", async () => {
-    renderWithChakra(<ReadingAnalytics analytics={mockAnalytics} isLoading={false} />);
+    renderWithChakra(
+      <ReadingAnalytics analytics={mockAnalytics} isLoading={false} />,
+    );
 
     await waitFor(() => {
       const articlesTexts = screen.getAllByText("Articles");

@@ -53,7 +53,8 @@ export const usePerformanceProfiler = () => {
         ...prev,
         renderTime,
         componentCount: prev.componentCount + 1,
-        memoryUsage: (performance as PerformanceWithMemory).memory?.usedJSHeapSize || 0,
+        memoryUsage:
+          (performance as PerformanceWithMemory).memory?.usedJSHeapSize || 0,
         domNodes: document.querySelectorAll("*").length,
         lastUpdate: Date.now(),
       }));
@@ -177,7 +178,11 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
         >
           <HStack gap={2}>
             <Activity size={16} color="var(--accent-primary)" />
-            <Text fontSize="sm" fontWeight="semibold" color="var(--text-primary)">
+            <Text
+              fontSize="sm"
+              fontWeight="semibold"
+              color="var(--text-primary)"
+            >
               Performance Monitor
             </Text>
             <Badge
@@ -211,7 +216,11 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
               <Text fontSize="xs" color="var(--text-secondary)" mb={1}>
                 Component: {componentName}
               </Text>
-              <HStack fontSize="xs" color="var(--text-primary)" justify="space-between">
+              <HStack
+                fontSize="xs"
+                color="var(--text-primary)"
+                justify="space-between"
+              >
                 <Text>Renders: {metrics.componentCount}</Text>
                 <Text>Last: {metrics.renderTime.toFixed(2)}ms</Text>
               </HStack>
@@ -219,7 +228,11 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
 
             {/* Memory Usage */}
             <Box>
-              <HStack fontSize="xs" color="var(--text-primary)" justify="space-between">
+              <HStack
+                fontSize="xs"
+                color="var(--text-primary)"
+                justify="space-between"
+              >
                 <Text>Memory: {formatBytes(metrics.memoryUsage)}</Text>
                 <Text>DOM: {metrics.domNodes} nodes</Text>
               </HStack>
@@ -271,7 +284,8 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
                 Reset
               </button>
               <Text fontSize="xs" color="var(--text-muted)">
-                Last updated: {new Date(metrics.lastUpdate).toLocaleTimeString()}
+                Last updated:{" "}
+                {new Date(metrics.lastUpdate).toLocaleTimeString()}
               </Text>
             </HStack>
           </VStack>

@@ -1,5 +1,9 @@
 // src/data/mockAnalyticsData.ts
-import type { ReadingAnalytics, SourceAnalytic, TrendingTopic } from "@/types/analytics";
+import type {
+  ReadingAnalytics,
+  SourceAnalytic,
+  TrendingTopic,
+} from "@/types/analytics";
 
 export const mockAnalytics: ReadingAnalytics = {
   today: {

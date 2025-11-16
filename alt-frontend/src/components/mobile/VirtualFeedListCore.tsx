@@ -47,7 +47,7 @@ export const VirtualFeedListCore: React.FC<VirtualFeedListCoreProps> = ({
     (feedLink: string) => {
       onMarkAsRead(feedLink);
     },
-    [onMarkAsRead]
+    [onMarkAsRead],
   );
 
   if (feeds.length === 0) {

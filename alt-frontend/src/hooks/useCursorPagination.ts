@@ -15,10 +15,18 @@ export interface UseCursorPaginationOptions {
 export type UseCursorPaginationResult<T> = UsePaginationResult<T>;
 
 export function useCursorPagination<T>(
-  fetchFn: (cursor?: string, limit?: number) => Promise<{ data: T[]; next_cursor: string | null }>,
-  options: UseCursorPaginationOptions = {}
+  fetchFn: (
+    cursor?: string,
+    limit?: number,
+  ) => Promise<{ data: T[]; next_cursor: string | null }>,
+  options: UseCursorPaginationOptions = {},
 ): UseCursorPaginationResult<T> {
-  const { limit = 20, enablePrefetch = false, prefetchDelay = 500, autoLoad = false } = options;
+  const {
+    limit = 20,
+    enablePrefetch = false,
+    prefetchDelay = 500,
+    autoLoad = false,
+  } = options;
 
   const [data, setData] = useState<T[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -58,7 +66,7 @@ export function useCursorPagination<T>(
         prefetchCacheRef.current.delete(nextCursor);
       }
     },
-    [enablePrefetch, fetchFn, limit]
+    [enablePrefetch, fetchFn, limit],
   );
 
   const loadInitial = useCallback(async () => {
@@ -90,7 +98,8 @@ export function useCursorPagination<T>(
         setHasMore(false);
         setError(null);
       } else {
-        const error = err instanceof Error ? err : new Error("Failed to load data");
+        const error =
+          err instanceof Error ? err : new Error("Failed to load data");
         setError(error);
         setData([]);
         setHasMore(false);
@@ -150,13 +159,23 @@ export function useCursorPagination<T>(
         setCursor(null);
         setError(null);
       } else {
-        const error = err instanceof Error ? err : new Error("Failed to load more data");
+        const error =
+          err instanceof Error ? err : new Error("Failed to load more data");
         setError(error);
       }
     } finally {
       setIsLoading(false);
     }
-  }, [fetchFn, cursor, limit, isLoading, hasMore, enablePrefetch, prefetchNextPage, prefetchDelay]);
+  }, [
+    fetchFn,
+    cursor,
+    limit,
+    isLoading,
+    hasMore,
+    enablePrefetch,
+    prefetchNextPage,
+    prefetchDelay,
+  ]);
 
   const refresh = useCallback(async () => {
     // Clear prefetch cache on refresh

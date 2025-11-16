@@ -110,7 +110,9 @@ export default function DesktopSidebarTest() {
             <button
               onClick={() => setMode("feeds-filter")}
               className={`px-3 py-1 rounded text-sm ${
-                mode === "feeds-filter" ? "bg-blue-500 text-white" : "bg-gray-200"
+                mode === "feeds-filter"
+                  ? "bg-blue-500 text-white"
+                  : "bg-gray-200"
               }`}
             >
               Feeds Filter

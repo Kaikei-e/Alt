@@ -7,7 +7,13 @@ import { AuthProvider } from "@/contexts/auth-context";
 import { ThemeProvider } from "@/providers/ThemeProvider";
 import { setupErrorHandling } from "@/utils/reload-guard";
 
-export function Providers({ children, nonce }: { children: React.ReactNode; nonce: string }) {
+export function Providers({
+  children,
+  nonce,
+}: {
+  children: React.ReactNode;
+  nonce: string;
+}) {
   useEffect(() => {
     setupErrorHandling();
   }, []);

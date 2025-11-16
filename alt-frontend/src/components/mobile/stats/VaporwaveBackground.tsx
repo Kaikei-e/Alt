@@ -43,7 +43,8 @@ export function VaporwaveBackground({
 
   // Clamp animation speed
   const clampedSpeed = Math.max(0, Math.min(3, animationSpeed));
-  const animationDuration = clampedSpeed > 0 ? `${60 / clampedSpeed}s` : "infinite";
+  const animationDuration =
+    clampedSpeed > 0 ? `${60 / clampedSpeed}s` : "infinite";
 
   // Disable effects if reduced motion is preferred
   const effectsEnabled = !reducedMotion;
@@ -136,7 +137,9 @@ export function VaporwaveBackground({
               linear-gradient(-45deg, transparent 40%, var(--accent-primary) 50%, transparent 60%)
             `,
             backgroundSize: "60px 60px, 80px 80px",
-            animation: reducedMotion ? "none" : `geometryMove ${animationDuration} linear infinite`,
+            animation: reducedMotion
+              ? "none"
+              : `geometryMove ${animationDuration} linear infinite`,
           }}
         />
       )}
@@ -153,7 +156,9 @@ export function VaporwaveBackground({
             bottom="0"
             background="repeating-linear-gradient(0deg, transparent 0px, var(--accent-primary) 1px, transparent 2px, transparent 4px)"
             style={{
-              animation: reducedMotion ? "none" : `scanLines ${animationDuration} linear infinite`,
+              animation: reducedMotion
+                ? "none"
+                : `scanLines ${animationDuration} linear infinite`,
             }}
           />
 

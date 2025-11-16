@@ -9,8 +9,13 @@ import { useSSEFeedsStats } from "@/hooks/useSSEFeedsStats";
 
 export default function FeedsStatsPage() {
   // Use the dedicated SSE hook for feeds stats
-  const { feedAmount, unsummarizedArticlesAmount, totalArticlesAmount, isConnected, retryCount } =
-    useSSEFeedsStats();
+  const {
+    feedAmount,
+    unsummarizedArticlesAmount,
+    totalArticlesAmount,
+    isConnected,
+    retryCount,
+  } = useSSEFeedsStats();
 
   return (
     <Box

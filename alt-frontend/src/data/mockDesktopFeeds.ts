@@ -3,7 +3,8 @@ import type { DesktopFeed } from "@/types/desktop-feed";
 export const mockDesktopFeeds: DesktopFeed[] = [
   {
     id: "1",
-    title: "OpenAI Announces GPT-5 with Revolutionary Capabilities for Enterprise Users",
+    title:
+      "OpenAI Announces GPT-5 with Revolutionary Capabilities for Enterprise Users",
     description:
       "The latest AI breakthrough promises to transform business automation and decision-making processes with unprecedented accuracy and efficiency.",
     link: "https://techcrunch.com/2024/openai-gpt5-enterprise",

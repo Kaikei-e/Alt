@@ -15,22 +15,34 @@ test.describe("Login Flow", () => {
     await page.waitForURL(/\/auth\/login\?flow=/);
 
     // Wait for login form to be ready
-    await page.waitForSelector('input[name="identifier"]', { state: "visible", timeout: 15000 });
-    await page.waitForSelector('input[name="password"]', { state: "visible", timeout: 5000 });
-    await page.waitForSelector('button[type="submit"]', { state: "visible", timeout: 5000 });
+    await page.waitForSelector('input[name="identifier"]', {
+      state: "visible",
+      timeout: 15000,
+    });
+    await page.waitForSelector('input[name="password"]', {
+      state: "visible",
+      timeout: 5000,
+    });
+    await page.waitForSelector('button[type="submit"]', {
+      state: "visible",
+      timeout: 5000,
+    });
 
     // Perform login using page object
     await loginPage.performLogin(
       "test@example.com",
       "password123",
-      /\/(desktop\/home|home|mobile)/
+      /\/(desktop\/home|home|mobile)/,
     );
 
     // Wait for redirect to complete
     await page.waitForURL(/\/(desktop\/home|home|mobile)/);
   });
 
-  test("should show error for invalid credentials", async ({ page, loginPage }) => {
+  test("should show error for invalid credentials", async ({
+    page,
+    loginPage,
+  }) => {
     // Clear any existing session cookies
     await page.context().clearCookies();
     await page.goto("/desktop/home");
@@ -41,15 +53,22 @@ test.describe("Login Flow", () => {
     await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 15000 });
 
     // Wait for login form to be ready
-    await page.waitForSelector('input[name="identifier"]', { state: "visible", timeout: 15000 });
+    await page.waitForSelector('input[name="identifier"]', {
+      state: "visible",
+      timeout: 15000,
+    });
 
     // Fill in wrong credentials
     await loginPage.login("wrong@example.com", "wrongpassword");
 
     // Wait for error state - either error message or staying on login page
     await Promise.race([
-      page.locator('[data-testid="error-message"]').waitFor({ state: "visible", timeout: 5000 }),
-      page.locator('[role="alert"]').waitFor({ state: "visible", timeout: 5000 }),
+      page
+        .locator('[data-testid="error-message"]')
+        .waitFor({ state: "visible", timeout: 5000 }),
+      page
+        .locator('[role="alert"]')
+        .waitFor({ state: "visible", timeout: 5000 }),
       page.waitForLoadState("networkidle", { timeout: 5000 }),
     ]).catch(() => {});
 

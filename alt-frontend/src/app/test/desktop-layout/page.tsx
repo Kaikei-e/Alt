@@ -43,7 +43,10 @@ export default function DesktopLayoutTest() {
       <DesktopLayout sidebarProps={mockSidebarProps}>
         <div>
           <h1>Test Content</h1>
-          <p>This is the main content area for testing the DesktopLayout component.</p>
+          <p>
+            This is the main content area for testing the DesktopLayout
+            component.
+          </p>
         </div>
       </DesktopLayout>
     </ThemeProvider>

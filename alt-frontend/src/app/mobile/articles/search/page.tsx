@@ -36,7 +36,8 @@ export default function SearchPage() {
             maxWidth="400px"
             lineHeight="1.7"
           >
-            Explore articles from your subscribed feeds with powerful full-text search
+            Explore articles from your subscribed feeds with powerful full-text
+            search
           </Text>
         </VStack>
 
@@ -72,7 +73,12 @@ export default function SearchPage() {
             border="2px solid #dc2626"
             boxShadow="var(--shadow-sm)"
           >
-            <Text color="#dc2626" fontSize="sm" textAlign="center" fontWeight="medium">
+            <Text
+              color="#dc2626"
+              fontSize="sm"
+              textAlign="center"
+              fontWeight="medium"
+            >
               {error}
             </Text>
           </Box>
@@ -95,9 +101,14 @@ export default function SearchPage() {
             border="2px solid var(--surface-border)"
             boxShadow="var(--shadow-sm)"
           >
-            <Text color="var(--text-secondary)" fontSize="sm" textAlign="center" lineHeight="1.7">
-              💡 Try searching for topics like &quot;AI&quot;, &quot;technology&quot;, or
-              &quot;news&quot;
+            <Text
+              color="var(--text-secondary)"
+              fontSize="sm"
+              textAlign="center"
+              lineHeight="1.7"
+            >
+              💡 Try searching for topics like &quot;AI&quot;,
+              &quot;technology&quot;, or &quot;news&quot;
             </Text>
           </Box>
         )}

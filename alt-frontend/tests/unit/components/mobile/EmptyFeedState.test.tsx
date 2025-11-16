@@ -16,7 +16,9 @@ vi.mock("next/navigation", () => ({
 
 // Helper function to render with ChakraProvider
 const renderWithProvider = (component: React.ReactElement) => {
-  return render(<ChakraProvider value={defaultSystem}>{component}</ChakraProvider>);
+  return render(
+    <ChakraProvider value={defaultSystem}>{component}</ChakraProvider>,
+  );
 };
 
 describe("EmptyFeedState", () => {
@@ -28,10 +30,14 @@ describe("EmptyFeedState", () => {
     renderWithProvider(<EmptyFeedState />);
 
     // Check for main heading
-    expect(screen.getByRole("heading", { name: /no feeds yet/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /no feeds yet/i }),
+    ).toBeInTheDocument();
 
     // Check for descriptive text
-    expect(screen.getByText(/start by adding your first rss feed/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/start by adding your first rss feed/i),
+    ).toBeInTheDocument();
   });
 
   it("should display icon", () => {

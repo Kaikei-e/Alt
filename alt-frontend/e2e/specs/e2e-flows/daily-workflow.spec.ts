@@ -49,7 +49,9 @@ async function mockArticlesApi(page: any, count: number) {
 }
 
 test.describe("Daily User Workflow E2E", () => {
-  test("complete user journey: login → browse feeds → read articles → logout", async ({ page }) => {
+  test("complete user journey: login → browse feeds → read articles → logout", async ({
+    page,
+  }) => {
     // Mock API responses first
     await mockFeedsApi(page, 5);
     await mockArticlesApi(page, 20);
@@ -57,7 +59,10 @@ test.describe("Daily User Workflow E2E", () => {
     // Step 1: Login
     const loginPage = new LoginPage(page);
     await loginPage.navigateToLogin();
-    await loginPage.login(testUsers.validUser.email, testUsers.validUser.password);
+    await loginPage.login(
+      testUsers.validUser.email,
+      testUsers.validUser.password,
+    );
 
     // Wait for successful login
     await page.waitForURL(/\/home|\/desktop/, { timeout: 20000 });
@@ -80,14 +85,19 @@ test.describe("Daily User Workflow E2E", () => {
     // Workflow complete - successfully navigated through pages
   });
 
-  test("user can navigate between pages and maintain state", async ({ page }) => {
+  test("user can navigate between pages and maintain state", async ({
+    page,
+  }) => {
     await mockFeedsApi(page, 5);
     await mockArticlesApi(page, 10);
 
     // Login
     const loginPage = new LoginPage(page);
     await loginPage.navigateToLogin();
-    await loginPage.login(testUsers.validUser.email, testUsers.validUser.password);
+    await loginPage.login(
+      testUsers.validUser.email,
+      testUsers.validUser.password,
+    );
     await page.waitForURL(/\/home|\/desktop/, { timeout: 20000 });
     await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
 
@@ -111,13 +121,20 @@ test.describe("Daily User Workflow E2E", () => {
     // Login
     const loginPage = new LoginPage(page);
     await loginPage.navigateToLogin();
-    await loginPage.login(testUsers.validUser.email, testUsers.validUser.password);
+    await loginPage.login(
+      testUsers.validUser.email,
+      testUsers.validUser.password,
+    );
     await page.waitForURL(/\/home|\/desktop/, { timeout: 20000 });
     await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
 
     // Go to articles search - URL check only
-    await page.goto("/desktop/articles/search", { waitUntil: "domcontentloaded" });
-    await expect(page).toHaveURL(/\/desktop\/articles\/search/, { timeout: 10000 });
+    await page.goto("/desktop/articles/search", {
+      waitUntil: "domcontentloaded",
+    });
+    await expect(page).toHaveURL(/\/desktop\/articles\/search/, {
+      timeout: 10000,
+    });
   });
 
   test("user workflow handles errors gracefully", async ({ page }) => {
@@ -129,7 +146,10 @@ test.describe("Daily User Workflow E2E", () => {
     // Login
     const loginPage = new LoginPage(page);
     await loginPage.navigateToLogin();
-    await loginPage.login(testUsers.validUser.email, testUsers.validUser.password);
+    await loginPage.login(
+      testUsers.validUser.email,
+      testUsers.validUser.password,
+    );
     await page.waitForURL(/\/home|\/desktop/, { timeout: 20000 });
     await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
 
@@ -145,13 +165,20 @@ test.describe("Daily User Workflow E2E", () => {
     // Login
     const loginPage = new LoginPage(page);
     await loginPage.navigateToLogin();
-    await loginPage.login(testUsers.validUser.email, testUsers.validUser.password);
+    await loginPage.login(
+      testUsers.validUser.email,
+      testUsers.validUser.password,
+    );
     await page.waitForURL(/\/home|\/desktop/, { timeout: 20000 });
     await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
 
     // Navigate to feeds register page - URL check only
-    await page.goto("/desktop/feeds/register", { waitUntil: "domcontentloaded" });
-    await expect(page).toHaveURL(/\/desktop\/feeds\/register/, { timeout: 10000 });
+    await page.goto("/desktop/feeds/register", {
+      waitUntil: "domcontentloaded",
+    });
+    await expect(page).toHaveURL(/\/desktop\/feeds\/register/, {
+      timeout: 10000,
+    });
   });
 
   test("user preferences persist across navigation", async ({ page }) => {
@@ -160,7 +187,10 @@ test.describe("Daily User Workflow E2E", () => {
     // Login
     const loginPage = new LoginPage(page);
     await loginPage.navigateToLogin();
-    await loginPage.login(testUsers.validUser.email, testUsers.validUser.password);
+    await loginPage.login(
+      testUsers.validUser.email,
+      testUsers.validUser.password,
+    );
     await page.waitForURL(/\/home|\/desktop/, { timeout: 20000 });
     await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
 

@@ -11,13 +11,15 @@ export default async function Page({
 }) {
   const params = await searchParams;
   const flow = params?.flow;
-  const returnTo = params?.return_to ?? `${process.env.NEXT_PUBLIC_APP_ORIGIN}/`;
+  const returnTo =
+    params?.return_to ?? `${process.env.NEXT_PUBLIC_APP_ORIGIN}/`;
 
   // 🚨 FIX: Check if user is already logged in to prevent infinite loop
   // If session cookie exists, redirect to return_to instead of initiating login
   const cookieStore = await cookies();
   const sessionCookie =
-    cookieStore.get("ory_kratos_session") || cookieStore.get("ory-kratos-session");
+    cookieStore.get("ory_kratos_session") ||
+    cookieStore.get("ory-kratos-session");
 
   if (sessionCookie && !flow) {
     // User is already logged in, redirect to return_to
@@ -26,9 +28,10 @@ export default async function Page({
 
   if (!flow) {
     // flow がない場合は、return_toパラメータまたはデフォルトURLを使用
-    const currentUrl = returnTo || `${process.env.NEXT_PUBLIC_APP_ORIGIN}/auth/login`;
+    const currentUrl =
+      returnTo || `${process.env.NEXT_PUBLIC_APP_ORIGIN}/auth/login`;
     redirect(
-      `${process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL}/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`
+      `${process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL}/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`,
     );
   }
 

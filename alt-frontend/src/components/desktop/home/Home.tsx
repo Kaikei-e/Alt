@@ -171,8 +171,12 @@ export default function DesktopHome() {
                     borderRadius="var(--radius-lg)"
                     bg={item.active ? "var(--surface-hover)" : "transparent"}
                     border="1px solid"
-                    borderColor={item.active ? "var(--alt-primary)" : "transparent"}
-                    color={item.active ? "var(--alt-primary)" : "var(--text-primary)"}
+                    borderColor={
+                      item.active ? "var(--alt-primary)" : "transparent"
+                    }
+                    color={
+                      item.active ? "var(--alt-primary)" : "var(--text-primary)"
+                    }
                     transition="all var(--transition-speed) ease"
                     _hover={{
                       bg: "var(--surface-hover)",
@@ -196,7 +200,12 @@ export default function DesktopHome() {
           <VStack align="stretch" gap={8}>
             {/* Header */}
             <Box>
-              <Text fontSize="3xl" fontWeight="bold" color="var(--text-primary)" mb={2}>
+              <Text
+                fontSize="3xl"
+                fontWeight="bold"
+                color="var(--text-primary)"
+                mb={2}
+              >
                 Dashboard Overview
               </Text>
               <Text color="var(--text-muted)" fontSize="lg">
@@ -220,7 +229,12 @@ export default function DesktopHome() {
                 >
                   <HStack justify="space-between" mb={4}>
                     <Icon as={Rss} color="var(--alt-primary)" boxSize={6} />
-                    <Box bg="var(--alt-primary)" borderRadius="full" p={1} opacity={0.1} />
+                    <Box
+                      bg="var(--alt-primary)"
+                      borderRadius="full"
+                      p={1}
+                      opacity={0.1}
+                    />
                   </HStack>
                   {isLoading && !error && <Loading isLoading={isLoading} />}
                   {!isLoading && !error && (
@@ -262,7 +276,12 @@ export default function DesktopHome() {
                 >
                   <HStack justify="space-between" mb={4}>
                     <Icon as={Zap} color="var(--alt-secondary)" boxSize={6} />
-                    <Box bg="var(--alt-secondary)" borderRadius="full" p={1} opacity={0.1} />
+                    <Box
+                      bg="var(--alt-secondary)"
+                      borderRadius="full"
+                      p={1}
+                      opacity={0.1}
+                    />
                   </HStack>
                   {isLoading && !error && <Loading isLoading={isLoading} />}
                   {!isLoading && !error && (
@@ -303,8 +322,17 @@ export default function DesktopHome() {
                   transition="all var(--transition-speed) ease"
                 >
                   <HStack justify="space-between" mb={4}>
-                    <Icon as={FileText} color="var(--alt-tertiary)" boxSize={6} />
-                    <Box bg="var(--alt-tertiary)" borderRadius="full" p={1} opacity={0.1} />
+                    <Icon
+                      as={FileText}
+                      color="var(--alt-tertiary)"
+                      boxSize={6}
+                    />
+                    <Box
+                      bg="var(--alt-tertiary)"
+                      borderRadius="full"
+                      p={1}
+                      opacity={0.1}
+                    />
                   </HStack>
                   {isLoading && !error && <Loading isLoading={isLoading} />}
                   {!isLoading && !error && (
@@ -346,8 +374,16 @@ export default function DesktopHome() {
                 >
                   <HStack justify="space-between" mb={6}>
                     <HStack>
-                      <Icon as={Activity} color="var(--alt-primary)" boxSize={5} />
-                      <Text fontSize="lg" fontWeight="semibold" color="var(--text-primary)">
+                      <Icon
+                        as={Activity}
+                        color="var(--alt-primary)"
+                        boxSize={5}
+                      />
+                      <Text
+                        fontSize="lg"
+                        fontWeight="semibold"
+                        color="var(--text-primary)"
+                      >
                         Recent Activity
                       </Text>
                     </HStack>
@@ -390,7 +426,11 @@ export default function DesktopHome() {
                           />
                         </Box>
                         <Box flex="1">
-                          <Text fontSize="sm" color="var(--text-primary)" fontWeight="medium">
+                          <Text
+                            fontSize="sm"
+                            color="var(--text-primary)"
+                            fontWeight="medium"
+                          >
                             {activity.title}
                           </Text>
                           <Text fontSize="xs" color="var(--text-muted)">
@@ -417,7 +457,11 @@ export default function DesktopHome() {
                   <HStack justify="space-between" mb={6}>
                     <HStack>
                       <Icon as={Zap} color="var(--alt-secondary)" boxSize={5} />
-                      <Text fontSize="lg" fontWeight="semibold" color="var(--text-primary)">
+                      <Text
+                        fontSize="lg"
+                        fontWeight="semibold"
+                        color="var(--text-primary)"
+                      >
                         Quick Actions
                       </Text>
                     </HStack>
@@ -464,7 +508,11 @@ export default function DesktopHome() {
                             }}
                             transition="all var(--transition-speed) ease"
                           >
-                            <Icon as={action.icon} color="var(--alt-primary)" boxSize={5} />
+                            <Icon
+                              as={action.icon}
+                              color="var(--alt-primary)"
+                              boxSize={5}
+                            />
                             <Text
                               fontSize="sm"
                               fontWeight="medium"
@@ -486,7 +534,11 @@ export default function DesktopHome() {
                       <Text fontSize="sm" color="var(--text-muted)">
                         Weekly reads
                       </Text>
-                      <Text fontSize="sm" fontWeight="bold" color="var(--alt-primary)">
+                      <Text
+                        fontSize="sm"
+                        fontWeight="bold"
+                        color="var(--alt-primary)"
+                      >
                         {extraStats.weeklyReads}
                       </Text>
                     </Flex>
@@ -494,7 +546,11 @@ export default function DesktopHome() {
                       <Text fontSize="sm" color="var(--text-muted)">
                         AI processed
                       </Text>
-                      <Text fontSize="sm" fontWeight="bold" color="var(--alt-secondary)">
+                      <Text
+                        fontSize="sm"
+                        fontWeight="bold"
+                        color="var(--alt-secondary)"
+                      >
                         {extraStats.aiProcessed}%
                       </Text>
                     </Flex>
@@ -502,7 +558,11 @@ export default function DesktopHome() {
                       <Text fontSize="sm" color="var(--text-muted)">
                         Bookmarks
                       </Text>
-                      <Text fontSize="sm" fontWeight="bold" color="var(--alt-tertiary)">
+                      <Text
+                        fontSize="sm"
+                        fontWeight="bold"
+                        color="var(--alt-tertiary)"
+                      >
                         {extraStats.bookmarks}
                       </Text>
                     </Flex>
@@ -521,7 +581,11 @@ export default function DesktopHome() {
               border="1px solid var(--surface-border)"
             >
               <Box>
-                <Text fontSize="lg" fontWeight="semibold" color="var(--text-primary)">
+                <Text
+                  fontSize="lg"
+                  fontWeight="semibold"
+                  color="var(--text-primary)"
+                >
                   Ready to explore?
                 </Text>
                 <Text fontSize="sm" color="var(--text-muted)">

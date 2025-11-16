@@ -1,7 +1,15 @@
 "use client";
 
 import { Progress } from "@chakra-ui/progress";
-import { Box, Button, Flex, HStack, Spinner, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Flex,
+  HStack,
+  Spinner,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import type React from "react";
 import { useState } from "react";
 import type { SourceAnalytic } from "@/types/analytics";
@@ -11,14 +19,24 @@ interface SourceAnalyticsProps {
   isLoading: boolean;
 }
 
-export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({ sources, isLoading }) => {
-  const [sortBy, setSortBy] = useState<"articles" | "reliability" | "engagement">("articles");
+export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
+  sources,
+  isLoading,
+}) => {
+  const [sortBy, setSortBy] = useState<
+    "articles" | "reliability" | "engagement"
+  >("articles");
   const [showAll, setShowAll] = useState(false);
 
   if (isLoading) {
     return (
       <Box className="glass" p={4} borderRadius="var(--radius-lg)">
-        <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)" mb={3}>
+        <Text
+          fontSize="sm"
+          fontWeight="bold"
+          color="var(--text-primary)"
+          mb={3}
+        >
           📰 Source Analytics
         </Text>
         <Flex justify="center" align="center" h="80px">
@@ -96,7 +114,11 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({ sources, isLoa
                 </Text>
                 <Text fontSize="sm">{source.icon}</Text>
                 <VStack gap={0} align="start">
-                  <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+                  <Text
+                    fontSize="xs"
+                    color="var(--text-primary)"
+                    fontWeight="medium"
+                  >
                     {source.name}
                   </Text>
                   <Text fontSize="xs" color="var(--text-muted)">
@@ -111,7 +133,11 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({ sources, isLoa
                 <Text fontSize="xs" color="var(--text-secondary)">
                   Articles:
                 </Text>
-                <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+                <Text
+                  fontSize="xs"
+                  color="var(--text-primary)"
+                  fontWeight="medium"
+                >
                   {source.totalArticles}
                 </Text>
               </HStack>
@@ -133,7 +159,11 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({ sources, isLoa
                     }}
                     borderRadius="var(--radius-full)"
                   />
-                  <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+                  <Text
+                    fontSize="xs"
+                    color="var(--text-primary)"
+                    fontWeight="medium"
+                  >
                     {source.reliability}/10
                   </Text>
                 </HStack>
@@ -156,7 +186,11 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({ sources, isLoa
                     }}
                     borderRadius="var(--radius-full)"
                   />
-                  <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+                  <Text
+                    fontSize="xs"
+                    color="var(--text-primary)"
+                    fontWeight="medium"
+                  >
                     {source.engagement}%
                   </Text>
                 </HStack>

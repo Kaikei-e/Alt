@@ -1,5 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from '../base.page';
+import { Page, Locator, expect } from "@playwright/test";
+import { BasePage } from "../base.page";
 
 /**
  * Landing Page Object
@@ -19,20 +19,20 @@ export class LandingPage extends BasePage {
     super(page);
 
     // Initialize locators based on actual page structure
-    this.pageHeading = page.getByRole('heading', { name: /^Alt$/i });
-    this.loginButton = page.getByRole('link', { name: /ログイン/i });
-    this.registerButton = page.getByRole('link', { name: /新規登録/i });
-    this.heroSection = page.locator('section').first(); // First section is hero
-    this.featuresSection = page.locator('section').nth(1); // Platform stats section
-    this.ctaSection = page.locator('footer'); // Footer section
-    this.logo = page.getByRole('heading', { name: /^Alt$/i }); // Logo is the h1
+    this.pageHeading = page.getByRole("heading", { name: /^Alt$/i });
+    this.loginButton = page.getByRole("link", { name: /ログイン/i });
+    this.registerButton = page.getByRole("link", { name: /新規登録/i });
+    this.heroSection = page.locator("section").first(); // First section is hero
+    this.featuresSection = page.locator("section").nth(1); // Platform stats section
+    this.ctaSection = page.locator("footer"); // Footer section
+    this.logo = page.getByRole("heading", { name: /^Alt$/i }); // Logo is the h1
   }
 
   /**
    * Navigate to landing page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/public/landing');
+    await this.page.goto("/public/landing");
     await this.waitForLoad();
   }
 
@@ -59,7 +59,9 @@ export class LandingPage extends BasePage {
     await this.registerButton.click();
     // Register redirects to API endpoint, then to auth flow
     // Wait for URL change or navigation
-    await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => {});
+    await this.page
+      .waitForLoadState("domcontentloaded", { timeout: 5000 })
+      .catch(() => {});
   }
 
   /**
@@ -120,6 +122,6 @@ export class LandingPage extends BasePage {
    * Get page heading text
    */
   async getHeadingText(): Promise<string> {
-    return (await this.pageHeading.textContent()) || '';
+    return (await this.pageHeading.textContent()) || "";
   }
 }

@@ -41,7 +41,11 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
             {article.title}
           </Text>
 
-          <Dialog.Root size="cover" placement="center" motionPreset="slide-in-bottom">
+          <Dialog.Root
+            size="cover"
+            placement="center"
+            motionPreset="slide-in-bottom"
+          >
             <Dialog.Trigger asChild>
               <Button
                 size="sm"
@@ -91,8 +95,13 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
                     </Dialog.Title>
                   </Dialog.Header>
                   <Dialog.Body px={6} py={4} maxH="60vh" overflowY="auto">
-                    <Text color="var(--text-primary)" lineHeight="1.6" fontSize="md">
-                      {article.content || "No additional content available for this article."}
+                    <Text
+                      color="var(--text-primary)"
+                      lineHeight="1.6"
+                      fontSize="md"
+                    >
+                      {article.content ||
+                        "No additional content available for this article."}
                     </Text>
                   </Dialog.Body>
                   <Dialog.Footer px={6} py={4}>

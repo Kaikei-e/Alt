@@ -35,7 +35,13 @@ export const QuickActionsPanel: React.FC<QuickActionsPanelProps> = ({
       flexDirection="column"
     >
       <VStack gap={4} flex="1">
-        <Grid data-testid="actions-grid" templateColumns="repeat(2, 1fr)" gap={4} w="full" flex="1">
+        <Grid
+          data-testid="actions-grid"
+          templateColumns="repeat(2, 1fr)"
+          gap={4}
+          w="full"
+          flex="1"
+        >
           {actions.map((action) => (
             <ActionButton
               key={action.id}

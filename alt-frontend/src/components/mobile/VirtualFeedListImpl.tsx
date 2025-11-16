@@ -26,7 +26,8 @@ export const VirtualFeedListImpl: React.FC<VirtualFeedListImplProps> = ({
   // 動的サイズ調整の有効/無効判定
   useEffect(() => {
     const flags = FeatureFlagManager.getInstance().getFlags();
-    const enableDynamic = flags.enableDynamicSizing !== false && !dynamicSizingError;
+    const enableDynamic =
+      flags.enableDynamicSizing !== false && !dynamicSizingError;
 
     // フィード数が少ない場合は動的サイズ調整を無効化
     if (feeds.length < 100) {
@@ -36,7 +37,7 @@ export const VirtualFeedListImpl: React.FC<VirtualFeedListImplProps> = ({
 
     // コンテンツの変動が大きい場合のみ動的サイズ調整を有効化
     const hasVariableContent = feeds.some(
-      (feed) => feed.description.length > 500 || feed.title.length > 100
+      (feed) => feed.description.length > 500 || feed.title.length > 100,
     );
 
     setUseDynamicSizing(enableDynamic && hasVariableContent);
@@ -94,7 +95,8 @@ function estimateItemHeight(feeds: Feed[]): number {
   if (feeds.length === 0) return 200;
 
   const avgDescriptionLength =
-    feeds.reduce((sum, feed) => sum + feed.description.length, 0) / feeds.length;
+    feeds.reduce((sum, feed) => sum + feed.description.length, 0) /
+    feeds.length;
 
   const baseHeight = 120;
   const additionalHeight = Math.min(avgDescriptionLength / 4, 100);

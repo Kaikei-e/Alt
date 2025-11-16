@@ -7,7 +7,10 @@ import { ApiError } from "./ApiError";
  * Maps HTTP status codes to user-friendly error messages
  * Following existing patterns from errorHandler.ts and ErrorState.tsx
  */
-function getUserFriendlyErrorMessage(status: number, statusText?: string): string {
+function getUserFriendlyErrorMessage(
+  status: number,
+  statusText?: string,
+): string {
   switch (status) {
     case 400:
       return "Invalid request. Please check your input and try again.";
@@ -62,7 +65,7 @@ export class ApiClient {
   constructor(
     config: ApiConfig = defaultApiConfig,
     cacheManager?: CacheManager,
-    authInterceptor?: AuthInterceptor
+    authInterceptor?: AuthInterceptor,
   ) {
     this.config = config;
     this.cacheManager = cacheManager || new CacheManager(defaultCacheConfig);
@@ -74,7 +77,11 @@ export class ApiClient {
       });
   }
 
-  async get<T>(endpoint: string, cacheTtl: number = 5, timeout?: number): Promise<T> {
+  async get<T>(
+    endpoint: string,
+    cacheTtl: number = 5,
+    timeout?: number,
+  ): Promise<T> {
     const cacheKey = this.cacheManager.getCacheKey(endpoint);
 
     if (process.env.NODE_ENV === "development") {
@@ -100,15 +107,19 @@ export class ApiClient {
 
     try {
       const requestTimeout = timeout ?? this.config.requestTimeout;
-      const responsePromise = this.makeRequest(`${this.config.baseUrl}${endpoint}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "max-age=300",
-          "Accept-Encoding": "gzip, deflate, br",
+      const responsePromise = this.makeRequest(
+        `${this.config.baseUrl}${endpoint}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "max-age=300",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
+          keepalive: true,
         },
-        keepalive: true,
-      }, requestTimeout).then(async (response) => {
+        requestTimeout,
+      ).then(async (response) => {
         const interceptedResponse = await this.authInterceptor.intercept(
           response,
           `${this.config.baseUrl}${endpoint}`,
@@ -120,7 +131,7 @@ export class ApiClient {
               "Accept-Encoding": "gzip, deflate, br",
             },
             keepalive: true,
-          }
+          },
         );
         return interceptedResponse.json();
       });
@@ -158,12 +169,15 @@ export class ApiClient {
       } else if (process.env.NODE_ENV === "development") {
       }
 
-      const response = await this.makeRequest(`${this.config.baseUrl}${endpoint}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(data),
-        keepalive: true,
-      });
+      const response = await this.makeRequest(
+        `${this.config.baseUrl}${endpoint}`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(data),
+          keepalive: true,
+        },
+      );
 
       const interceptedResponse = await this.authInterceptor.intercept(
         response,
@@ -176,7 +190,7 @@ export class ApiClient {
           },
           body: JSON.stringify(data),
           keepalive: true,
-        }
+        },
       );
 
       const result = await interceptedResponse.json();
@@ -219,12 +233,16 @@ export class ApiClient {
       throw new ApiError(
         error instanceof Error
           ? error.message
-          : "An unexpected error occurred. Please try again later."
+          : "An unexpected error occurred. Please try again later.",
       );
     }
   }
 
-  private async makeRequest(url: string, options: RequestInit, timeout?: number): Promise<Response> {
+  private async makeRequest(
+    url: string,
+    options: RequestInit,
+    timeout?: number,
+  ): Promise<Response> {
     const controller = new AbortController();
     const requestTimeout = timeout ?? this.config.requestTimeout;
     const timeoutId = setTimeout(() => controller.abort(), requestTimeout);
@@ -310,7 +328,8 @@ export class ApiClient {
 
         // Use backend message if available, otherwise use user-friendly status code message
         const userMessage =
-          errorMessage || getUserFriendlyErrorMessage(response.status, response.statusText);
+          errorMessage ||
+          getUserFriendlyErrorMessage(response.status, response.statusText);
 
         throw new ApiError(userMessage, response.status, errorCode);
       }
@@ -321,7 +340,10 @@ export class ApiClient {
       if (error instanceof DOMException && error.name === "AbortError") {
         // Log technical details for developers (development only)
         if (process.env.NODE_ENV === "development") {
-          console.error("[ApiClient] Request timeout", { url, timeout: this.config.requestTimeout });
+          console.error("[ApiClient] Request timeout", {
+            url,
+            timeout: this.config.requestTimeout,
+          });
         }
         throw new ApiError("Request timeout. Please try again later.", 408);
       }
@@ -334,7 +356,9 @@ export class ApiClient {
         console.error("[ApiClient] Request failed", { url, error });
       }
       throw new ApiError(
-        error instanceof Error ? error.message : "An unexpected error occurred. Please try again later."
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred. Please try again later.",
       );
     }
   }
@@ -356,7 +380,9 @@ export class ApiClient {
       if (typeof window !== "undefined") {
         headers = (await authAPI.getSessionHeaders()) ?? {};
       } else {
-        const { getServerSessionHeaders } = await import("../../auth/server-headers");
+        const { getServerSessionHeaders } = await import(
+          "../../auth/server-headers"
+        );
         headers = (await getServerSessionHeaders()) ?? {};
       }
 

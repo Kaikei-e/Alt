@@ -1,6 +1,14 @@
 "use client";
 
-import { Badge, Box, Button, HStack, SimpleGrid, Text, VStack } from "@chakra-ui/react";
+import {
+  Badge,
+  Box,
+  Button,
+  HStack,
+  SimpleGrid,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import type React from "react";
 import { useQuickActions } from "@/hooks/useQuickActions";
 
@@ -11,7 +19,12 @@ export const QuickActions: React.FC = () => {
     <VStack gap={4} align="stretch">
       {/* 統計サマリー */}
       <Box className="glass" p={4} borderRadius="var(--radius-lg)">
-        <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)" mb={3}>
+        <Text
+          fontSize="sm"
+          fontWeight="bold"
+          color="var(--text-primary)"
+          mb={3}
+        >
           ⚡ Quick Actions
         </Text>
 
@@ -26,7 +39,11 @@ export const QuickActions: React.FC = () => {
           </VStack>
 
           <VStack gap={1}>
-            <Text fontSize="lg" fontWeight="bold" color="var(--accent-secondary)">
+            <Text
+              fontSize="lg"
+              fontWeight="bold"
+              color="var(--accent-secondary)"
+            >
               {counters.bookmarks}
             </Text>
             <Text fontSize="xs" color="var(--text-secondary)">
@@ -35,7 +52,11 @@ export const QuickActions: React.FC = () => {
           </VStack>
 
           <VStack gap={1}>
-            <Text fontSize="lg" fontWeight="bold" color="var(--accent-tertiary)">
+            <Text
+              fontSize="lg"
+              fontWeight="bold"
+              color="var(--accent-tertiary)"
+            >
               {counters.queue}
             </Text>
             <Text fontSize="xs" color="var(--text-secondary)">
@@ -75,7 +96,12 @@ export const QuickActions: React.FC = () => {
                   </Text>
                 </HStack>
                 {action.count !== undefined && (
-                  <Badge size="sm" bg="var(--surface-bg)" color="var(--text-primary)" fontSize="xs">
+                  <Badge
+                    size="sm"
+                    bg="var(--surface-bg)"
+                    color="var(--text-primary)"
+                    fontSize="xs"
+                  >
                     {action.count}
                   </Badge>
                 )}

@@ -25,7 +25,11 @@ const authInterceptor = new AuthInterceptor({
   onAuthRequired: () => loginBanner.show(),
 });
 
-export const apiClient = new ApiClient(defaultApiConfig, cacheManager, authInterceptor);
+export const apiClient = new ApiClient(
+  defaultApiConfig,
+  cacheManager,
+  authInterceptor,
+);
 
 const feedApiInstance = new FeedApi(apiClient);
 const articleApiInstance = new ArticleApi(apiClient);

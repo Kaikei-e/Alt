@@ -75,7 +75,8 @@ const customExpect = base.expect.extend({
 
     if (pass) {
       return {
-        message: () => `Expected page not to be on auth flow, but was on: ${url}`,
+        message: () =>
+          `Expected page not to be on auth flow, but was on: ${url}`,
         pass: true,
       };
     } else {

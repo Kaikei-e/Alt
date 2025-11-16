@@ -61,7 +61,7 @@ export class RecapApi {
     try {
       const response = await this.apiClient.get<RecapSummaryResponse>(
         "/v1/recap/7days",
-        30 // 30秒タイムアウト（バックエンドがrecap-workerから取得するため長め）
+        30, // 30秒タイムアウト（バックエンドがrecap-workerから取得するため長め）
       );
       return adaptRecapSummary(response);
     } catch (error) {
@@ -69,4 +69,3 @@ export class RecapApi {
     }
   }
 }
-

@@ -26,7 +26,9 @@ export const DynamicVirtualFeedList: React.FC<DynamicVirtualFeedListProps> = ({
   onMeasurementError,
 }) => {
   const parentRef = useRef<HTMLDivElement>(null);
-  const measurementManager = useRef(new SizeMeasurementManager(onMeasurementError));
+  const measurementManager = useRef(
+    new SizeMeasurementManager(onMeasurementError),
+  );
 
   // 動的サイズ推定関数
   const estimateSize = useCallback(
@@ -37,7 +39,7 @@ export const DynamicVirtualFeedList: React.FC<DynamicVirtualFeedListProps> = ({
       const contentLength = feed.title.length + feed.description.length;
       return measurementManager.current.getEstimatedSize(contentLength);
     },
-    [feeds]
+    [feeds],
   );
 
   // 実際のサイズ測定関数
@@ -72,7 +74,7 @@ export const DynamicVirtualFeedList: React.FC<DynamicVirtualFeedListProps> = ({
     (feedLink: string) => {
       onMarkAsRead(feedLink);
     },
-    [onMarkAsRead]
+    [onMarkAsRead],
   );
 
   if (feeds.length === 0) {

@@ -21,7 +21,9 @@ const formatTimeAgo = (dateString: string) => {
   return `${Math.floor(diffInSeconds / 86400)}日前`;
 };
 
-export const DesktopArticleCard: React.FC<DesktopArticleCardProps> = ({ article }) => {
+export const DesktopArticleCard: React.FC<DesktopArticleCardProps> = ({
+  article,
+}) => {
   return (
     <Box
       className="glass"
@@ -41,7 +43,12 @@ export const DesktopArticleCard: React.FC<DesktopArticleCardProps> = ({ article 
         {/* Header with title and link */}
         <HStack gap={2} align="flex-start">
           <VStack gap={1} align="stretch" flex={1}>
-            <Text fontSize="lg" fontWeight="semibold" color="var(--text-primary)" lineHeight="1.4">
+            <Text
+              fontSize="lg"
+              fontWeight="semibold"
+              color="var(--text-primary)"
+              lineHeight="1.4"
+            >
               {article.title}
             </Text>
             <Text fontSize="xs" color="var(--text-secondary)">

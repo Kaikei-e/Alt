@@ -95,7 +95,9 @@ export class DesktopArticlesPage extends BasePage {
    * Open article by title
    */
   async openArticleByTitle(title: string): Promise<void> {
-    const article = this.articlesList.getByRole("article").filter({ hasText: title });
+    const article = this.articlesList
+      .getByRole("article")
+      .filter({ hasText: title });
     await article.click();
   }
 

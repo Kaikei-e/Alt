@@ -123,7 +123,11 @@ export const ReadingQueue: React.FC = () => {
                     <Text fontSize="xs" color="var(--text-secondary)">
                       Progress:
                     </Text>
-                    <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+                    <Text
+                      fontSize="xs"
+                      color="var(--text-primary)"
+                      fontWeight="medium"
+                    >
                       {item.progress}%
                     </Text>
                   </HStack>

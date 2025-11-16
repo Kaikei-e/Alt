@@ -106,7 +106,9 @@ export function createMockFeed(overrides?: Partial<FeedData>): FeedData {
 /**
  * Create mock article response
  */
-export function createMockArticle(overrides?: Partial<ArticleData>): ArticleData {
+export function createMockArticle(
+  overrides?: Partial<ArticleData>,
+): ArticleData {
   return {
     id: `article-${Date.now()}`,
     title: "Test Article",
@@ -130,20 +132,23 @@ export function createMockFeeds(count: number): FeedData[] {
       id: `feed-${i}`,
       title: `Test Feed ${i + 1}`,
       unreadCount: Math.floor(Math.random() * 20),
-    })
+    }),
   );
 }
 
 /**
  * Create multiple mock articles
  */
-export function createMockArticles(count: number, feedId?: string): ArticleData[] {
+export function createMockArticles(
+  count: number,
+  feedId?: string,
+): ArticleData[] {
   return Array.from({ length: count }, (_, i) =>
     createMockArticle({
       id: `article-${i}`,
       title: `Test Article ${i + 1}`,
       feedId: feedId || `feed-${Math.floor(Math.random() * 5)}`,
-    })
+    }),
   );
 }
 
@@ -190,7 +195,10 @@ export interface ArticlesResponse {
 /**
  * Create mock feeds API response
  */
-export function createMockFeedsResponse(count: number, hasMore = false): FeedsResponse {
+export function createMockFeedsResponse(
+  count: number,
+  hasMore = false,
+): FeedsResponse {
   return {
     feeds: createMockFeeds(count),
     cursor: hasMore ? "next-cursor" : null,
@@ -201,7 +209,10 @@ export function createMockFeedsResponse(count: number, hasMore = false): FeedsRe
 /**
  * Create mock articles API response
  */
-export function createMockArticlesResponse(count: number, hasMore = false): ArticlesResponse {
+export function createMockArticlesResponse(
+  count: number,
+  hasMore = false,
+): ArticlesResponse {
   return {
     articles: createMockArticles(count),
     cursor: hasMore ? "next-cursor" : null,

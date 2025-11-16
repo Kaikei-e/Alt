@@ -9,7 +9,12 @@ import React, {
   useState,
 } from "react";
 import { authAPI } from "@/lib/api/auth-client";
-import type { AuthState, LoginFlow, RegistrationFlow, User } from "@/types/auth";
+import type {
+  AuthState,
+  LoginFlow,
+  RegistrationFlow,
+  User,
+} from "@/types/auth";
 
 // エラータイプの定義 - 精密なエラー分類
 export type AuthErrorType =
@@ -132,7 +137,9 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
         case "FLOW_EXPIRED":
           baseError.type = "FLOW_EXPIRED";
           baseError.isRetryable = true;
-          baseError.suggestions = ["ページを再読み込みして新しい登録フローを開始してください"];
+          baseError.suggestions = [
+            "ページを再読み込みして新しい登録フローを開始してください",
+          ];
           break;
         case "SESSION_NOT_FOUND":
           baseError.type = "SESSION_NOT_FOUND";
@@ -152,11 +159,15 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
     if (error.message.includes("404") || error.message.includes("Not Found")) {
       return {
         type: "KRATOS_SERVICE_ERROR",
-        message: "認証サービスに接続できません。しばらく後にもう一度お試しください",
+        message:
+          "認証サービスに接続できません。しばらく後にもう一度お試しください",
         isRetryable: true,
         retryCount,
         technicalInfo: "Authentication service endpoints not accessible",
-        suggestions: ["しばらく待ってから再試行してください", "サポートにお問い合わせください"],
+        suggestions: [
+          "しばらく待ってから再試行してください",
+          "サポートにお問い合わせください",
+        ],
       };
     }
 
@@ -170,7 +181,10 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
         isRetryable: true,
         retryCount,
         technicalInfo: "Network connectivity issue",
-        suggestions: ["インターネット接続を確認してください", "再試行してください"],
+        suggestions: [
+          "インターネット接続を確認してください",
+          "再試行してください",
+        ],
       };
     }
 
@@ -185,7 +199,10 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
         isRetryable: true,
         retryCount,
         technicalInfo: "Session not found - authentication required",
-        suggestions: ["ログインページに移動してください", "ページを再読み込みしてください"],
+        suggestions: [
+          "ログインページに移動してください",
+          "ページを再読み込みしてください",
+        ],
       };
     }
 
@@ -203,7 +220,10 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
     }
 
     // セッション期限切れの検出
-    if (error.message.includes("Session expired") || error.message.includes("Token expired")) {
+    if (
+      error.message.includes("Session expired") ||
+      error.message.includes("Token expired")
+    ) {
       return {
         type: "SESSION_EXPIRED",
         message: "セッションの有効期限が切れました。再度ログインしてください",
@@ -213,7 +233,10 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
     }
 
     // タイムアウトエラーの検出
-    if (error.message.includes("timeout") || error.message.includes("AbortError")) {
+    if (
+      error.message.includes("timeout") ||
+      error.message.includes("AbortError")
+    ) {
       return {
         type: "TIMEOUT_ERROR",
         message: "リクエストがタイムアウトしました",
@@ -232,7 +255,8 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
     ) {
       return {
         type: "USER_ALREADY_EXISTS",
-        message: "このメールアドレスは既に登録されています。ログインをお試しください",
+        message:
+          "このメールアドレスは既に登録されています。ログインをお試しください",
         isRetryable: false,
         retryCount,
         technicalInfo: "User conflict detected from authentication service",
@@ -248,7 +272,8 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
     ) {
       return {
         type: "DATA_FORMAT_ERROR",
-        message: "登録情報の形式に問題があります。メールアドレスとパスワードを確認してください",
+        message:
+          "登録情報の形式に問題があります。メールアドレスとパスワードを確認してください",
         isRetryable: true,
         retryCount,
       };
@@ -277,7 +302,8 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
     ) {
       return {
         type: "KRATOS_SERVICE_ERROR",
-        message: "認証サービスに一時的な問題が発生しています。しばらく後にもう一度お試しください",
+        message:
+          "認証サービスに一時的な問題が発生しています。しばらく後にもう一度お試しください",
         isRetryable: true,
         retryCount,
       };
@@ -290,14 +316,18 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
     ) {
       return {
         type: "REGISTRATION_FAILED",
-        message: "登録処理中にエラーが発生しました。入力内容を確認してもう一度お試しください",
+        message:
+          "登録処理中にエラーが発生しました。入力内容を確認してもう一度お試しください",
         isRetryable: true,
         retryCount,
       };
     }
 
     // バリデーションエラーの検出
-    if (error.message.includes("validation") || error.message.includes("invalid format")) {
+    if (
+      error.message.includes("validation") ||
+      error.message.includes("invalid format")
+    ) {
       return {
         type: "VALIDATION_ERROR",
         message: "入力内容を確認してください",
@@ -394,7 +424,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       "sessionid",
     ];
 
-    return sessionCookies.some((cookieName) => cookieString.includes(cookieName + "="));
+    return sessionCookies.some((cookieName) =>
+      cookieString.includes(cookieName + "="),
+    );
   }, []);
 
   // 🔧 X24: Client-side caching without React.cache to avoid hydration mismatch
@@ -435,7 +467,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const authStateAccessibility = useMemo(
     () => ({
       "aria-busy": authState.isLoading,
-      "aria-live": (authState.error ? "assertive" : "polite") as "polite" | "assertive" | "off",
+      "aria-live": (authState.error ? "assertive" : "polite") as
+        | "polite"
+        | "assertive"
+        | "off",
       role: "status",
       "aria-label": authState.isLoading
         ? "認証状態を確認中です"
@@ -443,7 +478,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           ? "ログイン済みです"
           : "ログインが必要です",
     }),
-    [authState.isLoading, authState.error, authState.isAuthenticated]
+    [authState.isLoading, authState.error, authState.isAuthenticated],
   );
 
   // 🚀 X24 Phase 3: 2025 useCallback optimization for performance tracking
@@ -466,7 +501,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // Log performance improvement every 10 requests
         if (updated.totalRequests % 10 === 0) {
           const avoidanceRate = (
-            ((updated.apiCallsAvoided + updated.cacheHits) / updated.totalRequests) *
+            ((updated.apiCallsAvoided + updated.cacheHits) /
+              updated.totalRequests) *
             100
           ).toFixed(1);
         }
@@ -474,7 +510,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return updated;
       });
     },
-    []
+    [],
   );
 
   // 🧹 X24: Enhanced session management utilities
@@ -549,7 +585,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const now = new Date();
         const lastActivity = authState.lastActivity!;
         const minutesSinceLastActivity = Math.floor(
-          (now.getTime() - lastActivity.getTime()) / (1000 * 60)
+          (now.getTime() - lastActivity.getTime()) / (1000 * 60),
         );
 
         if (minutesSinceLastActivity >= authState.sessionTimeout) {
@@ -599,7 +635,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const flowCheckInterval = setInterval(checkFlowExpiration, 30000);
 
     return () => clearInterval(flowCheckInterval);
-  }, [flowState.registrationFlow, flowState.loginFlow, flowState.expiresAt, flowState.isExpired]);
+  }, [
+    flowState.registrationFlow,
+    flowState.loginFlow,
+    flowState.expiresAt,
+    flowState.isExpired,
+  ]);
 
   // 🚀 X24 Phase 3: Enhanced activity tracking with security check
   const updateActivity = useCallback(() => {
@@ -610,50 +651,60 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [authState.isAuthenticated, performSecurityCheck]);
 
   // 🚀 X24 Phase 3: 2025 Accessibility state getter
-  const getAccessibilityState = useCallback(() => authStateAccessibility, [authStateAccessibility]);
+  const getAccessibilityState = useCallback(
+    () => authStateAccessibility,
+    [authStateAccessibility],
+  );
 
   // 🔄 Phase 3: フロー有効性チェック
-  const isFlowValid = useCallback((flow: RegistrationFlow | LoginFlow | null): boolean => {
-    if (!flow || !flow.expiresAt) {
-      return false;
-    }
+  const isFlowValid = useCallback(
+    (flow: RegistrationFlow | LoginFlow | null): boolean => {
+      if (!flow || !flow.expiresAt) {
+        return false;
+      }
 
-    const now = new Date();
-    const expiresAt = new Date(flow.expiresAt);
-    const isValid = expiresAt > now;
+      const now = new Date();
+      const expiresAt = new Date(flow.expiresAt);
+      const isValid = expiresAt > now;
 
-    return isValid;
-  }, []);
+      return isValid;
+    },
+    [],
+  );
 
   // 🔄 Phase 3: 有効な登録フロー確保
-  const ensureValidRegistrationFlow = useCallback(async (): Promise<RegistrationFlow> => {
-    const flowManagerId = `REG-FLOW-${Date.now()}`;
+  const ensureValidRegistrationFlow =
+    useCallback(async (): Promise<RegistrationFlow> => {
+      const flowManagerId = `REG-FLOW-${Date.now()}`;
 
-    // 既存フローの有効性チェック
-    if (flowState.registrationFlow && isFlowValid(flowState.registrationFlow)) {
-      return flowState.registrationFlow;
-    }
+      // 既存フローの有効性チェック
+      if (
+        flowState.registrationFlow &&
+        isFlowValid(flowState.registrationFlow)
+      ) {
+        return flowState.registrationFlow;
+      }
 
-    try {
-      const newFlow = await authAPI.initiateRegistration();
+      try {
+        const newFlow = await authAPI.initiateRegistration();
 
-      setFlowState((prev) => ({
-        ...prev,
-        registrationFlow: newFlow,
-        expiresAt: new Date(newFlow.expiresAt),
-        isExpired: false,
-        lastRefreshTime: new Date(),
-      }));
+        setFlowState((prev) => ({
+          ...prev,
+          registrationFlow: newFlow,
+          expiresAt: new Date(newFlow.expiresAt),
+          isExpired: false,
+          lastRefreshTime: new Date(),
+        }));
 
-      return newFlow;
-    } catch (error) {
-      console.error(
-        `❌ [FLOW-MANAGER] Failed to create registration flow - ${flowManagerId}`,
-        error
-      );
-      throw error;
-    }
-  }, [flowState.registrationFlow, isFlowValid]);
+        return newFlow;
+      } catch (error) {
+        console.error(
+          `❌ [FLOW-MANAGER] Failed to create registration flow - ${flowManagerId}`,
+          error,
+        );
+        throw error;
+      }
+    }, [flowState.registrationFlow, isFlowValid]);
 
   // 🔄 Phase 3: 有効なログインフロー確保
   const ensureValidLoginFlow = useCallback(async (): Promise<LoginFlow> => {
@@ -677,7 +728,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       return newFlow;
     } catch (error) {
-      console.error(`❌ [FLOW-MANAGER] Failed to create login flow - ${flowManagerId}`, error);
+      console.error(
+        `❌ [FLOW-MANAGER] Failed to create login flow - ${flowManagerId}`,
+        error,
+      );
       throw error;
     }
   }, [flowState.loginFlow, isFlowValid]);
@@ -720,7 +774,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const is401Error =
         authError.type === "INVALID_CREDENTIALS" ||
         (error instanceof Error &&
-          (error.message.includes("401") || error.message.includes("Unauthorized")));
+          (error.message.includes("401") ||
+            error.message.includes("Unauthorized")));
 
       if (is401Error) {
       }
@@ -731,7 +786,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           () => {
             checkAuthStatus(retryCount + 1);
           },
-          2 ** retryCount * 1000
+          2 ** retryCount * 1000,
         ); // 指数バックオフ
         return;
       }
@@ -806,7 +861,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // 🚨 防御的プログラミング: flow オブジェクト検証強化
       if (!registrationFlow || !registrationFlow.id) {
-        throw new Error("Registration flow initialization failed: missing flow ID");
+        throw new Error(
+          "Registration flow initialization failed: missing flow ID",
+        );
       }
 
       // 🚀 X24 Phase 3: Enhanced data sanitization for security
@@ -818,7 +875,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         registrationFlow.id,
         sanitizedEmail,
         password,
-        sanitizedName
+        sanitizedName,
       );
 
       // 🚨 防御的プログラミング: user オブジェクト検証
@@ -843,27 +900,51 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (error: unknown) {
       // 詳細ログ出力でデバッグ性向上
       console.error("[AUTH-CONTEXT] Registration failed - Raw error:", error);
-      console.error("[AUTH-CONTEXT] Registration failed - Error type:", typeof error);
-      console.error("[AUTH-CONTEXT] Registration failed - Flow ID:", "flow_id_not_available");
-      console.error("[AUTH-CONTEXT] Registration failed - Email:", email ? "provided" : "missing");
+      console.error(
+        "[AUTH-CONTEXT] Registration failed - Error type:",
+        typeof error,
+      );
+      console.error(
+        "[AUTH-CONTEXT] Registration failed - Flow ID:",
+        "flow_id_not_available",
+      );
+      console.error(
+        "[AUTH-CONTEXT] Registration failed - Email:",
+        email ? "provided" : "missing",
+      );
       console.error(
         "[AUTH-CONTEXT] Registration failed - Password:",
-        password ? "provided" : "missing"
+        password ? "provided" : "missing",
       );
-      console.error("[AUTH-CONTEXT] Registration failed - Name:", name || "not provided");
+      console.error(
+        "[AUTH-CONTEXT] Registration failed - Name:",
+        name || "not provided",
+      );
 
       if (error instanceof Error) {
-        console.error("[AUTH-CONTEXT] Registration failed - Error message:", error.message);
-        console.error("[AUTH-CONTEXT] Registration failed - Error stack:", error.stack);
+        console.error(
+          "[AUTH-CONTEXT] Registration failed - Error message:",
+          error.message,
+        );
+        console.error(
+          "[AUTH-CONTEXT] Registration failed - Error stack:",
+          error.stack,
+        );
       }
 
       const authError = mapErrorToAuthError(error);
-      console.error("[AUTH-CONTEXT] Registration failed - Mapped error type:", authError.type);
+      console.error(
+        "[AUTH-CONTEXT] Registration failed - Mapped error type:",
+        authError.type,
+      );
       console.error(
         "[AUTH-CONTEXT] Registration failed - Mapped error message:",
-        authError.message
+        authError.message,
       );
-      console.error("[AUTH-CONTEXT] Registration failed - Is retryable:", authError.isRetryable);
+      console.error(
+        "[AUTH-CONTEXT] Registration failed - Is retryable:",
+        authError.isRetryable,
+      );
 
       setAuthState((prev) => ({
         ...prev,
@@ -989,7 +1070,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         timestamp: new Date().toISOString(),
         frontend: systemState,
         backend: backendDiagnostic,
-        recommendations: generateDiagnosticRecommendations(systemState, backendDiagnostic),
+        recommendations: generateDiagnosticRecommendations(
+          systemState,
+          backendDiagnostic,
+        ),
       };
 
       return fullDiagnostic;
@@ -1053,19 +1137,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // 診断結果に基づく推奨事項生成
   const generateDiagnosticRecommendations = (
     frontendState: DiagnosticFrontendState,
-    backendDiagnostic: DiagnosticBackendState
+    backendDiagnostic: DiagnosticBackendState,
   ): string[] => {
     const recommendations: string[] = [];
 
     // フロントエンドの状態チェック
     if (frontendState.authState.hasError) {
       recommendations.push(
-        `🔧 現在のエラー "${frontendState.authState.errorType}" を確認してください`
+        `🔧 現在のエラー "${frontendState.authState.errorType}" を確認してください`,
       );
     }
 
     if (!frontendState.browserState.cookieEnabled) {
-      recommendations.push("🍪 ブラウザのクッキーが無効になっています。有効にしてください");
+      recommendations.push(
+        "🍪 ブラウザのクッキーが無効になっています。有効にしてください",
+      );
     }
 
     if (!frontendState.browserState.onLine) {
@@ -1128,10 +1214,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isFlowValid,
       getAccessibilityState,
       securityMetrics,
-    ]
+    ],
   );
 
-  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
+  );
 }
 
 export function useAuth(): AuthContextType {

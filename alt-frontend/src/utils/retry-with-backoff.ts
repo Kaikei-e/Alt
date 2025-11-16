@@ -20,7 +20,9 @@ export class RetryWithBackoff {
 
   private default401Retry(error: unknown): boolean {
     if (error instanceof Error) {
-      return error.message.includes("401") || error.message.includes("unauthorized");
+      return (
+        error.message.includes("401") || error.message.includes("unauthorized")
+      );
     }
     return false;
   }
@@ -63,7 +65,9 @@ export const auth401Retry = new RetryWithBackoff({
   maxDelay: 8000,
   shouldRetry: (error) => {
     if (error instanceof Error) {
-      return error.message.includes("401") || error.message.includes("unauthorized");
+      return (
+        error.message.includes("401") || error.message.includes("unauthorized")
+      );
     }
     return false;
   },

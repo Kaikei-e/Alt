@@ -6,7 +6,8 @@
 // Input validation patterns
 export const ValidationPatterns = {
   email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-  password: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+  password:
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
   name: /^[a-zA-Z\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]{1,100}$/,
 } as const;
 
@@ -118,13 +119,15 @@ export function validateName(name: string): {
 
 // Rate limiting utilities
 export class RateLimiter {
-  private attempts: Map<string, { count: number; firstAttempt: number; lockedUntil?: number }> =
-    new Map();
+  private attempts: Map<
+    string,
+    { count: number; firstAttempt: number; lockedUntil?: number }
+  > = new Map();
 
   constructor(
     private maxAttempts: number = SecurityConfig.maxLoginAttempts,
     private windowMs: number = 15 * 60 * 1000, // 15 minutes
-    private lockoutMs: number = SecurityConfig.lockoutDuration
+    private lockoutMs: number = SecurityConfig.lockoutDuration,
   ) {}
 
   isBlocked(identifier: string): boolean {
@@ -257,12 +260,18 @@ export class SecureStorage {
 export function generateNonce(): string {
   const array = new Uint8Array(16);
   crypto.getRandomValues(array);
-  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 // Security headers validation
 export function validateSecurityHeaders(response: Response): boolean {
-  const requiredHeaders = ["x-frame-options", "x-content-type-options", "x-xss-protection"];
+  const requiredHeaders = [
+    "x-frame-options",
+    "x-content-type-options",
+    "x-xss-protection",
+  ];
 
   return requiredHeaders.every((header) => response.headers.has(header));
 }

@@ -135,7 +135,7 @@ describeIfRoute("GET /api/fe-auth/validate", () => {
       () =>
         ({
           toSession: mockToSession,
-        }) as any
+        }) as any,
     );
 
     const response = await getHandler();

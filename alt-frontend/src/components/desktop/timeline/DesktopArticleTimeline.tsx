@@ -49,7 +49,7 @@ const DesktopArticleTimeline = () => {
         root: scrollContainerRef.current,
         rootMargin: "200px",
         threshold: 0.1,
-      }
+      },
     );
 
     observer.observe(sentinelElement);
@@ -106,7 +106,13 @@ const DesktopArticleTimeline = () => {
   if (error) {
     return (
       <Box w="100%" minH="0" flex={1} bg="var(--app-bg)">
-        <Box display="flex" alignItems="center" justifyContent="center" h="100%" p={4}>
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          h="100%"
+          p={4}
+        >
           <Box
             className="glass"
             p={6}
@@ -201,7 +207,12 @@ const DesktopArticleTimeline = () => {
           </>
         ) : (
           <Flex justify="center" align="center" py={16} maxW="900px" mx="auto">
-            <Box className="glass" p={6} borderRadius="var(--radius-lg)" textAlign="center">
+            <Box
+              className="glass"
+              p={6}
+              borderRadius="var(--radius-lg)"
+              textAlign="center"
+            >
               <Text fontSize="2xl" mb={3}>
                 📰
               </Text>

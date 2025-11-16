@@ -13,7 +13,12 @@ interface StatsFooterProps {
 
 export const StatsFooter: React.FC<StatsFooterProps> = ({ stats }) => {
   return (
-    <Box data-testid="stats-footer" pt={4} borderTop="1px solid var(--surface-border)" mt={4}>
+    <Box
+      data-testid="stats-footer"
+      pt={4}
+      borderTop="1px solid var(--surface-border)"
+      mt={4}
+    >
       <HStack gap={6} justify="space-between">
         <VStack gap={1} align="start">
           <Text fontSize="xs" color="var(--text-muted)">

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { ActivityData, QuickActionData, StatsCardData } from "../../../src/types/desktop";
+import type {
+  ActivityData,
+  QuickActionData,
+  StatsCardData,
+} from "../../../src/types/desktop";
 
 describe("Desktop Types", () => {
   it("should define StatsCardData interface correctly", () => {
@@ -49,7 +53,12 @@ describe("Desktop Types", () => {
   });
 
   it("should support all activity types", () => {
-    const types: ActivityData["type"][] = ["new_feed", "ai_summary", "bookmark", "read"];
+    const types: ActivityData["type"][] = [
+      "new_feed",
+      "ai_summary",
+      "bookmark",
+      "read",
+    ];
 
     types.forEach((type) => {
       const activity: ActivityData = {
@@ -63,7 +72,11 @@ describe("Desktop Types", () => {
   });
 
   it("should support all stats card colors", () => {
-    const colors: StatsCardData["color"][] = ["primary", "secondary", "tertiary"];
+    const colors: StatsCardData["color"][] = [
+      "primary",
+      "secondary",
+      "tertiary",
+    ];
 
     colors.forEach((color) => {
       const stats: StatsCardData = {

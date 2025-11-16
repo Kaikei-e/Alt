@@ -10,7 +10,10 @@ interface RegisterClientProps {
   returnUrl?: string;
 }
 
-export default function RegisterClient({ flowId, returnUrl }: RegisterClientProps) {
+export default function RegisterClient({
+  flowId,
+  returnUrl,
+}: RegisterClientProps) {
   const { flow, isLoading, isSubmitting, error, handleSubmit } = useOryFlow({
     type: "registration",
     flowId,
@@ -32,7 +35,14 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
         pointerEvents="none"
       />
 
-      <Flex minH="100vh" align="center" justify="center" p={4} position="relative" zIndex={1}>
+      <Flex
+        minH="100vh"
+        align="center"
+        justify="center"
+        p={4}
+        position="relative"
+        zIndex={1}
+      >
         <Stack gap={8} w="full" maxW="420px">
           <Stack gap={4} textAlign="center">
             <Text
@@ -44,7 +54,11 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
             >
               Alt
             </Text>
-            <Text fontSize="lg" fontWeight="semibold" color="var(--text-primary)">
+            <Text
+              fontSize="lg"
+              fontWeight="semibold"
+              color="var(--text-primary)"
+            >
               新規登録
             </Text>
           </Stack>

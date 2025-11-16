@@ -20,7 +20,7 @@ class IntersectionObserverMock {
 
   constructor(
     callback: IntersectionObserverCallback,
-    options?: IntersectionObserverInit
+    options?: IntersectionObserverInit,
   ) {
     const stub = createObserverStub();
     this.observe = stub.observe;
@@ -85,9 +85,14 @@ afterAll(() => {
 });
 
 // 後方互換性のため、モック関数としてもエクスポート
-const intersectionObserverMock = vi.fn((callback: IntersectionObserverCallback, options?: IntersectionObserverInit) => {
-  return new IntersectionObserverMock(callback, options);
-});
+const intersectionObserverMock = vi.fn(
+  (
+    callback: IntersectionObserverCallback,
+    options?: IntersectionObserverInit,
+  ) => {
+    return new IntersectionObserverMock(callback, options);
+  },
+);
 
 const resizeObserverMock = vi.fn((callback: ResizeObserverCallback) => {
   return new ResizeObserverMock(callback);

@@ -30,7 +30,9 @@ export function AnimatedNumber({
     if (displayValue === value) return;
 
     // Check for reduced motion preference
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
 
     if (reducedMotion) {
       // Skip animation for accessibility
@@ -103,7 +105,9 @@ export function AnimatedNumber({
         aria-live="assertive"
         aria-atomic="true"
       >
-        {isAnimating ? `Updating value to ${formattedValue}` : `Current value: ${formattedValue}`}
+        {isAnimating
+          ? `Updating value to ${formattedValue}`
+          : `Current value: ${formattedValue}`}
       </Box>
     </>
   );

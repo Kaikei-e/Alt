@@ -19,7 +19,10 @@ export enum ContentType {
  * @param declaredType - Optional declared content type from API
  * @returns The detected ContentType
  */
-export const detectContentType = (content: string, declaredType?: string): ContentType => {
+export const detectContentType = (
+  content: string,
+  declaredType?: string,
+): ContentType => {
   // 1. Use declared type if explicitly provided and valid
   if (declaredType) {
     const normalizedType = declaredType.toLowerCase();
@@ -224,7 +227,10 @@ export interface ContentAnalysis {
   estimatedReadingTime: number; // in minutes
 }
 
-export const analyzeContent = (content: string, declaredType?: string): ContentAnalysis => {
+export const analyzeContent = (
+  content: string,
+  declaredType?: string,
+): ContentAnalysis => {
   if (!content || typeof content !== "string") {
     return {
       type: ContentType.TEXT,
@@ -259,7 +265,9 @@ export const analyzeContent = (content: string, declaredType?: string): ContentA
   const textOnly = safeStripHtml(content);
 
   // Fix empty string word count issue
-  const wordCount = textOnly ? textOnly.split(/\s+/).filter((word) => word.length > 0).length : 0;
+  const wordCount = textOnly
+    ? textOnly.split(/\s+/).filter((word) => word.length > 0).length
+    : 0;
 
   // Average reading speed: 200 words per minute
   const estimatedReadingTime = Math.max(1, Math.ceil(wordCount / 200));

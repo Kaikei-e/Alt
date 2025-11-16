@@ -1,12 +1,24 @@
 "use client";
 
-import { Box, Dialog, Flex, HStack, IconButton, Portal, Spinner, Text } from "@chakra-ui/react";
+import {
+  Box,
+  Dialog,
+  Flex,
+  HStack,
+  IconButton,
+  Portal,
+  Spinner,
+  Text,
+} from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
 import { Archive, ExternalLink, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { articleApi } from "@/lib/api";
-import type { FeedContentOnTheFlyResponse, FetchArticleSummaryResponse } from "@/schema/feed";
+import type {
+  FeedContentOnTheFlyResponse,
+  FetchArticleSummaryResponse,
+} from "@/schema/feed";
 import { DesktopRenderFeedDetails } from "./DesktopRenderFeedDetails";
 
 interface DesktopFeedDetailsModalProps {
@@ -47,8 +59,11 @@ export const DesktopFeedDetailsModal = ({
   feedTitle,
   feedId,
 }: DesktopFeedDetailsModalProps) => {
-  const [content, setContent] = useState<FeedContentOnTheFlyResponse | null>(null);
-  const [articleSummary, setArticleSummary] = useState<FetchArticleSummaryResponse | null>(null);
+  const [content, setContent] = useState<FeedContentOnTheFlyResponse | null>(
+    null,
+  );
+  const [articleSummary, setArticleSummary] =
+    useState<FetchArticleSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
@@ -80,10 +95,12 @@ export const DesktopFeedDetailsModal = ({
       setIsLoading(true);
       setError(null);
 
-      const summaryPromise = articleApi.getArticleSummary(feedLink).catch((err) => {
-        console.error("Failed to fetch article summary:", err);
-        return null;
-      });
+      const summaryPromise = articleApi
+        .getArticleSummary(feedLink)
+        .catch((err) => {
+          console.error("Failed to fetch article summary:", err);
+          return null;
+        });
 
       const contentPromise = articleApi
         .getFeedContentOnTheFly({ feed_url: feedLink })
@@ -103,8 +120,11 @@ export const DesktopFeedDetailsModal = ({
         }
 
         const hasSummary =
-          !!summaryResponse?.matched_articles && summaryResponse.matched_articles.length > 0;
-        const hasContent = !!contentResponse?.content && contentResponse.content.trim().length > 0;
+          !!summaryResponse?.matched_articles &&
+          summaryResponse.matched_articles.length > 0;
+        const hasContent =
+          !!contentResponse?.content &&
+          contentResponse.content.trim().length > 0;
 
         if (hasSummary) {
           setArticleSummary(summaryResponse);
@@ -200,8 +220,15 @@ export const DesktopFeedDetailsModal = ({
       }}
     >
       <Portal>
-        <Dialog.Backdrop bg="rgba(5, 10, 25, 0.65)" backdropFilter="blur(14px)" />
-        <Dialog.Positioner display="flex" alignItems="center" justifyContent="center">
+        <Dialog.Backdrop
+          bg="rgba(5, 10, 25, 0.65)"
+          backdropFilter="blur(14px)"
+        />
+        <Dialog.Positioner
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+        >
           <Dialog.Content
             maxW="900px"
             w="94vw"
@@ -212,7 +239,11 @@ export const DesktopFeedDetailsModal = ({
             overflow="hidden"
             data-testid={`desktop-feed-details-modal-${feedId}`}
           >
-            <Dialog.Header px={6} py={5} borderBottom="1px solid rgba(255, 255, 255, 0.06)">
+            <Dialog.Header
+              px={6}
+              py={5}
+              borderBottom="1px solid rgba(255, 255, 255, 0.06)"
+            >
               <Flex align="center" justify="space-between" gap={4}>
                 <Link
                   href={feedLink}
@@ -270,7 +301,13 @@ export const DesktopFeedDetailsModal = ({
                 data-testid={`desktop-feed-details-scroll-${feedId}`}
               >
                 {isLoading && !activeFeedDetails ? (
-                  <Flex align="center" justify="center" minH="180px" direction="column" gap={3}>
+                  <Flex
+                    align="center"
+                    justify="center"
+                    minH="180px"
+                    direction="column"
+                    gap={3}
+                  >
                     <Spinner color="var(--accent-primary)" size="lg" />
                     <Text color="var(--text-secondary)" fontSize="sm">
                       Fetching article...
@@ -297,7 +334,11 @@ export const DesktopFeedDetailsModal = ({
                     >
                       AI Summary
                     </Text>
-                    <Text color="var(--text-primary)" fontSize="md" lineHeight="1.8">
+                    <Text
+                      color="var(--text-primary)"
+                      fontSize="md"
+                      lineHeight="1.8"
+                    >
                       {summary}
                     </Text>
                   </Box>
@@ -320,7 +361,11 @@ export const DesktopFeedDetailsModal = ({
               </Box>
             </Dialog.Body>
 
-            <Dialog.Footer px={6} py={5} borderTop="1px solid rgba(255, 255, 255, 0.06)">
+            <Dialog.Footer
+              px={6}
+              py={5}
+              borderTop="1px solid rgba(255, 255, 255, 0.06)"
+            >
               <HStack gap={3} w="100%">
                 <Box
                   as="button"
@@ -330,8 +375,16 @@ export const DesktopFeedDetailsModal = ({
                   py={3}
                   borderRadius="md"
                   border="1px solid rgba(255, 255, 255, 0.35)"
-                  bg={isArchived ? "rgba(255, 255, 255, 0.18)" : "rgba(255, 255, 255, 0.08)"}
-                  color={isArchived ? "var(--accent-secondary)" : "rgba(255, 255, 255, 0.9)"}
+                  bg={
+                    isArchived
+                      ? "rgba(255, 255, 255, 0.18)"
+                      : "rgba(255, 255, 255, 0.08)"
+                  }
+                  color={
+                    isArchived
+                      ? "var(--accent-secondary)"
+                      : "rgba(255, 255, 255, 0.9)"
+                  }
                   cursor={isArchiving ? "not-allowed" : "pointer"}
                   opacity={isArchiving ? 0.6 : 1}
                   transition="all 0.2s ease"
@@ -350,20 +403,34 @@ export const DesktopFeedDetailsModal = ({
                 >
                   <Archive size={18} />
                   <Text fontSize="sm" fontWeight="medium">
-                    {isArchiving ? "Archiving..." : isArchived ? "Archived" : "Archive"}
+                    {isArchiving
+                      ? "Archiving..."
+                      : isArchived
+                        ? "Archived"
+                        : "Archive"}
                   </Text>
                 </Box>
 
                 <Box
                   as="button"
                   flex="1"
-                  onClick={isSummarizing || !!summary ? undefined : handleSummarize}
+                  onClick={
+                    isSummarizing || !!summary ? undefined : handleSummarize
+                  }
                   px={4}
                   py={3}
                   borderRadius="md"
                   border="1px solid rgba(255, 255, 255, 0.35)"
-                  bg={summary ? "rgba(255, 255, 255, 0.18)" : "rgba(255, 255, 255, 0.08)"}
-                  color={summary ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.9)"}
+                  bg={
+                    summary
+                      ? "rgba(255, 255, 255, 0.18)"
+                      : "rgba(255, 255, 255, 0.08)"
+                  }
+                  color={
+                    summary
+                      ? "var(--accent-primary)"
+                      : "rgba(255, 255, 255, 0.9)"
+                  }
                   cursor={isSummarizing || summary ? "not-allowed" : "pointer"}
                   opacity={isSummarizing ? 0.6 : 1}
                   transition="all 0.2s ease"
@@ -373,11 +440,16 @@ export const DesktopFeedDetailsModal = ({
                   gap={2}
                   data-testid={`desktop-feed-details-ai-${feedId}`}
                   _hover={{
-                    bg: isSummarizing || summary ? undefined : "rgba(255, 255, 255, 0.22)",
-                    transform: isSummarizing || summary ? undefined : "translateY(-1px)",
+                    bg:
+                      isSummarizing || summary
+                        ? undefined
+                        : "rgba(255, 255, 255, 0.22)",
+                    transform:
+                      isSummarizing || summary ? undefined : "translateY(-1px)",
                   }}
                   _active={{
-                    transform: isSummarizing || summary ? undefined : "translateY(0)",
+                    transform:
+                      isSummarizing || summary ? undefined : "translateY(0)",
                   }}
                 >
                   {isSummarizing ? (

@@ -33,7 +33,9 @@ export const CallToActionBar: React.FC<CallToActionBarProps> = ({
               key={index}
               href={action.href}
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                action.variant === "primary" || !action.variant ? "btn-primary" : "btn-secondary"
+                action.variant === "primary" || !action.variant
+                  ? "btn-primary"
+                  : "btn-secondary"
               }`}
             >
               {action.icon && <action.icon size={16} />}

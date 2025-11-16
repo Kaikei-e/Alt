@@ -94,8 +94,8 @@ All tests follow the Page Object Model pattern for better maintainability and re
 
 ```typescript
 // page-objects/desktop/feeds.page.ts
-import { BasePage } from '../base.page';
-import { Page, Locator } from '@playwright/test';
+import { BasePage } from "../base.page";
+import { Page, Locator } from "@playwright/test";
 
 export class DesktopFeedsPage extends BasePage {
   readonly feedsList: Locator;
@@ -103,12 +103,12 @@ export class DesktopFeedsPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.feedsList = page.getByRole('list');
-    this.addFeedButton = page.getByRole('button', { name: /add feed/i });
+    this.feedsList = page.getByRole("list");
+    this.addFeedButton = page.getByRole("button", { name: /add feed/i });
   }
 
   async goto(): Promise<void> {
-    await this.page.goto('/desktop/feeds');
+    await this.page.goto("/desktop/feeds");
     await this.waitForLoad();
   }
 
@@ -133,10 +133,10 @@ We provide several test fixtures for common scenarios:
 **Usage:**
 
 ```typescript
-import { test, expect } from '../fixtures/authenticated.fixture';
+import { test, expect } from "../fixtures/authenticated.fixture";
 
-test('authenticated user can view feeds', async ({ authenticatedPage }) => {
-  await authenticatedPage.goto('/desktop/feeds');
+test("authenticated user can view feeds", async ({ authenticatedPage }) => {
+  await authenticatedPage.goto("/desktop/feeds");
   // ... test code
 });
 ```
@@ -146,10 +146,10 @@ test('authenticated user can view feeds', async ({ authenticatedPage }) => {
 ### Test Structure
 
 ```typescript
-import { test, expect } from '@playwright/test';
-import { DesktopFeedsPage } from '../../page-objects/desktop/feeds.page';
+import { test, expect } from "@playwright/test";
+import { DesktopFeedsPage } from "../../page-objects/desktop/feeds.page";
 
-test.describe('Desktop Feeds Page', () => {
+test.describe("Desktop Feeds Page", () => {
   let feedsPage: DesktopFeedsPage;
 
   test.beforeEach(async ({ page }) => {
@@ -157,11 +157,11 @@ test.describe('Desktop Feeds Page', () => {
     await feedsPage.goto();
   });
 
-  test('should display feeds list', async () => {
+  test("should display feeds list", async () => {
     await expect(feedsPage.feedsList).toBeVisible();
   });
 
-  test('should navigate to add feed page', async () => {
+  test("should navigate to add feed page", async () => {
     await feedsPage.clickAddFeed();
     await expect(feedsPage.page).toHaveURL(/\/desktop\/feeds\/register/);
   });
@@ -180,16 +180,16 @@ test.describe('Desktop Feeds Page', () => {
 
 ```typescript
 // ✅ Best: Semantic roles
-page.getByRole('button', { name: 'Submit' })
+page.getByRole("button", { name: "Submit" });
 
 // ✅ Good: Labels
-page.getByLabel('Email address')
+page.getByLabel("Email address");
 
 // ⚠️  OK: Test IDs (when semantic not available)
-page.getByTestId('submit-button')
+page.getByTestId("submit-button");
 
 // ❌ Avoid: CSS selectors
-page.locator('.btn-primary')
+page.locator(".btn-primary");
 ```
 
 ## 🛠️ Utilities
@@ -197,23 +197,23 @@ page.locator('.btn-primary')
 ### Test Data
 
 ```typescript
-import { createMockFeed, testUsers } from '../utils/test-data';
+import { createMockFeed, testUsers } from "../utils/test-data";
 
 // Use predefined test users
 const user = testUsers.validUser;
 
 // Generate mock data
-const feed = createMockFeed({ title: 'My Test Feed' });
+const feed = createMockFeed({ title: "My Test Feed" });
 ```
 
 ### API Mocking
 
 ```typescript
-import { mockFeedsApi, mockEmptyFeeds } from '../utils/api-mocks';
+import { mockFeedsApi, mockEmptyFeeds } from "../utils/api-mocks";
 
-test('should handle empty feeds', async ({ page }) => {
+test("should handle empty feeds", async ({ page }) => {
   await mockEmptyFeeds(page);
-  await page.goto('/desktop/feeds');
+  await page.goto("/desktop/feeds");
   await expect(page.getByText(/no feeds/i)).toBeVisible();
 });
 ```
@@ -221,21 +221,21 @@ test('should handle empty feeds', async ({ page }) => {
 ### Accessibility Testing
 
 ```typescript
-import { checkPageA11y } from '../utils/accessibility';
+import { checkPageA11y } from "../utils/accessibility";
 
-test('should be accessible', async ({ page }) => {
-  await page.goto('/desktop/feeds');
-  await checkPageA11y(page, { level: 'AA' });
+test("should be accessible", async ({ page }) => {
+  await page.goto("/desktop/feeds");
+  await checkPageA11y(page, { level: "AA" });
 });
 ```
 
 ### Performance Testing
 
 ```typescript
-import { measureWebVitals, assertWebVitals } from '../utils/performance';
+import { measureWebVitals, assertWebVitals } from "../utils/performance";
 
-test('should meet Core Web Vitals', async ({ page }) => {
-  await page.goto('/desktop/feeds');
+test("should meet Core Web Vitals", async ({ page }) => {
+  await page.goto("/desktop/feeds");
   const metrics = await measureWebVitals(page);
   assertWebVitals(metrics);
 });
@@ -245,16 +245,16 @@ test('should meet Core Web Vitals', async ({ page }) => {
 
 Playwright is configured with multiple projects in `playwright.config.ts`:
 
-| Project | Purpose | Authentication | Test Match |
-|---------|---------|----------------|------------|
-| `setup` | Authentication setup | N/A | `tests/*.setup.ts` |
-| `authenticated-chrome` | Authenticated tests (Chrome) | ✅ Yes | `e2e/authenticated/**/*.spec.ts` |
-| `authenticated-firefox` | Authenticated tests (Firefox) | ✅ Yes | `e2e/authenticated/**/*.spec.ts` |
-| `desktop-chrome` | Desktop tests | ✅ Yes | `e2e/desktop/**/*.spec.ts` |
-| `auth-flow-chrome` | Auth flow tests (Chrome) | ❌ No | `e2e/auth/**/*.spec.ts` |
-| `auth-flow-firefox` | Auth flow tests (Firefox) | ❌ No | `e2e/auth/**/*.spec.ts` |
-| `error-scenarios` | Error handling tests | ❌ No | `e2e/errors/**/*.spec.ts` |
-| `components` | Component tests | ✅ Yes | `e2e/components/**/*.spec.ts` |
+| Project                 | Purpose                       | Authentication | Test Match                       |
+| ----------------------- | ----------------------------- | -------------- | -------------------------------- |
+| `setup`                 | Authentication setup          | N/A            | `tests/*.setup.ts`               |
+| `authenticated-chrome`  | Authenticated tests (Chrome)  | ✅ Yes         | `e2e/authenticated/**/*.spec.ts` |
+| `authenticated-firefox` | Authenticated tests (Firefox) | ✅ Yes         | `e2e/authenticated/**/*.spec.ts` |
+| `desktop-chrome`        | Desktop tests                 | ✅ Yes         | `e2e/desktop/**/*.spec.ts`       |
+| `auth-flow-chrome`      | Auth flow tests (Chrome)      | ❌ No          | `e2e/auth/**/*.spec.ts`          |
+| `auth-flow-firefox`     | Auth flow tests (Firefox)     | ❌ No          | `e2e/auth/**/*.spec.ts`          |
+| `error-scenarios`       | Error handling tests          | ❌ No          | `e2e/errors/**/*.spec.ts`        |
+| `components`            | Component tests               | ✅ Yes         | `e2e/components/**/*.spec.ts`    |
 
 ## 🐛 Debugging
 
@@ -283,6 +283,7 @@ pnpm exec playwright show-report
 ### Screenshots and Videos
 
 Failed tests automatically capture:
+
 - Screenshots (on failure)
 - Videos (on failure)
 - Traces (on failure)
@@ -311,7 +312,7 @@ Main configuration is in `playwright.config.ts` at the root:
 
 ```typescript
 export default defineConfig({
-  testDir: './',
+  testDir: "./",
   timeout: 30 * 1000,
   retries: process.env.CI ? 2 : 1,
   workers: process.env.CI ? 2 : 10,
@@ -331,13 +332,13 @@ export default defineConfig({
 
 ### Current Coverage
 
-| Category | Pages Tested | Coverage |
-|----------|--------------|----------|
-| Authentication | 2/5 | 40% |
-| Desktop | 0/8 | 0% |
-| Mobile | 0/7 | 0% |
-| Public | 0/1 | 0% |
-| E2E Flows | 0/3 | 0% |
+| Category       | Pages Tested | Coverage |
+| -------------- | ------------ | -------- |
+| Authentication | 2/5          | 40%      |
+| Desktop        | 0/8          | 0%       |
+| Mobile         | 0/7          | 0%       |
+| Public         | 0/1          | 0%       |
+| E2E Flows      | 0/3          | 0%       |
 
 ## 🔄 CI/CD Integration
 
@@ -353,6 +354,7 @@ CI=true pnpm test:e2e
 ### Parallel Execution
 
 Tests are configured for parallel execution:
+
 - **Local**: 10 workers
 - **CI**: 2 workers
 
@@ -378,12 +380,12 @@ Tests are configured for parallel execution:
 
 ```typescript
 // ✅ Good
-test('should display feeds list')
-test('should navigate to add feed page')
+test("should display feeds list");
+test("should navigate to add feed page");
 
 // ❌ Bad
-test('test1')
-test('feeds')
+test("test1");
+test("feeds");
 ```
 
 ### Updating Tests
@@ -406,21 +408,25 @@ test('feeds')
 ### Common Issues
 
 **Tests timing out**
+
 - Increase timeout in test or config
 - Check if backend services are running
 - Verify network connectivity
 
 **Authentication failures**
+
 - Ensure mock auth service is running
 - Check storage state file exists: `playwright/.auth/user.json`
 - Verify setup project ran successfully
 
 **Flaky tests**
+
 - Use auto-waiting instead of fixed waits
 - Ensure proper test isolation
 - Check for race conditions
 
 **Element not found**
+
 - Verify locator strategy
 - Check if element exists in DOM
 - Use `--headed` mode to visually inspect
@@ -428,6 +434,7 @@ test('feeds')
 ## 📞 Support
 
 For issues or questions:
+
 1. Check this README
 2. Review Playwright documentation
 3. Check existing test examples

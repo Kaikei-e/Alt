@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { validateUrl } from "../../../../src/schema/validation/urlValidation";
-import { sanitizeContent, sanitizeFeedContent } from "../../../../src/utils/contentSanitizer";
+import {
+  sanitizeContent,
+  sanitizeFeedContent,
+} from "../../../../src/utils/contentSanitizer";
 import { escapeHtml } from "../../../../src/utils/htmlEscape";
 
 describe("Security Regression Tests - PROTECTED", () => {
@@ -38,7 +41,9 @@ describe("Security Regression Tests - PROTECTED", () => {
       const xssContent =
         "javascript:alert(1) vbscript:alert(1) data:text/html,<script>alert(1)</script>";
       const result = sanitizeContent(xssContent);
-      expect(result).equal("javascript:alert(1) vbscript:alert(1) data:text/html,");
+      expect(result).equal(
+        "javascript:alert(1) vbscript:alert(1) data:text/html,",
+      );
     });
 
     test("should remove CSS expression attacks - PROTECTED", () => {
@@ -50,7 +55,9 @@ describe("Security Regression Tests - PROTECTED", () => {
       const mixedContent =
         '<p>This is <strong>important</strong> news about <script>alert("hack")</script> technology.</p>';
       const result = sanitizeContent(mixedContent);
-      expect(result).toBe("<p>This is <strong>important</strong> news about  technology.</p>");
+      expect(result).toBe(
+        "<p>This is <strong>important</strong> news about  technology.</p>",
+      );
     });
 
     test("should handle SVG-based XSS attacks - PROTECTED", () => {
@@ -61,7 +68,8 @@ describe("Security Regression Tests - PROTECTED", () => {
     });
 
     test("should handle style attribute XSS - PROTECTED", () => {
-      const styleXss = '<div style="background-image: url(javascript:alert(1))">Content</div>';
+      const styleXss =
+        '<div style="background-image: url(javascript:alert(1))">Content</div>';
       const result = sanitizeContent(styleXss);
       expect(result).not.toContain("javascript:");
     });
@@ -79,7 +87,9 @@ describe("Security Regression Tests - PROTECTED", () => {
       const html = '<script>alert("XSS")</script>';
       const escaped = escapeHtml(html);
 
-      expect(escaped).toBe("&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;");
+      expect(escaped).toBe(
+        "&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;",
+      );
     });
 
     test("should handle all dangerous characters - PROTECTED", () => {
@@ -119,7 +129,9 @@ describe("Security Regression Tests - PROTECTED", () => {
 
     test("should reject dangerous protocols - PROTECTED", () => {
       expect(validateUrl("javascript:alert(1)")).toBe(false);
-      expect(validateUrl("data:text/html,<script>alert(1)</script>")).toBe(false);
+      expect(validateUrl("data:text/html,<script>alert(1)</script>")).toBe(
+        false,
+      );
       expect(validateUrl("vbscript:alert(1)")).toBe(false);
       expect(validateUrl("file:///etc/passwd")).toBe(false);
     });
@@ -215,7 +227,8 @@ describe("Security Regression Tests - PROTECTED", () => {
 
   describe("Advanced XSS Prevention - PROTECTED", () => {
     test("should prevent mutation XSS - PROTECTED", () => {
-      const mutationXss = "<select><noscript></select><script>alert(1)</script>";
+      const mutationXss =
+        "<select><noscript></select><script>alert(1)</script>";
       const result = sanitizeContent(mutationXss);
       expect(result).not.toContain("<script>");
     });

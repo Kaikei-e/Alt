@@ -52,7 +52,9 @@ export class DesktopFeedsPage extends BasePage {
     // Empty/Error states with testids
     this.emptyState = page.locator('[data-testid="empty-state"]');
     this.errorMessage = page.locator('[data-testid="error-message"]');
-    this.loadingIndicator = page.locator('[data-testid="desktop-timeline-skeleton"]');
+    this.loadingIndicator = page.locator(
+      '[data-testid="desktop-timeline-skeleton"]',
+    );
     this.retryButton = page.locator('[data-testid="retry-button"]');
   }
 
@@ -98,7 +100,9 @@ export class DesktopFeedsPage extends BasePage {
       ]).catch(() => {});
 
       // Feed cards have data-testid="desktop-feed-card-{id}"
-      const items = await this.page.locator('[data-testid^="desktop-feed-card-"]').count();
+      const items = await this.page
+        .locator('[data-testid^="desktop-feed-card-"]')
+        .count();
 
       return items;
     } catch {
@@ -249,7 +253,9 @@ export class DesktopFeedsPage extends BasePage {
       .locator('[data-testid^="desktop-feed-card-"]')
       .filter({ hasText: feedTitle });
 
-    const favoriteButton = feed.getByRole("button", { name: /favorite|star|いいね/i });
+    const favoriteButton = feed.getByRole("button", {
+      name: /favorite|star|いいね/i,
+    });
     await favoriteButton.click();
   }
 }
