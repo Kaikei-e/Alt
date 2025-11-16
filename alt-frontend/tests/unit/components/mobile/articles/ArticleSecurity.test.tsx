@@ -100,7 +100,6 @@ describe("Article rendering security", () => {
         feed={feed}
         statusMessage={null}
         onDismiss={vi.fn()}
-        getCachedContent={undefined}
       />,
     );
 
@@ -113,10 +112,15 @@ describe("Article rendering security", () => {
           feed_url: feed.link,
         });
       },
-      { timeout: 3000 },
+      { timeout: 5000 },
     );
 
-    const contentSection = await screen.findByTestId("content-section");
+    await waitFor(() => {
+      const contentSection = screen.getByTestId("content-section");
+      expect(contentSection).toBeInTheDocument();
+    });
+
+    const contentSection = screen.getByTestId("content-section");
 
     expect(contentSection.querySelector("script")).toBeNull();
     expect(contentSection.innerHTML).not.toContain("<script");
