@@ -164,6 +164,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 
 	if cursor == nil {
 		// First page - no cursor
+		// Use pub_date if it's not NULL and not zero value (0001-01-01), otherwise use created_at
 		query = `
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
 			FROM feeds f
@@ -174,12 +175,13 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 				AND rs.user_id = $2
 				AND rs.is_read = TRUE
 			)
-			ORDER BY COALESCE(f.pub_date, f.created_at) DESC, f.id DESC
+			ORDER BY CASE WHEN f.pub_date IS NOT NULL AND f.pub_date > '1970-01-01'::timestamp THEN f.pub_date ELSE f.created_at END DESC, f.id DESC
 			LIMIT $1
 		`
 		args = []interface{}{limit, user.UserID}
 	} else {
 		// Subsequent pages - use cursor
+		// Use pub_date if it's not NULL and not zero value (0001-01-01), otherwise use created_at
 		query = `
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
 			FROM feeds f
@@ -190,8 +192,8 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 				AND rs.user_id = $3
 				AND rs.is_read = TRUE
 			)
-			AND COALESCE(f.pub_date, f.created_at) < $1
-			ORDER BY COALESCE(f.pub_date, f.created_at) DESC, f.id DESC
+			AND CASE WHEN f.pub_date IS NOT NULL AND f.pub_date > '1970-01-01'::timestamp THEN f.pub_date ELSE f.created_at END < $1
+			ORDER BY CASE WHEN f.pub_date IS NOT NULL AND f.pub_date > '1970-01-01'::timestamp THEN f.pub_date ELSE f.created_at END DESC, f.id DESC
 			LIMIT $2
 		`
 		args = []interface{}{cursor, limit, user.UserID}
