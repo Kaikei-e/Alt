@@ -158,7 +158,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 	}
 
 	// Cursor-based pagination for better performance
-	// Uses created_at as cursor to avoid OFFSET performance issues
+	// Uses pub_date as cursor to show latest feeds first (falls back to created_at if pub_date is NULL)
 	var query string
 	var args []interface{}
 
@@ -174,7 +174,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 				AND rs.user_id = $2
 				AND rs.is_read = TRUE
 			)
-			ORDER BY f.created_at DESC, f.id DESC
+			ORDER BY COALESCE(f.pub_date, f.created_at) DESC, f.id DESC
 			LIMIT $1
 		`
 		args = []interface{}{limit, user.UserID}
@@ -190,8 +190,8 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 				AND rs.user_id = $3
 				AND rs.is_read = TRUE
 			)
-			AND f.created_at < $1
-			ORDER BY f.created_at DESC, f.id DESC
+			AND COALESCE(f.pub_date, f.created_at) < $1
+			ORDER BY COALESCE(f.pub_date, f.created_at) DESC, f.id DESC
 			LIMIT $2
 		`
 		args = []interface{}{cursor, limit, user.UserID}

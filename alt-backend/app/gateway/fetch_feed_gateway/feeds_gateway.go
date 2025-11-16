@@ -204,11 +204,18 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
+		// Use pub_date for Published field, fallback to created_at if pub_date is zero/empty
+		var publishedTime time.Time
+		if !feed.PubDate.IsZero() {
+			publishedTime = feed.PubDate
+		} else {
+			publishedTime = feed.CreatedAt
+		}
 		feedItems = append(feedItems, &domain.FeedItem{
 			Title:       feed.Title,
 			Description: feed.Description,
 			Link:        feed.Link,
-			Published:   feed.CreatedAt.Format(time.RFC3339),
+			Published:   publishedTime.Format(time.RFC3339),
 		})
 	}
 
