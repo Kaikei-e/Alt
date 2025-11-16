@@ -32,10 +32,16 @@ func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 
 				feedModels := make([]models.Feed, len(feedItems))
 				for i, feedItem := range feedItems {
+					// Use PublishedParsed for PubDate, fallback to current time if zero
+					pubDate := feedItem.PublishedParsed
+					if pubDate.IsZero() {
+						pubDate = time.Now().UTC()
+					}
 					feedModel := models.Feed{
 						Title:       feedItem.Title,
 						Description: feedItem.Description,
 						Link:        feedItem.Link,
+						PubDate:     pubDate,
 						CreatedAt:   time.Now().UTC(),
 						UpdatedAt:   time.Now().UTC(),
 					}
