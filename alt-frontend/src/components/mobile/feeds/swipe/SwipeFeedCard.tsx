@@ -39,6 +39,7 @@ type SwipeFeedCardProps = {
   statusMessage: string | null;
   onDismiss: (direction: number) => Promise<void> | void;
   getCachedContent?: (feedUrl: string) => string | null;
+  isBusy?: boolean;
 };
 
 const buildContentStyles = (): CSSObject => ({
@@ -75,6 +76,7 @@ const SwipeFeedCard = ({
   statusMessage,
   onDismiss,
   getCachedContent,
+  isBusy = false,
 }: SwipeFeedCardProps) => {
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
@@ -339,6 +341,7 @@ const SwipeFeedCard = ({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ opacity: 0 }}
         data-testid="swipe-card"
+        aria-busy={isBusy}
       >
         <VStack align="stretch" gap={0} h="100%">
           <Box
