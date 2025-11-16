@@ -1,6 +1,6 @@
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SwipeFeedScreen from "@/components/mobile/feeds/swipe/SwipeFeedScreen";
 import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 import type { Feed } from "@/schema/feed";
@@ -62,6 +62,10 @@ describe("SwipeFeedScreen", () => {
   beforeEach(() => {
     mockMatchMedia(false);
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it("renders skeleton while data is unknown but validating", () => {
