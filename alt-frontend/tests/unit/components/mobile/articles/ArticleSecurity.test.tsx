@@ -57,7 +57,7 @@ describe("Article rendering security", () => {
     });
 
     renderWithProviders(
-      <ArticleDetailsModal article={article} isOpen onClose={() => {}} />,
+      <ArticleDetailsModal article={article} isOpen onClose={() => { }} />,
     );
 
     const contentNode = await screen.findByTestId("article-full-content");
@@ -96,19 +96,27 @@ describe("Article rendering security", () => {
     });
 
     renderWithProviders(
-      <SwipeFeedCard feed={feed} statusMessage={null} onDismiss={vi.fn()} />,
+      <SwipeFeedCard
+        feed={feed}
+        statusMessage={null}
+        onDismiss={vi.fn()}
+        getCachedContent={undefined}
+      />,
     );
 
     const toggleContentButton = screen.getByTestId("toggle-content-button");
     await user.click(toggleContentButton);
 
-    const contentSection = await screen.findByTestId("content-section");
+    await waitFor(
+      () => {
+        expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
+          feed_url: feed.link,
+        });
+      },
+      { timeout: 3000 },
+    );
 
-    await waitFor(() => {
-      expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
-        feed_url: feed.link,
-      });
-    });
+    const contentSection = await screen.findByTestId("content-section");
 
     expect(contentSection.querySelector("script")).toBeNull();
     expect(contentSection.innerHTML).not.toContain("<script");
