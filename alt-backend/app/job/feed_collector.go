@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"time"
 
 	rssFeed "github.com/mmcdole/gofeed"
 )
@@ -179,11 +180,21 @@ func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {
 				author = domain.Author{Name: item.Author.Name}
 				authors = append(authors, author)
 			}
+
+			// Handle nil PublishedParsed to avoid nil pointer dereference
+			var publishedParsed time.Time
+			if item.PublishedParsed != nil {
+				publishedParsed = *item.PublishedParsed
+			} else {
+				// Use zero time if PublishedParsed is nil (will be handled in job_runner.go)
+				publishedParsed = time.Time{}
+			}
+
 			feedItems = append(feedItems, &domain.FeedItem{
 				Title:           strings.TrimSpace(item.Title),
 				Description:     item.Description,
 				Link:            item.Link,
-				PublishedParsed: *item.PublishedParsed,
+				PublishedParsed: publishedParsed,
 				Author:          author,
 				Authors:         authors,
 			})
