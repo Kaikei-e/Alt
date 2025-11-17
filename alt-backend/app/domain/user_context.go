@@ -63,11 +63,11 @@ func GetUserFromContext(ctx context.Context) (*UserContext, error) {
 	if !ok || user == nil {
 		return nil, fmt.Errorf("user context not found")
 	}
-	
+
 	if !user.IsValid() {
 		return nil, fmt.Errorf("invalid user context")
 	}
-	
+
 	return user, nil
 }
 

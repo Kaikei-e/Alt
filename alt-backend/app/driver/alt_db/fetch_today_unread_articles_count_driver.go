@@ -26,14 +26,14 @@ func (r *AltDBRepository) FetchTodayUnreadArticlesCount(ctx context.Context, sin
 
 	var count int
 	if err := r.pool.QueryRow(ctx, query, since, user.UserID).Scan(&count); err != nil {
-		logger.SafeError("failed to fetch today's unread articles count", 
-			"error", err, 
+		logger.SafeError("failed to fetch today's unread articles count",
+			"error", err,
 			"user_id", user.UserID)
 		return 0, errors.New("failed to fetch today's unread articles count")
 	}
 
-	logger.SafeInfo("today's unread articles count fetched successfully", 
-		"count", count, 
+	logger.SafeInfo("today's unread articles count fetched successfully",
+		"count", count,
 		"user_id", user.UserID)
 	return count, nil
 }

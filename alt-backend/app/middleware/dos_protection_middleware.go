@@ -313,7 +313,7 @@ func CleanupExpiredLimiters(limiters map[string]*rateLimiter, mu *sync.RWMutex, 
 		limiter.mu.Lock()
 		shouldDelete := !limiter.blockedAt.IsZero() && limiter.blockedAt.Before(cutoff)
 		limiter.mu.Unlock()
-		
+
 		if shouldDelete {
 			delete(limiters, ip)
 		}

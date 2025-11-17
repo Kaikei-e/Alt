@@ -25,7 +25,7 @@ type ImageFetchOptions struct {
 // NewImageFetchOptions creates default ImageFetchOptions
 func NewImageFetchOptions() *ImageFetchOptions {
 	return &ImageFetchOptions{
-		MaxSize: 5 * 1024 * 1024, // 5MB
+		MaxSize: 5 * 1024 * 1024,  // 5MB
 		Timeout: 30 * time.Second, // 30 seconds
 	}
 }

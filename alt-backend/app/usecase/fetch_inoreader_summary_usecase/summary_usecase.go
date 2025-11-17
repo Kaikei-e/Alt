@@ -29,7 +29,7 @@ func NewFetchInoreaderSummaryUsecase(port fetch_inoreader_summary_port.FetchInor
 
 // Execute fetches inoreader summaries for the provided URLs
 func (u *fetchInoreaderSummaryUsecase) Execute(ctx context.Context, urls []string) ([]*domain.InoreaderSummary, error) {
-	logger.Logger.Info("Usecase: fetching inoreader summaries", 
+	logger.Logger.Info("Usecase: fetching inoreader summaries",
 		"url_count", len(urls))
 
 	// Validation: Check URL count limits (as per schema validation max=50)
@@ -52,9 +52,9 @@ func (u *fetchInoreaderSummaryUsecase) Execute(ctx context.Context, urls []strin
 
 	// Remove duplicates while preserving order
 	uniqueURLs := u.removeDuplicateURLs(urls)
-	
-	logger.Logger.Info("URLs processed", 
-		"original_count", len(urls), 
+
+	logger.Logger.Info("URLs processed",
+		"original_count", len(urls),
 		"unique_count", len(uniqueURLs))
 
 	// Call port (gateway layer)
@@ -64,7 +64,7 @@ func (u *fetchInoreaderSummaryUsecase) Execute(ctx context.Context, urls []strin
 		return nil, fmt.Errorf("failed to fetch summaries: %w", err)
 	}
 
-	logger.Logger.Info("Usecase: successfully fetched summaries", 
+	logger.Logger.Info("Usecase: successfully fetched summaries",
 		"matched_count", len(summaries),
 		"requested_count", len(uniqueURLs))
 

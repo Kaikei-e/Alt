@@ -87,7 +87,7 @@ func CommonSuccessTestCases() []TestCase {
 func CreateMockFeeds(count int) []*models.Feed {
 	now := time.Now()
 	feeds := make([]*models.Feed, count)
-	
+
 	for i := 0; i < count; i++ {
 		feeds[i] = &models.Feed{
 			ID:          "test-feed-id-" + string(rune('0'+i)),
@@ -99,7 +99,7 @@ func CreateMockFeeds(count int) []*models.Feed {
 			UpdatedAt:   now,
 		}
 	}
-	
+
 	return feeds
 }
 

@@ -15,7 +15,7 @@ import (
 
 func TestNewSSRFValidator(t *testing.T) {
 	validator := NewSSRFValidator()
-	
+
 	assert.NotNil(t, validator)
 	assert.False(t, validator.allowTestingLocalhost)
 	assert.NotEmpty(t, validator.metadataEndpoints)
@@ -25,7 +25,7 @@ func TestNewSSRFValidator(t *testing.T) {
 
 func TestSSRFValidator_BasicValidation(t *testing.T) {
 	validator := NewSSRFValidator()
-	
+
 	tests := []struct {
 		name        string
 		url         string
@@ -39,7 +39,7 @@ func TestSSRFValidator_BasicValidation(t *testing.T) {
 		},
 		{
 			name:    "valid http URL",
-			url:     "http://example.com/image.jpg", 
+			url:     "http://example.com/image.jpg",
 			wantErr: false,
 		},
 		{
@@ -62,7 +62,7 @@ func TestSSRFValidator_BasicValidation(t *testing.T) {
 			require.NoError(t, err)
 
 			err = validator.ValidateURL(context.Background(), u)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErr)
@@ -75,11 +75,11 @@ func TestSSRFValidator_BasicValidation(t *testing.T) {
 
 func TestSSRFValidator_MetadataEndpoints(t *testing.T) {
 	validator := NewSSRFValidator()
-	
+
 	tests := []struct {
-		name     string
-		url      string
-		wantErr  bool
+		name    string
+		url     string
+		wantErr bool
 	}{
 		{
 			name:    "AWS metadata endpoint",
@@ -87,7 +87,7 @@ func TestSSRFValidator_MetadataEndpoints(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "Oracle Cloud metadata", 
+			name:    "Oracle Cloud metadata",
 			url:     "http://192.0.0.192/opc/v1/instance/",
 			wantErr: true,
 		},
@@ -109,7 +109,7 @@ func TestSSRFValidator_MetadataEndpoints(t *testing.T) {
 			require.NoError(t, err)
 
 			err = validator.ValidateURL(context.Background(), u)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "METADATA_ENDPOINT_BLOCKED")
@@ -122,11 +122,11 @@ func TestSSRFValidator_MetadataEndpoints(t *testing.T) {
 
 func TestSSRFValidator_InternalDomains(t *testing.T) {
 	validator := NewSSRFValidator()
-	
+
 	tests := []struct {
-		name     string
-		url      string
-		wantErr  bool
+		name    string
+		url     string
+		wantErr bool
 	}{
 		{
 			name:    "local domain",
@@ -156,7 +156,7 @@ func TestSSRFValidator_InternalDomains(t *testing.T) {
 			require.NoError(t, err)
 
 			err = validator.ValidateURL(context.Background(), u)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "INTERNAL_DOMAIN_BLOCKED")
@@ -169,11 +169,11 @@ func TestSSRFValidator_InternalDomains(t *testing.T) {
 
 func TestSSRFValidator_PathTraversal(t *testing.T) {
 	validator := NewSSRFValidator()
-	
+
 	tests := []struct {
-		name     string
-		url      string
-		wantErr  bool
+		name      string
+		url       string
+		wantErr   bool
 		errorType string
 	}{
 		{
@@ -195,7 +195,7 @@ func TestSSRFValidator_PathTraversal(t *testing.T) {
 			errorType: "URL_ENCODING_BLOCKED",
 		},
 		{
-			name:      "URL encoded slash attack", 
+			name:      "URL encoded slash attack",
 			url:       "https://example.com/test%2fmalicious",
 			wantErr:   true,
 			errorType: "URL_ENCODING_BLOCKED",
@@ -213,7 +213,7 @@ func TestSSRFValidator_PathTraversal(t *testing.T) {
 			require.NoError(t, err)
 
 			err = validator.ValidateURL(context.Background(), u)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorType)
@@ -226,11 +226,11 @@ func TestSSRFValidator_PathTraversal(t *testing.T) {
 
 func TestSSRFValidator_PortValidation(t *testing.T) {
 	validator := NewSSRFValidator()
-	
+
 	tests := []struct {
-		name     string
-		url      string
-		wantErr  bool
+		name    string
+		url     string
+		wantErr bool
 	}{
 		{
 			name:    "allowed port 443",
@@ -239,7 +239,7 @@ func TestSSRFValidator_PortValidation(t *testing.T) {
 		},
 		{
 			name:    "allowed port 80",
-			url:     "http://example.com:80/image.jpg", 
+			url:     "http://example.com:80/image.jpg",
 			wantErr: false,
 		},
 		{
@@ -254,7 +254,7 @@ func TestSSRFValidator_PortValidation(t *testing.T) {
 		},
 		{
 			name:    "disallowed port 22",
-			url:     "https://example.com:22/image.jpg", 
+			url:     "https://example.com:22/image.jpg",
 			wantErr: true,
 		},
 	}
@@ -265,7 +265,7 @@ func TestSSRFValidator_PortValidation(t *testing.T) {
 			require.NoError(t, err)
 
 			err = validator.ValidateURL(context.Background(), u)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "PORT_BLOCKED")
@@ -278,11 +278,11 @@ func TestSSRFValidator_PortValidation(t *testing.T) {
 
 func TestSSRFValidator_UnicodeValidation(t *testing.T) {
 	validator := NewSSRFValidator()
-	
+
 	tests := []struct {
-		name     string
-		url      string
-		wantErr  bool
+		name      string
+		url       string
+		wantErr   bool
 		errorType string
 	}{
 		{
@@ -310,7 +310,7 @@ func TestSSRFValidator_UnicodeValidation(t *testing.T) {
 			require.NoError(t, err)
 
 			err = validator.ValidateURL(context.Background(), u)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorType)
@@ -323,25 +323,25 @@ func TestSSRFValidator_UnicodeValidation(t *testing.T) {
 
 func TestSSRFValidator_TestingMode(t *testing.T) {
 	validator := NewSSRFValidator()
-	
+
 	// Test that localhost is blocked by default
 	u, err := url.Parse("http://localhost:8080/test")
 	require.NoError(t, err)
-	
+
 	err = validator.ValidateURL(context.Background(), u)
 	assert.Error(t, err)
-	
+
 	// Enable testing mode
 	validator.SetTestingMode(true)
-	
+
 	// Now localhost should be allowed for testing
-	err = validator.ValidateURL(context.Background(), u) 
+	err = validator.ValidateURL(context.Background(), u)
 	assert.NoError(t, err)
 }
 
 func TestSSRFValidator_HasMixedScripts(t *testing.T) {
 	validator := NewSSRFValidator()
-	
+
 	tests := []struct {
 		name     string
 		hostname string
@@ -379,7 +379,7 @@ func TestSSRFValidator_HasMixedScripts(t *testing.T) {
 
 func TestSSRFValidator_HasConfusableChars(t *testing.T) {
 	validator := NewSSRFValidator()
-	
+
 	tests := []struct {
 		name     string
 		hostname string
@@ -387,7 +387,7 @@ func TestSSRFValidator_HasConfusableChars(t *testing.T) {
 	}{
 		{
 			name:     "normal ASCII",
-			hostname: "example.com", 
+			hostname: "example.com",
 			expected: false,
 		},
 		{
@@ -419,9 +419,9 @@ func TestSSRFValidator_PrivateIPRanges(t *testing.T) {
 	validator := NewSSRFValidator()
 
 	tests := []struct {
-		name     string
-		url      string
-		wantErr  bool
+		name      string
+		url       string
+		wantErr   bool
 		errorType string
 	}{
 		// Private IPv4 ranges - 10.0.0.0/8
@@ -555,7 +555,7 @@ func TestSSRFValidator_IsPrivateOrDangerous(t *testing.T) {
 		// IPv6 private ranges
 		{"fc00::1", "fc00::1", true},
 		{"fd00::1", "fd00::1", true},
-		{"::1", "::1", true}, // IPv6 loopback
+		{"::1", "::1", true},         // IPv6 loopback
 		{"fe80::1", "fe80::1", true}, // Link-local
 	}
 
@@ -697,7 +697,7 @@ func BenchmarkSSRFValidator_ValidateURL(b *testing.B) {
 func BenchmarkSSRFValidator_UnicodeValidation(b *testing.B) {
 	validator := NewSSRFValidator()
 	u, _ := url.Parse("https://еxample.com/image.jpg")
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = validator.validateUnicodeAndPunycode(u)

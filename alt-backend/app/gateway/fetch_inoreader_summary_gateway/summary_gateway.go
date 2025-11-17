@@ -26,7 +26,7 @@ type inoreaderSummaryGateway struct {
 func NewInoreaderSummaryGateway(db Database) fetch_inoreader_summary_port.FetchInoreaderSummaryPort {
 	// Rate limiter: 5 second intervals as per CLAUDE.md guidelines
 	limiter := rate.NewLimiter(rate.Every(5*time.Second), 1)
-	
+
 	return &inoreaderSummaryGateway{
 		db:      db,
 		limiter: limiter,
@@ -35,7 +35,7 @@ func NewInoreaderSummaryGateway(db Database) fetch_inoreader_summary_port.FetchI
 
 // FetchSummariesByURLs implements the port interface
 func (g *inoreaderSummaryGateway) FetchSummariesByURLs(ctx context.Context, urls []string) ([]*domain.InoreaderSummary, error) {
-	logger.Logger.Info("Gateway: fetching inoreader summaries", 
+	logger.Logger.Info("Gateway: fetching inoreader summaries",
 		"url_count", len(urls))
 
 	// Apply rate limiting as per CLAUDE.md requirements (5 second intervals)
@@ -61,20 +61,20 @@ func (g *inoreaderSummaryGateway) FetchSummariesByURLs(ctx context.Context, urls
 	domainSummaries := make([]*domain.InoreaderSummary, 0, len(modelSummaries))
 	for _, modelSummary := range modelSummaries {
 		domainSummary := &domain.InoreaderSummary{
-			ArticleURL:     modelSummary.ArticleURL,
-			Title:          modelSummary.Title,
-			Author:         modelSummary.Author,
-			Content:        modelSummary.Content,
-			ContentType:    modelSummary.ContentType,
-			PublishedAt:    modelSummary.PublishedAt,
-			FetchedAt:      modelSummary.FetchedAt,
-			InoreaderID:    modelSummary.InoreaderID,
+			ArticleURL:  modelSummary.ArticleURL,
+			Title:       modelSummary.Title,
+			Author:      modelSummary.Author,
+			Content:     modelSummary.Content,
+			ContentType: modelSummary.ContentType,
+			PublishedAt: modelSummary.PublishedAt,
+			FetchedAt:   modelSummary.FetchedAt,
+			InoreaderID: modelSummary.InoreaderID,
 		}
 		domainSummaries = append(domainSummaries, domainSummary)
 	}
 
-	logger.Logger.Info("Gateway: successfully converted summaries", 
-		"matched_count", len(domainSummaries), 
+	logger.Logger.Info("Gateway: successfully converted summaries",
+		"matched_count", len(domainSummaries),
 		"requested_count", len(urls))
 
 	return domainSummaries, nil

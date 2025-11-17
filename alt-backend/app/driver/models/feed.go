@@ -21,12 +21,12 @@ type FeedAndArticle struct {
 }
 
 type InoreaderSummary struct {
-	ArticleURL     string     `db:"article_url"`
-	Title          string     `db:"title"`
-	Author         *string    `db:"author"`
-	Content        string     `db:"content"`
-	ContentType    string     `db:"content_type"`
-	PublishedAt    time.Time  `db:"published_at"`
-	FetchedAt      time.Time  `db:"fetched_at"`
-	InoreaderID    string     `db:"inoreader_id"`
+	ArticleURL  string    `db:"article_url"`
+	Title       string    `db:"title"`
+	Author      *string   `db:"author"`
+	Content     string    `db:"content"`
+	ContentType string    `db:"content_type"`
+	PublishedAt time.Time `db:"published_at"`
+	FetchedAt   time.Time `db:"fetched_at"`
+	InoreaderID string    `db:"inoreader_id"`
 }

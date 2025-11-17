@@ -21,54 +21,54 @@ func TestFetchInoreaderSummaryUsecase_Execute_Success(t *testing.T) {
 	mockPort := mocks.NewMockFetchInoreaderSummaryPort(ctrl)
 
 	tests := []struct {
-		name        string
-		urls        []string
-		mockResult  []*domain.InoreaderSummary
-		want        []*domain.InoreaderSummary
-		wantErr     bool
+		name       string
+		urls       []string
+		mockResult []*domain.InoreaderSummary
+		want       []*domain.InoreaderSummary
+		wantErr    bool
 	}{
 		{
 			name: "successful fetch with multiple articles",
 			urls: []string{"https://example.com/article1", "https://example.com/article2"},
 			mockResult: []*domain.InoreaderSummary{
 				{
-					ArticleURL:     "https://example.com/article1",
-					Title:          "Test Article 1",
-					Author:         stringPtr("Test Author 1"),
-					Content:        "This is test content 1",
-					ContentType:    "html",
-					PublishedAt:    time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
-					FetchedAt:      time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC),
-					InoreaderID:    "inoreader123",
+					ArticleURL:  "https://example.com/article1",
+					Title:       "Test Article 1",
+					Author:      stringPtr("Test Author 1"),
+					Content:     "This is test content 1",
+					ContentType: "html",
+					PublishedAt: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+					FetchedAt:   time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC),
+					InoreaderID: "inoreader123",
 				},
 			},
 			want: []*domain.InoreaderSummary{
 				{
-					ArticleURL:     "https://example.com/article1",
-					Title:          "Test Article 1",
-					Author:         stringPtr("Test Author 1"),
-					Content:        "This is test content 1",
-					ContentType:    "html",
-					PublishedAt:    time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
-					FetchedAt:      time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC),
-					InoreaderID:    "inoreader123",
+					ArticleURL:  "https://example.com/article1",
+					Title:       "Test Article 1",
+					Author:      stringPtr("Test Author 1"),
+					Content:     "This is test content 1",
+					ContentType: "html",
+					PublishedAt: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+					FetchedAt:   time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC),
+					InoreaderID: "inoreader123",
 				},
 			},
 			wantErr: false,
 		},
 		{
-			name:        "empty URLs should return empty result",
-			urls:        []string{},
-			mockResult:  []*domain.InoreaderSummary{},
-			want:        []*domain.InoreaderSummary{},
-			wantErr:     false,
+			name:       "empty URLs should return empty result",
+			urls:       []string{},
+			mockResult: []*domain.InoreaderSummary{},
+			want:       []*domain.InoreaderSummary{},
+			wantErr:    false,
 		},
 		{
-			name:        "too many URLs should return error",
-			urls:        make([]string, 51), // More than 50
-			mockResult:  nil,
-			want:        nil,
-			wantErr:     true,
+			name:       "too many URLs should return error",
+			urls:       make([]string, 51), // More than 50
+			mockResult: nil,
+			want:       nil,
+			wantErr:    true,
 		},
 	}
 
@@ -94,7 +94,7 @@ func TestFetchInoreaderSummaryUsecase_Execute_Success(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, len(tt.want), len(result))
-				
+
 				for i, expected := range tt.want {
 					if i < len(result) {
 						assert.Equal(t, expected.ArticleURL, result[i].ArticleURL)

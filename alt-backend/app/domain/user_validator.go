@@ -39,11 +39,11 @@ func (v *UserValidator) ValidateUserExists(ctx context.Context, userID uuid.UUID
 	if err != nil {
 		return fmt.Errorf("failed to validate user: %w", err)
 	}
-	
+
 	if user == nil {
 		return fmt.Errorf("user not found: %s", userID)
 	}
-	
+
 	return nil
 }
 
@@ -53,15 +53,15 @@ func (v *UserValidator) ValidateUserInTenant(ctx context.Context, userID, tenant
 	if err != nil {
 		return fmt.Errorf("failed to validate user: %w", err)
 	}
-	
+
 	if user == nil {
 		return fmt.Errorf("user not found: %s", userID)
 	}
-	
+
 	if user.TenantID != tenantID {
 		return fmt.Errorf("user %s does not belong to tenant %s", userID, tenantID)
 	}
-	
+
 	return nil
 }
 
@@ -71,15 +71,15 @@ func (v *UserValidator) ValidateUserActive(ctx context.Context, userID uuid.UUID
 	if err != nil {
 		return fmt.Errorf("failed to validate user: %w", err)
 	}
-	
+
 	if user == nil {
 		return fmt.Errorf("user not found: %s", userID)
 	}
-	
+
 	if user.Status != "active" {
 		return fmt.Errorf("user %s is not active (status: %s)", userID, user.Status)
 	}
-	
+
 	return nil
 }
 
@@ -95,7 +95,7 @@ func (v *UserValidator) ValidateUserOrLegacy(ctx context.Context, userID uuid.UU
 	if v.IsLegacyUser(userID) {
 		return nil
 	}
-	
+
 	// Validate regular user
 	return v.ValidateUserExists(ctx, userID)
 }

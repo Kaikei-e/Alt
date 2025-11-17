@@ -116,7 +116,6 @@ func (ert *EnvoyProxyRoundTripper) RoundTrip(req *http.Request) (*http.Response,
 	return ert.transport.RoundTrip(req)
 }
 
-
 // convertToProxyURL converts external image URLs to appropriate proxy routes based on strategy
 func convertToProxyURL(originalURL string, strategy *ProxyStrategy) string {
 	if strategy == nil || !strategy.Enabled {
@@ -379,7 +378,7 @@ func (g *ImageFetchGateway) fetchImageForTesting(ctx context.Context, imageURL *
 	// Enable testing mode in the SSRF validator
 	g.ssrfValidator.SetTestingMode(true)
 	defer g.ssrfValidator.SetTestingMode(false)
-	
+
 	return g.fetchImageWithTestingOverride(ctx, imageURL, options, true)
 }
 

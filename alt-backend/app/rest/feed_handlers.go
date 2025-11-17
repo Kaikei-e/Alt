@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/labstack/echo/v4"
 )
 
@@ -51,6 +53,8 @@ func registerFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	// RSS feed registration (require auth) - 認証ミドルウェア付きでグループ作成
 	rss := v1.Group("/rss-feed-link", authMiddleware.RequireAuth())
 	rss.POST("/register", handleRegisterRSSFeed(container))
+	rss.GET("/list", handleListRSSFeedLinks(container))
+	rss.DELETE("/:id", handleDeleteRSSFeedLink(container))
 }
 
 func handleFetchSingleFeed(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
@@ -647,6 +651,33 @@ func handleRegisterFavoriteFeed(container *di.ApplicationComponents) echo.Handle
 
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		return c.JSON(http.StatusOK, map[string]string{"message": "favorite feed registered"})
+	}
+}
+
+func handleListRSSFeedLinks(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		links, err := container.ListFeedLinksUsecase.Execute(c.Request().Context())
+		if err != nil {
+			return handleError(c, err, "list_feed_links")
+		}
+		return c.JSON(http.StatusOK, links)
+	}
+}
+
+func handleDeleteRSSFeedLink(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		idParam := c.Param("id")
+		linkID, err := uuid.Parse(idParam)
+		if err != nil {
+			return handleValidationError(c, "Invalid feed link ID", "id", idParam)
+		}
+
+		if err := container.DeleteFeedLinkUsecase.Execute(c.Request().Context(), linkID); err != nil {
+			return handleError(c, err, "delete_feed_link")
+		}
+
+		c.Response().Header().Set("Cache-Control", "no-cache")
+		return c.JSON(http.StatusOK, map[string]string{"message": "Feed link deleted"})
 	}
 }
 

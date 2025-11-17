@@ -2,18 +2,18 @@ package domain
 
 import (
 	"context"
-	"time"
 	"github.com/google/uuid"
+	"time"
 )
 
 type TenantStatus string
 type SubscriptionTier string
 
 const (
-	TenantStatusActive   TenantStatus = "active"
-	TenantStatusInactive TenantStatus = "inactive"
+	TenantStatusActive    TenantStatus = "active"
+	TenantStatusInactive  TenantStatus = "inactive"
 	TenantStatusSuspended TenantStatus = "suspended"
-	
+
 	SubscriptionTierFree       SubscriptionTier = "free"
 	SubscriptionTierBasic      SubscriptionTier = "basic"
 	SubscriptionTierPremium    SubscriptionTier = "premium"
@@ -28,31 +28,31 @@ type TenantLimits struct {
 
 // TenantSettings holds tenant-specific configuration
 type TenantSettings struct {
-	Features []string               `json:"features"`
-	Limits   TenantLimits          `json:"limits"`
-	Timezone string                `json:"timezone"`
-	Language string                `json:"language"`
+	Features []string     `json:"features"`
+	Limits   TenantLimits `json:"limits"`
+	Timezone string       `json:"timezone"`
+	Language string       `json:"language"`
 }
 
 type Tenant struct {
-	ID               uuid.UUID                  `json:"id"`
-	Name             string                     `json:"name"`
-	Slug             string                     `json:"slug"`
-	Description      string                     `json:"description"`
-	Status           TenantStatus               `json:"status"`
-	SubscriptionTier SubscriptionTier           `json:"subscription_tier"`
-	MaxUsers         int                        `json:"max_users"`
-	MaxFeeds         int                        `json:"max_feeds"`
-	Settings         TenantSettings             `json:"settings"`
-	CreatedAt        time.Time                  `json:"created_at"`
-	UpdatedAt        time.Time                  `json:"updated_at"`
+	ID               uuid.UUID        `json:"id"`
+	Name             string           `json:"name"`
+	Slug             string           `json:"slug"`
+	Description      string           `json:"description"`
+	Status           TenantStatus     `json:"status"`
+	SubscriptionTier SubscriptionTier `json:"subscription_tier"`
+	MaxUsers         int              `json:"max_users"`
+	MaxFeeds         int              `json:"max_feeds"`
+	Settings         TenantSettings   `json:"settings"`
+	CreatedAt        time.Time        `json:"created_at"`
+	UpdatedAt        time.Time        `json:"updated_at"`
 }
 
 type TenantUpdates struct {
-	Name         *string                    `json:"name,omitempty"`
-	Description  *string                    `json:"description,omitempty"`
-	Status       *TenantStatus              `json:"status,omitempty"`
-	Settings     *TenantSettings            `json:"settings,omitempty"`
+	Name        *string         `json:"name,omitempty"`
+	Description *string         `json:"description,omitempty"`
+	Status      *TenantStatus   `json:"status,omitempty"`
+	Settings    *TenantSettings `json:"settings,omitempty"`
 }
 
 // TenantUsage represents current resource usage for a tenant

@@ -32,57 +32,57 @@ func TestInoreaderSummaryGateway_FetchSummariesByURLs_Success(t *testing.T) {
 	logger.InitLogger()
 
 	tests := []struct {
-		name        string
-		urls        []string
+		name          string
+		urls          []string
 		mockSummaries []*models.InoreaderSummary
-		want        []*domain.InoreaderSummary
-		wantErr     bool
+		want          []*domain.InoreaderSummary
+		wantErr       bool
 	}{
 		{
 			name: "successful fetch with multiple articles",
 			urls: []string{"https://example.com/article1", "https://example.com/article2"},
 			mockSummaries: []*models.InoreaderSummary{
 				{
-					ArticleURL:     "https://example.com/article1",
-					Title:          "Test Article 1",
-					Author:         stringPtr("Test Author 1"),
-					Content:        "This is test content 1",
-					ContentType:    "html",
-					PublishedAt:    time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
-					FetchedAt:      time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC),
-					InoreaderID:    "inoreader123",
+					ArticleURL:  "https://example.com/article1",
+					Title:       "Test Article 1",
+					Author:      stringPtr("Test Author 1"),
+					Content:     "This is test content 1",
+					ContentType: "html",
+					PublishedAt: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+					FetchedAt:   time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC),
+					InoreaderID: "inoreader123",
 				},
 				{
-					ArticleURL:     "https://example.com/article2", 
-					Title:          "Test Article 2",
-					Author:         nil,
-					Content:        "This is test content 2",
-					ContentType:    "html",
-					PublishedAt:    time.Date(2024, 1, 3, 12, 0, 0, 0, time.UTC),
-					FetchedAt:      time.Date(2024, 1, 4, 12, 0, 0, 0, time.UTC),
-					InoreaderID:    "inoreader456",
+					ArticleURL:  "https://example.com/article2",
+					Title:       "Test Article 2",
+					Author:      nil,
+					Content:     "This is test content 2",
+					ContentType: "html",
+					PublishedAt: time.Date(2024, 1, 3, 12, 0, 0, 0, time.UTC),
+					FetchedAt:   time.Date(2024, 1, 4, 12, 0, 0, 0, time.UTC),
+					InoreaderID: "inoreader456",
 				},
 			},
 			want: []*domain.InoreaderSummary{
 				{
-					ArticleURL:     "https://example.com/article1",
-					Title:          "Test Article 1", 
-					Author:         stringPtr("Test Author 1"),
-					Content:        "This is test content 1",
-					ContentType:    "html",
-					PublishedAt:    time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
-					FetchedAt:      time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC),
-					InoreaderID:    "inoreader123",
+					ArticleURL:  "https://example.com/article1",
+					Title:       "Test Article 1",
+					Author:      stringPtr("Test Author 1"),
+					Content:     "This is test content 1",
+					ContentType: "html",
+					PublishedAt: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+					FetchedAt:   time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC),
+					InoreaderID: "inoreader123",
 				},
 				{
-					ArticleURL:     "https://example.com/article2",
-					Title:          "Test Article 2",
-					Author:         nil,
-					Content:        "This is test content 2", 
-					ContentType:    "html",
-					PublishedAt:    time.Date(2024, 1, 3, 12, 0, 0, 0, time.UTC),
-					FetchedAt:      time.Date(2024, 1, 4, 12, 0, 0, 0, time.UTC),
-					InoreaderID:    "inoreader456",
+					ArticleURL:  "https://example.com/article2",
+					Title:       "Test Article 2",
+					Author:      nil,
+					Content:     "This is test content 2",
+					ContentType: "html",
+					PublishedAt: time.Date(2024, 1, 3, 12, 0, 0, 0, time.UTC),
+					FetchedAt:   time.Date(2024, 1, 4, 12, 0, 0, 0, time.UTC),
+					InoreaderID: "inoreader456",
 				},
 			},
 			wantErr: false,
@@ -117,7 +117,7 @@ func TestInoreaderSummaryGateway_FetchSummariesByURLs_Success(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, len(tt.want), len(result))
-				
+
 				for i, expectedSummary := range tt.want {
 					if i < len(result) {
 						assert.Equal(t, expectedSummary.ArticleURL, result[i].ArticleURL)

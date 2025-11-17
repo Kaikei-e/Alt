@@ -10,6 +10,7 @@ import (
 	"alt/gateway/config_gateway"
 	"alt/gateway/csrf_token_gateway"
 	"alt/gateway/error_handler_gateway"
+	"alt/gateway/feed_link_gateway"
 	"alt/gateway/feed_search_gateway"
 	"alt/gateway/feed_stats_gateway"
 	"alt/gateway/feed_url_to_id_gateway"
@@ -30,6 +31,7 @@ import (
 	"alt/port/rate_limiter_port"
 	"alt/usecase/archive_article_usecase"
 	"alt/usecase/csrf_token_usecase"
+	"alt/usecase/feed_link_usecase"
 	"alt/usecase/fetch_article_usecase"
 	"alt/usecase/fetch_articles_usecase"
 	"alt/usecase/fetch_feed_details_usecase"
@@ -71,6 +73,8 @@ type ApplicationComponents struct {
 	FetchFavoriteFeedsListCursorUsecase *fetch_feed_usecase.FetchFavoriteFeedsListCursorUsecase
 	RegisterFeedsUsecase                *register_feed_usecase.RegisterFeedsUsecase
 	RegisterFavoriteFeedUsecase         *register_favorite_feed_usecase.RegisterFavoriteFeedUsecase
+	ListFeedLinksUsecase                *feed_link_usecase.ListFeedLinksUsecase
+	DeleteFeedLinkUsecase               *feed_link_usecase.DeleteFeedLinkUsecase
 	FeedsReadingStatusUsecase           *reading_status.FeedsReadingStatusUsecase
 	FeedsSummaryUsecase                 *fetch_feed_details_usecase.FeedsSummaryUsecase
 	FeedAmountUsecase                   *fetch_feed_stats_usecase.FeedsCountUsecase
@@ -126,6 +130,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	fetchFeedsGatewayImpl := fetch_feed_gateway.NewFetchFeedsGatewayWithRateLimiter(pool, rateLimiter)
 	registerFeedsUsecase := register_feed_usecase.NewRegisterFeedsUsecase(registerFeedLinkGatewayImpl, registerFeedsGatewayImpl, fetchFeedsGatewayImpl)
 	registerFavoriteFeedUsecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(registerFavoriteFeedGatewayImpl)
+	feedLinkGatewayImpl := feed_link_gateway.NewFeedLinkGateway(pool)
+	listFeedLinksUsecase := feed_link_usecase.NewListFeedLinksUsecase(feedLinkGatewayImpl)
+	deleteFeedLinkUsecase := feed_link_usecase.NewDeleteFeedLinkUsecase(feedLinkGatewayImpl)
 
 	updateFeedStatusGatewayImpl := update_feed_status_gateway.NewUpdateFeedStatusGateway(pool)
 	feedsReadingStatusUsecase := reading_status.NewFeedsReadingStatusUsecase(updateFeedStatusGatewayImpl)
@@ -214,6 +221,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchFavoriteFeedsListCursorUsecase: fetchFavoriteFeedsListCursorUsecase,
 		RegisterFeedsUsecase:                registerFeedsUsecase,
 		RegisterFavoriteFeedUsecase:         registerFavoriteFeedUsecase,
+		ListFeedLinksUsecase:                listFeedLinksUsecase,
+		DeleteFeedLinkUsecase:               deleteFeedLinkUsecase,
 		FeedsReadingStatusUsecase:           feedsReadingStatusUsecase,
 		FeedsSummaryUsecase:                 feedsSummaryUsecase,
 		FeedAmountUsecase:                   feedsCountUsecase,

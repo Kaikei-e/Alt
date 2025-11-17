@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestImageFetchUsecase_Execute(t *testing.T) {
@@ -26,13 +26,13 @@ func TestImageFetchUsecase_Execute(t *testing.T) {
 		errCode   string
 	}{
 		{
-			name:   "successful image fetch with default options",
-			rawURL: "https://9to5mac.com/wp-content/uploads/sites/6/2025/07/ios-26-home-screen.jpg",
+			name:    "successful image fetch with default options",
+			rawURL:  "https://9to5mac.com/wp-content/uploads/sites/6/2025/07/ios-26-home-screen.jpg",
 			options: nil, // Will use defaults
 			mockSetup: func(mockPort *mocks.MockImageFetchPort) {
 				expectedURL, _ := url.Parse("https://9to5mac.com/wp-content/uploads/sites/6/2025/07/ios-26-home-screen.jpg")
 				expectedOptions := domain.NewImageFetchOptions()
-				
+
 				mockPort.EXPECT().
 					FetchImage(gomock.Any(), expectedURL, expectedOptions).
 					Return(&domain.ImageFetchResult{
@@ -64,7 +64,7 @@ func TestImageFetchUsecase_Execute(t *testing.T) {
 					MaxSize: 2 * 1024 * 1024,
 					Timeout: 15 * time.Second,
 				}
-				
+
 				mockPort.EXPECT().
 					FetchImage(gomock.Any(), expectedURL, expectedOptions).
 					Return(&domain.ImageFetchResult{
@@ -128,13 +128,13 @@ func TestImageFetchUsecase_Execute(t *testing.T) {
 			errCode: "VALIDATION_ERROR",
 		},
 		{
-			name:   "gateway error - network failure",
-			rawURL: "https://9to5mac.com/wp-content/uploads/image.jpg",
+			name:    "gateway error - network failure",
+			rawURL:  "https://9to5mac.com/wp-content/uploads/image.jpg",
 			options: nil,
 			mockSetup: func(mockPort *mocks.MockImageFetchPort) {
 				expectedURL, _ := url.Parse("https://9to5mac.com/wp-content/uploads/image.jpg")
 				expectedOptions := domain.NewImageFetchOptions()
-				
+
 				mockPort.EXPECT().
 					FetchImage(gomock.Any(), expectedURL, expectedOptions).
 					Return(nil, errors.NewExternalAPIContextError(

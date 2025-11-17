@@ -65,8 +65,8 @@ func (r *AltDBRepository) FetchInoreaderSummariesByURLs(ctx context.Context, url
 		return nil, fmt.Errorf("error iterating rows: %w", err)
 	}
 
-	logger.Logger.Info("Successfully fetched inoreader summaries", 
-		"requested_count", len(urls), 
+	logger.Logger.Info("Successfully fetched inoreader summaries",
+		"requested_count", len(urls),
 		"matched_count", len(summaries))
 
 	return summaries, nil
