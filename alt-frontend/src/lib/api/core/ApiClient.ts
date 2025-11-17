@@ -238,6 +238,80 @@ export class ApiClient {
     }
   }
 
+  async delete<T>(endpoint: string): Promise<T> {
+    try {
+      const csrfToken = await authAPI.getCSRFToken();
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Accept-Encoding": "gzip, deflate, br",
+      };
+
+      if (csrfToken) {
+        headers["X-CSRF-Token"] = csrfToken;
+      }
+
+      const response = await this.makeRequest(
+        `${this.config.baseUrl}${endpoint}`,
+        {
+          method: "DELETE",
+          headers,
+          keepalive: true,
+        },
+      );
+
+      const interceptedResponse = await this.authInterceptor.intercept(
+        response,
+        `${this.config.baseUrl}${endpoint}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
+          keepalive: true,
+        },
+      );
+
+      const result = await interceptedResponse.json();
+
+      if (result.error || result.code) {
+        const errorCode = result.code || "UNKNOWN_ERROR";
+        const statusCode = interceptedResponse.status;
+        const errorMessage =
+          result.message || result.error ||
+          getUserFriendlyErrorMessage(statusCode);
+
+        if (process.env.NODE_ENV === "development") {
+          console.error("[ApiClient] DELETE request failed", {
+            endpoint,
+            status: statusCode,
+            code: errorCode,
+            message: errorMessage,
+          });
+        }
+
+        throw new ApiError(errorMessage, statusCode, errorCode);
+      }
+
+      this.cacheManager.invalidate();
+
+      return result as T;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      if (process.env.NODE_ENV === "development") {
+        console.error("[ApiClient] DELETE request error", { endpoint, error });
+      }
+      throw new ApiError(
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred. Please try again later.",
+      );
+    }
+  }
+
   private async makeRequest(
     url: string,
     options: RequestInit,

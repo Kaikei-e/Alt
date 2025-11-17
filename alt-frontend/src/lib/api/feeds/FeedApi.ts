@@ -1,8 +1,9 @@
 import type { MessageResponse } from "@/schema/common";
+import type { FeedLink } from "@/schema/feedLink";
 import {
-  type BackendFeedItem,
-  type SanitizedFeed,
-  sanitizeFeed,
+	type BackendFeedItem,
+	type SanitizedFeed,
+	sanitizeFeed,
 } from "@/schema/feed";
 import type { FeedStatsSummary } from "@/schema/feedStats";
 import type { FeedSearchResult } from "@/schema/search";
@@ -122,6 +123,16 @@ export class FeedApi {
 
   async registerFavoriteFeed(url: string): Promise<MessageResponse> {
     return this.apiClient.post("/v1/feeds/register/favorite", { url });
+  }
+
+  async listFeedLinks(): Promise<FeedLink[]> {
+    return this.apiClient.get<FeedLink[]>("/v1/rss-feed-link/list", 5);
+  }
+
+  async deleteFeedLink(id: string): Promise<MessageResponse> {
+    return this.apiClient.delete<MessageResponse>(
+      `/v1/rss-feed-link/${encodeURIComponent(id)}`,
+    );
   }
 
   async updateFeedReadStatus(url: string): Promise<MessageResponse> {
