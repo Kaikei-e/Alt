@@ -1,49 +1,69 @@
 # Auth Token Manager
 
-_Last reviewed: November 10, 2025_
+_Last reviewed: November 17, 2025_
 
 **Location:** `auth-token-manager`
 
 ## Role
-- Deno 2.x CLI microservice that refreshes and validates Inoreader OAuth2 tokens, persisting results to Kubernetes Secrets consumed by ingestion services.
-- Commands (`authorize`, `refresh`, `health`, `validate`, `monitor`, `help`) cover onboarding, rotation, and observability scenarios.
+- Deno 2.x CLI that refreshes Inoreader OAuth2 tokens, validates configuration, and persists results into Kubernetes secrets consumed by ingestion services.
+- Supports `authorize`, `refresh`, `monitor`, `health`, `validate`, and `help` commands while logging safely via `StructuredLogger`.
+- Works in tandem with `pre-processor-sidecar` and `pre-processor` to keep Inoreader ingestion healthy.
 
-## Service Snapshot
-| Command | Purpose | Notes |
+## Command Flow
+| Command | Purpose | Highlights |
 | --- | --- | --- |
-| `authorize` | One-time OAuth bootstrap. | Runs browserless flow; stores initial tokens in the configured secret. |
-| `refresh` | Refresh access/refresh tokens. | Uses `InoreaderTokenManager.refreshAccessToken()`; writes JSON `{access_token, refresh_token, expires_at}`. |
-| `health` (default) | Validates configuration + dependencies. | Safe for CronJobs; exits non-zero if any check fails. |
-| `monitor` | Long-running loop that refreshes before expiry and logs horizon. | Use when co-locating with `pre-processor-sidecar`. |
+| `authorize` | Interactive OAuth bootstrap | Starts a local HTTP listener, exchanges code for tokens, writes JSON secret, prints `expires_at`. |
+| `refresh` | Refreshes tokens | Uses `InoreaderTokenManager.refreshAccessToken`, updates secret via `K8sSecretManager`, enforces 5-second rate limits + retries/backoff. |
+| `health` (default) | Validates config + dependencies | Runs config, env, Kubernetes connectivity, token horizon checks (healthy/degraded/unhealthy). |
+| `monitor` | Long-running monitoring loop | Checks `expires_at`, `updated_at`, token staleness with thresholds (critical under 30m, warning under 2h), logs alerts and secrets status. |
+| `validate` | Config validation | Ensures required env vars exist and are not placeholders; logs sanitized client ID snippet. |
 
-## Code Status
-- `main.ts` pulls runtime config (`src/utils/config.ts`), initializes `InoreaderTokenManager` (`src/auth/oauth.ts`) with retry/network policies, then dispatches to per-command runners.
-- `runTokenRefresh()` flow: load config → instantiate token manager → `refreshAccessToken()` → instantiate `K8sSecretManager` (`src/k8s/secret-manager-simple.ts`) → `updateTokenSecret()` → structured log summarizing expiry.
-- `runHealthCheck()` collects Boolean checks (config validation, env readiness, Kubernetes reachability, refresh token presence, expiry horizon). Status is derived as `healthy`, `degraded`, or `unhealthy` depending on passing checks.
-- Logging via `src/utils/logger.ts` automatically redacts sensitive values; avoid `console.log`.
+```mermaid
+flowchart LR
+    subgraph CLI
+        Authorize[authorize] -->|exchanges code| InoreaderOAuth
+        Refresh[refresh] -->|refresh token call| InoreaderOAuth
+        Monitor[monitor] -->|inspects| K8sSecret
+        Health[health] -->|checks| Config(Config + env)
+    end
+    InoreaderOAuth -->|tokens| SecretManager
+    SecretManager -->|writes| K8sSecret
+    K8sSecret -->|consumed by| PreProcSidecar
+    PreProcSidecar -->|drives| PreProcessor
+```
 
-## Integrations & Data
-- **Env requirements:** `INOREADER_CLIENT_ID`, `INOREADER_CLIENT_SECRET`, `INOREADER_REFRESH_TOKEN` (if pre-seeded), plus Kubernetes metadata (`KUBERNETES_NAMESPACE`, `INOREADER_SECRET_NAME`).
-- **Kubernetes:** Communicates with in-cluster API server through default service account; ensure RBAC grants `get/update` on the referenced secret. Secret payload is JSON—do not alter key names or types.
-- **Pipeline signal:** The refreshed Inoreader tokens feed the pre-processor and recap ingestion loops, so keep the service running before you trigger the `recap` Compose profile or high-frequency summarization jobs.
-- **Network:** HTTP calls to `https://www.inoreader.com/oauth2/token` (configurable via `configOptions.network.base_url`). Retries/backoff configured in `configOptions.retry`.
+## Configuration & Secrets
+- `src/utils/config.ts` exposes:
+  - `INOREADER_CLIENT_ID`, `INOREADER_CLIENT_SECRET`, `INOREADER_REDIRECT_URI` (default `http://localhost:8080/callback`).
+  - Kubernetes metadata: `KUBERNETES_NAMESPACE` (defaults to `alt-processing`), `SECRET_NAME` (`pre-processor-sidecar-oauth2-token`), `ENABLE_SECRET_WATCH`.
+  - Retry settings: `RETRY_MAX_*`, `RETRY_BASE_DELAY`, `RETRY_MAX_DELAY`, `RETRY_BACKOFF_FACTOR`.
+  - Network timeouts: `HTTP_TIMEOUT`, `CONNECTIVITY_TIMEOUT`.
+  - Logger flags (`LOG_LEVEL`, `LOG_INCLUDE_TIMESTAMP`).
+- Config validation rejects placeholders (`demo-client-id`, `placeholder`), ensures minimal length, and prints a sanitized client ID summary.
+
+## Core Integrations
+- `InoreaderTokenManager` (src/auth/oauth.ts) implements refresh logic, interacts with `https://www.inoreader.com/oauth2/token`, and respects retry policy + circuit breaker semantics (max 3 attempts, exponential backoff).
+- `K8sSecretManager` (`src/k8s/secret-manager-simple.ts`) reads/writes secrets via in-cluster API with JSON payload: `{access_token, refresh_token, expires_at}`.
+- `StructuredLogger` (`src/utils/logger.ts`) redacts sensitive fields automatically; passes `access_token` metadata in logs only as `duration`/`status`.
+- Monitor command introspects secret timestamps, classifies alerts (critical if <30m to expiry or >24h since update, warning between 2–6 hours) and exposes `needs_immediate_refresh`.
 
 ## Testing & Tooling
-- `deno test`: suites under `tests/` stub `globalThis.fetch` via `@std/testing/mock` to imitate Inoreader responses and Kubernetes API interactions.
-- `deno fmt`, `deno lint`: enforced by `deno.json`.
-- When adding commands, follow the TDD loop—write failing tests in `tests/<area>` that stub fetch + secret manager before implementing CLI changes.
+- `deno test` runs suites in `tests/`, stubbing `globalThis.fetch` and Kubernetes API via `@std/testing/mock`.
+- `deno fmt` + `deno lint` enforce style; `deno task tm:health` wraps `deno run main.ts health`.
+- TDD loop: write failing test for `InoreaderTokenManager`, mock `fetch`, then implement CLI flows.
 
-## Operational Runbook
-1. **Dry run:** `deno task tm:health` (alias for `deno run main.ts health`) confirms env + secret connectivity.
-2. **Rotate tokens manually:** `deno run main.ts refresh`. Watch logs for `Token refresh completed successfully`.
-3. **Monitor mode:** `deno run --allow-net --allow-env main.ts monitor` inside a sidecar; the loop logs `time_until_expiry_hours`.
-4. **Secrets validation:** `kubectl get secret <name> -n <ns> -o jsonpath='{.data.refresh_token}' | base64 -d` to confirm updates (avoid printing whole secret in shared terminals).
+## Runbook
+1. **Dry run:** `deno task tm:health` after setting envs ensures env + secret connectivity.
+2. **Manual refresh:** `deno run main.ts refresh` (with `--allow-net --allow-env`), watch logs for `Token refresh completed successfully`.
+3. **Monitor mode:** `deno run --allow-net --allow-env main.ts monitor` (used by CronJobs) emits alert levels and horizon metrics for token horizon.
+4. **Authorize CLI:** Run `deno run main.ts authorize`, open the printed URL, and follow the callback to bootstrap tokens if refresh token missing.
+5. **Secret inspection:** `kubectl get secret <name> -n <ns> -o jsonpath='{.data.refresh_token}' | base64 -d` (avoid exposing tokens).
 
-## Failure Modes
-- **Invalid config:** `config.validateConfig()` returns false → health command exits 1. Fix missing envs.
-- **Kubernetes connectivity:** `K8sSecretManager.getTokenSecret()` throws; check service account RBAC or in-cluster DNS.
-- **Token near expiry (<1h):** Health status = degraded; run `refresh` or ensure monitor loop executes more frequently.
+## Observability
+- Logs from `monitor` include `time_until_expiry_hours`, `alert_level`, `needs_immediate_refresh`, `system_status`.
+- Warnings surface when tokens expire within 30 minutes or `updated_at` lags >12h; the CLI exits `1` when `status === "unhealthy"`.
+- Add watchers (e.g., Grafana alert) that parse the `monitor` log lines to detect `critical` alerts.
 
-## LLM Tips
-- When scripting new commands, mention required permissions (`--allow-net --allow-env --allow-read=/var/run/secrets/...`) so generated code compiles under Deno.
-- Secret schemas are JSON; instruct models to keep `access_token`, `refresh_token`, and `expires_at` fields intact to remain compatible with downstream readers.
+## LLM Notes
+- When asking for new commands, mention required Deno permissions (`--allow-net --allow-env --allow-read`).
+- Keep JSON secret schema (`access_token`, `refresh_token`, `expires_at`, `token_type`, `scope`) intact so downstream consumers continue working.

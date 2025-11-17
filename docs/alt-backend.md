@@ -1,64 +1,78 @@
 # Alt Backend
 
-_Last reviewed: November 10, 2025_
+_Last reviewed: November 17, 2025_
 
 **Location:** `alt-backend/app`
 
 ## Role
-- Primary HTTP API for feeds, articles, recaps, SSE streams, and media helpers.
-- Implements five-layer Clean Architecture (REST → Usecase → Port → Gateway → Driver) on Go 1.24 + Echo.
+- Primary Go 1.24+ HTTP API that exposes feeds/articles/recaps/SSE, orchestrates background recap jobs, and keeps Clean Architecture boundaries between REST → Usecase → Port → Gateway → Driver.
+- Gatekeeper for rich features such as SSE fan-out, service-to-service recap ingestion, search synchronization, and configurable DOS protection.
+- Outbound requests go through `sidecar-proxy`, which enforces TLS, allowlists, and shared timeouts.
 
-## Service Snapshot
-| Item | Details |
+## Architecture Snapshot
+| Layer | Notes |
 | --- | --- |
-| Public endpoints | `/v1/feeds/*`, `/v1/articles/*`, `/v1/recap/*`, `/v1/sse/*`, `/v1/health`, `/security/csp-report` |
-| Background jobs | Hourly recap refresh (`job/hourly_job.go`), summarization fan-out, search-index sync triggers |
-| Persistence | Postgres (via `driver/alt_db` + `domain/*` models) |
-| Messaging | SSE fan-out + optional recap webhooks (feature flagged) |
+| REST handlers (`rest/routes.go`, `rest/*`) | Ten ordered middlewares: request ID → recovery → secure headers → CORS → DOS guard → timeout (skips `/sse/`) → validation → logging → gzip. Routes split into feeds, articles, SSE, images, recap, security. |
+| Usecases / Jobs (`usecase/*`, `job/hourly_job.go`) | Each usecase exposes constructors that accept port interfaces; `job.HourlyJobRunner` reuses DI container to trigger hourly recap refresh + search sync. |
+| Ports → Gateways | Contracts live under `port/*`; gateways translate domain entities to Postgres/Meilisearch DTOs before hitting drivers. |
+| Drivers | `driver/alt_db` connects to Postgres, `driver/search_indexer` calls Meilisearch, `utils/secure_http_client.go` wraps outbound requests via `sidecar-proxy`. |
+| DI | `di/container.go` wires repositories, services, schedulers, and middleware helpers; reuse the same container in jobs to keep lifecycle consistent. |
 
-### Interfaces
-- **Inbound:** Echo router defined in `rest/routes.go`, layered with ten ordered middlewares (RequestID → Recover → Secure headers → CORS → DOS guard → Timeout → Validation → Logging → Compression) plus group-specific middleware for `/v1`.
-- **Outbound:** Drivers for Postgres, Meilisearch (`driver/search_indexer`), HTTP scrapers (`utils/secure_http_client.go`), and HTML sanitizers (Bluemonday via `utils/html_parser`).
+```mermaid
+flowchart LR
+    Browser -->|"X-Alt-* headers"| AltBackend
+    AltBackend -->|Persistent SSE| SSE[/v1/sse/feeds/stats/keepalive/]
+    AltBackend -->|Queries & writes| Postgres[(PostgreSQL)]
+    AltBackend -->|200-doc batches| Meili[(Meilisearch `articles` index)]
+    AltBackend -->|Recap worker sync| RecapWorker[recap-worker]
+    AltBackend -->|Outbound feeds/API| SidecarProxy[(sidecar-proxy)]
+    RecapWorker -->|LLM summaries| NewsCreator[news-creator]
+    RecapWorker --> Postgres
+    NewsCreator --> RecapWorker
+```
 
-## Code Status
-- Usecase directories (`usecase/fetch_feed_usecase`, `usecase/recap_usecase`, etc.) expose constructor functions that accept interfaces from `port`, keeping tests isolated and enabling gomock generation.
-- Gateways map domain entities to driver DTOs; for example, feed registration flows pass through `gateway/register_feed_gateway` before reaching `driver/alt_db`.
-- SSE plumbing is centralized in `rest/fetch_article_routes.go` and `usecase/fetch_articles_usecase`, sharing rate-limit aware clients so per-tenant fan-out cannot starve the global worker pool.
-- Background orchestration is handled by `job/hourly_job.go` plus `usecase/recap_articles_usecase`; both reuse the dependency container in `di/container.go`.
+## Routes, Streaming, and Recap Contracts
+- **Public APIs**:
+  - `GET /v1/articles/*`, `POST /v1/feeds/*`, `GET /v1/search`, `GET /v1/health`, `/security/csp-report`.
+  - `/v1/sse/feeds/stats` keeps a long-lived SSE connection: heartbeat every 10s, tickers every `SERVER_SSE_INTERVAL`, and flushes `feedAmount`, `unsummarizedFeedAmount`, and `articleAmount` metrics via `UnsummarizedFeedStatsSummary`.
+- **Recap endpoints**:
+  - `POST /v1/recap/articles` (service auth via `middleware_custom.NewServiceAuthMiddleware`, `X-Service-Token` + env `ALT_BACKEND_SERVICE_TOKEN`). Validates `from`/`to` (RFC3339), optional `page`, `page_size`, `fields`, `lang`. Shared `recapRateLimiter` emits `X-RateLimit-*` headers and rejects bursts with `Retry-After`.
+  - `GET /v1/recap/7days` (public) uses `RecapUsecase` to return `RecapSummary` + `EvidenceLinks` shaped by domain models.
+- **Middleware**: DOS protection whitelists `/v1/health`, `/v1/sse/*`, `/security/csp-report`; `middleware_custom.ValidationMiddleware` ensures request payloads stay tidy.
 
-## Integrations & Data
-- **Postgres:** `driver/alt_db` wraps pgx/v5 with prepared statements and connection pooling; domain invariants (e.g., `feed_reading_status.go`) protect against duplicate entries.
-- **Search index:** After mutating articles, gateways notify `driver/search_indexer`, which forwards normalized payloads to the Meilisearch service through gRPC-like HTTP calls.
-- **Streaming:** `/v1/sse/*` routes exclude gzip/timeouts to keep connections warm; when adding new event types, ensure middleware skippers continue to cover them.
-- **Defense-in-depth:** `config.RateLimit.DOSProtection` white-lists `/v1/health`, `/v1/sse/*`, `/security/csp-report` while enforcing >=5s spacing for other paths.
+## Integrations & Data Flow
+- **Postgres driver** (`driver/alt_db`) wraps `pgx/v5` pools with prepared statements; domain invariants guard duplicates (e.g., `domain/feed_reading_status.go`).
+- **Meilisearch sync**: Gateways notify `driver/search_indexer` after article mutations; `JobRunner` triggers search-indexer refreshes during the hourly job.
+- **Recap orchestration**: `RecapGateway` (`RECAP_WORKER_URL`) talks to `/v1/recap/7days`, converts responses into domain structs, and surfaces them through `RecapHandler` + `recap_articles_usecase`.
+- **SSE**: `/v1/sse/feeds/stats` uses `container.FeedAmountUsecase`, `UnsummarizedArticlesCountUsecase`, `TotalArticlesCountUsecase`; ticker/heartbeat ensures watchers stay connected while `flusher.Flush()` keeps SSE live.
+- **Security**: Service tokens, rate limit headers, and fallback to `handleValidationError` keep responses consistent.
 
-## Recap APIs
-- **`RecapGateway` & `RecapUsecase`** – The new `RecapGateway` (configured via `RECAP_WORKER_URL`, default `http://recap-worker:9005`) speaks to the recap-worker `/v1/recaps/7days` endpoint, wraps HTTP errors with context, and returns the domain `RecapSummary`/`RecapGenre`/`EvidenceLink` structs defined in `domain/recap.go`. `RecapUsecase` simply proxies the gateway output so handlers can stay thin, and `domain.ErrRecapNotFound` maps to `404`.
-- **`GET /v1/recap/7days`** – `Rest/recap_handler.go` hosts the public recap summary endpoint; it returns the JSON payload that the frontend and mobile UI consume, handles `ErrRecapNotFound`, and ensures `RecapSummary`/`EvidenceLink` DTOs stay stable before persisting them via `json.NewDecoder`.
-- **`GET /v1/recap/articles`** – Registered inside `registerRecapRoutes`, this handler is wrapped with `middleware_custom.ServiceAuthMiddleware` to enforce `X-Service-Token`/`ALT_BACKEND_SERVICE_TOKEN`, applies `recapRateLimiter` (burst/RPS from `cfg.Recap`), and validates the required `from`/`to` query params plus optional `page`, `page_size`, `fields`, and `lang`. `handleRecapArticles` uses `recapArticlesUsecase` to return `RecapArticlesResponse` (range metadata + article DTOs) so recap-worker receives deterministic corpora before every job.
-
-## Configuration & Environment
-- `config/config.go` validates server timeouts, rate limits, and downstream hosts; malformed durations or missing envs fail fast during boot.
-- `di/container.go` wires repositories, usecases, middleware helpers, and job schedulers; use this container when adding new handlers to keep lifecycle hooks centralized.
-- Critical env vars: `ALT_DB_DSN`, `SEARCH_INDEXER_HOST`, `RATE_LIMIT_DOS_THRESHOLD`, `SSE_KEEPALIVE_INTERVAL`, `HTTP_READ_TIMEOUT`, `HTTP_WRITE_TIMEOUT`.
+## Configuration / Environment
+- `ServerConfig`: `SERVER_PORT`, timeouts, `SERVER_SSE_INTERVAL`.
+- `RecapConfig`: `RECAP_DEFAULT_PAGE_SIZE`, `RECAP_RATE_LIMIT_{RPS,BURST}`, `RECAP_MAX_RANGE_DAYS`, `RECAP_MAX_ARTICLE_BYTES`.
+- `RateLimitConfig`: `RATE_LIMIT_EXTERNAL_API_INTERVAL` (≥5s between host hits), `DOS_PROTECTION_*`.
+- `PreProcessor`: `PRE_PROCESSOR_URL` used for health checks.
+- `Database`: `DB_*` connection pool settings plus compatibility fields (`ALT_DB_DSN`, `SEARCH_INDEXER_HOST`).
+- Logging/middleware uses `LOG_LEVEL`, `LOG_FORMAT`, while `sidecar-proxy` settings (`SIDECAR_PROXY_BASE_URL`) govern outbound fetches.
 
 ## Testing & Tooling
-- `go test ./...` (table-driven) with gomock fakes in `mocks/` and `pgxmock` for verifying SQL interactions.
-- Handler suites rely on `httptest.NewServer` to exercise middleware order; SSE tests stub contexts with fake clocks to cover timeout skippers.
-- Run `make generate-mocks` after interface changes; run `golangci-lint` (optional) before raising PRs.
+- `go test ./...` (table-driven + `pgxmock`/`gomock` fakes).
+- SSE handler tests cover tickers and heartbeats via `httptest` helpers.
+- Run `make generate-mocks` after altering interfaces.
+- Optional `golangci-lint run` for linting and `go test ./job -run TestHourlyJob` to cover orchestration.
 
-## Operational Runbook
-1. **Health:** `curl http://localhost:9000/v1/health` and confirm JSON `{status:"ok"}`; if latency >1s, inspect middleware for blocking operations.
-2. **Jobs:** Check hourly job logs (`job/hourly_job.go`) for `recap_refresh_completed` events; re-run manually with `go run ./cmd/job_runner`.
-3. **Schema drift:** Use `make db-migrate` followed by `go test ./driver/...` to ensure new columns propagate to adapters.
-4. **Rollback plan:** Disable recap SSE pushes via feature flag env (`SSE_RECAP_ENABLED=false`) if streaming load spikes.
+## Operational Notes
+1. Health check: `curl http://localhost:9000/v1/health`.
+2. Jobs: `job/hourly_job.go` reruns recap refresh; if Recap data stalls, restart `go run ./cmd/job_runner`.
+3. Schema drift: `make db-migrate` plus driver tests to ensure new columns propagate.
+4. SSE load: watch `sse` logs for throttle reasons; large fan-outs go through rate-limiter and `SetRateLimitHeaders`.
 
-## Observability & Metrics
-- Structured logs via `log/slog`, enriched with fields `route`, `tenant_id`, `request_id`.
-- Emit counters for `feeds.register.success`, `articles.fetch.duration_ms`, and rate-limit rejections (`middleware/dos_protection`).
-- When onboarding new handlers, register histogram metrics in `utils/logger/metrics.go` to keep dashboards consistent.
+## Observability & Logs
+- Structured `log/slog` events include `route`, `tenant_id`, `request_id`, `operation` fields.
+- Emit histograms via `utils/logger/metrics.go` for endpoints like `feeds.register.success`, `articles.fetch.duration_ms`, `recap_articles`.
+- Feature flags guard SSE and recap pushes (`SSE_RECAP_ENABLED=false` to quiet streaming).
 
-## LLM Consumption Tips
-- Mention the middleware stack explicitly when prompting to add new routes (middleware order matters).
-- Provide required DTO names (`domain/rss_feed`, `usecase/register_feed_usecase`) so generated code hooks into existing layers.
-- Clarify whether work runs in REST handler path or background job since dependency injection differs.
+## LLM Notes
+- Mention middleware order (RequestID → Recovery → Secure → CORS → DOS → Timeout → Validation → Log → Gzip) when generating new handlers.
+- Provide DTO names (`domain/recap.go`, `rest/recap_handlers.go`) so schemas stay stable.
+- Clarify if work occurs inside REST handler path or job (`job/hourly_job.go` uses the same DI container).

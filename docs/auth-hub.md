@@ -1,51 +1,61 @@
 # Auth Hub
 
-_Last reviewed: November 10, 2025_
+_Last reviewed: November 17, 2025_
 
 **Location:** `auth-hub`
 
 ## Role
-- Identity-Aware Proxy fronting Nginx `auth_request` calls, translating Kratos sessions into `X-Alt-*` headers.
-- Provides `/validate`, `/health`, and future metrics/CSRF endpoints while caching session metadata to reduce Kratos load.
+- Identity-Aware Proxy that bridges Nginx `auth_request` calls to Ory Kratos `/sessions/whoami`.
+- Validates sessions, caches identities, and emits authoritative `X-Alt-*` headers (`X-Alt-User-Id`, `X-Alt-Tenant-Id`, `X-Alt-User-Email`) so downstream services stay auth-agnostic.
+- Provides `/validate`, `/session`, `/csrf`, and `/health` endpoints while logging structured request metadata.
 
-## Service Snapshot
-| Component | Purpose |
+## Architecture & Flow
+| Component | Responsibility |
 | --- | --- |
-| `handler/validate_handler.go` | Main auth flow (cookie → cache → Kratos WhoAmI → identity headers). |
-| `cache/session_cache.go` | TTL cache with 1-minute cleanup ticker; default TTL 5 minutes. |
-| `client/kratos_client.go` | HTTP client for Kratos `/sessions/whoami`. |
-| `config/config.go` | Env parsing for `KRATOS_URL`, `PORT`, `CACHE_TTL`. |
-| `handler/health_handler.go` | Lightweight readiness endpoint for load balancers. |
+| Handlers | `handler/validate_handler.go`, `session_handler.go`, `csrf_handler.go`, `health_handler.go` share a `slog` logger and wrap `KratosClient` + `SessionCache`. |
+| Cache | `cache/session_cache.go` keeps entries for 5 minutes (default TTL) with ticker-based cleanup; `Get`/`Set` use RWMutex for safety. |
+| Kratos client | `client/kratos_client.go` hits `/sessions/whoami` with the `ory_kratos_session` cookie and parses identity payloads. |
+| Middleware | `main.go` installs request logging + recovery; handlers return 401 vs 500 based on `Kratos` error contents. |
 
-## Code Status
-- Validate handler distinguishes auth vs. service failures by inspecting error strings; consider upgrading to typed errors when Kratos client adds structured responses.
-- Cache entries store `UserID`, `TenantID`, `Email`, plus expiry; expired entries are lazily evicted and proactively cleaned via ticker.
-- `main.go` wires Echo middleware (request logging, panic recovery) and registers future metrics routes so Prometheus scraping can be added without reshaping handlers.
-- CSRF handler scaffolding exists but stays disabled until ingress paths require token validation.
+```mermaid
+flowchart LR
+    Browser -->|Request /api| Nginx
+    Nginx -->|auth_request /validate| AuthHub
+    AuthHub -->|cache hit?| SessionCache
+    SessionCache -->|cached headers| AuthHub
+    AuthHub -->|200 + headers| Nginx
+AuthHub -->|cache miss| Kratos["/sessions/whoami"]
+Kratos -->|session payload| AuthHub
+```
 
-## Integrations & Data
-- **Kratos connectivity:** defaults to `http://kratos:4433`; ensure NetworkPolicy allows pod-to-pod access. TLS termination is handled upstream (within Kratos).
-- **Nginx contract:** `auth_request` must forward `Cookie` headers and consume response headers: `X-Alt-User-Id`, `X-Alt-Tenant-Id`, `X-Alt-User-Email`. Update both auth-hub and Nginx config when introducing new identity headers.
-- **Caching:** TTL is configurable via `CACHE_TTL`; align `session_cache.cleanupLoop` interval with TTL to avoid stale entries.
+## Endpoints & Behavior
+- `GET /validate`: returns 200 + identity headers when `ory_kratos_session` cookie exists; caches the result (TTL = `CACHE_TTL` env, default 5m) to avoid repeated Kratos calls.
+- `GET /session`: mirrors `/validate` but returns the session payload for downstream debugging (used by Next.js middleware).
+- `POST /csrf`: stubbed handler that prepares for future CSRF validation; currently no enforcement.
+- `GET /health`: lightweight readiness probe that responds with `200 OK`.
+- Cache misses trigger `validate` to append `X-Alt-*` headers once Kratos returns identity; all failures log structured events.
+
+## Configuration & Env
+- `KRATOS_URL` (default `http://kratos:4433`), `PORT` (default `8888`), `CACHE_TTL` (parseable duration, default 5m).
+- Config validation ensures non-empty values + positive TTL.
+- Logger uses `slog.NewJSONHandler` with level from env; request log middleware logs status + latency.
 
 ## Testing & Tooling
-- `go test ./...` (table-driven). Focus suites:
-  - `handler/validate_handler_test.go`: covers happy path, missing cookie, cache hit/miss, Kratos 401, and upstream failures.
-  - `cache/session_cache_test.go`: manipulates `cleanup()` directly to skip waiting for ticker.
-- Use `mockgen` for `KratosClient` when testing new branches; stub errors to simulate 401 vs 500.
+- `go test ./...` covers handlers, cache, and Kratos client; mocks (gomock) simulate Kratos responses.
+- `session_handler_test.go` ensures cache hits/ misses respond with headers; `cache/session_cache_test.go` manipulates cleanup loops to avoid ticker wait.
+- Use `mockgen` when Kratos client interfaces evolve.
 
 ## Operational Runbook
-1. **Health probe:** `curl -i http://localhost:8888/health`. Expect `200 OK`.
-2. **Cache flush:** restart pod or expose `SessionCache` reset endpoint (todo) when invalid tokens flood the cache.
-3. **Kratos outage handling:** monitor retry/backoff at the ingress layer; if Kratos is down, `auth-hub` returns 401 for auth failures and 500 for infrastructure errors.
-4. **Header changes:** update `validate_handler.go`, adjust Nginx `proxy_set_header`, then run `go test ./handler`.
+1. `curl -i http://localhost:8888/health` → expect `200 OK`.
+2. Warm Kratos cache by hitting `/validate` with `ory_kratos_session`; watch logs for cache hits (`cache_hit=true`).
+3. To flush cache, restart service or remove TTL entry (future endpoint planned).
+4. Adjust `CACHE_TTL` when load from recap-worker spikes; shorter TTL trades freshness for Kratos load.
 
 ## Observability
-- Structured logs include `request_id`, `session_id`, and `cache_hit` boolean.
-- Future `handler/metrics.go` will export: cache hit ratio, Kratos latency, validate call rate.
-- For now, use log-based metrics via Loki/ClickHouse to watch `cache_miss` frequency.
-- Recap-worker and alt-backend Recap endpoints rely on the cached headers (`X-Alt-*`) with a 5-minute TTL to hydrate their sinks; keep cache hits high so `/v1/recap/7days` and service-initiated workflows do not trigger repeated Kratos calls.
+- Logs include `request_id`, `method`, `uri`, `latency_ms`, `cache_hit` booleans.
+- Future `handler/metrics.go` will expose cache hit ratio, Kratos latency; for now, derive metrics from logs/ClickHouse.
+- Add new headers? Update `validate_handler`, `auth-hub` duo, and Nginx `proxy_set_header` simultaneously.
 
 ## LLM Notes
-- When asking an LLM to modify auth-hub, specify whether change lives in handler, cache, or config.
-- Make clear that cookies are named `ory_kratos_session` and identity headers must remain authoritative to downstream services.
+- When editing auth-hub, specify whether change belongs in `handler/validate_handler.go`, `cache/session_cache.go`, or `client/kratos_client.go`.
+- Mention cookie name `ory_kratos_session`, TTL semantics, and the difference between 401 (auth failure) vs 500 (infra error) to keep downstream handlers stable.

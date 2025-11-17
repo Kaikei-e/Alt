@@ -1,44 +1,48 @@
 # Rask Log Aggregator
 
-_Last reviewed: November 10, 2025_
+_Last reviewed: November 17, 2025_
 
 **Location:** `rask-log-aggregator/app`
 
 ## Role
-- Rust 1.87 Axum API that receives batched logs from forwarders and writes them into ClickHouse for observability analytics.
-- Surface area kept intentionally small: `/v1/aggregate` for ingestion, `/v1/health` for readiness.
+- Rust 1.87 Axum API that ingests newline-delimited JSON log batches from forwarders and writes them into ClickHouse for observability analytics.
+- Keeps a small surface (`/v1/aggregate`, `/v1/health`) while accommodating extensible exporters (`LogExporter` trait).
+- Emits structured tracing via `tracing_subscriber` and propagates errors when ClickHouse rejects payloads.
 
-## Service Snapshot
-| Component | Description |
-| --- | --- |
-| `src/config.rs` | Loads `APP_CLICKHOUSE_*` env vars, errors fast when missing. |
-| `log_exporter` | Trait + implementations (default `ClickHouseExporter`) for writing batches. |
-| `domain::EnrichedLogEntry` | Data model for normalized log entries. |
-| `log_exporter/clickhouse_exporter.rs` | Converts entries to ClickHouse insert operations. |
-| `src/main.rs` | Wires tracing, loads config, builds router, binds to `0.0.0.0:9600`. |
+```mermaid
+flowchart LR
+    Forwarder[rask-log-forwarder]
+    Aggregator[rask-log-aggregator]
+    ClickHouse[(ClickHouse 25.6)]
 
-## Code Status
-- `aggregate_handler` reads NDJSON body, parses each line via `serde_json::from_str`, filters invalid entries with logging, and sends remaining entries to exporter.
-- Exporter interface is async, enabling ClickHouse HTTP writes; implement alternate exporters (e.g., S3) by satisfying `LogExporter`.
-- Health route logs each access and responds `"Healthy"`; consider adding rate limiting if probes become noisy.
+    Forwarder -->|HTTP POST /v1/aggregate| Aggregator
+    Aggregator -->|LogExporter| ClickHouse
+```
 
-## Integrations & Data
-- **ClickHouse:** Uses HTTP transport. Required env vars: `APP_CLICKHOUSE_HOST`, `APP_CLICKHOUSE_PORT`, `APP_CLICKHOUSE_USER`, `APP_CLICKHOUSE_PASSWORD`, `APP_CLICKHOUSE_DATABASE`.
-- **Forwarder contract:** Payload is newline-delimited JSON; keep batches <1 MB (configurable) to avoid ClickHouse HTTP limits.
-- **Observability:** Tracing via `tracing_subscriber` with env filter; adjust `RUST_LOG` to control verbosity.
-- **Recap metrics:** Ingest `recap_genre_refine_*`, `recap_api_evidence_duplicates_total`, and related counters so ClickHouse dashboards can surface dedup, rollout, and golden dataset guardrails after each recap job.
+## Handlers & Exporters
+- `/v1/aggregate` (`aggregate_handler`): reads raw request body, parses each line into `EnrichedLogEntry`, filters parse errors (logs them), and sends the batch to the configured `LogExporter`.
+- `/v1/health`: simple handler that logs health checks and returns `"Healthy"`.
+- `LogExporter` trait (`log_exporter/mod.rs`) lets you swap exporters; default `ClickHouseExporter` takes a vector of `EnrichedLogEntry` and writes HTTP INSERTs to ClickHouse.
+- Parsing errors log `Failed to parse log entry` and skip bad lines instead of failing the entire request.
+
+## Configuration & Environment
+- `APP_CLICKHOUSE_HOST`, `APP_CLICKHOUSE_PORT`, `APP_CLICKHOUSE_USER`, `APP_CLICKHOUSE_PASSWORD`, `APP_CLICKHOUSE_DATABASE` are required; `config::get_configuration()` fails fast when any are missing.
+- ClickHouse client reads envs, builds the connection, and reuses `clickhouse::Client`.
+- Use `RUST_LOG` to control verbosity; default `EnvFilter` includes `INFO`.
 
 ## Testing & Tooling
-- `cargo test` for unit coverage; integration tests (see `tests/`) can start a ClickHouse test container or mock exporter.
-- Run `cargo fmt` + `cargo clippy -- -D warnings` before committing.
-- Extend tests when adding exporter variants to verify error propagation + retry policies.
+- `cargo test` covers unit/integration tests; extend `tests/` when adding new exporter variants.
+- Run `cargo fmt` + `cargo clippy -- -D warnings` before commits.
+- Integration tests (see `tests/`) can start ClickHouse via Docker or mock exporters to verify retry/error handling.
 
 ## Operational Runbook
-1. Set ClickHouse env vars, then `cargo run --release`.
+1. Set ClickHouse envs, then `cargo run --release`.
 2. Smoke test ingestion: `printf '{"message":"hi"}\n' | curl -X POST --data-binary @- localhost:9600/v1/aggregate`.
-3. Monitor logs for `Failed to export logs` entries; they indicate ClickHouse errors. Consider adding retries/backoffs if errors are transient.
-4. Health endpoint: `curl localhost:9600/v1/health`.
+3. Check ClickHouse tables to ensure `recap_genre_refine_*` counters arrive.
+4. Add retries/backoffs in `ClickHouseExporter` if transient errors surface.
+5. Health probe: `curl localhost:9600/v1/health`.
 
-## LLM Notes
-- When requesting changes, specify whether to modify `aggregate_handler`, `LogExporter` implementations, or config parsing so boundaries stay intact.
-- Provide schema expectations for `EnrichedLogEntry` if you ask to add new fields; ensure ClickHouse exporter updates column mapping accordingly.
+## Observability
+- Tracing via `tracing_subscriber` includes `info!` logs when batches arrive, and `error!` when parsing/exporting fails.
+- Future exporters (S3, Kafka) can implement `LogExporter`.
+- When extending `EnrichedLogEntry`, update the exporter’s column mapping before writing to ClickHouse to avoid schema mismatches.
