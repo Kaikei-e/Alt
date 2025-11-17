@@ -15,6 +15,7 @@ import {
   ChevronRight,
   FileText,
   Home,
+  Link as LinkIcon,
   Rss,
   Search,
   Settings,
@@ -38,6 +39,8 @@ const getIconComponent = (
       return FileText;
     case "Search":
       return Search;
+    case "Link":
+      return LinkIcon;
     case "Settings":
       return Settings;
     default:
@@ -99,6 +102,12 @@ const defaultSidebarNavItems = [
     active: true,
   },
   { id: 2, label: "Feeds", icon: Rss, href: "/desktop/feeds" },
+  {
+    id: 6,
+    label: "Manage Feeds Links",
+    iconName: "Link",
+    href: "/feeds/manage",
+  },
   { id: 3, label: "Articles", icon: FileText, href: "/desktop/articles" },
   { id: 4, label: "Search", icon: Search, href: "/desktop/articles/search" },
   { id: 5, label: "Settings", icon: Settings, href: "/desktop/settings" },

@@ -575,7 +575,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => {
       isMounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []); // Empty deps - only run once on mount
 
   // 🚀 X24 Phase 3: Enhanced session monitoring with security checks

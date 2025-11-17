@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, Flex, Text } from "@chakra-ui/react";
-import { Infinity } from "lucide-react";
+import { Infinity as InfinityIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -46,7 +46,7 @@ const canonicalize = (url: string) => {
 };
 
 export default function FeedsPage() {
-  const router = useRouter();
+  const _router = useRouter();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
   const [liveRegionMessage, setLiveRegionMessage] = useState<string>("");
@@ -57,6 +57,7 @@ export default function FeedsPage() {
   // Additional debug logging for auth state
   useEffect(() => {
     if (process.env.NODE_ENV === "development") {
+      // Debug logging can be added here if needed
     }
   }, [isAuthenticated, authLoading, user]);
 
@@ -354,7 +355,7 @@ export default function FeedsPage() {
                 animation: "pulse 2s ease-in-out infinite",
               }}
             />
-            <Infinity size={20} style={{ position: "relative", zIndex: 1 }} />
+            <InfinityIcon size={20} style={{ position: "relative", zIndex: 1 }} />
           </Button>
         </Box>
       </Link>

@@ -35,7 +35,7 @@ const LoadingFallback = () => (
   </Box>
 );
 
-function DesktopFeedsContent({ data }: { data: FeedStatsSummary | null }) {
+function DesktopFeedsContent({ data: _data }: { data: FeedStatsSummary | null }) {
   const sidebarNavItems = [
     {
       id: 1,
@@ -50,6 +50,12 @@ function DesktopFeedsContent({ data }: { data: FeedStatsSummary | null }) {
       iconName: "Rss",
       href: "/desktop/feeds",
       active: true,
+    },
+    {
+      id: 6,
+      label: "Manage Feeds Links",
+      iconName: "Link",
+      href: "/feeds/manage",
     },
     {
       id: 3,

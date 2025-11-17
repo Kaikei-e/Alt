@@ -23,6 +23,7 @@ import {
   Eye,
   Home,
   Infinity,
+  Link as LinkIcon,
   Menu,
   Newspaper,
   Plus,
@@ -134,6 +135,13 @@ export const FloatingMenu = () => {
       category: "feeds",
       icon: <Plus size={18} />,
       description: "Add new RSS feed",
+    },
+    {
+      label: "Manage Feeds Links",
+      href: "/mobile/feeds/manage",
+      category: "feeds",
+      icon: <LinkIcon size={18} />,
+      description: "Add or remove your registered RSS sources",
     },
     {
       label: "Search Feeds",
@@ -460,11 +468,10 @@ export const FloatingMenu = () => {
                                           : "var(--alt-glass)"
                                       }
                                       borderRadius="10px"
-                                      border={`1px solid ${
-                                        isActive
-                                          ? "var(--alt-glass-border)"
-                                          : "var(--alt-glass-border)"
-                                      }`}
+                                      border={`1px solid ${isActive
+                                        ? "var(--alt-glass-border)"
+                                        : "var(--alt-glass-border)"
+                                        }`}
                                       p={3}
                                       _hover={{
                                         bg: isActive

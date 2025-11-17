@@ -5,14 +5,12 @@ export const revalidate = 0;
 import NextLink from "next/link";
 import {
   Box,
-  Flex,
   Text,
   VStack,
   HStack,
-  Link as ChakraLink,
   Button,
 } from "@chakra-ui/react";
-import { Rss, FileText, ArrowRight, LogIn, UserPlus } from "lucide-react";
+import { Rss, FileText, LogIn, UserPlus } from "lucide-react";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { serverFetch } from "@/lib/server-fetch";

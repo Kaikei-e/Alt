@@ -82,7 +82,7 @@ const SwipeSkeletonCard = ({ reduceMotion }: { reduceMotion: boolean }) => (
       <Flex direction="column" gap={3}>
         {Array.from({ length: 4 }).map((_, index) => (
           <Skeleton
-            // eslint-disable-next-line react/no-array-index-key
+             
             key={`swipe-skeleton-line-${index}`}
             height="16px"
             width={`${90 - index * 10}%`}

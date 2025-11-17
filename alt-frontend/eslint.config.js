@@ -30,14 +30,32 @@ const jsxA11yPlugin = requireModule(
   resolveFromNextConfig("eslint-plugin-jsx-a11y"),
 );
 
-const reactRecommended = reactPlugin.configs.flat.recommended;
+const reactRecommended =
+  reactPlugin.configs?.flat?.recommended ??
+  reactPlugin.configs?.recommended ?? {
+    plugins: {},
+    rules: {},
+  };
 const tsRecommended = tsPlugin.configs["flat/recommended-type-checked"];
 const tsStylistic = tsPlugin.configs["flat/stylistic-type-checked"];
-const importRecommended = importPlugin.flatConfigs.recommended;
-const jsxA11yRecommended = jsxA11yPlugin.configs.recommended;
-const reactHooksRecommended = reactHooksPlugin.configs.recommended;
-const nextRecommended = nextPlugin.flatConfig.recommended;
-const nextCoreWebVitals = nextPlugin.flatConfig.coreWebVitals;
+const importRecommended = importPlugin.flatConfigs?.recommended ?? {
+  rules: {},
+};
+const jsxA11yRecommended = jsxA11yPlugin.configs?.recommended ?? {
+  rules: {},
+};
+const reactHooksRecommended = reactHooksPlugin.configs?.recommended ?? {
+  rules: {},
+};
+// Next.js plugin configs (legacy format, extract rules and plugins)
+const nextRecommendedConfig = nextPlugin.configs?.recommended ?? {
+  plugins: {},
+  rules: {},
+};
+const nextCoreWebVitalsConfig = nextPlugin.configs?.["core-web-vitals"] ?? {
+  plugins: {},
+  rules: {},
+};
 
 const projectRoot = fileURLToPath(new URL("./", import.meta.url));
 
@@ -131,8 +149,8 @@ const config = [
       ...reactHooksRecommended.rules,
       ...jsxA11yRecommended.rules,
       ...importRecommended.rules,
-      ...nextRecommended.rules,
-      ...nextCoreWebVitals.rules,
+      ...nextRecommendedConfig.rules,
+      ...nextCoreWebVitalsConfig.rules,
       "import-x/no-anonymous-default-export": "warn",
       "react/no-unknown-property": "off",
       "react/react-in-jsx-scope": "off",

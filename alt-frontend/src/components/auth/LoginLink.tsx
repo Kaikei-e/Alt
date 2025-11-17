@@ -1,5 +1,4 @@
 "use client";
-import { KRATOS_PUBLIC_URL } from "@/lib/env.public";
 
 interface LoginLinkProps {
   children: React.ReactNode;

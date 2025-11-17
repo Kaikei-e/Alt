@@ -68,28 +68,39 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
   }>({
     attemptsRemaining: 5,
   });
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   // Rate limiter instance
   const [rateLimiter] = useState(() => new RateLimiter());
 
+  // Update current time for rate limit countdown
+  useEffect(() => {
+    if (rateLimitInfo.resetTime) {
+      const interval = setInterval(() => {
+        setCurrentTime(Date.now());
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [rateLimitInfo.resetTime]);
+
   const handleInputChange =
     (field: keyof typeof formData) =>
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = sanitizeInput(e.target.value);
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = sanitizeInput(e.target.value);
 
-      setFormData((prev) => ({
-        ...prev,
-        [field]: value,
-      }));
+        setFormData((prev) => ({
+          ...prev,
+          [field]: value,
+        }));
 
-      // Real-time validation
-      validateField(field, value);
+        // Real-time validation
+        validateField(field, value);
 
-      // Clear global error when user starts typing
-      if (error) {
-        clearError();
-      }
-    };
+        // Clear global error when user starts typing
+        if (error) {
+          clearError();
+        }
+      };
 
   const validateField = (field: keyof typeof formData, value: string) => {
     let fieldError: string | undefined;
@@ -366,7 +377,7 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
                   <Text color="white" fontSize="xs" fontFamily="body">
                     ログイン試行回数が上限に達しました。
                     {rateLimitInfo.resetTime &&
-                      ` ${Math.ceil((rateLimitInfo.resetTime - Date.now()) / 60000)}分後に再試行できます。`}
+                      ` ${Math.ceil((rateLimitInfo.resetTime - currentTime) / 60000)}分後に再試行できます。`}
                   </Text>
                   {rateLimitInfo.attemptsRemaining > 0 && (
                     <Text color="white" fontSize="xs" fontFamily="body">

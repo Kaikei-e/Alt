@@ -18,10 +18,10 @@ interface PrivateRouteProps {
 export function PrivateRoute({
   children,
   fallback,
-  redirectTo,
+  redirectTo: _redirectTo,
   requiredRole,
   showLoginPrompt = true,
-  allowPartialAccess = false,
+  allowPartialAccess: _allowPartialAccess = false,
 }: PrivateRouteProps) {
   const { user, isAuthenticated, isLoading, error } = useAuth();
 

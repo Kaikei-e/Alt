@@ -17,7 +17,7 @@ export default function GlobalError({
   };
 
   return (
-    <html>
+    <html lang="ja">
       <body>
         <div className="global-error-container">
           <h1>エラーが発生しました。</h1>
