@@ -89,13 +89,36 @@ const createGetKey =
         if (cursor) {
           lastCursorRef.current = cursor;
         }
+        if (typeof window !== "undefined") {
+          console.log("[useSwipeFeedController] getKey", {
+            pageIndex,
+            hasMore: hasMorePages(previousPageData),
+            next_cursor: previousPageData.next_cursor,
+            has_more: previousPageData.has_more,
+            derivedCursor: cursor,
+            lastCursorRef: lastCursorRef.current,
+          });
+        }
         return ["mobile-feed-swipe", cursor ?? undefined, PAGE_SIZE];
       }
 
       if (pageIndex > 0 && lastCursorRef.current) {
+        if (typeof window !== "undefined") {
+          console.log("[useSwipeFeedController] getKey (fallback)", {
+            pageIndex,
+            lastCursorRef: lastCursorRef.current,
+          });
+        }
         return ["mobile-feed-swipe", lastCursorRef.current, PAGE_SIZE];
       }
 
+      if (typeof window !== "undefined") {
+        console.warn("[useSwipeFeedController] getKey returned null", {
+          pageIndex,
+          previousPageData: previousPageData ? "exists" : "null",
+          lastCursorRef: lastCursorRef.current,
+        });
+      }
       return null;
     };
 
@@ -104,7 +127,19 @@ const fetchPage = async (
   cursor: string | undefined,
   limit: number,
 ): Promise<CursorResponse<Feed>> => {
-  return feedApi.getFeedsWithCursor(cursor, limit);
+  if (typeof window !== "undefined") {
+    console.log("[useSwipeFeedController] fetchPage", { cursor, limit });
+  }
+  const result = await feedApi.getFeedsWithCursor(cursor, limit);
+  if (typeof window !== "undefined") {
+    console.log("[useSwipeFeedController] fetchPage result", {
+      cursor,
+      dataCount: result.data.length,
+      next_cursor: result.next_cursor,
+      has_more: result.has_more,
+    });
+  }
+  return result;
 };
 
 const clearTimeoutRef = (timeoutRef: ReturnType<typeof useRef<number | null>>) => {
@@ -259,12 +294,28 @@ export const useSwipeFeedController = () => {
 
   const schedulePrefetch = useCallback(() => {
     if (!hasMore || !lastPage || !data) {
+      if (typeof window !== "undefined") {
+        console.log("[useSwipeFeedController] schedulePrefetch: early return", {
+          hasMore,
+          hasLastPage: !!lastPage,
+          hasData: !!data,
+        });
+      }
       prefetchCursorRef.current = null;
       return;
     }
 
     const nextCursor = derivePageCursor(lastPage);
     if (!nextCursor) {
+      if (typeof window !== "undefined") {
+        console.warn("[useSwipeFeedController] schedulePrefetch: no cursor derived", {
+          lastPage: {
+            has_more: lastPage.has_more,
+            next_cursor: lastPage.next_cursor,
+            dataCount: lastPage.data?.length ?? 0,
+          },
+        });
+      }
       prefetchCursorRef.current = null;
       return;
     }
@@ -274,6 +325,12 @@ export const useSwipeFeedController = () => {
     // This handles the case where all feeds in current pages are filtered out
     if (feeds.length === 0) {
       if (prefetchCursorRef.current !== nextCursor) {
+        if (typeof window !== "undefined") {
+          console.log("[useSwipeFeedController] schedulePrefetch: empty feeds, prefetching", {
+            nextCursor,
+            currentSize: data.length,
+          });
+        }
         prefetchCursorRef.current = nextCursor;
         setSize((current) => current + 1);
       }
@@ -295,8 +352,25 @@ export const useSwipeFeedController = () => {
       !isValidating &&
       prefetchCursorRef.current !== nextCursor
     ) {
+      if (typeof window !== "undefined") {
+        console.log("[useSwipeFeedController] schedulePrefetch: triggering prefetch", {
+          nextCursor,
+          remainingAfterCurrent,
+          adjustedThreshold,
+          isValidating,
+          currentSize: data.length,
+        });
+      }
       prefetchCursorRef.current = nextCursor;
       setSize((current) => current + 1);
+    } else if (typeof window !== "undefined") {
+      console.log("[useSwipeFeedController] schedulePrefetch: conditions not met", {
+        remainingAfterCurrent,
+        adjustedThreshold,
+        isValidating,
+        prefetchCursorRef: prefetchCursorRef.current,
+        nextCursor,
+      });
     }
   }, [activeFeed, data, feeds.length, hasMore, isValidating, lastPage, setSize]);
 

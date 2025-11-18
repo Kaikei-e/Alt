@@ -150,6 +150,14 @@ func handleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.Hand
 		limitStr := c.QueryParam("limit")
 		cursorStr := c.QueryParam("cursor")
 
+		// Log incoming request parameters for debugging
+		logger.Logger.Info(
+			"received unread feeds cursor request",
+			"cursor_param", cursorStr,
+			"limit_param", limitStr,
+			"request_id", c.Response().Header().Get("X-Request-ID"),
+		)
+
 		// Default limit
 		limit := 20
 		if limitStr != "" {
@@ -186,7 +194,7 @@ func handleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.Hand
 			c.Response().Header().Set("Cache-Control", "public, max-age=900") // 15 minutes for other pages
 		}
 
-		logger.Logger.Info("Fetching unread feeds with cursor", "cursor", cursor, "limit", limit)
+		logger.Logger.Info("Fetching unread feeds with cursor", "cursor", cursor, "cursor_str", cursorStr, "limit", limit)
 		feeds, hasMore, err := container.FetchUnreadFeedsListCursorUsecase.Execute(c.Request().Context(), cursor, limit)
 		if err != nil {
 			logger.Logger.Error("Error fetching feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
