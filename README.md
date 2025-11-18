@@ -44,9 +44,11 @@ _Last reviewed on November 13, 2025._
 - Clean Architecture across languages: Go services follow handler → usecase → port → gateway → driver, while Python, Rust, and Deno counterparts mirror the same contract-first approach.
 - AI enrichment pipeline: pre-processor deduplicates and scores feeds, news-creator produces Ollama summaries, and tag-generator runs ONNX-backed extraction with SentenceTransformer fallback, keeps a background worker thread alive for batch throughput, and exposes a service-token gated `/api/v1/tags/batch` so downstream systems (Recap, recap-worker replays, etc.) can fetch cascade-aware tags and refresh the rolling `tag_label_graph` priors.
 - Recap experience: recap-worker (Rust 2024) + recap-subworker (FastAPI) condense the latest seven days of articles into genre cards, evidence links, and summaries that power the mobile `/mobile/recap/7days` dashboard and backend `/v1/recap/7days` API, while deduplicating evidence, persisting `recap_cluster_evidence`, emitting `recap_genre_learning_results`, and shipping golden dataset evaluation metrics plus an offline `scripts/replay_genre_pipeline` helper.
+- Recap ingestion: the backend also hosts `GET /v1/recap/7days` (public) plus service-authenticated `POST /v1/recap/articles`; the latter enforces `X-Service-Token` + `RecapRateLimiter` meters, returns `X-RateLimit-*` headers, and validates `from/to` RFC3339 ranges before calling `RecapGateway`.
 - Dedicated recap-db (PostgreSQL 16) tracks jobs, cached articles, cluster evidence, tag-label graph priors, refine telemetry, and published recaps so reruns stay deterministic and audits replayable via Atlas migrations in `recap-migration-atlas/`.
 - Search-ready delivery: search-indexer batches 200-document upserts into Meilisearch 1.15.2 with tuned searchable/filterable attributes and semantic-ready schema defaults.
 - Observability built in: Rust rask log services stream structured JSON into ClickHouse 25.6, complemented by health endpoints and targeted dashboards.
+- Streamed metrics: `/v1/sse/feeds/stats` keeps a heartbeat (10s) + ticker (configured via `SERVER_SSE_INTERVAL`) open so dashboards immediately reflect `feedAmount`, `unsummarizedFeedAmount`, and `articleAmount`.
 - Identity at the edge: auth-hub validates Kratos sessions, emits authoritative `X-Alt-*` headers, and caches them for five minutes so downstream services remain auth-agnostic.
 - TDD-first change management: every service mandates Red → Green → Refactor with exhaustive unit suites, integration hooks, and deterministic mocks before production merges.
 - Developer ergonomics & safety: shared Make targets, lint/format tooling, env guards, and secrets hygiene keep onboarding fast and safe.
@@ -61,6 +63,7 @@ Alt is designed to keep local parity with production by centering on Docker Comp
 - Ingested RSS feeds enter the Go pre-processor, undergo deduplication/sanitation, and emit canonical articles plus summaries for downstream services (`docs/pre-processor.md`).
 - The tag-generator consumes those articles, runs the ONNX-backed extractor with cascade controls, and refreshes the `tag_label_graph` priors that recap-worker uses during genre refinement (`docs/tag-generator.md`).
 - The recap pipeline (worker + subworker + recap-db + news-creator) orchestrates evidence deduction, clustering, LLM summarisation, and persistence of deduplicated proof links plus genre learning results (`docs/recap-worker.md`, `docs/recap-subworker.md`, `docs/recap-db.md`), while `alt-backend` surfaces the curated recap and articles APIs (`docs/alt-backend.md`).
+- The backend also exposes `/v1/sse/feeds/stats` (heartbeat + periodic tickers) for live feed metrics and a service-authenticated `POST /v1/recap/articles` that enforces `X-Service-Token`, paged `from/to` queries, and `RecapRateLimiter` headers before handing data to recap-worker; these flows keep dashboards in sync and avoid Kratos/session churn.
 - Observability services (rask log forwarder/aggregator) capture `recap_genre_refine_*` counters, `recap_api_evidence_duplicates_total`, and related metrics for ClickHouse dashboards (`docs/rask-log-forwarder.md`, `docs/rask-log-aggregator.md`).
 - Identity flows (auth-hub, auth-token-manager) ensure Kratos sessions and Inoreader tokens stay fresh for the entire pipeline, and the frontend renders the `/mobile/recap/7days` experience from the recap summary DTOs (`docs/auth-hub.md`, `docs/auth-token-manager.md`, `docs/alt-frontend.md`).
 
@@ -297,6 +300,8 @@ The list below summarises each microservice's responsibilities. Consult the dire
 - Use the appendix command cheat sheet for the most common workflows.
 
 ## Service Deep Dives
+
+Every `docs/<service>.md` snapshot now pairs prose with an architecture diagram + configuration, testing, and operational notes derived from the live source tree.
 
 - **alt-frontend** – Next.js 15 App Router UI with Chakra theming, SWR/react-query caching, middleware-protected routes, and the mobile `/mobile/recap/7days` experience (Recap/Genres/Articles/Jobs tabs) backed by SWR skeletons, trace propagation, and refreshed `RecapCard`/summary styling that handles the new evidence-link + genre payloads.
 - **alt-backend/app** – Go 1.25 Clean Architecture API (handler → usecase → port → gateway → driver) with GoMock tests, Atlas migrations, and slog logging, now hosting `/v1/recap/7days` (public) and service-auth `/v1/recap/articles` endpoints backed by `RecapUsecase`, `RecapGateway`, and domain DTOs (`RecapSummary`, `RecapGenre`, `EvidenceLink`).
