@@ -220,6 +220,37 @@ func optimizeFeedsResponse(feeds []*domain.FeedItem) []*domain.FeedItem {
 	return feeds
 }
 
+func deriveNextCursorFromFeeds(feeds []*domain.FeedItem) (string, bool) {
+	if len(feeds) == 0 {
+		return "", false
+	}
+
+	lastFeed := feeds[len(feeds)-1]
+	if !lastFeed.PublishedParsed.IsZero() {
+		return lastFeed.PublishedParsed.Format(time.RFC3339), true
+	}
+
+	published := strings.TrimSpace(lastFeed.Published)
+	if published == "" {
+		return "", false
+	}
+
+	parsed, err := time.Parse(time.RFC3339, published)
+	if err != nil {
+		logger.Logger.Warn(
+			"failed to parse published timestamp for next cursor",
+			"published",
+			published,
+			"error",
+			err,
+		)
+		return "", false
+	}
+
+	lastFeed.PublishedParsed = parsed
+	return parsed.Format(time.RFC3339), true
+}
+
 // Determine cache age based on limit to optimize caching strategy
 func getCacheAgeForLimit(limit int) int {
 	switch {

@@ -203,11 +203,16 @@ func handleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.Hand
 		}
 
 		var nextCursor string
-		if hasMore && len(optimizedFeeds) > 0 {
-			lastFeed := optimizedFeeds[len(optimizedFeeds)-1]
-			if lastPublished, err := time.Parse(time.RFC3339, lastFeed.Published); err == nil {
-				nextCursor = lastPublished.Format(time.RFC3339)
-				response["next_cursor"] = nextCursor
+		if hasMore {
+			if derivedCursor, ok := deriveNextCursorFromFeeds(optimizedFeeds); ok {
+				nextCursor = derivedCursor
+				response["next_cursor"] = derivedCursor
+			} else {
+				logger.Logger.Warn(
+					"unable to derive next cursor despite has_more flag",
+					"count",
+					len(optimizedFeeds),
+				)
 			}
 		}
 

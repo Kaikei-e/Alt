@@ -10,25 +10,33 @@ import (
 
 // Common test data generators
 func CreateMockFeedItems() []*domain.FeedItem {
+	baseTime := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
 	return []*domain.FeedItem{
 		{
-			Title:       "Test Feed 1",
-			Description: "Test Description 1",
-			Link:        "https://test.com/feed1",
+			Title:           "Test Feed 1",
+			Description:     "Test Description 1",
+			Link:            "https://test.com/feed1",
+			Published:       baseTime.Format(time.RFC3339),
+			PublishedParsed: baseTime,
 		},
 		{
-			Title:       "Test Feed 2",
-			Description: "Test Description 2",
-			Link:        "https://test.com/feed2",
+			Title:           "Test Feed 2",
+			Description:     "Test Description 2",
+			Link:            "https://test.com/feed2",
+			Published:       baseTime.Add(-1 * time.Hour).Format(time.RFC3339),
+			PublishedParsed: baseTime.Add(-1 * time.Hour),
 		},
 	}
 }
 
 func CreateSingleMockFeedItem() *domain.FeedItem {
+	now := time.Date(2024, time.February, 1, 0, 0, 0, 0, time.UTC)
 	return &domain.FeedItem{
-		Title:       "Single Test Feed",
-		Description: "Single Test Description",
-		Link:        "https://test.com/single-feed",
+		Title:           "Single Test Feed",
+		Description:     "Single Test Description",
+		Link:            "https://test.com/single-feed",
+		Published:       now.Format(time.RFC3339),
+		PublishedParsed: now,
 	}
 }
 

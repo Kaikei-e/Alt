@@ -109,11 +109,13 @@ func (g *FetchFeedsGateway) FetchFeedsList(ctx context.Context) ([]*domain.FeedI
 
 	feedItems := make([]*domain.FeedItem, 0, len(feeds))
 	for _, feed := range feeds {
+		publishedTime := feed.CreatedAt
 		feedItems = append(feedItems, &domain.FeedItem{
-			Title:       feed.Title,
-			Description: feed.Description,
-			Link:        feed.Link,
-			Published:   feed.CreatedAt.Format(time.RFC3339),
+			Title:           feed.Title,
+			Description:     feed.Description,
+			Link:            feed.Link,
+			Published:       publishedTime.Format(time.RFC3339),
+			PublishedParsed: publishedTime,
 		})
 	}
 	return feedItems, nil
@@ -131,11 +133,13 @@ func (g *FetchFeedsGateway) FetchFeedsListLimit(ctx context.Context, offset int)
 
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
+		publishedTime := feed.CreatedAt
 		feedItems = append(feedItems, &domain.FeedItem{
-			Title:       feed.Title,
-			Description: feed.Description,
-			Link:        feed.Link,
-			Published:   feed.CreatedAt.Format(time.RFC3339),
+			Title:           feed.Title,
+			Description:     feed.Description,
+			Link:            feed.Link,
+			Published:       publishedTime.Format(time.RFC3339),
+			PublishedParsed: publishedTime,
 		})
 	}
 
@@ -156,11 +160,13 @@ func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([
 
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
+		publishedTime := feed.CreatedAt
 		feedItems = append(feedItems, &domain.FeedItem{
-			Title:       feed.Title,
-			Description: feed.Description,
-			Link:        feed.Link,
-			Published:   feed.CreatedAt.Format(time.RFC3339),
+			Title:           feed.Title,
+			Description:     feed.Description,
+			Link:            feed.Link,
+			Published:       publishedTime.Format(time.RFC3339),
+			PublishedParsed: publishedTime,
 		})
 	}
 
@@ -180,11 +186,13 @@ func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *ti
 
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
+		publishedTime := feed.CreatedAt
 		feedItems = append(feedItems, &domain.FeedItem{
-			Title:       feed.Title,
-			Description: feed.Description,
-			Link:        feed.Link,
-			Published:   feed.CreatedAt.Format(time.RFC3339),
+			Title:           feed.Title,
+			Description:     feed.Description,
+			Link:            feed.Link,
+			Published:       publishedTime.Format(time.RFC3339),
+			PublishedParsed: publishedTime,
 		})
 	}
 
@@ -212,10 +220,11 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 			publishedTime = feed.CreatedAt
 		}
 		feedItems = append(feedItems, &domain.FeedItem{
-			Title:       feed.Title,
-			Description: feed.Description,
-			Link:        feed.Link,
-			Published:   publishedTime.Format(time.RFC3339),
+			Title:           feed.Title,
+			Description:     feed.Description,
+			Link:            feed.Link,
+			Published:       publishedTime.Format(time.RFC3339),
+			PublishedParsed: publishedTime,
 		})
 	}
 
@@ -235,11 +244,13 @@ func (g *FetchFeedsGateway) FetchReadFeedsListCursor(ctx context.Context, cursor
 
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
+		publishedTime := feed.CreatedAt
 		feedItems = append(feedItems, &domain.FeedItem{
-			Title:       feed.Title,
-			Description: feed.Description,
-			Link:        feed.Link,
-			Published:   feed.CreatedAt.Format(time.RFC3339),
+			Title:           feed.Title,
+			Description:     feed.Description,
+			Link:            feed.Link,
+			Published:       publishedTime.Format(time.RFC3339),
+			PublishedParsed: publishedTime,
 		})
 	}
 
@@ -259,11 +270,13 @@ func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cu
 
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
+		publishedTime := feed.CreatedAt
 		feedItems = append(feedItems, &domain.FeedItem{
-			Title:       feed.Title,
-			Description: feed.Description,
-			Link:        feed.Link,
-			Published:   feed.CreatedAt.Format(time.RFC3339),
+			Title:           feed.Title,
+			Description:     feed.Description,
+			Link:            feed.Link,
+			Published:       publishedTime.Format(time.RFC3339),
+			PublishedParsed: publishedTime,
 		})
 	}
 
