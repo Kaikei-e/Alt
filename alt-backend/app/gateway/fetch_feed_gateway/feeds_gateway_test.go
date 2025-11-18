@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stretchr/testify/require"
 )
 
 type mockTransport struct {
@@ -238,7 +239,7 @@ func TestFetchFeedsGateway_FetchFeedsListPage_ShouldNotFallbackToReadArticles(t 
 		t.Error("Expected error when database connection is not available")
 	}
 
-	if feeds != nil && len(feeds) > 0 {
+	if len(feeds) > 0 {
 		t.Error("Expected no feeds when database error occurs, got feeds (dangerous fallback detected)")
 	}
 }
@@ -248,9 +249,7 @@ func TestNewFetchFeedsGateway(t *testing.T) {
 	var pool *pgxpool.Pool // nil pool for testing
 	gateway := NewFetchFeedsGateway(pool)
 
-	if gateway == nil {
-		t.Error("NewFetchFeedsGateway() returned nil")
-	}
+	require.NotNil(t, gateway, "NewFetchFeedsGateway() returned nil")
 
 	// With our refactored approach, repository will be nil when pool is nil
 	if gateway.alt_db != nil {
@@ -391,9 +390,7 @@ func TestFetchFeedsGateway_WithRateLimiter(t *testing.T) {
 
 	gateway := NewFetchFeedsGatewayWithRateLimiter(pool, rateLimiter) // This function doesn't exist yet - should cause compile error
 
-	if gateway == nil {
-		t.Error("NewFetchFeedsGatewayWithRateLimiter() returned nil")
-	}
+	require.NotNil(t, gateway, "NewFetchFeedsGatewayWithRateLimiter() returned nil")
 
 	if gateway.rateLimiter != rateLimiter {
 		t.Error("Rate limiter not properly set in gateway")
