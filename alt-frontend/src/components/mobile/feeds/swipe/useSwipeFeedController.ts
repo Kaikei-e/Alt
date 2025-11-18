@@ -272,6 +272,7 @@ export const useSwipeFeedController = () => {
         revalidateOnFocus: false,
         revalidateFirstPage: false,
         parallel: false, // Set to false to ensure sequential fetching and proper previousPageData passing
+        persistSize: true, // Prevent page size reset when first page key changes (prevents cursor=null issue)
         initialSize: INITIAL_PAGE_COUNT,
       },
     );
