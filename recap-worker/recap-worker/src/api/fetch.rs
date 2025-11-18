@@ -226,7 +226,7 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
         // 重複除去して最大5個のトップタームを取得
         all_top_terms.sort();
         all_top_terms.dedup();
-        all_top_terms.truncate(5);
+        all_top_terms.truncate(10);
 
         let deduped_links = {
             let before = evidence_links.len();
