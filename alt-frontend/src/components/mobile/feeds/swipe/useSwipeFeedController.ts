@@ -259,7 +259,7 @@ export const useSwipeFeedController = () => {
     // If feeds array is empty but hasMore is true, we should prefetch immediately
     // This handles the case where all feeds in current pages are filtered out
     if (feeds.length === 0) {
-      if (!isValidating && prefetchCursorRef.current !== nextCursor) {
+      if (prefetchCursorRef.current !== nextCursor) {
         prefetchCursorRef.current = nextCursor;
         setSize((current) => current + 1);
       }

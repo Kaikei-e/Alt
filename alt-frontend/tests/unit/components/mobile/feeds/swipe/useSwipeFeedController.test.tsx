@@ -145,5 +145,46 @@ describe("useSwipeFeedController", () => {
 
     expect(typeof setSizeMock.mock.calls[0][0]).toBe("function");
   });
+
+  it("prefetches even when SWR is validating but feeds become empty", async () => {
+    const setSizeMock = vi.fn();
+    mockUseSWRInfinite.mockImplementation(() => ({
+      data: [
+        {
+          data: [
+            {
+              ...baseFeed,
+              id: "validating-feed",
+              link: "https://example.com/article-1",
+            },
+          ],
+          next_cursor: null,
+          has_more: true,
+        },
+      ],
+      error: null,
+      isLoading: false,
+      isValidating: true,
+      setSize: setSizeMock,
+      mutate: vi.fn(),
+    }));
+
+    mockFeedApi.getReadFeedsWithCursor.mockResolvedValue({
+      data: [
+        {
+          ...baseFeed,
+          id: "validating-feed",
+          link: "https://example.com/article-1",
+        },
+      ],
+      next_cursor: null,
+    });
+
+    renderHook(() => useSwipeFeedController());
+
+    await waitFor(() => {
+      expect(setSizeMock).toHaveBeenCalled();
+    });
+  });
 });
 
