@@ -86,9 +86,14 @@ const createGetKey =
           return null;
         }
         const cursor = derivePageCursor(previousPageData);
+        // Always update lastCursorRef when we have a cursor
         if (cursor) {
           lastCursorRef.current = cursor;
         }
+
+        // Use cursor if available, otherwise fallback to lastCursorRef
+        const effectiveCursor = cursor || lastCursorRef.current || undefined;
+
         if (typeof window !== "undefined") {
           console.log("[useSwipeFeedController] getKey", {
             pageIndex,
@@ -97,9 +102,10 @@ const createGetKey =
             has_more: previousPageData.has_more,
             derivedCursor: cursor,
             lastCursorRef: lastCursorRef.current,
+            effectiveCursor,
           });
         }
-        return ["mobile-feed-swipe", cursor ?? undefined, PAGE_SIZE];
+        return ["mobile-feed-swipe", effectiveCursor, PAGE_SIZE];
       }
 
       if (pageIndex > 0 && lastCursorRef.current) {
@@ -122,25 +128,39 @@ const createGetKey =
       return null;
     };
 
-const fetchPage = async (
-  _: string,
-  cursor: string | undefined,
-  limit: number,
-): Promise<CursorResponse<Feed>> => {
-  if (typeof window !== "undefined") {
-    console.log("[useSwipeFeedController] fetchPage", { cursor, limit });
-  }
-  const result = await feedApi.getFeedsWithCursor(cursor, limit);
-  if (typeof window !== "undefined") {
-    console.log("[useSwipeFeedController] fetchPage result", {
-      cursor,
-      dataCount: result.data.length,
-      next_cursor: result.next_cursor,
-      has_more: result.has_more,
-    });
-  }
-  return result;
-};
+const createFetchPage =
+  (lastCursorRef: ReturnType<typeof useRef<string | null>>) =>
+    async (
+      _: string,
+      cursor: string | undefined,
+      limit: number,
+    ): Promise<CursorResponse<Feed>> => {
+      // Use lastCursorRef as fallback if cursor is undefined
+      // This ensures we always send a cursor when available, even if getKey didn't pass it
+      const effectiveCursor = cursor || lastCursorRef.current || undefined;
+
+      if (typeof window !== "undefined") {
+        console.log("[useSwipeFeedController] fetchPage", {
+          cursor,
+          lastCursorRef: lastCursorRef.current,
+          effectiveCursor,
+          limit,
+        });
+      }
+
+      const result = await feedApi.getFeedsWithCursor(effectiveCursor, limit);
+
+      if (typeof window !== "undefined") {
+        console.log("[useSwipeFeedController] fetchPage result", {
+          cursor,
+          effectiveCursor,
+          dataCount: result.data.length,
+          next_cursor: result.next_cursor,
+          has_more: result.has_more,
+        });
+      }
+      return result;
+    };
 
 const clearTimeoutRef = (timeoutRef: ReturnType<typeof useRef<number | null>>) => {
   if (typeof window === "undefined") {
@@ -215,6 +235,11 @@ export const useSwipeFeedController = () => {
   // This ensures consistent behavior and prevents race conditions
   const getKey = useMemo(
     () => createGetKey(lastCursorRef),
+    [lastCursorRef],
+  );
+
+  const fetchPage = useMemo(
+    () => createFetchPage(lastCursorRef),
     [lastCursorRef],
   );
 
