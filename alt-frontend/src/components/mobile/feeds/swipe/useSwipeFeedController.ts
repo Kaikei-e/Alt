@@ -219,12 +219,37 @@ export const useSwipeFeedController = () => {
   );
 
   const { data, error, isLoading, isValidating, setSize, mutate } =
-    useSWRInfinite(isReadFeedsInitialized ? getKey : () => null, fetchPage, {
-      revalidateOnFocus: false,
-      revalidateFirstPage: false,
-      parallel: true,
-      initialSize: INITIAL_PAGE_COUNT,
-    });
+    useSWRInfinite(
+      isReadFeedsInitialized
+        ? (pageIndex: number, previousPageData: CursorResponse<Feed> | null) => {
+          // Fix cursor=null issue: SWR may not pass previousPageData correctly in some cases
+          // Use the getKey function but ensure we handle null previousPageData by using lastCursorRef
+          if (pageIndex === 0) {
+            return getKey(pageIndex, previousPageData);
+          }
+
+          // If previousPageData is null but we have a cursor in lastCursorRef, use it
+          if (!previousPageData && lastCursorRef.current) {
+            if (typeof window !== "undefined") {
+              console.log("[useSwipeFeedController] getKey: using lastCursorRef fallback", {
+                pageIndex,
+                lastCursorRef: lastCursorRef.current,
+              });
+            }
+            return ["mobile-feed-swipe", lastCursorRef.current, PAGE_SIZE];
+          }
+
+          return getKey(pageIndex, previousPageData);
+        }
+        : () => null,
+      fetchPage,
+      {
+        revalidateOnFocus: false,
+        revalidateFirstPage: false,
+        parallel: false, // Set to false to ensure sequential fetching and proper previousPageData passing
+        initialSize: INITIAL_PAGE_COUNT,
+      },
+    );
 
   const feeds = useMemo(() => {
     if (!data || data.length === 0) {
