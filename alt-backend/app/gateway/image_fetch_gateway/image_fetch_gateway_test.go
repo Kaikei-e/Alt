@@ -453,7 +453,7 @@ func TestImageFetchGateway_DNSRebindingAttacks(t *testing.T) {
 		},
 		{
 			name:        "DNS rebinding to private IP via domain",
-			imageURL:    "https://rebind.network/image.jpg", // This could resolve to 192.168.1.1
+			imageURL:    "https://192.168.1.1.nip.io/image.jpg", // nip.io resolves to the IP in the subdomain
 			expectedErr: "DNS rebinding attack detected",
 			description: "Domain that resolves to private IP should be blocked",
 		},
