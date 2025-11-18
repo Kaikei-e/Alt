@@ -211,29 +211,20 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 	}
 
 	var feedItems []*domain.FeedItem
-	// Use the same logic as SQL query: pub_date > '1970-01-01' means valid pub_date
-	// This ensures consistency between SQL ORDER BY and cursor generation
-	epoch1970 := time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
+	// Use created_at only for cursor pagination
+	// created_at is always populated (NOT NULL DEFAULT CURRENT_TIMESTAMP) and reliable
+	// pub_date has many zero values (0001-01-01) and is not reliable
 
 	for i, feed := range feeds {
-		// Use pub_date for Published field, fallback to created_at if pub_date is invalid
-		// Match SQL query condition: f.pub_date IS NOT NULL AND f.pub_date > '1970-01-01'::timestamp
-		var publishedTime time.Time
-		usingPubDate := !feed.PubDate.IsZero() && feed.PubDate.After(epoch1970)
-		if usingPubDate {
-			publishedTime = feed.PubDate
-		} else {
-			publishedTime = feed.CreatedAt
-		}
+		// Always use created_at for Published field to match SQL query ORDER BY
+		publishedTime := feed.CreatedAt
 
-		// Log first and last feed details for debugging date consistency
+		// Log first and last feed details for debugging
 		if i == 0 || i == len(feeds)-1 {
 			logger.Logger.Info(
 				"feed date mapping for cursor pagination",
 				"index", i,
 				"total", len(feeds),
-				"using_pub_date", usingPubDate,
-				"pub_date", feed.PubDate,
 				"created_at", feed.CreatedAt,
 				"published_parsed", publishedTime,
 				"link", feed.Link,
