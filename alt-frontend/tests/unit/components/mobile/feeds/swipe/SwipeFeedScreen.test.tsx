@@ -77,12 +77,28 @@ describe("SwipeFeedScreen", () => {
       activeFeed: undefined as unknown as Feed,
       isInitialLoading: false,
       isValidating: true,
+      hasMore: true,
     });
 
     renderWithProviders();
 
     expect(screen.getByTestId("swipe-skeleton-container")).toBeInTheDocument();
     expect(screen.getByTestId("swipe-skeleton-card")).toBeInTheDocument();
+  });
+
+  it("shows empty state when no feeds remain even if validating", () => {
+    mockedUseSwipeFeedController.mockReturnValue({
+      ...baseState,
+      feeds: [],
+      activeFeed: undefined as unknown as Feed,
+      hasMore: false,
+      isInitialLoading: false,
+      isValidating: true,
+    });
+
+    renderWithProviders();
+
+    expect(screen.getByTestId("empty-state-icon")).toBeInTheDocument();
   });
 
   it("renders enhanced skeleton and hint during initial loading", () => {
@@ -139,5 +155,39 @@ describe("SwipeFeedScreen", () => {
     );
     expect(reducedMotionHint).toBeInTheDocument();
     expect(reducedMotionHint).toHaveAttribute("data-reduced-motion", "true");
+  });
+
+  it("renders the empty state when feeds are exhausted without pending fetches", () => {
+    mockedUseSwipeFeedController.mockReturnValue({
+      ...baseState,
+      feeds: [],
+      activeFeed: undefined as unknown as Feed,
+      hasMore: false,
+      isInitialLoading: false,
+      isValidating: false,
+    });
+
+    renderWithProviders();
+
+    expect(screen.getByTestId("empty-state-icon")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /no feeds yet/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("continues to show skeleton when feeds array is empty but more pages exist", () => {
+    mockedUseSwipeFeedController.mockReturnValue({
+      ...baseState,
+      feeds: [],
+      activeFeed: undefined as unknown as Feed,
+      hasMore: true,
+      isInitialLoading: false,
+      isValidating: true,
+    });
+
+    renderWithProviders();
+
+    expect(screen.getByTestId("swipe-skeleton-container")).toBeInTheDocument();
+    expect(screen.queryByTestId("empty-state-icon")).not.toBeInTheDocument();
   });
 });

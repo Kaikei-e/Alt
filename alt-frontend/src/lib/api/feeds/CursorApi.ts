@@ -12,7 +12,7 @@ export class CursorApi<BackendType, FrontendType> {
     private endpoint: string,
     private transformer: (item: BackendType) => FrontendType,
     private defaultCacheTtl: number = 10,
-  ) {}
+  ) { }
 
   async fetchWithCursor(
     cursor?: string,
@@ -41,15 +41,19 @@ export class CursorApi<BackendType, FrontendType> {
       return {
         data: [],
         next_cursor: null,
+        has_more: false,
       };
     }
 
     // Transform backend items to frontend format
     const transformedData = response.data.map(this.transformer);
 
+    const hasMore = response.has_more ?? response.next_cursor !== null;
+
     return {
       data: transformedData,
       next_cursor: response.next_cursor,
+      has_more: hasMore,
     };
   }
 

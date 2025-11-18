@@ -54,8 +54,12 @@ const getKey = (
   pageIndex: number,
   previousPageData: CursorResponse<Feed> | null,
 ): SwrKey | null => {
-  if (previousPageData && !previousPageData.next_cursor) {
-    return null;
+  if (previousPageData) {
+    const hasPrevMore =
+      previousPageData.has_more ?? Boolean(previousPageData.next_cursor);
+    if (!hasPrevMore) {
+      return null;
+    }
   }
 
   if (pageIndex === 0) {
@@ -105,7 +109,6 @@ const scheduleTimeout = (
 export const useSwipeFeedController = () => {
   const [liveRegionMessage, setLiveRegionMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [activeFeedId, setActiveFeedId] = useState<string | null>(null);
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
   const [isReadFeedsInitialized, setIsReadFeedsInitialized] = useState(false);
 
@@ -142,7 +145,6 @@ export const useSwipeFeedController = () => {
 
   const liveRegionTimeoutRef = useRef<number | null>(null);
   const prefetchCursorRef = useRef<string | null>(null);
-  const lastDismissedIdRef = useRef<string | null>(null);
 
   // Wait for readFeeds initialization before fetching unread feeds
   // This ensures consistent behavior and prevents race conditions
@@ -170,29 +172,19 @@ export const useSwipeFeedController = () => {
     );
   }, [data, readFeeds]);
 
-  const activeIndex = useMemo(() => {
-    if (feeds.length === 0) {
-      return 0;
-    }
-
-    if (!activeFeedId) {
-      return 0;
-    }
-
-    const index = feeds.findIndex((feed) => feed.id === activeFeedId);
-    return index === -1 ? 0 : index;
-  }, [activeFeedId, feeds]);
-
-  const activeFeed = feeds[activeIndex] ?? null;
+  const activeFeed = feeds[0] ?? null;
+  const activeIndex = activeFeed ? 0 : -1;
   const lastPage = data?.[data.length - 1] ?? null;
-  const hasMore = Boolean(lastPage?.next_cursor);
+  const hasMore = Boolean(
+    lastPage?.has_more ?? Boolean(lastPage?.next_cursor),
+  );
   const isInitialLoading = (!data || data.length === 0) && isLoading;
 
   // Article content prefetch hook
   const { triggerPrefetch, getCachedContent, markAsDismissed } =
     useArticleContentPrefetch(
       feeds,
-      activeIndex,
+      Math.max(activeIndex, 0),
       2, // Prefetch next 2 articles
     );
 
@@ -219,38 +211,6 @@ export const useSwipeFeedController = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (feeds.length === 0) {
-      if (activeFeedId !== null) {
-        setActiveFeedId(null);
-      }
-      lastDismissedIdRef.current = null;
-      return;
-    }
-
-    const hasActiveFeed =
-      activeFeedId !== null && feeds.some((feed) => feed.id === activeFeedId);
-
-    if (hasActiveFeed) {
-      if (
-        lastDismissedIdRef.current &&
-        feeds.every((feed) => feed.id !== lastDismissedIdRef.current)
-      ) {
-        lastDismissedIdRef.current = null;
-      }
-      return;
-    }
-
-    if (
-      lastDismissedIdRef.current &&
-      feeds.some((feed) => feed.id === lastDismissedIdRef.current)
-    ) {
-      return;
-    }
-
-    setActiveFeedId(feeds[0].id);
-  }, [activeFeedId, feeds]);
-
   const announce = useCallback((message: string, duration: number) => {
     setLiveRegionMessage(message);
     scheduleTimeout(
@@ -263,29 +223,36 @@ export const useSwipeFeedController = () => {
   }, []);
 
   const schedulePrefetch = useCallback(() => {
-    if (!hasMore || !lastPage) {
+    if (!hasMore || !lastPage || !data) {
       prefetchCursorRef.current = null;
       return;
     }
 
     const nextCursor = lastPage.next_cursor;
-    const remaining = feeds.length - activeIndex;
+    const remainingAfterCurrent = Math.max(feeds.length - (activeFeed ? 1 : 0), 0);
+
+    const totalRawFeeds = data.flatMap((page) => page?.data ?? []).length;
+    const filterRatio =
+      totalRawFeeds > 0 ? Math.min(feeds.length / totalRawFeeds, 1) : 1;
+    const adjustedThreshold = Math.max(
+      1,
+      Math.ceil(PREFETCH_THRESHOLD * filterRatio),
+    );
 
     if (
       nextCursor &&
-      remaining <= PREFETCH_THRESHOLD &&
-      remaining >= 0 &&
+      remainingAfterCurrent <= adjustedThreshold &&
       !isValidating &&
       prefetchCursorRef.current !== nextCursor
     ) {
       prefetchCursorRef.current = nextCursor;
       setSize((current) => current + 1);
     }
-  }, [activeIndex, feeds.length, hasMore, isValidating, lastPage, setSize]);
+  }, [activeFeed, data, feeds.length, hasMore, isValidating, lastPage, setSize]);
 
   useEffect(() => {
     schedulePrefetch();
-  }, [schedulePrefetch, activeIndex, feeds.length]);
+  }, [schedulePrefetch, feeds.length]);
 
   // Trigger article content prefetch when active index changes
   // This ensures prefetch happens AFTER dismiss and mutate complete
@@ -297,12 +264,7 @@ export const useSwipeFeedController = () => {
 
   const dismissActiveFeed = useCallback(
     async (_direction: number) => {
-      const currentIndex =
-        activeFeedId !== null
-          ? feeds.findIndex((feed) => feed.id === activeFeedId)
-          : 0;
-      const resolvedIndex = currentIndex === -1 ? 0 : currentIndex;
-      const current = feeds[resolvedIndex];
+      const current = activeFeed;
 
       if (!current) {
         return;
@@ -313,16 +275,6 @@ export const useSwipeFeedController = () => {
       // Check if already marked as read (prevent duplicate requests)
       if (readFeeds.has(canonicalLink)) {
         // Still proceed with UI update
-      }
-
-      const nextFeed = feeds[resolvedIndex + 1] ?? null;
-      lastDismissedIdRef.current = null;
-
-      if (nextFeed) {
-        setActiveFeedId(nextFeed.id);
-      } else {
-        lastDismissedIdRef.current = current.id;
-        setActiveFeedId(null);
       }
 
       setStatusMessage("Feed marked as read");
@@ -342,14 +294,11 @@ export const useSwipeFeedController = () => {
         await feedApi.updateFeedReadStatus(canonicalLink);
 
         // Mutate cache to remove dismissed feed immediately
-        // No revalidation needed - backend already excludes read feeds in FetchUnreadFeedsListCursor
-        // The readFeeds Set and this cache mutation are sufficient to keep UI in sync
         await mutate(
           (currentData) => {
             if (!currentData) {
               return currentData;
             }
-            // Filter out the dismissed feed from all pages
             const filtered = currentData.map((page) => {
               if (!page?.data) return page;
               const filteredData = page.data.filter(
@@ -364,9 +313,6 @@ export const useSwipeFeedController = () => {
           },
           { revalidate: false, populateCache: true },
         );
-
-        // Prefetch is now triggered by activeIndex useEffect (lines 234-238)
-        // This prevents race condition between read status update and prefetch
       } catch (err) {
         // Rollback optimistic update on error
         setReadFeeds((prev) => {
@@ -374,14 +320,12 @@ export const useSwipeFeedController = () => {
           next.delete(canonicalLink);
           return next;
         });
-        setActiveFeedId(current.id);
-        lastDismissedIdRef.current = null;
         setStatusMessage("Failed to mark feed as read");
         announce("Failed to mark feed as read", 1500);
         throw err;
       }
     },
-    [activeFeedId, announce, feeds, markAsDismissed, mutate, readFeeds],
+    [activeFeed, announce, markAsDismissed, mutate, readFeeds],
   );
 
   const retry = useCallback(async () => {

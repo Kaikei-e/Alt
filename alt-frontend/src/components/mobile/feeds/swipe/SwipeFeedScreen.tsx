@@ -95,8 +95,8 @@ const SwipeSkeletonHint = ({
           prefersReducedMotion
             ? undefined
             : {
-                animation: `${arrowDrift} 1.6s ease-in-out infinite`,
-              }
+              animation: `${arrowDrift} 1.6s ease-in-out infinite`,
+            }
         }
       />
       {Array.from({ length: 3 }).map((_, index) => (
@@ -111,8 +111,8 @@ const SwipeSkeletonHint = ({
             prefersReducedMotion
               ? undefined
               : {
-                  animation: `${dotPulse} 1.8s ${(index + 1) * 0.12}s ease-in-out infinite`,
-                }
+                animation: `${dotPulse} 1.8s ${(index + 1) * 0.12}s ease-in-out infinite`,
+              }
           }
         />
       ))}
@@ -124,8 +124,8 @@ const SwipeSkeletonHint = ({
           prefersReducedMotion
             ? undefined
             : {
-                animation: `${arrowDrift} 1.6s ease-in-out infinite reverse`,
-              }
+              animation: `${arrowDrift} 1.6s ease-in-out infinite reverse`,
+            }
         }
       />
     </HStack>
@@ -255,7 +255,6 @@ const SwipeFeedScreen = () => {
   const {
     feeds,
     activeFeed,
-    activeIndex,
     hasMore,
     isInitialLoading,
     isValidating,
@@ -269,8 +268,6 @@ const SwipeFeedScreen = () => {
 
   const prefersReducedMotion = usePrefersReducedMotion();
   const shouldShowOverlay = Boolean(activeFeed) && isValidating;
-  const shouldShowSkeleton =
-    isInitialLoading || (!activeFeed && (isValidating || feeds.length === 0));
 
   if (error) {
     return (
@@ -278,56 +275,53 @@ const SwipeFeedScreen = () => {
     );
   }
 
-  if (shouldShowSkeleton) {
+  if (isInitialLoading) {
     return <SwipeFeedSkeleton prefersReducedMotion={prefersReducedMotion} />;
   }
 
-  const isOutOfFeeds =
-    feeds.length === 0 && !isInitialLoading && !isValidating && !hasMore;
-
-  if (isOutOfFeeds) {
+  if (activeFeed) {
     return (
       <Box minH="100dvh" position="relative">
-        <EmptyFeedState />
+        <LiveRegion message={liveRegionMessage} />
+
+        <Flex
+          direction="column"
+          align="center"
+          justify="center"
+          h="100dvh"
+          px={4}
+          style={{
+            overscrollBehavior: "contain",
+            touchAction: "pan-y",
+          }}
+        >
+          <SwipeFeedCard
+            key={activeFeed.id}
+            feed={activeFeed}
+            statusMessage={statusMessage}
+            onDismiss={dismissActiveFeed}
+            getCachedContent={getCachedContent}
+            isBusy={shouldShowOverlay}
+          />
+        </Flex>
+
+        <SwipeLoadingOverlay
+          isVisible={shouldShowOverlay}
+          reduceMotion={prefersReducedMotion}
+        />
+
         <FloatingMenu />
       </Box>
     );
   }
 
-  if (!activeFeed) {
+  if (hasMore) {
     return <SwipeFeedSkeleton prefersReducedMotion={prefersReducedMotion} />;
   }
 
   return (
     <Box minH="100dvh" position="relative">
-      <LiveRegion message={liveRegionMessage} />
-
-      <Flex
-        direction="column"
-        align="center"
-        justify="center"
-        h="100dvh"
-        px={4}
-        style={{
-          overscrollBehavior: "contain",
-          touchAction: "pan-y",
-        }}
-      >
-        <SwipeFeedCard
-          key={activeFeed.id}
-          feed={activeFeed}
-          statusMessage={statusMessage}
-          onDismiss={dismissActiveFeed}
-          getCachedContent={getCachedContent}
-          isBusy={shouldShowOverlay}
-        />
-      </Flex>
-
-      <SwipeLoadingOverlay
-        isVisible={shouldShowOverlay}
-        reduceMotion={prefersReducedMotion}
-      />
-
+      <EmptyFeedState />
       <FloatingMenu />
     </Box>
   );
