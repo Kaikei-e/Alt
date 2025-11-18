@@ -23,8 +23,8 @@ flowchart LR
     Postgres[(PostgreSQL)]
     Loop((runIndexLoop))
     Meili[(Meilisearch `articles`)]
-    HTTP[/v1/search]
-    Backend[alt-backend]
+    HTTP["/v1/search"]
+    Backend["alt-backend"]
 
     Postgres --> Loop --> Meili
     HTTP -->|q + user_id| SearchBackend[Search Gateway]
