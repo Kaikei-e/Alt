@@ -74,23 +74,30 @@ const hasMorePages = (pageData: CursorResponse<Feed> | null): boolean => {
   return Boolean(derivePageCursor(pageData));
 };
 
-const getKey = (
-  pageIndex: number,
-  previousPageData: CursorResponse<Feed> | null,
-): SwrKey | null => {
-  if (previousPageData) {
-    if (!hasMorePages(previousPageData)) {
+const createGetKey =
+  (lastCursorRef: ReturnType<typeof useRef<string | null>>) =>
+    (pageIndex: number, previousPageData: CursorResponse<Feed> | null): SwrKey | null => {
+      if (pageIndex === 0) {
+        return ["mobile-feed-swipe", undefined, PAGE_SIZE];
+      }
+
+      if (previousPageData) {
+        if (!hasMorePages(previousPageData)) {
+          return null;
+        }
+        const cursor = derivePageCursor(previousPageData);
+        if (cursor) {
+          lastCursorRef.current = cursor;
+        }
+        return ["mobile-feed-swipe", cursor ?? undefined, PAGE_SIZE];
+      }
+
+      if (pageIndex > 0 && lastCursorRef.current) {
+        return ["mobile-feed-swipe", lastCursorRef.current, PAGE_SIZE];
+      }
+
       return null;
-    }
-  }
-
-  if (pageIndex === 0) {
-    return ["mobile-feed-swipe", undefined, PAGE_SIZE];
-  }
-
-  const cursor = derivePageCursor(previousPageData) ?? undefined;
-  return ["mobile-feed-swipe", cursor, PAGE_SIZE];
-};
+    };
 
 const fetchPage = async (
   _: string,
@@ -100,7 +107,7 @@ const fetchPage = async (
   return feedApi.getFeedsWithCursor(cursor, limit);
 };
 
-const clearTimeoutRef = (timeoutRef: MutableRefObject<number | null>) => {
+const clearTimeoutRef = (timeoutRef: ReturnType<typeof useRef<number | null>>) => {
   if (typeof window === "undefined") {
     timeoutRef.current = null;
     return;
@@ -112,7 +119,7 @@ const clearTimeoutRef = (timeoutRef: MutableRefObject<number | null>) => {
 };
 
 const scheduleTimeout = (
-  timeoutRef: MutableRefObject<number | null>,
+  timeoutRef: ReturnType<typeof useRef<number | null>>,
   callback: () => void,
   duration: number,
 ) => {
@@ -133,6 +140,7 @@ export const useSwipeFeedController = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
   const [isReadFeedsInitialized, setIsReadFeedsInitialized] = useState(false);
+  const lastCursorRef = useRef<string | null>(null);
 
   // Initialize readFeeds set from backend on mount using cursor-based pagination
   // Only fetch recent read feeds (latest 100) for optimistic updates
@@ -170,6 +178,11 @@ export const useSwipeFeedController = () => {
 
   // Wait for readFeeds initialization before fetching unread feeds
   // This ensures consistent behavior and prevents race conditions
+  const getKey = useMemo(
+    () => createGetKey(lastCursorRef),
+    [lastCursorRef],
+  );
+
   const { data, error, isLoading, isValidating, setSize, mutate } =
     useSWRInfinite(isReadFeedsInitialized ? getKey : () => null, fetchPage, {
       revalidateOnFocus: false,
@@ -255,6 +268,7 @@ export const useSwipeFeedController = () => {
       prefetchCursorRef.current = null;
       return;
     }
+    lastCursorRef.current = nextCursor;
 
     // If feeds array is empty but hasMore is true, we should prefetch immediately
     // This handles the case where all feeds in current pages are filtered out

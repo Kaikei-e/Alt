@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { vi, describe, expect, beforeEach, afterEach, it } from "vitest";
+import type { CursorResponse } from "@/schema/common";
 import type { Feed } from "@/schema/feed";
 import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 
@@ -184,6 +185,78 @@ describe("useSwipeFeedController", () => {
 
     await waitFor(() => {
       expect(setSizeMock).toHaveBeenCalled();
+    });
+  });
+
+  it("uses fallback cursor after reading 20 feeds even while validating", async () => {
+    const nextCursor = "cursor-fallback";
+    const feeds = Array.from({ length: 20 }).map((_, index) => ({
+      ...baseFeed,
+      id: `feed-${index}`,
+      link: `https://example.com/article-${index}`,
+      published: `2025-01-01T00:00:${String(index).padStart(2, "0")}Z`,
+    }));
+
+    const setSizeMock = vi.fn((updater) => {
+      const keyFn = setSizeMock.getMockImplementation();
+      return undefined;
+    });
+
+    type TestSwrKey = readonly ["mobile-feed-swipe", string | undefined, number];
+
+    let capturedGetKey:
+      | ((
+        pageIndex: number,
+        previousPageData: CursorResponse<Feed> | null,
+      ) => TestSwrKey | null)
+      | null = null;
+    let capturedFetcher:
+      | ((...args: unknown[]) => Promise<CursorResponse<Feed>>)
+      | null = null;
+
+    mockFeedApi.getReadFeedsWithCursor.mockResolvedValue({
+      data: feeds,
+      next_cursor: null,
+    });
+
+    mockFeedApi.getFeedsWithCursor.mockResolvedValue({
+      data: [],
+      next_cursor: null,
+    });
+
+    mockUseSWRInfinite.mockImplementation((keyFn, fetcher) => {
+      capturedGetKey = keyFn as typeof capturedGetKey;
+      capturedFetcher = fetcher as typeof capturedFetcher;
+
+      return {
+        data: [
+          {
+            data: feeds,
+            next_cursor: nextCursor,
+            has_more: true,
+          },
+        ],
+        error: null,
+        isLoading: false,
+        isValidating: true,
+        setSize: (updater: (size: number) => number) => {
+          const key = capturedGetKey?.(1, null);
+          if (key && capturedFetcher) {
+            capturedFetcher(...key);
+          }
+          return typeof updater === "function" ? updater(1) : updater;
+        },
+        mutate: vi.fn(),
+      };
+    });
+
+    renderHook(() => useSwipeFeedController());
+
+    await waitFor(() => {
+      expect(mockFeedApi.getFeedsWithCursor).toHaveBeenCalledWith(
+        nextCursor,
+        20,
+      );
     });
   });
 });
