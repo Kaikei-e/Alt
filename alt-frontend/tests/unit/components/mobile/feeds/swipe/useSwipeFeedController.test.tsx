@@ -100,5 +100,50 @@ describe("useSwipeFeedController", () => {
       100,
     );
   });
+
+  it("prefetches the next page when feeds are empty but has_more is true and cursor must be derived", async () => {
+    const setSizeMock = vi.fn();
+    mockUseSWRInfinite.mockImplementation(() => ({
+      data: [
+        {
+          data: [
+            {
+              ...baseFeed,
+              id: "derived-feed",
+              link: "https://example.com/article-1",
+              published: "2024-01-02T00:00:00.000Z",
+            },
+          ],
+          next_cursor: null,
+          has_more: true,
+        },
+      ],
+      error: null,
+      isLoading: false,
+      isValidating: false,
+      setSize: setSizeMock,
+      mutate: vi.fn(),
+    }));
+
+    mockFeedApi.getReadFeedsWithCursor.mockResolvedValue({
+      data: [
+        {
+          ...baseFeed,
+          id: "derived-feed",
+          link: "https://example.com/article-1",
+          published: "2024-01-01T00:00:00.000Z",
+        },
+      ],
+      next_cursor: null,
+    });
+
+    renderHook(() => useSwipeFeedController());
+
+    await waitFor(() => {
+      expect(setSizeMock).toHaveBeenCalled();
+    });
+
+    expect(typeof setSizeMock.mock.calls[0][0]).toBe("function");
+  });
 });
 

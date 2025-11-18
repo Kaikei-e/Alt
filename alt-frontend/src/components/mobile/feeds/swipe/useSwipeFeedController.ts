@@ -50,14 +50,36 @@ const canonicalize = (url: string) => {
   }
 };
 
+const derivePageCursor = (
+  pageData: CursorResponse<Feed> | null,
+): string | null => {
+  if (!pageData) {
+    return null;
+  }
+  if (pageData.next_cursor) {
+    return pageData.next_cursor;
+  }
+  const lastFeed = pageData.data?.[pageData.data.length - 1];
+  const published = lastFeed?.published?.trim();
+  return published ? published : null;
+};
+
+const hasMorePages = (pageData: CursorResponse<Feed> | null): boolean => {
+  if (!pageData) {
+    return false;
+  }
+  if (typeof pageData.has_more === "boolean") {
+    return pageData.has_more;
+  }
+  return Boolean(derivePageCursor(pageData));
+};
+
 const getKey = (
   pageIndex: number,
   previousPageData: CursorResponse<Feed> | null,
 ): SwrKey | null => {
   if (previousPageData) {
-    const hasPrevMore =
-      previousPageData.has_more ?? Boolean(previousPageData.next_cursor);
-    if (!hasPrevMore) {
+    if (!hasMorePages(previousPageData)) {
       return null;
     }
   }
@@ -66,7 +88,7 @@ const getKey = (
     return ["mobile-feed-swipe", undefined, PAGE_SIZE];
   }
 
-  const cursor = previousPageData?.next_cursor ?? undefined;
+  const cursor = derivePageCursor(previousPageData) ?? undefined;
   return ["mobile-feed-swipe", cursor, PAGE_SIZE];
 };
 
@@ -228,7 +250,22 @@ export const useSwipeFeedController = () => {
       return;
     }
 
-    const nextCursor = lastPage.next_cursor;
+    const nextCursor = derivePageCursor(lastPage);
+    if (!nextCursor) {
+      prefetchCursorRef.current = null;
+      return;
+    }
+
+    // If feeds array is empty but hasMore is true, we should prefetch immediately
+    // This handles the case where all feeds in current pages are filtered out
+    if (feeds.length === 0) {
+      if (!isValidating && prefetchCursorRef.current !== nextCursor) {
+        prefetchCursorRef.current = nextCursor;
+        setSize((current) => current + 1);
+      }
+      return;
+    }
+
     const remainingAfterCurrent = Math.max(feeds.length - (activeFeed ? 1 : 0), 0);
 
     const totalRawFeeds = data.flatMap((page) => page?.data ?? []).length;
@@ -240,7 +277,6 @@ export const useSwipeFeedController = () => {
     );
 
     if (
-      nextCursor &&
       remainingAfterCurrent <= adjustedThreshold &&
       !isValidating &&
       prefetchCursorRef.current !== nextCursor
