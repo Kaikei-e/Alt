@@ -187,7 +187,7 @@ func handleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.Hand
 		}
 
 		logger.Logger.Info("Fetching unread feeds with cursor", "cursor", cursor, "limit", limit)
-		feeds, err := container.FetchUnreadFeedsListCursorUsecase.Execute(c.Request().Context(), cursor, limit)
+		feeds, hasMore, err := container.FetchUnreadFeedsListCursorUsecase.Execute(c.Request().Context(), cursor, limit)
 		if err != nil {
 			logger.Logger.Error("Error fetching feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feeds with cursor"})
@@ -195,19 +195,30 @@ func handleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.Hand
 
 		optimizedFeeds := optimizeFeedsResponse(feeds)
 
-		// Include next cursor in response for pagination
+		// Include pagination metadata
 		response := map[string]interface{}{
-			"data": optimizedFeeds,
+			"data":        optimizedFeeds,
+			"has_more":    hasMore,
+			"next_cursor": nil,
 		}
 
-		// Add next cursor if there are results
-		if len(optimizedFeeds) > 0 {
+		var nextCursor string
+		if hasMore && len(optimizedFeeds) > 0 {
 			lastFeed := optimizedFeeds[len(optimizedFeeds)-1]
-			// Parse the published time to use as next cursor
 			if lastPublished, err := time.Parse(time.RFC3339, lastFeed.Published); err == nil {
-				response["next_cursor"] = lastPublished.Format(time.RFC3339)
+				nextCursor = lastPublished.Format(time.RFC3339)
+				response["next_cursor"] = nextCursor
 			}
 		}
+
+		logger.Logger.Info(
+			"responding to unread feeds cursor",
+			"cursor", cursor,
+			"limit", limit,
+			"count", len(optimizedFeeds),
+			"has_more", hasMore,
+			"next_cursor", nextCursor,
+		)
 
 		return c.JSON(http.StatusOK, response)
 	}

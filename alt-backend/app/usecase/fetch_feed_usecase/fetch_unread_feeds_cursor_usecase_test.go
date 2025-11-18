@@ -27,13 +27,14 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 	cursorTime := time.Now().Add(-24 * time.Hour)
 
 	tests := []struct {
-		name      string
-		ctx       context.Context
-		cursor    *time.Time
-		limit     int
-		mockSetup func()
-		want      []*domain.FeedItem
-		wantErr   bool
+		name        string
+		ctx         context.Context
+		cursor      *time.Time
+		limit       int
+		mockSetup   func()
+		want        []*domain.FeedItem
+		wantHasMore bool
+		wantErr     bool
 	}{
 		{
 			name:   "success - first page (no cursor)",
@@ -41,10 +42,11 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: nil,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), nil, 10).Return(mockData, nil).Times(1)
+				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11).Return(mockData, nil).Times(1)
 			},
-			want:    mockData,
-			wantErr: false,
+			want:        mockData,
+			wantHasMore: false,
+			wantErr:     false,
 		},
 		{
 			name:   "success - with cursor",
@@ -52,10 +54,25 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: &cursorTime,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), &cursorTime, 10).Return(mockData, nil).Times(1)
+				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11).Return(mockData, nil).Times(1)
 			},
-			want:    mockData,
-			wantErr: false,
+			want:        mockData,
+			wantHasMore: false,
+			wantErr:     false,
+		},
+		{
+			name:   "success - has more pages",
+			ctx:    context.Background(),
+			cursor: nil,
+			limit:  1,
+			mockSetup: func() {
+				mockGateway.EXPECT().
+					FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 2).
+					Return(mockData, nil).Times(1)
+			},
+			want:        mockData[:1],
+			wantHasMore: true,
+			wantErr:     false,
 		},
 		{
 			name:   "success - empty result",
@@ -63,10 +80,13 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: &cursorTime,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), &cursorTime, 10).Return(testutil.CreateEmptyFeedItems(), nil).Times(1)
+				mockGateway.EXPECT().
+					FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11).
+					Return(testutil.CreateEmptyFeedItems(), nil).Times(1)
 			},
-			want:    testutil.CreateEmptyFeedItems(),
-			wantErr: false,
+			want:        testutil.CreateEmptyFeedItems(),
+			wantHasMore: false,
+			wantErr:     false,
 		},
 		{
 			name:   "invalid limit - zero",
@@ -107,7 +127,7 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: nil,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), nil, 10).Return(nil, testutil.ErrMockDatabase).Times(1)
+				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11).Return(nil, testutil.ErrMockDatabase).Times(1)
 			},
 			want:    nil,
 			wantErr: true,
@@ -118,7 +138,7 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: nil,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), nil, 10).Return(nil, context.Canceled).Times(1)
+				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11).Return(nil, context.Canceled).Times(1)
 			},
 			want:    nil,
 			wantErr: true,
@@ -131,13 +151,16 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			u := &FetchUnreadFeedsListCursorUsecase{
 				fetchFeedsListGateway: mockGateway,
 			}
-			got, err := u.Execute(tt.ctx, tt.cursor, tt.limit)
+			got, hasMore, err := u.Execute(tt.ctx, tt.cursor, tt.limit)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("FetchUnreadFeedsListCursorUsecase.Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("FetchUnreadFeedsListCursorUsecase.Execute() = %v, want %v", got, tt.want)
+			}
+			if hasMore != tt.wantHasMore {
+				t.Errorf("FetchUnreadFeedsListCursorUsecase.Execute() hasMore = %v, want %v", hasMore, tt.wantHasMore)
 			}
 		})
 	}
