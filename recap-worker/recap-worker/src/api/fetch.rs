@@ -2,6 +2,7 @@ use std::{collections::HashSet, time::Instant};
 
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
+use serde_json::{Map, Value};
 use tracing::{error, info};
 
 use crate::app::AppState;
@@ -36,6 +37,72 @@ fn dedupe_evidence_links(links: Vec<EvidenceLinkResponse>) -> Vec<EvidenceLinkRe
     }
 
     unique_links
+}
+
+fn normalize_summary_text(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    flatten_summary_payload(trimmed).unwrap_or_else(|| raw.to_string())
+}
+
+fn flatten_summary_payload(raw: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(raw).ok()?;
+    let object = value.as_object()?;
+
+    let summary_object = object
+        .get("summary")
+        .and_then(Value::as_object)
+        .unwrap_or(object);
+
+    build_summary_lines(summary_object)
+}
+
+fn build_summary_lines(summary_object: &Map<String, Value>) -> Option<String> {
+    let mut lines = Vec::new();
+
+    if let Some(title) = summary_object
+        .get("title")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        lines.push(title.to_string());
+    }
+
+    if let Some(Value::Array(bullets)) = summary_object.get("bullets") {
+        for bullet in bullets {
+            match bullet {
+                Value::String(text) => {
+                    let trimmed = text.trim();
+                    if !trimmed.is_empty() {
+                        lines.push(trimmed.to_string());
+                    }
+                }
+                Value::Object(obj) => {
+                    if let Some(text) = obj
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        lines.push(text.to_string());
+                    }
+                }
+                Value::Number(num) => lines.push(num.to_string()),
+                Value::Bool(flag) => lines.push(flag.to_string()),
+                _ => {}
+            }
+        }
+    }
+
+    if lines.is_empty() {
+        return None;
+    }
+
+    Some(lines.join("\n"))
 }
 
 #[derive(Debug, Serialize)]
@@ -173,7 +240,7 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
 
         genre_responses.push(RecapGenreResponse {
             genre: genre.genre_name.clone(),
-            summary: genre.summary_ja.clone().unwrap_or_default(),
+            summary: normalize_summary_text(genre.summary_ja.as_deref().unwrap_or_default()),
             top_terms: all_top_terms,
             article_count: total_article_count,
             cluster_count: clusters.len() as i32,
@@ -227,5 +294,45 @@ mod tests {
             .collect();
 
         assert_eq!(article_ids, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn normalize_summary_text_preserves_plain_text() {
+        let input = "一行目\n二行目";
+        assert_eq!(normalize_summary_text(input), input);
+    }
+
+    #[test]
+    fn normalize_summary_text_flattens_json_summary() {
+        let input = r#"{
+            "title": "最新ニュースまとめ",
+            "bullets": [
+                {"text": "要点1"},
+                {"text": "要点2"}
+            ]
+        }"#;
+
+        let expected = "最新ニュースまとめ\n要点1\n要点2";
+        assert_eq!(normalize_summary_text(input), expected);
+    }
+
+    #[test]
+    fn normalize_summary_text_handles_nested_summary_key() {
+        let input = r#"{
+            "summary": {
+                "title": "ネストタイトル",
+                "bullets": ["詳細A", "詳細B"]
+            },
+            "other": "ignored"
+        }"#;
+
+        let expected = "ネストタイトル\n詳細A\n詳細B";
+        assert_eq!(normalize_summary_text(input), expected);
+    }
+
+    #[test]
+    fn normalize_summary_text_falls_back_on_invalid_json() {
+        let input = "{ invalid json";
+        assert_eq!(normalize_summary_text(input), input);
     }
 }
