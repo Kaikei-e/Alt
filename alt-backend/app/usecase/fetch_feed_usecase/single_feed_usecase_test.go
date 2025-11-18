@@ -255,19 +255,26 @@ func TestFetchSingleFeedUsecase_Execute_ContextPropagation(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
+	// Define custom type for context keys to avoid collisions
+	type contextKey string
+	const (
+		requestIDKey contextKey = "request_id"
+		userIDKey    contextKey = "user_id"
+	)
+
 	// Test with context values
-	ctx := context.WithValue(context.Background(), "request_id", "test-123")
-	ctx = context.WithValue(ctx, "user_id", "user-456")
+	ctx := context.WithValue(context.Background(), requestIDKey, "test-123")
+	ctx = context.WithValue(ctx, userIDKey, "user-456")
 
 	mockPort := mocks.NewMockFetchSingleFeedPort(ctrl)
 
 	// Verify that context is passed through correctly
 	mockPort.EXPECT().FetchSingleFeed(ctx).DoAndReturn(func(passedCtx context.Context) (*domain.RSSFeed, error) {
 		// Verify context values are propagated
-		if requestID := passedCtx.Value("request_id"); requestID != "test-123" {
+		if requestID := passedCtx.Value(requestIDKey); requestID != "test-123" {
 			t.Errorf("Expected request_id 'test-123', got %v", requestID)
 		}
-		if userID := passedCtx.Value("user_id"); userID != "user-456" {
+		if userID := passedCtx.Value(userIDKey); userID != "user-456" {
 			t.Errorf("Expected user_id 'user-456', got %v", userID)
 		}
 
