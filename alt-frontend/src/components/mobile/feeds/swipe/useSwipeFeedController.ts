@@ -158,11 +158,17 @@ export const useSwipeFeedController = () => {
     if (!data || data.length === 0) {
       return [] as Feed[];
     }
-    // Backend already filters out read feeds, so no need for client-side filtering
-    // readFeeds Set is only used for optimistic updates when dismissing feeds
+
     const allFeeds = data.flatMap((page) => page?.data ?? []);
-    return allFeeds;
-  }, [data]);
+
+    if (readFeeds.size === 0) {
+      return allFeeds;
+    }
+
+    return allFeeds.filter(
+      (feed) => !readFeeds.has(canonicalize(feed.link)),
+    );
+  }, [data, readFeeds]);
 
   const activeIndex = useMemo(() => {
     if (feeds.length === 0) {

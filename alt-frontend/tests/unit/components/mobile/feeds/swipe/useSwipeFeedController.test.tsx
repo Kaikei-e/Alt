@@ -1,0 +1,104 @@
+import { renderHook, waitFor } from "@testing-library/react";
+import { vi, describe, expect, beforeEach, afterEach, it } from "vitest";
+import type { Feed } from "@/schema/feed";
+import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
+
+const mockUseSWRInfinite = vi.fn();
+
+vi.mock("swr/infinite", () => ({
+  __esModule: true,
+  default: (...args: unknown[]) => mockUseSWRInfinite(...args),
+}));
+
+const mockPrefetch = {
+  triggerPrefetch: vi.fn(),
+  getCachedContent: vi.fn(),
+  markAsDismissed: vi.fn(),
+};
+
+vi.mock("@/hooks/useArticleContentPrefetch", () => ({
+  useArticleContentPrefetch: () => mockPrefetch,
+}));
+
+const mockFeedApi = vi.hoisted(() => ({
+  getReadFeedsWithCursor: vi.fn(),
+  getFeedsWithCursor: vi.fn(),
+  updateFeedReadStatus: vi.fn(),
+}));
+
+vi.mock("@/lib/api", () => ({
+  feedApi: mockFeedApi,
+}));
+
+const baseFeed: Feed = {
+  id: "",
+  title: "",
+  description: "",
+  link: "",
+  published: "2024-01-01T00:00:00.000Z",
+};
+
+describe("useSwipeFeedController", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFeedApi.getReadFeedsWithCursor.mockReset();
+    mockFeedApi.getFeedsWithCursor.mockReset();
+    mockFeedApi.updateFeedReadStatus.mockReset();
+    mockUseSWRInfinite.mockImplementation(() => ({
+      data: [
+        {
+          data: [
+            {
+              ...baseFeed,
+              id: "read-feed",
+              title: "既読フィード",
+              link: "https://example.com/article-1?utm_source=rss",
+            },
+            {
+              ...baseFeed,
+              id: "unread-feed",
+              title: "未読フィード",
+              link: "https://example.com/article-2",
+            },
+          ],
+          next_cursor: null,
+        },
+      ],
+      error: null,
+      isLoading: false,
+      isValidating: false,
+      setSize: vi.fn(),
+      mutate: vi.fn(),
+    }));
+
+    mockFeedApi.getReadFeedsWithCursor.mockResolvedValue({
+      data: [
+        {
+          ...baseFeed,
+          id: "read-feed",
+          link: "https://example.com/article-1",
+        },
+      ],
+      next_cursor: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("excludes feeds that were already marked as read via readFeeds initialization", async () => {
+    const { result } = renderHook(() => useSwipeFeedController());
+
+    await waitFor(() => {
+      expect(result.current.feeds).toHaveLength(1);
+    });
+
+    expect(result.current.feeds[0].id).toBe("unread-feed");
+    expect(mockFeedApi.getReadFeedsWithCursor).toHaveBeenCalledWith(
+      undefined,
+      100,
+    );
+  });
+});
+
