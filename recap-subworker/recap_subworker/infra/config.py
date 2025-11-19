@@ -151,6 +151,34 @@ class Settings(BaseSettings):
         default=None,
         description="Optional OTLP endpoint for OpenTelemetry traces",
     )
+    learning_graph_margin: float = Field(
+        0.15,
+        ge=0.0,
+        description="Graph margin applied when building learning snapshot summaries",
+    )
+    learning_cluster_genres: str = Field(
+        "society_justice,art_culture",
+        description="Comma-separated genres used when generating cluster drafts",
+    )
+    recap_worker_learning_url: str = Field(
+        "http://recap-worker:9005/admin/genre-learning",
+        description="Full endpoint to POST genre learning payloads",
+    )
+    learning_request_timeout_seconds: float = Field(
+        5.0,
+        ge=0.5,
+        description="Timeout for HTTP requests sending learning payloads",
+    )
+    learning_scheduler_enabled: bool = Field(
+        True,
+        description="Enable automatic periodic learning task execution",
+    )
+    learning_scheduler_interval_hours: float = Field(
+        4.0,
+        ge=0.5,
+        le=168.0,
+        description="Interval between learning task executions (hours)",
+    )
 
 
 @lru_cache(maxsize=1)

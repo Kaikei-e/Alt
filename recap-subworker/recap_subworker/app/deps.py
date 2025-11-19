@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor
+from typing import AsyncIterator
+
 from fastapi import Depends
 
-from ..db.session import get_session_factory
+from ..db.session import get_session, get_session_factory
 from ..infra.config import Settings, get_settings
 from ..services.embedder import Embedder, EmbedderConfig
+from ..services.genre_learning import GenreLearningService
+from ..services.learning_client import LearningClient
+from ..services.learning_scheduler import LearningScheduler
 from ..services.pipeline import EvidencePipeline
 from ..services.pipeline_runner import PipelineTaskRunner
 from ..services.run_manager import RunManager
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Module-level singletons to avoid lru_cache issues with unhashable Settings
 _process_pool: ProcessPoolExecutor | None = None
@@ -18,6 +24,8 @@ _embedder: Embedder | None = None
 _pipeline: EvidencePipeline | None = None
 _pipeline_runner: PipelineTaskRunner | None = None
 _run_manager: RunManager | None = None
+_learning_client: LearningClient | None = None
+_learning_scheduler: LearningScheduler | None = None
 
 
 def _get_process_pool(settings: Settings) -> ProcessPoolExecutor:
@@ -80,6 +88,32 @@ def get_settings_dep() -> Settings:
     return get_settings()
 
 
+def get_learning_service(
+    settings: Settings = Depends(get_settings_dep),
+    session: AsyncSession = Depends(get_session),
+) -> GenreLearningService:
+    genres = [
+        genre.strip()
+        for genre in settings.learning_cluster_genres.split(",")
+        if genre.strip()
+    ]
+    return GenreLearningService(
+        session=session,
+        graph_margin=settings.learning_graph_margin,
+        cluster_genres=genres,
+    )
+
+
+def get_learning_client(settings: Settings = Depends(get_settings_dep)) -> LearningClient:
+    global _learning_client
+    if _learning_client is None:
+        _learning_client = LearningClient.create(
+            settings.recap_worker_learning_url,
+            settings.learning_request_timeout_seconds,
+        )
+    return _learning_client
+
+
 def get_pipeline_dep(settings: Settings = Depends(get_settings_dep)) -> EvidencePipeline:
     return _get_pipeline(settings)
 
@@ -98,8 +132,27 @@ def get_pipeline_runner_dep(
     return _get_pipeline_runner(settings)
 
 
+def _get_learning_scheduler(settings: Settings) -> LearningScheduler | None:
+    global _learning_scheduler
+    if not settings.learning_scheduler_enabled:
+        return None
+    if _learning_scheduler is None:
+        _learning_scheduler = LearningScheduler(
+            settings,
+            interval_hours=settings.learning_scheduler_interval_hours,
+        )
+    return _learning_scheduler
+
+
 def register_lifecycle(app) -> None:
     """Attach startup/shutdown hooks for globally shared resources."""
+
+    @app.on_event("startup")
+    async def startup_event() -> None:  # pragma: no cover - FastAPI runtime hook
+        settings = get_settings()
+        scheduler = _get_learning_scheduler(settings)
+        if scheduler is not None:
+            await scheduler.start()
 
     @app.on_event("shutdown")
     async def shutdown_event() -> None:  # pragma: no cover - FastAPI runtime hook
@@ -109,3 +162,7 @@ def register_lifecycle(app) -> None:
             _embedder.close()
         if _pipeline_runner is not None:
             _pipeline_runner.shutdown()
+        if _learning_client is not None:
+            await _learning_client.close()
+        if _learning_scheduler is not None:
+            await _learning_scheduler.stop()
