@@ -149,13 +149,15 @@ def register_lifecycle(app) -> None:
 
     @app.on_event("startup")
     async def startup_event() -> None:  # pragma: no cover - FastAPI runtime hook
-        settings = get_settings()
-        scheduler = _get_learning_scheduler(settings)
-        if scheduler is not None:
-            await scheduler.start()
+        # Note: Learning scheduler is now started in Gunicorn master process
+        # (see recap_subworker/infra/gunicorn_conf.py on_starting hook)
+        # Workers should not start the scheduler to avoid duplicate execution
+        pass
 
     @app.on_event("shutdown")
     async def shutdown_event() -> None:  # pragma: no cover - FastAPI runtime hook
+        # Note: Learning scheduler is stopped in Gunicorn master process
+        # (see recap_subworker/infra/gunicorn_conf.py on_exit hook)
         if _process_pool is not None:
             _process_pool.shutdown(wait=False)
         if _embedder is not None:
@@ -164,5 +166,3 @@ def register_lifecycle(app) -> None:
             _pipeline_runner.shutdown()
         if _learning_client is not None:
             await _learning_client.close()
-        if _learning_scheduler is not None:
-            await _learning_scheduler.stop()
