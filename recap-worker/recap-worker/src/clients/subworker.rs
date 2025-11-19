@@ -342,16 +342,13 @@ impl SubworkerClient {
                 warn!(
                     run_id,
                     error_count = validation.errors.len(),
-                    first_error = %summarized_errors.first().map(String::as_str).unwrap_or("unknown"),
+                    first_error = %summarized_errors.first().map_or("unknown", String::as_str),
                     "polling response failed JSON Schema validation"
                 );
                 return Err(anyhow!(
                     "run polling response validation failed: {} errors (first: {})",
                     validation.errors.len(),
-                    summarized_errors
-                        .first()
-                        .map(String::as_str)
-                        .unwrap_or("unknown")
+                    summarized_errors.first().map_or("unknown", String::as_str)
                 ));
             }
 
@@ -393,7 +390,7 @@ impl SubworkerClient {
 fn build_runs_url(base: &Url) -> Result<Url> {
     let mut url = base.clone();
     url.path_segments_mut()
-        .map_err(|_| anyhow!("subworker base URL must be absolute"))?
+        .map_err(|()| anyhow!("subworker base URL must be absolute"))?
         .extend(["v1", "runs"]);
     Ok(url)
 }
@@ -401,7 +398,7 @@ fn build_runs_url(base: &Url) -> Result<Url> {
 fn build_run_url(base: &Url, run_id: i64) -> Result<Url> {
     let mut url = base.clone();
     url.path_segments_mut()
-        .map_err(|_| anyhow!("subworker base URL must be absolute"))?
+        .map_err(|()| anyhow!("subworker base URL must be absolute"))?
         .extend(["v1", "runs", &run_id.to_string()]);
     Ok(url)
 }
@@ -409,8 +406,7 @@ fn build_run_url(base: &Url, run_id: i64) -> Result<Url> {
 fn build_cluster_job_request(corpus: &EvidenceCorpus) -> ClusterJobRequest<'_> {
     let max_sentences_total = corpus
         .total_sentences
-        .max(MIN_PARAGRAPH_LEN)
-        .min(DEFAULT_MAX_SENTENCES_TOTAL);
+        .clamp(MIN_PARAGRAPH_LEN, DEFAULT_MAX_SENTENCES_TOTAL);
 
     let documents = corpus
         .articles
@@ -451,7 +447,7 @@ fn build_paragraph(sentences: &[String]) -> String {
         }
 
         if line.trim().is_empty() {
-            line = filler.clone();
+            line.clone_from(&filler);
         }
 
         while line.chars().count() < MIN_PARAGRAPH_LEN {
@@ -727,7 +723,7 @@ mod tests {
     fn truncate_error_message_handles_long_ascii_messages() {
         let msg = "a".repeat(600);
         let result = truncate_error_message(&msg);
-        assert!(result.starts_with("a"));
+        assert!(result.starts_with('a'));
         assert!(result.contains("... (truncated"));
         assert!(result.contains("600 chars"));
         // 切り詰められた部分が正確に500文字であることを確認
