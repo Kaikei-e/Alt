@@ -11,7 +11,7 @@ _Last reviewed: November 12, 2025_
 ## Service Snapshot
 | Layer | Highlights |
 | --- | --- |
-| Control Plane | Axum router exposing `/health/live`, `/health/ready`, `/metrics`, `/v1/generate/recaps/7days`, `/admin/jobs/retry`. |
+| Control Plane | Axum router exposing `/health/live`, `/health/ready`, `/metrics`, `/v1/generate/recaps/7days`, `/admin/jobs/retry`, `/admin/genre-learning`. |
 | Pipeline (`src/pipeline/`) | Stages: fetch → preprocess → dedup → genre → evidence → dispatch → persist. |
 | Clients (`src/clients/`) | Typed HTTP clients for alt-backend, recap-subworker (`/v1/runs`), and news-creator (LLM summaries) with JSON Schema validation. |
 | Store (`src/store/`) | SQLx DAO with advisory locks, recap job metadata, JSONB outputs, the `recap_cluster_evidence` table for pre-deduplicated links, `recap_genre_learning_results`, and cached `tag_label_graph` priors for the refine stage. |
@@ -24,7 +24,7 @@ _Last reviewed: November 12, 2025_
   1. **Fetch:** Pulls articles from alt-backend for `RECAP_WINDOW_DAYS`, backs up raw HTML, and records job metadata.
   2. **Preprocess:** Cleans HTML (ammonia/html2text), normalizes Unicode, detects language (`whatlang`), and tokenizes.
   3. **Dedup:** XXH3 hashing + sentence filters to drop near-duplicates.
-  4. **Genre:** Hybrid heuristic classifier assigns up to 3 genres per article. When refinement is enabled, the stage preloads `tag_label_graph` from recap-db using the `TAG_LABEL_GRAPH_WINDOW` window and refreshes the cache every `TAG_LABEL_GRAPH_TTL_SECONDS` seconds so boosts stay current without restarts.
+  4. **Genre:** Hybrid heuristic classifier assigns up to 3 genres per article. When refinement is enabled, the stage preloads `tag_label_graph` from recap-db using the `TAG_LABEL_GRAPH_WINDOW` window and refreshes the cache every `TAG_LABEL_GRAPH_TTL_SECONDS` seconds so boosts stay current without restarts. Graph override settings are loaded from `recap_worker_config` table (latest by `created_at DESC`) with YAML fallback via `GRAPH_CONFIG` environment variable.
   5. **Evidence:** Bundles articles per genre, capturing language mix + metadata; now enforces per-genre article uniqueness before dispatch so the downstream evidence payload already reflects the final cap.
  6. **Dispatch:** Sends corpora to recap-subworker (clustering) and news-creator (LLM summary) with strict schema validation + retries; the returned representatives are persisted to `recap_cluster_evidence` once and later reused by the API.
   7. **Persist:** Writes recap sections + evidence to `recap_outputs`/`recap_jobs` tables inside recap-db.
@@ -35,7 +35,7 @@ _Last reviewed: November 12, 2025_
 - Summary quality is guarded by the golden dataset evaluation stack in `recap-worker/tests/golden_eval.rs` and `src/evaluation/golden.rs`, which loads `recap-worker/resources/golden_runs.json`, computes ROUGE, and fails the suite if precision dips below the acceptable threshold; run `cargo test -p recap-worker tests::golden_eval` (or rerun `scripts/replay_genre_pipeline.rs` after prompt/model tweaks) whenever you tweak summarization prompts or reference evidence.
 
 ## Integrations & Data
-- **recap-db (Postgres 16):** Source of truth for jobs, cached articles, `recap_cluster_evidence`, `recap_genre_learning_results`, `tag_label_graph`, and final recaps. Schema maintained via Atlas migrations in `recap-migration-atlas/` (see `20251112000100_add_cluster_evidence_table.sql`, `20251113000100_create_tag_label_graph.sql`, `20251113093000_add_genre_learning_results.sql`). Refresh the graph using `scripts/replay_genre_pipeline.rs` or `tag-generator/app/scripts/build_label_graph.py` whenever you adjust `TAG_LABEL_GRAPH_WINDOW`/`TAG_LABEL_GRAPH_TTL_SECONDS`.
+- **recap-db (Postgres 18):** Source of truth for jobs, cached articles, `recap_cluster_evidence`, `recap_genre_learning_results`, `tag_label_graph`, `recap_worker_config` (insert-only config storage), and final recaps. Schema maintained via Atlas migrations in `recap-migration-atlas/` (see `20251112000100_add_cluster_evidence_table.sql`, `20251113000100_create_tag_label_graph.sql`, `20251113093000_add_genre_learning_results.sql`, `20251120000000_create_recap_worker_config.sql`). Refresh the graph using `scripts/replay_genre_pipeline.rs` or `tag-generator/app/scripts/build_label_graph.py` whenever you adjust `TAG_LABEL_GRAPH_WINDOW`/`TAG_LABEL_GRAPH_TTL_SECONDS`. Graph override settings are stored in `recap_worker_config` and loaded on pipeline initialization with YAML fallback.
 - **recap-subworker:** Receives evidence corpus, returns clustering JSON with trimmed, per-genre-unique representatives.
 - **news-creator:** Generates summaries per cluster/genre.
 - **alt-backend:** Provides raw article feed via authenticated HTTP client.
@@ -56,6 +56,7 @@ _Last reviewed: November 12, 2025_
 ## Operational Notes
 - Compose profile includes recap-db and recap-subworker; run `docker compose --profile logging --profile ollama up recap-worker recap-db recap-subworker`.
 - Manual trigger: `curl -X POST http://localhost:9005/v1/generate/recaps/7days -H "Content-Type: application/json" -d '{"genres":["tech","finance"]}'`.
+- Genre learning endpoint: `POST /admin/genre-learning` receives optimized thresholds from recap-subworker and stores them in `recap_worker_config` table. Settings are loaded on pipeline initialization with YAML fallback (via `GRAPH_CONFIG` env var).
 - Jobs acquire advisory locks per window to prevent overlaps; clear stuck locks via `SELECT pg_advisory_unlock_all();` when safe.
 - Run the Atlas migration that creates `recap_cluster_evidence` before deploying; verify population with `SELECT COUNT(*) FROM recap_cluster_evidence;` after the first recap completes.
 - Monitor GET `/v1/recaps/7days` latency via `recap_api_latest_fetch_duration_seconds` and the new duplicate counter `recap_api_evidence_duplicates_total` to confirm dedup is happening before DTO assembly.
