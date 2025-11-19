@@ -49,6 +49,7 @@ describe("CursorApi", () => {
           { id: 2, displayName: "ITEM2" },
         ],
         next_cursor: "cursor123",
+        has_more: true,
       });
     });
 
@@ -70,6 +71,7 @@ describe("CursorApi", () => {
       expect(result).toEqual({
         data: [{ id: 3, displayName: "ITEM3" }],
         next_cursor: null,
+        has_more: false,
       });
     });
 
@@ -91,6 +93,7 @@ describe("CursorApi", () => {
       expect(result).toEqual({
         data: [],
         next_cursor: null,
+        has_more: false,
       });
     });
 
@@ -105,6 +108,7 @@ describe("CursorApi", () => {
       expect(result).toEqual({
         data: [],
         next_cursor: null,
+        has_more: false,
       });
     });
 
