@@ -60,3 +60,20 @@ DEDUP_REMOVED = Counter(
     "recap_dedup_removed_total",
     "Total number of sentences filtered due to deduplication",
 )
+
+# Learning task metrics
+LEARNING_TASK_DURATION = Histogram(
+    "recap_subworker_learning_task_duration_seconds",
+    "Duration of learning task execution in seconds",
+    buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0),
+)
+
+LEARNING_TASK_SUCCESS = Counter(
+    "recap_subworker_learning_task_success_total",
+    "Total number of successful learning task executions",
+)
+
+LEARNING_TASK_FAILURE = Counter(
+    "recap_subworker_learning_task_failure_total",
+    "Total number of failed learning task executions",
+)
