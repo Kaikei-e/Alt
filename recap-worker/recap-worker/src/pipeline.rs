@@ -74,7 +74,7 @@ impl PipelineOrchestrator {
             base_url: config.alt_backend_base_url().to_string(),
             connect_timeout: config.alt_backend_connect_timeout(),
             total_timeout: config.alt_backend_total_timeout(),
-            service_token: config.alt_backend_service_token().map(|s| s.to_string()),
+            service_token: config.alt_backend_service_token().map(ToString::to_string),
         };
         let alt_backend_client = Arc::new(
             AltBackendClient::new(alt_backend_config).expect("failed to create alt-backend client"),
@@ -83,7 +83,9 @@ impl PipelineOrchestrator {
             base_url: config.tag_generator_base_url().to_string(),
             connect_timeout: config.tag_generator_connect_timeout(),
             total_timeout: config.tag_generator_total_timeout(),
-            service_token: config.tag_generator_service_token().map(|s| s.to_string()),
+            service_token: config
+                .tag_generator_service_token()
+                .map(ToString::to_string),
         };
         let tag_generator_client = TagGeneratorClient::new(tag_generator_config)
             .ok()
@@ -97,16 +99,17 @@ impl PipelineOrchestrator {
         let cpu_count = num_cpus::get();
         let max_concurrent = (cpu_count * 3) / 2;
         let window_days = config.recap_window_days();
-        let graph_overrides = match GraphOverrideSettings::load_with_fallback(recap_dao.pool()).await {
-            Ok(overrides) => overrides,
-            Err(err) => {
-                tracing::warn!(
-                    error = ?err,
-                    "loading graph override config failed, continuing with defaults"
-                );
-                GraphOverrideSettings::default()
-            }
-        };
+        let graph_overrides =
+            match GraphOverrideSettings::load_with_fallback(recap_dao.pool()).await {
+                Ok(overrides) => overrides,
+                Err(err) => {
+                    tracing::warn!(
+                        error = ?err,
+                        "loading graph override config failed, continuing with defaults"
+                    );
+                    GraphOverrideSettings::default()
+                }
+            };
 
         let coarse_stage = Arc::new(CoarseGenreStage::with_defaults());
         let rollout = RefineRollout::new(config.genre_refine_rollout_pct());

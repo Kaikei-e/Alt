@@ -61,6 +61,9 @@ pub struct GenreClassifier {
 
 impl GenreClassifier {
     /// 本番環境向けのデフォルト構成。
+    ///
+    /// # Panics
+    /// 環境変数`RECAP_GENRE_MODEL_WEIGHTS`が設定されているが、指定されたパスから重みファイルを読み込めない場合、またはハイブリッドモデルの初期化に失敗した場合にパニックします。
     #[must_use]
     pub fn new_default() -> Self {
         let model = match std::env::var("RECAP_GENRE_MODEL_WEIGHTS") {
@@ -119,13 +122,14 @@ impl GenreClassifier {
             .preprocess(title.trim(), body.trim(), _language);
         let keyword_map = self.keywords.score_text(&normalized);
         let matcher_scores = self.keyword_matcher.find_matches(&normalized);
+        #[allow(clippy::cast_precision_loss)]
         let mut combined_scores = keyword_map
             .iter()
             .map(|(genre, score)| (genre.clone(), *score as f32))
-            .into_iter()
             .collect::<HashMap<_, _>>();
 
         let boost = accumulate_scores(&DEFAULT_KEYWORDS, &matcher_scores);
+        #[allow(clippy::cast_precision_loss)]
         for (genre, extra) in boost {
             combined_scores
                 .entry(genre)

@@ -75,7 +75,7 @@ impl FeatureExtractor {
 
     #[must_use]
     pub fn fallback() -> Self {
-        let vocab: Vec<String> = FALLBACK_VOCAB.iter().map(|s| s.to_string()).collect();
+        let vocab: Vec<String> = FALLBACK_VOCAB.iter().map(ToString::to_string).collect();
         let idf: Vec<f32> = FALLBACK_IDF.to_vec();
         Self::from_metadata(
             &vocab,
@@ -111,6 +111,7 @@ impl FeatureExtractor {
         let mut tfidf = vec![0.0f32; vocab_len];
         let mut bm25 = vec![0.0f32; vocab_len];
 
+        #[allow(clippy::cast_precision_loss)]
         let doc_len = tokens.len() as f32;
         let length_norm = if doc_len > 0.0 {
             1.0 - self.bm25_b + self.bm25_b * (doc_len / self.average_doc_len)
@@ -177,7 +178,7 @@ impl FeatureVector {
     pub fn max_bm25(&self) -> Option<f32> {
         self.bm25
             .iter()
-            .cloned()
+            .copied()
             .fold(None, |acc, value| match acc {
                 Some(existing) if existing >= value => Some(existing),
                 _ => Some(value),

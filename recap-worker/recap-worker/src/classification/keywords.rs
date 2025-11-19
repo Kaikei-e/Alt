@@ -152,8 +152,9 @@ pub fn default_matcher() -> KeywordMatcher {
 pub fn accumulate_scores(entries: &[KeywordEntry], matches: &[Match]) -> HashMap<String, u32> {
     let mut scores: HashMap<String, u32> = HashMap::new();
     for m in matches {
+        #[allow(clippy::cast_possible_truncation)]
         if let Some(entry) = entries.get(m.index as usize) {
-            *scores.entry(entry.genre.clone()).or_insert(0) += entry.weight as u32;
+            *scores.entry(entry.genre.clone()).or_insert(0) += u32::from(entry.weight);
         }
     }
     scores
@@ -164,5 +165,5 @@ fn build_map(pairs: Vec<(Vec<u8>, u64)>) -> io::Result<Map<Vec<u8>>> {
 }
 
 fn to_io<E: std::error::Error + Send + Sync + 'static>(err: E) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, err)
+    io::Error::other(err)
 }

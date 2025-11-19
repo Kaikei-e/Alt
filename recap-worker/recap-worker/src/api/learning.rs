@@ -1,4 +1,4 @@
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
@@ -36,6 +36,7 @@ pub(crate) struct GenreLearningResponse {
     message: String,
 }
 
+#[allow(clippy::too_many_lines)]
 pub(crate) async fn receive_genre_learning(
     State(state): State<AppState>,
     Json(payload): Json<GenreLearningRequest>,
@@ -49,14 +50,16 @@ pub(crate) async fn receive_genre_learning(
         if let Some(graph_margin) = graph_override.graph_margin {
             config_payload.insert(
                 "graph_margin".to_string(),
-                serde_json::Value::Number(serde_json::Number::from_f64(graph_margin as f64).unwrap()),
+                serde_json::Value::Number(
+                    serde_json::Number::from_f64(f64::from(graph_margin)).unwrap(),
+                ),
             );
         }
         if let Some(weighted_tie_break_margin) = graph_override.weighted_tie_break_margin {
             config_payload.insert(
                 "weighted_tie_break_margin".to_string(),
                 serde_json::Value::Number(
-                    serde_json::Number::from_f64(weighted_tie_break_margin as f64).unwrap(),
+                    serde_json::Number::from_f64(f64::from(weighted_tie_break_margin)).unwrap(),
                 ),
             );
         }
@@ -64,7 +67,7 @@ pub(crate) async fn receive_genre_learning(
             config_payload.insert(
                 "tag_confidence_gate".to_string(),
                 serde_json::Value::Number(
-                    serde_json::Number::from_f64(tag_confidence_gate as f64).unwrap(),
+                    serde_json::Number::from_f64(f64::from(tag_confidence_gate)).unwrap(),
                 ),
             );
         }
@@ -72,7 +75,7 @@ pub(crate) async fn receive_genre_learning(
             config_payload.insert(
                 "boost_threshold".to_string(),
                 serde_json::Value::Number(
-                    serde_json::Number::from_f64(boost_threshold as f64).unwrap(),
+                    serde_json::Number::from_f64(f64::from(boost_threshold)).unwrap(),
                 ),
             );
         }
@@ -89,14 +92,16 @@ pub(crate) async fn receive_genre_learning(
         if let Some(graph_margin) = payload.summary.graph_margin_reference {
             config_payload.insert(
                 "graph_margin".to_string(),
-                serde_json::Value::Number(serde_json::Number::from_f64(graph_margin as f64).unwrap()),
+                serde_json::Value::Number(
+                    serde_json::Number::from_f64(f64::from(graph_margin)).unwrap(),
+                ),
             );
         }
         if let Some(boost_threshold) = payload.summary.boost_threshold_reference {
             config_payload.insert(
                 "boost_threshold".to_string(),
                 serde_json::Value::Number(
-                    serde_json::Number::from_f64(boost_threshold as f64).unwrap(),
+                    serde_json::Number::from_f64(f64::from(boost_threshold)).unwrap(),
                 ),
             );
         }
@@ -131,7 +136,12 @@ pub(crate) async fn receive_genre_learning(
 
     match state
         .dao()
-        .insert_worker_config("graph_override", &config_json, "genre_learning", Some(&metadata))
+        .insert_worker_config(
+            "graph_override",
+            &config_json,
+            "genre_learning",
+            Some(&metadata),
+        )
         .await
     {
         Ok(()) => {
@@ -153,11 +163,10 @@ pub(crate) async fn receive_genre_learning(
                 Json(GenreLearningResponse {
                     status: "error".to_string(),
                     config_saved: false,
-                    message: format!("failed to save config: {}", e),
+                    message: format!("failed to save config: {e}"),
                 }),
             )
                 .into_response()
         }
     }
 }
-

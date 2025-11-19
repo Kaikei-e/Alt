@@ -107,9 +107,7 @@ impl NewsCreatorClient {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             return Err(anyhow!(
-                "summary generation endpoint returned error status {}: {}",
-                status,
-                body
+                "summary generation endpoint returned error status {status}: {body}"
             ));
         }
 
@@ -229,9 +227,7 @@ impl NewsCreatorClient {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             return Err(anyhow!(
-                "genre tie-break endpoint returned error status {}: {}",
-                status,
-                body
+                "genre tie-break endpoint returned error status {status}: {body}"
             ));
         }
 

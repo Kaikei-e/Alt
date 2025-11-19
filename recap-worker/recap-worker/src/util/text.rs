@@ -93,6 +93,7 @@ pub fn is_near_duplicate(text1: &str, text2: &str, window_size: usize, threshold
         return false;
     }
 
+    #[allow(clippy::cast_precision_loss)]
     let similarity = (2 * intersection) as f64 / denominator as f64;
     similarity >= threshold
 }

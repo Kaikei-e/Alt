@@ -12,6 +12,7 @@ fn normalize_text(input: &str) -> String {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)] // english field is kept for potential future state
 pub struct TokenPipeline {
     japanese: JapaneseTokenizer,
     english: EnglishTokenizer,
@@ -36,14 +37,14 @@ impl TokenPipeline {
 
     #[must_use]
     pub fn resolve_language(
-        &self,
         provided: ClassificationLanguage,
         text: &str,
     ) -> ClassificationLanguage {
         match provided {
             ClassificationLanguage::Unknown => detect(text)
-                .map(|info| ClassificationLanguage::from(info.lang()))
-                .unwrap_or(ClassificationLanguage::Unknown),
+                .map_or(ClassificationLanguage::Unknown, |info| {
+                    ClassificationLanguage::from(info.lang())
+                }),
             other => other,
         }
     }
@@ -52,7 +53,7 @@ impl TokenPipeline {
     pub fn tokenize(&self, text: &str, lang: ClassificationLanguage) -> Vec<String> {
         match lang {
             ClassificationLanguage::Japanese => self.japanese.tokenize(text),
-            ClassificationLanguage::English => self.english.tokenize(text),
+            ClassificationLanguage::English => EnglishTokenizer::tokenize(text),
             ClassificationLanguage::Unknown => self.fallback.tokenize(text),
         }
     }
@@ -64,15 +65,15 @@ impl TokenPipeline {
         body: &str,
         lang: ClassificationLanguage,
     ) -> NormalizedDocument {
-        let combined = format!("{} {}", title, body);
-        let resolved = self.resolve_language(lang, &combined);
+        let combined = format!("{title} {body}");
+        let resolved = Self::resolve_language(lang, &combined);
         let mut tokens = self.tokenize(&combined, resolved);
-        self.augment_tokens(&mut tokens, resolved);
+        Self::augment_tokens(&mut tokens, resolved);
         let normalized = tokens.join(" ");
         NormalizedDocument { tokens, normalized }
     }
 
-    fn augment_tokens(&self, tokens: &mut Vec<String>, lang: ClassificationLanguage) {
+    fn augment_tokens(tokens: &mut Vec<String>, lang: ClassificationLanguage) {
         match lang {
             ClassificationLanguage::Japanese => apply_augmented_tokens(
                 tokens,
@@ -119,8 +120,8 @@ fn apply_augmented_tokens(tokens: &mut Vec<String>, mapping: &[(&str, &[&str])])
 #[derive(Debug)]
 struct JapaneseTokenizer {
     lindera: Option<LinderaAdapter>,
-    #[cfg(feature = "with-sudachi")]
-    sudachi: Option<SudachiAdapter>,
+    // #[cfg(feature = "with-sudachi")]
+    // sudachi: Option<SudachiAdapter>,  // Disabled: sudachi crate not available on crates.io
     fallback_word_re: Regex,
 }
 
@@ -128,28 +129,27 @@ impl JapaneseTokenizer {
     fn new() -> Self {
         Self {
             lindera: LinderaAdapter::new(),
-            #[cfg(feature = "with-sudachi")]
-            sudachi: SudachiAdapter::new(),
+            // #[cfg(feature = "with-sudachi")]
+            // sudachi: SudachiAdapter::new(),  // Disabled: sudachi crate not available on crates.io
             fallback_word_re: Regex::new(r"[^\p{L}\p{N}]+").expect("compile fallback regex"),
         }
     }
 
     fn tokenize(&self, text: &str) -> Vec<String> {
-        if let Some(adapter) = &self.lindera {
-            if let Some(tokens) = adapter.tokenize(text) {
-                if !tokens.is_empty() {
-                    return tokens;
-                }
-            }
+        if let Some(adapter) = &self.lindera
+            && let Some(tokens) = adapter.tokenize(text)
+            && !tokens.is_empty()
+        {
+            return tokens;
         }
-        #[cfg(feature = "with-sudachi")]
-        if let Some(adapter) = &self.sudachi {
-            if let Some(tokens) = adapter.tokenize(text) {
-                if !tokens.is_empty() {
-                    return tokens;
-                }
-            }
-        }
+        // #[cfg(feature = "with-sudachi")]
+        // if let Some(adapter) = &self.sudachi {
+        //     if let Some(tokens) = adapter.tokenize(text) {
+        //         if !tokens.is_empty() {
+        //             return tokens;
+        //         }
+        //     }
+        // }
         self.fallback_tokenize(text)
     }
 
@@ -158,48 +158,49 @@ impl JapaneseTokenizer {
             .split(|c: char| c.is_whitespace())
             .flat_map(|piece| self.fallback_word_re.split(piece))
             .filter(|token| !token.is_empty())
-            .map(|token| token.to_string())
+            .map(ToString::to_string)
             .collect()
     }
 }
 
-#[cfg(feature = "with-sudachi")]
-#[derive(Debug)]
-struct SudachiAdapter {
-    tokenizer: sudachi::analysis::stateless_tokenizer::Tokenizer,
-}
-
-#[cfg(feature = "with-sudachi")]
-impl SudachiAdapter {
-    fn new() -> Option<Self> {
-        use sudachi::config::{Config, ConfigBuilder};
-        let config = if let Ok(path) = std::env::var("SUDACHI_CONFIG_PATH") {
-            Config::from_file(&path).ok()?
-        } else {
-            ConfigBuilder::new().build().ok()?
-        };
-        sudachi::analysis::stateless_tokenizer::Tokenizer::new(config)
-            .ok()
-            .map(|tokenizer| Self { tokenizer })
-    }
-
-    fn tokenize(&self, text: &str) -> Option<Vec<String>> {
-        use sudachi::prelude::Mode;
-        let morphemes = self
-            .tokenizer
-            .tokenize(Mode::C, text)
-            .ok()?
-            .into_iter()
-            .map(|morpheme| {
-                morpheme
-                    .lemma()
-                    .unwrap_or_else(|| morpheme.surface().to_string())
-            })
-            .filter(|token| !token.trim().is_empty())
-            .collect::<Vec<_>>();
-        Some(morphemes)
-    }
-}
+// Sudachi support is disabled because the sudachi crate is not available on crates.io
+// When the sudachi crate becomes available, uncomment the following code:
+//
+// #[derive(Debug)]
+// struct SudachiAdapter {
+//     tokenizer: sudachi::analysis::stateless_tokenizer::Tokenizer,
+// }
+//
+// impl SudachiAdapter {
+//     fn new() -> Option<Self> {
+//         use sudachi::config::{Config, ConfigBuilder};
+//         let config = if let Ok(path) = std::env::var("SUDACHI_CONFIG_PATH") {
+//             Config::from_file(&path).ok()?
+//         } else {
+//             ConfigBuilder::new().build().ok()?
+//         };
+//         sudachi::analysis::stateless_tokenizer::Tokenizer::new(config)
+//             .ok()
+//             .map(|tokenizer| Self { tokenizer })
+//     }
+//
+//     fn tokenize(&self, text: &str) -> Option<Vec<String>> {
+//         use sudachi::prelude::Mode;
+//         let morphemes = self
+//             .tokenizer
+//             .tokenize(Mode::C, text)
+//             .ok()?
+//             .into_iter()
+//             .map(|morpheme| {
+//                 morpheme
+//                     .lemma()
+//                     .unwrap_or_else(|| morpheme.surface().to_string())
+//             })
+//             .filter(|token| !token.trim().is_empty())
+//             .collect::<Vec<_>>();
+//         Some(morphemes)
+//     }
+// }
 
 struct LinderaAdapter {
     tokenizer: LinderaTokenizer,
@@ -244,12 +245,12 @@ impl EnglishTokenizer {
         Self {}
     }
 
-    fn tokenize(&self, text: &str) -> Vec<String> {
+    fn tokenize(text: &str) -> Vec<String> {
         normalize_text(text)
             .split_word_bounds()
             .map(|token| token.trim_matches(|c: char| !c.is_ascii_alphanumeric()))
             .filter(|token| !token.is_empty())
-            .map(|token| normalize_english_token(token))
+            .map(normalize_english_token)
             .collect()
     }
 }
@@ -271,7 +272,7 @@ impl FallbackTokenizer {
             .split(|c: char| c.is_whitespace())
             .flat_map(|piece| self.split_re.split(piece))
             .filter(|token| !token.is_empty())
-            .map(|token| token.to_lowercase())
+            .map(str::to_lowercase)
             .collect()
     }
 }

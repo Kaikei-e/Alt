@@ -30,7 +30,7 @@ fn dedupe_evidence_links(links: Vec<EvidenceLinkResponse>) -> Vec<EvidenceLinkRe
     let mut seen_ids = HashSet::new();
     let mut unique_links = Vec::with_capacity(links.len());
 
-    for link in links.into_iter() {
+    for link in links {
         if seen_ids.insert(link.article_id.clone()) {
             unique_links.push(link);
         }
@@ -122,6 +122,7 @@ struct ErrorResponse {
 
 /// GET /v1/recaps/7days
 /// 最新の7日間Recapデータを取得する
+#[allow(clippy::too_many_lines)]
 pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoResponse {
     info!("Fetching latest 7-day recap");
     let metrics = state.telemetry().metrics();
@@ -206,7 +207,10 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
             }
 
             // 記事数をカウント
-            total_article_count += cluster.evidence.len() as i32;
+            #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+            {
+                total_article_count += cluster.evidence.len() as i32;
+            }
 
             // Evidence Links（最初の5件程度）
             for evidence in cluster.evidence.iter().take(5) {
@@ -233,7 +237,10 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
             let deduped = dedupe_evidence_links(evidence_links);
             let removed = before.saturating_sub(deduped.len());
             if removed > 0 {
-                metrics.api_evidence_duplicates.inc_by(removed as f64);
+                #[allow(clippy::cast_precision_loss)]
+                {
+                    metrics.api_evidence_duplicates.inc_by(removed as f64);
+                }
             }
             deduped
         };
@@ -243,6 +250,7 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
             summary: normalize_summary_text(genre.summary_ja.as_deref().unwrap_or_default()),
             top_terms: all_top_terms,
             article_count: total_article_count,
+            #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
             cluster_count: clusters.len() as i32,
             evidence_links: deduped_links,
         });

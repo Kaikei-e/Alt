@@ -7,7 +7,8 @@ repository = "https://github.com/Kaikei-e/Alt"
 
 [features]
 default = []
-with-sudachi = []
+# with-sudachi feature is disabled because sudachi crate is not available on crates.io
+# with-sudachi = ["dep:sudachi"]
 
 [dependencies]
 anyhow = "1.0"
@@ -55,6 +56,7 @@ unicode-normalization = "0.1"
 unicode-segmentation = "1.12"
 whatlang = { version = "0.16", default-features = false }
 lindera = { version = "0.21", features = ["ipadic"] }
+# sudachi = { version = "0.7", optional = true }  # Not available on crates.io
 ammonia = "4.1"
 html2text = "0.13"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }

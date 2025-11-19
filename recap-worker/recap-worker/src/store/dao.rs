@@ -140,11 +140,11 @@ impl RecapDao {
     /// タグ-ジャンル共起グラフを読み込む。
     pub async fn load_tag_label_graph(&self, window_label: &str) -> Result<Vec<GraphEdgeRecord>> {
         let rows = sqlx::query(
-            r#"
+            r"
             SELECT genre, tag, weight
             FROM tag_label_graph
             WHERE window_label = $1
-            "#,
+            ",
         )
         .bind(window_label)
         .fetch_all(&self.pool)
@@ -169,13 +169,13 @@ impl RecapDao {
         config_type: &str,
     ) -> Result<Option<serde_json::Value>> {
         let row = sqlx::query(
-            r#"
+            r"
             SELECT config_payload, metadata
             FROM recap_worker_config
             WHERE config_type = $1
             ORDER BY created_at DESC
             LIMIT 1
-            "#,
+            ",
         )
         .bind(config_type)
         .fetch_optional(&self.pool)
@@ -199,10 +199,10 @@ impl RecapDao {
         metadata: Option<&serde_json::Value>,
     ) -> Result<()> {
         sqlx::query(
-            r#"
+            r"
             INSERT INTO recap_worker_config (config_type, config_payload, source, metadata)
             VALUES ($1, $2, $3, $4)
-            "#,
+            ",
         )
         .bind(config_type)
         .bind(Json(config_payload))
@@ -218,7 +218,7 @@ impl RecapDao {
     /// ジャンル学習レコードを保存する。
     pub async fn upsert_genre_learning_record(&self, record: &GenreLearningRecord) -> Result<()> {
         sqlx::query(
-            r#"
+            r"
             INSERT INTO recap_genre_learning_results
                 (job_id, article_id, coarse_candidates, refine_decision, tag_profile,
                  graph_context, feedback, telemetry, timestamps)
@@ -232,7 +232,7 @@ impl RecapDao {
                 telemetry = EXCLUDED.telemetry,
                 timestamps = EXCLUDED.timestamps,
                 updated_at = NOW()
-            "#,
+            ",
         )
         .bind(record.job_id)
         .bind(&record.article_id)
@@ -273,7 +273,7 @@ impl RecapDao {
 
             for record in chunk {
                 sqlx::query(
-                    r#"
+                    r"
                     INSERT INTO recap_genre_learning_results
                         (job_id, article_id, coarse_candidates, refine_decision, tag_profile,
                          graph_context, feedback, telemetry, timestamps)
@@ -287,7 +287,7 @@ impl RecapDao {
                         telemetry = EXCLUDED.telemetry,
                         timestamps = EXCLUDED.timestamps,
                         updated_at = NOW()
-                    "#,
+                    ",
                 )
                 .bind(record.job_id)
                 .bind(&record.article_id)
@@ -388,7 +388,7 @@ impl RecapDao {
         output: &crate::store::models::RecapOutput,
     ) -> Result<()> {
         sqlx::query(
-            r#"
+            r"
             INSERT INTO recap_outputs
                 (job_id, genre, response_id, title_ja, summary_ja, bullets_ja, body_json)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -399,7 +399,7 @@ impl RecapDao {
                 bullets_ja = EXCLUDED.bullets_ja,
                 body_json = EXCLUDED.body_json,
                 updated_at = NOW()
-            "#,
+            ",
         )
         .bind(output.job_id)
         .bind(&output.genre)
@@ -650,13 +650,13 @@ impl RecapDao {
         window_days: i32,
     ) -> Result<Option<RecapJob>> {
         let row = sqlx::query(
-            r#"
+            r"
             SELECT job_id, MAX(created_at) AS created_at
             FROM recap_outputs
             GROUP BY job_id
             ORDER BY MAX(created_at) DESC
             LIMIT 1
-            "#,
+            ",
         )
         .fetch_optional(&self.pool)
         .await
@@ -672,11 +672,11 @@ impl RecapDao {
                 let window_start = window_end - window_duration;
 
                 let total_articles = match sqlx::query(
-                    r#"
+                    r"
                     SELECT COUNT(*) AS article_count
                     FROM recap_job_articles
                     WHERE job_id = $1
-                    "#,
+                    ",
                 )
                 .bind(job_id)
                 .fetch_one(&self.pool)
@@ -718,12 +718,12 @@ impl RecapDao {
     /// Get all genres for a job with their summaries
     pub(crate) async fn get_genres_by_job(&self, job_id: Uuid) -> Result<Vec<GenreWithSummary>> {
         let rows = sqlx::query(
-            r#"
+            r"
             SELECT genre AS genre_name, summary_ja
             FROM recap_outputs
             WHERE job_id = $1
             ORDER BY genre
-            "#,
+            ",
         )
         .bind(job_id)
         .fetch_all(&self.pool)
@@ -747,7 +747,7 @@ impl RecapDao {
         job_id: Uuid,
     ) -> Result<HashMap<String, Vec<ClusterWithEvidence>>> {
         let rows = sqlx::query(
-            r#"
+            r"
             WITH latest_runs AS (
                 SELECT id, genre
                 FROM (
@@ -780,7 +780,7 @@ impl RecapDao {
             LEFT JOIN recap_job_articles ra
                 ON ra.job_id = $1 AND ra.article_id = ce.article_id
             ORDER BY lr.genre, c.cluster_id, ce.rank NULLS LAST
-            "#,
+            ",
         )
         .bind(job_id)
         .fetch_all(&self.pool)
@@ -888,7 +888,7 @@ impl RecapDao {
         }
 
         let rows = sqlx::query(
-            r#"
+            r"
             WITH ranked AS (
                 SELECT
                     s.cluster_row_id,
@@ -911,7 +911,7 @@ impl RecapDao {
             FROM ranked
             WHERE rn <= 10
             ORDER BY cluster_row_id, rn
-            "#,
+            ",
         )
         .bind(job_id)
         .bind(cluster_row_ids)

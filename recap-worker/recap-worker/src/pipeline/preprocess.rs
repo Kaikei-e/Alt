@@ -50,7 +50,7 @@ pub(crate) trait PreprocessStage: Send + Sync {
 
 /// CPU heavy前処理を行うステージ。
 ///
-/// spawn_blockingでCPUバインド処理をオフロードし、セマフォで同時実行数を制限します。
+/// `spawn_blockingでCPUバインド処理をオフロードし、セマフォで同時実行数を制限します`。
 #[derive(Debug, Clone)]
 pub struct TextPreprocessStage {
     semaphore: Arc<Semaphore>,
@@ -58,7 +58,7 @@ pub struct TextPreprocessStage {
 }
 
 impl TextPreprocessStage {
-    /// 新しいPreprocessStageを作成する。
+    /// `新しいPreprocessStageを作成する`。
     ///
     /// # Arguments
     /// * `max_concurrent` - 同時に処理できる記事の最大数
@@ -267,13 +267,13 @@ fn tokenize_latin_like(text: &str) -> Vec<String> {
 }
 
 static NON_WORD_BOUNDARY: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^[\p{Punctuation}\p{Symbol}]+|[\p{Punctuation}\p{Symbol}]+$"#).unwrap()
+    Regex::new(r"^[\p{Punctuation}\p{Symbol}]+|[\p{Punctuation}\p{Symbol}]+$").unwrap()
 });
 
 /// HTMLをサニタイズしてプレーンテキストに変換する。
 ///
 /// # Returns
-/// (cleaned_text, was_html) のタプル
+/// (`cleaned_text`, `was_html`) のタプル
 fn clean_html(text: &str) -> Result<(String, bool)> {
     if !contains_html_tags(text) {
         return Ok((text.to_string(), false));
@@ -284,7 +284,7 @@ fn clean_html(text: &str) -> Result<(String, bool)> {
 
     // html2textでよりクリーンなプレーンテキストに変換
     let plain = html2text::from_read(sanitized.as_bytes(), 80)
-        .map_err(|e| anyhow::anyhow!("html2text conversion failed: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("html2text conversion failed: {e}"))?;
 
     Ok((plain, true))
 }
@@ -338,9 +338,9 @@ mod tests {
     ) -> FetchedArticle {
         FetchedArticle {
             id: id.to_string(),
-            title: title.map(|t| t.to_string()),
+            title: title.map(std::string::ToString::to_string),
             body: body.to_string(),
-            language: language.map(|l| l.to_string()),
+            language: language.map(std::string::ToString::to_string),
             published_at: Some(Utc::now()),
             source_url: Some("https://example.com".to_string()),
             tags: Vec::new(),

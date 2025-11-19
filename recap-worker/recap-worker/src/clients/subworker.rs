@@ -36,7 +36,7 @@ fn truncate_error_message(msg: &str) -> String {
         return msg.to_string();
     }
     let truncated: String = msg.chars().take(MAX_ERROR_MESSAGE_LENGTH).collect();
-    format!("{}... (truncated, {} chars)", truncated, char_count)
+    format!("{truncated}... (truncated, {char_count} chars)")
 }
 
 /// バリデーションエラーのリストを要約する。
@@ -274,16 +274,13 @@ impl SubworkerClient {
                 job_id = %job_id,
                 genre = %corpus.genre,
                 error_count = validation.errors.len(),
-                first_error = %summarized_errors.first().map(|s| s.as_str()).unwrap_or("unknown"),
+                first_error = %summarized_errors.first().map_or("unknown", String::as_str),
                 "clustering response failed JSON Schema validation"
             );
             return Err(anyhow!(
                 "clustering response validation failed: {} errors (first: {})",
                 validation.errors.len(),
-                summarized_errors
-                    .first()
-                    .map(|s| s.as_str())
-                    .unwrap_or("unknown")
+                summarized_errors.first().map_or("unknown", String::as_str)
             ));
         }
 
@@ -345,7 +342,7 @@ impl SubworkerClient {
                 warn!(
                     run_id,
                     error_count = validation.errors.len(),
-                    first_error = %summarized_errors.first().map(|s| s.as_str()).unwrap_or("unknown"),
+                    first_error = %summarized_errors.first().map(String::as_str).unwrap_or("unknown"),
                     "polling response failed JSON Schema validation"
                 );
                 return Err(anyhow!(
@@ -353,7 +350,7 @@ impl SubworkerClient {
                     validation.errors.len(),
                     summarized_errors
                         .first()
-                        .map(|s| s.as_str())
+                        .map(String::as_str)
                         .unwrap_or("unknown")
                 ));
             }

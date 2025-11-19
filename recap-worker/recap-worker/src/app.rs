@@ -98,10 +98,12 @@ impl ComponentRegistry {
         })
     }
 
+    #[must_use]
     pub fn scheduler(&self) -> &Scheduler {
         &self.scheduler
     }
 
+    #[must_use]
     pub fn config(&self) -> Arc<Config> {
         Arc::clone(&self.config)
     }

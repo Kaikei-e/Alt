@@ -10,6 +10,7 @@ use crate::pipeline::preprocess::preprocess_article;
 /// * `count` - 生成する記事数
 /// * `avg_sentences` - 1記事あたりの平均文数（±2の揺らぎで決定）
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn synthetic_bodies(count: usize, avg_sentences: usize) -> Vec<String> {
     let mut rng = StdRng::seed_from_u64(42);
     let templates = [

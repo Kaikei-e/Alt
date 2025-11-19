@@ -102,7 +102,7 @@ impl HybridModel {
         weights.validate()?;
 
         let feature_vocab = if weights.feature_vocab.is_empty() {
-            FALLBACK_VOCAB.iter().map(|s| s.to_string()).collect()
+            FALLBACK_VOCAB.iter().map(ToString::to_string).collect()
         } else {
             weights.feature_vocab.clone()
         };

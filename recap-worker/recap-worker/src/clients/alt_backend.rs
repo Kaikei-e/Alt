@@ -164,11 +164,7 @@ impl AltBackendClient {
 
         if !status.is_success() {
             let error_body = response.text().await.unwrap_or_default();
-            anyhow::bail!(
-                "alt-backend returned error status {}: {}",
-                status,
-                error_body
-            );
+            anyhow::bail!("alt-backend returned error status {status}: {error_body}");
         }
 
         response
