@@ -31,6 +31,9 @@ _Last reviewed: November 12, 2025_
 | `RECAP_SUBWORKER_QUEUE_WARNING_THRESHOLD` | `25` | Emits warning when queued background runs exceed this value. |
 | `RECAP_SUBWORKER_GUNICORN_*` | see config | Tune workers, timeouts, recycling. |
 | `RECAP_SUBWORKER_MODEL_ID` / `DISTILL_MODEL_ID` | BGE-M3 / distill | Control embedder weights. |
+| `RECAP_SUBWORKER_LEARNING_SCHEDULER_ENABLED` | `true` | Enable automatic periodic learning task execution. |
+| `RECAP_SUBWORKER_LEARNING_SCHEDULER_INTERVAL_HOURS` | `4.0` | Interval between learning task executions (hours). |
+| `RECAP_SUBWORKER_RECAP_WORKER_LEARNING_URL` | `http://recap-worker:9005/admin/genre-learning` | Endpoint URL for sending learning payloads. |
 
 Compose (`compose.yaml`) enables `RECAP_SUBWORKER_PIPELINE_MODE=processpool` by default so recap-worker can continue dispatching even if one pipeline job wedges.
 
@@ -45,6 +48,7 @@ Compose (`compose.yaml`) enables `RECAP_SUBWORKER_PIPELINE_MODE=processpool` by 
 4. Recap Worker polls `GET /v1/runs/{run_id}` until status ready. Any timeout/failure is surfaced via diagnostics and Recap Worker skips that genre.
 5. `/admin/warmup` triggers embedder warmup (in worker pool when available) to avoid first-request latency.
 6. `/admin/learning` triggers genre learning analysis from `recap_genre_learning_results`, runs Bayes optimization, and sends optimized thresholds to recap-worker's `/admin/genre-learning` endpoint for database storage.
+7. **Automatic scheduler**: When `RECAP_SUBWORKER_LEARNING_SCHEDULER_ENABLED=true` (default), a background task runs `/admin/learning` automatically every `RECAP_SUBWORKER_LEARNING_SCHEDULER_INTERVAL_HOURS` (default: 4.0 hours). The scheduler starts on application startup and continues running until shutdown.
 
 ## Observability & Operations
 - Metrics: Prometheus via `prometheus-fastapi-instrumentator` (`/metrics`) including embedding seconds, HDBSCAN latency, dedup counts.
