@@ -35,17 +35,20 @@ const RecapCard = ({ genre }: RecapCardProps) => {
       >
         <VStack align="stretch" gap={3}>
           {/* ヘッダー: ジャンル名・メトリクス */}
-          <Flex justify="space-between" align="center">
+          <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
             <Text
               fontSize="lg"
               fontWeight="bold"
               color="var(--accent-primary)"
               textTransform="uppercase"
               letterSpacing="0.08em"
+              flex={1}
+              minW={0}
+              wordBreak="break-word"
             >
               {genre.genre}
             </Text>
-            <Flex gap={3} fontSize="xs" color="var(--text-secondary)">
+            <Flex gap={3} fontSize="xs" color="var(--text-secondary)" flexShrink={0}>
               <Text>Clusters: {genre.clusterCount}</Text>
               <Text>Articles: {genre.articleCount}</Text>
             </Flex>
