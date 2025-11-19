@@ -181,3 +181,5 @@ async def test_scheduler_cancellation(mock_settings):
 
     assert not scheduler._running
 
+
+
