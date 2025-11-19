@@ -34,6 +34,7 @@ class LearningScheduler:
             logger.warning("learning scheduler already running")
             return
 
+        # Start the scheduler loop
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
         logger.info(
@@ -77,10 +78,16 @@ class LearningScheduler:
     async def _execute_learning(self) -> None:
         """Execute a single learning task."""
         start_time = datetime.now(timezone.utc)
-        logger.info("starting scheduled genre learning task")
+        logger.info(
+            "starting scheduled genre learning task",
+            recap_worker_url=self.settings.recap_worker_learning_url,
+        )
 
         try:
+            logger.debug("creating database session factory")
             session_factory = get_session_factory(self.settings)
+
+            logger.debug("opening database session")
             async with session_factory() as session:
                 # Create learning service
                 cluster_genres = [
@@ -88,6 +95,11 @@ class LearningScheduler:
                     for genre in self.settings.learning_cluster_genres.split(",")
                     if genre.strip()
                 ]
+                logger.debug(
+                    "creating learning service",
+                    cluster_genres=cluster_genres,
+                    graph_margin=self.settings.learning_graph_margin,
+                )
                 service = GenreLearningService(
                     session=session,
                     graph_margin=self.settings.learning_graph_margin,
@@ -95,16 +107,34 @@ class LearningScheduler:
                 )
 
                 # Generate learning result
+                logger.info("fetching learning data from database")
                 learning_result = await service.generate_learning_result()
+                logger.info(
+                    "learning result generated",
+                    total_records=learning_result.summary.total_records,
+                    graph_boost_count=learning_result.summary.graph_boost_count,
+                    graph_boost_percentage=learning_result.summary.graph_boost_percentage,
+                    has_cluster_draft=learning_result.cluster_draft is not None,
+                )
 
                 # Create client and send to recap-worker
+                logger.debug(
+                    "creating HTTP client",
+                    url=self.settings.recap_worker_learning_url,
+                    timeout_seconds=self.settings.learning_request_timeout_seconds,
+                )
                 client = LearningClient.create(
                     self.settings.recap_worker_learning_url,
                     self.settings.learning_request_timeout_seconds,
                 )
 
                 try:
+                    logger.debug("building learning payload")
                     payload = self._build_learning_payload(learning_result)
+                    logger.info(
+                        "sending learning payload to recap-worker",
+                        payload_size=len(str(payload)),
+                    )
                     response = await client.send_learning_payload(payload)
                     duration = (datetime.now(timezone.utc) - start_time).total_seconds()
 
@@ -114,7 +144,16 @@ class LearningScheduler:
                         recap_worker_status=response.status_code,
                         total_records=learning_result.summary.total_records,
                     )
+                except Exception as send_exc:
+                    logger.error(
+                        "failed to send learning payload",
+                        error=str(send_exc),
+                        error_type=type(send_exc).__name__,
+                        exc_info=True,
+                    )
+                    raise
                 finally:
+                    logger.debug("closing HTTP client")
                     await client.close()
 
         except Exception as exc:
@@ -122,6 +161,7 @@ class LearningScheduler:
             logger.error(
                 "scheduled learning task failed",
                 error=str(exc),
+                error_type=type(exc).__name__,
                 duration_seconds=duration,
                 exc_info=True,
             )

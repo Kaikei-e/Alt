@@ -299,6 +299,14 @@ class GenreLearningService:
         hours: int = DEFAULT_SNAPSHOT_HOURS,
         limit: int = DEFAULT_SNAPSHOT_LIMIT,
     ) -> list[dict[str, Any]]:
+        import structlog
+        logger = structlog.get_logger(__name__)
+
+        logger.debug(
+            "fetching snapshot rows",
+            hours=hours,
+            limit=limit,
+        )
         query = text(
             """
             SELECT job_id,
@@ -314,21 +322,77 @@ class GenreLearningService:
             """
         )
         result = await self.session.execute(query, {"hours": hours, "limit": limit})
-        return [dict(row) for row in result.mappings().all()]
+        rows = [dict(row) for row in result.mappings().all()]
+        logger.info(
+            "fetched snapshot rows",
+            row_count=len(rows),
+            hours=hours,
+            limit=limit,
+        )
+        return rows
 
     async def generate_learning_result(
         self,
         hours: int = DEFAULT_SNAPSHOT_HOURS,
         limit: int = DEFAULT_SNAPSHOT_LIMIT,
     ) -> GenreLearningResult:
+        import structlog
+        logger = structlog.get_logger(__name__)
+
         rows = await self.fetch_snapshot_rows(hours=hours, limit=limit)
+
+        if not rows:
+            logger.warning(
+                "no snapshot rows found",
+                hours=hours,
+                limit=limit,
+            )
+            # Return empty result
+            empty_summary = GenreLearningSummary(
+                total_records=0,
+                graph_boost_count=0,
+                graph_boost_percentage=0.0,
+                avg_margin=None,
+                avg_top_boost=None,
+                avg_confidence=None,
+                tag_coverage_pct=0.0,
+                graph_margin_reference=self.graph_margin,
+            )
+            return GenreLearningResult(
+                summary=empty_summary,
+                entries=[],
+                cluster_draft=None,
+            )
+
+        logger.debug(
+            "building graph boost snapshot entries",
+            row_count=len(rows),
+        )
         entries = build_graph_boost_snapshot_entries(rows, self.graph_margin)
+        logger.debug(
+            "summarizing entries",
+            entry_count=len(entries),
+        )
         summary = self._summarize_entries(entries)
+
+        logger.debug(
+            "building cluster draft",
+            cluster_genres=self.cluster_genres,
+        )
         cluster_draft = ClusterBuilder().build(
             entries,
             genres=self.cluster_genres,
             min_samples=DEFAULT_CLUSTER_MIN_SAMPLES,
         )
+        if cluster_draft:
+            logger.debug(
+                "cluster draft created",
+                draft_id=cluster_draft.get("draft_id"),
+                total_entries=cluster_draft.get("total_entries"),
+            )
+        else:
+            logger.debug("no cluster draft created (insufficient samples)")
+
         return GenreLearningResult(summary=summary, entries=entries, cluster_draft=cluster_draft)
 
     def _summarize_entries(self, entries: list[dict[str, Any]]) -> GenreLearningSummary:
