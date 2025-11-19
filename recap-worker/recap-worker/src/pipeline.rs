@@ -63,6 +63,7 @@ pub(crate) struct PipelineBuilder {
 }
 
 impl PipelineOrchestrator {
+    #[allow(clippy::too_many_lines)]
     pub(crate) async fn new(
         config: Arc<Config>,
         subworker: SubworkerClient,

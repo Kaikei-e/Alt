@@ -39,6 +39,7 @@ impl FinalSectionPersistStage {
 }
 
 #[async_trait]
+#[allow(clippy::too_many_lines)]
 impl PersistStage for FinalSectionPersistStage {
     async fn persist(&self, job: &JobContext, result: DispatchResult) -> Result<PersistResult> {
         info!(

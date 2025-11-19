@@ -174,7 +174,9 @@ mod tests {
             GraphOverrideError::Io { path, .. } => {
                 assert!(path.ends_with("does-not-exist.yaml"));
             }
-            _ => panic!("expected Io error"),
+            GraphOverrideError::Deserialize { .. } => {
+                panic!("expected Io error, got Deserialize error");
+            }
         }
     }
 }

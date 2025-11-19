@@ -49,8 +49,7 @@ impl SummarySelectStage {
             // 最初のジャンルを使用（複数ジャンルがある場合は最初のもの）
             let primary_genre = assignment
                 .primary_genre()
-                .map(std::string::ToString::to_string)
-                .unwrap_or_else(|| "other".to_string());
+                .map_or_else(|| "other".to_string(), std::string::ToString::to_string);
             let count = per_genre_count
                 .entry(primary_genre.clone())
                 .or_insert(0usize);
