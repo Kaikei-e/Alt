@@ -450,13 +450,11 @@ impl RefineEngine for DefaultRefineEngine {
                 input
                     .candidates
                     .first()
-                    .map(|c| c.name.clone())
-                    .unwrap_or_else(|| self.config.fallback_genre.clone()),
+                    .map_or_else(|| self.config.fallback_genre.clone(), |c| c.name.clone()),
                 input
                     .candidates
                     .first()
-                    .map(|c| c.classifier_confidence)
-                    .unwrap_or(0.0),
+                    .map_or(0.0, |c| c.classifier_confidence),
                 RefineStrategy::CoarseOnly,
                 None,
                 HashMap::new(),
@@ -468,13 +466,11 @@ impl RefineEngine for DefaultRefineEngine {
                 input
                     .candidates
                     .first()
-                    .map(|c| c.name.clone())
-                    .unwrap_or_else(|| self.config.fallback_genre.clone()),
+                    .map_or_else(|| self.config.fallback_genre.clone(), |c| c.name.clone()),
                 input
                     .candidates
                     .first()
-                    .map(|c| c.classifier_confidence)
-                    .unwrap_or(0.0),
+                    .map_or(0.0, |c| c.classifier_confidence),
                 RefineStrategy::CoarseOnly,
                 None,
                 HashMap::new(),
@@ -656,8 +652,8 @@ fn compute_entropy(tags: &[TagSignal]) -> f32 {
     if total <= f32::EPSILON {
         return 0.0;
     }
-    let entropy = tags
-        .iter()
+
+    tags.iter()
         .filter_map(|tag| {
             let p = (tag.confidence.max(0.0)) / total;
             if p <= 0.0 {
@@ -666,8 +662,7 @@ fn compute_entropy(tags: &[TagSignal]) -> f32 {
                 Some(-p * (p.ln() / std::f32::consts::LN_2))
             }
         })
-        .sum::<f32>();
-    entropy
+        .sum::<f32>()
 }
 
 fn compute_graph_boosts(

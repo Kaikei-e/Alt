@@ -274,7 +274,10 @@ impl TwoStageGenreStage {
         updated_assignment
             .genre_scores
             .entry(final_genre.clone())
-            .or_insert_with(|| (outcome.confidence * 100.0).round() as usize);
+            .or_insert_with(|| {
+                let rounded = (outcome.confidence.max(0.0) * 100.0).round();
+                u32::try_from(rounded.max(0.0) as i32).unwrap_or(0) as usize
+            });
 
         Ok((updated_assignment, final_genre, record))
     }
@@ -347,10 +350,10 @@ impl CoarseGenreStage {
         let mut genre_scores = classification.keyword_hits.clone();
         for genre in &selected_genres {
             genre_scores.entry(genre.clone()).or_insert_with(|| {
-                classification
-                    .scores
-                    .get(genre)
-                    .map_or(0, |score| (score.max(0.0) * 100.0).round() as usize)
+                classification.scores.get(genre).map_or(0, |score| {
+                    let rounded = (score.max(0.0) * 100.0).round();
+                    u32::try_from(rounded.max(0.0) as i32).unwrap_or(0) as usize
+                })
             });
         }
 
@@ -570,6 +573,22 @@ impl GenreStage for TwoStageGenreStage {
     }
 }
 
+fn normalize_label(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+
+fn format_strategy(strategy: super::genre_refine::RefineStrategy) -> String {
+    match strategy {
+        super::genre_refine::RefineStrategy::TagConsistency => "tag_consistency",
+        super::genre_refine::RefineStrategy::GraphBoost => "graph_boost",
+        super::genre_refine::RefineStrategy::WeightedScore => "weighted_score",
+        super::genre_refine::RefineStrategy::LlmTieBreak => "llm_tie_break",
+        super::genre_refine::RefineStrategy::FallbackOther => "fallback_other",
+        super::genre_refine::RefineStrategy::CoarseOnly => "coarse_only",
+    }
+    .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::dedup::DedupStats;
@@ -675,20 +694,4 @@ mod tests {
         // 最大2ジャンル
         assert!(bundle.assignments[0].candidates.len() <= 2);
     }
-}
-
-fn normalize_label(value: &str) -> String {
-    value.trim().to_lowercase()
-}
-
-fn format_strategy(strategy: super::genre_refine::RefineStrategy) -> String {
-    match strategy {
-        super::genre_refine::RefineStrategy::TagConsistency => "tag_consistency",
-        super::genre_refine::RefineStrategy::GraphBoost => "graph_boost",
-        super::genre_refine::RefineStrategy::WeightedScore => "weighted_score",
-        super::genre_refine::RefineStrategy::LlmTieBreak => "llm_tie_break",
-        super::genre_refine::RefineStrategy::FallbackOther => "fallback_other",
-        super::genre_refine::RefineStrategy::CoarseOnly => "coarse_only",
-    }
-    .to_string()
 }
