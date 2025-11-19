@@ -122,7 +122,7 @@ pub fn evaluate_dataset(dataset: &GoldenDataset) -> EvaluationSummary {
         if let Some(noise_ratio) = run
             .diagnostics
             .get("noise_ratio")
-            .and_then(|value| value.as_f64())
+            .and_then(serde_json::Value::as_f64)
         {
             noise_sum += noise_ratio as f32;
             noise_count += 1;
@@ -195,7 +195,7 @@ mod tests {
         };
         let summary = evaluate_dataset(&dataset);
         assert_eq!(summary.total_samples, 0);
-        assert_eq!(summary.avg_quality_score, 0.0);
-        assert_eq!(summary.avg_noise_ratio, 0.0);
+        assert!((summary.avg_quality_score - 0.0).abs() < f32::EPSILON);
+        assert!((summary.avg_noise_ratio - 0.0).abs() < f32::EPSILON);
     }
 }

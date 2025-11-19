@@ -73,25 +73,13 @@ impl GenreEvaluationSample {
 }
 
 /// Configuration overrides for evaluation suite.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct EvaluationSettings {
     pub require_tags: bool,
     pub graph_margin: Option<f32>,
     pub tag_confidence_gate: Option<f32>,
     pub llm_tie_break_margin: Option<f32>,
     pub llm_min_confidence: Option<f32>,
-}
-
-impl Default for EvaluationSettings {
-    fn default() -> Self {
-        Self {
-            require_tags: false,
-            graph_margin: None,
-            tag_confidence_gate: None,
-            llm_tie_break_margin: None,
-            llm_min_confidence: None,
-        }
-    }
 }
 
 /// Aggregated metrics produced by the offline evaluation.
@@ -139,7 +127,7 @@ impl LlmTieBreaker for GreedyEvaluationLlm {
                     .partial_cmp(&b.score)
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
-            .map(|candidate| candidate.clone())
+            .cloned()
             .unwrap_or_else(|| GenreCandidate {
                 name: "other".to_string(),
                 score: 0.0,
@@ -300,9 +288,7 @@ pub async fn evaluate_two_stage(
                 a.score
                     .partial_cmp(&b.score)
                     .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .map(|candidate| candidate.name.clone())
-            .unwrap_or_else(|| "other".to_string());
+            }).map_or_else(|| "other".to_string(), |candidate| candidate.name.clone());
         coarse_calc.push(expected_set.clone(), to_hashset(&coarse_pred));
 
         let tag_pred = compute_tag_prediction(&normalized_candidates, &tag_signals, tag_gate)

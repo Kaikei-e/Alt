@@ -124,9 +124,7 @@ fn tokenize(text: &str) -> Vec<String> {
     for ch in text.chars() {
         if ch.is_ascii_alphanumeric() {
             buffer.push(ch);
-        } else if ch.is_whitespace() {
-            push_buffer(&mut tokens, &mut buffer);
-        } else if ch.is_ascii_punctuation() {
+        } else if ch.is_whitespace() || ch.is_ascii_punctuation() {
             push_buffer(&mut tokens, &mut buffer);
         } else {
             push_buffer(&mut tokens, &mut buffer);
@@ -143,11 +141,11 @@ fn tokenize(text: &str) -> Vec<String> {
         .into_iter()
         .filter(|token| !token.trim().is_empty())
         .flat_map(|token| {
-            if token.chars().all(|c| c.is_ascii()) {
+            if token.is_ascii() {
                 vec![token]
             } else {
                 UnicodeSegmentation::graphemes(token.as_str(), true)
-                    .map(|g| g.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<Vec<String>>()
             }
         })
@@ -189,8 +187,8 @@ mod tests {
     #[test]
     fn rouge_handles_empty_input() {
         let scores = compute_rouge("", "reference");
-        assert_eq!(scores.rouge1_f, 0.0);
-        assert_eq!(scores.rouge_l_f, 0.0);
+        assert!((scores.rouge1_f - 0.0).abs() < f32::EPSILON);
+        assert!((scores.rouge_l_f - 0.0).abs() < f32::EPSILON);
     }
 
     #[test]
