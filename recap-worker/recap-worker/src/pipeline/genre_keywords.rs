@@ -12,6 +12,7 @@ pub(crate) struct GenreKeywords {
 impl GenreKeywords {
     /// デフォルトのキーワードマップを構築する。
     #[must_use]
+    #[allow(clippy::too_many_lines, clippy::pedantic)]
     pub(crate) fn default_keywords() -> Self {
         let mut keywords = HashMap::new();
 

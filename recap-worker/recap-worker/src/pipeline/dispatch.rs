@@ -35,6 +35,9 @@ pub(crate) struct GenreResult {
     pub(crate) error: Option<String>,
 }
 
+type GenreTaskHandle = tokio::task::JoinHandle<(String, GenreResult)>;
+type GenreTaskResult = (Vec<GenreTaskHandle>, HashMap<String, GenreResult>, usize);
+
 #[async_trait]
 pub(crate) trait DispatchStage: Send + Sync {
     async fn dispatch(&self, job: &JobContext, evidence: EvidenceBundle) -> Result<DispatchResult>;
@@ -180,53 +183,107 @@ impl DispatchStage for MlLlmDispatchStage {
         }
 
         // 各ジャンルを並列処理
+        let (tasks, mut genre_results, mut failure_count) =
+            self.create_genre_tasks(job, &genres, &evidence);
+        let (task_results, task_success, task_failure) =
+            self.process_task_results(job, tasks).await;
+        genre_results.extend(task_results);
+        let success_count = task_success;
+        failure_count += task_failure;
+
+        let dispatch_result = DispatchResult {
+            job_id: job.job_id,
+            genre_results,
+            success_count,
+            failure_count,
+        };
+
+        if let Some((rss_kb, peak_kb)) = read_process_memory_kb() {
+            info!(
+                job_id = %dispatch_result.job_id,
+                success_count = dispatch_result.success_count,
+                failure_count = dispatch_result.failure_count,
+                genre_count = dispatch_result.genre_results.len(),
+                memory_rss_kb = rss_kb,
+                memory_peak_kb = peak_kb,
+                "completed ML/LLM dispatch"
+            );
+        } else {
+            info!(
+                job_id = %dispatch_result.job_id,
+                success_count = dispatch_result.success_count,
+                failure_count = dispatch_result.failure_count,
+                genre_count = dispatch_result.genre_results.len(),
+                "completed ML/LLM dispatch"
+            );
+        }
+
+        Ok(dispatch_result)
+    }
+}
+
+impl MlLlmDispatchStage {
+    fn create_genre_tasks(
+        &self,
+        job: &JobContext,
+        genres: &[String],
+        evidence: &EvidenceBundle,
+    ) -> GenreTaskResult {
         let mut tasks = Vec::new();
+        let mut genre_results: HashMap<String, GenreResult> = HashMap::new();
+        let mut failure_count = 0;
+
+        for genre in genres {
+            if let Some(corpus_ref) = evidence.get_corpus(genre) {
+                let corpus = corpus_ref.clone();
+                let self_clone = self.clone();
+                let job_id = job.job_id;
+                let genre_clone = genre.clone();
+                let semaphore = Arc::clone(&self.concurrency_semaphore);
+
+                let task = tokio::spawn(async move {
+                    let _permit = semaphore
+                        .acquire_owned()
+                        .await
+                        .expect("dispatch semaphore should not be closed");
+                    let result = self_clone
+                        .process_genre(job_id, &genre_clone, &corpus)
+                        .await;
+                    (genre_clone, result)
+                });
+
+                tasks.push(task);
+            } else {
+                warn!(
+                    job_id = %job.job_id,
+                    genre = %genre,
+                    "evidence corpus missing for genre"
+                );
+                failure_count += 1;
+                genre_results.insert(
+                    genre.clone(),
+                    GenreResult {
+                        genre: genre.clone(),
+                        clustering_response: None,
+                        summary_response_id: None,
+                        summary_response: None,
+                        error: Some("Evidence corpus missing".to_string()),
+                    },
+                );
+            }
+        }
+
+        (tasks, genre_results, failure_count)
+    }
+
+    async fn process_task_results(
+        &self,
+        job: &JobContext,
+        tasks: Vec<GenreTaskHandle>,
+    ) -> (HashMap<String, GenreResult>, usize, usize) {
         let mut genre_results: HashMap<String, GenreResult> = HashMap::new();
         let mut success_count = 0;
         let mut failure_count = 0;
-
-        for genre in &genres {
-            match evidence.get_corpus(genre) {
-                Some(corpus_ref) => {
-                    let corpus = corpus_ref.clone();
-                    let self_clone = self.clone();
-                    let job_id = job.job_id;
-                    let genre_clone = genre.clone();
-                    let semaphore = Arc::clone(&self.concurrency_semaphore);
-
-                    let task = tokio::spawn(async move {
-                        let _permit = semaphore
-                            .acquire_owned()
-                            .await
-                            .expect("dispatch semaphore should not be closed");
-                        let result = self_clone
-                            .process_genre(job_id, &genre_clone, &corpus)
-                            .await;
-                        (genre_clone, result)
-                    });
-
-                    tasks.push(task);
-                }
-                None => {
-                    warn!(
-                        job_id = %job.job_id,
-                        genre = %genre,
-                        "evidence corpus missing for genre"
-                    );
-                    failure_count += 1;
-                    genre_results.insert(
-                        genre.clone(),
-                        GenreResult {
-                            genre: genre.clone(),
-                            clustering_response: None,
-                            summary_response_id: None,
-                            summary_response: None,
-                            error: Some("Evidence corpus missing".to_string()),
-                        },
-                    );
-                }
-            }
-        }
 
         // すべてのタスクを待機
         let results = futures::future::join_all(tasks).await;
@@ -258,7 +315,7 @@ impl DispatchStage for MlLlmDispatchStage {
                             .or_else(|| {
                                 panic_payload
                                     .downcast_ref::<String>()
-                                    .map(|s| s.to_string())
+                                    .map(std::string::ToString::to_string)
                             })
                             .unwrap_or_else(|| "unknown panic payload".to_string());
                         error!(
@@ -276,34 +333,7 @@ impl DispatchStage for MlLlmDispatchStage {
             }
         }
 
-        let dispatch_result = DispatchResult {
-            job_id: job.job_id,
-            genre_results,
-            success_count,
-            failure_count,
-        };
-
-        if let Some((rss_kb, peak_kb)) = read_process_memory_kb() {
-            info!(
-                job_id = %dispatch_result.job_id,
-                success_count = dispatch_result.success_count,
-                failure_count = dispatch_result.failure_count,
-                genre_count = dispatch_result.genre_results.len(),
-                memory_rss_kb = rss_kb,
-                memory_peak_kb = peak_kb,
-                "completed ML/LLM dispatch"
-            );
-        } else {
-            info!(
-                job_id = %dispatch_result.job_id,
-                success_count = dispatch_result.success_count,
-                failure_count = dispatch_result.failure_count,
-                genre_count = dispatch_result.genre_results.len(),
-                "completed ML/LLM dispatch"
-            );
-        }
-
-        Ok(dispatch_result)
+        (genre_results, success_count, failure_count)
     }
 }
 

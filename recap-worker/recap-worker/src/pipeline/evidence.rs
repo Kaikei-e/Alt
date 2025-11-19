@@ -97,7 +97,7 @@ impl EvidenceBundle {
             for genre in &assignment.genres {
                 genre_groups
                     .entry(genre.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(assignment);
             }
         }
@@ -164,6 +164,29 @@ impl EvidenceBundle {
 
 /// 特定のジャンルに対する証拠コーパスを構築する。
 fn build_corpus_for_genre(genre: &str, assignments: &[&GenreAssignment]) -> EvidenceCorpus {
+    let (articles, stats) = process_assignments(genre, assignments);
+    let metadata = build_metadata(&articles, &stats);
+
+    EvidenceCorpus {
+        genre: genre.to_string(),
+        articles,
+        total_sentences: stats.total_sentences,
+        metadata,
+    }
+}
+
+struct CorpusBuildStats {
+    total_sentences: usize,
+    total_characters: usize,
+    language_counts: HashMap<String, usize>,
+    confidences: Vec<f32>,
+    supporting_articles: usize,
+}
+
+fn process_assignments(
+    genre: &str,
+    assignments: &[&GenreAssignment],
+) -> (Vec<EvidenceArticle>, CorpusBuildStats) {
     let mut articles = Vec::new();
     let mut total_sentences = 0;
     let mut total_characters = 0;
@@ -242,22 +265,34 @@ fn build_corpus_for_genre(genre: &str, assignments: &[&GenreAssignment]) -> Evid
         );
     }
 
-    // 最も多い言語を特定
-    let primary_language = language_counts
-        .iter()
-        .max_by_key(|(_, count)| *count)
-        .map(|(lang, _)| lang.clone())
-        .unwrap_or_else(|| "und".to_string());
+    let stats = CorpusBuildStats {
+        total_sentences,
+        total_characters,
+        language_counts,
+        confidences,
+        supporting_articles,
+    };
 
-    let classifier = if !confidences.is_empty() {
-        let sum = confidences.iter().sum::<f32>();
-        let avg = sum / confidences.len() as f32;
-        let max = confidences.iter().copied().fold(0.0, f32::max);
-        let min = confidences.iter().copied().fold(1.0, f32::min);
-        let coverage_ratio = if !articles.is_empty() {
-            supporting_articles as f32 / articles.len() as f32
-        } else {
+    (articles, stats)
+}
+
+fn build_metadata(articles: &[EvidenceArticle], stats: &CorpusBuildStats) -> CorpusMetadata {
+    let primary_language = stats
+        .language_counts
+        .iter()
+        .max_by_key(|(_, count)| *count).map_or_else(|| "und".to_string(), |(lang, _)| lang.clone());
+
+    let classifier = if stats.confidences.is_empty() {
+        None
+    } else {
+        let sum = stats.confidences.iter().sum::<f32>();
+        let avg = sum / stats.confidences.len() as f32;
+        let max = stats.confidences.iter().copied().fold(0.0, f32::max);
+        let min = stats.confidences.iter().copied().fold(1.0, f32::min);
+        let coverage_ratio = if articles.is_empty() {
             0.0
+        } else {
+            stats.supporting_articles as f32 / articles.len() as f32
         };
         Some(ClassifierStats {
             avg_confidence: avg,
@@ -265,24 +300,15 @@ fn build_corpus_for_genre(genre: &str, assignments: &[&GenreAssignment]) -> Evid
             min_confidence: min,
             coverage_ratio,
         })
-    } else {
-        None
     };
 
-    let metadata = CorpusMetadata {
+    CorpusMetadata {
         article_count: articles.len(),
-        sentence_count: total_sentences,
+        sentence_count: stats.total_sentences,
         primary_language,
-        language_distribution: language_counts,
-        character_count: total_characters,
+        language_distribution: stats.language_counts.clone(),
+        character_count: stats.total_characters,
         classifier,
-    };
-
-    EvidenceCorpus {
-        genre: genre.to_string(),
-        articles,
-        total_sentences,
-        metadata,
     }
 }
 
@@ -303,7 +329,7 @@ mod tests {
         sentences: Vec<&str>,
         language: &str,
     ) -> GenreAssignment {
-        let genre_strings: Vec<String> = genres.iter().map(|g| g.to_string()).collect();
+        let genre_strings: Vec<String> = genres.iter().map(std::string::ToString::to_string).collect();
         let token_count = sentences.len();
         let article = DeduplicatedArticle {
             id: id.to_string(),
@@ -317,9 +343,9 @@ mod tests {
         let genre_scores = genre_strings
             .iter()
             .enumerate()
-            .map(|(i, g)| (g.to_string(), 10 - i))
+            .map(|(i, g)| (g.clone(), 10 - i))
             .collect();
-        let genre_confidence = genre_strings.iter().map(|g| (g.to_string(), 0.8)).collect();
+        let genre_confidence = genre_strings.iter().map(|g| (g.clone(), 0.8)).collect();
         let feature_profile = FeatureProfile {
             tfidf_sum: 1.0,
             bm25_peak: 0.9,

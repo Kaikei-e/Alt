@@ -94,43 +94,34 @@ impl Default for HashDedupStage {
     }
 }
 
-#[async_trait]
-impl DedupStage for HashDedupStage {
-    async fn deduplicate(
+struct DedupState<'a> {
+    keep_flags: &'a mut [bool],
+    unique_signatures: &'a mut Vec<ArticleSignature>,
+    exact_hashes: &'a mut FxHashMap<u64, usize>,
+    window_index: &'a mut FxHashMap<u64, SmallVec<[usize; 8]>>,
+    stats: &'a mut DedupStats,
+}
+
+impl HashDedupStage {
+    /// 署名を処理して重複を検出し、keep_flagsとインデックスを更新する。
+    fn process_signatures(
         &self,
+        signatures: Vec<ArticleSignature>,
+        articles: &[PreprocessedArticle],
+        state: &mut DedupState<'_>,
         job: &JobContext,
-        corpus: PreprocessedCorpus,
-    ) -> Result<DeduplicatedCorpus> {
-        let total_articles = corpus.articles.len();
-        info!(
-            job_id = %job.job_id,
-            count = total_articles,
-            "starting deduplication with XXH3 hashing"
-        );
-
-        let mut stats = DedupStats {
-            total_articles,
-            ..Default::default()
-        };
-
-        let articles = corpus.articles;
-        let signatures = build_signatures(&articles, self.window_size);
-
-        let mut keep_flags = vec![true; total_articles];
-        let mut unique_signatures: Vec<ArticleSignature> = Vec::new();
-        let mut exact_hashes: FxHashMap<u64, usize> = FxHashMap::default();
-        let mut window_index: FxHashMap<u64, SmallVec<[usize; 8]>> = FxHashMap::default();
-
+        total_articles: usize,
+    ) {
         let mut processed_articles = 0usize;
 
-        for signature in signatures.into_iter() {
+        for signature in signatures {
             processed_articles += 1;
 
-            if let Some(&unique_idx) = exact_hashes.get(&signature.primary_hash) {
-                let existing_idx = unique_signatures[unique_idx].index;
+            if let Some(&unique_idx) = state.exact_hashes.get(&signature.primary_hash) {
+                let existing_idx = state.unique_signatures[unique_idx].index;
                 if articles[existing_idx].body == articles[signature.index].body {
-                    keep_flags[signature.index] = false;
-                    stats.duplicate_articles += 1;
+                    state.keep_flags[signature.index] = false;
+                    state.stats.duplicate_articles += 1;
                     debug!(
                         article_id = %articles[signature.index].id,
                         "dropped duplicate article (exact match)"
@@ -141,17 +132,17 @@ impl DedupStage for HashDedupStage {
 
             let mut candidates: FxHashSet<usize> = FxHashSet::default();
             for hash in signature.window_keys.iter() {
-                if let Some(indices) = window_index.get(hash) {
+                if let Some(indices) = state.window_index.get(hash) {
                     candidates.extend(indices.iter().copied());
                 }
             }
 
             let mut is_duplicate = false;
             for unique_idx in candidates {
-                let other = &unique_signatures[unique_idx];
+                let other = &state.unique_signatures[unique_idx];
                 if window_similarity(other, &signature) >= self.near_duplicate_threshold {
-                    keep_flags[signature.index] = false;
-                    stats.duplicate_articles += 1;
+                    state.keep_flags[signature.index] = false;
+                    state.stats.duplicate_articles += 1;
                     debug!(
                         article_id = %articles[signature.index].id,
                         "dropped duplicate article (near match)"
@@ -165,38 +156,37 @@ impl DedupStage for HashDedupStage {
                 continue;
             }
 
-            let unique_idx = unique_signatures.len();
+            let unique_idx = state.unique_signatures.len();
             for hash in signature.window_keys.iter() {
-                window_index
+                state
+                    .window_index
                     .entry(*hash)
-                    .or_insert_with(SmallVec::new)
+                    .or_default()
                     .push(unique_idx);
             }
-            exact_hashes.insert(signature.primary_hash, unique_idx);
-            unique_signatures.push(signature);
+            state
+                .exact_hashes
+                .insert(signature.primary_hash, unique_idx);
+            state.unique_signatures.push(signature);
 
-            if processed_articles % DEDUP_PROGRESS_INTERVAL == 0 {
+            if processed_articles.is_multiple_of(DEDUP_PROGRESS_INTERVAL) {
                 debug!(
                     job_id = %job.job_id,
                     processed = processed_articles,
                     total = total_articles,
-                    unique_so_far = unique_signatures.len(),
+                    unique_so_far = state.unique_signatures.len(),
                     "deduplication progress"
                 );
             }
         }
+    }
 
-        let mut unique_articles = Vec::with_capacity(total_articles - stats.duplicate_articles);
-
-        for (idx, article) in articles.into_iter().enumerate() {
-            if keep_flags[idx] {
-                unique_articles.push(article);
-            }
-        }
-
-        stats.unique_articles = unique_articles.len();
-
-        // 文分割と文レベルの重複排除（並列処理）
+    /// 文レベルの重複排除を並列処理で実行する。
+    async fn deduplicate_sentences_parallel(
+        &self,
+        unique_articles: Vec<PreprocessedArticle>,
+        stats: &mut DedupStats,
+    ) -> Vec<DeduplicatedArticle> {
         let mut tasks = Vec::with_capacity(unique_articles.len());
 
         for article in unique_articles {
@@ -233,6 +223,61 @@ impl DedupStage for HashDedupStage {
                 }
             }
         }
+
+        deduped_articles
+    }
+}
+
+#[async_trait]
+impl DedupStage for HashDedupStage {
+    async fn deduplicate(
+        &self,
+        job: &JobContext,
+        corpus: PreprocessedCorpus,
+    ) -> Result<DeduplicatedCorpus> {
+        let total_articles = corpus.articles.len();
+        info!(
+            job_id = %job.job_id,
+            count = total_articles,
+            "starting deduplication with XXH3 hashing"
+        );
+
+        let mut stats = DedupStats {
+            total_articles,
+            ..Default::default()
+        };
+
+        let articles = corpus.articles;
+        let signatures = build_signatures(&articles, self.window_size);
+
+        let mut keep_flags = vec![true; total_articles];
+        let mut unique_signatures: Vec<ArticleSignature> = Vec::new();
+        let mut exact_hashes: FxHashMap<u64, usize> = FxHashMap::default();
+        let mut window_index: FxHashMap<u64, SmallVec<[usize; 8]>> = FxHashMap::default();
+
+        let mut dedup_state = DedupState {
+            keep_flags: &mut keep_flags,
+            unique_signatures: &mut unique_signatures,
+            exact_hashes: &mut exact_hashes,
+            window_index: &mut window_index,
+            stats: &mut stats,
+        };
+
+        self.process_signatures(signatures, &articles, &mut dedup_state, job, total_articles);
+
+        let mut unique_articles = Vec::with_capacity(total_articles - stats.duplicate_articles);
+
+        for (idx, article) in articles.into_iter().enumerate() {
+            if keep_flags[idx] {
+                unique_articles.push(article);
+            }
+        }
+
+        stats.unique_articles = unique_articles.len();
+
+        let deduped_articles = self
+            .deduplicate_sentences_parallel(unique_articles, &mut stats)
+            .await;
 
         info!(
             job_id = %job.job_id,
@@ -321,7 +366,7 @@ fn window_similarity(a: &ArticleSignature, b: &ArticleSignature) -> f64 {
     if total == 0 {
         0.0
     } else {
-        (2 * intersection) as f64 / total as f64
+        f64::from(2 * intersection) / f64::from(total)
     }
 }
 
@@ -373,14 +418,14 @@ mod tests {
     fn article(id: &str, body: &str, title: Option<&str>) -> PreprocessedArticle {
         PreprocessedArticle {
             id: id.to_string(),
-            title: title.map(|t| t.to_string()),
+            title: title.map(std::string::ToString::to_string),
             body: body.to_string(),
             language: "en".to_string(),
             char_count: body.chars().count(),
             is_html_cleaned: false,
             tokens: body
                 .split_whitespace()
-                .map(|token| token.to_lowercase())
+                .map(str::to_lowercase)
                 .collect(),
             tags: Vec::new(),
         }

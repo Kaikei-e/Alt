@@ -254,7 +254,7 @@ impl TagLabelGraphCache {
             let genre_key = edge.genre.to_lowercase();
             let tag_key = edge.tag.to_lowercase();
             map.entry(genre_key)
-                .or_insert_with(FxHashMap::default)
+                .or_default()
                 .insert(tag_key, edge.weight);
         }
         Self {
@@ -269,7 +269,7 @@ impl TagLabelGraphCache {
             let genre_key = record.genre.to_lowercase();
             let tag_key = record.tag.to_lowercase();
             map.entry(genre_key)
-                .or_insert_with(FxHashMap::default)
+                .or_default()
                 .insert(tag_key, record.weight);
         }
         Self {
@@ -305,8 +305,7 @@ struct TagLabelGraphState {
 impl TagLabelGraphState {
     fn is_fresh(&self, ttl: Duration) -> bool {
         self.loaded_at
-            .map(|instant| instant.elapsed() < ttl)
-            .unwrap_or(false)
+            .is_some_and(|instant| instant.elapsed() < ttl)
     }
 }
 
@@ -512,8 +511,7 @@ impl RefineEngine for DefaultRefineEngine {
                     .candidates
                     .iter()
                     .find(|c| c.name.eq_ignore_ascii_case(&winner_name))
-                    .map(|c| c.classifier_confidence)
-                    .unwrap_or(0.0),
+                    .map_or(0.0, |c| c.classifier_confidence),
             );
             return Ok(RefineOutcome::new(
                 winner_name,

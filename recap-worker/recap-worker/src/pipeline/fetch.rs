@@ -97,7 +97,7 @@ impl AltBackendFetchStage {
                     // reqwest::Errorでない場合は再試行不可
                     let is_retryable = err
                         .downcast_ref::<reqwest::Error>()
-                        .map_or(false, is_retryable_error);
+                        .is_some_and(is_retryable_error);
 
                     if !is_retryable {
                         warn!(?err, "error is not retryable");
