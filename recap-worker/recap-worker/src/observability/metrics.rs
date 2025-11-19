@@ -42,6 +42,7 @@ pub struct Metrics {
 
 impl Metrics {
     /// 新しいメトリクスコレクターを作成する。
+    #[allow(clippy::too_many_lines)]
     pub fn new(registry: Arc<Registry>) -> Result<Self, prometheus::Error> {
         Ok(Self {
             articles_fetched: register_counter_with_registry!(
