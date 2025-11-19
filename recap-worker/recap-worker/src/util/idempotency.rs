@@ -14,10 +14,10 @@ pub(crate) fn idempotency_key(job_id: Uuid, genre: &str) -> String {
 /// より安全なアプローチとして、PostgreSQL側でMD5ベースのハッシュ関数を使用することも可能です。
 pub(crate) fn job_lock_key(job_id: Uuid) -> i64 {
     let bytes = job_id.as_bytes();
-    let first_8 = i64::from_be_bytes([
+
+    i64::from_be_bytes([
         bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-    ]);
-    first_8
+    ])
 }
 
 /// PostgreSQLのアドバイザリトランザクションロックを取得する。

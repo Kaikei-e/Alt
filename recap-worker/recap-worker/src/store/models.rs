@@ -439,25 +439,27 @@ pub(crate) struct TelemetryRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct LearningTimestamps {
-    pub(crate) coarse_started_at: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) coarse_completed_at: Option<DateTime<Utc>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) refine_started_at: Option<DateTime<Utc>>,
-    pub(crate) refine_completed_at: DateTime<Utc>,
+    #[serde(rename = "coarse_started_at")]
+    pub(crate) coarse_started: DateTime<Utc>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "coarse_completed_at"
+    )]
+    pub(crate) coarse_completed: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "refine_started_at")]
+    pub(crate) refine_started: Option<DateTime<Utc>>,
+    #[serde(rename = "refine_completed_at")]
+    pub(crate) refine_completed: DateTime<Utc>,
 }
 
 impl LearningTimestamps {
     #[must_use]
-    pub(crate) fn new(
-        coarse_started_at: DateTime<Utc>,
-        refine_completed_at: DateTime<Utc>,
-    ) -> Self {
+    pub(crate) fn new(coarse_started: DateTime<Utc>, refine_completed: DateTime<Utc>) -> Self {
         Self {
-            coarse_started_at,
-            coarse_completed_at: Some(coarse_started_at),
-            refine_started_at: Some(refine_completed_at),
-            refine_completed_at,
+            coarse_started,
+            coarse_completed: Some(coarse_started),
+            refine_started: Some(refine_completed),
+            refine_completed,
         }
     }
 }

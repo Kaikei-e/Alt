@@ -51,7 +51,7 @@ impl RecapDao {
             .context("failed to begin transaction")?;
 
         // Try to acquire advisory lock
-        let lock_acquired = try_acquire_job_lock(&mut *tx, job_id)
+        let lock_acquired = try_acquire_job_lock(&mut tx, job_id)
             .await
             .context("failed to acquire advisory lock")?;
 
@@ -787,6 +787,39 @@ impl RecapDao {
         .await
         .context("failed to fetch cluster bundle")?;
 
+        let mut clusters_by_row = Self::process_cluster_rows(rows)?;
+
+        let missing: Vec<i64> = clusters_by_row
+            .iter()
+            .filter(|(_, entry)| entry.1.evidence.is_empty())
+            .map(|(cluster_row_id, _)| *cluster_row_id)
+            .collect();
+
+        if !missing.is_empty() {
+            let fallback = self.fetch_evidence_from_sentences(job_id, &missing).await?;
+
+            for (cluster_row_id, evidence) in fallback {
+                if let Some(entry) = clusters_by_row.get_mut(&cluster_row_id) {
+                    entry.1.evidence = evidence;
+                }
+            }
+        }
+
+        let mut genre_map: HashMap<String, Vec<ClusterWithEvidence>> = HashMap::new();
+        for (_, (genre, cluster)) in clusters_by_row {
+            genre_map.entry(genre).or_default().push(cluster);
+        }
+
+        for clusters in genre_map.values_mut() {
+            clusters.sort_by_key(|c| c.cluster_id);
+        }
+
+        Ok(genre_map)
+    }
+
+    fn process_cluster_rows(
+        rows: Vec<sqlx::postgres::PgRow>,
+    ) -> Result<HashMap<i64, (String, ClusterWithEvidence)>> {
         let mut clusters_by_row: HashMap<i64, (String, ClusterWithEvidence)> = HashMap::new();
 
         for row in rows {
@@ -850,32 +883,7 @@ impl RecapDao {
             }
         }
 
-        let missing: Vec<i64> = clusters_by_row
-            .iter()
-            .filter(|(_, entry)| entry.1.evidence.is_empty())
-            .map(|(cluster_row_id, _)| *cluster_row_id)
-            .collect();
-
-        if !missing.is_empty() {
-            let fallback = self.fetch_evidence_from_sentences(job_id, &missing).await?;
-
-            for (cluster_row_id, evidence) in fallback {
-                if let Some(entry) = clusters_by_row.get_mut(&cluster_row_id) {
-                    entry.1.evidence = evidence;
-                }
-            }
-        }
-
-        let mut genre_map: HashMap<String, Vec<ClusterWithEvidence>> = HashMap::new();
-        for (_, (genre, cluster)) in clusters_by_row.into_iter() {
-            genre_map.entry(genre).or_default().push(cluster);
-        }
-
-        for clusters in genre_map.values_mut() {
-            clusters.sort_by_key(|c| c.cluster_id);
-        }
-
-        Ok(genre_map)
+        Ok(clusters_by_row)
     }
 
     async fn fetch_evidence_from_sentences(

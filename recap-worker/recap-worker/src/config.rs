@@ -90,7 +90,7 @@ impl Config {
         let recap_genres = parse_csv(
             "RECAP_GENRES",
             "ai,tech,business,politics,health,sports,science,entertainment,world,security,product,design,culture,environment,lifestyle,art_culture,developer_insights,pro_it_media,consumer_tech,global_politics,environment_policy,society_justice,travel_lifestyle,security_policy,business_finance,ai_research,ai_policy,games_puzzles,other",
-        )?;
+        );
         let genre_classifier_weights_path = env::var("RECAP_GENRE_MODEL_WEIGHTS").ok();
         let genre_classifier_threshold = parse_f64("RECAP_GENRE_MODEL_THRESHOLD", 0.5)? as f32;
         let genre_refine_enabled = parse_bool("RECAP_GENRE_REFINE_ENABLED", false)?;
@@ -382,13 +382,12 @@ fn parse_bool(name: &'static str, default: bool) -> Result<bool, ConfigError> {
     }
 }
 
-fn parse_csv(name: &'static str, default: &str) -> Result<Vec<String>, ConfigError> {
+fn parse_csv(name: &'static str, default: &str) -> std::vec::Vec<std::string::String> {
     let raw = env::var(name).unwrap_or_else(|_| default.to_string());
-    Ok(raw
-        .split(',')
+    raw.split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .collect())
+        .collect()
 }
 
 #[cfg(test)]
@@ -471,7 +470,7 @@ mod tests {
         assert_eq!(config.http_backoff_base_ms(), 250);
         assert_eq!(config.http_backoff_cap_ms(), 10000);
         assert!(config.otel_exporter_endpoint().is_none());
-        assert_eq!(config.otel_sampling_ratio(), 1.0);
+        assert!((config.otel_sampling_ratio() - 1.0).abs() < f64::EPSILON);
         assert_eq!(config.recap_window_days(), 7);
         assert_eq!(config.tag_label_graph_window(), "7d");
         assert_eq!(config.tag_label_graph_ttl(), Duration::from_secs(900));
