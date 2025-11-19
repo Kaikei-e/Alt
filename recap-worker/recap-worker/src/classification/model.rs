@@ -92,8 +92,9 @@ impl HybridModel {
 
     pub fn from_path<P: AsRef<Path>>(path: Option<P>) -> Result<Self> {
         let raw = if let Some(path) = path {
-            fs::read_to_string(path.as_ref())
-                .with_context(|| format!("failed to read weights from {:?}", path.as_ref()))?
+            fs::read_to_string(path.as_ref()).with_context(|| {
+                format!("failed to read weights from {}", path.as_ref().display())
+            })?
         } else {
             DEFAULT_WEIGHTS_JSON.to_string()
         };

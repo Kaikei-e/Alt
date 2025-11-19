@@ -113,13 +113,13 @@ impl GenreClassifier {
         &self,
         title: &str,
         body: &str,
-        _language: ClassificationLanguage,
+        language: ClassificationLanguage,
     ) -> Result<ClassificationResult> {
         let NormalizedDocument {
             tokens, normalized, ..
         } = self
             .pipeline
-            .preprocess(title.trim(), body.trim(), _language);
+            .preprocess(title.trim(), body.trim(), language);
         let keyword_map = self.keywords.score_text(&normalized);
         let matcher_scores = self.keyword_matcher.find_matches(&normalized);
         #[allow(clippy::cast_precision_loss)]
