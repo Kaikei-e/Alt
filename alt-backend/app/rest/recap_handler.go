@@ -1,30 +1,43 @@
 package rest
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 
 	"alt/domain"
-	"alt/usecase/recap_usecase"
+	"alt/utils/logger"
 
 	"github.com/labstack/echo/v4"
 )
 
-type RecapHandler struct {
-	recapUsecase *recap_usecase.RecapUsecase
+const clusterDraftHeader = "X-Genre-Draft-Id"
+
+type recapService interface {
+	GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error)
 }
 
-func NewRecapHandler(recapUsecase *recap_usecase.RecapUsecase) *RecapHandler {
+type clusterDraftProvider interface {
+	LoadDraft(draftID string) (*domain.ClusterDraft, error)
+}
+
+type RecapHandler struct {
+	recapService         recapService
+	clusterDraftProvider clusterDraftProvider
+}
+
+func NewRecapHandler(recapService recapService, provider clusterDraftProvider) *RecapHandler {
 	return &RecapHandler{
-		recapUsecase: recapUsecase,
+		recapService:         recapService,
+		clusterDraftProvider: provider,
 	}
 }
 
 func (h *RecapHandler) GetSevenDayRecap(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	recap, err := h.recapUsecase.GetSevenDayRecap(ctx)
+	recap, err := h.recapService.GetSevenDayRecap(ctx)
 	if err != nil {
 		if errors.Is(err, domain.ErrRecapNotFound) {
 			return c.JSON(http.StatusNotFound, map[string]string{
@@ -34,5 +47,27 @@ func (h *RecapHandler) GetSevenDayRecap(c echo.Context) error {
 		return handleError(c, fmt.Errorf("failed to fetch 7-day recap: %w", err), "recap_summary")
 	}
 
+	h.attachClusterDraft(c, recap)
 	return c.JSON(http.StatusOK, recap)
+}
+
+func (h *RecapHandler) attachClusterDraft(c echo.Context, recap *domain.RecapSummary) {
+	if recap == nil || h.clusterDraftProvider == nil {
+		return
+	}
+
+	draftID := c.Request().Header.Get(clusterDraftHeader)
+	if draftID == "" {
+		return
+	}
+
+	draft, err := h.clusterDraftProvider.LoadDraft(draftID)
+	if err != nil {
+		logger.Logger.Warn("cluster draft loader failed", "error", err, "draft_id", draftID)
+		return
+	}
+
+	if draft != nil {
+		recap.ClusterDraft = draft
+	}
 }

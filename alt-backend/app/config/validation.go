@@ -231,6 +231,9 @@ func validateRecapConfig(config *RecapConfig) error {
 	if config.MaxArticleBytes <= 0 {
 		return fmt.Errorf("max article bytes must be positive, got %d", config.MaxArticleBytes)
 	}
+	if strings.TrimSpace(config.ClusterDraftPath) == "" {
+		return fmt.Errorf("cluster draft path must be provided")
+	}
 	return nil
 }
 
