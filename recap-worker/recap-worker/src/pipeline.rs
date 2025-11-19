@@ -20,6 +20,7 @@ pub(crate) mod fetch;
 pub(crate) mod genre;
 pub(crate) mod genre_keywords;
 pub(crate) mod genre_refine;
+pub(crate) mod graph_override;
 pub(crate) mod persist;
 pub mod preprocess;
 pub(crate) mod select;
@@ -30,6 +31,7 @@ use dispatch::{DispatchStage, MlLlmDispatchStage};
 use fetch::{AltBackendFetchStage, FetchStage};
 use genre::{CoarseGenreStage, GenreStage, RefineRollout, TwoStageGenreStage};
 use genre_refine::{DbTagLabelGraphSource, DefaultRefineEngine, RefineConfig, TagLabelGraphSource};
+use graph_override::GraphOverrideSettings;
 use persist::PersistStage;
 use preprocess::{PreprocessStage, TextPreprocessStage};
 use select::{SelectStage, SummarySelectStage};
@@ -95,11 +97,36 @@ impl PipelineOrchestrator {
         let cpu_count = num_cpus::get();
         let max_concurrent = (cpu_count * 3) / 2;
         let window_days = config.recap_window_days();
+        let graph_overrides = match GraphOverrideSettings::load_with_fallback(recap_dao.pool()).await {
+            Ok(overrides) => overrides,
+            Err(err) => {
+                tracing::warn!(
+                    error = ?err,
+                    "loading graph override config failed, continuing with defaults"
+                );
+                GraphOverrideSettings::default()
+            }
+        };
 
         let coarse_stage = Arc::new(CoarseGenreStage::with_defaults());
         let rollout = RefineRollout::new(config.genre_refine_rollout_pct());
         let genre_stage: Arc<dyn GenreStage> = if config.genre_refine_enabled() {
-            let refine_config = RefineConfig::new(config.genre_refine_require_tags());
+            let mut refine_config = RefineConfig::new(config.genre_refine_require_tags());
+            if let Some(value) = graph_overrides.graph_margin {
+                refine_config.graph_margin = value;
+            }
+            if let Some(value) = graph_overrides.weighted_tie_break_margin {
+                refine_config.weighted_tie_break_margin = value;
+            }
+            if let Some(value) = graph_overrides.tag_confidence_gate {
+                refine_config.tag_confidence_gate = value;
+            }
+            if let Some(value) = graph_overrides.boost_threshold {
+                refine_config.boost_threshold = value;
+            }
+            if let Some(value) = graph_overrides.tag_count_threshold {
+                refine_config.tag_count_threshold = value;
+            }
             let graph_loader = Arc::new(DbTagLabelGraphSource::new(
                 Arc::clone(&recap_dao),
                 config.tag_label_graph_window().to_string(),

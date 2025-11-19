@@ -36,11 +36,7 @@ fn truncate_error_message(msg: &str) -> String {
         return msg.to_string();
     }
     let truncated: String = msg.chars().take(MAX_ERROR_MESSAGE_LENGTH).collect();
-    format!(
-        "{}... (truncated, {} chars)",
-        truncated,
-        char_count
-    )
+    format!("{}... (truncated, {} chars)", truncated, char_count)
 }
 
 /// バリデーションエラーのリストを要約する。

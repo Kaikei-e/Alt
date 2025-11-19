@@ -6,8 +6,8 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 
 use super::features::{
-    FeatureVector, EMBEDDING_DIM, FALLBACK_AVG_DOC_LEN, FALLBACK_BM25_B, FALLBACK_BM25_K1,
-    FALLBACK_IDF, FALLBACK_VOCAB,
+    EMBEDDING_DIM, FALLBACK_AVG_DOC_LEN, FALLBACK_BM25_B, FALLBACK_BM25_K1, FALLBACK_IDF,
+    FALLBACK_VOCAB, FeatureVector,
 };
 
 const DEFAULT_WEIGHTS_JSON: &str = include_str!("../resources/genre_classifier_weights.json");

@@ -2,7 +2,7 @@
 ///
 /// 日本語要約生成のレスポンススキーマを定義します。
 use once_cell::sync::Lazy;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// News-Creator summary responseのJSON Schema。
 pub(crate) static SUMMARY_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {

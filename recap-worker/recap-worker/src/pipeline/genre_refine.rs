@@ -402,6 +402,8 @@ pub(crate) struct RefineConfig {
     pub(crate) require_tags: bool,
     pub(crate) tag_confidence_gate: f32,
     pub(crate) graph_margin: f32,
+    pub(crate) boost_threshold: f32,
+    pub(crate) tag_count_threshold: usize,
     pub(crate) weighted_tie_break_margin: f32,
     pub(crate) fallback_genre: String,
 }
@@ -413,6 +415,8 @@ impl RefineConfig {
             require_tags,
             tag_confidence_gate: 0.6,
             graph_margin: 0.15,
+            boost_threshold: 0.0,
+            tag_count_threshold: 0,
             weighted_tie_break_margin: 0.05,
             fallback_genre: "other".to_string(),
         }
@@ -549,10 +553,14 @@ impl RefineEngine for DefaultRefineEngine {
             .get(&normalize(&top.0.name))
             .copied()
             .unwrap_or_default();
+        let tag_count = input.tag_profile.top_tags.len();
 
         if let Some(second) = scored.get(1) {
             let margin = top.1 - second.1;
-            if margin >= self.config.graph_margin && top_boost > 0.0 {
+            if margin >= self.config.graph_margin
+                && top_boost >= self.config.boost_threshold
+                && tag_count >= self.config.tag_count_threshold
+            {
                 return Ok(RefineOutcome::new(
                     top.0.name.clone(),
                     (top.0.classifier_confidence + top_boost).clamp(0.0, 1.0),
@@ -905,6 +913,42 @@ mod tests {
             .expect("refine should succeed");
 
         assert_eq!(outcome.final_genre, "tech");
+        assert_eq!(outcome.strategy, RefineStrategy::GraphBoost);
+    }
+
+    #[tokio::test]
+    async fn graph_boost_ignores_weighted_score_when_threshold_lowered() {
+        let job = JobContext::new(Uuid::new_v4(), vec![]);
+        let tags = vec![TagSignal::new("graph-margin", 0.25, None, None)];
+        let article = article_with_tags(tags.clone());
+        let candidates = vec![
+            candidate("society_justice", 0.2, 0.2),
+            candidate("art_culture", 0.19, 0.19),
+        ];
+        let tag_profile = TagProfile {
+            top_tags: tags,
+            entropy: 0.5,
+        };
+        let graph = TagLabelGraphCache::from_edges(&[
+            LabelEdge::new("society_justice", "graph-margin", 0.32),
+            LabelEdge::new("art_culture", "graph-margin", 0.3),
+        ]);
+        let mut config = RefineConfig::new(false);
+        config.weighted_tie_break_margin = 0.01;
+        let engine = DefaultRefineEngine::new(config, static_graph(graph));
+
+        let outcome = engine
+            .refine(RefineInput {
+                job: &job,
+                article: &article,
+                candidates: &candidates,
+                tag_profile: &tag_profile,
+                fallback: TagFallbackMode::AllowRefine,
+            })
+            .await
+            .expect("refine should succeed");
+
+        assert_eq!(outcome.final_genre, "society_justice");
         assert_eq!(outcome.strategy, RefineStrategy::GraphBoost);
     }
 

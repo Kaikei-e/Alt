@@ -26,6 +26,10 @@ impl RecapDao {
         Self { pool }
     }
 
+    pub(crate) fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
     /// アドバイザリロックを取得し、新しいジョブを作成する。
     ///
     /// ロックが取得できない場合は、既に他のワーカーがそのジョブを実行中であることを示します。
@@ -157,6 +161,58 @@ impl RecapDao {
         }
 
         Ok(edges)
+    }
+
+    /// 最新のrecap-worker設定を取得する（insert-onlyパターン、最新のものを取得）
+    pub async fn get_latest_worker_config(
+        &self,
+        config_type: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let row = sqlx::query(
+            r#"
+            SELECT config_payload, metadata
+            FROM recap_worker_config
+            WHERE config_type = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(config_type)
+        .fetch_optional(&self.pool)
+        .await
+        .context("failed to query latest worker config")?;
+
+        if let Some(row) = row {
+            let payload: serde_json::Value = row.try_get("config_payload")?;
+            Ok(Some(payload))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// recap-worker設定を保存する（insert-only）
+    pub async fn insert_worker_config(
+        &self,
+        config_type: &str,
+        config_payload: &serde_json::Value,
+        source: &str,
+        metadata: Option<&serde_json::Value>,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO recap_worker_config (config_type, config_payload, source, metadata)
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(config_type)
+        .bind(Json(config_payload))
+        .bind(source)
+        .bind(metadata.map(Json))
+        .execute(&self.pool)
+        .await
+        .context("failed to insert worker config")?;
+
+        Ok(())
     }
 
     /// ジャンル学習レコードを保存する。

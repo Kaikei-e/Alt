@@ -1,0 +1,6 @@
+# Local override for Graph Boost thresholds (Phase 3 tuning)
+graph_margin: 0.05
+weighted_tie_break_margin: 0.03
+tag_confidence_gate: 0.65
+boost_threshold: 0.889796718307926
+tag_count_threshold: 0
