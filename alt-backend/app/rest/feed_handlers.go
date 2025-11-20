@@ -149,17 +149,22 @@ func handleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.Hand
 		// Parse query parameters
 		limitStr := c.QueryParam("limit")
 		cursorStr := c.QueryParam("cursor")
+		view := c.QueryParam("view") // "swipe" mode for optimized single-card response
 
 		// Log incoming request parameters for debugging
 		logger.Logger.Info(
 			"received unread feeds cursor request",
 			"cursor_param", cursorStr,
 			"limit_param", limitStr,
+			"view", view,
 			"request_id", c.Response().Header().Get("X-Request-ID"),
 		)
 
-		// Default limit
+		// Default limit - use 1 for swipe view, 20 otherwise
 		limit := 20
+		if view == "swipe" {
+			limit = 1
+		}
 		if limitStr != "" {
 			parsedLimit, err := strconv.Atoi(limitStr)
 			if err != nil {
@@ -188,7 +193,10 @@ func handleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.Hand
 		}
 
 		// Add caching headers for cursor-based pagination
-		if cursor == nil {
+		// Use private cache for swipe view (user-specific), public for others
+		if view == "swipe" {
+			c.Response().Header().Set("Cache-Control", "private, max-age=30") // 30s for swipe view
+		} else if cursor == nil {
 			c.Response().Header().Set("Cache-Control", "public, max-age=300") // 5 minutes for first page
 		} else {
 			c.Response().Header().Set("Cache-Control", "public, max-age=900") // 15 minutes for other pages
@@ -414,7 +422,14 @@ func handleSearchFeeds(container *di.ApplicationComponents) echo.HandlerFunc {
 		}
 
 		logger.Logger.Info("Feed search completed successfully", "query", payload.Query, "results_count", len(results))
-		return c.JSON(http.StatusOK, results)
+
+		// Optimize response size for search results (200 chars for description)
+		optimizedFeeds := optimizeFeedsResponseForSearch(results)
+
+		// Add cache headers for search results (short TTL since results may change)
+		c.Response().Header().Set("Cache-Control", "private, max-age=30")
+
+		return c.JSON(http.StatusOK, optimizedFeeds)
 	}
 }
 

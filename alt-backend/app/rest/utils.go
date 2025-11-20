@@ -220,6 +220,18 @@ func optimizeFeedsResponse(feeds []*domain.FeedItem) []*domain.FeedItem {
 	return feeds
 }
 
+// Optimize feeds response specifically for search results (more aggressive truncation)
+func optimizeFeedsResponseForSearch(feeds []*domain.FeedItem) []*domain.FeedItem {
+	for _, feed := range feeds {
+		feed.Title = strings.TrimSpace(feed.Title)
+		// More aggressive truncation for search results (200 chars)
+		if len(feed.Description) > 200 {
+			feed.Description = feed.Description[:200] + "..."
+		}
+	}
+	return feeds
+}
+
 func deriveNextCursorFromFeeds(feeds []*domain.FeedItem) (string, bool) {
 	if len(feeds) == 0 {
 		return "", false

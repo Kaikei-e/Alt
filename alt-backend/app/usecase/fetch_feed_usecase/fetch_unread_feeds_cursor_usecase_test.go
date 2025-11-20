@@ -75,6 +75,32 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			wantErr:     false,
 		},
 		{
+			name:   "success - limit 20 with has more",
+			ctx:    context.Background(),
+			cursor: nil,
+			limit:  20,
+			mockSetup: func() {
+				// Return 21 items to indicate has_more=true
+				extendedData := make([]*domain.FeedItem, 21)
+				for i := 0; i < 21; i++ {
+					extendedData[i] = mockData[i%len(mockData)]
+				}
+				mockGateway.EXPECT().
+					FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 21).
+					Return(extendedData, nil).Times(1)
+			},
+			want: func() []*domain.FeedItem {
+				// Create 20 items for want
+				result := make([]*domain.FeedItem, 20)
+				for i := 0; i < 20; i++ {
+					result[i] = mockData[i%len(mockData)]
+				}
+				return result
+			}(),
+			wantHasMore: true,
+			wantErr:     false,
+		},
+		{
 			name:   "success - empty result",
 			ctx:    context.Background(),
 			cursor: &cursorTime,
