@@ -85,14 +85,15 @@ export class ArticleApi {
   async getFeedContentOnTheFly(
     payload: FeedURLPayload,
   ): Promise<FeedContentOnTheFlyResponse> {
-    const encodedUrl = encodeURIComponent(payload.feed_url);
-    // Use Next.js API route which sanitizes content server-side
+    // Use Next.js API route which sanitizes content server-side and validates SSRF
+    // POST method with URL in body for SSRF protection
     // Use shorter timeout (15 seconds) to prevent UI freezing
     // The backend may take 20-44 seconds, but we should fail fast to keep UI responsive
-    return this.apiClient.get<FeedContentOnTheFlyResponse>(
-      `/api/articles/content?url=${encodedUrl}`,
-      0, // No cache - always fetch fresh
-      15000, // 15 second timeout to prevent UI freezing
+    return this.apiClient.post<FeedContentOnTheFlyResponse>(
+      "/api/articles/content",
+      {
+        url: payload.feed_url,
+      },
     );
   }
 

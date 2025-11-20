@@ -77,6 +77,50 @@ export class ApiClient {
       });
   }
 
+  /**
+   * Resolves the full request URL from an endpoint string.
+   * Handles special cases:
+   * - Absolute URLs (http:// or https://) are BLOCKED in client-side for SSRF protection
+   * - Next.js API routes (/api/...) use app origin (relative in browser, absolute in SSR)
+   * - Other endpoints use baseUrl prefix
+   */
+  private resolveRequestUrl(endpoint: string): string {
+    // SSRF Protection: Block absolute URLs in client-side
+    // URLs should be passed in POST body and validated server-side
+    if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) {
+      if (typeof window !== "undefined") {
+        // Client-side: reject absolute URLs
+        throw new ApiError(
+          "Absolute URLs are not allowed. Use relative paths or POST body.",
+          400,
+          "SSRF_PROTECTION",
+        );
+      }
+      // Server-side: still allow but should be validated by API routes
+      // In practice, API routes should validate URLs from POST body
+      return endpoint;
+    }
+
+    // Next.js API route - use app origin
+    if (endpoint.startsWith("/api/")) {
+      if (typeof window !== "undefined") {
+        // Browser: use relative path
+        return endpoint;
+      }
+
+      // SSR: build absolute URL from app origin
+      const appOrigin =
+        process.env.NEXT_PUBLIC_APP_ORIGIN?.trim() ||
+        process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+        "http://localhost:3000";
+
+      return `${appOrigin}${endpoint}`;
+    }
+
+    // Default: use baseUrl prefix
+    return `${this.config.baseUrl}${endpoint}`;
+  }
+
   async get<T>(
     endpoint: string,
     cacheTtl: number = 5,
@@ -107,8 +151,9 @@ export class ApiClient {
 
     try {
       const requestTimeout = timeout ?? this.config.requestTimeout;
+      const requestUrl = this.resolveRequestUrl(endpoint);
       const responsePromise = this.makeRequest(
-        `${this.config.baseUrl}${endpoint}`,
+        requestUrl,
         {
           method: "GET",
           headers: {
@@ -122,7 +167,7 @@ export class ApiClient {
       ).then(async (response) => {
         const interceptedResponse = await this.authInterceptor.intercept(
           response,
-          `${this.config.baseUrl}${endpoint}`,
+          requestUrl,
           {
             method: "GET",
             headers: {
@@ -169,8 +214,9 @@ export class ApiClient {
       } else if (process.env.NODE_ENV === "development") {
       }
 
+      const requestUrl = this.resolveRequestUrl(endpoint);
       const response = await this.makeRequest(
-        `${this.config.baseUrl}${endpoint}`,
+        requestUrl,
         {
           method: "POST",
           headers,
@@ -181,7 +227,7 @@ export class ApiClient {
 
       const interceptedResponse = await this.authInterceptor.intercept(
         response,
-        `${this.config.baseUrl}${endpoint}`,
+        requestUrl,
         {
           method: "POST",
           headers: {
@@ -251,8 +297,9 @@ export class ApiClient {
         headers["X-CSRF-Token"] = csrfToken;
       }
 
+      const requestUrl = this.resolveRequestUrl(endpoint);
       const response = await this.makeRequest(
-        `${this.config.baseUrl}${endpoint}`,
+        requestUrl,
         {
           method: "DELETE",
           headers,
@@ -262,7 +309,7 @@ export class ApiClient {
 
       const interceptedResponse = await this.authInterceptor.intercept(
         response,
-        `${this.config.baseUrl}${endpoint}`,
+        requestUrl,
         {
           method: "DELETE",
           headers: {
