@@ -36,11 +36,32 @@ async def trigger_genre_learning(
     service: GenreLearningService = Depends(get_learning_service),
     client: LearningClient = Depends(get_learning_client),
 ) -> dict[str, object]:
-    learning_result = await service.generate_learning_result()
-    payload = _build_learning_payload(learning_result)
+    import structlog
+
+    logger = structlog.get_logger(__name__)
+    logger.info("triggering genre learning task")
     try:
+        logger.debug("generating learning result")
+        learning_result = await service.generate_learning_result()
+        logger.info(
+            "learning result generated",
+            total_records=learning_result.summary.total_records,
+            graph_boost_count=learning_result.summary.graph_boost_count,
+        )
+        payload = _build_learning_payload(learning_result)
+        logger.debug("sending learning payload to recap-worker")
         response = await client.send_learning_payload(payload)
+        logger.info(
+            "learning payload sent successfully",
+            recap_worker_status=response.status_code,
+        )
     except Exception as exc:  # pragma: no cover - HTTP interactions
+        logger.error(
+            "failed to send learning payload",
+            error=str(exc),
+            error_type=type(exc).__name__,
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="failed to send learning payload",
@@ -56,15 +77,26 @@ async def trigger_genre_learning(
 
 def _build_learning_payload(result: GenreLearningResult) -> dict[str, object]:
     summary = asdict(result.summary)
+    graph_override: dict[str, object] = {
+        "graph_margin": result.summary.graph_margin_reference,
+    }
+    # Add optimized thresholds if available
+    if result.summary.boost_threshold_reference is not None:
+        graph_override["boost_threshold"] = result.summary.boost_threshold_reference
+    if result.summary.tag_count_threshold_reference is not None:
+        graph_override["tag_count_threshold"] = result.summary.tag_count_threshold_reference
+
+    metadata: dict[str, object] = {
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "entries_observed": result.summary.total_records,
+    }
+    if result.summary.accuracy_estimate is not None:
+        metadata["accuracy_estimate"] = result.summary.accuracy_estimate
+
     payload: dict[str, object] = {
         "summary": summary,
-        "graph_override": {
-            "graph_margin": result.summary.graph_margin_reference,
-        },
-        "metadata": {
-            "captured_at": datetime.now(timezone.utc).isoformat(),
-            "entries_observed": result.summary.total_records,
-        },
+        "graph_override": graph_override,
+        "metadata": metadata,
     }
     if result.cluster_draft:
         payload["cluster_draft"] = result.cluster_draft
