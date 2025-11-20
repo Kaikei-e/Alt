@@ -42,7 +42,7 @@ func (m *MockSearchIndexerPort) EXPECT() *MockSearchIndexerPortMockRecorder {
 }
 
 // SearchArticles mocks base method.
-func (m *MockSearchIndexerPort) SearchArticles(ctx context.Context, query string, userID string) ([]domain.SearchIndexerArticleHit, error) {
+func (m *MockSearchIndexerPort) SearchArticles(ctx context.Context, query, userID string) ([]domain.SearchIndexerArticleHit, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SearchArticles", ctx, query, userID)
 	ret0, _ := ret[0].([]domain.SearchIndexerArticleHit)

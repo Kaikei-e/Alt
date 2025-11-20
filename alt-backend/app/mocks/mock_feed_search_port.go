@@ -41,19 +41,19 @@ func (m *MockSearchByTitlePort) EXPECT() *MockSearchByTitlePortMockRecorder {
 	return m.recorder
 }
 
-// SearchByTitle mocks base method.
-func (m *MockSearchByTitlePort) SearchByTitle(ctx context.Context, query string) ([]*domain.FeedItem, error) {
+// SearchFeedsByTitle mocks base method.
+func (m *MockSearchByTitlePort) SearchFeedsByTitle(ctx context.Context, query, userID string) ([]*domain.FeedItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SearchByTitle", ctx, query)
+	ret := m.ctrl.Call(m, "SearchFeedsByTitle", ctx, query, userID)
 	ret0, _ := ret[0].([]*domain.FeedItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// SearchByTitle indicates an expected call of SearchByTitle.
-func (mr *MockSearchByTitlePortMockRecorder) SearchByTitle(ctx, query any) *gomock.Call {
+// SearchFeedsByTitle indicates an expected call of SearchFeedsByTitle.
+func (mr *MockSearchByTitlePortMockRecorder) SearchFeedsByTitle(ctx, query, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchByTitle", reflect.TypeOf((*MockSearchByTitlePort)(nil).SearchByTitle), ctx, query)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchFeedsByTitle", reflect.TypeOf((*MockSearchByTitlePort)(nil).SearchFeedsByTitle), ctx, query, userID)
 }
 
 // MockSearchFeedPort is a mock of SearchFeedPort interface.
