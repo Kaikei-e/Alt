@@ -9,12 +9,13 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import Link from "next/link";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { articleApi } from "@/lib/api";
 import type {
   BackendFeedItem,
   FetchArticleSummaryResponse,
 } from "@/schema/feed";
+import { SearchResultsVirtualList } from "./SearchResultsVirtualList";
 
 interface SearchResultsProps {
   results: BackendFeedItem[];
@@ -27,7 +28,7 @@ interface SearchResultItemProps {
   result: BackendFeedItem;
 }
 
-const SearchResultItem = ({ result }: SearchResultItemProps) => {
+export const SearchResultItem = memo(({ result }: SearchResultItemProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [summary, setSummary] = useState<FetchArticleSummaryResponse | null>(
     null,
@@ -259,7 +260,9 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
       </VStack>
     </Box>
   );
-};
+});
+
+SearchResultItem.displayName = "SearchResultItem";
 
 const LoadingState = () => (
   <Box
@@ -322,7 +325,7 @@ const SearchStats = ({
   </HStack>
 );
 
-export const SearchResults = ({
+export const SearchResults = memo(({
   results,
   isLoading,
   searchQuery,
@@ -340,6 +343,8 @@ export const SearchResults = ({
     return <EmptyState searchQuery={searchQuery} />;
   }
 
+  const shouldUseVirtualList = results.length > 20;
+
   return (
     <Box
       bg="transparent"
@@ -347,21 +352,29 @@ export const SearchResults = ({
     >
       <SearchStats count={results.length} searchTime={searchTime} />
 
-      <Box as="ul" role="list" aria-label="Search results">
-        <VStack gap={4} align="stretch">
-          {results.map((result, index) => (
-            <Box
-              as="li"
-              key={result.link || `result-${index}`}
-              listStyleType="none"
-            >
-              <SearchResultItem result={result} />
-            </Box>
-          ))}
-        </VStack>
-      </Box>
+      {shouldUseVirtualList ? (
+        <Box height="60vh" mt={4}>
+          <SearchResultsVirtualList results={results} />
+        </Box>
+      ) : (
+        <Box as="ul" role="list" aria-label="Search results">
+          <VStack gap={4} align="stretch">
+            {results.map((result, index) => (
+              <Box
+                as="li"
+                key={result.link || `result-${index}`}
+                listStyleType="none"
+              >
+                <SearchResultItem result={result} />
+              </Box>
+            ))}
+          </VStack>
+        </Box>
+      )}
     </Box>
   );
-};
+});
+
+SearchResults.displayName = "SearchResults";
 
 export default SearchResults;

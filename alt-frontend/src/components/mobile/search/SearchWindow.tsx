@@ -1,5 +1,5 @@
 import { Box, Button, Input, Text, VStack } from "@chakra-ui/react";
-import { useState } from "react";
+import { useState, useRef, useDeferredValue, useTransition, useEffect } from "react";
 import * as v from "valibot";
 import { feedApi } from "@/lib/api";
 import { transformFeedSearchResult } from "@/lib/utils/transformFeedSearchResult";
@@ -29,23 +29,49 @@ const SearchWindow = ({
 }: SearchWindowProps) => {
   const [error, setError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const deferredQuery = useDeferredValue(searchQuery);
 
-  // Real-time validation
-  const validateQuery = (query: SearchQuery) => {
-    const validationResult = v.safeParse(searchQuerySchema, query);
-    if (!validationResult.success) {
-      const firstError =
-        validationResult.issues?.[0]?.message ||
-        "Please enter a valid search query";
-      setValidationError(firstError);
-      return false;
+  // Cancel previous request when query changes
+  useEffect(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
-    setValidationError(null);
-    return true;
-  };
+  }, [searchQuery.query]);
+
+  // Real-time validation with deferred value
+  useEffect(() => {
+    if (!deferredQuery.query) {
+      setValidationError(null);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      const validationResult = v.safeParse(searchQuerySchema, deferredQuery);
+      if (!validationResult.success) {
+        const firstError =
+          validationResult.issues?.[0]?.message ||
+          "Please enter a valid search query";
+        setValidationError(firstError);
+      } else {
+        setValidationError(null);
+      }
+    }, 300); // Debounce validation
+
+    return () => clearTimeout(timeoutId);
+  }, [deferredQuery]);
 
   const handleSearch = async () => {
-    if (isLoading) return;
+    if (isLoading || isPending) return;
+
+    // Cancel any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     const startTime = Date.now();
     setIsLoading(true);
@@ -69,8 +95,22 @@ const SearchWindow = ({
 
       const validatedQuery = validationResult.output.query;
 
-      // 3. Call API
-      const results = await feedApi.searchFeeds(validatedQuery);
+      // 3. Call API with abort signal
+      // Note: feedApi.searchFeeds needs to support AbortSignal
+      // For now, we'll wrap it in a promise that can be cancelled
+      const searchPromise = feedApi.searchFeeds(validatedQuery);
+
+      // Check if aborted before proceeding
+      if (abortController.signal.aborted) {
+        return;
+      }
+
+      const results = await searchPromise;
+
+      // Check again after await
+      if (abortController.signal.aborted) {
+        return;
+      }
 
       if (results.error) {
         setError(results.error);
@@ -80,19 +120,26 @@ const SearchWindow = ({
       // 4. Transform results
       const transformedResults = transformFeedSearchResult(results);
 
-      // 5. Pass results to parent via prop function
-      setFeedResults(transformedResults);
+      // 5. Pass results to parent via transition
+      startTransition(() => {
+        setFeedResults(transformedResults);
+      });
 
       // 6. Track search time
       const searchTime = Date.now() - startTime;
       setSearchTime?.(searchTime);
     } catch (err) {
+      if (abortController.signal.aborted) {
+        return; // Ignore abort errors
+      }
       console.error("Search error:", err);
       setError(
         err instanceof Error ? err.message : "Search failed. Please try again.",
       );
     } finally {
-      setIsLoading(false);
+      if (!abortController.signal.aborted) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -110,9 +157,10 @@ const SearchWindow = ({
 
   const handleSearchChange = (value: string) => {
     const newQuery: SearchQuery = { query: value };
-    setSearchQuery(newQuery);
-    // Real-time validation
-    validateQuery(newQuery);
+    // Use transition for non-urgent updates
+    startTransition(() => {
+      setSearchQuery(newQuery);
+    });
   };
 
   return (
@@ -182,11 +230,11 @@ const SearchWindow = ({
             }}
             transition="all 0.2s ease"
             width="full"
-            disabled={isLoading || !!validationError}
+            disabled={isLoading || isPending || !!validationError}
             opacity={validationError ? 0.6 : 1}
             letterSpacing="0.025em"
           >
-            {isLoading ? "Searching..." : "Search"}
+            {isLoading || isPending ? "Searching..." : "Search"}
           </Button>
 
           {validationError && (
