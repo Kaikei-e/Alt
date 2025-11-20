@@ -25,7 +25,7 @@ import {
   Sparkles,
   SquareArrowOutUpRight,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { articleApi } from "@/lib/api";
 import type { Feed } from "@/schema/feed";
 import { renderingRegistry } from "@/utils/renderingStrategies";
@@ -91,7 +91,7 @@ const normalizeDirection = (direction: number) => {
   return direction;
 };
 
-const SwipeFeedCard = ({
+const SwipeFeedCard = memo(({
   feed,
   statusMessage,
   onDismiss,
@@ -780,6 +780,8 @@ const SwipeFeedCard = ({
       </MotionBox>
     </AnimatePresence>
   );
-};
+});
+
+SwipeFeedCard.displayName = "SwipeFeedCard";
 
 export default SwipeFeedCard;
