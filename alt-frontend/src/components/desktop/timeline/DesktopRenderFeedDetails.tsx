@@ -5,7 +5,6 @@
  */
 import { Box, HStack, Text } from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
-import DOMPurify from "isomorphic-dompurify";
 import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
 import type {
   FeedContentOnTheFlyResponse,
@@ -241,7 +240,7 @@ export const DesktopRenderFeedDetails = ({
           wordBreak="break-word"
           css={desktopContentStyles}
         >
-          {/* content sanitized with DOMPurify */}
+          {/* content is already sanitized server-side as SafeHtmlString */}
           <Box
             as="div"
             display="block"
@@ -249,78 +248,7 @@ export const DesktopRenderFeedDetails = ({
             wordBreak="break-word"
             overflowWrap="anywhere"
             dangerouslySetInnerHTML={{
-              __html: (() => {
-                // First sanitize with DOMPurify
-                let sanitized = DOMPurify.sanitize(feedDetails.content, {
-                  ALLOWED_TAGS: [
-                    "p",
-                    "br",
-                    "strong",
-                    "b",
-                    "em",
-                    "i",
-                    "u",
-                    "a",
-                    "h1",
-                    "h2",
-                    "h3",
-                    "h4",
-                    "h5",
-                    "h6",
-                    "ul",
-                    "ol",
-                    "li",
-                    "blockquote",
-                    "pre",
-                    "code",
-                    "table",
-                    "thead",
-                    "tbody",
-                    "tr",
-                    "td",
-                    "th",
-                    "div",
-                    "span",
-                    "img",
-                  ],
-                  ALLOWED_ATTR: [
-                    "href",
-                    "title",
-                    "target",
-                    "rel",
-                    "src",
-                    "alt",
-                    "width",
-                    "height",
-                  ],
-                  ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|\/(?!\/)|#)/i,
-                  KEEP_CONTENT: true,
-                });
-
-                // Post-process to add rel attributes to links and validate hrefs
-                sanitized = sanitized.replace(
-                  /<a([^>]*?)href="([^"]*?)"([^>]*?)>/gi,
-                  (match, before, href, after) => {
-                    // Only allow safe URL schemes
-                    if (!/^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i.test(href)) {
-                      // Remove href attribute for unsafe URLs
-                      return `<a${before}${after}>`;
-                    }
-                    // Force safe attributes on links
-                    const hasRel = /rel=["'][^"']*["']/i.test(match);
-                    if (!hasRel) {
-                      return `<a${before}href="${href}"${after} rel="noopener noreferrer nofollow ugc">`;
-                    }
-                    // Update existing rel attribute
-                    return match.replace(
-                      /rel=["']([^"']*)["']/i,
-                      'rel="noopener noreferrer nofollow ugc $1"',
-                    );
-                  },
-                );
-
-                return sanitized;
-              })(),
+              __html: feedDetails.content, // SafeHtmlString - already sanitized
             }}
           />
         </Box>

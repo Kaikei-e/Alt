@@ -3,7 +3,6 @@
  * Intelligently determines the format of content for optimal rendering
  */
 
-import DOMPurify from "isomorphic-dompurify";
 import { sanitizeContent } from "./contentSanitizer";
 
 export enum ContentType {
@@ -165,49 +164,21 @@ function safeStripHtml(content: string): string {
 }
 
 /**
- * Checks if content contains potentially unsafe HTML using DOMPurify
- * SECURITY FIX: Replace regex-based detection with battle-tested DOMPurify
+ * Checks if content contains potentially unsafe HTML
+ * NOTE: Content is now sanitized server-side, so this is mainly for legacy detection
+ * Uses lightweight regex detection for HTML tags
  * @param content - Content to check
- * @returns True if content needs sanitization
+ * @returns True if content contains HTML tags (needs sanitization check)
  */
 export const needsSanitization = (content: string): boolean => {
   if (!content || typeof content !== "string") {
     return false;
   }
 
-  try {
-    // Use DOMPurify to sanitize content and compare with original
-    // If they differ, the content contained dangerous elements
-    const sanitized = DOMPurify.sanitize(content, {
-      ALLOWED_TAGS: [
-        "p",
-        "br",
-        "strong",
-        "em",
-        "u",
-        "i",
-        "a",
-        "ul",
-        "ol",
-        "li",
-        "h1",
-        "h2",
-        "h3",
-        "h4",
-        "h5",
-        "h6",
-      ],
-      ALLOWED_ATTR: ["href", "title"],
-      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-      KEEP_CONTENT: true,
-    });
-
-    // Content needs sanitization if DOMPurify modified it
-    return content !== sanitized;
-  } catch (error) {
-    // If DOMPurify fails, assume content needs sanitization for safety
-    return true;
-  }
+  // Lightweight detection: check for HTML tags
+  // Content is already sanitized server-side, so this is just for metadata
+  const htmlTagPattern = /<[a-z][^>]*>/i;
+  return htmlTagPattern.test(content);
 };
 
 /**

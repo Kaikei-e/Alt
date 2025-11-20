@@ -41,7 +41,7 @@ export interface ArticleSummaryItem {
   article_url: string;
   title: string;
   author?: string;
-  content: string;
+  content: SafeHtmlString; // Server-sanitized HTML
   content_type: string;
   published_at: string;
   fetched_at: string;
@@ -87,6 +87,8 @@ export function sanitizeFeed(rawFeed: BackendFeedItem): SanitizedFeed {
   };
 }
 
+import type { SafeHtmlString } from "@/lib/server/sanitize-html";
+
 export interface FeedContentOnTheFlyResponse {
-  content: string;
+  content: SafeHtmlString; // Server-sanitized HTML
 }

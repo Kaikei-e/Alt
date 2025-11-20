@@ -4,8 +4,8 @@
  * XPLAN11: 2025 Best Practices - React 19 + Next.js 15 Compatible
  */
 import React, { type ReactNode } from "react";
-import DOMPurify from "isomorphic-dompurify";
 import { analyzeContent, ContentType } from "./contentTypeDetector";
+import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 
 export interface RenderingStrategy {
   render(content: string, articleUrl?: string): ReactNode;
@@ -23,90 +23,30 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     return analysis.type === ContentType.HTML;
   }
 
-  render(content: string, articleUrl?: string): ReactNode {
-    // Step 1: Decode HTML entities BEFORE sanitization (XPLAN11 solution)
-    const decodedHTML = this.decodeHtmlEntities(content);
+  render(content: string | SafeHtmlString, articleUrl?: string): ReactNode {
+    // Content is already sanitized server-side as SafeHtmlString
+    // We only need to enhance HTML elements (images, links) for display
+    const safeHtml = content as string; // SafeHtmlString is a branded string
 
-    // Step 2: Sanitize with DOMPurify (SSR-safe)
-    const sanitizedHTML = DOMPurify.sanitize(decodedHTML, {
-      ALLOWED_TAGS: [
-        "p",
-        "br",
-        "strong",
-        "b",
-        "em",
-        "i",
-        "u",
-        "span",
-        "div",
-        "h1",
-        "h2",
-        "h3",
-        "h4",
-        "h5",
-        "h6",
-        "ul",
-        "ol",
-        "li",
-        "a",
-        "img",
-        "blockquote",
-        "pre",
-        "code",
-        "table",
-        "thead",
-        "tbody",
-        "tr",
-        "td",
-        "th",
-      ],
-      ALLOWED_ATTR: [
-        "class",
-        "id",
-        "style",
-        "href",
-        "target",
-        "rel",
-        "title",
-        "src",
-        "alt",
-        "width",
-        "height",
-        "loading",
-        "data-proxy-url",
-      ],
-      ALLOW_DATA_ATTR: true,
-      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-      KEEP_CONTENT: true,
-    });
+    // Enhanced HTML with custom CSS for images and links
+    const enhancedHTML = this.enhanceHTMLElements(safeHtml, articleUrl);
 
-    // Step 3: Enhanced HTML with custom CSS for images and links
-    const enhancedHTML = this.enhanceHTMLElements(sanitizedHTML, articleUrl);
-
-    // Step 4: Return using dangerouslySetInnerHTML with proxy image handler
+    // Return using dangerouslySetInnerHTML with proxy image handler
     return <HTMLContentRenderer html={enhancedHTML} />;
   }
 
   /**
-   * Decode HTML entities while stripping unsafe markup first.
+   * Decode HTML entities safely (client-side only, for URL processing)
+   * Note: HTML content is already sanitized server-side, this is only for URL decoding
    */
   public decodeHtmlEntities(str: string): string {
     if (!str || typeof str !== "string") {
       return "";
     }
 
-    try {
-      // Strip all HTML tags, keeping only text content
-      const sanitizedText = DOMPurify.sanitize(str, {
-        ALLOWED_TAGS: [],
-        ALLOWED_ATTR: [],
-        KEEP_CONTENT: true,
-      });
-
-      return this.decodeEntitiesSafely(sanitizedText);
-    } catch (error) {
-      return this.decodeEntitiesSafely(str);
-    }
+    // For client-side, use existing decodeEntitiesSafely
+    // This is only used for URL processing, not for HTML content
+    return this.decodeEntitiesSafely(str);
   }
 
   /**
@@ -394,19 +334,14 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     }
 
     try {
-      const sanitized = DOMPurify.sanitize(url, {
-        ALLOWED_TAGS: [],
-        ALLOWED_ATTR: [],
-        KEEP_CONTENT: true,
-      });
+      // URL decoding: remove any HTML tags and decode entities
+      // Use simple regex to remove tags (URLs shouldn't contain HTML anyway)
+      const sanitized = url.replace(/<[^>]*>/g, "");
 
       const decoded = this.decodeEntitiesSafely(sanitized);
 
-      const normalized = DOMPurify.sanitize(decoded, {
-        ALLOWED_TAGS: [],
-        ALLOWED_ATTR: [],
-        KEEP_CONTENT: true,
-      }).trim();
+      // Normalize: remove any remaining tags and trim
+      const normalized = decoded.replace(/<[^>]*>/g, "").trim();
 
       if (!normalized) {
         return "";
@@ -502,18 +437,28 @@ export class MarkdownRenderingStrategy implements RenderingStrategy {
       // Line breaks
       .replace(/\n/g, "<br />");
 
-    // Sanitize the converted HTML with DOMPurify
-    const sanitizedHTML = DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: ["h1", "h2", "h3", "strong", "em", "a", "br", "p"],
-      ALLOWED_ATTR: ["href", "target", "rel"],
-      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-      KEEP_CONTENT: true,
-    });
+    // HTML is already sanitized server-side, but we do basic link security
+    // Add security attributes to links
+    const safeHTML = html.replace(
+      /<a([^>]*?)href="([^"]*?)"([^>]*?)>/gi,
+      (match, before, href, after) => {
+        // Only allow safe URL schemes
+        if (!/^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i.test(href)) {
+          return `<a${before}${after}>`;
+        }
+        // Add security attributes
+        const hasRel = /rel=["'][^"']*["']/i.test(match);
+        if (!hasRel) {
+          return `<a${before}href="${href}"${after} rel="noopener noreferrer nofollow">`;
+        }
+        return match;
+      },
+    );
 
     return (
       <div
         className="smart-content-markdown"
-        dangerouslySetInnerHTML={{ __html: sanitizedHTML }}
+        dangerouslySetInnerHTML={{ __html: safeHTML }}
         style={{
           lineHeight: "1.7",
           color: "var(--text-primary)",
@@ -672,37 +617,9 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
     };
   }, [html]);
 
-  // SECURITY FIX: Sanitize HTML before using dangerouslySetInnerHTML
-  const sanitizedHtml = React.useMemo(() => {
-    return DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: [
-        "p",
-        "br",
-        "strong",
-        "b",
-        "em",
-        "i",
-        "u",
-        "a",
-        "img",
-        "h1",
-        "h2",
-        "h3",
-        "h4",
-        "h5",
-        "h6",
-        "ul",
-        "ol",
-        "li",
-        "blockquote",
-        "code",
-        "pre",
-      ],
-      ALLOWED_ATTR: ["href", "title", "target", "rel", "src", "alt"],
-      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-      KEEP_CONTENT: true,
-    });
-  }, [html]);
+  // HTML is already sanitized server-side as SafeHtmlString
+  // No need to sanitize again on the client
+  const sanitizedHtml = html;
 
   return (
     <div

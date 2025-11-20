@@ -1,8 +1,8 @@
 /**
  * Content sanitization utilities for XSS prevention
- * Provides safe HTML content processing for external data
+ * NOTE: HTML content is now sanitized server-side.
+ * This module provides client-side utilities for text processing only.
  */
-import DOMPurify from "isomorphic-dompurify";
 
 export interface SanitizerOptions {
   allowedTags?: string[];
@@ -20,10 +20,12 @@ const DEFAULT_OPTIONS: Required<SanitizerOptions> = {
 };
 
 /**
- * Sanitize content to prevent XSS attacks
+ * Sanitize content to prevent XSS attacks (client-side text processing only)
+ * NOTE: HTML content should be sanitized server-side before reaching the client.
+ * This function only handles text truncation and basic HTML tag removal for plain text.
  * @param content - Content to sanitize
  * @param options - Sanitization options
- * @returns Sanitized content
+ * @returns Sanitized content (plain text)
  */
 export function sanitizeContent(
   content: string | null | undefined,
@@ -32,28 +34,16 @@ export function sanitizeContent(
   if (!content) return "";
 
   const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
-  const { maxLength, allowedTags, allowedAttributes } = mergedOptions;
+  const { maxLength } = mergedOptions;
 
   // Truncate content if too long
   const truncated = content.slice(0, maxLength);
 
-  // Convert allowedAttributes map to list for DOMPurify
-  // DOMPurify applies allowed attributes globally to allowed tags.
-  const allowedAttrList = new Set<string>();
-  if (allowedAttributes) {
-    Object.values(allowedAttributes).forEach((attrs) => {
-      attrs.forEach((attr) => allowedAttrList.add(attr));
-    });
-  }
+  // Remove HTML tags (simple regex for plain text extraction)
+  // For HTML content, use server-side sanitization
+  const textOnly = truncated.replace(/<[^>]*>/g, "");
 
-  // Sanitize using DOMPurify
-  const sanitized = DOMPurify.sanitize(truncated, {
-    ALLOWED_TAGS: allowedTags,
-    ALLOWED_ATTR: Array.from(allowedAttrList),
-    // DOMPurify defaults are safe for protocols (http, https, mailto, etc.)
-  });
-
-  return sanitized.trim();
+  return textOnly.trim();
 }
 
 /**
