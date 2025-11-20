@@ -3,9 +3,7 @@
 /// Note: GraphOverrideSettings tests are in src/pipeline/graph_override.rs
 /// since the module is pub(crate) and not accessible from integration tests.
 /// This file tests the database operations directly.
-
 use sqlx::{postgres::PgPoolOptions, Executor, Row};
-use std::env;
 
 async fn setup_test_database() -> sqlx::PgPool {
     let Ok(database_url) = std::env::var("DATABASE_URL") else {
