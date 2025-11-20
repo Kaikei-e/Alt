@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Flex, Text } from "@chakra-ui/react";
+import { Box, Flex, Text, VStack } from "@chakra-ui/react";
 import {
   Component,
   type ErrorInfo,
@@ -9,7 +9,9 @@ import {
   useRef,
   useState,
 } from "react";
-import ReadFeedCard from "@/components/mobile/ReadFeedCard";
+import { AnimatePresence } from "framer-motion";
+import { History } from "lucide-react";
+import { ViewedFeedCard } from "@/components/mobile/feeds/viewed/ViewedFeedCard";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useReadFeeds } from "@/hooks/useReadFeeds";
@@ -117,17 +119,18 @@ function ReadFeedsPageContent() {
               color="var(--alt-primary)"
               textAlign="center"
               data-testid="read-feeds-title"
+              fontFamily="var(--font-outfit)"
             >
-              Viewed Feeds
+              History
             </Text>
           </Box>
 
-          <Flex direction="column" gap={4}>
+          <VStack gap={4}>
             {/* Render 5 skeleton cards for immediate visual feedback */}
             {Array.from({ length: 5 }).map((_, index) => (
               <SkeletonFeedCard key={`skeleton-${index}`} />
             ))}
-          </Flex>
+          </VStack>
         </Box>
 
         <FloatingMenu />
@@ -177,19 +180,22 @@ function ReadFeedsPageContent() {
             color="var(--alt-primary)"
             textAlign="center"
             data-testid="read-feeds-title"
+            fontFamily="var(--font-outfit)"
           >
-            Viewed Feeds
+            History
           </Text>
         </Box>
 
         {feeds.length > 0 ? (
           <>
-            {/* Read Feed Cards */}
-            <Flex direction="column" gap={4}>
-              {feeds.map((feed: Feed) => (
-                <ReadFeedCard key={feed.link} feed={feed} />
-              ))}
-            </Flex>
+            {/* Viewed Feed Cards */}
+            <VStack gap={4} width="100%">
+              <AnimatePresence mode="popLayout">
+                {feeds.map((feed: Feed) => (
+                  <ViewedFeedCard key={feed.link} feed={feed} />
+                ))}
+              </AnimatePresence>
+            </VStack>
 
             {/* No more feeds indicator */}
             {!hasMore && feeds.length > 0 && (
@@ -200,19 +206,30 @@ function ReadFeedsPageContent() {
                 mt={8}
                 mb={4}
               >
-                No more read feeds to load
+                No more history to load
               </Text>
             )}
           </>
         ) : (
           /* Empty state */
-          <Flex justify="center" align="center" py={20}>
-            <Box className="glass" p={8} borderRadius="18px" textAlign="center">
-              <Text color="var(--alt-text-secondary)" fontSize="lg" mb={2}>
-                No read feeds yet
+          <Flex justify="center" align="center" py={20} direction="column">
+            <Box
+              className="glass"
+              p={8}
+              borderRadius="24px"
+              textAlign="center"
+              bg="rgba(30, 30, 40, 0.4)"
+              border="1px solid rgba(255, 255, 255, 0.05)"
+              maxW="300px"
+            >
+              <Box mb={4} display="flex" justifyContent="center" opacity={0.5}>
+                <History size={48} color="white" />
+              </Box>
+              <Text color="white" fontSize="lg" fontWeight="bold" mb={2}>
+                No History Yet
               </Text>
-              <Text color="var(--alt-text-secondary)" fontSize="sm">
-                Mark some feeds as read to see them here
+              <Text color="rgba(255, 255, 255, 0.6)" fontSize="sm">
+                Articles you read will appear here.
               </Text>
             </Box>
           </Flex>
@@ -239,7 +256,7 @@ function ReadFeedsPageContent() {
             {/* Loading more indicator inside sentinel */}
             {isLoading && (
               <Text color="var(--alt-text-secondary)" fontSize="sm">
-                Loading more read feeds...
+                Loading more...
               </Text>
             )}
           </div>
