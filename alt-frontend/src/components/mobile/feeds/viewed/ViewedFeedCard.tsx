@@ -6,6 +6,7 @@ import { useState } from "react";
 import { truncateFeedDescription } from "@/lib/utils/textUtils";
 import type { Feed } from "@/schema/feed";
 import { articleApi } from "@/lib/api";
+import { FeedDetails } from "@/components/mobile/FeedDetails";
 
 type ViewedFeedCardProps = {
   feed: Feed;
@@ -44,30 +45,20 @@ export const ViewedFeedCard = ({ feed }: ViewedFeedCardProps) => {
     >
       <Box
         p={4}
-        borderRadius="24px"
-        bg="rgba(30, 30, 40, 0.7)"
+        borderRadius="1rem"
+        bg="var(--alt-glass)"
         backdropFilter="blur(20px)"
-        border="1px solid rgba(255, 255, 255, 0.1)"
-        boxShadow="0 4px 16px 0 rgba(0, 0, 0, 0.2)"
+        border="2px solid var(--alt-glass-border)"
+        boxShadow="0 12px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)"
         position="relative"
         overflow="hidden"
         _hover={{
-          border: "1px solid rgba(255, 255, 255, 0.2)",
-          boxShadow: "0 8px 24px 0 rgba(0, 0, 0, 0.3)",
+          border: "2px solid var(--alt-glass-border)",
+          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.15)",
           transform: "translateY(-2px)",
         }}
         transition="all 0.3s ease"
       >
-        {/* Glass reflection effect */}
-        <Box
-          position="absolute"
-          top="0"
-          left="0"
-          right="0"
-          height="40%"
-          bg="linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%)"
-          pointerEvents="none"
-        />
 
         <Flex direction="column" gap={3}>
           {/* Header: Title and Badge */}
@@ -76,7 +67,7 @@ export const ViewedFeedCard = ({ feed }: ViewedFeedCardProps) => {
               <Text
                 fontSize="md"
                 fontWeight="bold"
-                color="white"
+                color="var(--alt-text-primary)"
                 lineHeight="1.4"
                 fontFamily="var(--font-outfit)"
                 css={{
@@ -92,14 +83,15 @@ export const ViewedFeedCard = ({ feed }: ViewedFeedCardProps) => {
             <Badge
               colorScheme="purple"
               variant="subtle"
-              bg="rgba(138, 75, 255, 0.2)"
-              color="#D0BCFF"
+              bg="rgba(255, 255, 255, 0.1)"
+              color="var(--alt-text-secondary)"
               px={2}
               py={0.5}
               borderRadius="full"
               fontSize="xs"
               textTransform="none"
               whiteSpace="nowrap"
+              border="1px solid var(--alt-glass-border)"
             >
               Read
             </Badge>
@@ -108,7 +100,7 @@ export const ViewedFeedCard = ({ feed }: ViewedFeedCardProps) => {
           {/* Description */}
           <Text
             fontSize="sm"
-            color="rgba(255, 255, 255, 0.7)"
+            color="var(--alt-text-secondary)"
             lineHeight="1.5"
             css={{
               display: "-webkit-box",
@@ -121,13 +113,17 @@ export const ViewedFeedCard = ({ feed }: ViewedFeedCardProps) => {
           </Text>
 
           {/* Footer: Actions and Meta */}
-          <Flex justify="space-between" align="center" mt={1}>
+          <Flex justify="space-between" align="center" mt={1} gap={2} flexWrap="wrap">
+            <HStack gap={2}>
+              <FeedDetails feedURL={feed.link} feedTitle={feed.title} />
+            </HStack>
+
             <HStack gap={2}>
               <Button
                 size="xs"
                 variant="ghost"
-                color="rgba(255, 255, 255, 0.6)"
-                _hover={{ bg: "rgba(255, 255, 255, 0.1)", color: "white" }}
+                color="var(--alt-text-secondary)"
+                _hover={{ bg: "rgba(255, 255, 255, 0.05)", color: "var(--alt-text-primary)" }}
                 onClick={handleArchive}
                 disabled={isArchived}
               >
@@ -136,21 +132,21 @@ export const ViewedFeedCard = ({ feed }: ViewedFeedCardProps) => {
                   <Text>{isArchiving ? "..." : isArchived ? "Archived" : "Archive"}</Text>
                 </Flex>
               </Button>
-            </HStack>
 
-            <Link href={feed.link} target="_blank" rel="noopener noreferrer">
-              <Button
-                size="xs"
-                variant="ghost"
-                color="rgba(255, 255, 255, 0.6)"
-                _hover={{ bg: "rgba(255, 255, 255, 0.1)", color: "white" }}
-              >
-                <Flex align="center" gap={1}>
-                  <Text>Open</Text>
-                  <ExternalLink size={14} />
-                </Flex>
-              </Button>
-            </Link>
+              <Link href={feed.link} target="_blank" rel="noopener noreferrer">
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  color="var(--alt-text-secondary)"
+                  _hover={{ bg: "rgba(255, 255, 255, 0.05)", color: "var(--alt-text-primary)" }}
+                >
+                  <Flex align="center" gap={1}>
+                    <Text>Open</Text>
+                    <ExternalLink size={14} />
+                  </Flex>
+                </Button>
+              </Link>
+            </HStack>
           </Flex>
         </Flex>
       </Box>
