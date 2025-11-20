@@ -19,6 +19,7 @@ def mock_settings():
     settings = MagicMock(spec=Settings)
     settings.learning_cluster_genres = "society_justice,art_culture"
     settings.learning_graph_margin = 0.15
+    settings.learning_snapshot_days = 7
     settings.recap_worker_learning_url = "http://localhost:9005/admin/genre-learning"
     settings.learning_request_timeout_seconds = 5.0
     return settings

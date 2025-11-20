@@ -83,7 +83,7 @@ async def test_fetch_snapshot_rows(mock_session, sample_rows):
     mock_session.execute = mock_execute
 
     service = GenreLearningService(mock_session, graph_margin=0.15)
-    rows = await service.fetch_snapshot_rows(hours=24, limit=100)
+    rows = await service.fetch_snapshot_rows(days=7, limit=100)
 
     assert len(rows) == 2
     mock_execute.assert_awaited_once()
@@ -308,7 +308,9 @@ def test_bayes_optimization_with_sufficient_samples():
     df = _prepare_dataframe_from_entries(entries)
     assert len(df) >= 100
 
-    best_params, best_accuracy = run_bayes_optimization(df, iterations=10, seed=42)
+    best_params, train_accuracy, test_accuracy = run_bayes_optimization(
+        df, iterations=10, seed=42
+    )
 
     assert best_params.graph_margin >= 0.05
     assert best_params.graph_margin <= 0.25
@@ -316,7 +318,10 @@ def test_bayes_optimization_with_sufficient_samples():
     assert best_params.boost_threshold <= 5.0
     assert best_params.tag_count_threshold >= 0
     assert best_params.tag_count_threshold <= 10
-    assert 0.0 <= best_accuracy <= 1.0
+    assert 0.0 <= train_accuracy <= 1.0
+    assert 0.0 <= test_accuracy <= 1.0
+    # Test accuracy should be available (sufficient samples for train/test split)
+    assert test_accuracy is not None
 
 
 def test_bayes_optimization_with_zero_boost():
@@ -342,12 +347,16 @@ def test_bayes_optimization_with_zero_boost():
         )
 
     df = _prepare_dataframe_from_entries(entries)
-    best_params, best_accuracy = run_bayes_optimization(df, iterations=10, seed=42)
+    best_params, train_accuracy, test_accuracy = run_bayes_optimization(
+        df, iterations=10, seed=42
+    )
 
     # boost_threshold should still be optimized, but will be ignored in objective
     assert best_params.boost_threshold >= 0.0
     assert best_params.graph_margin >= 0.05
     assert best_params.tag_count_threshold >= 0
+    assert 0.0 <= train_accuracy <= 1.0
+    assert 0.0 <= test_accuracy <= 1.0
 
 
 def test_prepare_dataframe_from_entries():
@@ -377,4 +386,77 @@ def test_prepare_dataframe_from_entries():
     assert df["margin"].dtype == float
     assert df["top_boost"].dtype == float
     assert df["tag_count"].dtype == int
+
+
+def test_bayes_optimization_with_small_dataset():
+    """Test that Bayes optimization handles small datasets gracefully."""
+    from recap_subworker.services.genre_learning import (
+        _prepare_dataframe_from_entries,
+        run_bayes_optimization,
+    )
+
+    # Create a small dataset (< 200 samples)
+    entries = []
+    for i in range(50):
+        entries.append(
+            {
+                "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
+                "margin": 0.15 + (i % 10) * 0.01,
+                "top_boost": 0.1 + (i % 5) * 0.05 if i % 2 == 0 else 0.0,
+                "tag_count": 2 + (i % 5),
+                "confidence": 0.8 + (i % 10) * 0.02,
+            }
+        )
+
+    df = _prepare_dataframe_from_entries(entries)
+    assert len(df) < 200  # Below threshold for train/test split
+
+    best_params, train_accuracy, test_accuracy = run_bayes_optimization(
+        df, iterations=5, seed=42
+    )
+
+    # Should still return valid parameters
+    assert best_params.graph_margin >= 0.05
+    assert best_params.graph_margin <= 0.25
+    assert 0.0 <= train_accuracy <= 1.0
+    assert 0.0 <= test_accuracy <= 1.0
+    # For small datasets, test_accuracy equals train_accuracy (backward compatibility)
+    assert test_accuracy == train_accuracy
+
+
+def test_bayes_optimization_train_test_split():
+    """Test that train/test split works correctly for large datasets."""
+    from recap_subworker.services.genre_learning import (
+        _prepare_dataframe_from_entries,
+        run_bayes_optimization,
+    )
+
+    # Create a large dataset (>= 200 samples)
+    entries = []
+    for i in range(300):
+        entries.append(
+            {
+                "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
+                "margin": 0.15 + (i % 10) * 0.01,
+                "top_boost": 0.1 + (i % 5) * 0.05 if i % 2 == 0 else 0.0,
+                "tag_count": 2 + (i % 5),
+                "confidence": 0.8 + (i % 10) * 0.02,
+            }
+        )
+
+    df = _prepare_dataframe_from_entries(entries)
+    assert len(df) >= 200  # Above threshold for train/test split
+
+    best_params, train_accuracy, test_accuracy = run_bayes_optimization(
+        df, iterations=10, seed=42
+    )
+
+    # Should return valid parameters
+    assert best_params.graph_margin >= 0.05
+    assert best_params.graph_margin <= 0.25
+    assert 0.0 <= train_accuracy <= 1.0
+    assert 0.0 <= test_accuracy <= 1.0
+    # For large datasets, test_accuracy should be independent from train_accuracy
+    # (they may be similar but are computed on different data)
+    assert test_accuracy is not None
 

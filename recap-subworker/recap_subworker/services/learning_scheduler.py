@@ -90,20 +90,32 @@ class LearningScheduler:
             logger.debug("opening database session")
             async with session_factory() as session:
                 # Create learning service
-                cluster_genres = [
-                    genre.strip()
-                    for genre in self.settings.learning_cluster_genres.split(",")
-                    if genre.strip()
-                ]
+                # Check if auto-detect is enabled or if cluster_genres is empty/"*"
+                should_auto_detect = (
+                    self.settings.learning_auto_detect_genres
+                    or not self.settings.learning_cluster_genres.strip()
+                    or self.settings.learning_cluster_genres.strip() == "*"
+                )
+                cluster_genres = (
+                    []
+                    if should_auto_detect
+                    else [
+                        genre.strip()
+                        for genre in self.settings.learning_cluster_genres.split(",")
+                        if genre.strip()
+                    ]
+                )
                 logger.debug(
                     "creating learning service",
-                    cluster_genres=cluster_genres,
+                    cluster_genres=cluster_genres if not should_auto_detect else "auto-detect",
+                    auto_detect=should_auto_detect,
                     graph_margin=self.settings.learning_graph_margin,
                 )
                 service = GenreLearningService(
                     session=session,
                     graph_margin=self.settings.learning_graph_margin,
-                    cluster_genres=cluster_genres,
+                    cluster_genres=cluster_genres if cluster_genres else None,
+                    auto_detect_genres=should_auto_detect,
                     bayes_enabled=self.settings.learning_bayes_enabled,
                     bayes_iterations=self.settings.learning_bayes_iterations,
                     bayes_seed=self.settings.learning_bayes_seed,
@@ -111,8 +123,13 @@ class LearningScheduler:
                 )
 
                 # Generate learning result
-                logger.info("fetching learning data from database")
-                learning_result = await service.generate_learning_result()
+                logger.info(
+                    "fetching learning data from database",
+                    snapshot_days=self.settings.learning_snapshot_days,
+                )
+                learning_result = await service.generate_learning_result(
+                    days=self.settings.learning_snapshot_days
+                )
                 logger.info(
                     "learning result generated",
                     total_records=learning_result.summary.total_records,

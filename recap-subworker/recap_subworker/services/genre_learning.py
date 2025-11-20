@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.metrics import accuracy_score, silhouette_score
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from skopt import gp_minimize
 from skopt.space import Integer, Real
@@ -19,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 DEFAULT_GRAPH_MARGIN = 0.15
-DEFAULT_SNAPSHOT_HOURS = 24
+DEFAULT_SNAPSHOT_DAYS = 7
 DEFAULT_SNAPSHOT_LIMIT = 5000
 DEFAULT_CLUSTER_GENRES = ["society_justice", "art_culture"]
 DEFAULT_CLUSTER_MAX_K = 6
@@ -298,7 +299,10 @@ def _prepare_dataframe_from_entries(entries: list[dict[str, Any]]) -> pd.DataFra
 
 
 def _objective_bayes(params: Sequence[float], df: pd.DataFrame) -> float:
-    """Objective function for Bayes optimization (minimize 1 - accuracy)."""
+    """Objective function for Bayes optimization (minimize 1 - accuracy).
+
+    This function should only be called with training data to avoid data leakage.
+    """
     graph_margin, boost_threshold, tag_count_min = params
     # top_boost がすべて 0 の場合は boost_threshold 条件を無視
     has_boost_values = (df["top_boost"] > 0).any()
@@ -318,6 +322,29 @@ def _objective_bayes(params: Sequence[float], df: pd.DataFrame) -> float:
     return 1.0 - accuracy
 
 
+def _evaluate_on_test_set(
+    params: GraphBoostParams, test_df: pd.DataFrame
+) -> float:
+    """Evaluate optimized parameters on test set.
+
+    This function evaluates the optimized parameters on a held-out test set
+    to provide an unbiased estimate of generalization performance.
+    """
+    has_boost_values = (test_df["top_boost"] > 0).any()
+    if has_boost_values:
+        preds = (
+            (test_df["margin"] >= params.graph_margin)
+            & (test_df["top_boost"] >= params.boost_threshold)
+            & (test_df["tag_count"] >= params.tag_count_threshold)
+        )
+    else:
+        preds = (
+            (test_df["margin"] >= params.graph_margin)
+            & (test_df["tag_count"] >= params.tag_count_threshold)
+        )
+    return accuracy_score(test_df["label"], preds)
+
+
 def _params_from_raw(raw: Sequence[float]) -> GraphBoostParams:
     """Convert raw optimization parameters to GraphBoostParams."""
     return GraphBoostParams(
@@ -328,21 +355,71 @@ def _params_from_raw(raw: Sequence[float]) -> GraphBoostParams:
 
 
 def run_bayes_optimization(
-    df: pd.DataFrame, iterations: int, seed: int
-) -> tuple[GraphBoostParams, float]:
-    """Execute gp_minimize over the Graph Boost entries.
+    df: pd.DataFrame, iterations: int, seed: int, test_size: float = 0.2
+) -> tuple[GraphBoostParams, float, float]:
+    """Execute gp_minimize over the Graph Boost entries with train/test split.
+
+    This function implements proper statistical validation by:
+    1. Splitting data into training and test sets
+    2. Optimizing parameters on the training set only
+    3. Evaluating the optimized parameters on the held-out test set
+
+    Args:
+        df: Full dataset for optimization
+        iterations: Number of optimization iterations
+        seed: Random seed for reproducibility
+        test_size: Proportion of data to use for testing (default: 0.2)
 
     Returns:
-        Tuple of (best_params, best_accuracy)
+        Tuple of (best_params, train_accuracy, test_accuracy)
     """
+    # Minimum samples required for train/test split
+    min_samples_for_split = 200
+    if len(df) < min_samples_for_split:
+        # For small datasets, use all data for training and return same accuracy for both
+        # This maintains backward compatibility while warning about statistical validity
+        import structlog
+        logger = structlog.get_logger(__name__)
+        logger.warning(
+            "insufficient samples for train/test split, using all data for training",
+            sample_count=len(df),
+            min_samples=min_samples_for_split,
+        )
+        space = [
+            Real(0.05, 0.25, name="graph_margin"),
+            Real(0.0, 5.0, name="boost_threshold"),
+            Integer(0, 10, name="tag_count_threshold"),
+        ]
+        result = gp_minimize(
+            func=lambda params: _objective_bayes(params, df),
+            dimensions=space,
+            n_calls=iterations,
+            random_state=seed,
+            acq_func="EI",
+        )
+        best_params = _params_from_raw(result.x)
+        train_accuracy = 1.0 - result.fun
+        # For small datasets, we can't provide a reliable test accuracy
+        # Return the same value but this should be interpreted with caution
+        return best_params, train_accuracy, train_accuracy
+
+    # Split data into training and test sets with stratification
+    train_df, test_df = train_test_split(
+        df,
+        test_size=test_size,
+        random_state=seed,
+        stratify=df["label"] if df["label"].nunique() > 1 else None,
+    )
+
     space = [
         Real(0.05, 0.25, name="graph_margin"),
         Real(0.0, 5.0, name="boost_threshold"),
         Integer(0, 10, name="tag_count_threshold"),
     ]
 
+    # Optimize on training set only
     result = gp_minimize(
-        func=lambda params: _objective_bayes(params, df),
+        func=lambda params: _objective_bayes(params, train_df),
         dimensions=space,
         n_calls=iterations,
         random_state=seed,
@@ -350,8 +427,12 @@ def run_bayes_optimization(
     )
 
     best_params = _params_from_raw(result.x)
-    best_accuracy = 1.0 - result.fun
-    return best_params, best_accuracy
+    train_accuracy = 1.0 - result.fun
+
+    # Evaluate on test set
+    test_accuracy = _evaluate_on_test_set(best_params, test_df)
+
+    return best_params, train_accuracy, test_accuracy
 
 
 @dataclass
@@ -367,6 +448,7 @@ class GenreLearningSummary:
     boost_threshold_reference: float | None = None
     tag_count_threshold_reference: int | None = None
     accuracy_estimate: float | None = None
+    test_accuracy: float | None = None
 
 
 @dataclass
@@ -382,6 +464,7 @@ class GenreLearningService:
         session: AsyncSession,
         graph_margin: float = DEFAULT_GRAPH_MARGIN,
         cluster_genres: Sequence[str] | None = None,
+        auto_detect_genres: bool = False,
         bayes_enabled: bool = True,
         bayes_iterations: int = DEFAULT_BAYES_ITERATIONS,
         bayes_seed: int = DEFAULT_BAYES_SEED,
@@ -390,62 +473,126 @@ class GenreLearningService:
         self.session = session
         self.graph_margin = graph_margin
         self.cluster_genres = cluster_genres or DEFAULT_CLUSTER_GENRES
+        self.auto_detect_genres = auto_detect_genres
         self.bayes_enabled = bayes_enabled
         self.bayes_iterations = bayes_iterations
         self.bayes_seed = bayes_seed
         self.bayes_min_samples = bayes_min_samples
 
+    async def fetch_available_genres(
+        self,
+        days: int = DEFAULT_SNAPSHOT_DAYS,
+        limit: int = DEFAULT_SNAPSHOT_LIMIT,
+        min_samples_per_genre: int = DEFAULT_CLUSTER_MIN_SAMPLES,
+    ) -> list[str]:
+        """Fetch distinct genres from the database that have sufficient samples.
+
+        Args:
+            days: Lookback window in days (based on article published_at)
+            limit: Maximum number of rows to consider
+            min_samples_per_genre: Minimum samples required for a genre to be included
+
+        Returns:
+            List of genre names sorted alphabetically
+        """
+        import structlog
+        logger = structlog.get_logger(__name__)
+
+        logger.debug(
+            "fetching available genres",
+            days=days,
+            limit=limit,
+            min_samples_per_genre=min_samples_per_genre,
+        )
+        query = text(
+            """
+            SELECT rglr.refine_decision->>'final_genre' as genre, COUNT(*) as count
+            FROM recap_genre_learning_results rglr
+            INNER JOIN recap_job_articles rja
+                ON rglr.job_id = rja.job_id
+                AND rglr.article_id = rja.article_id
+            WHERE rja.published_at > NOW() - INTERVAL '1 day' * :days
+              AND rglr.refine_decision->>'final_genre' IS NOT NULL
+              AND rglr.refine_decision->>'final_genre' != ''
+            GROUP BY rglr.refine_decision->>'final_genre'
+            HAVING COUNT(*) >= :min_samples
+            ORDER BY genre
+            """
+        )
+        result = await self.session.execute(
+            query, {"days": days, "min_samples": min_samples_per_genre}
+        )
+        genres = [row[0] for row in result.all() if row[0]]
+        logger.info(
+            "fetched available genres",
+            genre_count=len(genres),
+            genres=genres,
+            days=days,
+            min_samples_per_genre=min_samples_per_genre,
+        )
+        return genres
+
     async def fetch_snapshot_rows(
         self,
-        hours: int = DEFAULT_SNAPSHOT_HOURS,
+        days: int = DEFAULT_SNAPSHOT_DAYS,
         limit: int = DEFAULT_SNAPSHOT_LIMIT,
     ) -> list[dict[str, Any]]:
         import structlog
         logger = structlog.get_logger(__name__)
 
         logger.debug(
-            "fetching snapshot rows",
-            hours=hours,
+            "fetching snapshot rows from recap_job_articles and recap_genre_learning_results",
+            days=days,
             limit=limit,
         )
+        # Join recap_job_articles with recap_genre_learning_results to get
+        # raw article data along with classification results.
+        # Use published_at from recap_job_articles as the time reference
+        # to align with recap-worker's 7-day window.
         query = text(
             """
-            SELECT job_id,
-                   article_id,
-                   created_at,
-                   refine_decision,
-                   coarse_candidates,
-                   tag_profile
-            FROM recap_genre_learning_results
-            WHERE created_at > NOW() - INTERVAL '1 hour' * :hours
-            ORDER BY created_at DESC
+            SELECT DISTINCT ON (rglr.article_id)
+                   rglr.job_id,
+                   rglr.article_id,
+                   rglr.created_at,
+                   rglr.refine_decision,
+                   rglr.coarse_candidates,
+                   rglr.tag_profile,
+                   rja.published_at
+            FROM recap_genre_learning_results rglr
+            INNER JOIN recap_job_articles rja
+                ON rglr.job_id = rja.job_id
+                AND rglr.article_id = rja.article_id
+            WHERE rja.published_at > NOW() - INTERVAL '1 day' * :days
+              AND rglr.refine_decision IS NOT NULL
+            ORDER BY rglr.article_id, rglr.created_at DESC
             LIMIT :limit
             """
         )
-        result = await self.session.execute(query, {"hours": hours, "limit": limit})
+        result = await self.session.execute(query, {"days": days, "limit": limit})
         rows = [dict(row) for row in result.mappings().all()]
         logger.info(
             "fetched snapshot rows",
             row_count=len(rows),
-            hours=hours,
+            days=days,
             limit=limit,
         )
         return rows
 
     async def generate_learning_result(
         self,
-        hours: int = DEFAULT_SNAPSHOT_HOURS,
+        days: int = DEFAULT_SNAPSHOT_DAYS,
         limit: int = DEFAULT_SNAPSHOT_LIMIT,
     ) -> GenreLearningResult:
         import structlog
         logger = structlog.get_logger(__name__)
 
-        rows = await self.fetch_snapshot_rows(hours=hours, limit=limit)
+        rows = await self.fetch_snapshot_rows(days=days, limit=limit)
 
         if not rows:
             logger.warning(
                 "no snapshot rows found",
-                hours=hours,
+                days=days,
                 limit=limit,
             )
             # Return empty result
@@ -461,6 +608,7 @@ class GenreLearningService:
                 boost_threshold_reference=None,
                 tag_count_threshold_reference=None,
                 accuracy_estimate=None,
+                test_accuracy=None,
             )
             return GenreLearningResult(
                 summary=empty_summary,
@@ -489,7 +637,7 @@ class GenreLearningService:
             try:
                 df = _prepare_dataframe_from_entries(entries)
                 if len(df) >= self.bayes_min_samples:
-                    best_params, best_accuracy = run_bayes_optimization(
+                    best_params, train_accuracy, test_accuracy = run_bayes_optimization(
                         df, self.bayes_iterations, self.bayes_seed
                     )
                     # Check if top_boost is all zeros
@@ -506,7 +654,8 @@ class GenreLearningService:
 
                     summary.boost_threshold_reference = best_params.boost_threshold
                     summary.tag_count_threshold_reference = best_params.tag_count_threshold
-                    summary.accuracy_estimate = best_accuracy
+                    summary.accuracy_estimate = train_accuracy
+                    summary.test_accuracy = test_accuracy
                     # Update graph_margin_reference with optimized value
                     summary.graph_margin_reference = best_params.graph_margin
 
@@ -515,7 +664,8 @@ class GenreLearningService:
                         graph_margin=best_params.graph_margin,
                         boost_threshold=best_params.boost_threshold,
                         tag_count_threshold=best_params.tag_count_threshold,
-                        accuracy_estimate=best_accuracy,
+                        train_accuracy=train_accuracy,
+                        test_accuracy=test_accuracy,
                     )
                 else:
                     logger.warning(
@@ -541,13 +691,44 @@ class GenreLearningService:
                     min_samples=self.bayes_min_samples,
                 )
 
+        # Auto-detect genres if enabled
+        genres_to_cluster = list(self.cluster_genres) if self.cluster_genres else []
+        if self.auto_detect_genres:
+            logger.debug("auto-detecting genres from database")
+            try:
+                available_genres = await self.fetch_available_genres(
+                    days=days, limit=limit
+                )
+                if available_genres:
+                    genres_to_cluster = available_genres
+                    logger.info(
+                        "auto-detected genres",
+                        genre_count=len(genres_to_cluster),
+                        genres=genres_to_cluster,
+                    )
+                else:
+                    logger.warning(
+                        "no genres found in database, falling back to default genres",
+                        default_genres=DEFAULT_CLUSTER_GENRES,
+                    )
+                    genres_to_cluster = DEFAULT_CLUSTER_GENRES
+            except Exception as exc:
+                logger.warning(
+                    "failed to auto-detect genres, falling back to default genres",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    default_genres=DEFAULT_CLUSTER_GENRES,
+                    exc_info=True,
+                )
+                genres_to_cluster = DEFAULT_CLUSTER_GENRES
+
         logger.debug(
             "building cluster draft",
-            cluster_genres=self.cluster_genres,
+            cluster_genres=genres_to_cluster,
         )
         cluster_draft = ClusterBuilder().build(
             entries,
-            genres=self.cluster_genres,
+            genres=genres_to_cluster,
             min_samples=DEFAULT_CLUSTER_MIN_SAMPLES,
         )
         if cluster_draft:
@@ -584,5 +765,6 @@ class GenreLearningService:
             boost_threshold_reference=None,  # Will be set by Bayes optimization if enabled
             tag_count_threshold_reference=None,  # Will be set by Bayes optimization if enabled
             accuracy_estimate=None,  # Will be set by Bayes optimization if enabled
+            test_accuracy=None,  # Will be set by Bayes optimization if enabled
         )
 
