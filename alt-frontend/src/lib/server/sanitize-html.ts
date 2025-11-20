@@ -154,8 +154,32 @@ export function sanitizeToPlainText(dirtyHtml: string): string {
 
   // DOMPurify with KEEP_CONTENT should remove tags but keep text
   // However, we need to ensure all tags are actually removed
-  // Use a simple regex as a fallback to remove any remaining tags
-  return sanitized.replace(/<[^>]*>/g, "").trim();
+  // SECURITY FIX: Use repeated replacement to prevent incomplete multi-character sanitization
+  // Based on PLAN.md recommendation: apply regex replacement repeatedly until no more replacements
+  return replaceUntilStable(sanitized, /<[^>]*>/g, "");
+}
+
+/**
+ * Generic helper for repeated regex replacement until stable
+ * SECURITY FIX: Prevents incomplete multi-character sanitization vulnerabilities
+ * Based on PLAN.md recommendation: apply regex replacement repeatedly until no more replacements
+ * @param input - Input string to sanitize
+ * @param regex - Regular expression pattern to match
+ * @param replacement - Replacement string
+ * @returns Sanitized string with all matches removed
+ */
+function replaceUntilStable(
+  input: string,
+  regex: RegExp,
+  replacement: string,
+): string {
+  let previous: string;
+  let current = input;
+  do {
+    previous = current;
+    current = current.replace(regex, replacement);
+  } while (current !== previous);
+  return current;
 }
 
 /**

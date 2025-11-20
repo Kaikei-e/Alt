@@ -3,6 +3,7 @@
  * NOTE: HTML content is now sanitized server-side.
  * This module provides client-side utilities for text processing only.
  */
+import { replaceUntilStable } from "./htmlEntityUtils";
 
 export interface SanitizerOptions {
   allowedTags?: string[];
@@ -39,9 +40,9 @@ export function sanitizeContent(
   // Truncate content if too long
   const truncated = content.slice(0, maxLength);
 
-  // Remove HTML tags (simple regex for plain text extraction)
+  // Remove HTML tags (SECURITY FIX: use repeated replacement to prevent incomplete multi-character sanitization)
   // For HTML content, use server-side sanitization
-  const textOnly = truncated.replace(/<[^>]*>/g, "");
+  const textOnly = replaceUntilStable(truncated, /<[^>]*>/g, "");
 
   return textOnly.trim();
 }

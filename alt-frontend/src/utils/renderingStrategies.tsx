@@ -6,6 +6,11 @@
 import React, { type ReactNode } from "react";
 import { analyzeContent, ContentType } from "./contentTypeDetector";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
+import {
+  decodeHtmlEntities as decodeHtmlEntitiesUtil,
+  decodeHtmlEntitiesFromUrl as decodeHtmlEntitiesFromUrlUtil,
+  escapeHtmlForAttributes,
+} from "./htmlEntityUtils";
 
 export interface RenderingStrategy {
   render(content: string, articleUrl?: string): ReactNode;
@@ -38,15 +43,11 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   /**
    * Decode HTML entities safely (client-side only, for URL processing)
    * Note: HTML content is already sanitized server-side, this is only for URL decoding
+   * SECURITY: Decodes only once to prevent double-decoding vulnerabilities
+   * @deprecated Use decodeHtmlEntities from htmlEntityUtils directly
    */
   public decodeHtmlEntities(str: string): string {
-    if (!str || typeof str !== "string") {
-      return "";
-    }
-
-    // For client-side, use existing decodeEntitiesSafely
-    // This is only used for URL processing, not for HTML content
-    return this.decodeEntitiesSafely(str);
+    return decodeHtmlEntitiesUtil(str);
   }
 
   /**
@@ -63,7 +64,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
           /<img([^>]*?)src="([^"]*?)"([^>]*?)>/gi,
           (match, before, src, after) => {
             // Fix: Decode HTML entities BEFORE converting to proxy URL
-            const decodedSrc = this.decodeHtmlEntitiesFromUrl(src);
+            const decodedSrc = decodeHtmlEntitiesFromUrlUtil(src);
             // Fix: Resolve relative paths against article URL
             const resolvedSrc = this.resolveRelativeImageUrl(
               decodedSrc,
@@ -76,7 +77,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
               const originalUrl = decodeURIComponent(
                 proxiedSrc.replace("data:image/proxy,", ""),
               );
-              return `<img${before}src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-proxy-url="${originalUrl}" data-fallback-src="${this.escapeHtml(resolvedSrc)}"${after} loading="lazy" style="opacity:0;transition:opacity 0.3s" class="proxy-image">`;
+              return `<img${before}src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-proxy-url="${originalUrl}" data-fallback-src="${escapeHtmlForAttributes(resolvedSrc)}"${after} loading="lazy" style="opacity:0;transition:opacity 0.3s" class="proxy-image">`;
             }
 
             return `<img${before}src="${proxiedSrc}"${after} loading="lazy">`;
@@ -261,115 +262,16 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   // Static cache for external domains (class-level)
   private static externalDomainsCache: string[] | null = null;
 
-  private decodeEntitiesSafely(value: string): string {
-    if (!value) {
-      return "";
-    }
-
-    if (typeof document !== "undefined") {
-      const textarea = document.createElement("textarea");
-      textarea.innerHTML = value;
-      return textarea.value;
-    }
-
-    return this.decodeHtmlEntitiesManually(value);
-  }
-
-  private decodeHtmlEntitiesManually(str: string): string {
-    return str
-      .replace(/&nbsp;/g, " ")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&apos;/g, "'")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&copy;/g, "©")
-      .replace(/&reg;/g, "®")
-      .replace(/&trade;/g, "™")
-      .replace(/&amp;/g, "&");
-  }
-
-  /**
-   * Escape HTML to prevent XSS in data attributes
-   * @param str - String to escape
-   * @returns HTML-escaped string
-   */
-  private escapeHtml(str: string): string {
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
-
   /**
    * Decode HTML entities specifically for URLs with comprehensive security protection
-   * SECURITY FIX: Use DOMPurify and URL validation to prevent XSS attacks
+   * SECURITY FIX: URL sanitization should focus on blocking dangerous schemes,
+   * not on removing HTML tags (URLs shouldn't contain HTML tags anyway)
+   * @deprecated Use decodeHtmlEntitiesFromUrl from htmlEntityUtils directly
    * @param url - URL with potential HTML entities
    * @returns Safely decoded and validated URL
    */
   public decodeHtmlEntitiesFromUrl(url: string): string {
-    // Input validation for security
-    if (!url || typeof url !== "string") {
-      return "";
-    }
-
-    // SECURITY: Block dangerous URL schemes immediately
-    const dangerousSchemes =
-      /^(javascript|vbscript|data:text\/html|file|ftp):/i;
-    const trimmedUrl = url.trim();
-    if (
-      dangerousSchemes.test(trimmedUrl) ||
-      trimmedUrl.startsWith("data:text/html,")
-    ) {
-      return ""; // Block completely
-    }
-
-    // SECURITY: Block URLs containing suspicious patterns even when encoded
-    const suspiciousPatterns =
-      /alert\(|eval\(|document\.|window\.|location\.|<script|<iframe|onerror=|onload=/i;
-    if (suspiciousPatterns.test(url)) {
-      return ""; // Block URLs containing suspicious JavaScript patterns
-    }
-
-    try {
-      // URL decoding: remove any HTML tags and decode entities
-      // Use simple regex to remove tags (URLs shouldn't contain HTML anyway)
-      const sanitized = url.replace(/<[^>]*>/g, "");
-
-      const decoded = this.decodeEntitiesSafely(sanitized);
-
-      // Normalize: remove any remaining tags and trim
-      const normalized = decoded.replace(/<[^>]*>/g, "").trim();
-
-      if (!normalized) {
-        return "";
-      }
-
-      if (
-        dangerousSchemes.test(normalized) ||
-        normalized.startsWith("data:text/html,")
-      ) {
-        return "";
-      }
-
-      const maliciousPatterns = /<script|<iframe|onerror=|onload=|javascript:/i;
-      if (
-        maliciousPatterns.test(normalized) ||
-        suspiciousPatterns.test(normalized)
-      ) {
-        return "";
-      }
-
-      if (/<[a-z]/i.test(normalized)) {
-        return "";
-      }
-
-      return normalized;
-    } catch (error) {
-      return "";
-    }
+    return decodeHtmlEntitiesFromUrlUtil(url);
   }
 }
 
@@ -703,9 +605,8 @@ async function loadProxyImage(
     img.src = "data:image/gif;base64,invalid";
 
     // Store error details for debugging
-    img.setAttribute(
-      "data-proxy-error",
-      error instanceof Error ? error.message : "Unknown error",
-    );
+    // SECURITY FIX: Escape error message to prevent XSS if attribute value is later used as HTML
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    img.setAttribute("data-proxy-error", escapeHtmlForAttributes(errorMessage));
   }
 }
