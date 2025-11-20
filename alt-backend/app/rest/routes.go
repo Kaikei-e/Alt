@@ -74,6 +74,8 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	// Register handlers by category
 	registerSecurityRoutes(e, container)
 	registerFeedRoutes(v1, container, cfg)
+	// Register morning updates route
+	registerMorningRoutes(v1, container)
 	registerArticleRoutes(v1, container)
 	fetchArticleRoutes(v1, container)
 	registerImageRoutes(v1, container)

@@ -27,7 +27,7 @@ import (
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/update_feed_status_gateway"
-	"alt/port"
+	"alt/port/morning_letter_port"
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
 	"alt/port/rate_limiter_port"
@@ -42,7 +42,7 @@ import (
 	"alt/usecase/fetch_feed_usecase"
 	"alt/usecase/fetch_inoreader_summary_usecase"
 	"alt/usecase/image_fetch_usecase"
-	"alt/usecase/morning"
+	"alt/usecase/morning_usecase"
 	"alt/usecase/reading_status"
 	"alt/usecase/recap_articles_usecase"
 	"alt/usecase/recap_usecase"
@@ -96,7 +96,7 @@ type ApplicationComponents struct {
 	FetchArticlesCursorUsecase          *fetch_articles_usecase.FetchArticlesCursorUsecase
 	RecapArticlesUsecase                *recap_articles_usecase.RecapArticlesUsecase
 	RecapUsecase                        *recap_usecase.RecapUsecase
-	MorningUsecase                      port.MorningUsecase
+	MorningUsecase                      morning_letter_port.MorningUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -209,7 +209,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	// Morning letter components
 	morningGatewayImpl := morning_gateway.NewMorningGateway(pool)
-	morningUsecase := morning.NewMorningUsecase(morningGatewayImpl)
+	morningUsecase := morning_usecase.NewMorningUsecase(morningGatewayImpl)
 
 	return &ApplicationComponents{
 		// Ports

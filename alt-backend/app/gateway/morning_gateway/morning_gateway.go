@@ -3,7 +3,7 @@ package morning_gateway
 import (
 	"alt/domain"
 	"alt/driver/alt_db"
-	"alt/port"
+	"alt/port/morning_letter_port"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,7 +20,7 @@ type MorningGateway struct {
 	recapWorkerURL string
 }
 
-func NewMorningGateway(pool alt_db.PgxIface) port.MorningRepository {
+func NewMorningGateway(pool alt_db.PgxIface) morning_letter_port.MorningRepository {
 	recapWorkerURL := os.Getenv("RECAP_WORKER_URL")
 	if recapWorkerURL == "" {
 		recapWorkerURL = "http://recap-worker:9005"
