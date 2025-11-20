@@ -1,6 +1,8 @@
 package morning_gateway
 
 import (
+	"alt/driver/alt_db"
+	"alt/utils/logger"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -15,6 +17,8 @@ import (
 )
 
 func TestGetArticleGroups(t *testing.T) {
+	// Initialize logger for testing to prevent nil pointer dereference
+	logger.InitLogger()
 	// Mock DB
 	mockPool, err := pgxmock.NewPool()
 	require.NoError(t, err)
@@ -42,19 +46,21 @@ func TestGetArticleGroups(t *testing.T) {
 
 	// Gateway
 	gateway := &MorningGateway{
-		pool:           mockPool,
-		httpClient:     server.Client(),
-		recapWorkerURL: server.URL,
+		altDBRepository: alt_db.NewAltDBRepository(mockPool),
+		httpClient:      server.Client(),
+		recapWorkerURL:  server.URL,
 	}
 
 	// Expect DB Query
+	// Note: articles table structure - actual columns: id, feed_id, title, content, url, created_at
+	// Tags are joined from article_tags and feed_tags
 	rows := pgxmock.NewRows([]string{
-		"id", "feed_id", "tenant_id", "title", "content", "summary", "url", "author", "language", "tags", "published_at", "created_at", "updated_at",
+		"id", "feed_id", "title", "content", "url", "created_at", "tags",
 	}).AddRow(
-		articleID, uuid.New(), uuid.New(), "Test Title", "Content", "Summary", "http://example.com", "Author", "en", []string{"tag1"}, time.Now(), time.Now(), time.Now(),
+		articleID, uuid.New(), "Test Title", "Content", "http://example.com", time.Now(), []string{"tag1"},
 	)
 
-	mockPool.ExpectQuery("SELECT id, .* FROM articles WHERE id = ANY").
+	mockPool.ExpectQuery("SELECT.*FROM articles a.*WHERE a.id = ANY").
 		WithArgs([]uuid.UUID{articleID}).
 		WillReturnRows(rows)
 

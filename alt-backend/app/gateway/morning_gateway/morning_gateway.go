@@ -4,9 +4,11 @@ import (
 	"alt/domain"
 	"alt/driver/alt_db"
 	"alt/port/morning_letter_port"
+	"alt/utils/logger"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -15,9 +17,9 @@ import (
 )
 
 type MorningGateway struct {
-	pool           alt_db.PgxIface
-	httpClient     *http.Client
-	recapWorkerURL string
+	altDBRepository *alt_db.AltDBRepository
+	httpClient      *http.Client
+	recapWorkerURL  string
 }
 
 func NewMorningGateway(pool alt_db.PgxIface) morning_letter_port.MorningRepository {
@@ -27,7 +29,7 @@ func NewMorningGateway(pool alt_db.PgxIface) morning_letter_port.MorningReposito
 	}
 
 	return &MorningGateway{
-		pool: pool,
+		altDBRepository: alt_db.NewAltDBRepository(pool),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -45,25 +47,37 @@ type MorningArticleGroupResponse struct {
 func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time.Time) ([]*domain.MorningArticleGroup, error) {
 	// 1. Fetch groups from recap-worker
 	url := fmt.Sprintf("%s/v1/morning/updates?since=%s", g.recapWorkerURL, since.Format(time.RFC3339))
+	logger.Logger.Info("Fetching morning updates from recap-worker", "url", url, "since", since)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
+		logger.Logger.Error("Failed to create request to recap-worker", "error", err, "url", url)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
+		logger.Logger.Error("Failed to fetch morning updates from recap-worker", "error", err, "url", url)
 		return nil, fmt.Errorf("failed to fetch morning updates: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("recap-worker returned status %d", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		logger.Logger.Error("recap-worker returned non-OK status",
+			"status", resp.StatusCode,
+			"url", url,
+			"response_body", string(bodyBytes))
+		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var groupResps []MorningArticleGroupResponse
 	if err := json.NewDecoder(resp.Body).Decode(&groupResps); err != nil {
+		logger.Logger.Error("Failed to decode recap-worker response", "error", err, "url", url)
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
+
+	logger.Logger.Info("Fetched morning article groups from recap-worker", "count", len(groupResps))
 
 	if len(groupResps) == 0 {
 		return []*domain.MorningArticleGroup{}, nil
@@ -75,39 +89,34 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 		articleIDs = append(articleIDs, gr.ArticleID)
 	}
 
-	// 3. Fetch Articles from DB
-	query := `
-		SELECT id, feed_id, tenant_id, title, content, summary, url, author, language, tags, published_at, created_at, updated_at
-		FROM articles
-		WHERE id = ANY($1)
-	`
-	rows, err := g.pool.Query(ctx, query, articleIDs)
+	if len(articleIDs) == 0 {
+		logger.Logger.Info("No article IDs to fetch from database")
+		return []*domain.MorningArticleGroup{}, nil
+	}
+
+	logger.Logger.Info("Fetching articles from database", "article_count", len(articleIDs))
+
+	// 3. Fetch Articles from DB using Driver layer
+	articles, err := g.altDBRepository.FetchArticlesByIDs(ctx, articleIDs)
 	if err != nil {
+		logger.Logger.Error("Failed to fetch articles from database", "error", err, "article_count", len(articleIDs))
 		return nil, fmt.Errorf("failed to fetch articles: %w", err)
 	}
-	defer rows.Close()
 
+	// Create a map for quick lookup
 	articleMap := make(map[uuid.UUID]*domain.Article)
-	for rows.Next() {
-		var a domain.Article
-		err := rows.Scan(
-			&a.ID, &a.FeedID, &a.TenantID, &a.Title, &a.Content, &a.Summary, &a.URL, &a.Author, &a.Language, &a.Tags, &a.PublishedAt, &a.CreatedAt, &a.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan article: %w", err)
-		}
-		articleMap[a.ID] = &a
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows iteration error: %w", err)
+	for _, article := range articles {
+		articleMap[article.ID] = article
 	}
 
 	// 4. Map to Domain
 	var result []*domain.MorningArticleGroup
+	missingArticles := 0
 	for _, gr := range groupResps {
 		article, ok := articleMap[gr.ArticleID]
 		if !ok {
+			missingArticles++
+			logger.Logger.Warn("Article not found in database", "article_id", gr.ArticleID, "group_id", gr.GroupID)
 			continue // Article might have been deleted or not found
 		}
 
@@ -119,5 +128,10 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 		})
 	}
 
+	if missingArticles > 0 {
+		logger.Logger.Warn("Some articles were not found in database", "missing_count", missingArticles, "total_groups", len(groupResps))
+	}
+
+	logger.Logger.Info("Successfully fetched morning article groups", "result_count", len(result), "total_groups", len(groupResps))
 	return result, nil
 }
