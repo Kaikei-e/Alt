@@ -1,7 +1,8 @@
 "use client";
 
 import { Box, Button, Flex, Text, VStack } from "@chakra-ui/react";
-import { Plus, Rss, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
+import { Plus, Rss } from "lucide-react";
 import Link from "next/link";
 
 /**
@@ -23,64 +24,34 @@ export default function EmptyFeedState() {
     >
       <VStack gap={8} maxW="400px">
         {/* Animated Icon */}
-        <Box
+        <motion.div
           data-testid="empty-state-icon"
-          position="relative"
-          w="120px"
-          h="120px"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
+          style={{
+            width: "120px",
+            height: "120px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--alt-glass)",
+            borderRadius: "9999px",
+            border: "2px solid var(--alt-glass-border)",
+          }}
+          animate={{
+            scale: [1, 1.05, 1],
+            opacity: [0.8, 1, 0.8],
+          }}
+          transition={{
+            duration: 3,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
         >
-          {/* Background circle with gradient */}
-          <Box
-            position="absolute"
-            w="100%"
-            h="100%"
-            bg="var(--alt-glass)"
-            borderRadius="full"
-            border="2px solid var(--alt-glass-border)"
-            css={{
-              "@keyframes pulse": {
-                "0%, 100%": {
-                  transform: "scale(1)",
-                  opacity: 0.8,
-                },
-                "50%": {
-                  transform: "scale(1.05)",
-                  opacity: 1,
-                },
-              },
-              animation: "pulse 3s ease-in-out infinite",
-            }}
+          <Rss
+            size={56}
+            color="var(--alt-text-secondary)"
+            strokeWidth={1.5}
           />
-
-          {/* RSS Icon */}
-          <Box position="relative" zIndex={1}>
-            <Rss
-              size={56}
-              color="var(--alt-text-secondary)"
-              strokeWidth={1.5}
-            />
-          </Box>
-
-          {/* Sparkle decorations */}
-          <Box
-            position="absolute"
-            top="10px"
-            right="10px"
-            color="var(--accent-primary)"
-            css={{
-              "@keyframes twinkle": {
-                "0%, 100%": { opacity: 0.3, transform: "rotate(0deg)" },
-                "50%": { opacity: 1, transform: "rotate(180deg)" },
-              },
-              animation: "twinkle 4s ease-in-out infinite",
-            }}
-          >
-            <Sparkles size={20} />
-          </Box>
-        </Box>
+        </motion.div>
 
         {/* Heading */}
         <VStack gap={3}>
@@ -107,14 +78,14 @@ export default function EmptyFeedState() {
         </VStack>
 
         {/* Call to Action Button */}
-        <Link href="/mobile/feeds/register" style={{ width: "100%" }}>
+        <Link href="/mobile/feeds/register">
           <Button
             size="lg"
-            w="100%"
             borderRadius="16px"
             bgGradient="linear(to-r, #FF416C, #FF4B2B)"
             color="white"
             fontWeight="bold"
+            px={8}
             _hover={{
               transform: "translateY(-2px)",
               boxShadow: "0 8px 25px rgba(255, 65, 108, 0.4)",

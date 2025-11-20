@@ -158,6 +158,13 @@ export const FloatingMenu = () => {
       description: "Review the weekly highlights",
     },
     {
+      label: "Morning Letter",
+      href: "/mobile/recap/morning-letter/updates",
+      category: "recap",
+      icon: <Newspaper size={18} />,
+      description: "Today's overnight updates",
+    },
+    {
       label: "View Articles",
       href: "/mobile/articles/view",
       category: "articles",
