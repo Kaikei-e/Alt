@@ -102,6 +102,7 @@ export class ApiClient {
     }
 
     // Next.js API route - use app origin
+    // Handles /api/frontend/ (Next.js API routes) and other /api/ paths
     if (endpoint.startsWith("/api/")) {
       if (typeof window !== "undefined") {
         // Browser: use relative path

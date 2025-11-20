@@ -34,7 +34,7 @@ export class ArticleApi {
   ): Promise<FetchArticleSummaryResponse> {
     // Use Next.js API route which sanitizes content server-side
     return this.apiClient.post<FetchArticleSummaryResponse>(
-      "/api/articles/summary",
+      "/api/frontend/articles/summary",
       {
         feed_urls: [feedUrl],
       },
@@ -90,7 +90,7 @@ export class ArticleApi {
     // Use shorter timeout (15 seconds) to prevent UI freezing
     // The backend may take 20-44 seconds, but we should fail fast to keep UI responsive
     return this.apiClient.post<FeedContentOnTheFlyResponse>(
-      "/api/articles/content",
+      "/api/frontend/articles/content",
       {
         url: payload.feed_url,
       },
