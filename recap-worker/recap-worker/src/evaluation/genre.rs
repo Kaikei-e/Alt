@@ -223,6 +223,7 @@ async fn refine_prediction(
         sentence_hashes: Vec::new(),
         language: sample.language.clone(),
         tags: tag_profile.top_tags.clone(),
+        duplicates: Vec::new(),
     };
     let job = JobContext::new(sample.job_id, Vec::new());
     let input = RefineInput {
@@ -288,7 +289,8 @@ pub async fn evaluate_two_stage(
                 a.score
                     .partial_cmp(&b.score)
                     .unwrap_or(std::cmp::Ordering::Equal)
-            }).map_or_else(|| "other".to_string(), |candidate| candidate.name.clone());
+            })
+            .map_or_else(|| "other".to_string(), |candidate| candidate.name.clone());
         coarse_calc.push(expected_set.clone(), to_hashset(&coarse_pred));
 
         let tag_pred = compute_tag_prediction(&normalized_candidates, &tag_signals, tag_gate)
