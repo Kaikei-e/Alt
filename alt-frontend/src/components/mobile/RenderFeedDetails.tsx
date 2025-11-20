@@ -1,6 +1,6 @@
 import { Box, HStack, Text } from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
-import sanitizeHtml from "sanitize-html";
+import DOMPurify from "isomorphic-dompurify";
 import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
 import type {
   FeedContentOnTheFlyResponse,
@@ -174,7 +174,7 @@ const RenderFeedDetails = ({
           wordBreak="break-word"
           css={fallbackContentStyles}
         >
-          {/* content sanitized with sanitize-html */}
+          {/* content sanitized with DOMPurify */}
           <Box
             as="div"
             display="block"
@@ -182,64 +182,68 @@ const RenderFeedDetails = ({
             wordBreak="break-word"
             overflowWrap="anywhere"
             dangerouslySetInnerHTML={{
-              __html: sanitizeHtml(feedDetails.content, {
-                allowedTags: [
-                  "p",
-                  "br",
-                  "strong",
-                  "b",
-                  "em",
-                  "i",
-                  "u",
-                  "a",
-                  "h1",
-                  "h2",
-                  "h3",
-                  "h4",
-                  "h5",
-                  "h6",
-                  "ul",
-                  "ol",
-                  "li",
-                  "blockquote",
-                  "pre",
-                  "code",
-                  "table",
-                  "thead",
-                  "tbody",
-                  "tr",
-                  "td",
-                  "th",
-                  "div",
-                  "span",
-                ],
-                allowedAttributes: {
-                  a: ["href", "title", "target", "rel"],
-                },
-                allowedSchemes: ["http", "https", "mailto", "tel"],
-                allowProtocolRelative: false,
-                disallowedTagsMode: "discard",
-                transformTags: {
-                  a: (tagName, attribs) => {
-                    const href = attribs.href || "";
+              __html: (() => {
+                // First sanitize with DOMPurify
+                let sanitized = DOMPurify.sanitize(feedDetails.content, {
+                  ALLOWED_TAGS: [
+                    "p",
+                    "br",
+                    "strong",
+                    "b",
+                    "em",
+                    "i",
+                    "u",
+                    "a",
+                    "h1",
+                    "h2",
+                    "h3",
+                    "h4",
+                    "h5",
+                    "h6",
+                    "ul",
+                    "ol",
+                    "li",
+                    "blockquote",
+                    "pre",
+                    "code",
+                    "table",
+                    "thead",
+                    "tbody",
+                    "tr",
+                    "td",
+                    "th",
+                    "div",
+                    "span",
+                  ],
+                  ALLOWED_ATTR: ["href", "title", "target", "rel"],
+                  ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|\/(?!\/)|#)/i,
+                  KEEP_CONTENT: true,
+                });
+
+                // Post-process to add rel attributes to links and validate hrefs
+                sanitized = sanitized.replace(
+                  /<a([^>]*?)href="([^"]*?)"([^>]*?)>/gi,
+                  (match, before, href, after) => {
                     // Only allow safe URL schemes
                     if (!/^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i.test(href)) {
                       // Remove href attribute for unsafe URLs
-                      const safeAttribs = { ...attribs };
-                      delete safeAttribs.href;
-                      return { tagName, attribs: safeAttribs };
+                      return `<a${before}${after}>`;
                     }
                     // Force safe attributes on links
-                    return {
-                      tagName,
-                      attribs: {
-                        ...attribs,
-                        rel: "noopener noreferrer nofollow ugc",
-                      },
-                    };
+                    const hasRel = /rel=["'][^"']*["']/i.test(match);
+                    if (!hasRel) {
+                      return `<a${before}href="${href}"${after} rel="noopener noreferrer nofollow ugc">`;
+                    }
+                    // Update existing rel attribute
+                    return match.replace(
+                      /rel=["']([^"']*)["']/i,
+                      'rel="noopener noreferrer nofollow ugc $1"',
+                    );
                   },
-                },
-              }),
+                );
+
+                return sanitized;
+              })(),
             }}
           />
         </Box>

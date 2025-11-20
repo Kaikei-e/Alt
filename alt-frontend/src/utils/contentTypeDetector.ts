@@ -3,7 +3,7 @@
  * Intelligently determines the format of content for optimal rendering
  */
 
-import sanitizeHtml from "sanitize-html";
+import DOMPurify from "isomorphic-dompurify";
 import { sanitizeContent } from "./contentSanitizer";
 
 export enum ContentType {
@@ -165,8 +165,8 @@ function safeStripHtml(content: string): string {
 }
 
 /**
- * Checks if content contains potentially unsafe HTML using sanitize-html
- * SECURITY FIX: Replace regex-based detection with battle-tested sanitize-html
+ * Checks if content contains potentially unsafe HTML using DOMPurify
+ * SECURITY FIX: Replace regex-based detection with battle-tested DOMPurify
  * @param content - Content to check
  * @returns True if content needs sanitization
  */
@@ -176,10 +176,10 @@ export const needsSanitization = (content: string): boolean => {
   }
 
   try {
-    // Use sanitize-html to sanitize content and compare with original
+    // Use DOMPurify to sanitize content and compare with original
     // If they differ, the content contained dangerous elements
-    const sanitized = sanitizeHtml(content, {
-      allowedTags: [
+    const sanitized = DOMPurify.sanitize(content, {
+      ALLOWED_TAGS: [
         "p",
         "br",
         "strong",
@@ -197,17 +197,15 @@ export const needsSanitization = (content: string): boolean => {
         "h5",
         "h6",
       ],
-      allowedAttributes: {
-        a: ["href", "title"],
-      },
-      allowedSchemes: ["http", "https", "mailto"],
-      allowProtocolRelative: false,
+      ALLOWED_ATTR: ["href", "title"],
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+      KEEP_CONTENT: true,
     });
 
-    // Content needs sanitization if sanitize-html modified it
+    // Content needs sanitization if DOMPurify modified it
     return content !== sanitized;
   } catch (error) {
-    // If sanitize-html fails, assume content needs sanitization for safety
+    // If DOMPurify fails, assume content needs sanitization for safety
     return true;
   }
 };

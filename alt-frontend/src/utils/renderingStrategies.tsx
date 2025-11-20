@@ -4,7 +4,7 @@
  * XPLAN11: 2025 Best Practices - React 19 + Next.js 15 Compatible
  */
 import React, { type ReactNode } from "react";
-import sanitizeHtml from "sanitize-html";
+import DOMPurify from "isomorphic-dompurify";
 import { analyzeContent, ContentType } from "./contentTypeDetector";
 
 export interface RenderingStrategy {
@@ -27,9 +27,9 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     // Step 1: Decode HTML entities BEFORE sanitization (XPLAN11 solution)
     const decodedHTML = this.decodeHtmlEntities(content);
 
-    // Step 2: Sanitize with sanitize-html (SSR-safe)
-    const sanitizedHTML = sanitizeHtml(decodedHTML, {
-      allowedTags: [
+    // Step 2: Sanitize with DOMPurify (SSR-safe)
+    const sanitizedHTML = DOMPurify.sanitize(decodedHTML, {
+      ALLOWED_TAGS: [
         "p",
         "br",
         "strong",
@@ -60,31 +60,24 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
         "td",
         "th",
       ],
-      allowedAttributes: {
-        "*": ["class", "id", "style", "data-*"],
-        a: ["href", "target", "rel", "title"],
-        img: [
-          "src",
-          "alt",
-          "title",
-          "width",
-          "height",
-          "loading",
-          "data-proxy-url",
-        ],
-      },
-      allowedStyles: {
-        "*": {
-          opacity: [/^[01]$/, /^0\.\d+$/],
-          transition: [/^opacity\s+\d+\.?\d*s$/],
-          border: [/^2px\s+solid\s+#[0-9a-fA-F]{6}$/],
-        },
-      },
-      allowedSchemes: ["http", "https", "data"],
-      allowedSchemesByTag: {
-        img: ["http", "https", "data"],
-      },
-      allowProtocolRelative: false,
+      ALLOWED_ATTR: [
+        "class",
+        "id",
+        "style",
+        "href",
+        "target",
+        "rel",
+        "title",
+        "src",
+        "alt",
+        "width",
+        "height",
+        "loading",
+        "data-proxy-url",
+      ],
+      ALLOW_DATA_ATTR: true,
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+      KEEP_CONTENT: true,
     });
 
     // Step 3: Enhanced HTML with custom CSS for images and links
@@ -104,9 +97,10 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
 
     try {
       // Strip all HTML tags, keeping only text content
-      const sanitizedText = sanitizeHtml(str, {
-        allowedTags: [],
-        allowedAttributes: {},
+      const sanitizedText = DOMPurify.sanitize(str, {
+        ALLOWED_TAGS: [],
+        ALLOWED_ATTR: [],
+        KEEP_CONTENT: true,
       });
 
       return this.decodeEntitiesSafely(sanitizedText);
@@ -400,16 +394,18 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     }
 
     try {
-      const sanitized = sanitizeHtml(url, {
-        allowedTags: [],
-        allowedAttributes: {},
+      const sanitized = DOMPurify.sanitize(url, {
+        ALLOWED_TAGS: [],
+        ALLOWED_ATTR: [],
+        KEEP_CONTENT: true,
       });
 
       const decoded = this.decodeEntitiesSafely(sanitized);
 
-      const normalized = sanitizeHtml(decoded, {
-        allowedTags: [],
-        allowedAttributes: {},
+      const normalized = DOMPurify.sanitize(decoded, {
+        ALLOWED_TAGS: [],
+        ALLOWED_ATTR: [],
+        KEEP_CONTENT: true,
       }).trim();
 
       if (!normalized) {
@@ -506,14 +502,12 @@ export class MarkdownRenderingStrategy implements RenderingStrategy {
       // Line breaks
       .replace(/\n/g, "<br />");
 
-    // Sanitize the converted HTML with sanitize-html
-    const sanitizedHTML = sanitizeHtml(html, {
-      allowedTags: ["h1", "h2", "h3", "strong", "em", "a", "br", "p"],
-      allowedAttributes: {
-        a: ["href", "target", "rel"],
-      },
-      allowedSchemes: ["http", "https", "mailto"],
-      allowProtocolRelative: false,
+    // Sanitize the converted HTML with DOMPurify
+    const sanitizedHTML = DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: ["h1", "h2", "h3", "strong", "em", "a", "br", "p"],
+      ALLOWED_ATTR: ["href", "target", "rel"],
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+      KEEP_CONTENT: true,
     });
 
     return (
@@ -672,16 +666,16 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
       // Clean up any remaining event listeners
       proxyImages.forEach((img) => {
         const imgElement = img as HTMLImageElement;
-        imgElement.removeEventListener("load", () => {});
-        imgElement.removeEventListener("error", () => {});
+        imgElement.removeEventListener("load", () => { });
+        imgElement.removeEventListener("error", () => { });
       });
     };
   }, [html]);
 
   // SECURITY FIX: Sanitize HTML before using dangerouslySetInnerHTML
   const sanitizedHtml = React.useMemo(() => {
-    return sanitizeHtml(html, {
-      allowedTags: [
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: [
         "p",
         "br",
         "strong",
@@ -704,13 +698,9 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
         "code",
         "pre",
       ],
-      allowedAttributes: {
-        a: ["href", "title", "target", "rel"],
-        img: ["src", "alt", "title"],
-      },
-      allowedSchemes: ["http", "https", "mailto"],
-      allowProtocolRelative: false,
-      disallowedTagsMode: "discard",
+      ALLOWED_ATTR: ["href", "title", "target", "rel", "src", "alt"],
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+      KEEP_CONTENT: true,
     });
   }, [html]);
 

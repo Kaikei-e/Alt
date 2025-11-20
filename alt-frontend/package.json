@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.18.3",
+  "packageManager": "pnpm@10.22.0",
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/check-env.js && next build",
@@ -37,12 +37,13 @@
     "@chakra-ui/transition": "^2.1.0",
     "@emotion/cache": "^11.14.0",
     "@emotion/react": "^11.14.0",
-    "@ory/client": "^1.22.9",
+    "@ory/client": "^1.22.11",
     "@ory/nextjs": "1.0.0-rc.0",
     "@tanstack/react-virtual": "^3.13.12",
     "@use-gesture/react": "^10.3.1",
     "framer-motion": "^12.23.24",
     "html-react-parser": "^5.2.10",
+    "isomorphic-dompurify": "^2.32.0",
     "lucide-react": "^0.547.0",
     "next": "16.0.0",
     "next-themes": "^0.4.6",
@@ -51,7 +52,6 @@
     "react-dom": "^19.2.0",
     "react-error-boundary": "^6.0.0",
     "react-lazy-load-image-component": "^1.6.3",
-    "sanitize-html": "^2.17.0",
     "swr": "^2.3.6",
     "valibot": "^1.1.0"
   },
@@ -67,9 +67,8 @@
     "@types/react": "^19.2.6",
     "@types/react-dom": "^19.2.3",
     "@types/react-lazy-load-image-component": "^1.6.5",
-    "@types/sanitize-html": "^2.16.0",
     "@vitejs/plugin-react": "^5.1.1",
-    "@vitest/browser": "^4.0.10",
+    "@vitest/browser": "^4.0.12",
     "axe-core": "^4.11.0",
     "axe-playwright": "^2.2.2",
     "dotenv": "^17.2.3",
@@ -82,8 +81,8 @@
     "playwright": "^1.56.1",
     "prettier": "3.6.2",
     "typescript": "^5.9.3",
-    "vite": "^7.2.2",
-    "vitest": "^4.0.10"
+    "vite": "^7.2.4",
+    "vitest": "^4.0.12"
   },
   "engines": {
     "node": "24"

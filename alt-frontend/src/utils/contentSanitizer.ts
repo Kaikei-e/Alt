@@ -2,7 +2,7 @@
  * Content sanitization utilities for XSS prevention
  * Provides safe HTML content processing for external data
  */
-import sanitizeHtml from "sanitize-html";
+import DOMPurify from "isomorphic-dompurify";
 
 export interface SanitizerOptions {
   allowedTags?: string[];
@@ -37,18 +37,20 @@ export function sanitizeContent(
   // Truncate content if too long
   const truncated = content.slice(0, maxLength);
 
-  // Sanitize using sanitize-html with proper configuration
-  const sanitized = sanitizeHtml(truncated, {
-    allowedTags,
-    allowedAttributes,
-    // Disallow dangerous protocols
-    allowedSchemes: ["http", "https", "mailto"],
-    // Remove script-related content
-    disallowedTagsMode: "discard",
-    // Prevent self-closing script tags
-    selfClosing: [],
-    // Allow only safe URL protocols
-    allowProtocolRelative: false,
+  // Convert allowedAttributes map to list for DOMPurify
+  // DOMPurify applies allowed attributes globally to allowed tags.
+  const allowedAttrList = new Set<string>();
+  if (allowedAttributes) {
+    Object.values(allowedAttributes).forEach((attrs) => {
+      attrs.forEach((attr) => allowedAttrList.add(attr));
+    });
+  }
+
+  // Sanitize using DOMPurify
+  const sanitized = DOMPurify.sanitize(truncated, {
+    ALLOWED_TAGS: allowedTags,
+    ALLOWED_ATTR: Array.from(allowedAttrList),
+    // DOMPurify defaults are safe for protocols (http, https, mailto, etc.)
   });
 
   return sanitized.trim();
