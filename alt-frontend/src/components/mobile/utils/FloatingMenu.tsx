@@ -256,16 +256,18 @@ export const FloatingMenu = () => {
               data-testid="floating-menu-button"
               size="md"
               borderRadius="full"
-              bg="var(--alt-primary)"
+              bg="var(--bg-surface)"
+              backdropFilter="blur(12px)"
               color="var(--text-primary)"
               p={0}
-              w="48px"
-              h="48px"
-              border="2px solid rgba(255, 255, 255, 0.2)"
+              w="64px"
+              h="64px"
+              border="2px solid var(--text-primary)"
+              boxShadow="var(--shadow-glass)"
               _hover={{
                 transform: "scale(1.05) rotate(90deg)",
-                shadow: "0 6px 20px var(--alt-primary)",
-                bg: "var(--alt-primary)",
+                bg: "var(--bg-surface-hover)",
+                borderColor: "var(--accent-primary)",
               }}
               _active={{
                 transform: "scale(0.95) rotate(90deg)",
@@ -278,32 +280,7 @@ export const FloatingMenu = () => {
               overflow="hidden"
               onClick={() => setIsOpen(true)}
             >
-              {/* Animated background pulse */}
-              <Box
-                position="absolute"
-                top="50%"
-                left="50%"
-                transform="translate(-50%, -50%)"
-                w="120%"
-                h="120%"
-                bg="var(--alt-primary)"
-                borderRadius="full"
-                opacity="0.3"
-                css={{
-                  "@keyframes pulse": {
-                    "0%, 100%": {
-                      opacity: 0.6,
-                      transform: "translate(-50%, -50%) scale(1)",
-                    },
-                    "50%": {
-                      opacity: 0.8,
-                      transform: "translate(-50%, -50%) scale(1.1)",
-                    },
-                  },
-                  animation: "pulse 2s ease-in-out infinite",
-                }}
-              />
-              <Menu size={16} style={{ position: "relative", zIndex: 1 }} />
+              <Menu size={20} style={{ position: "relative", zIndex: 1 }} />
             </Button>
           </Box>
         </Drawer.Trigger>
@@ -311,16 +288,19 @@ export const FloatingMenu = () => {
         <Portal>
           <Drawer.Backdrop
             data-testid="modal-backdrop"
-            bg="rgba(0, 0, 0, 0.7)"
-            backdropFilter="blur(12px)"
+            bg="rgba(0, 0, 0, 0.4)"
+            backdropFilter="blur(8px)"
           />
           <Drawer.Positioner>
             <Drawer.Content
               w="100vw"
               maxW="100vw"
               bg="var(--app-bg)"
-              color="white"
+              backdropFilter="blur(20px)"
+              color="var(--text-primary)"
               borderTopRadius="32px"
+              borderTop="1px solid var(--border-glass)"
+              boxShadow="0 -10px 40px rgba(0,0,0,0.2)"
               pt={6}
               data-testid="bottom-sheet-menu"
               minH="70vh"
@@ -331,31 +311,20 @@ export const FloatingMenu = () => {
                 paddingBottom:
                   "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
               }}
-              _before={{
-                content: '""',
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                height: "4px",
-                bgGradient: "var(--accent-gradient)",
-                borderTopRadius: "32px",
-              }}
             >
               {/* Drag handle */}
               <Box
                 w="48px"
                 h="4px"
-                bg="rgba(255, 255, 255, 0.3)"
+                bg="var(--border-glass)"
                 borderRadius="full"
                 mx="auto"
-                mb={4}
+                mb={6}
               />
 
               <Drawer.Header
-                borderBottomWidth="1px"
-                borderColor="rgba(255, 255, 255, 0.1)"
-                pb={4}
+                borderBottom="1px solid var(--border-glass)"
+                pb={6}
                 px={6}
               >
                 <Flex align="center" justify="space-between">
@@ -363,24 +332,24 @@ export const FloatingMenu = () => {
                     <Box
                       w="40px"
                       h="40px"
-                      bg="var(--alt-primary)"
-                      borderRadius="full"
+                      bg="var(--bg-surface)"
+                      borderRadius="12px"
                       display="flex"
                       alignItems="center"
                       justifyContent="center"
+                      border="1px solid var(--border-glass)"
                     >
-                      <Star size={18} color="white" />
+                      <Star size={20} color="var(--accent-primary)" />
                     </Box>
                     <Box>
                       <Drawer.Title
                         fontSize="xl"
                         fontWeight="bold"
-                        bgGradient="var(--accent-primary)"
-                        bgClip="text"
+                        color="var(--text-primary)"
                       >
                         Navigation
                       </Drawer.Title>
-                      <Text fontSize="sm" color="var(--text-primary)">
+                      <Text fontSize="sm" color="var(--text-secondary)">
                         Quick access to all features
                       </Text>
                     </Box>
@@ -388,8 +357,8 @@ export const FloatingMenu = () => {
                 </Flex>
               </Drawer.Header>
 
-              <Drawer.Body px={6} py={4}>
-                <Accordion allowToggle defaultIndex={0}>
+              <Drawer.Body px={6} py={6}>
+                <Accordion allowToggle defaultIndex={0} allowMultiple>
                   {categories.map((cat, idx) => (
                     <AccordionItem key={idx} border="none" mb={4}>
                       {({ isExpanded }) => (
@@ -397,56 +366,35 @@ export const FloatingMenu = () => {
                           <h2>
                             <AccordionButton
                               data-testid={`tab-${cat.title.toLowerCase()}`}
-                              px={6}
-                              py={5}
+                              px={4}
+                              py={4}
                               justifyContent="space-between"
-                              bg="var(--alt-glass)"
-                              backdropFilter="blur(20px)"
-                              border="1px solid var(--alt-glass-border)"
+                              bg={isExpanded ? "var(--bg-surface)" : "transparent"}
                               borderRadius="16px"
                               _hover={{
-                                bg: "var(--alt-glass)",
-                                transform: "translateY(-2px)",
-                                boxShadow: "0 8px 25px rgba(0, 0, 0, 0.2)",
+                                bg: "var(--bg-surface-hover)",
                               }}
-                              _expanded={{
-                                bg: "var(--alt-glass)",
-                                borderColor: "var(--alt-glass-border)",
-                                boxShadow: "0 0 30px var(--alt-glass-shadow)",
-                              }}
-                              transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                              transition="all 0.2s ease"
                             >
                               <HStack gap={4} flex="1">
                                 <Box
-                                  w="32px"
-                                  h="32px"
-                                  bg="var(--alt-secondary)"
-                                  borderRadius="8px"
-                                  display="flex"
-                                  alignItems="center"
-                                  justifyContent="center"
-                                  color="white"
+                                  color={isExpanded ? "var(--accent-primary)" : "var(--text-secondary)"}
+                                  transition="color 0.2s"
                                 >
                                   {cat.icon}
                                 </Box>
                                 <Box textAlign="left">
                                   <Text
-                                    fontWeight="bold"
+                                    fontWeight="semibold"
                                     fontSize="lg"
                                     color="var(--text-primary)"
                                   >
                                     {cat.title}
                                   </Text>
-                                  <Text
-                                    fontSize="sm"
-                                    color="var(--text-primary)"
-                                  >
-                                    {cat.items.length} items
-                                  </Text>
                                 </Box>
                               </HStack>
                               <AccordionIcon
-                                color="var(--text-primary)"
+                                color="var(--text-secondary)"
                                 transition="transform 0.2s"
                                 transform={
                                   isExpanded ? "rotate(180deg)" : "rotate(0deg)"
@@ -454,8 +402,8 @@ export const FloatingMenu = () => {
                               />
                             </AccordionButton>
                           </h2>
-                          <AccordionPanel pb={4} pt={4} px={0}>
-                            <VStack gap={2} align="stretch">
+                          <AccordionPanel pb={2} pt={2} px={2}>
+                            <VStack gap={1} align="stretch">
                               {cat.items.map((item, i) => {
                                 const isActive = isActiveMenuItem(item.href);
                                 return (
@@ -466,83 +414,42 @@ export const FloatingMenu = () => {
                                     onClick={handleNavigate}
                                   >
                                     <Box
-                                      mx="auto"
-                                      maxW="320px"
-                                      w="85%"
-                                      bg={
-                                        isActive
-                                          ? "var(--alt-glass)"
-                                          : "var(--alt-glass)"
-                                      }
-                                      borderRadius="10px"
-                                      border={`1px solid ${isActive
-                                        ? "var(--alt-glass-border)"
-                                        : "var(--alt-glass-border)"
-                                        }`}
+                                      borderRadius="12px"
                                       p={3}
+                                      bg={isActive ? "var(--bg-surface-active)" : "transparent"}
                                       _hover={{
-                                        bg: isActive
-                                          ? "var(--alt-glass)"
-                                          : "var(--alt-glass)",
-                                        borderColor: "var(--alt-glass-border)",
-                                        transform: "translateY(-1px)",
-                                        boxShadow:
-                                          "0 2px 8px var(--alt-glass-shadow)",
+                                        bg: "var(--bg-surface-hover)",
                                       }}
-                                      _active={{ transform: "translateY(0px)" }}
                                       transition="all 0.2s ease"
-                                      position="relative"
-                                      overflow="hidden"
                                     >
-                                      {/* Active indicator */}
-                                      {isActive && (
-                                        <Box
-                                          position="absolute"
-                                          left="0"
-                                          top="0"
-                                          bottom="0"
-                                          w="3px"
-                                          bg="var(--accent-gradient)"
-                                          borderRadius="0 2px 2px 0"
-                                        />
-                                      )}
-
                                       <HStack gap={3} align="center">
                                         <Box
                                           color={
                                             isActive
                                               ? "var(--accent-primary)"
-                                              : "var(--alt-text-secondary)"
+                                              : "var(--text-secondary)"
                                           }
-                                          transition="color 0.2s ease"
-                                          fontSize="16px"
                                         >
                                           {item.icon}
                                         </Box>
                                         <Box flex="1">
-                                          <HStack
-                                            justify="space-between"
-                                            align="center"
+                                          <Text
+                                            color={
+                                              isActive
+                                                ? "var(--text-primary)"
+                                                : "var(--text-primary)"
+                                            }
+                                            fontWeight={
+                                              isActive ? "semibold" : "medium"
+                                            }
+                                            fontSize="sm"
                                           >
-                                            <Text
-                                              color={
-                                                isActive
-                                                  ? "var(--text-primary)"
-                                                  : "var(--alt-secondary)"
-                                              }
-                                              fontWeight={
-                                                isActive ? "semibold" : "medium"
-                                              }
-                                              fontSize="sm"
-                                              lineHeight="1.2"
-                                            >
-                                              {item.label}
-                                            </Text>
-                                          </HStack>
+                                            {item.label}
+                                          </Text>
                                           {item.description && (
                                             <Text
                                               fontSize="xs"
-                                              color="var(--text-primary)"
+                                              color="var(--text-secondary)"
                                               mt={0.5}
                                             >
                                               {item.description}
@@ -563,7 +470,7 @@ export const FloatingMenu = () => {
                 </Accordion>
 
                 {/* Theme Toggle */}
-                <Box mt={6} pt={4} borderTop="1px solid var(--accent-primary)">
+                <Box mt={6} pt={6} borderTop="1px solid var(--border-glass)">
                   <ThemeToggle size="md" showLabel />
                 </Box>
               </Drawer.Body>
@@ -572,16 +479,19 @@ export const FloatingMenu = () => {
                 <Button
                   aria-label="Close menu"
                   data-testid="close-menu-button"
-                  bg="var(--alt-primary)"
+                  bg="var(--bg-glass)"
+                  backdropFilter="blur(12px)"
                   color="var(--text-primary)"
                   borderRadius="full"
+                  border="1px solid var(--border-glass)"
                   _hover={{
-                    bg: "var(--accent-primary)",
+                    bg: "var(--bg-surface-hover)",
                     transform: "rotate(90deg)",
+                    borderColor: "var(--accent-primary)",
                   }}
                   position="absolute"
-                  top="20px"
-                  right="20px"
+                  top="24px"
+                  right="24px"
                   w="40px"
                   h="40px"
                   transition="all 0.2s ease"
