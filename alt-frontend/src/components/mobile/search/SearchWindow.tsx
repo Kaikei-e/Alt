@@ -139,6 +139,7 @@ const SearchWindow = ({
               color="var(--text-primary)"
               borderRadius="12px"
               height="48px"
+              disabled={isLoading}
               _placeholder={{ color: "var(--text-muted)" }}
               _focus={{
                 borderColor: validationError ? "#dc2626" : "var(--alt-primary)",
@@ -149,6 +150,13 @@ const SearchWindow = ({
                 borderColor: validationError
                   ? "#dc2626"
                   : "var(--alt-secondary)",
+              }}
+              _disabled={{
+                bg: "var(--bg-surface)",
+                borderColor: "var(--border-glass)",
+                color: "var(--text-muted)",
+                opacity: 0.6,
+                cursor: "not-allowed",
               }}
               onKeyDown={handleKeyPress}
             />

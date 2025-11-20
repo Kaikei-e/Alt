@@ -188,6 +188,7 @@ export const SearchArticles = ({
               bg="var(--surface-bg)"
               border={`2px solid ${validationError ? "#dc2626" : "var(--surface-border)"}`}
               color="var(--text-primary)"
+              disabled={isLoading}
               _placeholder={{ color: "var(--text-muted)" }}
               _focus={{
                 borderColor: validationError ? "#dc2626" : "var(--alt-primary)",
@@ -199,7 +200,14 @@ export const SearchArticles = ({
                   ? "#dc2626"
                   : "var(--alt-secondary)",
               }}
-              borderRadius="0"
+              _disabled={{
+                bg: "var(--surface-bg)",
+                borderColor: "var(--surface-border)",
+                color: "var(--text-muted)",
+                opacity: 0.6,
+                cursor: "not-allowed",
+              }}
+              borderRadius="12px"
               p={4}
               data-testid="search-input"
             />
