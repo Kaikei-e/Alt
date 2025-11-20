@@ -39,6 +39,7 @@ use select::{SelectStage, SummarySelectStage};
 pub(crate) struct PipelineOrchestrator {
     config: Arc<Config>,
     stages: PipelineStages,
+    recap_dao: Arc<RecapDao>,
 }
 
 struct PipelineStages {
@@ -100,37 +101,12 @@ impl PipelineOrchestrator {
         let cpu_count = num_cpus::get();
         let max_concurrent = (cpu_count * 3) / 2;
         let window_days = config.recap_window_days();
-        let graph_overrides =
-            match GraphOverrideSettings::load_with_fallback(recap_dao.pool()).await {
-                Ok(overrides) => overrides,
-                Err(err) => {
-                    tracing::warn!(
-                        error = ?err,
-                        "loading graph override config failed, continuing with defaults"
-                    );
-                    GraphOverrideSettings::default()
-                }
-            };
 
         let coarse_stage = Arc::new(CoarseGenreStage::with_defaults());
         let rollout = RefineRollout::new(config.genre_refine_rollout_pct());
         let genre_stage: Arc<dyn GenreStage> = if config.genre_refine_enabled() {
-            let mut refine_config = RefineConfig::new(config.genre_refine_require_tags());
-            if let Some(value) = graph_overrides.graph_margin {
-                refine_config.graph_margin = value;
-            }
-            if let Some(value) = graph_overrides.weighted_tie_break_margin {
-                refine_config.weighted_tie_break_margin = value;
-            }
-            if let Some(value) = graph_overrides.tag_confidence_gate {
-                refine_config.tag_confidence_gate = value;
-            }
-            if let Some(value) = graph_overrides.boost_threshold {
-                refine_config.boost_threshold = value;
-            }
-            if let Some(value) = graph_overrides.tag_count_threshold {
-                refine_config.tag_count_threshold = value;
-            }
+            // デフォルト設定でRefineConfigを初期化（実行時に動的に更新される）
+            let refine_config = RefineConfig::new(config.genre_refine_require_tags());
             let graph_loader = Arc::new(DbTagLabelGraphSource::new(
                 Arc::clone(&recap_dao),
                 config.tag_label_graph_window().to_string(),
@@ -177,7 +153,7 @@ impl PipelineOrchestrator {
             .with_persist_stage(Arc::new(persist::FinalSectionPersistStage::new(
                 Arc::clone(&recap_dao),
             )))
-            .build())
+            .build(Arc::clone(&recap_dao)))
     }
 
     #[cfg(test)]
@@ -187,6 +163,21 @@ impl PipelineOrchestrator {
 
     pub(crate) async fn execute(&self, job: &JobContext) -> Result<persist::PersistResult> {
         tracing::debug!(job_id = %job.job_id, prompt_version = %self.config.llm_prompt_version(), "recap pipeline started");
+
+        // 設定を再読み込みしてGenreStageを更新
+        match GraphOverrideSettings::load_with_fallback(self.recap_dao.pool()).await {
+            Ok(overrides) => {
+                self.stages.genre.update_config(&overrides).await;
+                tracing::debug!("updated graph override settings from database");
+            }
+            Err(err) => {
+                tracing::warn!(
+                    error = ?err,
+                    "failed to reload graph override config, continuing with current settings"
+                );
+            }
+        }
+
         let fetched = self.stages.fetch.fetch(job).await?;
         let preprocessed = self.stages.preprocess.preprocess(job, fetched).await?;
         let deduplicated = self.stages.dedup.deduplicate(job, preprocessed).await?;
@@ -258,7 +249,7 @@ impl PipelineBuilder {
         self
     }
 
-    pub(crate) fn build(self) -> PipelineOrchestrator {
+    pub(crate) fn build(self, recap_dao: Arc<RecapDao>) -> PipelineOrchestrator {
         let stages = PipelineStages {
             fetch: self
                 .fetch
@@ -286,6 +277,7 @@ impl PipelineBuilder {
         PipelineOrchestrator {
             config: self.config,
             stages,
+            recap_dao,
         }
     }
 }
@@ -295,6 +287,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
+    use sqlx::postgres::PgPoolOptions;
     use uuid::Uuid;
 
     use super::*;
@@ -330,6 +323,13 @@ mod tests {
         let order: Arc<Mutex<Vec<&'static str>>> = Arc::new(Mutex::new(Vec::new()));
         let config = setup_config();
 
+        // テスト用のダミーRecapDaoを作成
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy("postgres://recap:recap@localhost:5999/recap_db")
+            .expect("failed to create test pool");
+        let recap_dao = Arc::new(crate::store::dao::RecapDao::new(pool));
+
         let pipeline = PipelineOrchestrator::builder(Arc::clone(&config))
             .with_fetch_stage(Arc::new(RecordingFetch::new(Arc::clone(&order))))
             .with_preprocess_stage(Arc::new(RecordingPreprocess::new(Arc::clone(&order))))
@@ -338,7 +338,7 @@ mod tests {
             .with_select_stage(Arc::new(RecordingSelect::new(Arc::clone(&order))))
             .with_dispatch_stage(Arc::new(RecordingDispatch::new(Arc::clone(&order))))
             .with_persist_stage(Arc::new(RecordingPersist::new(Arc::clone(&order))))
-            .build();
+            .build(recap_dao);
 
         let job = JobContext::new(Uuid::new_v4(), vec!["ai".to_string()]);
 

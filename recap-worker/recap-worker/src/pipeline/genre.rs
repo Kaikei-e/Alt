@@ -19,8 +19,10 @@ use crate::store::models::{
 use super::dedup::{DeduplicatedArticle, DeduplicatedCorpus};
 use super::genre_keywords::GenreKeywords;
 use super::genre_refine::{
-    RefineEngine, RefineInput, RefineOutcome, RefineStrategy, TagFallbackMode, TagProfile,
+    RefineConfig, RefineEngine, RefineInput, RefineOutcome, RefineStrategy, TagFallbackMode,
+    TagProfile,
 };
+use super::graph_override::GraphOverrideSettings;
 use super::tag_signal::TagSignal;
 
 /// Coarseステージで算出されたジャンル候補。
@@ -78,6 +80,11 @@ pub(crate) struct FeatureProfile {
 #[async_trait]
 pub(crate) trait GenreStage: Send + Sync {
     async fn assign(&self, job: &JobContext, corpus: DeduplicatedCorpus) -> Result<GenreBundle>;
+
+    /// 設定を更新する（デフォルト実装は何もしない）。
+    async fn update_config(&self, _overrides: &super::graph_override::GraphOverrideSettings) {
+        // デフォルト実装は何もしない（既存の実装を壊さないため）
+    }
 }
 
 /// Coarse+Refineを統合するステージ。
@@ -495,6 +502,26 @@ impl GenreStage for CoarseGenreStage {
 
 #[async_trait]
 impl GenreStage for TwoStageGenreStage {
+    async fn update_config(&self, overrides: &GraphOverrideSettings) {
+        let mut refine_config = RefineConfig::new(self.require_tags);
+        if let Some(value) = overrides.graph_margin {
+            refine_config.graph_margin = value;
+        }
+        if let Some(value) = overrides.weighted_tie_break_margin {
+            refine_config.weighted_tie_break_margin = value;
+        }
+        if let Some(value) = overrides.tag_confidence_gate {
+            refine_config.tag_confidence_gate = value;
+        }
+        if let Some(value) = overrides.boost_threshold {
+            refine_config.boost_threshold = value;
+        }
+        if let Some(value) = overrides.tag_count_threshold {
+            refine_config.tag_count_threshold = value;
+        }
+        self.refine_engine.update_config(refine_config).await;
+    }
+
     async fn assign(&self, job: &JobContext, corpus: DeduplicatedCorpus) -> Result<GenreBundle> {
         let coarse_bundle = self.coarse.assign(job, corpus).await?;
         let refine_allowed = self.rollout.allows(job.job_id);

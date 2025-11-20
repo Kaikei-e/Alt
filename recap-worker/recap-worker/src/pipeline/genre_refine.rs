@@ -426,30 +426,46 @@ impl RefineConfig {
 #[async_trait]
 pub(crate) trait RefineEngine: Send + Sync {
     async fn refine(&self, input: RefineInput<'_>) -> Result<RefineOutcome>;
+
+    /// 設定を更新する（デフォルト実装は何もしない）。
+    #[allow(dead_code)]
+    async fn update_config(&self, _new_config: RefineConfig) {
+        // デフォルト実装は何もしない（既存の実装を壊さないため）
+    }
 }
 
 /// デフォルト実装。
 pub(crate) struct DefaultRefineEngine {
-    config: RefineConfig,
+    config: RwLock<RefineConfig>,
     graph: Arc<dyn TagLabelGraphSource>,
 }
 
 impl DefaultRefineEngine {
     pub(crate) fn new(config: RefineConfig, graph: Arc<dyn TagLabelGraphSource>) -> Self {
-        Self { config, graph }
+        Self {
+            config: RwLock::new(config),
+            graph,
+        }
     }
 }
 
 #[async_trait]
 impl RefineEngine for DefaultRefineEngine {
+    async fn update_config(&self, new_config: RefineConfig) {
+        let mut config = self.config.write().await;
+        *config = new_config;
+    }
+
     #[instrument(skip_all, fields(job_id = %input.job.job_id))]
     async fn refine(&self, input: RefineInput<'_>) -> Result<RefineOutcome> {
+        let config = self.config.read().await;
+
         if matches!(input.fallback, TagFallbackMode::CoarseOnly) {
             return Ok(RefineOutcome::new(
                 input
                     .candidates
                     .first()
-                    .map_or_else(|| self.config.fallback_genre.clone(), |c| c.name.clone()),
+                    .map_or_else(|| config.fallback_genre.clone(), |c| c.name.clone()),
                 input
                     .candidates
                     .first()
@@ -460,12 +476,12 @@ impl RefineEngine for DefaultRefineEngine {
             ));
         }
 
-        if self.config.require_tags && !input.tag_profile.has_tags() {
+        if config.require_tags && !input.tag_profile.has_tags() {
             return Ok(RefineOutcome::new(
                 input
                     .candidates
                     .first()
-                    .map_or_else(|| self.config.fallback_genre.clone(), |c| c.name.clone()),
+                    .map_or_else(|| config.fallback_genre.clone(), |c| c.name.clone()),
                 input
                     .candidates
                     .first()
@@ -478,7 +494,7 @@ impl RefineEngine for DefaultRefineEngine {
 
         if input.candidates.is_empty() {
             return Ok(RefineOutcome::new(
-                self.config.fallback_genre.clone(),
+                config.fallback_genre.clone(),
                 0.0,
                 RefineStrategy::FallbackOther,
                 None,
@@ -500,11 +516,8 @@ impl RefineEngine for DefaultRefineEngine {
             .map(|candidate| (normalize(&candidate.name), candidate))
             .collect();
 
-        let consistent_candidate = tag_consistency_winner(
-            &self.config,
-            &normalized_candidates,
-            &input.tag_profile.top_tags,
-        );
+        let consistent_candidate =
+            tag_consistency_winner(&config, &normalized_candidates, &input.tag_profile.top_tags);
         if let Some((winner_name, confidence)) = consistent_candidate {
             let outcome_conf = confidence.max(
                 input
@@ -551,9 +564,9 @@ impl RefineEngine for DefaultRefineEngine {
 
         if let Some(second) = scored.get(1) {
             let margin = top.1 - second.1;
-            if margin >= self.config.graph_margin
-                && top_boost >= self.config.boost_threshold
-                && tag_count >= self.config.tag_count_threshold
+            if margin >= config.graph_margin
+                && top_boost >= config.boost_threshold
+                && tag_count >= config.tag_count_threshold
             {
                 return Ok(RefineOutcome::new(
                     top.0.name.clone(),
@@ -565,7 +578,7 @@ impl RefineEngine for DefaultRefineEngine {
             }
 
             // マージンが小さい場合、重み付きスコアリングでタイブレーク
-            if margin.abs() < self.config.weighted_tie_break_margin {
+            if margin.abs() < config.weighted_tie_break_margin {
                 let mut weighted_scores: Vec<(&GenreCandidate, f32)> = input
                     .candidates
                     .iter()
@@ -573,12 +586,12 @@ impl RefineEngine for DefaultRefineEngine {
                         let normalized = normalize(&candidate.name);
                         let boost = graph_boosts.get(&normalized).copied().unwrap_or_default();
                         let tag_consistency = tag_consistency_score(
-                            &self.config,
+                            &config,
                             &candidate.name,
                             &input.tag_profile.top_tags,
                         );
                         let weighted_score = compute_weighted_tie_break_score(
-                            &self.config,
+                            &config,
                             candidate,
                             boost,
                             tag_consistency,
