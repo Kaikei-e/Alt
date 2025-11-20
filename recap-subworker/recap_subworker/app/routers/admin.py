@@ -13,9 +13,11 @@ from ..deps import (
     get_learning_service,
     get_pipeline_dep,
     get_pipeline_runner_dep,
+    get_settings_dep,
 )
 from ...services.learning_client import LearningClient
 from ...services.genre_learning import GenreLearningResult, GenreLearningService
+from ...infra.config import Settings
 
 
 router = APIRouter(tags=["admin"])
@@ -35,6 +37,7 @@ async def warmup(
 async def trigger_genre_learning(
     service: GenreLearningService = Depends(get_learning_service),
     client: LearningClient = Depends(get_learning_client),
+    settings: Settings = Depends(get_settings_dep),
 ) -> dict[str, object]:
     import structlog
 
@@ -42,7 +45,9 @@ async def trigger_genre_learning(
     logger.info("triggering genre learning task")
     try:
         logger.debug("generating learning result")
-        learning_result = await service.generate_learning_result()
+        learning_result = await service.generate_learning_result(
+            days=settings.learning_snapshot_days
+        )
         logger.info(
             "learning result generated",
             total_records=learning_result.summary.total_records,
