@@ -7,6 +7,7 @@ import { CacheManager, defaultCacheConfig } from "./cache/CacheManager";
 import { ApiClient, defaultApiConfig } from "./core/ApiClient";
 import { DesktopApi } from "./desktop/DesktopApi";
 import { FeedApi } from "./feeds/FeedApi";
+import { MorningApi } from "./morning/MorningApi";
 import { RecapApi } from "./recap/RecapApi";
 
 // Re-export types for external use
@@ -35,8 +36,10 @@ const feedApiInstance = new FeedApi(apiClient);
 const articleApiInstance = new ArticleApi(apiClient);
 const desktopApiInstance = new DesktopApi(apiClient, feedApiInstance);
 const recapApiInstance = new RecapApi(apiClient);
+const morningApiInstance = new MorningApi(apiClient);
 
 export const feedApi = feedApiInstance;
 export const articleApi = articleApiInstance;
 export const desktopApi = desktopApiInstance;
 export const recapApi = recapApiInstance;
+export const morningApi = morningApiInstance;
