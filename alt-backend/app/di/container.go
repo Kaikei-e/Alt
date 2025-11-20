@@ -20,12 +20,14 @@ import (
 	"alt/gateway/fetch_feed_tags_gateway"
 	"alt/gateway/fetch_inoreader_summary_gateway"
 	"alt/gateway/image_fetch_gateway"
+	"alt/gateway/morning_gateway"
 	"alt/gateway/rate_limiter_gateway"
 	"alt/gateway/recap_articles_gateway"
 	"alt/gateway/recap_gateway"
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/update_feed_status_gateway"
+	"alt/port"
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
 	"alt/port/rate_limiter_port"
@@ -40,6 +42,7 @@ import (
 	"alt/usecase/fetch_feed_usecase"
 	"alt/usecase/fetch_inoreader_summary_usecase"
 	"alt/usecase/image_fetch_usecase"
+	"alt/usecase/morning"
 	"alt/usecase/reading_status"
 	"alt/usecase/recap_articles_usecase"
 	"alt/usecase/recap_usecase"
@@ -93,6 +96,7 @@ type ApplicationComponents struct {
 	FetchArticlesCursorUsecase          *fetch_articles_usecase.FetchArticlesCursorUsecase
 	RecapArticlesUsecase                *recap_articles_usecase.RecapArticlesUsecase
 	RecapUsecase                        *recap_usecase.RecapUsecase
+	MorningUsecase                      port.MorningUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -203,6 +207,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	imageFetchGateway := image_fetch_gateway.NewImageFetchGateway(imageHTTPClient)
 	imageFetchUsecase := image_fetch_usecase.NewImageFetchUsecase(imageFetchGateway)
 
+	// Morning letter components
+	morningGatewayImpl := morning_gateway.NewMorningGateway(pool)
+	morningUsecase := morning.NewMorningUsecase(morningGatewayImpl)
+
 	return &ApplicationComponents{
 		// Ports
 		ConfigPort:       configPort,
@@ -241,5 +249,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchArticlesCursorUsecase:          fetchArticlesCursorUsecase,
 		RecapArticlesUsecase:                recapArticlesUsecase,
 		RecapUsecase:                        recapUsecase,
+		MorningUsecase:                      morningUsecase,
 	}
 }
