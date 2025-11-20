@@ -124,6 +124,7 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 			GroupID:   gr.GroupID,
 			ArticleID: gr.ArticleID,
 			IsPrimary: gr.IsPrimary,
+			CreatedAt: gr.CreatedAt,
 			Article:   article,
 		})
 	}

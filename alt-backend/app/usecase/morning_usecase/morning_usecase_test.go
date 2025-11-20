@@ -18,15 +18,18 @@ func TestGetOvernightUpdates(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := mocks.NewMockMorningRepository(ctrl)
-	usecase := morning_usecase.NewMorningUsecase(mockRepo)
+	mockUserFeedPort := mocks.NewMockUserFeedPort(ctrl)
+	usecase := morning_usecase.NewMorningUsecase(mockRepo, mockUserFeedPort)
 
 	ctx := context.Background()
-	userID := "user-123"
+	userIDStr := "11111111-1111-1111-1111-111111111111"
+	userID := uuid.MustParse(userIDStr)
 
 	// Mock data
 	groupID := uuid.New()
 	articleID1 := uuid.New()
 	articleID2 := uuid.New()
+	feedID := uuid.New()
 
 	groups := []*domain.MorningArticleGroup{
 		{
@@ -34,8 +37,9 @@ func TestGetOvernightUpdates(t *testing.T) {
 			ArticleID: articleID1,
 			IsPrimary: true,
 			Article: &domain.Article{
-				ID:    articleID1,
-				Title: "Primary Article",
+				ID:     articleID1,
+				FeedID: feedID,
+				Title:  "Primary Article",
 			},
 		},
 		{
@@ -43,19 +47,25 @@ func TestGetOvernightUpdates(t *testing.T) {
 			ArticleID: articleID2,
 			IsPrimary: false,
 			Article: &domain.Article{
-				ID:    articleID2,
-				Title: "Duplicate Article",
+				ID:     articleID2,
+				FeedID: feedID,
+				Title:  "Duplicate Article",
 			},
 		},
 	}
 
-	// Expectation
+	// Expectation for user feed IDs
+	mockUserFeedPort.EXPECT().
+		GetUserFeedIDs(ctx, userID).
+		Return([]uuid.UUID{feedID}, nil)
+
+	// Expectation for morning article groups
 	mockRepo.EXPECT().
-		GetMorningArticleGroups(ctx, gomock.Any()). // We can be more specific about time
+		GetMorningArticleGroups(ctx, gomock.Any()). // time only
 		Return(groups, nil)
 
 	// Execute
-	updates, err := usecase.GetOvernightUpdates(ctx, userID)
+	updates, err := usecase.GetOvernightUpdates(ctx, userIDStr)
 
 	// Verify
 	assert.NoError(t, err)

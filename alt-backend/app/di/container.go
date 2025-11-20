@@ -27,9 +27,10 @@ import (
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/update_feed_status_gateway"
-	"alt/port/morning_letter_port"
+	"alt/gateway/user_feed_gateway"
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
+	"alt/port/morning_letter_port"
 	"alt/port/rate_limiter_port"
 	"alt/usecase/archive_article_usecase"
 	"alt/usecase/csrf_token_usecase"
@@ -208,8 +209,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	imageFetchUsecase := image_fetch_usecase.NewImageFetchUsecase(imageFetchGateway)
 
 	// Morning letter components
+	userFeedGatewayImpl := user_feed_gateway.NewGateway(altDBRepository)
 	morningGatewayImpl := morning_gateway.NewMorningGateway(pool)
-	morningUsecase := morning_usecase.NewMorningUsecase(morningGatewayImpl)
+	morningUsecase := morning_usecase.NewMorningUsecase(morningGatewayImpl, userFeedGatewayImpl)
 
 	return &ApplicationComponents{
 		// Ports
