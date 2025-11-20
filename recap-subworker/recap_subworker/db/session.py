@@ -7,7 +7,7 @@ from typing import AsyncIterator
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from ..infra.config import Settings
+from ..infra.config import Settings, get_settings
 
 
 _ENGINE: AsyncEngine | None = None
@@ -42,9 +42,15 @@ def get_session_factory(settings: Settings) -> sessionmaker:
     return _SESSION_FACTORY
 
 
-async def get_session(settings: Settings) -> AsyncIterator[AsyncSession]:
+async def get_session() -> AsyncIterator[AsyncSession]:
     """FastAPI dependency that yields an AsyncSession."""
+    import structlog
 
+    logger = structlog.get_logger(__name__)
+    logger.debug("creating database session")
+    settings = get_settings()
     factory = get_session_factory(settings)
     async with factory() as session:
+        logger.debug("database session created")
         yield session
+        logger.debug("database session closed")
