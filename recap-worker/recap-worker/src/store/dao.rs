@@ -644,6 +644,42 @@ impl RecapDao {
         Ok(())
     }
 
+    /// Morning Letter: Overnight Updatesのグループを保存する。
+    pub async fn save_morning_article_groups(
+        &self,
+        groups: &[(Uuid, Uuid, bool)],
+    ) -> Result<()> {
+        if groups.is_empty() {
+            return Ok(());
+        }
+
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .context("failed to begin transaction for morning groups")?;
+
+        for (group_id, article_id, is_primary) in groups {
+            sqlx::query(
+                r"
+                INSERT INTO morning_article_groups (group_id, article_id, is_primary)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (group_id, article_id) DO NOTHING
+                ",
+            )
+            .bind(group_id)
+            .bind(article_id)
+            .bind(is_primary)
+            .execute(&mut *tx)
+            .await
+            .context("failed to insert morning article group")?;
+        }
+
+        tx.commit().await.context("failed to commit morning groups")?;
+
+        Ok(())
+    }
+
     /// Get the latest completed recap job for a given window
     pub(crate) async fn get_latest_completed_job(
         &self,

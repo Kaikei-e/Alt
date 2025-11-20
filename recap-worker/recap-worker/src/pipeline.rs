@@ -21,6 +21,7 @@ pub(crate) mod genre;
 pub(crate) mod genre_keywords;
 pub(crate) mod genre_refine;
 pub(crate) mod graph_override;
+pub mod morning;
 pub(crate) mod persist;
 pub mod preprocess;
 pub(crate) mod select;
@@ -459,6 +460,7 @@ mod tests {
                         sentence_hashes: vec![],
                         language: article.language,
                         tags: Vec::new(),
+                        duplicates: Vec::new(),
                     })
                     .collect(),
                 stats: super::dedup::DedupStats::default(),

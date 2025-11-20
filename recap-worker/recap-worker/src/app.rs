@@ -86,7 +86,12 @@ impl ComponentRegistry {
             )
             .await?,
         );
-        let scheduler = Scheduler::new(Arc::clone(&pipeline), Arc::clone(&config));
+        let morning_pipeline = Arc::new(crate::pipeline::morning::MorningPipeline::new(
+            Arc::clone(&config),
+            Arc::clone(&recap_dao),
+        ));
+        let scheduler =
+            Scheduler::new(Arc::clone(&pipeline), morning_pipeline, Arc::clone(&config));
 
         Ok(Self {
             config,

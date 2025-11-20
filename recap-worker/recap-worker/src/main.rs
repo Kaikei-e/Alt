@@ -54,8 +54,9 @@ async fn main() -> anyhow::Result<()> {
     if default_genres.is_empty() {
         warn!("skipping automatic batch daemon because no default genres are configured");
     } else {
-        let _batch_daemon = spawn_jst_batch_daemon(scheduler, default_genres);
+        let _batch_daemon = spawn_jst_batch_daemon(scheduler.clone(), default_genres);
     }
+    let _morning_daemon = recap_worker::scheduler::daemon::spawn_morning_update_daemon(scheduler);
     let router = build_router(registry);
 
     let listener = TcpListener::bind(bind_addr)

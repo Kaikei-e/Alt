@@ -120,6 +120,7 @@ async fn process_record(
             .clone()
             .unwrap_or_else(|| "unknown".to_string()),
         tags: tag_signals.clone(),
+        duplicates: Vec::new(),
     };
 
     let job = JobContext::new(record.job_id, Vec::new());
