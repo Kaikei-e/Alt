@@ -41,11 +41,12 @@ export default function SearchFeedsPage() {
 
         {/* Search Input Section */}
         <Box
-          bg="var(--surface-bg)"
+          bg="var(--bg-glass)"
+          backdropFilter="blur(12px)"
           p={6}
-          borderRadius="0"
-          border="2px solid var(--surface-border)"
-          boxShadow="var(--shadow-sm)"
+          borderRadius="24px"
+          border="1px solid var(--border-glass)"
+          boxShadow="var(--shadow-glass)"
         >
           <SearchWindow
             searchQuery={searchQuery}
@@ -69,11 +70,12 @@ export default function SearchFeedsPage() {
         {/* Quick Tips */}
         {!searchQuery.query && !isLoading && results.length === 0 && (
           <Box
-            bg="var(--surface-bg)"
+            bg="var(--bg-glass)"
+            backdropFilter="blur(12px)"
             p={4}
-            borderRadius="0"
-            border="2px solid var(--surface-border)"
-            boxShadow="var(--shadow-sm)"
+            borderRadius="24px"
+            border="1px solid var(--border-glass)"
+            boxShadow="var(--shadow-glass)"
           >
             <Text
               color="var(--text-secondary)"

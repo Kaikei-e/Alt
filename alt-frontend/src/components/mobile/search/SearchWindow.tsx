@@ -108,6 +108,13 @@ const SearchWindow = ({
     }
   };
 
+  const handleSearchChange = (value: string) => {
+    const newQuery: SearchQuery = { query: value };
+    setSearchQuery(newQuery);
+    // Real-time validation
+    validateQuery(newQuery);
+  };
+
   return (
     <Box data-testid="search-window">
       <form onSubmit={handleFormSubmit}>
@@ -124,29 +131,18 @@ const SearchWindow = ({
             <Input
               data-testid="search-input"
               type="text"
-              placeholder="Search for feeds..."
               value={searchQuery.query || ""}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                const newQuery = { query: e.target.value };
-                setSearchQuery(newQuery);
-                // Clear errors when user starts typing
-                if (error) setError(null);
-                // Real-time validation for better UX
-                if (e.target.value.trim()) {
-                  validateQuery(newQuery);
-                } else {
-                  setValidationError(null);
-                }
-              }}
-              onKeyDown={handleKeyPress}
-              bg="var(--surface-bg)"
-              border={`2px solid ${validationError ? "#dc2626" : "var(--surface-border)"}`}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="e.g. AI, technology, startup..."
+              bg="var(--bg-surface)"
+              border={`1px solid ${validationError ? "#dc2626" : "var(--border-glass)"}`}
               color="var(--text-primary)"
-              borderRadius="0"
+              borderRadius="12px"
+              height="48px"
               _placeholder={{ color: "var(--text-muted)" }}
               _focus={{
                 borderColor: validationError ? "#dc2626" : "var(--alt-primary)",
-                boxShadow: "var(--shadow-sm)",
+                boxShadow: "0 0 0 2px var(--alt-primary-alpha)",
                 outline: "none",
               }}
               _hover={{
@@ -154,27 +150,27 @@ const SearchWindow = ({
                   ? "#dc2626"
                   : "var(--alt-secondary)",
               }}
+              onKeyDown={handleKeyPress}
             />
           </Box>
 
           <Button
             type="submit"
             loading={isLoading}
-            bg="var(--surface-bg)"
-            color="var(--text-primary)"
-            fontWeight="700"
+            bg="var(--alt-primary)"
+            color="white"
+            fontWeight="600"
             px={8}
             py={6}
-            borderRadius="0"
-            border="2px solid var(--alt-primary)"
+            borderRadius="full"
+            border="none"
             _hover={{
-              bg: "var(--alt-primary)",
-              color: "#ffffff",
-              boxShadow: "var(--shadow-md)",
+              bg: "var(--alt-primary-hover)",
+              transform: "translateY(-1px)",
+              boxShadow: "0 4px 12px var(--alt-primary-shadow)",
             }}
             _active={{
-              bg: "var(--alt-secondary)",
-              borderColor: "var(--alt-secondary)",
+              transform: "translateY(0)",
             }}
             transition="all 0.2s ease"
             width="full"

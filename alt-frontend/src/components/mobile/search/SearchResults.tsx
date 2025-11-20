@@ -57,7 +57,7 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
         setSummary(summaryResponse);
       } catch (error) {
         console.error("Error fetching summary:", error);
-        setSummaryError("要約を取得できませんでした");
+        setSummaryError("Failed to fetch summary");
       } finally {
         setIsLoadingSummary(false);
       }
@@ -69,38 +69,13 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
     if (!result.link) return;
 
     setIsSummarizing(true);
-    setSummaryError(null);
-
     try {
-      // Call the summarize API - it returns the summary directly
-      const summarizeResponse = await articleApi.summarizeArticle(result.link);
-
-      if (summarizeResponse.success && summarizeResponse.summary) {
-        // Create a FetchArticleSummaryResponse from the summarize response
-        const summaryData: FetchArticleSummaryResponse = {
-          matched_articles: [
-            {
-              article_url: result.link || "",
-              title: result.title,
-              author: result.author?.name || result.authors?.[0]?.name,
-              content: summarizeResponse.summary,
-              content_type: "summary",
-              published_at: result.published || new Date().toISOString(),
-              fetched_at: new Date().toISOString(),
-              source_id: summarizeResponse.article_id,
-            },
-          ],
-          total_matched: 1,
-          requested_count: 1,
-        };
-        setSummary(summaryData);
-        setSummaryError(null);
-      } else {
-        setSummaryError("要約の生成に失敗しました");
-      }
+      const summaryResponse = await articleApi.getArticleSummary(result.link);
+      setSummary(summaryResponse);
+      setIsExpanded(true);
     } catch (error) {
-      console.error("Error summarizing article:", error);
-      setSummaryError("要約の生成中にエラーが発生しました");
+      console.error("Error generating summary:", error);
+      setSummaryError("Failed to fetch summary");
     } finally {
       setIsSummarizing(false);
     }
@@ -108,53 +83,45 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
 
   return (
     <Box
-      bg="var(--surface-bg)"
-      p={4}
-      borderRadius="0"
-      border="2px solid var(--surface-border)"
+      bg="var(--bg-glass)"
+      backdropFilter="blur(12px)"
+      borderRadius="24px"
+      border="1px solid var(--border-glass)"
+      boxShadow="var(--shadow-glass)"
+      p={5}
+      transition="all 0.3s ease"
       _hover={{
-        bg: "var(--surface-hover)",
-        borderColor: "var(--alt-primary)",
-        boxShadow: "var(--shadow-md)",
+        transform: "translateY(-2px)",
+        boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
+        borderColor: "var(--accent-primary)",
       }}
-      transition="all 0.2s ease"
-      role="article"
-      aria-label={`Search result: ${result.title}`}
     >
-      <VStack align="start" gap={3} width="100%">
-        <Link
-          href={result.link || "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ width: "100%" }}
-        >
+      <VStack align="stretch" gap={3}>
+        <Link href={result.link || "#"} target="_blank">
           <Heading
-            as="h3"
-            size="md"
-            color="var(--alt-primary)"
-            fontWeight="700"
-            _hover={{
-              textDecoration: "underline",
-              color: "var(--alt-secondary)",
-              textDecorationThickness: "2px",
-            }}
-            lineHeight="1.3"
-            letterSpacing="-0.025em"
-            wordBreak="break-word"
-            overflowWrap="anywhere"
+            size="sm"
+            color="var(--text-primary)"
+            _hover={{ color: "var(--alt-primary)" }}
+            transition="color 0.2s"
+            lineHeight="1.4"
           >
             {result.title}
           </Heading>
         </Link>
 
-        {descriptionText && (
-          <VStack align="start" gap={2} width="100%">
+        {result.published && (
+          <HStack justify="space-between" fontSize="xs" color="var(--text-secondary)">
+            <Text>{result.author?.name || result.authors?.[0]?.name || "Unknown"}</Text>
+            <Text>{new Date(result.published).toLocaleDateString()}</Text>
+          </HStack>
+        )}
+
+        {result.description && (
+          <Box>
             <Text
               color="var(--text-secondary)"
-              fontSize="sm"
-              lineHeight="1.7"
-              wordBreak="break-word"
-              overflowWrap="anywhere"
+              lineHeight="1.6"
+              {...(isDescriptionExpanded ? {} : { isTruncated: true })}
             >
               {displayDescription}
             </Text>
@@ -162,69 +129,23 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
               <Button
                 size="xs"
                 variant="ghost"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsDescriptionExpanded(!isDescriptionExpanded);
-                }}
-                color="var(--alt-primary)"
-                _hover={{
-                  bg: "rgba(255, 255, 255, 0.05)",
-                }}
-                alignSelf="flex-start"
+                onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                mt={2}
+                width="100%"
               >
-                {isDescriptionExpanded ? "折りたたむ" : "続きを読む"}
+                {isDescriptionExpanded ? "Show less" : "Read more"}
               </Button>
             )}
-          </VStack>
+          </Box>
         )}
 
-        <HStack gap={2} fontSize="xs" color="var(--text-muted)" flexWrap="wrap">
-          {result.published && (
-            <Text>
-              {new Date(result.published).toLocaleDateString("ja-JP", {
-                year: "numeric",
-                month: "short",
-                day: "numeric",
-              })}
-            </Text>
-          )}
-          {result.authors && result.authors.length > 0 && (
-            <>
-              {result.published && <Text>•</Text>}
-              <Text>{result.authors[0].name}</Text>
-            </>
-          )}
-        </HStack>
-
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleToggleSummary}
-          width="full"
-          color="var(--text-primary)"
-          borderColor="var(--surface-border)"
-          _hover={{
-            bg: "var(--surface-hover)",
-            borderColor: "var(--alt-primary)",
-          }}
-        >
-          {isExpanded ? "要約を閉じる" : "要約を表示"}
-        </Button>
-
         {isExpanded && (
-          <Box
-            p={4}
-            bg="rgba(255, 255, 255, 0.03)"
-            borderRadius="8px"
-            border="1px solid var(--surface-border)"
-            mt={2}
-            width="100%"
-          >
+          <Box mt={3}>
             {isLoadingSummary ? (
               <HStack justify="center" py={4}>
                 <Spinner size="sm" color="var(--alt-primary)" />
                 <Text color="var(--text-secondary)" fontSize="sm">
-                  要約を読み込み中...
+                  Loading summary...
                 </Text>
               </HStack>
             ) : isSummarizing ? (
@@ -232,7 +153,7 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
                 <HStack justify="center">
                   <Spinner size="sm" color="var(--alt-primary)" />
                   <Text color="var(--text-secondary)" fontSize="sm">
-                    要約を生成中...
+                    Generating summary...
                   </Text>
                 </HStack>
                 <Text
@@ -240,7 +161,7 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
                   fontSize="xs"
                   textAlign="center"
                 >
-                  これには数秒かかる場合があります
+                  This may take a few seconds
                 </Text>
               </VStack>
             ) : summaryError ? (
@@ -252,7 +173,7 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
                 >
                   {summaryError}
                 </Text>
-                {summaryError === "要約を取得できませんでした" && (
+                {summaryError === "Failed to fetch summary" && (
                   <Button
                     size="sm"
                     colorScheme="blue"
@@ -298,7 +219,7 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
                   fontSize="sm"
                   textAlign="center"
                 >
-                  この記事の要約はまだありません
+                  No summary available for this article
                 </Text>
                 <Button
                   size="sm"
@@ -317,6 +238,24 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
             )}
           </Box>
         )}
+
+        <HStack gap={2} mt={3}>
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={handleToggleSummary}
+            width="full"
+            bg="var(--bg-surface)"
+            borderColor="var(--border-glass)"
+            color="var(--text-primary)"
+            _hover={{
+              bg: "var(--alt-primary-alpha)",
+              borderColor: "var(--alt-primary)",
+            }}
+          >
+            {isExpanded ? "Hide summary" : "Show summary"}
+          </Button>
+        </HStack>
       </VStack>
     </Box>
   );
@@ -340,12 +279,13 @@ const LoadingState = () => (
 
 const EmptyState = ({ searchQuery }: { searchQuery: string }) => (
   <Box
-    bg="var(--surface-bg)"
-    borderRadius="0"
-    border="2px solid var(--surface-border)"
+    bg="var(--bg-glass)"
+    backdropFilter="blur(12px)"
+    borderRadius="24px"
+    border="1px solid var(--border-glass)"
     p={8}
     textAlign="center"
-    boxShadow="var(--shadow-sm)"
+    boxShadow="var(--shadow-glass)"
   >
     <VStack gap={3}>
       <Text fontSize="2xl" color="var(--text-muted)">
@@ -402,11 +342,8 @@ export const SearchResults = ({
 
   return (
     <Box
-      bg="var(--surface-bg)"
-      borderRadius="0"
-      border="2px solid var(--surface-border)"
-      p={4}
-      boxShadow="var(--shadow-sm)"
+      bg="transparent"
+      p={0}
     >
       <SearchStats count={results.length} searchTime={searchTime} />
 
