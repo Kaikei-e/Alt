@@ -645,10 +645,7 @@ impl RecapDao {
     }
 
     /// Morning Letter: Overnight Updatesのグループを保存する。
-    pub async fn save_morning_article_groups(
-        &self,
-        groups: &[(Uuid, Uuid, bool)],
-    ) -> Result<()> {
+    pub async fn save_morning_article_groups(&self, groups: &[(Uuid, Uuid, bool)]) -> Result<()> {
         if groups.is_empty() {
             return Ok(());
         }
@@ -675,9 +672,42 @@ impl RecapDao {
             .context("failed to insert morning article group")?;
         }
 
-        tx.commit().await.context("failed to commit morning groups")?;
+        tx.commit()
+            .await
+            .context("failed to commit morning groups")?;
 
         Ok(())
+    }
+
+    /// Morning Letter: 指定された日時以降に作成された記事グループを取得する。
+    pub async fn get_morning_article_groups(
+        &self,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<(Uuid, Uuid, bool, DateTime<Utc>)>> {
+        let rows = sqlx::query(
+            r"
+            SELECT group_id, article_id, is_primary, created_at
+            FROM morning_article_groups
+            WHERE created_at > $1
+            ORDER BY created_at ASC
+            ",
+        )
+        .bind(since)
+        .fetch_all(&self.pool)
+        .await
+        .context("failed to fetch morning article groups")?;
+
+        let mut results = Vec::with_capacity(rows.len());
+        for row in rows {
+            results.push((
+                row.try_get("group_id")?,
+                row.try_get("article_id")?,
+                row.try_get("is_primary")?,
+                row.try_get("created_at")?,
+            ));
+        }
+
+        Ok(results)
     }
 
     /// Get the latest completed recap job for a given window

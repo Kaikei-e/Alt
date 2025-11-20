@@ -344,3 +344,55 @@ mod tests {
         assert_eq!(normalize_summary_text(input), input);
     }
 }
+
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct MorningUpdatesQuery {
+    since: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct MorningArticleGroupResponse {
+    group_id: uuid::Uuid,
+    article_id: uuid::Uuid,
+    is_primary: bool,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// GET /v1/morning/updates
+/// 指定された日時以降のMorning Letter更新分を取得する
+pub(crate) async fn get_morning_updates(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<MorningUpdatesQuery>,
+) -> impl IntoResponse {
+    let since = query
+        .since
+        .unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::hours(24));
+    let dao = state.dao();
+
+    match dao.get_morning_article_groups(since).await {
+        Ok(groups) => {
+            let response: Vec<MorningArticleGroupResponse> = groups
+                .into_iter()
+                .map(
+                    |(group_id, article_id, is_primary, created_at)| MorningArticleGroupResponse {
+                        group_id,
+                        article_id,
+                        is_primary,
+                        created_at,
+                    },
+                )
+                .collect();
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(e) => {
+            error!("Failed to fetch morning updates: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch morning updates".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}

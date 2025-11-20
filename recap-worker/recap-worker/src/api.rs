@@ -6,8 +6,8 @@ pub(crate) mod learning;
 pub(crate) mod metrics;
 
 use axum::{
-    routing::{get, post},
     Router,
+    routing::{get, post},
 };
 
 use crate::app::AppState;
@@ -24,5 +24,6 @@ pub(crate) fn router(state: AppState) -> Router {
         )
         .route("/v1/generate/recaps/7days", post(generate::trigger_7days))
         .route("/v1/recaps/7days", get(fetch::get_7days_recap))
+        .route("/v1/morning/updates", get(fetch::get_morning_updates))
         .with_state(state)
 }
