@@ -156,9 +156,19 @@ class Settings(BaseSettings):
         ge=0.0,
         description="Graph margin applied when building learning snapshot summaries",
     )
+    learning_snapshot_days: int = Field(
+        7,
+        ge=1,
+        le=30,
+        description="Lookback window in days when generating learning snapshots (based on article published_at)",
+    )
     learning_cluster_genres: str = Field(
-        "society_justice,art_culture",
-        description="Comma-separated genres used when generating cluster drafts",
+        "",
+        description="Comma-separated genres used when generating cluster drafts. If empty or '*', automatically detects all available genres from database (default behavior)",
+    )
+    learning_auto_detect_genres: bool = Field(
+        True,
+        description="If True, automatically detect and use all genres from database instead of using learning_cluster_genres. Default is True.",
     )
     recap_worker_learning_url: str = Field(
         "http://recap-worker:9005/admin/genre-learning",

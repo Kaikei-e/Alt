@@ -95,26 +95,42 @@ def get_learning_service(
     import structlog
 
     logger = structlog.get_logger(__name__)
+    # Check if auto-detect is enabled or if cluster_genres is empty/"*"
+    should_auto_detect = (
+        settings.learning_auto_detect_genres
+        or not settings.learning_cluster_genres.strip()
+        or settings.learning_cluster_genres.strip() == "*"
+    )
+    genres = (
+        []
+        if should_auto_detect
+        else [
+            genre.strip()
+            for genre in settings.learning_cluster_genres.split(",")
+            if genre.strip()
+        ]
+    )
     logger.debug(
         "creating learning service",
-        cluster_genres=settings.learning_cluster_genres,
+        cluster_genres=genres if not should_auto_detect else "auto-detect",
+        auto_detect=should_auto_detect,
         graph_margin=settings.learning_graph_margin,
     )
-    genres = [
-        genre.strip()
-        for genre in settings.learning_cluster_genres.split(",")
-        if genre.strip()
-    ]
     service = GenreLearningService(
         session=session,
         graph_margin=settings.learning_graph_margin,
-        cluster_genres=genres,
+        cluster_genres=genres if genres else None,
+        auto_detect_genres=should_auto_detect,
         bayes_enabled=settings.learning_bayes_enabled,
         bayes_iterations=settings.learning_bayes_iterations,
         bayes_seed=settings.learning_bayes_seed,
         bayes_min_samples=settings.learning_bayes_min_samples,
     )
-    logger.debug("learning service created", genres=genres)
+    logger.debug(
+        "learning service created",
+        genres=genres if not should_auto_detect else "auto-detect",
+        auto_detect=should_auto_detect,
+    )
     return service
 
 
