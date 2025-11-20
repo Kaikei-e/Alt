@@ -92,16 +92,30 @@ def get_learning_service(
     settings: Settings = Depends(get_settings_dep),
     session: AsyncSession = Depends(get_session),
 ) -> GenreLearningService:
+    import structlog
+
+    logger = structlog.get_logger(__name__)
+    logger.debug(
+        "creating learning service",
+        cluster_genres=settings.learning_cluster_genres,
+        graph_margin=settings.learning_graph_margin,
+    )
     genres = [
         genre.strip()
         for genre in settings.learning_cluster_genres.split(",")
         if genre.strip()
     ]
-    return GenreLearningService(
+    service = GenreLearningService(
         session=session,
         graph_margin=settings.learning_graph_margin,
         cluster_genres=genres,
+        bayes_enabled=settings.learning_bayes_enabled,
+        bayes_iterations=settings.learning_bayes_iterations,
+        bayes_seed=settings.learning_bayes_seed,
+        bayes_min_samples=settings.learning_bayes_min_samples,
     )
+    logger.debug("learning service created", genres=genres)
+    return service
 
 
 def get_learning_client(settings: Settings = Depends(get_settings_dep)) -> LearningClient:
