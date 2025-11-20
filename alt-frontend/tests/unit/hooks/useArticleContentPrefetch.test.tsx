@@ -1,4 +1,5 @@
 import { renderHook, waitFor } from "@testing-library/react";
+import { createSafeHtml } from "@/lib/server/sanitize-html";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useArticleContentPrefetch } from "@/hooks/useArticleContentPrefetch";
 import { articleApi } from "@/lib/api";
@@ -77,7 +78,7 @@ describe("useArticleContentPrefetch", () => {
 
   it("should prefetch next 2 articles when triggered", async () => {
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-      content: "<p>Article content</p>",
+      content: createSafeHtml("<p>Article content</p>"),
     });
     vi.mocked(articleApi.archiveContent).mockResolvedValue({
       message: "archived",
@@ -107,7 +108,7 @@ describe("useArticleContentPrefetch", () => {
 
   it("should prefetch next 3 articles when prefetchAhead is 3", async () => {
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-      content: "<p>Article content</p>",
+      content: createSafeHtml("<p>Article content</p>"),
     });
     vi.mocked(articleApi.archiveContent).mockResolvedValue({
       message: "archived",
@@ -138,7 +139,7 @@ describe("useArticleContentPrefetch", () => {
   });
 
   it("should return cached content when available", async () => {
-    const mockContent = "<p>Cached article content</p>";
+    const mockContent = createSafeHtml("<p>Cached article content</p>");
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: mockContent,
     });
@@ -166,7 +167,7 @@ describe("useArticleContentPrefetch", () => {
   it("should handle prefetch errors gracefully without crashing", async () => {
     const consoleWarnSpy = vi
       .spyOn(console, "warn")
-      .mockImplementation(() => {});
+      .mockImplementation(() => { });
     vi.mocked(articleApi.getFeedContentOnTheFly).mockRejectedValue(
       new Error("Network error"),
     );
@@ -194,7 +195,7 @@ describe("useArticleContentPrefetch", () => {
 
   it("should not prefetch duplicate URLs", async () => {
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-      content: "<p>Content</p>",
+      content: createSafeHtml("<p>Content</p>"),
     });
     vi.mocked(articleApi.archiveContent).mockResolvedValue({
       message: "archived",
@@ -231,7 +232,7 @@ describe("useArticleContentPrefetch", () => {
 
   it("should clean up cache when size exceeds limit", async () => {
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-      content: "<p>Article content</p>",
+      content: createSafeHtml("<p>Article content</p>"),
     });
     vi.mocked(articleApi.archiveContent).mockResolvedValue({
       message: "archived",
@@ -285,7 +286,7 @@ describe("useArticleContentPrefetch", () => {
 
   it("should archive articles in background non-blocking", async () => {
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-      content: "<p>Article content</p>",
+      content: createSafeHtml("<p>Article content</p>"),
     });
     vi.mocked(articleApi.archiveContent).mockResolvedValue({
       message: "archived",
@@ -318,9 +319,9 @@ describe("useArticleContentPrefetch", () => {
   it("should not block on archive failures", async () => {
     const consoleWarnSpy = vi
       .spyOn(console, "warn")
-      .mockImplementation(() => {});
+      .mockImplementation(() => { });
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-      content: "<p>Article content</p>",
+      content: createSafeHtml("<p>Article content</p>"),
     });
     vi.mocked(articleApi.archiveContent).mockRejectedValue(
       new Error("Archive failed"),
@@ -368,7 +369,7 @@ describe("useArticleContentPrefetch", () => {
     vi.mocked(articleApi.getFeedContentOnTheFly).mockImplementation(
       () =>
         new Promise((resolve) => {
-          setTimeout(() => resolve({ content: "<p>Content</p>" }), 5000);
+          setTimeout(() => resolve({ content: createSafeHtml("<p>Content</p>") }), 5000);
         }),
     );
 
@@ -389,7 +390,7 @@ describe("useArticleContentPrefetch", () => {
   describe("markAsDismissed", () => {
     it("should skip prefetch for dismissed articles", async () => {
       vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-        content: "<p>Article content</p>",
+        content: createSafeHtml("<p>Article content</p>"),
       });
       vi.mocked(articleApi.archiveContent).mockResolvedValue({
         message: "archived",
@@ -431,7 +432,7 @@ describe("useArticleContentPrefetch", () => {
       vi.useFakeTimers();
 
       vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-        content: "<p>Article content</p>",
+        content: createSafeHtml("<p>Article content</p>"),
       });
       vi.mocked(articleApi.archiveContent).mockResolvedValue({
         message: "archived",

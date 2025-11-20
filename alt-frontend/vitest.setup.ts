@@ -7,25 +7,28 @@ import { vi } from "vitest";
 
 global.React = React;
 
+// Mock server-only for tests (allows importing server-only modules in test environment)
+vi.mock("server-only", () => ({}));
+
 // webidl-conversionsとwhatwg-urlはモックしない
 // ベストプラクティス: 外部依存（API、データベース、ネットワーク）のみモック
 // これらのライブラリは実際の実装を使用し、jsdom環境で正常に動作するはず
 
 // より包括的なWeb APIポリフィル
 if (typeof global.HTMLElement === "undefined") {
-  global.HTMLElement = class HTMLElement {} as typeof HTMLElement;
+  global.HTMLElement = class HTMLElement { } as typeof HTMLElement;
 }
 
 if (typeof global.Element === "undefined") {
-  global.Element = class Element {} as typeof Element;
+  global.Element = class Element { } as typeof Element;
 }
 
 if (typeof global.Node === "undefined") {
-  global.Node = class Node {} as typeof Node;
+  global.Node = class Node { } as typeof Node;
 }
 
 if (typeof global.EventTarget === "undefined") {
-  global.EventTarget = class EventTarget {} as typeof EventTarget;
+  global.EventTarget = class EventTarget { } as typeof EventTarget;
 }
 
 // webidl-conversions が期待する Web API のポリフィル

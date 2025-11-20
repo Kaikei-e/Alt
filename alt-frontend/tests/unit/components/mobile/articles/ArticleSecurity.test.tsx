@@ -1,5 +1,6 @@
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { createSafeHtml, sanitizeForArticle } from "@/lib/server/sanitize-html";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,8 +53,9 @@ describe("Article rendering security", () => {
     const maliciousContent =
       "<p>hello</p><script>window.__xss = true;</script>";
 
+    // Content is sanitized server-side, so mock with sanitized version
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-      content: maliciousContent,
+      content: sanitizeForArticle(maliciousContent),
     });
 
     renderWithProviders(
@@ -87,8 +89,9 @@ describe("Article rendering security", () => {
     const maliciousContent =
       "<div>content</div><script>window.__cardXss = true;</script>";
 
+    // Content is sanitized server-side, so mock with sanitized version
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-      content: maliciousContent,
+      content: sanitizeForArticle(maliciousContent),
     });
 
     vi.mocked(articleApi.archiveContent).mockResolvedValue({

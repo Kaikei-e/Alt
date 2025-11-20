@@ -1,5 +1,6 @@
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { createSafeHtml } from "@/lib/server/sanitize-html";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -55,7 +56,7 @@ describe("FeedDetails", () => {
       });
 
       vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-        content: "This is the article content",
+        content: createSafeHtml("This is the article content"),
       });
 
       vi.mocked(articleApi.archiveContent).mockResolvedValue({
@@ -97,7 +98,7 @@ describe("FeedDetails", () => {
       });
 
       vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-        content: "",
+        content: createSafeHtml(""),
       });
 
       renderWithProviders(
@@ -128,7 +129,7 @@ describe("FeedDetails", () => {
       });
 
       vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-        content: "This is the article content",
+        content: createSafeHtml("This is the article content"),
       });
 
       vi.mocked(articleApi.archiveContent).mockRejectedValue(
@@ -137,7 +138,7 @@ describe("FeedDetails", () => {
 
       const consoleWarnSpy = vi
         .spyOn(console, "warn")
-        .mockImplementation(() => {});
+        .mockImplementation(() => { });
 
       renderWithProviders(
         <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
@@ -183,7 +184,7 @@ describe("FeedDetails", () => {
       });
 
       vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-        content: "This is the article content",
+        content: createSafeHtml("This is the article content"),
       });
 
       vi.mocked(articleApi.archiveContent).mockResolvedValue({
@@ -225,7 +226,7 @@ describe("FeedDetails", () => {
       });
 
       vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
-        content: "This is the article content",
+        content: createSafeHtml("This is the article content"),
       });
 
       vi.mocked(articleApi.archiveContent).mockResolvedValue({
