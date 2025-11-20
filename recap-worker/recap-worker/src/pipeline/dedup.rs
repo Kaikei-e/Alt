@@ -25,6 +25,7 @@ pub(crate) struct DeduplicatedArticle {
     pub(crate) sentence_hashes: Vec<u64>,
     pub(crate) language: String,
     pub(crate) tags: Vec<TagSignal>,
+    pub(crate) duplicates: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +100,7 @@ struct DedupState<'a> {
     unique_signatures: &'a mut Vec<ArticleSignature>,
     exact_hashes: &'a mut FxHashMap<u64, usize>,
     window_index: &'a mut FxHashMap<u64, SmallVec<[usize; 8]>>,
+    duplicates_map: &'a mut FxHashMap<usize, Vec<String>>,
     stats: &'a mut DedupStats,
 }
 
@@ -126,6 +128,11 @@ impl HashDedupStage {
                         article_id = %articles[signature.index].id,
                         "dropped duplicate article (exact match)"
                     );
+                    state
+                        .duplicates_map
+                        .entry(unique_idx)
+                        .or_default()
+                        .push(articles[signature.index].id.clone());
                     continue;
                 }
             }
@@ -144,9 +151,13 @@ impl HashDedupStage {
                     state.keep_flags[signature.index] = false;
                     state.stats.duplicate_articles += 1;
                     debug!(
-                        article_id = %articles[signature.index].id,
                         "dropped duplicate article (near match)"
                     );
+                    state
+                        .duplicates_map
+                        .entry(unique_idx)
+                        .or_default()
+                        .push(articles[signature.index].id.clone());
                     is_duplicate = true;
                     break;
                 }
@@ -254,12 +265,14 @@ impl DedupStage for HashDedupStage {
         let mut unique_signatures: Vec<ArticleSignature> = Vec::new();
         let mut exact_hashes: FxHashMap<u64, usize> = FxHashMap::default();
         let mut window_index: FxHashMap<u64, SmallVec<[usize; 8]>> = FxHashMap::default();
+        let mut duplicates_map: FxHashMap<usize, Vec<String>> = FxHashMap::default();
 
         let mut dedup_state = DedupState {
             keep_flags: &mut keep_flags,
             unique_signatures: &mut unique_signatures,
             exact_hashes: &mut exact_hashes,
             window_index: &mut window_index,
+            duplicates_map: &mut duplicates_map,
             stats: &mut stats,
         };
 
@@ -275,9 +288,15 @@ impl DedupStage for HashDedupStage {
 
         stats.unique_articles = unique_articles.len();
 
-        let deduped_articles = self
+        let mut deduped_articles = self
             .deduplicate_sentences_parallel(unique_articles, &mut stats)
             .await;
+
+        for (i, article) in deduped_articles.iter_mut().enumerate() {
+            if let Some(dups) = duplicates_map.remove(&i) {
+                article.duplicates = dups;
+            }
+        }
 
         info!(
             job_id = %job.job_id,
@@ -403,6 +422,7 @@ fn deduplicate_sentences(
         sentence_hashes,
         language: article.language,
         tags: article.tags,
+        duplicates: Vec::new(),
     };
 
     (

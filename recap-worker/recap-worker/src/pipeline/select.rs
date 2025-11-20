@@ -132,6 +132,7 @@ mod tests {
                 sentence_hashes: vec![],
                 language: "en".to_string(),
                 tags: Vec::new(),
+                duplicates: Vec::new(),
             },
         }
     }

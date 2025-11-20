@@ -503,6 +503,9 @@ impl GenreStage for CoarseGenreStage {
 #[async_trait]
 impl GenreStage for TwoStageGenreStage {
     async fn update_config(&self, overrides: &GraphOverrideSettings) {
+        // 既存の設定を取得してから、オーバーライドで更新
+        // DefaultRefineEngineから現在の設定を取得する方法がないため、
+        // 新しい設定を作成するが、オーバーライドされていない値はデフォルトを使用
         let mut refine_config = RefineConfig::new(self.require_tags);
         if let Some(value) = overrides.graph_margin {
             refine_config.graph_margin = value;
@@ -519,6 +522,14 @@ impl GenreStage for TwoStageGenreStage {
         if let Some(value) = overrides.tag_count_threshold {
             refine_config.tag_count_threshold = value;
         }
+        tracing::info!(
+            graph_margin = refine_config.graph_margin,
+            boost_threshold = refine_config.boost_threshold,
+            tag_count_threshold = refine_config.tag_count_threshold,
+            weighted_tie_break_margin = refine_config.weighted_tie_break_margin,
+            tag_confidence_gate = refine_config.tag_confidence_gate,
+            "updating refine engine config with overrides"
+        );
         self.refine_engine.update_config(refine_config).await;
     }
 
@@ -629,6 +640,7 @@ mod tests {
             sentence_hashes: vec![],
             language: "en".to_string(),
             tags: Vec::new(),
+            duplicates: Vec::new(),
         }
     }
 

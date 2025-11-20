@@ -453,6 +453,15 @@ impl DefaultRefineEngine {
 impl RefineEngine for DefaultRefineEngine {
     async fn update_config(&self, new_config: RefineConfig) {
         let mut config = self.config.write().await;
+        tracing::debug!(
+            old_graph_margin = config.graph_margin,
+            new_graph_margin = new_config.graph_margin,
+            old_boost_threshold = config.boost_threshold,
+            new_boost_threshold = new_config.boost_threshold,
+            old_tag_count_threshold = config.tag_count_threshold,
+            new_tag_count_threshold = new_config.tag_count_threshold,
+            "updating refine config"
+        );
         *config = new_config;
     }
 
@@ -846,6 +855,7 @@ mod tests {
             sentence_hashes: vec![],
             language: "en".to_string(),
             tags,
+            duplicates: Vec::new(),
         }
     }
 

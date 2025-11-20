@@ -280,7 +280,8 @@ fn build_metadata(articles: &[EvidenceArticle], stats: &CorpusBuildStats) -> Cor
     let primary_language = stats
         .language_counts
         .iter()
-        .max_by_key(|(_, count)| *count).map_or_else(|| "und".to_string(), |(lang, _)| lang.clone());
+        .max_by_key(|(_, count)| *count)
+        .map_or_else(|| "und".to_string(), |(lang, _)| lang.clone());
 
     let classifier = if stats.confidences.is_empty() {
         None
@@ -329,7 +330,10 @@ mod tests {
         sentences: Vec<&str>,
         language: &str,
     ) -> GenreAssignment {
-        let genre_strings: Vec<String> = genres.iter().map(std::string::ToString::to_string).collect();
+        let genre_strings: Vec<String> = genres
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
         let token_count = sentences.len();
         let article = DeduplicatedArticle {
             id: id.to_string(),
@@ -338,6 +342,7 @@ mod tests {
             sentence_hashes: vec![],
             language: language.to_string(),
             tags: Vec::new(),
+            duplicates: Vec::new(),
         };
 
         let genre_scores = genre_strings
