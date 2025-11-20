@@ -312,9 +312,9 @@ export default function FeedsPage() {
             bg="var(--alt-primary)"
             color="var(--text-primary)"
             p={0}
-            w="48px"
-            h="48px"
-            border="2px solid rgba(255, 255, 255, 0.2)"
+            w="64px"
+            h="64px"
+            border="2px solid white"
             _hover={{
               transform: "scale(1.05) rotate(90deg)",
               shadow: "0 6px 20px var(--alt-primary)",
