@@ -9,6 +9,8 @@ import (
 )
 
 // SearchFeedsByTitle searches feeds by title using PostgreSQL ILIKE for case-insensitive search
+// NOTE: This function is currently NOT used in production. The application uses SearchFeedMeilisearchUsecase instead.
+// Searches feed titles only (adding article content search would cause severe performance issues with LIKE queries).
 // Filters feeds by user_id to ensure multi-tenant isolation
 func (a *AltDBRepository) SearchFeedsByTitle(ctx context.Context, query string, userID string) ([]*domain.FeedItem, error) {
 	// Return empty result for empty query

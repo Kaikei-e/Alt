@@ -13,6 +13,7 @@ import (
 	"alt/gateway/feed_link_gateway"
 	"alt/gateway/feed_search_gateway"
 	"alt/gateway/feed_stats_gateway"
+	"alt/gateway/feed_url_link_gateway"
 	"alt/gateway/feed_url_to_id_gateway"
 	"alt/gateway/fetch_article_gateway"
 	"alt/gateway/fetch_feed_detail_gateway"
@@ -86,7 +87,7 @@ type ApplicationComponents struct {
 	SummarizedArticlesCountUsecase      *fetch_feed_stats_usecase.SummarizedArticlesCountUsecase
 	TotalArticlesCountUsecase           *fetch_feed_stats_usecase.TotalArticlesCountUsecase
 	TodayUnreadArticlesCountUsecase     *fetch_feed_stats_usecase.TodayUnreadArticlesCountUsecase
-	FeedSearchUsecase                   *search_feed_usecase.SearchFeedByTitleUsecase
+	FeedSearchUsecase                   *search_feed_usecase.SearchFeedMeilisearchUsecase
 	ArticleSearchUsecase                *search_article_usecase.SearchArticleUsecase
 	FetchFeedTagsUsecase                *fetch_feed_tags_usecase.FetchFeedTagsUsecase
 	FetchInoreaderSummaryUsecase        fetch_inoreader_summary_usecase.FetchInoreaderSummaryUsecase
@@ -160,13 +161,14 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	todayUnreadArticlesCountGatewayImpl := feed_stats_gateway.NewTodayUnreadArticlesCountGateway(pool)
 	todayUnreadArticlesCountUsecase := fetch_feed_stats_usecase.NewTodayUnreadArticlesCountUsecase(todayUnreadArticlesCountGatewayImpl)
 
-	// Feed search by title (PostgreSQL-based)
-	searchByTitleGatewayImpl := feed_search_gateway.NewSearchByTitleGateway(pool)
-	feedSearchUsecase := search_feed_usecase.NewSearchFeedByTitleUsecase(searchByTitleGatewayImpl)
-
 	// Article search (Meilisearch-based via search-indexer)
 	searchIndexerDriver := search_indexer.NewHTTPSearchIndexerDriver()
 	articleSearchUsecase := search_article_usecase.NewSearchArticleUsecase(searchIndexerDriver)
+
+	// Feed search (Meilisearch-based via search-indexer)
+	searchFeedMeilisearchGatewayImpl := feed_search_gateway.NewSearchFeedMeilisearchGateway(searchIndexerDriver)
+	feedURLLinkGatewayImpl := feed_url_link_gateway.NewFeedURLLinkGateway(altDBRepository)
+	feedSearchUsecase := search_feed_usecase.NewSearchFeedMeilisearchUsecase(searchFeedMeilisearchGatewayImpl, feedURLLinkGatewayImpl)
 
 	feedURLToIDGatewayImpl := feed_url_to_id_gateway.NewFeedURLToIDGateway(altDBRepository)
 	fetchFeedTagsGatewayImpl := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(altDBRepository)
