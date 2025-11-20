@@ -1,12 +1,12 @@
 import { Box, Flex, Text, Button, HStack, Badge } from "@chakra-ui/react";
 import { motion } from "framer-motion";
-import { Archive, ExternalLink } from "lucide-react";
+import { Archive, ExternalLink, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { truncateFeedDescription } from "@/lib/utils/textUtils";
 import type { Feed } from "@/schema/feed";
 import { articleApi } from "@/lib/api";
-import { FeedDetails } from "@/components/mobile/FeedDetails";
+import { ViewedFeedDetailsModal } from "./ViewedFeedDetailsModal";
 
 type ViewedFeedCardProps = {
   feed: Feed;
@@ -17,6 +17,7 @@ const MotionBox = motion(Box);
 export const ViewedFeedCard = ({ feed }: ViewedFeedCardProps) => {
   const [isArchiving, setIsArchiving] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const truncatedDescription = truncateFeedDescription(feed.description);
 
   const handleArchive = async (e: React.MouseEvent) => {
@@ -114,9 +115,18 @@ export const ViewedFeedCard = ({ feed }: ViewedFeedCardProps) => {
 
           {/* Footer: Actions and Meta */}
           <Flex justify="space-between" align="center" mt={1} gap={2} flexWrap="wrap">
-            <HStack gap={2}>
-              <FeedDetails feedURL={feed.link} feedTitle={feed.title} />
-            </HStack>
+            <Button
+              size="xs"
+              variant="ghost"
+              color="var(--alt-text-secondary)"
+              _hover={{ bg: "rgba(255, 255, 255, 0.05)", color: "var(--alt-text-primary)" }}
+              onClick={() => setIsModalOpen(true)}
+            >
+              <Flex align="center" gap={1}>
+                <BookOpen size={14} />
+                <Text>Details</Text>
+              </Flex>
+            </Button>
 
             <HStack gap={2}>
               <Button
@@ -150,6 +160,14 @@ export const ViewedFeedCard = ({ feed }: ViewedFeedCardProps) => {
           </Flex>
         </Flex>
       </Box>
+
+      {/* Modal */}
+      <ViewedFeedDetailsModal
+        feedURL={feed.link}
+        feedTitle={feed.title}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
     </MotionBox>
   );
 };
