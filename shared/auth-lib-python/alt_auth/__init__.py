@@ -1,1 +1,0 @@
-# Alt Authentication Library for Python Services
