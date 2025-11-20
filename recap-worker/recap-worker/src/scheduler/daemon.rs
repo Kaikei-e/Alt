@@ -74,6 +74,39 @@ impl BatchDaemon {
     }
 }
 
+pub fn spawn_morning_update_daemon(scheduler: Scheduler) -> JoinHandle<()> {
+    MorningUpdateDaemon::new(scheduler).spawn()
+}
+
+struct MorningUpdateDaemon {
+    scheduler: Scheduler,
+}
+
+impl MorningUpdateDaemon {
+    fn new(scheduler: Scheduler) -> Self {
+        Self { scheduler }
+    }
+
+    fn spawn(self) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            self.run().await;
+        })
+    }
+
+    async fn run(self) {
+        let interval = Duration::from_secs(30 * 60); // 30 minutes
+        loop {
+            sleep(interval).await;
+            let job_id = Uuid::new_v4();
+            let job = JobContext::new(job_id, Vec::new()); // No genres needed for update
+            match self.scheduler.run_morning_update(job).await {
+                Ok(()) => info!(%job_id, "morning update job completed"),
+                Err(err) => error!(%job_id, error = %err, "morning update job failed"),
+            }
+        }
+    }
+}
+
 fn duration_until(next: chrono::DateTime<Utc>, now: chrono::DateTime<Utc>) -> Duration {
     match (next - now).to_std() {
         Ok(duration) => duration,
