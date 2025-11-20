@@ -26,7 +26,8 @@ class LearningClient:
         import structlog
         logger = structlog.get_logger(__name__)
 
-        endpoint = f"{self.base_url}/admin/genre-learning"
+        # base_url is already a complete URL (e.g., http://recap-worker:9005/admin/genre-learning)
+        endpoint = self.base_url
         logger.debug(
             "sending POST request",
             endpoint=endpoint,

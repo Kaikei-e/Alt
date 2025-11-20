@@ -104,6 +104,10 @@ class LearningScheduler:
                     session=session,
                     graph_margin=self.settings.learning_graph_margin,
                     cluster_genres=cluster_genres,
+                    bayes_enabled=self.settings.learning_bayes_enabled,
+                    bayes_iterations=self.settings.learning_bayes_iterations,
+                    bayes_seed=self.settings.learning_bayes_seed,
+                    bayes_min_samples=self.settings.learning_bayes_min_samples,
                 )
 
                 # Generate learning result
@@ -115,6 +119,8 @@ class LearningScheduler:
                     graph_boost_count=learning_result.summary.graph_boost_count,
                     graph_boost_percentage=learning_result.summary.graph_boost_percentage,
                     has_cluster_draft=learning_result.cluster_draft is not None,
+                    has_bayes_optimization=learning_result.summary.boost_threshold_reference is not None,
+                    accuracy_estimate=learning_result.summary.accuracy_estimate,
                 )
 
                 # Create client and send to recap-worker

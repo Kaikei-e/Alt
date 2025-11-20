@@ -9,9 +9,12 @@ from datetime import datetime, timezone
 from typing import Any, Iterable, Sequence
 
 import numpy as np
+import pandas as pd
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import accuracy_score, silhouette_score
 from sklearn.preprocessing import StandardScaler
+from skopt import gp_minimize
+from skopt.space import Integer, Real
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +24,9 @@ DEFAULT_SNAPSHOT_LIMIT = 5000
 DEFAULT_CLUSTER_GENRES = ["society_justice", "art_culture"]
 DEFAULT_CLUSTER_MAX_K = 6
 DEFAULT_CLUSTER_MIN_SAMPLES = 10
+DEFAULT_BAYES_ITERATIONS = 30
+DEFAULT_BAYES_SEED = 42
+DEFAULT_BAYES_MIN_SAMPLES = 100
 
 
 def _coerce_json(value: Any) -> Any:
@@ -264,6 +270,90 @@ class ClusterBuilder:
         }
 
 
+@dataclass(frozen=True)
+class GraphBoostParams:
+    """Parameter triple that controls Graph Boost filtering."""
+
+    graph_margin: float
+    boost_threshold: float
+    tag_count_threshold: int
+
+
+def _prepare_dataframe_from_entries(entries: list[dict[str, Any]]) -> pd.DataFrame:
+    """Convert entries list to pandas DataFrame for Bayes optimization."""
+    if not entries:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(entries)
+    # Filter out rows with missing required fields
+    df = df.dropna(subset=["margin", "top_boost", "tag_count", "strategy"]).copy()
+    df = df[df["strategy"].isin({"graph_boost", "weighted_score"})]
+    df = df.assign(
+        label=df["strategy"] == "graph_boost",
+        margin=df["margin"].astype(float),
+        top_boost=df["top_boost"].astype(float),
+        tag_count=df["tag_count"].astype(int),
+    )
+    return df
+
+
+def _objective_bayes(params: Sequence[float], df: pd.DataFrame) -> float:
+    """Objective function for Bayes optimization (minimize 1 - accuracy)."""
+    graph_margin, boost_threshold, tag_count_min = params
+    # top_boost がすべて 0 の場合は boost_threshold 条件を無視
+    has_boost_values = (df["top_boost"] > 0).any()
+    if has_boost_values:
+        preds = (
+            (df["margin"] >= graph_margin)
+            & (df["top_boost"] >= boost_threshold)
+            & (df["tag_count"] >= int(round(tag_count_min)))
+        )
+    else:
+        # top_boost がすべて 0 の場合は boost_threshold 条件をスキップ
+        preds = (
+            (df["margin"] >= graph_margin)
+            & (df["tag_count"] >= int(round(tag_count_min)))
+        )
+    accuracy = accuracy_score(df["label"], preds)
+    return 1.0 - accuracy
+
+
+def _params_from_raw(raw: Sequence[float]) -> GraphBoostParams:
+    """Convert raw optimization parameters to GraphBoostParams."""
+    return GraphBoostParams(
+        graph_margin=float(raw[0]),
+        boost_threshold=float(raw[1]),
+        tag_count_threshold=int(round(raw[2])),
+    )
+
+
+def run_bayes_optimization(
+    df: pd.DataFrame, iterations: int, seed: int
+) -> tuple[GraphBoostParams, float]:
+    """Execute gp_minimize over the Graph Boost entries.
+
+    Returns:
+        Tuple of (best_params, best_accuracy)
+    """
+    space = [
+        Real(0.05, 0.25, name="graph_margin"),
+        Real(0.0, 5.0, name="boost_threshold"),
+        Integer(0, 10, name="tag_count_threshold"),
+    ]
+
+    result = gp_minimize(
+        func=lambda params: _objective_bayes(params, df),
+        dimensions=space,
+        n_calls=iterations,
+        random_state=seed,
+        acq_func="EI",
+    )
+
+    best_params = _params_from_raw(result.x)
+    best_accuracy = 1.0 - result.fun
+    return best_params, best_accuracy
+
+
 @dataclass
 class GenreLearningSummary:
     total_records: int
@@ -274,6 +364,9 @@ class GenreLearningSummary:
     avg_confidence: float | None
     tag_coverage_pct: float
     graph_margin_reference: float
+    boost_threshold_reference: float | None = None
+    tag_count_threshold_reference: int | None = None
+    accuracy_estimate: float | None = None
 
 
 @dataclass
@@ -289,10 +382,18 @@ class GenreLearningService:
         session: AsyncSession,
         graph_margin: float = DEFAULT_GRAPH_MARGIN,
         cluster_genres: Sequence[str] | None = None,
+        bayes_enabled: bool = True,
+        bayes_iterations: int = DEFAULT_BAYES_ITERATIONS,
+        bayes_seed: int = DEFAULT_BAYES_SEED,
+        bayes_min_samples: int = DEFAULT_BAYES_MIN_SAMPLES,
     ) -> None:
         self.session = session
         self.graph_margin = graph_margin
         self.cluster_genres = cluster_genres or DEFAULT_CLUSTER_GENRES
+        self.bayes_enabled = bayes_enabled
+        self.bayes_iterations = bayes_iterations
+        self.bayes_seed = bayes_seed
+        self.bayes_min_samples = bayes_min_samples
 
     async def fetch_snapshot_rows(
         self,
@@ -357,6 +458,9 @@ class GenreLearningService:
                 avg_confidence=None,
                 tag_coverage_pct=0.0,
                 graph_margin_reference=self.graph_margin,
+                boost_threshold_reference=None,
+                tag_count_threshold_reference=None,
+                accuracy_estimate=None,
             )
             return GenreLearningResult(
                 summary=empty_summary,
@@ -374,6 +478,68 @@ class GenreLearningService:
             entry_count=len(entries),
         )
         summary = self._summarize_entries(entries)
+
+        # Run Bayes optimization if enabled and sufficient samples
+        if self.bayes_enabled and len(entries) >= self.bayes_min_samples:
+            logger.info(
+                "running Bayes optimization",
+                entry_count=len(entries),
+                iterations=self.bayes_iterations,
+            )
+            try:
+                df = _prepare_dataframe_from_entries(entries)
+                if len(df) >= self.bayes_min_samples:
+                    best_params, best_accuracy = run_bayes_optimization(
+                        df, self.bayes_iterations, self.bayes_seed
+                    )
+                    # Check if top_boost is all zeros
+                    has_boost_values = (df["top_boost"] > 0).any()
+                    if not has_boost_values:
+                        logger.warning(
+                            "top_boost is all zeros, fixing boost_threshold to 0",
+                        )
+                        best_params = GraphBoostParams(
+                            graph_margin=best_params.graph_margin,
+                            boost_threshold=0.0,
+                            tag_count_threshold=best_params.tag_count_threshold,
+                        )
+
+                    summary.boost_threshold_reference = best_params.boost_threshold
+                    summary.tag_count_threshold_reference = best_params.tag_count_threshold
+                    summary.accuracy_estimate = best_accuracy
+                    # Update graph_margin_reference with optimized value
+                    summary.graph_margin_reference = best_params.graph_margin
+
+                    logger.info(
+                        "Bayes optimization completed",
+                        graph_margin=best_params.graph_margin,
+                        boost_threshold=best_params.boost_threshold,
+                        tag_count_threshold=best_params.tag_count_threshold,
+                        accuracy_estimate=best_accuracy,
+                    )
+                else:
+                    logger.warning(
+                        "insufficient samples for Bayes optimization after filtering",
+                        filtered_count=len(df),
+                        min_samples=self.bayes_min_samples,
+                    )
+            except Exception as exc:
+                logger.error(
+                    "Bayes optimization failed",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    exc_info=True,
+                )
+                # Continue with default values (graph_margin_reference only)
+        else:
+            if not self.bayes_enabled:
+                logger.debug("Bayes optimization disabled")
+            else:
+                logger.debug(
+                    "insufficient samples for Bayes optimization",
+                    entry_count=len(entries),
+                    min_samples=self.bayes_min_samples,
+                )
 
         logger.debug(
             "building cluster draft",
@@ -415,5 +581,8 @@ class GenreLearningService:
             avg_confidence=float(statistics.mean(confidences)) if confidences else None,
             tag_coverage_pct=round(tag_coverage_pct, 2),
             graph_margin_reference=self.graph_margin,
+            boost_threshold_reference=None,  # Will be set by Bayes optimization if enabled
+            tag_count_threshold_reference=None,  # Will be set by Bayes optimization if enabled
+            accuracy_estimate=None,  # Will be set by Bayes optimization if enabled
         )
 

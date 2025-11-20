@@ -179,6 +179,25 @@ class Settings(BaseSettings):
         le=168.0,
         description="Interval between learning task executions (hours)",
     )
+    learning_bayes_enabled: bool = Field(
+        True,
+        description="Enable Bayes optimization for threshold tuning",
+    )
+    learning_bayes_iterations: int = Field(
+        30,
+        ge=10,
+        le=100,
+        description="Number of iterations for Bayes optimization",
+    )
+    learning_bayes_seed: int = Field(
+        42,
+        description="Random seed for Bayes optimization",
+    )
+    learning_bayes_min_samples: int = Field(
+        100,
+        ge=50,
+        description="Minimum number of entries required to run Bayes optimization",
+    )
 
 
 @lru_cache(maxsize=1)
