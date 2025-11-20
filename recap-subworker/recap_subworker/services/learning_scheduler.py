@@ -177,15 +177,26 @@ class LearningScheduler:
         from dataclasses import asdict
 
         summary = asdict(result.summary)
+        graph_override: dict[str, object] = {
+            "graph_margin": result.summary.graph_margin_reference,
+        }
+        # Add optimized thresholds if available
+        if result.summary.boost_threshold_reference is not None:
+            graph_override["boost_threshold"] = result.summary.boost_threshold_reference
+        if result.summary.tag_count_threshold_reference is not None:
+            graph_override["tag_count_threshold"] = result.summary.tag_count_threshold_reference
+
+        metadata: dict[str, object] = {
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "entries_observed": result.summary.total_records,
+        }
+        if result.summary.accuracy_estimate is not None:
+            metadata["accuracy_estimate"] = result.summary.accuracy_estimate
+
         payload: dict[str, object] = {
             "summary": summary,
-            "graph_override": {
-                "graph_margin": result.summary.graph_margin_reference,
-            },
-            "metadata": {
-                "captured_at": datetime.now(timezone.utc).isoformat(),
-                "entries_observed": result.summary.total_records,
-            },
+            "graph_override": graph_override,
+            "metadata": metadata,
         }
         if result.cluster_draft:
             payload["cluster_draft"] = result.cluster_draft
