@@ -3,7 +3,6 @@
 import {
   Box,
   Button,
-  Heading,
   HStack,
   Spinner,
   Text,
@@ -98,15 +97,16 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
     >
       <VStack align="stretch" gap={3}>
         <Link href={result.link || "#"} target="_blank">
-          <Heading
-            size="sm"
+          <Text
+            fontSize="md"
+            fontWeight="600"
             color="var(--text-primary)"
             _hover={{ color: "var(--alt-primary)" }}
             transition="color 0.2s"
             lineHeight="1.4"
           >
             {result.title}
-          </Heading>
+          </Text>
         </Link>
 
         {result.published && (

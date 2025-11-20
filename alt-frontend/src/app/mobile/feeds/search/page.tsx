@@ -18,9 +18,9 @@ export default function SearchFeedsPage() {
     <Box minHeight="100dvh" bg="var(--app-bg)" color="var(--foreground)" p={4}>
       <VStack gap={6} align="stretch" maxWidth="600px" mx="auto">
         {/* Header Section */}
-        <VStack gap={3} mt={8} mb={2}>
+        <VStack gap={3} mt={4} mb={2}>
           <Text
-            fontSize="3xl"
+            fontSize="2xl"
             fontWeight="700"
             textAlign="center"
             color="var(--text-primary)"
