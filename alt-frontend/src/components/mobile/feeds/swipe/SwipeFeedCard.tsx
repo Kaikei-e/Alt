@@ -242,11 +242,11 @@ const SwipeFeedCard = memo(({
         ) {
           setSummary(summaryResponse.matched_articles[0].content);
         } else {
-          setSummaryError("要約を取得できませんでした");
+          setSummaryError("Could not fetch the summary");
         }
       } catch (error) {
         console.error("Error fetching summary:", error);
-        setSummaryError("要約を取得できませんでした");
+        setSummaryError("Could not fetch the summary");
       } finally {
         setIsLoadingSummary(false);
       }
@@ -275,11 +275,11 @@ const SwipeFeedCard = memo(({
           "[SwipeFeedCard] Invalid response structure:",
           summarizeResponse,
         );
-        setSummaryError("要約の生成に失敗しました");
+        setSummaryError("Failed to generate the summary");
       }
     } catch (error) {
       console.error("[SwipeFeedCard] Error summarizing article:", error);
-      setSummaryError("要約の生成中にエラーが発生しました");
+      setSummaryError("Failed to generate the summary");
     } finally {
       setIsSummarizing(false);
     }
