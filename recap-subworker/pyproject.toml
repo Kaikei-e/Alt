@@ -17,6 +17,8 @@ dependencies = [
   "sentence-transformers==5.1.2",
   "numpy>=2.1.0",
   "scikit-learn>=1.5.0",
+  "scikit-optimize>=0.9.0",
+  "pandas>=2.0.0",
   "umap-learn==0.5.9.post2",
   "hdbscan==0.8.40",
   "fast-hdbscan==0.2.1",
