@@ -42,16 +42,16 @@ func (m *MockUserFeedPort) EXPECT() *MockUserFeedPortMockRecorder {
 }
 
 // GetUserFeedIDs mocks base method.
-func (m *MockUserFeedPort) GetUserFeedIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+func (m *MockUserFeedPort) GetUserFeedIDs(ctx context.Context) ([]uuid.UUID, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUserFeedIDs", ctx, userID)
+	ret := m.ctrl.Call(m, "GetUserFeedIDs", ctx)
 	ret0, _ := ret[0].([]uuid.UUID)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetUserFeedIDs indicates an expected call of GetUserFeedIDs.
-func (mr *MockUserFeedPortMockRecorder) GetUserFeedIDs(ctx, userID any) *gomock.Call {
+func (mr *MockUserFeedPortMockRecorder) GetUserFeedIDs(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserFeedIDs", reflect.TypeOf((*MockUserFeedPort)(nil).GetUserFeedIDs), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserFeedIDs", reflect.TypeOf((*MockUserFeedPort)(nil).GetUserFeedIDs), ctx)
 }

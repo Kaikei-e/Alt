@@ -21,6 +21,6 @@ func NewGateway(altDBRepo *alt_db.AltDBRepository) user_feed_port.UserFeedPort {
 }
 
 // GetUserFeedIDs returns the feed IDs that the user is subscribed to.
-func (g *Gateway) GetUserFeedIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
-	return g.altDBRepo.FetchUserFeedIDs(ctx, userID)
+func (g *Gateway) GetUserFeedIDs(ctx context.Context) ([]uuid.UUID, error) {
+	return g.altDBRepo.FetchUserFeedIDs(ctx)
 }

@@ -25,14 +25,8 @@ func NewMorningUsecase(repo morning_letter_port.MorningRepository, userFeedPort 
 }
 
 func (u *morningUsecase) GetOvernightUpdates(ctx context.Context, userID string) ([]*domain.MorningUpdate, error) {
-	// Parse userID string to UUID
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid user ID: %w", err)
-	}
-
-	// Get user's subscribed feed IDs
-	feedIDs, err := u.userFeedPort.GetUserFeedIDs(ctx, userUUID)
+	// Get user's subscribed feed IDs from context (same pattern as cursor-based endpoints)
+	feedIDs, err := u.userFeedPort.GetUserFeedIDs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user feed IDs: %w", err)
 	}

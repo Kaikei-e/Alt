@@ -11,5 +11,6 @@ import (
 // UserFeedPort defines the interface for accessing user feed data.
 type UserFeedPort interface {
 	// GetUserFeedIDs returns the feed IDs that the user is subscribed to.
-	GetUserFeedIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
+	// User ID is extracted from the context.
+	GetUserFeedIDs(ctx context.Context) ([]uuid.UUID, error)
 }

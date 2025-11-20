@@ -21,9 +21,14 @@ func TestGetOvernightUpdates(t *testing.T) {
 	mockUserFeedPort := mocks.NewMockUserFeedPort(ctrl)
 	usecase := morning_usecase.NewMorningUsecase(mockRepo, mockUserFeedPort)
 
-	ctx := context.Background()
 	userIDStr := "11111111-1111-1111-1111-111111111111"
 	userID := uuid.MustParse(userIDStr)
+
+	// Set user context (same pattern as cursor-based endpoints)
+	userContext := &domain.UserContext{
+		UserID: userID,
+	}
+	ctx := domain.SetUserContext(context.Background(), userContext)
 
 	// Mock data
 	groupID := uuid.New()
@@ -54,9 +59,9 @@ func TestGetOvernightUpdates(t *testing.T) {
 		},
 	}
 
-	// Expectation for user feed IDs
+	// Expectation for user feed IDs (no userID parameter, extracted from context)
 	mockUserFeedPort.EXPECT().
-		GetUserFeedIDs(ctx, userID).
+		GetUserFeedIDs(ctx).
 		Return([]uuid.UUID{feedID}, nil)
 
 	// Expectation for morning article groups
