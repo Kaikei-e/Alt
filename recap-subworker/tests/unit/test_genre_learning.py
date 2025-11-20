@@ -105,6 +105,7 @@ async def test_generate_learning_result(mock_session, sample_rows):
         mock_session,
         graph_margin=0.15,
         cluster_genres=["society_justice", "art_culture"],
+        bayes_enabled=False,  # Disable Bayes for small sample test
     )
     result = await service.generate_learning_result()
 
@@ -114,6 +115,68 @@ async def test_generate_learning_result(mock_session, sample_rows):
     assert len(result.entries) == 2
     assert result.entries[0]["strategy"] == "graph_boost"
     assert result.entries[1]["strategy"] == "weighted_score"
+    assert result.summary.boost_threshold_reference is None
+    assert result.summary.tag_count_threshold_reference is None
+
+
+@pytest.mark.asyncio
+async def test_generate_learning_result_with_bayes_optimization(mock_session):
+    """Test generating learning result with Bayes optimization enabled."""
+    # Create enough sample rows for Bayes optimization
+    job_id = uuid4()
+    sample_rows = []
+    for i in range(150):
+        sample_rows.append(
+            {
+                "job_id": job_id,
+                "article_id": f"article-{i}",
+                "created_at": datetime.now(timezone.utc),
+                "coarse_candidates": [
+                    {
+                        "score": 0.8 + (i % 10) * 0.01,
+                        "graph_boost": 0.1 + (i % 5) * 0.05 if i % 2 == 0 else 0.0,
+                        "genre": "society_justice",
+                    },
+                ],
+                "refine_decision": {
+                    "final_genre": "society_justice",
+                    "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
+                    "confidence": 0.8 + (i % 10) * 0.02,
+                },
+                "tag_profile": {
+                    "top_tags": [
+                        {"label": f"tag-{i % 5}", "confidence": 0.9},
+                    ],
+                    "entropy": 1.5 + (i % 10) * 0.1,
+                },
+            }
+        )
+
+    # Mock database query
+    mock_result = MagicMock()
+    mock_result.mappings.return_value.all.return_value = [
+        MagicMock(**{k: v for k, v in row.items() if k != "coarse_candidates"})
+        for row in sample_rows
+    ]
+    mock_execute = AsyncMock(return_value=mock_result)
+    mock_session.execute = mock_execute
+
+    service = GenreLearningService(
+        mock_session,
+        graph_margin=0.15,
+        cluster_genres=["society_justice"],
+        bayes_enabled=True,
+        bayes_iterations=10,  # Reduced for faster tests
+        bayes_min_samples=100,
+    )
+    result = await service.generate_learning_result()
+
+    assert result.summary.total_records >= 100
+    # Bayes optimization should have run
+    assert result.summary.boost_threshold_reference is not None
+    assert result.summary.tag_count_threshold_reference is not None
+    assert result.summary.accuracy_estimate is not None
+    assert result.summary.graph_margin_reference != 0.15  # Should be optimized
 
 
 def test_build_graph_boost_snapshot_entries(sample_rows):
@@ -218,4 +281,100 @@ def test_summarize_entries():
     assert summary.avg_confidence is not None
     assert summary.tag_coverage_pct == 100.0
     assert summary.graph_margin_reference == 0.15
+
+
+def test_bayes_optimization_with_sufficient_samples():
+    """Test that Bayes optimization runs when sufficient samples are available."""
+    import pandas as pd
+
+    from recap_subworker.services.genre_learning import (
+        _prepare_dataframe_from_entries,
+        run_bayes_optimization,
+    )
+
+    # Create sample entries with enough data
+    entries = []
+    for i in range(150):
+        entries.append(
+            {
+                "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
+                "margin": 0.15 + (i % 10) * 0.01,
+                "top_boost": 0.1 + (i % 5) * 0.05 if i % 2 == 0 else 0.0,
+                "tag_count": 2 + (i % 5),
+                "confidence": 0.8 + (i % 10) * 0.02,
+            }
+        )
+
+    df = _prepare_dataframe_from_entries(entries)
+    assert len(df) >= 100
+
+    best_params, best_accuracy = run_bayes_optimization(df, iterations=10, seed=42)
+
+    assert best_params.graph_margin >= 0.05
+    assert best_params.graph_margin <= 0.25
+    assert best_params.boost_threshold >= 0.0
+    assert best_params.boost_threshold <= 5.0
+    assert best_params.tag_count_threshold >= 0
+    assert best_params.tag_count_threshold <= 10
+    assert 0.0 <= best_accuracy <= 1.0
+
+
+def test_bayes_optimization_with_zero_boost():
+    """Test that Bayes optimization handles zero boost values correctly."""
+    import pandas as pd
+
+    from recap_subworker.services.genre_learning import (
+        _prepare_dataframe_from_entries,
+        run_bayes_optimization,
+    )
+
+    # Create entries with all top_boost = 0
+    entries = []
+    for i in range(150):
+        entries.append(
+            {
+                "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
+                "margin": 0.15 + (i % 10) * 0.01,
+                "top_boost": 0.0,  # All zeros
+                "tag_count": 2 + (i % 5),
+                "confidence": 0.8 + (i % 10) * 0.02,
+            }
+        )
+
+    df = _prepare_dataframe_from_entries(entries)
+    best_params, best_accuracy = run_bayes_optimization(df, iterations=10, seed=42)
+
+    # boost_threshold should still be optimized, but will be ignored in objective
+    assert best_params.boost_threshold >= 0.0
+    assert best_params.graph_margin >= 0.05
+    assert best_params.tag_count_threshold >= 0
+
+
+def test_prepare_dataframe_from_entries():
+    """Test DataFrame preparation from entries."""
+    from recap_subworker.services.genre_learning import _prepare_dataframe_from_entries
+
+    entries = [
+        {
+            "strategy": "graph_boost",
+            "margin": 0.2,
+            "top_boost": 0.15,
+            "tag_count": 3,
+        },
+        {
+            "strategy": "weighted_score",
+            "margin": 0.1,
+            "top_boost": 0.0,
+            "tag_count": 1,
+        },
+    ]
+
+    df = _prepare_dataframe_from_entries(entries)
+    assert len(df) == 2
+    assert "label" in df.columns
+    assert df["label"].dtype == bool
+    assert (df["label"] == (df["strategy"] == "graph_boost")).all()
+    assert df["margin"].dtype == float
+    assert df["top_boost"].dtype == float
+    assert df["tag_count"].dtype == int
 
