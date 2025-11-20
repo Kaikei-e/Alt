@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeForArticle, extractPlainText } from "@/lib/server/sanitize-html";
+import { validateUrlForSSRF } from "@/lib/server/ssrf-validator";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 import type {
   FetchArticleSummaryRequest,
@@ -38,6 +39,28 @@ export async function POST(request: NextRequest) {
         { error: "Missing or invalid feed_urls array" },
         { status: 400 },
       );
+    }
+
+    // SSRF protection: validate all URLs before processing
+    for (const feedUrl of body.feed_urls) {
+      if (typeof feedUrl !== "string") {
+        return NextResponse.json(
+          { error: "Invalid feed_url: must be a string" },
+          { status: 400 },
+        );
+      }
+
+      try {
+        validateUrlForSSRF(feedUrl);
+      } catch (error) {
+        if (error instanceof Error && error.name === "SSRFValidationError") {
+          return NextResponse.json(
+            { error: `Invalid URL: SSRF protection blocked this request: ${feedUrl}` },
+            { status: 400 },
+          );
+        }
+        throw error;
+      }
     }
 
     // Fetch from alt-backend

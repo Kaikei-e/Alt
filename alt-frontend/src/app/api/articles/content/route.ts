@@ -1,11 +1,17 @@
 /**
  * API Route: /api/articles/content
  * Proxies requests to alt-backend and sanitizes HTML content server-side
+ * POST method with SSRF protection
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeForArticle } from "@/lib/server/sanitize-html";
+import { validateUrlForSSRF } from "@/lib/server/ssrf-validator";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
+
+interface RequestBody {
+  url: string;
+}
 
 interface BackendResponse {
   content: string;
@@ -15,21 +21,33 @@ interface SafeResponse {
   content: SafeHtmlString;
 }
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const url = searchParams.get("url");
+    const body: RequestBody = await request.json();
 
-    if (!url) {
+    if (!body.url || typeof body.url !== "string") {
       return NextResponse.json(
-        { error: "Missing required parameter: url" },
+        { error: "Missing or invalid url parameter" },
         { status: 400 },
       );
     }
 
+    // SSRF protection: validate URL before processing
+    try {
+      validateUrlForSSRF(body.url);
+    } catch (error) {
+      if (error instanceof Error && error.name === "SSRFValidationError") {
+        return NextResponse.json(
+          { error: "Invalid URL: SSRF protection blocked this request" },
+          { status: 400 },
+        );
+      }
+      throw error;
+    }
+
     // Fetch from alt-backend
     const backendUrl = process.env.API_URL || "http://localhost:9000";
-    const encodedUrl = encodeURIComponent(url);
+    const encodedUrl = encodeURIComponent(body.url);
     const backendEndpoint = `${backendUrl}/v1/articles/fetch/content?url=${encodedUrl}`;
 
     // Forward cookies and headers
