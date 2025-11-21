@@ -49,7 +49,7 @@ func TestHandleSummarizeFeed(t *testing.T) {
 			},
 			expectedStatus: http.StatusInternalServerError,
 			wantErr:        true,
-			errorContains:  "Failed to fetch article content",
+			errorContains:  "Failed to check article existence",
 		},
 	}
 
