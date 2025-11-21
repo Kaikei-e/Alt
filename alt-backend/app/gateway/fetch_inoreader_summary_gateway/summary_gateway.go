@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/driver/models"
 	"alt/port/fetch_inoreader_summary_port"
+	"alt/utils"
 	"alt/utils/logger"
 	"context"
 	"fmt"
@@ -36,7 +37,8 @@ func NewInoreaderSummaryGateway(db Database) fetch_inoreader_summary_port.FetchI
 // FetchSummariesByURLs implements the port interface
 func (g *inoreaderSummaryGateway) FetchSummariesByURLs(ctx context.Context, urls []string) ([]*domain.InoreaderSummary, error) {
 	logger.Logger.Info("Gateway: fetching inoreader summaries",
-		"url_count", len(urls))
+		"url_count", len(urls),
+		"urls", urls)
 
 	// Apply rate limiting as per CLAUDE.md requirements (5 second intervals)
 	if err := g.limiter.Wait(ctx); err != nil {
@@ -50,27 +52,74 @@ func (g *inoreaderSummaryGateway) FetchSummariesByURLs(ctx context.Context, urls
 		return []*domain.InoreaderSummary{}, nil
 	}
 
-	// Call database driver
-	modelSummaries, err := g.db.FetchInoreaderSummariesByURLs(ctx, urls)
+	// Normalize URLs for matching: include both original and normalized URLs
+	allURLs := make(map[string]bool)
+	originalToNormalized := make(map[string]string)
+
+	for _, rawURL := range urls {
+		allURLs[rawURL] = true
+		normalized, err := utils.NormalizeURL(rawURL)
+		if err != nil {
+			logger.Logger.Warn("Failed to normalize URL, using original", "url", rawURL, "error", err)
+			normalized = rawURL
+		}
+		originalToNormalized[rawURL] = normalized
+		if normalized != rawURL {
+			allURLs[normalized] = true
+		}
+	}
+
+	// Convert map to slice for query
+	allURLsSlice := make([]string, 0, len(allURLs))
+	for url := range allURLs {
+		allURLsSlice = append(allURLsSlice, url)
+	}
+
+	logger.Logger.Info("Gateway: normalized URLs for matching",
+		"original_count", len(urls),
+		"all_urls_count", len(allURLsSlice))
+
+	// Call database driver with both original and normalized URLs
+	modelSummaries, err := g.db.FetchInoreaderSummariesByURLs(ctx, allURLsSlice)
 	if err != nil {
-		logger.Logger.Error("Database query failed", "error", err, "url_count", len(urls))
+		logger.Logger.Error("Database query failed", "error", err, "url_count", len(allURLsSlice))
 		return nil, fmt.Errorf("database query failed: %w", err)
 	}
 
-	// Convert models to domain entities (Anti-corruption layer)
+	// Filter results by normalizing database URLs and comparing with requested URLs
 	domainSummaries := make([]*domain.InoreaderSummary, 0, len(modelSummaries))
 	for _, modelSummary := range modelSummaries {
-		domainSummary := &domain.InoreaderSummary{
-			ArticleURL:  modelSummary.ArticleURL,
-			Title:       modelSummary.Title,
-			Author:      modelSummary.Author,
-			Content:     modelSummary.Content,
-			ContentType: modelSummary.ContentType,
-			PublishedAt: modelSummary.PublishedAt,
-			FetchedAt:   modelSummary.FetchedAt,
-			InoreaderID: modelSummary.InoreaderID,
+		// Normalize database URL
+		normalizedDBURL, err := utils.NormalizeURL(modelSummary.ArticleURL)
+		if err != nil {
+			logger.Logger.Warn("Failed to normalize DB URL, using original", "url", modelSummary.ArticleURL, "error", err)
+			normalizedDBURL = modelSummary.ArticleURL
 		}
-		domainSummaries = append(domainSummaries, domainSummary)
+
+		// Check if this URL matches any of the requested URLs (original or normalized)
+		matched := false
+		for _, reqURL := range urls {
+			normalizedReqURL := originalToNormalized[reqURL]
+			// Compare using URLsEqual for case-insensitive percent-encoding
+			if utils.URLsEqual(modelSummary.ArticleURL, reqURL) || utils.URLsEqual(normalizedDBURL, normalizedReqURL) {
+				matched = true
+				break
+			}
+		}
+
+		if matched {
+			domainSummary := &domain.InoreaderSummary{
+				ArticleURL:  modelSummary.ArticleURL,
+				Title:       modelSummary.Title,
+				Author:      modelSummary.Author,
+				Content:     modelSummary.Content,
+				ContentType: modelSummary.ContentType,
+				PublishedAt: modelSummary.PublishedAt,
+				FetchedAt:   modelSummary.FetchedAt,
+				InoreaderID: modelSummary.InoreaderID,
+			}
+			domainSummaries = append(domainSummaries, domainSummary)
+		}
 	}
 
 	logger.Logger.Info("Gateway: successfully converted summaries",

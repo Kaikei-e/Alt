@@ -762,6 +762,9 @@ func handleFetchInoreaderSummary(container *di.ApplicationComponents) echo.Handl
 			}
 		}
 
+		// Log requested URLs for debugging
+		logger.Logger.Info("Fetching summaries for URLs", "urls", req.FeedURLs, "url_count", len(req.FeedURLs))
+
 		// Execute usecase
 		summaries, err := container.FetchInoreaderSummaryUsecase.Execute(c.Request().Context(), req.FeedURLs)
 		if err != nil {

@@ -30,7 +30,8 @@ func NewFetchInoreaderSummaryUsecase(port fetch_inoreader_summary_port.FetchInor
 // Execute fetches inoreader summaries for the provided URLs
 func (u *fetchInoreaderSummaryUsecase) Execute(ctx context.Context, urls []string) ([]*domain.InoreaderSummary, error) {
 	logger.Logger.Info("Usecase: fetching inoreader summaries",
-		"url_count", len(urls))
+		"url_count", len(urls),
+		"urls", urls)
 
 	// Validation: Check URL count limits (as per schema validation max=50)
 	if len(urls) > 50 {

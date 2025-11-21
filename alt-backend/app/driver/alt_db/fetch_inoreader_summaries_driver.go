@@ -14,21 +14,21 @@ func (r *AltDBRepository) FetchInoreaderSummariesByURLs(ctx context.Context, url
 		return []*models.InoreaderSummary{}, nil
 	}
 
-	logger.Logger.Info("Fetching inoreader summaries", "url_count", len(urls))
+	logger.Logger.Info("Fetching inoreader summaries", "url_count", len(urls), "urls", urls)
 
 	query := `
-		SELECT 
+		SELECT
 			ia.article_url,
-			ia.title, 
+			ia.title,
 			ia.author,
 			ia.content,
 			ia.content_type,
 			ia.published_at,
 			ia.fetched_at,
 			ia.inoreader_id
-		FROM inoreader_articles ia 
+		FROM inoreader_articles ia
 		WHERE ia.article_url = ANY($1)
-		AND ia.content IS NOT NULL 
+		AND ia.content IS NOT NULL
 		AND ia.content_length > 0
 		ORDER BY ia.published_at DESC
 	`
