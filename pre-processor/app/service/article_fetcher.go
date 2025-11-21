@@ -20,11 +20,6 @@ import (
 	"pre-processor/utils"
 )
 
-var (
-	// Domain-based rate limiter to allow concurrent requests to different domains
-	domainRateLimiter = utils.NewDomainRateLimiter(5*time.Second, 1)
-)
-
 // HTTPClient interface for dependency injection.
 type HTTPClient interface {
 	Get(url string) (*http.Response, error)
@@ -41,21 +36,24 @@ type articleFetcherService struct {
 	httpClient   HTTPClient
 	retrier      *retry.Retrier
 	dlqPublisher DLQPublisher
+	rateLimiter  *utils.DomainRateLimiter
 }
 
 // NewArticleFetcherService creates a new article fetcher service.
 func NewArticleFetcherService(logger *slog.Logger) ArticleFetcherService {
 	return &articleFetcherService{
-		logger:     logger,
-		httpClient: nil, // Will use shared HTTP client when nil
+		logger:      logger,
+		httpClient:  nil, // Will use shared HTTP client when nil
+		rateLimiter: utils.NewDomainRateLimiter(5*time.Second, 1),
 	}
 }
 
 // NewArticleFetcherServiceWithClient creates a new article fetcher service with custom HTTP client.
 func NewArticleFetcherServiceWithClient(logger *slog.Logger, httpClient HTTPClient) ArticleFetcherService {
 	return &articleFetcherService{
-		logger:     logger,
-		httpClient: httpClient,
+		logger:      logger,
+		httpClient:  httpClient,
+		rateLimiter: utils.NewDomainRateLimiter(5*time.Second, 1),
 	}
 }
 
@@ -78,6 +76,7 @@ func NewArticleFetcherServiceWithRetryAndDLQ(logger *slog.Logger, retrier *retry
 		httpClient:   nil, // Will use shared HTTP client when nil
 		retrier:      retrier,
 		dlqPublisher: dlqPublisher,
+		rateLimiter:  utils.NewDomainRateLimiter(5*time.Second, 1),
 	}
 }
 
@@ -89,11 +88,13 @@ func NewArticleFetcherServiceWithFactory(cfg *config.Config, logger *slog.Logger
 
 	logger.Info("ArticleFetcherService: initialized with factory",
 		"envoy_enabled", cfg.HTTP.UseEnvoyProxy,
-		"proxy_url", cfg.HTTP.EnvoyProxyURL)
+		"proxy_url", cfg.HTTP.EnvoyProxyURL,
+		"rate_limit_interval", cfg.RateLimit.DefaultInterval)
 
 	return &articleFetcherService{
-		logger:     logger,
-		httpClient: httpClient,
+		logger:      logger,
+		httpClient:  httpClient,
+		rateLimiter: utils.NewDomainRateLimiter(cfg.RateLimit.DefaultInterval, cfg.RateLimit.BurstSize),
 	}
 }
 
@@ -117,13 +118,15 @@ func NewArticleFetcherServiceWithFactoryAndDLQ(cfg *config.Config, logger *slog.
 	logger.Info("ArticleFetcherService: initialized with factory and DLQ",
 		"envoy_enabled", cfg.HTTP.UseEnvoyProxy,
 		"proxy_url", cfg.HTTP.EnvoyProxyURL,
-		"dlq_enabled", dlqPublisher != nil)
+		"dlq_enabled", dlqPublisher != nil,
+		"rate_limit_interval", cfg.RateLimit.DefaultInterval)
 
 	return &articleFetcherService{
 		logger:       logger,
 		httpClient:   httpClient,
 		retrier:      retrier,
 		dlqPublisher: dlqPublisher,
+		rateLimiter:  utils.NewDomainRateLimiter(cfg.RateLimit.DefaultInterval, cfg.RateLimit.BurstSize),
 	}
 }
 
@@ -194,7 +197,7 @@ func (s *articleFetcherService) fetchWithRetryAndDLQ(ctx context.Context, parsed
 
 		// レート制限適用
 		rateLimitStart := time.Now()
-		domainRateLimiter.Wait(domain)
+		s.rateLimiter.Wait(domain)
 		rateLimitDuration := time.Since(rateLimitStart)
 		totalRateLimitWait += rateLimitDuration
 
@@ -345,7 +348,7 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 
 	// Enforce domain-based rate limiting
 	rateLimitStart := time.Now()
-	domainRateLimiter.Wait(domain)
+	s.rateLimiter.Wait(domain)
 	rateLimitDuration := time.Since(rateLimitStart)
 
 	if rateLimitDuration > 5*time.Second {
