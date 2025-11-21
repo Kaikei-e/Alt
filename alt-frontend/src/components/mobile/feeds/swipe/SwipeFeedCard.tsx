@@ -307,6 +307,15 @@ const CardView = memo(({
 
   const hasDescription = Boolean(feed.description);
   const publishedLabel = useMemo(() => {
+    // Prefer created_at if available, as it's a reliable ISO timestamp
+    if (feed.created_at) {
+      try {
+        return new Date(feed.created_at).toLocaleString();
+      } catch {
+        // Fallback to published if created_at parsing fails
+      }
+    }
+
     if (!feed.published) {
       return null;
     }
@@ -315,7 +324,7 @@ const CardView = memo(({
     } catch {
       return feed.published;
     }
-  }, [feed.published]);
+  }, [feed.published, feed.created_at]);
 
   return (
     <animated.div

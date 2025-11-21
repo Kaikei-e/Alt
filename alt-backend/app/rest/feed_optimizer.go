@@ -20,6 +20,7 @@ func optimizeFeedsResponse(feeds []*domain.FeedItem) []map[string]interface{} {
 			"description": sanitizeDescription(feed.Description),
 			"link":        feed.Link,
 			"published":   formatTimeAgo(feed.PublishedParsed),
+			"created_at":  feed.PublishedParsed.Format(time.RFC3339),
 			"author":      formatAuthor(feed.Author, feed.Authors),
 		})
 	}

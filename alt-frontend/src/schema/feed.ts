@@ -4,6 +4,7 @@ export type Feed = {
   description: string;
   link: string;
   published: string;
+  created_at?: string;
   author?: string;
 };
 
@@ -13,6 +14,7 @@ export type SanitizedFeed = {
   description: string; // サニタイゼーション済み
   link: string; // 検証済みURL
   published: string;
+  created_at?: string;
   author?: string; // サニタイゼーション済み
 };
 
@@ -24,6 +26,7 @@ export interface BackendFeedItem {
   link: string;
   links?: string[];
   published?: string;
+  created_at?: string;
   author?: {
     name: string;
   };
@@ -83,6 +86,7 @@ export function sanitizeFeed(rawFeed: BackendFeedItem): SanitizedFeed {
     description: sanitized.description,
     link: sanitized.link,
     published: rawFeed.published || "",
+    created_at: rawFeed.created_at,
     author: sanitized.author || undefined,
   };
 }
