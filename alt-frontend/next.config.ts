@@ -198,14 +198,7 @@ const nextConfig = {
 
   // Experimental optimizations
   experimental: {
-    optimizePackageImports: [
-      "@chakra-ui/react",
-      "@emotion/react",
-      "@chakra-ui/layout",
-      "@chakra-ui/icon",
-      "@chakra-ui/button",
-      "@chakra-ui/spinner",
-    ],
+    optimizePackageImports: ["@chakra-ui/react", "@emotion/react"],
     esmExternals: true,
   },
 

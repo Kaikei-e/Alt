@@ -1,8 +1,15 @@
 "use client";
 
-import { Box, Flex, HStack, Link, Text, VStack } from "@chakra-ui/layout";
-import { Button } from "@chakra-ui/button";
-import { Spinner } from "@chakra-ui/spinner";
+import {
+  Box,
+  Button,
+  Flex,
+  HStack,
+  Link,
+  Spinner,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
 import { useDrag } from "@use-gesture/react";
 import { animated, useSpring, useTransition } from "@react-spring/web";
@@ -558,7 +565,7 @@ const CardView = memo(({
                           bg: "var(--alt-secondary)",
                           transform: "translateY(-1px)",
                         }}
-                        isLoading={isLoadingSummary}
+                        loading={isLoadingSummary}
                         data-testid="retry-summary-button"
                       >
                         <Flex align="center" gap={2}>

@@ -1,8 +1,7 @@
 "use client";
 
 import { keyframes } from "@emotion/react";
-import { Box, Flex, HStack, Text, VStack } from "@chakra-ui/layout";
-import { Icon } from "@chakra-ui/icon";
+import { Box, Flex, HStack, Icon, Text, VStack } from "@chakra-ui/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import ErrorState from "@/app/mobile/feeds/_components/ErrorState";
@@ -233,7 +232,7 @@ const SwipeLoadingOverlay = ({
           padding={0}
           margin="-1px"
           overflow="hidden"
-          sx={{ clip: "rect(0, 0, 0, 0)" }}
+          clip="rect(0, 0, 0, 0)"
           whiteSpace="nowrap"
           border={0}
         >
