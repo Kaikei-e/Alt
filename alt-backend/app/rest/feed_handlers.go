@@ -220,7 +220,7 @@ func handleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.Hand
 
 		var nextCursor string
 		if hasMore {
-			if derivedCursor, ok := deriveNextCursorFromFeeds(optimizedFeeds); ok {
+			if derivedCursor, ok := deriveNextCursorFromFeeds(feeds); ok {
 				nextCursor = derivedCursor
 				response["next_cursor"] = derivedCursor
 			} else {
@@ -302,10 +302,9 @@ func handleFetchReadFeedsCursor(container *di.ApplicationComponents) echo.Handle
 		}
 
 		// Add next cursor if there are results
-		if len(optimizedFeeds) > 0 {
-			lastFeed := optimizedFeeds[len(optimizedFeeds)-1]
-			if lastPublished, err := time.Parse(time.RFC3339, lastFeed.Published); err == nil {
-				response["next_cursor"] = lastPublished.Format(time.RFC3339)
+		if len(feeds) > 0 {
+			if derivedCursor, ok := deriveNextCursorFromFeeds(feeds); ok {
+				response["next_cursor"] = derivedCursor
 			}
 		}
 
@@ -363,10 +362,9 @@ func handleFetchFavoriteFeedsCursor(container *di.ApplicationComponents) echo.Ha
 			"data": optimizedFeeds,
 		}
 
-		if len(optimizedFeeds) > 0 {
-			lastFeed := optimizedFeeds[len(optimizedFeeds)-1]
-			if lastPublished, err := time.Parse(time.RFC3339, lastFeed.Published); err == nil {
-				response["next_cursor"] = lastPublished.Format(time.RFC3339)
+		if len(feeds) > 0 {
+			if derivedCursor, ok := deriveNextCursorFromFeeds(feeds); ok {
+				response["next_cursor"] = derivedCursor
 			}
 		}
 
