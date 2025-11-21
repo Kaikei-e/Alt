@@ -154,8 +154,7 @@ const nextConfig = {
       `production-${Date.now().toString(36)}`;
     return [
       {
-        // HTML pages: no-store for cache consistency
-        source: "/((?!_next/static|favicon.ico|robots.txt).*)",
+        source: "/((?!_next/static|_next/image|favicon.ico|robots.txt|icon.svg).*)",
         headers: [
           {
             key: "Cache-Control",
@@ -168,8 +167,25 @@ const nextConfig = {
         ],
       },
       {
-        // Static assets: immutable cache
         source: "/_next/static/(.*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        source: "/_next/image/(.*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000",
+          },
+        ],
+      },
+      {
+        source: "/icon.svg",
         headers: [
           {
             key: "Cache-Control",
@@ -202,33 +218,33 @@ const nextConfig = {
       config.optimization.usedExports = true;
 
       // Better chunk splitting for caching
-      config.optimization.splitChunks = {
-        chunks: "all",
-        cacheGroups: {
-          // Separate vendor chunks
-          vendor: {
-            test: /[\\/]node_modules[\\/]/,
-            name: "vendors",
-            chunks: "all",
-            priority: 10,
-          },
-          // Separate Chakra UI into its own chunk
-          chakra: {
-            test: /[\\/]node_modules[\\/]@chakra-ui[\\/]/,
-            name: "chakra",
-            chunks: "all",
-            priority: 20,
-          },
-          // Common components
-          common: {
-            name: "common",
-            minChunks: 2,
-            chunks: "all",
-            priority: 5,
-            reuseExistingChunk: true,
-          },
-        },
-      };
+      // config.optimization.splitChunks = {
+      //   chunks: "all",
+      //   cacheGroups: {
+      //     // Separate vendor chunks
+      //     vendor: {
+      //       test: /[\\/]node_modules[\\/]/,
+      //       name: "vendors",
+      //       chunks: "all",
+      //       priority: 10,
+      //     },
+      //     // Separate Chakra UI into its own chunk
+      //     chakra: {
+      //       test: /[\\/]node_modules[\\/]@chakra-ui[\\/]/,
+      //       name: "chakra",
+      //       chunks: "all",
+      //       priority: 20,
+      //     },
+      //     // Common components
+      //     common: {
+      //       name: "common",
+      //       minChunks: 2,
+      //       chunks: "all",
+      //       priority: 5,
+      //       reuseExistingChunk: true,
+      //     },
+      //   },
+      // };
 
       // Minimize bundle size
       config.optimization.minimize = true;
