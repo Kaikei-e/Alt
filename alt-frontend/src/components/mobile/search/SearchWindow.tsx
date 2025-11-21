@@ -1,5 +1,5 @@
-import { Box, Button, Input, Text, VStack } from "@chakra-ui/react";
-import { useState, useRef, useDeferredValue, useTransition, useEffect } from "react";
+import { Box, Button, Flex, Input, Spinner, Text, VStack } from "@chakra-ui/react";
+import { useState, useRef, useTransition, useEffect } from "react";
 import * as v from "valibot";
 import { feedApi } from "@/lib/api";
 import { transformFeedSearchResult } from "@/lib/utils/transformFeedSearchResult";
@@ -31,7 +31,6 @@ const SearchWindow = ({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const abortControllerRef = useRef<AbortController | null>(null);
-  const deferredQuery = useDeferredValue(searchQuery);
 
   // Cancel previous request when query changes
   useEffect(() => {
@@ -40,27 +39,25 @@ const SearchWindow = ({
     }
   }, [searchQuery.query]);
 
-  // Real-time validation with deferred value
-  useEffect(() => {
-    if (!deferredQuery.query) {
-      setValidationError(null);
-      return;
+  // Validate query function
+  const validateQuery = (queryText: string) => {
+    const trimmed = queryText.trim();
+
+    if (!trimmed) {
+      return "Please enter a search query";
     }
 
-    const timeoutId = setTimeout(() => {
-      const validationResult = v.safeParse(searchQuerySchema, deferredQuery);
-      if (!validationResult.success) {
-        const firstError =
-          validationResult.issues?.[0]?.message ||
-          "Please enter a valid search query";
-        setValidationError(firstError);
-      } else {
-        setValidationError(null);
-      }
-    }, 300); // Debounce validation
+    if (trimmed.length < 2) {
+      return "Search query must be at least 2 characters";
+    }
 
-    return () => clearTimeout(timeoutId);
-  }, [deferredQuery]);
+    const result = v.safeParse(searchQuerySchema, { query: trimmed });
+    if (!result.success) {
+      return result.issues?.[0]?.message || "Please enter a valid search query";
+    }
+
+    return null;
+  };
 
   const handleSearch = async () => {
     if (isLoading || isPending) return;
@@ -83,17 +80,15 @@ const SearchWindow = ({
       setFeedResults([]);
 
       // 2. Validate input
-      const validationResult = v.safeParse(searchQuerySchema, searchQuery);
+      const validationResult = validateQuery(searchQuery.query || "");
 
-      if (!validationResult.success) {
-        const firstError =
-          validationResult.issues?.[0]?.message ||
-          "Please enter a valid search query";
-        setValidationError(firstError);
+      if (validationResult) {
+        setValidationError(validationResult);
+        setIsLoading(false);
         return;
       }
 
-      const validatedQuery = validationResult.output.query;
+      const validatedQuery = searchQuery.query.trim();
 
       // 3. Call API with abort signal
       // Note: feedApi.searchFeeds needs to support AbortSignal
@@ -145,22 +140,43 @@ const SearchWindow = ({
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Always validate on form submit
+    const validationResult = validateQuery(searchQuery.query || "");
+    if (validationResult) {
+      setValidationError(validationResult);
+      return;
+    }
+    // Only proceed with search if validation passes
     handleSearch();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
+      // Directly call the form submission logic
+      const validationResult = validateQuery(searchQuery.query || "");
+
+      if (validationResult) {
+        setValidationError(validationResult);
+        return;
+      }
+
+      // Only proceed with search if validation passes
       handleSearch();
     }
   };
 
-  const handleSearchChange = (value: string) => {
-    const newQuery: SearchQuery = { query: value };
-    // Use transition for non-urgent updates
-    startTransition(() => {
-      setSearchQuery(newQuery);
-    });
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newQuery = e.target.value;
+    setSearchQuery({ query: newQuery });
+
+    // Clear API errors when user starts typing
+    if (error) setError(null);
+
+    // Clear validation error when user types enough characters
+    if (newQuery.trim().length >= 2) {
+      setValidationError(null);
+    }
   };
 
   return (
@@ -180,7 +196,7 @@ const SearchWindow = ({
               data-testid="search-input"
               type="text"
               value={searchQuery.query || ""}
-              onChange={(e) => handleSearchChange(e.target.value)}
+              onChange={handleInputChange}
               placeholder="e.g. AI, technology, startup..."
               bg="var(--bg-surface)"
               border={`1px solid ${validationError ? "#dc2626" : "var(--border-glass)"}`}
@@ -212,7 +228,6 @@ const SearchWindow = ({
 
           <Button
             type="submit"
-            loading={isLoading}
             bg="var(--alt-primary)"
             color="white"
             fontWeight="600"
@@ -234,7 +249,14 @@ const SearchWindow = ({
             opacity={validationError ? 0.6 : 1}
             letterSpacing="0.025em"
           >
-            {isLoading || isPending ? "Searching..." : "Search"}
+            {isLoading || isPending ? (
+              <Flex align="center" gap={2}>
+                <Spinner size="sm" color="white" />
+                Searching...
+              </Flex>
+            ) : (
+              "Search"
+            )}
           </Button>
 
           {validationError && (
