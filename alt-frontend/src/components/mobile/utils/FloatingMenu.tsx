@@ -260,8 +260,8 @@ export const FloatingMenu = () => {
               backdropFilter="blur(12px)"
               color="var(--text-primary)"
               p={0}
-              w="64px"
-              h="64px"
+              w="48px"
+              h="48px"
               border="2px solid var(--text-primary)"
               boxShadow="var(--shadow-glass)"
               _hover={{
