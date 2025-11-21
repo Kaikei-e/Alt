@@ -216,11 +216,11 @@ const SwipeFeedCard = memo(({
               console.warn("Failed to auto-archive article:", err),
             );
         } else {
-          setContentError("記事全文を取得できませんでした");
+          setContentError("Could not fetch article content");
         }
       } catch (error) {
         console.error("Error fetching content:", error);
-        setContentError("記事全文を取得できませんでした");
+        setContentError("Could not fetch article content");
       } finally {
         setIsLoadingContent(false);
       }
@@ -229,31 +229,36 @@ const SwipeFeedCard = memo(({
     setIsContentExpanded((prev) => !prev);
   }, [feed.link, feed.title, fullContent, isContentExpanded, getCachedContent]);
 
+  const fetchSummary = useCallback(async () => {
+    setIsLoadingSummary(true);
+    setSummaryError(null);
+
+    try {
+      const summaryResponse = await articleApi.getArticleSummary(feed.link);
+      if (
+        summaryResponse.matched_articles &&
+        summaryResponse.matched_articles.length > 0
+      ) {
+        setSummary(summaryResponse.matched_articles[0].content);
+        setSummaryError(null);
+      } else {
+        setSummaryError("Could not fetch summary");
+      }
+    } catch (error) {
+      console.error("Error fetching summary:", error);
+      setSummaryError("Could not fetch summary");
+    } finally {
+      setIsLoadingSummary(false);
+    }
+  }, [feed.link]);
+
   const handleToggleSummary = useCallback(async () => {
     if (!isSummaryExpanded && !summary) {
-      setIsLoadingSummary(true);
-      setSummaryError(null);
-
-      try {
-        const summaryResponse = await articleApi.getArticleSummary(feed.link);
-        if (
-          summaryResponse.matched_articles &&
-          summaryResponse.matched_articles.length > 0
-        ) {
-          setSummary(summaryResponse.matched_articles[0].content);
-        } else {
-          setSummaryError("Could not fetch the summary");
-        }
-      } catch (error) {
-        console.error("Error fetching summary:", error);
-        setSummaryError("Could not fetch the summary");
-      } finally {
-        setIsLoadingSummary(false);
-      }
+      await fetchSummary();
     }
 
     setIsSummaryExpanded((prev) => !prev);
-  }, [feed.link, isSummaryExpanded, summary]);
+  }, [feed.link, isSummaryExpanded, summary, fetchSummary]);
 
   const handleSummarizeNow = useCallback(async () => {
     setIsSummarizing(true);
@@ -467,7 +472,7 @@ const SwipeFeedCard = memo(({
                   textTransform="uppercase"
                   letterSpacing="1px"
                 >
-                  概要 / Summary
+                  Summary
                 </Text>
                 <Text
                   fontSize="sm"
@@ -496,14 +501,14 @@ const SwipeFeedCard = memo(({
                   textTransform="uppercase"
                   letterSpacing="1px"
                 >
-                  記事全文 / Full Article
+                  Full Article
                 </Text>
 
                 {isLoadingContent ? (
                   <HStack justify="center" py={4}>
                     <Spinner size="sm" color="var(--alt-primary)" />
                     <Text color="var(--alt-text-secondary)" fontSize="sm">
-                      記事全文を読み込み中...
+                      Loading article content...
                     </Text>
                   </HStack>
                 ) : contentError ? (
@@ -543,14 +548,14 @@ const SwipeFeedCard = memo(({
                   textTransform="uppercase"
                   letterSpacing="1px"
                 >
-                  日本語要約 / Japanese Summary
+                  Summary
                 </Text>
 
                 {isLoadingSummary ? (
                   <HStack justify="center" py={4}>
                     <Spinner size="sm" color="var(--alt-primary)" />
                     <Text color="var(--alt-text-secondary)" fontSize="sm">
-                      要約を読み込み中...
+                      Loading summary...
                     </Text>
                   </HStack>
                 ) : isSummarizing ? (
@@ -558,7 +563,7 @@ const SwipeFeedCard = memo(({
                     <HStack justify="center">
                       <Spinner size="sm" color="var(--alt-primary)" />
                       <Text color="var(--alt-text-secondary)" fontSize="sm">
-                        要約を生成中...
+                        Generating summary...
                       </Text>
                     </HStack>
                     <Text
@@ -566,7 +571,7 @@ const SwipeFeedCard = memo(({
                       fontSize="xs"
                       textAlign="center"
                     >
-                      これには数秒かかる場合があります
+                      This may take a few seconds
                     </Text>
                   </VStack>
                 ) : summaryError ? (
@@ -578,25 +583,45 @@ const SwipeFeedCard = memo(({
                     >
                       {summaryError}
                     </Text>
-                    {summaryError === "要約を取得できませんでした" && (
-                      <Button
-                        size="sm"
-                        onClick={handleSummarizeNow}
-                        w="100%"
-                        borderRadius="12px"
-                        bg="var(--alt-primary)"
-                        color="white"
-                        _hover={{
-                          bg: "var(--alt-secondary)",
-                          transform: "translateY(-1px)",
-                        }}
-                        data-testid="summarize-now-button"
-                      >
-                        <Flex align="center" gap={2}>
-                          <Sparkles size={16} />
-                          <Text>今すぐ要約</Text>
-                        </Flex>
-                      </Button>
+                    {summaryError === "Could not fetch summary" && (
+                      <VStack gap={2} w="100%">
+                        <Button
+                          size="sm"
+                          onClick={fetchSummary}
+                          w="100%"
+                          borderRadius="12px"
+                          bg="var(--alt-primary)"
+                          color="white"
+                          _hover={{
+                            bg: "var(--alt-secondary)",
+                            transform: "translateY(-1px)",
+                          }}
+                          loading={isLoadingSummary}
+                          data-testid="retry-summary-button"
+                        >
+                          <Flex align="center" gap={2}>
+                            <Text>Retry</Text>
+                          </Flex>
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleSummarizeNow}
+                          w="100%"
+                          borderRadius="12px"
+                          bg="var(--alt-primary)"
+                          color="white"
+                          _hover={{
+                            bg: "var(--alt-secondary)",
+                            transform: "translateY(-1px)",
+                          }}
+                          data-testid="summarize-now-button"
+                        >
+                          <Flex align="center" gap={2}>
+                            <Sparkles size={16} />
+                            <Text>Summarize Now</Text>
+                          </Flex>
+                        </Button>
+                      </VStack>
                     )}
                   </VStack>
                 ) : summary ? (
@@ -615,7 +640,7 @@ const SwipeFeedCard = memo(({
                       fontSize="sm"
                       textAlign="center"
                     >
-                      この記事の要約はまだありません
+                      No summary available for this article
                     </Text>
                     <Button
                       size="sm"
@@ -632,7 +657,7 @@ const SwipeFeedCard = memo(({
                     >
                       <Flex align="center" gap={2}>
                         <Sparkles size={16} />
-                        <Text>今すぐ要約</Text>
+                        <Text>Summarize Now</Text>
                       </Flex>
                     </Button>
                   </VStack>
@@ -680,10 +705,10 @@ const SwipeFeedCard = memo(({
                   <BookOpen size={16} />
                   <Text fontSize="xs">
                     {isLoadingContent
-                      ? "読込中..."
+                      ? "Loading..."
                       : isContentExpanded
-                        ? "全文非表示"
-                        : "全文表示"}
+                        ? "Hide"
+                        : "Article"}
                   </Text>
                 </Flex>
               </Button>
@@ -715,10 +740,10 @@ const SwipeFeedCard = memo(({
                   <BotMessageSquare size={16} />
                   <Text fontSize="xs">
                     {isLoadingSummary
-                      ? "読込中..."
+                      ? "Loading..."
                       : isSummaryExpanded
-                        ? "要約非表示"
-                        : "要約"}
+                        ? "Hide"
+                        : "Summary"}
                   </Text>
                 </Flex>
               </Button>
