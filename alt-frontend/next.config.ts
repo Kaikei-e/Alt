@@ -198,7 +198,14 @@ const nextConfig = {
 
   // Experimental optimizations
   experimental: {
-    optimizePackageImports: ["@chakra-ui/react", "@emotion/react"],
+    optimizePackageImports: [
+      "@chakra-ui/react",
+      "@emotion/react",
+      "@chakra-ui/layout",
+      "@chakra-ui/icon",
+      "@chakra-ui/button",
+      "@chakra-ui/spinner",
+    ],
     esmExternals: true,
   },
 
@@ -218,33 +225,24 @@ const nextConfig = {
       config.optimization.usedExports = true;
 
       // Better chunk splitting for caching
-      // config.optimization.splitChunks = {
-      //   chunks: "all",
-      //   cacheGroups: {
-      //     // Separate vendor chunks
-      //     vendor: {
-      //       test: /[\\/]node_modules[\\/]/,
-      //       name: "vendors",
-      //       chunks: "all",
-      //       priority: 10,
-      //     },
-      //     // Separate Chakra UI into its own chunk
-      //     chakra: {
-      //       test: /[\\/]node_modules[\\/]@chakra-ui[\\/]/,
-      //       name: "chakra",
-      //       chunks: "all",
-      //       priority: 20,
-      //     },
-      //     // Common components
-      //     common: {
-      //       name: "common",
-      //       minChunks: 2,
-      //       chunks: "all",
-      //       priority: 5,
-      //       reuseExistingChunk: true,
-      //     },
-      //   },
-      // };
+      if (!config.optimization.splitChunks) {
+        config.optimization.splitChunks = { cacheGroups: {} };
+      }
+      // Better chunk splitting for caching
+      if (!config.optimization.splitChunks) {
+        config.optimization.splitChunks = { cacheGroups: {} };
+      }
+      config.optimization.splitChunks.cacheGroups = {
+        ...config.optimization.splitChunks.cacheGroups,
+        chakra: {
+          test: /[\\/]node_modules[\\/](@chakra-ui|framer-motion|@emotion)[\\/]/,
+          name: "chakra",
+          chunks: "all",
+          priority: 30,
+          enforce: true,
+          reuseExistingChunk: true,
+        },
+      };
 
       // Minimize bundle size
       config.optimization.minimize = true;

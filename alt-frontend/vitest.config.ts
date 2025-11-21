@@ -20,7 +20,7 @@ const maxConcurrency = parsePositiveInteger(
 );
 
 export default mergeConfig(
-  viteConfig,
+  viteConfig as any,
   defineConfig({
     test: {
       globals: true,
@@ -89,6 +89,6 @@ export default mergeConfig(
 
       // Reporter optimization for CI
       reporters: process.env.CI ? ["verbose"] : ["default"],
-    },
+    } as any,
   }),
 );

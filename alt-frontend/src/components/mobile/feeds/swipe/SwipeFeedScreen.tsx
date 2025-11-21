@@ -1,12 +1,13 @@
 "use client";
 
 import { keyframes } from "@emotion/react";
-import { Box, Flex, HStack, Icon, Text, VStack } from "@chakra-ui/react";
+import { Box, Flex, HStack, Text, VStack } from "@chakra-ui/layout";
+import { Icon } from "@chakra-ui/icon";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import ErrorState from "@/app/mobile/feeds/_components/ErrorState";
 import EmptyFeedState from "@/components/mobile/EmptyFeedState";
-import SwipeFeedCard from "@/components/mobile/feeds/swipe/SwipeFeedCard";
+import dynamic from "next/dynamic";
 import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
@@ -232,7 +233,7 @@ const SwipeLoadingOverlay = ({
           padding={0}
           margin="-1px"
           overflow="hidden"
-          clip="rect(0, 0, 0, 0)"
+          sx={{ clip: "rect(0, 0, 0, 0)" }}
           whiteSpace="nowrap"
           border={0}
         >
@@ -242,6 +243,28 @@ const SwipeLoadingOverlay = ({
     </Box>
   );
 };
+
+const SwipeFeedCard = dynamic(
+  () => import("@/components/mobile/feeds/swipe/SwipeFeedCard"),
+  {
+    loading: () => (
+      <Box
+        w="100%"
+        maxW="30rem"
+        h="95dvh"
+        bg="var(--alt-glass)"
+        borderRadius="1rem"
+        border="2px solid var(--alt-glass-border)"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+      >
+        <SkeletonFeedCard variant="swipe" />
+      </Box>
+    ),
+    ssr: false,
+  },
+);
 
 const SwipeFeedScreen = () => {
   const {
