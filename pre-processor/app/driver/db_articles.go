@@ -206,3 +206,35 @@ func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCrea
 
 	return articles, finalCreatedAt, finalID, nil
 }
+
+// GetArticleByID fetches an article by its ID.
+func GetArticleByID(ctx context.Context, db *pgxpool.Pool, articleID string) (*models.Article, error) {
+	if db == nil {
+		return nil, fmt.Errorf("database connection is nil")
+	}
+
+	query := `
+		SELECT id, title, content, url, created_at
+		FROM articles
+		WHERE id = $1
+	`
+
+	var article models.Article
+	err := db.QueryRow(ctx, query, articleID).Scan(
+		&article.ID,
+		&article.Title,
+		&article.Content,
+		&article.URL,
+		&article.CreatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil // Not found
+		}
+		logger.Logger.Error("Failed to get article by ID", "error", err, "article_id", articleID)
+		return nil, err
+	}
+
+	return &article, nil
+}

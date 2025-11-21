@@ -149,3 +149,27 @@ func (r *articleRepository) HasUnsummarizedArticles(ctx context.Context) (bool, 
 
 	return hasUnsummarized, nil
 }
+
+// FindByID finds an article by its ID.
+func (r *articleRepository) FindByID(ctx context.Context, articleID string) (*models.Article, error) {
+	r.logger.Info("finding article by ID", "article_id", articleID)
+
+	if r.db == nil {
+		r.logger.Error("database connection is nil")
+		return nil, fmt.Errorf("failed to find article by ID: database connection is nil")
+	}
+
+	article, err := driver.GetArticleByID(ctx, r.db, articleID)
+	if err != nil {
+		r.logger.Error("failed to find article by ID", "error", err, "article_id", articleID)
+		return nil, fmt.Errorf("failed to find article by ID: %w", err)
+	}
+
+	if article == nil {
+		r.logger.Warn("article not found", "article_id", articleID)
+		return nil, nil
+	}
+
+	r.logger.Info("found article by ID", "article_id", articleID)
+	return article, nil
+}

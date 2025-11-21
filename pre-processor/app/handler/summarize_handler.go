@@ -12,7 +12,7 @@ import (
 
 // SummarizeRequest represents the request body for article summarization
 type SummarizeRequest struct {
-	Content   string `json:"content" validate:"required"`
+	Content   string `json:"content"`
 	ArticleID string `json:"article_id" validate:"required"`
 	Title     string `json:"title"`
 }
@@ -28,14 +28,16 @@ type SummarizeResponse struct {
 type SummarizeHandler struct {
 	apiRepo     repository.ExternalAPIRepository
 	summaryRepo repository.SummaryRepository
+	articleRepo repository.ArticleRepository
 	logger      *slog.Logger
 }
 
 // NewSummarizeHandler creates a new summarize handler
-func NewSummarizeHandler(apiRepo repository.ExternalAPIRepository, summaryRepo repository.SummaryRepository, logger *slog.Logger) *SummarizeHandler {
+func NewSummarizeHandler(apiRepo repository.ExternalAPIRepository, summaryRepo repository.SummaryRepository, articleRepo repository.ArticleRepository, logger *slog.Logger) *SummarizeHandler {
 	return &SummarizeHandler{
 		apiRepo:     apiRepo,
 		summaryRepo: summaryRepo,
+		articleRepo: articleRepo,
 		logger:      logger,
 	}
 }
@@ -52,14 +54,38 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 	}
 
 	// Validate required fields
-	if req.Content == "" {
-		h.logger.Warn("empty content provided")
-		return echo.NewHTTPError(http.StatusBadRequest, "Content cannot be empty")
-	}
-
 	if req.ArticleID == "" {
 		h.logger.Warn("empty article_id provided")
 		return echo.NewHTTPError(http.StatusBadRequest, "Article ID cannot be empty")
+	}
+
+	// If content is empty, try to fetch from DB
+	if req.Content == "" {
+		h.logger.Info("content is empty, fetching from DB", "article_id", req.ArticleID)
+		fetchedArticle, err := h.articleRepo.FindByID(ctx, req.ArticleID)
+		if err != nil {
+			h.logger.Error("failed to fetch article from DB", "error", err, "article_id", req.ArticleID)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch article content")
+		}
+		if fetchedArticle == nil {
+			h.logger.Warn("article not found in DB", "article_id", req.ArticleID)
+			return echo.NewHTTPError(http.StatusNotFound, "Article not found")
+		}
+		if fetchedArticle.Content == "" {
+			h.logger.Warn("article found but content is empty", "article_id", req.ArticleID)
+			return echo.NewHTTPError(http.StatusBadRequest, "Article content is empty in database")
+		}
+		req.Content = fetchedArticle.Content
+		// Also update title if missing
+		if req.Title == "" {
+			req.Title = fetchedArticle.Title
+		}
+		h.logger.Info("content fetched from DB successfully", "article_id", req.ArticleID, "content_length", len(req.Content))
+	}
+
+	if req.Content == "" {
+		h.logger.Warn("empty content provided and not found in DB", "article_id", req.ArticleID)
+		return echo.NewHTTPError(http.StatusBadRequest, "Content cannot be empty")
 	}
 
 	h.logger.Info("processing summarization request", "article_id", req.ArticleID)

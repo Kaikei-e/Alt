@@ -16,6 +16,7 @@ type ArticleRepository interface {
 	CheckExists(ctx context.Context, urls []string) (bool, error)
 	FindForSummarization(ctx context.Context, cursor *Cursor, limit int) ([]*models.Article, *Cursor, error)
 	HasUnsummarizedArticles(ctx context.Context) (bool, error)
+	FindByID(ctx context.Context, articleID string) (*models.Article, error)
 }
 
 // FeedRepository handles feed data persistence.

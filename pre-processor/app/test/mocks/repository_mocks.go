@@ -103,6 +103,21 @@ func (mr *MockArticleRepositoryMockRecorder) HasUnsummarizedArticles(ctx any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasUnsummarizedArticles", reflect.TypeOf((*MockArticleRepository)(nil).HasUnsummarizedArticles), ctx)
 }
 
+// FindByID mocks base method.
+func (m *MockArticleRepository) FindByID(ctx context.Context, articleID string) (*models.Article, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindByID", ctx, articleID)
+	ret0, _ := ret[0].(*models.Article)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindByID indicates an expected call of FindByID.
+func (mr *MockArticleRepositoryMockRecorder) FindByID(ctx, articleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockArticleRepository)(nil).FindByID), ctx, articleID)
+}
+
 // MockFeedRepository is a mock of FeedRepository interface.
 type MockFeedRepository struct {
 	ctrl     *gomock.Controller

@@ -114,6 +114,7 @@ func main() {
 	summarizeHandler := handler.NewSummarizeHandler(
 		apiRepo,
 		summaryRepo,
+		articleRepo,
 		logger.Logger,
 	)
 

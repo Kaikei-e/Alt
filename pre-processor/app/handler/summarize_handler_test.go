@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -32,9 +33,10 @@ func TestNewSummarizeHandler_Constructor(t *testing.T) {
 
 	mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
 	mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
 	logger := testLoggerSummarize()
 
-	h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, logger)
+	h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, logger)
 
 	assert.NotNil(t, h)
 }
@@ -42,14 +44,14 @@ func TestNewSummarizeHandler_Constructor(t *testing.T) {
 // TestSummarizeHandler_HandleSummarize tests the summarization endpoint
 func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 	tests := map[string]struct {
-		setupMock    func(*mocks.MockExternalAPIRepository, *mocks.MockSummaryRepository)
+		setupMock    func(*mocks.MockExternalAPIRepository, *mocks.MockSummaryRepository, *mocks.MockArticleRepository)
 		requestBody  map[string]interface{}
 		expectedCode int
 		validateResp func(t *testing.T, resp map[string]interface{})
 		wantErr      bool
 	}{
 		"should successfully summarize article": {
-			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository) {
+			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository, a *mocks.MockArticleRepository) {
 				m.EXPECT().
 					SummarizeArticle(gomock.Any(), gomock.Any()).
 					Return(&models.SummarizedContent{
@@ -71,19 +73,53 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 				assert.Equal(t, "test-123", resp["article_id"])
 			},
 		},
-		"should return error for empty content": {
-			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository) {
-				// No expectation - should fail before calling mock
+		"should successfully fetch content from DB if empty": {
+			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository, a *mocks.MockArticleRepository) {
+				a.EXPECT().
+					FindByID(gomock.Any(), "test-123").
+					Return(&models.Article{
+						ID:      "test-123",
+						Content: "Fetched content from DB",
+						Title:   "Fetched Title",
+					}, nil)
+				m.EXPECT().
+					SummarizeArticle(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, article *models.Article) (*models.SummarizedContent, error) {
+						assert.Equal(t, "Fetched content from DB", article.Content)
+						return &models.SummarizedContent{
+							ArticleID:       "test-123",
+							SummaryJapanese: "DBからの要約",
+						}, nil
+					})
+				s.EXPECT().
+					Create(gomock.Any(), gomock.Any()).
+					Return(nil)
 			},
 			requestBody: map[string]interface{}{
 				"content":    "",
 				"article_id": "test-123",
 			},
-			expectedCode: http.StatusBadRequest,
+			expectedCode: http.StatusOK,
+			validateResp: func(t *testing.T, resp map[string]interface{}) {
+				assert.True(t, resp["success"].(bool))
+				assert.Equal(t, "DBからの要約", resp["summary"])
+			},
+		},
+		"should return error for empty content and not found in DB": {
+			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository, a *mocks.MockArticleRepository) {
+				a.EXPECT().
+					FindByID(gomock.Any(), "test-123").
+					Return(nil, nil) // Not found
+			},
+			requestBody: map[string]interface{}{
+				"content":    "",
+				"article_id": "test-123",
+			},
+			expectedCode: http.StatusNotFound,
 			wantErr:      true,
 		},
 		"should return error for missing article_id": {
-			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository) {
+			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository, a *mocks.MockArticleRepository) {
 				// No expectation - should fail before calling mock
 			},
 			requestBody: map[string]interface{}{
@@ -93,7 +129,7 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 			wantErr:      true,
 		},
 		"should handle summarization API failure": {
-			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository) {
+			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository, a *mocks.MockArticleRepository) {
 				m.EXPECT().
 					SummarizeArticle(gomock.Any(), gomock.Any()).
 					Return(nil, assert.AnError)
@@ -114,9 +150,10 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 
 			mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
 			mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
-			tc.setupMock(mockAPIRepo, mockSummaryRepo)
+			mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+			tc.setupMock(mockAPIRepo, mockSummaryRepo, mockArticleRepo)
 
-			h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, testLoggerSummarize())
+			h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, testLoggerSummarize())
 
 			// Create Echo instance and request
 			e := echo.New()
@@ -157,7 +194,8 @@ func TestSummarizeHandler_InvalidJSON(t *testing.T) {
 
 	mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
 	mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
-	h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, testLoggerSummarize())
+	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+	h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, testLoggerSummarize())
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/summarize", bytes.NewReader([]byte("invalid json")))
