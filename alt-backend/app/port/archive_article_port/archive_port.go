@@ -11,7 +11,12 @@ type ArticleRecord struct {
 	Content string
 }
 
-// ArchiveArticlePort defines the persistence contract for archiving fetched articles.
+// ArticleSaver defines the interface for saving articles
+type ArticleSaver interface {
+	SaveArticle(ctx context.Context, url, title, content string) (string, error)
+}
+
+// ArchiveArticlePort defines the interface for archiving articles using ArticleRecord
 type ArchiveArticlePort interface {
 	SaveArticle(ctx context.Context, record ArticleRecord) error
 }

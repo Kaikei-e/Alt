@@ -23,18 +23,18 @@ const upsertArticleQuery = `
 `
 
 // SaveArticle stores or updates article content keyed by URL.
-func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content string) error {
+func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content string) (string, error) {
 	if r == nil || r.pool == nil {
-		return errors.New("database connection not available")
+		return "", errors.New("database connection not available")
 	}
 
 	cleanURL := strings.TrimSpace(url)
 	if cleanURL == "" {
-		return errors.New("article url cannot be empty")
+		return "", errors.New("article url cannot be empty")
 	}
 
 	if strings.TrimSpace(content) == "" {
-		return errors.New("article content cannot be empty")
+		return "", errors.New("article content cannot be empty")
 	}
 
 	cleanTitle := strings.TrimSpace(title)
@@ -50,7 +50,7 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 	// Extract user_id from context
 	userContext, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		return fmt.Errorf("user context required: %w", err)
+		return "", fmt.Errorf("user context required: %w", err)
 	}
 
 	// Get feed_id from URL if possible
@@ -77,9 +77,9 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 	if err := r.pool.QueryRow(ctx, upsertArticleQuery, cleanTitle, content, cleanURL, userContext.UserID, feedIDValue).Scan(&articleID); err != nil {
 		err = fmt.Errorf("upsert article content: %w", err)
 		logger.SafeError("failed to save article", "url", cleanURL, "error", err)
-		return err
+		return "", err
 	}
 
 	logger.SafeInfo("article content saved", "url", cleanURL, "article_id", articleID.String(), "user_id", userContext.UserID)
-	return nil
+	return articleID.String(), nil
 }

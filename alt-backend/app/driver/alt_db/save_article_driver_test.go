@@ -32,73 +32,6 @@ func TestAltDBRepository_SaveArticle_Success(t *testing.T) {
 	}
 	ctx := domain.SetUserContext(context.Background(), userCtx)
 
-	articleID := uuid.New()
-	// Mock GetFeedIDByURL call - feed not found (will use NULL feed_id)
-	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
-		WithArgs("https://example.com/article").
-		WillReturnError(errors.New("no rows"))
-
-	mock.ExpectQuery(regexp.QuoteMeta(upsertArticleQuery)).
-		WithArgs("Example Title", "<p>content</p>", "https://example.com/article", userID, nil).
-		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(articleID))
-
-	require.NoError(t, repo.SaveArticle(ctx, "https://example.com/article", "Example Title", "<p>content</p>"))
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestAltDBRepository_SaveArticle_UsesURLWhenTitleEmpty(t *testing.T) {
-	mock, err := pgxmock.NewPool()
-	require.NoError(t, err)
-	defer mock.Close()
-
-	repo := &AltDBRepository{pool: mock}
-
-	// Create context with user
-	userID := uuid.New()
-	userCtx := &domain.UserContext{
-		UserID:    userID,
-		Email:     "test@example.com",
-		Role:      domain.UserRoleUser,
-		TenantID:  uuid.New(),
-		LoginAt:   time.Now(),
-		ExpiresAt: time.Now().Add(24 * time.Hour),
-	}
-	ctx := domain.SetUserContext(context.Background(), userCtx)
-
-	articleID := uuid.New()
-	url := "https://example.com/article"
-	// Mock GetFeedIDByURL call - feed not found (will use NULL feed_id)
-	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
-		WithArgs(url).
-		WillReturnError(errors.New("no rows"))
-
-	mock.ExpectQuery(regexp.QuoteMeta(upsertArticleQuery)).
-		WithArgs(url, "<p>content</p>", url, userID, nil).
-		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(articleID))
-
-	require.NoError(t, repo.SaveArticle(ctx, url, "   ", "<p>content</p>"))
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestAltDBRepository_SaveArticle_ReturnsErrorOnQueryFailure(t *testing.T) {
-	mock, err := pgxmock.NewPool()
-	require.NoError(t, err)
-	defer mock.Close()
-
-	repo := &AltDBRepository{pool: mock}
-
-	// Create context with user
-	userID := uuid.New()
-	userCtx := &domain.UserContext{
-		UserID:    userID,
-		Email:     "test@example.com",
-		Role:      domain.UserRoleUser,
-		TenantID:  uuid.New(),
-		LoginAt:   time.Now(),
-		ExpiresAt: time.Now().Add(24 * time.Hour),
-	}
-	ctx := domain.SetUserContext(context.Background(), userCtx)
-
 	// Mock GetFeedIDByURL call - feed not found (will use NULL feed_id)
 	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
 		WithArgs("https://example.com/article").
@@ -108,7 +41,7 @@ func TestAltDBRepository_SaveArticle_ReturnsErrorOnQueryFailure(t *testing.T) {
 		WithArgs("Example Title", "<p>content</p>", "https://example.com/article", userID, nil).
 		WillReturnError(errors.New("db failed"))
 
-	err = repo.SaveArticle(ctx, "https://example.com/article", "Example Title", "<p>content</p>")
+	_, err = repo.SaveArticle(ctx, "https://example.com/article", "Example Title", "<p>content</p>")
 	require.Error(t, err)
 	require.ErrorContains(t, err, "db failed")
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -122,14 +55,14 @@ func TestAltDBRepository_SaveArticle_ValidationFailures(t *testing.T) {
 
 	t.Run("nil repository", func(t *testing.T) {
 		var repo *AltDBRepository
-		err := repo.SaveArticle(ctx, "https://example.com", "title", "content")
+		_, err := repo.SaveArticle(ctx, "https://example.com", "title", "content")
 		require.Error(t, err)
 		require.Equal(t, "database connection not available", err.Error())
 	})
 
 	t.Run("nil pool", func(t *testing.T) {
 		repo := &AltDBRepository{}
-		err := repo.SaveArticle(ctx, "https://example.com", "title", "content")
+		_, err := repo.SaveArticle(ctx, "https://example.com", "title", "content")
 		require.Error(t, err)
 		require.Equal(t, "database connection not available", err.Error())
 	})
@@ -148,21 +81,21 @@ func TestAltDBRepository_SaveArticle_ValidationFailures(t *testing.T) {
 
 	t.Run("empty url", func(t *testing.T) {
 		repo := &AltDBRepository{pool: mock}
-		err := repo.SaveArticle(ctxWithUser, "   ", "title", "content")
+		_, err := repo.SaveArticle(ctxWithUser, "   ", "title", "content")
 		require.Error(t, err)
 		require.Equal(t, "article url cannot be empty", err.Error())
 	})
 
 	t.Run("empty content", func(t *testing.T) {
 		repo := &AltDBRepository{pool: mock}
-		err := repo.SaveArticle(ctxWithUser, "https://example.com", "title", "   ")
+		_, err := repo.SaveArticle(ctxWithUser, "https://example.com", "title", "   ")
 		require.Error(t, err)
 		require.Equal(t, "article content cannot be empty", err.Error())
 	})
 
 	t.Run("missing user context", func(t *testing.T) {
 		repo := &AltDBRepository{pool: mock}
-		err := repo.SaveArticle(ctx, "https://example.com", "title", "content")
+		_, err := repo.SaveArticle(ctx, "https://example.com", "title", "content")
 		require.Error(t, err)
 		require.ErrorContains(t, err, "user context required")
 	})

@@ -213,12 +213,18 @@ func generateArticleID(feedURL string) string {
 }
 
 // callPreProcessorSummarize calls the pre-processor summarization API
-func callPreProcessorSummarize(ctx context.Context, content string, articleID string, articleTitle string, preProcessorURL string) (string, error) {
+func callPreProcessorSummarize(ctx context.Context, content string, articleID string, title string, preProcessorURL string) (string, error) {
+	// Validate inputs
+	if articleID == "" {
+		return "", fmt.Errorf("article_id is required")
+	}
+	// Content can be empty if we are using the pull model (pre-processor fetches from DB)
+
 	// Prepare request
-	requestBody := map[string]interface{}{
+	requestBody := map[string]string{
 		"content":    content,
 		"article_id": articleID,
-		"title":      articleTitle,
+		"title":      title,
 	}
 
 	jsonData, err := json.Marshal(requestBody)

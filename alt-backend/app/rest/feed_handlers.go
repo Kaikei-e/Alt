@@ -832,30 +832,62 @@ func handleSummarizeFeed(container *di.ApplicationComponents, cfg *config.Config
 
 		logger.Logger.Info("Processing summarization request", "feed_url", req.FeedURL)
 
-		// Fetch article content (you might need to fetch from DB or URL)
-		articleContent, articleID, articleTitle, err := fetchArticleContent(c.Request().Context(), req.FeedURL, container)
+		// Step 1: Check if article exists in DB
+		var articleID string
+		var articleTitle string
+		// articleContent is not needed for summarization request as we pull from DB
+
+		existingArticle, err := container.AltDBRepository.FetchArticleByURL(c.Request().Context(), req.FeedURL)
 		if err != nil {
-			logger.Logger.Error("Failed to fetch article content", "error", err, "url", req.FeedURL)
-			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch article content")
+			logger.Logger.Error("Failed to check for existing article", "error", err, "url", req.FeedURL)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to check article existence")
 		}
 
-		// Step 1: Try to fetch existing summary from database
+		if existingArticle != nil {
+			// Article exists in DB
+			logger.Logger.Info("Article found in database", "article_id", existingArticle.ID, "url", req.FeedURL)
+			articleID = existingArticle.ID
+			articleTitle = existingArticle.Title
+		} else {
+			// Article does not exist, fetch from Web
+			logger.Logger.Info("Article not found in database, fetching from Web", "url", req.FeedURL)
+			fetchedContent, _, fetchedTitle, fetchErr := fetchArticleContent(c.Request().Context(), req.FeedURL, container)
+			if fetchErr != nil {
+				logger.Logger.Error("Failed to fetch article content", "error", fetchErr, "url", req.FeedURL)
+				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch article content")
+			}
+
+			var saveErr error
+			articleID, saveErr = container.AltDBRepository.SaveArticle(c.Request().Context(), req.FeedURL, fetchedTitle, fetchedContent)
+			if saveErr != nil {
+				logger.Logger.Error("Failed to save article to database", "error", saveErr, "url", req.FeedURL)
+				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to save article")
+			}
+			articleTitle = fetchedTitle
+		}
+
+		// Step 2: Try to fetch existing summary from database
 		var summary string
 		existingSummary, err := container.AltDBRepository.FetchArticleSummaryByArticleID(c.Request().Context(), articleID)
 		if err == nil && existingSummary != nil && existingSummary.Summary != "" {
 			logger.Logger.Info("Found existing summary in database", "article_id", articleID, "feed_url", req.FeedURL)
 			summary = existingSummary.Summary
 		} else {
-			// Step 2: Generate new summary if not found in database
+			// Step 3: Generate new summary if not found in database
 			logger.Logger.Info("No existing summary found, generating new summary", "article_id", articleID, "feed_url", req.FeedURL)
 
-			summary, err = callPreProcessorSummarize(c.Request().Context(), articleContent, articleID, articleTitle, cfg.PreProcessor.URL)
+			// Small delay to ensure DB transaction is committed before pre-processor reads
+			// This is necessary because SaveArticle uses QueryRow which may not be immediately visible
+			time.Sleep(100 * time.Millisecond)
+
+			// Call pre-processor with empty content (it will fetch from DB)
+			summary, err = callPreProcessorSummarize(c.Request().Context(), "", articleID, articleTitle, cfg.PreProcessor.URL)
 			if err != nil {
-				logger.Logger.Error("Failed to summarize article", "error", err, "url", req.FeedURL)
+				logger.Logger.Error("Failed to summarize article", "error", err, "url", req.FeedURL, "article_id", articleID)
 				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate summary")
 			}
 
-			// Step 3: Save the generated summary to database
+			// Step 4: Save the generated summary to database
 			if err := container.AltDBRepository.SaveArticleSummary(c.Request().Context(), articleID, articleTitle, summary); err != nil {
 				logger.Logger.Error("Failed to save article summary to database", "error", err, "article_id", articleID, "feed_url", req.FeedURL)
 				// Continue even if save fails - we still have the summary to return

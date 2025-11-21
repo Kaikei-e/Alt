@@ -19,7 +19,7 @@ type stubSaver struct {
 	returnErr error
 }
 
-func (s *stubSaver) SaveArticle(ctx context.Context, url, title, content string) error {
+func (s *stubSaver) SaveArticle(ctx context.Context, url, title, content string) (string, error) {
 	if ctx == nil {
 		panic("context must not be nil")
 	}
@@ -27,7 +27,7 @@ func (s *stubSaver) SaveArticle(ctx context.Context, url, title, content string)
 	s.url = url
 	s.title = title
 	s.content = content
-	return s.returnErr
+	return "", s.returnErr
 }
 
 func TestArchiveArticleGateway_SaveArticle_Success(t *testing.T) {

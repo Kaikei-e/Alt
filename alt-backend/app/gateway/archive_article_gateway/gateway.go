@@ -10,7 +10,7 @@ import (
 
 // ArticleSaver abstracts the persistence layer that stores article bodies.
 type ArticleSaver interface {
-	SaveArticle(ctx context.Context, url, title, content string) error
+	SaveArticle(ctx context.Context, url, title, content string) (string, error)
 }
 
 // ArchiveArticleGateway provides DB-backed storage for article bodies.
@@ -43,7 +43,8 @@ func (g *ArchiveArticleGateway) SaveArticle(ctx context.Context, record archive_
 		cleanTitle = cleanURL
 	}
 
-	if err := g.repo.SaveArticle(ctx, cleanURL, cleanTitle, record.Content); err != nil {
+	_, err := g.repo.SaveArticle(ctx, cleanURL, cleanTitle, record.Content)
+	if err != nil {
 		return fmt.Errorf("save article content: %w", err)
 	}
 
