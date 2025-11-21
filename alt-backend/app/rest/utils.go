@@ -5,6 +5,7 @@ import (
 	"alt/domain"
 	"alt/utils/errors"
 	"alt/utils/logger"
+	"alt/utils/security"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -160,6 +161,11 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 
 	if err := isAllowedURL(parsedURL); err != nil {
 		return "", "", "", fmt.Errorf("url not allowed: %w", err)
+	}
+
+	ssrfValidator := security.NewSSRFValidator()
+	if err := ssrfValidator.ValidateURL(ctx, parsedURL); err != nil {
+		return "", "", "", fmt.Errorf("ssrf validation failed: %w", err)
 	}
 
 	// Create HTTP client with timeout
