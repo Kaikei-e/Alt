@@ -139,7 +139,7 @@ const CardView = memo(({
       return new Promise<void>((resolve) => {
         api.start({
           x: direction * width * 1.2,
-          config: { tension: 200, friction: 20 },
+          config: { tension: 350, friction: 25 },
           onRest: () => {
             animationInFlightRef.current = false;
             resolve();
@@ -789,7 +789,12 @@ const SwipeFeedCard = memo((props: SwipeFeedCardProps) => {
     from: { opacity: 0, scale: 0.98 },
     enter: { opacity: 1, scale: 1 },
     leave: { opacity: 0, pointerEvents: "none" },
-    config: { tension: 500, friction: 28 },
+    config: (item, state) => {
+      if (String(state) === "leave") {
+        return { tension: 600, friction: 30 };
+      }
+      return { tension: 500, friction: 28 };
+    },
   });
 
   return (
