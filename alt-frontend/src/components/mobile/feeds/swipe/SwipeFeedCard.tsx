@@ -20,7 +20,7 @@ import {
   Sparkles,
   SquareArrowOutUpRight,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { articleApi } from "@/lib/api";
 import type { Feed } from "@/schema/feed";
 import { renderingRegistry } from "@/utils/renderingStrategies";
@@ -120,7 +120,7 @@ const CardView = memo(({
   const resetPosition = useCallback(() => {
     api.start({
       x: 0,
-      config: { tension: 300, friction: 30 },
+      config: { tension: 250, friction: 25 },
     });
   }, [api]);
 
@@ -562,11 +562,18 @@ const CardView = memo(({
                           bg: "var(--alt-secondary)",
                           transform: "translateY(-1px)",
                         }}
+                        disabled={isSummarizing}
                         data-testid="summarize-now-button"
                       >
                         <Flex align="center" gap={2}>
-                          <Sparkles size={16} />
-                          <Text>Summarize Now</Text>
+                          {isSummarizing ? (
+                            <Spinner size="xs" color="white" />
+                          ) : (
+                            <Sparkles size={16} />
+                          )}
+                          <Text>
+                            {isSummarizing ? "Generating..." : "Summarize Now"}
+                          </Text>
                         </Flex>
                       </Button>
                     </VStack>
@@ -583,31 +590,47 @@ const CardView = memo(({
                 </Text>
               ) : (
                 <VStack gap={3} w="100%">
-                  <Text
-                    color="var(--alt-text-secondary)"
-                    fontSize="sm"
-                    textAlign="center"
-                  >
-                    No summary available for this article
-                  </Text>
-                  <Button
-                    size="sm"
-                    onClick={handleSummarizeNow}
-                    w="100%"
-                    borderRadius="12px"
-                    bg="var(--alt-primary)"
-                    color="white"
-                    _hover={{
-                      bg: "var(--alt-secondary)",
-                      transform: "translateY(-1px)",
-                    }}
-                    data-testid="summarize-now-button"
-                  >
-                    <Flex align="center" gap={2}>
-                      <Sparkles size={16} />
-                      <Text>Summarize Now</Text>
+                  {isSummarizing ? (
+                    <Flex align="center" justify="center" gap={3} py={2}>
+                      <Spinner size="sm" color="var(--alt-primary)" />
+                      <Text
+                        color="var(--alt-text-secondary)"
+                        fontSize="sm"
+                        textAlign="center"
+                      >
+                        Generating summary...
+                      </Text>
                     </Flex>
-                  </Button>
+                  ) : (
+                    <>
+                      <Text
+                        color="var(--alt-text-secondary)"
+                        fontSize="sm"
+                        textAlign="center"
+                      >
+                        No summary available for this article
+                      </Text>
+                      <Button
+                        size="sm"
+                        onClick={handleSummarizeNow}
+                        w="100%"
+                        borderRadius="12px"
+                        bg="var(--alt-primary)"
+                        color="white"
+                        _hover={{
+                          bg: "var(--alt-secondary)",
+                          transform: "translateY(-1px)",
+                        }}
+                        disabled={isSummarizing}
+                        data-testid="summarize-now-button"
+                      >
+                        <Flex align="center" gap={2}>
+                          <Sparkles size={16} />
+                          <Text>Summarize Now</Text>
+                        </Flex>
+                      </Button>
+                    </>
+                  )}
                 </VStack>
               )}
             </Box>
@@ -681,17 +704,23 @@ const CardView = memo(({
                 transform: "translateY(0)",
               }}
               transition="all 0.2s ease"
-              disabled={isLoadingSummary}
+              disabled={isLoadingSummary || isSummarizing}
               data-testid="toggle-summary-button"
             >
               <Flex align="center" gap={2}>
-                <BotMessageSquare size={16} />
+                {isSummarizing ? (
+                  <Spinner size="xs" color="white" />
+                ) : (
+                  <BotMessageSquare size={16} />
+                )}
                 <Text fontSize="xs">
-                  {isLoadingSummary
-                    ? "Loading..."
-                    : isSummaryExpanded
-                      ? "Hide"
-                      : "Summary"}
+                  {isSummarizing
+                    ? "Generating..."
+                    : isLoadingSummary
+                      ? "Loading..."
+                      : isSummaryExpanded
+                        ? "Hide"
+                        : "Summary"}
                 </Text>
               </Flex>
             </Button>
@@ -760,7 +789,7 @@ const SwipeFeedCard = memo((props: SwipeFeedCardProps) => {
     from: { opacity: 0, scale: 0.98 },
     enter: { opacity: 1, scale: 1 },
     leave: { opacity: 0, pointerEvents: "none" },
-    config: { tension: 300, friction: 30 },
+    config: { tension: 500, friction: 28 },
   });
 
   return (
