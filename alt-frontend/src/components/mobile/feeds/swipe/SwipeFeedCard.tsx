@@ -257,8 +257,19 @@ const CardView = memo(({
       const normalized = normalizeDirection(direction);
 
       try {
-        await playDismissAnimation(normalized);
+        // Trigger animation and dismissal in parallel
+        // We don't await the animation to finish before calling onDismiss
+        // This allows the next card to start rendering immediately
+        const animationPromise = playDismissAnimation(normalized);
+
+        // Small delay to ensure animation frame has started
+        // This prevents the state update from happening before the transform is applied
+        await new Promise(resolve => setTimeout(resolve, 10));
+
         await onDismiss(normalized);
+
+        // Ensure animation completes (though component might be unmounted by then)
+        await animationPromise;
       } catch (error) {
         resetPosition();
         throw error;
@@ -326,6 +337,7 @@ const CardView = memo(({
         padding: "1rem",
         backdropFilter: "blur(20px)",
         willChange: "transform, opacity",
+        zIndex: style.zIndex, // Apply zIndex from transition
       }}
       data-testid="swipe-card"
       aria-busy={isBusy}
@@ -786,9 +798,9 @@ const CardView = memo(({
 const SwipeFeedCard = memo((props: SwipeFeedCardProps) => {
   const transitions = useTransition(props.feed, {
     keys: (item: Feed) => item.id,
-    from: { opacity: 0, scale: 0.98 },
-    enter: { opacity: 1, scale: 1 },
-    leave: { opacity: 0, pointerEvents: "none" },
+    from: { opacity: 0, scale: 0.98, zIndex: 0 },
+    enter: { opacity: 1, scale: 1, zIndex: 1 },
+    leave: { opacity: 0, pointerEvents: "none", zIndex: 10 },
     config: (item, state) => {
       if (String(state) === "leave") {
         return { tension: 600, friction: 30 };
