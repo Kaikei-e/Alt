@@ -31,24 +31,16 @@ const usePrefersReducedMotion = () => {
     }
 
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = (event: MediaQueryList | MediaQueryListEvent) => {
+    const updatePreference = (event: MediaQueryListEvent | MediaQueryList) => {
       setPrefersReducedMotion(event.matches);
     };
 
     updatePreference(mediaQuery);
 
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", updatePreference);
-    } else if (typeof mediaQuery.addListener === "function") {
-      mediaQuery.addListener(updatePreference);
-    }
+    mediaQuery.addEventListener("change", updatePreference);
 
     return () => {
-      if (typeof mediaQuery.removeEventListener === "function") {
-        mediaQuery.removeEventListener("change", updatePreference);
-      } else if (typeof mediaQuery.removeListener === "function") {
-        mediaQuery.removeListener(updatePreference);
-      }
+      mediaQuery.removeEventListener("change", updatePreference);
     };
   }, []);
 
