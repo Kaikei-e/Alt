@@ -10,6 +10,8 @@ import dynamic from "next/dynamic";
 import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
+import type { Feed } from "@/schema/feed";
+import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 
 const usePrefersReducedMotion = () => {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
@@ -265,7 +267,15 @@ const SwipeFeedCard = dynamic(
   },
 );
 
-const SwipeFeedScreen = () => {
+interface SwipeFeedScreenProps {
+  initialFeed?: Feed | null;
+  initialArticleContent?: SafeHtmlString | null;
+}
+
+const SwipeFeedScreen = ({
+  initialFeed,
+  initialArticleContent,
+}: SwipeFeedScreenProps) => {
   const {
     feeds,
     activeFeed,
@@ -316,6 +326,11 @@ const SwipeFeedScreen = () => {
             onDismiss={dismissActiveFeed}
             getCachedContent={getCachedContent}
             isBusy={shouldShowOverlay}
+            initialArticleContent={
+              activeFeed.id === initialFeed?.id
+                ? initialArticleContent ?? undefined
+                : undefined
+            }
           />
         </Flex>
 

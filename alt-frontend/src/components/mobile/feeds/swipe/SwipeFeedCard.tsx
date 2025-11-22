@@ -20,10 +20,11 @@ import {
   Sparkles,
   SquareArrowOutUpRight,
 } from "lucide-react";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { articleApi } from "@/lib/api";
 import type { Feed } from "@/schema/feed";
 import { renderingRegistry } from "@/utils/renderingStrategies";
+import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 
 const SWIPE_DISTANCE = 80;
 const SWIPE_VELOCITY = 0.5;
@@ -52,6 +53,7 @@ type SwipeFeedCardProps = {
   onDismiss: (direction: number) => Promise<void> | void;
   getCachedContent?: (feedUrl: string) => string | null;
   isBusy?: boolean;
+  initialArticleContent?: SafeHtmlString;
 };
 
 const buildContentStyles = (): CSSObject => ({
@@ -91,6 +93,7 @@ const CardView = memo(({
   getCachedContent,
   isBusy = false,
   style,
+  initialArticleContent,
 }: SwipeFeedCardProps & { style: any }) => {
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
@@ -99,7 +102,10 @@ const CardView = memo(({
   const [isSummarizing, setIsSummarizing] = useState(false);
 
   const [isContentExpanded, setIsContentExpanded] = useState(false);
-  const [fullContent, setFullContent] = useState<string | null>(null);
+  // Initialize with server-fetched content if available
+  const [fullContent, setFullContent] = useState<string | null>(
+    initialArticleContent ?? null,
+  );
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
 
@@ -116,6 +122,66 @@ const CardView = memo(({
 
     return renderingRegistry.render(fullContent, undefined, feed.link);
   }, [feed.link, fullContent]);
+
+  // Auto-fetch article content when card is mounted or feed changes
+  useEffect(() => {
+    // Skip if content is already loaded (from initialArticleContent or previous fetch)
+    if (fullContent) {
+      return;
+    }
+
+    // Skip if we have initialArticleContent (already set in useState initializer)
+    if (initialArticleContent) {
+      return;
+    }
+
+    // Check cache first if getCachedContent is available
+    const cachedContent = getCachedContent?.(feed.link);
+
+    if (cachedContent) {
+      // Use cached content instantly
+      setFullContent(cachedContent);
+      return;
+    }
+
+    // Cache miss - fetch in background
+    // Don't set loading state to avoid UI flicker
+    let isCancelled = false;
+
+    const fetchContent = async () => {
+      try {
+        const contentResponse = await articleApi.getFeedContentOnTheFly({
+          feed_url: feed.link,
+        });
+
+        if (isCancelled) {
+          return;
+        }
+
+        if (contentResponse.content) {
+          setFullContent(contentResponse.content);
+          // Archive article in background (non-blocking)
+          articleApi
+            .archiveContent(feed.link, feed.title)
+            .catch((err) =>
+              console.warn("Failed to auto-archive article:", err),
+            );
+        }
+      } catch (error) {
+        // Only log error, don't update UI state
+        // User can still click the button to retry
+        if (!isCancelled) {
+          console.error("[SwipeFeedCard] Error auto-fetching content:", error);
+        }
+      }
+    };
+
+    void fetchContent();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [feed.link, feed.title, fullContent, getCachedContent, initialArticleContent]);
 
   const resetPosition = useCallback(() => {
     api.start({

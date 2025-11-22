@@ -198,9 +198,10 @@ const nextConfig = {
 
   // Experimental optimizations
   experimental: {
-    optimizePackageImports: ["@chakra-ui/react", "@emotion/react"],
+    optimizePackageImports: ["@chakra-ui/react", "@emotion/react", "lucide-react"],
     esmExternals: true,
   },
+  reactCompiler: true,
 
   // Use stable turbopack
   turbopack: {
@@ -217,10 +218,6 @@ const nextConfig = {
       // Enhanced tree shaking
       config.optimization.usedExports = true;
 
-      // Better chunk splitting for caching
-      if (!config.optimization.splitChunks) {
-        config.optimization.splitChunks = { cacheGroups: {} };
-      }
       // Better chunk splitting for caching
       if (!config.optimization.splitChunks) {
         config.optimization.splitChunks = { cacheGroups: {} };
