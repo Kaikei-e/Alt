@@ -17,8 +17,8 @@ export default function EmptyMorningState() {
   const IconComponent = icon;
 
   const styles = useSpring({
-    from: { scale: 1, opacity: 0.8 },
-    to: { scale: 1.05, opacity: 1 },
+    from: { transform: "scale(1)", opacity: 0.8 },
+    to: { transform: "scale(1.05)", opacity: 1 },
     loop: { reverse: true },
     config: { duration: 1500, easing: easings.easeInOutSine },
   });
