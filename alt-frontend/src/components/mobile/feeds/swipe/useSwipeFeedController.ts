@@ -194,7 +194,7 @@ const scheduleTimeout = (
   }, duration);
 };
 
-export const useSwipeFeedController = () => {
+export const useSwipeFeedController = (initialFeed?: Feed | null) => {
   const [liveRegionMessage, setLiveRegionMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
@@ -305,6 +305,15 @@ export const useSwipeFeedController = () => {
     );
 
   const feeds = useMemo(() => {
+    // If we have initialFeed and no data yet (or loading), show initialFeed
+    if ((!data || data.length === 0) && initialFeed) {
+      // Check if initial feed is read
+      if (readFeeds.has(canonicalize(initialFeed.link))) {
+        return [] as Feed[];
+      }
+      return [initialFeed];
+    }
+
     if (!data || data.length === 0) {
       return [] as Feed[];
     }
@@ -318,7 +327,7 @@ export const useSwipeFeedController = () => {
     return allFeeds.filter(
       (feed) => !readFeeds.has(canonicalize(feed.link)),
     );
-  }, [data, readFeeds]);
+  }, [data, readFeeds, initialFeed]);
 
   const activeFeed = feeds[0] ?? null;
   const activeIndex = activeFeed ? 0 : -1;

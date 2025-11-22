@@ -245,27 +245,7 @@ const SwipeLoadingOverlay = ({
   );
 };
 
-const SwipeFeedCard = dynamic(
-  () => import("@/components/mobile/feeds/swipe/SwipeFeedCard"),
-  {
-    loading: () => (
-      <Box
-        w="100%"
-        maxW="30rem"
-        h="95dvh"
-        bg="var(--alt-glass)"
-        borderRadius="1rem"
-        border="2px solid var(--alt-glass-border)"
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-      >
-        <SkeletonFeedCard variant="swipe" />
-      </Box>
-    ),
-    ssr: false,
-  },
-);
+import SwipeFeedCard from "@/components/mobile/feeds/swipe/SwipeFeedCard";
 
 interface SwipeFeedScreenProps {
   initialFeed?: Feed | null;
@@ -288,7 +268,7 @@ const SwipeFeedScreen = ({
     dismissActiveFeed,
     retry,
     getCachedContent,
-  } = useSwipeFeedController();
+  } = useSwipeFeedController(initialFeed);
 
   const prefersReducedMotion = usePrefersReducedMotion();
   const shouldShowOverlay = Boolean(activeFeed) && isValidating;

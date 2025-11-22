@@ -1,5 +1,3 @@
-import { Suspense } from "react";
-import dynamic from "next/dynamic";
 import { serverFetch } from "@/lib/api/utils/serverFetch";
 import { fetchArticleContentServer } from "@/lib/api/utils/serverArticleFetch";
 import type { CursorResponse } from "@/schema/common";
@@ -7,26 +5,7 @@ import type { Feed, BackendFeedItem } from "@/schema/feed";
 import { sanitizeFeed } from "@/schema/feed";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 
-// Load SwipeFeedScreen dynamically to reduce initial bundle
-// Note: ssr: false is not allowed in Server Components, so we remove it
-// The component itself is already a client component, so it will be client-side only
-const SwipeFeedScreen = dynamic(
-  () => import("@/components/mobile/feeds/swipe/SwipeFeedScreen"),
-  {
-    loading: () => (
-      <div
-        style={{
-          minHeight: "100dvh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <div>Loading...</div>
-      </div>
-    ),
-  }
-);
+import SwipeFeedScreen from "@/components/mobile/feeds/swipe/SwipeFeedScreen";
 
 /**
  * Fetches the first feed from the cursor API
@@ -67,10 +46,7 @@ async function fetchFirstArticleContent(
   }
 }
 
-/**
- * Server component that fetches initial data
- */
-async function SwipeFeedsPageContent() {
+export default async function SwipeFeedsPage() {
   // Fetch first feed
   const firstFeed = await fetchFirstFeed();
 
@@ -87,13 +63,5 @@ async function SwipeFeedsPageContent() {
       initialFeed={firstFeed}
       initialArticleContent={articleContent}
     />
-  );
-}
-
-export default function SwipeFeedsPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <SwipeFeedsPageContent />
-    </Suspense>
   );
 }
