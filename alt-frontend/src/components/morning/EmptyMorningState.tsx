@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, Flex, Text, VStack } from "@chakra-ui/react";
-import { motion } from "framer-motion";
+import { animated, useSpring, easings } from "@react-spring/web";
 import { Coffee, Moon, Sun } from "lucide-react";
 import Link from "next/link";
 
@@ -16,6 +16,13 @@ export default function EmptyMorningState() {
   const icon = isMorning ? Sun : Moon;
   const IconComponent = icon;
 
+  const styles = useSpring({
+    from: { scale: 1, opacity: 0.8 },
+    to: { scale: 1.05, opacity: 1 },
+    loop: { reverse: true },
+    config: { duration: 1500, easing: easings.easeInOutSine },
+  });
+
   return (
     <Flex
       role="region"
@@ -29,9 +36,10 @@ export default function EmptyMorningState() {
     >
       <VStack gap={8} maxW="400px">
         {/* Animated Icon */}
-        <motion.div
+        <animated.div
           data-testid="empty-morning-state-icon"
           style={{
+            ...styles,
             width: "120px",
             height: "120px",
             display: "flex",
@@ -41,22 +49,13 @@ export default function EmptyMorningState() {
             borderRadius: "9999px",
             border: "2px solid var(--alt-glass-border)",
           }}
-          animate={{
-            scale: [1, 1.05, 1],
-            opacity: [0.8, 1, 0.8],
-          }}
-          transition={{
-            duration: 3,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
         >
           <IconComponent
             size={56}
             color="var(--alt-text-secondary)"
             strokeWidth={1.5}
           />
-        </motion.div>
+        </animated.div>
 
         {/* Heading */}
         <VStack gap={3}>

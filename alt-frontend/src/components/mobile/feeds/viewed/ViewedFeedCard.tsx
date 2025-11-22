@@ -1,5 +1,5 @@
 import { Box, Flex, Text, Button, HStack, Badge } from "@chakra-ui/react";
-import { motion } from "framer-motion";
+import { animated } from "@react-spring/web";
 import { Archive, ExternalLink, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -12,9 +12,9 @@ type ViewedFeedCardProps = {
   feed: Feed;
 };
 
-const MotionBox = motion(Box);
+const AnimatedBox = animated(Box);
 
-export const ViewedFeedCard = ({ feed }: ViewedFeedCardProps) => {
+export const ViewedFeedCard = ({ feed, style }: ViewedFeedCardProps & { style?: any }) => {
   const [isArchiving, setIsArchiving] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -37,12 +37,11 @@ export const ViewedFeedCard = ({ feed }: ViewedFeedCardProps) => {
   };
 
   return (
-    <MotionBox
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.3 }}
-      width="100%"
+    <AnimatedBox
+      style={{
+        ...style,
+        width: "100%",
+      }}
     >
       <Box
         p={4}
@@ -168,6 +167,6 @@ export const ViewedFeedCard = ({ feed }: ViewedFeedCardProps) => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
       />
-    </MotionBox>
+    </AnimatedBox>
   );
 };

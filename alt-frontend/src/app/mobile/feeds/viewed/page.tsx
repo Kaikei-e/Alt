@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { AnimatePresence } from "framer-motion";
+import { useTransition } from "@react-spring/web";
 import { History } from "lucide-react";
 import { ViewedFeedCard } from "@/components/mobile/feeds/viewed/ViewedFeedCard";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
@@ -98,6 +98,14 @@ function ReadFeedsPageContent() {
     throttleDelay: 200,
     rootMargin: "100px 0px",
     threshold: 0.1,
+  });
+
+  const transitions = useTransition(feeds, {
+    keys: (feed) => feed.link,
+    from: { opacity: 0, transform: "translateY(20px)" },
+    enter: { opacity: 1, transform: "translateY(0px)" },
+    leave: { opacity: 0, transform: "translateY(-20px)" },
+    trail: 100,
   });
 
   // Show skeleton loading state for immediate visual feedback
@@ -190,11 +198,9 @@ function ReadFeedsPageContent() {
           <>
             {/* Viewed Feed Cards */}
             <VStack gap={4} width="100%">
-              <AnimatePresence mode="popLayout">
-                {feeds.map((feed: Feed) => (
-                  <ViewedFeedCard key={feed.link} feed={feed} />
-                ))}
-              </AnimatePresence>
+              {transitions((style, feed) => (
+                <ViewedFeedCard key={feed.link} feed={feed} style={style} />
+              ))}
             </VStack>
 
             {/* No more feeds indicator */}
