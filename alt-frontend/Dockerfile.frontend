@@ -1,27 +1,29 @@
-# syntax=docker/dockerfile:1.6
+# syntax=docker/dockerfile:1.7
 
-##### 1) deps stage ─ npm/pnpm DL をキャッシュ #####
+##### 1) deps stage ─ 依存関係のインストールとキャッシュ #####
 FROM node:24-alpine AS deps
 WORKDIR /app
 
 # pnpm を corepack で有効化（公式推奨）
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate \
-  && apk add --no-cache libc6-compat      # glibc 依存モジュール回避
+# glibc 依存モジュール回避のため libc6-compat をインストール
+RUN corepack enable && corepack prepare pnpm@10.22.0 --activate \
+  && apk add --no-cache libc6-compat
 
+# 依存関係ファイルを先にコピーしてキャッシュ効率を向上
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-##### 2) build stage ─ アプリをビルド #####
+##### 2) build stage ─ Next.js 16 アプリケーションのビルド #####
 FROM node:24-alpine AS build
 WORKDIR /app
 
 # pnpm を corepack で有効化（build stage でも必要）
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
 
+# 依存関係を前ステージからコピー
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
 
-# ビルド引数・環境変数（必要なら --build-arg で上書き）
+# ビルド引数（変更頻度の低いものを先に、動的なものを後に配置）
 ARG API_URL=http://alt-backend:9000
 ARG NEXT_PUBLIC_API_BASE_URL=/api
 ARG NEXT_PUBLIC_IDP_ORIGIN=https://curionoah.com
@@ -32,6 +34,8 @@ ARG KRATOS_INTERNAL_URL=http://kratos-public.alt-auth.svc.cluster.local:4433
 ARG KRATOS_PUBLIC_URL=https://curionoah.com
 ARG GIT_SHA
 ARG BUILD_ID
+
+# 環境変数の設定（ビルド時に必要）
 ENV API_URL=$API_URL \
   NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
   NEXT_PUBLIC_IDP_ORIGIN=$NEXT_PUBLIC_IDP_ORIGIN \
@@ -43,51 +47,63 @@ ENV API_URL=$API_URL \
   GIT_SHA=${GIT_SHA} \
   BUILD_ID=${BUILD_ID}
 
+# ソースコードをコピー（変更頻度が高いため最後に配置）
+COPY . .
+
+# Next.js 16 ビルド実行
 RUN pnpm run build
 
-# Ensure the jsdom default stylesheet exists for runtime jsdom usage. Next 15
-# reads /.next/browser/default-stylesheet.css and the standalone output mirrors
-# it under /.next/standalone/.next/. The helper script writes both locations.
+# Ensure the jsdom default stylesheet exists for runtime jsdom usage.
+# Next.js 16 reads /.next/browser/default-stylesheet.css and the helper script
+# ensures it exists for server-side rendering with jsdom.
 RUN node scripts/ensure-default-stylesheet.mjs
 
-##### 3) runtime deps stage ─ 本番依存のみ抽出 #####
+##### 3) runtime deps stage ─ 本番依存関係のみ抽出 #####
 FROM node:24-alpine AS runner-deps
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate \
+# pnpm を corepack で有効化
+RUN corepack enable && corepack prepare pnpm@10.22.0 --activate \
   && apk add --no-cache libc6-compat
 
+# 本番依存関係のみインストール
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --prod --frozen-lockfile
 
 ##### 4) runtime stage ─ 最小実行環境 #####
 FROM node:24-alpine AS runner
 WORKDIR /app
+
+# 実行時環境変数
 ENV NODE_ENV=production \
   PORT=3000 \
   HOSTNAME=0.0.0.0 \
   NEXT_TELEMETRY_DISABLED=1
 
+# glibc 依存モジュール回避
 RUN apk add --no-cache libc6-compat
 
-# ビルド成果物をコピー（next start 運用）
-COPY --from=runner-deps --chown=1001:1001 /app/node_modules ./node_modules
-COPY --from=build --chown=1001:1001 /app/.next ./.next
-COPY --from=build --chown=1001:1001 /app/public ./public
-COPY --from=build --chown=1001:1001 /app/package.json ./package.json
-COPY --from=build --chown=1001:1001 /app/pnpm-lock.yaml ./pnpm-lock.yaml
-
-# 非-root ユーザ
+# 非rootユーザーの作成（1つのRUN命令で統合してレイヤー数を削減）
 RUN addgroup -g 1001 -S nextjs \
-  && adduser  -u 1001 -S -G nextjs nextjs
+  && adduser -u 1001 -S -G nextjs nextjs
+
+# ビルド成果物をコピー（next start 運用）
+# 所有権を設定してからコピーすることでセキュリティを向上
+COPY --from=runner-deps --chown=nextjs:nextjs /app/node_modules ./node_modules
+COPY --from=build --chown=nextjs:nextjs /app/.next ./.next
+COPY --from=build --chown=nextjs:nextjs /app/public ./public
+COPY --from=build --chown=nextjs:nextjs /app/package.json ./package.json
+COPY --from=build --chown=nextjs:nextjs /app/pnpm-lock.yaml ./pnpm-lock.yaml
+
+# 非rootユーザーに切り替え
 USER nextjs
 
 EXPOSE 3000
 
-# /api/health が JSON {"status":"ok"} を返す想定（REPORT.md修正対応）
+# ヘルスチェック（nodeベースでwgetの依存を削除）
+# /api/health が JSON {"status":"ok"} を返す想定
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD wget -qO- http://localhost:${PORT}/api/health \
-  | grep -q '"status":"ok"' || exit 1
+  CMD node -e "require('http').get('http://localhost:' + process.env.PORT + '/api/health', (r) => { let d = ''; r.on('data', c => d += c); r.on('end', () => { const j = JSON.parse(d); process.exit(j.status === 'ok' ? 0 : 1); }); }).on('error', () => process.exit(1));"
 
-# Next.js 本番サーバ
+# Next.js 16 本番サーバ
 CMD ["node", "node_modules/next/dist/bin/next", "start"]
