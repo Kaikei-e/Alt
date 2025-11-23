@@ -7,23 +7,31 @@ import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 
 import SwipeFeedScreen from "@/components/mobile/feeds/swipe/SwipeFeedScreen";
 
+const INITIAL_FEEDS_LIMIT = 5;
+
 /**
- * Fetches the first feed from the cursor API
+ * Fetches the initial feeds from the cursor API
  */
-async function fetchFirstFeed(): Promise<Feed | null> {
+async function fetchInitialFeeds(): Promise<{
+  feeds: Feed[];
+  nextCursor?: string;
+}> {
   try {
     const response = await serverFetch<CursorResponse<BackendFeedItem>>(
-      "/v1/feeds/fetch/cursor?limit=1",
+      `/v1/feeds/fetch/cursor?limit=${INITIAL_FEEDS_LIMIT}`,
     );
 
     if (response.data && response.data.length > 0) {
-      return sanitizeFeed(response.data[0]);
+      return {
+        feeds: response.data.map(sanitizeFeed),
+        nextCursor: response.next_cursor || undefined,
+      };
     }
 
-    return null;
+    return { feeds: [] };
   } catch (error) {
-    console.error("[SwipeFeedsPage] Error fetching first feed:", error);
-    return null;
+    console.error("[SwipeFeedsPage] Error fetching initial feeds:", error);
+    return { feeds: [] };
   }
 }
 
@@ -47,8 +55,9 @@ async function fetchFirstArticleContent(
 }
 
 export default async function SwipeFeedsPage() {
-  // Fetch first feed
-  const firstFeed = await fetchFirstFeed();
+  // Fetch initial feeds
+  const { feeds, nextCursor } = await fetchInitialFeeds();
+  const firstFeed = feeds[0] ?? null;
 
   // If we have a feed, fetch article content in parallel (non-blocking)
   const articleContentPromise = firstFeed?.link
@@ -60,7 +69,8 @@ export default async function SwipeFeedsPage() {
 
   return (
     <SwipeFeedScreen
-      initialFeed={firstFeed}
+      initialFeeds={feeds}
+      initialNextCursor={nextCursor}
       initialArticleContent={articleContent}
     />
   );

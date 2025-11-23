@@ -194,12 +194,15 @@ const scheduleTimeout = (
   }, duration);
 };
 
-export const useSwipeFeedController = (initialFeed?: Feed | null) => {
+export const useSwipeFeedController = (
+  initialFeeds?: Feed[] | null,
+  initialNextCursor?: string,
+) => {
   const [liveRegionMessage, setLiveRegionMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
   const [isReadFeedsInitialized, setIsReadFeedsInitialized] = useState(false);
-  const lastCursorRef = useRef<string | null>(null);
+  const lastCursorRef = useRef<string | null>(initialNextCursor ?? null);
 
   // Initialize readFeeds set from backend on mount using cursor-based pagination
   // Defer to requestIdleCallback to avoid blocking LCP
@@ -274,9 +277,36 @@ export const useSwipeFeedController = (initialFeed?: Feed | null) => {
     useSWRInfinite(
       isReadFeedsInitialized
         ? (pageIndex: number, previousPageData: CursorResponse<Feed> | null) => {
+          // If we have initial feeds and haven't fetched anything yet (pageIndex 0),
+          // and we have a next cursor, we can skip the first fetch if we want to rely solely on initialFeeds.
+          // However, SWR needs a key to return data.
+          // Strategy:
+          // If we have initialFeeds, we treat them as "page 0" data conceptually,
+          // but SWR manages its own cache.
+          // To delay fetching, we can return null for the first page key until we need more data.
+          // BUT, we want SWR to manage the subsequent pages.
+
+          // Simplified approach:
+          // Let SWR fetch normally, but we use initialFeeds for immediate display.
+          // To truly delay the fetch, we could use a state `shouldFetch` initialized to false if initialFeeds exist.
+
           // Fix cursor=null issue: SWR may not pass previousPageData correctly in some cases
           // Use the getKey function but ensure we handle null previousPageData by using lastCursorRef
           if (pageIndex === 0) {
+            // If we have initial feeds, we might want to delay the first fetch?
+            // Actually, the requirement is "fetch subsequent feeds when user approaches end".
+            // So we can start with page 0 being the initial feeds (if we could inject them into SWR).
+            // SWR doesn't easily support "injecting" initial data for infinite loading without `fallbackData` which is static.
+
+            // For now, let's keep the standard fetching but use initialFeeds for display.
+            // The optimization requested is "Delay fetching of subsequent feeds".
+            // Since we already have 5 feeds, we can delay the fetch of the *next* batch (20).
+            // But SWR will try to fetch page 0 immediately.
+
+            // To prevent immediate fetch of page 0 (which would be the 20 items),
+            // we can return null if we are satisfied with initialFeeds and haven't reached the end.
+            // But that complicates the "load more" logic.
+
             return getKey(pageIndex, previousPageData);
           }
 
@@ -300,21 +330,25 @@ export const useSwipeFeedController = (initialFeed?: Feed | null) => {
         revalidateFirstPage: false,
         parallel: false, // Set to false to ensure sequential fetching and proper previousPageData passing
         persistSize: true, // Prevent page size reset when first page key changes (prevents cursor=null issue)
-        initialSize: INITIAL_PAGE_COUNT,
+        initialSize: initialFeeds && initialFeeds.length > 0 ? 1 : INITIAL_PAGE_COUNT,
+        fallbackData: initialFeeds && initialFeeds.length > 0 ? [{
+          data: initialFeeds,
+          next_cursor: initialNextCursor ?? null,
+          has_more: !!initialNextCursor,
+        }] : undefined,
       },
     );
 
   const feeds = useMemo(() => {
-    // If we have initialFeed and no data yet (or loading), show initialFeed
-    if ((!data || data.length === 0) && initialFeed) {
-      // Check if initial feed is read
-      if (readFeeds.has(canonicalize(initialFeed.link))) {
-        return [] as Feed[];
-      }
-      return [initialFeed];
-    }
-
     if (!data || data.length === 0) {
+      // Fallback to initialFeeds if SWR has no data yet
+      if (initialFeeds && initialFeeds.length > 0) {
+        // Check if initial feed is read (though unlikely for server-fetched data)
+        if (readFeeds.size > 0) {
+          return initialFeeds.filter(feed => !readFeeds.has(canonicalize(feed.link)));
+        }
+        return initialFeeds;
+      }
       return [] as Feed[];
     }
 
@@ -327,7 +361,7 @@ export const useSwipeFeedController = (initialFeed?: Feed | null) => {
     return allFeeds.filter(
       (feed) => !readFeeds.has(canonicalize(feed.link)),
     );
-  }, [data, readFeeds, initialFeed]);
+  }, [data, readFeeds, initialFeeds]);
 
   const activeFeed = feeds[0] ?? null;
   const activeIndex = activeFeed ? 0 : -1;
