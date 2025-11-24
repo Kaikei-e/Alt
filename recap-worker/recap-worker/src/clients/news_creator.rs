@@ -149,6 +149,7 @@ impl NewsCreatorClient {
     /// * `job_id` - ジョブID
     /// * `clustering` - クラスタリング結果
     /// * `max_sentences_per_cluster` - クラスターごとの最大文数
+    /// * `article_metadata` - 記事IDからメタデータ（published_at, source_url）へのマップ
     ///
     /// # Returns
     /// 要約リクエスト
@@ -156,6 +157,10 @@ impl NewsCreatorClient {
         job_id: Uuid,
         clustering: &ClusteringResponse,
         max_sentences_per_cluster: usize,
+        article_metadata: &std::collections::HashMap<
+            String,
+            (Option<chrono::DateTime<chrono::Utc>>, Option<String>),
+        >,
     ) -> SummaryRequest {
         let clusters = clustering
             .clusters
@@ -163,7 +168,7 @@ impl NewsCreatorClient {
             .filter(|cluster| cluster.cluster_id >= 0)
             .map(|cluster| {
                 // 各クラスターから代表的な文を選択（最大N文）
-                let representative_sentences: Vec<String> = cluster
+                let mut representative_sentences: Vec<RepresentativeSentence> = cluster
                     .representatives
                     .iter()
                     .take(max_sentences_per_cluster)
@@ -172,10 +177,34 @@ impl NewsCreatorClient {
                         if text.is_empty() {
                             None
                         } else {
-                            Some(text.to_string())
+                            // メタデータを取得
+                            let (published_at, source_url) = article_metadata
+                                .get(&rep.article_id)
+                                .cloned()
+                                .unwrap_or((None, None));
+
+                            Some(RepresentativeSentence {
+                                text: text.to_string(),
+                                published_at: published_at.map(|dt| dt.to_rfc3339()),
+                                source_url,
+                                article_id: Some(rep.article_id.clone()),
+                            })
                         }
                     })
                     .collect();
+
+                // 時系列順にソート（published_at が古い順）
+                representative_sentences.sort_by(|a, b| {
+                    match (&a.published_at, &b.published_at) {
+                        (Some(a_dt), Some(b_dt)) => {
+                            // RFC3339形式の文字列を比較
+                            a_dt.cmp(b_dt)
+                        }
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => std::cmp::Ordering::Equal,
+                    }
+                });
 
                 ClusterInput {
                     cluster_id: cluster.cluster_id,
@@ -298,11 +327,23 @@ pub(crate) struct SummaryRequest {
     pub(crate) options: Option<SummaryOptions>,
 }
 
+/// 代表文のメタデータ。
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct RepresentativeSentence {
+    pub(crate) text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) published_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) source_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) article_id: Option<String>,
+}
+
 /// クラスター入力データ。
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ClusterInput {
     pub(crate) cluster_id: i32,
-    pub(crate) representative_sentences: Vec<String>,
+    pub(crate) representative_sentences: Vec<RepresentativeSentence>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) top_terms: Option<Vec<String>>,
 }
