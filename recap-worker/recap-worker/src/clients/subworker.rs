@@ -15,6 +15,7 @@ use crate::schema::{subworker::CLUSTERING_RESPONSE_SCHEMA, validate_json};
 pub(crate) struct SubworkerClient {
     client: Client,
     base_url: Url,
+    min_documents_per_genre: usize,
 }
 
 const DEFAULT_MAX_SENTENCES_TOTAL: usize = 2_000;
@@ -26,7 +27,6 @@ const MAX_POLL_ATTEMPTS: usize = 30;
 const INITIAL_POLL_INTERVAL_MS: u64 = 500;
 const MAX_POLL_INTERVAL_MS: u64 = 5_000;
 const SUBWORKER_TIMEOUT_SECS: u64 = 120;
-const MIN_DOCUMENTS_PER_GENRE: usize = 5;
 const MAX_ERROR_MESSAGE_LENGTH: usize = 500;
 
 /// エラーメッセージを要約して切り詰める。
@@ -170,7 +170,7 @@ struct ClusterDocument<'a> {
 }
 
 impl SubworkerClient {
-    pub(crate) fn new(endpoint: impl Into<String>) -> Result<Self> {
+    pub(crate) fn new(endpoint: impl Into<String>, min_documents_per_genre: usize) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(SUBWORKER_TIMEOUT_SECS))
             .build()
@@ -178,7 +178,11 @@ impl SubworkerClient {
 
         let base_url = Url::parse(&endpoint.into()).context("invalid subworker base URL")?;
 
-        Ok(Self { client, base_url })
+        Ok(Self {
+            client,
+            base_url,
+            min_documents_per_genre,
+        })
     }
 
     pub(crate) async fn ping(&self) -> Result<()> {
@@ -224,16 +228,17 @@ impl SubworkerClient {
         let idempotency_key = format!("{}::{}", job_id, corpus.genre);
         let document_count = request_payload.documents.len();
 
-        if document_count < MIN_DOCUMENTS_PER_GENRE {
+        if document_count < self.min_documents_per_genre {
             warn!(
                 job_id = %job_id,
                 genre = %corpus.genre,
                 document_count,
+                min_required = self.min_documents_per_genre,
                 "skipping clustering because document count is below minimum"
             );
             return Err(anyhow!(
                 "insufficient documents for clustering: expected >= {}, found {}",
-                MIN_DOCUMENTS_PER_GENRE,
+                self.min_documents_per_genre,
                 document_count
             ));
         }
@@ -513,7 +518,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerClient::new(server.uri()).expect("client should build");
+        let client = SubworkerClient::new(server.uri(), 10).expect("client should build");
 
         client.ping().await.expect("ping should succeed");
     }
@@ -527,7 +532,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerClient::new(server.uri()).expect("client should build");
+        let client = SubworkerClient::new(server.uri(), 10).expect("client should build");
 
         let error = client.ping().await.expect_err("ping should fail");
         assert!(error.to_string().contains("error status"));

@@ -38,6 +38,8 @@ pub struct Config {
     tag_generator_service_token: Option<String>,
     tag_generator_connect_timeout: Duration,
     tag_generator_total_timeout: Duration,
+    min_documents_per_genre: usize,
+    coherence_similarity_threshold: f32,
 }
 
 #[derive(Debug, Error)]
@@ -110,6 +112,11 @@ impl Config {
         let tag_generator_total_timeout =
             parse_duration_ms("TAG_GENERATOR_TOTAL_TIMEOUT_MS", 30000)?;
 
+        // Subworker clustering settings
+        let min_documents_per_genre = parse_usize("RECAP_MIN_DOCUMENTS_PER_GENRE", 10)?;
+        let coherence_similarity_threshold =
+            parse_f64("RECAP_COHERENCE_SIMILARITY_THRESHOLD", 0.5)? as f32;
+
         Ok(Self {
             http_bind,
             llm_max_concurrency,
@@ -140,6 +147,8 @@ impl Config {
             tag_generator_service_token,
             tag_generator_connect_timeout,
             tag_generator_total_timeout,
+            min_documents_per_genre,
+            coherence_similarity_threshold,
         })
     }
 
@@ -286,6 +295,16 @@ impl Config {
     #[must_use]
     pub fn tag_generator_total_timeout(&self) -> Duration {
         self.tag_generator_total_timeout
+    }
+
+    #[must_use]
+    pub fn min_documents_per_genre(&self) -> usize {
+        self.min_documents_per_genre
+    }
+
+    #[must_use]
+    pub fn coherence_similarity_threshold(&self) -> f32 {
+        self.coherence_similarity_threshold
     }
 }
 

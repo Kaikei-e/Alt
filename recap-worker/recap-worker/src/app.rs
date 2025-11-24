@@ -69,7 +69,10 @@ impl ComponentRegistry {
         let config = Arc::new(config);
         let telemetry = Telemetry::new()?;
         let news_creator_client = Arc::new(NewsCreatorClient::new(config.news_creator_base_url())?);
-        let subworker_client = Arc::new(SubworkerClient::new(config.subworker_base_url())?);
+        let subworker_client = Arc::new(SubworkerClient::new(
+            config.subworker_base_url(),
+            config.min_documents_per_genre(),
+        )?);
         let recap_pool = PgPoolOptions::new()
             .max_connections(100)
             .connect_lazy(config.recap_db_dsn())

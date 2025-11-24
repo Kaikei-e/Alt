@@ -140,6 +140,9 @@ impl PipelineOrchestrator {
             coarse_stage as Arc<dyn GenreStage>
         };
 
+        let min_documents_per_genre = config.min_documents_per_genre();
+        let coherence_similarity_threshold = config.coherence_similarity_threshold();
+
         Ok(PipelineBuilder::new(config)
             .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
                 alt_backend_client,
@@ -154,7 +157,11 @@ impl PipelineOrchestrator {
             )))
             .with_dedup_stage(Arc::new(HashDedupStage::new(cpu_count.max(2), 0.8, 100)))
             .with_genre_stage(genre_stage)
-            .with_select_stage(Arc::new(SummarySelectStage::new(embedding_service)))
+            .with_select_stage(Arc::new(SummarySelectStage::new(
+                embedding_service,
+                min_documents_per_genre,
+                coherence_similarity_threshold,
+            )))
             .with_dispatch_stage(Arc::new(MlLlmDispatchStage::new(
                 subworker_client,
                 news_creator,
