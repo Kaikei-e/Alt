@@ -3,13 +3,13 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWindowSize } from "@/hooks/useWindowSize";
-import type { Feed } from "@/schema/feed";
+import type { RenderFeed } from "@/schema/feed";
 import { FeatureFlagManager } from "@/utils/featureFlags";
 import { DynamicVirtualFeedList } from "./DynamicVirtualFeedList";
 import { VirtualFeedListCore } from "./VirtualFeedListCore";
 
 interface VirtualFeedListImplProps {
-  feeds: Feed[];
+  feeds: RenderFeed[];
   readFeeds: Set<string>;
   onMarkAsRead: (feedLink: string) => void;
 }
@@ -91,7 +91,7 @@ export const VirtualFeedListImpl: React.FC<VirtualFeedListImplProps> = ({
 };
 
 // 固定サイズ推定ヘルパー関数
-function estimateItemHeight(feeds: Feed[]): number {
+function estimateItemHeight(feeds: RenderFeed[]): number {
   if (feeds.length === 0) return 200;
 
   const avgDescriptionLength =

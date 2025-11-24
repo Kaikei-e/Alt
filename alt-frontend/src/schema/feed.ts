@@ -1,3 +1,12 @@
+import { sanitizeFeedContent } from "@/utils/contentSanitizer";
+import {
+  formatPublishedDate,
+  mergeTagsLabel,
+  normalizeUrl,
+  generateExcerptFromDescription,
+} from "@/lib/server/feed-formatters";
+import type { SafeHtmlString } from "@/lib/server/sanitize-html";
+
 export type Feed = {
   id: string;
   title: string;
@@ -18,7 +27,16 @@ export type SanitizedFeed = {
   author?: string; // サニタイゼーション済み
 };
 
-import { sanitizeFeedContent } from "@/utils/contentSanitizer";
+/**
+ * Render-ready feed type with server-generated display values for LCP optimization
+ * This type extends Feed with SSR-generated formatting fields
+ */
+export type RenderFeed = Feed & {
+  publishedAtFormatted: string; // e.g., "Nov 23, 2025"
+  mergedTagsLabel: string; // e.g., "Next.js / Performance" (empty if no tags)
+  normalizedUrl: string; // URL with tracking params removed
+  excerpt: string; // 100-160 char excerpt from content
+};
 
 export interface BackendFeedItem {
   title: string;
@@ -33,6 +51,7 @@ export interface BackendFeedItem {
   authors?: Array<{
     name: string;
   }>;
+  tags?: string[]; // Tags array from backend (if available)
 }
 
 export interface FeedURLPayload {
@@ -91,7 +110,25 @@ export function sanitizeFeed(rawFeed: BackendFeedItem): SanitizedFeed {
   };
 }
 
-import type { SafeHtmlString } from "@/lib/server/sanitize-html";
+/**
+ * Transform sanitized feed to render-ready feed with SSR-generated display values
+ * This function should be called in Server Components to generate display values on the server
+ * @param feed - Sanitized feed object
+ * @param tags - Optional tags array (if available from backend)
+ * @returns Render-ready feed with formatted display values
+ */
+export function toRenderFeed(
+  feed: SanitizedFeed,
+  tags?: string[],
+): RenderFeed {
+  return {
+    ...feed,
+    publishedAtFormatted: formatPublishedDate(feed.published || feed.created_at),
+    mergedTagsLabel: mergeTagsLabel(tags),
+    normalizedUrl: normalizeUrl(feed.link),
+    excerpt: generateExcerptFromDescription(feed.description),
+  };
+}
 
 export interface FeedContentOnTheFlyResponse {
   content: SafeHtmlString; // Server-sanitized HTML

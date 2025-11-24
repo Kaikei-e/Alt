@@ -3,11 +3,11 @@ import { SquareArrowOutUpRight } from "lucide-react";
 import Link from "next/link";
 import { type KeyboardEvent, useCallback, useMemo } from "react";
 import { truncateFeedDescription } from "@/lib/utils/textUtils";
-import type { SanitizedFeed } from "@/schema/feed";
+import type { RenderFeed } from "@/schema/feed";
 import { FeedDetails } from "./FeedDetails";
 
 type FeedCardProps = {
-  feed: SanitizedFeed;
+  feed: RenderFeed;
   isReadStatus: boolean;
   setIsReadStatus: (feedLink: string) => void; // 親のonMarkAsReadを呼び出すため、feedLinkを渡す
 };
@@ -85,7 +85,7 @@ const FeedCard = function FeedCard({
               <SquareArrowOutUpRight color="var(--alt-primary)" size={16} />
             </Box>
             <Link
-              href={feed.link}
+              href={feed.normalizedUrl}
               target="_blank"
               rel="noopener noreferrer"
               aria-label={`Open ${feed.title} in external link`}
@@ -103,14 +103,20 @@ const FeedCard = function FeedCard({
             </Link>
           </Flex>
 
-          {/* Description */}
+          {/* Description - Use server-generated excerpt if available, otherwise fallback to truncated description */}
           <Text
             fontSize="xs"
             color="var(--text-primary)"
             lineHeight="1.5"
             wordBreak="break-word"
+            css={{
+              display: "-webkit-box",
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
           >
-            {truncatedDescription}
+            {feed.excerpt}
           </Text>
 
           {/* Author name (if available) */}

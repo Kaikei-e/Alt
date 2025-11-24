@@ -4,12 +4,12 @@ import { Box, Text } from "@chakra-ui/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type React from "react";
 import { useCallback, useEffect, useRef } from "react";
-import type { Feed } from "@/schema/feed";
+import type { RenderFeed } from "@/schema/feed";
 import { SizeMeasurementManager } from "@/utils/sizeMeasurement";
 import FeedCard from "./FeedCard";
 
 interface DynamicVirtualFeedListProps {
-  feeds: Feed[];
+  feeds: RenderFeed[];
   readFeeds: Set<string>;
   onMarkAsRead: (feedLink: string) => void;
   containerHeight: number;

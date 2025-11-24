@@ -4,7 +4,7 @@ import { Box, Text } from "@chakra-ui/react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
-import type { Feed } from "@/schema/feed";
+import type { RenderFeed } from "@/schema/feed";
 import {
   FeatureFlagManager,
   shouldUseVirtualization,
@@ -13,7 +13,7 @@ import { SimpleFeedList } from "./SimpleFeedList";
 import { VirtualFeedListImpl } from "./VirtualFeedListImpl";
 
 interface VirtualizedFeedListProps {
-  feeds: Feed[];
+  feeds: RenderFeed[];
   readFeeds: Set<string>;
   onMarkAsRead: (feedLink: string) => void;
 }
@@ -22,7 +22,7 @@ interface VirtualizedFeedListProps {
 const VirtualizationErrorFallback: React.FC<{
   error: Error;
   resetErrorBoundary: () => void;
-  feeds: Feed[];
+  feeds: RenderFeed[];
   readFeeds: Set<string>;
   onMarkAsRead: (feedLink: string) => void;
 }> = ({ error, feeds, readFeeds, onMarkAsRead }) => {
