@@ -137,6 +137,40 @@ impl RecapDao {
         Ok(())
     }
 
+    /// 記事IDのリストからメタデータ（published_at, source_url）を取得する。
+    pub async fn get_article_metadata(
+        &self,
+        job_id: Uuid,
+        article_ids: &[String],
+    ) -> Result<HashMap<String, (Option<DateTime<Utc>>, Option<String>)>> {
+        if article_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let rows = sqlx::query(
+            r"
+            SELECT article_id, published_at, source_url
+            FROM recap_job_articles
+            WHERE job_id = $1 AND article_id = ANY($2)
+            ",
+        )
+        .bind(job_id)
+        .bind(article_ids)
+        .fetch_all(&self.pool)
+        .await
+        .context("failed to fetch article metadata")?;
+
+        let mut metadata = HashMap::new();
+        for row in rows {
+            let article_id: String = row.try_get("article_id")?;
+            let published_at: Option<DateTime<Utc>> = row.try_get("published_at")?;
+            let source_url: Option<String> = row.try_get("source_url")?;
+            metadata.insert(article_id, (published_at, source_url));
+        }
+
+        Ok(metadata)
+    }
+
     /// タグ-ジャンル共起グラフを読み込む。
     pub async fn load_tag_label_graph(&self, window_label: &str) -> Result<Vec<GraphEdgeRecord>> {
         let rows = sqlx::query(
