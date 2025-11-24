@@ -78,6 +78,8 @@ smallvec = "1.15"
 regex = "1.12"
 aho-corasick = "1.1"
 fst = "0.4"
+rust-bert = "0.23.0"
+console = "0.16"
 
 [dev-dependencies]
 futures = "0.3"

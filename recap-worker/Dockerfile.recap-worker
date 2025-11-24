@@ -2,11 +2,49 @@ FROM rust:1.90-bookworm AS builder
 
 WORKDIR /app
 
+# Install PyTorch C++ libraries for rust-bert at build time
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends \
+  wget \
+  unzip \
+  libgomp1 \
+  && \
+  mkdir -p /usr/local/lib && \
+  cd /tmp && \
+  wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.4.0%2Bcpu.zip && \
+  unzip -q libtorch-cxx11-abi-shared-with-deps-2.4.0+cpu.zip && \
+  cp -r libtorch/lib/* /usr/local/lib/ && \
+  # Preserve libgomp symlinks from PyTorch bundle
+  if [ -d libtorch/lib ]; then \
+  find libtorch/lib -name "libgomp*" -exec cp -a {} /usr/local/lib/ \; || true; \
+  fi && \
+  rm -rf libtorch libtorch-*.zip && \
+  ldconfig && \
+  rm -rf /var/lib/apt/lists/*
+
 COPY ./recap-worker/ .
 
 RUN cargo build --release --bin recap-worker
 
-FROM debian:bookworm-slim
+FROM debian:bookworm
+
+# Install OpenSSL 3, CA certificates, and dependencies required by rust-bert
+# Using full debian:bookworm instead of slim to ensure library compatibility
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends \
+  libssl3 \
+  ca-certificates \
+  libgomp1 \
+  && \
+  rm -rf /var/lib/apt/lists/*
+
+# Copy PyTorch libraries and dependencies from builder stage to ensure version compatibility
+COPY --from=builder /usr/local/lib/libtorch* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libc10* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libcaffe2* /usr/local/lib/
+# Copy libgomp from builder (PyTorch bundles its own version with specific naming)
+COPY --from=builder /usr/local/lib/libgomp* /usr/local/lib/
+RUN ldconfig
 
 COPY --from=builder /app/target/release/recap-worker /usr/local/bin/
 
