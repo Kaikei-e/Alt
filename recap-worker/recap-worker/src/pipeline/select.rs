@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use crate::scheduler::JobContext;
 
+use super::embedding::{EmbeddingService, cosine_similarity};
 use super::genre::{GenreAssignment, GenreBundle};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -20,15 +21,17 @@ pub(crate) trait SelectStage: Send + Sync {
     ) -> anyhow::Result<SelectedSummary>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct SummarySelectStage {
     max_articles_per_genre: usize,
+    embedding_service: Option<EmbeddingService>,
 }
 
 impl SummarySelectStage {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(embedding_service: Option<EmbeddingService>) -> Self {
         Self {
             max_articles_per_genre: 20,
+            embedding_service,
         }
     }
 
@@ -82,11 +85,99 @@ impl SummarySelectStage {
         };
         (base - diversity_penalty).max(0.0)
     }
+
+    async fn filter_outliers(
+        &self,
+        service: &EmbeddingService,
+        assignments: Vec<GenreAssignment>,
+    ) -> Vec<GenreAssignment> {
+        // Group by genre
+        let mut by_genre: std::collections::HashMap<String, Vec<GenreAssignment>> =
+            std::collections::HashMap::new();
+        for a in assignments {
+            let genre = a
+                .primary_genre()
+                .map_or("other".to_string(), ToString::to_string);
+            by_genre.entry(genre).or_default().push(a);
+        }
+
+        let mut filtered_assignments = Vec::new();
+
+        for (genre, mut genre_assignments) in by_genre {
+            if genre == "other" || genre_assignments.len() < 3 {
+                filtered_assignments.append(&mut genre_assignments);
+                continue;
+            }
+
+            // Prepare texts for embedding
+            let texts: Vec<String> = genre_assignments
+                .iter()
+                .map(|a| {
+                    let title = a.article.title.as_deref().unwrap_or("");
+                    let snippet = a
+                        .article
+                        .sentences
+                        .iter()
+                        .take(3)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!("{title} {snippet}")
+                })
+                .collect();
+
+            if let Ok(embeddings) = service.encode(&texts).await {
+                // Calculate centroid
+                let count = embeddings.len() as f32;
+                let dim = embeddings[0].len();
+                let mut centroid = vec![0.0; dim];
+
+                for vec in &embeddings {
+                    for (i, val) in vec.iter().enumerate() {
+                        centroid[i] += val;
+                    }
+                }
+                for val in &mut centroid {
+                    *val /= count;
+                }
+
+                // Filter and Sort
+                let mut valid_assignments: Vec<(f32, GenreAssignment)> = Vec::new();
+                for (i, assignment) in genre_assignments.into_iter().enumerate() {
+                    let similarity = cosine_similarity(&embeddings[i], &centroid);
+                    // Threshold 0.6: Keep articles reasonably close to the center.
+                    if similarity >= 0.6 {
+                        valid_assignments.push((similarity, assignment));
+                    } else {
+                        tracing::debug!(
+                            article_id = %assignment.article.id,
+                            genre = %genre,
+                            similarity = %similarity,
+                            "filtered out outlier article"
+                        );
+                    }
+                }
+
+                // Sort by similarity descending (Representative Selection)
+                valid_assignments
+                    .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+                for (_, assignment) in valid_assignments {
+                    filtered_assignments.push(assignment);
+                }
+            } else {
+                // If embedding fails, keep all
+                filtered_assignments.append(&mut genre_assignments);
+            }
+        }
+
+        filtered_assignments
+    }
 }
 
 impl Default for SummarySelectStage {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
@@ -97,7 +188,11 @@ impl SelectStage for SummarySelectStage {
         job: &JobContext,
         bundle: GenreBundle,
     ) -> anyhow::Result<SelectedSummary> {
-        let assignments = self.trim_assignments(bundle);
+        let mut assignments = self.trim_assignments(bundle);
+
+        if let Some(service) = &self.embedding_service {
+            assignments = self.filter_outliers(service, assignments).await;
+        }
 
         Ok(SelectedSummary {
             job_id: job.job_id,
@@ -141,6 +236,7 @@ mod tests {
     async fn trims_to_max_per_genre() {
         let stage = SummarySelectStage {
             max_articles_per_genre: 1,
+            embedding_service: None,
         };
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let bundle = GenreBundle {

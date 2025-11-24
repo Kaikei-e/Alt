@@ -7,6 +7,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub(crate) struct GenreKeywords {
     keywords: HashMap<String, Vec<String>>,
+    negative_keywords: HashMap<String, Vec<String>>,
 }
 
 impl GenreKeywords {
@@ -15,8 +16,20 @@ impl GenreKeywords {
     #[allow(clippy::too_many_lines, clippy::pedantic)]
     pub(crate) fn default_keywords() -> Self {
         let mut keywords = HashMap::new();
+        let mut negative_keywords = HashMap::new();
 
         fn push(genres: &mut HashMap<String, Vec<String>>, name: &str, words: &[&str]) {
+            genres.insert(
+                name.to_string(),
+                words
+                    .iter()
+                    .map(|w| w.trim().to_lowercase())
+                    .filter(|w| !w.is_empty())
+                    .collect(),
+            );
+        }
+
+        fn push_negative(genres: &mut HashMap<String, Vec<String>>, name: &str, words: &[&str]) {
             genres.insert(
                 name.to_string(),
                 words
@@ -1079,39 +1092,129 @@ impl GenreKeywords {
             ],
         );
 
-        Self { keywords }
+        push(
+            &mut keywords,
+            "other",
+            &[
+                "misc",
+                "general",
+                "uncategorized",
+                "その他",
+                "一般",
+                "未分類",
+            ],
+        );
+
+        // Negative Keywords (Noise Reduction)
+        // Politics: Exclude product reviews, deals, and tech gadgets that often get misclassified due to "policy" or "law" terms.
+        push_negative(
+            &mut negative_keywords,
+            "politics",
+            &[
+                "apple watch",
+                "kindle",
+                "deal",
+                "sale",
+                "discount",
+                "coupon",
+                "review",
+                "best buy",
+                "amazon",
+                "black friday",
+                "cyber monday",
+                "promo code",
+                "gift card",
+                "shopping",
+                "bargain",
+                "clearance",
+                "セール",
+                "クーポン",
+                "割引",
+                "レビュー",
+                "アマゾン",
+                "お買い得",
+                "最安値",
+            ],
+        );
+
+        // Business: Exclude art/culture events and "lifehack" style money tips.
+        push_negative(
+            &mut negative_keywords,
+            "business",
+            &[
+                "art exhibition",
+                "museum",
+                "gallery",
+                "painting",
+                "sculpture",
+                "concert",
+                "festival",
+                "株主優待",
+                "ポイ活",
+                "節約術",
+                "展覧会",
+                "美術館",
+                "コンサート",
+                "フェス",
+            ],
+        );
+
+        Self {
+            keywords,
+            negative_keywords,
+        }
     }
 
-    /// 指定されたテキストに対して各ジャンルのスコアを計算する。
+    /// テキストに含まれるキーワードに基づいてジャンルごとのスコアを計算する。
+    ///
+    /// # Arguments
+    /// * `text` - 分析対象のテキスト
     ///
     /// # Returns
-    /// ジャンル名をキーとし、マッチしたキーワード数をスコアとするマップ
+    /// ジャンル名をキー、出現回数（スコア）を値とするマップ
     #[must_use]
     pub(crate) fn score_text(&self, text: &str) -> HashMap<String, usize> {
-        let lowercased = text.to_lowercase();
-        let tokens: Vec<&str> = lowercased
-            .split(|c: char| !c.is_alphanumeric())
-            .filter(|token| !token.is_empty())
-            .collect();
-        let mut scores: HashMap<String, usize> = HashMap::new();
+        let text_lower = text.to_lowercase();
+        let mut scores = HashMap::new();
 
-        for (genre, keywords) in &self.keywords {
+        for (genre, words) in &self.keywords {
+            // Check negative keywords first
+            if let Some(negatives) = self.negative_keywords.get(genre) {
+                let has_negative = negatives.iter().any(|neg| text_lower.contains(neg));
+                if has_negative {
+                    continue;
+                }
+            }
+
             let mut score = 0;
-            for keyword in keywords {
-                let keyword_lower = keyword.to_lowercase();
-                let is_non_ascii_keyword =
-                    keyword_lower.chars().any(|c| !c.is_ascii_alphanumeric());
+            for word in words {
+                if word.is_ascii() {
+                    // For ASCII keywords, enforce word boundaries
+                    let mut found = false;
+                    for (start, _) in text_lower.match_indices(word) {
+                        let bytes = text_lower.as_bytes();
+                        let boundary_before = if start == 0 {
+                            true
+                        } else {
+                            !bytes[start - 1].is_ascii_alphanumeric()
+                        };
 
-                let matched = if keyword_lower.contains(' ') {
-                    lowercased.contains(&keyword_lower)
-                } else {
-                    tokens.iter().any(|token| token == &keyword_lower)
-                        || (keyword_lower.len() >= 4
-                            && tokens.iter().any(|token| token.starts_with(&keyword_lower)))
-                        || (is_non_ascii_keyword && lowercased.contains(&keyword_lower))
-                };
+                        let end = start + word.len();
+                        let boundary_after = if end >= bytes.len() {
+                            true
+                        } else {
+                            !bytes[end].is_ascii_alphanumeric()
+                        };
 
-                if matched {
+                        if boundary_before && boundary_after {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if found {
+                        score += 1;
+                    }
+                } else if text_lower.contains(word) {
                     score += 1;
                 }
             }
@@ -1187,5 +1290,26 @@ mod tests {
         let top = keywords.top_genres(text, 2);
 
         assert!(top.len() <= 2);
+    }
+
+    #[test]
+    fn negative_keywords_exclude_genre() {
+        let keywords = GenreKeywords::default_keywords();
+        // "policy" might trigger politics, but "Apple Watch" and "deal" should trigger negative keywords for politics.
+        let text = "New Apple Watch deal! Check out the privacy policy update.";
+        let scores = keywords.score_text(text);
+
+        // Politics should be excluded despite "policy" being present
+        assert!(!scores.contains_key("politics"));
+    }
+
+    #[test]
+    fn negative_keywords_business_exclusion() {
+        let keywords = GenreKeywords::default_keywords();
+        // "investment" might trigger business, but "art exhibition" should exclude it.
+        let text = "The new art exhibition is a great investment of your time.";
+        let scores = keywords.score_text(text);
+
+        assert!(!scores.contains_key("business"));
     }
 }

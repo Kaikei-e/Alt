@@ -159,10 +159,10 @@ mod tests {
         unsafe {
             env::remove_var("GRAPH_CONFIG");
         }
-        assert_eq!(overrides.graph_margin, Some(0.12));
+        assert_eq!(overrides.graph_margin, Some(0.05));
         assert_eq!(overrides.weighted_tie_break_margin, Some(0.03));
         assert_eq!(overrides.tag_confidence_gate, Some(0.65));
-        assert_eq!(overrides.boost_threshold, Some(0.0));
+        assert_eq!(overrides.boost_threshold, Some(0.889_796_73));
         assert_eq!(overrides.tag_count_threshold, Some(0));
     }
 

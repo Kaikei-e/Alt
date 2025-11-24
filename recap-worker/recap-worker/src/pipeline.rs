@@ -15,9 +15,11 @@ use crate::{
 
 pub mod dedup;
 pub(crate) mod dispatch;
+pub(crate) mod embedding;
 pub(crate) mod evidence;
 pub(crate) mod fetch;
 pub(crate) mod genre;
+pub(crate) mod genre_canonical;
 pub(crate) mod genre_keywords;
 pub(crate) mod genre_refine;
 pub(crate) mod graph_override;
@@ -103,7 +105,14 @@ impl PipelineOrchestrator {
         let max_concurrent = (cpu_count * 3) / 2;
         let window_days = config.recap_window_days();
 
-        let coarse_stage = Arc::new(CoarseGenreStage::with_defaults());
+        let embedding_service = crate::pipeline::embedding::EmbeddingService::new().ok();
+        if embedding_service.is_none() {
+            tracing::warn!(
+                "Embedding service failed to initialize. Falling back to keyword-only filtering."
+            );
+        }
+
+        let coarse_stage = Arc::new(CoarseGenreStage::new(1, 3, embedding_service.clone()));
         let rollout = RefineRollout::new(config.genre_refine_rollout_pct());
         let genre_stage: Arc<dyn GenreStage> = if config.genre_refine_enabled() {
             // デフォルト設定でRefineConfigを初期化（実行時に動的に更新される）
@@ -145,10 +154,11 @@ impl PipelineOrchestrator {
             )))
             .with_dedup_stage(Arc::new(HashDedupStage::new(cpu_count.max(2), 0.8, 100)))
             .with_genre_stage(genre_stage)
-            .with_select_stage(Arc::new(SummarySelectStage::new()))
+            .with_select_stage(Arc::new(SummarySelectStage::new(embedding_service)))
             .with_dispatch_stage(Arc::new(MlLlmDispatchStage::new(
                 subworker_client,
                 news_creator,
+                Arc::clone(&recap_dao),
                 max_concurrent,
             )))
             .with_persist_stage(Arc::new(persist::FinalSectionPersistStage::new(
@@ -266,7 +276,7 @@ impl PipelineBuilder {
                 .unwrap_or_else(|| Arc::new(CoarseGenreStage::with_defaults())),
             select: self
                 .select
-                .unwrap_or_else(|| Arc::new(SummarySelectStage::new())),
+                .unwrap_or_else(|| Arc::new(SummarySelectStage::default())),
             dispatch: self
                 .dispatch
                 .expect("dispatch stage must be configured before build"),

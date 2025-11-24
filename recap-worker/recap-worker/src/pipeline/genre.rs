@@ -17,6 +17,8 @@ use crate::store::models::{
 };
 
 use super::dedup::{DeduplicatedArticle, DeduplicatedCorpus};
+use super::embedding::{EmbeddingService, cosine_similarity};
+use super::genre_canonical::get_canonical_sentences;
 use super::genre_keywords::GenreKeywords;
 use super::genre_refine::{
     RefineConfig, RefineEngine, RefineInput, RefineOutcome, RefineStrategy, TagFallbackMode,
@@ -299,6 +301,8 @@ pub(crate) struct CoarseGenreStage {
     fallback_keywords: GenreKeywords,
     min_genres: usize,
     max_genres: usize,
+    embedding_service: Option<EmbeddingService>,
+    canonical_embeddings: Arc<tokio::sync::RwLock<HashMap<String, Vec<Vec<f32>>>>>,
 }
 
 impl CoarseGenreStage {
@@ -307,22 +311,29 @@ impl CoarseGenreStage {
     /// # Arguments
     /// * `min_genres` - 最小ジャンル数（デフォルト: 1）
     /// * `max_genres` - 最大ジャンル数（デフォルト: 3）
-    pub(crate) fn new(min_genres: usize, max_genres: usize) -> Self {
+    /// * `embedding_service` - Embeddingサービス（オプション）
+    pub(crate) fn new(
+        min_genres: usize,
+        max_genres: usize,
+        embedding_service: Option<EmbeddingService>,
+    ) -> Self {
         Self {
             classifier: GenreClassifier::new_default(),
             fallback_keywords: GenreKeywords::default_keywords(),
             min_genres,
             max_genres,
+            embedding_service,
+            canonical_embeddings: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         }
     }
 
     /// デフォルトパラメータで作成する（1〜3ジャンル）。
     pub(crate) fn with_defaults() -> Self {
-        Self::new(1, 3)
+        Self::new(1, 3, None)
     }
 
     /// 記事からジャンル候補を生成する。
-    fn produce_candidates(
+    async fn produce_candidates(
         &self,
         article: &DeduplicatedArticle,
     ) -> anyhow::Result<ProduceCandidatesResult> {
@@ -331,6 +342,86 @@ impl CoarseGenreStage {
         let language = ClassificationLanguage::from_code(&article.language);
 
         let classification = self.classifier.predict(title, &body, language)?;
+        let mut selected_genres = self.select_initial_genres(&classification);
+
+        // Embeddingフィルタリングを適用
+        selected_genres = self
+            .apply_embedding_filter(article, &selected_genres, title)
+            .await;
+
+        // ジャンル数の調整
+        if selected_genres.is_empty() {
+            selected_genres.push("other".to_string());
+        }
+        if selected_genres.len() > self.max_genres {
+            selected_genres.truncate(self.max_genres);
+        }
+
+        // スコアと信頼度の計算（フォールバックキーワードのスコア計算は除く）
+        let mut genre_scores = classification.keyword_hits.clone();
+        for genre in &selected_genres {
+            genre_scores.entry(genre.clone()).or_insert_with(|| {
+                classification.scores.get(genre).map_or(0, |score| {
+                    let rounded = (score.max(0.0) * 100.0).round();
+                    u32::try_from(rounded.max(0.0) as i32).unwrap_or(0) as usize
+                })
+            });
+        }
+
+        // 低サポートの場合は"other"にフォールバック
+        // selected_genresに含まれるジャンルのkeyword_hitsがすべて0の場合、"other"にフォールバック
+        // （モデルの予測スコアは考慮しない。キーワードマッチがない場合のみ"other"にフォールバック）
+        let low_support = selected_genres
+            .iter()
+            .all(|genre| classification.keyword_hits.get(genre).copied().unwrap_or(0) == 0);
+        if low_support {
+            selected_genres.clear();
+            selected_genres.push("other".to_string());
+            genre_scores.entry("other".to_string()).or_insert(100);
+        }
+
+        // フォールバックキーワードでスコアを計算（genre_scoresが空の場合のみ）
+        if genre_scores.is_empty() {
+            let combined = format!("{title} {body}");
+            genre_scores = self.fallback_keywords.score_text(&combined);
+        }
+
+        // 信頼度の計算
+        let mut genre_confidence: HashMap<String, f32> = classification
+            .scores
+            .iter()
+            .map(|(genre, score)| (genre.clone(), score.clamp(0.0, 1.0)))
+            .collect();
+        for genre in &selected_genres {
+            genre_confidence.entry(genre.clone()).or_insert(0.0);
+        }
+
+        // フィーチャープロファイルの構築
+        let feature_profile =
+            Self::build_feature_profile(&classification, article, &selected_genres);
+
+        // 候補の生成
+        let candidates = Self::build_candidates(
+            &selected_genres,
+            &genre_scores,
+            &genre_confidence,
+            &classification,
+        );
+
+        Ok((
+            candidates,
+            selected_genres,
+            genre_scores,
+            genre_confidence,
+            feature_profile,
+        ))
+    }
+
+    /// 初期ジャンルを選択する。
+    fn select_initial_genres(
+        &self,
+        classification: &crate::classification::ClassificationResult,
+    ) -> Vec<String> {
         let mut selected_genres = classification.top_genres.clone();
 
         // 最低ジャンル数を満たすまでランキングから補完
@@ -350,44 +441,100 @@ impl CoarseGenreStage {
             selected_genres.push("other".to_string());
         }
 
-        if selected_genres.len() > self.max_genres {
-            selected_genres.truncate(self.max_genres);
-        }
+        selected_genres
+    }
 
-        let mut genre_scores = classification.keyword_hits.clone();
-        for genre in &selected_genres {
-            genre_scores.entry(genre.clone()).or_insert_with(|| {
-                classification.scores.get(genre).map_or(0, |score| {
-                    let rounded = (score.max(0.0) * 100.0).round();
-                    u32::try_from(rounded.max(0.0) as i32).unwrap_or(0) as usize
-                })
-            });
-        }
+    /// Embeddingフィルタリングを適用する。
+    async fn apply_embedding_filter(
+        &self,
+        article: &DeduplicatedArticle,
+        selected_genres: &[String],
+        title: &str,
+    ) -> Vec<String> {
+        let Some(embedding_service) = &self.embedding_service else {
+            return selected_genres.to_vec();
+        };
 
-        if genre_scores.is_empty() {
-            // フォールバックとしてキーワードスコアを計算
-            let combined = format!("{title} {body}");
-            genre_scores = self.fallback_keywords.score_text(&combined);
-        }
-
-        let low_support = selected_genres
+        // Compute article embedding (Title + first 3 sentences)
+        let snippet = article
+            .sentences
             .iter()
-            .all(|genre| genre_scores.get(genre).copied().unwrap_or(0) == 0);
-        if low_support {
-            selected_genres.clear();
-            selected_genres.push("other".to_string());
-            genre_scores.entry("other".to_string()).or_insert(100);
+            .take(3)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" ");
+        let article_text = format!("{title} {snippet}");
+
+        // Only filter if we successfully get an embedding
+        let Ok(embeddings) = embedding_service.encode(&[article_text]).await else {
+            return selected_genres.to_vec();
+        };
+
+        let Some(article_vec) = embeddings.first() else {
+            return selected_genres.to_vec();
+        };
+
+        let mut filtered_genres = Vec::new();
+        for genre in selected_genres {
+            if genre == "other" {
+                filtered_genres.push(genre.clone());
+                continue;
+            }
+
+            if let Some(sentences) = get_canonical_sentences(genre) {
+                // Check cache
+                let mut canonical_vecs = {
+                    let guard = self.canonical_embeddings.read().await;
+                    guard.get(genre).cloned()
+                };
+
+                if canonical_vecs.is_none() {
+                    // Compute and cache
+                    let sentences_owned: Vec<String> =
+                        sentences.iter().map(|&s| s.to_string()).collect();
+                    if let Ok(vecs) = embedding_service.encode(&sentences_owned).await {
+                        let mut guard = self.canonical_embeddings.write().await;
+                        guard.insert(genre.clone(), vecs.clone());
+                        canonical_vecs = Some(vecs);
+                    }
+                }
+
+                if let Some(vecs) = canonical_vecs {
+                    let max_sim = vecs
+                        .iter()
+                        .map(|v| cosine_similarity(article_vec, v))
+                        .fold(0.0f32, f32::max);
+
+                    // Threshold: 0.4 (Conservative)
+                    if max_sim >= 0.4 {
+                        filtered_genres.push(genre.clone());
+                    } else {
+                        debug!(
+                            article_id = %article.id,
+                            genre = %genre,
+                            similarity = %max_sim,
+                            "filtered out genre by embedding"
+                        );
+                    }
+                } else {
+                    // No canonical sentences or failed to embed, keep it safe
+                    filtered_genres.push(genre.clone());
+                }
+            } else {
+                // No canonical sentences defined, keep it
+                filtered_genres.push(genre.clone());
+            }
         }
 
-        let mut genre_confidence: HashMap<String, f32> = classification
-            .scores
-            .iter()
-            .map(|(genre, score)| (genre.clone(), score.clamp(0.0, 1.0)))
-            .collect();
-        for genre in &selected_genres {
-            genre_confidence.entry(genre.clone()).or_insert(0.0);
-        }
+        filtered_genres
+    }
 
+    /// フィーチャープロファイルを構築する。
+    fn build_feature_profile(
+        classification: &crate::classification::ClassificationResult,
+        article: &DeduplicatedArticle,
+        selected_genres: &[String],
+    ) -> FeatureProfile {
         let tfidf_sum: f32 = classification.feature_snapshot.tfidf.iter().sum();
         let lowercase_genres: Vec<String> =
             selected_genres.iter().map(|g| g.to_lowercase()).collect();
@@ -399,14 +546,22 @@ impl CoarseGenreStage {
                 lowercase_genres.iter().any(|g| g == &normalized)
             })
             .count();
-        let feature_profile = FeatureProfile {
+        FeatureProfile {
             tfidf_sum,
             bm25_peak: classification.feature_snapshot.max_bm25().unwrap_or(0.0),
             token_count: classification.token_count,
             tag_overlap_count,
-        };
+        }
+    }
 
-        let candidates = selected_genres
+    /// 候補を構築する。
+    fn build_candidates(
+        selected_genres: &[String],
+        genre_scores: &HashMap<String, usize>,
+        genre_confidence: &HashMap<String, f32>,
+        classification: &crate::classification::ClassificationResult,
+    ) -> Vec<GenreCandidate> {
+        selected_genres
             .iter()
             .map(|genre| {
                 let keyword_support = genre_scores.get(genre).copied().unwrap_or(0);
@@ -428,15 +583,7 @@ impl CoarseGenreStage {
                     classifier_confidence,
                 }
             })
-            .collect();
-
-        Ok((
-            candidates,
-            selected_genres,
-            genre_scores,
-            genre_confidence,
-            feature_profile,
-        ))
+            .collect()
     }
 }
 
@@ -461,7 +608,7 @@ impl GenreStage for CoarseGenreStage {
 
         for article in corpus.articles {
             let (candidates, genres, genre_scores, genre_confidence, feature_profile) =
-                self.produce_candidates(&article)?;
+                self.produce_candidates(&article).await?;
 
             debug!(
                 article_id = %article.id,
@@ -715,7 +862,7 @@ mod tests {
 
     #[tokio::test]
     async fn respects_max_genres_limit() {
-        let stage = CoarseGenreStage::new(1, 2);
+        let stage = CoarseGenreStage::new(1, 2, None);
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
             job_id: job.job_id,

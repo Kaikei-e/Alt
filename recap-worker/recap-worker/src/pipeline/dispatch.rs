@@ -12,6 +12,7 @@ use crate::{
         subworker::{ClusteringResponse, SubworkerClient},
     },
     scheduler::JobContext,
+    store::dao::RecapDao,
 };
 
 use super::evidence::EvidenceBundle;
@@ -48,10 +49,11 @@ pub(crate) trait DispatchStage: Send + Sync {
 /// 各ジャンルごとに：
 /// 1. SubworkerでML処理（クラスタリング）
 /// 2. News-CreatorでLLM処理（日本語要約生成）
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct MlLlmDispatchStage {
     subworker_client: Arc<SubworkerClient>,
     news_creator_client: Arc<NewsCreatorClient>,
+    dao: Arc<RecapDao>,
     concurrency_semaphore: Arc<Semaphore>,
 }
 
@@ -59,11 +61,13 @@ impl MlLlmDispatchStage {
     pub(crate) fn new(
         subworker_client: Arc<SubworkerClient>,
         news_creator_client: Arc<NewsCreatorClient>,
+        dao: Arc<RecapDao>,
         max_concurrency: usize,
     ) -> Self {
         Self {
             subworker_client,
             news_creator_client,
+            dao,
             concurrency_semaphore: Arc::new(Semaphore::new(max_concurrency.max(1))),
         }
     }
@@ -95,40 +99,43 @@ impl MlLlmDispatchStage {
                 response
             }
             Err(e) => {
-                warn!(
-                    job_id = %job_id,
-                    genre = %genre,
-                    error = ?e,
-                    "clustering failed"
-                );
-                return GenreResult {
-                    genre: genre.to_string(),
-                    clustering_response: None,
-                    summary_response_id: None,
-                    summary_response: None,
-                    error: Some(format!("Clustering failed: {}", e)),
-                };
+                return Self::clustering_error_result(genre, e);
             }
         };
 
         // Step 2: News-Creatorで日本語要約生成
-        let clustering_response_for_summary = clustering_response.clone();
-
-        let summary_request = NewsCreatorClient::build_summary_request(
-            job_id,
-            &clustering_response_for_summary,
-            5, // 最大5文/クラスター
-        );
-
         let summary_result = self
-            .news_creator_client
-            .generate_summary(&summary_request)
+            .generate_summary_with_metadata(job_id, genre, &clustering_response)
             .await;
 
+        Self::build_genre_result(genre, clustering_response, summary_result)
+    }
+
+    /// クラスタリングエラー時の結果を構築する。
+    fn clustering_error_result(genre: &str, e: anyhow::Error) -> GenreResult {
+        warn!(
+            genre = %genre,
+            error = ?e,
+            "clustering failed"
+        );
+        GenreResult {
+            genre: genre.to_string(),
+            clustering_response: None,
+            summary_response_id: None,
+            summary_response: None,
+            error: Some(format!("Clustering failed: {}", e)),
+        }
+    }
+
+    /// 要約生成結果からGenreResultを構築する。
+    fn build_genre_result(
+        genre: &str,
+        clustering_response: ClusteringResponse,
+        summary_result: Result<crate::clients::news_creator::SummaryResponse>,
+    ) -> GenreResult {
         match summary_result {
             Ok(summary_response) => {
                 info!(
-                    job_id = %job_id,
                     genre = %genre,
                     bullet_count = summary_response.summary.bullets.len(),
                     "summary generation completed successfully"
@@ -144,7 +151,6 @@ impl MlLlmDispatchStage {
             }
             Err(e) => {
                 warn!(
-                    job_id = %job_id,
                     genre = %genre,
                     error = ?e,
                     "summary generation failed"
@@ -158,6 +164,53 @@ impl MlLlmDispatchStage {
                 }
             }
         }
+    }
+
+    /// メタデータを取得して要約リクエストを構築し、要約を生成する。
+    async fn generate_summary_with_metadata(
+        &self,
+        job_id: Uuid,
+        genre: &str,
+        clustering_response: &ClusteringResponse,
+    ) -> Result<crate::clients::news_creator::SummaryResponse> {
+        // 記事IDのリストを収集
+        let article_ids: Vec<String> = clustering_response
+            .clusters
+            .iter()
+            .flat_map(|cluster| {
+                cluster
+                    .representatives
+                    .iter()
+                    .map(|rep| rep.article_id.clone())
+            })
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        // メタデータを取得
+        let article_metadata = match self.dao.get_article_metadata(job_id, &article_ids).await {
+            Ok(metadata) => metadata,
+            Err(e) => {
+                warn!(
+                    job_id = %job_id,
+                    genre = %genre,
+                    error = ?e,
+                    "failed to fetch article metadata, proceeding without metadata"
+                );
+                std::collections::HashMap::new()
+            }
+        };
+
+        let summary_request = NewsCreatorClient::build_summary_request(
+            job_id,
+            clustering_response,
+            5, // 最大5文/クラスター
+            &article_metadata,
+        );
+
+        self.news_creator_client
+            .generate_summary(&summary_request)
+            .await
     }
 }
 
