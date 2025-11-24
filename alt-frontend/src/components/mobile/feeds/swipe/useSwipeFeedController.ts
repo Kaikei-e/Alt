@@ -209,7 +209,11 @@ export const useSwipeFeedController = (
   const [liveRegionMessage, setLiveRegionMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
-  const [isReadFeedsInitialized, setIsReadFeedsInitialized] = useState(false);
+  // Initialize to true if we have initialFeeds to avoid SSR/client mismatch
+  // This ensures SWR can use fallbackData immediately on both server and client
+  const [isReadFeedsInitialized, setIsReadFeedsInitialized] = useState(
+    typeof window === "undefined" || Boolean(initialFeeds?.length),
+  );
   const lastCursorRef = useRef<string | null>(initialNextCursor ?? null);
   const [isFeedSupplyDepleted, setIsFeedSupplyDepleted] = useState(false);
   const emptyPrefetchAttemptsRef = useRef(0);
@@ -382,7 +386,9 @@ export const useSwipeFeedController = (
     lastPage?.has_more ?? Boolean(lastPage?.next_cursor),
   );
   const hasMore = hasMoreFromServer && !isFeedSupplyDepleted;
-  const isInitialLoading = (!data || data.length === 0) && isLoading;
+  // If we have feeds (from data or initialFeeds), we're not in initial loading state
+  // Also check if we have initialFeeds to avoid showing loading when data is available from SSR
+  const isInitialLoading = feeds.length === 0 && isLoading && !initialFeeds?.length;
 
   // Article content prefetch hook
   const { triggerPrefetch, getCachedContent, markAsDismissed } =
