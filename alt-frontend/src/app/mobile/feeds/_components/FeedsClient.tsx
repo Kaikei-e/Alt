@@ -140,6 +140,7 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
     isLoading,
     error,
     isInitialLoading: hookIsInitialLoading,
+    loadInitial,
     loadMore,
     refresh,
   } = useCursorPagination<SanitizedFeed>(feedApi.getFeedsWithCursor, {
@@ -234,10 +235,13 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
       // If we have no initialFeeds, load immediately to show content
       const shouldDefer = initialFeeds.length > 0;
 
+      // Use loadInitial if we don't have a cursor yet (empty initialFeeds), otherwise loadMore
+      const loadFn = initialFeeds.length === 0 ? loadInitial : loadMore;
+
       if (shouldDefer && "requestIdleCallback" in window) {
         const idleCallbackId = window.requestIdleCallback(
           () => {
-            loadMore();
+            loadFn();
           },
           { timeout: 2000 }
         );
@@ -246,12 +250,12 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
         };
       } else {
         const timeoutId = setTimeout(() => {
-          loadMore();
+          loadFn();
         }, shouldDefer ? 500 : 100); // Faster for empty initialFeeds
         return () => clearTimeout(timeoutId);
       }
     }
-  }, [initialFeeds.length, hasMore, isLoading, feeds, loadMore]);
+  }, [initialFeeds.length, hasMore, isLoading, feeds, loadMore, loadInitial]);
 
   // Progressive rendering: increase visibleCount when user scrolls near the end
   useEffect(() => {

@@ -202,6 +202,15 @@ const scheduleTimeout = (
   }, duration);
 };
 
+// State machine for feed loading lifecycle
+type FeedLoadingState =
+  | "HYDRATION_READY" // SSR data available, ready for hydration
+  | "READ_SYNC_PENDING" // Waiting for readFeeds initialization
+  | "READY" // Fully initialized, can fetch new feeds
+  | "LOADING" // Initial load in progress
+  | "EMPTY" // No feeds available
+  | "DEPLETED"; // Feed supply exhausted
+
 export const useSwipeFeedController = (
   initialFeeds?: RenderFeed[] | null,
   initialNextCursor?: string,
@@ -209,8 +218,17 @@ export const useSwipeFeedController = (
   const [liveRegionMessage, setLiveRegionMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
-  // Initialize to true if we have initialFeeds to avoid SSR/client mismatch
-  // This ensures SWR can use fallbackData immediately on both server and client
+  // Initialize state based on SSR context
+  // If we have initialFeeds, we're in HYDRATION_READY state
+  // Otherwise, we start in READ_SYNC_PENDING
+  const [loadingState, setLoadingState] = useState<FeedLoadingState>(() => {
+    if (typeof window === "undefined") {
+      // SSR: Always ready if we have initialFeeds
+      return initialFeeds && initialFeeds.length > 0 ? "HYDRATION_READY" : "READ_SYNC_PENDING";
+    }
+    // Client: Start in HYDRATION_READY if we have initialFeeds to match SSR
+    return initialFeeds && initialFeeds.length > 0 ? "HYDRATION_READY" : "READ_SYNC_PENDING";
+  });
   const [isReadFeedsInitialized, setIsReadFeedsInitialized] = useState(
     typeof window === "undefined" || Boolean(initialFeeds?.length),
   );
@@ -226,6 +244,11 @@ export const useSwipeFeedController = (
   useEffect(() => {
     if (typeof window === "undefined") {
       setIsReadFeedsInitialized(true);
+      // SSR: If we have initialFeeds, we're already in HYDRATION_READY
+      // Otherwise, we'll transition to READY after initialization
+      if (initialFeeds && initialFeeds.length > 0) {
+        setLoadingState("HYDRATION_READY");
+      }
       return;
     }
 
@@ -246,10 +269,25 @@ export const useSwipeFeedController = (
         }
         setReadFeeds(readFeedLinks);
         setIsReadFeedsInitialized(true);
+        // Transition to READY state after readFeeds initialization
+        // If we had initialFeeds, we were in HYDRATION_READY, now move to READY
+        // Otherwise, we were in READ_SYNC_PENDING, now move to READY
+        setLoadingState((prev) => {
+          if (prev === "HYDRATION_READY" || prev === "READ_SYNC_PENDING") {
+            return "READY";
+          }
+          return prev;
+        });
       } catch (err) {
         // Continue with empty set if initialization fails
         // Backend filtering will still work correctly
         setIsReadFeedsInitialized(true);
+        setLoadingState((prev) => {
+          if (prev === "HYDRATION_READY" || prev === "READ_SYNC_PENDING") {
+            return "READY";
+          }
+          return prev;
+        });
       }
     };
 
@@ -271,7 +309,7 @@ export const useSwipeFeedController = (
       }, 100);
       return () => clearTimeout(timeoutId);
     }
-  }, []);
+  }, [initialFeeds]);
 
   const liveRegionTimeoutRef = useRef<number | null>(null);
   const prefetchCursorRef = useRef<string | null>(null);
@@ -289,9 +327,14 @@ export const useSwipeFeedController = (
     [lastCursorRef],
   );
 
+  // Enable SWR fetching when readFeeds is initialized
+  // During HYDRATION_READY, SWR will use fallbackData (initialFeeds) without fetching
+  // After readFeeds initialization, we transition to READY and can fetch normally
+  const shouldFetch = isReadFeedsInitialized;
+
   const { data, error, isLoading, isValidating, setSize, mutate } =
     useSWRInfinite(
-      isReadFeedsInitialized
+      shouldFetch
         ? (pageIndex: number, previousPageData: CursorResponse<RenderFeed> | null) => {
           // If we have initial feeds and haven't fetched anything yet (pageIndex 0),
           // and we have a next cursor, we can skip the first fetch if we want to rely solely on initialFeeds.
@@ -309,20 +352,6 @@ export const useSwipeFeedController = (
           // Fix cursor=null issue: SWR may not pass previousPageData correctly in some cases
           // Use the getKey function but ensure we handle null previousPageData by using lastCursorRef
           if (pageIndex === 0) {
-            // If we have initial feeds, we might want to delay the first fetch?
-            // Actually, the requirement is "fetch subsequent feeds when user approaches end".
-            // So we can start with page 0 being the initial feeds (if we could inject them into SWR).
-            // SWR doesn't easily support "injecting" initial data for infinite loading without `fallbackData` which is static.
-
-            // For now, let's keep the standard fetching but use initialFeeds for display.
-            // The optimization requested is "Delay fetching of subsequent feeds".
-            // Since we already have 5 feeds, we can delay the fetch of the *next* batch (20).
-            // But SWR will try to fetch page 0 immediately.
-
-            // To prevent immediate fetch of page 0 (which would be the 20 items),
-            // we can return null if we are satisfied with initialFeeds and haven't reached the end.
-            // But that complicates the "load more" logic.
-
             return getKey(pageIndex, previousPageData);
           }
 
@@ -355,29 +384,40 @@ export const useSwipeFeedController = (
       },
     );
 
+  // Compute feeds based on current state
+  // Priority: SWR data > initialFeeds > empty array
+  // During HYDRATION_READY, use initialFeeds without filtering to match SSR
+  // After READY, apply readFeeds filtering
   const feeds = useMemo(() => {
-    if (!data || data.length === 0) {
-      // Fallback to initialFeeds if SWR has no data yet
-      if (initialFeeds && initialFeeds.length > 0) {
-        // Check if initial feed is read (though unlikely for server-fetched data)
-        if (readFeeds.size > 0) {
-          return initialFeeds.filter(feed => !readFeeds.has(canonicalize(feed.link)));
-        }
-        return initialFeeds;
+    // If SWR has data, use it (with filtering if readFeeds is initialized)
+    if (data && data.length > 0) {
+      const allFeeds = data.flatMap((page) => page?.data ?? []);
+
+      // Only filter by readFeeds if initialized
+      if (isReadFeedsInitialized && readFeeds.size > 0) {
+        return allFeeds.filter(
+          (feed) => !readFeeds.has(canonicalize(feed.link)),
+        );
       }
-      return [] as RenderFeed[];
-    }
-
-    const allFeeds = data.flatMap((page) => page?.data ?? []);
-
-    if (readFeeds.size === 0) {
       return allFeeds;
     }
 
-    return allFeeds.filter(
-      (feed) => !readFeeds.has(canonicalize(feed.link)),
-    );
-  }, [data, readFeeds, initialFeeds]);
+    // If SWR has no data yet, fallback to initialFeeds
+    if (initialFeeds && initialFeeds.length > 0) {
+      // During HYDRATION_READY, return initialFeeds as-is to match SSR output
+      if (loadingState === "HYDRATION_READY") {
+        return initialFeeds;
+      }
+
+      // After readFeeds initialization, filter if needed
+      if (isReadFeedsInitialized && readFeeds.size > 0) {
+        return initialFeeds.filter(feed => !readFeeds.has(canonicalize(feed.link)));
+      }
+      return initialFeeds;
+    }
+
+    return [] as RenderFeed[];
+  }, [data, readFeeds, initialFeeds, loadingState, isReadFeedsInitialized]);
 
   const activeFeed = feeds[0] ?? null;
   const activeIndex = activeFeed ? 0 : -1;
@@ -386,9 +426,55 @@ export const useSwipeFeedController = (
     lastPage?.has_more ?? Boolean(lastPage?.next_cursor),
   );
   const hasMore = hasMoreFromServer && !isFeedSupplyDepleted;
-  // If we have feeds (from data or initialFeeds), we're not in initial loading state
-  // Also check if we have initialFeeds to avoid showing loading when data is available from SSR
-  const isInitialLoading = feeds.length === 0 && isLoading && !initialFeeds?.length;
+
+  // Update loading state based on feeds and SWR state
+  // Transition from HYDRATION_READY to READY after readFeeds initialization
+  useEffect(() => {
+    if (loadingState === "HYDRATION_READY" && isReadFeedsInitialized) {
+      // Transition to READY after readFeeds initialization
+      setLoadingState("READY");
+      return;
+    }
+
+    if (loadingState === "READ_SYNC_PENDING" && isReadFeedsInitialized) {
+      // Transition to READY after readFeeds initialization
+      setLoadingState("READY");
+      return;
+    }
+
+    // Don't update state during hydration or read sync
+    if (loadingState === "HYDRATION_READY" || loadingState === "READ_SYNC_PENDING") {
+      return;
+    }
+
+    if (feeds.length === 0) {
+      if (isLoading) {
+        setLoadingState("LOADING");
+      } else if (hasMoreFromServer) {
+        setLoadingState("EMPTY");
+      } else if (isFeedSupplyDepleted) {
+        setLoadingState("DEPLETED");
+      } else {
+        setLoadingState("EMPTY");
+      }
+    } else {
+      // We have feeds, transition to READY if not already
+      if (loadingState === "LOADING" || loadingState === "EMPTY") {
+        setLoadingState("READY");
+      }
+    }
+  }, [feeds.length, isLoading, hasMoreFromServer, isFeedSupplyDepleted, loadingState, isReadFeedsInitialized]);
+
+  // Determine if we should show initial loading skeleton
+  // Only show loading if:
+  // 1. We have no feeds (neither from data nor initialFeeds) AND
+  // 2. We're actually loading (SWR is fetching) AND
+  // 3. We don't have initialFeeds (which would be shown immediately)
+  // This ensures that if initialFeeds exist, we never show loading skeleton
+  const isInitialLoading =
+    feeds.length === 0 &&
+    isLoading &&
+    !initialFeeds?.length;
 
   // Article content prefetch hook
   const { triggerPrefetch, getCachedContent, markAsDismissed } =

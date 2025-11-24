@@ -213,10 +213,13 @@ const SwipeFeedScreen = ({
     );
   }
 
+  // Show loading skeleton only during true initial load (no feeds, no initialFeeds)
   if (isInitialLoading) {
     return <SwipeFeedSkeleton prefersReducedMotion={prefersReducedMotion} />;
   }
 
+  // If we have an active feed, show it immediately
+  // This handles both SSR initialFeeds and client-fetched feeds
   if (activeFeed) {
     return (
       <Box minH="100dvh" position="relative">
@@ -262,10 +265,13 @@ const SwipeFeedScreen = ({
     );
   }
 
-  if (hasMore) {
+  // If we have more feeds available but none are currently shown,
+  // show loading skeleton while fetching
+  if (hasMore && isValidating) {
     return <SwipeFeedSkeleton prefersReducedMotion={prefersReducedMotion} />;
   }
 
+  // No feeds available and no more to fetch
   return (
     <Box minH="100dvh" position="relative">
       <EmptyFeedState />

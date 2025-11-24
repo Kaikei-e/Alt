@@ -1,7 +1,8 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { vi, describe, expect, beforeEach, afterEach, it } from "vitest";
 import type { CursorResponse } from "@/schema/common";
-import type { Feed } from "@/schema/feed";
+import type { Feed, RenderFeed } from "@/schema/feed";
+import { toRenderFeed } from "@/schema/feed";
 import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 
 const mockUseSWRInfinite = vi.fn();
@@ -100,6 +101,128 @@ describe("useSwipeFeedController", () => {
       undefined,
       32, // Changed from 100 to 32 for performance optimization
     );
+  });
+
+  it("uses initialFeeds during HYDRATION_READY state without filtering", () => {
+    const initialFeeds: RenderFeed[] = [
+      toRenderFeed({
+        ...baseFeed,
+        id: "initial-feed-1",
+        title: "Initial Feed 1",
+        link: "https://example.com/initial-1",
+      }),
+      toRenderFeed({
+        ...baseFeed,
+        id: "initial-feed-2",
+        title: "Initial Feed 2",
+        link: "https://example.com/initial-2",
+      }),
+    ];
+
+    mockUseSWRInfinite.mockImplementation(() => ({
+      data: undefined,
+      error: null,
+      isLoading: false,
+      isValidating: false,
+      setSize: vi.fn(),
+      mutate: vi.fn(),
+    }));
+
+    const { result } = renderHook(() => useSwipeFeedController(initialFeeds));
+
+    // During HYDRATION_READY, initialFeeds should be returned as-is
+    expect(result.current.feeds).toHaveLength(2);
+    expect(result.current.feeds[0].id).toBe("initial-feed-1");
+    expect(result.current.feeds[1].id).toBe("initial-feed-2");
+    expect(result.current.isInitialLoading).toBe(false);
+  });
+
+  it("transitions from HYDRATION_READY to READY after readFeeds initialization", async () => {
+    const initialFeeds: RenderFeed[] = [
+      toRenderFeed({
+        ...baseFeed,
+        id: "initial-feed",
+        title: "Initial Feed",
+        link: "https://example.com/initial",
+      }),
+    ];
+
+    mockUseSWRInfinite.mockImplementation(() => ({
+      data: [
+        {
+          data: initialFeeds,
+          next_cursor: null,
+          has_more: false,
+        },
+      ],
+      error: null,
+      isLoading: false,
+      isValidating: false,
+      setSize: vi.fn(),
+      mutate: vi.fn(),
+    }));
+
+    mockFeedApi.getReadFeedsWithCursor.mockResolvedValue({
+      data: [],
+      next_cursor: null,
+    });
+
+    const { result } = renderHook(() => useSwipeFeedController(initialFeeds));
+
+    // Initially should have feeds from initialFeeds
+    expect(result.current.feeds).toHaveLength(1);
+    expect(result.current.isInitialLoading).toBe(false);
+
+    // Wait for readFeeds initialization
+    await waitFor(() => {
+      expect(mockFeedApi.getReadFeedsWithCursor).toHaveBeenCalled();
+    });
+
+    // After initialization, feeds should still be available
+    expect(result.current.feeds.length).toBeGreaterThan(0);
+  });
+
+  it("shows initial loading only when no feeds and no initialFeeds", () => {
+    mockUseSWRInfinite.mockImplementation(() => ({
+      data: undefined,
+      error: null,
+      isLoading: true,
+      isValidating: false,
+      setSize: vi.fn(),
+      mutate: vi.fn(),
+    }));
+
+    const { result } = renderHook(() => useSwipeFeedController());
+
+    // Should show loading when no initialFeeds and isLoading
+    expect(result.current.isInitialLoading).toBe(true);
+    expect(result.current.feeds).toHaveLength(0);
+  });
+
+  it("does not show initial loading when initialFeeds are provided", () => {
+    const initialFeeds: RenderFeed[] = [
+      toRenderFeed({
+        ...baseFeed,
+        id: "initial-feed",
+        title: "Initial Feed",
+        link: "https://example.com/initial",
+      }),
+    ];
+
+    mockUseSWRInfinite.mockImplementation(() => ({
+      data: undefined,
+      error: null,
+      isLoading: true,
+      isValidating: false,
+      setSize: vi.fn(),
+      mutate: vi.fn(),
+    }));
+
+    const { result } = renderHook(() => useSwipeFeedController(initialFeeds));
+
+    // Should not show loading when initialFeeds are provided
+    expect(result.current.isInitialLoading).toBe(false);
+    expect(result.current.feeds).toHaveLength(1);
   });
 
   it("prefetches the next page when feeds are empty but has_more is true and cursor must be derived", async () => {
@@ -360,7 +483,9 @@ describe("useSwipeFeedController", () => {
       next_cursor: null,
     });
 
+    let callCount = 0;
     mockUseSWRInfinite.mockImplementation(() => {
+      callCount++;
       return {
         data: [
           {
@@ -390,22 +515,29 @@ describe("useSwipeFeedController", () => {
 
     const { result, rerender } = renderHook(() => useSwipeFeedController());
 
+    // Wait for readFeeds initialization
+    await waitFor(() => {
+      expect(mockFeedApi.getReadFeedsWithCursor).toHaveBeenCalled();
+    });
+
+    // Wait for first prefetch attempt
     await waitFor(() => {
       expect(setSizeMock).toHaveBeenCalledTimes(1);
-    });
+    }, { timeout: 2000 });
 
     rerender();
+    // Wait for second prefetch attempt
     await waitFor(() => {
       expect(setSizeMock).toHaveBeenCalledTimes(2);
-    });
+    }, { timeout: 2000 });
 
     rerender();
+    // After 3 attempts (EMPTY_PREFETCH_LIMIT), hasMore should be false
     await waitFor(() => {
       expect(result.current.hasMore).toBe(false);
-    });
+    }, { timeout: 2000 });
 
-    rerender();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Verify that setSize was called exactly 3 times (EMPTY_PREFETCH_LIMIT)
     expect(setSizeMock).toHaveBeenCalledTimes(3);
   });
 });
