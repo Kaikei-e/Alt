@@ -10,7 +10,7 @@ import dynamic from "next/dynamic";
 import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 import SwipeFeedSkeleton from "@/components/mobile/feeds/swipe/SwipeFeedSkeleton";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
-import type { Feed } from "@/schema/feed";
+import type { RenderFeed } from "@/schema/feed";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 
 const usePrefersReducedMotion = () => {
@@ -154,7 +154,7 @@ const SwipeLoadingOverlay = ({
 import SwipeFeedCard from "@/components/mobile/feeds/swipe/SwipeFeedCard";
 
 interface SwipeFeedScreenProps {
-  initialFeeds?: Feed[];
+  initialFeeds?: RenderFeed[];
   initialNextCursor?: string;
   initialArticleContent?: SafeHtmlString | null;
 }
@@ -180,6 +180,32 @@ const SwipeFeedScreen = ({
 
   const prefersReducedMotion = usePrefersReducedMotion();
   const shouldShowOverlay = Boolean(activeFeed) && isValidating;
+
+  // Delay rendering of chrome (FloatingMenu, LoadingOverlay) until after hydration
+  const [showChrome, setShowChrome] = useState(false);
+
+  useEffect(() => {
+    // Show chrome after activeFeed is determined and hydration completes
+    if (activeFeed) {
+      // Use requestIdleCallback to defer chrome rendering
+      if ("requestIdleCallback" in window) {
+        const idleCallbackId = window.requestIdleCallback(
+          () => {
+            setShowChrome(true);
+          },
+          { timeout: 1000 }
+        );
+        return () => {
+          window.cancelIdleCallback(idleCallbackId);
+        };
+      } else {
+        const timeoutId = setTimeout(() => {
+          setShowChrome(true);
+        }, 100);
+        return () => clearTimeout(timeoutId);
+      }
+    }
+  }, [activeFeed]);
 
   if (error) {
     return (
@@ -222,12 +248,16 @@ const SwipeFeedScreen = ({
           />
         </Flex>
 
-        <SwipeLoadingOverlay
-          isVisible={shouldShowOverlay}
-          reduceMotion={prefersReducedMotion}
-        />
-
-        <FloatingMenu />
+        {/* Delay chrome rendering until after LCP */}
+        {showChrome && (
+          <>
+            <SwipeLoadingOverlay
+              isVisible={shouldShowOverlay}
+              reduceMotion={prefersReducedMotion}
+            />
+            <FloatingMenu />
+          </>
+        )}
       </Box>
     );
   }

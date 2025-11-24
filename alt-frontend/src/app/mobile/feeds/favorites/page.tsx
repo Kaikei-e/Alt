@@ -8,7 +8,8 @@ import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
 import { feedApi } from "@/lib/api";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
-import type { Feed } from "@/schema/feed";
+import type { RenderFeed, SanitizedFeed } from "@/schema/feed";
+import { toRenderFeed } from "@/schema/feed";
 import ErrorState from "../_components/ErrorState";
 
 const PAGE_SIZE = 20;
@@ -28,15 +29,21 @@ export default function FavoriteFeedsPage() {
     isInitialLoading,
     loadMore,
     refresh,
-  } = useCursorPagination<Feed>(feedApi.getFavoriteFeedsWithCursor, {
+  } = useCursorPagination<SanitizedFeed>(feedApi.getFavoriteFeedsWithCursor, {
     limit: PAGE_SIZE,
     autoLoad: true,
   });
 
-  const visibleFeeds = useMemo(
-    () => feeds?.filter((feed) => !readFeeds.has(feed.link)) || [],
-    [feeds, readFeeds],
-  );
+  // Convert SanitizedFeed to RenderFeed and filter visible feeds
+  const visibleFeeds = useMemo(() => {
+    if (!feeds) return [];
+
+    // Convert to RenderFeed
+    const renderFeeds: RenderFeed[] = feeds.map((feed: SanitizedFeed) => toRenderFeed(feed));
+
+    // Filter out read feeds
+    return renderFeeds.filter((feed) => !readFeeds.has(feed.link));
+  }, [feeds, readFeeds]);
 
   const handleMarkAsRead = useCallback((feedLink: string) => {
     setReadFeeds((prev) => {
@@ -129,7 +136,7 @@ export default function FavoriteFeedsPage() {
         {visibleFeeds.length > 0 ? (
           <>
             <Flex direction="column" gap={4}>
-              {visibleFeeds.map((feed: Feed) => (
+              {visibleFeeds.map((feed: RenderFeed) => (
                 <FeedCard
                   key={feed.link}
                   feed={feed}

@@ -1,19 +1,19 @@
 import { serverFetch } from "@/lib/api/utils/serverFetch";
 import { fetchArticleContentServer } from "@/lib/api/utils/serverArticleFetch";
 import type { CursorResponse } from "@/schema/common";
-import type { Feed, BackendFeedItem } from "@/schema/feed";
-import { sanitizeFeed } from "@/schema/feed";
+import type { RenderFeed, BackendFeedItem } from "@/schema/feed";
+import { sanitizeFeed, toRenderFeed } from "@/schema/feed";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 
 import SwipeFeedScreen from "@/components/mobile/feeds/swipe/SwipeFeedScreen";
 
-const INITIAL_FEEDS_LIMIT = 5;
+const INITIAL_FEEDS_LIMIT = 3; // Reduced from 5 to 3 for LCP optimization
 
 /**
  * Fetches the initial feeds from the cursor API
  */
 async function fetchInitialFeeds(): Promise<{
-  feeds: Feed[];
+  feeds: RenderFeed[];
   nextCursor?: string;
 }> {
   try {
@@ -23,7 +23,10 @@ async function fetchInitialFeeds(): Promise<{
 
     if (response.data && response.data.length > 0) {
       return {
-        feeds: response.data.map(sanitizeFeed),
+        feeds: response.data.map((item) => {
+          const sanitized = sanitizeFeed(item);
+          return toRenderFeed(sanitized, item.tags);
+        }),
         nextCursor: response.next_cursor || undefined,
       };
     }

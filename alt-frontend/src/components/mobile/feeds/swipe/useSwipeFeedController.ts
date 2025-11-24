@@ -9,7 +9,8 @@ import useSWRInfinite from "swr/infinite";
 import { useArticleContentPrefetch } from "@/hooks/useArticleContentPrefetch";
 import { feedApi } from "@/lib/api";
 import type { CursorResponse } from "@/schema/common";
-import type { Feed } from "@/schema/feed";
+import type { RenderFeed, SanitizedFeed } from "@/schema/feed";
+import { toRenderFeed } from "@/schema/feed";
 
 // Use 20 for PAGE_SIZE to ensure stable pagination even with read filtering
 // Reducing to 10 caused issues where all feeds in a page were filtered out,
@@ -19,6 +20,7 @@ const PAGE_SIZE = 20;
 const PREFETCH_THRESHOLD = 5;
 // Increase INITIAL_PAGE_COUNT to 2 to load more data upfront
 const INITIAL_PAGE_COUNT = 2;
+const EMPTY_PREFETCH_LIMIT = 3;
 
 type SwrKey = readonly ["mobile-feed-swipe", string | undefined, number];
 
@@ -55,7 +57,7 @@ const canonicalize = (url: string) => {
 };
 
 const derivePageCursor = (
-  pageData: CursorResponse<Feed> | null,
+  pageData: CursorResponse<RenderFeed> | null,
 ): string | null => {
   if (!pageData) {
     return null;
@@ -68,7 +70,7 @@ const derivePageCursor = (
   return published ? published : null;
 };
 
-const hasMorePages = (pageData: CursorResponse<Feed> | null): boolean => {
+const hasMorePages = (pageData: CursorResponse<RenderFeed> | null): boolean => {
   if (!pageData) {
     return false;
   }
@@ -80,7 +82,7 @@ const hasMorePages = (pageData: CursorResponse<Feed> | null): boolean => {
 
 const createGetKey =
   (lastCursorRef: ReturnType<typeof useRef<string | null>>) =>
-    (pageIndex: number, previousPageData: CursorResponse<Feed> | null): SwrKey | null => {
+    (pageIndex: number, previousPageData: CursorResponse<RenderFeed> | null): SwrKey | null => {
       if (pageIndex === 0) {
         return ["mobile-feed-swipe", undefined, PAGE_SIZE];
       }
@@ -138,7 +140,7 @@ const createFetchPage =
       _: string,
       cursor: string | undefined,
       limit: number,
-    ): Promise<CursorResponse<Feed>> => {
+    ): Promise<CursorResponse<RenderFeed>> => {
       // Use lastCursorRef as fallback if cursor is undefined
       // This ensures we always send a cursor when available, even if getKey didn't pass it
       const effectiveCursor = cursor || lastCursorRef.current || undefined;
@@ -154,16 +156,22 @@ const createFetchPage =
 
       const result = await feedApi.getFeedsWithCursor(effectiveCursor, limit);
 
+      // Convert SanitizedFeed to RenderFeed
+      const renderFeeds = result.data.map((feed: SanitizedFeed) => toRenderFeed(feed));
+
       if (typeof window !== "undefined") {
         console.log("[useSwipeFeedController] fetchPage result", {
           cursor,
           effectiveCursor,
-          dataCount: result.data.length,
+          dataCount: renderFeeds.length,
           next_cursor: result.next_cursor,
           has_more: result.has_more,
         });
       }
-      return result;
+      return {
+        ...result,
+        data: renderFeeds,
+      };
     };
 
 const clearTimeoutRef = (timeoutRef: ReturnType<typeof useRef<number | null>>) => {
@@ -195,7 +203,7 @@ const scheduleTimeout = (
 };
 
 export const useSwipeFeedController = (
-  initialFeeds?: Feed[] | null,
+  initialFeeds?: RenderFeed[] | null,
   initialNextCursor?: string,
 ) => {
   const [liveRegionMessage, setLiveRegionMessage] = useState("");
@@ -203,6 +211,9 @@ export const useSwipeFeedController = (
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
   const [isReadFeedsInitialized, setIsReadFeedsInitialized] = useState(false);
   const lastCursorRef = useRef<string | null>(initialNextCursor ?? null);
+  const [isFeedSupplyDepleted, setIsFeedSupplyDepleted] = useState(false);
+  const emptyPrefetchAttemptsRef = useRef(0);
+  const [prefetchAttemptTick, setPrefetchAttemptTick] = useState(0);
 
   // Initialize readFeeds set from backend on mount using cursor-based pagination
   // Defer to requestIdleCallback to avoid blocking LCP
@@ -224,7 +235,7 @@ export const useSwipeFeedController = (
         );
         const readFeedLinks = new Set<string>();
         if (readFeedsResponse?.data) {
-          readFeedsResponse.data.forEach((feed: Feed) => {
+          readFeedsResponse.data.forEach((feed: SanitizedFeed) => {
             const canonical = canonicalize(feed.link);
             readFeedLinks.add(canonical);
           });
@@ -260,6 +271,7 @@ export const useSwipeFeedController = (
 
   const liveRegionTimeoutRef = useRef<number | null>(null);
   const prefetchCursorRef = useRef<string | null>(null);
+  const prefetchInFlightRef = useRef(false);
 
   // Wait for readFeeds initialization before fetching unread feeds
   // This ensures consistent behavior and prevents race conditions
@@ -276,7 +288,7 @@ export const useSwipeFeedController = (
   const { data, error, isLoading, isValidating, setSize, mutate } =
     useSWRInfinite(
       isReadFeedsInitialized
-        ? (pageIndex: number, previousPageData: CursorResponse<Feed> | null) => {
+        ? (pageIndex: number, previousPageData: CursorResponse<RenderFeed> | null) => {
           // If we have initial feeds and haven't fetched anything yet (pageIndex 0),
           // and we have a next cursor, we can skip the first fetch if we want to rely solely on initialFeeds.
           // However, SWR needs a key to return data.
@@ -349,7 +361,7 @@ export const useSwipeFeedController = (
         }
         return initialFeeds;
       }
-      return [] as Feed[];
+      return [] as RenderFeed[];
     }
 
     const allFeeds = data.flatMap((page) => page?.data ?? []);
@@ -366,9 +378,10 @@ export const useSwipeFeedController = (
   const activeFeed = feeds[0] ?? null;
   const activeIndex = activeFeed ? 0 : -1;
   const lastPage = data?.[data.length - 1] ?? null;
-  const hasMore = Boolean(
+  const hasMoreFromServer = Boolean(
     lastPage?.has_more ?? Boolean(lastPage?.next_cursor),
   );
+  const hasMore = hasMoreFromServer && !isFeedSupplyDepleted;
   const isInitialLoading = (!data || data.length === 0) && isLoading;
 
   // Article content prefetch hook
@@ -413,89 +426,144 @@ export const useSwipeFeedController = (
     );
   }, []);
 
+  // Reset empty prefetch attempts when feeds are available or hasMoreFromServer is false
+  useEffect(() => {
+    if (!hasMoreFromServer || feeds.length > 0) {
+      emptyPrefetchAttemptsRef.current = 0;
+      prefetchInFlightRef.current = false;
+      if (isFeedSupplyDepleted) {
+        setIsFeedSupplyDepleted(false);
+      }
+    }
+  }, [feeds.length, hasMoreFromServer, isFeedSupplyDepleted]);
+
   // Reset prefetchCursorRef when validation completes to allow retry
   // This is critical when feeds.length === 0 but hasMore === true,
   // as we need to retry fetching the next page after validation completes
   useEffect(() => {
     if (!isValidating && prefetchCursorRef.current !== null) {
-      // Only reset if we're in a state where we might need to retry
-      // (i.e., feeds are empty but hasMore is true)
-      if (feeds.length === 0 && hasMore) {
+      if (feeds.length === 0 && hasMoreFromServer) {
         prefetchCursorRef.current = null;
       }
     }
-  }, [isValidating, feeds.length, hasMore]);
+  }, [isValidating, feeds.length, hasMoreFromServer]);
+
+  // Check if feed supply is depleted after each prefetch attempt
+  // This ensures isFeedSupplyDepleted is set synchronously after emptyPrefetchAttemptsRef is incremented
+  useEffect(() => {
+    if (feeds.length === 0 && hasMoreFromServer && !isValidating) {
+      if (emptyPrefetchAttemptsRef.current >= EMPTY_PREFETCH_LIMIT) {
+        setIsFeedSupplyDepleted(true);
+      }
+    }
+  }, [feeds.length, hasMoreFromServer, isValidating, prefetchAttemptTick]);
 
   // Memoize prefetch logic to avoid unnecessary recalculations
-  const schedulePrefetch = useMemo(() => {
-    return () => {
-      if (!hasMore || !lastPage || !data) {
+  const schedulePrefetch = useCallback(() => {
+    if (!lastPage || !data) {
+      prefetchCursorRef.current = null;
+      return;
+    }
+
+    const nextCursor = derivePageCursor(lastPage);
+    if (!nextCursor) {
+      prefetchCursorRef.current = null;
+      return;
+    }
+    lastCursorRef.current = nextCursor;
+
+    // If feeds array is empty but hasMoreFromServer is true, we should prefetch immediately
+    // This handles the case where all feeds in current pages are filtered out
+    // However, we must check isValidating to avoid infinite prefetch loops
+    if (feeds.length === 0) {
+      // Check for feed supply depletion first
+      if (emptyPrefetchAttemptsRef.current >= EMPTY_PREFETCH_LIMIT) {
+        setIsFeedSupplyDepleted(true);
         prefetchCursorRef.current = null;
+        prefetchInFlightRef.current = false;
         return;
       }
-
-      const nextCursor = derivePageCursor(lastPage);
-      if (!nextCursor) {
-        prefetchCursorRef.current = null;
-        return;
-      }
-      lastCursorRef.current = nextCursor;
-
-      // If feeds array is empty but hasMore is true, we should prefetch immediately
-      // This handles the case where all feeds in current pages are filtered out
-      // However, we must check isValidating to avoid infinite prefetch loops
-      if (feeds.length === 0) {
-        if (!isValidating && prefetchCursorRef.current !== nextCursor) {
-          prefetchCursorRef.current = nextCursor;
-          // Use requestIdleCallback to defer prefetch and avoid blocking main thread
-          if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-            window.requestIdleCallback(
-              () => {
-                setSize((current) => current + 1);
-              },
-              { timeout: 1000 }
-            );
-          } else {
-            setSize((current) => current + 1);
-          }
-        }
-        return;
-      }
-
-      const remainingAfterCurrent = Math.max(feeds.length - (activeFeed ? 1 : 0), 0);
-
-      const totalRawFeeds = data.flatMap((page) => page?.data ?? []).length;
-      const filterRatio =
-        totalRawFeeds > 0 ? Math.min(feeds.length / totalRawFeeds, 1) : 1;
-      const adjustedThreshold = Math.max(
-        1,
-        Math.ceil(PREFETCH_THRESHOLD * filterRatio),
-      );
 
       if (
-        remainingAfterCurrent <= adjustedThreshold &&
         !isValidating &&
-        prefetchCursorRef.current !== nextCursor
+        prefetchCursorRef.current !== nextCursor &&
+        !prefetchInFlightRef.current &&
+        hasMoreFromServer
       ) {
         prefetchCursorRef.current = nextCursor;
+        prefetchInFlightRef.current = true;
         // Use requestIdleCallback to defer prefetch and avoid blocking main thread
         if (typeof window !== "undefined" && "requestIdleCallback" in window) {
           window.requestIdleCallback(
             () => {
+              emptyPrefetchAttemptsRef.current += 1;
               setSize((current) => current + 1);
+              setPrefetchAttemptTick((tick) => tick + 1);
+              if (process.env.NODE_ENV === "test") {
+                console.log("[SwipeFeedController] attempt", emptyPrefetchAttemptsRef.current);
+              }
+              prefetchInFlightRef.current = false;
             },
             { timeout: 1000 }
           );
         } else {
+          emptyPrefetchAttemptsRef.current += 1;
           setSize((current) => current + 1);
+          setPrefetchAttemptTick((tick) => tick + 1);
+          if (process.env.NODE_ENV === "test") {
+            console.log("[SwipeFeedController] attempt", emptyPrefetchAttemptsRef.current);
+          }
+          prefetchInFlightRef.current = false;
         }
       }
-    };
-  }, [activeFeed, data, feeds.length, hasMore, isValidating, lastPage, setSize]);
+      return;
+    }
+
+    // Only check hasMore for non-empty feeds
+    if (!hasMore) {
+      prefetchCursorRef.current = null;
+      return;
+    }
+
+    const remainingAfterCurrent = Math.max(feeds.length - (activeFeed ? 1 : 0), 0);
+
+    const totalRawFeeds = data.flatMap((page) => page?.data ?? []).length;
+    const filterRatio =
+      totalRawFeeds > 0 ? Math.min(feeds.length / totalRawFeeds, 1) : 1;
+    const adjustedThreshold = Math.max(
+      1,
+      Math.ceil(PREFETCH_THRESHOLD * filterRatio),
+    );
+
+    if (
+      remainingAfterCurrent <= adjustedThreshold &&
+      !isValidating &&
+      prefetchCursorRef.current !== nextCursor
+    ) {
+      if (prefetchInFlightRef.current) {
+        return;
+      }
+      prefetchCursorRef.current = nextCursor;
+      prefetchInFlightRef.current = true;
+      // Use requestIdleCallback to defer prefetch and avoid blocking main thread
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        window.requestIdleCallback(
+          () => {
+            setSize((current) => current + 1);
+            prefetchInFlightRef.current = false;
+          },
+          { timeout: 1000 }
+        );
+      } else {
+        setSize((current) => current + 1);
+        prefetchInFlightRef.current = false;
+      }
+    }
+  }, [hasMore, lastPage, data, feeds.length, activeFeed, isValidating, setSize]);
 
   useEffect(() => {
     schedulePrefetch();
-  }, [schedulePrefetch, feeds.length]);
+  }, [schedulePrefetch, feeds.length, prefetchAttemptTick]);
 
   // Preload next feed image using requestIdleCallback to avoid blocking main thread
   useEffect(() => {
@@ -617,6 +685,10 @@ export const useSwipeFeedController = (
   );
 
   const retry = useCallback(async () => {
+    emptyPrefetchAttemptsRef.current = 0;
+    prefetchInFlightRef.current = false;
+    setIsFeedSupplyDepleted(false);
+    prefetchCursorRef.current = null;
     await mutate(undefined, { revalidate: true });
   }, [mutate]);
 

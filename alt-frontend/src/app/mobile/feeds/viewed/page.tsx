@@ -13,7 +13,13 @@ import { useTransition } from "@react-spring/web";
 import { History } from "lucide-react";
 import { ViewedFeedCard } from "@/components/mobile/feeds/viewed/ViewedFeedCard";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
-import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
+import dynamic from "next/dynamic";
+
+// Dynamically import FloatingMenu to reduce initial bundle size for LCP optimization
+const FloatingMenu = dynamic(
+  () => import("@/components/mobile/utils/FloatingMenu").then((mod) => ({ default: mod.FloatingMenu })),
+  { ssr: false }
+);
 import { useReadFeeds } from "@/hooks/useReadFeeds";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import type { Feed } from "@/schema/feed";
@@ -197,7 +203,15 @@ function ReadFeedsPageContent() {
         {feeds.length > 0 ? (
           <>
             {/* Viewed Feed Cards */}
-            <VStack gap={4} width="100%">
+            <VStack
+              gap={4}
+              width="100%"
+              data-testid="virtual-feed-list"
+              style={{
+                contentVisibility: "auto",
+                containIntrinsicSize: "800px",
+              } as React.CSSProperties}
+            >
               {transitions((style, feed) => (
                 <ViewedFeedCard key={feed.link} feed={feed} style={style} />
               ))}

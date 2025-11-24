@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { articleApi } from "@/lib/api";
-import type { Feed } from "@/schema/feed";
+import type { RenderFeed } from "@/schema/feed";
 import { renderingRegistry } from "@/utils/renderingStrategies";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 
@@ -48,7 +48,7 @@ const scrollAreaStyles: CSSObject = {
 };
 
 type SwipeFeedCardProps = {
-  feed: Feed;
+  feed: RenderFeed;
   statusMessage: string | null;
   onDismiss: (direction: number) => Promise<void> | void;
   getCachedContent?: (feedUrl: string) => string | null;
@@ -872,7 +872,7 @@ const CardView = memo(({
 
 const SwipeFeedCard = memo((props: SwipeFeedCardProps) => {
   const transitions = useTransition(props.feed, {
-    keys: (item: Feed) => item.id,
+    keys: (item: RenderFeed) => item.id,
     from: { opacity: 0, scale: 0.98, zIndex: 0 },
     enter: { opacity: 1, scale: 1, zIndex: 1 },
     leave: { opacity: 0, pointerEvents: "none", zIndex: 10 },
@@ -886,7 +886,7 @@ const SwipeFeedCard = memo((props: SwipeFeedCardProps) => {
 
   return (
     <div style={{ position: "relative", width: "100%", height: "95dvh" }}>
-      {transitions((style: any, feed: Feed) => (
+      {transitions((style: any, feed: RenderFeed) => (
         <CardView {...props} feed={feed} style={style} />
       ))}
     </div>

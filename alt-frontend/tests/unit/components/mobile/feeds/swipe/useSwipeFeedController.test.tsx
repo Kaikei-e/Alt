@@ -339,5 +339,74 @@ describe("useSwipeFeedController", () => {
     // Verify setSize was called with a function
     expect(typeof setSizeMock.mock.calls[0][0]).toBe("function");
   });
+
+  it("marks feed supply as exhausted after repeated empty prefetch attempts", async () => {
+    const nextCursor = "cursor-empty-loop";
+    const setSizeMock = vi.fn();
+
+    mockFeedApi.getReadFeedsWithCursor.mockResolvedValue({
+      data: [
+        {
+          ...baseFeed,
+          id: "read-feed-1",
+          link: "https://example.com/article-1",
+        },
+        {
+          ...baseFeed,
+          id: "read-feed-2",
+          link: "https://example.com/article-2",
+        },
+      ],
+      next_cursor: null,
+    });
+
+    mockUseSWRInfinite.mockImplementation(() => {
+      return {
+        data: [
+          {
+            data: [
+              {
+                ...baseFeed,
+                id: "read-feed-1",
+                link: "https://example.com/article-1",
+              },
+              {
+                ...baseFeed,
+                id: "read-feed-2",
+                link: "https://example.com/article-2",
+              },
+            ],
+            next_cursor: nextCursor,
+            has_more: true,
+          },
+        ],
+        error: null,
+        isLoading: false,
+        isValidating: false,
+        setSize: setSizeMock,
+        mutate: vi.fn(),
+      };
+    });
+
+    const { result, rerender } = renderHook(() => useSwipeFeedController());
+
+    await waitFor(() => {
+      expect(setSizeMock).toHaveBeenCalledTimes(1);
+    });
+
+    rerender();
+    await waitFor(() => {
+      expect(setSizeMock).toHaveBeenCalledTimes(2);
+    });
+
+    rerender();
+    await waitFor(() => {
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    rerender();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(setSizeMock).toHaveBeenCalledTimes(3);
+  });
 });
 
