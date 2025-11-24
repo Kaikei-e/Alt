@@ -89,7 +89,17 @@ class RecapSummaryUsecase:
         cluster_lines: List[str] = []
         for cluster in request.clusters[:max_clusters]:
             top_terms = ", ".join(cluster.top_terms or []) or "未提示"
-            sentences = "\n".join(f"- {sentence}" for sentence in cluster.representative_sentences)
+            sentence_lines: List[str] = []
+            for sentence in cluster.representative_sentences:
+                parts: List[str] = [f"- {sentence.text}"]
+                if sentence.published_at:
+                    parts.append(f"  (公開日: {sentence.published_at})")
+                if sentence.source_url:
+                    # URLを短縮表示
+                    source_domain = sentence.source_url.split("/")[2] if "/" in sentence.source_url else sentence.source_url
+                    parts.append(f"  (出典: {source_domain})")
+                sentence_lines.append(" ".join(parts))
+            sentences = "\n".join(sentence_lines)
             cluster_block = textwrap.dedent(
                 f"""
                 ### Cluster {cluster.cluster_id}

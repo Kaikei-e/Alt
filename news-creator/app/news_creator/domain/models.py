@@ -72,11 +72,22 @@ class LLMGenerateResponse:
     total_duration: Optional[int] = None  # in nanoseconds
 
 
+class RepresentativeSentence(BaseModel):
+    """Representative sentence with metadata."""
+
+    text: str = Field(min_length=1, description="Sentence text")
+    published_at: Optional[str] = Field(
+        default=None, description="Publication date in RFC3339 format"
+    )
+    source_url: Optional[str] = Field(default=None, description="Source article URL")
+    article_id: Optional[str] = Field(default=None, description="Source article ID")
+
+
 class RecapClusterInput(BaseModel):
     """Cluster information passed from recap-worker."""
 
     cluster_id: int = Field(ge=0)
-    representative_sentences: List[str] = Field(
+    representative_sentences: List[RepresentativeSentence] = Field(
         min_length=1,
         max_length=10,
         description="Representative sentences extracted by the subworker",
@@ -85,12 +96,19 @@ class RecapClusterInput(BaseModel):
 
     @field_validator("representative_sentences", mode="after")
     @classmethod
-    def strip_sentences(cls, sentences: List[str]) -> List[str]:
-        cleaned: List[str] = []
+    def strip_sentences(cls, sentences: List[RepresentativeSentence]) -> List[RepresentativeSentence]:
+        cleaned: List[RepresentativeSentence] = []
         for sentence in sentences:
-            stripped = sentence.strip()
-            if stripped:
-                cleaned.append(stripped)
+            stripped_text = sentence.text.strip()
+            if stripped_text:
+                cleaned.append(
+                    RepresentativeSentence(
+                        text=stripped_text,
+                        published_at=sentence.published_at,
+                        source_url=sentence.source_url,
+                        article_id=sentence.article_id,
+                    )
+                )
         if not cleaned:
             raise ValueError("representative_sentences must contain at least one sentence")
         return cleaned
