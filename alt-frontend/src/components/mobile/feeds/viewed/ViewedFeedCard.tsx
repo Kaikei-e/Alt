@@ -4,12 +4,12 @@ import { Archive, ExternalLink, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { truncateFeedDescription } from "@/lib/utils/textUtils";
-import type { Feed } from "@/schema/feed";
+import type { RenderFeed } from "@/schema/feed";
 import { articleApi } from "@/lib/api";
 import { ViewedFeedDetailsModal } from "./ViewedFeedDetailsModal";
 
 type ViewedFeedCardProps = {
-  feed: Feed;
+  feed: RenderFeed;
 };
 
 const AnimatedBox = animated(Box);
@@ -18,7 +18,9 @@ export const ViewedFeedCard = ({ feed, style }: ViewedFeedCardProps & { style?: 
   const [isArchiving, setIsArchiving] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const truncatedDescription = truncateFeedDescription(feed.description);
+  // Note: feed.excerpt is already generated server-side, so we don't need truncatedDescription
+  // Keeping it for backward compatibility but it should not be used
+  const _truncatedDescription = truncateFeedDescription(feed.description);
 
   const handleArchive = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -63,7 +65,7 @@ export const ViewedFeedCard = ({ feed, style }: ViewedFeedCardProps & { style?: 
         <Flex direction="column" gap={3}>
           {/* Header: Title and Badge */}
           <Flex justify="space-between" align="flex-start" gap={3}>
-            <Link href={feed.link} target="_blank" rel="noopener noreferrer" style={{ flex: 1 }}>
+            <Link href={feed.normalizedUrl} target="_blank" rel="noopener noreferrer" style={{ flex: 1 }}>
               <Text
                 fontSize="md"
                 fontWeight="bold"
@@ -97,7 +99,7 @@ export const ViewedFeedCard = ({ feed, style }: ViewedFeedCardProps & { style?: 
             </Badge>
           </Flex>
 
-          {/* Description */}
+          {/* Description - Use server-generated excerpt if available, otherwise fallback to truncated description */}
           <Text
             fontSize="sm"
             color="var(--alt-text-secondary)"
@@ -109,7 +111,7 @@ export const ViewedFeedCard = ({ feed, style }: ViewedFeedCardProps & { style?: 
               overflow: "hidden",
             }}
           >
-            {truncatedDescription}
+            {feed.excerpt}
           </Text>
 
           {/* Footer: Actions and Meta */}
@@ -119,7 +121,10 @@ export const ViewedFeedCard = ({ feed, style }: ViewedFeedCardProps & { style?: 
               variant="ghost"
               color="var(--alt-text-secondary)"
               _hover={{ bg: "rgba(255, 255, 255, 0.05)", color: "var(--alt-text-primary)" }}
-              onClick={() => setIsModalOpen(true)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsModalOpen(true);
+              }}
             >
               <Flex align="center" gap={1}>
                 <BookOpen size={14} />
@@ -142,7 +147,7 @@ export const ViewedFeedCard = ({ feed, style }: ViewedFeedCardProps & { style?: 
                 </Flex>
               </Button>
 
-              <Link href={feed.link} target="_blank" rel="noopener noreferrer">
+              <Link href={feed.normalizedUrl} target="_blank" rel="noopener noreferrer">
                 <Button
                   size="xs"
                   variant="ghost"

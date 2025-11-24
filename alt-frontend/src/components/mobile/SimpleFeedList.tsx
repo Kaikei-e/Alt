@@ -1,11 +1,11 @@
 "use client";
 
 import { Flex } from "@chakra-ui/react";
-import type { Feed } from "@/schema/feed";
+import type { RenderFeed } from "@/schema/feed";
 import FeedCard from "./FeedCard";
 
 interface SimpleFeedListProps {
-  feeds: Feed[];
+  feeds: RenderFeed[];
   readFeeds: Set<string>;
   onMarkAsRead: (feedLink: string) => void;
 }
@@ -21,7 +21,7 @@ export const SimpleFeedList: React.FC<SimpleFeedListProps> = ({
 
   return (
     <Flex direction="column" gap={4} data-testid="feed-list-fallback">
-      {feeds.map((feed: Feed) => (
+      {feeds.map((feed: RenderFeed) => (
         <FeedCard
           key={feed.link}
           feed={feed}

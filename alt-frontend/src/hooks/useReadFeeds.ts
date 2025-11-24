@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { feedApi } from "@/lib/api";
-import type { Feed } from "@/schema/feed";
+import type { RenderFeed, SanitizedFeed } from "@/schema/feed";
+import { toRenderFeed } from "@/schema/feed";
 
 export interface UseReadFeedsResult {
-  feeds: Feed[];
+  feeds: RenderFeed[];
   isLoading: boolean;
   error: Error | null;
   hasMore: boolean;
@@ -18,7 +19,7 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
   const enablePrefetch = true;
   const { isAuthenticated } = useAuth();
 
-  const [feeds, setFeeds] = useState<Feed[]>([]);
+  const [feeds, setFeeds] = useState<RenderFeed[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -70,7 +71,7 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
         setError(null);
 
         const currentCursor = resetData ? undefined : cursor;
-        let response: { data: Feed[]; next_cursor: string | null };
+        let response: { data: SanitizedFeed[]; next_cursor: string | null };
 
         // Check if we have prefetched data (only if prefetch is enabled)
         if (
@@ -81,7 +82,7 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
           const cachedResponse = prefetchCacheRef.current.get(currentCursor);
           if (cachedResponse !== "loading") {
             response = cachedResponse as {
-              data: Feed[];
+              data: SanitizedFeed[];
               next_cursor: string | null;
             };
             prefetchCacheRef.current.delete(currentCursor); // Use and remove from cache
@@ -100,10 +101,13 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
           );
         }
 
+        // Convert SanitizedFeed to RenderFeed
+        const renderFeeds = response.data.map((feed: SanitizedFeed) => toRenderFeed(feed));
+
         if (resetData) {
-          setFeeds(response.data);
+          setFeeds(renderFeeds);
         } else {
-          setFeeds((prevFeeds) => [...prevFeeds, ...response.data]);
+          setFeeds((prevFeeds) => [...prevFeeds, ...renderFeeds]);
         }
 
         setCursor(response.next_cursor || undefined);
@@ -161,7 +165,9 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
           undefined,
           initialLimit,
         );
-        setFeeds(response.data);
+        // Convert SanitizedFeed to RenderFeed
+        const renderFeeds = response.data.map((feed: SanitizedFeed) => toRenderFeed(feed));
+        setFeeds(renderFeeds);
         setCursor(response.next_cursor || undefined);
         setHasMore(response.next_cursor !== null);
 
