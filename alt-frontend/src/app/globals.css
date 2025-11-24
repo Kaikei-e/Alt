@@ -865,3 +865,27 @@ input::placeholder {
   text-decoration: underline;
   text-decoration-color: var(--alt-secondary);
 }
+
+/* ---------------------------------------------------------------------------
+   LCP Hero Tip – Optimized for Largest Contentful Paint
+   ---------------------------------------------------------------------------*/
+.lcp-hero-tip {
+  display: block;
+  padding: 16px 20px;
+  margin-bottom: 8px;
+  font-size: 1rem;
+  line-height: 1.6;
+  font-weight: 500;
+  min-height: 96px;
+  width: 100%;
+  background-color: transparent;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text-primary);
+  /* Contain layout and paint to isolate Hero from feed list layout */
+  contain: layout paint;
+  /* Avoid expensive rendering properties that could delay LCP */
+  box-shadow: none;
+  filter: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
