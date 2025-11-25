@@ -97,6 +97,8 @@ def _build_learning_payload(result: GenreLearningResult) -> dict[str, object]:
     }
     if result.summary.accuracy_estimate is not None:
         metadata["accuracy_estimate"] = result.summary.accuracy_estimate
+    if result.summary.test_accuracy is not None:
+        metadata["test_accuracy"] = result.summary.test_accuracy
 
     payload: dict[str, object] = {
         "summary": summary,

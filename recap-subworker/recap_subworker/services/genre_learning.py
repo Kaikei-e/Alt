@@ -374,7 +374,7 @@ def run_bayes_optimization(
         Tuple of (best_params, train_accuracy, test_accuracy)
     """
     # Minimum samples required for train/test split
-    min_samples_for_split = 200
+    min_samples_for_split = 500
     if len(df) < min_samples_for_split:
         # For small datasets, use all data for training and return same accuracy for both
         # This maintains backward compatibility while warning about statistical validity
@@ -637,36 +637,34 @@ class GenreLearningService:
             try:
                 df = _prepare_dataframe_from_entries(entries)
                 if len(df) >= self.bayes_min_samples:
-                    best_params, train_accuracy, test_accuracy = run_bayes_optimization(
-                        df, self.bayes_iterations, self.bayes_seed
-                    )
-                    # Check if top_boost is all zeros
+                    # Check if top_boost has any non-zero values
                     has_boost_values = (df["top_boost"] > 0).any()
                     if not has_boost_values:
                         logger.warning(
-                            "top_boost is all zeros, fixing boost_threshold to 0",
+                            "all top_boost values are zero - skipping Bayes optimization",
+                            hint="tag_label_graph may be empty, waiting for next rebuild cycle",
                         )
-                        best_params = GraphBoostParams(
+                        # Skip Bayes optimization and use default values
+                    else:
+                        best_params, train_accuracy, test_accuracy = run_bayes_optimization(
+                            df, self.bayes_iterations, self.bayes_seed
+                        )
+
+                        summary.boost_threshold_reference = best_params.boost_threshold
+                        summary.tag_count_threshold_reference = best_params.tag_count_threshold
+                        summary.accuracy_estimate = train_accuracy
+                        summary.test_accuracy = test_accuracy
+                        # Update graph_margin_reference with optimized value
+                        summary.graph_margin_reference = best_params.graph_margin
+
+                        logger.info(
+                            "Bayes optimization completed",
                             graph_margin=best_params.graph_margin,
-                            boost_threshold=0.0,
+                            boost_threshold=best_params.boost_threshold,
                             tag_count_threshold=best_params.tag_count_threshold,
+                            train_accuracy=train_accuracy,
+                            test_accuracy=test_accuracy,
                         )
-
-                    summary.boost_threshold_reference = best_params.boost_threshold
-                    summary.tag_count_threshold_reference = best_params.tag_count_threshold
-                    summary.accuracy_estimate = train_accuracy
-                    summary.test_accuracy = test_accuracy
-                    # Update graph_margin_reference with optimized value
-                    summary.graph_margin_reference = best_params.graph_margin
-
-                    logger.info(
-                        "Bayes optimization completed",
-                        graph_margin=best_params.graph_margin,
-                        boost_threshold=best_params.boost_threshold,
-                        tag_count_threshold=best_params.tag_count_threshold,
-                        train_accuracy=train_accuracy,
-                        test_accuracy=test_accuracy,
-                    )
                 else:
                     logger.warning(
                         "insufficient samples for Bayes optimization after filtering",

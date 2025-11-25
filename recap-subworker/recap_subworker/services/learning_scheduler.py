@@ -11,6 +11,7 @@ from ..db.session import get_session_factory
 from ..infra.config import Settings
 from .genre_learning import GenreLearningService
 from .learning_client import LearningClient
+from .tag_label_graph_builder import TagLabelGraphBuilder
 
 logger = structlog.get_logger(__name__)
 
@@ -86,6 +87,38 @@ class LearningScheduler:
         try:
             logger.debug("creating database session factory")
             session_factory = get_session_factory(self.settings)
+
+            # Phase 1: Rebuild tag_label_graph BEFORE learning
+            if self.settings.graph_build_enabled:
+                try:
+                    logger.debug("rebuilding tag_label_graph")
+                    async with session_factory() as session:
+                        builder = TagLabelGraphBuilder(
+                            session=session,
+                            max_tags=self.settings.graph_build_max_tags,
+                            min_confidence=self.settings.graph_build_min_confidence,
+                            min_support=self.settings.graph_build_min_support,
+                        )
+                        windows = [
+                            int(w.strip())
+                            for w in self.settings.graph_build_windows.split(",")
+                            if w.strip()
+                        ]
+                        for window_days in windows:
+                            edge_count = await builder.build_graph(window_days)
+                            logger.info(
+                                "tag_label_graph rebuilt",
+                                window_days=window_days,
+                                edge_count=edge_count,
+                            )
+                except Exception as exc:
+                    logger.error(
+                        "failed to rebuild tag_label_graph",
+                        error=str(exc),
+                        error_type=type(exc).__name__,
+                        exc_info=True,
+                    )
+                    # Continue with learning even if graph rebuild fails
 
             logger.debug("opening database session")
             async with session_factory() as session:

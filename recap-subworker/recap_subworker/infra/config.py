@@ -208,6 +208,30 @@ class Settings(BaseSettings):
         ge=50,
         description="Minimum number of entries required to run Bayes optimization",
     )
+    graph_build_enabled: bool = Field(
+        True,
+        description="Enable tag_label_graph rebuild before learning",
+    )
+    graph_build_windows: str = Field(
+        "7,30",
+        description="Comma-separated window days for graph building",
+    )
+    graph_build_max_tags: int = Field(
+        6,
+        ge=1,
+        description="Maximum tags per article to consider",
+    )
+    graph_build_min_confidence: float = Field(
+        0.55,
+        ge=0.0,
+        le=1.0,
+        description="Minimum tag confidence to include",
+    )
+    graph_build_min_support: int = Field(
+        3,
+        ge=1,
+        description="Minimum article count for an edge",
+    )
 
 
 @lru_cache(maxsize=1)
