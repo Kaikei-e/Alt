@@ -40,6 +40,7 @@ docs/
 
 # Testing
 tests/
+!recap-worker/tests/data/golden_classification.json
 benches/
 *.test
 *.bench
