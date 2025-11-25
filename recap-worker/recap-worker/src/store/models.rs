@@ -509,3 +509,79 @@ impl GenreLearningRecord {
         self
     }
 }
+
+/// ジャンル評価実行のメタデータ。
+#[derive(Debug, Clone)]
+pub(crate) struct GenreEvaluationRun {
+    pub(crate) run_id: Uuid,
+    pub(crate) dataset_path: String,
+    pub(crate) total_items: i32,
+    pub(crate) macro_precision: f64,
+    pub(crate) macro_recall: f64,
+    pub(crate) macro_f1: f64,
+    pub(crate) summary_tp: i32,
+    pub(crate) summary_fp: i32,
+    pub(crate) summary_fn: i32,
+}
+
+impl GenreEvaluationRun {
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new(
+        dataset_path: impl Into<String>,
+        total_items: usize,
+        macro_precision: f64,
+        macro_recall: f64,
+        macro_f1: f64,
+        summary_tp: usize,
+        summary_false_positive: usize,
+        summary_false_negative: usize,
+    ) -> Self {
+        Self {
+            run_id: Uuid::new_v4(),
+            dataset_path: dataset_path.into(),
+            total_items: total_items as i32,
+            macro_precision,
+            macro_recall,
+            macro_f1,
+            summary_tp: summary_tp as i32,
+            summary_fp: summary_false_positive as i32,
+            summary_fn: summary_false_negative as i32,
+        }
+    }
+}
+
+/// ジャンルごとの評価メトリクス。
+#[derive(Debug, Clone)]
+pub(crate) struct GenreEvaluationMetric {
+    pub(crate) genre: String,
+    pub(crate) tp: i32,
+    pub(crate) fp: i32,
+    pub(crate) fn_count: i32,
+    pub(crate) precision: f64,
+    pub(crate) recall: f64,
+    pub(crate) f1_score: f64,
+}
+
+impl GenreEvaluationMetric {
+    #[must_use]
+    pub(crate) fn new(
+        genre: impl Into<String>,
+        tp: usize,
+        fp: usize,
+        fn_count: usize,
+        precision: f64,
+        recall: f64,
+        f1_score: f64,
+    ) -> Self {
+        Self {
+            genre: genre.into(),
+            tp: tp as i32,
+            fp: fp as i32,
+            fn_count: fn_count as i32,
+            precision,
+            recall,
+            f1_score,
+        }
+    }
+}

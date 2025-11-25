@@ -14,6 +14,7 @@ use tracing::{error, info};
 
 use crate::app::AppState;
 use crate::classification::{ClassificationLanguage, GenreClassifier};
+use crate::store::models::{GenreEvaluationMetric, GenreEvaluationRun};
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct EvaluateRequest {
@@ -24,30 +25,8 @@ pub(crate) struct EvaluateRequest {
 
 #[derive(Serialize, Debug)]
 pub(crate) struct EvaluateResponse {
-    total_items: usize,
-    per_genre_metrics: Vec<GenreMetrics>,
-    macro_precision: f64,
-    macro_recall: f64,
-    macro_f1: f64,
-    summary: SummaryStats,
-}
-
-#[derive(Serialize, Debug)]
-struct GenreMetrics {
-    genre: String,
-    tp: usize,
-    fp: usize,
-    fn_count: usize,
-    precision: f64,
-    recall: f64,
-    f1_score: f64,
-}
-
-#[derive(Serialize, Debug)]
-struct SummaryStats {
-    tp: usize,
-    fp: usize,
-    fn_count: usize,
+    run_id: uuid::Uuid,
+    created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -264,47 +243,21 @@ fn load_golden_dataset(path: &PathBuf) -> anyhow::Result<Vec<GoldenItem>> {
     Ok(items)
 }
 
-/// POST /v1/evaluation/genres
-/// Golden Datasetを使用してジャンル分類の精度を評価する
-pub(crate) async fn evaluate_genres(
-    State(_state): State<AppState>,
-    Json(request): Json<EvaluateRequest>,
-) -> impl IntoResponse {
-    // Determine data path
-    let data_path = request.data_path.unwrap_or_else(|| {
+#[allow(dead_code)]
+fn determine_dataset_path(request: &EvaluateRequest) -> PathBuf {
+    let data_path = request.data_path.clone().unwrap_or_else(|| {
         std::env::var("RECAP_GOLDEN_DATASET_PATH")
             .unwrap_or_else(|_| "/app/data/golden_classification.json".to_string())
     });
-    let path = PathBuf::from(data_path);
+    PathBuf::from(data_path)
+}
 
-    info!("Loading golden dataset from: {}", path.display());
-
-    let golden_data = match load_golden_dataset(&path) {
-        Ok(data) => data,
-        Err(e) => {
-            error!(
-                error = %e,
-                path = %path.display(),
-                "Failed to load golden dataset"
-            );
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({
-                    "error": format!("Failed to load golden dataset: {}", e),
-                    "path": path.display().to_string(),
-                    "hint": "Check if the file exists and contains valid JSON array of items with 'id', 'content', and 'expected_genres' fields"
-                })),
-            )
-                .into_response();
-        }
-    };
-
-    info!("Loaded {} items", golden_data.len());
-
+#[allow(dead_code)]
+fn run_evaluation(golden_data: &[GoldenItem]) -> ConfusionMatrix {
     let classifier = GenreClassifier::new_default();
     let mut confusion_matrix = ConfusionMatrix::new();
 
-    for item in &golden_data {
+    for item in golden_data {
         let content = item.content();
         // Split content into title and body (first sentence as title, rest as body)
         let content_str: &str = &content;
@@ -334,6 +287,11 @@ pub(crate) async fn evaluate_genres(
         }
     }
 
+    confusion_matrix
+}
+
+#[allow(dead_code)]
+fn build_evaluation_metrics(confusion_matrix: &ConfusionMatrix) -> Vec<GenreEvaluationMetric> {
     // Collect all genres
     let all_genres: std::collections::HashSet<String> = confusion_matrix
         .tp
@@ -346,31 +304,109 @@ pub(crate) async fn evaluate_genres(
     let mut sorted_genres: Vec<String> = all_genres.into_iter().collect();
     sorted_genres.sort();
 
-    // Build per-genre metrics
-    let per_genre_metrics: Vec<GenreMetrics> = sorted_genres
+    // Build per-genre metrics for DB storage
+    sorted_genres
         .iter()
-        .map(|genre| GenreMetrics {
-            genre: genre.clone(),
-            tp: confusion_matrix.tp.get(genre).copied().unwrap_or(0),
-            fp: confusion_matrix.fp.get(genre).copied().unwrap_or(0),
-            fn_count: confusion_matrix.fn_count.get(genre).copied().unwrap_or(0),
-            precision: confusion_matrix.precision(genre),
-            recall: confusion_matrix.recall(genre),
-            f1_score: confusion_matrix.f1_score(genre),
+        .map(|genre| {
+            GenreEvaluationMetric::new(
+                genre.clone(),
+                confusion_matrix.tp.get(genre).copied().unwrap_or(0),
+                confusion_matrix.fp.get(genre).copied().unwrap_or(0),
+                confusion_matrix.fn_count.get(genre).copied().unwrap_or(0),
+                confusion_matrix.precision(genre),
+                confusion_matrix.recall(genre),
+                confusion_matrix.f1_score(genre),
+            )
         })
-        .collect();
+        .collect()
+}
+
+/// POST /v1/evaluation/genres
+/// Golden Datasetを使用してジャンル分類の精度を評価する
+/// 評価結果はDBに保存され、run_idが返される
+pub(crate) async fn evaluate_genres(
+    State(state): State<AppState>,
+    Json(request): Json<EvaluateRequest>,
+) -> impl IntoResponse {
+    let path = determine_dataset_path(&request);
+    info!("Loading golden dataset from: {}", path.display());
+
+    let golden_data = match load_golden_dataset(&path) {
+        Ok(data) => data,
+        Err(e) => {
+            error!(
+                error = %e,
+                path = %path.display(),
+                "Failed to load golden dataset"
+            );
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("Failed to load golden dataset: {}", e),
+                    "path": path.display().to_string(),
+                    "hint": "Check if the file exists and contains valid JSON array of items with 'id', 'content', and 'expected_genres' fields"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    info!("Loaded {} items", golden_data.len());
+
+    let confusion_matrix = run_evaluation(&golden_data);
+    let per_genre_metrics = build_evaluation_metrics(&confusion_matrix);
+
+    let evaluation_run = GenreEvaluationRun::new(
+        path.display().to_string(),
+        golden_data.len(),
+        confusion_matrix.macro_precision(),
+        confusion_matrix.macro_recall(),
+        confusion_matrix.macro_f1(),
+        confusion_matrix.total_tp(),
+        confusion_matrix.total_fp(),
+        confusion_matrix.total_fn(),
+    );
+
+    info!(
+        run_id = %evaluation_run.run_id,
+        total_items = golden_data.len(),
+        macro_precision = confusion_matrix.macro_precision(),
+        macro_recall = confusion_matrix.macro_recall(),
+        macro_f1 = confusion_matrix.macro_f1(),
+        summary_tp = confusion_matrix.total_tp(),
+        summary_fp = confusion_matrix.total_fp(),
+        summary_fn = confusion_matrix.total_fn(),
+        "Evaluation completed"
+    );
+
+    match state
+        .dao()
+        .save_genre_evaluation(&evaluation_run, &per_genre_metrics)
+        .await
+    {
+        Ok(()) => {
+            info!(run_id = %evaluation_run.run_id, "Evaluation results saved to database");
+        }
+        Err(e) => {
+            error!(
+                error = %e,
+                run_id = %evaluation_run.run_id,
+                "Failed to save evaluation results to database"
+            );
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "Failed to save evaluation results",
+                    "run_id": evaluation_run.run_id,
+                })),
+            )
+                .into_response();
+        }
+    }
 
     let response = EvaluateResponse {
-        total_items: golden_data.len(),
-        per_genre_metrics,
-        macro_precision: confusion_matrix.macro_precision(),
-        macro_recall: confusion_matrix.macro_recall(),
-        macro_f1: confusion_matrix.macro_f1(),
-        summary: SummaryStats {
-            tp: confusion_matrix.total_tp(),
-            fp: confusion_matrix.total_fp(),
-            fn_count: confusion_matrix.total_fn(),
-        },
+        run_id: evaluation_run.run_id,
+        created_at: chrono::Utc::now(),
     };
 
     (StatusCode::OK, Json(response)).into_response()

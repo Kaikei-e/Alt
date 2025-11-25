@@ -1060,6 +1060,76 @@ impl RecapDao {
 
         Ok(grouped)
     }
+
+    /// ジャンル評価実行のメタデータとメトリクスを保存する。
+    ///
+    /// トランザクション内で実行され、run_idとper-genreメトリクスを一括で保存します。
+    pub async fn save_genre_evaluation(
+        &self,
+        run: &crate::store::models::GenreEvaluationRun,
+        metrics: &[crate::store::models::GenreEvaluationMetric],
+    ) -> Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .context("failed to begin transaction for genre evaluation")?;
+
+        // Insert run metadata
+        sqlx::query(
+            r"
+            INSERT INTO recap_genre_evaluation_runs
+                (run_id, dataset_path, total_items, macro_precision, macro_recall, macro_f1,
+                 summary_tp, summary_fp, summary_fn)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ",
+        )
+        .bind(run.run_id)
+        .bind(&run.dataset_path)
+        .bind(run.total_items)
+        .bind(run.macro_precision)
+        .bind(run.macro_recall)
+        .bind(run.macro_f1)
+        .bind(run.summary_tp)
+        .bind(run.summary_fp)
+        .bind(run.summary_fn)
+        .execute(&mut *tx)
+        .await
+        .context("failed to insert genre evaluation run")?;
+
+        // Bulk insert per-genre metrics
+        for metric in metrics {
+            sqlx::query(
+                r"
+                INSERT INTO recap_genre_evaluation_metrics
+                    (run_id, genre, tp, fp, fn_count, precision, recall, f1_score)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ",
+            )
+            .bind(run.run_id)
+            .bind(&metric.genre)
+            .bind(metric.tp)
+            .bind(metric.fp)
+            .bind(metric.fn_count)
+            .bind(metric.precision)
+            .bind(metric.recall)
+            .bind(metric.f1_score)
+            .execute(&mut *tx)
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to insert genre evaluation metric for genre: {}",
+                    metric.genre
+                )
+            })?;
+        }
+
+        tx.commit()
+            .await
+            .context("failed to commit genre evaluation transaction")?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1074,7 +1144,7 @@ mod tests {
     use sqlx::{Executor, Row, postgres::PgPoolOptions};
     use uuid::Uuid;
 
-    async fn setup_schema(pool: &PgPool) -> Result<()> {
+    async fn setup_subworker_tables(pool: &PgPool) -> Result<()> {
         pool.execute(
             r"
             CREATE TABLE IF NOT EXISTS recap_subworker_runs (
@@ -1119,7 +1189,15 @@ mod tests {
                 value JSONB NOT NULL,
                 PRIMARY KEY (run_id, metric)
             );
+            ",
+        )
+        .await?;
+        Ok(())
+    }
 
+    async fn setup_learning_tables(pool: &PgPool) -> Result<()> {
+        pool.execute(
+            r"
             CREATE TABLE IF NOT EXISTS recap_genre_learning_results (
                 job_id UUID NOT NULL,
                 article_id TEXT NOT NULL,
@@ -1145,7 +1223,15 @@ mod tests {
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY (window_label, genre, tag)
             );
+            ",
+        )
+        .await?;
+        Ok(())
+    }
 
+    async fn setup_recap_tables(pool: &PgPool) -> Result<()> {
+        pool.execute(
+            r"
             CREATE TABLE IF NOT EXISTS recap_sections (
                 job_id UUID NOT NULL,
                 genre TEXT NOT NULL,
@@ -1168,6 +1254,47 @@ mod tests {
             ",
         )
         .await?;
+        Ok(())
+    }
+
+    async fn setup_evaluation_tables(pool: &PgPool) -> Result<()> {
+        pool.execute(
+            r"
+            CREATE TABLE IF NOT EXISTS recap_genre_evaluation_runs (
+                run_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                dataset_path TEXT NOT NULL,
+                total_items INTEGER NOT NULL,
+                macro_precision DOUBLE PRECISION NOT NULL,
+                macro_recall DOUBLE PRECISION NOT NULL,
+                macro_f1 DOUBLE PRECISION NOT NULL,
+                summary_tp INTEGER NOT NULL,
+                summary_fp INTEGER NOT NULL,
+                summary_fn INTEGER NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS recap_genre_evaluation_metrics (
+                run_id UUID NOT NULL REFERENCES recap_genre_evaluation_runs(run_id) ON DELETE CASCADE,
+                genre TEXT NOT NULL,
+                tp INTEGER NOT NULL,
+                fp INTEGER NOT NULL,
+                fn_count INTEGER NOT NULL,
+                precision DOUBLE PRECISION NOT NULL,
+                recall DOUBLE PRECISION NOT NULL,
+                f1_score DOUBLE PRECISION NOT NULL,
+                PRIMARY KEY (run_id, genre)
+            );
+            ",
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn setup_schema(pool: &PgPool) -> Result<()> {
+        setup_subworker_tables(pool).await?;
+        setup_learning_tables(pool).await?;
+        setup_recap_tables(pool).await?;
+        setup_evaluation_tables(pool).await?;
         Ok(())
     }
 
@@ -1473,6 +1600,81 @@ mod tests {
 
         assert_eq!(stored_job_id, job_id);
         assert_eq!(stored_article_id, "article-1");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn save_genre_evaluation_inserts() -> Result<()> {
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&database_url)
+            .await?;
+        setup_schema(&pool).await?;
+        let dao = RecapDao::new(pool.clone());
+
+        use crate::store::models::{GenreEvaluationMetric, GenreEvaluationRun};
+
+        let run = GenreEvaluationRun::new(
+            "/app/data/golden_classification.json",
+            16,
+            0.526_315_789_473_684_2,
+            0.416_666_666_666_666_63,
+            0.465_116_279_069_767_4,
+            13,
+            35,
+            19,
+        );
+
+        let metrics = vec![
+            GenreEvaluationMetric::new("ai", 2, 0, 0, 1.0, 1.0, 1.0),
+            GenreEvaluationMetric::new("business", 1, 1, 2, 0.5, 0.333_333_333_333_333_3, 0.4),
+        ];
+
+        dao.save_genre_evaluation(&run, &metrics).await?;
+
+        // Verify run was inserted
+        let row = sqlx::query(
+            r"SELECT run_id, dataset_path, total_items, macro_precision FROM recap_genre_evaluation_runs WHERE run_id = $1",
+        )
+        .bind(run.run_id)
+        .fetch_one(&pool)
+        .await?;
+
+        let stored_run_id: Uuid = row.get("run_id");
+        let stored_path: String = row.get("dataset_path");
+        let stored_total: i32 = row.get("total_items");
+        let stored_macro_precision: f64 = row.get("macro_precision");
+
+        assert_eq!(stored_run_id, run.run_id);
+        assert_eq!(stored_path, "/app/data/golden_classification.json");
+        assert_eq!(stored_total, 16);
+        assert!((stored_macro_precision - 0.526_315_789_473_684_2).abs() < 0.0001);
+
+        // Verify metrics were inserted
+        let metric_rows = sqlx::query(
+            r"SELECT genre, tp, fp, fn_count, precision, recall, f1_score FROM recap_genre_evaluation_metrics WHERE run_id = $1 ORDER BY genre",
+        )
+        .bind(run.run_id)
+        .fetch_all(&pool)
+        .await?;
+
+        assert_eq!(metric_rows.len(), 2);
+
+        let ai_row = &metric_rows[0];
+        assert_eq!(ai_row.get::<String, _>("genre"), "ai");
+        assert_eq!(ai_row.get::<i32, _>("tp"), 2);
+        assert_eq!(ai_row.get::<i32, _>("fp"), 0);
+        assert_eq!(ai_row.get::<i32, _>("fn_count"), 0);
+
+        let business_row = &metric_rows[1];
+        assert_eq!(business_row.get::<String, _>("genre"), "business");
+        assert_eq!(business_row.get::<i32, _>("tp"), 1);
+        assert_eq!(business_row.get::<i32, _>("fp"), 1);
+        assert_eq!(business_row.get::<i32, _>("fn_count"), 2);
+
         Ok(())
     }
 }
