@@ -109,6 +109,15 @@ type FeedSummaryProvidedResponse struct {
 	RequestedCount  int                        `json:"requested_count"`
 }
 
+// ArticleInfo holds information about an article during batch processing
+type ArticleInfo struct {
+	URL    string
+	ID     string
+	Title  string
+	Exists bool
+	Error  error
+}
+
 // ImageFetchRequest represents the request payload for image fetching endpoint
 type ImageFetchRequest struct {
 	URL     string             `json:"url" validate:"required,url"`

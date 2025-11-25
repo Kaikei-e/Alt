@@ -204,6 +204,14 @@ func (v *SSRFValidator) validatePath(u *url.URL) error {
 
 // validatePorts ensures only allowed ports are used
 func (v *SSRFValidator) validatePorts(u *url.URL) error {
+	// Skip port validation in testing mode for localhost
+	if v.allowTestingLocalhost {
+		hostname := u.Hostname()
+		if hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127.") {
+			return nil
+		}
+	}
+
 	if u.Port() != "" {
 		if !v.allowedPorts[u.Port()] {
 			return &ValidationError{

@@ -56,6 +56,7 @@ import (
 	"alt/usecase/search_article_usecase"
 	"alt/usecase/search_feed_usecase"
 	"alt/utils"
+	"alt/utils/batch_article_fetcher"
 	"alt/utils/rate_limiter"
 	"net/http"
 	"time"
@@ -103,6 +104,7 @@ type ApplicationComponents struct {
 	RecapUsecase                        *recap_usecase.RecapUsecase
 	MorningUsecase                      morning_letter_port.MorningUsecase
 	ScrapingDomainUsecase               *scraping_domain_usecase.ScrapingDomainUsecase
+	BatchArticleFetcher                 *batch_article_fetcher.BatchArticleFetcher
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -182,6 +184,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	fetchArticleUsecase := fetch_article_usecase.NewArticleUsecase(fetchArticleGatewayImpl)
 	archiveArticleGatewayImpl := archive_article_gateway.NewArchiveArticleGateway(altDBRepository)
 	archiveArticleUsecase := archive_article_usecase.NewArchiveArticleUsecase(fetchArticleGatewayImpl, archiveArticleGatewayImpl)
+
+	// Batch article fetcher for efficient multi-URL fetching with domain-based rate limiting
+	batchArticleFetcher := batch_article_fetcher.NewBatchArticleFetcher(rateLimiter, httpClient)
 
 	// Fetch articles with cursor components
 	fetchArticlesGatewayImpl := article_gateway.NewFetchArticlesGateway(pool)
@@ -264,5 +269,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		RecapUsecase:                        recapUsecase,
 		MorningUsecase:                      morningUsecase,
 		ScrapingDomainUsecase:               scrapingDomainUsecase,
+		BatchArticleFetcher:                 batchArticleFetcher,
 	}
 }

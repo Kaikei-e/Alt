@@ -957,43 +957,91 @@ func handleFetchArticleSummary(container *di.ApplicationComponents, cfg *config.
 
 		logger.Logger.Info("Fetching article summaries", "url_count", len(req.FeedURLs))
 
-		// Process each URL
-		var matchedArticles []InoreaderSummaryResponse
-		for _, feedURL := range req.FeedURLs {
-			// Step 1: Check if article exists in DB
-			var articleID string
-			var articleTitle string
+		// Step 1: Check which articles exist in DB and collect URLs that need fetching
+		urlsToFetch := make([]string, 0)
+		articleMap := make(map[string]*ArticleInfo) // url -> article info
 
+		for _, feedURL := range req.FeedURLs {
 			existingArticle, err := container.AltDBRepository.FetchArticleByURL(c.Request().Context(), feedURL)
 			if err != nil {
 				logger.Logger.Error("Failed to check for existing article", "error", err, "url", feedURL)
-				continue // Skip this URL and continue with others
+				// Create placeholder for failed lookup
+				articleMap[feedURL] = &ArticleInfo{URL: feedURL, Error: err}
+				continue
 			}
 
 			if existingArticle != nil {
 				// Article exists in DB
 				logger.Logger.Info("Article found in database", "article_id", existingArticle.ID, "url", feedURL)
-				articleID = existingArticle.ID
-				articleTitle = existingArticle.Title
+				articleMap[feedURL] = &ArticleInfo{
+					URL:    feedURL,
+					ID:     existingArticle.ID,
+					Title:  existingArticle.Title,
+					Exists: true,
+				}
 			} else {
-				// Article does not exist, fetch from Web
-				logger.Logger.Info("Article not found in database, fetching from Web", "url", feedURL)
-				fetchedContent, _, fetchedTitle, fetchErr := fetchArticleContent(c.Request().Context(), feedURL, container)
-				if fetchErr != nil {
-					logger.Logger.Error("Failed to fetch article content", "error", fetchErr, "url", feedURL)
-					continue // Skip this URL and continue with others
+				// Article does not exist, add to fetch list
+				urlsToFetch = append(urlsToFetch, feedURL)
+				articleMap[feedURL] = &ArticleInfo{URL: feedURL, Exists: false}
+			}
+		}
+
+		// Step 2: Batch fetch articles that don't exist in DB
+		if len(urlsToFetch) > 0 {
+			logger.Logger.Info("Fetching articles from Web", "url_count", len(urlsToFetch))
+			fetchResults := container.BatchArticleFetcher.FetchMultiple(c.Request().Context(), urlsToFetch)
+
+			// Save fetched articles to DB
+			for urlStr, result := range fetchResults {
+				if result.Error != nil {
+					logger.Logger.Error("Failed to fetch article content", "error", result.Error, "url", urlStr)
+					if info, ok := articleMap[urlStr]; ok {
+						info.Error = result.Error
+					}
+					continue
 				}
 
-				var saveErr error
-				articleID, saveErr = container.AltDBRepository.SaveArticle(c.Request().Context(), feedURL, fetchedTitle, fetchedContent)
+				// Save to DB
+				articleID, saveErr := container.AltDBRepository.SaveArticle(c.Request().Context(), urlStr, result.Title, result.Content)
 				if saveErr != nil {
-					logger.Logger.Error("Failed to save article to database", "error", saveErr, "url", feedURL)
-					continue // Skip this URL and continue with others
+					logger.Logger.Error("Failed to save article to database", "error", saveErr, "url", urlStr)
+					if info, ok := articleMap[urlStr]; ok {
+						info.Error = saveErr
+					}
+					continue
 				}
-				articleTitle = fetchedTitle
+
+				// Update article map with fetched data
+				if info, ok := articleMap[urlStr]; ok {
+					info.ID = articleID
+					info.Title = result.Title
+					info.Exists = true
+				}
+			}
+		}
+
+		// Step 3: Process each URL for summary generation
+		var matchedArticles []InoreaderSummaryResponse
+		for _, feedURL := range req.FeedURLs {
+			articleInfo, ok := articleMap[feedURL]
+			if !ok {
+				logger.Logger.Error("Skipping URL: article info not found", "url", feedURL)
+				continue
+			}
+			if articleInfo.Error != nil {
+				logger.Logger.Error("Skipping URL due to error", "url", feedURL, "error", articleInfo.Error)
+				continue
 			}
 
-			// Step 2: Try to fetch existing summary from database
+			if !articleInfo.Exists || articleInfo.ID == "" {
+				logger.Logger.Warn("Article not found or ID missing", "url", feedURL)
+				continue
+			}
+
+			articleID := articleInfo.ID
+			articleTitle := articleInfo.Title
+
+			// Try to fetch existing summary from database
 			var summary string
 			var fromCache bool
 			existingSummary, err := container.AltDBRepository.FetchArticleSummaryByArticleID(c.Request().Context(), articleID)
@@ -1002,7 +1050,7 @@ func handleFetchArticleSummary(container *di.ApplicationComponents, cfg *config.
 				summary = existingSummary.Summary
 				fromCache = true
 			} else {
-				// Step 3: Generate new summary if not found in database
+				// Generate new summary if not found in database
 				logger.Logger.Info("No existing summary found, generating new summary", "article_id", articleID, "feed_url", feedURL)
 
 				// Small delay to ensure DB transaction is committed before pre-processor reads
@@ -1015,7 +1063,7 @@ func handleFetchArticleSummary(container *di.ApplicationComponents, cfg *config.
 					continue // Skip this URL and continue with others
 				}
 
-				// Step 4: Save the generated summary to database
+				// Save the generated summary to database
 				if err := container.AltDBRepository.SaveArticleSummary(c.Request().Context(), articleID, articleTitle, summary); err != nil {
 					logger.Logger.Error("Failed to save article summary to database", "error", err, "article_id", articleID, "feed_url", feedURL)
 					// Continue even if save fails - we still have the summary to return
