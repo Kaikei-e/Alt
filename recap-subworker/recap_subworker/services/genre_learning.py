@@ -469,6 +469,7 @@ class GenreLearningService:
         bayes_iterations: int = DEFAULT_BAYES_ITERATIONS,
         bayes_seed: int = DEFAULT_BAYES_SEED,
         bayes_min_samples: int = DEFAULT_BAYES_MIN_SAMPLES,
+        tag_label_graph_window: str = "7d",
     ) -> None:
         self.session = session
         self.graph_margin = graph_margin
@@ -478,6 +479,7 @@ class GenreLearningService:
         self.bayes_iterations = bayes_iterations
         self.bayes_seed = bayes_seed
         self.bayes_min_samples = bayes_min_samples
+        self.tag_label_graph_window = tag_label_graph_window
 
     async def fetch_available_genres(
         self,
@@ -531,6 +533,69 @@ class GenreLearningService:
             min_samples_per_genre=min_samples_per_genre,
         )
         return genres
+
+    async def _recompute_graph_boosts(self, rows: list[dict[str, Any]]) -> None:
+        """Recompute graph_boost values from tag_label_graph for all candidates."""
+        import structlog
+
+        logger = structlog.get_logger(__name__)
+
+        # Load tag_label_graph into memory
+        query = text("""
+            SELECT genre, tag, weight
+            FROM tag_label_graph
+            WHERE window_label = :window_label
+        """)
+        result = await self.session.execute(
+            query, {"window_label": self.tag_label_graph_window}
+        )
+        graph_edges: dict[tuple[str, str], float] = {}
+        for row in result.all():
+            genre = (row.genre or "").strip().lower()
+            tag = (row.tag or "").strip().lower()
+            weight = float(row.weight or 0.0)
+            if genre and tag:
+                graph_edges[(genre, tag)] = weight
+
+        logger.debug(
+            "loaded tag_label_graph",
+            window_label=self.tag_label_graph_window,
+            edge_count=len(graph_edges),
+        )
+
+        # Recompute graph_boost for each row
+        for row in rows:
+            candidates = _ensure_list(row.get("coarse_candidates"))
+            tag_profile = _ensure_dict(row.get("tag_profile"))
+            raw_top_tags = _ensure_list(tag_profile.get("top_tags"))
+
+            # Extract tag labels and confidences
+            tag_signals: list[tuple[str, float]] = []
+            for tag in raw_top_tags:
+                if not isinstance(tag, dict):
+                    continue
+                label = (tag.get("label") or "").strip().lower()
+                confidence = float(tag.get("confidence") or 0.0)
+                if label and confidence > 0:
+                    tag_signals.append((label, confidence))
+
+            # Recompute graph_boost for each candidate
+            for candidate in candidates:
+                genre = (candidate.get("genre") or "").strip().lower()
+                if not genre:
+                    continue
+
+                # Compute boost: sum of (weight * tag.confidence) for all tags
+                boost = sum(
+                    graph_edges.get((genre, tag_label), 0.0) * tag_conf
+                    for tag_label, tag_conf in tag_signals
+                )
+                candidate["graph_boost"] = boost
+
+        logger.debug(
+            "recomputed graph_boost values",
+            row_count=len(rows),
+        )
 
     async def fetch_snapshot_rows(
         self,
@@ -620,6 +685,8 @@ class GenreLearningService:
             "building graph boost snapshot entries",
             row_count=len(rows),
         )
+        # Recompute graph_boost from tag_label_graph
+        await self._recompute_graph_boosts(rows)
         entries = build_graph_boost_snapshot_entries(rows, self.graph_margin)
         logger.debug(
             "summarizing entries",
@@ -645,6 +712,9 @@ class GenreLearningService:
                             hint="tag_label_graph may be empty, waiting for next rebuild cycle",
                         )
                         # Skip Bayes optimization and use default values
+                        # Set default values to ensure graph_override is populated
+                        summary.boost_threshold_reference = 0.0
+                        summary.tag_count_threshold_reference = 0
                     else:
                         best_params, train_accuracy, test_accuracy = run_bayes_optimization(
                             df, self.bayes_iterations, self.bayes_seed

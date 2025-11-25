@@ -182,7 +182,7 @@ def _build_learning_payload(result: GenreLearningResult) -> dict[str, object]:
     graph_override: dict[str, object] = {
         "graph_margin": result.summary.graph_margin_reference,
     }
-    # Add optimized thresholds if available
+    # Add optimized thresholds if available (always include if set, even if 0.0/0)
     if result.summary.boost_threshold_reference is not None:
         graph_override["boost_threshold"] = result.summary.boost_threshold_reference
     if result.summary.tag_count_threshold_reference is not None:

@@ -125,6 +125,7 @@ def get_learning_service(
         bayes_iterations=settings.learning_bayes_iterations,
         bayes_seed=settings.learning_bayes_seed,
         bayes_min_samples=settings.learning_bayes_min_samples,
+        tag_label_graph_window="7d",  # Use 7d window for learning
     )
     logger.debug(
         "learning service created",
