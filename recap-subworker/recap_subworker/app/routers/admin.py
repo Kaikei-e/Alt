@@ -17,7 +17,9 @@ from ..deps import (
 )
 from ...services.learning_client import LearningClient
 from ...services.genre_learning import GenreLearningResult, GenreLearningService
+from ...services.tag_label_graph_builder import TagLabelGraphBuilder
 from ...infra.config import Settings
+from ..deps import get_session
 
 
 router = APIRouter(tags=["admin"])
@@ -33,16 +35,107 @@ async def warmup(
     return pipeline.warmup()
 
 
+@router.post("/build-graph", status_code=status.HTTP_200_OK)
+async def build_tag_label_graph(
+    settings: Settings = Depends(get_settings_dep),
+    session=Depends(get_session),
+) -> dict[str, object]:
+    """Manually trigger tag_label_graph rebuild."""
+    import structlog
+
+    logger = structlog.get_logger(__name__)
+    logger.info("manually triggering tag_label_graph rebuild")
+
+    if not settings.graph_build_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="graph_build_enabled is False",
+        )
+
+    try:
+        builder = TagLabelGraphBuilder(
+            session=session,
+            max_tags=settings.graph_build_max_tags,
+            min_confidence=settings.graph_build_min_confidence,
+            min_support=settings.graph_build_min_support,
+        )
+        windows = [
+            int(w.strip())
+            for w in settings.graph_build_windows.split(",")
+            if w.strip()
+        ]
+
+        results: dict[str, int] = {}
+        for window_days in windows:
+            edge_count = await builder.build_graph(window_days)
+            results[f"{window_days}d"] = edge_count
+            logger.info(
+                "tag_label_graph built",
+                window_days=window_days,
+                edge_count=edge_count,
+            )
+
+        return {
+            "status": "success",
+            "edge_counts": results,
+            "total_edges": sum(results.values()),
+        }
+    except Exception as exc:
+        logger.error(
+            "failed to build tag_label_graph",
+            error=str(exc),
+            error_type=type(exc).__name__,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"failed to build tag_label_graph: {exc}",
+        ) from exc
+
+
 @router.post("/learning", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_genre_learning(
     service: GenreLearningService = Depends(get_learning_service),
     client: LearningClient = Depends(get_learning_client),
     settings: Settings = Depends(get_settings_dep),
+    session=Depends(get_session),
 ) -> dict[str, object]:
     import structlog
 
     logger = structlog.get_logger(__name__)
     logger.info("triggering genre learning task")
+
+    # Phase 1: Rebuild tag_label_graph BEFORE learning
+    if settings.graph_build_enabled:
+        try:
+            logger.debug("rebuilding tag_label_graph before learning")
+            builder = TagLabelGraphBuilder(
+                session=session,
+                max_tags=settings.graph_build_max_tags,
+                min_confidence=settings.graph_build_min_confidence,
+                min_support=settings.graph_build_min_support,
+            )
+            windows = [
+                int(w.strip())
+                for w in settings.graph_build_windows.split(",")
+                if w.strip()
+            ]
+            for window_days in windows:
+                edge_count = await builder.build_graph(window_days)
+                logger.info(
+                    "tag_label_graph rebuilt before learning",
+                    window_days=window_days,
+                    edge_count=edge_count,
+                )
+        except Exception as exc:
+            logger.error(
+                "failed to rebuild tag_label_graph before learning",
+                error=str(exc),
+                error_type=type(exc).__name__,
+                exc_info=True,
+            )
+            # Continue with learning even if graph rebuild fails
+
     try:
         logger.debug("generating learning result")
         learning_result = await service.generate_learning_result(
