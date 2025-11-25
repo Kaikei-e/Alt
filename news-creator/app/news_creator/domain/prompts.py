@@ -45,12 +45,14 @@ CRITICAL OUTPUT FORMAT:
 - Do NOT wrap output in markdown code blocks (no ``` or ```json)
 - Output ONLY the JSON object, nothing before or after
 - Do NOT include any introductory text or explanations before or after the JSON
+- ABSOLUTELY FORBIDDEN: Triple backticks (\`\`\`), markdown syntax, text before {{, text after }}
 
 IMPORTANT:
 - Output raw JSON only. Do NOT use markdown code blocks (e.g. ```json or ```).
 - Do NOT include any introductory text or explanations before or after the JSON.
 - Ensure the JSON is valid and strictly follows the schema below.
 - Use double quotes for all strings. No trailing commas.
+- The title field must be a plain string, NOT a code block marker like "```json"
 
 WRONG (do NOT output like this):
 ```json
