@@ -295,6 +295,7 @@ pub(crate) struct DbTagLabelGraphSource {
     window_label: String,
     ttl: Duration,
     state: RwLock<TagLabelGraphState>,
+    refresh_mutex: tokio::sync::Mutex<()>, // Serialize refresh operations
 }
 
 struct TagLabelGraphState {
@@ -319,6 +320,7 @@ impl DbTagLabelGraphSource {
                 cache: TagLabelGraphCache::empty(),
                 loaded_at: None,
             }),
+            refresh_mutex: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -348,6 +350,7 @@ impl DbTagLabelGraphSource {
 #[async_trait]
 impl TagLabelGraphSource for DbTagLabelGraphSource {
     async fn snapshot(&self) -> Result<TagLabelGraphCache> {
+        // Fast path: check if cache is fresh
         {
             let guard = self.state.read().await;
             if guard.is_fresh(self.ttl) {
@@ -355,6 +358,18 @@ impl TagLabelGraphSource for DbTagLabelGraphSource {
             }
         }
 
+        // Serialize refresh operations to prevent connection pool exhaustion
+        let _refresh_guard = self.refresh_mutex.lock().await;
+
+        // Double-check after acquiring mutex (another task may have refreshed)
+        {
+            let guard = self.state.read().await;
+            if guard.is_fresh(self.ttl) {
+                return Ok(guard.cache.clone());
+            }
+        }
+
+        // Perform refresh
         if let Err(err) = self.refresh().await {
             {
                 let guard = self.state.read().await;
@@ -552,8 +567,19 @@ impl RefineEngine for DefaultRefineEngine {
 
         // Log graph boost effectiveness
         let active_boost_count = graph_boosts.values().filter(|&&v| v > 0.0).count();
+        let total_boost_sum: f32 = graph_boosts.values().sum();
         if active_boost_count == 0 {
-            tracing::warn!("no active graph boosts - tag_label_graph may be empty");
+            tracing::warn!(
+                total_tags = input.tag_profile.top_tags.len(),
+                total_boost_sum = total_boost_sum,
+                "no active graph boosts - tag_label_graph may be empty or tags don't match"
+            );
+        } else {
+            tracing::debug!(
+                active_boost_count = active_boost_count,
+                total_boost_sum = total_boost_sum,
+                "graph boosts active"
+            );
         }
 
         let mut scored: Vec<(&GenreCandidate, f32)> = input
@@ -703,16 +729,52 @@ fn compute_graph_boosts(
     tags: &[TagSignal],
 ) -> FxHashMap<String, f32> {
     let mut boosts: FxHashMap<String, f32> = FxHashMap::default();
+
+    // Debug: Log tag matching attempts (only for first candidate to avoid log spam)
+    let mut logged_debug = false;
+
     for (normalized, candidate) in candidates {
-        let boost = tags
-            .iter()
-            .map(|tag| {
-                let tag_norm = normalize(&tag.label);
-                let weight = graph.weight(&candidate.name, &tag_norm).unwrap_or(0.0);
-                weight * tag.confidence
-            })
-            .sum::<f32>();
-        boosts.insert(normalized.clone(), boost);
+        let mut candidate_boost = 0.0;
+        let mut matched_tags = Vec::new();
+        let mut unmatched_tags = Vec::new();
+
+        for tag in tags {
+            let tag_norm = normalize(&tag.label);
+            // Normalize genre name for matching (graph stores lowercase)
+            let genre_norm = normalize(&candidate.name);
+            let weight = graph.weight(&genre_norm, &tag_norm).unwrap_or(0.0);
+            let contribution = weight * tag.confidence;
+            candidate_boost += contribution;
+
+            if !logged_debug {
+                if weight > 0.0 {
+                    matched_tags.push((tag.label.clone(), tag_norm, weight, tag.confidence));
+                } else {
+                    unmatched_tags.push((tag.label.clone(), tag_norm));
+                }
+            }
+        }
+
+        if !logged_debug && !tags.is_empty() {
+            if matched_tags.is_empty() && !unmatched_tags.is_empty() {
+                tracing::debug!(
+                    genre = %candidate.name,
+                    tag_count = tags.len(),
+                    unmatched_sample = ?unmatched_tags.iter().take(5).map(|(l, n)| format!("{} -> {}", l, n)).collect::<Vec<_>>(),
+                    "no graph boost matches found for genre"
+                );
+            } else if !matched_tags.is_empty() {
+                tracing::debug!(
+                    genre = %candidate.name,
+                    matched_count = matched_tags.len(),
+                    matched_sample = ?matched_tags.iter().take(3).map(|(l, n, w, c)| format!("{} -> {} (w={}, c={})", l, n, w, c)).collect::<Vec<_>>(),
+                    "graph boost matches found"
+                );
+            }
+            logged_debug = true;
+        }
+
+        boosts.insert(normalized.clone(), candidate_boost);
     }
     boosts
 }
