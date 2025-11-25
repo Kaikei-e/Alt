@@ -740,6 +740,90 @@ table "sync_state" {
     columns = [column.stream_id]
   }
 }
+table "scraping_domains" {
+  schema = schema.public
+  column "id" {
+    null    = false
+    type    = uuid
+    default = sql("gen_random_uuid()")
+  }
+  column "domain" {
+    null    = false
+    type    = text
+    comment = "Domain name (e.g., example.com)"
+  }
+  column "scheme" {
+    null    = false
+    type    = text
+    default = "https"
+    comment = "Protocol scheme (http or https)"
+  }
+  column "allow_fetch_body" {
+    null    = false
+    type    = boolean
+    default = true
+    comment = "Whether to allow fetching article bodies"
+  }
+  column "allow_ml_training" {
+    null    = false
+    type    = boolean
+    default = true
+    comment = "Whether to allow using content for ML training/summarization"
+  }
+  column "allow_cache_days" {
+    null    = false
+    type    = integer
+    default = 7
+    comment = "Days to keep article body in cache"
+  }
+  column "force_respect_robots" {
+    null    = false
+    type    = boolean
+    default = true
+    comment = "Whether to strictly respect robots.txt"
+  }
+  column "robots_txt_url" {
+    null = true
+    type = text
+  }
+  column "robots_txt_content" {
+    null = true
+    type = text
+  }
+  column "robots_txt_fetched_at" {
+    null = true
+    type = timestamptz
+  }
+  column "robots_txt_last_status" {
+    null = true
+    type = integer
+  }
+  column "robots_crawl_delay_sec" {
+    null = true
+    type = integer
+  }
+  column "robots_disallow_paths" {
+    null = true
+    type = jsonb
+    default = "[]"
+  }
+  column "created_at" {
+    null    = false
+    type    = timestamptz
+    default = sql("now()")
+  }
+  column "updated_at" {
+    null    = false
+    type    = timestamptz
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.id]
+  }
+  unique "scraping_domains_domain_key" {
+    columns = [column.domain]
+  }
+}
 schema "public" {
   comment = "standard public schema"
 }
