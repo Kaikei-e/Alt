@@ -83,12 +83,16 @@ func (u *ScrapingDomainUsecase) RefreshRobotsTxt(ctx context.Context, id uuid.UU
 	// Update domain with robots.txt data
 	robotsTxtURL := fmt.Sprintf("%s://%s/robots.txt", scrapingDomain.Scheme, scrapingDomain.Domain)
 	scrapingDomain.RobotsTxtURL = &robotsTxtURL
-	scrapingDomain.RobotsTxtContent = &robotsTxt.Content
+	// Copy Content to avoid dangling pointer
+	content := robotsTxt.Content
+	scrapingDomain.RobotsTxtContent = &content
 	now := time.Now()
 	scrapingDomain.RobotsTxtFetchedAt = &now
 	statusCode := robotsTxt.StatusCode
 	scrapingDomain.RobotsTxtLastStatus = &statusCode
-	scrapingDomain.RobotsCrawlDelaySec = &robotsTxt.CrawlDelay
+	// Copy CrawlDelay to avoid dangling pointer
+	crawlDelay := robotsTxt.CrawlDelay
+	scrapingDomain.RobotsCrawlDelaySec = &crawlDelay
 	scrapingDomain.RobotsDisallowPaths = robotsTxt.DisallowPaths
 	scrapingDomain.UpdatedAt = now
 
