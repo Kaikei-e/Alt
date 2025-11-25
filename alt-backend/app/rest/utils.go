@@ -169,7 +169,7 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 	}
 
 	// Create Secure HTTP client with timeout and SSRF protection (DNS rebinding prevention)
-	client := ssrfValidator.CreateSecureHTTPClient(10 * time.Second)
+	secureClient := ssrfValidator.CreateSecureHTTPClient(10 * time.Second)
 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
@@ -181,7 +181,7 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; AltBot/1.0; +http://alt.com/bot)")
 
 	// Execute request
-	resp, err := client.Do(req)
+	resp, err := secureClient.Do(req)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to fetch URL: %w", err)
 	}
