@@ -235,8 +235,10 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
       // If we have no initialFeeds, load immediately to show content
       const shouldDefer = initialFeeds.length > 0;
 
-      // Use loadInitial if we don't have a cursor yet (empty initialFeeds), otherwise loadMore
-      const loadFn = initialFeeds.length === 0 ? loadInitial : loadMore;
+      // Always use loadInitial when feeds is empty to start pagination from the beginning
+      // The distinction between loadInitial and loadMore should depend on whether we're
+      // starting fresh (no feeds loaded yet), not on whether initialFeeds were provided
+      const loadFn = loadInitial;
 
       if (shouldDefer && "requestIdleCallback" in window) {
         const idleCallbackId = window.requestIdleCallback(
@@ -255,7 +257,7 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
         return () => clearTimeout(timeoutId);
       }
     }
-  }, [initialFeeds.length, hasMore, isLoading, feeds, loadMore, loadInitial]);
+  }, [initialFeeds.length, hasMore, isLoading, feeds, loadInitial]);
 
   // Progressive rendering: increase visibleCount when user scrolls near the end
   useEffect(() => {
