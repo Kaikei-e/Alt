@@ -5,6 +5,7 @@ import logging
 import re
 import textwrap
 from typing import Dict, Any, List, Optional
+from urllib.parse import urlparse
 
 try:
     import json_repair
@@ -156,8 +157,17 @@ class RecapSummaryUsecase:
                 if sentence.published_at:
                     parts.append(f"  (公開日: {sentence.published_at})")
                 if sentence.source_url:
-                    # URLを短縮表示
-                    source_domain = sentence.source_url.split("/")[2] if "/" in sentence.source_url else sentence.source_url
+                    # URLを短縮表示（urllib.parseで安全にドメインを抽出）
+                    try:
+                        # スキームがない場合は追加してからパース
+                        url_to_parse = sentence.source_url
+                        if "://" not in url_to_parse:
+                            url_to_parse = f"https://{url_to_parse}"
+                        parsed = urlparse(url_to_parse)
+                        source_domain = parsed.netloc or parsed.path.split("/")[0] or sentence.source_url
+                    except Exception:
+                        # パースに失敗した場合は元のURLを使用
+                        source_domain = sentence.source_url
                     parts.append(f"  (出典: {source_domain})")
                 sentence_lines.append(" ".join(parts))
             sentences = "\n".join(sentence_lines)
