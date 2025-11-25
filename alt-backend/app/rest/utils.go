@@ -127,14 +127,14 @@ func isAllowedURL(u *url.URL) error {
 	return nil
 }
 
-// Optimize feeds response specifically for search results (more aggressive truncation)
+// Optimize feeds response specifically for search results
+// Note: Description is NOT truncated here to allow full text display in Search Feeds page
 func optimizeFeedsResponseForSearch(feeds []*domain.FeedItem) []*domain.FeedItem {
 	for _, feed := range feeds {
 		feed.Title = strings.TrimSpace(feed.Title)
-		// Aggressive truncation for search results
-		if len(feed.Description) > 200 {
-			feed.Description = feed.Description[:200] + "..."
-		}
+		// Description is kept full-length for search results to support "Read more" functionality
+		// Only trim whitespace, do not truncate content
+		feed.Description = strings.TrimSpace(feed.Description)
 	}
 	return feeds
 }
