@@ -30,7 +30,7 @@ Complete reference for all environment variables used by Recap Worker.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_MAX_CONCURRENCY` | `4` | Maximum number of simultaneous summary jobs |
+| `LLM_MAX_CONCURRENCY` | `1` | Maximum number of simultaneous summary jobs |
 | `LLM_PROMPT_VERSION` | `recap-ja-v2` | Prompt blueprint version sent to news-creator |
 
 ### Alt Backend Client
@@ -117,7 +117,7 @@ TAG_GENERATOR_BASE_URL=http://tag-generator:9400
 RECAP_WORKER_HTTP_BIND=0.0.0.0:9005
 
 # LLM
-LLM_MAX_CONCURRENCY=4
+LLM_MAX_CONCURRENCY=1
 LLM_PROMPT_VERSION=recap-ja-v2
 
 # Batch processing
