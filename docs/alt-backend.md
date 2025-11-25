@@ -13,7 +13,7 @@ _Last reviewed: November 17, 2025_
 | Layer | Notes |
 | --- | --- |
 | REST handlers (`rest/routes.go`, `rest/*`) | Ten ordered middlewares: request ID → recovery → secure headers → CORS → DOS guard → timeout (skips `/sse/`) → validation → logging → gzip. Routes split into feeds, articles, SSE, images, recap, security. |
-| Usecases / Jobs (`usecase/*`, `job/hourly_job.go`) | Each usecase exposes constructors that accept port interfaces; `job.HourlyJobRunner` reuses DI container to trigger hourly recap refresh + search sync. |
+| Usecases / Jobs (`usecase/*`, `job/hourly_job.go`, `job/daily_scraping_policy_job.go`) | Each usecase exposes constructors that accept port interfaces; `job.HourlyJobRunner` triggers hourly recap refresh + search sync; `job.DailyScrapingPolicyJobRunner` refreshes robots.txt and scraping policies every 24 hours. |
 | Ports → Gateways | Contracts live under `port/*`; gateways translate domain entities to Postgres/Meilisearch DTOs before hitting drivers. |
 | Drivers | `driver/alt_db` connects to Postgres, `driver/search_indexer` calls Meilisearch, `utils/secure_http_client.go` wraps outbound requests via `sidecar-proxy`. |
 | DI | `di/container.go` wires repositories, services, schedulers, and middleware helpers; reuse the same container in jobs to keep lifecycle consistent. |
@@ -53,6 +53,7 @@ flowchart LR
 - `RateLimitConfig`: `RATE_LIMIT_EXTERNAL_API_INTERVAL` (≥5s between host hits), `DOS_PROTECTION_*`.
 - `PreProcessor`: `PRE_PROCESSOR_URL` used for health checks.
 - `Database`: `DB_*` connection pool settings plus compatibility fields (`ALT_DB_DSN`, `SEARCH_INDEXER_HOST`).
+- `ScrapingPolicyJob`: `job.DailyScrapingPolicyJobRunner` uses a fixed 24-hour interval (`ScrapingPolicyRefreshInterval`). Future: consider `SCRAPING_POLICY_REFRESH_INTERVAL` environment variable for customization.
 - Logging/middleware uses `LOG_LEVEL`, `LOG_FORMAT`, while `sidecar-proxy` settings (`SIDECAR_PROXY_BASE_URL`) govern outbound fetches.
 
 ## Testing & Tooling
@@ -63,7 +64,9 @@ flowchart LR
 
 ## Operational Notes
 1. Health check: `curl http://localhost:9000/v1/health`.
-2. Jobs: `job/hourly_job.go` reruns recap refresh; if Recap data stalls, restart `go run ./cmd/job_runner`.
+2. Jobs:
+   - `job/hourly_job.go` reruns recap refresh; if Recap data stalls, restart `go run ./cmd/job_runner`.
+   - `job/daily_scraping_policy_job.go` refreshes robots.txt and scraping policies for all domains every 24 hours. On startup, it first calls `EnsureDomainsFromFeedLinks` to extract unique domains from `feed_links` table (grouped by domain) and create missing entries in `scraping_domains`, then calls `RefreshAllRobotsTxt` to refresh robots.txt for all domains in batches of 50. Subsequent runs (every 24h) only refresh robots.txt.
 3. Schema drift: `make db-migrate` plus driver tests to ensure new columns propagate.
 4. SSE load: watch `sse` logs for throttle reasons; large fan-outs go through rate-limiter and `SetRateLimitHeaders`.
 
