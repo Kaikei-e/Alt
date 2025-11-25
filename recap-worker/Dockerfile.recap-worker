@@ -48,6 +48,10 @@ RUN ldconfig
 
 COPY --from=builder /app/target/release/recap-worker /usr/local/bin/
 
+# Copy golden dataset for evaluation
+RUN mkdir -p /app/data
+COPY --from=builder /app/tests/data/golden_classification.json /app/data/
+
 EXPOSE 9005
 
 CMD ["/usr/local/bin/recap-worker"]
