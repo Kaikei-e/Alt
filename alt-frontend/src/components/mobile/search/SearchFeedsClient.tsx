@@ -4,7 +4,7 @@ import { Box, Text, VStack } from "@chakra-ui/react";
 import { Suspense, useState, useTransition, useDeferredValue } from "react";
 import dynamic from "next/dynamic";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
-import type { BackendFeedItem } from "@/schema/feed";
+import type { SearchFeedItem } from "@/schema/search";
 import type { SearchQuery } from "@/schema/validation/searchQuery";
 
 // Dynamic imports with loading states
@@ -42,7 +42,7 @@ const SearchResults = dynamic(
 
 export default function SearchFeedsClient() {
   const [searchQuery, setSearchQuery] = useState<SearchQuery>({ query: "" });
-  const [results, setResults] = useState<BackendFeedItem[]>([]);
+  const [results, setResults] = useState<SearchFeedItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTime, setSearchTime] = useState<number>();
   const [isPending, startTransition] = useTransition();

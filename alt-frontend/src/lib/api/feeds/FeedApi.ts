@@ -1,12 +1,12 @@
 import type { MessageResponse } from "@/schema/common";
 import type { FeedLink } from "@/schema/feedLink";
 import {
-	type BackendFeedItem,
-	type SanitizedFeed,
-	sanitizeFeed,
+  type BackendFeedItem,
+  type SanitizedFeed,
+  sanitizeFeed,
 } from "@/schema/feed";
 import type { FeedStatsSummary } from "@/schema/feedStats";
-import type { FeedSearchResult } from "@/schema/search";
+import type { FeedSearchResult, SearchFeedItem } from "@/schema/search";
 import type { UnreadCount } from "@/schema/unread";
 import type { FeedTags } from "@/types/feed-tags";
 import type { ApiClient } from "../core/ApiClient";
@@ -142,7 +142,7 @@ export class FeedApi {
   async searchFeeds(query: string): Promise<FeedSearchResult> {
     try {
       const response = await this.apiClient.post<
-        BackendFeedItem[] | FeedSearchResult
+        SearchFeedItem[] | FeedSearchResult
       >("/v1/feeds/search", { query });
 
       if (Array.isArray(response)) {
@@ -183,21 +183,21 @@ export class FeedApi {
   // Prefetch methods
   async prefetchFeeds(pages: number[] = [0, 1]): Promise<void> {
     const prefetchPromises = pages.map((page) =>
-      this.getFeedsPage(page).catch(() => {}),
+      this.getFeedsPage(page).catch(() => { }),
     );
     await Promise.all(prefetchPromises);
   }
 
   async prefetchFavoriteFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getFavoriteFeedsWithCursor(cursor).catch(() => {}),
+      this.getFavoriteFeedsWithCursor(cursor).catch(() => { }),
     );
     await Promise.all(prefetchPromises);
   }
 
   async prefetchReadFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getReadFeedsWithCursor(cursor).catch(() => {}),
+      this.getReadFeedsWithCursor(cursor).catch(() => { }),
     );
     await Promise.all(prefetchPromises);
   }

@@ -3,7 +3,7 @@ import { useState, useRef, useTransition, useEffect } from "react";
 import * as v from "valibot";
 import { feedApi } from "@/lib/api";
 import { transformFeedSearchResult } from "@/lib/utils/transformFeedSearchResult";
-import type { BackendFeedItem } from "@/schema/feed";
+import type { SearchFeedItem } from "@/schema/search";
 import {
   type SearchQuery,
   searchQuerySchema,
@@ -12,8 +12,8 @@ import {
 interface SearchWindowProps {
   searchQuery: SearchQuery;
   setSearchQuery: (query: SearchQuery) => void;
-  feedResults: BackendFeedItem[];
-  setFeedResults: (results: BackendFeedItem[]) => void;
+  feedResults: SearchFeedItem[];
+  setFeedResults: (results: SearchFeedItem[]) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
   setSearchTime?: (time: number) => void;

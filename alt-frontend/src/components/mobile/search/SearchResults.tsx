@@ -11,21 +11,19 @@ import {
 import Link from "next/link";
 import { memo, useState } from "react";
 import { articleApi } from "@/lib/api";
-import type {
-  BackendFeedItem,
-  FetchArticleSummaryResponse,
-} from "@/schema/feed";
+import type { FetchArticleSummaryResponse } from "@/schema/feed";
+import type { SearchFeedItem } from "@/schema/search";
 import { SearchResultsVirtualList } from "./SearchResultsVirtualList";
 
 interface SearchResultsProps {
-  results: BackendFeedItem[];
+  results: SearchFeedItem[];
   isLoading: boolean;
   searchQuery: string;
   searchTime?: number;
 }
 
 interface SearchResultItemProps {
-  result: BackendFeedItem;
+  result: SearchFeedItem;
 }
 
 export const SearchResultItem = memo(({ result }: SearchResultItemProps) => {
@@ -39,7 +37,9 @@ export const SearchResultItem = memo(({ result }: SearchResultItemProps) => {
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 
   // Check if description is long enough to need truncation
-  const descriptionText = result.description || "";
+  // Trim to check if there's actual content (not just whitespace)
+  const descriptionText = (result.description || "").trim();
+  const hasDescription = descriptionText.length > 0;
   const shouldTruncateDescription = descriptionText.length > 200;
   const displayDescription = isDescriptionExpanded
     ? descriptionText
@@ -117,7 +117,7 @@ export const SearchResultItem = memo(({ result }: SearchResultItemProps) => {
           </HStack>
         )}
 
-        {result.description && (
+        {hasDescription && (
           <Box>
             <Text
               color="var(--text-secondary)"

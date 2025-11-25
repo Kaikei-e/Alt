@@ -2,11 +2,11 @@
 
 import { Box, VStack } from "@chakra-ui/react";
 import { useMemo, useState, useEffect, useRef } from "react";
-import type { BackendFeedItem } from "@/schema/feed";
+import type { SearchFeedItem } from "@/schema/search";
 import { SearchResultItem } from "./SearchResults";
 
 interface SearchResultsVirtualListProps {
-  results: BackendFeedItem[];
+  results: SearchFeedItem[];
   itemHeight?: number;
   overscan?: number;
 }
