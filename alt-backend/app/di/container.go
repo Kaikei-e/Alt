@@ -27,6 +27,8 @@ import (
 	"alt/gateway/recap_gateway"
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
+	"alt/gateway/robots_txt_gateway"
+	"alt/gateway/scraping_domain_gateway"
 	"alt/gateway/update_feed_status_gateway"
 	"alt/gateway/user_feed_gateway"
 	"alt/port/config_port"
@@ -50,6 +52,7 @@ import (
 	"alt/usecase/recap_usecase"
 	"alt/usecase/register_favorite_feed_usecase"
 	"alt/usecase/register_feed_usecase"
+	"alt/usecase/scraping_domain_usecase"
 	"alt/usecase/search_article_usecase"
 	"alt/usecase/search_feed_usecase"
 	"alt/utils"
@@ -99,6 +102,7 @@ type ApplicationComponents struct {
 	RecapArticlesUsecase                *recap_articles_usecase.RecapArticlesUsecase
 	RecapUsecase                        *recap_usecase.RecapUsecase
 	MorningUsecase                      morning_letter_port.MorningUsecase
+	ScrapingDomainUsecase               *scraping_domain_usecase.ScrapingDomainUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -215,6 +219,11 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	morningGatewayImpl := morning_gateway.NewMorningGateway(pool)
 	morningUsecase := morning_usecase.NewMorningUsecase(morningGatewayImpl, userFeedGatewayImpl)
 
+	// Scraping domain components
+	scrapingDomainGatewayImpl := scraping_domain_gateway.NewScrapingDomainGateway(altDBRepository)
+	robotsTxtGatewayImpl := robots_txt_gateway.NewRobotsTxtGateway(httpClient)
+	scrapingDomainUsecase := scraping_domain_usecase.NewScrapingDomainUsecaseWithRepository(scrapingDomainGatewayImpl, robotsTxtGatewayImpl, altDBRepository)
+
 	return &ApplicationComponents{
 		// Ports
 		ConfigPort:       configPort,
@@ -254,5 +263,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		RecapArticlesUsecase:                recapArticlesUsecase,
 		RecapUsecase:                        recapUsecase,
 		MorningUsecase:                      morningUsecase,
+		ScrapingDomainUsecase:               scrapingDomainUsecase,
 	}
 }

@@ -39,8 +39,9 @@ func main() {
 
 	container := di.NewApplicationComponents(pool)
 
-	// Start background job
+	// Start background jobs
 	go job.HourlyJobRunner(ctx, container.AltDBRepository)
+	go job.DailyScrapingPolicyJobRunner(ctx, container.ScrapingDomainUsecase)
 
 	e := echo.New()
 
