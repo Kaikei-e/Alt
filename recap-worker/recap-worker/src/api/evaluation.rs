@@ -411,3 +411,76 @@ pub(crate) async fn evaluate_genres(
 
     (StatusCode::OK, Json(response)).into_response()
 }
+
+#[derive(Serialize, Debug)]
+pub(crate) struct EvaluationResultResponse {
+    run: GenreEvaluationRun,
+    metrics: Vec<GenreEvaluationMetric>,
+}
+
+/// GET /v1/evaluation/genres/{run_id}
+/// 指定されたrun_idの評価結果を取得する
+pub(crate) async fn get_evaluation_result(
+    State(state): State<AppState>,
+    axum::extract::Path(run_id): axum::extract::Path<uuid::Uuid>,
+) -> impl IntoResponse {
+    match state.dao().get_genre_evaluation(run_id).await {
+        Ok(Some((run, metrics))) => {
+            let response = EvaluationResultResponse { run, metrics };
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": "Evaluation result not found",
+                "run_id": run_id,
+            })),
+        )
+            .into_response(),
+        Err(e) => {
+            error!(
+                error = %e,
+                run_id = %run_id,
+                "Failed to fetch evaluation result"
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "Failed to fetch evaluation result",
+                    "run_id": run_id,
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /v1/evaluation/genres/latest
+/// 最新の評価結果を取得する
+pub(crate) async fn get_latest_evaluation_result(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    match state.dao().get_latest_genre_evaluation().await {
+        Ok(Some((run, metrics))) => {
+            let response = EvaluationResultResponse { run, metrics };
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": "No evaluation results found",
+            })),
+        )
+            .into_response(),
+        Err(e) => {
+            error!(error = %e, "Failed to fetch latest evaluation result");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "Failed to fetch latest evaluation result",
+                })),
+            )
+                .into_response()
+        }
+    }
+}

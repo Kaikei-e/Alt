@@ -511,7 +511,7 @@ impl GenreLearningRecord {
 }
 
 /// ジャンル評価実行のメタデータ。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GenreEvaluationRun {
     pub(crate) run_id: Uuid,
     pub(crate) dataset_path: String,
@@ -552,7 +552,7 @@ impl GenreEvaluationRun {
 }
 
 /// ジャンルごとの評価メトリクス。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GenreEvaluationMetric {
     pub(crate) genre: String,
     pub(crate) tp: i32,

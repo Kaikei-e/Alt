@@ -10,9 +10,9 @@ use std::{collections::HashMap, convert::TryFrom};
 use uuid::Uuid;
 
 use super::models::{
-    ClusterEvidence, ClusterWithEvidence, DiagnosticEntry, GenreLearningRecord, GenreWithSummary,
-    GraphEdgeRecord, NewSubworkerRun, PersistedCluster, PersistedGenre, RawArticle, RecapJob,
-    SubworkerRunStatus,
+    ClusterEvidence, ClusterWithEvidence, DiagnosticEntry, GenreEvaluationMetric,
+    GenreEvaluationRun, GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, NewSubworkerRun,
+    PersistedCluster, PersistedGenre, RawArticle, RecapJob, SubworkerRunStatus,
 };
 use crate::util::idempotency::try_acquire_job_lock;
 
@@ -1129,6 +1129,108 @@ impl RecapDao {
             .context("failed to commit genre evaluation transaction")?;
 
         Ok(())
+    }
+
+    /// 指定されたrun_idの評価結果を取得する
+    pub async fn get_genre_evaluation(
+        &self,
+        run_id: uuid::Uuid,
+    ) -> Result<Option<(GenreEvaluationRun, Vec<GenreEvaluationMetric>)>> {
+        // Get run metadata
+        let run_row = sqlx::query_as::<_, (uuid::Uuid, String, i32, f64, f64, f64, i32, i32, i32)>(
+            r"
+            SELECT run_id, dataset_path, total_items, macro_precision, macro_recall, macro_f1,
+                   summary_tp, summary_fp, summary_fn
+            FROM recap_genre_evaluation_runs
+            WHERE run_id = $1
+            ",
+        )
+        .bind(run_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("failed to fetch genre evaluation run")?;
+
+        let Some((
+            run_id,
+            dataset_path,
+            total_items,
+            macro_precision,
+            macro_recall,
+            macro_f1,
+            summary_true_positives,
+            summary_false_positives,
+            summary_false_negatives,
+        )) = run_row
+        else {
+            return Ok(None);
+        };
+
+        let run = GenreEvaluationRun {
+            run_id,
+            dataset_path,
+            total_items,
+            macro_precision,
+            macro_recall,
+            macro_f1,
+            summary_tp: summary_true_positives,
+            summary_fp: summary_false_positives,
+            summary_fn: summary_false_negatives,
+        };
+
+        // Get per-genre metrics
+        let metric_rows = sqlx::query_as::<_, (String, i32, i32, i32, f64, f64, f64)>(
+            r"
+            SELECT genre, tp, fp, fn_count, precision, recall, f1_score
+            FROM recap_genre_evaluation_metrics
+            WHERE run_id = $1
+            ORDER BY genre
+            ",
+        )
+        .bind(run_id)
+        .fetch_all(&self.pool)
+        .await
+        .context("failed to fetch genre evaluation metrics")?;
+
+        let metrics = metric_rows
+            .into_iter()
+            .map(
+                |(genre, tp, fp, fn_count, precision, recall, f1_score)| GenreEvaluationMetric {
+                    genre,
+                    tp,
+                    fp,
+                    fn_count,
+                    precision,
+                    recall,
+                    f1_score,
+                },
+            )
+            .collect();
+
+        Ok(Some((run, metrics)))
+    }
+
+    /// 最新の評価結果を取得する
+    pub async fn get_latest_genre_evaluation(
+        &self,
+    ) -> Result<Option<(GenreEvaluationRun, Vec<GenreEvaluationMetric>)>> {
+        // Get latest run_id
+        let run_id_row = sqlx::query_as::<_, (uuid::Uuid,)>(
+            r"
+            SELECT run_id
+            FROM recap_genre_evaluation_runs
+            ORDER BY created_at DESC
+            LIMIT 1
+            ",
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .context("failed to fetch latest genre evaluation run_id")?;
+
+        let Some((run_id,)) = run_id_row else {
+            return Ok(None);
+        };
+
+        self.get_genre_evaluation(run_id).await
     }
 }
 

@@ -27,5 +27,13 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/v1/recaps/7days", get(fetch::get_7days_recap))
         .route("/v1/morning/updates", get(fetch::get_morning_updates))
         .route("/v1/evaluation/genres", post(evaluation::evaluate_genres))
+        .route(
+            "/v1/evaluation/genres/latest",
+            get(evaluation::get_latest_evaluation_result),
+        )
+        .route(
+            "/v1/evaluation/genres/:run_id",
+            get(evaluation::get_evaluation_result),
+        )
         .with_state(state)
 }

@@ -236,7 +236,7 @@ impl GenreClassifier {
 fn default_thresholds() -> HashMap<String, f32> {
     HashMap::from([
         ("ai".to_string(), 0.68),
-        ("tech".to_string(), 0.72),
+        ("tech".to_string(), 0.65), // 誤検知削減のため閾値を下げる
         ("business".to_string(), 0.74),
         ("science".to_string(), 0.7),
         ("entertainment".to_string(), 0.72),
@@ -245,6 +245,8 @@ fn default_thresholds() -> HashMap<String, f32> {
         ("health".to_string(), 0.7),
         ("world".to_string(), 0.74),
         ("security".to_string(), 0.7),
+        ("society_justice".to_string(), 0.75), // 誤検知削減のため閾値を上げる
+        ("art_culture".to_string(), 0.75),     // 誤検知削減のため閾値を上げる
         ("other".to_string(), 0.6),
     ])
 }
