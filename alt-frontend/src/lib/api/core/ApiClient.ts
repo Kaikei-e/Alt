@@ -285,6 +285,92 @@ export class ApiClient {
     }
   }
 
+  async patch<T>(endpoint: string, data: Record<string, unknown>): Promise<T> {
+    try {
+      // Get CSRF token for state-changing operations
+      const csrfToken = await authAPI.getCSRFToken();
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Accept-Encoding": "gzip, deflate, br",
+      };
+
+      // Add CSRF token if available
+      if (csrfToken) {
+        headers["X-CSRF-Token"] = csrfToken;
+      } else if (process.env.NODE_ENV === "development") {
+      }
+
+      const requestUrl = this.resolveRequestUrl(endpoint);
+      const response = await this.makeRequest(
+        requestUrl,
+        {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify(data),
+          keepalive: true,
+        },
+      );
+
+      const interceptedResponse = await this.authInterceptor.intercept(
+        response,
+        requestUrl,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
+          body: JSON.stringify(data),
+          keepalive: true,
+        },
+      );
+
+      const result = await interceptedResponse.json();
+
+      // Invalidate related cache entries after PATCH
+      this.cacheManager.invalidate();
+
+      // Check for error response (backend returns error in various formats)
+      if (result.error || result.code) {
+        const errorCode = result.code || "UNKNOWN_ERROR";
+        const statusCode = interceptedResponse.status;
+        // Prefer backend message if available, otherwise use user-friendly status code message
+        const errorMessage =
+          result.message ||
+          result.error ||
+          getUserFriendlyErrorMessage(statusCode);
+
+        // Log technical details for developers (development only)
+        if (process.env.NODE_ENV === "development") {
+          console.error("[ApiClient] PATCH request failed", {
+            endpoint,
+            status: statusCode,
+            code: errorCode,
+            message: errorMessage,
+          });
+        }
+
+        throw new ApiError(errorMessage, statusCode, errorCode);
+      }
+
+      return result as T;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      // Log technical details for developers (development only)
+      if (process.env.NODE_ENV === "development") {
+        console.error("[ApiClient] PATCH request error", { endpoint, error });
+      }
+      throw new ApiError(
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred. Please try again later.",
+      );
+    }
+  }
+
   async delete<T>(endpoint: string): Promise<T> {
     try {
       const csrfToken = await authAPI.getCSRFToken();
