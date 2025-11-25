@@ -284,6 +284,16 @@ impl TagLabelGraphCache {
             .and_then(|tags| tags.get(&tag.to_lowercase()).copied())
     }
 
+    /// タグが関連付けられているジャンルとその重みを返す
+    #[must_use]
+    pub(crate) fn genres_for_tag(&self, tag: &str) -> Vec<(String, f32)> {
+        let tag_lower = tag.to_lowercase();
+        self.edges
+            .iter()
+            .filter_map(|(genre, tags)| tags.get(&tag_lower).map(|&weight| (genre.clone(), weight)))
+            .collect()
+    }
+
     /// Get statistics about the graph for debugging.
     #[must_use]
     pub(crate) fn debug_stats(&self) -> (usize, usize, Vec<String>) {
@@ -601,8 +611,31 @@ impl RefineEngine for DefaultRefineEngine {
             }
         };
 
-        let normalized_candidates: Vec<(String, &GenreCandidate)> = input
-            .candidates
+        // タグから候補ジャンルを拡大
+        let expanded_candidates = expand_candidates_from_tags(
+            &graph_cache,
+            input.candidates,
+            input.tag_profile.top_tags.as_slice(),
+        );
+
+        if expanded_candidates.len() > input.candidates.len() {
+            let added_count = expanded_candidates.len() - input.candidates.len();
+            let added_genres: Vec<String> = expanded_candidates
+                .iter()
+                .skip(input.candidates.len())
+                .map(|c| c.name.clone())
+                .collect();
+            tracing::warn!(
+                article_id = %input.article.id,
+                original_candidates = input.candidates.len(),
+                expanded_candidates = expanded_candidates.len(),
+                added_count = added_count,
+                added_genres = ?added_genres,
+                "expanded candidates from tags"
+            );
+        }
+
+        let normalized_candidates: Vec<(String, &GenreCandidate)> = expanded_candidates
             .iter()
             .map(|candidate| (normalize(&candidate.name), candidate))
             .collect();
@@ -838,7 +871,7 @@ fn compute_graph_boosts(
                     "no graph boost matches found for genre"
                 );
             } else if !matched_tags.is_empty() {
-                tracing::debug!(
+                tracing::warn!(
                     genre = %candidate.name,
                     genre_normalized = %normalize(&candidate.name),
                     matched_count = matched_tags.len(),
@@ -855,8 +888,77 @@ fn compute_graph_boosts(
     boosts
 }
 
+/// 候補拡大の最小重み閾値（タグの合計重みがこの値以上のジャンルのみ候補に追加）
+const CANDIDATE_EXPANSION_MIN_WEIGHT: f32 = 0.3;
+
 fn normalize(value: &str) -> String {
     value.trim().to_lowercase()
+}
+
+/// タグから候補ジャンルを拡大する
+fn expand_candidates_from_tags(
+    graph: &TagLabelGraphCache,
+    existing_candidates: &[GenreCandidate],
+    tags: &[TagSignal],
+) -> Vec<GenreCandidate> {
+    // 既存候補のジャンル名を正規化してセットに保存
+    let existing_genres: std::collections::HashSet<String> = existing_candidates
+        .iter()
+        .map(|c| normalize(&c.name))
+        .collect();
+
+    // タグからジャンルへの重みマッピングを集計
+    let mut genre_weights: FxHashMap<String, f32> = FxHashMap::default();
+
+    for tag in tags {
+        let tag_norm = normalize(&tag.label);
+        let genres = graph.genres_for_tag(&tag_norm);
+
+        for (genre, weight) in genres {
+            // タグのconfidenceを考慮して重みを計算
+            let contribution = weight * tag.confidence;
+            *genre_weights.entry(genre).or_insert(0.0) += contribution;
+        }
+    }
+
+    // 閾値を超えるジャンルを候補に追加
+    let mut expanded: Vec<GenreCandidate> = existing_candidates.to_vec();
+    let mut added_genres = Vec::new();
+    let mut skipped_below_threshold = Vec::new();
+
+    for (genre, total_weight) in genre_weights {
+        // 既存候補に含まれている場合はスキップ
+        if existing_genres.contains(&genre) {
+            continue;
+        }
+
+        // 閾値を超えている場合のみ追加
+        if total_weight >= CANDIDATE_EXPANSION_MIN_WEIGHT {
+            // 新しい候補を作成（初期スコアは0.0、confidenceは重みベース）
+            expanded.push(GenreCandidate {
+                name: genre.clone(),
+                classifier_confidence: total_weight.min(1.0),
+                score: 0.0,
+                keyword_support: 0, // タグベースの拡張なのでkeyword_supportは0
+            });
+            added_genres.push((genre, total_weight));
+        } else {
+            skipped_below_threshold.push((genre, total_weight));
+        }
+    }
+
+    if !added_genres.is_empty() || !skipped_below_threshold.is_empty() {
+        tracing::warn!(
+            added_count = added_genres.len(),
+            added_genres = ?added_genres.iter().take(5).map(|(g, w)| format!("{}:{:.3}", g, w)).collect::<Vec<_>>(),
+            skipped_count = skipped_below_threshold.len(),
+            skipped_sample = ?skipped_below_threshold.iter().take(3).map(|(g, w)| format!("{}:{:.3}", g, w)).collect::<Vec<_>>(),
+            threshold = CANDIDATE_EXPANSION_MIN_WEIGHT,
+            "candidate expansion from tags"
+        );
+    }
+
+    expanded
 }
 
 fn tag_consistency_winner(

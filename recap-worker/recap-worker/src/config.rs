@@ -68,7 +68,7 @@ impl Config {
         let http_bind = parse_socket_addr("RECAP_WORKER_HTTP_BIND", "0.0.0.0:9005")?;
         let llm_prompt_version =
             env::var("LLM_PROMPT_VERSION").unwrap_or_else(|_| "recap-ja-v2".to_string());
-        let llm_max_concurrency = parse_non_zero_usize("LLM_MAX_CONCURRENCY", 4)?;
+        let llm_max_concurrency = parse_non_zero_usize("LLM_MAX_CONCURRENCY", 1)?;
         let news_creator_base_url = env_var("NEWS_CREATOR_BASE_URL")?;
         let subworker_base_url = env_var("SUBWORKER_BASE_URL")?;
         let alt_backend_base_url = env_var("ALT_BACKEND_BASE_URL")?;
@@ -489,7 +489,7 @@ mod tests {
             "postgres://recap:recap@localhost:5555/recap_db"
         );
         assert_eq!(config.llm_prompt_version(), "recap-ja-v2");
-        assert_eq!(config.llm_max_concurrency().get(), 4);
+        assert_eq!(config.llm_max_concurrency().get(), 1);
         assert_eq!(config.http_bind(), "0.0.0.0:9005".parse().unwrap());
         assert_eq!(config.news_creator_base_url(), "http://localhost:8001/");
         assert_eq!(config.subworker_base_url(), "http://localhost:8002/");
