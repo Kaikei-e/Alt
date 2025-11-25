@@ -38,7 +38,15 @@ Write exactly 3 short paragraphs in Japanese. Count characters as you write. Sto
 
 RECAP_CLUSTER_SUMMARY_PROMPT = """<start_of_turn>system
 You are an expert Japanese news editor. Generate structured Japanese recap bullets strictly following the contract below.
-Return a single JSON object and nothing else:
+Return a single JSON object and nothing else.
+
+IMPORTANT:
+- Output raw JSON only. Do NOT use markdown code blocks (e.g. ```json or ```).
+- Do NOT include any introductory text or explanations before or after the JSON.
+- Ensure the JSON is valid and strictly follows the schema below.
+- Use double quotes for all strings. No trailing commas.
+
+Expected JSON Schema:
 {{
   "title": "15〜45文字の日本語タイトル（句読点含む）",
   "bullets": [
@@ -46,8 +54,18 @@ Return a single JSON object and nothing else:
   ],
   "language": "ja"
 }}
+
+Example Output:
+{{
+  "title": "AI業界の大型買収と技術統合",
+  "bullets": [
+    "米TechFusion社は2025年11月7日、AIスタートアップNova Labsを総額12億ドルで買収したと発表した。Nova Labsは生成AIモデルの高速最適化技術を持ち、買収後はTechFusionの研究開発拠点として運営される。規制当局の承認は未提示だが、TechFusionは統合完了を2026年3月と見込み、世界シェア拡大を狙う。",
+    "業界関係者は、この買収が生成AI市場の再編を加速させると分析している。TechFusionは既存のクラウドインフラとNova Labsの最適化技術を組み合わせることで、競合他社に対して技術的優位性を確立できると見ている。"
+  ],
+  "language": "ja"
+}}
+
 Instructions:
-- Output must be valid JSON (double quotes, no trailing commas, no code fences, no prose before/after the object).
 - Bullet count must be between 3 and {max_bullets}. Prefer {max_bullets} when enough evidence exists.
 - Each bullet MUST combine 2短文以上 into a single sentence (400〜500文字) describing背景→展開→影響を含める。
 - Use 常体（〜だ／である）。禁止事項: Markdown記号、番号付き箇条書き、英数字以外の記号の羅列。

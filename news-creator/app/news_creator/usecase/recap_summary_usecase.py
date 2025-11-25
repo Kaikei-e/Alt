@@ -2,8 +2,14 @@
 
 import json
 import logging
+import re
 import textwrap
 from typing import Dict, Any, List, Optional
+
+try:
+    import json_repair
+except ImportError:
+    json_repair = None  # type: ignore
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import (
@@ -51,9 +57,11 @@ class RecapSummaryUsecase:
             },
         )
 
+        # Use JSON format for structured output (Ollama structured output mode)
         llm_response = await self.llm_provider.generate(
             prompt,
             num_predict=self.config.summary_num_predict,
+            format="json",
             options=llm_options,
         )
 
@@ -128,32 +136,73 @@ class RecapSummaryUsecase:
         if not content:
             raise RuntimeError("LLM returned empty response for recap summary")
 
+        # Step 1: Clean Markdown code blocks from the response
+        cleaned_content = self._clean_markdown_code_blocks(content)
+
         candidate: Optional[str] = None
         try:
-            candidate = self._extract_json_object(content)
+            candidate = self._extract_json_object(cleaned_content)
         except RuntimeError as exc:
             logger.warning(
                 "Structured JSON not found in recap summary response; falling back to heuristic parsing",
-                extra={"content_preview": content[:200]},
+                extra={"content_preview": cleaned_content[:200]},
             )
-            fallback = self._fallback_summary_from_text(content, max_bullets)
+            fallback = self._fallback_summary_from_text(cleaned_content, max_bullets)
             return self._sanitize_summary_payload(fallback, max_bullets)
 
         if candidate is None:
-            fallback = self._fallback_summary_from_text(content, max_bullets)
+            fallback = self._fallback_summary_from_text(cleaned_content, max_bullets)
             return self._sanitize_summary_payload(fallback, max_bullets)
 
+        # Step 2: Try standard JSON parsing first
         try:
             parsed = json.loads(candidate)
         except json.JSONDecodeError as exc:
-            logger.error("Failed to parse recap summary JSON", extra={"content": content})
-            fallback = self._fallback_summary_from_text(content, max_bullets)
-            return self._sanitize_summary_payload(fallback, max_bullets)
+            logger.warning(
+                "Standard JSON parsing failed, attempting JSON repair",
+                extra={"error": str(exc), "content_preview": candidate[:200]},
+            )
+            # Step 3: Try JSON repair if available
+            if json_repair is not None:
+                try:
+                    repaired_json = json_repair.repair_json(candidate)
+                    parsed = json.loads(repaired_json)
+                    logger.info("Successfully repaired JSON using json_repair")
+                except Exception as repair_exc:
+                    logger.error(
+                        "JSON repair also failed, falling back to heuristic parsing",
+                        extra={"repair_error": str(repair_exc), "content_preview": candidate[:200]},
+                    )
+                    fallback = self._fallback_summary_from_text(cleaned_content, max_bullets)
+                    return self._sanitize_summary_payload(fallback, max_bullets)
+            else:
+                logger.error(
+                    "Failed to parse recap summary JSON and json_repair not available",
+                    extra={"content": candidate[:500]},
+                )
+                fallback = self._fallback_summary_from_text(cleaned_content, max_bullets)
+                return self._sanitize_summary_payload(fallback, max_bullets)
 
         if not isinstance(parsed, dict):
             raise RuntimeError("LLM response must be a JSON object")
 
         return self._sanitize_summary_payload(parsed, max_bullets)
+
+    def _clean_markdown_code_blocks(self, text: str) -> str:
+        """
+        Remove Markdown code block markers (```json, ```, etc.) from the text.
+
+        Args:
+            text: Raw LLM response that may contain Markdown code blocks
+
+        Returns:
+            Cleaned text with code block markers removed
+        """
+        # Remove markdown code block markers at the start and end
+        # Pattern matches: ```json, ```, ```json\n, etc.
+        cleaned = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
+        cleaned = re.sub(r'\s*```$', '', cleaned, flags=re.MULTILINE)
+        return cleaned.strip()
 
     def _extract_json_object(self, text: str) -> str:
         first_brace = text.find("{")

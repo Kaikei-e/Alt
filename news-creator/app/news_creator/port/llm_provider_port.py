@@ -17,6 +17,7 @@ class LLMProviderPort(ABC):
         num_predict: Optional[int] = None,
         stream: bool = False,
         keep_alive: Optional[Union[int, str]] = None,
+        format: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
     ) -> LLMGenerateResponse:
         """
@@ -28,6 +29,7 @@ class LLMProviderPort(ABC):
             num_predict: Optional max tokens to generate override
             stream: Whether to stream the response
             keep_alive: Keep-alive duration
+            format: Optional output format (e.g., "json" for structured output)
             options: Additional generation options
 
         Returns:

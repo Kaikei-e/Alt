@@ -37,6 +37,7 @@ class OllamaGateway(LLMProviderPort):
         num_predict: Optional[int] = None,
         stream: bool = False,
         keep_alive: Optional[Union[int, str]] = None,
+        format: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
     ) -> LLMGenerateResponse:
         """
@@ -48,6 +49,7 @@ class OllamaGateway(LLMProviderPort):
             num_predict: Optional max tokens override
             stream: Whether to stream response
             keep_alive: Keep-alive duration
+            format: Optional output format (e.g., "json" for structured output)
             options: Additional generation options
 
         Returns:
@@ -70,13 +72,18 @@ class OllamaGateway(LLMProviderPort):
             llm_options["num_predict"] = num_predict
 
         # Build payload for Ollama API
-        payload = {
+        payload: Dict[str, Any] = {
             "model": model or self.config.model_name,
             "prompt": prompt.strip(),
             "stream": stream,
             "keep_alive": keep_alive if keep_alive is not None else self.config.llm_keep_alive,
             "options": llm_options,
         }
+
+        # Add format parameter if provided (Ollama structured output)
+        if format is not None:
+            payload["format"] = format
+            logger.debug("Using structured output format", extra={"format": format})
 
         logger.debug(
             "Generating with Ollama",

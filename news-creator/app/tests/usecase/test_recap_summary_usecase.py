@@ -8,6 +8,7 @@ from news_creator.domain.models import (
     RecapClusterInput,
     RecapSummaryOptions,
     RecapSummaryRequest,
+    RepresentativeSentence,
 )
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
 
@@ -46,15 +47,15 @@ async def test_generate_summary_success():
             RecapClusterInput(
                 cluster_id=0,
                 representative_sentences=[
-                    "TechFusion announced the acquisition of Nova Labs for $1.2B.",
-                    "Executives expect integration in March 2026.",
+                    RepresentativeSentence(text="TechFusion announced the acquisition of Nova Labs for $1.2B."),
+                    RepresentativeSentence(text="Executives expect integration in March 2026."),
                 ],
                 top_terms=["acquisition", "AI", "Nova Labs"],
             ),
             RecapClusterInput(
                 cluster_id=1,
                 representative_sentences=[
-                    "Nova Labs is known for fast fine-tuning infrastructure.",
+                    RepresentativeSentence(text="Nova Labs is known for fast fine-tuning infrastructure."),
                 ],
             ),
         ],
@@ -105,7 +106,7 @@ async def test_generate_summary_falls_back_to_text_when_no_json():
         clusters=[
             RecapClusterInput(
                 cluster_id=0,
-                representative_sentences=["Sample sentence for testing."]
+                representative_sentences=[RepresentativeSentence(text="Sample sentence for testing.")]
             )
         ],
     )
@@ -145,7 +146,7 @@ async def test_generate_summary_trims_excess_bullets():
         clusters=[
             RecapClusterInput(
                 cluster_id=0,
-                representative_sentences=["Example sentence."],
+                representative_sentences=[RepresentativeSentence(text="Example sentence.")],
             )
         ],
         options=RecapSummaryOptions(max_bullets=8, temperature=0.3),
