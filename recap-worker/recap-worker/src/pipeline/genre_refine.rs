@@ -550,6 +550,12 @@ impl RefineEngine for DefaultRefineEngine {
             &input.tag_profile.top_tags,
         );
 
+        // Log graph boost effectiveness
+        let active_boost_count = graph_boosts.values().filter(|&&v| v > 0.0).count();
+        if active_boost_count == 0 {
+            tracing::warn!("no active graph boosts - tag_label_graph may be empty");
+        }
+
         let mut scored: Vec<(&GenreCandidate, f32)> = input
             .candidates
             .iter()
@@ -624,10 +630,16 @@ impl RefineEngine for DefaultRefineEngine {
             }
         }
 
+        // Determine actual strategy: GraphBoost only if boost is active
+        let actual_strategy = if top_boost > 0.0 {
+            RefineStrategy::GraphBoost
+        } else {
+            RefineStrategy::CoarseOnly
+        };
         Ok(RefineOutcome::new(
             top.0.name.clone(),
             top.0.classifier_confidence.clamp(0.0, 1.0),
-            RefineStrategy::GraphBoost,
+            actual_strategy,
             None,
             graph_boosts_to_owned(&graph_boosts),
         ))
