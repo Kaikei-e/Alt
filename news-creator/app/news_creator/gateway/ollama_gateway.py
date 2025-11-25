@@ -99,11 +99,11 @@ class OllamaGateway(LLMProviderPort):
 
         # Acquire semaphore to queue requests (global queue for all services)
         async with self._semaphore:
-            logger.debug(
-                "Acquired semaphore, calling Ollama driver",
+            logger.info(
+                "Acquired semaphore, processing Ollama request",
                 extra={
                     "model": payload["model"],
-                    "available_permits": self._semaphore._value,
+                    "prompt_length": len(prompt),
                 }
             )
             # Call driver
