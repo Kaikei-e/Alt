@@ -6,6 +6,8 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
@@ -14,7 +16,15 @@ use tracing::{error, info};
 
 use crate::app::AppState;
 use crate::classification::{ClassificationLanguage, GenreClassifier};
+use crate::pipeline::dedup::DeduplicatedArticle;
+use crate::pipeline::genre::GenreCandidate;
+use crate::pipeline::genre_refine::{
+    DbTagLabelGraphSource, DefaultRefineEngine, RefineConfig, RefineEngine, TagFallbackMode,
+    TagProfile,
+};
+use crate::scheduler::JobContext;
 use crate::store::models::{GenreEvaluationMetric, GenreEvaluationRun};
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct EvaluateRequest {
@@ -258,10 +268,26 @@ fn determine_dataset_path(request: &EvaluateRequest) -> PathBuf {
     PathBuf::from(data_path)
 }
 
-#[allow(dead_code)]
-fn run_evaluation(golden_data: &[GoldenItem]) -> ConfusionMatrix {
+async fn run_evaluation(
+    state: &AppState,
+    golden_data: &[GoldenItem],
+) -> anyhow::Result<ConfusionMatrix> {
     let classifier = GenreClassifier::new_default();
     let mut confusion_matrix = ConfusionMatrix::new();
+
+    // Create a RefineEngine for evaluation (uses actual pipeline logic)
+    let refine_config = RefineConfig::new(false); // require_tags = false for evaluation
+    let graph_source: Arc<dyn crate::pipeline::genre_refine::TagLabelGraphSource> =
+        Arc::new(DbTagLabelGraphSource::new(
+            state.dao(),
+            "7d",                      // Use 7-day window
+            Duration::from_secs(3600), // 1 hour TTL
+        ));
+    let refine_engine: Arc<dyn RefineEngine> =
+        Arc::new(DefaultRefineEngine::new(refine_config, graph_source));
+
+    let job_id = Uuid::new_v4();
+    let job_context = JobContext::new(job_id, vec![]);
 
     for item in golden_data {
         let content = item.content();
@@ -281,19 +307,80 @@ fn run_evaluation(golden_data: &[GoldenItem]) -> ConfusionMatrix {
             );
         let language = ClassificationLanguage::Unknown; // Auto-detect
 
-        match classifier.predict(title, body, language) {
-            Ok(result) => {
-                let predicted = &result.top_genres;
-                confusion_matrix.add(item.expected_genres(), predicted);
-            }
+        // Use classifier to get initial candidates
+        let classification = match classifier.predict(title, body, language) {
+            Ok(result) => result,
             Err(e) => {
                 error!(error = %e, item_id = %item.id(), "Failed to classify item");
-                // Continue with other items
+                continue;
             }
-        }
+        };
+
+        // Create a DeduplicatedArticle for the evaluation item
+        let sentences: Vec<String> = body
+            .split_terminator(&['。', '.'][..])
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.trim().to_string())
+            .collect();
+
+        // Generate sentence hashes (simplified for evaluation)
+        let sentence_hashes: Vec<u64> = sentences
+            .iter()
+            .map(|s| {
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                s.hash(&mut hasher);
+                hasher.finish()
+            })
+            .collect();
+
+        let article = DeduplicatedArticle {
+            id: item.id().to_string(),
+            title: Some(title.to_string()),
+            sentences,
+            sentence_hashes,
+            language: "unknown".to_string(),
+            tags: vec![],       // No tags in evaluation dataset
+            duplicates: vec![], // No duplicates in evaluation
+        };
+
+        // Create GenreCandidates from classification result
+        let candidates: Vec<GenreCandidate> = classification
+            .top_genres
+            .iter()
+            .take(3)
+            .map(|genre| {
+                let score = classification.scores.get(genre).copied().unwrap_or(0.0);
+                let keyword_support = classification.keyword_hits.get(genre).copied().unwrap_or(0);
+                let classifier_confidence =
+                    classification.scores.get(genre).copied().unwrap_or(0.0);
+                GenreCandidate {
+                    name: genre.clone(),
+                    score: score as f32,
+                    keyword_support,
+                    classifier_confidence: classifier_confidence as f32,
+                }
+            })
+            .collect();
+
+        // Apply RefineEngine (same as actual pipeline)
+        let tag_profile = TagProfile::default(); // No tags in evaluation
+        let refine_input = crate::pipeline::genre_refine::RefineInput {
+            job: &job_context,
+            article: &article,
+            candidates: &candidates,
+            tag_profile: &tag_profile,
+            fallback: TagFallbackMode::CoarseOnly, // No tags, so use CoarseOnly
+        };
+
+        let refine_outcome = refine_engine.refine(refine_input).await?;
+        let predicted_genres = vec![refine_outcome.final_genre];
+
+        confusion_matrix.add(item.expected_genres(), &predicted_genres);
     }
 
-    confusion_matrix
+    Ok(confusion_matrix)
 }
 
 #[allow(dead_code)]
@@ -359,7 +446,19 @@ pub(crate) async fn evaluate_genres(
 
     info!("Loaded {} items", golden_data.len());
 
-    let confusion_matrix = run_evaluation(&golden_data);
+    let confusion_matrix = match run_evaluation(&state, &golden_data).await {
+        Ok(matrix) => matrix,
+        Err(e) => {
+            error!(error = %e, "Failed to run evaluation");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": format!("Failed to run evaluation: {}", e),
+                })),
+            )
+                .into_response();
+        }
+    };
     let per_genre_metrics = build_evaluation_metrics(&confusion_matrix);
 
     let evaluation_run = GenreEvaluationRun::new(

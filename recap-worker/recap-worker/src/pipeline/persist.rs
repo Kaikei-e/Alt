@@ -13,6 +13,14 @@ use crate::store::{
 use super::dispatch::DispatchResult;
 use serde_json::json;
 
+/// Sanitize title and summary text by removing markdown code blocks
+fn sanitize_title(text: &str) -> String {
+    text.replace("```json", "")
+        .replace("```", "")
+        .trim()
+        .to_string()
+}
+
 /// 永続化結果。
 #[derive(Debug, Clone)]
 pub(crate) struct PersistResult {
@@ -107,12 +115,16 @@ impl PersistStage for FinalSectionPersistStage {
             let body_json = serde_json::to_value(summary_response)
                 .context("failed to convert summary response to JSON")?;
 
+            // Sanitize title to remove markdown code blocks
+            let sanitized_title = sanitize_title(&summary_response.summary.title);
+            let sanitized_summary = sanitize_title(&summary_text);
+
             let output = RecapOutput::new(
                 job.job_id,
                 genre.as_str(),
                 summary_id.clone(),
-                summary_response.summary.title.clone(),
-                summary_text,
+                sanitized_title,
+                sanitized_summary,
                 bullets_json,
                 body_json,
             );
