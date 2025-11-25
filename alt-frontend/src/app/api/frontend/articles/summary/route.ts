@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     // Fetch from alt-backend
     const backendUrl = process.env.API_URL || "http://localhost:9000";
-    const backendEndpoint = `${backendUrl}/v1/feeds/fetch/summary/provided`;
+    const backendEndpoint = `${backendUrl}/v1/feeds/fetch/summary`;
 
     // Forward cookies and headers
     const cookieHeader = request.headers.get("cookie") || "";
