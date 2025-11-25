@@ -42,6 +42,7 @@ pub struct Config {
     coherence_similarity_threshold: f32,
     recap_pre_refresh_graph_enabled: bool,
     recap_pre_refresh_timeout: Duration,
+    llm_summary_timeout: Duration,
 }
 
 #[derive(Debug, Error)]
@@ -123,6 +124,9 @@ impl Config {
         let recap_pre_refresh_graph_enabled = parse_bool("RECAP_PRE_REFRESH_GRAPH_ENABLED", true)?;
         let recap_pre_refresh_timeout = parse_duration_secs("RECAP_PRE_REFRESH_TIMEOUT_SECS", 300)?;
 
+        // LLM summary generation timeout (default 600 seconds = 10 minutes)
+        let llm_summary_timeout = parse_duration_secs("LLM_SUMMARY_TIMEOUT_SECS", 600)?;
+
         Ok(Self {
             http_bind,
             llm_max_concurrency,
@@ -157,6 +161,7 @@ impl Config {
             coherence_similarity_threshold,
             recap_pre_refresh_graph_enabled,
             recap_pre_refresh_timeout,
+            llm_summary_timeout,
         })
     }
 
@@ -322,6 +327,11 @@ impl Config {
     pub fn recap_pre_refresh_timeout(&self) -> Duration {
         self.recap_pre_refresh_timeout
     }
+
+    #[must_use]
+    pub fn llm_summary_timeout(&self) -> Duration {
+        self.llm_summary_timeout
+    }
 }
 
 fn env_var(name: &'static str) -> Result<String, ConfigError> {
@@ -468,6 +478,7 @@ mod tests {
         remove_env("OTEL_SAMPLING_RATIO");
         remove_env("RECAP_WINDOW_DAYS");
         remove_env("RECAP_GENRES");
+        remove_env("LLM_SUMMARY_TIMEOUT_SECS");
     }
 
     #[test]

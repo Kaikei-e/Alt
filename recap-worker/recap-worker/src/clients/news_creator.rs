@@ -14,10 +14,11 @@ use crate::schema::{news_creator::SUMMARY_RESPONSE_SCHEMA, validate_json};
 pub(crate) struct NewsCreatorClient {
     client: Client,
     base_url: Url,
+    summary_timeout: Duration,
 }
 
 impl NewsCreatorClient {
-    pub(crate) fn new(base_url: impl Into<String>) -> Result<Self> {
+    pub(crate) fn new(base_url: impl Into<String>, summary_timeout: Duration) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(5))
             .build()
@@ -25,7 +26,11 @@ impl NewsCreatorClient {
 
         let base_url = Url::parse(&base_url.into()).context("invalid news-creator base URL")?;
 
-        Ok(Self { client, base_url })
+        Ok(Self {
+            client,
+            base_url,
+            summary_timeout,
+        })
     }
 
     pub(crate) async fn health_check(&self) -> Result<()> {
@@ -98,7 +103,7 @@ impl NewsCreatorClient {
             .post(url)
             .json(request)
             .header("X-Job-ID", request.job_id.to_string())
-            .timeout(Duration::from_secs(120)) // LLM処理のため長めのタイムアウト
+            .timeout(self.summary_timeout)
             .send()
             .await
             .context("summary generation request failed")?;
@@ -405,7 +410,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = NewsCreatorClient::new(server.uri()).expect("client should build");
+        let client = NewsCreatorClient::new(server.uri(), Duration::from_secs(600))
+            .expect("client should build");
 
         client
             .health_check()
@@ -422,7 +428,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = NewsCreatorClient::new(server.uri()).expect("client should build");
+        let client = NewsCreatorClient::new(server.uri(), Duration::from_secs(600))
+            .expect("client should build");
 
         let error = client.health_check().await.expect_err("should fail");
         assert!(error.to_string().contains("error status"));
@@ -439,7 +446,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = NewsCreatorClient::new(server.uri()).expect("client should build");
+        let client = NewsCreatorClient::new(server.uri(), Duration::from_secs(600))
+            .expect("client should build");
         let summary = client
             .summarize(&serde_json::json!({"job_id": "00000000-0000-0000-0000-000000000000"}))
             .await

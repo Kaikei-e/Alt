@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs, sync::Arc};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
@@ -29,15 +29,14 @@ pub(crate) struct DispatchResult {
 /// ジャンル別の処理結果。
 #[derive(Debug, Clone)]
 pub(crate) struct GenreResult {
+    #[allow(dead_code)] // kept for debugging and future use
     pub(crate) genre: String,
+    #[allow(dead_code)] // kept for debugging and future use
     pub(crate) clustering_response: Option<ClusteringResponse>,
     pub(crate) summary_response_id: Option<String>,
     pub(crate) summary_response: Option<crate::clients::news_creator::SummaryResponse>,
     pub(crate) error: Option<String>,
 }
-
-type GenreTaskHandle = tokio::task::JoinHandle<(String, GenreResult)>;
-type GenreTaskResult = (Vec<GenreTaskHandle>, HashMap<String, GenreResult>, usize);
 
 #[async_trait]
 pub(crate) trait DispatchStage: Send + Sync {
@@ -72,43 +71,34 @@ impl MlLlmDispatchStage {
         }
     }
 
-    /// 単一ジャンルの処理を実行する。
-    async fn process_genre(
+    /// 単一ジャンルのクラスタリングのみを実行する。
+    async fn cluster_genre(
         &self,
         job_id: Uuid,
         genre: &str,
         evidence: &super::evidence::EvidenceCorpus,
-    ) -> GenreResult {
+    ) -> Result<ClusteringResponse> {
         debug!(
             job_id = %job_id,
             genre = %genre,
             article_count = evidence.articles.len(),
-            "processing genre"
+            "clustering genre"
         );
 
-        // Step 1: Subworkerでクラスタリング
-        let clustering_response = match self.subworker_client.cluster_corpus(job_id, evidence).await
-        {
-            Ok(response) => {
-                info!(
-                    job_id = %job_id,
-                    genre = %genre,
-                    cluster_count = response.clusters.len(),
-                    "clustering completed successfully"
-                );
-                response
-            }
-            Err(e) => {
-                return Self::clustering_error_result(genre, e);
-            }
-        };
+        let clustering_response = self
+            .subworker_client
+            .cluster_corpus(job_id, evidence)
+            .await
+            .context("clustering failed")?;
 
-        // Step 2: News-Creatorで日本語要約生成
-        let summary_result = self
-            .generate_summary_with_metadata(job_id, genre, &clustering_response)
-            .await;
+        info!(
+            job_id = %job_id,
+            genre = %genre,
+            cluster_count = clustering_response.clusters.len(),
+            "clustering completed successfully"
+        );
 
-        Self::build_genre_result(genre, clustering_response, summary_result)
+        Ok(clustering_response)
     }
 
     /// クラスタリングエラー時の結果を構築する。
@@ -235,14 +225,19 @@ impl DispatchStage for MlLlmDispatchStage {
             });
         }
 
-        // 各ジャンルを並列処理
-        let (tasks, mut genre_results, mut failure_count) =
-            self.create_genre_tasks(job, &genres, &evidence);
-        let (task_results, task_success, task_failure) =
-            self.process_task_results(job, tasks).await;
-        genre_results.extend(task_results);
-        let success_count = task_success;
-        failure_count += task_failure;
+        // Phase 1: 全ジャンルを並列でクラスタリング
+        let clustering_results = self.cluster_all_genres(job, &genres, &evidence).await;
+
+        // Phase 2: サマリー生成は完全直列（キュー方式）
+        let genre_results = self
+            .generate_summaries_sequentially(job, clustering_results)
+            .await;
+
+        let success_count = genre_results
+            .values()
+            .filter(|result| result.error.is_none())
+            .count();
+        let failure_count = genre_count - success_count;
 
         let dispatch_result = DispatchResult {
             job_id: job.job_id,
@@ -276,15 +271,20 @@ impl DispatchStage for MlLlmDispatchStage {
 }
 
 impl MlLlmDispatchStage {
-    fn create_genre_tasks(
+    /// Phase 1: 全ジャンルを並列でクラスタリング
+    async fn cluster_all_genres(
         &self,
         job: &JobContext,
         genres: &[String],
         evidence: &EvidenceBundle,
-    ) -> GenreTaskResult {
+    ) -> HashMap<String, Result<ClusteringResponse>> {
+        info!(
+            job_id = %job.job_id,
+            genre_count = genres.len(),
+            "starting parallel clustering for all genres"
+        );
+
         let mut tasks = Vec::new();
-        let mut genre_results: HashMap<String, GenreResult> = HashMap::new();
-        let mut failure_count = 0;
 
         for genre in genres {
             if let Some(corpus_ref) = evidence.get_corpus(genre) {
@@ -300,7 +300,7 @@ impl MlLlmDispatchStage {
                         .await
                         .expect("dispatch semaphore should not be closed");
                     let result = self_clone
-                        .process_genre(job_id, &genre_clone, &corpus)
+                        .cluster_genre(job_id, &genre_clone, &corpus)
                         .await;
                     (genre_clone, result)
                 });
@@ -312,53 +312,17 @@ impl MlLlmDispatchStage {
                     genre = %genre,
                     "evidence corpus missing for genre"
                 );
-                failure_count += 1;
-                genre_results.insert(
-                    genre.clone(),
-                    GenreResult {
-                        genre: genre.clone(),
-                        clustering_response: None,
-                        summary_response_id: None,
-                        summary_response: None,
-                        error: Some("Evidence corpus missing".to_string()),
-                    },
-                );
             }
         }
 
-        (tasks, genre_results, failure_count)
-    }
-
-    async fn process_task_results(
-        &self,
-        job: &JobContext,
-        tasks: Vec<GenreTaskHandle>,
-    ) -> (HashMap<String, GenreResult>, usize, usize) {
-        let mut genre_results: HashMap<String, GenreResult> = HashMap::new();
-        let mut success_count = 0;
-        let mut failure_count = 0;
-
-        // すべてのタスクを待機
+        // すべてのクラスタリングタスクを待機
         let results = futures::future::join_all(tasks).await;
+        let mut clustering_results: HashMap<String, Result<ClusteringResponse>> = HashMap::new();
 
         for result in results {
             match result {
-                Ok((genre, genre_result)) => {
-                    debug!(
-                        job_id = %job.job_id,
-                        genre = %genre_result.genre,
-                        has_clustering = genre_result.clustering_response.is_some(),
-                        has_summary = genre_result.summary_response_id.is_some(),
-                        has_error = genre_result.error.is_some(),
-                        "processed genre result"
-                    );
-
-                    if genre_result.error.is_none() {
-                        success_count += 1;
-                    } else {
-                        failure_count += 1;
-                    }
-                    genre_results.insert(genre, genre_result);
+                Ok((genre, clustering_result)) => {
+                    clustering_results.insert(genre, clustering_result);
                 }
                 Err(join_error) => match join_error.try_into_panic() {
                     Ok(panic_payload) => {
@@ -374,19 +338,81 @@ impl MlLlmDispatchStage {
                         error!(
                             job_id = %job.job_id,
                             panic_message,
-                            "genre processing task panicked"
+                            "clustering task panicked"
                         );
-                        failure_count += 1;
                     }
                     Err(join_error) => {
-                        warn!(error = ?join_error, "genre processing task failed");
-                        failure_count += 1;
+                        warn!(
+                            job_id = %job.job_id,
+                            error = ?join_error,
+                            "clustering task failed"
+                        );
                     }
                 },
             }
         }
 
-        (genre_results, success_count, failure_count)
+        info!(
+            job_id = %job.job_id,
+            completed_count = clustering_results.len(),
+            "completed parallel clustering phase"
+        );
+
+        clustering_results
+    }
+
+    /// Phase 2: サマリー生成を完全直列（キュー方式）で実行
+    async fn generate_summaries_sequentially(
+        &self,
+        job: &JobContext,
+        clustering_results: HashMap<String, Result<ClusteringResponse>>,
+    ) -> HashMap<String, GenreResult> {
+        info!(
+            job_id = %job.job_id,
+            genre_count = clustering_results.len(),
+            "starting sequential summary generation (queue mode)"
+        );
+
+        let mut genre_results: HashMap<String, GenreResult> = HashMap::new();
+
+        // クラスタリング成功したジャンルを順番に処理（完全直列）
+        for (genre, clustering_result) in clustering_results {
+            match clustering_result {
+                Ok(clustering_response) => {
+                    info!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        "processing summary generation (queue position)"
+                    );
+
+                    let summary_result = self
+                        .generate_summary_with_metadata(job.job_id, &genre, &clustering_response)
+                        .await;
+
+                    let genre_result =
+                        Self::build_genre_result(&genre, clustering_response, summary_result);
+                    genre_results.insert(genre, genre_result);
+                }
+                Err(e) => {
+                    warn!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        error = ?e,
+                        "skipping summary generation due to clustering failure"
+                    );
+                    let genre_clone = genre.clone();
+                    genre_results.insert(genre, Self::clustering_error_result(&genre_clone, e));
+                }
+            }
+        }
+
+        info!(
+            job_id = %job.job_id,
+            completed_count = genre_results.len(),
+            "completed sequential summary generation phase"
+        );
+
+        genre_results
     }
 }
 

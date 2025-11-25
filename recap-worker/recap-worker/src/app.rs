@@ -68,7 +68,10 @@ impl ComponentRegistry {
     pub async fn build(config: Config) -> Result<Self> {
         let config = Arc::new(config);
         let telemetry = Telemetry::new()?;
-        let news_creator_client = Arc::new(NewsCreatorClient::new(config.news_creator_base_url())?);
+        let news_creator_client = Arc::new(NewsCreatorClient::new(
+            config.news_creator_base_url(),
+            config.llm_summary_timeout(),
+        )?);
         let subworker_client = Arc::new(SubworkerClient::new(
             config.subworker_base_url(),
             config.min_documents_per_genre(),
