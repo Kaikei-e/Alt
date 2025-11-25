@@ -192,14 +192,20 @@ impl ConfusionMatrix {
     }
 
     fn macro_f1(&self) -> f64 {
-        let macro_precision = self.macro_precision();
-        let macro_recall = self.macro_recall();
-        let denominator = macro_precision + macro_recall;
-        if denominator == 0.0 {
-            0.0
-        } else {
-            2.0 * (macro_precision * macro_recall) / denominator
+        let all_genres: std::collections::HashSet<String> = self
+            .tp
+            .keys()
+            .chain(self.fp.keys())
+            .chain(self.fn_count.keys())
+            .cloned()
+            .collect();
+
+        if all_genres.is_empty() {
+            return 0.0;
         }
+
+        let sum: f64 = all_genres.iter().map(|g| self.f1_score(g)).sum();
+        sum / all_genres.len() as f64
     }
 
     fn total_tp(&self) -> usize {
