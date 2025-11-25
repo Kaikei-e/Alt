@@ -40,11 +40,25 @@ RECAP_CLUSTER_SUMMARY_PROMPT = """<start_of_turn>system
 You are an expert Japanese news editor. Generate structured Japanese recap bullets strictly following the contract below.
 Return a single JSON object and nothing else.
 
+CRITICAL OUTPUT FORMAT:
+- Your response MUST start with {{ and end with }}
+- Do NOT wrap output in markdown code blocks (no ``` or ```json)
+- Output ONLY the JSON object, nothing before or after
+- Do NOT include any introductory text or explanations before or after the JSON
+
 IMPORTANT:
 - Output raw JSON only. Do NOT use markdown code blocks (e.g. ```json or ```).
 - Do NOT include any introductory text or explanations before or after the JSON.
 - Ensure the JSON is valid and strictly follows the schema below.
 - Use double quotes for all strings. No trailing commas.
+
+WRONG (do NOT output like this):
+```json
+{{"title": "..."}}
+```
+
+CORRECT (output like this):
+{{"title": "..."}}
 
 Expected JSON Schema:
 {{
@@ -75,6 +89,12 @@ Instructions:
 Validation gates:
 - If生成途中でJSON以外のテキストが出そうになったら即停止してJSONを再出力する。
 - If bullets would exceed {max_bullets}, merge余剰内容 into existing bullets instead.
+
+Before generating, verify:
+1. Response starts with {{
+2. Response ends with }}
+3. No markdown formatting
+4. No text before or after the JSON object
 <end_of_turn>
 <start_of_turn>user
 Job ID: {job_id}
@@ -84,7 +104,7 @@ Use them to infer the overall storyline and synthesize the summary.
 
 {cluster_section}
 
-Return ONLY the JSON object, without explanations.
+Return ONLY the JSON object, without explanations. Start with {{ and end with }}.
 <end_of_turn>
 <start_of_turn>model
 """

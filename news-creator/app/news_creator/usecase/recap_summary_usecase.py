@@ -57,40 +57,89 @@ class RecapSummaryUsecase:
             },
         )
 
-        # Use JSON format for structured output (Ollama structured output mode)
-        llm_response = await self.llm_provider.generate(
-            prompt,
-            num_predict=self.config.summary_num_predict,
-            format="json",
-            options=llm_options,
-        )
+        max_retries = 2
+        last_error = None
+        last_response = None
 
-        summary_payload = self._parse_summary_json(llm_response.response, max_bullets)
-        summary = RecapSummary(**summary_payload)
+        for attempt in range(max_retries + 1):
+            # リトライ時は温度を下げる
+            current_temp = temperature_override
+            if attempt > 0:
+                base_temp = temperature_override if temperature_override is not None else self.config.llm_temperature
+                current_temp = max(0.0, base_temp - (0.1 * attempt))
+                logger.warning(
+                    "Retrying recap summary generation with lower temperature",
+                    extra={
+                        "job_id": str(request.job_id),
+                        "attempt": attempt + 1,
+                        "temperature": current_temp,
+                    },
+                )
 
-        metadata = RecapSummaryMetadata(
-            model=llm_response.model,
-            temperature=temperature_override if temperature_override is not None else self.config.llm_temperature,
-            prompt_tokens=llm_response.prompt_eval_count,
-            completion_tokens=llm_response.eval_count,
-            processing_time_ms=self._nanoseconds_to_milliseconds(llm_response.total_duration),
-        )
+            llm_options_retry: Optional[Dict[str, Any]] = None
+            if current_temp is not None:
+                llm_options_retry = {"temperature": float(current_temp)}
+            elif llm_options is not None:
+                llm_options_retry = llm_options
 
-        logger.info(
-            "Recap summary generated",
-            extra={
-                "job_id": str(request.job_id),
-                "genre": request.genre,
-                "bullet_count": len(summary.bullets),
-            },
-        )
+            # Use JSON format for structured output (Ollama structured output mode)
+            llm_response = await self.llm_provider.generate(
+                prompt,
+                num_predict=self.config.summary_num_predict,
+                format="json",
+                options=llm_options_retry,
+            )
 
-        return RecapSummaryResponse(
-            job_id=request.job_id,
-            genre=request.genre,
-            summary=summary,
-            metadata=metadata,
-        )
+            try:
+                summary_payload = self._parse_summary_json(llm_response.response, max_bullets)
+                # 成功した場合は結果を返す
+                summary = RecapSummary(**summary_payload)
+
+                metadata = RecapSummaryMetadata(
+                    model=llm_response.model,
+                    temperature=current_temp if current_temp is not None else self.config.llm_temperature,
+                    prompt_tokens=llm_response.prompt_eval_count,
+                    completion_tokens=llm_response.eval_count,
+                    processing_time_ms=self._nanoseconds_to_milliseconds(llm_response.total_duration),
+                )
+
+                logger.info(
+                    "Recap summary generated",
+                    extra={
+                        "job_id": str(request.job_id),
+                        "genre": request.genre,
+                        "bullet_count": len(summary.bullets),
+                        "attempt": attempt + 1,
+                    },
+                )
+
+                return RecapSummaryResponse(
+                    job_id=request.job_id,
+                    genre=request.genre,
+                    summary=summary,
+                    metadata=metadata,
+                )
+            except RuntimeError as e:
+                last_error = e
+                last_response = llm_response
+                if attempt < max_retries:
+                    continue
+                # 最後の試行でも失敗した場合はエラーを投げる
+                logger.error(
+                    "Failed to generate recap summary after all retries",
+                    extra={
+                        "job_id": str(request.job_id),
+                        "genre": request.genre,
+                        "attempts": attempt + 1,
+                        "error": str(e),
+                    },
+                )
+                raise
+
+        # ここに到達することはないはずだが、念のため
+        if last_error:
+            raise last_error
+        raise RuntimeError("Failed to generate recap summary")
 
     def _build_prompt(self, request: RecapSummaryRequest, max_bullets: int) -> str:
         max_clusters = max(3, min(len(request.clusters), max_bullets + 2))
@@ -198,10 +247,20 @@ class RecapSummaryUsecase:
         Returns:
             Cleaned text with code block markers removed
         """
-        # Remove markdown code block markers at the start and end
-        # Pattern matches: ```json, ```, ```json\n, etc.
-        cleaned = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
-        cleaned = re.sub(r'\s*```$', '', cleaned, flags=re.MULTILINE)
+        # Step 1: 先頭・末尾のコードフェンスを除去
+        cleaned = re.sub(r'^```(?:json)?\s*\n?', '', text, flags=re.MULTILINE)
+        cleaned = re.sub(r'\n?```\s*$', '', cleaned, flags=re.MULTILINE)
+
+        # Step 2: 中間位置のコードフェンスも除去（LLMが途中で追加する場合）
+        cleaned = re.sub(r'```(?:json)?\s*\n', '', cleaned)
+        cleaned = re.sub(r'\n```', '', cleaned)
+
+        # Step 3: 先頭の非JSON文字を除去（"Here is the JSON:"等）
+        cleaned = re.sub(r'^[^{]*(?={)', '', cleaned, count=1)
+
+        # Step 4: 末尾の非JSON文字を除去
+        cleaned = re.sub(r'(?<=})[^}]*$', '', cleaned)
+
         return cleaned.strip()
 
     def _extract_json_object(self, text: str) -> str:
@@ -261,6 +320,19 @@ class RecapSummaryUsecase:
             payload = summary_section
 
         title = payload.get("title")
+
+        # タイトルがコードフェンス等の不正値の場合は修正
+        invalid_titles = ["```json", "```", "json", "{", ""]
+        if not isinstance(title, str) or title.strip().lower() in invalid_titles:
+            # bulletsの先頭から抽出を試みる
+            bullets = payload.get("bullets", [])
+            if bullets and isinstance(bullets[0], str):
+                # 最初のbulletから15-45文字を抽出してタイトル化
+                first_bullet = bullets[0]
+                title = self._extract_title_from_bullet(first_bullet)
+            else:
+                title = "主要トピックのまとめ"
+
         if not isinstance(title, str) or not title.strip():
             title = "主要トピックのまとめ"
         title = title.strip()[:200]
@@ -301,6 +373,16 @@ class RecapSummaryUsecase:
         }
 
         return sanitized
+
+    def _extract_title_from_bullet(self, bullet: str) -> str:
+        """bulletテキストから適切なタイトルを抽出する"""
+        # 最初の句点または45文字までを取得
+        for i, char in enumerate(bullet):
+            if char in "。、" and 15 <= i <= 45:
+                return bullet[:i+1]
+            if i >= 45:
+                return bullet[:45] + "…"
+        return bullet[:45] if len(bullet) > 45 else bullet
 
     @staticmethod
     def _nanoseconds_to_milliseconds(value: Optional[int]) -> Optional[int]:
