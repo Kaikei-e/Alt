@@ -78,7 +78,11 @@ class RecapSummaryUsecase:
 
             llm_options_retry: Optional[Dict[str, Any]] = None
             if current_temp is not None:
-                llm_options_retry = {"temperature": float(current_temp)}
+                # Merge temperature override into existing options to preserve other settings
+                if llm_options is not None:
+                    llm_options_retry = {**llm_options, "temperature": float(current_temp)}
+                else:
+                    llm_options_retry = {"temperature": float(current_temp)}
             elif llm_options is not None:
                 llm_options_retry = llm_options
 
