@@ -27,6 +27,12 @@ pub(crate) struct PersistResult {
     pub(crate) job_id: uuid::Uuid,
     pub(crate) genres_stored: usize,
     pub(crate) genres_failed: usize,
+    /// 証拠不足でスキップされたジャンル数（記事数が閾値未満）
+    pub(crate) genres_skipped: usize,
+    /// 記事が1件も割り当てられなかったジャンル数
+    pub(crate) genres_no_evidence: usize,
+    /// 設定された全ジャンル数
+    pub(crate) total_genres: usize,
 }
 
 #[async_trait]
@@ -58,17 +64,32 @@ impl PersistStage for FinalSectionPersistStage {
 
         let mut genres_stored = 0;
         let mut genres_failed = 0;
+        let mut genres_skipped = 0;
+        let mut genres_no_evidence = 0;
+        let total_genres = result.all_genres.len();
 
         for (genre, genre_result) in &result.genre_results {
-            // エラーがある場合はスキップ
-            if genre_result.error.is_some() {
-                warn!(
-                    job_id = %job.job_id,
-                    genre = %genre,
-                    error = ?genre_result.error,
-                    "skipping genre with error"
-                );
-                genres_failed += 1;
+            // エラーがある場合は分類
+            if let Some(error_msg) = &genre_result.error {
+                // エラーメッセージから分類
+                if error_msg.contains("no evidence") || error_msg.contains("no articles assigned") {
+                    // 記事が1件も割り当てられなかった
+                    genres_no_evidence += 1;
+                } else if error_msg.contains("insufficient documents")
+                    || error_msg.contains("expected >=")
+                {
+                    // 証拠不足でスキップ（記事数が閾値未満）
+                    genres_skipped += 1;
+                } else {
+                    // その他のエラー（クラスタリング失敗、サマリー生成失敗など）
+                    warn!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        error = ?genre_result.error,
+                        "skipping genre with error"
+                    );
+                    genres_failed += 1;
+                }
                 continue;
             }
 
@@ -169,12 +190,18 @@ impl PersistStage for FinalSectionPersistStage {
             job_id: job.job_id,
             genres_stored,
             genres_failed,
+            genres_skipped,
+            genres_no_evidence,
+            total_genres,
         };
 
         info!(
             job_id = %persist_result.job_id,
+            total_genres = persist_result.total_genres,
             genres_stored = persist_result.genres_stored,
             genres_failed = persist_result.genres_failed,
+            genres_skipped = persist_result.genres_skipped,
+            genres_no_evidence = persist_result.genres_no_evidence,
             "completed persisting final sections"
         );
 
@@ -192,9 +219,15 @@ mod tests {
             job_id: uuid::Uuid::new_v4(),
             genres_stored: 5,
             genres_failed: 2,
+            genres_skipped: 1,
+            genres_no_evidence: 1,
+            total_genres: 9,
         };
 
         assert_eq!(result.genres_stored, 5);
         assert_eq!(result.genres_failed, 2);
+        assert_eq!(result.genres_skipped, 1);
+        assert_eq!(result.genres_no_evidence, 1);
+        assert_eq!(result.total_genres, 9);
     }
 }

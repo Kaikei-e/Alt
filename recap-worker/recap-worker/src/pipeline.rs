@@ -144,6 +144,7 @@ impl PipelineOrchestrator {
         let min_documents_per_genre = config.min_documents_per_genre();
         let coherence_similarity_threshold = config.coherence_similarity_threshold();
 
+        let config_for_dispatch = Arc::clone(&config);
         Ok(PipelineBuilder::new(config)
             .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
                 alt_backend_client,
@@ -168,6 +169,7 @@ impl PipelineOrchestrator {
                 news_creator,
                 Arc::clone(&recap_dao),
                 max_concurrent,
+                config_for_dispatch,
             )))
             .with_persist_stage(Arc::new(persist::FinalSectionPersistStage::new(
                 Arc::clone(&recap_dao),
@@ -224,7 +226,15 @@ impl PipelineOrchestrator {
         );
         let dispatched = self.stages.dispatch.dispatch(job, evidence_bundle).await?;
         let persisted = self.stages.persist.persist(job, dispatched).await?;
-        tracing::debug!(job_id = %job.job_id, genres_stored = persisted.genres_stored, genres_failed = persisted.genres_failed, "recap pipeline completed");
+        tracing::debug!(
+            job_id = %job.job_id,
+            total_genres = persisted.total_genres,
+            genres_stored = persisted.genres_stored,
+            genres_failed = persisted.genres_failed,
+            genres_skipped = persisted.genres_skipped,
+            genres_no_evidence = persisted.genres_no_evidence,
+            "recap pipeline completed"
+        );
         Ok(persisted)
     }
 
@@ -614,6 +624,7 @@ mod tests {
                 genre_results: std::collections::HashMap::new(),
                 success_count: 1,
                 failure_count: 0,
+                all_genres: vec![],
             })
         }
     }
@@ -641,6 +652,9 @@ mod tests {
                 job_id: job.job_id,
                 genres_stored: 1,
                 genres_failed: 0,
+                genres_skipped: 0,
+                genres_no_evidence: 0,
+                total_genres: result.all_genres.len(),
             })
         }
     }

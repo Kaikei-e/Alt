@@ -11,6 +11,7 @@ use crate::{
         NewsCreatorClient,
         subworker::{ClusteringResponse, SubworkerClient},
     },
+    config::Config,
     scheduler::JobContext,
     store::dao::RecapDao,
 };
@@ -24,6 +25,8 @@ pub(crate) struct DispatchResult {
     pub(crate) genre_results: HashMap<String, GenreResult>,
     pub(crate) success_count: usize,
     pub(crate) failure_count: usize,
+    /// 設定された全ジャンルリスト（証拠がないジャンルも含む）
+    pub(crate) all_genres: Vec<String>,
 }
 
 /// ジャンル別の処理結果。
@@ -54,6 +57,7 @@ pub(crate) struct MlLlmDispatchStage {
     news_creator_client: Arc<NewsCreatorClient>,
     dao: Arc<RecapDao>,
     concurrency_semaphore: Arc<Semaphore>,
+    config: Arc<Config>,
 }
 
 impl MlLlmDispatchStage {
@@ -62,12 +66,14 @@ impl MlLlmDispatchStage {
         news_creator_client: Arc<NewsCreatorClient>,
         dao: Arc<RecapDao>,
         max_concurrency: usize,
+        config: Arc<Config>,
     ) -> Self {
         Self {
             subworker_client,
             news_creator_client,
             dao,
             concurrency_semaphore: Arc::new(Semaphore::new(max_concurrency.max(1))),
+            config,
         }
     }
 
@@ -216,12 +222,16 @@ impl DispatchStage for MlLlmDispatchStage {
             "starting ML/LLM dispatch for all genres"
         );
 
+        // 設定された全ジャンルを取得
+        let all_genres = self.config.recap_genres().to_vec();
+
         if genre_count == 0 {
             return Ok(DispatchResult {
                 job_id: job.job_id,
                 genre_results: HashMap::new(),
                 success_count: 0,
                 failure_count: 0,
+                all_genres,
             });
         }
 
@@ -229,21 +239,41 @@ impl DispatchStage for MlLlmDispatchStage {
         let clustering_results = self.cluster_all_genres(job, &genres, &evidence).await;
 
         // Phase 2: サマリー生成は完全直列（キュー方式）
-        let genre_results = self
+        let mut genre_results = self
             .generate_summaries_sequentially(job, clustering_results)
             .await;
+
+        // 証拠がないジャンル（設定されているが処理されていない）を追加
+        let processed_genres: std::collections::HashSet<String> =
+            genre_results.keys().cloned().collect();
+        for genre in &all_genres {
+            if !processed_genres.contains(genre) {
+                // 証拠がないジャンルを結果に追加（エラーとして記録）
+                genre_results.insert(
+                    genre.clone(),
+                    GenreResult {
+                        genre: genre.clone(),
+                        clustering_response: None,
+                        summary_response_id: None,
+                        summary_response: None,
+                        error: Some("no evidence (no articles assigned)".to_string()),
+                    },
+                );
+            }
+        }
 
         let success_count = genre_results
             .values()
             .filter(|result| result.error.is_none())
             .count();
-        let failure_count = genre_count - success_count;
+        let failure_count = genre_results.len() - success_count;
 
         let dispatch_result = DispatchResult {
             job_id: job.job_id,
             genre_results,
             success_count,
             failure_count,
+            all_genres,
         };
 
         if let Some((rss_kb, peak_kb)) = read_process_memory_kb() {
