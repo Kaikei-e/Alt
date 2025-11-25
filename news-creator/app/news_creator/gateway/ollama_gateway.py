@@ -1,5 +1,6 @@
 """Ollama Gateway - implements LLMProviderPort."""
 
+import asyncio
 import logging
 from typing import Dict, Any, Optional, Union
 
@@ -18,6 +19,8 @@ class OllamaGateway(LLMProviderPort):
         """Initialize Ollama gateway."""
         self.config = config
         self.driver = OllamaDriver(config)
+        # Semaphore for controlling concurrent requests to Ollama
+        self._semaphore = asyncio.Semaphore(config.ollama_request_concurrency)
 
     async def initialize(self) -> None:
         """Initialize the Ollama driver."""
@@ -94,8 +97,17 @@ class OllamaGateway(LLMProviderPort):
             }
         )
 
-        # Call driver
-        response_data = await self.driver.generate(payload)
+        # Acquire semaphore to queue requests (global queue for all services)
+        async with self._semaphore:
+            logger.debug(
+                "Acquired semaphore, calling Ollama driver",
+                extra={
+                    "model": payload["model"],
+                    "available_permits": self._semaphore._value,
+                }
+            )
+            # Call driver
+            response_data = await self.driver.generate(payload)
 
         # Validate response
         if "response" not in response_data:
