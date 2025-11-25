@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -47,7 +48,7 @@ class TagLabelGraphBuilder:
         self,
         session: AsyncSession,
         max_tags: int = 6,
-        min_confidence: float = 0.55,
+        min_confidence: float = 0.3,
         min_support: int = 3,
     ) -> None:
         self.session = session
@@ -153,12 +154,34 @@ class TagLabelGraphBuilder:
 
                 stats[(genre, label)].update(confidence, updated_at)
 
+        # Calculate total articles and tag frequencies for IDF weighting
+        total_articles = len(rows)
+        tag_frequencies: dict[str, int] = defaultdict(int)
+        for (_, label), acc in stats.items():
+            tag_frequencies[label] += acc.sample_size
+
+        max_tag_freq = max(tag_frequencies.values()) if tag_frequencies else 1
+
         edges: list[EdgePayload] = []
         for (genre, label), acc in stats.items():
             if acc.sample_size < self.min_support:
                 continue
             avg_conf = acc.weight_sum / acc.sample_size
-            weight = max(0.0, min(1.0, round(avg_conf, 6)))
+
+            # Apply IDF weighting: rare tags get higher weight
+            # IDF = log(total_articles / (articles_with_tag + 1))
+            # Normalize to 0.0-1.0 range
+            tag_freq = tag_frequencies.get(label, 1)
+            idf = math.log(total_articles / (tag_freq + 1) + 1)
+            max_idf = math.log(total_articles + 1)
+            idf_weight = idf / max_idf if max_idf > 0 else 1.0
+
+            # Combine average confidence with IDF weight
+            # Formula: weight = avg_conf * (0.7 + 0.3 * idf_weight)
+            # This gives 70% weight to confidence, 30% to IDF
+            weight = avg_conf * (0.7 + 0.3 * idf_weight)
+            weight = max(0.0, min(1.0, round(weight, 6)))
+
             edges.append(
                 EdgePayload(
                     genre=genre,
