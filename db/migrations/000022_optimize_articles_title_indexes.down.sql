@@ -1,1 +1,0 @@
-CREATE INDEX IF NOT EXISTS idx_articles_title_created_at ON articles (title, created_at);

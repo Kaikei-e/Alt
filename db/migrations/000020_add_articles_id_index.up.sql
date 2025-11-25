@@ -1,1 +1,0 @@
-CREATE INDEX IF NOT EXISTS idx_articles_id_only ON articles (id);

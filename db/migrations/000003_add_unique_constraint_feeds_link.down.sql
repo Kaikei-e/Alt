@@ -1,1 +1,0 @@
-ALTER TABLE feeds DROP CONSTRAINT unique_feeds_link; 
