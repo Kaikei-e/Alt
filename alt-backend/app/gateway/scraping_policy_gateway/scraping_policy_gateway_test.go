@@ -136,6 +136,65 @@ func TestScrapingPolicyGateway_CanFetchArticle_DefaultPolicy(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
+func TestScrapingPolicyGateway_CanFetchArticle_EmptyHostname(t *testing.T) {
+	// Test case for URL that parses successfully but has empty hostname
+	t.Run("file:// URL", func(t *testing.T) {
+		mockRepo := new(MockScrapingDomainPort)
+		// GetByDomain should not be called for empty hostname
+		// (validation happens before the call)
+
+		gateway := &ScrapingPolicyGateway{
+			scrapingDomainPort: mockRepo,
+			lastRequestTime:    make(map[string]time.Time),
+		}
+
+		ctx := context.Background()
+		canFetch, err := gateway.CanFetchArticle(ctx, "file:///path/to/file")
+
+		// Empty hostname should return error and false
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no hostname")
+		assert.False(t, canFetch)
+		// Verify GetByDomain was not called
+		mockRepo.AssertNotCalled(t, "GetByDomain")
+	})
+
+	// Test cases for URLs that fail to parse (these are caught earlier)
+	testCases := []struct {
+		name string
+		url  string
+	}{
+		{
+			name: "URL with only port",
+			url:  ":80",
+		},
+		{
+			name: "invalid URL without host",
+			url:  "://path",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockRepo := new(MockScrapingDomainPort)
+			gateway := &ScrapingPolicyGateway{
+				scrapingDomainPort: mockRepo,
+				lastRequestTime:    make(map[string]time.Time),
+			}
+
+			ctx := context.Background()
+			canFetch, err := gateway.CanFetchArticle(ctx, tc.url)
+
+			// Invalid URL should return error and false
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid article URL")
+			assert.False(t, canFetch)
+			// Verify GetByDomain was not called
+			mockRepo.AssertNotCalled(t, "GetByDomain")
+		})
+	}
+}
+
 func TestScrapingPolicyGateway_ImplementsPort(t *testing.T) {
 	// Verify that ScrapingPolicyGateway implements ScrapingPolicyPort interface
 	var _ scraping_policy_port.ScrapingPolicyPort = (*ScrapingPolicyGateway)(nil)

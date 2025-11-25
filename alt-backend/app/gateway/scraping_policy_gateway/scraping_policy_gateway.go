@@ -36,6 +36,12 @@ func (g *ScrapingPolicyGateway) CanFetchArticle(ctx context.Context, articleURL 
 	}
 
 	domainName := parsedURL.Hostname()
+	// Validate that hostname is not empty
+	// Empty hostnames occur in URLs like "file:///path" or ":80"
+	if domainName == "" {
+		return false, fmt.Errorf("article URL has no hostname: %s", articleURL)
+	}
+
 	scheme := parsedURL.Scheme
 	if scheme == "" {
 		scheme = "https"
