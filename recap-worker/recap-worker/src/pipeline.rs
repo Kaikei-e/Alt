@@ -43,6 +43,7 @@ pub(crate) struct PipelineOrchestrator {
     config: Arc<Config>,
     stages: PipelineStages,
     recap_dao: Arc<RecapDao>,
+    subworker_client: Arc<SubworkerClient>,
 }
 
 struct PipelineStages {
@@ -163,7 +164,7 @@ impl PipelineOrchestrator {
                 coherence_similarity_threshold,
             )))
             .with_dispatch_stage(Arc::new(MlLlmDispatchStage::new(
-                subworker_client,
+                Arc::clone(&subworker_client),
                 news_creator,
                 Arc::clone(&recap_dao),
                 max_concurrent,
@@ -171,7 +172,7 @@ impl PipelineOrchestrator {
             .with_persist_stage(Arc::new(persist::FinalSectionPersistStage::new(
                 Arc::clone(&recap_dao),
             )))
-            .build(Arc::clone(&recap_dao)))
+            .build(Arc::clone(&recap_dao), subworker_client))
     }
 
     #[cfg(test)]
@@ -181,6 +182,16 @@ impl PipelineOrchestrator {
 
     pub(crate) async fn execute(&self, job: &JobContext) -> Result<persist::PersistResult> {
         tracing::debug!(job_id = %job.job_id, prompt_version = %self.config.llm_prompt_version(), "recap pipeline started");
+
+        // グラフ最新化（失敗してもパイプラインは続行）
+        if self.config.recap_pre_refresh_graph_enabled() {
+            if let Err(err) = self.refresh_graph_before_pipeline().await {
+                tracing::warn!(
+                    error = ?err,
+                    "graph refresh failed, continuing with existing graph"
+                );
+            }
+        }
 
         // 設定を再読み込みしてGenreStageを更新
         match GraphOverrideSettings::load_with_fallback(self.recap_dao.pool()).await {
@@ -215,6 +226,20 @@ impl PipelineOrchestrator {
         let persisted = self.stages.persist.persist(job, dispatched).await?;
         tracing::debug!(job_id = %job.job_id, genres_stored = persisted.genres_stored, genres_failed = persisted.genres_failed, "recap pipeline completed");
         Ok(persisted)
+    }
+
+    /// パイプライン実行前にグラフを最新化する
+    async fn refresh_graph_before_pipeline(&self) -> Result<()> {
+        tracing::info!("refreshing graph before pipeline execution");
+
+        let timeout = self.config.recap_pre_refresh_timeout();
+        tokio::time::timeout(timeout, self.subworker_client.refresh_graph_and_learning())
+            .await
+            .context("graph refresh timed out")?
+            .context("graph refresh failed")?;
+
+        tracing::info!("graph refresh completed successfully");
+        Ok(())
     }
 }
 
@@ -267,7 +292,11 @@ impl PipelineBuilder {
         self
     }
 
-    pub(crate) fn build(self, recap_dao: Arc<RecapDao>) -> PipelineOrchestrator {
+    pub(crate) fn build(
+        self,
+        recap_dao: Arc<RecapDao>,
+        subworker_client: Arc<SubworkerClient>,
+    ) -> PipelineOrchestrator {
         let stages = PipelineStages {
             fetch: self
                 .fetch
@@ -296,6 +325,7 @@ impl PipelineBuilder {
             config: self.config,
             stages,
             recap_dao,
+            subworker_client,
         }
     }
 }
@@ -348,6 +378,12 @@ mod tests {
             .expect("failed to create test pool");
         let recap_dao = Arc::new(crate::store::dao::RecapDao::new(pool));
 
+        // テスト用のダミーSubworkerClientを作成
+        let subworker_client = Arc::new(
+            SubworkerClient::new("http://localhost:8002/", 10)
+                .expect("failed to create test subworker client"),
+        );
+
         let pipeline = PipelineOrchestrator::builder(Arc::clone(&config))
             .with_fetch_stage(Arc::new(RecordingFetch::new(Arc::clone(&order))))
             .with_preprocess_stage(Arc::new(RecordingPreprocess::new(Arc::clone(&order))))
@@ -356,7 +392,7 @@ mod tests {
             .with_select_stage(Arc::new(RecordingSelect::new(Arc::clone(&order))))
             .with_dispatch_stage(Arc::new(RecordingDispatch::new(Arc::clone(&order))))
             .with_persist_stage(Arc::new(RecordingPersist::new(Arc::clone(&order))))
-            .build(recap_dao);
+            .build(recap_dao, subworker_client);
 
         let job = JobContext::new(Uuid::new_v4(), vec!["ai".to_string()]);
 

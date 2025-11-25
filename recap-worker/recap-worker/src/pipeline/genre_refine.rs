@@ -283,6 +283,28 @@ impl TagLabelGraphCache {
             .get(&genre.to_lowercase())
             .and_then(|tags| tags.get(&tag.to_lowercase()).copied())
     }
+
+    /// Get statistics about the graph for debugging.
+    #[must_use]
+    pub(crate) fn debug_stats(&self) -> (usize, usize, Vec<String>) {
+        let genre_count = self.edges.len();
+        let total_tags: usize = self
+            .edges
+            .values()
+            .map(std::collections::HashMap::len)
+            .sum();
+        let sample_tags: Vec<String> = self
+            .edges
+            .iter()
+            .flat_map(|(genre, tags)| {
+                tags.keys()
+                    .take(3)
+                    .map(move |tag| format!("{}:{}", genre, tag))
+            })
+            .take(10)
+            .collect();
+        (genre_count, total_tags, sample_tags)
+    }
 }
 
 #[async_trait]
@@ -340,6 +362,51 @@ impl DbTagLabelGraphSource {
                 )
             })?;
         let cache = TagLabelGraphCache::from_records(&records);
+
+        // Debug: Log graph statistics
+        let total_edges = records.len();
+        let genre_count = records
+            .iter()
+            .map(|r| &r.genre)
+            .collect::<std::collections::HashSet<_>>()
+            .len();
+        let tag_count = records
+            .iter()
+            .map(|r| &r.tag)
+            .collect::<std::collections::HashSet<_>>()
+            .len();
+
+        // Sample tags by genre for better debugging
+        let mut genre_samples: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for record in records.iter().take(50) {
+            genre_samples
+                .entry(record.genre.clone())
+                .or_default()
+                .push(record.tag.clone());
+        }
+        let sample_by_genre: Vec<String> = genre_samples
+            .iter()
+            .map(|(genre, tags)| {
+                let tag_list: String = tags
+                    .iter()
+                    .take(3)
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}:[{}]", genre, tag_list)
+            })
+            .collect();
+
+        tracing::info!(
+            window = %self.window_label,
+            total_edges = total_edges,
+            genre_count = genre_count,
+            tag_count = tag_count,
+            sample_by_genre = ?sample_by_genre,
+            "loaded tag_label_graph"
+        );
+
         let mut guard = self.state.write().await;
         guard.cache = cache;
         guard.loaded_at = Some(Instant::now());
@@ -757,16 +824,25 @@ fn compute_graph_boosts(
 
         if !logged_debug && !tags.is_empty() {
             if matched_tags.is_empty() && !unmatched_tags.is_empty() {
-                tracing::debug!(
+                // Debug: Check if graph is empty
+                let (graph_genre_count, graph_total_tags, graph_sample_tags) = graph.debug_stats();
+
+                tracing::warn!(
                     genre = %candidate.name,
+                    genre_normalized = %normalize(&candidate.name),
                     tag_count = tags.len(),
                     unmatched_sample = ?unmatched_tags.iter().take(5).map(|(l, n)| format!("{} -> {}", l, n)).collect::<Vec<_>>(),
+                    graph_genre_count = graph_genre_count,
+                    graph_total_tags = graph_total_tags,
+                    graph_sample_tags = ?graph_sample_tags,
                     "no graph boost matches found for genre"
                 );
             } else if !matched_tags.is_empty() {
                 tracing::debug!(
                     genre = %candidate.name,
+                    genre_normalized = %normalize(&candidate.name),
                     matched_count = matched_tags.len(),
+                    total_boost = candidate_boost,
                     matched_sample = ?matched_tags.iter().take(3).map(|(l, n, w, c)| format!("{} -> {} (w={}, c={})", l, n, w, c)).collect::<Vec<_>>(),
                     "graph boost matches found"
                 );

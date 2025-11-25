@@ -40,6 +40,8 @@ pub struct Config {
     tag_generator_total_timeout: Duration,
     min_documents_per_genre: usize,
     coherence_similarity_threshold: f32,
+    recap_pre_refresh_graph_enabled: bool,
+    recap_pre_refresh_timeout: Duration,
 }
 
 #[derive(Debug, Error)]
@@ -117,6 +119,10 @@ impl Config {
         let coherence_similarity_threshold =
             parse_f64("RECAP_COHERENCE_SIMILARITY_THRESHOLD", 0.5)? as f32;
 
+        // Graph pre-refresh settings
+        let recap_pre_refresh_graph_enabled = parse_bool("RECAP_PRE_REFRESH_GRAPH_ENABLED", true)?;
+        let recap_pre_refresh_timeout = parse_duration_secs("RECAP_PRE_REFRESH_TIMEOUT_SECS", 300)?;
+
         Ok(Self {
             http_bind,
             llm_max_concurrency,
@@ -149,6 +155,8 @@ impl Config {
             tag_generator_total_timeout,
             min_documents_per_genre,
             coherence_similarity_threshold,
+            recap_pre_refresh_graph_enabled,
+            recap_pre_refresh_timeout,
         })
     }
 
@@ -306,6 +314,14 @@ impl Config {
     pub fn coherence_similarity_threshold(&self) -> f32 {
         self.coherence_similarity_threshold
     }
+
+    pub fn recap_pre_refresh_graph_enabled(&self) -> bool {
+        self.recap_pre_refresh_graph_enabled
+    }
+
+    pub fn recap_pre_refresh_timeout(&self) -> Duration {
+        self.recap_pre_refresh_timeout
+    }
 }
 
 fn env_var(name: &'static str) -> Result<String, ConfigError> {
@@ -331,6 +347,11 @@ fn parse_non_zero_usize(name: &'static str, default: usize) -> Result<NonZeroUsi
         name,
         source: anyhow::anyhow!("must be greater than zero"),
     })
+}
+
+fn parse_duration_secs(name: &'static str, default_secs: u64) -> Result<Duration, ConfigError> {
+    let value = parse_u64(name, default_secs)?;
+    Ok(Duration::from_secs(value))
 }
 
 fn parse_duration_ms(name: &'static str, default_ms: u64) -> Result<Duration, ConfigError> {

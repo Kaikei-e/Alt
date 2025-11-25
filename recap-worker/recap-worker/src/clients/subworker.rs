@@ -202,6 +202,100 @@ impl SubworkerClient {
         Ok(())
     }
 
+    /// /admin/build-graphを呼び出してtag_label_graphを再構築
+    pub(crate) async fn trigger_graph_rebuild(&self) -> Result<()> {
+        let url = self
+            .base_url
+            .join("admin/build-graph")
+            .context("failed to build subworker build-graph URL")?;
+
+        tracing::info!("triggering tag_label_graph rebuild");
+        let response = self
+            .client
+            .post(url)
+            .send()
+            .await
+            .context("subworker build-graph request failed")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "unknown error".to_string());
+            return Err(anyhow!(
+                "subworker build-graph endpoint returned error status {}: {}",
+                status,
+                error_text
+            ));
+        }
+
+        let result: Value = response
+            .json()
+            .await
+            .context("failed to parse build-graph response")?;
+
+        tracing::info!(
+            result = ?result,
+            "tag_label_graph rebuild completed"
+        );
+
+        Ok(())
+    }
+
+    /// /admin/learningを呼び出してジャンル学習を実行
+    pub(crate) async fn trigger_learning(&self) -> Result<()> {
+        let url = self
+            .base_url
+            .join("admin/learning")
+            .context("failed to build subworker learning URL")?;
+
+        tracing::info!("triggering genre learning");
+        let response = self
+            .client
+            .post(url)
+            .send()
+            .await
+            .context("subworker learning request failed")?;
+
+        let status = response.status();
+        // 202 Accepted は正常なレスポンス（非同期処理開始）
+        if status != reqwest::StatusCode::ACCEPTED && !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "unknown error".to_string());
+            return Err(anyhow!(
+                "subworker learning endpoint returned error status {}: {}",
+                status,
+                error_text
+            ));
+        }
+
+        tracing::info!(
+            status = %status,
+            "genre learning triggered successfully"
+        );
+
+        Ok(())
+    }
+
+    /// グラフ最新化シーケンス（build-graph -> learning）を実行
+    pub(crate) async fn refresh_graph_and_learning(&self) -> Result<()> {
+        // Step 1: Build graph
+        self.trigger_graph_rebuild()
+            .await
+            .context("graph rebuild failed")?;
+
+        // Step 2: Trigger learning (which also rebuilds graph, but we do it explicitly first)
+        self.trigger_learning()
+            .await
+            .context("learning trigger failed")?;
+
+        tracing::info!("graph refresh and learning sequence completed");
+        Ok(())
+    }
+
     /// 証拠コーパスを送信してクラスタリング結果を取得する。
     ///
     /// # Arguments
