@@ -222,7 +222,7 @@ class Settings(BaseSettings):
         description="Maximum tags per article to consider",
     )
     graph_build_min_confidence: float = Field(
-        0.55,
+        0.5,
         ge=0.0,
         le=1.0,
         description="Minimum tag confidence to include",
