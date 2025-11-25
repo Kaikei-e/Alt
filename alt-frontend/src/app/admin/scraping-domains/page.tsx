@@ -15,7 +15,7 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import { ArrowLeft, Home, RefreshCw, Settings } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   useScrapingDomains,
@@ -361,21 +361,15 @@ function EditDomainModal({
   const [allowCacheDays, setAllowCacheDays] = useState(7);
   const [forceRespectRobots, setForceRespectRobots] = useState(false);
 
-  // Update form when domain changes
-  if (domain && isOpen) {
-    if (allowFetchBody !== domain.allow_fetch_body) {
+  // Update form when domain or modal state changes
+  useEffect(() => {
+    if (domain && isOpen) {
       setAllowFetchBody(domain.allow_fetch_body);
-    }
-    if (allowMLTraining !== domain.allow_ml_training) {
       setAllowMLTraining(domain.allow_ml_training);
-    }
-    if (allowCacheDays !== domain.allow_cache_days) {
       setAllowCacheDays(domain.allow_cache_days);
-    }
-    if (forceRespectRobots !== domain.force_respect_robots) {
       setForceRespectRobots(domain.force_respect_robots);
     }
-  }
+  }, [domain, isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
