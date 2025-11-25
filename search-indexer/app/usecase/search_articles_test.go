@@ -19,6 +19,25 @@ func (m *mockSearchEngine) IndexDocuments(ctx context.Context, docs []domain.Sea
 	return m.err
 }
 
+func (m *mockSearchEngine) DeleteDocuments(ctx context.Context, ids []string) error {
+	// Remove deleted documents from indexedDocs
+	filtered := []domain.SearchDocument{}
+	for _, doc := range m.indexedDocs {
+		found := false
+		for _, id := range ids {
+			if doc.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			filtered = append(filtered, doc)
+		}
+	}
+	m.indexedDocs = filtered
+	return m.err
+}
+
 func (m *mockSearchEngine) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
 	if m.err != nil {
 		return nil, m.err

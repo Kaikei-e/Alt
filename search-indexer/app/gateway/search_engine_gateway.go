@@ -9,6 +9,7 @@ import (
 
 type SearchDriver interface {
 	IndexDocuments(ctx context.Context, docs []driver.SearchDocumentDriver) error
+	DeleteDocuments(ctx context.Context, ids []string) error
 	Search(ctx context.Context, query string, limit int) ([]driver.SearchDocumentDriver, error)
 	SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]driver.SearchDocumentDriver, error)
 	EnsureIndex(ctx context.Context) error
@@ -45,6 +46,22 @@ func (g *SearchEngineGateway) IndexDocuments(ctx context.Context, docs []domain.
 	if err != nil {
 		return &port.SearchEngineError{
 			Op:  "IndexDocuments",
+			Err: err.Error(),
+		}
+	}
+
+	return nil
+}
+
+func (g *SearchEngineGateway) DeleteDocuments(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	err := g.driver.DeleteDocuments(ctx, ids)
+	if err != nil {
+		return &port.SearchEngineError{
+			Op:  "DeleteDocuments",
 			Err: err.Error(),
 		}
 	}
@@ -89,7 +106,7 @@ func (g *SearchEngineGateway) SearchWithFilters(ctx context.Context, query strin
 		domainResults[i] = domain.SearchDocument{
 			ID:      driverDoc.ID,
 			Title:   driverDoc.Title,
-			Content:  driverDoc.Content,
+			Content: driverDoc.Content,
 			Tags:    driverDoc.Tags,
 			UserID:  driverDoc.UserID,
 		}

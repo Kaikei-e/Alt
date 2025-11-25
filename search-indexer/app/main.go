@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	INDEX_INTERVAL       = 1 * time.Minute
+	INDEX_INTERVAL       = 5 * time.Minute
 	INDEX_BATCH_SIZE     = 200
 	INDEX_RETRY_INTERVAL = 1 * time.Minute
 	HTTP_ADDR            = ":9300"
@@ -127,7 +127,9 @@ func initMeilisearchClient() (meilisearch.ServiceManager, error) {
 	return msClient, nil
 }
 
-// runIndexLoop runs the indexing loop using clean architecture
+// runIndexLoop runs the dual-phase indexing loop using clean architecture
+// Phase 1 (Backfill): Index all existing articles from latest to oldest
+// Phase 2 (Incremental): Poll for new articles and sync deletions
 func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecase) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -135,8 +137,63 @@ func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecas
 		}
 	}()
 
+	// Phase 1: Backfill
 	var lastCreatedAt *time.Time
 	var lastID string
+	var incrementalMark *time.Time
+
+	logger.Logger.Info("starting Phase 1: Backfill")
+
+	// Get incrementalMark (latest created_at) at the start
+	mark, err := indexUsecase.GetIncrementalMark(ctx)
+	if err != nil {
+		logger.Logger.Error("failed to get incremental mark", "err", err)
+		// Use current time as fallback
+		now := time.Now()
+		incrementalMark = &now
+		logger.Logger.Info("using current time as incremental mark fallback", "mark", incrementalMark)
+	} else if mark == nil {
+		// No articles exist yet, use current time as fallback
+		now := time.Now()
+		incrementalMark = &now
+		logger.Logger.Info("no articles found, using current time as incremental mark", "mark", incrementalMark)
+	} else {
+		incrementalMark = mark
+		logger.Logger.Info("incremental mark set", "mark", incrementalMark)
+	}
+
+	// Phase 1: Backfill loop (past direction)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		result, err := indexUsecase.ExecuteBackfill(ctx, lastCreatedAt, lastID, INDEX_BATCH_SIZE)
+		if err != nil {
+			logger.Logger.Error("backfill error", "err", err)
+			time.Sleep(INDEX_RETRY_INTERVAL)
+			continue
+		}
+
+		if result.IndexedCount == 0 {
+			logger.Logger.Info("Phase 1 complete: backfill done")
+			break
+		}
+
+		logger.Logger.Info("backfill indexed", "count", result.IndexedCount)
+		lastCreatedAt = result.LastCreatedAt
+		lastID = result.LastID
+	}
+
+	// Phase 2: Incremental loop (future direction + deletion sync)
+	logger.Logger.Info("starting Phase 2: Incremental")
+
+	// Reset cursor for incremental phase
+	lastCreatedAt = nil
+	lastID = ""
+	var lastDeletedAt *time.Time
 
 	for {
 		select {
@@ -145,21 +202,28 @@ func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecas
 		default:
 		}
 
-		result, err := indexUsecase.Execute(ctx, lastCreatedAt, lastID, INDEX_BATCH_SIZE)
+		result, err := indexUsecase.ExecuteIncremental(ctx, incrementalMark, lastCreatedAt, lastID, lastDeletedAt, INDEX_BATCH_SIZE)
 		if err != nil {
-			logger.Logger.Error("indexing error", "err", err)
+			logger.Logger.Error("incremental indexing error", "err", err)
 			time.Sleep(INDEX_RETRY_INTERVAL)
 			continue
 		}
 
-		if result.IndexedCount == 0 {
-			logger.Logger.Info("no new articles")
-			time.Sleep(INDEX_INTERVAL)
-			continue
+		if result.IndexedCount > 0 {
+			logger.Logger.Info("incremental indexed", "count", result.IndexedCount)
+			lastCreatedAt = result.LastCreatedAt
+			lastID = result.LastID
 		}
 
-		logger.Logger.Info("indexed", "count", result.IndexedCount)
-		lastCreatedAt = result.LastCreatedAt
-		lastID = result.LastID
+		if result.DeletedCount > 0 {
+			logger.Logger.Info("deleted from index", "count", result.DeletedCount)
+			lastDeletedAt = result.LastDeletedAt
+		}
+
+		if result.IndexedCount == 0 && result.DeletedCount == 0 {
+			logger.Logger.Info("no new articles or deletions")
+		}
+
+		time.Sleep(INDEX_INTERVAL)
 	}
 }

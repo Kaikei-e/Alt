@@ -8,6 +8,9 @@ import (
 
 type ArticleRepository interface {
 	GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error)
+	GetArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error)
+	GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]string, *time.Time, error)
+	GetLatestCreatedAt(ctx context.Context) (*time.Time, error)
 }
 
 type ConfigRepository interface {

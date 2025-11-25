@@ -26,6 +26,12 @@ type SearchDocumentDriver struct {
 	UserID  string   `json:"user_id"`
 }
 
+// DeletedArticle represents a deleted article from the database
+type DeletedArticle struct {
+	ID        string
+	DeletedAt time.Time
+}
+
 // DriverError represents an error from the driver layer
 type DriverError struct {
 	Op  string

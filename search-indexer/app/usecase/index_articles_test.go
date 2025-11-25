@@ -28,6 +28,47 @@ func (m *mockArticleRepo) GetArticlesWithTags(ctx context.Context, lastCreatedAt
 	return m.articles, &createdAt, lastArticle.ID(), nil
 }
 
+func (m *mockArticleRepo) GetArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error) {
+	if m.err != nil {
+		return nil, nil, "", m.err
+	}
+
+	if len(m.articles) == 0 {
+		return []*domain.Article{}, nil, "", nil
+	}
+
+	lastArticle := m.articles[len(m.articles)-1]
+	createdAt := lastArticle.CreatedAt()
+	return m.articles, &createdAt, lastArticle.ID(), nil
+}
+
+func (m *mockArticleRepo) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]string, *time.Time, error) {
+	if m.err != nil {
+		return nil, nil, m.err
+	}
+
+	return []string{}, nil, nil
+}
+
+func (m *mockArticleRepo) GetLatestCreatedAt(ctx context.Context) (*time.Time, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+
+	if len(m.articles) == 0 {
+		return nil, nil
+	}
+
+	latest := m.articles[0].CreatedAt()
+	for _, article := range m.articles {
+		if article.CreatedAt().After(latest) {
+			latest = article.CreatedAt()
+		}
+	}
+
+	return &latest, nil
+}
+
 type mockSearchEngineForIndexing struct {
 	indexedDocs []domain.SearchDocument
 	err         error
@@ -38,6 +79,28 @@ func (m *mockSearchEngineForIndexing) IndexDocuments(ctx context.Context, docs [
 		return m.err
 	}
 	m.indexedDocs = append(m.indexedDocs, docs...)
+	return nil
+}
+
+func (m *mockSearchEngineForIndexing) DeleteDocuments(ctx context.Context, ids []string) error {
+	if m.err != nil {
+		return m.err
+	}
+	// Remove deleted documents from indexedDocs
+	filtered := []domain.SearchDocument{}
+	for _, doc := range m.indexedDocs {
+		found := false
+		for _, id := range ids {
+			if doc.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			filtered = append(filtered, doc)
+		}
+	}
+	m.indexedDocs = filtered
 	return nil
 }
 
@@ -128,7 +191,7 @@ func TestIndexArticlesUsecase_Execute(t *testing.T) {
 
 			usecase := NewIndexArticlesUsecase(repo, searchEngine, nil)
 
-			result, err := usecase.Execute(context.Background(), nil, "", tt.batchSize)
+			result, err := usecase.ExecuteBackfill(context.Background(), nil, "", tt.batchSize)
 
 			if tt.wantErr {
 				if err == nil {

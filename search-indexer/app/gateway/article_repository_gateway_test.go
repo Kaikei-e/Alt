@@ -27,6 +27,46 @@ func (m *mockArticleDriver) GetArticlesWithTags(ctx context.Context, lastCreated
 	return m.articles, &lastArticle.CreatedAt, lastArticle.ID, nil
 }
 
+func (m *mockArticleDriver) GetArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*driver.ArticleWithTags, *time.Time, string, error) {
+	if m.err != nil {
+		return nil, nil, "", m.err
+	}
+
+	if len(m.articles) == 0 {
+		return []*driver.ArticleWithTags{}, nil, "", nil
+	}
+
+	lastArticle := m.articles[len(m.articles)-1]
+	return m.articles, &lastArticle.CreatedAt, lastArticle.ID, nil
+}
+
+func (m *mockArticleDriver) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]*driver.DeletedArticle, *time.Time, error) {
+	if m.err != nil {
+		return nil, nil, m.err
+	}
+
+	return []*driver.DeletedArticle{}, nil, nil
+}
+
+func (m *mockArticleDriver) GetLatestCreatedAt(ctx context.Context) (*time.Time, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+
+	if len(m.articles) == 0 {
+		return nil, nil
+	}
+
+	latest := m.articles[0].CreatedAt
+	for _, article := range m.articles {
+		if article.CreatedAt.After(latest) {
+			latest = article.CreatedAt
+		}
+	}
+
+	return &latest, nil
+}
+
 func TestArticleRepositoryGateway_GetArticlesWithTags(t *testing.T) {
 	now := time.Now()
 

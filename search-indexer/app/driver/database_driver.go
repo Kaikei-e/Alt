@@ -139,7 +139,7 @@ func (d *DatabaseDriver) GetArticlesWithTags(ctx context.Context, lastCreatedAt 
 	var args []interface{}
 
 	if lastCreatedAt == nil || lastCreatedAt.IsZero() {
-		// First query - no cursor constraint
+		// First query - no cursor constraint (Phase 1: Backfill)
 		query = `
 			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
 				   COALESCE(
@@ -149,13 +149,14 @@ func (d *DatabaseDriver) GetArticlesWithTags(ctx context.Context, lastCreatedAt 
 			FROM articles a
 			LEFT JOIN article_tags at ON a.id = at.article_id
 			LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
+			WHERE a.deleted_at IS NULL
 			GROUP BY a.id, a.title, a.content, a.created_at, a.user_id
 			ORDER BY a.created_at DESC, a.id DESC
 			LIMIT $1
 		`
 		args = []interface{}{limit}
 	} else {
-		// Subsequent queries - use efficient keyset pagination
+		// Subsequent queries - use efficient keyset pagination (Phase 1: Backfill)
 		query = `
 			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
 				   COALESCE(
@@ -165,7 +166,8 @@ func (d *DatabaseDriver) GetArticlesWithTags(ctx context.Context, lastCreatedAt 
 			FROM articles a
 			LEFT JOIN article_tags at ON a.id = at.article_id
 			LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
-			WHERE (a.created_at, a.id) < ($1, $2)
+			WHERE a.deleted_at IS NULL
+			  AND (a.created_at, a.id) < ($1, $2)
 			GROUP BY a.id, a.title, a.content, a.created_at, a.user_id
 			ORDER BY a.created_at DESC, a.id DESC
 			LIMIT $3
@@ -239,4 +241,164 @@ func (d *DatabaseDriver) parseTagsJSON(tagsJSON []byte) ([]TagModel, error) {
 	}
 
 	return result, nil
+}
+
+// GetArticlesWithTagsForward fetches articles in forward direction (for incremental indexing)
+// This is used in Phase 2 to get new articles created after incrementalMark
+func (d *DatabaseDriver) GetArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*ArticleWithTags, *time.Time, string, error) {
+	var articles []*ArticleWithTags
+	var finalCreatedAt *time.Time
+	var finalID string
+
+	var query string
+	var args []interface{}
+
+	if lastCreatedAt == nil || lastCreatedAt.IsZero() {
+		// First forward query - get articles after incrementalMark
+		query = `
+			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
+				   COALESCE(
+					   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
+					   '{}'
+				   ) as tag_names
+			FROM articles a
+			LEFT JOIN article_tags at ON a.id = at.article_id
+			LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
+			WHERE a.deleted_at IS NULL
+			  AND a.created_at > $1
+			GROUP BY a.id, a.title, a.content, a.created_at, a.user_id
+			ORDER BY a.created_at ASC, a.id ASC
+			LIMIT $2
+		`
+		args = []interface{}{*incrementalMark, limit}
+	} else {
+		// Subsequent forward queries - use efficient keyset pagination
+		query = `
+			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
+				   COALESCE(
+					   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
+					   '{}'
+				   ) as tag_names
+			FROM articles a
+			LEFT JOIN article_tags at ON a.id = at.article_id
+			LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
+			WHERE a.deleted_at IS NULL
+			  AND a.created_at > $1
+			  AND (a.created_at, a.id) > ($2, $3)
+			GROUP BY a.id, a.title, a.content, a.created_at, a.user_id
+			ORDER BY a.created_at ASC, a.id ASC
+			LIMIT $4
+		`
+		args = []interface{}{*incrementalMark, *lastCreatedAt, lastID, limit}
+	}
+
+	rows, err := d.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var article ArticleWithTags
+		var tagNames []string
+
+		err = rows.Scan(&article.ID, &article.Title, &article.Content, &article.CreatedAt, &article.UserID, &tagNames)
+		if err != nil {
+			return nil, nil, "", err
+		}
+
+		// Convert tag names to Tag structs for consistency
+		var tags []TagModel
+		for _, tagName := range tagNames {
+			if tagName != "" {
+				tags = append(tags, TagModel{TagName: tagName})
+			}
+		}
+		article.Tags = tags
+
+		articles = append(articles, &article)
+		// Keep track of the last item for cursor
+		finalCreatedAt = &article.CreatedAt
+		finalID = article.ID
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, nil, "", err
+	}
+
+	return articles, finalCreatedAt, finalID, nil
+}
+
+// GetDeletedArticles fetches deleted articles for syncing deletions with Meilisearch
+func (d *DatabaseDriver) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]*DeletedArticle, *time.Time, error) {
+	var deletedArticles []*DeletedArticle
+	var finalDeletedAt *time.Time
+
+	var query string
+	var args []interface{}
+
+	if lastDeletedAt == nil || lastDeletedAt.IsZero() {
+		// First query - get all deleted articles
+		query = `
+			SELECT id, deleted_at
+			FROM articles
+			WHERE deleted_at IS NOT NULL
+			ORDER BY deleted_at ASC, id ASC
+			LIMIT $1
+		`
+		args = []interface{}{limit}
+	} else {
+		// Subsequent queries - use cursor pagination
+		query = `
+			SELECT id, deleted_at
+			FROM articles
+			WHERE deleted_at IS NOT NULL
+			  AND (deleted_at, id) > ($1, '')
+			ORDER BY deleted_at ASC, id ASC
+			LIMIT $2
+		`
+		args = []interface{}{*lastDeletedAt, limit}
+	}
+
+	rows, err := d.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var deletedArticle DeletedArticle
+		err = rows.Scan(&deletedArticle.ID, &deletedArticle.DeletedAt)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		deletedArticles = append(deletedArticles, &deletedArticle)
+		// Keep track of the last item for cursor
+		finalDeletedAt = &deletedArticle.DeletedAt
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	return deletedArticles, finalDeletedAt, nil
+}
+
+// GetLatestCreatedAt gets the latest created_at timestamp from articles table
+// This is used to set the incrementalMark at the start of Phase 1
+func (d *DatabaseDriver) GetLatestCreatedAt(ctx context.Context) (*time.Time, error) {
+	query := `
+		SELECT MAX(created_at)
+		FROM articles
+		WHERE deleted_at IS NULL
+	`
+
+	var latestCreatedAt *time.Time
+	err := d.pool.QueryRow(ctx, query).Scan(&latestCreatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	return latestCreatedAt, nil
 }

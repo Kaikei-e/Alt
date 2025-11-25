@@ -26,6 +26,25 @@ func (m *mockSearchDriver) IndexDocuments(ctx context.Context, docs []driver.Sea
 	return nil
 }
 
+func (m *mockSearchDriver) DeleteDocuments(ctx context.Context, ids []string) error {
+	// Remove deleted documents from indexedDocs
+	filtered := []driver.SearchDocumentDriver{}
+	for _, doc := range m.indexedDocs {
+		found := false
+		for _, id := range ids {
+			if doc.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			filtered = append(filtered, doc)
+		}
+	}
+	m.indexedDocs = filtered
+	return nil
+}
+
 func (m *mockSearchDriver) Search(ctx context.Context, query string, limit int) ([]driver.SearchDocumentDriver, error) {
 	if m.searchErr != nil {
 		return nil, m.searchErr

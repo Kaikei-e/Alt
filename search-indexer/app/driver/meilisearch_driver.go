@@ -45,6 +45,31 @@ func (d *MeilisearchDriver) IndexDocuments(ctx context.Context, docs []SearchDoc
 	return nil
 }
 
+func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	task, err := d.index.DeleteDocuments(ids)
+	if err != nil {
+		return &DriverError{
+			Op:  "DeleteDocuments",
+			Err: err.Error(),
+		}
+	}
+
+	// Wait for the deletion task to complete
+	_, err = d.index.WaitForTask(task.TaskUID, 15*1000) // 15 seconds timeout
+	if err != nil {
+		return &DriverError{
+			Op:  "DeleteDocuments",
+			Err: "failed to wait for deletion task: " + err.Error(),
+		}
+	}
+
+	return nil
+}
+
 func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int) ([]SearchDocumentDriver, error) {
 	searchRequest := &meilisearch.SearchRequest{
 		Query: query,

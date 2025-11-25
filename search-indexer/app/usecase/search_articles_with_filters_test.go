@@ -16,6 +16,10 @@ func (m *MockSearchEngine) IndexDocuments(ctx context.Context, docs []domain.Sea
 	return nil
 }
 
+func (m *MockSearchEngine) DeleteDocuments(ctx context.Context, ids []string) error {
+	return nil
+}
+
 func (m *MockSearchEngine) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
 	return nil, nil
 }
