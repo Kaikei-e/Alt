@@ -168,10 +168,8 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 		return "", "", "", fmt.Errorf("ssrf validation failed: %w", err)
 	}
 
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	// Create Secure HTTP client with timeout and SSRF protection (DNS rebinding prevention)
+	client := ssrfValidator.CreateSecureHTTPClient(10 * time.Second)
 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
