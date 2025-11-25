@@ -550,18 +550,33 @@ class GenreLearningService:
             query, {"window_label": self.tag_label_graph_window}
         )
         graph_edges: dict[tuple[str, str], float] = {}
+        genre_set: set[str] = set()
+        tag_set: set[str] = set()
         for row in result.all():
             genre = (row.genre or "").strip().lower()
             tag = (row.tag or "").strip().lower()
             weight = float(row.weight or 0.0)
             if genre and tag:
                 graph_edges[(genre, tag)] = weight
+                genre_set.add(genre)
+                tag_set.add(tag)
 
-        logger.debug(
+        logger.info(
             "loaded tag_label_graph",
             window_label=self.tag_label_graph_window,
             edge_count=len(graph_edges),
+            unique_genres=len(genre_set),
+            unique_tags=len(tag_set),
         )
+
+        # Statistics for debugging
+        total_candidates = 0
+        candidates_with_boost = 0
+        total_boost_sum = 0.0
+        max_boost = 0.0
+        matched_tag_count = 0
+        total_tag_count = 0
+        genre_tag_matches: dict[str, int] = {}
 
         # Recompute graph_boost for each row
         for row in rows:
@@ -578,24 +593,60 @@ class GenreLearningService:
                 confidence = float(tag.get("confidence") or 0.0)
                 if label and confidence > 0:
                     tag_signals.append((label, confidence))
+                    total_tag_count += 1
+                    if label in tag_set:
+                        matched_tag_count += 1
 
             # Recompute graph_boost for each candidate
             for candidate in candidates:
+                total_candidates += 1
                 genre = (candidate.get("genre") or "").strip().lower()
                 if not genre:
                     continue
 
                 # Compute boost: sum of (weight * tag.confidence) for all tags
-                boost = sum(
-                    graph_edges.get((genre, tag_label), 0.0) * tag_conf
-                    for tag_label, tag_conf in tag_signals
-                )
-                candidate["graph_boost"] = boost
+                boost = 0.0
+                for tag_label, tag_conf in tag_signals:
+                    edge_key = (genre, tag_label)
+                    if edge_key in graph_edges:
+                        weight = graph_edges[edge_key]
+                        boost += weight * tag_conf
+                        # Track genre-tag matches
+                        genre_tag_matches[genre] = genre_tag_matches.get(genre, 0) + 1
 
-        logger.debug(
+                candidate["graph_boost"] = boost
+                if boost > 0:
+                    candidates_with_boost += 1
+                    total_boost_sum += boost
+                    max_boost = max(max_boost, boost)
+
+        # Log detailed statistics
+        match_rate = (matched_tag_count / total_tag_count * 100) if total_tag_count > 0 else 0.0
+        boost_rate = (candidates_with_boost / total_candidates * 100) if total_candidates > 0 else 0.0
+        avg_boost = total_boost_sum / candidates_with_boost if candidates_with_boost > 0 else 0.0
+
+        logger.info(
             "recomputed graph_boost values",
             row_count=len(rows),
+            total_candidates=total_candidates,
+            candidates_with_boost=candidates_with_boost,
+            boost_rate_pct=round(boost_rate, 2),
+            total_tags=total_tag_count,
+            matched_tags=matched_tag_count,
+            tag_match_rate_pct=round(match_rate, 2),
+            avg_boost=round(avg_boost, 6) if avg_boost > 0 else 0.0,
+            max_boost=round(max_boost, 6),
+            total_boost_sum=round(total_boost_sum, 6),
+            genre_tag_match_count=len(genre_tag_matches),
         )
+
+        # Log sample of graph_edges for debugging (first 10)
+        if graph_edges:
+            sample_edges = list(graph_edges.items())[:10]
+            logger.debug(
+                "sample graph_edges",
+                sample_edges=[f"({g}, {t}): {w:.6f}" for (g, t), w in sample_edges],
+            )
 
     async def fetch_snapshot_rows(
         self,
@@ -688,6 +739,24 @@ class GenreLearningService:
         # Recompute graph_boost from tag_label_graph
         await self._recompute_graph_boosts(rows)
         entries = build_graph_boost_snapshot_entries(rows, self.graph_margin)
+
+        # Debug: Check top_boost distribution before Bayes optimization
+        top_boosts = [float(entry.get("top_boost") or 0.0) for entry in entries]
+        non_zero_boosts = [b for b in top_boosts if b > 0]
+        if top_boosts:
+            logger.info(
+                "top_boost distribution before Bayes optimization",
+                total_entries=len(entries),
+                non_zero_count=len(non_zero_boosts),
+                zero_count=len(top_boosts) - len(non_zero_boosts),
+                min_boost=round(min(top_boosts), 6),
+                max_boost=round(max(top_boosts), 6),
+                avg_boost=round(sum(top_boosts) / len(top_boosts), 6) if top_boosts else 0.0,
+                avg_non_zero_boost=round(sum(non_zero_boosts) / len(non_zero_boosts), 6) if non_zero_boosts else 0.0,
+            )
+        else:
+            logger.warning("no entries found after building snapshot entries")
+
         logger.debug(
             "summarizing entries",
             entry_count=len(entries),

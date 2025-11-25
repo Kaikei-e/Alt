@@ -98,14 +98,22 @@ class TagLabelGraphBuilder:
     async def _fetch_learning_rows(
         self, days: int
     ) -> list[dict[str, Any]]:
-        """Fetch genre learning results with tag profiles."""
+        """Fetch genre learning results with tag profiles.
+
+        Note: Uses published_at (not updated_at) to align with recap-worker's
+        7-day window and ensure consistency with fetch_snapshot_rows.
+        """
         query = text("""
             SELECT
-                LOWER(COALESCE(refine_decision->>'final_genre', 'other')) AS genre,
-                (tag_profile->'top_tags') AS tags_json,
-                updated_at
-            FROM recap_genre_learning_results
-            WHERE updated_at >= NOW() - INTERVAL '1 day' * :days
+                LOWER(COALESCE(rglr.refine_decision->>'final_genre', 'other')) AS genre,
+                (rglr.tag_profile->'top_tags') AS tags_json,
+                rglr.updated_at,
+                rja.published_at
+            FROM recap_genre_learning_results rglr
+            INNER JOIN recap_job_articles rja
+                ON rglr.job_id = rja.job_id
+                AND rglr.article_id = rja.article_id
+            WHERE rja.published_at > NOW() - INTERVAL '1 day' * :days
         """)
         result = await self.session.execute(query, {"days": days})
         return [dict(row._mapping) for row in result.all()]
