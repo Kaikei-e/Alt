@@ -109,6 +109,7 @@ class TagExtractionOutcome:
     model_name: str
     sanitized_length: int
     embedding_backend: str = "unknown"
+    tag_confidences: dict[str, float] = field(default_factory=dict)  # Individual tag confidence scores
     embedding_metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -137,45 +138,60 @@ class TagExtractor:
         score = 0.7 * coverage + 0.3 * length_factor
         return round(max(0.0, min(score, 1.0)), 3)
 
-    def _run_extraction(self, raw_text: str, lang: str) -> list[str]:
-        """Run the primary extraction logic with fallback handling."""
+    def _run_extraction(self, raw_text: str, lang: str) -> tuple[list[str], dict[str, float]]:
+        """Run the primary extraction logic with fallback handling.
+
+        Returns:
+            Tuple of (tag_list, tag_confidences_dict)
+        """
         try:
             keywords: list[str]
+            confidences: dict[str, float]
 
             if lang == "ja":
-                keywords = self._extract_keywords_japanese(raw_text)
+                keywords, confidences = self._extract_keywords_japanese(raw_text)
             else:
-                keywords = self._extract_keywords_english(raw_text)
+                keywords, confidences = self._extract_keywords_english(raw_text)
 
             if keywords:
                 logger.info("Extraction successful", keywords=keywords)
-                return keywords
+                return keywords, confidences
 
             logger.info("Primary extraction yielded no tags, invoking fallback")
             try:
                 fallback_keywords = self._fallback_extraction(raw_text, lang)
+                # For fallback, assign default confidence based on position
+                fallback_confidences = {
+                    tag: max(0.3, 0.7 - (i * 0.1))
+                    for i, tag in enumerate(fallback_keywords)
+                }
             except Exception as fallback_error:
                 logger.error("Fallback extraction failed", error=fallback_error)
-                return []
+                return [], {}
 
             if fallback_keywords:
                 logger.info("Fallback extraction succeeded", keywords=fallback_keywords)
-                return fallback_keywords
+                return fallback_keywords, fallback_confidences
 
         except Exception as e:
             logger.error("Extraction error", error=e)
             try:
                 fallback_keywords = self._fallback_extraction(raw_text, lang)
+                # For fallback, assign default confidence based on position
+                fallback_confidences = {
+                    tag: max(0.3, 0.7 - (i * 0.1))
+                    for i, tag in enumerate(fallback_keywords)
+                }
             except Exception as fallback_error:
                 logger.error("Fallback extraction failed after exception", error=fallback_error)
-                return []
+                return [], {}
 
             if fallback_keywords:
                 logger.info("Emergency fallback successful", keywords=fallback_keywords)
-                return fallback_keywords
+                return fallback_keywords, fallback_confidences
 
         logger.warning("No tags could be extracted")
-        return []
+        return [], {}
 
     def extract_tags_with_metrics(self, title: str, content: str) -> TagExtractionOutcome:
         """
@@ -225,7 +241,7 @@ class TagExtractor:
 
         lang = self._detect_language(raw_text)
         logger.info("Detected language", lang=lang)
-        tags = self._run_extraction(raw_text, lang)
+        tags, tag_confidences = self._run_extraction(raw_text, lang)
         inference_ms = (time.perf_counter() - start_time) * 1000
 
         confidence = self._compute_confidence(tags, sanitized_length)
@@ -238,6 +254,7 @@ class TagExtractor:
             model_name=self.config.model_name,
             sanitized_length=sanitized_length,
             embedding_backend=self._embedding_backend,
+            tag_confidences=tag_confidences,
             embedding_metadata=self._embedding_metadata,
         )
 
@@ -374,8 +391,12 @@ class TagExtractor:
 
         return unique_compounds
 
-    def _extract_keywords_japanese(self, text: str) -> list[str]:
-        """Extract keywords specifically for Japanese text."""
+    def _extract_keywords_japanese(self, text: str) -> tuple[list[str], dict[str, float]]:
+        """Extract keywords specifically for Japanese text.
+
+        Returns:
+            Tuple of (tag_list, tag_confidences_dict)
+        """
         self._lazy_load_models()
         self._load_stopwords()
 
@@ -409,15 +430,29 @@ class TagExtractor:
 
         # Get top keywords by frequency
         top_keywords = []
+        tag_confidences: dict[str, float] = {}
+        max_freq = max(combined_freq.values()) if combined_freq else 1
+
         for term, freq in combined_freq.most_common(self.config.top_keywords * 2):
             if freq >= 2 or len(term) >= 4:  # Include terms that appear 2+ times or are longer
                 top_keywords.append(term)
+                # Normalize frequency to confidence score (0.0-1.0)
+                # Higher frequency = higher confidence
+                confidence = min(freq / max(max_freq, 1), 1.0)
+                tag_confidences[term] = round(confidence, 3)
 
         # Limit to configured number
-        return top_keywords[: self.config.top_keywords]
+        result = top_keywords[: self.config.top_keywords]
+        # Filter confidences to match result
+        filtered_confidences = {tag: tag_confidences.get(tag, 0.5) for tag in result}
+        return result, filtered_confidences
 
-    def _extract_keywords_english(self, text: str) -> list[str]:
-        """Extract keywords specifically for English text using KeyBERT."""
+    def _extract_keywords_english(self, text: str) -> tuple[list[str], dict[str, float]]:
+        """Extract keywords specifically for English text using KeyBERT.
+
+        Returns:
+            Tuple of (tag_list, tag_confidences_dict)
+        """
         self._lazy_load_models()
 
         try:
@@ -472,9 +507,10 @@ class TagExtractor:
 
             # Final filtering and cleaning
             result = []
+            tag_confidences: dict[str, float] = {}
             seen_final: set[str] = set()
 
-            for keyword, _score in all_keywords:
+            for keyword, score in all_keywords:
                 # Clean and check for duplicates
                 keyword_clean = keyword.strip()
                 keyword_lower = keyword_clean.lower()
@@ -491,16 +527,19 @@ class TagExtractor:
 
                     if not is_substring:
                         result.append(keyword_clean)
+                        # Normalize score to 0.0-1.0 range and store
+                        normalized_score = min(max(score, 0.0), 1.0)
+                        tag_confidences[keyword_clean] = round(normalized_score, 3)
                         seen_final.add(keyword_lower)
 
                         if len(result) >= self.config.top_keywords:
                             break
 
-            return result
+            return result, tag_confidences
 
         except Exception as e:
             logger.error("KeyBERT extraction failed for English", error=e)
-            return []
+            return [], {}
 
     def _tokenize_english(self, text: str) -> list[str]:
         """Tokenize English text using NLTK."""

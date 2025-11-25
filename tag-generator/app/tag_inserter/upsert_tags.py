@@ -67,7 +67,13 @@ class TagInserter:
         if not all(isinstance(tag, str) and tag.strip() for tag in tags):
             raise ValueError("All tags must be non-empty strings")
 
-    def _insert_tags(self, cursor: Cursor, tags: list[str], feed_id: str) -> None:
+    def _insert_tags(
+        self,
+        cursor: Cursor,
+        tags: list[str],
+        feed_id: str,
+        tag_confidences: dict[str, float] | None = None
+    ) -> None:
         """
         Insert tags into the feed_tags table, ignoring duplicates.
 
@@ -75,18 +81,28 @@ class TagInserter:
             cursor: Database cursor
             tags: List of tag names to insert
             feed_id: Feed UUID to associate tags with
+            tag_confidences: Optional dictionary mapping tag names to confidence scores (0.0-1.0)
         """
         if not tags:
             return
 
         try:
-            tag_rows = [(feed_id, tag.strip(), 0.5) for tag in tags]  # Default confidence 0.5
+            # Use provided confidences or default to 0.5
+            tag_rows = [
+                (
+                    feed_id,
+                    tag.strip(),
+                    tag_confidences.get(tag.strip(), 0.5) if tag_confidences else 0.5
+                )
+                for tag in tags
+            ]
             psycopg2.extras.execute_batch(
                 cursor,
                 """
                 INSERT INTO feed_tags (feed_id, tag_name, confidence)
                 VALUES (%s::uuid, %s, %s)
-                ON CONFLICT (feed_id, tag_name) DO NOTHING
+                ON CONFLICT (feed_id, tag_name) DO UPDATE SET
+                    confidence = EXCLUDED.confidence
                 """,
                 tag_rows,
                 page_size=self.config.page_size,
@@ -163,7 +179,14 @@ class TagInserter:
             logger.error("Failed to insert article-tag relationships", error=e)
             raise DatabaseError(f"Failed to insert article-tag relationships: {e}") from e
 
-    def upsert_tags(self, conn: Connection, article_id: str, tags: list[str], feed_id: str) -> dict[str, Any]:
+    def upsert_tags(
+        self,
+        conn: Connection,
+        article_id: str,
+        tags: list[str],
+        feed_id: str,
+        tag_confidences: dict[str, float] | None = None
+    ) -> dict[str, Any]:
         """
         Upsert tags into the feed_tags table and create article-tag relationships.
 
@@ -172,6 +195,7 @@ class TagInserter:
             article_id: Article UUID as string
             tags: List of tag names
             feed_id: Feed UUID as string
+            tag_confidences: Optional dictionary mapping tag names to confidence scores (0.0-1.0)
 
         Returns:
             Dictionary with operation results
@@ -206,7 +230,7 @@ class TagInserter:
         try:
             with self._get_cursor(conn) as cursor:
                 # Step 1: Insert tags (ignoring duplicates)
-                self._insert_tags(cursor, unique_tags, feed_id)
+                self._insert_tags(cursor, unique_tags, feed_id, tag_confidences)
 
                 # Step 2: Get tag IDs
                 tag_id_map = self._get_tag_ids(cursor, unique_tags, feed_id)
@@ -386,9 +410,26 @@ class TagInserter:
                         article_ids=skipped_articles[:10],  # Log first 10 to avoid log spam
                     )
 
-                # Step 2: Insert tags for each feed_id
+                # Step 2: Insert tags for each feed_id with confidences
                 for feed_id, tags in feed_tag_groups.items():
-                    self._insert_tags(cursor, list(tags), feed_id)
+                    # Collect confidences for tags in this feed
+                    feed_tag_confidences: dict[str, float] = {}
+                    for article_data in valid_article_tags:
+                        article_id = article_data["article_id"]
+                        # Get feed_id for this article
+                        cursor.execute(
+                            "SELECT feed_id FROM articles WHERE id = %s::uuid",
+                            (article_id,),
+                        )
+                        result = cursor.fetchone()
+                        article_feed_id = result[0] if result else None
+
+                        if article_feed_id == feed_id:
+                            article_tag_confidences = article_data.get("tag_confidences", {})
+                            if article_tag_confidences:
+                                feed_tag_confidences.update(article_tag_confidences)
+
+                    self._insert_tags(cursor, list(tags), feed_id, feed_tag_confidences if feed_tag_confidences else None)
 
                 # Step 3: Get tag IDs for each feed_id
                 all_tag_id_maps = {}
@@ -632,9 +673,26 @@ class TagInserter:
                         article_ids=skipped_articles[:10],  # Log first 10 to avoid log spam
                     )
 
-                # Step 2: Insert tags for each feed_id
+                # Step 2: Insert tags for each feed_id with confidences
                 for feed_id, tags in feed_tag_groups.items():
-                    self._insert_tags(cursor, list(tags), feed_id)
+                    # Collect confidences for tags in this feed
+                    feed_tag_confidences: dict[str, float] = {}
+                    for article_data in valid_article_tags:
+                        article_id = article_data["article_id"]
+                        # Get feed_id for this article
+                        cursor.execute(
+                            "SELECT feed_id FROM articles WHERE id = %s::uuid",
+                            (article_id,),
+                        )
+                        result = cursor.fetchone()
+                        article_feed_id = result[0] if result else None
+
+                        if article_feed_id == feed_id:
+                            article_tag_confidences = article_data.get("tag_confidences", {})
+                            if article_tag_confidences:
+                                feed_tag_confidences.update(article_tag_confidences)
+
+                    self._insert_tags(cursor, list(tags), feed_id, feed_tag_confidences if feed_tag_confidences else None)
 
                 # Step 3: Get tag IDs for each feed_id
                 all_tag_id_maps = {}

@@ -377,8 +377,10 @@ class TagGeneratorService:
                 **decision.as_dict(),
             )
 
-            # Insert tags
-            result = self.tag_inserter.upsert_tags(conn, article_id, outcome.tags, feed_id)
+            # Insert tags with confidences
+            result = self.tag_inserter.upsert_tags(
+                conn, article_id, outcome.tags, feed_id, outcome.tag_confidences
+            )
 
             if result.get("success"):
                 return True
@@ -574,6 +576,7 @@ class TagGeneratorService:
                     {
                         "article_id": article_id,
                         "tags": outcome.tags,
+                        "tag_confidences": outcome.tag_confidences,
                         "cascade": decision.as_dict(),
                     }
                 )
