@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/mocks"
 	"alt/usecase/scraping_domain_usecase"
+	"alt/utils/logger"
 	"context"
 	"testing"
 	"time"
@@ -13,6 +14,9 @@ import (
 )
 
 func TestDailyScrapingPolicyJobRunner_InitialRun(t *testing.T) {
+	// Initialize logger for tests
+	logger.InitLogger()
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -21,6 +25,8 @@ func TestDailyScrapingPolicyJobRunner_InitialRun(t *testing.T) {
 	usecase := scraping_domain_usecase.NewScrapingDomainUsecaseWithRobotsTxt(mockDomainPort, mockRobotsTxtPort)
 
 	// Mock empty list to simulate no domains
+	// EnsureDomainsFromFeedLinks will fail (no repository), but that's expected in tests
+	// RefreshAllRobotsTxt will be called and should succeed with empty list
 	mockDomainPort.EXPECT().
 		List(gomock.Any(), 0, 50).
 		Return([]*domain.ScrapingDomain{}, nil).
@@ -52,6 +58,9 @@ func TestDailyScrapingPolicyJobRunner_InitialRun(t *testing.T) {
 }
 
 func TestDailyScrapingPolicyJobRunner_ContextCancellation(t *testing.T) {
+	// Initialize logger for tests
+	logger.InitLogger()
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 

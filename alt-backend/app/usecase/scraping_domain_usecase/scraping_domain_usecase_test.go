@@ -3,6 +3,7 @@ package scraping_domain_usecase
 import (
 	"alt/domain"
 	"alt/mocks"
+	"alt/utils/logger"
 	"context"
 	"fmt"
 	"testing"
@@ -198,6 +199,9 @@ func TestScrapingDomainUsecase_RefreshRobotsTxt_DomainNotFound(t *testing.T) {
 }
 
 func TestScrapingDomainUsecase_RefreshAllRobotsTxt_Success(t *testing.T) {
+	// Initialize logger for tests
+	logger.InitLogger()
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -208,7 +212,7 @@ func TestScrapingDomainUsecase_RefreshAllRobotsTxt_Success(t *testing.T) {
 	domainID1 := uuid.New()
 	domainID2 := uuid.New()
 
-	// First batch
+	// First batch - only 2 domains, so pagination will stop after first call
 	domainsBatch1 := []*domain.ScrapingDomain{
 		{
 			ID:                  domainID1,
@@ -236,18 +240,10 @@ func TestScrapingDomainUsecase_RefreshAllRobotsTxt_Success(t *testing.T) {
 		},
 	}
 
-	// Empty batch to signal end
-	domainsBatch2 := []*domain.ScrapingDomain{}
-
-	// Mock List calls (pagination)
+	// Mock List call - only one call since len(domainsBatch1) < batchSize (2 < 50)
 	mockDomainPort.EXPECT().
 		List(gomock.Any(), 0, 50).
 		Return(domainsBatch1, nil).
-		Times(1)
-
-	mockDomainPort.EXPECT().
-		List(gomock.Any(), 50, 50).
-		Return(domainsBatch2, nil).
 		Times(1)
 
 	// Mock GetByID for each domain
@@ -317,6 +313,9 @@ func TestScrapingDomainUsecase_RefreshAllRobotsTxt_NoRobotsTxtPort(t *testing.T)
 }
 
 func TestScrapingDomainUsecase_RefreshAllRobotsTxt_PartialFailure(t *testing.T) {
+	// Initialize logger for tests
+	logger.InitLogger()
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -354,16 +353,10 @@ func TestScrapingDomainUsecase_RefreshAllRobotsTxt_PartialFailure(t *testing.T) 
 		},
 	}
 
-	domainsBatch2 := []*domain.ScrapingDomain{}
-
+	// Mock List call - only one call since len(domainsBatch1) < batchSize (2 < 50)
 	mockDomainPort.EXPECT().
 		List(gomock.Any(), 0, 50).
 		Return(domainsBatch1, nil).
-		Times(1)
-
-	mockDomainPort.EXPECT().
-		List(gomock.Any(), 50, 50).
-		Return(domainsBatch2, nil).
 		Times(1)
 
 	// First domain succeeds
