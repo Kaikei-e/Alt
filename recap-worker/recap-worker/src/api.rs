@@ -32,7 +32,7 @@ pub(crate) fn router(state: AppState) -> Router {
             get(evaluation::get_latest_evaluation_result),
         )
         .route(
-            "/v1/evaluation/genres/:run_id",
+            "/v1/evaluation/genres/{run_id}",
             get(evaluation::get_evaluation_result),
         )
         .with_state(state)
