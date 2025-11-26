@@ -377,11 +377,19 @@ impl CoarseGenreStage {
         }
 
         // 低サポートの場合は"other"にフォールバック
-        // selected_genresに含まれるジャンルのkeyword_hitsがすべて0の場合、"other"にフォールバック
-        // （モデルの予測スコアは考慮しない。キーワードマッチがない場合のみ"other"にフォールバック）
-        let low_support = selected_genres
-            .iter()
-            .all(|genre| classification.keyword_hits.get(genre).copied().unwrap_or(0) == 0);
+        // 新しいCentroid Classifierが使用されている場合（keyword_hitsが空）は、スコアベースで判定
+        // 既存のGenreClassifierが使用されている場合（keyword_hitsが非空）は、キーワードマッチベースで判定
+        let low_support = if classification.keyword_hits.is_empty() {
+            // 新しい分類器: スコアが閾値未満の場合にフォールバック
+            selected_genres
+                .iter()
+                .all(|genre| classification.scores.get(genre).copied().unwrap_or(0.0) < 0.5)
+        } else {
+            // 既存の分類器: keyword_hitsがすべて0の場合にフォールバック
+            selected_genres
+                .iter()
+                .all(|genre| classification.keyword_hits.get(genre).copied().unwrap_or(0) == 0)
+        };
         if low_support {
             selected_genres.clear();
             selected_genres.push("other".to_string());

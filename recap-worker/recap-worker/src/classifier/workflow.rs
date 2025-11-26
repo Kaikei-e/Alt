@@ -83,11 +83,15 @@ impl ClassificationPipeline {
         }
 
         // Golden Datasetが見つからない場合は、既存のGenreClassifierにフォールバック
-        tracing::warn!(
-            "Golden dataset not found at /app/data/golden_classification.json or tests/data/golden_classification.json. \
-             Falling back to GenreClassifier. \
-             See README.md for details on where to place the golden dataset file."
-        );
+        // ログは1回だけ出力（静的変数で制御）
+        static WARNED: std::sync::Once = std::sync::Once::new();
+        WARNED.call_once(|| {
+            tracing::warn!(
+                "Golden dataset not found at /app/data/golden_classification.json or tests/data/golden_classification.json. \
+                 Falling back to GenreClassifier. \
+                 See README.md for details on where to place the golden dataset file."
+            );
+        });
 
         let feature_extractor = FeatureExtractor::fallback();
         let token_pipeline = TokenPipeline::new();
@@ -285,8 +289,14 @@ impl ClassificationPipeline {
                 .map(|(genre, _)| genre.clone())
                 .collect();
 
-            // keyword_hitsは空（新分類器では使用しない）
-            let keyword_hits = HashMap::new();
+            // keyword_hitsを設定（既存のGenreClassifierインターフェースとの互換性のため）
+            // スコアを100倍して整数に変換（既存のロジックとの互換性のため）
+            let mut keyword_hits = HashMap::new();
+            for (genre, score) in &scores {
+                let rounded = (score.max(0.0) * 100.0).round().max(0.0);
+                let hit_count = u32::try_from(rounded as i64).unwrap_or(0).max(1);
+                keyword_hits.insert(genre.clone(), hit_count as usize);
+            }
 
             return Ok(ClassificationResult {
                 top_genres,

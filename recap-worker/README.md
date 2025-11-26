@@ -97,6 +97,15 @@ Full reference lives in [ENVIRONMENT.md](./ENVIRONMENT.md). Highlights:
 - **HTTP resiliency**: `HTTP_MAX_RETRIES`, `HTTP_BACKOFF_BASE_MS`, `HTTP_BACKOFF_CAP_MS`, per-client timeout overrides.
 - **Observability**: `OTEL_EXPORTER_ENDPOINT`, `OTEL_SAMPLING_RATIO`, `RUST_LOG`.
 
+### Golden Dataset for Classification
+The new Centroid-based Classification pipeline requires a golden dataset file for training. The file must be placed at:
+- **Production/Docker**: `/app/data/golden_classification.json`
+- **Development**: `tests/data/golden_classification.json` (relative to `recap-worker/recap-worker/`)
+
+The Dockerfile automatically copies the golden dataset from `tests/data/golden_classification.json` to `/app/data/golden_classification.json` during the build process. If the file is not found, the system will automatically fall back to the legacy `GenreClassifier`.
+
+See [IMPLEMENTATION.md](./IMPLEMENTATION.md) for details on the classification pipeline architecture.
+
 ## Observability
 - **Metrics**: `GET /metrics` surfaces counters (`recap_articles_fetched_total`, `recap_clusters_created_total`, `recap_jobs_failed_total`), histograms (`recap_fetch_duration_seconds`, `recap_job_duration_seconds`, etc.), and gauges (`recap_active_jobs`, `recap_queue_size`). See `observability/metrics.rs`.
 - **Tracing**: `observability::Telemetry` initializes JSON-formatted tracing logs. OTLP export can be enabled once collector availability is confirmed (see `observability/tracing.rs`).
