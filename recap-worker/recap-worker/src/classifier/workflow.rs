@@ -8,7 +8,11 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-use crate::classification::{ClassificationLanguage, FeatureExtractor, TokenPipeline};
+use std::collections::HashMap;
+
+use crate::classification::{
+    ClassificationLanguage, ClassificationResult, FeatureExtractor, TokenPipeline,
+};
 use crate::classifier::{CentroidClassifier, GraphPropagator, centroid::Article};
 
 /// Golden Datasetのアイテム（JSON形式）
@@ -22,6 +26,7 @@ pub struct GoldenItem {
 
 /// 分類パイプライン
 /// Centroid ClassifierとGraph Label Propagationを統合した分類器
+#[derive(Debug)]
 pub struct ClassificationPipeline {
     centroid_classifier: CentroidClassifier,
     feature_extractor: FeatureExtractor,
@@ -29,6 +34,21 @@ pub struct ClassificationPipeline {
 }
 
 impl ClassificationPipeline {
+    /// デフォルトのGolden Datasetパスからパイプラインを初期化する。
+    ///
+    /// # Errors
+    /// ファイルの読み込みやパースに失敗した場合にエラーを返す。
+    pub fn new() -> Result<Self> {
+        // 環境変数からパスを取得、なければデフォルトパスを使用
+        let default_path = std::env::var("RECAP_GOLDEN_DATASET_PATH").unwrap_or_else(|_| {
+            // 実行ファイルからの相対パスまたはCARGO_MANIFEST_DIRからの相対パス
+            let manifest_dir =
+                std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+            format!("{}/../tests/data/golden_classification.json", manifest_dir)
+        });
+        Self::from_golden_dataset(Path::new(&default_path))
+    }
+
     /// Golden Datasetからパイプラインを初期化する。
     ///
     /// # Arguments
@@ -149,5 +169,61 @@ impl ClassificationPipeline {
     #[must_use]
     pub fn trained_genres(&self) -> Vec<String> {
         self.centroid_classifier.trained_genres()
+    }
+
+    /// 既存のGenreClassifierインターフェースに合わせたpredictメソッド。
+    ///
+    /// # Arguments
+    /// * `title` - 記事のタイトル
+    /// * `body` - 記事の本文
+    /// * `language` - 言語
+    ///
+    /// # Returns
+    /// ClassificationResult（既存のGenreClassifierと同じ形式）
+    pub fn predict(
+        &self,
+        title: &str,
+        body: &str,
+        language: ClassificationLanguage,
+    ) -> Result<ClassificationResult> {
+        let normalized = self.token_pipeline.preprocess(title, body, language);
+        let feature_vector = self.feature_extractor.extract(&normalized.tokens);
+
+        // Centroid Classifierで分類を試みる
+        let mut scores = HashMap::new();
+        let mut ranking = Vec::new();
+
+        if let Some((genre, score)) = self.centroid_classifier.predict(&feature_vector) {
+            scores.insert(genre.clone(), score);
+            ranking.push((genre, score));
+        }
+
+        // スコアが空の場合は"other"を追加
+        if scores.is_empty() {
+            scores.insert("other".to_string(), 0.0);
+            ranking.push(("other".to_string(), 0.0));
+        }
+
+        // ランキングをスコア順にソート
+        ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // top_genresを取得（最大3つ）
+        let top_genres: Vec<String> = ranking
+            .iter()
+            .take(3)
+            .map(|(genre, _)| genre.clone())
+            .collect();
+
+        // keyword_hitsは空（新分類器では使用しない）
+        let keyword_hits = HashMap::new();
+
+        Ok(ClassificationResult {
+            top_genres,
+            scores,
+            ranking,
+            feature_snapshot: feature_vector,
+            keyword_hits,
+            token_count: normalized.tokens.len(),
+        })
     }
 }

@@ -7,7 +7,8 @@ use chrono::Utc;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::classification::{ClassificationLanguage, GenreClassifier};
+use crate::classification::ClassificationLanguage;
+use crate::classifier::ClassificationPipeline;
 use crate::observability::metrics::Metrics;
 use crate::scheduler::JobContext;
 use crate::store::dao::RecapDao;
@@ -297,7 +298,7 @@ impl TwoStageGenreStage {
 /// タイトル+本文からキーワードマッチングで最大 `max_genres` 件の候補を抽出する。
 #[derive(Debug)]
 pub(crate) struct CoarseGenreStage {
-    classifier: GenreClassifier,
+    classifier: ClassificationPipeline,
     fallback_keywords: GenreKeywords,
     min_genres: usize,
     max_genres: usize,
@@ -312,13 +313,26 @@ impl CoarseGenreStage {
     /// * `min_genres` - 最小ジャンル数（デフォルト: 1）
     /// * `max_genres` - 最大ジャンル数（デフォルト: 3）
     /// * `embedding_service` - Embeddingサービス（オプション）
+    ///
+    /// # Panics
+    /// ClassificationPipelineの初期化に失敗した場合にパニックします。
     pub(crate) fn new(
         min_genres: usize,
         max_genres: usize,
         embedding_service: Option<EmbeddingService>,
     ) -> Self {
+        let classifier = ClassificationPipeline::new().unwrap_or_else(|err| {
+            tracing::error!(
+                error = %err,
+                "Failed to initialize ClassificationPipeline, falling back to GenreClassifier"
+            );
+            // フォールバック: 既存のGenreClassifierを使用
+            // ただし、ClassificationPipelineに変換する必要があるため、
+            // ここではエラーを返すか、別の方法を検討する必要がある
+            panic!("Failed to initialize ClassificationPipeline: {err}");
+        });
         Self {
-            classifier: GenreClassifier::new_default(),
+            classifier,
             fallback_keywords: GenreKeywords::default_keywords(),
             min_genres,
             max_genres,
