@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::classification::{
-    ClassificationLanguage, ClassificationResult, FeatureExtractor, TokenPipeline,
+    ClassificationLanguage, ClassificationResult, FeatureExtractor, GenreClassifier, TokenPipeline,
 };
 use crate::classifier::{CentroidClassifier, GraphPropagator, centroid::Article};
 
@@ -26,27 +26,78 @@ pub struct GoldenItem {
 
 /// 分類パイプライン
 /// Centroid ClassifierとGraph Label Propagationを統合した分類器
+/// Golden Datasetが読み込めない場合は、既存のGenreClassifierにフォールバック
 #[derive(Debug)]
 pub struct ClassificationPipeline {
-    centroid_classifier: CentroidClassifier,
+    centroid_classifier: Option<CentroidClassifier>,
+    fallback_classifier: Option<GenreClassifier>,
     feature_extractor: FeatureExtractor,
     token_pipeline: TokenPipeline,
 }
 
+impl Default for ClassificationPipeline {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ClassificationPipeline {
     /// デフォルトのGolden Datasetパスからパイプラインを初期化する。
+    /// Golden Datasetが見つからない場合は、既存のGenreClassifierにフォールバックする。
     ///
-    /// # Errors
-    /// ファイルの読み込みやパースに失敗した場合にエラーを返す。
-    pub fn new() -> Result<Self> {
-        // 環境変数からパスを取得、なければデフォルトパスを使用
-        let default_path = std::env::var("RECAP_GOLDEN_DATASET_PATH").unwrap_or_else(|_| {
-            // 実行ファイルからの相対パスまたはCARGO_MANIFEST_DIRからの相対パス
-            let manifest_dir =
-                std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-            format!("{}/../tests/data/golden_classification.json", manifest_dir)
-        });
-        Self::from_golden_dataset(Path::new(&default_path))
+    /// # Note
+    /// Dockerfileと同じように、`/app/data/golden_classification.json` に配置されていることを前提とします。
+    /// 開発環境では `tests/data/golden_classification.json` も試行します。
+    ///
+    /// # Returns
+    /// 常に成功する（フォールバック処理により）
+    #[must_use]
+    pub fn new() -> Self {
+        // Dockerfileと同じパスを優先（本番環境）
+        let default_path = Path::new("/app/data/golden_classification.json");
+        if default_path.exists() {
+            if let Ok(pipeline) = Self::from_golden_dataset(default_path) {
+                return pipeline;
+            }
+        }
+
+        // 開発環境用: tests/data/golden_classification.json を試行
+        let dev_candidates = vec![
+            // CARGO_MANIFEST_DIRからの相対パス（ビルド時）
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| format!("{}/../tests/data/golden_classification.json", d)),
+            // 現在の作業ディレクトリからの相対パス
+            Some("tests/data/golden_classification.json".to_string()),
+            // 絶対パス（recap-workerディレクトリからの相対）
+            Some("../tests/data/golden_classification.json".to_string()),
+        ];
+
+        for candidate in dev_candidates.into_iter().flatten() {
+            let path = Path::new(&candidate);
+            if path.exists() {
+                if let Ok(pipeline) = Self::from_golden_dataset(path) {
+                    return pipeline;
+                }
+            }
+        }
+
+        // Golden Datasetが見つからない場合は、既存のGenreClassifierにフォールバック
+        tracing::warn!(
+            "Golden dataset not found at /app/data/golden_classification.json or tests/data/golden_classification.json. \
+             Falling back to GenreClassifier. \
+             See README.md for details on where to place the golden dataset file."
+        );
+
+        let feature_extractor = FeatureExtractor::fallback();
+        let token_pipeline = TokenPipeline::new();
+
+        Self {
+            centroid_classifier: None,
+            fallback_classifier: Some(GenreClassifier::new_default()),
+            feature_extractor,
+            token_pipeline,
+        }
     }
 
     /// Golden Datasetからパイプラインを初期化する。
@@ -98,7 +149,8 @@ impl ClassificationPipeline {
         centroid_classifier.train(&labeled_articles)?;
 
         Ok(Self {
-            centroid_classifier,
+            centroid_classifier: Some(centroid_classifier),
+            fallback_classifier: None,
             feature_extractor,
             token_pipeline,
         })
@@ -125,17 +177,30 @@ impl ClassificationPipeline {
         let feature_vector = self.feature_extractor.extract(&normalized.tokens);
 
         // Fast Pass: Centroid Classifierで分類
-        if let Some((genre, _score)) = self.centroid_classifier.predict(&feature_vector) {
-            return Ok(genre);
+        if let Some(ref centroid_classifier) = self.centroid_classifier {
+            if let Some((genre, _score)) = centroid_classifier.predict(&feature_vector) {
+                return Ok(genre);
+            }
+        } else {
+            // Centroid Classifierが利用できない場合は、フォールバックを使用
+            if let Some(ref fallback) = self.fallback_classifier {
+                let result = fallback.predict("", content, language)?;
+                if let Some(genre) = result.top_genres.first() {
+                    return Ok(genre.clone());
+                }
+            }
+            return Ok("other".to_string());
         }
 
         // Rescue Pass: Graph Label Propagation
         // Centroid Classifierで候補に絞る
         let mut centroid_candidates = HashSet::new();
-        for article in all_articles {
-            if let Some(ref fv) = article.feature_vector {
-                if self.centroid_classifier.predict(fv).is_some() {
-                    centroid_candidates.insert(article.id.clone());
+        if let Some(ref centroid_classifier) = self.centroid_classifier {
+            for article in all_articles {
+                if let Some(ref fv) = article.feature_vector {
+                    if centroid_classifier.predict(fv).is_some() {
+                        centroid_candidates.insert(article.id.clone());
+                    }
                 }
             }
         }
@@ -168,7 +233,11 @@ impl ClassificationPipeline {
     /// 学習済みのジャンル一覧を取得する。
     #[must_use]
     pub fn trained_genres(&self) -> Vec<String> {
-        self.centroid_classifier.trained_genres()
+        if let Some(ref classifier) = self.centroid_classifier {
+            classifier.trained_genres()
+        } else {
+            Vec::new()
+        }
     }
 
     /// 既存のGenreClassifierインターフェースに合わせたpredictメソッド。
@@ -186,44 +255,55 @@ impl ClassificationPipeline {
         body: &str,
         language: ClassificationLanguage,
     ) -> Result<ClassificationResult> {
-        let normalized = self.token_pipeline.preprocess(title, body, language);
-        let feature_vector = self.feature_extractor.extract(&normalized.tokens);
+        // Centroid Classifierが利用可能な場合はそれを使用
+        if let Some(ref centroid_classifier) = self.centroid_classifier {
+            let normalized = self.token_pipeline.preprocess(title, body, language);
+            let feature_vector = self.feature_extractor.extract(&normalized.tokens);
 
-        // Centroid Classifierで分類を試みる
-        let mut scores = HashMap::new();
-        let mut ranking = Vec::new();
+            // Centroid Classifierで分類を試みる
+            let mut scores = HashMap::new();
+            let mut ranking = Vec::new();
 
-        if let Some((genre, score)) = self.centroid_classifier.predict(&feature_vector) {
-            scores.insert(genre.clone(), score);
-            ranking.push((genre, score));
+            if let Some((genre, score)) = centroid_classifier.predict(&feature_vector) {
+                scores.insert(genre.clone(), score);
+                ranking.push((genre, score));
+            }
+
+            // スコアが空の場合は"other"を追加
+            if scores.is_empty() {
+                scores.insert("other".to_string(), 0.0);
+                ranking.push(("other".to_string(), 0.0));
+            }
+
+            // ランキングをスコア順にソート
+            ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+            // top_genresを取得（最大3つ）
+            let top_genres: Vec<String> = ranking
+                .iter()
+                .take(3)
+                .map(|(genre, _)| genre.clone())
+                .collect();
+
+            // keyword_hitsは空（新分類器では使用しない）
+            let keyword_hits = HashMap::new();
+
+            return Ok(ClassificationResult {
+                top_genres,
+                scores,
+                ranking,
+                feature_snapshot: feature_vector,
+                keyword_hits,
+                token_count: normalized.tokens.len(),
+            });
         }
 
-        // スコアが空の場合は"other"を追加
-        if scores.is_empty() {
-            scores.insert("other".to_string(), 0.0);
-            ranking.push(("other".to_string(), 0.0));
+        // フォールバック: 既存のGenreClassifierを使用
+        if let Some(ref fallback) = self.fallback_classifier {
+            return fallback.predict(title, body, language);
         }
 
-        // ランキングをスコア順にソート
-        ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // top_genresを取得（最大3つ）
-        let top_genres: Vec<String> = ranking
-            .iter()
-            .take(3)
-            .map(|(genre, _)| genre.clone())
-            .collect();
-
-        // keyword_hitsは空（新分類器では使用しない）
-        let keyword_hits = HashMap::new();
-
-        Ok(ClassificationResult {
-            top_genres,
-            scores,
-            ranking,
-            feature_snapshot: feature_vector,
-            keyword_hits,
-            token_count: normalized.tokens.len(),
-        })
+        // どちらも利用できない場合はエラー
+        anyhow::bail!("Neither CentroidClassifier nor GenreClassifier is available")
     }
 }

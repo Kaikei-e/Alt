@@ -314,23 +314,17 @@ impl CoarseGenreStage {
     /// * `max_genres` - 最大ジャンル数（デフォルト: 3）
     /// * `embedding_service` - Embeddingサービス（オプション）
     ///
-    /// # Panics
-    /// ClassificationPipelineの初期化に失敗した場合にパニックします。
+    /// # Note
+    /// ClassificationPipelineの初期化は常に成功します。
+    /// Golden Datasetが見つからない場合は、既存のGenreClassifierにフォールバックします。
     pub(crate) fn new(
         min_genres: usize,
         max_genres: usize,
         embedding_service: Option<EmbeddingService>,
     ) -> Self {
-        let classifier = ClassificationPipeline::new().unwrap_or_else(|err| {
-            tracing::error!(
-                error = %err,
-                "Failed to initialize ClassificationPipeline, falling back to GenreClassifier"
-            );
-            // フォールバック: 既存のGenreClassifierを使用
-            // ただし、ClassificationPipelineに変換する必要があるため、
-            // ここではエラーを返すか、別の方法を検討する必要がある
-            panic!("Failed to initialize ClassificationPipeline: {err}");
-        });
+        // ClassificationPipeline::new()は内部でフォールバック処理を行うため、
+        // 常に成功する（Golden Datasetが見つからない場合はGenreClassifierにフォールバック）
+        let classifier = ClassificationPipeline::new();
         Self {
             classifier,
             fallback_keywords: GenreKeywords::default_keywords(),
