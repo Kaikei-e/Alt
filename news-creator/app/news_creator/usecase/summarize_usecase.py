@@ -38,16 +38,35 @@ class SummarizeUsecase:
         if not content or not content.strip():
             raise ValueError("content cannot be empty")
 
+        # Truncate content to fit within 64K context window
+        # 64K tokens ≈ 256K-512K chars, but we need to reserve space for prompt template
+        # Using ~200K chars (≈50K tokens) for content to leave room for prompt template
+        MAX_CONTENT_LENGTH = 200_000  # characters
+        original_length = len(content)
+        truncated_content = content.strip()[:MAX_CONTENT_LENGTH]
+
+        if original_length > MAX_CONTENT_LENGTH:
+            logger.warning(
+                "Input content truncated to fit context window",
+                extra={
+                    "article_id": article_id,
+                    "original_length": original_length,
+                    "truncated_length": len(truncated_content),
+                    "max_length": MAX_CONTENT_LENGTH,
+                }
+            )
+
         logger.info(
             "Generating summary",
             extra={
                 "article_id": article_id,
-                "content_length": len(content)
+                "content_length": len(truncated_content),
+                "was_truncated": original_length > MAX_CONTENT_LENGTH,
             }
         )
 
         # Build prompt from template
-        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=content.strip())
+        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=truncated_content)
 
         # Call LLM provider
         llm_response = await self.llm_provider.generate(

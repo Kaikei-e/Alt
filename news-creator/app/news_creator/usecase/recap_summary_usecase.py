@@ -147,8 +147,15 @@ class RecapSummaryUsecase:
         raise RuntimeError("Failed to generate recap summary")
 
     def _build_prompt(self, request: RecapSummaryRequest, max_bullets: int) -> str:
+        # Truncate cluster section to fit within 64K context window
+        # 64K tokens ≈ 256K-512K chars, but we need to reserve space for prompt template
+        # Using ~200K chars (≈50K tokens) for cluster_section to leave room for prompt template
+        MAX_CLUSTER_SECTION_LENGTH = 200_000  # characters
+
         max_clusters = max(3, min(len(request.clusters), max_bullets + 2))
         cluster_lines: List[str] = []
+        cluster_section_length = 0
+
         for cluster in request.clusters[:max_clusters]:
             top_terms = ", ".join(cluster.top_terms or []) or "未提示"
             sentence_lines: List[str] = []
@@ -179,9 +186,42 @@ class RecapSummaryUsecase:
                 {sentences}
                 """
             ).strip()
+
+            # Check if adding this cluster would exceed the limit
+            estimated_length = cluster_section_length + len(cluster_block) + 2  # +2 for "\n\n"
+            if estimated_length > MAX_CLUSTER_SECTION_LENGTH:
+                logger.warning(
+                    "Cluster section truncated to fit context window",
+                    extra={
+                        "job_id": str(request.job_id),
+                        "genre": request.genre,
+                        "clusters_included": len(cluster_lines),
+                        "total_clusters": len(request.clusters),
+                        "cluster_section_length": cluster_section_length,
+                        "max_length": MAX_CLUSTER_SECTION_LENGTH,
+                    }
+                )
+                break
+
             cluster_lines.append(cluster_block)
+            cluster_section_length = estimated_length
 
         cluster_section = "\n\n".join(cluster_lines)
+
+        # Final truncation if still too long (safety check)
+        if len(cluster_section) > MAX_CLUSTER_SECTION_LENGTH:
+            original_length = len(cluster_section)
+            cluster_section = cluster_section[:MAX_CLUSTER_SECTION_LENGTH]
+            logger.warning(
+                "Cluster section truncated at final check",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "original_length": original_length,
+                    "truncated_length": len(cluster_section),
+                    "max_length": MAX_CLUSTER_SECTION_LENGTH,
+                }
+            )
 
         return RECAP_CLUSTER_SUMMARY_PROMPT.format(
             job_id=request.job_id,
