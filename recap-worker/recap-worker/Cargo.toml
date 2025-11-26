@@ -80,6 +80,8 @@ aho-corasick = "1.1"
 fst = "0.4"
 rust-bert = "0.23.0"
 console = "0.16"
+ndarray = { version = "0.16", features = ["serde", "rayon"] }
+petgraph = "0.6"
 
 [dev-dependencies]
 futures = "0.3"
