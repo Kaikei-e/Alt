@@ -16,11 +16,10 @@ if [ "$(id -u)" -eq 0 ] && [ "${OLLAMA_ENTRYPOINT_RERUN:-0}" != "1" ]; then
 fi
 
 # --- Ollama server configuration --------------------------------------------
-# 4060/8GB 前提：実効 16k 文脈・並列 1・FA/KV量子化を既定化
-# GPUメモリ最適化: 1GB残して約7GBまで使用可能（現在約5.1 GiB使用中）
+# GPUメモリ最適化: 1GB残して約7GBまで使用可能（64K時は約6.0-6.5 GiB使用予定）
 # コンテキスト長を統一することでランナー再利用を改善し、メモリ使用を安定化
 export OLLAMA_HOST="${OLLAMA_HOST:-127.0.0.1:11435}"   # 明示的にポート11435を指定
-export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-16384}" # 既定 2048 を拡張（統一してランナー再利用）
+export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-65536}" # 64Kコンテキスト（統一してランナー再利用）
 export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-1}"         # 8GB では並列 1 が安定
 export OLLAMA_MAX_LOADED_MODELS="${OLLAMA_MAX_LOADED_MODELS:-1}" # 同じコンテキスト長なら再利用される
 export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-24h}"   # 24時間保持してランナー再利用を促進
