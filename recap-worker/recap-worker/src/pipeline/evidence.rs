@@ -105,6 +105,17 @@ impl EvidenceBundle {
         // 各ジャンルグループから証拠コーパスを構築
         let mut corpora = HashMap::new();
 
+        for (genre, assignments) in &genre_groups {
+            // ジャンル別記事数が少ない場合のWARNログ
+            if assignments.len() < 3 {
+                tracing::warn!(
+                    "Evidence corpus: genre '{}' has only {} articles (minimum recommended: 3)",
+                    genre,
+                    assignments.len()
+                );
+            }
+        }
+
         for (genre, assignments) in genre_groups {
             let corpus = build_corpus_for_genre(&genre, &assignments);
 
@@ -121,6 +132,10 @@ impl EvidenceBundle {
 
         let evidence_bundle = Self { job_id, corpora };
 
+        // ジャンル別の詳細を計算
+        let genres_with_articles = evidence_bundle.genres().len();
+        let genres_without_articles: Vec<String> = Vec::new(); // 現在の実装では、記事がないジャンルはグループ化されないため空
+
         info!(
             job_id = %job_id,
             genre_count = evidence_bundle.genres().len(),
@@ -128,6 +143,14 @@ impl EvidenceBundle {
             total_sentences = evidence_bundle.total_sentences(),
             total_characters = evidence_bundle.total_characters(),
             "completed evidence corpus construction"
+        );
+
+        // 証拠コーパス構築完了時の詳細ログ
+        tracing::info!(
+            "Evidence corpus construction: genre_count={}, genres_with_articles={}, genres_without_articles={:?}",
+            evidence_bundle.genres().len(),
+            genres_with_articles,
+            genres_without_articles
         );
 
         evidence_bundle

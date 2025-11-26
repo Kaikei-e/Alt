@@ -24,12 +24,21 @@ pub struct GoldenItem {
     pub genres: Vec<String>,
 }
 
+/// 特徴ベクトル抽出の統計情報
+struct FeatureExtractionStats {
+    zero_vector_count: usize,
+    avg_tfidf_norm: f32,
+    avg_bm25_norm: f32,
+    avg_embedding_norm: f32,
+}
+
 /// 分類パイプライン
 /// Centroid ClassifierとGraph Label Propagationを統合した分類器
 /// Golden Datasetが読み込めない場合は、既存のGenreClassifierにフォールバック
 #[derive(Debug)]
 pub struct ClassificationPipeline {
     centroid_classifier: Option<CentroidClassifier>,
+    graph_propagator: Option<GraphPropagator>,
     fallback_classifier: Option<GenreClassifier>,
     feature_extractor: FeatureExtractor,
     token_pipeline: TokenPipeline,
@@ -124,6 +133,7 @@ impl ClassificationPipeline {
 
         Self {
             centroid_classifier: None,
+            graph_propagator: None,
             fallback_classifier: Some(GenreClassifier::new_default()),
             feature_extractor,
             token_pipeline,
@@ -180,10 +190,146 @@ impl ClassificationPipeline {
         );
 
         // 4. Golden Datasetから特徴ベクトルを抽出
+        let (labeled_articles, stats) =
+            Self::extract_feature_vectors(&golden_items, &tokenized_corpus, &feature_extractor);
+
+        // 統計ログを出力
+        tracing::info!(
+            "Golden Dataset feature extraction: total_articles={}, zero_norm_count={}, avg_tfidf_norm={:.4}, avg_bm25_norm={:.4}, avg_embedding_norm={:.4}",
+            golden_items.len(),
+            stats.zero_vector_count,
+            stats.avg_tfidf_norm,
+            stats.avg_bm25_norm,
+            stats.avg_embedding_norm
+        );
+
+        if stats.zero_vector_count > 0 {
+            tracing::warn!(
+                "Golden Dataset: {} out of {} articles have zero-norm feature vectors",
+                stats.zero_vector_count,
+                golden_items.len()
+            );
+        } else {
+            tracing::info!(
+                "Golden Dataset: all {} articles have non-zero feature vectors",
+                golden_items.len()
+            );
+        }
+
+        // 5. CentroidClassifierを学習
+        let mut centroid_classifier = CentroidClassifier::new(feature_dim);
+        centroid_classifier.train(&labeled_articles)?;
+
+        let trained_genres = centroid_classifier.trained_genres();
+        tracing::info!(
+            "CentroidClassifier trained successfully: {} genres, {} articles",
+            trained_genres.len(),
+            labeled_articles.len()
+        );
+
+        // GraphPropagatorの構築
+        let mut graph_propagator = GraphPropagator::new(0.85); // エッジ構築用閾値
+        if let Err(e) = graph_propagator.build_graph(&labeled_articles, &HashSet::new()) {
+            tracing::warn!("Failed to build GraphPropagator: {}", e);
+        } else {
+            tracing::info!(
+                "GraphPropagator built successfully: {} nodes, {} edges",
+                graph_propagator.graph_stats().0,
+                graph_propagator.graph_stats().1
+            );
+        }
+
+        Ok(Self {
+            centroid_classifier: Some(centroid_classifier),
+            graph_propagator: Some(graph_propagator),
+            fallback_classifier: None,
+            feature_extractor,
+            token_pipeline: TokenPipeline::new(),
+        })
+    }
+
+    /// 新着記事を分類する。
+    ///
+    /// # Arguments
+    /// * `article_id` - 記事ID
+    /// * `content` - 記事の内容
+    /// * `all_articles` - 全記事（Labeled + Unlabeled）のリスト（Graph Propagation用）
+    ///
+    /// # Returns
+    /// 分類されたジャンル。分類できない場合は "other" を返す。
+    pub fn classify(
+        &self,
+        article_id: &str,
+        content: &str,
+        all_articles: &[Article],
+    ) -> Result<String> {
+        // サンプリング用のカウンター（静的変数）
+        static SAMPLE_COUNT: std::sync::atomic::AtomicUsize =
+            std::sync::atomic::AtomicUsize::new(0);
+        let sample_count = SAMPLE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        // 特徴ベクトルを抽出
+        let language = ClassificationLanguage::Unknown;
+        let normalized = self.token_pipeline.preprocess(content, "", language);
+        let feature_vector = self.feature_extractor.extract(&normalized.tokens);
+
+        // ゼロベクトルチェック
+        Self::check_zero_vector(article_id, &normalized, &feature_vector);
+
+        // Fast Pass: Centroid Classifierで分類
+        if let Some(genre) =
+            self.try_fast_pass(article_id, content, &feature_vector, language, sample_count)?
+        {
+            return Ok(genre);
+        }
+
+        // Rescue Pass: Graph Label Propagation
+        if let Some(genre) = self.try_rescue_pass(
+            article_id,
+            content,
+            all_articles,
+            &feature_vector,
+            sample_count,
+        )? {
+            return Ok(genre);
+        }
+
+        // Fallback: 分類できない場合は "other"
+        Ok("other".to_string())
+    }
+
+    /// Golden Datasetから特徴ベクトルを抽出する。
+    fn extract_feature_vectors(
+        golden_items: &[GoldenItem],
+        tokenized_corpus: &[Vec<String>],
+        feature_extractor: &FeatureExtractor,
+    ) -> (Vec<Article>, FeatureExtractionStats) {
         let mut labeled_articles = Vec::new();
         let mut zero_vector_count = 0;
+        let mut tfidf_norms = Vec::new();
+        let mut bm25_norms = Vec::new();
+        let mut embedding_norms = Vec::new();
+
         for (item, tokens) in golden_items.iter().zip(tokenized_corpus.iter()) {
             let feature_vector = feature_extractor.extract(tokens);
+
+            // 各特徴ベクトルのノルムを計算
+            let tfidf_norm = {
+                let tfidf_vec = ndarray::Array1::from_vec(feature_vector.tfidf.clone());
+                tfidf_vec.dot(&tfidf_vec).sqrt()
+            };
+            let bm25_norm = {
+                let bm25_vec = ndarray::Array1::from_vec(feature_vector.bm25.clone());
+                bm25_vec.dot(&bm25_vec).sqrt()
+            };
+            let embedding_norm = {
+                let embedding_vec = ndarray::Array1::from_vec(feature_vector.embedding.clone());
+                embedding_vec.dot(&embedding_vec).sqrt()
+            };
+
+            tfidf_norms.push(tfidf_norm);
+            bm25_norms.push(bm25_norm);
+            embedding_norms.push(embedding_norm);
 
             // ベクトルのノルムをチェック
             let combined = {
@@ -219,75 +365,126 @@ impl ClassificationPipeline {
             });
         }
 
-        if zero_vector_count > 0 {
-            tracing::warn!(
-                "Golden Dataset: {} out of {} articles have zero-norm feature vectors",
-                zero_vector_count,
-                golden_items.len()
-            );
+        // 統計情報を計算
+        let avg_tfidf_norm = if tfidf_norms.is_empty() {
+            0.0
         } else {
-            tracing::info!(
-                "Golden Dataset: all {} articles have non-zero feature vectors",
-                golden_items.len()
-            );
-        }
+            tfidf_norms.iter().sum::<f32>() / tfidf_norms.len() as f32
+        };
+        let avg_bm25_norm = if bm25_norms.is_empty() {
+            0.0
+        } else {
+            bm25_norms.iter().sum::<f32>() / bm25_norms.len() as f32
+        };
+        let avg_embedding_norm = if embedding_norms.is_empty() {
+            0.0
+        } else {
+            embedding_norms.iter().sum::<f32>() / embedding_norms.len() as f32
+        };
 
-        // 5. CentroidClassifierを学習
-        let mut centroid_classifier = CentroidClassifier::new(feature_dim);
-        centroid_classifier.train(&labeled_articles)?;
+        let stats = FeatureExtractionStats {
+            zero_vector_count,
+            avg_tfidf_norm,
+            avg_bm25_norm,
+            avg_embedding_norm,
+        };
 
-        let trained_genres = centroid_classifier.trained_genres();
-        tracing::info!(
-            "CentroidClassifier trained successfully: {} genres, {} articles",
-            trained_genres.len(),
-            labeled_articles.len()
-        );
-
-        Ok(Self {
-            centroid_classifier: Some(centroid_classifier),
-            fallback_classifier: None,
-            feature_extractor,
-            token_pipeline,
-        })
+        (labeled_articles, stats)
     }
 
-    /// 新着記事を分類する。
-    ///
-    /// # Arguments
-    /// * `article_id` - 記事ID
-    /// * `content` - 記事の内容
-    /// * `all_articles` - 全記事（Labeled + Unlabeled）のリスト（Graph Propagation用）
-    ///
-    /// # Returns
-    /// 分類されたジャンル。分類できない場合は "other" を返す。
-    pub fn classify(
+    /// ゼロベクトルをチェックしてログを出力する。
+    fn check_zero_vector(
+        article_id: &str,
+        normalized: &crate::classification::NormalizedDocument,
+        feature_vector: &crate::classification::FeatureVector,
+    ) {
+        let combined = {
+            let total_dim = feature_vector.tfidf.len()
+                + feature_vector.bm25.len()
+                + feature_vector.embedding.len();
+            let mut combined_vec = Vec::with_capacity(total_dim);
+            combined_vec.extend_from_slice(&feature_vector.tfidf);
+            combined_vec.extend_from_slice(&feature_vector.bm25);
+            combined_vec.extend_from_slice(&feature_vector.embedding);
+            ndarray::Array1::from_vec(combined_vec)
+        };
+        let norm = combined.dot(&combined).sqrt();
+        if norm <= 0.0 {
+            tracing::warn!(
+                "CentroidClassifier: zero-norm feature vector for article_id={}, tokens={}, tfidf_sum={:.4}, bm25_sum={:.4}, embedding_sum={:.4}",
+                article_id,
+                normalized.tokens.len(),
+                feature_vector.tfidf.iter().sum::<f32>(),
+                feature_vector.bm25.iter().sum::<f32>(),
+                feature_vector.embedding.iter().sum::<f32>()
+            );
+        }
+    }
+
+    /// Fast Pass（Centroid Classifier）で分類を試みる。
+    fn try_fast_pass(
         &self,
         article_id: &str,
         content: &str,
-        all_articles: &[Article],
-    ) -> Result<String> {
-        // 特徴ベクトルを抽出
-        let language = ClassificationLanguage::Unknown;
-        let normalized = self.token_pipeline.preprocess(content, "", language);
-        let feature_vector = self.feature_extractor.extract(&normalized.tokens);
-
-        // Fast Pass: Centroid Classifierで分類
+        feature_vector: &crate::classification::FeatureVector,
+        language: ClassificationLanguage,
+        sample_count: usize,
+    ) -> Result<Option<String>> {
         if let Some(ref centroid_classifier) = self.centroid_classifier {
-            if let Some((genre, _score)) = centroid_classifier.predict(&feature_vector) {
-                return Ok(genre);
+            if let Some((genre, score)) = centroid_classifier.predict(feature_vector) {
+                if sample_count < 10 {
+                    tracing::info!(
+                        "ClassificationPipeline Fast Pass: article_id={}, genre={}, score={:.4}",
+                        article_id,
+                        genre,
+                        score
+                    );
+                }
+                return Ok(Some(genre));
+            }
+            // 予測失敗時: 全ジャンル中の最大類似度を計算
+            if sample_count < 10 {
+                if let Some((genre, similarity, thresh)) =
+                    centroid_classifier.get_top_similarity(feature_vector)
+                {
+                    tracing::warn!(
+                        "CentroidClassifier prediction failed: article_id={}, top_genre={}, top_score={:.4}, threshold={:.4}, gap={:.4}",
+                        article_id,
+                        genre,
+                        similarity,
+                        thresh,
+                        thresh - similarity
+                    );
+                }
+            }
+            if sample_count < 10 {
+                tracing::warn!(
+                    "ClassificationPipeline Fast Pass failed: article_id={}, falling back to GraphPropagator",
+                    article_id
+                );
             }
         } else {
             // Centroid Classifierが利用できない場合は、フォールバックを使用
             if let Some(ref fallback) = self.fallback_classifier {
                 let result = fallback.predict("", content, language)?;
                 if let Some(genre) = result.top_genres.first() {
-                    return Ok(genre.clone());
+                    return Ok(Some(genre.clone()));
                 }
             }
-            return Ok("other".to_string());
+            return Ok(Some("other".to_string()));
         }
+        Ok(None)
+    }
 
-        // Rescue Pass: Graph Label Propagation
+    /// Rescue Pass（Graph Label Propagation）で分類を試みる。
+    fn try_rescue_pass(
+        &self,
+        article_id: &str,
+        content: &str,
+        all_articles: &[Article],
+        feature_vector: &crate::classification::FeatureVector,
+        sample_count: usize,
+    ) -> Result<Option<String>> {
         // Centroid Classifierで候補に絞る
         let mut centroid_candidates = HashSet::new();
         if let Some(ref centroid_classifier) = self.centroid_classifier {
@@ -300,12 +497,20 @@ impl ClassificationPipeline {
             }
         }
 
+        // 候補数が少ない場合のWARNログ
+        if centroid_candidates.len() < 5 {
+            tracing::warn!(
+                "GraphPropagator: very few centroid candidates ({}), may limit label propagation effectiveness",
+                centroid_candidates.len()
+            );
+        }
+
         // 現在の記事も追加
         let current_article = Article {
             id: article_id.to_string(),
             content: content.to_string(),
             genres: Vec::new(),
-            feature_vector: Some(feature_vector),
+            feature_vector: Some(feature_vector.clone()),
         };
 
         let mut all_articles_with_current = all_articles.to_vec();
@@ -318,11 +523,22 @@ impl ClassificationPipeline {
 
         // 伝播されたラベルを確認
         if let Some(genre) = propagated_labels.get(article_id) {
-            return Ok(genre.clone());
+            if sample_count < 10 {
+                tracing::info!(
+                    "ClassificationPipeline Rescue Pass: article_id={}, genre={}",
+                    article_id,
+                    genre
+                );
+            }
+            return Ok(Some(genre.clone()));
         }
-
-        // Fallback: 分類できない場合は "other"
-        Ok("other".to_string())
+        if sample_count < 10 {
+            tracing::warn!(
+                "ClassificationPipeline Rescue Pass failed: article_id={}, falling back to 'other'",
+                article_id
+            );
+        }
+        Ok(None)
     }
 
     /// 学習済みのジャンル一覧を取得する。
@@ -374,7 +590,30 @@ impl ClassificationPipeline {
                 );
             }
 
-            // スコアが空の場合は"other"を追加
+            // スコアが空の場合はRescue Pass (Graph Propagator) を試行
+            if scores.is_empty() {
+                if let Some(ref propagator) = self.graph_propagator {
+                    tracing::info!(
+                        "CentroidClassifier: no matches, attempting Rescue Pass (GraphPropagator)"
+                    );
+                    // k=5, min_similarity=0.4 で近傍探索
+                    if let Some((rescued_genre, score)) =
+                        propagator.predict_by_neighbors(&feature_vector, 5, 0.4)
+                    {
+                        tracing::info!(
+                            "Rescue Pass successful: genre='{}', score={:.4}",
+                            rescued_genre,
+                            score
+                        );
+                        scores.insert(rescued_genre.clone(), score);
+                        ranking.push((rescued_genre, score));
+                    } else {
+                        tracing::debug!("Rescue Pass failed: no neighbors found");
+                    }
+                }
+            }
+
+            // それでもスコアが空の場合は"other"を追加
             if scores.is_empty() {
                 tracing::debug!("CentroidClassifier: no matches, falling back to 'other'");
                 scores.insert("other".to_string(), 0.0);

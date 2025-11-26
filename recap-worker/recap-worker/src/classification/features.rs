@@ -1,5 +1,6 @@
 //! トークン列から特徴量を抽出する。
 use std::collections::HashMap;
+use tracing;
 
 pub const EMBEDDING_DIM: usize = 6;
 pub(crate) const FALLBACK_BM25_K1: f32 = 1.6;
@@ -96,6 +97,9 @@ impl FeatureExtractor {
             }
         }
 
+        // 選択前のユニークトークン数を保持
+        let unique_tokens_before_selection = doc_freq.len();
+
         // 2. 上位vocab_size個のトークンを選択（DF降順）
         let mut token_df_pairs: Vec<(String, usize)> = doc_freq.into_iter().collect();
         token_df_pairs.sort_by(|a, b| b.1.cmp(&a.1)); // DF降順でソート
@@ -123,6 +127,15 @@ impl FeatureExtractor {
         } else {
             FALLBACK_AVG_DOC_LEN
         };
+
+        // ログ出力: FeatureExtractor構築時の統計情報
+        tracing::info!(
+            "FeatureExtractor corpus analysis: total_docs={}, unique_tokens={}, selected_vocab_size={}, avg_doc_len={:.2}",
+            total_docs,
+            unique_tokens_before_selection,
+            vocab.len(),
+            average_doc_len
+        );
 
         // 5. FeatureExtractorを初期化
         Self::from_metadata(

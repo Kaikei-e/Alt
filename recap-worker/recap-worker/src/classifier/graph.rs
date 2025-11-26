@@ -2,6 +2,7 @@
 //! 密度が足りずクラスタリングできない記事を救済するため、グラフベースのラベル伝播を実装。
 
 use std::collections::{HashMap, HashSet};
+use tracing;
 
 use anyhow::Result;
 use ndarray::Array1;
@@ -54,6 +55,18 @@ impl GraphPropagator {
         articles: &[Article],
         centroid_candidates: &HashSet<String>,
     ) -> Result<()> {
+        // ラベル付き記事数をカウント
+        let labeled_count = articles.iter().filter(|a| !a.genres.is_empty()).count();
+
+        // グラフ構築開始時のログ
+        tracing::info!(
+            "GraphPropagator: building graph: total_articles={}, labeled_articles={}, centroid_candidates={}, similarity_threshold={:.2}",
+            articles.len(),
+            labeled_count,
+            centroid_candidates.len(),
+            self.similarity_threshold
+        );
+
         // まず全ノードを追加
         for article in articles {
             if let Some(ref feature_vector) = article.feature_vector {
@@ -135,6 +148,28 @@ impl GraphPropagator {
             }
         }
 
+        // グラフ構築完了時のログ
+        let node_count = self.graph.node_count();
+        let edge_count = self.graph.edge_count();
+        let avg_degree = if node_count > 0 {
+            (edge_count as f32 * 2.0) / node_count as f32
+        } else {
+            0.0
+        };
+        let labeled_nodes_count = self
+            .graph
+            .node_indices()
+            .filter(|&idx| self.graph[idx].is_labeled)
+            .count();
+
+        tracing::info!(
+            "GraphPropagator: graph built: nodes={}, edges={}, avg_degree={:.2}, labeled_nodes={}",
+            node_count,
+            edge_count,
+            avg_degree,
+            labeled_nodes_count
+        );
+
         Ok(())
     }
 
@@ -145,11 +180,13 @@ impl GraphPropagator {
     /// 記事IDから伝播されたラベルのマッピング
     pub fn propagate_labels(&self) -> HashMap<String, String> {
         let mut propagated_labels = HashMap::new();
+        let mut labeled_sources_count = 0;
 
         // 既知のラベルを持つノードから開始
         for node_idx in self.graph.node_indices() {
             let node = &self.graph[node_idx];
             if node.is_labeled {
+                labeled_sources_count += 1;
                 if let Some(ref label) = node.label {
                     // 1ホップの隣接ノードに伝播
                     for neighbor_idx in self.graph.neighbors(node_idx) {
@@ -163,6 +200,14 @@ impl GraphPropagator {
                 }
             }
         }
+
+        // ラベル伝播結果のログ
+        tracing::info!(
+            "GraphPropagator: label propagation completed: propagated_count={}, labeled_sources={}, total_nodes={}",
+            propagated_labels.len(),
+            labeled_sources_count,
+            self.graph.node_count()
+        );
 
         propagated_labels
     }
@@ -194,6 +239,50 @@ impl GraphPropagator {
     #[allow(dead_code)]
     pub fn graph_stats(&self) -> (usize, usize) {
         (self.graph.node_count(), self.graph.edge_count())
+    }
+
+    /// 指定された特徴ベクトルに近いノードを探し、ラベルを予測する（k-NN）。
+    /// Rescue Passで使用される。
+    pub fn predict_by_neighbors(
+        &self,
+        target_vector: &FeatureVector,
+        k: usize,
+        min_similarity: f32,
+    ) -> Option<(String, f32)> {
+        let target_combined = Self::combine_feature_vector(target_vector);
+        let target_norm = Self::normalize_vector(&target_combined);
+
+        let mut neighbors: Vec<(String, f32)> = Vec::new();
+
+        // 全ノードとの類似度を計算
+        for node_idx in self.graph.node_indices() {
+            let node = &self.graph[node_idx];
+
+            // ラベル付きノードのみ対象
+            if let Some(label) = &node.label {
+                let similarity = target_norm.dot(&Self::normalize_vector(&node.feature_vector));
+
+                if similarity >= min_similarity {
+                    neighbors.push((label.clone(), similarity));
+                }
+            }
+        }
+
+        // 類似度順にソート
+        neighbors.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // 上位k件を取得して投票
+        let top_k = neighbors.iter().take(k);
+        let mut votes: HashMap<String, f32> = HashMap::new();
+
+        for (label, score) in top_k {
+            *votes.entry(label.clone()).or_default() += score;
+        }
+
+        // 最もスコアが高いラベルを返す
+        votes
+            .into_iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
     }
 }
 
