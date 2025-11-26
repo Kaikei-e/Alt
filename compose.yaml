@@ -198,6 +198,7 @@ services:
       dockerfile: Dockerfile.creator
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - OLLAMA_HOME=/home/ollama-user/.ollama
       - OLLAMA_MODELS=/home/ollama-user/.ollama
       - LLM_SERVICE_URL=${LLM_SERVICE_URL:-http://127.0.0.1:11435}
