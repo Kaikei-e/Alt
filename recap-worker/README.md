@@ -40,7 +40,8 @@ per genre]
 | [`recap-worker/src/api/*.rs`](recap-worker/src/api) | Axum handlers for health, metrics, admin retry, fetch, and manual generation. |
 | [`recap-worker/src/pipeline/`](recap-worker/src/pipeline) | Pipeline stages (`fetch`, `preprocess`, `dedup`, `genre`, `select`, `dispatch`, `persist`, `evidence`). |
 | [`recap-worker/src/clients/`](recap-worker/src/clients) | HTTP clients for alt-backend, recap-subworker, and news-creator (with JSON Schema validation). |
-| [`recap-worker/src/classification/`](recap-worker/src/classification) | Hybrid genre classifier (keywords + lightweight embedding model). |
+| [`recap-worker/src/classifier/`](recap-worker/src/classifier) | Centroid-based classification (Rocchio) + Graph label propagation hybrid pipeline. |
+| [`recap-worker/src/classification/`](recap-worker/src/classification) | Feature extraction and tokenization utilities for classification. |
 | [`recap-worker/src/observability/`](recap-worker/src/observability) | Prometheus metrics, structured logging, tracing bootstrap. |
 | [`recap-worker/src/store/`](recap-worker/src/store) | `RecapDao`, data models, advisory-lock helpers, persistence logic. |
 | [`recap-migration-atlas/`](../recap-migration-atlas) | Source of truth Atlas migrations, Dockerized runner, and schema definitions. |
@@ -68,7 +69,7 @@ per genre]
 3. **Dedup (`HashDedupStage`)**
    - Exact + near-duplicate detection using XXH3 hashes and rolling-window similarity; performs sentence-level dedup with per-article stats.
 4. **Genre (`KeywordGenreStage`)**
-   - Keyword heuristics (multilingual) assign 1–3 genres per article; genre distributions captured for instrumentation. Classifier utilities live in `classification/`.
+   - Hybrid classification pipeline: **Fast Pass** (Centroid-based similarity) → **Rescue Pass** (Graph label propagation) → **Fallback** (defaults to "other"). Uses Golden Dataset for training centroid vectors. Classifier implementation lives in `classifier/`.
 5. **Evidence (`evidence.rs`)**
    - Groups deduplicated articles per genre, filters short sentences, and tracks metadata (language mix, counts). Output feeds ML dispatch.
 6. **Dispatch (`MlLlmDispatchStage`)**
@@ -87,7 +88,7 @@ per genre]
 | --- | --- | --- |
 | `alt-backend` | Article source (`/v1/recap/articles`). | Auth via `X-Service-Token` (optional). Paginated; Recap Worker backs up every article into PostgreSQL. |
 | `recap-subworker` | ML clustering + representative selection. | REST interface at `/v1/runs`. Requests derived from evidence corpus; responses validated against `schema::subworker::CLUSTERING_RESPONSE_SCHEMA`. Includes retry/poll loop with idempotency headers. |
-| `news-creator` | Japanese bullet summaries via LLM (Gemma 3:4B). | `/v1/summary/generate` with optional `SummaryOptions`. Responses validated against `schema::news_creator::SUMMARY_RESPONSE_SCHEMA` before persistence. |
+| `news-creator` | Japanese bullet summaries via LLM (Gemma 3:4B). | `/v1/summary/generate` with optional `SummaryOptions`. Only top 40 clusters (by size) are sent to respect LLM context window limits (8k tokens). Responses validated against `schema::news_creator::SUMMARY_RESPONSE_SCHEMA` before persistence. |
 
 ## Configuration & Environment
 Full reference lives in [ENVIRONMENT.md](./ENVIRONMENT.md). Highlights:
@@ -98,13 +99,21 @@ Full reference lives in [ENVIRONMENT.md](./ENVIRONMENT.md). Highlights:
 - **Observability**: `OTEL_EXPORTER_ENDPOINT`, `OTEL_SAMPLING_RATIO`, `RUST_LOG`.
 
 ### Golden Dataset for Classification
-The new Centroid-based Classification pipeline requires a golden dataset file for training. The file must be placed at:
+The classification pipeline uses a hybrid approach combining **Centroid-based Classification (Rocchio)** and **Graph Label Propagation**:
+
+1. **Fast Pass**: Centroid classifier computes cosine similarity against genre centroids (trained from Golden Dataset). Default threshold: 0.6 (0.75 for `society_justice`).
+2. **Rescue Pass**: Graph propagator applies label propagation for articles that failed Fast Pass. Uses similarity threshold 0.85 for edge creation.
+3. **Fallback**: Unclassified articles default to "other".
+
+**Golden Dataset location**:
 - **Production/Docker**: `/app/data/golden_classification.json`
 - **Development**: `tests/data/golden_classification.json` (relative to `recap-worker/recap-worker/`)
 
-The Dockerfile automatically copies the golden dataset from `tests/data/golden_classification.json` to `/app/data/golden_classification.json` during the build process. If the file is not found, the system will automatically fall back to the legacy `GenreClassifier`.
+The Dockerfile automatically copies the golden dataset during build. If missing, the system falls back to the legacy `GenreClassifier`.
 
-See [IMPLEMENTATION.md](./IMPLEMENTATION.md) for details on the classification pipeline architecture.
+**Dependencies**: `ndarray` (vector operations), `petgraph` (graph algorithms).
+
+See [IMPLEMENTATION.md](./IMPLEMENTATION.md) for detailed architecture and implementation notes.
 
 ## Observability
 - **Metrics**: `GET /metrics` surfaces counters (`recap_articles_fetched_total`, `recap_clusters_created_total`, `recap_jobs_failed_total`), histograms (`recap_fetch_duration_seconds`, `recap_job_duration_seconds`, etc.), and gauges (`recap_active_jobs`, `recap_queue_size`). See `observability/metrics.rs`.
