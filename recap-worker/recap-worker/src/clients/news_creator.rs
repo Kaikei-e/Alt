@@ -10,6 +10,18 @@ use uuid::Uuid;
 use crate::clients::subworker::ClusteringResponse;
 use crate::schema::{news_creator::SUMMARY_RESPONSE_SCHEMA, validate_json};
 
+const MAX_ERROR_MESSAGE_LENGTH: usize = 500;
+
+/// エラーメッセージを要約して切り詰める。
+fn truncate_error_message(msg: &str) -> String {
+    let char_count = msg.chars().count();
+    if char_count <= MAX_ERROR_MESSAGE_LENGTH {
+        return msg.to_string();
+    }
+    let truncated: String = msg.chars().take(MAX_ERROR_MESSAGE_LENGTH).collect();
+    format!("{truncated}... (truncated, {char_count} chars)")
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct NewsCreatorClient {
     client: Client,
@@ -111,8 +123,9 @@ impl NewsCreatorClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
+            let truncated_body = truncate_error_message(&body);
             return Err(anyhow!(
-                "summary generation endpoint returned error status {status}: {body}"
+                "summary generation endpoint returned error status {status}: {truncated_body}"
             ));
         }
 
@@ -158,6 +171,13 @@ impl NewsCreatorClient {
     ///
     /// # Returns
     /// 要約リクエスト
+    ///
+    /// # Note
+    /// クラスタ数は上位40件に制限されます。これは以下の技術的根拠に基づきます：
+    /// - 4BパラメータLLM（Context 8k程度）のコンテキストウィンドウ制約
+    /// - 1クラスタ平均5文（約200トークン）× 40件 = 8,000トークン
+    /// - システムプロンプトや出力分を含め、8k-12kコンテキストで安全に処理できる限界値
+    /// - トピック分布のZipf則（ロングテール）により、下位クラスタはノイズである可能性が高い
     pub(crate) fn build_summary_request(
         job_id: Uuid,
         clustering: &ClusteringResponse,
@@ -167,10 +187,21 @@ impl NewsCreatorClient {
             (Option<chrono::DateTime<chrono::Utc>>, Option<String>),
         >,
     ) -> SummaryRequest {
-        let clusters = clustering
+        // クラスタをsize（記事数）の降順でソートし、上位40件のみを抽出
+        const MAX_CLUSTERS: usize = 40;
+        let mut sorted_clusters: Vec<_> = clustering
             .clusters
             .iter()
             .filter(|cluster| cluster.cluster_id >= 0)
+            .collect();
+
+        // size（記事数）の降順でソート
+        sorted_clusters.sort_by(|a, b| b.size.cmp(&a.size));
+
+        // 上位40件に制限
+        let clusters: Vec<ClusterInput> = sorted_clusters
+            .into_iter()
+            .take(MAX_CLUSTERS)
             .map(|cluster| {
                 // 各クラスターから代表的な文を選択（最大N文）
                 let mut representative_sentences: Vec<RepresentativeSentence> = cluster
@@ -454,5 +485,187 @@ mod tests {
             .expect("summarize succeeds");
 
         assert_eq!(summary.response_id, "resp-123");
+    }
+
+    #[test]
+    fn build_summary_request_limits_clusters_to_40() {
+        use crate::clients::subworker::{ClusterInfo, ClusterJobStatus, ClusterRepresentative};
+        use serde_json::json;
+
+        let job_id = Uuid::new_v4();
+        let mut clusters = Vec::new();
+
+        // 50個のクラスタを作成（40を超える）
+        for i in 0..50 {
+            let i_usize = usize::try_from(i).expect("i should be non-negative");
+            clusters.push(ClusterInfo {
+                cluster_id: i,
+                size: 100usize.saturating_sub(i_usize), // sizeが降順になるように設定
+                label: None,
+                top_terms: vec!["term1".to_string(), "term2".to_string()],
+                stats: json!({}),
+                representatives: vec![ClusterRepresentative {
+                    article_id: format!("article-{}", i),
+                    paragraph_idx: None,
+                    text: format!("Representative sentence for cluster {}", i),
+                    lang: Some("ja".to_string()),
+                    score: Some(0.9),
+                }],
+            });
+        }
+
+        let clustering_response = ClusteringResponse {
+            run_id: 1,
+            job_id,
+            genre: "tech".to_string(),
+            status: ClusterJobStatus::Succeeded,
+            cluster_count: 50,
+            clusters,
+            diagnostics: json!({}),
+        };
+
+        let article_metadata = std::collections::HashMap::new();
+        let request = NewsCreatorClient::build_summary_request(
+            job_id,
+            &clustering_response,
+            5,
+            &article_metadata,
+        );
+
+        // クラスタ数が40件に制限されていることを確認
+        assert_eq!(
+            request.clusters.len(),
+            40,
+            "clusters should be limited to 40"
+        );
+
+        // クラスタがsizeの降順でソートされていることを確認
+        for i in 1..request.clusters.len() {
+            // 元のクラスタIDからsizeを推測（size = 100 - cluster_id）
+            let prev_id = usize::try_from(request.clusters[i - 1].cluster_id).unwrap_or(0);
+            let curr_id = usize::try_from(request.clusters[i].cluster_id).unwrap_or(0);
+            let prev_size = 100usize.saturating_sub(prev_id);
+            let curr_size = 100usize.saturating_sub(curr_id);
+            assert!(
+                prev_size >= curr_size,
+                "clusters should be sorted by size in descending order"
+            );
+        }
+
+        // 最初のクラスタが最大のsizeを持つことを確認
+        assert_eq!(
+            request.clusters[0].cluster_id, 0,
+            "first cluster should have the largest size"
+        );
+    }
+
+    #[test]
+    fn build_summary_request_filters_negative_cluster_ids() {
+        use crate::clients::subworker::{ClusterInfo, ClusterJobStatus, ClusterRepresentative};
+        use serde_json::json;
+
+        let job_id = Uuid::new_v4();
+        let clusters = vec![
+            ClusterInfo {
+                cluster_id: -1, // ノイズクラスタ
+                size: 100,
+                label: None,
+                top_terms: vec![],
+                stats: json!({}),
+                representatives: vec![ClusterRepresentative {
+                    article_id: "article-1".to_string(),
+                    paragraph_idx: None,
+                    text: "Noise cluster".to_string(),
+                    lang: Some("ja".to_string()),
+                    score: Some(0.5),
+                }],
+            },
+            ClusterInfo {
+                cluster_id: 0, // 有効なクラスタ
+                size: 50,
+                label: None,
+                top_terms: vec![],
+                stats: json!({}),
+                representatives: vec![ClusterRepresentative {
+                    article_id: "article-2".to_string(),
+                    paragraph_idx: None,
+                    text: "Valid cluster".to_string(),
+                    lang: Some("ja".to_string()),
+                    score: Some(0.9),
+                }],
+            },
+        ];
+
+        let clustering_response = ClusteringResponse {
+            run_id: 1,
+            job_id,
+            genre: "tech".to_string(),
+            status: ClusterJobStatus::Succeeded,
+            cluster_count: 2,
+            clusters,
+            diagnostics: json!({}),
+        };
+
+        let article_metadata = std::collections::HashMap::new();
+        let request = NewsCreatorClient::build_summary_request(
+            job_id,
+            &clustering_response,
+            5,
+            &article_metadata,
+        );
+
+        // 負のcluster_idが除外されていることを確認
+        assert_eq!(request.clusters.len(), 1);
+        assert_eq!(request.clusters[0].cluster_id, 0);
+    }
+
+    #[tokio::test]
+    async fn generate_summary_truncates_large_error_messages() {
+        let server = MockServer::start().await;
+        // 巨大なエラーメッセージを返すモック
+        let large_error_body = "x".repeat(10000);
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate"))
+            .respond_with(ResponseTemplate::new(400).set_body_string(large_error_body.clone()))
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new(server.uri(), Duration::from_secs(600))
+            .expect("client should build");
+
+        let request = SummaryRequest {
+            job_id: Uuid::new_v4(),
+            genre: "tech".to_string(),
+            clusters: vec![ClusterInput {
+                cluster_id: 0,
+                representative_sentences: vec![RepresentativeSentence {
+                    text: "Test sentence".to_string(),
+                    published_at: None,
+                    source_url: None,
+                    article_id: None,
+                }],
+                top_terms: None,
+            }],
+            options: None,
+        };
+
+        let error = client
+            .generate_summary(&request)
+            .await
+            .expect_err("should fail with 400 status");
+
+        let error_msg = error.to_string();
+        // エラーメッセージがtruncateされていることを確認
+        assert!(
+            error_msg.len() < 1000,
+            "error message should be truncated, got length: {}",
+            error_msg.len()
+        );
+        // truncateされたことを示すメッセージが含まれていることを確認
+        assert!(
+            error_msg.contains("truncated"),
+            "error message should indicate truncation: {}",
+            error_msg
+        );
     }
 }
