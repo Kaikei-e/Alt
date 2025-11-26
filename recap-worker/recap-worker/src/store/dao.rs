@@ -1080,8 +1080,10 @@ impl RecapDao {
             r"
             INSERT INTO recap_genre_evaluation_runs
                 (run_id, dataset_path, total_items, macro_precision, macro_recall, macro_f1,
-                 summary_tp, summary_fp, summary_fn)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                 summary_tp, summary_fp, summary_fn,
+                 micro_precision, micro_recall, micro_f1, weighted_f1,
+                 macro_f1_valid, valid_genre_count, undefined_genre_count)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             ",
         )
         .bind(run.run_id)
@@ -1093,6 +1095,13 @@ impl RecapDao {
         .bind(run.summary_tp)
         .bind(run.summary_fp)
         .bind(run.summary_fn)
+        .bind(run.micro_precision)
+        .bind(run.micro_recall)
+        .bind(run.micro_f1)
+        .bind(run.weighted_f1)
+        .bind(run.macro_f1_valid)
+        .bind(run.valid_genre_count)
+        .bind(run.undefined_genre_count)
         .execute(&mut *tx)
         .await
         .context("failed to insert genre evaluation run")?;
@@ -1132,15 +1141,38 @@ impl RecapDao {
     }
 
     /// 指定されたrun_idの評価結果を取得する
+    #[allow(clippy::too_many_lines)]
     pub async fn get_genre_evaluation(
         &self,
         run_id: uuid::Uuid,
     ) -> Result<Option<(GenreEvaluationRun, Vec<GenreEvaluationMetric>)>> {
         // Get run metadata
-        let run_row = sqlx::query_as::<_, (uuid::Uuid, String, i32, f64, f64, f64, i32, i32, i32)>(
+        let run_row = sqlx::query_as::<
+            _,
+            (
+                uuid::Uuid,
+                String,
+                i32,
+                f64,
+                f64,
+                f64,
+                i32,
+                i32,
+                i32,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                Option<i32>,
+                Option<i32>,
+            ),
+        >(
             r"
             SELECT run_id, dataset_path, total_items, macro_precision, macro_recall, macro_f1,
-                   summary_tp, summary_fp, summary_fn
+                   summary_tp, summary_fp, summary_fn,
+                   micro_precision, micro_recall, micro_f1, weighted_f1,
+                   macro_f1_valid, valid_genre_count, undefined_genre_count
             FROM recap_genre_evaluation_runs
             WHERE run_id = $1
             ",
@@ -1160,6 +1192,13 @@ impl RecapDao {
             summary_true_positives,
             summary_false_positives,
             summary_false_negatives,
+            micro_precision_val,
+            micro_recall_val,
+            micro_f1_val,
+            weighted_f1,
+            macro_f1_valid,
+            valid_genre_count,
+            undefined_genre_count,
         )) = run_row
         else {
             return Ok(None);
@@ -1175,6 +1214,13 @@ impl RecapDao {
             summary_tp: summary_true_positives,
             summary_fp: summary_false_positives,
             summary_fn: summary_false_negatives,
+            micro_precision: micro_precision_val,
+            micro_recall: micro_recall_val,
+            micro_f1: micro_f1_val,
+            weighted_f1,
+            macro_f1_valid,
+            valid_genre_count,
+            undefined_genre_count,
         };
 
         // Get per-genre metrics

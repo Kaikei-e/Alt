@@ -39,6 +39,73 @@ pub(crate) struct EvaluateResponse {
     created_at: chrono::DateTime<chrono::Utc>,
 }
 
+#[derive(Serialize, Debug)]
+pub(crate) struct DatasetQualityReport {
+    pub total_samples: usize,
+    pub genre_count: usize,
+    pub min_samples_per_genre: usize,
+    pub max_samples_per_genre: usize,
+    pub avg_samples_per_genre: f64,
+    pub genres_below_threshold: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+fn analyze_golden_dataset(items: &[GoldenItem]) -> DatasetQualityReport {
+    let mut genre_counts: HashMap<String, usize> = HashMap::new();
+    for item in items {
+        for genre in item.expected_genres() {
+            *genre_counts.entry(genre.to_lowercase()).or_insert(0) += 1;
+        }
+    }
+
+    let genre_count = genre_counts.len();
+    let total_samples = items.len();
+
+    let samples_per_genre: Vec<usize> = genre_counts.values().copied().collect();
+    let min_samples = samples_per_genre.iter().min().copied().unwrap_or(0);
+    let max_samples = samples_per_genre.iter().max().copied().unwrap_or(0);
+    let avg_samples = if genre_count > 0 {
+        samples_per_genre.iter().sum::<usize>() as f64 / genre_count as f64
+    } else {
+        0.0
+    };
+
+    const THRESHOLD: usize = 5;
+    let genres_below_threshold: Vec<String> = genre_counts
+        .iter()
+        .filter(|(_, count)| **count < THRESHOLD)
+        .map(|(genre, _)| genre.clone())
+        .collect();
+
+    let mut warnings = Vec::new();
+    if min_samples < THRESHOLD {
+        warnings.push(format!(
+            "{} genres have fewer than {} samples (statistically unstable)",
+            genres_below_threshold.len(),
+            THRESHOLD
+        ));
+    }
+    if genre_count == 0 {
+        warnings.push("No genres found in dataset".to_string());
+    }
+    if total_samples < 30 {
+        warnings.push(format!(
+            "Total samples ({}) is below recommended minimum (30)",
+            total_samples
+        ));
+    }
+
+    DatasetQualityReport {
+        total_samples,
+        genre_count,
+        min_samples_per_genre: min_samples,
+        max_samples_per_genre: max_samples,
+        avg_samples_per_genre: avg_samples,
+        genres_below_threshold,
+        warnings,
+    }
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 enum GoldenItem {
@@ -229,6 +296,96 @@ impl ConfusionMatrix {
     fn total_fn(&self) -> usize {
         self.fn_count.values().sum()
     }
+
+    /// Get all genres that appear in the confusion matrix
+    fn all_genres(&self) -> std::collections::HashSet<String> {
+        self.tp
+            .keys()
+            .chain(self.fp.keys())
+            .chain(self.fn_count.keys())
+            .cloned()
+            .collect()
+    }
+
+    /// Macro F1 excluding genres with no support (TP + FN = 0)
+    /// Returns (macro_f1_valid, valid_genre_count, undefined_genre_count)
+    fn macro_f1_excluding_undefined(&self) -> (f64, usize, usize) {
+        let all_genres = self.all_genres();
+        let valid_genres: Vec<&String> = all_genres
+            .iter()
+            .filter(|g| {
+                let support = self.tp.get(*g).copied().unwrap_or(0)
+                    + self.fn_count.get(*g).copied().unwrap_or(0);
+                support > 0
+            })
+            .collect();
+
+        let undefined_count = all_genres.len() - valid_genres.len();
+        if valid_genres.is_empty() {
+            return (0.0, 0, undefined_count);
+        }
+
+        let sum: f64 = valid_genres.iter().map(|g| self.f1_score(g)).sum();
+        (
+            sum / valid_genres.len() as f64,
+            valid_genres.len(),
+            undefined_count,
+        )
+    }
+
+    /// Micro-averaged precision: total TP / (total TP + total FP)
+    fn micro_precision(&self) -> f64 {
+        let total_tp = self.total_tp() as f64;
+        let total_false_positives = self.total_fp() as f64;
+        if total_tp + total_false_positives == 0.0 {
+            0.0
+        } else {
+            total_tp / (total_tp + total_false_positives)
+        }
+    }
+
+    /// Micro-averaged recall: total TP / (total TP + total FN)
+    fn micro_recall(&self) -> f64 {
+        let total_tp = self.total_tp() as f64;
+        let total_fn = self.total_fn() as f64;
+        if total_tp + total_fn == 0.0 {
+            0.0
+        } else {
+            total_tp / (total_tp + total_fn)
+        }
+    }
+
+    /// Micro-averaged F1: harmonic mean of micro precision and micro recall
+    fn micro_f1(&self) -> f64 {
+        let precision = self.micro_precision();
+        let recall = self.micro_recall();
+        if precision + recall == 0.0 {
+            0.0
+        } else {
+            2.0 * precision * recall / (precision + recall)
+        }
+    }
+
+    /// Weighted F1: F1 scores weighted by support (TP + FN) for each genre
+    fn weighted_f1(&self) -> f64 {
+        let mut weighted_sum = 0.0;
+        let mut total_support = 0usize;
+
+        for genre in self.all_genres() {
+            let support = self.tp.get(&genre).copied().unwrap_or(0)
+                + self.fn_count.get(&genre).copied().unwrap_or(0);
+            if support > 0 {
+                weighted_sum += self.f1_score(&genre) * support as f64;
+                total_support += support;
+            }
+        }
+
+        if total_support == 0 {
+            0.0
+        } else {
+            weighted_sum / total_support as f64
+        }
+    }
 }
 
 fn load_golden_dataset(path: &PathBuf) -> anyhow::Result<Vec<GoldenItem>> {
@@ -414,6 +571,142 @@ fn build_evaluation_metrics(confusion_matrix: &ConfusionMatrix) -> Vec<GenreEval
         .collect()
 }
 
+/// Load and validate golden dataset
+fn load_and_validate_dataset(
+    path: &PathBuf,
+) -> Result<Vec<GoldenItem>, (StatusCode, Json<serde_json::Value>)> {
+    info!("Loading golden dataset from: {}", path.display());
+
+    let golden_data = load_golden_dataset(path).map_err(|e| {
+        error!(
+            error = %e,
+            path = %path.display(),
+            "Failed to load golden dataset"
+        );
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("Failed to load golden dataset: {}", e),
+                "path": path.display().to_string(),
+                "hint": "Check if the file exists and contains valid JSON array of items with 'id', 'content', and 'expected_genres' fields"
+            })),
+        )
+    })?;
+
+    info!("Loaded {} items", golden_data.len());
+
+    // Analyze dataset quality
+    let quality_report = analyze_golden_dataset(&golden_data);
+    info!(
+        total_samples = quality_report.total_samples,
+        genre_count = quality_report.genre_count,
+        min_samples_per_genre = quality_report.min_samples_per_genre,
+        max_samples_per_genre = quality_report.max_samples_per_genre,
+        avg_samples_per_genre = quality_report.avg_samples_per_genre,
+        genres_below_threshold = ?quality_report.genres_below_threshold,
+        warnings = ?quality_report.warnings,
+        "Golden dataset quality analysis"
+    );
+
+    Ok(golden_data)
+}
+
+/// Calculate extended metrics from confusion matrix
+fn calculate_extended_metrics(
+    confusion_matrix: &ConfusionMatrix,
+) -> (f64, f64, f64, f64, f64, usize, usize) {
+    let (macro_f1_valid, valid_genre_count, undefined_genre_count) =
+        confusion_matrix.macro_f1_excluding_undefined();
+    let micro_precision = confusion_matrix.micro_precision();
+    let micro_recall = confusion_matrix.micro_recall();
+    let micro_f1 = confusion_matrix.micro_f1();
+    let weighted_f1 = confusion_matrix.weighted_f1();
+
+    (
+        micro_precision,
+        micro_recall,
+        micro_f1,
+        weighted_f1,
+        macro_f1_valid,
+        valid_genre_count,
+        undefined_genre_count,
+    )
+}
+
+/// Create evaluation run with all metrics
+fn create_evaluation_run(
+    dataset_path: String,
+    total_items: usize,
+    confusion_matrix: &ConfusionMatrix,
+    extended_metrics: (f64, f64, f64, f64, f64, usize, usize),
+) -> GenreEvaluationRun {
+    let (
+        micro_precision,
+        micro_recall,
+        micro_f1,
+        weighted_f1,
+        macro_f1_valid,
+        valid_genre_count,
+        undefined_genre_count,
+    ) = extended_metrics;
+
+    GenreEvaluationRun::new(
+        dataset_path,
+        total_items,
+        confusion_matrix.macro_precision(),
+        confusion_matrix.macro_recall(),
+        confusion_matrix.macro_f1(),
+        confusion_matrix.total_tp(),
+        confusion_matrix.total_fp(),
+        confusion_matrix.total_fn(),
+    )
+    .with_extended_metrics(
+        micro_precision,
+        micro_recall,
+        micro_f1,
+        weighted_f1,
+        macro_f1_valid,
+        valid_genre_count,
+        undefined_genre_count,
+    )
+}
+
+/// Log evaluation results
+fn log_evaluation_results(
+    evaluation_run: &GenreEvaluationRun,
+    confusion_matrix: &ConfusionMatrix,
+    extended_metrics: (f64, f64, f64, f64, f64, usize, usize),
+) {
+    let (
+        micro_precision,
+        micro_recall,
+        micro_f1,
+        weighted_f1,
+        macro_f1_valid,
+        valid_genre_count,
+        undefined_genre_count,
+    ) = extended_metrics;
+
+    info!(
+        run_id = %evaluation_run.run_id,
+        total_items = evaluation_run.total_items,
+        macro_precision = confusion_matrix.macro_precision(),
+        macro_recall = confusion_matrix.macro_recall(),
+        macro_f1 = confusion_matrix.macro_f1(),
+        macro_f1_valid = macro_f1_valid,
+        micro_precision = micro_precision,
+        micro_recall = micro_recall,
+        micro_f1 = micro_f1,
+        weighted_f1 = weighted_f1,
+        valid_genre_count = valid_genre_count,
+        undefined_genre_count = undefined_genre_count,
+        summary_tp = confusion_matrix.total_tp(),
+        summary_fp = confusion_matrix.total_fp(),
+        summary_fn = confusion_matrix.total_fn(),
+        "Evaluation completed"
+    );
+}
+
 /// POST /v1/evaluation/genres
 /// Golden Datasetを使用してジャンル分類の精度を評価する
 /// 評価結果はDBに保存され、run_idが返される
@@ -422,29 +715,11 @@ pub(crate) async fn evaluate_genres(
     Json(request): Json<EvaluateRequest>,
 ) -> impl IntoResponse {
     let path = determine_dataset_path(&request);
-    info!("Loading golden dataset from: {}", path.display());
 
-    let golden_data = match load_golden_dataset(&path) {
+    let golden_data = match load_and_validate_dataset(&path) {
         Ok(data) => data,
-        Err(e) => {
-            error!(
-                error = %e,
-                path = %path.display(),
-                "Failed to load golden dataset"
-            );
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({
-                    "error": format!("Failed to load golden dataset: {}", e),
-                    "path": path.display().to_string(),
-                    "hint": "Check if the file exists and contains valid JSON array of items with 'id', 'content', and 'expected_genres' fields"
-                })),
-            )
-                .into_response();
-        }
+        Err(err) => return err.into_response(),
     };
-
-    info!("Loaded {} items", golden_data.len());
 
     let confusion_matrix = match run_evaluation(&state, &golden_data).await {
         Ok(matrix) => matrix,
@@ -459,30 +734,18 @@ pub(crate) async fn evaluate_genres(
                 .into_response();
         }
     };
-    let per_genre_metrics = build_evaluation_metrics(&confusion_matrix);
 
-    let evaluation_run = GenreEvaluationRun::new(
+    let per_genre_metrics = build_evaluation_metrics(&confusion_matrix);
+    let extended_metrics = calculate_extended_metrics(&confusion_matrix);
+
+    let evaluation_run = create_evaluation_run(
         path.display().to_string(),
         golden_data.len(),
-        confusion_matrix.macro_precision(),
-        confusion_matrix.macro_recall(),
-        confusion_matrix.macro_f1(),
-        confusion_matrix.total_tp(),
-        confusion_matrix.total_fp(),
-        confusion_matrix.total_fn(),
+        &confusion_matrix,
+        extended_metrics,
     );
 
-    info!(
-        run_id = %evaluation_run.run_id,
-        total_items = golden_data.len(),
-        macro_precision = confusion_matrix.macro_precision(),
-        macro_recall = confusion_matrix.macro_recall(),
-        macro_f1 = confusion_matrix.macro_f1(),
-        summary_tp = confusion_matrix.total_tp(),
-        summary_fp = confusion_matrix.total_fp(),
-        summary_fn = confusion_matrix.total_fn(),
-        "Evaluation completed"
-    );
+    log_evaluation_results(&evaluation_run, &confusion_matrix, extended_metrics);
 
     match state
         .dao()
@@ -521,6 +784,8 @@ pub(crate) async fn evaluate_genres(
 pub(crate) struct EvaluationResultResponse {
     run: GenreEvaluationRun,
     metrics: Vec<GenreEvaluationMetric>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quality_report: Option<DatasetQualityReport>,
 }
 
 /// GET /v1/evaluation/genres/{run_id}
@@ -531,7 +796,11 @@ pub(crate) async fn get_evaluation_result(
 ) -> impl IntoResponse {
     match state.dao().get_genre_evaluation(run_id).await {
         Ok(Some((run, metrics))) => {
-            let response = EvaluationResultResponse { run, metrics };
+            let response = EvaluationResultResponse {
+                run,
+                metrics,
+                quality_report: None,
+            };
             (StatusCode::OK, Json(response)).into_response()
         }
         Ok(None) => (
@@ -567,7 +836,11 @@ pub(crate) async fn get_latest_evaluation_result(
 ) -> impl IntoResponse {
     match state.dao().get_latest_genre_evaluation().await {
         Ok(Some((run, metrics))) => {
-            let response = EvaluationResultResponse { run, metrics };
+            let response = EvaluationResultResponse {
+                run,
+                metrics,
+                quality_report: None,
+            };
             (StatusCode::OK, Json(response)).into_response()
         }
         Ok(None) => (

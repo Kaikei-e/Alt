@@ -522,6 +522,13 @@ pub(crate) struct GenreEvaluationRun {
     pub(crate) summary_tp: i32,
     pub(crate) summary_fp: i32,
     pub(crate) summary_fn: i32,
+    pub(crate) micro_precision: Option<f64>,
+    pub(crate) micro_recall: Option<f64>,
+    pub(crate) micro_f1: Option<f64>,
+    pub(crate) weighted_f1: Option<f64>,
+    pub(crate) macro_f1_valid: Option<f64>,
+    pub(crate) valid_genre_count: Option<i32>,
+    pub(crate) undefined_genre_count: Option<i32>,
 }
 
 impl GenreEvaluationRun {
@@ -547,7 +554,36 @@ impl GenreEvaluationRun {
             summary_tp: summary_tp as i32,
             summary_fp: summary_false_positive as i32,
             summary_fn: summary_false_negative as i32,
+            micro_precision: None,
+            micro_recall: None,
+            micro_f1: None,
+            weighted_f1: None,
+            macro_f1_valid: None,
+            valid_genre_count: None,
+            undefined_genre_count: None,
         }
+    }
+
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn with_extended_metrics(
+        mut self,
+        micro_precision: f64,
+        micro_recall: f64,
+        micro_f1: f64,
+        weighted_f1: f64,
+        macro_f1_valid: f64,
+        valid_genre_count: usize,
+        undefined_genre_count: usize,
+    ) -> Self {
+        self.micro_precision = Some(micro_precision);
+        self.micro_recall = Some(micro_recall);
+        self.micro_f1 = Some(micro_f1);
+        self.weighted_f1 = Some(weighted_f1);
+        self.macro_f1_valid = Some(macro_f1_valid);
+        self.valid_genre_count = Some(valid_genre_count as i32);
+        self.undefined_genre_count = Some(undefined_genre_count as i32);
+        self
     }
 }
 
