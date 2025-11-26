@@ -394,6 +394,11 @@ impl CentroidClassifier {
         self.centroids.get(genre)
     }
 
+    /// 学習された閾値のマップを取得する。
+    pub fn get_thresholds(&self) -> &HashMap<String, f32> {
+        &self.thresholds
+    }
+
     /// 学習済みのジャンル一覧を取得する。
     #[must_use]
     pub fn trained_genres(&self) -> Vec<String> {

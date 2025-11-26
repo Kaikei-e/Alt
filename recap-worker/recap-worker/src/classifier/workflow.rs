@@ -596,9 +596,14 @@ impl ClassificationPipeline {
                     tracing::info!(
                         "CentroidClassifier: no matches, attempting Rescue Pass (GraphPropagator)"
                     );
-                    // k=5, min_similarity=0.4 で近傍探索
+                    // k=5, 動的閾値で近傍探索
+                    let empty_thresholds = HashMap::new();
+                    let thresholds = self
+                        .centroid_classifier
+                        .as_ref()
+                        .map_or(&empty_thresholds, |c| c.get_thresholds());
                     if let Some((rescued_genre, score)) =
-                        propagator.predict_by_neighbors(&feature_vector, 5, 0.4)
+                        propagator.predict_by_neighbors(&feature_vector, 5, thresholds)
                     {
                         tracing::info!(
                             "Rescue Pass successful: genre='{}', score={:.4}",

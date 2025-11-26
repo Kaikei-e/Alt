@@ -247,7 +247,7 @@ impl GraphPropagator {
         &self,
         target_vector: &FeatureVector,
         k: usize,
-        min_similarity: f32,
+        thresholds: &HashMap<String, f32>,
     ) -> Option<(String, f32)> {
         let target_combined = Self::combine_feature_vector(target_vector);
         let target_norm = Self::normalize_vector(&target_combined);
@@ -262,7 +262,10 @@ impl GraphPropagator {
             if let Some(label) = &node.label {
                 let similarity = target_norm.dot(&Self::normalize_vector(&node.feature_vector));
 
-                if similarity >= min_similarity {
+                // 動的閾値を取得（デフォルトは0.3）
+                let threshold = thresholds.get(label).copied().unwrap_or(0.3);
+
+                if similarity >= threshold {
                     neighbors.push((label.clone(), similarity));
                 }
             }
