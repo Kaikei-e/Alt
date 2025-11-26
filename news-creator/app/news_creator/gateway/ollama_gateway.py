@@ -68,7 +68,10 @@ class OllamaGateway(LLMProviderPort):
         # Build options from config and overrides
         llm_options = self.config.get_llm_options()
         if options:
-            llm_options.update(options)
+            # Force num_ctx to always use config value to ensure runner reuse
+            # Remove num_ctx from options if present to prevent override
+            options_filtered = {k: v for k, v in options.items() if k != "num_ctx"}
+            llm_options.update(options_filtered)
 
         # Apply num_predict override if provided
         if num_predict is not None:

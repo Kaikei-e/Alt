@@ -40,6 +40,10 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
             # Extract num_predict from options if present
             num_predict_override = None
             options_override = dict(request.options or {})
+            # Remove num_ctx from options to ensure consistent context length for runner reuse
+            if "num_ctx" in options_override:
+                options_override.pop("num_ctx")
+                logger.debug("Removed num_ctx from options to enforce config value")
             if "num_predict" in options_override:
                 raw_num_predict = options_override.pop("num_predict")
                 try:

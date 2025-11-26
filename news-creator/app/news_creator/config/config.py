@@ -29,7 +29,7 @@ class NewsCreatorConfig:
         self.model_name = os.getenv("LLM_MODEL", "gemma3:4b")
         self.llm_timeout_seconds = self._get_int("LLM_TIMEOUT_SECONDS", 180)  # 3分に増加
         self.llm_keep_alive = self._get_int("LLM_KEEP_ALIVE_SECONDS", -1)
-        self.ollama_request_concurrency = self._get_int("OLLAMA_REQUEST_CONCURRENCY", 1)
+        self.ollama_request_concurrency = self._get_int("OLLAMA_REQUEST_CONCURRENCY", 2)
 
         # ---- Generation parameters (Gemma3 + Ollama options) ----
         # 実効 16k 前提。必要なら環境変数で上書き
