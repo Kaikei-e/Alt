@@ -47,7 +47,18 @@ impl CentroidClassifier {
     pub fn train(&mut self, labeled_articles: &[Article]) -> Result<()> {
         // ジャンルごとに記事をグループ化
         let mut genre_articles: HashMap<String, Vec<&Article>> = HashMap::new();
+        let mut articles_with_features = 0;
+        let mut articles_with_genres = 0;
+        let mut total_genres = 0;
+
         for article in labeled_articles {
+            if article.feature_vector.is_some() {
+                articles_with_features += 1;
+            }
+            if !article.genres.is_empty() {
+                articles_with_genres += 1;
+                total_genres += article.genres.len();
+            }
             if article.feature_vector.is_some() {
                 for genre in &article.genres {
                     genre_articles
@@ -57,6 +68,15 @@ impl CentroidClassifier {
                 }
             }
         }
+
+        tracing::warn!(
+            "CentroidClassifier train: total_articles={}, articles_with_features={}, articles_with_genres={}, total_genres={}, unique_genres={}",
+            labeled_articles.len(),
+            articles_with_features,
+            articles_with_genres,
+            total_genres,
+            genre_articles.len()
+        );
 
         // 各ジャンルの重心を計算
         for (genre, articles) in genre_articles.iter() {
@@ -84,6 +104,14 @@ impl CentroidClassifier {
                         let normalized = &combined / norm;
                         centroid_sum = &centroid_sum + &normalized;
                         count += 1;
+                    } else {
+                        tracing::warn!(
+                            "CentroidClassifier: article '{}' has zero-norm feature vector (tfidf_len={}, bm25_len={}, embedding_len={})",
+                            article.id,
+                            feature_vector.tfidf.len(),
+                            feature_vector.bm25.len(),
+                            feature_vector.embedding.len()
+                        );
                     }
                 }
             }
@@ -108,6 +136,18 @@ impl CentroidClassifier {
                     0.6
                 };
                 self.thresholds.insert(genre.clone(), default_threshold);
+                tracing::warn!(
+                    "CentroidClassifier: trained genre '{}' with {} articles, threshold={}",
+                    genre,
+                    count,
+                    default_threshold
+                );
+            } else {
+                tracing::warn!(
+                    "CentroidClassifier: genre '{}' has no valid feature vectors ({} articles)",
+                    genre,
+                    articles.len()
+                );
             }
         }
 
@@ -158,7 +198,7 @@ impl CentroidClassifier {
 
     /// FeatureVectorを結合して1つのベクトルに変換する。
     /// tfidf, bm25, embeddingを結合する。
-    fn combine_feature_vector(feature_vector: &FeatureVector) -> Array1<f32> {
+    pub(crate) fn combine_feature_vector(feature_vector: &FeatureVector) -> Array1<f32> {
         let total_dim =
             feature_vector.tfidf.len() + feature_vector.bm25.len() + feature_vector.embedding.len();
         let mut combined = Vec::with_capacity(total_dim);

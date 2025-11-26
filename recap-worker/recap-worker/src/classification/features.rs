@@ -73,6 +73,67 @@ impl FeatureExtractor {
         }
     }
 
+    /// コーパスから動的に語彙を構築してFeatureExtractorを作成する。
+    ///
+    /// # Arguments
+    /// * `tokenized_corpus` - トークン化された文書のリスト（各文書はトークンのベクトル）
+    /// * `vocab_size` - 構築する語彙のサイズ（上位N個のトークンを選択）
+    ///
+    /// # Returns
+    /// 動的に構築されたFeatureExtractor
+    pub fn build_from_corpus(tokenized_corpus: &[Vec<String>], vocab_size: usize) -> Self {
+        use std::collections::HashMap;
+
+        // 1. 各トークンの文書頻度（DF）を計算
+        let mut doc_freq: HashMap<String, usize> = HashMap::new();
+        let total_docs = tokenized_corpus.len();
+
+        for doc_tokens in tokenized_corpus {
+            let unique_tokens: std::collections::HashSet<String> =
+                doc_tokens.iter().map(|t| t.to_lowercase()).collect();
+            for token in unique_tokens {
+                *doc_freq.entry(token).or_insert(0) += 1;
+            }
+        }
+
+        // 2. 上位vocab_size個のトークンを選択（DF降順）
+        let mut token_df_pairs: Vec<(String, usize)> = doc_freq.into_iter().collect();
+        token_df_pairs.sort_by(|a, b| b.1.cmp(&a.1)); // DF降順でソート
+        token_df_pairs.truncate(vocab_size);
+
+        // 3. 語彙とIDFを構築
+        let vocab: Vec<String> = token_df_pairs
+            .iter()
+            .map(|(token, _)| token.clone())
+            .collect();
+        let idf: Vec<f32> = token_df_pairs
+            .iter()
+            .map(|(_, df)| {
+                // IDF(t) = log((N + 1) / (DF(t) + 1)) + 1
+                let n = total_docs as f32;
+                let df_val = *df as f32;
+                ((n + 1.0) / (df_val + 1.0)).ln() + 1.0
+            })
+            .collect();
+
+        // 4. 平均文書長を計算
+        let total_tokens: usize = tokenized_corpus.iter().map(Vec::len).sum();
+        let average_doc_len = if total_docs > 0 {
+            total_tokens as f32 / total_docs as f32
+        } else {
+            FALLBACK_AVG_DOC_LEN
+        };
+
+        // 5. FeatureExtractorを初期化
+        Self::from_metadata(
+            &vocab,
+            &idf,
+            FALLBACK_BM25_K1,
+            FALLBACK_BM25_B,
+            average_doc_len,
+        )
+    }
+
     #[must_use]
     pub fn fallback() -> Self {
         let vocab: Vec<String> = FALLBACK_VOCAB.iter().map(ToString::to_string).collect();
@@ -84,6 +145,12 @@ impl FeatureExtractor {
             FALLBACK_BM25_B,
             FALLBACK_AVG_DOC_LEN,
         )
+    }
+
+    /// 語彙サイズを取得する。
+    #[must_use]
+    pub fn vocab_len(&self) -> usize {
+        self.idf.len()
     }
 
     #[must_use]

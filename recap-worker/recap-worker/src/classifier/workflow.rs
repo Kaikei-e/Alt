@@ -56,8 +56,21 @@ impl ClassificationPipeline {
         // Dockerfileと同じパスを優先（本番環境）
         let default_path = Path::new("/app/data/golden_classification.json");
         if default_path.exists() {
-            if let Ok(pipeline) = Self::from_golden_dataset(default_path) {
-                return pipeline;
+            match Self::from_golden_dataset(default_path) {
+                Ok(pipeline) => {
+                    tracing::info!(
+                        "ClassificationPipeline initialized with CentroidClassifier from {}",
+                        default_path.display()
+                    );
+                    return pipeline;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to load golden dataset from {}: {}. Falling back to GenreClassifier.",
+                        default_path.display(),
+                        e
+                    );
+                }
             }
         }
 
@@ -76,8 +89,21 @@ impl ClassificationPipeline {
         for candidate in dev_candidates.into_iter().flatten() {
             let path = Path::new(&candidate);
             if path.exists() {
-                if let Ok(pipeline) = Self::from_golden_dataset(path) {
-                    return pipeline;
+                match Self::from_golden_dataset(path) {
+                    Ok(pipeline) => {
+                        tracing::info!(
+                            "ClassificationPipeline initialized with CentroidClassifier from {}",
+                            path.display()
+                        );
+                        return pipeline;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to load golden dataset from {}: {}",
+                            path.display(),
+                            e
+                        );
+                    }
                 }
             }
         }
@@ -122,23 +148,68 @@ impl ClassificationPipeline {
         let golden_items: Vec<GoldenItem> =
             serde_json::from_str(&content).context("failed to parse golden dataset JSON")?;
 
-        // FeatureExtractorを初期化（fallbackを使用）
-        let feature_extractor = FeatureExtractor::fallback();
         let token_pipeline = TokenPipeline::new();
 
-        // 特徴ベクトルの次元数を計算
-        // tfidf + bm25 + embedding
-        // FALLBACK_VOCABの長さを使用（19）
-        let vocab_len = 19; // FALLBACK_VOCAB.len()
-        let embedding_dim = 6; // EMBEDDING_DIM
-        let feature_dim = vocab_len + vocab_len + embedding_dim;
-
-        // Golden Datasetから特徴ベクトルを抽出
-        let mut labeled_articles = Vec::new();
+        // 1. すべての記事をトークン化してコーパスを構築
+        let mut tokenized_corpus = Vec::new();
         for item in &golden_items {
             let language = ClassificationLanguage::Unknown;
             let normalized = token_pipeline.preprocess(&item.content, "", language);
-            let feature_vector = feature_extractor.extract(&normalized.tokens);
+            tokenized_corpus.push(normalized.tokens);
+        }
+
+        // 2. 動的にFeatureExtractorを構築（語彙サイズ1000）
+        let vocab_size = 1000;
+        let feature_extractor = FeatureExtractor::build_from_corpus(&tokenized_corpus, vocab_size);
+        let actual_vocab_len = feature_extractor.vocab_len();
+        tracing::info!(
+            "FeatureExtractor built from corpus: vocab_size={} (requested={})",
+            actual_vocab_len,
+            vocab_size
+        );
+
+        // 3. 特徴ベクトルの次元数を動的に計算
+        // tfidf + bm25 + embedding
+        let embedding_dim = 6; // EMBEDDING_DIM
+        let feature_dim = actual_vocab_len + actual_vocab_len + embedding_dim;
+        tracing::info!(
+            "Feature dimension: vocab_len={}, embedding_dim={}, total={}",
+            actual_vocab_len,
+            embedding_dim,
+            feature_dim
+        );
+
+        // 4. Golden Datasetから特徴ベクトルを抽出
+        let mut labeled_articles = Vec::new();
+        let mut zero_vector_count = 0;
+        for (item, tokens) in golden_items.iter().zip(tokenized_corpus.iter()) {
+            let feature_vector = feature_extractor.extract(tokens);
+
+            // ベクトルのノルムをチェック
+            let combined = {
+                let total_dim = feature_vector.tfidf.len()
+                    + feature_vector.bm25.len()
+                    + feature_vector.embedding.len();
+                let mut combined_vec = Vec::with_capacity(total_dim);
+                combined_vec.extend_from_slice(&feature_vector.tfidf);
+                combined_vec.extend_from_slice(&feature_vector.bm25);
+                combined_vec.extend_from_slice(&feature_vector.embedding);
+                ndarray::Array1::from_vec(combined_vec)
+            };
+            let norm = combined.dot(&combined).sqrt();
+            if norm <= 0.0 {
+                zero_vector_count += 1;
+                if zero_vector_count <= 3 {
+                    tracing::warn!(
+                        "Golden Dataset article '{}' has zero-norm feature vector (tokens={}, tfidf_sum={:.4}, bm25_sum={:.4}, embedding_sum={:.4})",
+                        item.id,
+                        tokens.len(),
+                        feature_vector.tfidf.iter().sum::<f32>(),
+                        feature_vector.bm25.iter().sum::<f32>(),
+                        feature_vector.embedding.iter().sum::<f32>()
+                    );
+                }
+            }
 
             labeled_articles.push(Article {
                 id: item.id.clone(),
@@ -148,9 +219,29 @@ impl ClassificationPipeline {
             });
         }
 
-        // CentroidClassifierを学習
+        if zero_vector_count > 0 {
+            tracing::warn!(
+                "Golden Dataset: {} out of {} articles have zero-norm feature vectors",
+                zero_vector_count,
+                golden_items.len()
+            );
+        } else {
+            tracing::info!(
+                "Golden Dataset: all {} articles have non-zero feature vectors",
+                golden_items.len()
+            );
+        }
+
+        // 5. CentroidClassifierを学習
         let mut centroid_classifier = CentroidClassifier::new(feature_dim);
         centroid_classifier.train(&labeled_articles)?;
+
+        let trained_genres = centroid_classifier.trained_genres();
+        tracing::info!(
+            "CentroidClassifier trained successfully: {} genres, {} articles",
+            trained_genres.len(),
+            labeled_articles.len()
+        );
 
         Ok(Self {
             centroid_classifier: Some(centroid_classifier),
@@ -269,12 +360,23 @@ impl ClassificationPipeline {
             let mut ranking = Vec::new();
 
             if let Some((genre, score)) = centroid_classifier.predict(&feature_vector) {
+                tracing::debug!(
+                    "CentroidClassifier prediction: genre={}, score={:.4}",
+                    genre,
+                    score
+                );
                 scores.insert(genre.clone(), score);
                 ranking.push((genre, score));
+            } else {
+                tracing::debug!(
+                    "CentroidClassifier prediction: no genre above threshold (trained_genres: {:?})",
+                    centroid_classifier.trained_genres()
+                );
             }
 
             // スコアが空の場合は"other"を追加
             if scores.is_empty() {
+                tracing::debug!("CentroidClassifier: no matches, falling back to 'other'");
                 scores.insert("other".to_string(), 0.0);
                 ranking.push(("other".to_string(), 0.0));
             }
