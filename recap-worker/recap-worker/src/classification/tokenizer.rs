@@ -104,6 +104,12 @@ impl TokenPipeline {
     }
 }
 
+impl Default for TokenPipeline {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn apply_augmented_tokens(tokens: &mut Vec<String>, mapping: &[(&str, &[&str])]) {
     let mut extras = Vec::new();
     for (needle, synonyms) in mapping {
