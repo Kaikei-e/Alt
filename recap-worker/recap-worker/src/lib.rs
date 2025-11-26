@@ -22,6 +22,7 @@ pub mod analysis;
 pub(crate) mod api;
 pub mod app;
 pub mod classification;
+pub mod classifier;
 pub(crate) mod clients;
 pub mod config;
 pub mod evaluation;

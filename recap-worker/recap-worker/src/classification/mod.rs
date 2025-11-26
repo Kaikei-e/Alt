@@ -8,13 +8,13 @@ use crate::pipeline::genre_keywords::GenreKeywords;
 mod keywords;
 use keywords::{DEFAULT_KEYWORDS, KeywordMatcher, accumulate_scores, default_matcher};
 
-mod features;
+pub mod features;
 mod model;
-mod tokenizer;
+pub mod tokenizer;
 
-use features::{FeatureExtractor, FeatureVector};
+pub use features::{FeatureExtractor, FeatureVector};
 use model::HybridModel;
-use tokenizer::{NormalizedDocument, TokenPipeline};
+pub use tokenizer::{NormalizedDocument, TokenPipeline};
 
 /// 分類対象テキストの言語。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
