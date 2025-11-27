@@ -6,7 +6,6 @@ run:
 
 linters:
   enable:
-    - goimports
     - shadow
 
 issues:
