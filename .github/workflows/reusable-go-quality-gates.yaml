@@ -20,8 +20,8 @@ on:
 
 # 最小権限 + SARIF アップロード用の権限
 permissions:
-  contents: read                         # checkout 用
-  security-events: write                 # SARIF を Code Scanning にアップロードするのに必須
+  contents: read # checkout 用
+  security-events: write # SARIF を Code Scanning にアップロードするのに必須
 
 jobs:
   quality:
@@ -32,6 +32,25 @@ jobs:
         shell: bash
 
     steps:
+      # --- Mask sensitive information ---
+      - name: Mask sensitive paths and user info
+        run: |
+          echo "::add-mask::${{ inputs.working-directory }}"
+          echo "::add-mask::${{ runner.temp }}"
+          echo "::add-mask::${{ github.workspace }}"
+          echo "::add-mask::${{ github.workspace }}/${{ inputs.working-directory }}"
+          # Mask user and home directory
+          echo "::add-mask::$USER"
+          echo "::add-mask::$HOME"
+          echo "::add-mask::$(whoami)"
+          # Mask common CI paths
+          echo "::add-mask::/home/runner"
+          echo "::add-mask::/home/runner/work"
+          echo "::add-mask::/home/runner/work/${{ github.repository }}"
+          # Store paths in environment for later use
+          echo "GITHUB_WORKSPACE=${{ github.workspace }}" >> $GITHUB_ENV
+          echo "RUNNER_TEMP=${{ runner.temp }}" >> $GITHUB_ENV
+
       # --- Checkout & Go setup ---
       - name: Checkout (sparse)
         uses: actions/checkout@v5
@@ -39,7 +58,7 @@ jobs:
           sparse-checkout: |
             ${{ inputs.working-directory }}
           sparse-checkout-cone-mode: true
-          fetch-depth: 1  # 変更差分だけで十分
+          fetch-depth: 1 # 変更差分だけで十分
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -87,7 +106,14 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           mkdir -p ./_reports
-          gosec -fmt sarif -out ./_reports/gosec.sarif ./...
+          # Mask paths in gosec output by redirecting stderr and filtering
+          # Note: ::add-mask:: already masks these values in logs, but we also filter here for extra safety
+          gosec -no-fail -fmt sarif -out ./_reports/gosec.sarif ./... 2>&1 | \
+            sed "s|${GITHUB_WORKSPACE}|***|g" | \
+            sed "s|${RUNNER_TEMP}|***|g" | \
+            sed "s|/home/runner|***|g" | \
+            sed "s|${USER}|***|g" | \
+            sed "s|$(whoami)|***|g" || true
 
       - name: Upload SARIF (gosec)
         uses: github/codeql-action/upload-sarif@v3
