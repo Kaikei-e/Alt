@@ -1,0 +1,118 @@
+name: Recap Worker CI
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "recap-worker/**"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "recap-worker/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  test:
+    runs-on: [self-hosted, linux, X64]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Configure logging (mask sensitive info)
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::group::Masking Configuration"
+          # Mask HOME path parts
+          for part in $(echo "$HOME" | tr '/' ' '); do
+            [ -n "$part" ] && echo "::add-mask::$part"
+          done
+          # Mask user and hostname
+          echo "::add-mask::$(whoami)"
+          echo "::add-mask::$(hostname)"
+          echo "::add-mask::$(hostname -s || true)"
+          # Mask runner paths
+          echo "::add-mask::${{ runner.temp }}"
+          echo "::add-mask::${{ github.workspace }}"
+          echo "::endgroup::"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Clean workspace and clear caches
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::group::Clearing caches"
+          # Clean Cargo registry and git cache before restoring cache
+          rm -rf ~/.cargo/registry || true
+          rm -rf ~/.cargo/git || true
+          # Clean workspace target directory
+          rm -rf recap-worker/recap-worker/target || true
+          echo "::endgroup::"
+
+      - name: Install Rust toolchain
+        run: |
+          # Use official rustup (actions-rs is deprecated)
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=stable
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          source "$HOME/.cargo/env"
+          rustup default stable
+          rustup component add clippy
+
+      - name: Rust version info
+        run: |
+          rustc --version
+          cargo --version
+          cargo clippy --version
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            recap-worker/recap-worker/target/
+          key: ${{ runner.os }}-cargo-recap-worker-${{ hashFiles('recap-worker/recap-worker/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-recap-worker-${{ hashFiles('recap-worker/recap-worker/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-recap-worker-
+        env:
+          ACTIONS_STEP_DEBUG: false
+        continue-on-error: true
+
+      - name: Build (release)
+        working-directory: recap-worker/recap-worker
+        run: |
+          cargo build --release --verbose
+        env:
+          RUST_BACKTRACE: 1
+
+      - name: Run clippy
+        working-directory: recap-worker/recap-worker
+        run: |
+          cargo clippy --all-targets --all-features -- -D warnings
+        continue-on-error: false
+
+      - name: Run unit tests
+        working-directory: recap-worker/recap-worker
+        run: |
+          cargo test --all --verbose -- --nocapture
+        env:
+          RUST_BACKTRACE: full
+
+      - name: Post-job cleanup
+        if: always() && runner.environment == 'self-hosted'
+        working-directory: recap-worker/recap-worker
+        run: |
+          # Clean build artifacts to reduce disk usage
+          cargo clean || true
