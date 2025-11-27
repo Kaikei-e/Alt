@@ -3618,6 +3618,7 @@ dependencies = [
  "serde_yaml",
  "smallvec",
  "sqlx",
+ "tempfile",
  "testcontainers",
  "thiserror 1.0.69",
  "tokio",

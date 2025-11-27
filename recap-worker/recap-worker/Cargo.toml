@@ -97,6 +97,7 @@ tokio = { version = "1.48", features = ["rt", "macros"] }
 wiremock = "0.6"
 criterion = { version = "0.5", features = ["html_reports"] }
 testcontainers = "0.16"
+tempfile = "3.10"
 
 [[bench]]
 name = "performance"
