@@ -914,5 +914,874 @@
     "expected_genres": [
       "society_justice"
     ]
+  },
+  {
+    "id": "article-121",
+    "content": "2026年9月15日、ゲーム開発会社が新作パズルゲームのリリースを発表。論理的思考力を鍛える問題が100問以上収録され、教育現場でも活用が期待されている。",
+    "expected_genres": [
+      "games_puzzles"
+    ]
+  },
+  {
+    "id": "article-122",
+    "content": "2026年9月18日、eスポーツリーグの新シーズンが開幕。プロゲーマーが集結し、賞金総額5000万円の大会が開催される。",
+    "expected_genres": [
+      "games_puzzles",
+      "sports"
+    ]
+  },
+  {
+    "id": "article-123",
+    "content": "2026年9月20日、モバイルゲームアプリがダウンロード数1000万を突破。無料で遊べるパズルゲームで、通勤時間の暇つぶしとして人気を集めている。",
+    "expected_genres": [
+      "games_puzzles"
+    ]
+  },
+  {
+    "id": "article-124",
+    "content": "2026年9月22日、ボードゲームの新作が発売された。協力型パズルゲームで、家族や友人と楽しめる設計となっている。",
+    "expected_genres": [
+      "games_puzzles"
+    ]
+  },
+  {
+    "id": "article-125",
+    "content": "2026年9月25日、ゲームレビューサイトが今年のベストパズルゲームを発表。難易度と楽しさのバランスが評価され、多くのユーザーから支持を得ている。",
+    "expected_genres": [
+      "games_puzzles"
+    ]
+  },
+  {
+    "id": "article-126",
+    "content": "2026年9月28日、教育ゲームの開発プロジェクトがクラウドファンディングで目標額を達成。子供向けのパズルゲームで、学習効果が期待されている。",
+    "expected_genres": [
+      "games_puzzles"
+    ]
+  },
+  {
+    "id": "article-127",
+    "content": "2026年9月30日、ゲーム大会の決勝戦が開催された。世界中から参加者が集まり、パズルゲームの世界チャンピオンが決定した。",
+    "expected_genres": [
+      "games_puzzles"
+    ]
+  },
+  {
+    "id": "article-128",
+    "content": "2026年10月2日、製品レビューサイトが最新スマートフォンの評価を公開。カメラ性能とバッテリー寿命が高く評価され、総合評価で5つ星を獲得。",
+    "expected_genres": [
+      "product"
+    ]
+  },
+  {
+    "id": "article-129",
+    "content": "2026年10月5日、家電メーカーが新製品の発表会を開催。AI搭載の掃除ロボットが発売され、自動充電とスマートマッピング機能が特徴。",
+    "expected_genres": [
+      "product",
+      "consumer_tech"
+    ]
+  },
+  {
+    "id": "article-130",
+    "content": "2026年10月8日、ガジェット比較サイトがワイヤレスイヤホンのランキングを発表。ノイズキャンセリング性能と音質の両立が評価基準となっている。",
+    "expected_genres": [
+      "product"
+    ]
+  },
+  {
+    "id": "article-131",
+    "content": "2026年10月10日、新製品のプレビューイベントが開催された。来月発売予定のタブレット端末の機能が公開され、期待が高まっている。",
+    "expected_genres": [
+      "product",
+      "tech"
+    ]
+  },
+  {
+    "id": "article-132",
+    "content": "2026年10月12日、製品テストレポートが公開された。耐久性テストと性能評価の結果、高品質な製品として認証された。",
+    "expected_genres": [
+      "product"
+    ]
+  },
+  {
+    "id": "article-133",
+    "content": "2026年10月15日、新製品の予約受付が開始された。初回限定特典が付き、発売前から多くの注文が入っている。",
+    "expected_genres": [
+      "product"
+    ]
+  },
+  {
+    "id": "article-134",
+    "content": "2026年10月18日、製品比較サイトが価格と性能のバランスを分析。コストパフォーマンスの高い製品がランキングで紹介された。",
+    "expected_genres": [
+      "product"
+    ]
+  },
+  {
+    "id": "article-135",
+    "content": "2026年10月20日、スマートウォッチの新モデルが発売された。健康管理機能が充実し、心拍数と睡眠の質を24時間監視できる。",
+    "expected_genres": [
+      "consumer_tech",
+      "health"
+    ]
+  },
+  {
+    "id": "article-136",
+    "content": "2026年10月22日、家電量販店が最新のスマート家電を展示。音声アシスタントと連携し、生活の利便性を向上させる製品が並んでいる。",
+    "expected_genres": [
+      "consumer_tech"
+    ]
+  },
+  {
+    "id": "article-137",
+    "content": "2026年10月25日、ウェアラブルデバイスの市場が拡大。フィットネストラッカーとスマートウォッチの需要が高まっており、健康意識の向上が背景にある。",
+    "expected_genres": [
+      "consumer_tech"
+    ]
+  },
+  {
+    "id": "article-138",
+    "content": "2026年10月28日、スマートスピーカーの新機能が追加された。音楽再生と情報検索に加え、家電の制御も可能になった。",
+    "expected_genres": [
+      "consumer_tech",
+      "ai"
+    ]
+  },
+  {
+    "id": "article-139",
+    "content": "2026年10月30日、最新のタブレット端末が発売された。ペン入力の精度が向上し、クリエイターから高い評価を得ている。",
+    "expected_genres": [
+      "consumer_tech"
+    ]
+  },
+  {
+    "id": "article-140",
+    "content": "2026年11月2日、家電メーカーがスマート冷蔵庫の新モデルを発表。食材管理とレシピ提案機能を搭載し、食生活の改善をサポートする。",
+    "expected_genres": [
+      "consumer_tech"
+    ]
+  },
+  {
+    "id": "article-141",
+    "content": "2026年11月5日、映画評論家が今年のベスト映画を発表。ストーリーと映像美の両面で高く評価され、アカデミー賞の候補として注目されている。",
+    "expected_genres": [
+      "culture",
+      "entertainment"
+    ]
+  },
+  {
+    "id": "article-142",
+    "content": "2026年11月8日、音楽フェスティバルが開催された。国内外のアーティストが参加し、3日間で10万人以上が来場した。",
+    "expected_genres": [
+      "culture"
+    ]
+  },
+  {
+    "id": "article-143",
+    "content": "2026年11月10日、伝統芸能の公演が開催された。古典的な演目を現代的な演出で再現し、若い世代にも好評を得ている。",
+    "expected_genres": [
+      "culture"
+    ]
+  },
+  {
+    "id": "article-144",
+    "content": "2026年11月12日、アートギャラリーが現代美術の展覧会を開催。新進気鋭のアーティストの作品を中心に展示し、来場者から高い評価を得た。",
+    "expected_genres": [
+      "culture",
+      "art_culture"
+    ]
+  },
+  {
+    "id": "article-145",
+    "content": "2026年11月15日、文化遺産の保存活動が進められている。デジタルアーカイブ化により、貴重な文化財を後世に残す取り組みが展開されている。",
+    "expected_genres": [
+      "culture"
+    ]
+  },
+  {
+    "id": "article-146",
+    "content": "2026年11月18日、文学賞の授賞式が開催された。新人作家の作品が選ばれ、文壇で大きな話題となっている。",
+    "expected_genres": [
+      "culture"
+    ]
+  },
+  {
+    "id": "article-147",
+    "content": "2026年11月20日、UIデザインのトレンドが発表された。ミニマリズムとアクセシビリティを重視した設計が主流となっている。",
+    "expected_genres": [
+      "design"
+    ]
+  },
+  {
+    "id": "article-148",
+    "content": "2026年11月22日、グラフィックデザイナーが新作ポスターを発表。視覚的なインパクトとメッセージ性を両立させた作品として評価されている。",
+    "expected_genres": [
+      "design"
+    ]
+  },
+  {
+    "id": "article-149",
+    "content": "2026年11月25日、デザインコンペティションの結果が発表された。持続可能性をテーマにした作品が最優秀賞を受賞した。",
+    "expected_genres": [
+      "design"
+    ]
+  },
+  {
+    "id": "article-150",
+    "content": "2026年11月28日、パッケージデザインの新トレンドが紹介された。エコ素材の使用と視認性の向上が重視されている。",
+    "expected_genres": [
+      "design"
+    ]
+  },
+  {
+    "id": "article-151",
+    "content": "2026年11月30日、ウェブデザインのベストプラクティスが公開された。ユーザーエクスペリエンスを向上させる最新の手法が紹介されている。",
+    "expected_genres": [
+      "design",
+      "tech"
+    ]
+  },
+  {
+    "id": "article-152",
+    "content": "2026年12月2日、デザインスタジオがブランディングプロジェクトを完了。企業のビジョンを視覚的に表現し、ブランド価値の向上に貢献した。",
+    "expected_genres": [
+      "design"
+    ]
+  },
+  {
+    "id": "article-153",
+    "content": "2026年12月5日、ハリウッド映画の新作が公開された。アクションシーンとストーリー展開が高く評価され、興行収入が好調。",
+    "expected_genres": [
+      "entertainment"
+    ]
+  },
+  {
+    "id": "article-154",
+    "content": "2026年12月8日、テレビドラマの新シーズンが放送開始。視聴率が好調で、SNSでも話題となっている。",
+    "expected_genres": [
+      "entertainment"
+    ]
+  },
+  {
+    "id": "article-155",
+    "content": "2026年12月10日、音楽アーティストが新アルバムをリリース。ストリーミングサービスで1位を獲得し、ファンから絶賛されている。",
+    "expected_genres": [
+      "entertainment"
+    ]
+  },
+  {
+    "id": "article-156",
+    "content": "2026年12月12日、コメディアンが新しいスタンドアップコメディの公演を開催。社会問題をユーモアで切り取り、観客から大きな反響を得た。",
+    "expected_genres": [
+      "entertainment"
+    ]
+  },
+  {
+    "id": "article-157",
+    "content": "2026年12月15日、アニメ制作会社が新シリーズの制作を発表。人気原作を基にした作品で、2027年春から放送開始予定。",
+    "expected_genres": [
+      "entertainment"
+    ]
+  },
+  {
+    "id": "article-158",
+    "content": "2026年12月18日、エンターテインメント業界の年間総括が発表された。映画、音楽、ゲームなど各分野で好作品が生まれた一年となった。",
+    "expected_genres": [
+      "entertainment"
+    ]
+  },
+  {
+    "id": "article-159",
+    "content": "2026年12月20日、ライフスタイル雑誌が2027年のトレンドを特集。サステナブルな生活とウェルネスがキーワードとして挙げられている。",
+    "expected_genres": [
+      "lifestyle"
+    ]
+  },
+  {
+    "id": "article-160",
+    "content": "2026年12月22日、料理レシピサイトが人気レシピランキングを発表。健康的で簡単に作れる料理が上位にランクインしている。",
+    "expected_genres": [
+      "lifestyle"
+    ]
+  },
+  {
+    "id": "article-161",
+    "content": "2026年12月25日、ファッションブランドが新コレクションを発表。サステナブル素材の使用率を高め、環境への配慮を強化した。",
+    "expected_genres": [
+      "lifestyle"
+    ]
+  },
+  {
+    "id": "article-162",
+    "content": "2026年12月28日、インテリアデザインのトレンドが紹介された。ミニマリズムと機能性を重視したデザインが人気を集めている。",
+    "expected_genres": [
+      "lifestyle",
+      "design"
+    ]
+  },
+  {
+    "id": "article-163",
+    "content": "2026年12月30日、ウェルネスアプリが新機能を追加。睡眠の質とストレス管理をサポートする機能が搭載され、健康的な生活習慣の形成を支援する。",
+    "expected_genres": [
+      "lifestyle",
+      "health"
+    ]
+  },
+  {
+    "id": "article-164",
+    "content": "2027年1月2日、ライフスタイルブログが新年の目標設定を特集。読者から寄せられた目標を紹介し、実現のためのヒントを提供している。",
+    "expected_genres": [
+      "lifestyle"
+    ]
+  },
+  {
+    "id": "article-165",
+    "content": "2027年1月5日、人権団体が差別撤廃の取り組みを報告。企業の多様性推進が進んでおり、社会全体の包摂性向上に貢献している。",
+    "expected_genres": [
+      "society_justice"
+    ]
+  },
+  {
+    "id": "article-166",
+    "content": "2027年1月8日、労働組合が労働環境の改善を求める声明を発表。ワークライフバランスの向上と賃金の適正化を訴えている。",
+    "expected_genres": [
+      "society_justice"
+    ]
+  },
+  {
+    "id": "article-167",
+    "content": "2027年1月10日、社会活動家が教育格差の是正を訴えた。経済的困難を抱える家庭の子供への支援拡大を求めている。",
+    "expected_genres": [
+      "society_justice",
+      "politics"
+    ]
+  },
+  {
+    "id": "article-168",
+    "content": "2027年1月12日、法律改正により、LGBTQ+の権利保護が強化された。差別禁止法の適用範囲が拡大し、社会の多様性が尊重される方向に進んでいる。",
+    "expected_genres": [
+      "society_justice"
+    ]
+  },
+  {
+    "id": "article-169",
+    "content": "2027年1月15日、社会問題を扱うドキュメンタリー映画が公開された。貧困と格差の問題を描き、社会の関心を集めている。",
+    "expected_genres": [
+      "society_justice",
+      "entertainment"
+    ]
+  },
+  {
+    "id": "article-170",
+    "content": "2027年1月18日、NGOが難民支援の活動報告を発表。教育と職業訓練の機会を提供し、社会統合を支援している。",
+    "expected_genres": [
+      "society_justice",
+      "world"
+    ]
+  },
+  {
+    "id": "article-171",
+    "content": "2027年1月20日、プロ野球の春季キャンプが開始された。各球団は新戦力の獲得を発表し、シーズンへの意気込みを語った。",
+    "expected_genres": [
+      "sports"
+    ]
+  },
+  {
+    "id": "article-172",
+    "content": "2027年1月22日、サッカーリーグの新シーズンが開幕。強豪チーム同士の対戦が注目を集め、観客動員数が過去最高を記録した。",
+    "expected_genres": [
+      "sports"
+    ]
+  },
+  {
+    "id": "article-173",
+    "content": "2027年1月25日、オリンピックの予選大会が開催された。各国の代表選手が集結し、本大会出場を目指して競い合った。",
+    "expected_genres": [
+      "sports"
+    ]
+  },
+  {
+    "id": "article-174",
+    "content": "2027年1月28日、テニス選手がグランドスラム大会で優勝した。3セットマッチの激戦を制し、通算優勝回数を更新した。",
+    "expected_genres": [
+      "sports"
+    ]
+  },
+  {
+    "id": "article-175",
+    "content": "2027年1月30日、マラソン大会が開催された。国内外から1万人以上のランナーが参加し、完走率が過去最高を記録した。",
+    "expected_genres": [
+      "sports"
+    ]
+  },
+  {
+    "id": "article-176",
+    "content": "2027年2月2日、スポーツ科学の研究チームが新たなトレーニング法を発表。パフォーマンス向上に効果的で、アスリートから注目を集めている。",
+    "expected_genres": [
+      "sports",
+      "science"
+    ]
+  },
+  {
+    "id": "article-177",
+    "content": "2027年2月5日、政府がAI開発の倫理ガイドラインを改定。バイアス排除と透明性の確保を強化し、責任あるAI開発を促進する。",
+    "expected_genres": [
+      "ai_policy",
+      "politics"
+    ]
+  },
+  {
+    "id": "article-178",
+    "content": "2027年2月8日、国際機関がAI規制の国際基準を策定。各国のAI政策の統一を目指し、グローバルな規制の枠組みを構築した。",
+    "expected_genres": [
+      "ai_policy",
+      "global_politics"
+    ]
+  },
+  {
+    "id": "article-179",
+    "content": "2027年2月10日、AI規制当局が生成AIの使用ガイドラインを更新。著作権保護と誤情報対策を重視し、責任あるAI利用を促進する。",
+    "expected_genres": [
+      "ai_policy"
+    ]
+  },
+  {
+    "id": "article-180",
+    "content": "2027年2月12日、EUがAI法の施行を開始。高リスクAIシステムの認証制度を導入し、安全性と人権保護を確保する。",
+    "expected_genres": [
+      "ai_policy",
+      "world"
+    ]
+  },
+  {
+    "id": "article-181",
+    "content": "2027年2月15日、政府がAI研究への投資を拡大。基礎研究と応用研究の両面で予算を増額し、2028年までに150億円規模の投資を計画。",
+    "expected_genres": [
+      "ai_policy",
+      "politics"
+    ]
+  },
+  {
+    "id": "article-182",
+    "content": "2027年2月18日、AI研究チームが新しい機械学習アルゴリズムを開発。従来手法と比較して学習効率が40%向上し、論文が国際会議で最優秀賞を受賞。",
+    "expected_genres": [
+      "ai_research",
+      "ai"
+    ]
+  },
+  {
+    "id": "article-183",
+    "content": "2027年2月20日、研究機関が大規模言語モデルの推論メカニズムを解明。注意力機構の働きを可視化し、AIの意思決定プロセスを理解する新手法を発表。",
+    "expected_genres": [
+      "ai_research",
+      "science"
+    ]
+  },
+  {
+    "id": "article-184",
+    "content": "2027年2月22日、AI研究者が強化学習の新理論を提唱。報酬設計の最適化により、学習速度と最終性能の両立を実現。Nature誌に論文が掲載された。",
+    "expected_genres": [
+      "ai_research",
+      "ai"
+    ]
+  },
+  {
+    "id": "article-185",
+    "content": "2027年2月25日、コンピュータビジョンの研究チームが画像認識の精度を向上させる新手法を開発。転移学習とデータ拡張を組み合わせ、エラー率を60%削減。",
+    "expected_genres": [
+      "ai_research",
+      "tech"
+    ]
+  },
+  {
+    "id": "article-186",
+    "content": "2027年2月28日、AI研究機関がニューラルネットワークの解釈可能性を向上させる新技術を発表。ブラックボックス化していたAIの内部動作を可視化。",
+    "expected_genres": [
+      "ai_research",
+      "science"
+    ]
+  },
+  {
+    "id": "article-187",
+    "content": "2027年3月2日、美術館が現代アートの特別展を開催。国内外のアーティストの作品を展示し、現代社会を反映したアートを紹介している。",
+    "expected_genres": [
+      "art_culture"
+    ]
+  },
+  {
+    "id": "article-188",
+    "content": "2027年3月5日、文学賞の受賞作が発表された。新人作家の作品が選ばれ、文壇で話題となっている。受賞作は来月から全国の書店で販売開始。",
+    "expected_genres": [
+      "art_culture"
+    ]
+  },
+  {
+    "id": "article-189",
+    "content": "2027年3月8日、伝統工芸の職人が新作を発表した。現代的なデザインを取り入れながら、伝統技術を継承した作品として評価されている。",
+    "expected_genres": [
+      "art_culture"
+    ]
+  },
+  {
+    "id": "article-190",
+    "content": "2027年3月10日、アートギャラリーが現代美術の展覧会を開催。新進気鋭のアーティストの作品を中心に展示し、来場者から高い評価を得た。",
+    "expected_genres": [
+      "art_culture"
+    ]
+  },
+  {
+    "id": "article-191",
+    "content": "2027年3月12日、文化財保護団体が歴史的建造物の修復プロジェクトを開始。伝統的な技法を用いて、文化遺産を後世に残す。",
+    "expected_genres": [
+      "art_culture",
+      "culture"
+    ]
+  },
+  {
+    "id": "article-192",
+    "content": "2027年3月15日、EUがカーボンニュートラル達成に向けた新たな環境政策を発表。2030年までに温室効果ガス排出量を60%削減する目標を設定。",
+    "expected_genres": [
+      "environment_policy",
+      "politics"
+    ]
+  },
+  {
+    "id": "article-193",
+    "content": "2027年3月18日、日本政府がプラスチックごみ削減の新法を施行。使い捨てプラスチック製品の段階的削減とリサイクル率の向上を義務付ける。",
+    "expected_genres": [
+      "environment_policy",
+      "environment"
+    ]
+  },
+  {
+    "id": "article-194",
+    "content": "2027年3月20日、米国環境保護庁が水質汚染規制を強化。工場排水の基準を厳格化し、違反企業への罰則を引き上げる新規則を発表。",
+    "expected_genres": [
+      "environment_policy",
+      "environment"
+    ]
+  },
+  {
+    "id": "article-195",
+    "content": "2027年3月22日、中国が再生可能エネルギー導入目標を上方修正。2030年までに発電量の50%を再生可能エネルギーで賄う計画を発表。",
+    "expected_genres": [
+      "environment_policy",
+      "environment"
+    ]
+  },
+  {
+    "id": "article-196",
+    "content": "2027年3月25日、国際環境機関が海洋保護区の拡大を各国に要請。2030年までに海洋面積の35%を保護区に指定する目標を設定。",
+    "expected_genres": [
+      "environment_policy",
+      "world"
+    ]
+  },
+  {
+    "id": "article-197",
+    "content": "2027年3月28日、地域コミュニティが伝統的な祭りの準備を進めている。毎年恒例の春祭りで、地元の文化と伝統を次世代に継承する重要な機会となっている。",
+    "expected_genres": [
+      "other"
+    ]
+  },
+  {
+    "id": "article-198",
+    "content": "2027年3月30日、地域のボランティア団体が清掃活動を実施。地域住民が参加し、公園や河川の美化に取り組んだ。",
+    "expected_genres": [
+      "other"
+    ]
+  },
+  {
+    "id": "article-199",
+    "content": "2027年4月2日、地元の商店街が新しいイベントを企画。地域活性化を目的とした取り組みで、多くの来場者が集まった。",
+    "expected_genres": [
+      "other"
+    ]
+  },
+  {
+    "id": "article-200",
+    "content": "2027年4月5日、地域の図書館が読書推進キャンペーンを開始。子供から大人まで幅広い世代に読書の楽しさを伝える取り組み。",
+    "expected_genres": [
+      "other"
+    ]
+  },
+  {
+    "id": "article-201",
+    "content": "2027年4月8日、地域のコミュニティセンターが新しいプログラムを開始。多世代交流を促進し、地域の絆を深める活動を展開している。",
+    "expected_genres": [
+      "other"
+    ]
+  },
+  {
+    "id": "article-202",
+    "content": "2027年4月10日、ITメディアがクラウドネイティブアーキテクチャの最新トレンドを特集。コンテナオーケストレーションとサーバーレス技術の融合が主流となっている。",
+    "expected_genres": [
+      "pro_it_media",
+      "tech"
+    ]
+  },
+  {
+    "id": "article-203",
+    "content": "2027年4月12日、技術ブログがマイクロサービスパターンの実践ガイドを公開。分散システムの設計原則と運用ノウハウを詳しく解説している。",
+    "expected_genres": [
+      "pro_it_media",
+      "developer_insights"
+    ]
+  },
+  {
+    "id": "article-204",
+    "content": "2027年4月15日、IT業界の専門誌がDevOpsツールチェーンの比較分析を掲載。CI/CDパイプラインの最適化手法を複数のツールで検証した結果を報告。",
+    "expected_genres": [
+      "pro_it_media"
+    ]
+  },
+  {
+    "id": "article-205",
+    "content": "2027年4月18日、エンタープライズ向けITメディアがデータベース選定のベストプラクティスを特集。スケーラビリティとコスト効率のバランスを重視した選定基準を提示。",
+    "expected_genres": [
+      "pro_it_media",
+      "tech"
+    ]
+  },
+  {
+    "id": "article-206",
+    "content": "2027年4月20日、技術情報サイトがAPI設計の最新ガイドラインを公開。RESTful APIとGraphQLの使い分け、バージョニング戦略などを詳しく解説。",
+    "expected_genres": [
+      "pro_it_media",
+      "developer_insights"
+    ]
+  },
+  {
+    "id": "article-207",
+    "content": "2027年4月22日、政府がサイバーセキュリティ基本法の改正案を提出。重要インフラの保護を強化し、サイバー攻撃への対応体制を整備する。",
+    "expected_genres": [
+      "security_policy",
+      "politics"
+    ]
+  },
+  {
+    "id": "article-208",
+    "content": "2027年4月25日、EUがデータ保護規制の適用範囲を拡大。個人データの越境移転に関する新たな基準を設定し、プライバシー保護を強化。",
+    "expected_genres": [
+      "security_policy",
+      "security"
+    ]
+  },
+  {
+    "id": "article-209",
+    "content": "2027年4月28日、日本政府が重要情報インフラのセキュリティ基準を改定。サイバー攻撃への備えを強化し、インシデント対応の迅速化を図る。",
+    "expected_genres": [
+      "security_policy",
+      "security"
+    ]
+  },
+  {
+    "id": "article-210",
+    "content": "2027年5月1日、国際機関がサイバーセキュリティの国際標準を策定。各国のセキュリティ政策の統一を目指し、情報共有の枠組みを構築。",
+    "expected_genres": [
+      "security_policy",
+      "world"
+    ]
+  },
+  {
+    "id": "article-211",
+    "content": "2027年5月3日、金融機関向けのサイバーセキュリティ規制が強化。金融システムの保護を目的とした新たな基準を設定し、コンプライアンスを義務化。",
+    "expected_genres": [
+      "security_policy",
+      "business_finance"
+    ]
+  },
+  {
+    "id": "article-212",
+    "content": "2027年5月5日、旅行会社が新しいエコツーリズムパッケージを発表。持続可能な観光を推進し、現地コミュニティへの貢献を重視した旅行プランを提供。",
+    "expected_genres": [
+      "travel_lifestyle",
+      "environment"
+    ]
+  },
+  {
+    "id": "article-213",
+    "content": "2027年5月8日、デジタルノマド向けの旅行ガイドが人気を集めている。リモートワークと旅行を組み合わせた新しいライフスタイルが若年層を中心に広がっている。",
+    "expected_genres": [
+      "travel_lifestyle",
+      "lifestyle"
+    ]
+  },
+  {
+    "id": "article-214",
+    "content": "2027年5月10日、航空会社がカーボンオフセットプログラムを拡大。搭乗時に環境負荷を相殺するオプションを提供し、持続可能な旅行を支援。",
+    "expected_genres": [
+      "travel_lifestyle",
+      "environment"
+    ]
+  },
+  {
+    "id": "article-215",
+    "content": "2027年5月12日、旅行アプリがAIを活用したパーソナライズド旅行プランを提供。ユーザーの好みと予算に合わせた最適な旅行ルートを自動生成。",
+    "expected_genres": [
+      "travel_lifestyle",
+      "tech"
+    ]
+  },
+  {
+    "id": "article-216",
+    "content": "2027年5月15日、長期滞在型ホテルがビジネストラベラー向けサービスを強化。1ヶ月以上の滞在に対応し、ワークスペースと生活空間を統合した施設を提供。",
+    "expected_genres": [
+      "travel_lifestyle",
+      "business"
+    ]
+  },
+  {
+    "id": "article-217",
+    "content": "2027年5月18日、金融機関が新たな投資商品を発表。個人投資家向けの低リスク商品で、安定した収益を期待できる設計となっている。",
+    "expected_genres": [
+      "business_finance"
+    ]
+  },
+  {
+    "id": "article-218",
+    "content": "2027年5月20日、証券会社がESG投資の新ファンドを設定。環境・社会・ガバナンスを重視した投資戦略で、長期的な成長を目指す。",
+    "expected_genres": [
+      "business_finance",
+      "environment"
+    ]
+  },
+  {
+    "id": "article-219",
+    "content": "2027年5月22日、銀行がデジタル決済サービスの新機能を追加。QRコード決済とポイント還元を統合し、利便性を向上させた。",
+    "expected_genres": [
+      "business_finance",
+      "tech"
+    ]
+  },
+  {
+    "id": "article-220",
+    "content": "2027年5月25日、株式市場が大幅に上昇した。IT関連株が牽引し、日経平均は過去最高値を更新。投資家のリスク選好が高まっている。",
+    "expected_genres": [
+      "business_finance"
+    ]
+  },
+  {
+    "id": "article-221",
+    "content": "2027年5月28日、国連安全保障理事会が中東地域の和平プロセスに関する新たな決議を採択。多国間協議の枠組みを構築し、2027年後半に和平会議の開催を目指す。",
+    "expected_genres": [
+      "global_politics",
+      "world"
+    ]
+  },
+  {
+    "id": "article-222",
+    "content": "2027年5月30日、G20首脳会議が経済協力と気候変動対策を中心に協議。新興国への技術移転と資金支援の拡大で合意。共同声明を発表した。",
+    "expected_genres": [
+      "global_politics",
+      "politics"
+    ]
+  },
+  {
+    "id": "article-223",
+    "content": "2027年6月2日、アフリカ連合が域内統合の加速を決定。共通通貨の導入と関税同盟の強化を2028年までに実現する目標を設定。",
+    "expected_genres": [
+      "global_politics",
+      "world"
+    ]
+  },
+  {
+    "id": "article-224",
+    "content": "2027年6月5日、ASEAN首脳会議がデジタル経済協力の新たな枠組みを合意。データ流通の自由化とサイバーセキュリティの強化を推進する。",
+    "expected_genres": [
+      "global_politics",
+      "tech"
+    ]
+  },
+  {
+    "id": "article-225",
+    "content": "2027年6月8日、開発者向けブログがシステムアーキテクチャの改善事例を公開。マイクロサービスへの移行により、可用性とスケーラビリティが向上した。技術コミュニティで話題に。",
+    "expected_genres": [
+      "developer_insights",
+      "tech"
+    ]
+  },
+  {
+    "id": "article-226",
+    "content": "2027年6月10日、技術チームがインシデント対応のポストモーテムを公開。根本原因分析と再発防止策を詳細に記録し、業界のベストプラクティスとして評価されている。",
+    "expected_genres": [
+      "developer_insights"
+    ]
+  },
+  {
+    "id": "article-227",
+    "content": "2027年6月12日、技術ブログがパフォーマンス最適化のベストプラクティスを公開。実践的な手法を詳しく解説し、開発者のスキル向上を支援。",
+    "expected_genres": [
+      "developer_insights"
+    ]
+  },
+  {
+    "id": "article-228",
+    "content": "2027年6月15日、医療研究チームが新たながん治療法の臨床試験で良好な結果を得たと発表。対象患者120人のうち、85%で腫瘍の縮小が確認され、副作用も軽微だった。",
+    "expected_genres": [
+      "health",
+      "science"
+    ]
+  },
+  {
+    "id": "article-229",
+    "content": "2027年6月18日、WHOが新興感染症の監視体制を強化すると発表。パンデミック対策の一環として、各国の保健システムの整備を支援する。2027年から本格運用を開始。",
+    "expected_genres": [
+      "health",
+      "world"
+    ]
+  },
+  {
+    "id": "article-230",
+    "content": "2027年6月20日、テレメディシンサービスの利用者が前年比250%増加した。コロナ禍以降の需要拡大が続いており、医療アクセスの改善に貢献している。",
+    "expected_genres": [
+      "health",
+      "tech"
+    ]
+  },
+  {
+    "id": "article-231",
+    "content": "2027年6月22日、サイバーセキュリティ企業が新たな脅威インテリジェンスプラットフォームを発表。AIを活用した攻撃検知の精度が向上し、企業のセキュリティ対策を支援する。",
+    "expected_genres": [
+      "security",
+      "tech"
+    ]
+  },
+  {
+    "id": "article-232",
+    "content": "2027年6月25日、ゼロトラストアーキテクチャの導入企業が増加している。リモートワークの普及により、従来の境界防御モデルから移行する動きが加速。",
+    "expected_genres": [
+      "security",
+      "business"
+    ]
+  },
+  {
+    "id": "article-233",
+    "content": "2027年6月28日、データ漏洩事件が発生し、約15万人の個人情報が流出した可能性がある。企業は即座に調査を開始し、影響を受けたユーザーへの通知を開始した。",
+    "expected_genres": [
+      "security"
+    ]
+  },
+  {
+    "id": "article-234",
+    "content": "2027年7月1日、AI研究機関が大規模言語モデルの新アーキテクチャを論文で発表。Transformerベースの改良により、推論コストを60%削減できるとしている。",
+    "expected_genres": [
+      "ai",
+      "tech"
+    ]
+  },
+  {
+    "id": "article-235",
+    "content": "2027年7月3日、生成AIスタートアップが画像生成モデルの新バージョンを発表。解像度と品質が大幅に向上し、商用利用も可能になった。",
+    "expected_genres": [
+      "ai"
+    ]
+  },
+  {
+    "id": "article-236",
+    "content": "2027年7月5日、研究チームが量子コンピュータの新アルゴリズムを開発したと発表。特定の問題において従来のスーパーコンピュータを上回る性能を実証。論文はNature誌に掲載された。",
+    "expected_genres": [
+      "science",
+      "tech"
+    ]
   }
 ]

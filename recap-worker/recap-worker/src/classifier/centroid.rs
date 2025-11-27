@@ -64,7 +64,6 @@ impl CentroidClassifier {
             }
         }
 
-        // 学習開始時のログ
         tracing::info!(
             "CentroidClassifier training started: total_articles={}, articles_with_features={}, unique_genres={}",
             labeled_articles.len(),

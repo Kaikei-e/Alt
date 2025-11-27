@@ -253,6 +253,8 @@ impl GraphPropagator {
         let target_norm = Self::normalize_vector(&target_combined);
 
         let mut neighbors: Vec<(String, f32)> = Vec::new();
+        let mut candidate_count = 0;
+        let mut top_similarities: Vec<(String, String, f32)> = Vec::new();
 
         // 全ノードとの類似度を計算
         for node_idx in self.graph.node_indices() {
@@ -265,14 +267,40 @@ impl GraphPropagator {
                 // 動的閾値を取得（デフォルトは0.3）
                 let threshold = thresholds.get(label).copied().unwrap_or(0.3);
 
+                // 閾値を超えた候補のみ処理
                 if similarity >= threshold {
                     neighbors.push((label.clone(), similarity));
+                    candidate_count += 1;
+
+                    // デバッグ用：上位10件のみ保持（メモリ効率化）
+                    top_similarities.push((node.article_id.clone(), label.clone(), similarity));
+                    if top_similarities.len() > 10 {
+                        top_similarities.sort_by(|a, b| {
+                            b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)
+                        });
+                        top_similarities.truncate(10);
+                    }
                 }
             }
         }
 
         // 類似度順にソート
         neighbors.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // デバッグ用：候補が見つかった場合のみ、上位候補をログ出力（debugレベル）
+        if candidate_count > 0 && !top_similarities.is_empty() {
+            top_similarities
+                .sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+            let top_3: Vec<_> = top_similarities.iter().take(3).collect();
+            tracing::warn!(
+                "Rescue Pass: found {} candidates above threshold, top 3: {:?}",
+                candidate_count,
+                top_3
+                    .iter()
+                    .map(|(id, label, sim)| format!("{}:{}={:.4}", id, label, sim))
+                    .collect::<Vec<_>>()
+            );
+        }
 
         // 上位k件を取得して投票
         let top_k = neighbors.iter().take(k);

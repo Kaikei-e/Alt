@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 
@@ -15,8 +15,15 @@ use crate::classification::{
 };
 use crate::classifier::{CentroidClassifier, GraphPropagator, centroid::Article};
 
+// Rescue Passの統計カウンター（ログサンプリング用）
+static RESCUE_ATTEMPT_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static RESCUE_SUCCESS_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static RESCUE_FAIL_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// Golden Datasetのアイテム（JSON形式）
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GoldenItem {
     pub id: String,
     pub content: String,
@@ -193,7 +200,7 @@ impl ClassificationPipeline {
         let (labeled_articles, stats) =
             Self::extract_feature_vectors(&golden_items, &tokenized_corpus, &feature_extractor);
 
-        // 統計ログを出力
+        // ログ出力: Golden Dataset特徴抽出統計
         tracing::info!(
             "Golden Dataset feature extraction: total_articles={}, zero_norm_count={}, avg_tfidf_norm={:.4}, avg_bm25_norm={:.4}, avg_embedding_norm={:.4}",
             golden_items.len(),
@@ -227,8 +234,8 @@ impl ClassificationPipeline {
             labeled_articles.len()
         );
 
-        // GraphPropagatorの構築
-        let mut graph_propagator = GraphPropagator::new(0.85); // エッジ構築用閾値
+        // Initialize GraphPropagator with lower threshold
+        let mut graph_propagator = GraphPropagator::new(0.5); // エッジ構築用閾値
         if let Err(e) = graph_propagator.build_graph(&labeled_articles, &HashSet::new()) {
             tracing::warn!("Failed to build GraphPropagator: {}", e);
         } else {
@@ -246,6 +253,10 @@ impl ClassificationPipeline {
             feature_extractor,
             token_pipeline: TokenPipeline::new(),
         })
+    }
+
+    pub fn feature_extractor(&self) -> &FeatureExtractor {
+        &self.feature_extractor
     }
 
     /// 新着記事を分類する。
@@ -275,6 +286,27 @@ impl ClassificationPipeline {
 
         // ゼロベクトルチェック
         Self::check_zero_vector(article_id, &normalized, &feature_vector);
+
+        // ログ出力: 特徴ベクトルのノルム（デバッグ用）
+        let tfidf_norm = ndarray::Array1::from_vec(feature_vector.tfidf.clone())
+            .dot(&ndarray::Array1::from_vec(feature_vector.tfidf.clone()))
+            .sqrt();
+        let bm25_norm = ndarray::Array1::from_vec(feature_vector.bm25.clone())
+            .dot(&ndarray::Array1::from_vec(feature_vector.bm25.clone()))
+            .sqrt();
+        let embedding_norm = ndarray::Array1::from_vec(feature_vector.embedding.clone())
+            .dot(&ndarray::Array1::from_vec(feature_vector.embedding.clone()))
+            .sqrt();
+
+        if sample_count < 10 {
+            tracing::info!(
+                "ClassificationPipeline classify: article_id={}, tfidf_norm={:.4}, bm25_norm={:.4}, embedding_norm={:.4}",
+                article_id,
+                tfidf_norm,
+                bm25_norm,
+                embedding_norm
+            );
+        }
 
         // Fast Pass: Centroid Classifierで分類
         if let Some(genre) =
@@ -497,6 +529,17 @@ impl ClassificationPipeline {
             }
         }
 
+        // 現在の記事も候補に追加（これがないとグラフに含まれない）
+        centroid_candidates.insert(article_id.to_string());
+
+        // ログ出力: Rescue Pass候補数
+        tracing::info!(
+            "Rescue Pass: article_id={}, total_articles={}, centroid_candidates={}",
+            article_id,
+            all_articles.len(),
+            centroid_candidates.len()
+        );
+
         // 候補数が少ない場合のWARNログ
         if centroid_candidates.len() < 5 {
             tracing::warn!(
@@ -551,6 +594,72 @@ impl ClassificationPipeline {
         }
     }
 
+    /// predictメソッド内でRescue Passを試行する（ログのサンプリング付き）。
+    fn try_rescue_pass_in_predict(
+        &self,
+        feature_vector: &crate::classification::FeatureVector,
+        scores: &mut HashMap<String, f32>,
+        ranking: &mut Vec<(String, f32)>,
+        sample_count: usize,
+    ) {
+        if let Some(ref propagator) = self.graph_propagator {
+            let attempt_count =
+                RESCUE_ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+            // Sample attempts: first 10, then every 100
+            #[allow(clippy::manual_is_multiple_of)]
+            if sample_count < 10 || (attempt_count + 1) % 100 == 0 {
+                tracing::info!(
+                    "CentroidClassifier: no matches, attempting Rescue Pass (GraphPropagator) [attempts={}]",
+                    attempt_count + 1
+                );
+            }
+
+            // k=5, dynamic thresholds with relaxation
+            let empty_thresholds = HashMap::new();
+            let thresholds = self
+                .centroid_classifier
+                .as_ref()
+                .map_or(empty_thresholds, |c| {
+                    let mut t = c.get_thresholds().clone();
+                    // Relax thresholds for Rescue Pass (80% of Centroid threshold)
+                    for val in t.values_mut() {
+                        *val *= 0.8;
+                    }
+                    t
+                });
+
+            if let Some((rescued_genre, score)) =
+                propagator.predict_by_neighbors(feature_vector, 5, &thresholds)
+            {
+                let success_count =
+                    RESCUE_SUCCESS_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                tracing::info!(
+                    "Rescue Pass successful: genre='{}', score={:.4} [successes={}]",
+                    rescued_genre,
+                    score,
+                    success_count + 1
+                );
+                scores.insert(rescued_genre.clone(), score);
+                ranking.push((rescued_genre, score));
+            } else {
+                let fail_count =
+                    RESCUE_FAIL_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                // Sample failures: first 10, then every 10
+                // We want to see failures to debug "no evidence" issues, but not flood logs if 100% fail.
+                #[allow(clippy::manual_is_multiple_of)]
+                if sample_count < 10 || (fail_count + 1) % 10 == 0 {
+                    tracing::info!(
+                        "Rescue Pass failed: no neighbors found [failures={}]",
+                        fail_count + 1
+                    );
+                }
+            }
+        }
+    }
+
     /// 既存のGenreClassifierインターフェースに合わせたpredictメソッド。
     ///
     /// # Arguments
@@ -566,6 +675,12 @@ impl ClassificationPipeline {
         body: &str,
         language: ClassificationLanguage,
     ) -> Result<ClassificationResult> {
+        // サンプリング用のカウンター（静的変数）
+        static PREDICT_SAMPLE_COUNT: std::sync::atomic::AtomicUsize =
+            std::sync::atomic::AtomicUsize::new(0);
+
+        let sample_count = PREDICT_SAMPLE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         // Centroid Classifierが利用可能な場合はそれを使用
         if let Some(ref centroid_classifier) = self.centroid_classifier {
             let normalized = self.token_pipeline.preprocess(title, body, language);
@@ -576,46 +691,47 @@ impl ClassificationPipeline {
             let mut ranking = Vec::new();
 
             if let Some((genre, score)) = centroid_classifier.predict(&feature_vector) {
-                tracing::debug!(
-                    "CentroidClassifier prediction: genre={}, score={:.4}",
-                    genre,
-                    score
-                );
+                if sample_count < 10 {
+                    tracing::debug!(
+                        "CentroidClassifier prediction: genre={}, score={:.4}",
+                        genre,
+                        score
+                    );
+                }
                 scores.insert(genre.clone(), score);
                 ranking.push((genre, score));
             } else {
-                tracing::debug!(
-                    "CentroidClassifier prediction: no genre above threshold (trained_genres: {:?})",
-                    centroid_classifier.trained_genres()
-                );
+                // 閾値未満の場合、トップの類似度を取得して候補として追加
+                if let Some((genre, similarity, threshold)) =
+                    centroid_classifier.get_top_similarity(&feature_vector)
+                {
+                    if sample_count < 10 {
+                        tracing::debug!(
+                            "CentroidClassifier prediction: no genre above threshold, top_genre={}, similarity={:.4}, threshold={:.4}",
+                            genre,
+                            similarity,
+                            threshold
+                        );
+                    }
+                    // 類似度が低くても候補として追加（後段のキーワードマッチング等で救える可能性を広げる）
+                    scores.insert(genre.clone(), similarity);
+                    ranking.push((genre, similarity));
+                } else if sample_count < 10 {
+                    tracing::debug!(
+                        "CentroidClassifier prediction: no genre above threshold (trained_genres: {:?})",
+                        centroid_classifier.trained_genres()
+                    );
+                }
             }
 
             // スコアが空の場合はRescue Pass (Graph Propagator) を試行
             if scores.is_empty() {
-                if let Some(ref propagator) = self.graph_propagator {
-                    tracing::info!(
-                        "CentroidClassifier: no matches, attempting Rescue Pass (GraphPropagator)"
-                    );
-                    // k=5, 動的閾値で近傍探索
-                    let empty_thresholds = HashMap::new();
-                    let thresholds = self
-                        .centroid_classifier
-                        .as_ref()
-                        .map_or(&empty_thresholds, |c| c.get_thresholds());
-                    if let Some((rescued_genre, score)) =
-                        propagator.predict_by_neighbors(&feature_vector, 5, thresholds)
-                    {
-                        tracing::info!(
-                            "Rescue Pass successful: genre='{}', score={:.4}",
-                            rescued_genre,
-                            score
-                        );
-                        scores.insert(rescued_genre.clone(), score);
-                        ranking.push((rescued_genre, score));
-                    } else {
-                        tracing::debug!("Rescue Pass failed: no neighbors found");
-                    }
-                }
+                self.try_rescue_pass_in_predict(
+                    &feature_vector,
+                    &mut scores,
+                    &mut ranking,
+                    sample_count,
+                );
             }
 
             // それでもスコアが空の場合は"other"を追加

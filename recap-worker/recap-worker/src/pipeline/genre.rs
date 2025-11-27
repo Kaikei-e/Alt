@@ -365,7 +365,23 @@ impl CoarseGenreStage {
             selected_genres.truncate(self.max_genres);
         }
 
-        // スコアと信頼度の計算（フォールバックキーワードのスコア計算は除く）
+        // フォールバックキーワードマッチングを実行（Centroid Classifierの結果を補完するため）
+        let combined = format!("{title} {body}");
+        let keyword_scores = self.fallback_keywords.score_text(&combined);
+
+        // キーワードマッチングで見つかったジャンルを候補に追加
+        // ただし、既に選択されているジャンルは除外し、max_genresを超えないようにする
+        for (genre, score) in &keyword_scores {
+            if *score > 0
+                && !selected_genres.contains(genre)
+                && selected_genres.len() < self.max_genres
+            {
+                selected_genres.push(genre.clone());
+            }
+        }
+
+        // スコアと信頼度の計算
+        // まず、Centroid Classifierの結果を使用
         let mut genre_scores = classification.keyword_hits.clone();
         for genre in &selected_genres {
             genre_scores.entry(genre.clone()).or_insert_with(|| {
@@ -376,30 +392,38 @@ impl CoarseGenreStage {
             });
         }
 
+        // キーワードマッチングの結果を統合（キーワードマッチングの方が優先度が高い）
+        for (genre, score) in &keyword_scores {
+            let existing = genre_scores.entry(genre.clone()).or_insert(0);
+            *existing = (*existing).max(*score);
+        }
+
         // 低サポートの場合は"other"にフォールバック
-        // 新しいCentroid Classifierが使用されている場合（keyword_hitsが空）は、スコアベースで判定
-        // 既存のGenreClassifierが使用されている場合（keyword_hitsが非空）は、キーワードマッチベースで判定
+        // 新しいCentroid Classifierが使用されている場合（keyword_hitsが空またはスコアベース）は、
+        // スコアとキーワードマッチングの両方を考慮
         let low_support = if classification.keyword_hits.is_empty() {
-            // 新しい分類器: スコアが閾値未満の場合にフォールバック
-            selected_genres
-                .iter()
-                .all(|genre| classification.scores.get(genre).copied().unwrap_or(0.0) < 0.5)
+            // 新しい分類器: スコアが閾値未満かつキーワードマッチングもない場合にフォールバック
+            selected_genres.iter().all(|genre| {
+                let classifier_score = classification.scores.get(genre).copied().unwrap_or(0.0);
+                let keyword_score = keyword_scores.get(genre).copied().unwrap_or(0);
+                classifier_score < 0.5 && keyword_score == 0
+            })
         } else {
-            // 既存の分類器: keyword_hitsがすべて0の場合にフォールバック
-            selected_genres
-                .iter()
-                .all(|genre| classification.keyword_hits.get(genre).copied().unwrap_or(0) == 0)
+            // Improved logic for existing/hybrid classifiers
+            selected_genres.iter().all(|genre| {
+                let classifier_hits = classification.keyword_hits.get(genre).copied().unwrap_or(0);
+                let classifier_score = classification.scores.get(genre).copied().unwrap_or(0.0);
+                let keyword_score = keyword_scores.get(genre).copied().unwrap_or(0);
+
+                // Fallback if: (No hits) OR (Low score AND No keyword support)
+                let weak_signal = classifier_hits == 0 || (classifier_score < 0.5);
+                weak_signal && keyword_score == 0
+            })
         };
         if low_support {
             selected_genres.clear();
             selected_genres.push("other".to_string());
             genre_scores.entry("other".to_string()).or_insert(100);
-        }
-
-        // フォールバックキーワードでスコアを計算（genre_scoresが空の場合のみ）
-        if genre_scores.is_empty() {
-            let combined = format!("{title} {body}");
-            genre_scores = self.fallback_keywords.score_text(&combined);
         }
 
         // 信頼度の計算

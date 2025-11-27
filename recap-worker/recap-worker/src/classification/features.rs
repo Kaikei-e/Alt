@@ -1,6 +1,7 @@
 //! トークン列から特徴量を抽出する。
 use std::collections::HashMap;
 use tracing;
+use xxhash_rust::xxh3::xxh3_64;
 
 pub const EMBEDDING_DIM: usize = 6;
 pub(crate) const FALLBACK_BM25_K1: f32 = 1.6;
@@ -137,6 +138,15 @@ impl FeatureExtractor {
             average_doc_len
         );
 
+        // ログ出力: FeatureExtractor構築時の統計情報
+        tracing::info!(
+            "FeatureExtractor corpus analysis: total_docs={}, unique_tokens={}, selected_vocab_size={}, avg_doc_len={:.2}",
+            total_docs,
+            unique_tokens_before_selection,
+            vocab.len(),
+            average_doc_len
+        );
+
         // 5. FeatureExtractorを初期化
         Self::from_metadata(
             &vocab,
@@ -183,6 +193,19 @@ impl FeatureExtractor {
             if let Some(vector) = self.embedding_index.get(lowered.as_str()) {
                 for (slot, value) in embedding.iter_mut().zip(vector.iter()) {
                     *slot += value;
+                }
+                embedding_hits += 1.0;
+            } else {
+                // Fallback: use hashing to generate a deterministic embedding
+                // This ensures that even unknown words contribute to the embedding vector
+                // and prevents zero-norm vectors which cause classification failures.
+                let hash = xxh3_64(lowered.as_bytes());
+                for (i, slot) in embedding.iter_mut().enumerate() {
+                    // Generate a pseudo-random float in [0.0, 1.0] from the hash
+                    // Use different bit shifts for each dimension to decorrelate
+                    let shift = i * 8;
+                    let val = ((hash >> shift) & 0xFF) as f32 / 255.0;
+                    *slot += val;
                 }
                 embedding_hits += 1.0;
             }

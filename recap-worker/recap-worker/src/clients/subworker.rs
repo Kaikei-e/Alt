@@ -28,6 +28,7 @@ const INITIAL_POLL_INTERVAL_MS: u64 = 500;
 const MAX_POLL_INTERVAL_MS: u64 = 5_000;
 const SUBWORKER_TIMEOUT_SECS: u64 = 120;
 const MAX_ERROR_MESSAGE_LENGTH: usize = 500;
+const MIN_FALLBACK_DOCUMENTS: usize = 2;
 
 /// エラーメッセージを要約して切り詰める。
 fn truncate_error_message(msg: &str) -> String {
@@ -296,6 +297,53 @@ impl SubworkerClient {
         Ok(())
     }
 
+    /// フォールバック用の単一クラスタレスポンスを生成する。
+    ///
+    /// # Arguments
+    /// * `job_id` - ジョブID
+    /// * `corpus` - 証拠コーパス
+    ///
+    /// # Returns
+    /// 全記事を含む単一クラスタのレスポンス
+    fn create_fallback_response(job_id: Uuid, corpus: &EvidenceCorpus) -> ClusteringResponse {
+        // 全記事を含む単一クラスタを構築
+        let mut representatives = Vec::new();
+        for article in &corpus.articles {
+            // 各記事の最初の文を代表として使用
+            if let Some(first_sentence) = article.sentences.first() {
+                representatives.push(ClusterRepresentative {
+                    article_id: article.article_id.clone(),
+                    paragraph_idx: Some(0),
+                    text: first_sentence.clone(),
+                    lang: Some(article.language.clone()),
+                    score: Some(1.0),
+                });
+            }
+        }
+
+        let cluster = ClusterInfo {
+            cluster_id: 0,
+            size: corpus.articles.len(),
+            label: Some(corpus.genre.clone()),
+            top_terms: Vec::new(),
+            stats: serde_json::json!({}),
+            representatives,
+        };
+
+        ClusteringResponse {
+            run_id: 0, // フォールバックのため run_id は 0
+            job_id,
+            genre: corpus.genre.clone(),
+            status: ClusterJobStatus::Succeeded,
+            cluster_count: 1,
+            clusters: vec![cluster],
+            diagnostics: serde_json::json!({
+                "fallback": true,
+                "reason": "insufficient_documents_for_clustering"
+            }),
+        }
+    }
+
     /// 証拠コーパスを送信してクラスタリング結果を取得する。
     ///
     /// # Arguments
@@ -323,16 +371,28 @@ impl SubworkerClient {
         let document_count = request_payload.documents.len();
 
         if document_count < self.min_documents_per_genre {
+            if document_count >= MIN_FALLBACK_DOCUMENTS {
+                // フォールバック: 単一クラスタとして処理
+                warn!(
+                    job_id = %job_id,
+                    genre = %corpus.genre,
+                    document_count,
+                    min_required = self.min_documents_per_genre,
+                    "using fallback single-cluster response due to insufficient documents"
+                );
+                return Ok(Self::create_fallback_response(job_id, corpus));
+            }
+            // 記事数が極端に少ない場合はエラー
             warn!(
                 job_id = %job_id,
                 genre = %corpus.genre,
                 document_count,
-                min_required = self.min_documents_per_genre,
-                "skipping clustering because document count is below minimum"
+                min_fallback = MIN_FALLBACK_DOCUMENTS,
+                "skipping clustering because document count is below minimum fallback threshold"
             );
             return Err(anyhow!(
                 "insufficient documents for clustering: expected >= {}, found {}",
-                self.min_documents_per_genre,
+                MIN_FALLBACK_DOCUMENTS,
                 document_count
             ));
         }
@@ -872,5 +932,70 @@ mod tests {
         let result = truncate_error_message(&msg);
         assert_eq!(result, msg);
         assert!(!result.contains("... (truncated"));
+    }
+
+    #[test]
+    fn create_fallback_response_creates_single_cluster() {
+        use crate::pipeline::evidence::{CorpusMetadata, EvidenceArticle};
+        use std::collections::HashMap;
+        use uuid::Uuid;
+
+        let job_id = Uuid::new_v4();
+
+        let corpus = EvidenceCorpus {
+            genre: "politics".to_string(),
+            articles: vec![
+                EvidenceArticle {
+                    article_id: "article-1".to_string(),
+                    title: Some("Test Article 1".to_string()),
+                    sentences: vec!["First sentence of article 1.".to_string()],
+                    language: "en".to_string(),
+                    genre_scores: None,
+                    confidence: Some(0.8),
+                    signals: None,
+                },
+                EvidenceArticle {
+                    article_id: "article-2".to_string(),
+                    title: Some("Test Article 2".to_string()),
+                    sentences: vec!["First sentence of article 2.".to_string()],
+                    language: "en".to_string(),
+                    genre_scores: None,
+                    confidence: Some(0.7),
+                    signals: None,
+                },
+            ],
+            total_sentences: 2,
+            metadata: CorpusMetadata {
+                article_count: 2,
+                sentence_count: 2,
+                primary_language: "en".to_string(),
+                language_distribution: {
+                    let mut map = HashMap::new();
+                    map.insert("en".to_string(), 2);
+                    map
+                },
+                character_count: 50,
+                classifier: None,
+            },
+        };
+
+        let response = SubworkerClient::create_fallback_response(job_id, &corpus);
+
+        assert_eq!(response.job_id, job_id);
+        assert_eq!(response.genre, "politics");
+        assert_eq!(response.status, ClusterJobStatus::Succeeded);
+        assert_eq!(response.cluster_count, 1);
+        assert_eq!(response.clusters.len(), 1);
+        assert_eq!(response.clusters[0].cluster_id, 0);
+        assert_eq!(response.clusters[0].size, 2);
+        assert_eq!(response.clusters[0].label, Some("politics".to_string()));
+        assert_eq!(response.clusters[0].representatives.len(), 2);
+        assert!(
+            response
+                .diagnostics
+                .get("fallback")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+        );
     }
 }
