@@ -1,6 +1,7 @@
 """ジャンル分類の評価サービス。"""
 
 import json
+import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
@@ -29,6 +30,12 @@ from ..domain.classification import (
     GenreClassifier,
     TokenPipeline,
 )
+
+# 許可されたベースディレクトリ
+ALLOWED_BASE_DIRS = [
+    Path("/app/data"),
+    Path("/app/resources"),
+]
 
 
 class EvaluationService:
@@ -64,11 +71,32 @@ class EvaluationService:
         """Golden Datasetを使用して評価を実行。
 
         Args:
-            golden_dataset_path: Golden Dataset JSONファイルのパス
+            golden_dataset_path: Golden Dataset JSONファイルのパス（既に検証済みであることを想定）
 
         Returns:
             評価結果の辞書
         """
+        # パスを検証（念のため）
+        path_obj = Path(golden_dataset_path)
+        if path_obj.is_absolute():
+            path_resolved = path_obj.resolve()
+            # 許可されたディレクトリ内にあるか確認
+            is_allowed = False
+            for base_dir in ALLOWED_BASE_DIRS:
+                base_dir_resolved = base_dir.resolve()
+                try:
+                    path_resolved.relative_to(base_dir_resolved)
+                    is_allowed = True
+                    break
+                except ValueError:
+                    continue
+
+            if not is_allowed:
+                raise ValueError(
+                    f"Path '{golden_dataset_path}' is not within allowed directories: "
+                    f"{[str(d) for d in ALLOWED_BASE_DIRS]}"
+                )
+
         # Golden Datasetを読み込み
         with open(golden_dataset_path, "r", encoding="utf-8") as f:
             golden_data = json.load(f)

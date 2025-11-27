@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -16,6 +17,56 @@ from ...services.evaluation import EvaluationService
 from ..deps import get_settings_dep
 
 router = APIRouter(prefix="/v1/evaluation", tags=["evaluation"])
+
+# 許可されたベースディレクトリ
+ALLOWED_BASE_DIRS = [
+    Path("/app/data"),
+    Path("/app/resources"),
+]
+
+
+def validate_path(user_path: str, base_dirs: list[Path]) -> Path:
+    """ユーザー入力のパスを検証し、安全なPathオブジェクトを返す。
+
+    Args:
+        user_path: ユーザーが指定したパス
+        base_dirs: 許可されたベースディレクトリのリスト
+
+    Returns:
+        検証済みのPathオブジェクト
+
+    Raises:
+        HTTPException: パスが許可されたディレクトリ外にある場合
+    """
+    # パスを正規化
+    normalized = os.path.normpath(user_path)
+
+    # 絶対パスに変換
+    if os.path.isabs(normalized):
+        full_path = Path(normalized)
+    else:
+        # 相対パスの場合は最初の許可ディレクトリをベースとして使用
+        full_path = Path(base_dirs[0]) / normalized
+        full_path = Path(os.path.normpath(str(full_path)))
+
+    # 各許可ディレクトリに対して、パスがそのディレクトリ内にあるか確認
+    for base_dir in base_dirs:
+        base_dir_resolved = base_dir.resolve()
+        full_path_resolved = full_path.resolve()
+
+        try:
+            # パスがベースディレクトリ内にあるか確認
+            full_path_resolved.relative_to(base_dir_resolved)
+            return full_path_resolved
+        except ValueError:
+            # このベースディレクトリには含まれていない
+            continue
+
+    # どの許可ディレクトリにも含まれていない
+    raise HTTPException(
+        status_code=400,
+        detail=f"Path '{user_path}' is not within allowed directories: {[str(d) for d in base_dirs]}",
+    )
 
 
 class EvaluateRequest(BaseModel):
@@ -123,7 +174,8 @@ async def evaluate_genres(
     if request.golden_data_path is None:
         golden_data_path = Path("/app/data/golden_classification.json")
     else:
-        golden_data_path = Path(request.golden_data_path)
+        # ユーザー入力のパスを検証
+        golden_data_path = validate_path(request.golden_data_path, ALLOWED_BASE_DIRS)
 
     if not golden_data_path.exists():
         raise HTTPException(
@@ -132,7 +184,8 @@ async def evaluate_genres(
         )
 
     if request.weights_path:
-        weights_path = Path(request.weights_path)
+        # ユーザー入力のパスを検証
+        weights_path = validate_path(request.weights_path, ALLOWED_BASE_DIRS)
         if not weights_path.exists():
             raise HTTPException(
                 status_code=404,
