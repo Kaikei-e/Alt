@@ -38,10 +38,10 @@ pub(crate) static SUMMARY_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
                         "items": {
                             "type": "string",
                             "minLength": 1,
-                            "maxLength": 500
+                            "maxLength": 1000
                         },
                         "minItems": 1,
-                        "maxItems": 10
+                        "maxItems": 15
                     },
                     "language": {
                         "type": "string",
@@ -123,7 +123,7 @@ pub(crate) static SUMMARY_REQUEST_SCHEMA: Lazy<Value> = Lazy::new(|| {
                     "max_bullets": {
                         "type": "integer",
                         "minimum": 1,
-                        "maximum": 10,
+                        "maximum": 15,
                         "default": 5
                     },
                     "temperature": {

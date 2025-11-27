@@ -15,6 +15,7 @@ pub(crate) struct RecapGenreResponse {
     article_count: i32,
     cluster_count: i32,
     evidence_links: Vec<EvidenceLinkResponse>,
+    bullets: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -103,6 +104,49 @@ fn build_summary_lines(summary_object: &Map<String, Value>) -> Option<String> {
     }
 
     Some(lines.join("\n"))
+}
+
+fn extract_bullets(summary_object: &Map<String, Value>) -> Vec<String> {
+    let mut bullets_vec = Vec::new();
+
+    if let Some(Value::Array(bullets)) = summary_object.get("bullets") {
+        for bullet in bullets {
+            match bullet {
+                Value::String(text) => {
+                    let trimmed = text.trim();
+                    if !trimmed.is_empty() {
+                        bullets_vec.push(trimmed.to_string());
+                    }
+                }
+                Value::Object(obj) => {
+                    if let Some(text) = obj
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        bullets_vec.push(text.to_string());
+                    }
+                }
+                Value::Number(num) => bullets_vec.push(num.to_string()),
+                Value::Bool(flag) => bullets_vec.push(flag.to_string()),
+                _ => {}
+            }
+        }
+    }
+    bullets_vec
+}
+
+fn extract_bullets_from_payload(raw: &str) -> Vec<String> {
+    let value: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
+    let object = value.as_object();
+
+    if let Some(obj) = object {
+        let summary_object = obj.get("summary").and_then(Value::as_object).unwrap_or(obj);
+        extract_bullets(summary_object)
+    } else {
+        Vec::new()
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -253,6 +297,7 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
             #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
             cluster_count: clusters.len() as i32,
             evidence_links: deduped_links,
+            bullets: extract_bullets_from_payload(genre.summary_ja.as_deref().unwrap_or_default()),
         });
     }
 

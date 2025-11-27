@@ -255,7 +255,7 @@ impl NewsCreatorClient {
             genre: clustering.genre.clone(),
             clusters,
             options: Some(SummaryOptions {
-                max_bullets: Some(5),
+                max_bullets: Some(15),
                 temperature: Some(0.7),
             }),
         }
