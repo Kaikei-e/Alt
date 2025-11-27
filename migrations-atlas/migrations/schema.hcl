@@ -111,6 +111,16 @@ table "article_summaries" {
       ops    = gin_trgm_ops
     }
   }
+  index "idx_article_summaries_created_at_id_desc" {
+    on {
+      desc   = true
+      column = column.created_at
+    }
+    on {
+      desc   = true
+      column = column.id
+    }
+  }
 }
 table "article_tags" {
   schema = schema.public
