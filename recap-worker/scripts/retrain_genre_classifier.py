@@ -17,7 +17,7 @@ import math
 import os
 import re
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -123,10 +123,75 @@ def get_db_connection(dsn: str):
     return psycopg2.connect(dsn)
 
 
+def fetch_distinct_genres_from_db(
+    recap_db_dsn: str,
+    days: int = 30,
+    min_samples: int = 10,
+) -> list[str]:
+    """
+    Fetch distinct genres from recap-db that have sufficient samples.
+
+    Args:
+        recap_db_dsn: Database connection string for recap-db
+        days: Number of days to look back (default: 30)
+        min_samples: Minimum number of samples required for a genre to be included (default: 10)
+
+    Returns:
+        List of genre names sorted alphabetically
+    """
+    if not PSYCOPG2_AVAILABLE:
+        raise RuntimeError("psycopg2 is required for database operations. Install it with: pip install psycopg2-binary")
+
+    # Calculate date range
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=days)
+
+    genres = []
+
+    try:
+        recap_conn = get_db_connection(recap_db_dsn)
+    except Exception as e:
+        raise RuntimeError(f"Failed to connect to recap-db: {e}") from e
+
+    try:
+        with recap_conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            # Fetch distinct genres with sufficient samples
+            cursor.execute("""
+                SELECT
+                    refine_decision->>'final_genre' as genre,
+                    COUNT(*) as count
+                FROM recap_genre_learning_results
+                WHERE created_at >= %s
+                  AND refine_decision->>'final_genre' IS NOT NULL
+                  AND refine_decision->>'final_genre' != ''
+                GROUP BY refine_decision->>'final_genre'
+                HAVING COUNT(*) >= %s
+                ORDER BY genre
+            """, (start_date, min_samples))
+
+            for row in cursor.fetchall():
+                genre = row["genre"]
+                if genre:
+                    genres.append(genre.lower())
+
+    finally:
+        recap_conn.close()
+
+    if not genres:
+        raise RuntimeError(
+            f"No genres found in recap-db (past {days} days, min_samples={min_samples}). "
+            "Please check the database connection and data availability."
+        )
+
+    print(f"Found {len(genres)} distinct genres from database: {', '.join(genres)}")
+    return genres
+
+
 def fetch_articles_from_db(
     alt_backend_dsn: Optional[str],
     recap_db_dsn: str,
     days: int = 14,
+    genres: Optional[list[str]] = None,
 ) -> list[dict]:
     """
     Fetch articles from the database for the past N days and combine with genre learning results.
@@ -137,6 +202,7 @@ def fetch_articles_from_db(
         alt_backend_dsn: Not used (kept for compatibility)
         recap_db_dsn: Database connection string for recap-db
         days: Number of days to look back (default: 14)
+        genres: Optional list of valid genres to filter by. If None, uses GENRES constant.
 
     Returns:
         List of sample dictionaries with title, body, and expected_genres
@@ -145,7 +211,7 @@ def fetch_articles_from_db(
         raise RuntimeError("psycopg2 is required for database operations. Install it with: pip install psycopg2-binary")
 
     # Calculate date range
-    end_date = datetime.utcnow()
+    end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=days)
 
     samples = []
@@ -186,9 +252,10 @@ def fetch_articles_from_db(
                     try:
                         candidates = json.loads(coarse_candidates) if isinstance(coarse_candidates, str) else coarse_candidates
                         if isinstance(candidates, list):
+                            valid_genres = genres if genres is not None else GENRES
                             for candidate in sorted(candidates, key=lambda x: x.get("score", 0), reverse=True)[:3]:
                                 genre = candidate.get("genre", "").lower()
-                                if genre and genre in GENRES:
+                                if genre and genre in valid_genres:
                                     genres.append(genre)
                     except (json.JSONDecodeError, TypeError):
                         # Skip invalid JSON
@@ -255,16 +322,20 @@ def expand_tokens(tokens: list[str]) -> list[str]:
     return expanded
 
 
-def build_feature_counts(samples: list[dict]) -> tuple[dict[str, Counter], Counter, dict[str, int]]:
+def build_feature_counts(samples: list[dict], genres: list[str]) -> tuple[dict[str, Counter], Counter, dict[str, int]]:
     """
     Build feature counts per genre and document frequency across entire corpus.
+
+    Args:
+        samples: List of sample dictionaries
+        genres: List of genre names to consider
 
     Returns:
         - feature_counts: dict mapping genre to Counter of term frequencies
         - genre_totals: Counter of total documents per genre
         - doc_frequency: dict mapping term to number of documents containing it
     """
-    feature_counts: dict[str, Counter] = {genre: Counter() for genre in GENRES}
+    feature_counts: dict[str, Counter] = {genre: Counter() for genre in genres}
     genre_totals: Counter = Counter()
     # Track which documents contain each term (for IDF calculation)
     doc_frequency: dict[str, int] = {term: 0 for term in FEATURE_VOCAB}
@@ -313,10 +384,13 @@ def enrich_samples(samples: list[dict]) -> None:
         sample["tokens"] = tokens
 
 
-def compute_weights(samples: list[dict]) -> dict:
+def compute_weights(samples: list[dict], genres: list[str]) -> dict:
     """
     Compute weights from samples using standard TF-IDF formula.
-    Uses current GENRES list from weights file.
+
+    Args:
+        samples: List of sample dictionaries with title, body, and expected_genres
+        genres: List of genre names to compute weights for
 
     TF-IDF formula (scikit-learn style):
     - TF: term frequency in genre / total terms in genre
@@ -325,7 +399,7 @@ def compute_weights(samples: list[dict]) -> dict:
     """
     enrich_samples(samples)
     total_docs = len(samples)
-    feature_counts, genre_totals, doc_frequency = build_feature_counts(samples)
+    feature_counts, genre_totals, doc_frequency = build_feature_counts(samples, genres)
 
     # Compute IDF for each term across entire corpus (scikit-learn style)
     # IDF = log((n_samples + 1) / (df + 1)) + 1
@@ -338,7 +412,7 @@ def compute_weights(samples: list[dict]) -> dict:
 
     # Compute TF-IDF weights per genre
     tfidf_weights = []
-    for genre in GENRES:
+    for genre in genres:
         total_terms_in_genre = sum(feature_counts[genre].values())
         if total_terms_in_genre == 0:
             # No terms in this genre, use zero weights
@@ -358,7 +432,7 @@ def compute_weights(samples: list[dict]) -> dict:
 
     # Compute embedding weights (weighted average by term frequency)
     embedding_weights = []
-    for genre in GENRES:
+    for genre in genres:
         agg = [0.0] * EMBEDDING_DIM
         total_weight = 0.0
         for term in FEATURE_VOCAB:
@@ -377,7 +451,7 @@ def compute_weights(samples: list[dict]) -> dict:
     # Use log to prevent extreme values for very rare genres
     total_samples = sum(genre_totals.values())
     bias = []
-    for genre in GENRES:
+    for genre in genres:
         genre_count = genre_totals[genre]
         if genre_count == 0:
             # Very high bias for genres with no samples (will be filtered out anyway)
@@ -394,7 +468,7 @@ def compute_weights(samples: list[dict]) -> dict:
         "embedding_dim": EMBEDDING_DIM,
         "feature_vocab": FEATURE_VOCAB,
         "feature_idf": feature_idf,
-        "genres": GENRES,
+        "genres": genres,
         "tfidf_weights": tfidf_weights,
         "embedding_weights": embedding_weights,
         "bias": bias,
@@ -466,10 +540,23 @@ Examples:
         else:
             recap_db_dsn = args.recap_db_dsn
 
-        # Default output path to genre_classifier_weights.json in recap-worker resources
+        # Fetch distinct genres from database
+        print(f"Fetching distinct genres from database (past {args.days} days)...")
+        try:
+            genres = fetch_distinct_genres_from_db(
+                recap_db_dsn,
+                days=args.days,
+                min_samples=10,
+            )
+        except RuntimeError as e:
+            parser.error(f"Failed to fetch genres from database: {e}")
+
+        # Default output path to genre_classifier_weights.json in recap-subworker resources
         if args.output is None:
             script_dir = Path(__file__).parent
-            output_path = script_dir.parent / "recap-worker" / "src" / "resources" / "genre_classifier_weights.json"
+            # Go up from recap-worker/scripts to project root, then to recap-subworker
+            project_root = script_dir.parent.parent
+            output_path = project_root / "recap-subworker" / "recap_subworker" / "resources" / "genre_classifier_weights.json"
         else:
             output_path = args.output
 
@@ -477,6 +564,7 @@ Examples:
             args.alt_backend_dsn,
             recap_db_dsn,
             days=args.days,
+            genres=genres,
         )
     else:
         # Load from JSON file
@@ -490,8 +578,12 @@ Examples:
         print("Warning: No samples found. Cannot compute weights.")
         return
 
-    print(f"Computing weights from {len(samples)} samples...")
-    weights = compute_weights(samples)
+    # For JSON file mode, use GENRES constant
+    if not args.from_db:
+        genres = GENRES
+
+    print(f"Computing weights from {len(samples)} samples for {len(genres)} genres...")
+    weights = compute_weights(samples, genres)
 
     # Write output
     output_path.write_text(json.dumps(weights, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
