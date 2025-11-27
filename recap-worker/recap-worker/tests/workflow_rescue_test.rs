@@ -71,12 +71,11 @@ fn test_rescue_pass_integration() {
 #[test]
 fn test_rescue_pass_with_labeled_neighbor() {
     // 1. Create a temporary Golden Dataset (needed for pipeline init)
-    let mut golden_items = Vec::new();
-    golden_items.push(GoldenItem {
+    let golden_items = vec![GoldenItem {
         id: "train_0".to_string(),
         content: "apple".to_string(),
         genres: vec!["fruit".to_string()],
-    });
+    }];
 
     let mut path = std::env::temp_dir();
     path.push(format!("test_golden_2_{}.json", std::process::id()));
@@ -151,12 +150,11 @@ fn test_predict_rescue_pass() {
         .try_init();
 
     // 1. Create a temporary Golden Dataset
-    let mut golden_items = Vec::new();
-    golden_items.push(GoldenItem {
+    let golden_items = vec![GoldenItem {
         id: "train_0".to_string(),
         content: "apple".to_string(),
         genres: vec!["fruit".to_string()],
-    });
+    }];
 
     let mut path = std::env::temp_dir();
     path.push(format!("test_golden_predict_{}.json", std::process::id()));
