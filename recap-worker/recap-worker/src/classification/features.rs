@@ -37,6 +37,83 @@ pub struct FeatureVector {
     pub embedding: Vec<f32>,
 }
 
+/// Embedding統計情報（Z-score正規化用）
+#[derive(Debug, Clone)]
+pub struct EmbeddingStats {
+    /// 各次元の平均値
+    pub mean: Vec<f32>,
+    /// 各次元の標準偏差
+    pub std: Vec<f32>,
+}
+
+impl EmbeddingStats {
+    /// 新しいEmbeddingStatsを作成する（統計なし = 正規化なし）
+    #[must_use]
+    pub fn empty(dim: usize) -> Self {
+        Self {
+            mean: vec![0.0; dim],
+            std: vec![1.0; dim], // 標準偏差1.0 = 正規化なし
+        }
+    }
+
+    /// Golden Datasetから統計を計算する
+    ///
+    /// # Arguments
+    /// * `embeddings` - Embeddingベクトルのリスト
+    ///
+    /// # Returns
+    /// 計算された統計情報
+    pub fn from_embeddings(embeddings: &[Vec<f32>]) -> Self {
+        if embeddings.is_empty() {
+            return Self::empty(EMBEDDING_DIM);
+        }
+
+        let dim = embeddings[0].len();
+        let n = embeddings.len() as f32;
+
+        // 平均を計算
+        let mut mean = vec![0.0; dim];
+        for emb in embeddings {
+            for (i, &val) in emb.iter().enumerate() {
+                mean[i] += val;
+            }
+        }
+        for m in &mut mean {
+            *m /= n;
+        }
+
+        // 標準偏差を計算
+        let mut std = vec![0.0; dim];
+        for emb in embeddings {
+            for (i, &val) in emb.iter().enumerate() {
+                let diff = val - mean[i];
+                std[i] += diff * diff;
+            }
+        }
+        for s in &mut std {
+            *s = (*s / n).sqrt();
+            // ゼロ除算を防ぐため、最小値を設定
+            if *s < 1e-6 {
+                *s = 1e-6;
+            }
+        }
+
+        Self { mean, std }
+    }
+
+    /// EmbeddingベクトルにZ-score正規化を適用する
+    ///
+    /// # Arguments
+    /// * `embedding` - 正規化するEmbeddingベクトル（in-place）
+    pub fn normalize(&self, embedding: &mut [f32]) {
+        for (i, val) in embedding.iter_mut().enumerate() {
+            if i < self.mean.len() && i < self.std.len() {
+                *val = (*val - self.mean[i]) / self.std[i];
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FeatureExtractor {
     vocab_index: HashMap<String, usize>,
@@ -45,6 +122,8 @@ pub struct FeatureExtractor {
     bm25_b: f32,
     average_doc_len: f32,
     embedding_index: HashMap<&'static str, [f32; EMBEDDING_DIM]>,
+    /// Embedding統計情報（Z-score正規化用）
+    embedding_stats: EmbeddingStats,
 }
 
 impl FeatureExtractor {
@@ -72,6 +151,7 @@ impl FeatureExtractor {
             bm25_b,
             average_doc_len,
             embedding_index,
+            embedding_stats: EmbeddingStats::empty(EMBEDDING_DIM),
         }
     }
 
@@ -148,6 +228,7 @@ impl FeatureExtractor {
         );
 
         // 5. FeatureExtractorを初期化
+        // 6. Embedding統計は空の統計を設定（後でtrain_embedding_statsで更新可能）
         Self::from_metadata(
             &vocab,
             &idf,
@@ -168,6 +249,20 @@ impl FeatureExtractor {
             FALLBACK_BM25_B,
             FALLBACK_AVG_DOC_LEN,
         )
+    }
+
+    /// Embedding統計を設定する（訓練時に呼び出す）
+    ///
+    /// # Arguments
+    /// * `stats` - 計算済みのEmbedding統計情報
+    pub fn set_embedding_stats(&mut self, stats: EmbeddingStats) {
+        self.embedding_stats = stats;
+    }
+
+    /// Embedding統計を取得する
+    #[must_use]
+    pub fn embedding_stats(&self) -> &EmbeddingStats {
+        &self.embedding_stats
     }
 
     /// 語彙サイズを取得する。
@@ -241,6 +336,9 @@ impl FeatureExtractor {
                 *value /= embedding_hits;
             }
         }
+
+        // EmbeddingにZ-score正規化を適用
+        self.embedding_stats.normalize(&mut embedding);
 
         FeatureVector {
             tfidf,

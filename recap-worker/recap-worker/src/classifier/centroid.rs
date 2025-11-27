@@ -28,6 +28,9 @@ pub struct CentroidClassifier {
     thresholds: HashMap<String, f32>,
     /// 特徴ベクトルの次元数
     feature_dim: usize,
+    /// Temperature Scalingパラメータ（信頼度較正用）
+    /// デフォルトは1.0（較正なし）。小さいほど分布がシャープ、大きいほどソフト
+    temperature: f32,
 }
 
 impl CentroidClassifier {
@@ -38,7 +41,125 @@ impl CentroidClassifier {
             centroids: HashMap::new(),
             thresholds: HashMap::new(),
             feature_dim,
+            temperature: 1.0, // デフォルトは較正なし
         }
+    }
+
+    /// Temperature Scalingパラメータを設定する。
+    ///
+    /// # Arguments
+    /// * `temperature` - 温度パラメータ（0.05以上、2.0以下を推奨）
+    pub fn set_temperature(&mut self, temperature: f32) {
+        self.temperature = temperature.max(0.01); // ゼロ除算を防ぐ
+    }
+
+    /// Temperature Scalingパラメータを取得する。
+    #[must_use]
+    pub fn temperature(&self) -> f32 {
+        self.temperature
+    }
+
+    /// Validation Setを用いて最適な温度パラメータを探索する。
+    ///
+    /// # Arguments
+    /// * `validation_articles` - 検証用記事のリスト（ラベル付き）
+    /// * `temperature_range` - 探索する温度の範囲（開始、終了、刻み）
+    ///
+    /// # Returns
+    /// 最適な温度パラメータ
+    ///
+    /// # Note
+    /// Negative Log Likelihood (NLL) を最小化する温度を探索する。
+    /// グリッドサーチで実装（0.05刻みで0.05から2.0まで探索）
+    pub fn find_optimal_temperature(
+        &self,
+        validation_articles: &[Article],
+        temperature_range: Option<(f32, f32, f32)>,
+    ) -> f32 {
+        let (min_temp, max_temp, step) = temperature_range.unwrap_or((0.05, 2.0, 0.05));
+
+        let mut best_temp = 1.0;
+        let mut best_nll = f32::INFINITY;
+
+        let mut temp = min_temp;
+        while temp <= max_temp {
+            let mut nll_sum = 0.0;
+            let mut valid_count = 0;
+
+            for article in validation_articles {
+                if let Some(ref fv) = article.feature_vector {
+                    if let Some((predicted_genre, calibrated_score)) =
+                        self.predict_with_temp(fv, temp)
+                    {
+                        // 正解ラベルがある場合のみNLLを計算
+                        if !article.genres.is_empty() {
+                            let is_correct = article.genres.contains(&predicted_genre);
+                            // 正解の場合は -log(p)、不正解の場合は -log(1-p)
+                            let nll = if is_correct {
+                                -calibrated_score.ln()
+                            } else {
+                                -(1.0 - calibrated_score).ln()
+                            };
+                            nll_sum += nll;
+                            valid_count += 1;
+                        }
+                    }
+                }
+            }
+
+            if valid_count > 0 {
+                let avg_nll = nll_sum / (valid_count as f32);
+                if avg_nll < best_nll {
+                    best_nll = avg_nll;
+                    best_temp = temp;
+                }
+            }
+
+            temp += step;
+        }
+
+        best_temp
+    }
+
+    /// 指定された温度で予測を行う（内部メソッド）
+    fn predict_with_temp(&self, target_vector: &FeatureVector, temp: f32) -> Option<(String, f32)> {
+        let combined = Self::combine_feature_vector(target_vector);
+        if combined.len() != self.feature_dim {
+            return None;
+        }
+
+        let norm = combined.dot(&combined).sqrt();
+        if norm <= 0.0 {
+            return None;
+        }
+        let normalized = &combined / norm;
+
+        let mut best_genre: Option<(String, f32)> = None;
+
+        for (genre, centroids) in &self.centroids {
+            let mut max_similarity = -1.0;
+            for centroid in centroids {
+                let sim = normalized.dot(centroid);
+                if sim > max_similarity {
+                    max_similarity = sim;
+                }
+            }
+
+            let calibrated_score = Self::calibrate_score(max_similarity, temp);
+            let threshold = self.thresholds.get(genre).copied().unwrap_or(0.6);
+
+            if max_similarity >= threshold {
+                if let Some((_, best_score)) = best_genre {
+                    if calibrated_score > best_score {
+                        best_genre = Some((genre.clone(), calibrated_score));
+                    }
+                } else {
+                    best_genre = Some((genre.clone(), calibrated_score));
+                }
+            }
+        }
+
+        best_genre
     }
 
     /// Golden Datasetから重心を計算して学習する。
@@ -46,6 +167,23 @@ impl CentroidClassifier {
     /// # Errors
     /// ベクトルの次元が一致しない場合にエラーを返す。
     pub fn train(&mut self, labeled_articles: &[Article]) -> Result<()> {
+        self.train_with_robust(labeled_articles, 0.2)
+    }
+
+    /// Golden Datasetから重心を計算して学習する（ロバスト版）。
+    /// 外れ値を除外したロバストな重心計算を行う。
+    ///
+    /// # Arguments
+    /// * `labeled_articles` - ラベル付き記事のリスト
+    /// * `trim_ratio` - 除外する外れ値の割合（デフォルト: 0.2 = 20%）
+    ///
+    /// # Errors
+    /// ベクトルの次元が一致しない場合にエラーを返す。
+    pub fn train_with_robust(
+        &mut self,
+        labeled_articles: &[Article],
+        trim_ratio: f32,
+    ) -> Result<()> {
         // ジャンルごとに記事をグループ化
         let mut genre_articles: HashMap<String, Vec<&Article>> = HashMap::new();
         let mut articles_with_features = 0;
@@ -82,37 +220,8 @@ impl CentroidClassifier {
             let centroids = if k > 1 {
                 Self::perform_kmeans(articles, k, self.feature_dim)
             } else {
-                // 従来の単一重心計算
-                let mut centroid_sum = Array1::<f32>::zeros(self.feature_dim);
-                let mut valid_count = 0;
-                for article in articles {
-                    if let Some(ref fv) = article.feature_vector {
-                        let combined = Self::combine_feature_vector(fv);
-                        anyhow::ensure!(
-                            combined.len() == self.feature_dim,
-                            "feature dimension mismatch: expected {}, got {}",
-                            self.feature_dim,
-                            combined.len()
-                        );
-                        let norm = combined.dot(&combined).sqrt();
-                        if norm > 0.0 {
-                            let normalized = &combined / norm;
-                            centroid_sum = &centroid_sum + &normalized;
-                            valid_count += 1;
-                        }
-                    }
-                }
-                if valid_count > 0 {
-                    let centroid = &centroid_sum / (valid_count as f32);
-                    let norm = centroid.dot(&centroid).sqrt();
-                    if norm > 0.0 {
-                        vec![&centroid / norm]
-                    } else {
-                        vec![centroid]
-                    }
-                } else {
-                    vec![]
-                }
+                // ロバストな単一重心計算（外れ値除外）
+                Self::train_robust_centroid(articles, self.feature_dim, trim_ratio)
             };
 
             if centroids.is_empty() {
@@ -146,6 +255,99 @@ impl CentroidClassifier {
         }
 
         Ok(())
+    }
+
+    /// ロバストな重心計算（外れ値除外版）
+    /// Geometric Trimmed Mean: クラスタ内平均類似度が低い下位k%を除外してから平均を計算
+    ///
+    /// # Arguments
+    /// * `articles` - 記事のリスト
+    /// * `feature_dim` - 特徴ベクトルの次元数
+    /// * `trim_ratio` - 除外する外れ値の割合（例: 0.2 = 20%）
+    ///
+    /// # Returns
+    /// ロバストな重心ベクトルのリスト（通常は1つ）
+    fn train_robust_centroid(
+        articles: &[&Article],
+        feature_dim: usize,
+        trim_ratio: f32,
+    ) -> Vec<Array1<f32>> {
+        // 1. 有効なベクトルを収集
+        let mut valid_vectors = Vec::new();
+        for article in articles {
+            if let Some(ref fv) = article.feature_vector {
+                let combined = Self::combine_feature_vector(fv);
+                if combined.len() == feature_dim {
+                    let norm = combined.dot(&combined).sqrt();
+                    if norm > 0.0 {
+                        valid_vectors.push((&combined / norm).to_owned());
+                    }
+                }
+            }
+        }
+
+        if valid_vectors.is_empty() {
+            return Vec::new();
+        }
+
+        // 記事数が少ない場合は、外れ値除外を行わず通常の平均を計算
+        if valid_vectors.len() <= 3 {
+            let mut centroid_sum = Array1::<f32>::zeros(feature_dim);
+            for v in &valid_vectors {
+                centroid_sum = &centroid_sum + v;
+            }
+            let centroid = &centroid_sum / (valid_vectors.len() as f32);
+            let norm = centroid.dot(&centroid).sqrt();
+            if norm > 0.0 {
+                return vec![&centroid / norm];
+            }
+            return vec![centroid];
+        }
+
+        // 2. 各ベクトルの「クラスタ内平均類似度」を計算
+        // 計算量削減のため、全点対全点ではなく、サンプリングまたはバッチ処理を検討可
+        let mut scores: Vec<(usize, f32)> = valid_vectors
+            .iter()
+            .enumerate()
+            .map(|(i, v)| {
+                let v_view = v.view();
+                // クラスタ内の他の全ベクトルとの類似度の合計を計算
+                let sim_sum: f32 = valid_vectors
+                    .iter()
+                    .map(|other| {
+                        // コサイン類似度（既にL2正規化されているので、内積がそのまま類似度）
+                        v_view.dot(&other.view())
+                    })
+                    .sum();
+                (i, sim_sum) // 平均をとる必要はなく、合計で比較可能
+            })
+            .collect();
+
+        // 3. スコア順にソート (降順: 類似度が高い順)
+        scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // 4. 上位 (1.0 - trim_ratio) の要素のみを残す
+        #[allow(clippy::cast_sign_loss)]
+        let keep_count = (valid_vectors.len() as f32 * (1.0 - trim_ratio)).ceil() as usize;
+        let keep_count = keep_count.max(1); // 少なくとも1つは残す
+        let keep_count = keep_count.min(valid_vectors.len()); // 上限チェック
+
+        let valid_indices: Vec<usize> = scores.iter().take(keep_count).map(|x| x.0).collect();
+
+        // 5. 平均を計算 (Trimmed Mean)
+        // valid_indicesに対応するベクトルを足し合わせて平均をとる
+        let mut sum_vec = Array1::<f32>::zeros(feature_dim);
+        for &idx in &valid_indices {
+            sum_vec = &sum_vec + &valid_vectors[idx];
+        }
+
+        let centroid = &sum_vec / (valid_indices.len() as f32);
+        let norm = centroid.dot(&centroid).sqrt();
+        if norm > 0.0 {
+            vec![&centroid / norm]
+        } else {
+            vec![centroid.clone()]
+        }
     }
 
     /// k-Means クラスタリングを実行する
@@ -305,22 +507,48 @@ impl CentroidClassifier {
                 }
             }
 
-            // 閾値を取得
+            // Temperature Scalingによる較正
+            let calibrated_score = Self::calibrate_score(max_similarity, self.temperature);
+
+            // 閾値を取得（較正後のスコアと比較するため、閾値も較正する必要がある場合がある）
+            // ここでは、較正前の類似度と閾値を比較する従来の方法を維持
             let threshold = self.thresholds.get(genre).copied().unwrap_or(0.6);
 
-            // 閾値を超えている場合のみ考慮
+            // 閾値を超えている場合のみ考慮（較正前の類似度で判定）
             if max_similarity >= threshold {
+                // 返り値は較正後のスコアを使用
                 if let Some((_, best_score)) = best_genre {
-                    if max_similarity > best_score {
-                        best_genre = Some((genre.clone(), max_similarity));
+                    if calibrated_score > best_score {
+                        best_genre = Some((genre.clone(), calibrated_score));
                     }
                 } else {
-                    best_genre = Some((genre.clone(), max_similarity));
+                    best_genre = Some((genre.clone(), calibrated_score));
                 }
             }
         }
 
         best_genre
+    }
+
+    /// Temperature Scalingによる信頼度較正
+    ///
+    /// # Arguments
+    /// * `similarity` - コサイン類似度（-1.0 ～ 1.0）
+    /// * `temperature` - 温度パラメータ（T > 0）
+    ///
+    /// # Returns
+    /// 較正後の確率スコア（0.0 ～ 1.0）
+    ///
+    /// # Note
+    /// コサイン類似度をシグモイド関数で確率に変換する。
+    /// 数式: P = 1 / (1 + exp(-s / T))
+    /// ここで s は類似度、T は温度パラメータ
+    fn calibrate_score(similarity: f32, temperature: f32) -> f32 {
+        // 類似度を[-1, 1]から[0, 1]にシフト（オプション）
+        // または、そのままシグモイドを適用
+        // ここでは、類似度をそのまま使用し、シグモイドで確率に変換
+        let scaled = similarity / temperature;
+        1.0 / (1.0 + (-scaled).exp())
     }
 
     /// 全ジャンル中の最大類似度とそのジャンル、閾値を取得する（デバッグ用）。

@@ -7,6 +7,7 @@ use tracing;
 use anyhow::Result;
 use ndarray::Array1;
 use petgraph::{Graph, Undirected, graph::NodeIndex};
+use sprs::CsMat;
 
 use crate::classification::FeatureVector;
 
@@ -239,6 +240,155 @@ impl GraphPropagator {
     #[allow(dead_code)]
     pub fn graph_stats(&self) -> (usize, usize) {
         (self.graph.node_count(), self.graph.edge_count())
+    }
+
+    /// Random Walk with Restart (RWR) によるラベル伝播
+    ///
+    /// # Arguments
+    /// * `seeds` - シードノード（Golden Data）のインデックス
+    /// * `restart_prob` - Restart確率（デフォルト: 0.15）
+    /// * `max_iter` - 最大反復回数（デフォルト: 20）
+    /// * `epsilon` - 収束判定閾値（デフォルト: 1e-6）
+    ///
+    /// # Returns
+    /// 各ノードのランクスコア（確率分布）
+    ///
+    /// # Note
+    /// グラフ構造全体を考慮したラベル伝播を行う。
+    /// 数式: r = c * e + (1-c) * W^T * r
+    /// ここで c は restart_prob、W は行正規化された隣接行列
+    pub fn random_walk_with_restart(
+        &self,
+        seeds: &[NodeIndex],
+        restart_prob: Option<f32>,
+        max_iter: Option<usize>,
+        epsilon: Option<f32>,
+    ) -> HashMap<NodeIndex, f32> {
+        let restart_prob = restart_prob.unwrap_or(0.15);
+        let max_iter = max_iter.unwrap_or(20);
+        let epsilon = epsilon.unwrap_or(1e-6);
+        let n = self.graph.node_count();
+
+        if n == 0 || seeds.is_empty() {
+            return HashMap::new();
+        }
+
+        // 1. petgraphのグラフからCSR形式の隣接行列を構築
+        let adj_matrix = self.build_adjacency_matrix_csr();
+
+        // 2. 初期ベクトル e の作成（シードノードに均等に重みを分配）
+        let mut r_init = vec![0.0; n];
+        let seed_weight = 1.0 / seeds.len() as f32;
+        for &seed in seeds {
+            if let Some(idx) = self.node_index_to_matrix_index(seed) {
+                r_init[idx] = seed_weight;
+            }
+        }
+
+        // 3. Power Iteration
+        let mut r = r_init.clone();
+        for _ in 0..max_iter {
+            // 伝播ステップ: (1-c) * W^T * r
+            // sprs 0.11ではmul_vecが存在しないため、手動で行列ベクトル積を計算
+            // W^T * r を計算（転置行列とベクトルの積）
+            let adj_transposed = adj_matrix.transpose_view();
+            let mut propagated = vec![0.0; n];
+
+            // CSR形式の転置行列とベクトルの積を手動で計算
+            // sprs 0.11では、outer_iterator()を使用して各行を反復処理
+            for (row, outer) in adj_transposed.outer_iterator().enumerate() {
+                // CsVecのindices()とdata()を使って反復処理
+                let indices = outer.indices();
+                let data = outer.data();
+                for (idx, &col) in indices.iter().enumerate() {
+                    if let Some(&val) = data.get(idx) {
+                        if col < r.len() {
+                            propagated[row] += val * r[col];
+                        }
+                    }
+                }
+            }
+
+            // Restartステップとの合成: r_next = c * e + (1-c) * propagated
+            let mut next_r = vec![0.0; n];
+            let mut diff = 0.0;
+
+            for i in 0..n {
+                let val = restart_prob * r_init[i] + (1.0 - restart_prob) * propagated[i];
+                diff += (val - r[i]).abs(); // L1ノルムでの収束判定
+                next_r[i] = val;
+            }
+
+            r = next_r;
+
+            // 収束判定
+            if diff < epsilon {
+                break;
+            }
+        }
+
+        // 4. 結果をNodeIndexのマップに変換
+        let mut result = HashMap::new();
+        for node_idx in self.graph.node_indices() {
+            if let Some(matrix_idx) = self.node_index_to_matrix_index(node_idx) {
+                if matrix_idx < r.len() {
+                    result.insert(node_idx, r[matrix_idx]);
+                }
+            }
+        }
+
+        result
+    }
+
+    /// petgraphのグラフからCSR形式の隣接行列を構築する
+    fn build_adjacency_matrix_csr(&self) -> CsMat<f32> {
+        let n = self.graph.node_count();
+        let mut indptr = Vec::with_capacity(n + 1);
+        let mut indices = Vec::new();
+        let mut data = Vec::new();
+
+        let mut current_ptr = 0;
+        indptr.push(current_ptr);
+
+        // ノードインデックスから行列インデックスへのマッピングを作成
+        let node_to_matrix: HashMap<NodeIndex, usize> = self
+            .graph
+            .node_indices()
+            .enumerate()
+            .map(|(i, node)| (node, i))
+            .collect();
+
+        for node_idx in self.graph.node_indices() {
+            let neighbors: Vec<_> = self.graph.neighbors(node_idx).collect();
+            let degree = neighbors.len() as f32;
+
+            if degree > 0.0 {
+                let weight = 1.0 / degree; // 行正規化
+                for neighbor in neighbors {
+                    if let Some(&neighbor_matrix_idx) = node_to_matrix.get(&neighbor) {
+                        indices.push(neighbor_matrix_idx);
+                        data.push(weight);
+                        current_ptr += 1;
+                    }
+                }
+            }
+            indptr.push(current_ptr);
+        }
+
+        // CSR形式で行列を作成
+        CsMat::new((n, n), indptr, indices, data)
+    }
+
+    /// NodeIndexを行列インデックスに変換する
+    fn node_index_to_matrix_index(&self, node_idx: NodeIndex) -> Option<usize> {
+        // ノードインデックスから行列インデックスへのマッピングを作成
+        let node_to_matrix: HashMap<NodeIndex, usize> = self
+            .graph
+            .node_indices()
+            .enumerate()
+            .map(|(i, node)| (node, i))
+            .collect();
+        node_to_matrix.get(&node_idx).copied()
     }
 
     /// 指定された特徴ベクトルに近いノードを探し、ラベルを予測する（k-NN）。

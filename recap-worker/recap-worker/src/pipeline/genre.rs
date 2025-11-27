@@ -385,9 +385,14 @@ impl CoarseGenreStage {
         let mut genre_scores = classification.keyword_hits.clone();
         for genre in &selected_genres {
             genre_scores.entry(genre.clone()).or_insert_with(|| {
-                classification.scores.get(genre).map_or(0, |score| {
-                    let rounded = (score.max(0.0) * 100.0).round();
-                    u32::try_from(rounded.max(0.0) as i32).unwrap_or(0) as usize
+                classification.scores.get(genre).map_or(0usize, |score| {
+                    let rounded = (score.max(0.0) * 100.0f32).round();
+                    // f32 -> u32 -> usize の安全な変換（符号損失を回避）
+                    // roundedは既に0以上なので、上限のみ制限
+                    let clamped = rounded.min(u32::MAX as f32).max(0.0f32);
+                    #[allow(clippy::cast_sign_loss)]
+                    let as_u32 = clamped as u32;
+                    as_u32 as usize
                 })
             });
         }
