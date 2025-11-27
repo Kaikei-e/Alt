@@ -5,12 +5,12 @@ use async_trait::async_trait;
 use tracing::{debug, info, warn};
 
 use crate::scheduler::JobContext;
-use crate::store::{
-    dao::RecapDao,
-    models::{PersistedGenre, RecapOutput},
-};
+use crate::store::dao::RecapDao;
+use crate::store::models::RecapOutput;
 
 use super::dispatch::DispatchResult;
+use crate::clients::subworker::ClusterInfo;
+use crate::store::models::{PersistedCluster, PersistedGenre, PersistedSentence};
 use serde_json::json;
 
 /// Sanitize title and summary text by removing markdown code blocks
@@ -118,6 +118,106 @@ impl PersistStage for FinalSectionPersistStage {
                 }
             };
 
+            // Persist clustering results if available
+            if let Some(clustering) = &genre_result.clustering_response {
+                let persisted_clusters: Vec<PersistedCluster> = clustering
+                    .clusters
+                    .iter()
+                    .map(|c| convert_to_persisted_cluster(c))
+                    .collect();
+
+                if let Err(e) = self
+                    .dao
+                    .insert_clusters(clustering.run_id, &persisted_clusters)
+                    .await
+                {
+                    warn!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        run_id = %clustering.run_id,
+                        error = ?e,
+                        "failed to persist clusters"
+                    );
+                    // We don't fail the whole genre for this, but it's a significant warning
+                } else {
+                    debug!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        cluster_count = persisted_clusters.len(),
+                        "persisted clusters successfully"
+                    );
+                }
+            }
+
+            // Collect source articles for bullets
+            let mut sources_metadata: Vec<serde_json::Value> = Vec::new();
+            if let Some(clustering) = &genre_result.clustering_response {
+                // Collect all article IDs from representatives
+                let article_ids: Vec<String> = clustering
+                    .clusters
+                    .iter()
+                    .flat_map(|c| c.representatives.iter().map(|r| r.article_id.clone()))
+                    .collect::<std::collections::HashSet<_>>()
+                    .into_iter()
+                    .collect();
+
+                // Pre-compute article ID to title mapping
+                let article_titles: std::collections::HashMap<String, String> = clustering
+                    .clusters
+                    .iter()
+                    .flat_map(|c| &c.representatives)
+                    .map(|r| (r.article_id.clone(), r.text.clone()))
+                    .collect();
+
+                match self
+                    .dao
+                    .get_article_metadata(job.job_id, &article_ids)
+                    .await
+                {
+                    Ok(metadata) => {
+                        // Convert to source objects
+                        for (article_id, (published_at, source_url)) in metadata {
+                            let title = article_titles
+                                .get(&article_id)
+                                .cloned()
+                                .unwrap_or_else(|| "Source Article".to_string());
+
+                            sources_metadata.push(json!({
+                                "title": title,
+                                "url": source_url,
+                                "published_at": published_at,
+                                "article_id": article_id
+                            }));
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            job_id = %job.job_id,
+                            genre = %genre,
+                            error = ?e,
+                            "failed to fetch article metadata for sources"
+                        );
+                    }
+                }
+            }
+
+            // Sort sources by published_at desc
+            sources_metadata.sort_by(|a, b| {
+                let a_time = a
+                    .as_object()
+                    .and_then(|m| m.get("published_at"))
+                    .and_then(|v| v.as_str());
+                let b_time = b
+                    .as_object()
+                    .and_then(|m| m.get("published_at"))
+                    .and_then(|v| v.as_str());
+                b_time.cmp(&a_time)
+            });
+
+            // Limit sources to top 5
+            let top_sources: Vec<serde_json::Value> =
+                sources_metadata.into_iter().take(5).collect();
+
             let summary_id = genre_result
                 .summary_response_id
                 .as_ref()
@@ -128,7 +228,7 @@ impl PersistStage for FinalSectionPersistStage {
                 .summary
                 .bullets
                 .iter()
-                .map(|bullet| json!({ "text": bullet, "sources": [] }))
+                .map(|bullet| json!({ "text": bullet, "sources": top_sources }))
                 .collect::<Vec<_>>();
             let bullets_json = serde_json::Value::Array(bullet_values);
 
@@ -206,6 +306,31 @@ impl PersistStage for FinalSectionPersistStage {
         );
 
         Ok(persist_result)
+    }
+}
+
+fn convert_to_persisted_cluster(c: &ClusterInfo) -> PersistedCluster {
+    let sentences = c
+        .representatives
+        .iter()
+        .enumerate()
+        .map(|(i, r)| PersistedSentence {
+            article_id: r.article_id.clone(),
+            sentence_id: i as i32,
+            text: r.text.clone(),
+            lang: r.lang.clone().unwrap_or_else(|| "unknown".to_string()),
+            paragraph_idx: r.paragraph_idx,
+            score: r.score.unwrap_or(0.0),
+        })
+        .collect();
+
+    PersistedCluster {
+        cluster_id: c.cluster_id,
+        size: c.size as i32,
+        label: c.label.clone(),
+        top_terms: serde_json::to_value(&c.top_terms).unwrap_or(json!([])),
+        stats: c.stats.clone(),
+        sentences,
     }
 }
 
