@@ -10,7 +10,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from unittest.mock import Mock, patch
 
-import psutil
+import psutil  # pyright: ignore[reportMissingModuleSource]
 import pytest
 
 from main import TagGeneratorService

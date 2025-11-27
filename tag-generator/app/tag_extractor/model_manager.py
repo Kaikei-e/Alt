@@ -187,7 +187,7 @@ class ModelManager:
             if self._embedder is None:
                 raise RuntimeError("Embedder was not initialized")
             logger.info("Loading KeyBERT model")
-            self._keybert = KeyBERT(self._embedder)  # pyright: ignore[reportArgumentType]
+            self._keybert = KeyBERT(self._embedder)  # pyright: ignore[reportArgumentType,reportOptionalCall]
             logger.info(
                 "KeyBERT loaded successfully",
                 embedder_backend=self._embedder_backend,

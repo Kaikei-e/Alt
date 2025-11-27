@@ -10,22 +10,22 @@ from typing import TYPE_CHECKING
 import structlog
 
 if TYPE_CHECKING:
-    import numpy as np
-    import onnxruntime as ort
-    from transformers import AutoTokenizer
+    import numpy as np  # pyright: ignore[reportMissingImports]
+    import onnxruntime as ort  # pyright: ignore[reportMissingImports]
+    from transformers import AutoTokenizer  # pyright: ignore[reportMissingImports]
 else:
     try:
-        import numpy as np
+        import numpy as np  # pyright: ignore[reportMissingImports]
     except ImportError:  # pragma: no cover
         np = None  # type: ignore[assignment]
 
     try:
-        import onnxruntime as ort  # type: ignore
+        import onnxruntime as ort  # type: ignore[assignment] # pyright: ignore[reportMissingImports]
     except ImportError:  # pragma: no cover
         ort = None  # type: ignore[assignment]
 
     try:
-        from transformers import AutoTokenizer
+        from transformers import AutoTokenizer  # pyright: ignore[reportMissingImports]
     except ImportError:  # pragma: no cover
         AutoTokenizer = None  # type: ignore[assignment]
 
