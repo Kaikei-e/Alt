@@ -483,19 +483,33 @@ impl CentroidClassifier {
     /// 閾値を超える中で最大のコサイン類似度を持つジャンルとスコアを返す。
     /// 該当するジャンルがない場合は `None` を返す。
     pub fn predict(&self, target_vector: &FeatureVector) -> Option<(String, f32)> {
+        self.predict_top_k(target_vector, 1)
+            .first()
+            .map(|(g, s)| (g.clone(), *s))
+    }
+
+    /// ターゲットベクトルを分類し、上位k個の候補を返す。
+    ///
+    /// # Arguments
+    /// * `target_vector` - 分類対象の特徴ベクトル
+    /// * `k` - 取得する上位候補の数
+    ///
+    /// # Returns
+    /// (ジャンル, スコア) のリスト。スコア降順。
+    pub fn predict_top_k(&self, target_vector: &FeatureVector, k: usize) -> Vec<(String, f32)> {
         let combined = Self::combine_feature_vector(target_vector);
         if combined.len() != self.feature_dim {
-            return None;
+            return Vec::new();
         }
 
         // L2正規化
         let norm = combined.dot(&combined).sqrt();
         if norm <= 0.0 {
-            return None;
+            return Vec::new();
         }
         let normalized = &combined / norm;
 
-        let mut best_genre: Option<(String, f32)> = None;
+        let mut candidates: Vec<(String, f32)> = Vec::new();
 
         for (genre, centroids) in &self.centroids {
             // 各サブ重心との最大類似度を計算
@@ -510,24 +524,20 @@ impl CentroidClassifier {
             // Temperature Scalingによる較正
             let calibrated_score = Self::calibrate_score(max_similarity, self.temperature);
 
-            // 閾値を取得（較正後のスコアと比較するため、閾値も較正する必要がある場合がある）
-            // ここでは、較正前の類似度と閾値を比較する従来の方法を維持
+            // 閾値を取得
             let threshold = self.thresholds.get(genre).copied().unwrap_or(0.6);
 
-            // 閾値を超えている場合のみ考慮（較正前の類似度で判定）
+            // 閾値を超えている場合のみ候補に追加（較正前の類似度で判定）
             if max_similarity >= threshold {
-                // 返り値は較正後のスコアを使用
-                if let Some((_, best_score)) = best_genre {
-                    if calibrated_score > best_score {
-                        best_genre = Some((genre.clone(), calibrated_score));
-                    }
-                } else {
-                    best_genre = Some((genre.clone(), calibrated_score));
-                }
+                candidates.push((genre.clone(), calibrated_score));
             }
         }
 
-        best_genre
+        // スコア降順にソート
+        candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // 上位k個を返す
+        candidates.into_iter().take(k).collect()
     }
 
     /// Temperature Scalingによる信頼度較正

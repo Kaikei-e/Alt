@@ -105,7 +105,7 @@ pub fn evaluate_dataset(dataset: &GoldenDataset) -> EvaluationSummary {
     let mut rouge_count = 0usize;
 
     let keywords = GenreKeywords::default_keywords();
-    let mut metrics_calculator = MetricsCalculator::new();
+    let mut metrics_calculator = MetricsCalculator::new(2);
 
     let all_samples = dataset
         .good
@@ -145,12 +145,13 @@ pub fn evaluate_dataset(dataset: &GoldenDataset) -> EvaluationSummary {
 
         if let (Some(expected_genre), Some(summary_text)) = (&run.genre, &run.summary_text) {
             let expected_set = HashSet::from([expected_genre.clone()]);
-            let predicted = keywords
+            let predicted_list: Vec<String> = keywords
                 .top_genres(summary_text, 3)
                 .into_iter()
                 .map(|(genre, _)| genre)
-                .collect::<HashSet<String>>();
-            metrics_calculator.push(expected_set, predicted);
+                .collect();
+            let predicted_set = predicted_list.iter().cloned().collect::<HashSet<String>>();
+            metrics_calculator.push(expected_set, predicted_set, Some(&predicted_list));
         }
     }
 

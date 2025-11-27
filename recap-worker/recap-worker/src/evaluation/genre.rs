@@ -262,9 +262,9 @@ pub async fn evaluate_two_stage(
     let graph_source = Arc::new(StaticEvaluationGraph::new(graph_cache));
     let engine = Arc::new(DefaultRefineEngine::new(config, graph_source));
 
-    let mut coarse_calc = MetricsCalculator::new();
-    let mut tag_calc = MetricsCalculator::new();
-    let mut two_stage_calc = MetricsCalculator::new();
+    let mut coarse_calc = MetricsCalculator::new(2);
+    let mut tag_calc = MetricsCalculator::new(2);
+    let mut two_stage_calc = MetricsCalculator::new(2);
 
     for sample in samples {
         let internal_candidates: Vec<GenreCandidate> = sample
@@ -291,15 +291,27 @@ pub async fn evaluate_two_stage(
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
             .map_or_else(|| "other".to_string(), |candidate| candidate.name.clone());
-        coarse_calc.push(expected_set.clone(), to_hashset(&coarse_pred));
+        let mut sorted_candidates = internal_candidates.clone();
+        sorted_candidates.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let top_k_list: Vec<String> = sorted_candidates.iter().map(|c| c.name.clone()).collect();
+
+        coarse_calc.push(
+            expected_set.clone(),
+            to_hashset(&coarse_pred),
+            Some(&top_k_list),
+        );
 
         let tag_pred = compute_tag_prediction(&normalized_candidates, &tag_signals, tag_gate)
             .unwrap_or_else(|| coarse_pred.clone());
-        tag_calc.push(expected_set.clone(), to_hashset(&tag_pred));
+        tag_calc.push(expected_set.clone(), to_hashset(&tag_pred), None);
 
         let two_stage_pred =
             refine_prediction(engine.clone(), sample, &internal_candidates, &tag_profile).await?;
-        two_stage_calc.push(expected_set, to_hashset(&two_stage_pred));
+        two_stage_calc.push(expected_set, to_hashset(&two_stage_pred), None);
     }
 
     Ok(GenreEvaluationReport {
