@@ -12,6 +12,9 @@ Recap Worker is Alt's Rust 2024 batch processor that turns seven days of raw art
 - **Atlas migrations**: Definitive schema lives in `recap-migration-atlas/` (see below).
 
 ## System Flow
+
+**詳細なパイプラインフロー図**: 実装に基づいた詳細なフロー図は [`PIPELINE_FLOW.md`](recap-worker/PIPELINE_FLOW.md) を参照してください。
+
 ```mermaid
 flowchart TD
     Scheduler[Daily JST Daemon<br/>04:00 @ UTC+9] -->|JobContext + genres| API
