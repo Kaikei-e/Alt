@@ -44,6 +44,21 @@ class Clusterer:
                 empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0)
             )
 
+        # Validation: Check for NaNs or Infs
+        if not np.isfinite(embeddings).all():
+            empty = np.empty((0,), dtype=int)
+            return ClusterResult(
+                empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0)
+            )
+
+        # Validation: Check for zero vectors (which break cosine metric)
+        norms = np.linalg.norm(embeddings, axis=1)
+        if (norms == 0).any():
+            empty = np.empty((0,), dtype=int)
+            return ClusterResult(
+                empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0)
+            )
+
         use_umap = bool(
             self.settings.enable_umap_auto
             and embeddings.shape[0] >= self.settings.umap_threshold_sentences
