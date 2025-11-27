@@ -5,11 +5,16 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/go-shiori/go-readability"
 )
 
 // ExtractArticleText converts raw article HTML into plain text paragraphs.
 // It removes non-content elements (script/style/navigation) and normalizes
 // whitespace so the returned string contains only readable sentences.
+// ExtractArticleText converts raw article HTML into plain text paragraphs.
+// It uses go-readability to extract the main content and then converts it to plain text.
+// ExtractArticleText converts raw article HTML into plain text paragraphs.
+// It uses go-readability to extract the main content and then converts it to plain text.
 func ExtractArticleText(raw string) string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -21,48 +26,26 @@ func ExtractArticleText(raw string) string {
 		return normalizeWhitespace(trimmed)
 	}
 
-	// Parse HTML and fall back to simple stripping on failure.
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(trimmed))
+	// Use go-readability to extract content
+	article, err := readability.FromReader(strings.NewReader(trimmed), nil)
 	if err != nil {
+		// Fallback to simple stripping on failure
 		return normalizeWhitespace(StripTags(trimmed))
 	}
 
-	// Remove elements that are unlikely to be part of the readable body.
-	doc.Find("script, style, nav, header, footer, aside, form, iframe, noscript").Remove()
-
-	collect := func(selection *goquery.Selection) []string {
-		var parts []string
-		selection.Each(func(_ int, s *goquery.Selection) {
-			text := normalizeWhitespace(strings.TrimSpace(s.Text()))
-			if text == "" {
-				return
-			}
-			if len(parts) == 0 || parts[len(parts)-1] != text {
-				parts = append(parts, text)
-			}
-		})
-		return parts
+	// article.TextContent usually contains the plain text of the article
+	// We trim it but avoid normalizeWhitespace which destroys newlines
+	if strings.TrimSpace(article.TextContent) != "" {
+		return strings.TrimSpace(article.TextContent)
 	}
 
-	paragraphs := collect(doc.Find("article p, main p, section p, div p, p"))
-	if len(paragraphs) == 0 {
-		paragraphs = collect(doc.Find("li, blockquote"))
-	}
-	if len(paragraphs) == 0 {
-		paragraphs = collect(doc.Find("h1, h2, h3, h4, h5, h6"))
-	}
-	if len(paragraphs) == 0 {
-		fallback := normalizeWhitespace(strings.TrimSpace(doc.Text()))
-		if fallback != "" {
-			paragraphs = append(paragraphs, fallback)
-		}
+	// If TextContent is empty but Content (HTML) is not, strip tags from Content
+	if strings.TrimSpace(article.Content) != "" {
+		return strings.TrimSpace(StripTags(article.Content))
 	}
 
-	if len(paragraphs) == 0 {
-		return ""
-	}
-
-	return strings.TrimSpace(strings.Join(paragraphs, "\n\n"))
+	// If everything fails, fallback to original strip tags on raw content
+	return normalizeWhitespace(StripTags(trimmed))
 }
 
 // Clean search results using goquery for better HTML handling

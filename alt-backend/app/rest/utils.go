@@ -4,6 +4,7 @@ import (
 	"alt/di"
 	"alt/domain"
 	"alt/utils/errors"
+	"alt/utils/html_parser"
 	"alt/utils/logger"
 	"alt/utils/security"
 	"bytes"
@@ -200,15 +201,14 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 		return "", "", "", fmt.Errorf("failed to read body: %w", err)
 	}
 
-	// Simple title extraction (regex)
-	// In a real app, use a proper HTML parser like goquery
-	title := ""
-	// ... (simplified title extraction logic if needed, or just return empty title)
+	// Extract title from HTML using html_parser
+	htmlContent := string(bodyBytes)
+	title := html_parser.ExtractTitle(htmlContent)
 
 	// Generate ID
 	articleID := generateArticleID(urlStr)
 
-	return string(bodyBytes), articleID, title, nil
+	return htmlContent, articleID, title, nil
 }
 
 // Generates a simple article ID from URL
