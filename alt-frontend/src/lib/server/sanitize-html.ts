@@ -72,7 +72,6 @@ const defaultArticleConfig: Config = {
     "width",
     "height",
     "loading",
-    "data-proxy-url",
   ],
   ALLOW_DATA_ATTR: true,
   ALLOWED_URI_REGEXP:

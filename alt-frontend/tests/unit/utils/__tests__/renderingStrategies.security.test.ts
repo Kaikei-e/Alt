@@ -373,7 +373,6 @@ describe("renderingStrategies Security Tests", () => {
           "width",
           "height",
           "loading",
-          "data-proxy-url",
         ],
         ALLOW_DATA_ATTR: true,
         ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,

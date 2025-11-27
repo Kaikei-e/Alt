@@ -9,7 +9,6 @@ import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 import {
   decodeHtmlEntities as decodeHtmlEntitiesUtil,
   decodeHtmlEntitiesFromUrl as decodeHtmlEntitiesFromUrlUtil,
-  escapeHtmlForAttributes,
 } from "./htmlEntityUtils";
 
 export interface RenderingStrategy {
@@ -36,7 +35,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     // Enhanced HTML with custom CSS for images and links
     const enhancedHTML = this.enhanceHTMLElements(safeHtml, articleUrl);
 
-    // Return using dangerouslySetInnerHTML with proxy image handler
+    // Return using dangerouslySetInnerHTML
     return <HTMLContentRenderer html={enhancedHTML} />;
   }
 
@@ -52,35 +51,24 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
 
   /**
    * Enhance HTML elements with proper attributes (XPLAN11: Post-sanitization)
-   * COEP Bypass: Convert external image URLs to proxy URLs with POST API support
    * Fixed: Proper URL decoding order to prevent double encoding
    * Fixed: Resolve relative image paths against article URL
    */
   private enhanceHTMLElements(html: string, articleUrl?: string): string {
     return (
       html
-        // Step 1: Convert external image URLs to proxy URLs (COEP bypass)
+        // Step 1: Process image URLs (resolve relative paths, decode entities)
         .replace(
           /<img([^>]*?)src="([^"]*?)"([^>]*?)>/gi,
           (match, before, src, after) => {
-            // Fix: Decode HTML entities BEFORE converting to proxy URL
+            // Decode HTML entities
             const decodedSrc = decodeHtmlEntitiesFromUrlUtil(src);
-            // Fix: Resolve relative paths against article URL
+            // Resolve relative paths against article URL
             const resolvedSrc = this.resolveRelativeImageUrl(
               decodedSrc,
               articleUrl,
             );
-            const proxiedSrc = this.convertToProxyUrl(resolvedSrc);
-
-            // If this is a proxy URL, add special attributes for lazy loading (CSP compliant - no inline handlers)
-            if (proxiedSrc.startsWith("data:image/proxy,")) {
-              const originalUrl = decodeURIComponent(
-                proxiedSrc.replace("data:image/proxy,", ""),
-              );
-              return `<img${before}src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-proxy-url="${originalUrl}" data-fallback-src="${escapeHtmlForAttributes(resolvedSrc)}"${after} loading="lazy" style="opacity:0;transition:opacity 0.3s" class="proxy-image">`;
-            }
-
-            return `<img${before}src="${proxiedSrc}"${after} loading="lazy">`;
+            return `<img${before}src="${resolvedSrc}"${after} loading="lazy">`;
           },
         )
         // Step 2: Add security attributes to all links
@@ -127,140 +115,6 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     }
   }
 
-  /**
-   * Convert external image URL to proxy URL for COEP bypass
-   * Phase 4: Updated to use POST /v1/images/fetch endpoint with Envoy proxy support
-   * @param imageUrl - Original image URL
-   * @returns Data URL (base64) or original URL if not applicable
-   */
-  private convertToProxyUrl(imageUrl: string): string {
-    try {
-      // Performance: Skip obviously local or data URLs
-      if (imageUrl.startsWith("data:") || imageUrl.startsWith("/")) {
-        return imageUrl;
-      }
-
-      // Parse URL
-      const url = new URL(imageUrl);
-
-      // Performance: Skip localhost or local development URLs
-      if (
-        url.hostname === "localhost" ||
-        url.hostname.includes("127.0.0.1") ||
-        url.hostname.includes("192.168.") ||
-        url.hostname.includes("10.0.") ||
-        url.hostname.endsWith(".local")
-      ) {
-        return imageUrl;
-      }
-
-      // Define allowed external domains that need proxy (cached for performance)
-      const externalDomains = this.getExternalDomainList();
-
-      // Check if this is an external domain that needs proxying
-      const needsProxy = externalDomains.some(
-        (domain) =>
-          url.hostname === domain || url.hostname.endsWith("." + domain),
-      );
-
-      // Only proxy HTTPS URLs from allowed domains
-      if (needsProxy && url.protocol === "https:") {
-        // Performance: Add URL validation for common image formats
-        const validImagePath = this.isValidImagePath(url.pathname);
-        if (!validImagePath) {
-          return imageUrl;
-        }
-
-        // Create a blob URL placeholder that will be replaced by actual image data
-        // This approach ensures we don't make the API call during HTML parsing
-        // The actual fetching will happen when the image is loaded
-        const proxyImageUrl = this.createProxyImageUrl(imageUrl);
-
-        // Debug logging in development
-        if (process.env.NODE_ENV === "development") {
-        }
-
-        return proxyImageUrl;
-      }
-
-      // Return original URL for local or non-proxied images
-      return imageUrl;
-    } catch (error) {
-      // Enhanced error handling with different error types
-      if (error instanceof TypeError && error.message.includes("Invalid URL")) {
-      } else {
-      }
-      return imageUrl;
-    }
-  }
-
-  /**
-   * Create a special proxy image URL that triggers POST API fetch
-   * Uses a data-proxy-url attribute to store original URL for lazy loading
-   * @param originalUrl - Original image URL
-   * @returns Special proxy URL that will be handled by image load handler
-   */
-  private createProxyImageUrl(originalUrl: string): string {
-    // Encode the original URL to make it safe for use as a data attribute
-    const encodedOriginalUrl = encodeURIComponent(originalUrl);
-
-    // Return a special URL format that our image load handler can recognize
-    // Format: data:image/proxy,<encoded-original-url>
-    return `data:image/proxy,${encodedOriginalUrl}`;
-  }
-
-  /**
-   * Cache external domains list for performance
-   * @returns Array of external domains
-   */
-  private getExternalDomainList(): string[] {
-    // Static cache to avoid repeated array creation
-    if (!HTMLRenderingStrategy.externalDomainsCache) {
-      HTMLRenderingStrategy.externalDomainsCache = [
-        "9to5mac.com",
-        "techcrunch.com",
-        "arstechnica.com",
-        "theverge.com",
-        "engadget.com",
-        "wired.com",
-        "cdn.mos.cms.futurecdn.net",
-        "images.unsplash.com",
-        "img.youtube.com",
-        // Additional common image domains
-        "i.imgur.com",
-        "pbs.twimg.com",
-        "images.pexels.com",
-        "cdn.pixabay.com",
-      ];
-    }
-    return HTMLRenderingStrategy.externalDomainsCache;
-  }
-
-  /**
-   * Validate if URL path likely contains an image
-   * @param pathname - URL pathname
-   * @returns True if likely an image
-   */
-  private isValidImagePath(pathname: string): boolean {
-    const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tiff)(\?|$)/i;
-    const imageKeywords = /(image|img|photo|picture|avatar|thumb|logo)/i;
-
-    // Check file extension first (most reliable)
-    if (imageExtensions.test(pathname)) {
-      return true;
-    }
-
-    // Check for image-related keywords in path
-    if (imageKeywords.test(pathname)) {
-      return true;
-    }
-
-    // Default to true for paths that might be dynamic image URLs
-    return true;
-  }
-
-  // Static cache for external domains (class-level)
-  private static externalDomainsCache: string[] | null = null;
 
   /**
    * Decode HTML entities specifically for URLs with comprehensive security protection
@@ -427,105 +281,20 @@ export class RenderingStrategyRegistry {
 export const renderingRegistry = new RenderingStrategyRegistry();
 
 /**
- * HTML Content Renderer Component with POST API Image Proxy Support
- * Handles lazy loading of proxied images using the new /v1/images/fetch endpoint
+ * HTML Content Renderer Component
+ * Renders sanitized HTML content
  */
 interface HTMLContentRendererProps {
   html: string;
 }
 
 const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
-  const containerRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (!containerRef.current) return;
-
-    const container = containerRef.current;
-    const proxyImages = container.querySelectorAll("img[data-proxy-url]");
-
-    // Setup CSP-compliant event handlers for proxy images
-    const setupImageEventHandlers = (img: HTMLImageElement) => {
-      const originalUrl = img.getAttribute("data-proxy-url");
-      const fallbackSrc = img.getAttribute("data-fallback-src");
-
-      if (!originalUrl) return;
-
-      // Success handler
-      const handleImageLoad = () => {
-        img.style.opacity = "1";
-        img.removeAttribute("data-proxy-url");
-        img.removeAttribute("data-fallback-src");
-        img.removeEventListener("load", handleImageLoad);
-        img.removeEventListener("error", handleImageError);
-      };
-
-      // Error handler with fallback
-      const handleImageError = () => {
-        if (fallbackSrc) {
-          img.src = fallbackSrc;
-        }
-        img.removeAttribute("data-proxy-url");
-        img.removeAttribute("data-fallback-src");
-        img.style.opacity = "1";
-        img.style.border = "2px solid #ff6b6b";
-        img.title = "Failed to load via proxy, showing original image";
-        img.removeEventListener("load", handleImageLoad);
-        img.removeEventListener("error", handleImageError);
-      };
-
-      // Attach event handlers
-      img.addEventListener("load", handleImageLoad);
-      img.addEventListener("error", handleImageError);
-    };
-
-    // Setup intersection observer for lazy loading
-    const imageObserver = new IntersectionObserver(
-      async (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const img = entry.target as HTMLImageElement;
-            const originalUrl = img.getAttribute("data-proxy-url");
-
-            if (originalUrl) {
-              imageObserver.unobserve(img);
-              // Setup event handlers first
-              setupImageEventHandlers(img);
-              // Then load the proxy image
-              await loadProxyImage(img, originalUrl);
-            }
-          }
-        }
-      },
-      {
-        rootMargin: "50px", // Start loading images 50px before they come into view
-        threshold: 0.1,
-      },
-    );
-
-    // Observe all proxy images
-    proxyImages.forEach((img) => {
-      imageObserver.observe(img);
-    });
-
-    // Cleanup
-    return () => {
-      imageObserver.disconnect();
-      // Clean up any remaining event listeners
-      proxyImages.forEach((img) => {
-        const imgElement = img as HTMLImageElement;
-        imgElement.removeEventListener("load", () => { });
-        imgElement.removeEventListener("error", () => { });
-      });
-    };
-  }, [html]);
-
   // HTML is already sanitized server-side as SafeHtmlString
   // No need to sanitize again on the client
   const sanitizedHtml = html;
 
   return (
     <div
-      ref={containerRef}
       className="smart-content-html"
       dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
       style={
@@ -537,76 +306,3 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
     />
   );
 };
-
-/**
- * Load image through POST API proxy endpoint
- * @param img - Image element to update
- * @param originalUrl - Original image URL to fetch
- */
-async function loadProxyImage(
-  img: HTMLImageElement,
-  originalUrl: string,
-): Promise<void> {
-  try {
-    // Show loading state
-    img.style.opacity = "0.5";
-
-    // Make POST request to our image proxy endpoint via /api prefix
-    const response = await fetch("/api/backend/v1/images/fetch", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        url: originalUrl,
-        options: {
-          max_size: 5 * 1024 * 1024, // 5MB max
-          timeout: 30, // 30 seconds timeout
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch image: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    // Get the binary image data
-    const imageBlob = await response.blob();
-
-    // Validate that we actually got image data
-    if (!imageBlob.type.startsWith("image/")) {
-      throw new Error(`Invalid content type: ${imageBlob.type}`);
-    }
-
-    const imageUrl = URL.createObjectURL(imageBlob);
-
-    // Update the image source - this will trigger the event handlers set up earlier
-    img.src = imageUrl;
-
-    // Debug logging in development
-    if (process.env.NODE_ENV === "development") {
-    }
-
-    // Set up cleanup for object URL (CSP compliant)
-    const cleanupObjectUrl = () => {
-      URL.revokeObjectURL(imageUrl);
-    };
-
-    // Use addEventListener instead of onload property (CSP compliant)
-    img.addEventListener("load", cleanupObjectUrl, { once: true });
-    img.addEventListener("error", cleanupObjectUrl, { once: true });
-  } catch (error) {
-    console.error("Failed to load proxy image:", originalUrl, error);
-
-    // Trigger error handler by setting a non-existent src
-    // This will cause the error event handler to fire, which will handle fallback
-    img.src = "data:image/gif;base64,invalid";
-
-    // Store error details for debugging
-    // SECURITY FIX: Escape error message to prevent XSS if attribute value is later used as HTML
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    img.setAttribute("data-proxy-error", escapeHtmlForAttributes(errorMessage));
-  }
-}
