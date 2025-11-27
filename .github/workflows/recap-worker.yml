@@ -61,12 +61,21 @@ jobs:
 
       - name: Install Rust toolchain
         run: |
+          set -e  # Exit on error
+          # Clean rustup directory to avoid download/rename issues
+          rm -rf ~/.rustup || true
+          rm -rf ~/.cargo || true
           # Use official rustup (actions-rs is deprecated)
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=stable
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=stable --no-modify-path
+          # Add cargo to PATH
+          export PATH="$HOME/.cargo/bin:$PATH"
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-          source "$HOME/.cargo/env"
-          rustup default stable
-          rustup component add clippy
+          # Verify installation
+          "$HOME/.cargo/bin/rustup" --version
+          "$HOME/.cargo/bin/cargo" --version
+          # Set default toolchain and add clippy
+          "$HOME/.cargo/bin/rustup" default stable
+          "$HOME/.cargo/bin/rustup" component add clippy
 
       - name: Rust version info
         run: |
