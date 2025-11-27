@@ -6,6 +6,7 @@ export type RecapGenre = {
   articleCount: number; // 関連記事数
   clusterCount: number; // クラスター数
   evidenceLinks: EvidenceLink[]; // 証拠記事（先読み5件程度）
+  bullets: string[]; // 箇条書きサマリー
 };
 
 export type EvidenceLink = {

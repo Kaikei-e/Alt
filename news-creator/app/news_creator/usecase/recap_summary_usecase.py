@@ -233,7 +233,7 @@ class RecapSummaryUsecase:
     def _resolve_max_bullets(self, request: RecapSummaryRequest) -> int:
         if request.options and request.options.max_bullets is not None:
             return request.options.max_bullets
-        return 10
+        return 15
 
     def _parse_summary_json(self, content: str, max_bullets: int) -> Dict[str, Any]:
         if not content:
@@ -405,7 +405,7 @@ class RecapSummaryUsecase:
         if not isinstance(language, str) or not language.strip():
             language = "ja"
 
-        max_allowed = min(max(1, max_bullets), 10)
+        max_allowed = min(max(1, max_bullets), 15)
         if len(bullets) > max_allowed:
             logger.debug(
                 "Trimming recap summary bullets to schema limit",

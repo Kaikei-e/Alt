@@ -18,6 +18,7 @@ type RecapGenreResponse = {
   article_count: number;
   cluster_count: number;
   evidence_links?: EvidenceLinkResponse[] | null;
+  bullets?: string[] | null;
 };
 
 type EvidenceLinkResponse = {
@@ -43,6 +44,7 @@ const adaptGenre = (genre: RecapGenreResponse): RecapGenre => ({
   articleCount: genre.article_count,
   clusterCount: genre.cluster_count,
   evidenceLinks: (genre.evidence_links ?? []).map(adaptEvidenceLink),
+  bullets: genre.bullets ?? [],
 });
 
 const adaptRecapSummary = (payload: RecapSummaryResponse): RecapSummary => ({
@@ -55,7 +57,7 @@ const adaptRecapSummary = (payload: RecapSummaryResponse): RecapSummary => ({
 });
 
 export class RecapApi {
-  constructor(private apiClient: ApiClient) {}
+  constructor(private apiClient: ApiClient) { }
 
   async get7DaysRecap(): Promise<RecapSummary> {
     try {

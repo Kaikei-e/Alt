@@ -74,18 +74,34 @@ const RecapCard = ({ genre }: RecapCardProps) => {
             </Flex>
           )}
 
-          {/* 要約プレビュー。改行された文章のそれぞれ先頭100文字を表示する（2行） */}
-          <Text
-            fontSize="sm"
-            color="var(--text-primary)"
-            lineHeight="1.6"
-            {...(!isExpanded && { noOfLines: 2 })}
-          >
-            {genre.summary
-              .split("\n")
-              .map((line) => line.slice(0, 100))
-              .join("...\n")}
-          </Text>
+          {/* 要約プレビュー: 箇条書きの最初の3つを表示 */}
+          <VStack align="stretch" gap={2}>
+            {(genre.bullets && genre.bullets.length > 0
+              ? genre.bullets
+              : genre.summary.split("\n").filter((line) => line.trim().length > 0)
+            )
+              .slice(0, isExpanded ? undefined : 3)
+              .map((bullet, idx) => (
+                <Flex key={idx} gap={2} align="start">
+                  <Box
+                    w="6px"
+                    h="6px"
+                    borderRadius="full"
+                    bg="var(--alt-primary)"
+                    mt="9px"
+                    flexShrink={0}
+                  />
+                  <Text
+                    fontSize="sm"
+                    color="var(--text-primary)"
+                    lineHeight="1.6"
+                    lineClamp={isExpanded ? undefined : 2}
+                  >
+                    {bullet}
+                  </Text>
+                </Flex>
+              ))}
+          </VStack>
 
           {/* 展開ボタン */}
           <Button
@@ -109,36 +125,9 @@ const RecapCard = ({ genre }: RecapCardProps) => {
             </Flex>
           </Button>
 
-          {/* 展開時: 全文＋Evidence */}
+          {/* 展開時: Evidence */}
           {isExpanded && (
             <VStack align="stretch" gap={3} pt={2}>
-              {/* 全文表示 */}
-              <Box
-                p={3}
-                bg="rgba(255, 255, 255, 0.03)"
-                borderRadius="12px"
-                border="1px solid var(--surface-border)"
-              >
-                <Text
-                  fontSize="xs"
-                  color="var(--text-secondary)"
-                  fontWeight="bold"
-                  mb={2}
-                  textTransform="uppercase"
-                  letterSpacing="1px"
-                >
-                  Full Summary
-                </Text>
-                <Text
-                  fontSize="sm"
-                  color="var(--text-primary)"
-                  lineHeight="1.7"
-                  whiteSpace="pre-wrap"
-                >
-                  {genre.summary}
-                </Text>
-              </Box>
-
               {/* Evidence Links */}
               {genre.evidenceLinks.length > 0 && (
                 <Box>

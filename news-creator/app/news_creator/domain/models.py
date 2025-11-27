@@ -117,7 +117,7 @@ class RecapClusterInput(BaseModel):
 class RecapSummaryOptions(BaseModel):
     """Optional parameters to steer recap summary generation."""
 
-    max_bullets: Optional[int] = Field(default=5, ge=1, le=10)
+    max_bullets: Optional[int] = Field(default=5, ge=1, le=15)
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
 
 
@@ -134,7 +134,7 @@ class RecapSummary(BaseModel):
     """Structured summary expected by recap-worker."""
 
     title: str = Field(min_length=1, max_length=200)
-    bullets: List[str] = Field(min_length=1, max_length=10)
+    bullets: List[str] = Field(min_length=1, max_length=15)
     language: str = Field(pattern="^ja$")
 
     @field_validator("bullets", mode="after")

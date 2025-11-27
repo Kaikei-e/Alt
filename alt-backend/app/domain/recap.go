@@ -12,6 +12,7 @@ type RecapGenre struct {
 	ArticleCount  int            `json:"article_count"`
 	ClusterCount  int            `json:"cluster_count"`
 	EvidenceLinks []EvidenceLink `json:"evidence_links"`
+	Bullets       []string       `json:"bullets"`
 }
 
 type EvidenceLink struct {
