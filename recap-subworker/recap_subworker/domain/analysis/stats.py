@@ -349,11 +349,38 @@ def cramers_v(confusion_matrix: np.ndarray) -> float:
     """
     from scipy.stats import chi2_contingency
 
-    chi2, _, _, _ = chi2_contingency(confusion_matrix)
     n = np.sum(confusion_matrix)
-    min_dim = min(confusion_matrix.shape) - 1
+    if n == 0:
+        return 0.0
 
-    if n == 0 or min_dim == 0:
+    # ゼロの行や列を削除
+    # 行の合計がゼロでない行のみを保持
+    row_sums = np.sum(confusion_matrix, axis=1)
+    col_sums = np.sum(confusion_matrix, axis=0)
+    non_zero_rows = row_sums > 0
+    non_zero_cols = col_sums > 0
+
+    if not np.any(non_zero_rows) or not np.any(non_zero_cols):
+        return 0.0
+
+    # ゼロでない行と列のみを含む混同行列を作成
+    filtered_cm = confusion_matrix[non_zero_rows][:, non_zero_cols]
+
+    # フィルタリング後のサイズをチェック
+    if filtered_cm.size == 0:
+        return 0.0
+
+    min_dim = min(filtered_cm.shape) - 1
+    if min_dim <= 0:
+        return 0.0
+
+    try:
+        chi2, _, _, _ = chi2_contingency(filtered_cm)
+        # chi2がNaNやInfの場合は0.0を返す
+        if not np.isfinite(chi2) or chi2 < 0:
+            return 0.0
+    except (ValueError, ZeroDivisionError) as e:
+        # 期待度数がゼロなどの場合、エラーをキャッチして0.0を返す
         return 0.0
 
     v = np.sqrt(chi2 / (n * min_dim))
