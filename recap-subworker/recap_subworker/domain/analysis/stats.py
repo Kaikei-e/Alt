@@ -164,7 +164,12 @@ def _bca_bootstrap_interval(
 
     # Bias correction (z0)
     bias = np.mean(bootstrap_stats < original_stat)
+    # biasが0または1の場合、z0がinf/-infになる可能性があるため、クリップ
+    bias = np.clip(bias, 1e-10, 1 - 1e-10)
     z0 = stats.norm.ppf(bias)
+    # NaNやInfの場合は0にフォールバック
+    if not np.isfinite(z0):
+        z0 = 0.0
 
     # Acceleration (a) - jackknife estimate
     jackknife_stats = []
@@ -188,12 +193,22 @@ def _bca_bootstrap_interval(
     def bca_percentile(z):
         num = z0 + z
         denom = 1 - a * (z0 + z)
-        if denom == 0:
+        if denom == 0 or not np.isfinite(denom):
             return 0.5
-        return stats.norm.cdf(z0 + num / denom)
+        result = stats.norm.cdf(z0 + num / denom)
+        # NaNやInfの場合は0.5にフォールバック
+        if not np.isfinite(result):
+            return 0.5
+        return result
 
     lower_p = bca_percentile(z_alpha_2)
     upper_p = bca_percentile(z_1_minus_alpha_2)
+
+    # NaNやInfの場合はデフォルト値にフォールバック
+    if not np.isfinite(lower_p):
+        lower_p = alpha / 2
+    if not np.isfinite(upper_p):
+        upper_p = 1 - alpha / 2
 
     # パーセンタイルを0-100の範囲にクリップ
     lower_p_clipped = np.clip(lower_p * 100, 0, 100)
