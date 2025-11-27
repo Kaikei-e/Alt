@@ -72,11 +72,14 @@ fn test_rescue_pass_with_dynamic_thresholds() {
     );
     assert_eq!(pred_loose.unwrap().0, "loose");
 
-    // Case B: Target close to "tight" but not very close (e.g., 0.8 similarity)
-    // Use [-0.6, 0.8] which has length 1.0 and dot product 0.8 with [0.0, 1.0]
-    // And negative dot product with "loose" (which has positive x), so it won't match "loose"
+    // Case B: Target close to "tight" but not very close (similarity ~0.77)
+    // Use [-0.5, 0.6] which has length sqrt(0.25+0.36)=0.781
+    // Normalized: [-0.640, 0.768]
+    // Dot with [0.0, 1.0] (tight) = 0.768, which is < 0.925 threshold
+    // Dot with [1.0, y] (loose) = -0.640 + 0.768*y, negative for most negative y values
+    // So it won't match "loose" well (loose has positive x component)
     let target_tight_fail = FeatureVector {
-        tfidf: vec![-0.6, 0.8],
+        tfidf: vec![-0.5, 0.6],
         bm25: vec![],
         embedding: vec![],
     };

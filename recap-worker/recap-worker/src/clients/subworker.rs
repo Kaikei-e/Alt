@@ -367,7 +367,7 @@ impl SubworkerClient {
         );
 
         let request_payload = build_cluster_job_request(corpus);
-        let idempotency_key = format!("{}::{}", job_id, corpus.genre);
+        let idempotency_key = format!("{}::{}::{}", job_id, corpus.genre, Uuid::new_v4());
         let document_count = request_payload.documents.len();
 
         if document_count < self.min_documents_per_genre {
