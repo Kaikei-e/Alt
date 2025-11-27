@@ -1073,12 +1073,15 @@ func handleFetchArticleSummary(container *di.ApplicationComponents, cfg *config.
 				fromCache = false
 			}
 
+			// Clean summary content before adding to response
+			cleanedSummary := cleanSummaryContent(summary)
+
 			// Build response item
 			matchedArticles = append(matchedArticles, InoreaderSummaryResponse{
 				ArticleURL:  feedURL,
 				Title:       articleTitle,
 				Author:      "", // Author is not available from articles table
-				Content:     summary,
+				Content:     cleanedSummary,
 				ContentType: "text/html",
 				PublishedAt: time.Now().Format(time.RFC3339), // Use current time as fallback
 				FetchedAt:   time.Now().Format(time.RFC3339),

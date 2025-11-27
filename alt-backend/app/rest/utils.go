@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -282,4 +283,34 @@ func callPreProcessorSummarize(ctx context.Context, content string, articleID st
 	}
 
 	return response.Summary, nil
+}
+
+// cleanSummaryContent removes markdown code blocks, repetitive patterns, and other anomalies from summary content
+func cleanSummaryContent(summary string) string {
+	if summary == "" {
+		return ""
+	}
+
+	cleaned := summary
+
+	// Remove markdown code blocks (```...```)
+	codeBlockRegex := regexp.MustCompile("(?s)```[^`]*```")
+	cleaned = codeBlockRegex.ReplaceAllString(cleaned, "")
+	// Remove standalone triple backticks
+	backtickRegex := regexp.MustCompile("```+")
+	cleaned = backtickRegex.ReplaceAllString(cleaned, "")
+	// Remove any remaining backticks
+	cleaned = strings.ReplaceAll(cleaned, "`", "")
+
+	// Remove excessive whitespace
+	whitespaceRegex := regexp.MustCompile(`[ \t]+`)
+	cleaned = whitespaceRegex.ReplaceAllString(cleaned, " ")
+	// Remove excessive newlines
+	newlineRegex := regexp.MustCompile(`\n{3,}`)
+	cleaned = newlineRegex.ReplaceAllString(cleaned, "\n\n")
+
+	// Trim whitespace
+	cleaned = strings.TrimSpace(cleaned)
+
+	return strings.TrimSpace(cleaned)
 }

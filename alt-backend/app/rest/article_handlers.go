@@ -5,6 +5,7 @@ import (
 	"alt/domain"
 	middleware_custom "alt/middleware"
 	"alt/usecase/archive_article_usecase"
+	"alt/utils/html_parser"
 	"alt/utils/logger"
 	"fmt"
 	"net/http"
@@ -75,16 +76,39 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 			return handleValidationError(c, "Article URL not allowed", "url", "not allowed")
 		}
 
-		content, err := container.ArticleUsecase.Execute(c.Request().Context(), articleURL.String())
+		var contentStr string
+
+		// Step 1: Check if article exists in database
+		existingArticle, err := container.AltDBRepository.FetchArticleByURL(c.Request().Context(), articleURL.String())
 		if err != nil {
-			return handleError(c, fmt.Errorf("fetch article content failed for %q: %w", articleURL.String(), err), "fetch_article")
+			logger.Logger.Error("Failed to check for existing article", "error", err, "url", articleURL.String())
+			return handleError(c, fmt.Errorf("failed to check article existence: %w", err), "fetch_article")
 		}
 
-		// Return JSON object matching FeedContentOnTheFlyResponse interface
-		// Handle nil content to prevent panic
-		contentStr := ""
-		if content != nil {
-			contentStr = *content
+		if existingArticle != nil {
+			// Article exists in DB - extract text from stored HTML
+			logger.Logger.Info("Article content retrieved from database", "article_id", existingArticle.ID, "url", articleURL.String())
+			contentStr = html_parser.ExtractArticleText(existingArticle.Content)
+		} else {
+			// Article does not exist, fetch from Web
+			logger.Logger.Info("Article not found in database, fetching from Web", "url", articleURL.String())
+			fetchedContent, _, fetchedTitle, fetchErr := fetchArticleContent(c.Request().Context(), articleURL.String(), container)
+			if fetchErr != nil {
+				logger.Logger.Error("Failed to fetch article content", "error", fetchErr, "url", articleURL.String())
+				return handleError(c, fmt.Errorf("fetch article content failed for %q: %w", articleURL.String(), fetchErr), "fetch_article")
+			}
+
+			// Save to database
+			_, saveErr := container.AltDBRepository.SaveArticle(c.Request().Context(), articleURL.String(), fetchedTitle, fetchedContent)
+			if saveErr != nil {
+				logger.Logger.Error("Failed to save article to database", "error", saveErr, "url", articleURL.String())
+				// Continue even if save fails - we still have the content to return
+			} else {
+				logger.Logger.Info("Article content fetched from Web and saved to database", "url", articleURL.String())
+			}
+
+			// Extract text from HTML
+			contentStr = html_parser.ExtractArticleText(fetchedContent)
 		}
 
 		// Ensure UTF-8 JSON and disallow MIME sniffing

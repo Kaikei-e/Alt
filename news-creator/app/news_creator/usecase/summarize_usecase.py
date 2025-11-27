@@ -124,6 +124,21 @@ class SummarizeUsecase:
             .replace("<|assistant|>", "")
         )
 
+        # Remove markdown code blocks (```...```)
+        import re
+        # Remove code blocks with triple backticks
+        cleaned = re.sub(r'```[^`]*```', '', cleaned, flags=re.DOTALL)
+        # Remove standalone triple backticks
+        cleaned = re.sub(r'```+', '', cleaned)
+        # Remove any remaining backticks
+        cleaned = cleaned.replace('`', '')
+
+        # Remove excessive whitespace and special characters
+        # Replace multiple spaces/tabs with single space
+        cleaned = re.sub(r'[ \t]+', ' ', cleaned)
+        # Remove excessive newlines
+        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+
         # Process line by line
         lines = cleaned.splitlines()
         final_lines: List[str] = []
@@ -142,7 +157,13 @@ class SummarizeUsecase:
                     continue
             final_lines.append(stripped)
 
-        return " ".join(final_lines).strip()
+        result = " ".join(final_lines).strip()
+
+        # Final cleanup: remove any remaining repetitive patterns
+        # Check for patterns like "word-word-word" (3+ repetitions)
+        result = re.sub(r'\b(\w+)(-\1){2,}\b', '', result, flags=re.IGNORECASE)
+
+        return result
 
     @staticmethod
     def _nanoseconds_to_milliseconds(value: Optional[int]) -> Optional[float]:
