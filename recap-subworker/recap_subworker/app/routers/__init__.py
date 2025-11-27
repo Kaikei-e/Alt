@@ -1,5 +1,5 @@
 """Expose route modules."""
 
-from . import admin, health, runs
+from . import admin, evaluation, health, runs
 
-__all__ = ["admin", "health", "runs"]
+__all__ = ["admin", "evaluation", "health", "runs"]

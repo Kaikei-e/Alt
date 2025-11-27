@@ -8,7 +8,7 @@ from ..infra.config import get_settings
 from ..infra.logging import configure_logging
 from ..infra.telemetry import setup_metrics
 from . import deps
-from .routers import admin, health, runs
+from .routers import admin, evaluation, health, runs
 
 
 def create_app() -> FastAPI:
@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(admin.router, prefix="/admin")
     app.include_router(runs.router)
+    app.include_router(evaluation.router)
 
     deps.register_lifecycle(app)
 
