@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-
+import os
 import numpy as np
 
 from .features import (
@@ -45,19 +45,25 @@ class GenreClassifier:
             weights_path: 重みファイルのパス（オプション）
             weights_data: 重みデータの辞書（オプション、weights_pathより優先）
         """
+        SAFE_WEIGHTS_DIR = "/app/resources"
         if weights_data is None:
             if weights_path is None:
                 # 環境変数から取得を試みる
-                import os
-
                 weights_path = os.getenv("RECAP_GENRE_MODEL_WEIGHTS")
             if weights_path is None:
                 # デフォルトの重みファイルパスを試す
-                default_weights_path = Path("/app/resources/genre_classifier_weights.json")
+                default_weights_path = Path(f"{SAFE_WEIGHTS_DIR}/genre_classifier_weights.json")
                 if default_weights_path.exists():
                     weights_path = str(default_weights_path)
             if weights_path:
-                with open(weights_path, "r", encoding="utf-8") as f:
+                # Only validate if not the hardcoded default
+                # Allow absolute and relative, but only under root
+                resolved_path = os.path.normpath(os.path.join(SAFE_WEIGHTS_DIR, os.path.relpath(weights_path, '/')))
+                if not resolved_path.startswith(os.path.abspath(SAFE_WEIGHTS_DIR)):
+                    raise ValueError(f"weights_path '{weights_path}' is not allowed.")
+                if not os.path.exists(resolved_path):
+                    raise ValueError(f"Weights file does not exist: {weights_path}")
+                with open(resolved_path, "r", encoding="utf-8") as f:
                     weights_data = json.load(f)
             else:
                 # デフォルトの埋め込みJSONを使用（フォールバック）
