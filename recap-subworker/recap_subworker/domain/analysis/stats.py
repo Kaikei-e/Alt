@@ -195,8 +195,12 @@ def _bca_bootstrap_interval(
     lower_p = bca_percentile(z_alpha_2)
     upper_p = bca_percentile(z_1_minus_alpha_2)
 
-    lower = np.percentile(bootstrap_stats, lower_p * 100)
-    upper = np.percentile(bootstrap_stats, upper_p * 100)
+    # パーセンタイルを0-100の範囲にクリップ
+    lower_p_clipped = np.clip(lower_p * 100, 0, 100)
+    upper_p_clipped = np.clip(upper_p * 100, 0, 100)
+
+    lower = np.percentile(bootstrap_stats, lower_p_clipped)
+    upper = np.percentile(bootstrap_stats, upper_p_clipped)
 
     return (lower, upper)
 
