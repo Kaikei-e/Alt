@@ -19,24 +19,24 @@ flowchart TB
 
     FetchDetails --> Preprocess[Preprocess Stage<br/>TextPreprocessStage]
 
-    Preprocess --> PreprocessDetails[Preprocess Articles<br/>- HTML cleaning (ammonia)<br/>- Markup stripping (html2text)<br/>- Language detection (whatlang)<br/>- Tokenization (Lindera IPADIC)<br/>- Tag signal extraction<br/>- CPU offload via spawn_blocking]
+    Preprocess --> PreprocessDetails["Preprocess Articles<br/>HTML cleaning (ammonia)<br/>Markup stripping (html2text)<br/>Language detection (whatlang)<br/>Tokenization (Lindera IPADIC)<br/>Tag signal extraction<br/>CPU offload via spawn_blocking"]
 
     PreprocessDetails --> Dedup[Dedup Stage<br/>HashDedupStage]
 
-    Dedup --> DedupDetails[Deduplicate Articles<br/>- XXH3 hashing<br/>- Sentence-level similarity<br/>- Near-duplicate detection<br/>- Track duplicate relationships]
+    Dedup --> DedupDetails["Deduplicate Articles<br/>XXH3 hashing<br/>Sentence-level similarity<br/>Near-duplicate detection<br/>Track duplicate relationships"]
 
     DedupDetails --> Genre[Genre Stage<br/>TwoStageGenreStage]
 
     Genre --> CoarsePass[Coarse Pass<br/>CoarseGenreStage]
 
-    CoarsePass --> CoarseDetails[Centroid Classification<br/>- Load Golden Dataset<br/>- Multi-centroid Rocchio<br/>- Temperature scaling<br/>- Adaptive thresholds<br/>- Feature vector: TF-IDF + BM25<br/>- Fallback to keywords]
+    CoarsePass --> CoarseDetails["Centroid Classification<br/>Load Golden Dataset<br/>Multi-centroid Rocchio<br/>Temperature scaling<br/>Adaptive thresholds<br/>Feature vector: TF-IDF + BM25<br/>Fallback to keywords"]
 
     CoarseDetails --> RolloutCheck{Rollout<br/>Allowed?}
 
     RolloutCheck -->|No| CoarseOnly[Use Coarse Result<br/>Skip Refine]
     RolloutCheck -->|Yes| RefinePass[Refine Pass<br/>DefaultRefineEngine]
 
-    RefinePass --> RefineDetails[Graph Label Propagation<br/>- Load tag_label_graph cache<br/>- Build similarity graph<br/>- Label propagation (sprs)<br/>- Tag-based boosts<br/>- LLM tie-break if needed]
+    RefinePass --> RefineDetails["Graph Label Propagation<br/>Load tag_label_graph cache<br/>Build similarity graph<br/>Label propagation (sprs)<br/>Tag-based boosts<br/>LLM tie-break if needed"]
 
     RefineDetails --> RefineStrategies{Refine Strategy}
     RefineStrategies -->|GraphBoost| GraphBoost[Apply Graph Boost]
@@ -57,31 +57,31 @@ flowchart TB
 
     SaveLearning --> Select[Select Stage<br/>SummarySelectStage]
 
-    Select --> SelectTrim[Trim Articles<br/>- Max 20 per genre<br/>- Adjusted for min_documents<br/>- Confidence-based ranking]
+    Select --> SelectTrim["Trim Articles<br/>Max 20 per genre<br/>Adjusted for min_documents<br/>Confidence-based ranking"]
 
     SelectTrim --> EmbeddingCheck{Embedding Service<br/>Available?}
 
-    EmbeddingCheck -->|Yes| OutlierFilter[Outlier Filtering<br/>- Embedding-based similarity<br/>- Centroid calculation<br/>- Coherence threshold<br/>- Fallback to top-scoring]
+    EmbeddingCheck -->|Yes| OutlierFilter["Outlier Filtering<br/>Embedding-based similarity<br/>Centroid calculation<br/>Coherence threshold<br/>Fallback to top-scoring"]
     EmbeddingCheck -->|No| SkipOutlier[Skip Outlier Filter]
 
     OutlierFilter --> Evidence[Evidence Stage<br/>EvidenceBundle]
     SkipOutlier --> Evidence
 
-    Evidence --> EvidenceDetails[Build Evidence Corpus<br/>- Group by genre<br/>- Filter short sentences<br/>- Track metadata<br/>- Enforce uniqueness]
+    Evidence --> EvidenceDetails["Build Evidence Corpus<br/>Group by genre<br/>Filter short sentences<br/>Track metadata<br/>Enforce uniqueness"]
 
     EvidenceDetails --> Dispatch[Dispatch Stage<br/>MlLlmDispatchStage]
 
     Dispatch --> Phase1[Phase 1: Parallel Clustering<br/>All genres concurrently]
 
-    Phase1 --> ClusterDetails[Cluster per Genre<br/>- Send to recap-subworker/v1/runs<br/>- Poll until success<br/>- JSON Schema validation<br/>- Save to recap_cluster_evidence]
+    Phase1 --> ClusterDetails["Cluster per Genre<br/>Send to recap-subworker/v1/runs<br/>Poll until success<br/>JSON Schema validation<br/>Save to recap_cluster_evidence"]
 
     ClusterDetails --> Phase2[Phase 2: Sequential Summary<br/>Queue-based processing]
 
-    Phase2 --> SummaryDetails[Generate Summaries<br/>- Top 40 clusters only<br/>- Send to news-creator<br/>- Sequential processing<br/>- JSON Schema validation]
+    Phase2 --> SummaryDetails["Generate Summaries<br/>Top 40 clusters only<br/>Send to news-creator<br/>Sequential processing<br/>JSON Schema validation"]
 
     SummaryDetails --> Persist[Persist Stage<br/>FinalSectionPersistStage]
 
-    Persist --> PersistDetails[Persist Results<br/>- Save to recap_outputs JSONB<br/>- Save to recap_sections<br/>- Track success/failure counts]
+    Persist --> PersistDetails["Persist Results<br/>Save to recap_outputs JSONB<br/>Save to recap_sections<br/>Track success/failure counts"]
 
     PersistDetails --> End([Pipeline Complete])
 
@@ -107,7 +107,7 @@ flowchart TB
 
     ExtractFeatures --> BuildVector[Build Feature Vector<br/>Combined representation]
 
-    BuildVector --> CentroidMatch[Centroid Matching<br/>- Multi-centroid per genre<br/>- Cosine similarity<br/>- Temperature scaling<br/>- Adaptive thresholds]
+    BuildVector --> CentroidMatch["Centroid Matching<br/>Multi-centroid per genre<br/>Cosine similarity<br/>Temperature scaling<br/>Adaptive thresholds"]
 
     CentroidMatch --> ThresholdCheck{Above<br/>Threshold?}
 
@@ -119,9 +119,9 @@ flowchart TB
 
     Refine --> LoadGraph[Load tag_label_graph<br/>from cache/DB]
 
-    LoadGraph --> BuildGraph[Build Similarity Graph<br/>- Similarity ≥ 0.85<br/>- Undirected edges<br/>- Labeled + Unlabeled nodes]
+    LoadGraph --> BuildGraph["Build Similarity Graph<br/>Similarity ≥ 0.85<br/>Undirected edges<br/>Labeled + Unlabeled nodes"]
 
-    BuildGraph --> LabelProp[Label Propagation<br/>- Sparse matrix ops (sprs)<br/>- Iterative updates<br/>- Tag-based boosts]
+    BuildGraph --> LabelProp["Label Propagation<br/>Sparse matrix ops (sprs)<br/>Iterative updates<br/>Tag-based boosts"]
 
     LabelProp --> RefineStrategies{Refine Strategy}
 
@@ -223,7 +223,7 @@ flowchart TB
 
     MorningDedup --> GroupArticles[Group Articles<br/>by Deduplication]
 
-    GroupArticles --> CreateGroups[Create Article Groups<br/>- Primary article<br/>- Duplicate articles<br/>- Group ID mapping]
+    GroupArticles --> CreateGroups["Create Article Groups<br/>Primary article<br/>Duplicate articles<br/>Group ID mapping"]
 
     CreateGroups --> SaveGroups[Save to<br/>morning_article_groups]
 
