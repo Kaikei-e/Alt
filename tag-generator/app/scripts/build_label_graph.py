@@ -7,9 +7,10 @@ import argparse
 import json
 import logging
 import os
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Iterable, Sequence
+from datetime import UTC, datetime
+from typing import Any
 
 import psycopg2
 import psycopg2.extras
@@ -68,7 +69,7 @@ def aggregate_tag_edges(
     for row in rows:
         genre = normalize(row.genre) or "other"
         tags = row.tags or []
-        for tag in tags[:max(0, max_tags)]:
+        for tag in tags[: max(0, max_tags)]:
             label = normalize(tag.get("label"))
             if not label:
                 continue
@@ -100,9 +101,7 @@ def aggregate_tag_edges(
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Build rolling tag-label graph inside recap-db"
-    )
+    parser = argparse.ArgumentParser(description="Build rolling tag-label graph inside recap-db")
     parser.add_argument(
         "--dsn",
         default=os.getenv("RECAP_DB_DSN"),
@@ -186,10 +185,10 @@ def _fetch_learning_rows(conn: PGConnection, days: int) -> list[LearningRow]:
 
 def _ensure_timezone(value: datetime | None) -> datetime:
     if value is None:
-        return datetime.now(tz=timezone.utc)
+        return datetime.now(tz=UTC)
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _upsert_edges(
@@ -201,15 +200,11 @@ def _upsert_edges(
 ) -> int:
     edge_list = list(edges)
     if dry_run:
-        logging.info(
-            "[DRY RUN] would upsert %d edges for window %s", len(edge_list), window_label
-        )
+        logging.info("[DRY RUN] would upsert %d edges for window %s", len(edge_list), window_label)
         return len(edge_list)
 
     if not edge_list:
-        logging.warning(
-            "No edges generated for %s – keeping previous snapshot intact", window_label
-        )
+        logging.warning("No edges generated for %s – keeping previous snapshot intact", window_label)
         return 0
 
     payloads = [
@@ -284,7 +279,7 @@ def main() -> int:
                 min_confidence=args.min_confidence,
                 min_support=args.min_support,
             )
-            refresh_ts = datetime.now(tz=timezone.utc)
+            refresh_ts = datetime.now(tz=UTC)
             _upsert_edges(
                 conn,
                 window_label=f"{days}d",

@@ -79,8 +79,7 @@ except ModuleNotFoundError:
         return decorator
 
 
-from fastapi import FastAPI, HTTPException, Header, Request
-from typing import Annotated
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 from tag_fetcher import fetch_tags_by_article_ids
@@ -270,7 +269,7 @@ def _run_background_tag_generation():
     """Run tag generation service in background thread."""
     global _background_tag_service
     try:
-        from main import TagGeneratorService, TagGeneratorConfig
+        from main import TagGeneratorConfig, TagGeneratorService
 
         logger.info("Starting background tag generation service")
         config = TagGeneratorConfig()
@@ -295,9 +294,7 @@ async def lifespan(app: FastAPI):
     # Start background tag generation service in a separate thread
     logger.info("Starting background tag generation service thread")
     _background_thread = threading.Thread(
-        target=_run_background_tag_generation,
-        daemon=True,
-        name="tag-generation-service"
+        target=_run_background_tag_generation, daemon=True, name="tag-generation-service"
     )
     _background_thread.start()
     logger.info("Background tag generation service thread started")
@@ -312,11 +309,7 @@ async def lifespan(app: FastAPI):
 
 
 # FastAPI application with authentication
-app = FastAPI(
-    title="Tag Generator Service",
-    version="1.0.0",
-    lifespan=lifespan
-)
+app = FastAPI(title="Tag Generator Service", version="1.0.0", lifespan=lifespan)
 
 
 @app.post("/api/v1/generate-tags")
@@ -392,6 +385,7 @@ def verify_service_token(request: Request) -> None:
 
 class BatchTagsRequest(BaseModel):
     """Request model for batch tag fetching."""
+
     article_ids: list[str]
 
 

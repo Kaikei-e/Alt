@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -8,7 +8,7 @@ from scripts import build_label_graph as blg
 
 
 def _ts(hour: int) -> datetime:
-    return datetime(2025, 11, 12, hour, 0, 0, tzinfo=timezone.utc)
+    return datetime(2025, 11, 12, hour, 0, 0, tzinfo=UTC)
 
 
 def test_aggregate_tag_edges_basic() -> None:

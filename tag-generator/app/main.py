@@ -378,9 +378,7 @@ class TagGeneratorService:
             )
 
             # Insert tags with confidences
-            result = self.tag_inserter.upsert_tags(
-                conn, article_id, outcome.tags, feed_id, outcome.tag_confidences
-            )
+            result = self.tag_inserter.upsert_tags(conn, article_id, outcome.tags, feed_id, outcome.tag_confidences)
 
             if result.get("success"):
                 return True

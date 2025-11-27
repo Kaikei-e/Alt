@@ -10,9 +10,9 @@ import pytest
 
 from article_fetcher.fetch import ArticleFetcher
 from main import TagGeneratorService
+from tag_extractor.extract import TagExtractionConfig, TagExtractionOutcome, TagExtractor
+from tag_extractor.input_sanitizer import SanitizationResult, SanitizedArticleInput
 from tag_generator.cascade import CascadeConfig, CascadeController
-from tag_extractor.extract import TagExtractionConfig, TagExtractor, TagExtractionOutcome
-from tag_extractor.input_sanitizer import SanitizedArticleInput, SanitizationResult
 from tag_inserter.upsert_tags import TagInserter
 
 
@@ -331,7 +331,6 @@ class TestTagExtractor:
             assert result == ["tag1", "tag2"]
             mock_extractor.extract_tags.assert_called_once_with("Test Title", "Test Content")
 
-
     def test_extract_tags_with_metrics_returns_outcome(self):
         """Should return metrics container from extract_tags_with_metrics."""
         extractor = TagExtractor()
@@ -378,6 +377,7 @@ class TestTagExtractor:
             assert outcome.tags == []
             assert outcome.confidence == 0.0
             assert outcome.language == "und"
+
 
 class TestArticleFetcher:
     """Unit tests for ArticleFetcher class."""
@@ -706,6 +706,7 @@ class TestCascadeController:
         assert not decision.needs_refine
         assert decision.reason == "high_confidence_exit"
 
+
 class TestTagGeneratorService:
     """Unit tests for TagGeneratorService class."""
 
@@ -857,9 +858,7 @@ class TestTagGeneratorService:
 
             assert result is True
             mock_extract_with_metrics.assert_called_once_with("Test Title", "Test content")
-            mock_upsert_tags.assert_called_once_with(
-                mock_conn, "test-uuid", ["tag1", "tag2"], "feed-uuid-1"
-            )
+            mock_upsert_tags.assert_called_once_with(mock_conn, "test-uuid", ["tag1", "tag2"], "feed-uuid-1")
 
     def test_should_handle_article_processing_errors(self):
         """Should handle errors during article processing gracefully."""

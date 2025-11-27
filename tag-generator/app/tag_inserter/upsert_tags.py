@@ -68,11 +68,7 @@ class TagInserter:
             raise ValueError("All tags must be non-empty strings")
 
     def _insert_tags(
-        self,
-        cursor: Cursor,
-        tags: list[str],
-        feed_id: str,
-        tag_confidences: dict[str, float] | None = None
+        self, cursor: Cursor, tags: list[str], feed_id: str, tag_confidences: dict[str, float] | None = None
     ) -> None:
         """
         Insert tags into the feed_tags table, ignoring duplicates.
@@ -89,11 +85,7 @@ class TagInserter:
         try:
             # Use provided confidences or default to 0.5
             tag_rows = [
-                (
-                    feed_id,
-                    tag.strip(),
-                    tag_confidences.get(tag.strip(), 0.5) if tag_confidences else 0.5
-                )
+                (feed_id, tag.strip(), tag_confidences.get(tag.strip(), 0.5) if tag_confidences else 0.5)
                 for tag in tags
             ]
             psycopg2.extras.execute_batch(
@@ -185,7 +177,7 @@ class TagInserter:
         article_id: str,
         tags: list[str],
         feed_id: str,
-        tag_confidences: dict[str, float] | None = None
+        tag_confidences: dict[str, float] | None = None,
     ) -> dict[str, Any]:
         """
         Upsert tags into the feed_tags table and create article-tag relationships.
@@ -429,7 +421,9 @@ class TagInserter:
                             if article_tag_confidences:
                                 feed_tag_confidences.update(article_tag_confidences)
 
-                    self._insert_tags(cursor, list(tags), feed_id, feed_tag_confidences if feed_tag_confidences else None)
+                    self._insert_tags(
+                        cursor, list(tags), feed_id, feed_tag_confidences if feed_tag_confidences else None
+                    )
 
                 # Step 3: Get tag IDs for each feed_id
                 all_tag_id_maps = {}
@@ -692,7 +686,9 @@ class TagInserter:
                             if article_tag_confidences:
                                 feed_tag_confidences.update(article_tag_confidences)
 
-                    self._insert_tags(cursor, list(tags), feed_id, feed_tag_confidences if feed_tag_confidences else None)
+                    self._insert_tags(
+                        cursor, list(tags), feed_id, feed_tag_confidences if feed_tag_confidences else None
+                    )
 
                 # Step 3: Get tag IDs for each feed_id
                 all_tag_id_maps = {}

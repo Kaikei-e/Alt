@@ -161,10 +161,7 @@ class TagExtractor:
             try:
                 fallback_keywords = self._fallback_extraction(raw_text, lang)
                 # For fallback, assign default confidence based on position
-                fallback_confidences = {
-                    tag: max(0.3, 0.7 - (i * 0.1))
-                    for i, tag in enumerate(fallback_keywords)
-                }
+                fallback_confidences = {tag: max(0.3, 0.7 - (i * 0.1)) for i, tag in enumerate(fallback_keywords)}
             except Exception as fallback_error:
                 logger.error("Fallback extraction failed", error=fallback_error)
                 return [], {}
@@ -178,10 +175,7 @@ class TagExtractor:
             try:
                 fallback_keywords = self._fallback_extraction(raw_text, lang)
                 # For fallback, assign default confidence based on position
-                fallback_confidences = {
-                    tag: max(0.3, 0.7 - (i * 0.1))
-                    for i, tag in enumerate(fallback_keywords)
-                }
+                fallback_confidences = {tag: max(0.3, 0.7 - (i * 0.1)) for i, tag in enumerate(fallback_keywords)}
             except Exception as fallback_error:
                 logger.error("Fallback extraction failed after exception", error=fallback_error)
                 return [], {}
@@ -559,7 +553,8 @@ class TagExtractor:
         """Fallback extraction method when primary method fails."""
         if lang == "ja":
             # For Japanese, use the frequency-based approach
-            return self._extract_keywords_japanese(text)
+            keywords, _ = self._extract_keywords_japanese(text)
+            return keywords
         else:
             # For English, try tokenization and frequency
             tokens = self._tokenize_english(text)

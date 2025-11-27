@@ -5,13 +5,12 @@ Used by the batch API endpoint to fetch tags for multiple articles.
 
 import os
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 import psycopg2
 import psycopg2.extras
 import structlog
-from psycopg2.extensions import connection as Connection
 
 logger = structlog.get_logger(__name__)
 
@@ -132,4 +131,3 @@ def fetch_tags_by_article_ids(article_ids: list[str]) -> dict[str, list[dict[str
     except Exception as e:
         logger.error("Failed to fetch tags by article IDs", error=str(e), article_count=len(article_ids))
         raise
-

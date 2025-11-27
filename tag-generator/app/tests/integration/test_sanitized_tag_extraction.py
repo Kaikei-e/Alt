@@ -31,11 +31,18 @@ class TestSanitizedTagExtraction:
 
         # Mock the actual extraction to focus on sanitization
         with patch.object(tag_extractor, "_extract_keywords_english") as mock_extract:
-            mock_extract.return_value = [
-                "machine learning",
-                "neural networks",
-                "algorithms",
-            ]
+            mock_extract.return_value = (
+                [
+                    "machine learning",
+                    "neural networks",
+                    "algorithms",
+                ],
+                {
+                    "machine learning": 0.9,
+                    "neural networks": 0.8,
+                    "algorithms": 0.7,
+                },
+            )
 
             tags = tag_extractor.extract_tags(title, content)
 
@@ -61,7 +68,7 @@ class TestSanitizedTagExtraction:
 
         # Mock the actual extraction to focus on sanitization
         with patch.object(tag_extractor, "_extract_keywords_english") as mock_extract:
-            mock_extract.return_value = ["machine learning"]
+            mock_extract.return_value = (["machine learning"], {"machine learning": 0.9})
 
             tags = tag_extractor.extract_tags(title, content)
 
@@ -101,7 +108,7 @@ class TestSanitizedTagExtraction:
 
         # Mock the actual extraction to focus on sanitization
         with patch.object(tag_extractor, "_extract_keywords_english") as mock_extract:
-            mock_extract.return_value = ["machine learning"]
+            mock_extract.return_value = (["machine learning"], {"machine learning": 0.9})
 
             tags = tag_extractor.extract_tags(title, content)
 
@@ -139,7 +146,7 @@ class TestSanitizedTagExtraction:
 
         # Mock the actual extraction to focus on sanitization
         with patch.object(tag_extractor, "_extract_keywords_english") as mock_extract:
-            mock_extract.return_value = ["ai", "tutorial"]
+            mock_extract.return_value = (["ai", "tutorial"], {"ai": 0.9, "tutorial": 0.8})
 
             tags = tag_extractor.extract_tags(title, content)
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import threading
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import structlog
@@ -53,7 +53,7 @@ class CascadeController:
         self.total_evaluated = 0
         self.refine_candidates = 0
 
-    def evaluate(self, outcome: "TagExtractionOutcome") -> CascadeDecision:
+    def evaluate(self, outcome: TagExtractionOutcome) -> CascadeDecision:
         """
         Evaluate whether the extracted tags should be refined by downstream components.
 

@@ -1,28 +1,33 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from itertools import islice
-from typing import Iterable, Iterator, Sequence
-
 import os
 import time
+from collections.abc import Iterable, Iterator, Sequence
+from dataclasses import dataclass
+from itertools import islice
+from typing import TYPE_CHECKING
 
 import structlog
 
-try:
+if TYPE_CHECKING:
     import numpy as np
-except ImportError:  # pragma: no cover
-    np = None  # type: ignore[assignment]
-
-try:
-    import onnxruntime as ort  # type: ignore
-except ImportError:  # pragma: no cover
-    ort = None  # type: ignore[assignment]
-
-try:
+    import onnxruntime as ort
     from transformers import AutoTokenizer
-except ImportError:  # pragma: no cover
-    AutoTokenizer = None  # type: ignore[assignment]
+else:
+    try:
+        import numpy as np
+    except ImportError:  # pragma: no cover
+        np = None  # type: ignore[assignment]
+
+    try:
+        import onnxruntime as ort  # type: ignore
+    except ImportError:  # pragma: no cover
+        ort = None  # type: ignore[assignment]
+
+    try:
+        from transformers import AutoTokenizer
+    except ImportError:  # pragma: no cover
+        AutoTokenizer = None  # type: ignore[assignment]
 
 
 logger = structlog.get_logger(__name__)
@@ -48,9 +53,10 @@ class OnnxEmbeddingModel:
 
     def __init__(self, config: OnnxEmbeddingConfig) -> None:
         if ort is None or AutoTokenizer is None or np is None:
-            raise OnnxRuntimeMissing(
-                "onnxruntime, transformers, and numpy are required for ONNX embedding support"
-            )
+            raise OnnxRuntimeMissing("onnxruntime, transformers, and numpy are required for ONNX embedding support")
+        assert np is not None  # For type checker
+        assert ort is not None  # For type checker
+        assert AutoTokenizer is not None  # For type checker
 
         if config.pooling not in {"cls", "mean"}:
             raise ValueError("Pooling must be 'cls' or 'mean'")
@@ -73,12 +79,12 @@ class OnnxEmbeddingModel:
         texts: Sequence[str],
         batch_size: int | None = None,
         show_progress_bar: bool = False,  # Mirror SentenceTransformer signature
-    ) -> np.ndarray:
+    ) -> np.ndarray:  # type: ignore[return-value]
         if batch_size is None:
             batch_size = self._config.batch_size
         batch_size = self._effective_batch_size(batch_size)
 
-        embeddings: list[np.ndarray] = []
+        embeddings: list[np.ndarray] = []  # type: ignore[type-arg]
         total_tokens = 0
         total_batches = 0
         start_time = time.perf_counter()
@@ -94,7 +100,7 @@ class OnnxEmbeddingModel:
             )
             total_tokens += int(tokens["input_ids"].size)
 
-            ort_inputs = {k: v for k, v in tokens.items()}
+            ort_inputs = dict(tokens.items())
 
             hidden_states = self._session.run(None, ort_inputs)[0]
             if self._config.pooling == "mean":
@@ -138,9 +144,7 @@ class OnnxEmbeddingModel:
             "batch_size": self._effective_batch_size(self._config.batch_size),
             "max_length": self._config.max_length,
             "providers": self._providers,
-            "graph_optimization_level": getattr(
-                self._session_options, "graph_optimization_level", "unknown"
-            ),
+            "graph_optimization_level": getattr(self._session_options, "graph_optimization_level", "unknown"),
             "embedding_dimension": self._embedding_dimension,
             "max_batch_tokens": self._max_batch_tokens,
         }
@@ -164,7 +168,7 @@ class OnnxEmbeddingModel:
             return ["CPUExecutionProvider"]
         return list(available)
 
-    def _build_session_options(self) -> "ort.SessionOptions":
+    def _build_session_options(self) -> ort.SessionOptions:  # type: ignore[return-value]
         """Build tuned SessionOptions for ONNX Runtime."""
         options = ort.SessionOptions()
         options.enable_mem_pattern = True

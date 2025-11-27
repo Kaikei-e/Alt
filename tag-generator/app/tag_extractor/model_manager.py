@@ -90,11 +90,7 @@ class ModelManager:
             Tuple of (embedder, keybert, ja_tagger)
         """
         with self._models_lock:
-            if (
-                self._embedder is None
-                or self._config is None
-                or self._config != config
-            ):
+            if self._embedder is None or self._config is None or self._config != config:
                 logger.info("Loading models", config=config)
                 self._load_models(config)
                 self._config = config
@@ -139,27 +135,31 @@ class ModelManager:
                 use_onnx = False
 
             if use_onnx:
-                try:
-                    logger.info("Loading ONNX embedder", model_path=config.onnx_model_path)
-                    onnx_config = OnnxEmbeddingConfig(
-                        model_path=config.onnx_model_path,
-                        tokenizer_name=config.onnx_tokenizer_name,
-                        pooling=config.onnx_pooling,
-                        batch_size=config.onnx_batch_size,
-                        max_length=config.onnx_max_length,
-                    )
-                    self._embedder = OnnxEmbeddingModel(onnx_config)
-                    logger.info("ONNX embedder loaded successfully", model_path=config.onnx_model_path)
-                    self._embedder_backend = "onnx"
-                    self._embedder_metadata = self._embedder.describe()
-                except OnnxRuntimeMissing as e:
-                    logger.error("ONNX runtime dependencies missing", error=str(e))
+                if not config.onnx_model_path:
+                    logger.warning("ONNX model path is not set; falling back to SentenceTransformer")
                     use_onnx = False
-                    logger.info("Falling back to SentenceTransformer")
-                except Exception as e:
-                    logger.error("Failed to initialize ONNX embedder", error=str(e))
-                    use_onnx = False
-                    logger.info("Falling back to SentenceTransformer due to error")
+                else:
+                    try:
+                        logger.info("Loading ONNX embedder", model_path=config.onnx_model_path)
+                        onnx_config = OnnxEmbeddingConfig(
+                            model_path=config.onnx_model_path,
+                            tokenizer_name=config.onnx_tokenizer_name,
+                            pooling=config.onnx_pooling,
+                            batch_size=config.onnx_batch_size,
+                            max_length=config.onnx_max_length,
+                        )
+                        self._embedder = OnnxEmbeddingModel(onnx_config)
+                        logger.info("ONNX embedder loaded successfully", model_path=config.onnx_model_path)
+                        self._embedder_backend = "onnx"
+                        self._embedder_metadata = self._embedder.describe()
+                    except OnnxRuntimeMissing as e:
+                        logger.error("ONNX runtime dependencies missing", error=str(e))
+                        use_onnx = False
+                        logger.info("Falling back to SentenceTransformer")
+                    except Exception as e:
+                        logger.error("Failed to initialize ONNX embedder", error=str(e))
+                        use_onnx = False
+                        logger.info("Falling back to SentenceTransformer due to error")
 
             if not use_onnx:
                 if SentenceTransformer is None or KeyBERT is None:
@@ -184,6 +184,8 @@ class ModelManager:
                 if embedding_dim is not None:
                     self._embedder_metadata["embedding_dimension"] = embedding_dim
 
+            if self._embedder is None:
+                raise RuntimeError("Embedder was not initialized")
             logger.info("Loading KeyBERT model")
             self._keybert = KeyBERT(self._embedder)  # pyright: ignore[reportArgumentType]
             logger.info(
