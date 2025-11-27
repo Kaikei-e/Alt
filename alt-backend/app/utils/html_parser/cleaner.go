@@ -3,7 +3,6 @@ package html_parser
 import (
 	"alt/domain"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -26,16 +25,10 @@ func ExtractArticleText(raw string) string {
 		return normalizeWhitespace(trimmed)
 	}
 
-	// 1. Try go-readability on the whole document
-	article, err := readability.FromReader(strings.NewReader(trimmed), nil)
-	if err != nil {
-		// 2. Fallback: Try go-readability on the main content
-		fmt.Println("go-readability failed on the whole document. Err: ", err)
-	}
 	// Prepare goquery document for further inspection
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(trimmed))
 	if err == nil {
-		// 3. Fallback: Check for Next.js __NEXT_DATA__ script
+		// 1. Check for Next.js __NEXT_DATA__ script first (highest priority)
 		// Next.js sites often store the full article content in this JSON script
 		nextData := doc.Find("script[id='__NEXT_DATA__']")
 		if nextData.Length() > 0 {
@@ -53,7 +46,7 @@ func ExtractArticleText(raw string) string {
 							if bodyHtml, ok := articleData["bodyHtml"].(string); ok && len(bodyHtml) > 0 {
 								// Since we found the specific body HTML, we don't need full readability parsing.
 								// Just strip tags to get the text.
-								text := normalizeWhitespace(StripTags(bodyHtml))
+								text := extractParagraphs(bodyHtml)
 								if len(text) > 0 {
 									if title != "" {
 										return title + "\n\n" + text
@@ -66,21 +59,94 @@ func ExtractArticleText(raw string) string {
 				}
 			}
 		}
+
+		// 2. Pre-process HTML: Remove non-content elements before go-readability
+		doc.Find("head, script, style, noscript, title, aside, nav, header, footer").Remove()
+		cleanedHTML, _ := doc.Html()
+		if cleanedHTML != "" {
+			trimmed = cleanedHTML
+		}
 	}
 
-	// If step 1 succeeded but we didn't return (because we wanted to check others? No, currently step 1 returns immediately).
-	// The issue is likely Step 1 returning garbage.
-	// Let's modify the logic: If Step 1 returns something, but we have __NEXT_DATA__ with a specific structure,
-	// maybe we should prioritize __NEXT_DATA__?
-	// Or maybe Step 1 is returning the sidebar which is > 100 chars.
-
-	if err == nil && len(strings.TrimSpace(article.TextContent)) > 100 {
+	// 3. Try go-readability on the cleaned document
+	article, err := readability.FromReader(strings.NewReader(trimmed), nil)
+	if err == nil && len(strings.TrimSpace(article.TextContent)) > 0 {
+		// Use go-readability result, but preserve paragraph structure
+		// article.Content is the HTML content, article.TextContent is the plain text
+		// We'll extract paragraphs from the HTML content to preserve structure
+		if article.Content != "" {
+			return extractParagraphs(article.Content)
+		}
+		// Fallback to TextContent if Content is empty
 		return normalizeWhitespace(article.TextContent)
 	}
 
 	// 4. Final fallback: Strip tags from the original HTML
-	return normalizeWhitespace(StripTags(trimmed))
+	return extractParagraphs(trimmed)
+}
 
+// extractParagraphs extracts text from HTML while preserving paragraph structure.
+// Paragraphs are separated by double newlines.
+// It extracts paragraphs, headers, code blocks, and list items.
+func extractParagraphs(html string) string {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		// Fallback to simple tag stripping
+		return normalizeWhitespace(StripTags(html))
+	}
+
+	var paragraphs []string
+
+	// Extract headers (h1-h6)
+	doc.Find("h1, h2, h3, h4, h5, h6").Each(func(i int, s *goquery.Selection) {
+		text := strings.TrimSpace(s.Text())
+		if text != "" {
+			paragraphs = append(paragraphs, text)
+		}
+	})
+
+	// Extract paragraphs
+	doc.Find("p").Each(func(i int, s *goquery.Selection) {
+		text := strings.TrimSpace(s.Text())
+		if text != "" {
+			paragraphs = append(paragraphs, text)
+		}
+	})
+
+	// Extract code blocks
+	doc.Find("pre code, pre").Each(func(i int, s *goquery.Selection) {
+		text := strings.TrimSpace(s.Text())
+		if text != "" {
+			paragraphs = append(paragraphs, text)
+		}
+	})
+
+	// Extract list items
+	doc.Find("li").Each(func(i int, s *goquery.Selection) {
+		text := strings.TrimSpace(s.Text())
+		if text != "" {
+			paragraphs = append(paragraphs, text)
+		}
+	})
+
+	// If no structured content found, try to extract from other block elements
+	if len(paragraphs) == 0 {
+		doc.Find("div, article, section").Each(func(i int, s *goquery.Selection) {
+			text := strings.TrimSpace(s.Text())
+			// Only include meaningful content (at least 10 chars)
+			if text != "" && len(text) > 10 {
+				paragraphs = append(paragraphs, text)
+			}
+		})
+	}
+
+	// If still no content, fallback to simple tag stripping
+	if len(paragraphs) == 0 {
+		return normalizeWhitespace(StripTags(html))
+	}
+
+	// Join paragraphs with double newlines
+	return strings.Join(paragraphs, "\n\n")
 }
 
 // Clean search results using goquery for better HTML handling
