@@ -1,7 +1,5 @@
-use ndarray::Array1;
 use recap_worker::classification::FeatureVector;
 use recap_worker::classifier::centroid::{Article, CentroidClassifier};
-use std::collections::HashMap;
 
 #[test]
 fn test_multi_centroid_clustering() {

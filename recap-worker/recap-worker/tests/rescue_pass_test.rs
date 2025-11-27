@@ -1,4 +1,3 @@
-use ndarray::Array1;
 use recap_worker::classification::FeatureVector;
 use recap_worker::classifier::centroid::{Article, CentroidClassifier};
 use recap_worker::classifier::graph::GraphPropagator;

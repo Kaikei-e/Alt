@@ -78,6 +78,7 @@ impl ComponentRegistry {
         )?);
         let recap_pool = PgPoolOptions::new()
             .max_connections(100)
+            .acquire_timeout(std::time::Duration::from_secs(60))
             .connect_lazy(config.recap_db_dsn())
             .context("failed to configure recap_db connection pool")?;
         let recap_dao = Arc::new(RecapDao::new(recap_pool));

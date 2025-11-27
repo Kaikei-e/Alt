@@ -1,4 +1,4 @@
-use recap_worker::classification::features::{EMBEDDING_DIM, FeatureExtractor};
+use recap_worker::classification::features::FeatureExtractor;
 
 #[test]
 fn test_feature_extraction_known_token() {

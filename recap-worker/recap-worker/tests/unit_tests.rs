@@ -1,7 +1,6 @@
 /// 各ステージの単体テスト。
 ///
 /// 正規化、HTML除去、重複排除などの基本機能をテストします。
-
 #[cfg(test)]
 mod tests {
     use recap_worker::pipeline::dedup::HashDedupStage;
@@ -54,7 +53,6 @@ mod tests {
     fn test_dedup_stage_creation() {
         let _stage = HashDedupStage::with_defaults();
         // ステージが正常に作成されることを確認
-        assert!(true);
     }
 
     #[test]
@@ -62,6 +60,5 @@ mod tests {
         // モックDAOが必要なため、簡易テスト
         // let dao = Arc::new(RecapDao::new_mock());
         // let stage = TextPreprocessStage::with_default_concurrency(dao);
-        assert!(true);
     }
 }
