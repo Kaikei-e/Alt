@@ -44,6 +44,9 @@ recap-subworker = "recap_subworker.__main__:main"
 [tool.uv]
 package = true
 
+[tool.setuptools]
+packages = ["recap_subworker"]
+
 [dependency-groups]
 dev = [
   "pytest>=8.3.0",
