@@ -1,0 +1,16 @@
+{
+  "general": {
+    "vimMode": false,
+    "disableAutoUpdate": false,
+    "previewFeatures": true
+  },
+  "ui": {
+    "showStatusInTitle": true,
+    "hideTips": false,
+    "showMemoryUsage": true,
+    "showModelInfoInChat": true
+  },
+  "ide": {
+    "enabled": true
+  }
+}
