@@ -19,6 +19,16 @@ _Last reviewed: December 2024_
 | Store (`src/store/`) | SQLx DAO with advisory locks, recap job metadata, JSONB outputs, the `recap_cluster_evidence` table for pre-deduplicated links, `recap_genre_learning_results`, cached `tag_label_graph` priors, and `morning_article_groups` for deduplication tracking. |
 | Observability (`src/observability/`) | Tracing, Prometheus exporter, OTLP wiring plus counters for genre refine rollout gating (`recap_genre_refine_rollout_enabled_total` / `_skipped_total`), graph boosts, fallbacks, and LLM latency. |
 
+## Pipeline Flow Diagrams
+
+詳細なパイプラインフロー図（実装ベース）は [`recap-worker/PIPELINE_FLOW.md`](../recap-worker/recap-worker/PIPELINE_FLOW.md) を参照してください。以下の図が含まれています：
+
+- **7-Day Recap Pipeline**: メインパイプラインの詳細フロー（初期化から永続化まで）
+- **Genre Classification Detail**: 2段階分類プロセス（Coarse + Refine）の詳細
+- **Dispatch Stage Detail**: ML/LLM処理の並列・直列フロー
+- **Morning Update Pipeline**: 朝の更新パイプライン
+- **Data Flow Overview**: データフローの全体像
+
 ## Code Status
 - `src/app.rs` assembles config, DAO, telemetry, scheduler, HTTP clients, and two pipeline orchestrators (7-day recap + morning update), then launches both the control plane and pipeline runners.
 - Scheduler defaults to a JST-tuned cron (04:00 UTC+9) for 7-day recaps and morning updates, but manual runs are supported via `POST /v1/generate/recaps/7days`.
