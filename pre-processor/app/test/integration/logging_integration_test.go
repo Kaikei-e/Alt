@@ -49,7 +49,7 @@ func TestLoggingIntegration_EndToEndFlow(t *testing.T) {
 			},
 			operation: func(ctx context.Context, h *mockHealthHandler) {
 				// Simulate complete request flow
-				h.CheckHealth(ctx)
+				_ = h.CheckHealth(ctx)
 				h.logger.WithContext(ctx).Info("processing request")
 				h.logger.WithContext(ctx).Info("health check completed")
 			},
@@ -88,11 +88,11 @@ func TestLoggingIntegration_EndToEndFlow(t *testing.T) {
 			tc.operation(ctx, handler)
 
 			// Restore stdout and read captured output
-			w.Close()
+			_ = w.Close()
 			os.Stdout = old
 
 			var buf bytes.Buffer
-			buf.ReadFrom(r)
+			_, _ = buf.ReadFrom(r)
 			capturedOutput := buf.String()
 
 			// Parse and validate logs
@@ -205,14 +205,14 @@ func TestLoggingIntegration_PerformanceUnderLoad(t *testing.T) {
 	}
 
 	// Restore stdout and read captured output
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
 	// Add a timeout for reading from the pipe
 	readDone := make(chan bool)
 	go func() {
-		buf.ReadFrom(r)
+		_, _ = buf.ReadFrom(r)
 		readDone <- true
 	}()
 
@@ -301,11 +301,11 @@ func TestLoggingIntegration_ContextPropagation(t *testing.T) {
 			}
 
 			// Restore stdout and read captured output
-			w.Close()
+			_ = w.Close()
 			os.Stdout = old
 
 			var buf bytes.Buffer
-			buf.ReadFrom(r)
+			_, _ = buf.ReadFrom(r)
 			capturedOutput := buf.String()
 
 			// Parse logs and verify context propagation

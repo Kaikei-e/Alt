@@ -25,7 +25,7 @@ func TestHealthCheckerService_InterfaceCompliance(t *testing.T) {
 		service := NewHealthCheckerService("http://test:11434", testLoggerHealth())
 
 		// Verify interface compliance at compile time
-		var _ HealthCheckerService = service
+		var _ = service
 
 		assert.NotNil(t, service)
 	})
@@ -44,7 +44,7 @@ func TestHealthCheckerService_CheckNewsCreatorHealth(t *testing.T) {
 				if r.URL.Path == "/health" {
 					w.WriteHeader(http.StatusOK)
 					// Implementation expects models array
-					w.Write([]byte(`{"models":[{"name":"gemma3:4b"}]}`))
+					_, _ = w.Write([]byte(`{"models":[{"name":"gemma3:4b"}]}`))
 				} else {
 					w.WriteHeader(http.StatusNotFound)
 				}

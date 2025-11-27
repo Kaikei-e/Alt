@@ -187,7 +187,7 @@ func TestArticleFetcherFactory_Integration(t *testing.T) {
 		// Mock response content
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`
+		_, _ = w.Write([]byte(`
 			<!DOCTYPE html>
 			<html>
 			<head><title>Test Article</title></head>

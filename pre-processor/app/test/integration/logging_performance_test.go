@@ -362,14 +362,14 @@ func TestLoggingPerformance_ConcurrentSafety(t *testing.T) {
 	}
 
 	// Restore stdout and read captured output
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
 	// Add a timeout for reading from the pipe
 	readDone := make(chan bool)
 	go func() {
-		buf.ReadFrom(r)
+		_, _ = buf.ReadFrom(r)
 		readDone <- true
 	}()
 

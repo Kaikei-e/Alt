@@ -40,10 +40,10 @@ func TestOptimizedConnectionPool(t *testing.T) {
 				defer restoreEnvVars(originalVars)
 
 				// Override specific settings
-				os.Setenv("DB_POOL_MAX_CONNS", "50")
-				os.Setenv("DB_POOL_MIN_CONNS", "15")
-				os.Setenv("DB_POOL_MAX_CONN_LIFETIME", "3h")
-				os.Setenv("DB_POOL_MAX_CONN_IDLE_TIME", "20m")
+				_ = os.Setenv("DB_POOL_MAX_CONNS", "50")
+				_ = os.Setenv("DB_POOL_MIN_CONNS", "15")
+				_ = os.Setenv("DB_POOL_MAX_CONN_LIFETIME", "3h")
+				_ = os.Setenv("DB_POOL_MAX_CONN_IDLE_TIME", "20m")
 
 				config := NewOptimizedPoolConfig()
 				assert.NotNil(t, config)
@@ -62,9 +62,9 @@ func TestOptimizedConnectionPool(t *testing.T) {
 				defer restoreEnvVars(originalVars)
 
 				// Set invalid values
-				os.Setenv("DB_POOL_MAX_CONNS", "invalid")
-				os.Setenv("DB_POOL_MIN_CONNS", "not_a_number")
-				os.Setenv("DB_POOL_MAX_CONN_LIFETIME", "invalid_duration")
+				_ = os.Setenv("DB_POOL_MAX_CONNS", "invalid")
+				_ = os.Setenv("DB_POOL_MIN_CONNS", "not_a_number")
+				_ = os.Setenv("DB_POOL_MAX_CONN_LIFETIME", "invalid_duration")
 
 				config := NewOptimizedPoolConfig()
 				assert.NotNil(t, config)
@@ -82,8 +82,8 @@ func TestOptimizedConnectionPool(t *testing.T) {
 				defer restoreEnvVars(originalVars)
 
 				// Set min_conns > max_conns (invalid)
-				os.Setenv("DB_POOL_MAX_CONNS", "5")
-				os.Setenv("DB_POOL_MIN_CONNS", "10")
+				_ = os.Setenv("DB_POOL_MAX_CONNS", "5")
+				_ = os.Setenv("DB_POOL_MIN_CONNS", "10")
 
 				config := NewOptimizedPoolConfig()
 				assert.NotNil(t, config)
@@ -181,7 +181,7 @@ func setTestEnvVars() map[string]string {
 
 	for key, value := range envVars {
 		originalVars[key] = os.Getenv(key)
-		os.Setenv(key, value)
+		_ = os.Setenv(key, value)
 	}
 
 	return originalVars
@@ -190,9 +190,9 @@ func setTestEnvVars() map[string]string {
 func restoreEnvVars(originalVars map[string]string) {
 	for key, value := range originalVars {
 		if value == "" {
-			os.Unsetenv(key)
+			_ = os.Unsetenv(key)
 		} else {
-			os.Setenv(key, value)
+			_ = os.Setenv(key, value)
 		}
 	}
 }

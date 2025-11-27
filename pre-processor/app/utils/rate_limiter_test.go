@@ -133,7 +133,7 @@ func TestRateLimitedHTTPClient_CircuitBreakerIntegration(t *testing.T) {
 
 			// Make requests to trigger circuit breaker
 			for i := 0; i < tc.consecutiveErrors; i++ {
-				client.Get(server.URL)
+				_, _ = client.Get(server.URL)
 			}
 
 			// Next request should fail due to open circuit

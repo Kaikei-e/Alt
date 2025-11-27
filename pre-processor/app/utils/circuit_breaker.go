@@ -95,10 +95,11 @@ func (cb *CircuitBreaker) Call(fn func() error) error {
 
 	// Success - reset failures and close circuit if half-open
 	cb.totalSuccesses++
-	if cb.state == StateHalfOpen {
+	switch cb.state {
+	case StateHalfOpen:
 		cb.failures = 0
 		cb.state = StateClosed
-	} else if cb.state == StateClosed {
+	case StateClosed:
 		cb.failures = 0
 	}
 

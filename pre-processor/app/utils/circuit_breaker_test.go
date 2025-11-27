@@ -103,7 +103,7 @@ func TestCircuitBreaker_HalfOpenState(t *testing.T) {
 
 			// Trigger open state
 			for i := 0; i < tc.threshold; i++ {
-				cb.Call(func() error {
+				_ = cb.Call(func() error {
 					return errors.New("test failure")
 				})
 			}
@@ -130,8 +130,8 @@ func TestCircuitBreaker_SuccessfulRecovery(t *testing.T) {
 		cb := NewCircuitBreaker(2, 50*time.Millisecond)
 
 		// Open circuit
-		cb.Call(func() error { return errors.New("fail 1") })
-		cb.Call(func() error { return errors.New("fail 2") })
+		_ = cb.Call(func() error { return errors.New("fail 1") })
+		_ = cb.Call(func() error { return errors.New("fail 2") })
 
 		assert.Equal(t, StateOpen, cb.State())
 
@@ -202,9 +202,9 @@ func TestCircuitBreaker_Metrics(t *testing.T) {
 		assert.Equal(t, int64(0), metrics.TotalSuccesses)
 
 		// Make some calls
-		cb.Call(func() error { return nil })                   // Success
-		cb.Call(func() error { return errors.New("failure") }) // Failure
-		cb.Call(func() error { return nil })                   // Success
+		_ = cb.Call(func() error { return nil })                   // Success
+		_ = cb.Call(func() error { return errors.New("failure") }) // Failure
+		_ = cb.Call(func() error { return nil })                   // Success
 
 		metrics = cb.Metrics()
 		assert.Equal(t, int64(3), metrics.TotalCalls)
@@ -271,7 +271,7 @@ func BenchmarkCircuitBreaker_ClosedState(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cb.Call(func() error {
+		_ = cb.Call(func() error {
 			return nil
 		})
 	}
@@ -281,13 +281,13 @@ func BenchmarkCircuitBreaker_OpenState(b *testing.B) {
 	cb := NewCircuitBreaker(1, 100*time.Millisecond)
 
 	// Open the circuit
-	cb.Call(func() error {
+	_ = cb.Call(func() error {
 		return errors.New("failure")
 	})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cb.Call(func() error {
+		_ = cb.Call(func() error {
 			return nil
 		})
 	}

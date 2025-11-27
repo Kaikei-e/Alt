@@ -139,7 +139,7 @@ func (h *healthHandler) CheckSLACompliance(ctx context.Context) (map[string]inte
 	metrics := h.metricsCollector.GetHealthMetrics(ctx)
 
 	// Calculate availability percentage
-	var availability float64 = 100.0
+	availability := 100.0
 	if metrics.RequestCount > 0 {
 		availability = (float64(metrics.SuccessCount) / float64(metrics.RequestCount)) * 100
 	}

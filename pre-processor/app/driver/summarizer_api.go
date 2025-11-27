@@ -8,8 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"pre-processor/config"
 	"pre-processor/models"
@@ -36,28 +34,6 @@ type SummarizeResponse struct {
 	PromptTokens     *int     `json:"prompt_tokens,omitempty"`
 	CompletionTokens *int     `json:"completion_tokens,omitempty"`
 	TotalDurationMs  *float64 `json:"total_duration_ms,omitempty"`
-}
-
-var (
-	// Global rate-limited HTTP client with circuit breaker
-	httpClient *utils.RateLimitedHTTPClient
-	clientOnce sync.Once
-)
-
-// getHTTPClient returns a singleton rate-limited HTTP client
-func getHTTPClient() *utils.RateLimitedHTTPClient {
-	clientOnce.Do(func() {
-		// Initialize with 5-second rate limit, 3 retries, 30-second timeout
-		// Circuit breaker: 3 failures threshold, 10-second timeout
-		httpClient = utils.NewRateLimitedHTTPClientWithCircuitBreaker(
-			5*time.Second,  // Minimum 5-second interval between requests
-			3,              // Max retries
-			30*time.Second, // Request timeout
-			3,              // Circuit breaker failure threshold
-			10*time.Second, // Circuit breaker timeout
-		)
-	})
-	return httpClient
 }
 
 func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cfg *config.Config, logger *slog.Logger) (*SummarizedContent, error) {

@@ -48,14 +48,14 @@ func TestMetricsIntegration_EnvoyVsDirect(t *testing.T) {
 
 			w.Header().Set("Content-Type", "text/html")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("<html><body><h1>Envoy Response</h1><p>Content via proxy</p></body></html>"))
+			_, _ = w.Write([]byte("<html><body><h1>Envoy Response</h1><p>Content via proxy</p></body></html>"))
 		} else {
 			// Direct requests - faster response
 			time.Sleep(20 * time.Millisecond)
 
 			w.Header().Set("Content-Type", "text/html")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("<html><body><h1>Direct Response</h1><p>Content direct</p></body></html>"))
+			_, _ = w.Write([]byte("<html><body><h1>Direct Response</h1><p>Content direct</p></body></html>"))
 		}
 	}))
 	defer mockServer.Close()
@@ -97,7 +97,9 @@ func TestMetricsIntegration_EnvoyVsDirect(t *testing.T) {
 			t.Errorf("Envoy request failed: %v", err)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 
 		// Verify request went through
 		if resp.StatusCode != http.StatusOK {
@@ -114,7 +116,9 @@ func TestMetricsIntegration_EnvoyVsDirect(t *testing.T) {
 			t.Errorf("Direct request failed: %v", err)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 
 		// Verify request went through
 		if resp.StatusCode != http.StatusOK {
@@ -200,7 +204,7 @@ func TestMetricsIntegration_ArticleFetching(t *testing.T) {
 		// Simulate article content
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`
+		_, _ = w.Write([]byte(`
 			<!DOCTYPE html>
 			<html>
 			<head><title>Test Article</title></head>

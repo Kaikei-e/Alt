@@ -11,7 +11,6 @@ type HTTPClientManager struct {
 	defaultClient *http.Client
 	summaryClient *http.Client
 	feedClient    *http.Client
-	once          sync.Once
 }
 
 // optimizedTransport wraps http.Transport to expose fields for testing

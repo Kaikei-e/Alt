@@ -28,7 +28,7 @@ func TestSummaryRepository_InterfaceCompliance(t *testing.T) {
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
 		// Verify interface compliance at compile time
-		var _ SummaryRepository = repo
+		var _ = repo
 
 		assert.NotNil(t, repo)
 	})

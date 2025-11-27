@@ -10,6 +10,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Use exported keys from the implementation
+var (
+	testRequestIDKey = RequestIDKey
+	testUserIDKey    = UserIDKey
+	testTraceIDKey   = TraceIDKey
+)
+
 func TestLoggerFactory(t *testing.T) {
 	tests := []struct {
 		name string
@@ -382,9 +389,9 @@ func TestOptimizedLogger(t *testing.T) {
 
 				logger := NewOptimizedLogger("test-component", config)
 
-				ctx := context.WithValue(context.Background(), "request_id", "req-123")
-				ctx = context.WithValue(ctx, "user_id", "user-456")
-				ctx = context.WithValue(ctx, "trace_id", "trace-789")
+				ctx := context.WithValue(context.Background(), testRequestIDKey, "req-123")
+				ctx = context.WithValue(ctx, testUserIDKey, "user-456")
+				ctx = context.WithValue(ctx, testTraceIDKey, "trace-789")
 
 				contextLogger := logger.WithContext(ctx)
 				assert.NotNil(t, contextLogger)
@@ -407,7 +414,7 @@ func TestOptimizedLogger(t *testing.T) {
 
 				logger := NewOptimizedLogger("test-component", config)
 
-				ctx := context.WithValue(context.Background(), "request_id", "req-123")
+				ctx := context.WithValue(context.Background(), testRequestIDKey, "req-123")
 				contextLogger := logger.WithContext(ctx)
 
 				// This should not panic

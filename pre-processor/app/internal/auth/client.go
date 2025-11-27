@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"log/slog"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -22,6 +24,7 @@ type Client struct {
 	config     Config
 	httpClient *http.Client
 	tokenCache map[string]*CachedToken
+	logger     *slog.Logger
 }
 
 type CachedToken struct {
@@ -116,7 +119,12 @@ func (c *Client) ValidateUserToken(ctx context.Context, tokenString string) (*Us
 	if err != nil {
 		return nil, fmt.Errorf("token validation failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err := resp.Body.Close()
+		if err != nil {
+			c.logger.Error("failed to close response body", "error", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("invalid token: status %d", resp.StatusCode)

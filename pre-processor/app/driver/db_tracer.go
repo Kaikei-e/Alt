@@ -13,15 +13,19 @@ const (
 	queryDurationThreshold = 100 * time.Millisecond
 )
 
+type contextKey string
+
+const queryStartKey contextKey = "query start"
+
 type QueryTracer struct {
 }
 
 func (t *QueryTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
-	return context.WithValue(ctx, "query start", time.Now())
+	return context.WithValue(ctx, queryStartKey, time.Now())
 }
 
 func (t *QueryTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryEndData) {
-	queryStart, ok := ctx.Value("query start").(time.Time)
+	queryStart, ok := ctx.Value(queryStartKey).(time.Time)
 	if !ok {
 		logger.Logger.Error("query start not found")
 		return

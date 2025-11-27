@@ -274,7 +274,7 @@ func TestSimpleTracer(t *testing.T) {
 				tracer := NewSimpleTracer(nil)
 				ctx := context.Background()
 
-				ctx, span := tracer.StartSpan(ctx, "test-operation")
+				_, span := tracer.StartSpan(ctx, "test-operation")
 				assert.NotNil(t, span)
 				assert.Equal(t, "test-operation", span.name)
 				assert.True(t, span.startTime.After(time.Now().Add(-time.Second)))
@@ -294,7 +294,7 @@ func TestSimpleTracer(t *testing.T) {
 				ctx := context.Background()
 
 				ctx, parentSpan := tracer.StartSpan(ctx, "parent-operation")
-				ctx, childSpan := tracer.StartSpan(ctx, "child-operation")
+				_, childSpan := tracer.StartSpan(ctx, "child-operation")
 
 				childSpan.SetAttributes("child_attr", "child_value")
 				childSpan.End()

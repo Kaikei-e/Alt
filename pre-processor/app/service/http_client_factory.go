@@ -242,7 +242,7 @@ func (w *OptimizedHTTPClientWrapper) Get(url string) (*http.Response, error) {
 		metrics.RecordDomainRequest(url, duration, false, errorType)
 
 		// Close response body to prevent resource leak
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		// Return error instead of the response to prevent saving error content
 		return nil, fmt.Errorf("HTTP error response: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))

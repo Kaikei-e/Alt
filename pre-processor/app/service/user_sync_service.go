@@ -9,6 +9,7 @@ import (
 	"log/slog"
 
 	"pre-processor/internal/auth"
+	"pre-processor/internal/auth/middleware"
 )
 
 type userSyncService struct {
@@ -31,7 +32,7 @@ func NewUserSyncService(
 
 func (s *userSyncService) SyncUserSubscriptions(ctx context.Context) error {
 	// コンテキストからユーザー情報を取得
-	user, ok := ctx.Value("user").(*auth.UserContext)
+	user, ok := ctx.Value(middleware.UserContextKey).(*auth.UserContext)
 	if !ok || user == nil {
 		s.logger.Error("user context not found")
 		return fmt.Errorf("authentication required: user context not found")
@@ -80,7 +81,7 @@ func (s *userSyncService) SyncUserSubscriptions(ctx context.Context) error {
 
 func (s *userSyncService) GetUserSubscriptions(ctx context.Context) ([]Subscription, error) {
 	// コンテキストからユーザー情報を取得
-	user, ok := ctx.Value("user").(*auth.UserContext)
+	user, ok := ctx.Value(middleware.UserContextKey).(*auth.UserContext)
 	if !ok || user == nil {
 		s.logger.Error("user context not found")
 		return nil, fmt.Errorf("authentication required: user context not found")

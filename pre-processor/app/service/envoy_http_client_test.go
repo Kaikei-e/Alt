@@ -100,7 +100,7 @@ func TestEnvoyHTTPClient_Get(t *testing.T) {
 				// Return mock RSS content
 				w.Header().Set("Content-Type", "application/rss+xml")
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+				_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
     <title>Test RSS Feed</title>
@@ -146,7 +146,9 @@ func TestEnvoyHTTPClient_Get(t *testing.T) {
 				return
 			}
 
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			if resp.StatusCode != http.StatusOK {
 				t.Errorf("%s: expected status 200, got: %d", tc.description, resp.StatusCode)
@@ -236,7 +238,7 @@ func TestEnvoyHTTPClient_TimeoutHandling(t *testing.T) {
 	slowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second) // Simulate slow response
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("slow response"))
+		_, _ = w.Write([]byte("slow response"))
 	}))
 	defer slowServer.Close()
 
@@ -294,7 +296,9 @@ func TestEnvoyHTTPClient_TimeoutHandling(t *testing.T) {
 					t.Errorf("%s: expected response but got nil", tc.description)
 					return
 				}
-				defer resp.Body.Close()
+				defer func() {
+					_ = resp.Body.Close()
+				}()
 			}
 		})
 	}
@@ -353,7 +357,9 @@ func TestEnvoyHTTPClient_ErrorHandling(t *testing.T) {
 					t.Errorf("%s: unexpected error: %v", tc.description, err)
 				}
 				if resp != nil {
-					defer resp.Body.Close()
+					defer func() {
+						_ = resp.Body.Close()
+					}()
 				}
 			}
 		})

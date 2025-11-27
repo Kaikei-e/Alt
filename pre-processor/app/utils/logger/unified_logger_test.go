@@ -71,11 +71,12 @@ func TestSlogCompatibility(t *testing.T) {
 			logger.logger.Log(context.Background(), test.level, test.message, test.args...)
 
 			// Restore stdout and read captured output
-			w.Close()
+			errors := w.Close()
+			require.NoError(t, errors, "Should close writer")
 			os.Stdout = old
 
 			var buf bytes.Buffer
-			buf.ReadFrom(r)
+			_, _ = buf.ReadFrom(r)
 			logOutput := buf.String()
 
 			var result map[string]interface{}

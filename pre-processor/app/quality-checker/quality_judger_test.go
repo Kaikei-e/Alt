@@ -191,7 +191,7 @@ func TestScoreSummary(t *testing.T) {
 					Done:     true,
 				}
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(response)
+				_ = json.NewEncoder(w).Encode(response)
 			},
 			expectedScore: intPtr(20),
 			expectedError: false,
@@ -204,7 +204,7 @@ func TestScoreSummary(t *testing.T) {
 					Done:     true,
 				}
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(response)
+				_ = json.NewEncoder(w).Encode(response)
 			},
 			expectedScore: intPtr(25),
 			expectedError: false,
@@ -217,7 +217,7 @@ func TestScoreSummary(t *testing.T) {
 					Done:     false, // Not completed
 				}
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(response)
+				_ = json.NewEncoder(w).Encode(response)
 			},
 			expectedScore: nil,
 			expectedError: true,
@@ -230,7 +230,7 @@ func TestScoreSummary(t *testing.T) {
 					Done:     true,
 				}
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(response)
+				_ = json.NewEncoder(w).Encode(response)
 			},
 			expectedScore: intPtr(18),
 			expectedError: false,
@@ -243,7 +243,7 @@ func TestScoreSummary(t *testing.T) {
 					Done:     true,
 				}
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(response)
+				_ = json.NewEncoder(w).Encode(response)
 			},
 			expectedScore: intPtr(1),
 			expectedError: false,
@@ -252,7 +252,7 @@ func TestScoreSummary(t *testing.T) {
 		"http_server_error": {
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte("Server error"))
+				_, _ = w.Write([]byte("Server error"))
 			},
 			expectedScore: nil,
 			expectedError: true,
@@ -261,7 +261,7 @@ func TestScoreSummary(t *testing.T) {
 		"invalid_json_response": {
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("Not valid JSON"))
+				_, _ = w.Write([]byte("Not valid JSON"))
 			},
 			expectedScore: nil,
 			expectedError: true,

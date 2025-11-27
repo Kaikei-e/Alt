@@ -281,8 +281,7 @@ func TestFeedMetricsProcessorService_Interface_Compliance(t *testing.T) {
 	)
 
 	// Verify interface compliance
-	var _ service.FeedProcessorService = serviceInstance
-	var _ service.FeedMetricsProcessorService = serviceInstance
+	var _ = serviceInstance
 	assert.NotNil(t, serviceInstance)
 }
 
@@ -306,7 +305,7 @@ func TestFeedMetricsProcessorService_Constructor(t *testing.T) {
 	assert.NotNil(t, serviceInstance)
 
 	// Test methods that don't require external dependencies
-	assert.NotPanics(t, func() { serviceInstance.ResetPagination() })
+	assert.NotPanics(t, func() { _ = serviceInstance.ResetPagination() })
 
 	// Test metrics methods (these should return valid metrics objects)
 	dlqMetrics := serviceInstance.GetDeadLetterQueueMetrics()

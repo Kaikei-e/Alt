@@ -66,7 +66,9 @@ func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error
 		s.logger.Error("failed to check news creator health", "error", err)
 		return fmt.Errorf("health check failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		s.logger.Error("news creator not healthy", "status", resp.StatusCode)

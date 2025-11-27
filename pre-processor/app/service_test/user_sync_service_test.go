@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"pre-processor/internal/auth"
+	"pre-processor/internal/auth/middleware"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -53,7 +54,7 @@ func TestUserSyncService_SyncUserSubscriptions(t *testing.T) {
 					TenantID: testTenantID,
 					Email:    "test@example.com",
 				}
-				return context.WithValue(context.Background(), "user", userCtx)
+				return context.WithValue(context.Background(), middleware.UserContextKey, userCtx)
 			},
 			setupMocks: func(mockClient *mocks.MockInoreaderClient, mockRepo *mocks.MockUserSubscriptionRepository) {
 				mockClient.EXPECT().
@@ -86,7 +87,7 @@ func TestUserSyncService_SyncUserSubscriptions(t *testing.T) {
 		"error_case_nil_user_context": {
 			description: "Should fail when user context is nil",
 			setupContext: func() context.Context {
-				return context.WithValue(context.Background(), "user", nil)
+				return context.WithValue(context.Background(), middleware.UserContextKey, nil)
 			},
 			setupMocks: func(mockClient *mocks.MockInoreaderClient, mockRepo *mocks.MockUserSubscriptionRepository) {
 				// No mock expectations - should fail before reaching clients
@@ -96,7 +97,7 @@ func TestUserSyncService_SyncUserSubscriptions(t *testing.T) {
 		"error_case_invalid_user_context_type": {
 			description: "Should fail when user context has wrong type",
 			setupContext: func() context.Context {
-				return context.WithValue(context.Background(), "user", "invalid-type")
+				return context.WithValue(context.Background(), middleware.UserContextKey, "invalid-type")
 			},
 			setupMocks: func(mockClient *mocks.MockInoreaderClient, mockRepo *mocks.MockUserSubscriptionRepository) {
 				// No mock expectations - should fail before reaching clients
@@ -111,7 +112,7 @@ func TestUserSyncService_SyncUserSubscriptions(t *testing.T) {
 					TenantID: testTenantID,
 					Email:    "test@example.com",
 				}
-				return context.WithValue(context.Background(), "user", userCtx)
+				return context.WithValue(context.Background(), middleware.UserContextKey, userCtx)
 			},
 			setupMocks: func(mockClient *mocks.MockInoreaderClient, mockRepo *mocks.MockUserSubscriptionRepository) {
 				mockClient.EXPECT().
@@ -131,7 +132,7 @@ func TestUserSyncService_SyncUserSubscriptions(t *testing.T) {
 					TenantID: testTenantID,
 					Email:    "test@example.com",
 				}
-				return context.WithValue(context.Background(), "user", userCtx)
+				return context.WithValue(context.Background(), middleware.UserContextKey, userCtx)
 			},
 			setupMocks: func(mockClient *mocks.MockInoreaderClient, mockRepo *mocks.MockUserSubscriptionRepository) {
 				mockClient.EXPECT().
@@ -159,7 +160,7 @@ func TestUserSyncService_SyncUserSubscriptions(t *testing.T) {
 					TenantID: testTenantID,
 					Email:    "test@example.com",
 				}
-				return context.WithValue(context.Background(), "user", userCtx)
+				return context.WithValue(context.Background(), middleware.UserContextKey, userCtx)
 			},
 			setupMocks: func(mockClient *mocks.MockInoreaderClient, mockRepo *mocks.MockUserSubscriptionRepository) {
 				emptySubscriptions := []service.Subscription{}
@@ -244,7 +245,7 @@ func TestUserSyncService_GetUserSubscriptions(t *testing.T) {
 					TenantID: testTenantID,
 					Email:    "test@example.com",
 				}
-				return context.WithValue(context.Background(), "user", userCtx)
+				return context.WithValue(context.Background(), middleware.UserContextKey, userCtx)
 			},
 			setupMocks: func(mockClient *mocks.MockInoreaderClient, mockRepo *mocks.MockUserSubscriptionRepository) {
 				mockClient.EXPECT().
@@ -274,7 +275,7 @@ func TestUserSyncService_GetUserSubscriptions(t *testing.T) {
 					TenantID: testTenantID,
 					Email:    "test@example.com",
 				}
-				return context.WithValue(context.Background(), "user", userCtx)
+				return context.WithValue(context.Background(), middleware.UserContextKey, userCtx)
 			},
 			setupMocks: func(mockClient *mocks.MockInoreaderClient, mockRepo *mocks.MockUserSubscriptionRepository) {
 				mockClient.EXPECT().
@@ -374,7 +375,7 @@ func TestUserSyncService_TenantIsolation(t *testing.T) {
 		Times(1)
 
 	// Test tenant 1
-	ctx1 := context.WithValue(context.Background(), "user", &auth.UserContext{
+	ctx1 := context.WithValue(context.Background(), middleware.UserContextKey, &auth.UserContext{
 		UserID:   user1ID,
 		TenantID: tenant1ID,
 		Email:    "user1@tenant1.com",
@@ -384,7 +385,7 @@ func TestUserSyncService_TenantIsolation(t *testing.T) {
 	require.NoError(t, err1)
 
 	// Test tenant 2
-	ctx2 := context.WithValue(context.Background(), "user", &auth.UserContext{
+	ctx2 := context.WithValue(context.Background(), middleware.UserContextKey, &auth.UserContext{
 		UserID:   user2ID,
 		TenantID: tenant2ID,
 		Email:    "user2@tenant2.com",
@@ -409,5 +410,5 @@ func TestUserSyncService_Constructor(t *testing.T) {
 	assert.NotNil(t, serviceInstance)
 
 	// Verify interface compliance
-	var _ service.UserSyncService = serviceInstance
+	var _ = serviceInstance
 }

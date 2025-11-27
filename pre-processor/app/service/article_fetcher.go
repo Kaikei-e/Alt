@@ -12,8 +12,6 @@ import (
 
 	"log/slog"
 
-	"github.com/go-shiori/go-readability"
-
 	"pre-processor/config"
 	"pre-processor/models"
 	"pre-processor/retry"
@@ -172,7 +170,8 @@ func (s *articleFetcherService) FetchArticle(ctx context.Context, urlStr string)
 	*/
 }
 
-// fetchWithRetryAndDLQ implements the TASK2 retry and DLQ integration
+// fetchWithRetryAndDLQ is unused - kept for reference
+/*
 func (s *articleFetcherService) fetchWithRetryAndDLQ(ctx context.Context, parsedURL url.URL, start time.Time) (*models.Article, error) {
 	urlStr := parsedURL.String()
 	domain := parsedURL.Hostname()
@@ -286,6 +285,7 @@ func (s *articleFetcherService) fetchWithRetryAndDLQ(ctx context.Context, parsed
 
 	return article, nil
 }
+*/
 
 // ValidateURL validates a URL for security and format.
 func (s *articleFetcherService) ValidateURL(urlStr string) error {
@@ -334,7 +334,8 @@ func (s *articleFetcherService) ValidateURL(urlStr string) error {
 	return nil
 }
 
-// fetchArticleFromURL fetches an article from a URL (moved from article-fetcher package).
+// fetchArticleFromURL is unused - kept for reference
+/*
 func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Article, error) {
 	start := time.Now()
 
@@ -404,7 +405,9 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 			"total_duration_ms", totalDuration.Milliseconds())
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// レスポンス読み取り時間測定
 	readStart := time.Now()
@@ -470,6 +473,7 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 		URL:     url.String(),
 	}, nil
 }
+*/
 
 // HTTPClientWrapper wraps http.Client to implement HTTPClient interface.
 type HTTPClientWrapper struct {
@@ -509,7 +513,7 @@ func (w *HTTPClientWrapper) Get(url string) (*http.Response, error) {
 	}
 
 	start := time.Now()
-	resp, err := w.Client.Do(req)
+	resp, err := w.Do(req)
 	duration := time.Since(start)
 
 	// Get metrics for domain tracking
@@ -542,7 +546,7 @@ func (w *HTTPClientWrapper) Get(url string) (*http.Response, error) {
 		metrics.RecordDomainRequest(url, duration, false, errorType)
 
 		// Close response body to prevent resource leak
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		// Return error instead of the response to prevent saving error content
 		return nil, fmt.Errorf("HTTP error response: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
@@ -558,6 +562,8 @@ func (w *HTTPClientWrapper) Get(url string) (*http.Response, error) {
 }
 
 // Helper methods (moved from article-fetcher package).
+// createSecureHTTPClient is unused - kept for reference
+/*
 func (s *articleFetcherService) createSecureHTTPClient() HTTPClient {
 	dialer := &net.Dialer{
 		Timeout: 10 * time.Second,
@@ -591,6 +597,7 @@ func (s *articleFetcherService) createSecureHTTPClient() HTTPClient {
 		Config:    nil, // No advanced config for secure client
 	}
 }
+*/
 
 func (s *articleFetcherService) validateURLForSSRF(u *url.URL) error {
 	if u.Scheme != "http" && u.Scheme != "https" {
@@ -712,7 +719,11 @@ func (s *articleFetcherService) validateContent(content, url string) error {
 	}
 
 	// Check for suspicious short repeated patterns
-	if len(trimmedContent) < 100 && strings.Count(trimmedContent, trimmedContent[:min(10, len(trimmedContent))]) > 3 {
+	patternLen := 10
+	if len(trimmedContent) < patternLen {
+		patternLen = len(trimmedContent)
+	}
+	if len(trimmedContent) < 100 && strings.Count(trimmedContent, trimmedContent[:patternLen]) > 3 {
 		return fmt.Errorf("content appears to contain repeated patterns")
 	}
 
@@ -730,12 +741,4 @@ func (s *articleFetcherService) validateContent(content, url string) error {
 	}
 
 	return nil
-}
-
-// Helper function for minimum
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

@@ -107,7 +107,9 @@ func (r *externalAPIRepository) CheckHealth(ctx context.Context, serviceURL stri
 		r.logger.Error("health check request failed", "error", err)
 		return fmt.Errorf("health check request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		r.logger.Error("service not healthy", "status", resp.StatusCode)

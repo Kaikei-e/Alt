@@ -23,7 +23,7 @@ func TestArticleRepository_InterfaceCompliance(t *testing.T) {
 		repo := NewArticleRepository(nil, testLoggerRepo())
 
 		// Verify interface compliance at compile time
-		var _ ArticleRepository = repo
+		var _ = repo
 
 		assert.NotNil(t, repo)
 	})

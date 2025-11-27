@@ -204,7 +204,7 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 		metrics.RecordEnvoyRequest(duration, false, dnsResolutionTime)
 		metrics.RecordDomainRequest(targetURL, duration, false, errorType)
 
-		return nil, fmt.Errorf("Envoy proxy request failed: %w", err)
+		return nil, fmt.Errorf("envoy proxy request failed: %w", err)
 	}
 
 	// Check for HTTP errors if skip error responses is enabled
@@ -228,7 +228,7 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 		metrics.RecordDomainRequest(targetURL, duration, false, errorType)
 
 		// Close response body to prevent resource leak
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		// Return error instead of the response to prevent saving error content
 		return nil, fmt.Errorf("HTTP error response: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))

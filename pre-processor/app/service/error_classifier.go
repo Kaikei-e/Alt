@@ -56,8 +56,8 @@ func IsRetryableError(err error) bool {
 	// ネットワークエラーのチェック
 	var netErr net.Error
 	if errors.As(err, &netErr) {
-		// タイムアウトまたは一時的なネットワークエラー
-		return netErr.Timeout() || netErr.Temporary()
+		// タイムアウトはリトライ可能（Temporary()は非推奨のため削除）
+		return netErr.Timeout()
 	}
 
 	// HTTPレスポンスエラーのチェック

@@ -10,6 +10,10 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+type ContextKey string
+
+const UserContextKey ContextKey = "user"
+
 type AuthMiddleware struct {
 	authClient *auth.Client
 }
@@ -35,7 +39,7 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 			}
 
 			// コンテキストにユーザー情報を設定
-			ctx := context.WithValue(c.Request().Context(), "user", userContext)
+			ctx := context.WithValue(c.Request().Context(), UserContextKey, userContext)
 			c.SetRequest(c.Request().WithContext(ctx))
 
 			return next(c)
@@ -81,7 +85,7 @@ func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 			}
 
 			// コンテキストにユーザー情報を設定
-			ctx := context.WithValue(c.Request().Context(), "user", userContext)
+			ctx := context.WithValue(c.Request().Context(), UserContextKey, userContext)
 			c.SetRequest(c.Request().WithContext(ctx))
 
 			return next(c)

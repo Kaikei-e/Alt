@@ -299,7 +299,6 @@ func (s *SizeStats) Record(size int64) {
 
 // RuntimeMetrics collects Go runtime metrics
 type RuntimeMetrics struct {
-	lastGC       time.Time
 	lastMemStats runtime.MemStats
 	mu           sync.RWMutex
 }
@@ -420,6 +419,10 @@ func NewSimpleTracer(customLogger *slog.Logger) *SimpleTracer {
 	}
 }
 
+type contextKey string
+
+const currentSpanKey contextKey = "current_span"
+
 // Span represents a trace span
 type Span struct {
 	name       string
@@ -448,7 +451,7 @@ func (t *SimpleTracer) StartSpan(ctx context.Context, name string) (context.Cont
 		span.logger.Info("span started")
 	}
 
-	ctx = context.WithValue(ctx, "current_span", span)
+	ctx = context.WithValue(ctx, currentSpanKey, span)
 	return ctx, span
 }
 
@@ -576,8 +579,12 @@ func (r *PerformanceReporter) logReport(report PerformanceReport) {
 
 // Utility functions
 
+type traceIDKey string
+
+const traceIDContextKey traceIDKey = "trace_id"
+
 func getOrGenerateTraceID(ctx context.Context) string {
-	if traceID := ctx.Value("trace_id"); traceID != nil {
+	if traceID := ctx.Value(traceIDContextKey); traceID != nil {
 		if id, ok := traceID.(string); ok {
 			return id
 		}

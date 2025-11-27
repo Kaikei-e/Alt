@@ -664,8 +664,7 @@ func (uar *UserAgentRotator) GetRandomUserAgent() string {
 		return uar.config.UserAgent
 	}
 
-	// Initialize random seed if not already done
-	rand.Seed(time.Now().UnixNano())
+	// Random seed is automatically initialized in Go 1.20+
 
 	uar.mu.Lock()
 	defer uar.mu.Unlock()

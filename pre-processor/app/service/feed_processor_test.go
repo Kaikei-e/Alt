@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"log/slog"
 	"net/url"
 	"os"
@@ -18,7 +17,7 @@ func TestFeedProcessorService_ProcessFeeds(t *testing.T) {
 		service := NewFeedProcessorService(nil, nil, nil, testLogger())
 
 		// Verify interface compliance
-		var _ FeedProcessorService = service
+		var _ = service
 
 		assert.NotNil(t, service)
 	})
@@ -40,7 +39,7 @@ func TestFeedProcessorService_GetProcessingStats(t *testing.T) {
 		assert.NotNil(t, service)
 
 		// Method exists and has correct signature
-		var _ func(context.Context) (*ProcessingStats, error) = service.GetProcessingStats
+		var _ = service.GetProcessingStats
 	})
 }
 

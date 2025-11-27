@@ -422,11 +422,11 @@ func TestHealthMetricsCollector_LogHealthMetrics(t *testing.T) {
 	collector.LogHealthMetrics(ctx)
 
 	// Restore stdout and read captured output
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	logOutput := buf.String()
 
 	// Verify log was generated

@@ -48,7 +48,7 @@ func TestEnvoyIntegration_EndToEnd(t *testing.T) {
 		// Mock successful response with target content
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`
+		_, _ = w.Write([]byte(`
 			<!DOCTYPE html>
 			<html>
 			<head><title>Integration Test Article</title></head>
@@ -168,12 +168,12 @@ func TestEnvoyIntegration_HealthCheck(t *testing.T) {
 		if strings.Contains(r.URL.Path, "/api/tags") {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"models": [{"name": "integration-test-model"}]}`))
+			_, _ = w.Write([]byte(`{"models": [{"name": "integration-test-model"}]}`))
 		} else if strings.Contains(r.URL.Path, "/json") {
 			// Mock response for httpbin.org/json endpoint
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"models": [{"name": "integration-test-model"}]}`))
+			_, _ = w.Write([]byte(`{"models": [{"name": "integration-test-model"}]}`))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -342,7 +342,7 @@ func TestEnvoyIntegration_DNSResolution(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("DNS resolution test successful"))
+		_, _ = w.Write([]byte("DNS resolution test successful"))
 	}))
 	defer envoyMock.Close()
 
@@ -453,7 +453,7 @@ func TestEnvoyIntegration_ErrorScenarios(t *testing.T) {
 			setupMock: func() *httptest.Server {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusBadGateway)
-					w.Write([]byte("")) // Empty content will cause article parsing to fail
+					_, _ = w.Write([]byte("")) // Empty content will cause article parsing to fail
 				}))
 			},
 			config: &config.Config{

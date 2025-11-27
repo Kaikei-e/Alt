@@ -56,11 +56,11 @@ func TestContextLogger_StructuredLogging(t *testing.T) {
 			tc.logOperation(ctx, contextLogger)
 
 			// Restore stdout and read captured output
-			w.Close()
+			_ = w.Close()
 			os.Stdout = old
 
 			var buf bytes.Buffer
-			buf.ReadFrom(r)
+			_, _ = buf.ReadFrom(r)
 			logOutput := buf.String()
 
 			// Split into lines and find the last non-empty line
@@ -125,11 +125,11 @@ func TestPerformanceLogger_Timing(t *testing.T) {
 			timer.End()
 
 			// Restore stdout and read captured output
-			w.Close()
+			_ = w.Close()
 			os.Stdout = old
 
 			var buf bytes.Buffer
-			buf.ReadFrom(r)
+			_, _ = buf.ReadFrom(r)
 			logOutput := buf.String()
 
 			// Verify log contains timing information

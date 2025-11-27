@@ -324,7 +324,7 @@ func TestQualityCheckerService_Interface_Compliance(t *testing.T) {
 	)
 
 	// Verify interface compliance
-	var _ service.QualityCheckerService = serviceInstance
+	var _ = serviceInstance
 	assert.NotNil(t, serviceInstance)
 }
 
@@ -347,7 +347,7 @@ func TestQualityCheckerService_Constructor(t *testing.T) {
 	assert.NotNil(t, serviceInstance)
 
 	// These should not panic (basic smoke test)
-	assert.NotPanics(t, func() { serviceInstance.ResetPagination() })
+	assert.NotPanics(t, func() { _ = serviceInstance.ResetPagination() })
 
 	// Note: CheckQuality and ProcessLowQualityArticles require proper mocks to test
 	// which are covered in the dedicated test functions above

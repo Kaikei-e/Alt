@@ -77,8 +77,10 @@ func TestLoadConfig(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// 環境変数設定
 			for key, value := range tc.envVars {
-				os.Setenv(key, value)
-				defer os.Unsetenv(key)
+				_ = os.Setenv(key, value)
+				defer func(k string) {
+					_ = os.Unsetenv(k)
+				}(key)
 			}
 
 			config, err := LoadConfig()
@@ -302,8 +304,10 @@ func TestLoadFromEnv(t *testing.T) {
 		}
 
 		for key, value := range envVars {
-			os.Setenv(key, value)
-			defer os.Unsetenv(key)
+			_ = os.Setenv(key, value)
+			defer func(k string) {
+				_ = os.Unsetenv(k)
+			}(key)
 		}
 
 		config := &Config{}

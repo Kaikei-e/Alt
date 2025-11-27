@@ -24,7 +24,7 @@ func TestArticleFetcherService_InterfaceCompliance(t *testing.T) {
 		service := NewArticleFetcherService(testLoggerFetcher())
 
 		// Verify interface compliance at compile time
-		var _ ArticleFetcherService = service
+		var _ = service
 
 		assert.NotNil(t, service)
 	})

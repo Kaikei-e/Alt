@@ -65,9 +65,9 @@ func TestNewDatabaseConfig(t *testing.T) {
 	os.Clearenv()
 
 	// テスト用環境変数設定
-	os.Setenv("DB_HOST", "testhost")
-	os.Setenv("DB_SSL_MODE", "require")
-	os.Setenv("DB_MAX_CONNS", "15")
+	_ = os.Setenv("DB_HOST", "testhost")
+	_ = os.Setenv("DB_SSL_MODE", "require")
+	_ = os.Setenv("DB_MAX_CONNS", "15")
 
 	defer func() {
 		os.Clearenv()
@@ -87,11 +87,13 @@ func TestDatabaseConfig_SSLValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp cert file: %v", err)
 	}
-	defer os.Remove(tempCertFile.Name())
+	defer func() {
+		_ = os.Remove(tempCertFile.Name())
+	}()
 
 	// Write some dummy content to make it a valid file
-	tempCertFile.WriteString("-----BEGIN CERTIFICATE-----\nDUMMY CERTIFICATE\n-----END CERTIFICATE-----")
-	tempCertFile.Close()
+	_, _ = tempCertFile.WriteString("-----BEGIN CERTIFICATE-----\nDUMMY CERTIFICATE\n-----END CERTIFICATE-----")
+	_ = tempCertFile.Close()
 
 	tests := []struct {
 		name      string

@@ -44,7 +44,7 @@ func TestExternalAPIRepository_InterfaceCompliance(t *testing.T) {
 		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		// Verify interface compliance at compile time
-		var _ ExternalAPIRepository = repo
+		var _ = repo
 
 		assert.NotNil(t, repo)
 	})
@@ -153,7 +153,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == "/api/tags" {
 						w.WriteHeader(http.StatusOK)
-						w.Write([]byte(`{"status":"healthy"}`))
+						_, _ = w.Write([]byte(`{"status":"healthy"}`))
 					}
 				}))
 			},
@@ -471,7 +471,7 @@ func BenchmarkExternalAPIRepository_SummarizeArticle(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// This will fail but we're measuring the validation overhead
-		repo.SummarizeArticle(context.Background(), article)
+		_, _ = repo.SummarizeArticle(context.Background(), article)
 	}
 }
 
@@ -487,7 +487,7 @@ func BenchmarkExternalAPIRepository_CheckHealth(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		repo.CheckHealth(context.Background(), server.URL)
+		_ = repo.CheckHealth(context.Background(), server.URL)
 	}
 }
 
@@ -542,7 +542,7 @@ func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 			// Return malformed response
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("invalid json {"))
+			_, _ = w.Write([]byte("invalid json {"))
 		}))
 		defer server.Close()
 

@@ -106,7 +106,7 @@ func TestHealthCheckerFactory_Integration(t *testing.T) {
 			// Mock healthy response with models
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"models": [
 					{"name": "gemma3:4b"},
 					{"name": "llama2:7b"}
@@ -215,7 +215,7 @@ func TestHealthCheckerFactory_WaitForHealthy(t *testing.T) {
 			if callCount >= 2 { // Become healthy after second call
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"models": [{"name": "test-model"}]}`))
+				_, _ = w.Write([]byte(`{"models": [{"name": "test-model"}]}`))
 			} else {
 				w.WriteHeader(http.StatusServiceUnavailable)
 			}

@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"log/slog"
-	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -18,7 +17,7 @@ func TestFeedRepository_InterfaceCompliance(t *testing.T) {
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
 		// Verify interface compliance at compile time
-		var _ FeedRepository = repo
+		var _ = repo
 
 		assert.NotNil(t, repo)
 	})
@@ -268,7 +267,7 @@ func TestFeedRepository_URLConversion(t *testing.T) {
 		assert.Nil(t, cursor)
 
 		// Type assertion to ensure correct return type
-		var _ []*url.URL = urls
+		var _ = urls
 	})
 }
 
@@ -283,8 +282,8 @@ func TestFeedRepository_Logging(t *testing.T) {
 		repo := NewFeedRepository(nil, logger)
 
 		// These should trigger logging even with errors
-		repo.GetUnprocessedFeeds(context.Background(), nil, 10)
-		repo.GetProcessingStats(context.Background())
+		_, _, _ = repo.GetUnprocessedFeeds(context.Background(), nil, 10)
+		_, _ = repo.GetProcessingStats(context.Background())
 
 		// If we get here without panics, logging integration is working
 		assert.True(t, true)

@@ -11,6 +11,15 @@ import (
 	logger "pre-processor/utils/logger"
 )
 
+// Context keys for logging
+type ContextKey string
+
+const (
+	RequestIDKey ContextKey = "request_id"
+	UserIDKey    ContextKey = "user_id"
+	TraceIDKey   ContextKey = "trace_id"
+)
+
 // LogConfig holds logging configuration
 type LogConfig struct {
 	Level           string `env:"LOG_LEVEL" default:"info"`
@@ -85,13 +94,13 @@ func (l *OptimizedLogger) WithContext(ctx context.Context) *OptimizedLogger {
 	}
 
 	// Add context values
-	if requestID := ctx.Value("request_id"); requestID != nil {
+	if requestID := ctx.Value(RequestIDKey); requestID != nil {
 		contextFields["request_id"] = requestID
 	}
-	if userID := ctx.Value("user_id"); userID != nil {
+	if userID := ctx.Value(UserIDKey); userID != nil {
 		contextFields["user_id"] = userID
 	}
-	if traceID := ctx.Value("trace_id"); traceID != nil {
+	if traceID := ctx.Value(TraceIDKey); traceID != nil {
 		contextFields["trace_id"] = traceID
 	}
 

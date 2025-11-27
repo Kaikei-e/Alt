@@ -71,11 +71,11 @@ func TestContextIntegration(t *testing.T) {
 			loggerWithCtx.Info("operation completed", "status", "success")
 
 			// Restore stdout and read captured output
-			w.Close()
+			_ = w.Close()
 			os.Stdout = old
 
 			var buf bytes.Buffer
-			buf.ReadFrom(r)
+			_, _ = buf.ReadFrom(r)
 			logOutput := buf.String()
 
 			var logEntry map[string]interface{}
