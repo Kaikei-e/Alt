@@ -43,6 +43,11 @@ pub struct Config {
     recap_pre_refresh_graph_enabled: bool,
     recap_pre_refresh_timeout: Duration,
     llm_summary_timeout: Duration,
+    recap_db_max_connections: u32,
+    recap_db_min_connections: u32,
+    recap_db_acquire_timeout: Duration,
+    recap_db_idle_timeout: Duration,
+    recap_db_max_lifetime: Duration,
 }
 
 #[derive(Debug, Error)]
@@ -127,6 +132,13 @@ impl Config {
         // LLM summary generation timeout (default 600 seconds = 10 minutes)
         let llm_summary_timeout = parse_duration_secs("LLM_SUMMARY_TIMEOUT_SECS", 600)?;
 
+        // Database connection pool settings
+        let recap_db_max_connections = parse_u32("RECAP_DB_MAX_CONNECTIONS", 50)?;
+        let recap_db_min_connections = parse_u32("RECAP_DB_MIN_CONNECTIONS", 5)?;
+        let recap_db_acquire_timeout = parse_duration_secs("RECAP_DB_ACQUIRE_TIMEOUT_SECS", 60)?;
+        let recap_db_idle_timeout = parse_duration_secs("RECAP_DB_IDLE_TIMEOUT_SECS", 600)?;
+        let recap_db_max_lifetime = parse_duration_secs("RECAP_DB_MAX_LIFETIME_SECS", 1800)?;
+
         Ok(Self {
             http_bind,
             llm_max_concurrency,
@@ -162,6 +174,11 @@ impl Config {
             recap_pre_refresh_graph_enabled,
             recap_pre_refresh_timeout,
             llm_summary_timeout,
+            recap_db_max_connections,
+            recap_db_min_connections,
+            recap_db_acquire_timeout,
+            recap_db_idle_timeout,
+            recap_db_max_lifetime,
         })
     }
 
@@ -331,6 +348,31 @@ impl Config {
     #[must_use]
     pub fn llm_summary_timeout(&self) -> Duration {
         self.llm_summary_timeout
+    }
+
+    #[must_use]
+    pub fn recap_db_max_connections(&self) -> u32 {
+        self.recap_db_max_connections
+    }
+
+    #[must_use]
+    pub fn recap_db_min_connections(&self) -> u32 {
+        self.recap_db_min_connections
+    }
+
+    #[must_use]
+    pub fn recap_db_acquire_timeout(&self) -> Duration {
+        self.recap_db_acquire_timeout
+    }
+
+    #[must_use]
+    pub fn recap_db_idle_timeout(&self) -> Duration {
+        self.recap_db_idle_timeout
+    }
+
+    #[must_use]
+    pub fn recap_db_max_lifetime(&self) -> Duration {
+        self.recap_db_max_lifetime
     }
 }
 

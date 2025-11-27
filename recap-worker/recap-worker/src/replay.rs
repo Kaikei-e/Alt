@@ -40,8 +40,35 @@ pub struct ReplayConfig {
 
 /// Replay the genre pipeline offline and persist refreshed learning rows.
 pub async fn replay_genre_pipeline(config: ReplayConfig) -> Result<()> {
+    // Use environment variables for connection pool settings, with defaults matching app.rs
+    let max_connections = std::env::var("RECAP_DB_MAX_CONNECTIONS")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(50);
+    let min_connections = std::env::var("RECAP_DB_MIN_CONNECTIONS")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(5);
+    let acquire_timeout_secs = std::env::var("RECAP_DB_ACQUIRE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(60);
+    let idle_timeout_secs = std::env::var("RECAP_DB_IDLE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(600);
+    let max_lifetime_secs = std::env::var("RECAP_DB_MAX_LIFETIME_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(1800);
+
     let pool = PgPoolOptions::new()
-        .max_connections(100)
+        .max_connections(max_connections)
+        .min_connections(min_connections)
+        .acquire_timeout(Duration::from_secs(acquire_timeout_secs))
+        .idle_timeout(Some(Duration::from_secs(idle_timeout_secs)))
+        .max_lifetime(Some(Duration::from_secs(max_lifetime_secs)))
+        .test_before_acquire(true)
         .connect_lazy(&config.dsn)
         .context("failed to configure postgres pool")?;
     let dao = Arc::new(RecapDao::new(pool));

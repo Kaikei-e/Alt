@@ -77,8 +77,12 @@ impl ComponentRegistry {
             config.min_documents_per_genre(),
         )?);
         let recap_pool = PgPoolOptions::new()
-            .max_connections(100)
-            .acquire_timeout(std::time::Duration::from_secs(60))
+            .max_connections(config.recap_db_max_connections())
+            .min_connections(config.recap_db_min_connections())
+            .acquire_timeout(config.recap_db_acquire_timeout())
+            .idle_timeout(Some(config.recap_db_idle_timeout()))
+            .max_lifetime(Some(config.recap_db_max_lifetime()))
+            .test_before_acquire(true)
             .connect_lazy(config.recap_db_dsn())
             .context("failed to configure recap_db connection pool")?;
         let recap_dao = Arc::new(RecapDao::new(recap_pool));
