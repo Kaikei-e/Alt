@@ -5,8 +5,11 @@ run:
   tests: true
 
 linters:
+  enable: []
+
+formatters:
   enable:
-    - shadow
+    - goimports
 
 issues:
   max-issues-per-linter: 0
