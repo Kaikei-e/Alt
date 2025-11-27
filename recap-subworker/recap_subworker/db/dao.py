@@ -470,9 +470,9 @@ class SubworkerDAO:
                 }
                 for metric in per_genre_metrics
             ]
-                if metric_rows:
-                    metrics_stmt = insert(genre_evaluation_metrics_table).values(metric_rows)
-                    await self.session.execute(metrics_stmt)
+            if metric_rows:
+                metrics_stmt = insert(genre_evaluation_metrics_table).values(metric_rows)
+                await self.session.execute(metrics_stmt)
 
         # 明示的にコミット（他のDAOメソッドと同様に）
         await self.session.commit()

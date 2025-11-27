@@ -51,11 +51,16 @@ class GenreClassifier:
                 import os
 
                 weights_path = os.getenv("RECAP_GENRE_MODEL_WEIGHTS")
+            if weights_path is None:
+                # デフォルトの重みファイルパスを試す
+                default_weights_path = Path("/app/resources/genre_classifier_weights.json")
+                if default_weights_path.exists():
+                    weights_path = str(default_weights_path)
             if weights_path:
                 with open(weights_path, "r", encoding="utf-8") as f:
                     weights_data = json.load(f)
             else:
-                # デフォルトの埋め込みJSONを使用
+                # デフォルトの埋め込みJSONを使用（フォールバック）
                 weights_data = json.loads(DEFAULT_WEIGHTS_JSON)
 
         self._validate_weights(weights_data)
@@ -87,18 +92,36 @@ class GenreClassifier:
 
     def _validate_weights(self, weights: Dict) -> None:
         """重みデータを検証。"""
+        if not weights.get("tfidf_weights") or len(weights["tfidf_weights"]) == 0:
+            raise ValueError(
+                "tfidf_weights is empty. Please provide a valid weights file via RECAP_GENRE_MODEL_WEIGHTS environment variable or weights_path parameter."
+            )
         if len(weights["tfidf_weights"]) != len(weights["genres"]):
-            raise ValueError("tfidf weight matrix row count mismatch")
+            raise ValueError(
+                f"tfidf weight matrix row count mismatch: expected {len(weights['genres'])} rows (one per genre), got {len(weights['tfidf_weights'])} rows"
+            )
+        if not weights.get("embedding_weights") or len(weights["embedding_weights"]) == 0:
+            raise ValueError(
+                "embedding_weights is empty. Please provide a valid weights file via RECAP_GENRE_MODEL_WEIGHTS environment variable or weights_path parameter."
+            )
         if len(weights["embedding_weights"]) != len(weights["genres"]):
-            raise ValueError("embedding weight matrix row count mismatch")
+            raise ValueError(
+                f"embedding weight matrix row count mismatch: expected {len(weights['genres'])} rows (one per genre), got {len(weights['embedding_weights'])} rows"
+            )
         for row in weights["tfidf_weights"]:
             if len(row) != weights["feature_dim"]:
                 raise ValueError("tfidf weight row length mismatch")
         for row in weights["embedding_weights"]:
             if len(row) != weights["embedding_dim"]:
                 raise ValueError("embedding weight row length mismatch")
+        if not weights.get("bias") or len(weights["bias"]) == 0:
+            raise ValueError(
+                "bias is empty. Please provide a valid weights file via RECAP_GENRE_MODEL_WEIGHTS environment variable or weights_path parameter."
+            )
         if len(weights["bias"]) != len(weights["genres"]):
-            raise ValueError("bias length mismatch")
+            raise ValueError(
+                f"bias length mismatch: expected {len(weights['genres'])} values (one per genre), got {len(weights['bias'])} values"
+            )
         if weights.get("feature_vocab") and len(weights["feature_vocab"]) != weights[
             "feature_dim"
         ]:

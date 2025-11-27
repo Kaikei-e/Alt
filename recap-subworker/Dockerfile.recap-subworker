@@ -54,6 +54,10 @@ RUN mkdir -p /app/data
 # Note: Golden dataset should be provided via volume mount or copied from recap-worker
 # For development, you can mount: -v /path/to/golden_classification.json:/app/data/golden_classification.json
 
+# Copy genre classifier weights file
+RUN mkdir -p /app/resources
+COPY recap_subworker/resources/genre_classifier_weights.json /app/resources/genre_classifier_weights.json
+
 EXPOSE 8002
 
 CMD ["uv", "run", "gunicorn", "-c", "recap_subworker/infra/gunicorn_conf.py", "recap_subworker.app.main:create_app"]
