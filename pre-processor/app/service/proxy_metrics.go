@@ -72,7 +72,13 @@ func (m *ProxyMetrics) RecordEnvoyRequest(duration time.Duration, success bool, 
 	atomic.AddUint64(&m.totalRequests, 1)
 	atomic.AddUint64(&m.envoyRequests, 1)
 
-	durationMs := uint64(duration.Milliseconds())
+	// Safe conversion: check for negative values before converting to uint64
+	ms := duration.Milliseconds()
+	if ms < 0 {
+		ms = 0 // Negative duration should not occur, but guard against it
+	}
+	// #nosec G115 -- ms is checked to be non-negative above, so uint64 conversion is safe
+	durationMs := uint64(ms)
 	atomic.AddUint64(&m.envoyLatencySum, durationMs)
 
 	if success {
@@ -83,7 +89,13 @@ func (m *ProxyMetrics) RecordEnvoyRequest(duration time.Duration, success bool, 
 
 	// Record DNS resolution time
 	if dnsResolutionTime > 0 {
-		atomic.AddUint64(&m.dnsResolutionSum, uint64(dnsResolutionTime.Milliseconds()))
+		// Safe conversion: check for negative values before converting to uint64
+		dnsMs := dnsResolutionTime.Milliseconds()
+		if dnsMs < 0 {
+			dnsMs = 0 // Negative duration should not occur, but guard against it
+		}
+		// #nosec G115 -- dnsMs is checked to be non-negative above, so uint64 conversion is safe
+		atomic.AddUint64(&m.dnsResolutionSum, uint64(dnsMs))
 		atomic.AddUint64(&m.dnsResolutionCount, 1)
 	}
 
@@ -106,7 +118,13 @@ func (m *ProxyMetrics) RecordDirectRequest(duration time.Duration, success bool)
 	atomic.AddUint64(&m.totalRequests, 1)
 	atomic.AddUint64(&m.directRequests, 1)
 
-	durationMs := uint64(duration.Milliseconds())
+	// Safe conversion: check for negative values before converting to uint64
+	ms := duration.Milliseconds()
+	if ms < 0 {
+		ms = 0 // Negative duration should not occur, but guard against it
+	}
+	// #nosec G115 -- ms is checked to be non-negative above, so uint64 conversion is safe
+	durationMs := uint64(ms)
 	atomic.AddUint64(&m.directLatencySum, durationMs)
 
 	if success {
@@ -479,7 +497,13 @@ func (m *ProxyMetrics) RecordDomainRequest(requestURL string, duration time.Dura
 
 	// Update request counters
 	atomic.AddUint64(&domainMetrics.TotalRequests, 1)
-	atomic.AddUint64(&domainMetrics.LatencySum, uint64(duration.Milliseconds()))
+	// Safe conversion: check for negative values before converting to uint64
+	ms := duration.Milliseconds()
+	if ms < 0 {
+		ms = 0 // Negative duration should not occur, but guard against it
+	}
+	// #nosec G115 -- ms is checked to be non-negative above, so uint64 conversion is safe
+	atomic.AddUint64(&domainMetrics.LatencySum, uint64(ms))
 	atomic.StoreInt64(&domainMetrics.LastRequestTime, time.Now().Unix())
 
 	if success {

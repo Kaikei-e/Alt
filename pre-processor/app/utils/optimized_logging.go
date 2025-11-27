@@ -144,7 +144,10 @@ func (l *OptimizedLogger) log(level string, msg string, args ...interface{}) {
 	if cap > uint64(maxInt) {
 		cap = uint64(maxInt)
 	}
-	allArgs := make([]interface{}, 0, int(cap))
+	// Safe conversion: cap is already bounded by maxInt, so int(cap) is safe
+	// #nosec G115 -- cap is already bounded by maxInt above, so int conversion is safe
+	capInt := int(cap)
+	allArgs := make([]interface{}, 0, capInt)
 	allArgs = append(allArgs, "component", l.component)
 
 	// Add context fields
