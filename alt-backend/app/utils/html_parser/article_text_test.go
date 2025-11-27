@@ -229,3 +229,36 @@ func TestExtractArticleText_ZennLikeContent(t *testing.T) {
 		t.Errorf("expected content to contain list item 'Item 1', got %q", got)
 	}
 }
+
+func TestExtractArticleText_NextJSSynthetic(t *testing.T) {
+	// Synthetic test case for Next.js __NEXT_DATA__ extraction
+	raw := `<html>
+	<body>
+		<div id="content">Loading...</div>
+		<script id="__NEXT_DATA__" type="application/json">
+		{
+			"props": {
+				"pageProps": {
+					"article": {
+						"title": "Synthetic Title",
+						"bodyHtml": "<p>Synthetic Content Paragraph 1</p><p>Synthetic Content Paragraph 2</p>"
+					}
+				}
+			}
+		}
+		</script>
+	</body>
+	</html>`
+
+	got := ExtractArticleText(raw)
+
+	if !strings.Contains(got, "Synthetic Title") {
+		t.Errorf("expected content to contain title 'Synthetic Title', got %q", got)
+	}
+	if !strings.Contains(got, "Synthetic Content Paragraph 1") {
+		t.Errorf("expected content to contain 'Synthetic Content Paragraph 1', got %q", got)
+	}
+	if !strings.Contains(got, "Synthetic Content Paragraph 2") {
+		t.Errorf("expected content to contain 'Synthetic Content Paragraph 2', got %q", got)
+	}
+}

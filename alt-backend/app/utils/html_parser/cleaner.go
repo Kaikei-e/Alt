@@ -2,6 +2,8 @@ package html_parser
 
 import (
 	"alt/domain"
+	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -11,8 +13,6 @@ import (
 // ExtractArticleText converts raw article HTML into plain text paragraphs.
 // It removes non-content elements (script/style/navigation) and normalizes
 // whitespace so the returned string contains only readable sentences.
-// ExtractArticleText converts raw article HTML into plain text paragraphs.
-// It uses go-readability to extract the main content and then converts it to plain text.
 // ExtractArticleText converts raw article HTML into plain text paragraphs.
 // It uses go-readability to extract the main content and then converts it to plain text.
 func ExtractArticleText(raw string) string {
@@ -26,26 +26,61 @@ func ExtractArticleText(raw string) string {
 		return normalizeWhitespace(trimmed)
 	}
 
-	// Use go-readability to extract content
+	// 1. Try go-readability on the whole document
 	article, err := readability.FromReader(strings.NewReader(trimmed), nil)
 	if err != nil {
-		// Fallback to simple stripping on failure
-		return normalizeWhitespace(StripTags(trimmed))
+		// 2. Fallback: Try go-readability on the main content
+		fmt.Println("go-readability failed on the whole document. Err: ", err)
+	}
+	// Prepare goquery document for further inspection
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(trimmed))
+	if err == nil {
+		// 3. Fallback: Check for Next.js __NEXT_DATA__ script
+		// Next.js sites often store the full article content in this JSON script
+		nextData := doc.Find("script[id='__NEXT_DATA__']")
+		if nextData.Length() > 0 {
+			jsonData := nextData.Text()
+			var data map[string]interface{}
+			if err := json.Unmarshal([]byte(jsonData), &data); err == nil {
+				// Traverse: props -> pageProps -> article -> bodyHtml
+				if props, ok := data["props"].(map[string]interface{}); ok {
+					if pageProps, ok := props["pageProps"].(map[string]interface{}); ok {
+						if articleData, ok := pageProps["article"].(map[string]interface{}); ok {
+							// Extract title
+							title, _ := articleData["title"].(string)
+
+							// Extract body
+							if bodyHtml, ok := articleData["bodyHtml"].(string); ok && len(bodyHtml) > 0 {
+								// Since we found the specific body HTML, we don't need full readability parsing.
+								// Just strip tags to get the text.
+								text := normalizeWhitespace(StripTags(bodyHtml))
+								if len(text) > 0 {
+									if title != "" {
+										return title + "\n\n" + text
+									}
+									return text
+								}
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
-	// article.TextContent usually contains the plain text of the article
-	// We trim it but avoid normalizeWhitespace which destroys newlines
-	if strings.TrimSpace(article.TextContent) != "" {
-		return strings.TrimSpace(article.TextContent)
+	// If step 1 succeeded but we didn't return (because we wanted to check others? No, currently step 1 returns immediately).
+	// The issue is likely Step 1 returning garbage.
+	// Let's modify the logic: If Step 1 returns something, but we have __NEXT_DATA__ with a specific structure,
+	// maybe we should prioritize __NEXT_DATA__?
+	// Or maybe Step 1 is returning the sidebar which is > 100 chars.
+
+	if err == nil && len(strings.TrimSpace(article.TextContent)) > 100 {
+		return normalizeWhitespace(article.TextContent)
 	}
 
-	// If TextContent is empty but Content (HTML) is not, strip tags from Content
-	if strings.TrimSpace(article.Content) != "" {
-		return strings.TrimSpace(StripTags(article.Content))
-	}
-
-	// If everything fails, fallback to original strip tags on raw content
+	// 4. Final fallback: Strip tags from the original HTML
 	return normalizeWhitespace(StripTags(trimmed))
+
 }
 
 // Clean search results using goquery for better HTML handling
