@@ -21,6 +21,7 @@ import {
   CalendarRange,
   ChartBar,
   Eye,
+  Globe,
   Home,
   Infinity,
   Link as LinkIcon,
@@ -191,6 +192,13 @@ export const FloatingMenu = () => {
       category: "other",
       icon: <Home size={18} />,
       description: "Return to dashboard",
+    },
+    {
+      label: "Manage Domains",
+      href: "/admin/scraping-domains",
+      category: "other",
+      icon: <Globe size={18} />,
+      description: "Manage scraping domains",
     },
   ];
 
