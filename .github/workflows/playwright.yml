@@ -21,22 +21,22 @@ on:
   workflow_dispatch:
     inputs:
       working-directory:
-        description: 'Working directory for the test'
+        description: "Working directory for the test"
         required: true
         type: string
         default: "alt-frontend"
       node-version:
-        description: 'Node.js version to use'
+        description: "Node.js version to use"
         required: false
         type: string
         default: "24"
       pnpm-version:
-        description: 'pnpm version to use'
+        description: "pnpm version to use"
         required: false
         type: string
         default: "10"
       test-type:
-        description: 'Type of test to run'
+        description: "Type of test to run"
         required: false
         type: string
         default: "playwright"
@@ -78,9 +78,34 @@ jobs:
           cache: pnpm
           cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
 
+      - name: Clean pnpm store (if corrupted)
+        run: |
+          echo "Checking disk space..."
+          df -h
+          echo "Cleaning pnpm store if needed..."
+          pnpm store prune || true
+          pnpm store status || true
+
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm install --frozen-lockfile
+        run: |
+          for attempt in 1 2 3; do
+            echo "Attempt $attempt to install dependencies..."
+            if pnpm install --frozen-lockfile; then
+              echo "Successfully installed dependencies"
+              break
+            else
+              if [ $attempt -eq 3 ]; then
+                echo "Failed to install after 3 attempts"
+                # Clean store before final failure
+                pnpm store prune || true
+                exit 1
+              fi
+              echo "Installation failed, cleaning store and retrying..."
+              pnpm store prune || true
+              sleep 5
+            fi
+          done
 
       - name: Cache Playwright browsers
         uses: actions/cache@v3
