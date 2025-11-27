@@ -7,7 +7,10 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from uuid import UUID
 
+from ...db.dao import SubworkerDAO
+from ...db.session import get_session
 from ...infra.config import Settings
 from ...services.evaluation import EvaluationService
 from ..deps import get_settings_dep
@@ -18,12 +21,15 @@ router = APIRouter(prefix="/v1/evaluation", tags=["evaluation"])
 class EvaluateRequest(BaseModel):
     """評価リクエスト。"""
 
-    golden_data_path: str = Field(..., description="Golden dataset JSONファイルのパス")
+    golden_data_path: Optional[str] = Field(
+        None, description="Golden dataset JSONファイルのパス（デフォルト: /app/data/golden_classification.json）"
+    )
     weights_path: Optional[str] = Field(None, description="重みファイルのパス（オプション）")
     use_bootstrap: bool = Field(True, description="Bootstrap法を使用するか")
     n_bootstrap: int = Field(1000, description="Bootstrapリサンプリング回数", ge=100, le=10000)
     use_cross_validation: bool = Field(False, description="Cross-Validationを使用するか")
     n_folds: int = Field(5, description="Cross-ValidationのFold数", ge=2, le=10)
+    save_to_db: bool = Field(True, description="評価結果をデータベースに保存するか")
 
 
 class ConfidenceInterval(BaseModel):
@@ -79,6 +85,7 @@ class IntegratedScore(BaseModel):
 class EvaluateResponse(BaseModel):
     """評価レスポンス。"""
 
+    run_id: Optional[UUID] = Field(None, description="データベースに保存されたrun_id")
     accuracy: float = Field(..., description="Accuracy")
     accuracy_ci: ConfidenceInterval = Field(..., description="Accuracyの信頼区間")
     macro_precision: float = Field(..., description="Macro Precision")
@@ -104,18 +111,24 @@ class EvaluateResponse(BaseModel):
 async def evaluate_genres(
     request: EvaluateRequest,
     settings: Settings = Depends(get_settings_dep),
+    session=Depends(get_session),
 ) -> EvaluateResponse:
     """ジャンル分類の評価を実行。
 
     Golden Datasetを使用してジャンル分類器の精度を評価し、
     統計的に厳密な評価結果を返します。
+    評価結果はrecap-dbに保存されます。
     """
-    # ファイルパスの検証
-    golden_data_path = Path(request.golden_data_path)
+    # デフォルトパスの設定
+    if request.golden_data_path is None:
+        golden_data_path = Path("/app/data/golden_classification.json")
+    else:
+        golden_data_path = Path(request.golden_data_path)
+
     if not golden_data_path.exists():
         raise HTTPException(
             status_code=404,
-            detail=f"Golden dataset file not found: {request.golden_data_path}",
+            detail=f"Golden dataset file not found: {golden_data_path}",
         )
 
     if request.weights_path:
@@ -141,9 +154,55 @@ async def evaluate_genres(
         # 評価を実行
         results = service.evaluate(str(golden_data_path))
 
+        # データベースに保存
+        run_id: UUID | None = None
+        if request.save_to_db:
+            try:
+                dao = SubworkerDAO(session)
+                # ジャンル別メトリクスをリスト形式に変換
+                per_genre_list = [
+                    {
+                        "genre": genre,
+                        "tp": metrics["tp"],
+                        "fp": metrics["fp"],
+                        "fn": metrics["fn"],
+                        "precision": metrics["precision"],
+                        "recall": metrics["recall"],
+                        "f1": metrics["f1"],
+                    }
+                    for genre, metrics in results["per_genre_metrics"].items()
+                ]
+
+                macro_metrics = results.get("macro_metrics", {})
+                run_id = await dao.save_genre_evaluation(
+                    dataset_path=str(golden_data_path),
+                    total_items=results["total_samples"],
+                    macro_precision=results["macro_precision"],
+                    macro_recall=results["macro_recall"],
+                    macro_f1=results["macro_f1"],
+                    summary_tp=results["total_tp"],
+                    summary_fp=results["total_fp"],
+                    summary_fn=results["total_fn"],
+                    micro_precision=results.get("micro_precision"),
+                    micro_recall=results.get("micro_recall"),
+                    micro_f1=results.get("micro_f1"),
+                    weighted_f1=None,  # 現在の実装では計算していない
+                    macro_f1_valid=None,  # 現在の実装では計算していない
+                    valid_genre_count=None,
+                    undefined_genre_count=None,
+                    per_genre_metrics=per_genre_list,
+                )
+            except Exception as e:
+                # データベース保存に失敗しても評価結果は返す
+                import structlog
+
+                logger = structlog.get_logger(__name__)
+                logger.warning("Failed to save evaluation results to database", error=str(e))
+
         # レスポンスを構築
         macro_metrics_dict = results.get("macro_metrics", {})
         return EvaluateResponse(
+            run_id=run_id,
             accuracy=results["accuracy"],
             accuracy_ci=ConfidenceInterval(**results["accuracy_ci"]),
             macro_precision=results["macro_precision"],

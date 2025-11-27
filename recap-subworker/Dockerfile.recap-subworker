@@ -49,6 +49,11 @@ COPY --from=builder /app/.venv /app/.venv
 COPY pyproject.toml README.md ./
 COPY recap_subworker ./recap_subworker
 
+# Copy golden dataset for evaluation
+RUN mkdir -p /app/data
+# Note: Golden dataset should be provided via volume mount or copied from recap-worker
+# For development, you can mount: -v /path/to/golden_classification.json:/app/data/golden_classification.json
+
 EXPOSE 8002
 
 CMD ["uv", "run", "gunicorn", "-c", "recap_subworker/infra/gunicorn_conf.py", "recap_subworker.app.main:create_app"]

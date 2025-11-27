@@ -25,6 +25,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid import uuid4
 
 
 metadata = MetaData()
@@ -87,6 +88,42 @@ cluster_evidence_table = Table(
     Column("lang", String(8)),
     Column("rank", SmallInteger, nullable=False, default=0),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+)
+
+# Genre evaluation tables (shared with recap-worker)
+genre_evaluation_runs_table = Table(
+    "recap_genre_evaluation_runs",
+    metadata,
+    Column("run_id", PG_UUID(as_uuid=True), primary_key=True),
+    Column("dataset_path", Text, nullable=False),
+    Column("total_items", Integer, nullable=False),
+    Column("macro_precision", Float, nullable=False),
+    Column("macro_recall", Float, nullable=False),
+    Column("macro_f1", Float, nullable=False),
+    Column("summary_tp", Integer, nullable=False),
+    Column("summary_fp", Integer, nullable=False),
+    Column("summary_fn", Integer, nullable=False),
+    Column("micro_precision", Float),
+    Column("micro_recall", Float),
+    Column("micro_f1", Float),
+    Column("weighted_f1", Float),
+    Column("macro_f1_valid", Float),
+    Column("valid_genre_count", Integer),
+    Column("undefined_genre_count", Integer),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+)
+
+genre_evaluation_metrics_table = Table(
+    "recap_genre_evaluation_metrics",
+    metadata,
+    Column("run_id", PG_UUID(as_uuid=True), primary_key=True),
+    Column("genre", Text, primary_key=True),
+    Column("tp", Integer, nullable=False),
+    Column("fp", Integer, nullable=False),
+    Column("fn_count", Integer, nullable=False),
+    Column("precision", Float, nullable=False),
+    Column("recall", Float, nullable=False),
+    Column("f1_score", Float, nullable=False),
 )
 
 
@@ -352,6 +389,94 @@ class SubworkerDAO:
             response_payload=row.response_payload,
             error_message=row.error_message,
         )
+
+    async def save_genre_evaluation(
+        self,
+        dataset_path: str,
+        total_items: int,
+        macro_precision: float,
+        macro_recall: float,
+        macro_f1: float,
+        summary_tp: int,
+        summary_fp: int,
+        summary_fn: int,
+        micro_precision: float | None = None,
+        micro_recall: float | None = None,
+        micro_f1: float | None = None,
+        weighted_f1: float | None = None,
+        macro_f1_valid: float | None = None,
+        valid_genre_count: int | None = None,
+        undefined_genre_count: int | None = None,
+        per_genre_metrics: list[dict[str, Any]] | None = None,
+    ) -> UUID:
+        """ジャンル評価結果をデータベースに保存。
+
+        Args:
+            dataset_path: Golden datasetのパス
+            total_items: 総アイテム数
+            macro_precision: Macro Precision
+            macro_recall: Macro Recall
+            macro_f1: Macro F1
+            summary_tp: 総True Positives
+            summary_fp: 総False Positives
+            summary_fn: 総False Negatives
+            micro_precision: Micro Precision（オプション）
+            micro_recall: Micro Recall（オプション）
+            micro_f1: Micro F1（オプション）
+            weighted_f1: Weighted F1（オプション）
+            macro_f1_valid: Macro F1 (valid genres only)（オプション）
+            valid_genre_count: 有効ジャンル数（オプション）
+            undefined_genre_count: 未定義ジャンル数（オプション）
+            per_genre_metrics: ジャンル別メトリクスのリスト（オプション）
+
+        Returns:
+            生成されたrun_id
+        """
+        run_id = uuid4()
+
+        # Insert run metadata
+        stmt = insert(genre_evaluation_runs_table).values(
+            run_id=run_id,
+            dataset_path=dataset_path,
+            total_items=total_items,
+            macro_precision=macro_precision,
+            macro_recall=macro_recall,
+            macro_f1=macro_f1,
+            summary_tp=summary_tp,
+            summary_fp=summary_fp,
+            summary_fn=summary_fn,
+            micro_precision=micro_precision,
+            micro_recall=micro_recall,
+            micro_f1=micro_f1,
+            weighted_f1=weighted_f1,
+            macro_f1_valid=macro_f1_valid,
+            valid_genre_count=valid_genre_count,
+            undefined_genre_count=undefined_genre_count,
+        )
+        await self.session.execute(stmt)
+
+        # Bulk insert per-genre metrics
+        if per_genre_metrics:
+            metric_rows = [
+                {
+                    "run_id": run_id,
+                    "genre": metric["genre"],
+                    "tp": metric["tp"],
+                    "fp": metric["fp"],
+                    "fn_count": metric["fn"],
+                    "precision": metric["precision"],
+                    "recall": metric["recall"],
+                    "f1_score": metric["f1"],
+                }
+                for metric in per_genre_metrics
+            ]
+                if metric_rows:
+                    metrics_stmt = insert(genre_evaluation_metrics_table).values(metric_rows)
+                    await self.session.execute(metrics_stmt)
+
+        # 明示的にコミット（他のDAOメソッドと同様に）
+        await self.session.commit()
+        return run_id
 
 
 __all__ = [
