@@ -19,13 +19,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
     -o auth-hub main.go
 
 # Final stage
-FROM scratch
+FROM alpine:latest
 
-# Copy CA certificates for HTTPS requests to Kratos
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-
-# Copy timezone data
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates tzdata
 
 # Copy the binary
 COPY --from=builder /build/auth-hub /auth-hub
@@ -33,11 +30,5 @@ COPY --from=builder /build/auth-hub /auth-hub
 # Expose port
 EXPOSE 8888
 
-# Note: Health check will be configured in docker-compose.yml
-# using wget/curl against the /health endpoint
-
 # Run the application
 ENTRYPOINT ["/auth-hub"]
-
-# Note: Not using USER directive with scratch image
-# The binary is statically compiled and runs with minimal privileges
