@@ -18,7 +18,7 @@ const SearchFeedsClient = dynamic(
         <div>Loading...</div>
       </div>
     ),
-  }
+  },
 );
 
 export default function SearchFeedsPage() {

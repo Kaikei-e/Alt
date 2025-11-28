@@ -17,8 +17,11 @@ import dynamic from "next/dynamic";
 
 // Dynamically import FloatingMenu to reduce initial bundle size for LCP optimization
 const FloatingMenu = dynamic(
-  () => import("@/components/mobile/utils/FloatingMenu").then((mod) => ({ default: mod.FloatingMenu })),
-  { ssr: false }
+  () =>
+    import("@/components/mobile/utils/FloatingMenu").then((mod) => ({
+      default: mod.FloatingMenu,
+    })),
+  { ssr: false },
 );
 import { useReadFeeds } from "@/hooks/useReadFeeds";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
@@ -207,10 +210,12 @@ function ReadFeedsPageContent() {
               gap={4}
               width="100%"
               data-testid="virtual-feed-list"
-              style={{
-                contentVisibility: "auto",
-                containIntrinsicSize: "800px",
-              } as React.CSSProperties}
+              style={
+                {
+                  contentVisibility: "auto",
+                  containIntrinsicSize: "800px",
+                } as React.CSSProperties
+              }
             >
               {transitions((style, feed) => (
                 <ViewedFeedCard key={feed.link} feed={feed} style={style} />

@@ -35,7 +35,11 @@ const LoadingFallback = () => (
   </Box>
 );
 
-function DesktopFeedsContent({ data: _data }: { data: FeedStatsSummary | null }) {
+function DesktopFeedsContent({
+  data: _data,
+}: {
+  data: FeedStatsSummary | null;
+}) {
   const sidebarNavItems = [
     {
       id: 1,

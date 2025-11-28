@@ -102,10 +102,7 @@ export async function POST(request: NextRequest) {
     console.error("Error in /api/frontend/articles/content:", error);
 
     if (error instanceof Error && error.name === "AbortError") {
-      return NextResponse.json(
-        { error: "Request timeout" },
-        { status: 504 },
-      );
+      return NextResponse.json({ error: "Request timeout" }, { status: 504 });
     }
 
     return NextResponse.json(
@@ -122,4 +119,3 @@ export async function GET() {
     { status: 405 },
   );
 }
-

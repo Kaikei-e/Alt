@@ -19,8 +19,11 @@ import VirtualFeedList from "@/components/mobile/VirtualFeedList";
 
 // Dynamically import FloatingMenu to reduce initial bundle size for LCP optimization
 const FloatingMenu = dynamic(
-  () => import("@/components/mobile/utils/FloatingMenu").then((mod) => ({ default: mod.FloatingMenu })),
-  { ssr: false }
+  () =>
+    import("@/components/mobile/utils/FloatingMenu").then((mod) => ({
+      default: mod.FloatingMenu,
+    })),
+  { ssr: false },
 );
 import { useAuth } from "@/contexts/auth-context";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
@@ -94,7 +97,10 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
     const initializeReadFeeds = async () => {
       try {
         // Fetch only the most recent read feeds for optimistic updates
-        const readFeedsResponse = await feedApi.getReadFeedsWithCursor(undefined, 32);
+        const readFeedsResponse = await feedApi.getReadFeedsWithCursor(
+          undefined,
+          32,
+        );
         const readFeedLinks = new Set<string>();
         if (readFeedsResponse?.data) {
           readFeedsResponse.data.forEach((feed: SanitizedFeed) => {
@@ -116,7 +122,7 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
         () => {
           void initializeReadFeeds();
         },
-        { timeout: 2000 } // Fallback after 2s if idle never comes
+        { timeout: 2000 }, // Fallback after 2s if idle never comes
       );
       return () => {
         window.cancelIdleCallback(idleCallbackId);
@@ -152,10 +158,14 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
   // This prevents infinite loading spinner when initialFeeds are provided
   // IMPORTANT: This ensures server-rendered content matches client render
   // Also check if we have no feeds loaded yet (feeds is undefined or empty)
-  const isInitialLoading = hookIsInitialLoading && initialFeeds.length === 0 && (!feeds || feeds.length === 0);
+  const isInitialLoading =
+    hookIsInitialLoading &&
+    initialFeeds.length === 0 &&
+    (!feeds || feeds.length === 0);
 
   // Ensure we have visible feeds to show (either from initialFeeds or loaded feeds)
-  const hasVisibleContent = initialFeeds.length > 0 || (feeds && feeds.length > 0);
+  const hasVisibleContent =
+    initialFeeds.length > 0 || (feeds && feeds.length > 0);
 
   // Merge initialFeeds with fetched feeds and filter/memoize visible feeds
   // Canonicalize feed.normalizedUrl (already normalized on server) to match readFeeds Set
@@ -167,13 +177,17 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
 
     // Add fetched feeds (convert SanitizedFeed to RenderFeed)
     if (feeds) {
-      const renderFeeds: RenderFeed[] = feeds.map((feed: SanitizedFeed) => toRenderFeed(feed));
+      const renderFeeds: RenderFeed[] = feeds.map((feed: SanitizedFeed) =>
+        toRenderFeed(feed),
+      );
       allFeeds.push(...renderFeeds);
     }
 
     // Filter out read feeds using normalizedUrl (already normalized on server)
     // Note: readFeeds starts as empty Set, so initial render matches server
-    const filtered = allFeeds.filter((feed) => !readFeeds.has(feed.normalizedUrl));
+    const filtered = allFeeds.filter(
+      (feed) => !readFeeds.has(feed.normalizedUrl),
+    );
 
     // For initial render, limit to visibleCount items to improve LCP
     // Additional items will be loaded progressively via IntersectionObserver
@@ -184,9 +198,10 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
   // Handle marking feed as read with optimistic update + API call (TODO.mdの指示に基づく)
   const handleMarkAsRead = useCallback(async (rawLink: string) => {
     // Use normalizedUrl if available (from RenderFeed), otherwise canonicalize
-    const link = rawLink.includes("?") || rawLink.includes("#")
-      ? canonicalize(rawLink)
-      : rawLink;
+    const link =
+      rawLink.includes("?") || rawLink.includes("#")
+        ? canonicalize(rawLink)
+        : rawLink;
 
     // 楽観更新（即時にUIから消す）
     startTransition(() => {
@@ -245,15 +260,18 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
           () => {
             loadFn();
           },
-          { timeout: 2000 }
+          { timeout: 2000 },
         );
         return () => {
           window.cancelIdleCallback(idleCallbackId);
         };
       } else {
-        const timeoutId = setTimeout(() => {
-          loadFn();
-        }, shouldDefer ? 500 : 100); // Faster for empty initialFeeds
+        const timeoutId = setTimeout(
+          () => {
+            loadFn();
+          },
+          shouldDefer ? 500 : 100,
+        ); // Faster for empty initialFeeds
         return () => clearTimeout(timeoutId);
       }
     }
@@ -285,7 +303,7 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
       {
         rootMargin: "200px 0px", // Trigger earlier
         threshold: 0.1,
-      }
+      },
     );
 
     if (sentinelRef.current) {
@@ -380,7 +398,12 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
   }
 
   return (
-    <Box minH="100dvh" position="relative" display="flex" flexDirection="column">
+    <Box
+      minH="100dvh"
+      position="relative"
+      display="flex"
+      flexDirection="column"
+    >
       <Box
         aria-live="polite"
         aria-atomic="true"
@@ -520,7 +543,10 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
                 animation: "pulse 2s ease-in-out infinite",
               }}
             />
-            <InfinityIcon size={20} style={{ position: "relative", zIndex: 1 }} />
+            <InfinityIcon
+              size={20}
+              style={{ position: "relative", zIndex: 1 }}
+            />
           </Button>
         </Box>
       </Link>
@@ -529,4 +555,3 @@ export function FeedsClient({ initialFeeds = [] }: FeedsClientProps) {
     </Box>
   );
 }
-

@@ -68,10 +68,7 @@ export async function GET(request: NextRequest) {
     console.error("Error in /api/frontend/feeds/fetch/cursor:", error);
 
     if (error instanceof Error && error.name === "AbortError") {
-      return NextResponse.json(
-        { error: "Request timeout" },
-        { status: 504 },
-      );
+      return NextResponse.json({ error: "Request timeout" }, { status: 504 });
     }
 
     return NextResponse.json(
@@ -80,4 +77,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

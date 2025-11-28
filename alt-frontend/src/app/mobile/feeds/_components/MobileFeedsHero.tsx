@@ -20,12 +20,7 @@ export function MobileFeedsHero() {
       data-lcp-hero="header"
     >
       <VStack align="stretch" gap={3}>
-        <Heading
-          as="h3"
-          size="xl"
-          color="var(--text-primary)"
-          fontWeight={600}
-        >
+        <Heading as="h3" size="xl" color="var(--text-primary)" fontWeight={600}>
           Your Feeds
         </Heading>
         <HeroTip />
@@ -33,4 +28,3 @@ export function MobileFeedsHero() {
     </Box>
   );
 }
-

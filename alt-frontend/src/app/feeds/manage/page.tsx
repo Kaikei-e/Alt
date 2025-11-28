@@ -47,7 +47,9 @@ export default function ManageFeedsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedLink, setSelectedLink] = useState<FeedLink | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
+  const [actionMessage, setActionMessage] = useState<ActionMessage | null>(
+    null,
+  );
   const { open, onOpen, onClose } = useDisclosure();
   const cancelRef = useRef<HTMLButtonElement>(null);
 
@@ -101,7 +103,10 @@ export default function ManageFeedsPage() {
 
     try {
       await feedApi.registerRssFeed(feedUrl.trim());
-      setActionMessage({ type: "success", text: "Feed registered successfully." });
+      setActionMessage({
+        type: "success",
+        text: "Feed registered successfully.",
+      });
       resetForm();
       await loadFeedLinks();
     } catch (err) {
@@ -262,8 +267,8 @@ export default function ManageFeedsPage() {
                 Add New Feed
               </Heading>
               <Text mb={4} color="var(--text-muted)">
-                Enter the RSS URL of a feed you want to track. Alt will validate the
-                URL before scheduling the fetch.
+                Enter the RSS URL of a feed you want to track. Alt will validate
+                the URL before scheduling the fetch.
               </Text>
               <form onSubmit={handleSubmit}>
                 <Stack gap={4}>
@@ -272,7 +277,11 @@ export default function ManageFeedsPage() {
                     placeholder="https://example.com/feed.xml"
                     value={feedUrl}
                     onChange={handleUrlChange}
-                    borderColor={validationError ? "var(--alt-error)" : "var(--surface-border)"}
+                    borderColor={
+                      validationError
+                        ? "var(--alt-error)"
+                        : "var(--surface-border)"
+                    }
                     bg="white"
                   />
                   {validationError && (
@@ -318,9 +327,9 @@ export default function ManageFeedsPage() {
               </Dialog.Header>
               <Dialog.Body pb={4}>
                 <Text>
-                  Deleting <strong>{selectedLink?.url}</strong> will remove it from
-                  the registry and stop Alt from checking it. This action cannot be
-                  undone.
+                  Deleting <strong>{selectedLink?.url}</strong> will remove it
+                  from the registry and stop Alt from checking it. This action
+                  cannot be undone.
                 </Text>
               </Dialog.Body>
               <Dialog.Footer gap={3}>

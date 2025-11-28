@@ -50,7 +50,9 @@ export default function ManageFeedsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedLink, setSelectedLink] = useState<FeedLink | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
+  const [actionMessage, setActionMessage] = useState<ActionMessage | null>(
+    null,
+  );
   const [showAddForm, setShowAddForm] = useState(false);
   const { open, onOpen, onClose } = useDisclosure();
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -106,7 +108,10 @@ export default function ManageFeedsPage() {
 
     try {
       await feedApi.registerRssFeed(feedUrl.trim());
-      setActionMessage({ type: "success", text: "Feed registered successfully." });
+      setActionMessage({
+        type: "success",
+        text: "Feed registered successfully.",
+      });
       resetForm();
       await loadFeedLinks();
     } catch (err) {
@@ -263,7 +268,8 @@ export default function ManageFeedsPage() {
                 </Button>
               </Flex>
               <Text mb={4} color="var(--text-muted)" fontSize="sm">
-                Please enter the RSS URL. Alt will validate the URL before scheduling the fetch.
+                Please enter the RSS URL. Alt will validate the URL before
+                scheduling the fetch.
               </Text>
               <form onSubmit={handleSubmit}>
                 <VStack gap={4}>
@@ -317,7 +323,11 @@ export default function ManageFeedsPage() {
                 onClick={loadFeedLinks}
                 disabled={isLoadingLinks}
               >
-                {isLoadingLinks ? <Spinner size="sm" /> : <RefreshCw size={16} />}
+                {isLoadingLinks ? (
+                  <Spinner size="sm" />
+                ) : (
+                  <RefreshCw size={16} />
+                )}
               </IconButton>
             </Flex>
 
@@ -336,7 +346,12 @@ export default function ManageFeedsPage() {
                 <Text fontSize="xs">{loadingError}</Text>
               </Box>
             ) : sortedLinks.length === 0 ? (
-              <Text color="var(--text-muted)" fontSize="sm" textAlign="center" py={6}>
+              <Text
+                color="var(--text-muted)"
+                fontSize="sm"
+                textAlign="center"
+                py={6}
+              >
                 No feeds registered yet.
               </Text>
             ) : (
@@ -416,7 +431,8 @@ export default function ManageFeedsPage() {
               <Dialog.Body pb={4}>
                 <Text fontSize="sm">
                   <strong>{selectedLink?.url}</strong>
-                  Deleting this feed link will remove it from the registry and stop Alt from checking it. This action cannot be undone.
+                  Deleting this feed link will remove it from the registry and
+                  stop Alt from checking it. This action cannot be undone.
                 </Text>
               </Dialog.Body>
               <Dialog.Footer gap={3}>
@@ -447,4 +463,3 @@ export default function ManageFeedsPage() {
     </Box>
   );
 }
-

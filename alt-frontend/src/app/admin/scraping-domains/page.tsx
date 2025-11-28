@@ -23,7 +23,10 @@ import {
   updateScrapingDomain,
   refreshRobotsTxt,
 } from "@/lib/api/scrapingDomains";
-import type { ScrapingDomain, UpdateScrapingDomainRequest } from "@/schema/scrapingDomain";
+import type {
+  ScrapingDomain,
+  UpdateScrapingDomainRequest,
+} from "@/schema/scrapingDomain";
 import { ApiError } from "@/lib/api/core/ApiError";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 
@@ -35,9 +38,16 @@ type ActionMessage = {
 export default function ScrapingDomainsPage() {
   const [offset, setOffset] = useState(0);
   const limit = 20;
-  const { domains, isLoading, error, mutate } = useScrapingDomains(offset, limit);
-  const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
-  const [selectedDomain, setSelectedDomain] = useState<ScrapingDomain | null>(null);
+  const { domains, isLoading, error, mutate } = useScrapingDomains(
+    offset,
+    limit,
+  );
+  const [actionMessage, setActionMessage] = useState<ActionMessage | null>(
+    null,
+  );
+  const [selectedDomain, setSelectedDomain] = useState<ScrapingDomain | null>(
+    null,
+  );
   const [isUpdating, setIsUpdating] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState<string | null>(null);
   const { open, onOpen, onClose } = useDisclosure();
@@ -55,7 +65,10 @@ export default function ScrapingDomainsPage() {
 
     try {
       await updateScrapingDomain(selectedDomain.id, data);
-      setActionMessage({ type: "success", text: "Scraping domain policy updated." });
+      setActionMessage({
+        type: "success",
+        text: "Scraping domain policy updated.",
+      });
       await mutate();
       onClose();
     } catch (err) {
@@ -77,7 +90,10 @@ export default function ScrapingDomainsPage() {
 
     try {
       await refreshRobotsTxt(id);
-      setActionMessage({ type: "success", text: "robots.txt refreshed successfully." });
+      setActionMessage({
+        type: "success",
+        text: "robots.txt refreshed successfully.",
+      });
       await mutate();
     } catch (err) {
       let message = "Failed to refresh robots.txt.";
@@ -203,7 +219,12 @@ export default function ScrapingDomainsPage() {
                 <Text fontSize="xs">Failed to load scraping domains.</Text>
               </Box>
             ) : domains.length === 0 ? (
-              <Text color="var(--text-muted)" fontSize="sm" textAlign="center" py={6}>
+              <Text
+                color="var(--text-muted)"
+                fontSize="sm"
+                textAlign="center"
+                py={6}
+              >
                 No scraping domains found.
               </Text>
             ) : (
@@ -251,7 +272,9 @@ export default function ScrapingDomainsPage() {
                       {/* Policy Info */}
                       <VStack gap={2} align="stretch" fontSize="xs">
                         <Flex justify="space-between">
-                          <Text color="var(--text-muted)">Allow Fetch Body:</Text>
+                          <Text color="var(--text-muted)">
+                            Allow Fetch Body:
+                          </Text>
                           <Text
                             color={
                               domain.allow_fetch_body
@@ -264,7 +287,9 @@ export default function ScrapingDomainsPage() {
                           </Text>
                         </Flex>
                         <Flex justify="space-between">
-                          <Text color="var(--text-muted)">Force Respect Robots:</Text>
+                          <Text color="var(--text-muted)">
+                            Force Respect Robots:
+                          </Text>
                           <Text
                             color={
                               domain.force_respect_robots
@@ -283,7 +308,9 @@ export default function ScrapingDomainsPage() {
                           </Text>
                         </Flex>
                         <Flex justify="space-between">
-                          <Text color="var(--text-muted)">Robots.txt Status:</Text>
+                          <Text color="var(--text-muted)">
+                            Robots.txt Status:
+                          </Text>
                           <Text
                             color={
                               domain.robots_txt_last_status === 200
@@ -410,7 +437,11 @@ function EditDomainModal({
                     <Text fontSize="sm" color="var(--text-muted)" mb={2}>
                       Domain:
                     </Text>
-                    <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)">
+                    <Text
+                      fontSize="sm"
+                      fontWeight="bold"
+                      color="var(--text-primary)"
+                    >
                       {domain.domain}
                     </Text>
                   </Box>

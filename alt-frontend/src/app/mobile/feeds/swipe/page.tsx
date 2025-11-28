@@ -49,10 +49,7 @@ async function fetchFirstArticleContent(
     return response.content;
   } catch (error) {
     // Log error but don't throw - we can still show the feed without article content
-    console.error(
-      "[SwipeFeedsPage] Error fetching article content:",
-      error,
-    );
+    console.error("[SwipeFeedsPage] Error fetching article content:", error);
     return null;
   }
 }

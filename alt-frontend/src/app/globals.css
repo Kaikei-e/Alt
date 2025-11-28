@@ -879,7 +879,12 @@ input::placeholder {
   min-height: 96px;
   width: 100%;
   background-color: transparent;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   color: var(--text-primary);
   /* Contain layout and paint to isolate Hero from feed list layout */
   contain: layout paint;

@@ -4,7 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { sanitizeForArticle, extractPlainText } from "@/lib/server/sanitize-html";
+import {
+  sanitizeForArticle,
+  extractPlainText,
+} from "@/lib/server/sanitize-html";
 import { validateUrlForSSRF } from "@/lib/server/ssrf-validator";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 import type {
@@ -56,7 +59,9 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         if (error instanceof Error && error.name === "SSRFValidationError") {
           return NextResponse.json(
-            { error: `Invalid URL: SSRF protection blocked this request: ${feedUrl}` },
+            {
+              error: `Invalid URL: SSRF protection blocked this request: ${feedUrl}`,
+            },
             { status: 400 },
           );
         }
@@ -128,10 +133,7 @@ export async function POST(request: NextRequest) {
     console.error("Error in /api/frontend/articles/summary:", error);
 
     if (error instanceof Error && error.name === "AbortError") {
-      return NextResponse.json(
-        { error: "Request timeout" },
-        { status: 504 },
-      );
+      return NextResponse.json({ error: "Request timeout" }, { status: 504 });
     }
 
     return NextResponse.json(
@@ -140,4 +142,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

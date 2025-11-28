@@ -9,7 +9,8 @@ import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useMorningUpdates } from "@/hooks/useMorningUpdates";
 
 export default function MorningLetterUpdatesPage() {
-  const { data, isInitialLoading, error, retry, isLoading } = useMorningUpdates();
+  const { data, isInitialLoading, error, retry, isLoading } =
+    useMorningUpdates();
 
   // Initial loading skeleton
   if (isInitialLoading) {
@@ -88,9 +89,7 @@ export default function MorningLetterUpdatesPage() {
         )}
 
         {/* Empty State - Only show if no data and no error */}
-        {showEmptyState && (
-          <EmptyMorningState />
-        )}
+        {showEmptyState && <EmptyMorningState />}
 
         {/* Content - Show if we have data */}
         {hasData && (
@@ -135,4 +134,3 @@ export default function MorningLetterUpdatesPage() {
     </Box>
   );
 }
-

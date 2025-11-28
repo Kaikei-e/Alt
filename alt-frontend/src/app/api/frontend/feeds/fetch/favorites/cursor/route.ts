@@ -57,13 +57,13 @@ export async function GET(request: NextRequest) {
     const data = await backendResponse.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Error in /api/frontend/feeds/fetch/favorites/cursor:", error);
+    console.error(
+      "Error in /api/frontend/feeds/fetch/favorites/cursor:",
+      error,
+    );
 
     if (error instanceof Error && error.name === "AbortError") {
-      return NextResponse.json(
-        { error: "Request timeout" },
-        { status: 504 },
-      );
+      return NextResponse.json({ error: "Request timeout" }, { status: 504 });
     }
 
     return NextResponse.json(
@@ -72,4 +72,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

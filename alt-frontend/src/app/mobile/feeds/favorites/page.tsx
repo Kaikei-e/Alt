@@ -39,7 +39,9 @@ export default function FavoriteFeedsPage() {
     if (!feeds) return [];
 
     // Convert to RenderFeed
-    const renderFeeds: RenderFeed[] = feeds.map((feed: SanitizedFeed) => toRenderFeed(feed));
+    const renderFeeds: RenderFeed[] = feeds.map((feed: SanitizedFeed) =>
+      toRenderFeed(feed),
+    );
 
     // Filter out read feeds
     return renderFeeds.filter((feed) => !readFeeds.has(feed.link));

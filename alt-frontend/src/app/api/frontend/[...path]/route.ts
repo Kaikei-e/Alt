@@ -139,10 +139,7 @@ async function handleRequest(
     console.error(`Error in /api/frontend/${params.path?.join("/")}:`, error);
 
     if (error instanceof Error && error.name === "AbortError") {
-      return NextResponse.json(
-        { error: "Request timeout" },
-        { status: 504 },
-      );
+      return NextResponse.json({ error: "Request timeout" }, { status: 504 });
     }
 
     return NextResponse.json(
@@ -151,4 +148,3 @@ async function handleRequest(
     );
   }
 }
-

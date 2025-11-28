@@ -12,13 +12,19 @@ export async function GET(req: NextRequest) {
 
     // Pass all cookies to auth-hub
     const cookieHeader = req.headers.get("cookie") || "";
-    console.log(`[API] [${requestId}] Cookies received length: ${cookieHeader.length}`);
+    console.log(
+      `[API] [${requestId}] Cookies received length: ${cookieHeader.length}`,
+    );
     if (cookieHeader.length === 0) {
       console.warn(`[API] [${requestId}] NO COOKIES RECEIVED!`);
     } else {
       // Log cookie names only for security
-      const cookieNames = cookieHeader.split(';').map(c => c.split('=')[0].trim());
-      console.log(`[API] [${requestId}] Cookie names: ${cookieNames.join(', ')}`);
+      const cookieNames = cookieHeader
+        .split(";")
+        .map((c) => c.split("=")[0].trim());
+      console.log(
+        `[API] [${requestId}] Cookie names: ${cookieNames.join(", ")}`,
+      );
     }
 
     console.log(`[API] [${requestId}] Fetching ${authHubUrl}/session`);
@@ -32,7 +38,9 @@ export async function GET(req: NextRequest) {
       signal: AbortSignal.timeout(5000),
     });
 
-    console.log(`[API] [${requestId}] Auth-hub response status: ${response.status}`);
+    console.log(
+      `[API] [${requestId}] Auth-hub response status: ${response.status}`,
+    );
 
     if (response.ok) {
       const data = await response.json();
@@ -54,20 +62,19 @@ export async function GET(req: NextRequest) {
     // Try to read error body if possible
     try {
       const errorText = await response.text();
-      console.warn(`[API] [${requestId}] Auth-hub error body: ${errorText.substring(0, 200)}`);
+      console.warn(
+        `[API] [${requestId}] Auth-hub error body: ${errorText.substring(0, 200)}`,
+      );
     } catch (e) {
       console.warn(`[API] [${requestId}] Could not read error body`);
     }
 
-    return NextResponse.json(
-      { valid: false },
-      { status: response.status }
-    );
+    return NextResponse.json({ valid: false }, { status: response.status });
   } catch (error) {
     console.error(`[API] [${requestId}] Auth validate error:`, error);
     return NextResponse.json(
       { valid: false, error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
