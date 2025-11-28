@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -71,7 +72,7 @@ func Load() (*Config, error) {
 		Database: *dbConfig,
 		Meilisearch: MeilisearchConfig{
 			Host:    getEnvRequired("MEILISEARCH_HOST"),
-			APIKey:  os.Getenv("MEILISEARCH_API_KEY"),
+			APIKey:  getEnvOrDefault("MEILISEARCH_API_KEY", ""),
 			Timeout: 15 * time.Second,
 		},
 		Indexer: IndexerConfig{
@@ -164,6 +165,14 @@ func (c *DatabaseConfig) ValidateSSLConfig() error {
 }
 
 func getEnvRequired(key string) string {
+	// Check for _FILE suffix
+	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {
+		content, err := os.ReadFile(fileValue)
+		if err == nil {
+			return strings.TrimSpace(string(content))
+		}
+	}
+
 	value := os.Getenv(key)
 	if value == "" {
 		panic(fmt.Sprintf("required environment variable %s is not set", key))
@@ -172,6 +181,14 @@ func getEnvRequired(key string) string {
 }
 
 func getEnvOrDefault(key, defaultValue string) string {
+	// Check for _FILE suffix
+	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {
+		content, err := os.ReadFile(fileValue)
+		if err == nil {
+			return strings.TrimSpace(string(content))
+		}
+	}
+
 	if value := os.Getenv(key); value != "" {
 		return value
 	}

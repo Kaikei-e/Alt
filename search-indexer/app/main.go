@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"search-indexer/driver"
@@ -97,7 +98,14 @@ func initMeilisearchClient() (meilisearch.ServiceManager, error) {
 	const retryDelay = 5 * time.Second
 
 	meilisearchHost := os.Getenv("MEILISEARCH_HOST")
+
+	// Support _FILE suffix for Docker Secrets (same pattern as alt-backend)
 	meilisearchKey := os.Getenv("MEILISEARCH_API_KEY")
+	if meilisearchKeyFile := os.Getenv("MEILISEARCH_API_KEY_FILE"); meilisearchKeyFile != "" {
+		if content, err := os.ReadFile(meilisearchKeyFile); err == nil {
+			meilisearchKey = strings.TrimSpace(string(content))
+		}
+	}
 
 	if meilisearchHost == "" {
 		return nil, fmt.Errorf("MEILISEARCH_HOST environment variable is not set")
