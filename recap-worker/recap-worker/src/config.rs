@@ -70,7 +70,7 @@ impl Config {
     /// # Errors
     /// `RECAP_DB_DSN` が未設定、もしくは各種値のパースに失敗した場合は [`ConfigError`] を返す。
     pub fn from_env() -> Result<Self, ConfigError> {
-        let recap_db_dsn = env_var("RECAP_DB_DSN")?;
+        let recap_db_dsn = load_database_dsn()?;
         let http_bind = parse_socket_addr("RECAP_WORKER_HTTP_BIND", "0.0.0.0:9005")?;
         let llm_prompt_version =
             env::var("LLM_PROMPT_VERSION").unwrap_or_else(|_| "recap-ja-v2".to_string());
@@ -78,66 +78,39 @@ impl Config {
         let news_creator_base_url = env_var("NEWS_CREATOR_BASE_URL")?;
         let subworker_base_url = env_var("SUBWORKER_BASE_URL")?;
         let alt_backend_base_url = env_var("ALT_BACKEND_BASE_URL")?;
-        let alt_backend_service_token = env::var("ALT_BACKEND_SERVICE_TOKEN").ok();
+        let alt_backend_service_token = env_var_optional("ALT_BACKEND_SERVICE_TOKEN");
 
-        // HTTP timeout settings (defaults based on memo.md recommendations)
-        let alt_backend_connect_timeout =
-            parse_duration_ms("ALT_BACKEND_CONNECT_TIMEOUT_MS", 3000)?;
-        let alt_backend_read_timeout = parse_duration_ms("ALT_BACKEND_READ_TIMEOUT_MS", 20000)?;
-        let alt_backend_total_timeout = parse_duration_ms("ALT_BACKEND_TOTAL_TIMEOUT_MS", 30000)?;
-
-        // Retry settings (exponential backoff + jitter)
-        let http_max_retries = parse_usize("HTTP_MAX_RETRIES", 3)?;
-        let http_backoff_base_ms = parse_u64("HTTP_BACKOFF_BASE_MS", 250)?;
-        let http_backoff_cap_ms = parse_u64("HTTP_BACKOFF_CAP_MS", 10000)?;
-
-        // OpenTelemetry settings
-        let otel_exporter_endpoint = env::var("OTEL_EXPORTER_ENDPOINT").ok();
-        let otel_sampling_ratio = parse_f64("OTEL_SAMPLING_RATIO", 1.0)?;
-
-        // Batch processing settings
-        let recap_window_days = parse_u32("RECAP_WINDOW_DAYS", 7)?;
-        let recap_genres = parse_csv(
-            "RECAP_GENRES",
-            "ai,tech,business,politics,health,sports,science,entertainment,world,security,product,design,culture,environment,lifestyle,art_culture,developer_insights,pro_it_media,consumer_tech,global_politics,environment_policy,society_justice,travel_lifestyle,security_policy,business_finance,ai_research,ai_policy,games_puzzles,other",
-        );
-        let genre_classifier_weights_path = env::var("RECAP_GENRE_MODEL_WEIGHTS").ok();
-        let genre_classifier_threshold = parse_f64("RECAP_GENRE_MODEL_THRESHOLD", 0.5)? as f32;
-        let genre_refine_enabled = parse_bool("RECAP_GENRE_REFINE_ENABLED", false)?;
-        let genre_refine_require_tags = parse_bool("RECAP_GENRE_REFINE_REQUIRE_TAGS", true)?;
-        let genre_refine_rollout_pct = parse_percentage("RECAP_GENRE_REFINE_ROLLOUT_PERCENT", 100)?;
-        let tag_label_graph_window =
-            env::var("TAG_LABEL_GRAPH_WINDOW").unwrap_or_else(|_| "7d".to_string());
-        let tag_label_graph_ttl =
-            Duration::from_secs(parse_u64("TAG_LABEL_GRAPH_TTL_SECONDS", 900)?);
-
-        // Tag Generator settings
-        let tag_generator_base_url = env::var("TAG_GENERATOR_BASE_URL")
-            .unwrap_or_else(|_| "http://tag-generator:9400".to_string());
-        let tag_generator_service_token = env::var("TAG_GENERATOR_SERVICE_TOKEN").ok();
-        let tag_generator_connect_timeout =
-            parse_duration_ms("TAG_GENERATOR_CONNECT_TIMEOUT_MS", 3000)?;
-        let tag_generator_total_timeout =
-            parse_duration_ms("TAG_GENERATOR_TOTAL_TIMEOUT_MS", 30000)?;
-
-        // Subworker clustering settings
-        let min_documents_per_genre = parse_usize("RECAP_MIN_DOCUMENTS_PER_GENRE", 10)?;
-        let coherence_similarity_threshold =
-            parse_f64("RECAP_COHERENCE_SIMILARITY_THRESHOLD", 0.5)? as f32;
-
-        // Graph pre-refresh settings
-        let recap_pre_refresh_graph_enabled = parse_bool("RECAP_PRE_REFRESH_GRAPH_ENABLED", true)?;
-        let recap_pre_refresh_timeout = parse_duration_secs("RECAP_PRE_REFRESH_TIMEOUT_SECS", 300)?;
-
-        // LLM summary generation timeout (default 600 seconds = 10 minutes)
+        let (alt_backend_connect_timeout, alt_backend_read_timeout, alt_backend_total_timeout) =
+            load_http_timeout_config()?;
+        let (http_max_retries, http_backoff_base_ms, http_backoff_cap_ms) = load_retry_config()?;
+        let (otel_exporter_endpoint, otel_sampling_ratio) = load_observability_config()?;
+        let (
+            recap_window_days,
+            recap_genres,
+            genre_classifier_weights_path,
+            genre_classifier_threshold,
+            genre_refine_enabled,
+            genre_refine_require_tags,
+            genre_refine_rollout_pct,
+        ) = load_batch_config()?;
+        let (tag_label_graph_window, tag_label_graph_ttl) = load_graph_config()?;
+        let (
+            tag_generator_base_url,
+            tag_generator_service_token,
+            tag_generator_connect_timeout,
+            tag_generator_total_timeout,
+        ) = load_tag_config()?;
+        let (min_documents_per_genre, coherence_similarity_threshold) = load_subworker_config()?;
+        let (recap_pre_refresh_graph_enabled, recap_pre_refresh_timeout) =
+            load_pre_refresh_config()?;
         let llm_summary_timeout = parse_duration_secs("LLM_SUMMARY_TIMEOUT_SECS", 600)?;
-
-        // Database connection pool settings
-        let recap_db_max_connections = parse_u32("RECAP_DB_MAX_CONNECTIONS", 50)?;
-        let recap_db_min_connections = parse_u32("RECAP_DB_MIN_CONNECTIONS", 5)?;
-        let recap_db_acquire_timeout = parse_duration_secs("RECAP_DB_ACQUIRE_TIMEOUT_SECS", 60)?;
-        let recap_db_idle_timeout = parse_duration_secs("RECAP_DB_IDLE_TIMEOUT_SECS", 600)?;
-        let recap_db_max_lifetime = parse_duration_secs("RECAP_DB_MAX_LIFETIME_SECS", 1800)?;
+        let (
+            recap_db_max_connections,
+            recap_db_min_connections,
+            recap_db_acquire_timeout,
+            recap_db_idle_timeout,
+            recap_db_max_lifetime,
+        ) = load_db_pool_config()?;
 
         Ok(Self {
             http_bind,
@@ -376,8 +349,141 @@ impl Config {
     }
 }
 
+fn load_database_dsn() -> Result<String, ConfigError> {
+    match env_var("RECAP_DB_DSN") {
+        Ok(dsn) => Ok(dsn),
+        Err(ConfigError::Missing(_)) => {
+            // Try to build from components
+            // Check all components exist before building DSN
+            // This ensures we return RECAP_DB_DSN error if all components are missing
+            if env_var("RECAP_DB_HOST").is_err()
+                && env_var("RECAP_DB_PORT").is_err()
+                && env_var("RECAP_DB_USER").is_err()
+                && env_var("RECAP_DB_NAME").is_err()
+                && env_var("RECAP_DB_PASSWORD").is_err()
+            {
+                return Err(ConfigError::Missing("RECAP_DB_DSN"));
+            }
+            let host = env_var("RECAP_DB_HOST")?;
+            let port = env_var("RECAP_DB_PORT")?;
+            let user = env_var("RECAP_DB_USER")?;
+            let dbname = env_var("RECAP_DB_NAME")?;
+            let password = env_var("RECAP_DB_PASSWORD")?;
+            Ok(format!(
+                "postgres://{}:{}@{}:{}/{}",
+                user, password, host, port, dbname
+            ))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn load_http_timeout_config() -> Result<(Duration, Duration, Duration), ConfigError> {
+    let connect_timeout = parse_duration_ms("ALT_BACKEND_CONNECT_TIMEOUT_MS", 3000)?;
+    let read_timeout = parse_duration_ms("ALT_BACKEND_READ_TIMEOUT_MS", 20000)?;
+    let total_timeout = parse_duration_ms("ALT_BACKEND_TOTAL_TIMEOUT_MS", 30000)?;
+    Ok((connect_timeout, read_timeout, total_timeout))
+}
+
+fn load_retry_config() -> Result<(usize, u64, u64), ConfigError> {
+    let max_retries = parse_usize("HTTP_MAX_RETRIES", 3)?;
+    let backoff_base_ms = parse_u64("HTTP_BACKOFF_BASE_MS", 250)?;
+    let backoff_cap_ms = parse_u64("HTTP_BACKOFF_CAP_MS", 10000)?;
+    Ok((max_retries, backoff_base_ms, backoff_cap_ms))
+}
+
+fn load_observability_config() -> Result<(Option<String>, f64), ConfigError> {
+    let exporter_endpoint = env_var_optional("OTEL_EXPORTER_ENDPOINT");
+    let sampling_ratio = parse_f64("OTEL_SAMPLING_RATIO", 1.0)?;
+    Ok((exporter_endpoint, sampling_ratio))
+}
+
+type BatchConfig = (u32, Vec<String>, Option<String>, f32, bool, bool, u8);
+
+fn load_batch_config() -> Result<BatchConfig, ConfigError> {
+    let window_days = parse_u32("RECAP_WINDOW_DAYS", 7)?;
+    let genres = parse_csv(
+        "RECAP_GENRES",
+        "ai,tech,business,politics,health,sports,science,entertainment,world,security,product,design,culture,environment,lifestyle,art_culture,developer_insights,pro_it_media,consumer_tech,global_politics,environment_policy,society_justice,travel_lifestyle,security_policy,business_finance,ai_research,ai_policy,games_puzzles,other",
+    );
+    let classifier_weights_path = env_var_optional("RECAP_GENRE_MODEL_WEIGHTS");
+    let classifier_threshold = parse_f64("RECAP_GENRE_MODEL_THRESHOLD", 0.5)? as f32;
+    let refine_enabled = parse_bool("RECAP_GENRE_REFINE_ENABLED", false)?;
+    let refine_require_tags = parse_bool("RECAP_GENRE_REFINE_REQUIRE_TAGS", true)?;
+    let refine_rollout_pct = parse_percentage("RECAP_GENRE_REFINE_ROLLOUT_PERCENT", 100)?;
+    Ok((
+        window_days,
+        genres,
+        classifier_weights_path,
+        classifier_threshold,
+        refine_enabled,
+        refine_require_tags,
+        refine_rollout_pct,
+    ))
+}
+
+fn load_graph_config() -> Result<(String, Duration), ConfigError> {
+    let window = env::var("TAG_LABEL_GRAPH_WINDOW").unwrap_or_else(|_| "7d".to_string());
+    let ttl = Duration::from_secs(parse_u64("TAG_LABEL_GRAPH_TTL_SECONDS", 900)?);
+    Ok((window, ttl))
+}
+
+fn load_tag_config() -> Result<(String, Option<String>, Duration, Duration), ConfigError> {
+    let base_url = env::var("TAG_GENERATOR_BASE_URL")
+        .unwrap_or_else(|_| "http://tag-generator:9400".to_string());
+    let service_token = env_var_optional("TAG_GENERATOR_SERVICE_TOKEN");
+    let connect_timeout = parse_duration_ms("TAG_GENERATOR_CONNECT_TIMEOUT_MS", 3000)?;
+    let total_timeout = parse_duration_ms("TAG_GENERATOR_TOTAL_TIMEOUT_MS", 30000)?;
+    Ok((base_url, service_token, connect_timeout, total_timeout))
+}
+
+fn load_subworker_config() -> Result<(usize, f32), ConfigError> {
+    let min_documents = parse_usize("RECAP_MIN_DOCUMENTS_PER_GENRE", 10)?;
+    let similarity_threshold = parse_f64("RECAP_COHERENCE_SIMILARITY_THRESHOLD", 0.5)? as f32;
+    Ok((min_documents, similarity_threshold))
+}
+
+fn load_pre_refresh_config() -> Result<(bool, Duration), ConfigError> {
+    let enabled = parse_bool("RECAP_PRE_REFRESH_GRAPH_ENABLED", true)?;
+    let timeout = parse_duration_secs("RECAP_PRE_REFRESH_TIMEOUT_SECS", 300)?;
+    Ok((enabled, timeout))
+}
+
+fn load_db_pool_config() -> Result<(u32, u32, Duration, Duration, Duration), ConfigError> {
+    let max_connections = parse_u32("RECAP_DB_MAX_CONNECTIONS", 50)?;
+    let min_connections = parse_u32("RECAP_DB_MIN_CONNECTIONS", 5)?;
+    let acquire_timeout = parse_duration_secs("RECAP_DB_ACQUIRE_TIMEOUT_SECS", 60)?;
+    let idle_timeout = parse_duration_secs("RECAP_DB_IDLE_TIMEOUT_SECS", 600)?;
+    let max_lifetime = parse_duration_secs("RECAP_DB_MAX_LIFETIME_SECS", 1800)?;
+    Ok((
+        max_connections,
+        min_connections,
+        acquire_timeout,
+        idle_timeout,
+        max_lifetime,
+    ))
+}
+
 fn env_var(name: &'static str) -> Result<String, ConfigError> {
+    // Check for _FILE suffix
+    let file_var = format!("{}_FILE", name);
+    if let Ok(path) = env::var(&file_var) {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            return Ok(content.trim().to_string());
+        }
+    }
     env::var(name).map_err(|_| ConfigError::Missing(name))
+}
+
+fn env_var_optional(name: &'static str) -> Option<String> {
+    // Check for _FILE suffix
+    let file_var = format!("{}_FILE", name);
+    if let Ok(path) = env::var(&file_var) {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            return Some(content.trim().to_string());
+        }
+    }
+    env::var(name).ok()
 }
 
 fn parse_socket_addr(name: &'static str, default: &str) -> Result<SocketAddr, ConfigError> {
