@@ -10,6 +10,37 @@
 #   docker-compose up -d --profile logging  # Start with logging services
 #   docker-compose down --profile logging   # Stop with logging services
 #
+
+secrets:
+  auth_shared_secret:
+    file: ./secrets/auth_shared_secret.txt
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  db_password:
+    file: ./secrets/db_password.txt
+  pre_processor_db_password:
+    file: ./secrets/pre_processor_db_password.txt
+  tag_generator_db_password:
+    file: ./secrets/tag_generator_db_password.txt
+  search_indexer_db_password:
+    file: ./secrets/search_indexer_db_password.txt
+  recap_db_password:
+    file: ./secrets/recap_db_password.txt
+  kratos_db_password:
+    file: ./secrets/kratos_db_password.txt
+  kratos_cookie_secret:
+    file: ./secrets/kratos_cookie_secret.txt
+  kratos_cipher_secret:
+    file: ./secrets/kratos_cipher_secret.txt
+  meili_master_key:
+    file: ./secrets/meili_master_key.txt
+  clickhouse_password:
+    file: ./secrets/clickhouse_password.txt
+  csrf_secret:
+    file: ./secrets/csrf_secret.txt
+  service_secret:
+    file: ./secrets/service_secret.txt
+
 networks:
   alt-network:
 
@@ -55,7 +86,10 @@ services:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:rw
+      - ./nginx/docker-entrypoint.d:/docker-entrypoint.d:ro
+    secrets:
+      - auth_shared_secret
     depends_on:
       alt-frontend:
         condition: service_healthy
@@ -64,7 +98,7 @@ services:
       kratos:
         condition: service_healthy
       auth-hub:
-        condition: service_started
+        condition: service_healthy
     networks:
       - alt-network
     # Resource limits for better performance
@@ -149,12 +183,18 @@ services:
     environment:
       - DB_HOST=db  # PostgreSQL 17 (final)
       - DB_PORT=5432
-      - DB_USER=${POSTGRES_USER}
-      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD_FILE=/run/secrets/db_password
       - DB_NAME=${POSTGRES_DB}
       - DB_SSL_MODE=prefer
-      - CSRF_SECRET=${CSRF_SECRET:-development-csrf-secret-change-in-production}
-      - SERVICE_SECRET=${SERVICE_SECRET}
+      - CSRF_SECRET_FILE=/run/secrets/csrf_secret
+      - SERVICE_SECRET_FILE=/run/secrets/service_secret
+      - AUTH_SHARED_SECRET_FILE=/run/secrets/auth_shared_secret
+    secrets:
+      - auth_shared_secret
+      - db_password
+      - csrf_secret
+      - service_secret
     depends_on:
       db:
         condition: service_healthy
@@ -202,12 +242,11 @@ services:
       - OLLAMA_HOME=/home/ollama-user/.ollama
       - OLLAMA_MODELS=/home/ollama-user/.ollama
       - LLM_SERVICE_URL=${LLM_SERVICE_URL:-http://127.0.0.1:11435}
-      - SERVICE_SECRET=${SERVICE_SECRET}
-      - LLM_MODEL=${LLM_MODEL:-gemma3:4b}
-      - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-180}
-      - LLM_NUM_CTX=${LLM_NUM_CTX:-65536}
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-500}
+      - SERVICE_SECRET_FILE=/run/secrets/service_secret
+    secrets:
+      - service_secret
     volumes:
       - news_creator_models:/home/ollama-user/.ollama
     restart: unless-stopped
@@ -269,10 +308,12 @@ services:
       - DB_PORT=5432
       - DB_NAME=${DB_NAME}
       - PRE_PROCESSOR_DB_USER=${PRE_PROCESSOR_DB_USER}
-      - PRE_PROCESSOR_DB_PASSWORD=${PRE_PROCESSOR_DB_PASSWORD}
+      - PRE_PROCESSOR_DB_PASSWORD_FILE=/run/secrets/pre_processor_db_password
       - DB_SSL_MODE=prefer
       - LOG_LEVEL=info
       - SERVICE_NAME=pre-processor
+    secrets:
+      - pre_processor_db_password
     depends_on:
       db:
         condition: service_healthy
@@ -302,9 +343,13 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_SSL_MODE=prefer
       - SEARCH_INDEXER_DB_USER=${SEARCH_INDEXER_DB_USER}
-      - SEARCH_INDEXER_DB_PASSWORD=${SEARCH_INDEXER_DB_PASSWORD}
+      - SEARCH_INDEXER_DB_PASSWORD_FILE=/run/secrets/search_indexer_db_password
       - MEILISEARCH_HOST=${MEILISEARCH_HOST}
-      - MEILISEARCH_API_KEY=${MEILI_MASTER_KEY}
+      - MEILISEARCH_API_KEY_FILE=/run/secrets/meili_master_key
+      - MEILI_MASTER_KEY_FILE=/run/secrets/meili_master_key
+    secrets:
+      - search_indexer_db_password
+      - meili_master_key
     depends_on:
       db:
         condition: service_healthy
@@ -337,11 +382,14 @@ services:
       - DB_PORT=5432
       - DB_NAME=${DB_NAME}
       - DB_TAG_GENERATOR_USER=${DB_TAG_GENERATOR_USER}
-      - DB_TAG_GENERATOR_PASSWORD=${DB_TAG_GENERATOR_PASSWORD}
+      - DB_TAG_GENERATOR_PASSWORD_FILE=/run/secrets/tag_generator_db_password
       - PORT=9400
-      - SERVICE_SECRET=${SERVICE_SECRET}
+      - SERVICE_SECRET_FILE=/run/secrets/service_secret
       # Force CPU-only to prevent GPU memory issues
       - CUDA_VISIBLE_DEVICES=""
+    secrets:
+      - tag_generator_db_password
+      - service_secret
     volumes:
       - ./scripts:/scripts:ro
       - ./tag-generator/models/onnx:/models/onnx:ro
@@ -373,14 +421,17 @@ services:
       - RECAP_DB_HOST=recap-db
       - RECAP_DB_PORT=${RECAP_DB_PORT}
       - RECAP_DB_USER=${RECAP_DB_USER}
-      - RECAP_DB_PASSWORD=${RECAP_DB_PASSWORD}
+      - RECAP_DB_PASSWORD_FILE=/run/secrets/recap_db_password
       - RECAP_DB_NAME=${RECAP_DB_NAME}
       - NEWS_CREATOR_BASE_URL=http://news-creator:11434
       - SUBWORKER_BASE_URL=http://recap-subworker:8002
       - ALT_BACKEND_BASE_URL=${ALT_BACKEND_BASE_URL}
-      - ALT_BACKEND_SERVICE_TOKEN=${ALT_BACKEND_SERVICE_TOKEN}
+      - ALT_BACKEND_SERVICE_TOKEN_FILE=/run/secrets/service_secret
       - TAG_LABEL_GRAPH_WINDOW=${TAG_LABEL_GRAPH_WINDOW}
       - TAG_LABEL_GRAPH_TTL_SECONDS=${TAG_LABEL_GRAPH_TTL_SECONDS}
+    secrets:
+      - recap_db_password
+      - service_secret
     depends_on:
       recap-db:
         condition: service_healthy
@@ -405,7 +456,7 @@ services:
     networks:
       - alt-network
     environment:
-      - RECAP_SUBWORKER_DB_URL=postgresql+asyncpg://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:${RECAP_DB_PORT}/${RECAP_DB_NAME}
+      - RECAP_SUBWORKER_DB_PASSWORD_FILE=/run/secrets/recap_db_password
       - RECAP_SUBWORKER_BASE_URL=http://recap-subworker:8002
       - RECAP_SUBWORKER_MODEL_BACKEND=hash
       - RECAP_SUBWORKER_PIPELINE_MODE=processpool
@@ -429,9 +480,11 @@ services:
   meilisearch:
       image: getmeili/meilisearch:v1.27.0
       restart: unless-stopped
+      command: sh -c "export MEILI_MASTER_KEY=$$(cat /run/secrets/meili_master_key) && meilisearch"
       environment:
-        MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
         MEILI_ENV: "production"
+      secrets:
+        - meili_master_key
       ports:
         - "7700:7700"
       volumes:
@@ -481,16 +534,20 @@ services:
       APP_CLICKHOUSE_HOST: clickhouse
       APP_CLICKHOUSE_PORT: 8123
       APP_CLICKHOUSE_USER: ${CLICKHOUSE_USER}
-      APP_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      APP_CLICKHOUSE_PASSWORD_FILE: /run/secrets/clickhouse_password
       APP_CLICKHOUSE_DATABASE: ${CLICKHOUSE_DB}
+    secrets:
+      - clickhouse_password
   clickhouse:
     image: clickhouse/clickhouse-server:25.9
     restart: unless-stopped
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-rask_logs}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-rask_user}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-rask_password}
+      CLICKHOUSE_PASSWORD_FILE: /run/secrets/clickhouse_password
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    secrets:
+      - clickhouse_password
     ports:
       - "8123:8123"
       - "9009:9000"
@@ -520,7 +577,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
       DB_USER: ${DB_USER}
@@ -531,7 +588,12 @@ services:
       DB_TAG_GENERATOR_USER: ${DB_TAG_GENERATOR_USER}
       DB_TAG_GENERATOR_PASSWORD: ${DB_TAG_GENERATOR_PASSWORD}
       SEARCH_INDEXER_DB_USER: ${SEARCH_INDEXER_DB_USER}
-      SEARCH_INDEXER_DB_PASSWORD: ${SEARCH_INDEXER_DB_PASSWORD}
+      SEARCH_INDEXER_DB_PASSWORD_FILE: /run/secrets/search_indexer_db_password
+    secrets:
+      - postgres_password
+      - pre_processor_db_password
+      - tag_generator_db_password
+      - search_indexer_db_password
     volumes:
       - db_data_17:/var/lib/postgresql/data  # PostgreSQL 17 production data
       - ./db/init:/docker-entrypoint-initdb.d:rw
@@ -568,7 +630,9 @@ services:
     environment:
       POSTGRES_DB: ${KRATOS_DB_NAME:-kratos}
       POSTGRES_USER: ${KRATOS_DB_USER:-kratos_user}
-      POSTGRES_PASSWORD: ${KRATOS_DB_PASSWORD:-kratos_password}
+      POSTGRES_PASSWORD_FILE: /run/secrets/kratos_db_password
+    secrets:
+      - kratos_db_password
     volumes:
       - kratos_db_data:/var/lib/postgresql/data
       - ./kratos-db/init:/docker-entrypoint-initdb.d:rw
@@ -607,7 +671,9 @@ services:
     environment:
       POSTGRES_DB: ${RECAP_DB_NAME}
       POSTGRES_USER: ${RECAP_DB_USER}
-      POSTGRES_PASSWORD: ${RECAP_DB_PASSWORD}
+      POSTGRES_PASSWORD_FILE: /run/secrets/recap_db_password
+    secrets:
+      - recap_db_password
     volumes:
       - recap_db_data:/var/lib/postgresql/data
       - ./recap-worker/recap-db/init:/docker-entrypoint-initdb.d:rw
@@ -810,17 +876,20 @@ services:
 
   kratos-migrate:
     image: oryd/kratos:v1.3.0
-    command: ["migrate", "sql", "-e", "--yes", "--config", "/etc/config/kratos/kratos.yml"]
+    command: ["kratos", "migrate", "sql", "-e", "--yes", "--config", "/etc/config/kratos/kratos.yml"]
     environment:
-      - DSN=postgres://${KRATOS_DB_USER:-kratos_user}:${KRATOS_DB_PASSWORD:-kratos_password}@${KRATOS_DB_HOST:-kratos-db}:${KRATOS_DB_PORT:-5432}/${KRATOS_DB_NAME:-kratos}?sslmode=${KRATOS_DB_SSLMODE:-disable}
       - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
-      - KRATOS_DB_PASSWORD=${KRATOS_DB_PASSWORD:-kratos_password}
+      - KRATOS_DB_PASSWORD_FILE=/run/secrets/kratos_db_password
       - KRATOS_DB_HOST=${KRATOS_DB_HOST:-kratos-db}
       - KRATOS_DB_PORT=${KRATOS_DB_PORT:-5432}
       - KRATOS_DB_NAME=${KRATOS_DB_NAME:-kratos}
       - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
+    secrets:
+      - kratos_db_password
     volumes:
       - ./kratos:/etc/config/kratos:ro
+      - ./kratos/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/entrypoint.sh"]
     depends_on:
       kratos-db:
         condition: service_healthy
@@ -830,14 +899,13 @@ services:
 
   kratos:
     image: oryd/kratos:v1.3.0
-    command: ["serve", "all", "--config", "/etc/config/kratos/kratos.yml"]
+    command: ["kratos", "serve", "all", "--config", "/etc/config/kratos/kratos.yml"]
     ports:
       - "4433:4433"  # public
       - "4434:4434"  # admin
     environment:
-      - DSN=postgres://${KRATOS_DB_USER:-kratos_user}:${KRATOS_DB_PASSWORD:-kratos_password}@${KRATOS_DB_HOST:-kratos-db}:${KRATOS_DB_PORT:-5432}/${KRATOS_DB_NAME:-kratos}?sslmode=${KRATOS_DB_SSLMODE:-disable}
       - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
-      - KRATOS_DB_PASSWORD=${KRATOS_DB_PASSWORD:-kratos_password}
+      - KRATOS_DB_PASSWORD_FILE=/run/secrets/kratos_db_password
       - KRATOS_DB_HOST=${KRATOS_DB_HOST:-kratos-db}
       - KRATOS_DB_PORT=${KRATOS_DB_PORT:-5432}
       - KRATOS_DB_NAME=${KRATOS_DB_NAME:-kratos}
@@ -856,10 +924,16 @@ services:
       - KRATOS_SETTINGS_UI_URL=${KRATOS_SETTINGS_UI_URL:-http://localhost:3000/auth/settings}
       - KRATOS_RECOVERY_UI_URL=${KRATOS_RECOVERY_UI_URL:-http://localhost:3000/auth/recovery}
       - KRATOS_VERIFICATION_UI_URL=${KRATOS_VERIFICATION_UI_URL:-http://localhost:3000/auth/verification}
-      - KRATOS_COOKIE_SECRET=${KRATOS_COOKIE_SECRET:-kratos_cookie_secret_32_chars_xx}
-      - KRATOS_CIPHER_SECRET=${KRATOS_CIPHER_SECRET:-kratos_cipher_secret_32_chars}
+      - KRATOS_COOKIE_SECRET_FILE=/run/secrets/kratos_cookie_secret
+      - KRATOS_CIPHER_SECRET_FILE=/run/secrets/kratos_cipher_secret
+    secrets:
+      - kratos_db_password
+      - kratos_cookie_secret
+      - kratos_cipher_secret
     volumes:
       - ./kratos:/etc/config/kratos:ro
+      - ./kratos/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/entrypoint.sh"]
     depends_on:
       kratos-db:
         condition: service_healthy
@@ -883,11 +957,19 @@ services:
       - KRATOS_URL=http://kratos:4433
       - PORT=8888
       - CACHE_TTL=5m
-      - CSRF_SECRET=${CSRF_SECRET:-development-csrf-secret-change-in-production}
+      - CSRF_SECRET_FILE=/run/secrets/csrf_secret
+    secrets:
+      - csrf_secret
     depends_on:
       kratos:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8888/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     networks:
       - alt-network
     deploy:
