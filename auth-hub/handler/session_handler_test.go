@@ -10,6 +10,7 @@ import (
 
 	"auth-hub/cache"
 	"auth-hub/client"
+	"auth-hub/config"
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -20,8 +21,14 @@ func TestNewSessionHandler(t *testing.T) {
 	t.Run("creates handler with dependencies", func(t *testing.T) {
 		mockClient := new(MockKratosClient)
 		sessionCache := cache.NewSessionCache(5 * time.Minute)
+		cfg := &config.Config{
+			BackendTokenSecret:   "test-secret",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+			BackendTokenTTL:      5 * time.Minute,
+		}
 
-		handler := NewSessionHandler(mockClient, sessionCache)
+		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
 
 		assert.NotNil(t, handler)
 	})
@@ -35,7 +42,13 @@ func TestSessionHandler_Handle(t *testing.T) {
 		// Pre-populate cache
 		sessionCache.Set("session-123", "user-456", "tenant-789", "user@example.com")
 
-		handler := NewSessionHandler(mockClient, sessionCache)
+		cfg := &config.Config{
+			BackendTokenSecret:   "test-secret",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+			BackendTokenTTL:      5 * time.Minute,
+		}
+		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
 
 		// Create request with session cookie
 		e := echo.New()
@@ -87,7 +100,13 @@ func TestSessionHandler_Handle(t *testing.T) {
 				Email: "test@example.com",
 			}, nil)
 
-		handler := NewSessionHandler(mockClient, sessionCache)
+		cfg := &config.Config{
+			BackendTokenSecret:   "test-secret",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+			BackendTokenTTL:      5 * time.Minute,
+		}
+		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
 
 		// Create request
 		e := echo.New()
@@ -129,7 +148,13 @@ func TestSessionHandler_Handle(t *testing.T) {
 	t.Run("missing session cookie returns 401 JSON error", func(t *testing.T) {
 		mockClient := new(MockKratosClient)
 		sessionCache := cache.NewSessionCache(5 * time.Minute)
-		handler := NewSessionHandler(mockClient, sessionCache)
+		cfg := &config.Config{
+			BackendTokenSecret:   "test-secret",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+			BackendTokenTTL:      5 * time.Minute,
+		}
+		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/session", nil)
@@ -153,7 +178,13 @@ func TestSessionHandler_Handle(t *testing.T) {
 		mockClient.On("Whoami", mock.Anything, "ory_kratos_session=invalid-session").
 			Return(nil, errors.New("authentication failed: session invalid or expired"))
 
-		handler := NewSessionHandler(mockClient, sessionCache)
+		cfg := &config.Config{
+			BackendTokenSecret:   "test-secret",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+			BackendTokenTTL:      5 * time.Minute,
+		}
+		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/session", nil)
@@ -180,7 +211,13 @@ func TestSessionHandler_Handle(t *testing.T) {
 		mockClient.On("Whoami", mock.Anything, "ory_kratos_session=valid-session").
 			Return(nil, errors.New("kratos returned status 500"))
 
-		handler := NewSessionHandler(mockClient, sessionCache)
+		cfg := &config.Config{
+			BackendTokenSecret:   "test-secret",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+			BackendTokenTTL:      5 * time.Minute,
+		}
+		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/session", nil)
@@ -216,7 +253,13 @@ func TestSessionHandler_Handle(t *testing.T) {
 				Email: "new@example.com",
 			}, nil)
 
-		handler := NewSessionHandler(mockClient, sessionCache)
+		cfg := &config.Config{
+			BackendTokenSecret:   "test-secret",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+			BackendTokenTTL:      5 * time.Minute,
+		}
+		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/session", nil)

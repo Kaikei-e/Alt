@@ -2,26 +2,34 @@ package handler
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"auth-hub/cache"
+	"auth-hub/client"
+	"auth-hub/config"
+	"auth-hub/token"
 
 	"github.com/labstack/echo/v4"
 )
 
 // SessionHandler handles /session endpoint for frontend JSON responses
 type SessionHandler struct {
-	kratosClient KratosClient
-	sessionCache *cache.SessionCache
+	kratosClient     KratosClient
+	sessionCache     *cache.SessionCache
+	authSharedSecret string
+	config           *config.Config
 }
 
 // NewSessionHandler creates a new session handler
-func NewSessionHandler(kratosClient KratosClient, sessionCache *cache.SessionCache) *SessionHandler {
+func NewSessionHandler(kratosClient KratosClient, sessionCache *cache.SessionCache, authSharedSecret string, cfg *config.Config) *SessionHandler {
 	return &SessionHandler{
-		kratosClient: kratosClient,
-		sessionCache: sessionCache,
+		kratosClient:     kratosClient,
+		sessionCache:     sessionCache,
+		authSharedSecret: authSharedSecret,
+		config:           cfg,
 	}
 }
 
@@ -62,6 +70,30 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 	if entry, found := h.sessionCache.Get(sessionID); found {
 		// Cache hit - return cached identity as JSON
 		// Note: CreatedAt from cache may not be accurate, but sufficient for session validation
+
+		// Create identity from cache entry for JWT generation
+		identity := &client.Identity{
+			ID:        entry.UserID,
+			Email:     entry.Email,
+			CreatedAt: time.Now().Add(-24 * time.Hour), // Approximate
+			SessionID: sessionID,
+		}
+
+		// Generate backend token
+		backendToken, err := token.IssueBackendToken(h.config, identity, sessionID)
+		if err != nil {
+			slog.Error("failed to issue backend token", "error", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to issue backend token")
+		}
+
+		// Add backend token to response header
+		c.Response().Header().Set("X-Alt-Backend-Token", backendToken)
+
+		// Legacy: Add shared secret header if configured (for backward compatibility during migration)
+		if h.authSharedSecret != "" {
+			c.Response().Header().Set("X-Alt-Shared-Secret", h.authSharedSecret)
+		}
+
 		response := SessionResponse{
 			OK: true,
 			User: User{
@@ -94,6 +126,21 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 	// Cache the validated session
 	// Using UserID as TenantID (single-tenant architecture)
 	h.sessionCache.Set(sessionID, identity.ID, identity.ID, identity.Email)
+
+	// Generate backend token
+	backendToken, err := token.IssueBackendToken(h.config, identity, identity.SessionID)
+	if err != nil {
+		slog.Error("failed to issue backend token", "error", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to issue backend token")
+	}
+
+	// Add backend token to response header
+	c.Response().Header().Set("X-Alt-Backend-Token", backendToken)
+
+	// Legacy: Add shared secret header if configured (for backward compatibility during migration)
+	if h.authSharedSecret != "" {
+		c.Response().Header().Set("X-Alt-Shared-Secret", h.authSharedSecret)
+	}
 
 	// Return identity as JSON
 	response := SessionResponse{

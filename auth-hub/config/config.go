@@ -9,19 +9,29 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	KratosURL  string        // Kratos internal URL
-	Port       string        // Service port
-	CacheTTL   time.Duration // Session cache TTL
-	CSRFSecret string        // CSRF secret for token generation
+	KratosURL            string        // Kratos internal URL
+	Port                 string        // Service port
+	CacheTTL             time.Duration // Session cache TTL
+	CSRFSecret           string        // CSRF secret for token generation
+	AuthSharedSecret     string        // Shared secret for backend authentication
+	BackendTokenSecret   string        // Secret for signing backend JWT tokens
+	BackendTokenIssuer   string        // JWT issuer claim
+	BackendTokenAudience string        // JWT audience claim
+	BackendTokenTTL      time.Duration // JWT token TTL
 }
 
 // Load reads configuration from environment variables with sensible defaults
 func Load() (*Config, error) {
 	config := &Config{
-		KratosURL:  getEnv("KRATOS_URL", "http://kratos:4433"),
-		Port:       getEnv("PORT", "8888"),
-		CacheTTL:   5 * time.Minute, // Default 5 minutes
-		CSRFSecret: getEnv("CSRF_SECRET", ""),
+		KratosURL:            getEnv("KRATOS_URL", "http://kratos:4433"),
+		Port:                 getEnv("PORT", "8888"),
+		CacheTTL:             5 * time.Minute, // Default 5 minutes
+		CSRFSecret:           getEnv("CSRF_SECRET", ""),
+		AuthSharedSecret:     getEnv("AUTH_SHARED_SECRET", ""),
+		BackendTokenSecret:   getEnv("BACKEND_TOKEN_SECRET", ""),
+		BackendTokenIssuer:   getEnv("BACKEND_TOKEN_ISSUER", "auth-hub"),
+		BackendTokenAudience: getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
+		BackendTokenTTL:      5 * time.Minute, // Default 5 minutes
 	}
 
 	// Parse CACHE_TTL if provided
@@ -31,6 +41,15 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("invalid CACHE_TTL format: %w", err)
 		}
 		config.CacheTTL = duration
+	}
+
+	// Parse BACKEND_TOKEN_TTL if provided
+	if ttlStr := os.Getenv("BACKEND_TOKEN_TTL"); ttlStr != "" {
+		duration, err := time.ParseDuration(ttlStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid BACKEND_TOKEN_TTL format: %w", err)
+		}
+		config.BackendTokenTTL = duration
 	}
 
 	// Validate configuration

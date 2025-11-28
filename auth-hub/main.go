@@ -47,7 +47,7 @@ func main() {
 
 	// Initialize handlers
 	validateHandler := handler.NewValidateHandler(kratosClient, sessionCache)
-	sessionHandler := handler.NewSessionHandler(kratosClient, sessionCache)
+	sessionHandler := handler.NewSessionHandler(kratosClient, sessionCache, cfg.AuthSharedSecret, cfg)
 	csrfHandler := handler.NewCSRFHandler(kratosClient, cfg)
 	healthHandler := handler.NewHealthHandler()
 
