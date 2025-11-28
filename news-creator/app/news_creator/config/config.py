@@ -19,6 +19,15 @@ class NewsCreatorConfig:
         )
         self.service_name = "news-creator"
         self.service_secret = os.getenv("SERVICE_SECRET", "")
+        if not self.service_secret:
+            secret_file = os.getenv("SERVICE_SECRET_FILE")
+            if secret_file:
+                try:
+                    with open(secret_file, 'r') as f:
+                        self.service_secret = f.read().strip()
+                except Exception as e:
+                    logger.error(f"Failed to read SERVICE_SECRET_FILE: {e}")
+
         self.token_ttl = 3600
 
         if not self.service_secret:
