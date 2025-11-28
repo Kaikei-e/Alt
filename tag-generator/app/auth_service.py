@@ -106,6 +106,20 @@ class TagResult:
     source: str = "ml_model"
 
 
+def get_service_secret() -> str:
+    """Get service secret from env var or file."""
+    secret = os.getenv("SERVICE_SECRET", "")
+    if not secret:
+        secret_file = os.getenv("SERVICE_SECRET_FILE")
+        if secret_file:
+            try:
+                with open(secret_file, 'r') as f:
+                    secret = f.read().strip()
+            except Exception as e:
+                logger.error(f"Failed to read SERVICE_SECRET_FILE: {e}")
+    return secret
+
+
 class AuthenticatedTagGeneratorService:
     """Enhanced tag generator service with authentication and tenant isolation."""
 
@@ -116,7 +130,7 @@ class AuthenticatedTagGeneratorService:
                 "http://auth-service.alt-auth.svc.cluster.local:8080",
             ),
             service_name="tag-generator",
-            service_secret=os.getenv("SERVICE_SECRET", ""),
+            service_secret=get_service_secret(),
             token_ttl=3600,
         )
 
@@ -368,7 +382,7 @@ async def get_user_preferences(user_context: UserContext) -> dict[str, Any]:
 def verify_service_token(request: Request) -> None:
     """Verify X-Service-Token header for service-to-service authentication."""
     service_token = request.headers.get("X-Service-Token")
-    expected_token = os.getenv("SERVICE_SECRET", "")
+    expected_token = get_service_secret()
 
     if not expected_token:
         logger.warning("SERVICE_SECRET not configured, rejecting service token authentication")
