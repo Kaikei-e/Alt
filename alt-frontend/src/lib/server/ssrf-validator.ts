@@ -30,11 +30,9 @@ export function validateUrlForSSRF(url: string): void {
   try {
     parsedUrl = new URL(url);
   } catch (error) {
-    throw new SSRFValidationError(
-      "Invalid URL format",
-      "INVALID_URL_FORMAT",
-      { error: String(error) },
-    );
+    throw new SSRFValidationError("Invalid URL format", "INVALID_URL_FORMAT", {
+      error: String(error),
+    });
   }
 
   // Validate scheme (only HTTP/HTTPS allowed)
@@ -92,11 +90,9 @@ export function validateUrlForSSRF(url: string): void {
   // Validate port (only allow common web ports)
   const allowedPorts = new Set(["80", "443", "8080", "8443"]);
   if (parsedUrl.port && !allowedPorts.has(parsedUrl.port)) {
-    throw new SSRFValidationError(
-      "Port not allowed",
-      "INVALID_PORT",
-      { port: parsedUrl.port },
-    );
+    throw new SSRFValidationError("Port not allowed", "INVALID_PORT", {
+      port: parsedUrl.port,
+    });
   }
 
   // Validate IP addresses
@@ -187,4 +183,3 @@ function isLinkLocal(hostname: string): boolean {
 
   return false;
 }
-

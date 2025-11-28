@@ -8,7 +8,9 @@
  * @param dateString - ISO date string or RFC3339 format
  * @returns Formatted date string (e.g., "Nov 23, 2025")
  */
-export function formatPublishedDate(dateString: string | undefined | null): string {
+export function formatPublishedDate(
+  dateString: string | undefined | null,
+): string {
   if (!dateString) {
     return "";
   }
@@ -156,4 +158,3 @@ export function generateExcerptFromDescription(
 
   return truncated + "...";
 }
-

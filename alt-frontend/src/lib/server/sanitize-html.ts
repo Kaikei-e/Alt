@@ -251,4 +251,3 @@ export function extractPlainText(html: string): string {
   // Normalize whitespace
   return decoded.replace(/\s+/g, " ").trim();
 }
-

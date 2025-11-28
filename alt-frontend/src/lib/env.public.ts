@@ -66,9 +66,7 @@ function assertPublicUrl(
 
   // SECURITY FIX: Remove identity replacement (replacing empty string with empty string has no effect)
   // Remove trailing slashes, but don't replace empty string with itself
-  const sanitizedPath = allowPath
-    ? parsed.pathname.replace(/\/+$/, "")
-    : "";
+  const sanitizedPath = allowPath ? parsed.pathname.replace(/\/+$/, "") : "";
 
   return `${parsed.origin}${sanitizedPath}`;
 }

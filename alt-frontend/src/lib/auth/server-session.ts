@@ -67,4 +67,3 @@ export async function resolveServerSession(): Promise<SessionResult | null> {
     backendToken,
   };
 }
-
