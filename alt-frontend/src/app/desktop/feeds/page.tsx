@@ -12,6 +12,8 @@ import LazyDesktopTimeline from "@/components/desktop/timeline/LazyDesktopTimeli
 import { serverFetch } from "@/lib/server-fetch";
 import type { FeedStatsSummary } from "@/schema/feedStats";
 
+import FeedsView from "./FeedsView";
+
 // Loading fallback
 const LoadingFallback = () => (
   <Box
@@ -35,67 +37,6 @@ const LoadingFallback = () => (
   </Box>
 );
 
-function DesktopFeedsContent({
-  data: _data,
-}: {
-  data: FeedStatsSummary | null;
-}) {
-  const sidebarNavItems = [
-    {
-      id: 1,
-      label: "Dashboard",
-      iconName: "Home",
-      href: "/desktop/home",
-      active: false,
-    },
-    {
-      id: 2,
-      label: "Feeds",
-      iconName: "Rss",
-      href: "/desktop/feeds",
-      active: true,
-    },
-    {
-      id: 6,
-      label: "Manage Feeds Links",
-      iconName: "Link",
-      href: "/feeds/manage",
-    },
-    {
-      id: 3,
-      label: "Articles",
-      iconName: "FileText",
-      href: "/desktop/articles",
-    },
-    {
-      id: 4,
-      label: "Search",
-      iconName: "Search",
-      href: "/desktop/articles/search",
-    },
-    {
-      id: 5,
-      label: "Settings",
-      iconName: "Settings",
-      href: "/desktop/settings",
-    },
-  ];
-
-  return (
-    <DesktopLayout
-      showRightPanel={true}
-      rightPanel={<LazyRightPanel />}
-      sidebarProps={{
-        navItems: sidebarNavItems,
-        logoText: "Alt Dashboard",
-        logoSubtext: "RSS Management Hub",
-      }}
-    >
-      <LazyDesktopTimeline />
-    </DesktopLayout>
-  );
-}
-
 export default async function Page() {
   let data = null;
   try {
@@ -105,7 +46,7 @@ export default async function Page() {
   }
   return (
     <Suspense fallback={<LoadingFallback />}>
-      <DesktopFeedsContent data={data} />
+      <FeedsView data={data} />
     </Suspense>
   );
 }

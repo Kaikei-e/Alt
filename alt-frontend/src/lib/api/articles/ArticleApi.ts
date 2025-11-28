@@ -102,4 +102,8 @@ export class ArticleApi {
 
     return backendResponse;
   }
+
+  async getArticleById(id: string): Promise<Article> {
+    return this.apiClient.get<Article>(`/v1/articles/${id}`);
+  }
 }
