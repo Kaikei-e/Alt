@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -250,6 +251,16 @@ func (m *ConnectionPoolManager) StopMetricsCollection() {
 // Utility functions
 
 func getEnvOrDefault(key, defaultValue string) string {
+	// First check for _FILE suffix (Docker Secrets support)
+	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {
+		content, err := os.ReadFile(fileValue)
+		if err == nil {
+			return strings.TrimSpace(string(content))
+		}
+		// Log error if needed, but we don't have logger here easily without import cycle or global logger usage
+		// Assuming global logger is available or we just fall back
+	}
+
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
