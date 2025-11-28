@@ -19,12 +19,22 @@ export default defineConfig({
     video: 'on-first-retry',
   },
 
-  webServer: {
-    command: 'PORT=3010 NEXT_PUBLIC_APP_ORIGIN=http://localhost:3010 NEXT_PUBLIC_KRATOS_PUBLIC_URL=http://localhost:4545 NEXT_PUBLIC_IDP_ORIGIN=http://localhost:4545 NEXT_PUBLIC_BACKEND_URL=http://localhost:9000 AUTH_HUB_INTERNAL_URL=http://localhost:4545 NODE_ENV=test pnpm dev',
-    url: 'http://localhost:3010',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  webServer: [
+    {
+      command: 'node tests/mock-auth-service.cjs',
+      url: 'http://localhost:4545/v1/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 10 * 1000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      command: 'PORT=3010 NEXT_PUBLIC_APP_ORIGIN=http://localhost:3010 NEXT_PUBLIC_KRATOS_PUBLIC_URL=http://localhost:4545 NEXT_PUBLIC_IDP_ORIGIN=http://localhost:4545 NEXT_PUBLIC_BACKEND_URL=http://localhost:9000 AUTH_HUB_INTERNAL_URL=http://localhost:4545 NODE_ENV=test pnpm dev',
+      url: 'http://localhost:3010',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120 * 1000,
+    },
+  ],
 
   projects: [
     // Setup project for authentication

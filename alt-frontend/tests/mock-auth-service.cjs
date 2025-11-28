@@ -554,6 +554,14 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Health check endpoint
+    if (req.method === "GET" && path === "/v1/health") {
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ status: "ok", service: "mock-auth" }));
+      return;
+    }
+
     // Legacy auth validation endpoint
     if (req.method === "GET" && req.url === "/v1/auth/validate") {
       res.statusCode = 200;
