@@ -118,6 +118,15 @@ export class ApiClient {
       return `${appOrigin}${endpoint}`;
     }
 
+    // BFF Pattern: For client-side requests to /api/frontend, handle version prefixes generically
+    // /v1/feeds/... -> /api/frontend/v1/feeds/... (keep version prefix)
+    // /v2/feeds/... -> /api/frontend/v2/feeds/... (keep version prefix)
+    // The API route will extract the version and pass it to backend correctly
+    if (typeof window !== "undefined" && this.config.baseUrl === "/api/frontend") {
+      // Keep version prefixes (v1, v2, etc.) as-is for generic routing
+      return `${this.config.baseUrl}${endpoint}`;
+    }
+
     // Default: use baseUrl prefix
     return `${this.config.baseUrl}${endpoint}`;
   }

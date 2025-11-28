@@ -14,37 +14,42 @@ const ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { path: string[] } },
+  { params }: { params: Promise<{ path: string[] }> },
 ) {
-  return handleRequest(request, params, "GET");
+  const resolvedParams = await params;
+  return handleRequest(request, resolvedParams, "GET");
 }
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { path: string[] } },
+  { params }: { params: Promise<{ path: string[] }> },
 ) {
-  return handleRequest(request, params, "POST");
+  const resolvedParams = await params;
+  return handleRequest(request, resolvedParams, "POST");
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { path: string[] } },
+  { params }: { params: Promise<{ path: string[] }> },
 ) {
-  return handleRequest(request, params, "PUT");
+  const resolvedParams = await params;
+  return handleRequest(request, resolvedParams, "PUT");
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { path: string[] } },
+  { params }: { params: Promise<{ path: string[] }> },
 ) {
-  return handleRequest(request, params, "PATCH");
+  const resolvedParams = await params;
+  return handleRequest(request, resolvedParams, "PATCH");
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { path: string[] } },
+  { params }: { params: Promise<{ path: string[] }> },
 ) {
-  return handleRequest(request, params, "DELETE");
+  const resolvedParams = await params;
+  return handleRequest(request, resolvedParams, "DELETE");
 }
 
 async function handleRequest(
@@ -63,8 +68,15 @@ async function handleRequest(
     }
 
     // Build backend path from route params
+    // Flow: Client -> /api/frontend/v1/feeds/... -> Nginx -> Next.js API Route -> alt-backend/v1/feeds/...
+    // params.path contains everything after /api/frontend/
+    // Example: /api/frontend/v1/feeds/fetch/cursor -> params.path = ["v1", "feeds", "fetch", "cursor"]
+    // Example: /api/frontend/v2/articles/search -> params.path = ["v2", "articles", "search"]
     const pathSegments = params.path || [];
-    const backendPath = `/v1/${pathSegments.join("/")}`;
+
+    // Join path segments and add leading slash
+    // This preserves version prefixes (v1, v2, etc.) and all path components
+    const backendPath = `/${pathSegments.join("/")}`;
 
     // Get query parameters
     const searchParams = request.nextUrl.searchParams;
