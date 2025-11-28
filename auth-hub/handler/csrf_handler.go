@@ -2,12 +2,12 @@ package handler
 
 import (
 	"auth-hub/client"
+	"auth-hub/config"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -16,12 +16,14 @@ import (
 // CSRFHandler handles CSRF token requests
 type CSRFHandler struct {
 	kratosClient *client.KratosClient
+	config       *config.Config
 }
 
 // NewCSRFHandler creates a new CSRF handler
-func NewCSRFHandler(kratosClient *client.KratosClient) *CSRFHandler {
+func NewCSRFHandler(kratosClient *client.KratosClient, cfg *config.Config) *CSRFHandler {
 	return &CSRFHandler{
 		kratosClient: kratosClient,
+		config:       cfg,
 	}
 }
 
@@ -35,7 +37,7 @@ type CSRFResponse struct {
 // generateCSRFToken generates a CSRF token from session ID using HMAC-SHA256
 func (h *CSRFHandler) generateCSRFToken(sessionID string) string {
 	// Use a server-side secret (from env or config)
-	secret := []byte(os.Getenv("CSRF_SECRET"))
+	secret := []byte(h.config.CSRFSecret)
 	if len(secret) == 0 {
 		// Fallback to a default secret (for development only)
 		secret = []byte("development-csrf-secret-change-in-production")

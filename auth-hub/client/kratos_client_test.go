@@ -32,7 +32,10 @@ func TestKratosClient_Whoami(t *testing.T) {
 				"id":     "session-123",
 				"active": true,
 				"identity": map[string]any{
-					"id": "user-456",
+					"id":         "user-456",
+					"schema_id":  "default",
+					"schema_url": "http://kratos/schemas/default.json",
+					"state":      "active",
 					"traits": map[string]any{
 						"email": "user@example.com",
 					},
@@ -136,7 +139,7 @@ func TestKratosClient_Whoami(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, identity)
-		assert.Contains(t, err.Error(), "failed to parse response")
+		assert.Contains(t, err.Error(), "unexpected end of JSON input")
 	})
 
 	t.Run("500 internal server error", func(t *testing.T) {

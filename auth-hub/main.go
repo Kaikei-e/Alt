@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"auth-hub/cache"
@@ -44,7 +48,7 @@ func main() {
 	// Initialize handlers
 	validateHandler := handler.NewValidateHandler(kratosClient, sessionCache)
 	sessionHandler := handler.NewSessionHandler(kratosClient, sessionCache)
-	csrfHandler := handler.NewCSRFHandler(kratosClient)
+	csrfHandler := handler.NewCSRFHandler(kratosClient, cfg)
 	healthHandler := handler.NewHealthHandler()
 
 	// Setup Echo server
@@ -89,10 +93,28 @@ func main() {
 
 	// Start server
 	address := fmt.Sprintf(":%s", cfg.Port)
-	slog.Info("starting auth-hub server", "address", address)
 
-	if err := e.Start(address); err != nil {
-		slog.Error("server failed to start", "error", err)
+	// Start server in a goroutine
+	go func() {
+		slog.Info("starting auth-hub server", "address", address)
+		if err := e.Start(address); err != nil && err != http.ErrServerClosed {
+			slog.Error("server failed to start", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server with a timeout of 10 seconds.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+	slog.Info("shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := e.Shutdown(ctx); err != nil {
+		slog.Error("server forced to shutdown", "error", err)
 		os.Exit(1)
 	}
+
+	slog.Info("server exited properly")
 }

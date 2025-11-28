@@ -2,11 +2,11 @@ package client
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
+
+	kratos "github.com/ory/kratos-client-go"
 )
 
 // Identity represents user identity information from Kratos
@@ -18,30 +18,23 @@ type Identity struct {
 
 // KratosClient handles communication with Ory Kratos
 type KratosClient struct {
-	baseURL    string
-	httpClient *http.Client
-}
-
-// kratosSessionResponse represents the Kratos /sessions/whoami response
-type kratosSessionResponse struct {
-	ID       string           `json:"id"`
-	Active   bool             `json:"active"`
-	Identity *kratosIdentity  `json:"identity"`
-}
-
-type kratosIdentity struct {
-	ID        string         `json:"id"`
-	Traits    map[string]any `json:"traits"`
-	CreatedAt time.Time      `json:"created_at"`
+	client *kratos.APIClient
 }
 
 // NewKratosClient creates a new Kratos API client
 func NewKratosClient(baseURL string, timeout time.Duration) *KratosClient {
-	return &KratosClient{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: timeout,
+	configuration := kratos.NewConfiguration()
+	configuration.Servers = []kratos.ServerConfiguration{
+		{
+			URL: baseURL,
 		},
+	}
+	configuration.HTTPClient = &http.Client{
+		Timeout: timeout,
+	}
+
+	return &KratosClient{
+		client: kratos.NewAPIClient(configuration),
 	}
 }
 
@@ -51,64 +44,47 @@ func (c *KratosClient) Whoami(ctx context.Context, cookie string) (*Identity, er
 		return nil, fmt.Errorf("cookie cannot be empty")
 	}
 
-	// Create request with context for timeout/cancellation
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/sessions/whoami", nil)
+	// Call Kratos API using the SDK
+	// The SDK handles the request creation and execution
+	session, resp, err := c.client.FrontendAPI.ToSession(ctx).Cookie(cookie).Execute()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Add session cookie
-	req.Header.Set("Cookie", cookie)
-
-	// Execute request
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
+		if resp != nil {
+			if resp.StatusCode == http.StatusUnauthorized {
+				return nil, fmt.Errorf("authentication failed: session invalid or expired")
+			}
+			return nil, fmt.Errorf("kratos returned status %d: %w", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("failed to call kratos: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Handle non-2xx status codes
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("authentication failed: session invalid or expired")
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("kratos returned status %d", resp.StatusCode)
-	}
-
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// Parse JSON response
-	var sessionResp kratosSessionResponse
-	if err := json.Unmarshal(body, &sessionResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	// Validate session is active
-	if !sessionResp.Active {
+	if session.Active != nil && !*session.Active {
 		return nil, fmt.Errorf("session is not active")
 	}
 
 	// Validate identity exists
-	if sessionResp.Identity == nil {
+	if session.Identity == nil {
 		return nil, fmt.Errorf("missing identity in response")
 	}
 
 	// Extract email from traits
 	email := ""
-	if emailVal, ok := sessionResp.Identity.Traits["email"]; ok {
-		if emailStr, ok := emailVal.(string); ok {
-			email = emailStr
+	if traits, ok := session.Identity.Traits.(map[string]interface{}); ok {
+		if emailVal, ok := traits["email"]; ok {
+			if emailStr, ok := emailVal.(string); ok {
+				email = emailStr
+			}
 		}
 	}
 
+	var createdAt time.Time
+	if session.Identity.CreatedAt != nil {
+		createdAt = *session.Identity.CreatedAt
+	}
+
 	return &Identity{
-		ID:        sessionResp.Identity.ID,
+		ID:        session.Identity.Id,
 		Email:     email,
-		CreatedAt: sessionResp.Identity.CreatedAt,
+		CreatedAt: createdAt,
 	}, nil
 }
