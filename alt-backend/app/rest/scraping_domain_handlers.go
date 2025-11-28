@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"alt/config"
 	"alt/di"
 	"alt/domain"
 	"fmt"
@@ -39,7 +40,7 @@ type UpdateScrapingDomainRequest struct {
 }
 
 // registerScrapingDomainRoutes registers the scraping domain management routes
-func registerScrapingDomainRoutes(v1 *echo.Group, container *di.ApplicationComponents) {
+func registerScrapingDomainRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
 	// Admin endpoints (authentication required)
 	admin := v1.Group("/admin")
 	scrapingDomains := admin.Group("/scraping-domains")

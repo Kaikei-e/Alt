@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"alt/config"
 	"alt/di"
 	"alt/domain"
 	middleware_custom "alt/middleware"
@@ -13,9 +14,9 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func registerImageRoutes(v1 *echo.Group, container *di.ApplicationComponents) {
+func registerImageRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
 	// 認証ミドルウェアの初期化
-	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger)
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg.Auth.SharedSecret)
 
 	// 画像取得も認証必須
 	images := v1.Group("/images", authMiddleware.RequireAuth())

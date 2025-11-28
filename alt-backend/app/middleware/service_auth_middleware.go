@@ -24,6 +24,15 @@ type ServiceAuthMiddleware struct {
 // The service secret is loaded from the SERVICE_SECRET environment variable.
 func NewServiceAuthMiddleware(logger *slog.Logger) *ServiceAuthMiddleware {
 	secret := os.Getenv("SERVICE_SECRET")
+	if secretFile := os.Getenv("SERVICE_SECRET_FILE"); secretFile != "" {
+		content, err := os.ReadFile(secretFile)
+		if err == nil {
+			secret = strings.TrimSpace(string(content))
+		} else if logger != nil {
+			logger.Error("failed to read SERVICE_SECRET_FILE", "error", err)
+		}
+	}
+
 	if secret == "" {
 		if logger != nil {
 			logger.Warn("SERVICE_SECRET not set, service auth will deny all requests")

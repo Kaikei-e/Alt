@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"strings"
 	"time"
 )
 
@@ -13,6 +15,7 @@ type Config struct {
 	HTTP         HTTPConfig         `json:"http"`
 	PreProcessor PreProcessorConfig `json:"pre_processor"`
 	Recap        RecapConfig        `json:"recap"`
+	Auth         AuthConfig         `json:"auth"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -36,6 +39,11 @@ type RecapConfig struct {
 	RateLimitBurst   int    `json:"rate_limit_burst" env:"RECAP_RATE_LIMIT_BURST" default:"8"`
 	MaxArticleBytes  int    `json:"max_article_bytes" env:"RECAP_MAX_ARTICLE_BYTES" default:"2097152"`
 	ClusterDraftPath string `json:"cluster_draft_path" env:"RECAP_CLUSTER_DRAFT_PATH" default:"docs/genre-reorg-draft.json"`
+}
+
+type AuthConfig struct {
+	SharedSecret     string `json:"shared_secret" env:"AUTH_SHARED_SECRET"`
+	SharedSecretFile string `json:"-" env:"AUTH_SHARED_SECRET_FILE"`
 }
 
 type ServerConfig struct {
@@ -104,6 +112,15 @@ func NewConfig() (*Config, error) {
 
 	if err := validateConfig(config); err != nil {
 		return nil, err
+	}
+
+	// Load shared secret from file if configured (Docker Secrets support)
+	if config.Auth.SharedSecretFile != "" {
+		content, err := os.ReadFile(config.Auth.SharedSecretFile)
+		if err == nil {
+			config.Auth.SharedSecret = strings.TrimSpace(string(content))
+		}
+		// If file read fails, we fall back to the env var value (if any) or keep it empty
 	}
 
 	return config, nil

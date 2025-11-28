@@ -20,7 +20,7 @@ import (
 
 func registerFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
 	// 認証ミドルウェアの初期化（ヘッダベースの認証）
-	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger)
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg.Auth.SharedSecret)
 
 	// TODO.md案A: privateグループ化で認証を適用
 	// v1にまとめて適用する代わりに、feedsグループに認証ミドルウェアを適用

@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"alt/config"
 	"alt/di"
 	"alt/domain"
 	middleware_custom "alt/middleware"
@@ -17,8 +18,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func fetchArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents) {
-	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger)
+func fetchArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg.Auth.SharedSecret)
 	articles := v1.Group("/articles", authMiddleware.RequireAuth())
 	articles.GET("/fetch/content", handleFetchArticle(container))
 	articles.GET("/fetch/cursor", handleFetchArticlesCursor(container))
@@ -122,9 +123,9 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 	}
 }
 
-func registerArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents) {
+func registerArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
 	// 認証ミドルウェアの初期化
-	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger)
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg.Auth.SharedSecret)
 
 	// 記事検索も認証必須
 	articles := v1.Group("/articles", authMiddleware.RequireAuth())

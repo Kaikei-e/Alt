@@ -75,11 +75,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	registerSecurityRoutes(e, container)
 	registerFeedRoutes(v1, container, cfg)
 	// Register morning updates route
-	registerMorningRoutes(v1, container)
-	registerArticleRoutes(v1, container)
-	fetchArticleRoutes(v1, container)
-	registerImageRoutes(v1, container)
+	registerMorningRoutes(v1, container, cfg)
+	registerArticleRoutes(v1, container, cfg)
+	fetchArticleRoutes(v1, container, cfg)
+	registerImageRoutes(v1, container, cfg)
 	registerSSERoutes(v1, container, cfg)
 	registerRecapRoutes(v1, container, cfg)
-	registerScrapingDomainRoutes(v1, container)
+	registerScrapingDomainRoutes(v1, container, cfg)
 }

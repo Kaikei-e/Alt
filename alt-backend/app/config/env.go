@@ -44,7 +44,22 @@ func loadStruct(v reflect.Value) error {
 		}
 
 		// Get value from environment, use default if not set
-		value := os.Getenv(envTag)
+		// First check for _FILE suffix (Docker Secrets support)
+		envFileTag := envTag + "_FILE"
+		fileValue := os.Getenv(envFileTag)
+		var value string
+		if fileValue != "" {
+			content, err := os.ReadFile(fileValue)
+			if err == nil {
+				value = strings.TrimSpace(string(content))
+			}
+		}
+
+		// If no file value found, check standard env var
+		if value == "" {
+			value = os.Getenv(envTag)
+		}
+
 		if value == "" {
 			value = defaultTag
 		}

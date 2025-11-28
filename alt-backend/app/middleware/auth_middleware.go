@@ -14,29 +14,35 @@ import (
 )
 
 const (
-	userIDHeader    = "X-Alt-User-Id"
-	tenantIDHeader  = "X-Alt-Tenant-Id"
-	userEmailHeader = "X-Alt-User-Email"
-	userRoleHeader  = "X-Alt-User-Role"
-	sessionIDHeader = "X-Alt-Session-Id"
+	userIDHeader       = "X-Alt-User-Id"
+	tenantIDHeader     = "X-Alt-Tenant-Id"
+	userEmailHeader    = "X-Alt-User-Email"
+	userRoleHeader     = "X-Alt-User-Role"
+	sessionIDHeader    = "X-Alt-Session-Id"
+	sharedSecretHeader = "X-Alt-Shared-Secret"
 )
 
 var (
 	errMissingHeaders = errors.New("missing authentication headers")
 	errInvalidUserID  = errors.New("invalid user identifier")
 	errInvalidTenant  = errors.New("invalid tenant identifier")
+	errInvalidSecret  = errors.New("invalid shared secret")
 )
 
 // AuthMiddleware validates lightweight identity headers provided by the frontend.
 // The backend no longer performs calls to external auth services and simply trusts
 // the identity information forwarded by the edge components.
 type AuthMiddleware struct {
-	logger *slog.Logger
+	logger       *slog.Logger
+	sharedSecret string
 }
 
 // NewAuthMiddleware constructs an AuthMiddleware instance.
-func NewAuthMiddleware(logger *slog.Logger) *AuthMiddleware {
-	return &AuthMiddleware{logger: logger}
+func NewAuthMiddleware(logger *slog.Logger, sharedSecret string) *AuthMiddleware {
+	return &AuthMiddleware{
+		logger:       logger,
+		sharedSecret: sharedSecret,
+	}
 }
 
 // RequireAuth ensures that identity headers are present and valid before
@@ -44,6 +50,11 @@ func NewAuthMiddleware(logger *slog.Logger) *AuthMiddleware {
 func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			// Verify shared secret first
+			if !m.validateSharedSecret(c) {
+				return echo.NewHTTPError(http.StatusUnauthorized, "invalid shared secret")
+			}
+
 			userContext, err := m.extractUserContext(c)
 			if err != nil {
 				switch {
@@ -67,6 +78,30 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			// Verify shared secret first if headers are present?
+			// Or always?
+			// If we want to prevent direct access even for public endpoints that MIGHT have auth,
+			// we should probably enforce it if we want to trust the headers.
+			// But OptionalAuth is often used for "if you are logged in, good; if not, also good".
+			// If the request comes from Nginx, it should have the secret.
+			// If it comes from attacker directly, it won't.
+			// If attacker sends no headers, they are anonymous. That's fine for OptionalAuth endpoints (assuming they are public).
+			// If attacker sends headers but no secret, we MUST ignore the headers (or reject).
+			// If we reject, we protect against "I am admin" lies.
+			// So yes, if headers are present, secret MUST be present and valid.
+			// If headers are NOT present, secret is optional?
+			// Nginx will always send the secret if we configure it globally for /api/backend.
+			// So we can enforce secret always.
+
+			if !m.validateSharedSecret(c) {
+				// If secret is missing/invalid, we treat as unauthenticated (anonymous)
+				// BUT, if they tried to send auth headers, we should probably warn.
+				// For safety, let's just return next(c) without context, effectively anonymous.
+				// This is safe because extractUserContext won't be called or its result won't be used if we return here.
+				// Wait, if we return next(c) here, we skip extractUserContext.
+				return next(c)
+			}
+
 			userContext, err := m.extractUserContext(c)
 			if err != nil {
 				if errors.Is(err, errMissingHeaders) {
@@ -153,4 +188,18 @@ func parseRole(raw string) domain.UserRole {
 	default:
 		return domain.UserRoleUser
 	}
+}
+
+func (m *AuthMiddleware) validateSharedSecret(c echo.Context) bool {
+	// If no secret is configured, we default to insecure (open) mode?
+	// Or we fail open?
+	// Implementation Plan says: "If this secret is not configured, the backend will reject all authenticated requests."
+	// So if m.sharedSecret is empty, we should probably fail secure.
+	if m.sharedSecret == "" {
+		// Log warning?
+		return false
+	}
+
+	providedSecret := c.Request().Header.Get(sharedSecretHeader)
+	return providedSecret == m.sharedSecret
 }

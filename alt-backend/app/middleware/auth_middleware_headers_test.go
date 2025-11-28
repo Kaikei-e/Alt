@@ -23,10 +23,11 @@ func TestRequireAuth_SetsUserContext(t *testing.T) {
 	req.Header.Set(userEmailHeader, "user@example.com")
 	req.Header.Set(userRoleHeader, string(domain.UserRoleAdmin))
 	req.Header.Set(sessionIDHeader, "session-token")
+	req.Header.Set(sharedSecretHeader, "test-secret")
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
-	middleware := NewAuthMiddleware(nil)
+	middleware := NewAuthMiddleware(nil, "test-secret")
 	called := false
 	h := middleware.RequireAuth()(func(c echo.Context) error {
 		called = true
@@ -52,10 +53,11 @@ func TestRequireAuth_SetsUserContext(t *testing.T) {
 func TestRequireAuth_MissingHeaders(t *testing.T) {
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req.Header.Set(sharedSecretHeader, "test-secret")
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
-	middleware := NewAuthMiddleware(nil)
+	middleware := NewAuthMiddleware(nil, "test-secret")
 	h := middleware.RequireAuth()(func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
@@ -72,10 +74,11 @@ func TestRequireAuth_InvalidUUID(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
 	req.Header.Set(userIDHeader, "not-a-uuid")
 	req.Header.Set(tenantIDHeader, uuid.New().String())
+	req.Header.Set(sharedSecretHeader, "test-secret")
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
-	middleware := NewAuthMiddleware(nil)
+	middleware := NewAuthMiddleware(nil, "test-secret")
 	h := middleware.RequireAuth()(func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
@@ -90,10 +93,11 @@ func TestRequireAuth_InvalidUUID(t *testing.T) {
 func TestOptionalAuth_AllowsUnauthenticatedRequests(t *testing.T) {
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/v1/articles", nil)
+	req.Header.Set(sharedSecretHeader, "test-secret")
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
-	middleware := NewAuthMiddleware(nil)
+	middleware := NewAuthMiddleware(nil, "test-secret")
 	called := false
 	h := middleware.OptionalAuth()(func(c echo.Context) error {
 		called = true

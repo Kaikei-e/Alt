@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // SSL設定構造体完全削除
@@ -43,6 +44,12 @@ func (dc *DatabaseConfig) BuildConnectionString() string {
 }
 
 func getEnvOrDefault(key, defaultValue string) string {
+	// Check for _FILE suffix (Docker Secrets support)
+	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {
+		if content, err := os.ReadFile(fileValue); err == nil {
+			return strings.TrimSpace(string(content))
+		}
+	}
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
