@@ -45,11 +45,7 @@ export default function EmptyFeedState() {
             border: "2px solid var(--alt-glass-border)",
           }}
         >
-          <Rss
-            size={56}
-            color="var(--alt-text-secondary)"
-            strokeWidth={1.5}
-          />
+          <Rss size={56} color="var(--alt-text-secondary)" strokeWidth={1.5} />
         </animated.div>
 
         {/* Heading */}

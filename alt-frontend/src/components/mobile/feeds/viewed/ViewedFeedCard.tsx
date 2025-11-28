@@ -14,7 +14,10 @@ type ViewedFeedCardProps = {
 
 const AnimatedBox = animated(Box);
 
-export const ViewedFeedCard = ({ feed, style }: ViewedFeedCardProps & { style?: any }) => {
+export const ViewedFeedCard = ({
+  feed,
+  style,
+}: ViewedFeedCardProps & { style?: any }) => {
   const [isArchiving, setIsArchiving] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -56,16 +59,21 @@ export const ViewedFeedCard = ({ feed, style }: ViewedFeedCardProps & { style?: 
         overflow="hidden"
         _hover={{
           border: "2px solid var(--alt-glass-border)",
-          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.15)",
+          boxShadow:
+            "0 12px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.15)",
           transform: "translateY(-2px)",
         }}
         transition="all 0.3s ease"
       >
-
         <Flex direction="column" gap={3}>
           {/* Header: Title and Badge */}
           <Flex justify="space-between" align="flex-start" gap={3}>
-            <Link href={feed.normalizedUrl} target="_blank" rel="noopener noreferrer" style={{ flex: 1 }}>
+            <Link
+              href={feed.normalizedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ flex: 1 }}
+            >
               <Text
                 fontSize="md"
                 fontWeight="bold"
@@ -115,12 +123,21 @@ export const ViewedFeedCard = ({ feed, style }: ViewedFeedCardProps & { style?: 
           </Text>
 
           {/* Footer: Actions and Meta */}
-          <Flex justify="space-between" align="center" mt={1} gap={2} flexWrap="wrap">
+          <Flex
+            justify="space-between"
+            align="center"
+            mt={1}
+            gap={2}
+            flexWrap="wrap"
+          >
             <Button
               size="xs"
               variant="ghost"
               color="var(--alt-text-secondary)"
-              _hover={{ bg: "rgba(255, 255, 255, 0.05)", color: "var(--alt-text-primary)" }}
+              _hover={{
+                bg: "rgba(255, 255, 255, 0.05)",
+                color: "var(--alt-text-primary)",
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 setIsModalOpen(true);
@@ -137,22 +154,34 @@ export const ViewedFeedCard = ({ feed, style }: ViewedFeedCardProps & { style?: 
                 size="xs"
                 variant="ghost"
                 color="var(--alt-text-secondary)"
-                _hover={{ bg: "rgba(255, 255, 255, 0.05)", color: "var(--alt-text-primary)" }}
+                _hover={{
+                  bg: "rgba(255, 255, 255, 0.05)",
+                  color: "var(--alt-text-primary)",
+                }}
                 onClick={handleArchive}
                 disabled={isArchived}
               >
                 <Flex align="center" gap={1}>
                   {!isArchived && <Archive size={14} />}
-                  <Text>{isArchiving ? "..." : isArchived ? "Archived" : "Archive"}</Text>
+                  <Text>
+                    {isArchiving ? "..." : isArchived ? "Archived" : "Archive"}
+                  </Text>
                 </Flex>
               </Button>
 
-              <Link href={feed.normalizedUrl} target="_blank" rel="noopener noreferrer">
+              <Link
+                href={feed.normalizedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <Button
                   size="xs"
                   variant="ghost"
                   color="var(--alt-text-secondary)"
-                  _hover={{ bg: "rgba(255, 255, 255, 0.05)", color: "var(--alt-text-primary)" }}
+                  _hover={{
+                    bg: "rgba(255, 255, 255, 0.05)",
+                    color: "var(--alt-text-primary)",
+                  }}
                 >
                   <Flex align="center" gap={1}>
                     <Text>Open</Text>

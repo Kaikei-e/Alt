@@ -85,22 +85,22 @@ export function AuthForm({ onSuccess, initialMode = "login" }: AuthFormProps) {
 
   const handleInputChange =
     (field: keyof typeof formData) =>
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        const value = sanitizeInput(e.target.value);
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = sanitizeInput(e.target.value);
 
-        setFormData((prev) => ({
-          ...prev,
-          [field]: value,
-        }));
+      setFormData((prev) => ({
+        ...prev,
+        [field]: value,
+      }));
 
-        // Real-time validation
-        validateField(field, value);
+      // Real-time validation
+      validateField(field, value);
 
-        // Clear global error when user starts typing
-        if (error) {
-          clearError();
-        }
-      };
+      // Clear global error when user starts typing
+      if (error) {
+        clearError();
+      }
+    };
 
   const validateField = (field: keyof typeof formData, value: string) => {
     let fieldError: string | undefined;

@@ -28,10 +28,12 @@ export const VirtualFeedList: React.FC<VirtualFeedListProps> = ({
       gap={4}
       data-testid="virtual-feed-list"
       mt={2}
-      style={{
-        contentVisibility: "auto",
-        containIntrinsicSize: "800px",
-      } as React.CSSProperties}
+      style={
+        {
+          contentVisibility: "auto",
+          containIntrinsicSize: "800px",
+        } as React.CSSProperties
+      }
     >
       {feeds.map((feed: RenderFeed, index: number) => (
         <div key={feed.link} data-testid={`virtual-feed-item-${index}`}>

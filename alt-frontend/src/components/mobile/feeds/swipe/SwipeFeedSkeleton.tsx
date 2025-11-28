@@ -38,8 +38,8 @@ const SwipeSkeletonHint = ({
           prefersReducedMotion
             ? undefined
             : {
-              animation: `${arrowDrift} 1.6s ease-in-out infinite`,
-            }
+                animation: `${arrowDrift} 1.6s ease-in-out infinite`,
+              }
         }
       />
       {Array.from({ length: 3 }).map((_, index) => (
@@ -54,8 +54,8 @@ const SwipeSkeletonHint = ({
             prefersReducedMotion
               ? undefined
               : {
-                animation: `${dotPulse} 1.8s ${(index + 1) * 0.12}s ease-in-out infinite`,
-              }
+                  animation: `${dotPulse} 1.8s ${(index + 1) * 0.12}s ease-in-out infinite`,
+                }
           }
         />
       ))}
@@ -67,8 +67,8 @@ const SwipeSkeletonHint = ({
           prefersReducedMotion
             ? undefined
             : {
-              animation: `${arrowDrift} 1.6s ease-in-out infinite reverse`,
-            }
+                animation: `${arrowDrift} 1.6s ease-in-out infinite reverse`,
+              }
         }
       />
     </HStack>

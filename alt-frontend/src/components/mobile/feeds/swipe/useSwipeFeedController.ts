@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWRInfinite from "swr/infinite";
 import { useArticleContentPrefetch } from "@/hooks/useArticleContentPrefetch";
 import { feedApi } from "@/lib/api";
@@ -82,99 +76,106 @@ const hasMorePages = (pageData: CursorResponse<RenderFeed> | null): boolean => {
 
 const createGetKey =
   (lastCursorRef: ReturnType<typeof useRef<string | null>>) =>
-    (pageIndex: number, previousPageData: CursorResponse<RenderFeed> | null): SwrKey | null => {
-      if (pageIndex === 0) {
-        return ["mobile-feed-swipe", undefined, PAGE_SIZE];
+  (
+    pageIndex: number,
+    previousPageData: CursorResponse<RenderFeed> | null,
+  ): SwrKey | null => {
+    if (pageIndex === 0) {
+      return ["mobile-feed-swipe", undefined, PAGE_SIZE];
+    }
+
+    if (previousPageData) {
+      if (!hasMorePages(previousPageData)) {
+        return null;
+      }
+      const cursor = derivePageCursor(previousPageData);
+      // Always update lastCursorRef when we have a cursor
+      if (cursor) {
+        lastCursorRef.current = cursor;
       }
 
-      if (previousPageData) {
-        if (!hasMorePages(previousPageData)) {
-          return null;
-        }
-        const cursor = derivePageCursor(previousPageData);
-        // Always update lastCursorRef when we have a cursor
-        if (cursor) {
-          lastCursorRef.current = cursor;
-        }
-
-        // Use cursor if available, otherwise fallback to lastCursorRef
-        const effectiveCursor = cursor || lastCursorRef.current || undefined;
-
-        if (typeof window !== "undefined") {
-          console.log("[useSwipeFeedController] getKey", {
-            pageIndex,
-            hasMore: hasMorePages(previousPageData),
-            next_cursor: previousPageData.next_cursor,
-            has_more: previousPageData.has_more,
-            derivedCursor: cursor,
-            lastCursorRef: lastCursorRef.current,
-            effectiveCursor,
-          });
-        }
-        return ["mobile-feed-swipe", effectiveCursor, PAGE_SIZE];
-      }
-
-      if (pageIndex > 0 && lastCursorRef.current) {
-        if (typeof window !== "undefined") {
-          console.log("[useSwipeFeedController] getKey (fallback)", {
-            pageIndex,
-            lastCursorRef: lastCursorRef.current,
-          });
-        }
-        return ["mobile-feed-swipe", lastCursorRef.current, PAGE_SIZE];
-      }
-
-      if (typeof window !== "undefined") {
-        console.warn("[useSwipeFeedController] getKey returned null", {
-          pageIndex,
-          previousPageData: previousPageData ? "exists" : "null",
-          lastCursorRef: lastCursorRef.current,
-        });
-      }
-      return null;
-    };
-
-const createFetchPage =
-  (lastCursorRef: ReturnType<typeof useRef<string | null>>) =>
-    async (
-      _: string,
-      cursor: string | undefined,
-      limit: number,
-    ): Promise<CursorResponse<RenderFeed>> => {
-      // Use lastCursorRef as fallback if cursor is undefined
-      // This ensures we always send a cursor when available, even if getKey didn't pass it
+      // Use cursor if available, otherwise fallback to lastCursorRef
       const effectiveCursor = cursor || lastCursorRef.current || undefined;
 
       if (typeof window !== "undefined") {
-        console.log("[useSwipeFeedController] fetchPage", {
-          cursor,
+        console.log("[useSwipeFeedController] getKey", {
+          pageIndex,
+          hasMore: hasMorePages(previousPageData),
+          next_cursor: previousPageData.next_cursor,
+          has_more: previousPageData.has_more,
+          derivedCursor: cursor,
           lastCursorRef: lastCursorRef.current,
           effectiveCursor,
-          limit,
         });
       }
+      return ["mobile-feed-swipe", effectiveCursor, PAGE_SIZE];
+    }
 
-      const result = await feedApi.getFeedsWithCursor(effectiveCursor, limit);
-
-      // Convert SanitizedFeed to RenderFeed
-      const renderFeeds = result.data.map((feed: SanitizedFeed) => toRenderFeed(feed));
-
+    if (pageIndex > 0 && lastCursorRef.current) {
       if (typeof window !== "undefined") {
-        console.log("[useSwipeFeedController] fetchPage result", {
-          cursor,
-          effectiveCursor,
-          dataCount: renderFeeds.length,
-          next_cursor: result.next_cursor,
-          has_more: result.has_more,
+        console.log("[useSwipeFeedController] getKey (fallback)", {
+          pageIndex,
+          lastCursorRef: lastCursorRef.current,
         });
       }
-      return {
-        ...result,
-        data: renderFeeds,
-      };
-    };
+      return ["mobile-feed-swipe", lastCursorRef.current, PAGE_SIZE];
+    }
 
-const clearTimeoutRef = (timeoutRef: ReturnType<typeof useRef<number | null>>) => {
+    if (typeof window !== "undefined") {
+      console.warn("[useSwipeFeedController] getKey returned null", {
+        pageIndex,
+        previousPageData: previousPageData ? "exists" : "null",
+        lastCursorRef: lastCursorRef.current,
+      });
+    }
+    return null;
+  };
+
+const createFetchPage =
+  (lastCursorRef: ReturnType<typeof useRef<string | null>>) =>
+  async (
+    _: string,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<CursorResponse<RenderFeed>> => {
+    // Use lastCursorRef as fallback if cursor is undefined
+    // This ensures we always send a cursor when available, even if getKey didn't pass it
+    const effectiveCursor = cursor || lastCursorRef.current || undefined;
+
+    if (typeof window !== "undefined") {
+      console.log("[useSwipeFeedController] fetchPage", {
+        cursor,
+        lastCursorRef: lastCursorRef.current,
+        effectiveCursor,
+        limit,
+      });
+    }
+
+    const result = await feedApi.getFeedsWithCursor(effectiveCursor, limit);
+
+    // Convert SanitizedFeed to RenderFeed
+    const renderFeeds = result.data.map((feed: SanitizedFeed) =>
+      toRenderFeed(feed),
+    );
+
+    if (typeof window !== "undefined") {
+      console.log("[useSwipeFeedController] fetchPage result", {
+        cursor,
+        effectiveCursor,
+        dataCount: renderFeeds.length,
+        next_cursor: result.next_cursor,
+        has_more: result.has_more,
+      });
+    }
+    return {
+      ...result,
+      data: renderFeeds,
+    };
+  };
+
+const clearTimeoutRef = (
+  timeoutRef: ReturnType<typeof useRef<number | null>>,
+) => {
   if (typeof window === "undefined") {
     timeoutRef.current = null;
     return;
@@ -224,10 +225,14 @@ export const useSwipeFeedController = (
   const [loadingState, setLoadingState] = useState<FeedLoadingState>(() => {
     if (typeof window === "undefined") {
       // SSR: Always ready if we have initialFeeds
-      return initialFeeds && initialFeeds.length > 0 ? "HYDRATION_READY" : "READ_SYNC_PENDING";
+      return initialFeeds && initialFeeds.length > 0
+        ? "HYDRATION_READY"
+        : "READ_SYNC_PENDING";
     }
     // Client: Start in HYDRATION_READY if we have initialFeeds to match SSR
-    return initialFeeds && initialFeeds.length > 0 ? "HYDRATION_READY" : "READ_SYNC_PENDING";
+    return initialFeeds && initialFeeds.length > 0
+      ? "HYDRATION_READY"
+      : "READ_SYNC_PENDING";
   });
   const [isReadFeedsInitialized, setIsReadFeedsInitialized] = useState(
     typeof window === "undefined" || Boolean(initialFeeds?.length),
@@ -297,7 +302,7 @@ export const useSwipeFeedController = (
         () => {
           void initializeReadFeeds();
         },
-        { timeout: 2000 } // Fallback after 2s if idle never comes
+        { timeout: 2000 }, // Fallback after 2s if idle never comes
       );
       return () => {
         window.cancelIdleCallback(idleCallbackId);
@@ -317,10 +322,7 @@ export const useSwipeFeedController = (
 
   // Wait for readFeeds initialization before fetching unread feeds
   // This ensures consistent behavior and prevents race conditions
-  const getKey = useMemo(
-    () => createGetKey(lastCursorRef),
-    [lastCursorRef],
-  );
+  const getKey = useMemo(() => createGetKey(lastCursorRef), [lastCursorRef]);
 
   const fetchPage = useMemo(
     () => createFetchPage(lastCursorRef),
@@ -335,39 +337,45 @@ export const useSwipeFeedController = (
   const { data, error, isLoading, isValidating, setSize, mutate } =
     useSWRInfinite(
       shouldFetch
-        ? (pageIndex: number, previousPageData: CursorResponse<RenderFeed> | null) => {
-          // If we have initial feeds and haven't fetched anything yet (pageIndex 0),
-          // and we have a next cursor, we can skip the first fetch if we want to rely solely on initialFeeds.
-          // However, SWR needs a key to return data.
-          // Strategy:
-          // If we have initialFeeds, we treat them as "page 0" data conceptually,
-          // but SWR manages its own cache.
-          // To delay fetching, we can return null for the first page key until we need more data.
-          // BUT, we want SWR to manage the subsequent pages.
+        ? (
+            pageIndex: number,
+            previousPageData: CursorResponse<RenderFeed> | null,
+          ) => {
+            // If we have initial feeds and haven't fetched anything yet (pageIndex 0),
+            // and we have a next cursor, we can skip the first fetch if we want to rely solely on initialFeeds.
+            // However, SWR needs a key to return data.
+            // Strategy:
+            // If we have initialFeeds, we treat them as "page 0" data conceptually,
+            // but SWR manages its own cache.
+            // To delay fetching, we can return null for the first page key until we need more data.
+            // BUT, we want SWR to manage the subsequent pages.
 
-          // Simplified approach:
-          // Let SWR fetch normally, but we use initialFeeds for immediate display.
-          // To truly delay the fetch, we could use a state `shouldFetch` initialized to false if initialFeeds exist.
+            // Simplified approach:
+            // Let SWR fetch normally, but we use initialFeeds for immediate display.
+            // To truly delay the fetch, we could use a state `shouldFetch` initialized to false if initialFeeds exist.
 
-          // Fix cursor=null issue: SWR may not pass previousPageData correctly in some cases
-          // Use the getKey function but ensure we handle null previousPageData by using lastCursorRef
-          if (pageIndex === 0) {
+            // Fix cursor=null issue: SWR may not pass previousPageData correctly in some cases
+            // Use the getKey function but ensure we handle null previousPageData by using lastCursorRef
+            if (pageIndex === 0) {
+              return getKey(pageIndex, previousPageData);
+            }
+
+            // If previousPageData is null but we have a cursor in lastCursorRef, use it
+            if (!previousPageData && lastCursorRef.current) {
+              if (typeof window !== "undefined") {
+                console.log(
+                  "[useSwipeFeedController] getKey: using lastCursorRef fallback",
+                  {
+                    pageIndex,
+                    lastCursorRef: lastCursorRef.current,
+                  },
+                );
+              }
+              return ["mobile-feed-swipe", lastCursorRef.current, PAGE_SIZE];
+            }
+
             return getKey(pageIndex, previousPageData);
           }
-
-          // If previousPageData is null but we have a cursor in lastCursorRef, use it
-          if (!previousPageData && lastCursorRef.current) {
-            if (typeof window !== "undefined") {
-              console.log("[useSwipeFeedController] getKey: using lastCursorRef fallback", {
-                pageIndex,
-                lastCursorRef: lastCursorRef.current,
-              });
-            }
-            return ["mobile-feed-swipe", lastCursorRef.current, PAGE_SIZE];
-          }
-
-          return getKey(pageIndex, previousPageData);
-        }
         : () => null,
       fetchPage,
       {
@@ -375,12 +383,18 @@ export const useSwipeFeedController = (
         revalidateFirstPage: false,
         parallel: false, // Set to false to ensure sequential fetching and proper previousPageData passing
         persistSize: true, // Prevent page size reset when first page key changes (prevents cursor=null issue)
-        initialSize: initialFeeds && initialFeeds.length > 0 ? 1 : INITIAL_PAGE_COUNT,
-        fallbackData: initialFeeds && initialFeeds.length > 0 ? [{
-          data: initialFeeds,
-          next_cursor: initialNextCursor ?? null,
-          has_more: !!initialNextCursor,
-        }] : undefined,
+        initialSize:
+          initialFeeds && initialFeeds.length > 0 ? 1 : INITIAL_PAGE_COUNT,
+        fallbackData:
+          initialFeeds && initialFeeds.length > 0
+            ? [
+                {
+                  data: initialFeeds,
+                  next_cursor: initialNextCursor ?? null,
+                  has_more: !!initialNextCursor,
+                },
+              ]
+            : undefined,
       },
     );
 
@@ -411,7 +425,9 @@ export const useSwipeFeedController = (
 
       // After readFeeds initialization, filter if needed
       if (isReadFeedsInitialized && readFeeds.size > 0) {
-        return initialFeeds.filter(feed => !readFeeds.has(canonicalize(feed.link)));
+        return initialFeeds.filter(
+          (feed) => !readFeeds.has(canonicalize(feed.link)),
+        );
       }
       return initialFeeds;
     }
@@ -443,7 +459,10 @@ export const useSwipeFeedController = (
     }
 
     // Don't update state during hydration or read sync
-    if (loadingState === "HYDRATION_READY" || loadingState === "READ_SYNC_PENDING") {
+    if (
+      loadingState === "HYDRATION_READY" ||
+      loadingState === "READ_SYNC_PENDING"
+    ) {
       return;
     }
 
@@ -463,7 +482,14 @@ export const useSwipeFeedController = (
         setLoadingState("READY");
       }
     }
-  }, [feeds.length, isLoading, hasMoreFromServer, isFeedSupplyDepleted, loadingState, isReadFeedsInitialized]);
+  }, [
+    feeds.length,
+    isLoading,
+    hasMoreFromServer,
+    isFeedSupplyDepleted,
+    loadingState,
+    isReadFeedsInitialized,
+  ]);
 
   // Determine if we should show initial loading skeleton
   // Only show loading if:
@@ -472,9 +498,7 @@ export const useSwipeFeedController = (
   // 3. We don't have initialFeeds (which would be shown immediately)
   // This ensures that if initialFeeds exist, we never show loading skeleton
   const isInitialLoading =
-    feeds.length === 0 &&
-    isLoading &&
-    !initialFeeds?.length;
+    feeds.length === 0 && isLoading && !initialFeeds?.length;
 
   // Article content prefetch hook
   const { triggerPrefetch, getCachedContent, markAsDismissed } =
@@ -592,18 +616,24 @@ export const useSwipeFeedController = (
               setSize((current) => current + 1);
               setPrefetchAttemptTick((tick) => tick + 1);
               if (process.env.NODE_ENV === "test") {
-                console.log("[SwipeFeedController] attempt", emptyPrefetchAttemptsRef.current);
+                console.log(
+                  "[SwipeFeedController] attempt",
+                  emptyPrefetchAttemptsRef.current,
+                );
               }
               prefetchInFlightRef.current = false;
             },
-            { timeout: 1000 }
+            { timeout: 1000 },
           );
         } else {
           emptyPrefetchAttemptsRef.current += 1;
           setSize((current) => current + 1);
           setPrefetchAttemptTick((tick) => tick + 1);
           if (process.env.NODE_ENV === "test") {
-            console.log("[SwipeFeedController] attempt", emptyPrefetchAttemptsRef.current);
+            console.log(
+              "[SwipeFeedController] attempt",
+              emptyPrefetchAttemptsRef.current,
+            );
           }
           prefetchInFlightRef.current = false;
         }
@@ -617,7 +647,10 @@ export const useSwipeFeedController = (
       return;
     }
 
-    const remainingAfterCurrent = Math.max(feeds.length - (activeFeed ? 1 : 0), 0);
+    const remainingAfterCurrent = Math.max(
+      feeds.length - (activeFeed ? 1 : 0),
+      0,
+    );
 
     const totalRawFeeds = data.flatMap((page) => page?.data ?? []).length;
     const filterRatio =
@@ -644,14 +677,22 @@ export const useSwipeFeedController = (
             setSize((current) => current + 1);
             prefetchInFlightRef.current = false;
           },
-          { timeout: 1000 }
+          { timeout: 1000 },
         );
       } else {
         setSize((current) => current + 1);
         prefetchInFlightRef.current = false;
       }
     }
-  }, [hasMore, lastPage, data, feeds.length, activeFeed, isValidating, setSize]);
+  }, [
+    hasMore,
+    lastPage,
+    data,
+    feeds.length,
+    activeFeed,
+    isValidating,
+    setSize,
+  ]);
 
   useEffect(() => {
     schedulePrefetch();
@@ -667,7 +708,10 @@ export const useSwipeFeedController = (
         // Extract image from description or content if possible
         // Since we don't have a direct image field, we try to parse description
         const parser = new DOMParser();
-        const doc = parser.parseFromString(nextFeed.description || "", "text/html");
+        const doc = parser.parseFromString(
+          nextFeed.description || "",
+          "text/html",
+        );
         const img = doc.querySelector("img");
         if (img && img.src) {
           linkElement = document.createElement("link");

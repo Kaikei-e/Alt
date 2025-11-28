@@ -377,7 +377,9 @@ export const FloatingMenu = () => {
                               px={4}
                               py={4}
                               justifyContent="space-between"
-                              bg={isExpanded ? "var(--bg-surface)" : "transparent"}
+                              bg={
+                                isExpanded ? "var(--bg-surface)" : "transparent"
+                              }
                               borderRadius="16px"
                               _hover={{
                                 bg: "var(--bg-surface-hover)",
@@ -386,7 +388,11 @@ export const FloatingMenu = () => {
                             >
                               <HStack gap={4} flex="1">
                                 <Box
-                                  color={isExpanded ? "var(--accent-primary)" : "var(--text-secondary)"}
+                                  color={
+                                    isExpanded
+                                      ? "var(--accent-primary)"
+                                      : "var(--text-secondary)"
+                                  }
                                   transition="color 0.2s"
                                 >
                                   {cat.icon}
@@ -424,7 +430,11 @@ export const FloatingMenu = () => {
                                     <Box
                                       borderRadius="12px"
                                       p={3}
-                                      bg={isActive ? "var(--bg-surface-active)" : "transparent"}
+                                      bg={
+                                        isActive
+                                          ? "var(--bg-surface-active)"
+                                          : "transparent"
+                                      }
                                       _hover={{
                                         bg: "var(--bg-surface-hover)",
                                       }}

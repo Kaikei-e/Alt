@@ -145,4 +145,3 @@ export default function EmptyMorningState() {
     </Flex>
   );
 }
-

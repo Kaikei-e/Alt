@@ -1,4 +1,12 @@
-import { Box, Button, Flex, Input, Spinner, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Flex,
+  Input,
+  Spinner,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import { useState, useRef, useTransition, useEffect } from "react";
 import * as v from "valibot";
 import { feedApi } from "@/lib/api";

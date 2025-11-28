@@ -48,7 +48,12 @@ const RecapCard = ({ genre }: RecapCardProps) => {
             >
               {genre.genre}
             </Text>
-            <Flex gap={3} fontSize="xs" color="var(--text-secondary)" flexShrink={0}>
+            <Flex
+              gap={3}
+              fontSize="xs"
+              color="var(--text-secondary)"
+              flexShrink={0}
+            >
               <Text>Clusters: {genre.clusterCount}</Text>
               <Text>Articles: {genre.articleCount}</Text>
             </Flex>
@@ -78,7 +83,9 @@ const RecapCard = ({ genre }: RecapCardProps) => {
           <VStack align="stretch" gap={2}>
             {(genre.bullets && genre.bullets.length > 0
               ? genre.bullets
-              : genre.summary.split("\n").filter((line) => line.trim().length > 0)
+              : genre.summary
+                  .split("\n")
+                  .filter((line) => line.trim().length > 0)
             )
               .slice(0, isExpanded ? undefined : 3)
               .map((bullet, idx) => (

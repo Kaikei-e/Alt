@@ -55,8 +55,6 @@ const loadingBar = keyframes`
   100% { transform: translateX(120%); }
 `;
 
-
-
 const LiveRegion = ({ message }: { message: string }) => (
   <Box
     aria-live="polite"
@@ -193,7 +191,7 @@ const SwipeFeedScreen = ({
           () => {
             setShowChrome(true);
           },
-          { timeout: 1000 }
+          { timeout: 1000 },
         );
         return () => {
           window.cancelIdleCallback(idleCallbackId);
@@ -245,7 +243,7 @@ const SwipeFeedScreen = ({
             isBusy={shouldShowOverlay}
             initialArticleContent={
               activeFeed.id === initialFeeds?.[0]?.id
-                ? initialArticleContent ?? undefined
+                ? (initialArticleContent ?? undefined)
                 : undefined
             }
           />

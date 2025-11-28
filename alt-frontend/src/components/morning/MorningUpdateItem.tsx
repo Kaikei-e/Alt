@@ -84,7 +84,12 @@ export const MorningUpdateItem = ({ update }: MorningUpdateItemProps) => {
           </Button>
 
           {isExpanded && (
-            <Box mt={2} pl={4} borderLeftWidth="2px" borderColor="var(--border-color)">
+            <Box
+              mt={2}
+              pl={4}
+              borderLeftWidth="2px"
+              borderColor="var(--border-color)"
+            >
               {update.duplicates.map((duplicate) => (
                 <Box key={duplicate.id} mb={2}>
                   <Link
@@ -120,4 +125,3 @@ export const MorningUpdateItem = ({ update }: MorningUpdateItemProps) => {
     </Box>
   );
 };
-

@@ -63,12 +63,12 @@ export function SearchResultsVirtualList({
 
     const startIndex = Math.max(
       0,
-      Math.floor(scrollTop / itemHeight) - overscan
+      Math.floor(scrollTop / itemHeight) - overscan,
     );
     const visibleCount = Math.ceil(containerHeight / itemHeight);
     const endIndex = Math.min(
       totalItems,
-      startIndex + visibleCount + overscan * 2
+      startIndex + visibleCount + overscan * 2,
     );
 
     return {
@@ -91,11 +91,7 @@ export function SearchResultsVirtualList({
       overflowX="hidden"
       style={{ overscrollBehavior: "contain" }}
     >
-      <Box
-        position="relative"
-        height={`${totalHeight}px`}
-        width="100%"
-      >
+      <Box position="relative" height={`${totalHeight}px`} width="100%">
         <VStack
           align="stretch"
           gap={4}
@@ -117,4 +113,3 @@ export function SearchResultsVirtualList({
     </Box>
   );
 }
-

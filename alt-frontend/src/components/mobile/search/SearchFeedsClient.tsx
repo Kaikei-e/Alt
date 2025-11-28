@@ -29,7 +29,7 @@ const SearchWindow = dynamic(
       </Box>
     ),
     ssr: false,
-  }
+  },
 );
 
 const SearchResults = dynamic(
@@ -37,7 +37,7 @@ const SearchResults = dynamic(
   {
     loading: () => null,
     ssr: false,
-  }
+  },
 );
 
 export default function SearchFeedsClient() {
@@ -143,4 +143,3 @@ export default function SearchFeedsClient() {
     </Box>
   );
 }
-

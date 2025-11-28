@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Box,
-  Button,
-  HStack,
-  Spinner,
-  Text,
-  VStack,
-} from "@chakra-ui/react";
+import { Box, Button, HStack, Spinner, Text, VStack } from "@chakra-ui/react";
 import Link from "next/link";
 import { memo, useState } from "react";
 import { articleApi } from "@/lib/api";
@@ -111,8 +104,14 @@ export const SearchResultItem = memo(({ result }: SearchResultItemProps) => {
         </Link>
 
         {result.published && (
-          <HStack justify="space-between" fontSize="xs" color="var(--text-secondary)">
-            <Text>{result.author?.name || result.authors?.[0]?.name || "Unknown"}</Text>
+          <HStack
+            justify="space-between"
+            fontSize="xs"
+            color="var(--text-secondary)"
+          >
+            <Text>
+              {result.author?.name || result.authors?.[0]?.name || "Unknown"}
+            </Text>
             <Text>{new Date(result.published).toLocaleDateString()}</Text>
           </HStack>
         )}
@@ -325,55 +324,49 @@ const SearchStats = ({
   </HStack>
 );
 
-export const SearchResults = memo(({
-  results,
-  isLoading,
-  searchQuery,
-  searchTime,
-}: SearchResultsProps) => {
-  if (isLoading) {
-    return <LoadingState />;
-  }
+export const SearchResults = memo(
+  ({ results, isLoading, searchQuery, searchTime }: SearchResultsProps) => {
+    if (isLoading) {
+      return <LoadingState />;
+    }
 
-  if (!searchQuery.trim()) {
-    return null;
-  }
+    if (!searchQuery.trim()) {
+      return null;
+    }
 
-  if (results.length === 0) {
-    return <EmptyState searchQuery={searchQuery} />;
-  }
+    if (results.length === 0) {
+      return <EmptyState searchQuery={searchQuery} />;
+    }
 
-  const shouldUseVirtualList = results.length > 20;
+    const shouldUseVirtualList = results.length > 20;
 
-  return (
-    <Box
-      bg="transparent"
-      p={0}
-    >
-      <SearchStats count={results.length} searchTime={searchTime} />
+    return (
+      <Box bg="transparent" p={0}>
+        <SearchStats count={results.length} searchTime={searchTime} />
 
-      {shouldUseVirtualList ? (
-        <Box height="60vh" mt={4}>
-          <SearchResultsVirtualList results={results} />
-        </Box>
-      ) : (
-        <Box as="ul" role="list" aria-label="Search results">
-          <VStack gap={4} align="stretch">
-            {results.map((result, index) => (
-              <Box
-                as="li"
-                key={result.link || `result-${index}`}
-                listStyleType="none"
-              >
-                <SearchResultItem result={result} />
-              </Box>
-            ))}
-          </VStack>
-        </Box>
-      )}
-    </Box>
-  );
-});
+        {shouldUseVirtualList ? (
+          <Box height="60vh" mt={4}>
+            <SearchResultsVirtualList results={results} />
+          </Box>
+        ) : (
+          <Box as="ul" role="list" aria-label="Search results">
+            <VStack gap={4} align="stretch">
+              {results.map((result, index) => (
+                <Box
+                  as="li"
+                  key={result.link || `result-${index}`}
+                  listStyleType="none"
+                >
+                  <SearchResultItem result={result} />
+                </Box>
+              ))}
+            </VStack>
+          </Box>
+        )}
+      </Box>
+    );
+  },
+);
 
 SearchResults.displayName = "SearchResults";
 
