@@ -181,6 +181,91 @@ flowchart LR
     API --> Frontend[alt-frontend UI<br/>Chakra themes]:::surface
 ```
 
+### Microservice Communication Map
+
+This diagram visualizes the direct API calls and data flow between microservices, highlighting the interconnected nature of the platform ("Mandala" view).
+
+```mermaid
+graph TD
+    %% Nodes
+    User((User))
+    Browser[Browser / Mobile]
+
+    subgraph "Frontend Layer"
+        AltFrontend[alt-frontend]
+    end
+
+    subgraph "Gateway & Auth"
+        AuthHub[auth-hub]
+        Kratos[Ory Kratos]
+    end
+
+    subgraph "Core Services"
+        AltBackend[alt-backend]
+    end
+
+    subgraph "Ingestion & Processing"
+        PreProcessor[pre-processor]
+        TagGenerator[tag-generator]
+        SearchIndexer[search-indexer]
+    end
+
+    subgraph "Recap Pipeline"
+        RecapWorker[recap-worker]
+        RecapSubworker[recap-subworker]
+        NewsCreator[news-creator]
+    end
+
+    subgraph "Data & AI Infrastructure"
+        Postgres[(PostgreSQL)]
+        Meilisearch[(Meilisearch)]
+        Ollama[Ollama LLM]
+    end
+
+    %% Edges
+    User --> Browser
+    Browser -->|HTTPS /| AltFrontend
+    Browser -->|HTTPS /api| AuthHub
+
+    AltFrontend -->|REST API| AltBackend
+
+    AuthHub -->|Validate Session| Kratos
+    AuthHub -->|X-Alt-* Headers| AltBackend
+
+    AltBackend -->|Read/Write| Postgres
+    AltBackend -->|Search Query| SearchIndexer
+    AltBackend -->|Get Recaps| RecapWorker
+
+    PreProcessor -->|Summarize| NewsCreator
+    PreProcessor -->|Write| Postgres
+
+    TagGenerator -->|Read/Write| Postgres
+
+    SearchIndexer -->|Read| Postgres
+    SearchIndexer -->|Index/Search| Meilisearch
+
+    RecapWorker -->|Fetch Articles| AltBackend
+    RecapWorker -->|Generate Summary| NewsCreator
+    RecapWorker -->|Clustering| RecapSubworker
+    RecapWorker -->|Generate Tags| TagGenerator
+    RecapWorker -->|Read/Write| Postgres
+
+    RecapSubworker -->|Read/Write| Postgres
+
+    NewsCreator -->|Inference| Ollama
+
+    %% Styling
+    classDef core fill:#ff9,stroke:#333,stroke-width:2px;
+    classDef pipeline fill:#bbf,stroke:#333,stroke-width:2px;
+    classDef data fill:#dfd,stroke:#333,stroke-width:2px;
+    classDef frontend fill:#f9f,stroke:#333,stroke-width:2px;
+
+    class AltBackend,AuthHub core;
+    class RecapWorker,RecapSubworker,NewsCreator,PreProcessor,TagGenerator,SearchIndexer pipeline;
+    class Postgres,Meilisearch,Ollama,Kratos data;
+    class AltFrontend frontend;
+```
+
 ### Identity & Edge Access
 
 Nginx fronts every `/api` call with `auth_request`, sending it to auth-hub. auth-hub validates the session via Kratos `/sessions/whoami`, caches the result for five minutes, and forwards authoritative `X-Alt-*` headers. alt-backend trusts those headers for user context while delegating outbound HTTP to `sidecar-proxy`, which enforces HTTPS allowlists and shared timeouts.
