@@ -83,22 +83,6 @@ jobs:
           cargo --version
           cargo clippy --version
 
-      - name: Cache cargo registry and build
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            recap-worker/recap-worker/target/
-          key: ${{ runner.os }}-cargo-recap-worker-${{ hashFiles('recap-worker/recap-worker/Cargo.lock') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-recap-worker-${{ hashFiles('recap-worker/recap-worker/Cargo.lock') }}-
-            ${{ runner.os }}-cargo-recap-worker-
-        env:
-          ACTIONS_STEP_DEBUG: false
-        continue-on-error: true
-
       - name: Build (release)
         working-directory: recap-worker/recap-worker
         run: |
