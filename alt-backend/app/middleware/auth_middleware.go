@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"alt/config"
+	"alt/domain"
+
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-
-	"alt/domain"
 )
 
 const (
@@ -32,27 +33,57 @@ var (
 // AuthMiddleware validates lightweight identity headers provided by the frontend.
 // The backend no longer performs calls to external auth services and simply trusts
 // the identity information forwarded by the edge components.
+// During migration, supports both JWT tokens and shared secret authentication.
 type AuthMiddleware struct {
-	logger       *slog.Logger
-	sharedSecret string
+	logger        *slog.Logger
+	sharedSecret  string
+	jwtMiddleware *JWTAuthMiddleware
+	config        *config.Config
 }
 
 // NewAuthMiddleware constructs an AuthMiddleware instance.
-func NewAuthMiddleware(logger *slog.Logger, sharedSecret string) *AuthMiddleware {
+func NewAuthMiddleware(logger *slog.Logger, sharedSecret string, cfg *config.Config) *AuthMiddleware {
 	return &AuthMiddleware{
-		logger:       logger,
-		sharedSecret: sharedSecret,
+		logger:        logger,
+		sharedSecret:  sharedSecret,
+		jwtMiddleware: NewJWTAuthMiddleware(logger, cfg),
+		config:        cfg,
 	}
 }
 
 // RequireAuth ensures that identity headers are present and valid before
 // allowing the request to proceed.
+// During migration, supports both JWT tokens (preferred) and shared secret (legacy).
 func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// Verify shared secret first
+			// Try JWT authentication first (new method)
+			if jwtUserCtx, err := m.jwtMiddleware.validateJWT(c); err == nil {
+				// JWT validation succeeded - convert to domain.UserContext
+				userID, _ := uuid.Parse(jwtUserCtx.ID)
+				tenantID, _ := uuid.Parse(jwtUserCtx.ID) // Single-tenant: use userID as tenantID
+				domainCtx := &domain.UserContext{
+					UserID:    userID,
+					Email:     jwtUserCtx.Email,
+					Role:      parseRole(jwtUserCtx.Role),
+					TenantID:  tenantID,
+					SessionID: jwtUserCtx.Sid,
+					LoginAt:   time.Now().UTC(),
+					ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
+				}
+				m.attachContext(c, domainCtx)
+				if m.logger != nil {
+					m.logger.Debug("request authenticated via JWT",
+						"user_id", domainCtx.UserID,
+						"tenant_id", domainCtx.TenantID,
+					)
+				}
+				return next(c)
+			}
+
+			// Fallback to shared secret authentication (legacy method)
 			if !m.validateSharedSecret(c) {
-				return echo.NewHTTPError(http.StatusUnauthorized, "invalid shared secret")
+				return echo.NewHTTPError(http.StatusUnauthorized, "invalid authentication")
 			}
 
 			userContext, err := m.extractUserContext(c)
@@ -68,6 +99,12 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 			}
 
 			m.attachContext(c, userContext)
+			if m.logger != nil {
+				m.logger.Debug("request authenticated via shared secret (legacy)",
+					"user_id", userContext.UserID,
+					"tenant_id", userContext.TenantID,
+				)
+			}
 			return next(c)
 		}
 	}

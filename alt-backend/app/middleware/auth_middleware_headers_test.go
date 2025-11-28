@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"alt/config"
+	"alt/domain"
+
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
-
-	"alt/domain"
 )
 
 func TestRequireAuth_SetsUserContext(t *testing.T) {
@@ -27,7 +28,14 @@ func TestRequireAuth_SetsUserContext(t *testing.T) {
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
-	middleware := NewAuthMiddleware(nil, "test-secret")
+	cfg := &config.Config{
+		Auth: config.AuthConfig{
+			BackendTokenSecret:   "",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+		},
+	}
+	middleware := NewAuthMiddleware(nil, "test-secret", cfg)
 	called := false
 	h := middleware.RequireAuth()(func(c echo.Context) error {
 		called = true
@@ -57,7 +65,14 @@ func TestRequireAuth_MissingHeaders(t *testing.T) {
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
-	middleware := NewAuthMiddleware(nil, "test-secret")
+	cfg := &config.Config{
+		Auth: config.AuthConfig{
+			BackendTokenSecret:   "",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+		},
+	}
+	middleware := NewAuthMiddleware(nil, "test-secret", cfg)
 	h := middleware.RequireAuth()(func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
@@ -78,7 +93,14 @@ func TestRequireAuth_InvalidUUID(t *testing.T) {
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
-	middleware := NewAuthMiddleware(nil, "test-secret")
+	cfg := &config.Config{
+		Auth: config.AuthConfig{
+			BackendTokenSecret:   "",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+		},
+	}
+	middleware := NewAuthMiddleware(nil, "test-secret", cfg)
 	h := middleware.RequireAuth()(func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
@@ -97,7 +119,14 @@ func TestOptionalAuth_AllowsUnauthenticatedRequests(t *testing.T) {
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
-	middleware := NewAuthMiddleware(nil, "test-secret")
+	cfg := &config.Config{
+		Auth: config.AuthConfig{
+			BackendTokenSecret:   "",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+		},
+	}
+	middleware := NewAuthMiddleware(nil, "test-secret", cfg)
 	called := false
 	h := middleware.OptionalAuth()(func(c echo.Context) error {
 		called = true

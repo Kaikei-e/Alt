@@ -1,6 +1,7 @@
 package middleware_test
 
 import (
+	"alt/config"
 	"alt/middleware"
 	"io"
 	"log/slog"
@@ -16,7 +17,14 @@ func TestAuthMiddleware_Bypass(t *testing.T) {
 	// Setup
 	e := echo.New()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	authMiddleware := middleware.NewAuthMiddleware(logger, "test-secret")
+	cfg := &config.Config{
+		Auth: config.AuthConfig{
+			BackendTokenSecret:   "",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+		},
+	}
+	authMiddleware := middleware.NewAuthMiddleware(logger, "test-secret", cfg)
 
 	// Define a protected route
 	e.GET("/protected", func(c echo.Context) error {

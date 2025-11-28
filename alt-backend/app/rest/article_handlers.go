@@ -19,7 +19,7 @@ import (
 )
 
 func fetchArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
-	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg.Auth.SharedSecret)
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg.Auth.SharedSecret, cfg)
 	articles := v1.Group("/articles", authMiddleware.RequireAuth())
 	articles.GET("/fetch/content", handleFetchArticle(container))
 	articles.GET("/fetch/cursor", handleFetchArticlesCursor(container))
@@ -125,7 +125,7 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 
 func registerArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
 	// 認証ミドルウェアの初期化
-	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg.Auth.SharedSecret)
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg.Auth.SharedSecret, cfg)
 
 	// 記事検索も認証必須
 	articles := v1.Group("/articles", authMiddleware.RequireAuth())

@@ -14,7 +14,7 @@ import (
 // registerMorningRoutes registers the morning letter routes.
 func registerMorningRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
 	// 認証ミドルウェアの初期化
-	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg.Auth.SharedSecret)
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg.Auth.SharedSecret, cfg)
 
 	// Morning letter endpoints (authentication required)
 	morning := v1.Group("/morning-letter", authMiddleware.RequireAuth())

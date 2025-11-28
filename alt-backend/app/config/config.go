@@ -42,8 +42,12 @@ type RecapConfig struct {
 }
 
 type AuthConfig struct {
-	SharedSecret     string `json:"shared_secret" env:"AUTH_SHARED_SECRET"`
-	SharedSecretFile string `json:"-" env:"AUTH_SHARED_SECRET_FILE"`
+	SharedSecret           string `json:"shared_secret" env:"AUTH_SHARED_SECRET"`
+	SharedSecretFile       string `json:"-" env:"AUTH_SHARED_SECRET_FILE"`
+	BackendTokenSecret     string `json:"backend_token_secret" env:"BACKEND_TOKEN_SECRET"`
+	BackendTokenSecretFile string `json:"-" env:"BACKEND_TOKEN_SECRET_FILE"`
+	BackendTokenIssuer     string `json:"backend_token_issuer" env:"BACKEND_TOKEN_ISSUER"`
+	BackendTokenAudience   string `json:"backend_token_audience" env:"BACKEND_TOKEN_AUDIENCE"`
 }
 
 type ServerConfig struct {
@@ -121,6 +125,23 @@ func NewConfig() (*Config, error) {
 			config.Auth.SharedSecret = strings.TrimSpace(string(content))
 		}
 		// If file read fails, we fall back to the env var value (if any) or keep it empty
+	}
+
+	// Load backend token secret from file if configured (Docker Secrets support)
+	if config.Auth.BackendTokenSecretFile != "" {
+		content, err := os.ReadFile(config.Auth.BackendTokenSecretFile)
+		if err == nil {
+			config.Auth.BackendTokenSecret = strings.TrimSpace(string(content))
+		}
+		// If file read fails, we fall back to the env var value (if any) or keep it empty
+	}
+
+	// Set defaults for JWT issuer and audience if not provided
+	if config.Auth.BackendTokenIssuer == "" {
+		config.Auth.BackendTokenIssuer = "auth-hub"
+	}
+	if config.Auth.BackendTokenAudience == "" {
+		config.Auth.BackendTokenAudience = "alt-backend"
 	}
 
 	return config, nil
