@@ -68,12 +68,12 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 				ID:          entry.UserID,
 				TenantID:    entry.TenantID,
 				Email:       entry.Email,
-				Role:        "user", // Default role
+				Role:        "user",                          // Default role
 				CreatedAt:   time.Now().Add(-24 * time.Hour), // Approximate (cache doesn't store CreatedAt)
-				LastLoginAt: time.Now(), // Current session validation time
+				LastLoginAt: time.Now(),                      // Current session validation time
 			},
 			Session: Session{
-				ID:     entry.UserID,
+				ID:     sessionID, // 修正: identity.IDではなくsessionID（Cookieの値）を使用
 				Active: true,
 			},
 		}
@@ -107,7 +107,7 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 			LastLoginAt: time.Now(), // Current session validation time
 		},
 		Session: Session{
-			ID:     identity.ID,
+			ID:     identity.SessionID, // 修正: identity.IDではなくidentity.SessionIDを使用
 			Active: true,
 		},
 	}

@@ -14,6 +14,7 @@ type Identity struct {
 	ID        string
 	Email     string
 	CreatedAt time.Time
+	SessionID string // KratosのセッションID
 }
 
 // KratosClient handles communication with Ory Kratos
@@ -82,9 +83,13 @@ func (c *KratosClient) Whoami(ctx context.Context, cookie string) (*Identity, er
 		createdAt = *session.Identity.CreatedAt
 	}
 
+	// セッションIDを取得
+	sessionID := session.Id
+
 	return &Identity{
 		ID:        session.Identity.Id,
 		Email:     email,
 		CreatedAt: createdAt,
+		SessionID: sessionID, // KratosのセッションIDを設定
 	}, nil
 }
