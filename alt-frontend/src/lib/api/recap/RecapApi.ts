@@ -57,7 +57,7 @@ const adaptRecapSummary = (payload: RecapSummaryResponse): RecapSummary => ({
 });
 
 export class RecapApi {
-  constructor(private apiClient: ApiClient) { }
+  constructor(private apiClient: ApiClient) {}
 
   async get7DaysRecap(): Promise<RecapSummary> {
     try {

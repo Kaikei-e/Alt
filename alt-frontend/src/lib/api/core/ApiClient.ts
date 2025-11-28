@@ -122,7 +122,10 @@ export class ApiClient {
     // /v1/feeds/... -> /api/frontend/v1/feeds/... (keep version prefix)
     // /v2/feeds/... -> /api/frontend/v2/feeds/... (keep version prefix)
     // The API route will extract the version and pass it to backend correctly
-    if (typeof window !== "undefined" && this.config.baseUrl === "/api/frontend") {
+    if (
+      typeof window !== "undefined" &&
+      this.config.baseUrl === "/api/frontend"
+    ) {
       // Keep version prefixes (v1, v2, etc.) as-is for generic routing
       return `${this.config.baseUrl}${endpoint}`;
     }
@@ -225,15 +228,12 @@ export class ApiClient {
       }
 
       const requestUrl = this.resolveRequestUrl(endpoint);
-      const response = await this.makeRequest(
-        requestUrl,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(data),
-          keepalive: true,
-        },
-      );
+      const response = await this.makeRequest(requestUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(data),
+        keepalive: true,
+      });
 
       const interceptedResponse = await this.authInterceptor.intercept(
         response,
@@ -311,15 +311,12 @@ export class ApiClient {
       }
 
       const requestUrl = this.resolveRequestUrl(endpoint);
-      const response = await this.makeRequest(
-        requestUrl,
-        {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify(data),
-          keepalive: true,
-        },
-      );
+      const response = await this.makeRequest(requestUrl, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(data),
+        keepalive: true,
+      });
 
       const interceptedResponse = await this.authInterceptor.intercept(
         response,
@@ -394,14 +391,11 @@ export class ApiClient {
       }
 
       const requestUrl = this.resolveRequestUrl(endpoint);
-      const response = await this.makeRequest(
-        requestUrl,
-        {
-          method: "DELETE",
-          headers,
-          keepalive: true,
-        },
-      );
+      const response = await this.makeRequest(requestUrl, {
+        method: "DELETE",
+        headers,
+        keepalive: true,
+      });
 
       const interceptedResponse = await this.authInterceptor.intercept(
         response,
@@ -422,7 +416,8 @@ export class ApiClient {
         const errorCode = result.code || "UNKNOWN_ERROR";
         const statusCode = interceptedResponse.status;
         const errorMessage =
-          result.message || result.error ||
+          result.message ||
+          result.error ||
           getUserFriendlyErrorMessage(statusCode);
 
         if (process.env.NODE_ENV === "development") {

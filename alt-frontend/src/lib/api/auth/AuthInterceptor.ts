@@ -6,7 +6,7 @@ export interface AuthInterceptorConfig {
 }
 
 const defaultConfig: Required<AuthInterceptorConfig> = {
-  onAuthRequired: () => { },
+  onAuthRequired: () => {},
   // Important: use Next.js local route handler to avoid reverse proxy capture of /api/auth/*
   // Nginx external proxies /api/auth/* to auth-service. Our FE recheck must hit Next directly.
   recheckEndpoint: "/api/fe-auth/validate",
@@ -60,7 +60,7 @@ export class AuthInterceptor {
           credentials: "include",
         });
       }
-    } catch (recheckError) { }
+    } catch (recheckError) {}
 
     // ここで即遷移しない。ページ上部に「再ログインしてね」バナーを出すだけ。
     this.config.onAuthRequired();

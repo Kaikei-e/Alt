@@ -183,21 +183,21 @@ export class FeedApi {
   // Prefetch methods
   async prefetchFeeds(pages: number[] = [0, 1]): Promise<void> {
     const prefetchPromises = pages.map((page) =>
-      this.getFeedsPage(page).catch(() => { }),
+      this.getFeedsPage(page).catch(() => {}),
     );
     await Promise.all(prefetchPromises);
   }
 
   async prefetchFavoriteFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getFavoriteFeedsWithCursor(cursor).catch(() => { }),
+      this.getFavoriteFeedsWithCursor(cursor).catch(() => {}),
     );
     await Promise.all(prefetchPromises);
   }
 
   async prefetchReadFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getReadFeedsWithCursor(cursor).catch(() => { }),
+      this.getReadFeedsWithCursor(cursor).catch(() => {}),
     );
     await Promise.all(prefetchPromises);
   }

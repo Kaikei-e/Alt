@@ -12,7 +12,7 @@ export class CursorApi<BackendType, FrontendType> {
     private endpoint: string,
     private transformer: (item: BackendType) => FrontendType,
     private defaultCacheTtl: number = 10,
-  ) { }
+  ) {}
 
   async fetchWithCursor(
     cursor?: string,

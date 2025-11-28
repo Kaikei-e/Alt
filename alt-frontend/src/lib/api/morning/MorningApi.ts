@@ -43,7 +43,7 @@ const adaptMorningUpdate = (payload: MorningUpdateResponse): MorningUpdate => ({
 });
 
 export class MorningApi {
-  constructor(private apiClient: ApiClient) { }
+  constructor(private apiClient: ApiClient) {}
 
   async getOvernightUpdates(): Promise<MorningUpdate[]> {
     try {
@@ -61,4 +61,3 @@ export class MorningApi {
     }
   }
 }
-

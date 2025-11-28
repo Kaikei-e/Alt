@@ -1,5 +1,8 @@
 import useSWR from "swr";
-import { ScrapingDomain, UpdateScrapingDomainRequest } from "@/schema/scrapingDomain";
+import {
+  ScrapingDomain,
+  UpdateScrapingDomainRequest,
+} from "@/schema/scrapingDomain";
 import { apiClient } from "./index";
 
 const BASE_PATH = "/v1/admin/scraping-domains";
@@ -21,7 +24,7 @@ export function useScrapingDomains(offset = 0, limit = 20) {
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: true,
-    }
+    },
   );
 
   return {
@@ -41,7 +44,7 @@ export function useScrapingDomain(id: string | null) {
     fetcher,
     {
       revalidateOnFocus: false,
-    }
+    },
   );
 
   return {
@@ -57,7 +60,7 @@ export function useScrapingDomain(id: string | null) {
  */
 export async function updateScrapingDomain(
   id: string,
-  data: UpdateScrapingDomainRequest
+  data: UpdateScrapingDomainRequest,
 ): Promise<void> {
   await apiClient.patch(`${BASE_PATH}/${id}`, data as Record<string, unknown>);
 }
@@ -68,4 +71,3 @@ export async function updateScrapingDomain(
 export async function refreshRobotsTxt(id: string): Promise<void> {
   await apiClient.post(`${BASE_PATH}/${id}/refresh-robots`, {});
 }
-

@@ -71,9 +71,7 @@ export class ArticleApi {
     return this.apiClient.post("/v1/articles/archive", payload);
   }
 
-  async summarizeArticle(
-    feedUrl: string,
-  ): Promise<{
+  async summarizeArticle(feedUrl: string): Promise<{
     success: boolean;
     summary: string;
     article_id: string;
