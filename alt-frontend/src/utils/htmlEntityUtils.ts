@@ -75,15 +75,15 @@ export function decodeEntitiesSafely(value: string): string {
   }
 
   if (typeof document !== "undefined") {
-    // PLAN.md: Use browser's native decoder, but apply repeatedly to handle double-encoded entities
-    // Browser's textarea.innerHTML decoder may only decode once, so we repeat until stable
+    // PLAN.md: Use browser's native decoder (DOMParser), but apply repeatedly to handle double-encoded entities
+    // DOMParser is safer than textarea.innerHTML as it doesn't execute scripts
     let previous: string;
     let current = value;
     do {
       previous = current;
-      const textarea = document.createElement("textarea");
-      textarea.innerHTML = current;
-      current = textarea.value;
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(current, "text/html");
+      current = doc.documentElement.textContent || "";
       // Break if no change occurred to avoid infinite loop
       if (current === previous) {
         break;
@@ -110,9 +110,9 @@ export function decodeHtmlEntities(str: string): string {
   // Decode only once to prevent double-decoding (security best practice)
   // This is different from decodeHtmlEntitiesFromUrl which fully decodes URLs
   if (typeof document !== "undefined") {
-    const textarea = document.createElement("textarea");
-    textarea.innerHTML = str;
-    return textarea.value; // Single decode only
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(str, "text/html");
+    return doc.documentElement.textContent || "";
   }
 
   // Fallback: manual single decode
