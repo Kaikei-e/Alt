@@ -1,5 +1,3 @@
-import type { User } from "@/types/auth";
-
 export type BackendIdentityHeaders = Record<string, string>;
 
 const UUID_PATTERN =
@@ -9,46 +7,55 @@ export const isUuid = (value: unknown): value is string => {
   return typeof value === "string" && UUID_PATTERN.test(value);
 };
 
-export const buildBackendIdentityHeaders = (
-  user: User | null | undefined,
-  sessionId: string | null | undefined,
-): BackendIdentityHeaders | null => {
-  if (!user) {
-    if (process.env.NODE_ENV === "development") {
-    }
-    return null;
-  }
+export interface BackendIdentityHeadersOptions {
+  userId: string;
+  email: string;
+  role: string;
+  sessionId: string;
+  backendToken: string;
+}
 
-  const { id, tenantId, email, role } = user;
+/**
+ * Builds backend identity headers including JWT token.
+ * This function should only be called from server-side code.
+ */
+export function buildBackendIdentityHeaders(
+  opts: BackendIdentityHeadersOptions,
+): BackendIdentityHeaders | null {
+  const { userId, email, role, sessionId, backendToken } = opts;
 
-  if (!isUuid(id) || !isUuid(tenantId)) {
+  if (!isUuid(userId)) {
     if (process.env.NODE_ENV === "development") {
-      console.error("[buildBackendIdentityHeaders] Invalid UUIDs:", {
-        userId: id,
-        tenantId: tenantId,
-        isValidUserId: isUuid(id),
-        isValidTenantId: isUuid(tenantId),
+      console.error("[buildBackendIdentityHeaders] Invalid userId:", {
+        userId,
+        isValidUserId: isUuid(userId),
       });
     }
     return null;
   }
 
+  if (!sessionId || !sessionId.trim()) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[buildBackendIdentityHeaders] Missing sessionId");
+    }
+    return null;
+  }
+
+  if (!backendToken || !backendToken.trim()) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[buildBackendIdentityHeaders] Missing backendToken");
+    }
+    return null;
+  }
+
   const headers: BackendIdentityHeaders = {
-    "X-Alt-User-Id": id,
-    "X-Alt-Tenant-Id": tenantId,
+    "X-Alt-User-Id": userId,
+    "X-Alt-Tenant-Id": userId, // Single-tenant: use userId as tenantId
+    "X-Alt-User-Email": email,
+    "X-Alt-User-Role": role || "user",
+    "X-Alt-Session-Id": sessionId.trim(),
+    "X-Alt-Backend-Token": backendToken.trim(),
   };
 
-  if (email) {
-    headers["X-Alt-User-Email"] = email;
-  }
-
-  if (role) {
-    headers["X-Alt-User-Role"] = role;
-  }
-
-  if (sessionId && sessionId.trim()) {
-    headers["X-Alt-Session-Id"] = sessionId.trim();
-  }
-
   return headers;
-};
+}

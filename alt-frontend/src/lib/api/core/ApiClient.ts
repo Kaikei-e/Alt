@@ -51,8 +51,8 @@ export interface ApiConfig {
 export const defaultApiConfig: ApiConfig = {
   baseUrl:
     typeof window === "undefined"
-      ? process.env.API_URL || "http://localhost:8080" // SSR: 内向き
-      : "/api/backend", // Client: 外向き（Nginx書き換え）
+      ? process.env.API_URL || "http://localhost:9000" // SSR: 内向き（直接バックエンド）
+      : "/api/frontend", // Client: Next.js API Route経由（BFFパターン）
   requestTimeout: 120000, // 2 minutes
 };
 

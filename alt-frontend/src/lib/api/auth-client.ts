@@ -146,13 +146,15 @@ export class AuthAPIClient {
 
       this.currentUser = user;
       this.currentSessionId = session.id;
-      this.sessionHeaders =
-        buildBackendIdentityHeaders(user, this.currentSessionId) ?? null;
+
+      // BFF Pattern: Client-side code should not build backend headers directly.
+      // All client requests go through Next.js API routes (/api/frontend/*) which
+      // handle authentication server-side using getServerSessionHeaders() with JWT tokens.
+      // This ensures backend tokens are never exposed to the browser.
+      this.sessionHeaders = null;
 
       if (this.debugMode) {
-        if (this.sessionHeaders) {
-          // console.debug("Session headers built successfully");
-        }
+        // Session headers are only available server-side via API routes
       }
 
       return user;
