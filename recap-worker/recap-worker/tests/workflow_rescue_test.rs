@@ -26,8 +26,9 @@ fn test_rescue_pass_integration() {
         ClassificationPipeline::from_golden_dataset(&path).expect("Failed to init pipeline");
 
     // 3. Create a target article
-    // "apple apple banana": Similar to "apple apple apple" but different enough to fail high threshold Centroid?
-    let target_content = "apple apple banana";
+    // "orange orange orange": Completely different from "apple apple apple" to ensure Centroid fails
+    // This will force the test to go through Rescue Pass, which should fail and return "other"
+    let target_content = "orange orange orange";
     let target_id = "target_1";
 
     // Extract feature vector using the pipeline's extractor (to match vocab)
