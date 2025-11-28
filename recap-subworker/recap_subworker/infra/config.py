@@ -2,8 +2,9 @@
 
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse, urlunparse
 
-from pydantic import Field, AliasChoices
+from pydantic import Field, AliasChoices, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,8 +12,29 @@ class Settings(BaseSettings):
     """Runtime configuration derived from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_prefix="RECAP_SUBWORKER_", env_file=".env", extra="ignore"
+        env_prefix="RECAP_SUBWORKER_",
+        env_file=".env",
+        extra="ignore",
+        secrets_dir="/run/secrets"
     )
+
+    recap_db_password: str | None = Field(default=None)
+
+    @model_validator(mode='after')
+    def inject_db_password(self) -> 'Settings':
+        if self.recap_db_password:
+            u = urlparse(self.db_url)
+            # u.netloc is "user:pass@host:port"
+            if '@' in u.netloc:
+                user_pass, host_port = u.netloc.rsplit('@', 1)
+                if ':' in user_pass:
+                    user, _ = user_pass.split(':', 1)
+                    new_netloc = f"{user}:{self.recap_db_password}@{host_port}"
+                else:
+                    new_netloc = f"{user_pass}:{self.recap_db_password}@{host_port}"
+
+                self.db_url = urlunparse((u.scheme, new_netloc, u.path, u.params, u.query, u.fragment))
+        return self
 
     db_url: str = Field(
         "postgresql+asyncpg://recap_user:recap@recap-db:5432/recap",
