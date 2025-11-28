@@ -14,6 +14,8 @@
 secrets:
   auth_shared_secret:
     file: ./secrets/auth_shared_secret.txt
+  backend_token_secret:
+    file: ./secrets/backend_token_secret.txt
   postgres_password:
     file: ./secrets/postgres_password.txt
   db_password:
@@ -98,7 +100,7 @@ services:
       kratos:
         condition: service_healthy
       auth-hub:
-        condition: service_healthy
+        condition: service_started
     networks:
       - alt-network
     # Resource limits for better performance
@@ -190,8 +192,12 @@ services:
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
       - AUTH_SHARED_SECRET_FILE=/run/secrets/auth_shared_secret
+      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_ISSUER=auth-hub
+      - BACKEND_TOKEN_AUDIENCE=alt-backend
     secrets:
       - auth_shared_secret
+      - backend_token_secret
       - db_password
       - csrf_secret
       - service_secret
@@ -958,18 +964,19 @@ services:
       - PORT=8888
       - CACHE_TTL=5m
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
+      - AUTH_SHARED_SECRET_FILE=/run/secrets/auth_shared_secret
+      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_ISSUER=auth-hub
+      - BACKEND_TOKEN_AUDIENCE=alt-backend
+      - BACKEND_TOKEN_TTL=5m
     secrets:
       - csrf_secret
+      - auth_shared_secret
+      - backend_token_secret
     depends_on:
       kratos:
         condition: service_healthy
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8888/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
     networks:
       - alt-network
     deploy:
