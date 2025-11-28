@@ -113,7 +113,7 @@ def get_service_secret() -> str:
         secret_file = os.getenv("SERVICE_SECRET_FILE")
         if secret_file:
             try:
-                with open(secret_file, 'r') as f:
+                with open(secret_file) as f:
                     secret = f.read().strip()
             except Exception as e:
                 logger.error(f"Failed to read SERVICE_SECRET_FILE: {e}")

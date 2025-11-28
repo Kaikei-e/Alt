@@ -79,7 +79,7 @@ class TagGeneratorService:
             password_file = os.getenv("DB_TAG_GENERATOR_PASSWORD_FILE")
             if password_file:
                 try:
-                    with open(password_file, 'r') as f:
+                    with open(password_file) as f:
                         password = f.read().strip()
                 except Exception as e:
                     logger.error(f"Failed to read password file: {e}")
