@@ -9,6 +9,7 @@ import type {
   User,
   UserPreferences,
 } from "@/types/auth";
+import { oryClient } from "@/lib/ory/client";
 
 // Redirect function interface for dependency injection
 type RedirectFn = (url: string) => void;
@@ -116,66 +117,58 @@ export class AuthAPIClient {
 
   async getCurrentUser(): Promise<User | null> {
     try {
-      // Use FE route handler to validate with Kratos whoami via same-origin cookie
-      const origin = this.resolveAppOrigin();
-      const url = new URL(`/api/fe-auth/validate`, origin).toString();
-      const response = await fetch(url, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
+      // Use official SDK to validate session
+      const { data: session } = await oryClient.toSession();
 
-      if (response.status === 401) {
+      if (!session.active) {
         this.clearSessionState();
         return null; // Not authenticated
       }
 
-      if (!response.ok) {
+      const identity = session.identity;
+      if (!identity) {
         this.clearSessionState();
-        throw new Error(this.getMethodDescription("GET", "/validate"));
+        return null;
       }
 
-      const data = (await response.json()) as {
-        ok?: boolean;
-        user?: User;
-        data?: unknown;
-        session?: { id?: string | null } | null;
+      // Extract email from traits
+      const traits = identity.traits as { email?: string } | undefined;
+      const email = traits?.email || "";
+
+      const user: User = {
+        id: identity.id,
+        tenantId: identity.id, // Single-tenant architecture: use user ID as tenant ID
+        email: email,
+        role: "user", // Default role
+        createdAt: identity.created_at || new Date().toISOString(),
+        lastLoginAt: session.authenticated_at || new Date().toISOString(),
       };
 
-      if (!data?.ok) {
-        this.clearSessionState();
-        return null;
-      }
-
-      const user = (data.user || data.data) as User | undefined;
-
-      if (!user) {
-        this.clearSessionState();
-        return null;
-      }
-
       this.currentUser = user;
-      this.currentSessionId = data.session?.id ?? null;
+      this.currentSessionId = session.id;
       this.sessionHeaders =
         buildBackendIdentityHeaders(user, this.currentSessionId) ?? null;
 
       if (this.debugMode) {
         if (this.sessionHeaders) {
-        } else {
+          // console.debug("Session headers built successfully");
         }
       }
 
       return user;
     } catch (error: unknown) {
-      if (
-        error instanceof Error &&
-        error.message &&
-        (error.message.includes("401") ||
-          error.message.includes("Unauthorized"))
-      ) {
+      // Check for 401 Unauthorized (session expired or invalid)
+      // The SDK throws an error object that might have a response property
+      const isUnauthorized =
+        (error instanceof Error && error.message.includes("401")) ||
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (error as any)?.response?.status === 401;
+
+      if (isUnauthorized) {
         this.clearSessionState();
         return null; // Not authenticated
       }
+
       this.clearSessionState();
       throw error;
     }

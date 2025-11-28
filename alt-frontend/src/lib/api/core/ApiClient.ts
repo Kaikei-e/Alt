@@ -502,7 +502,7 @@ export class ApiClient {
     try {
       const response = await fetch(url, {
         ...enhancedOptions,
-        credentials: "include",
+        credentials: "include", // Ensure cookies are sent with requests (needed for same-origin API routes)
         signal: controller.signal,
       });
 

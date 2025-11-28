@@ -6,7 +6,7 @@ export interface AuthInterceptorConfig {
 }
 
 const defaultConfig: Required<AuthInterceptorConfig> = {
-  onAuthRequired: () => {},
+  onAuthRequired: () => { },
   // Important: use Next.js local route handler to avoid reverse proxy capture of /api/auth/*
   // Nginx external proxies /api/auth/* to auth-service. Our FE recheck must hit Next directly.
   recheckEndpoint: "/api/fe-auth/validate",
@@ -46,24 +46,21 @@ export class AuthInterceptor {
     }
 
     // セッション確認を一回だけ（SSRは既にやっているが、ネットワーク一過性対策）
-    if (!sessionStorage.getItem(this.config.recheckStorageKey)) {
-      sessionStorage.setItem(this.config.recheckStorageKey, "1");
+    // Always recheck session validity on 401
+    try {
+      const recheckResponse = await fetch(this.config.recheckEndpoint, {
+        credentials: "include",
+        signal: AbortSignal.timeout(this.config.recheckTimeout),
+      });
 
-      try {
-        const recheckResponse = await fetch(this.config.recheckEndpoint, {
+      if (recheckResponse.ok) {
+        // ノイズ401ならリトライ - retry the original request
+        return fetch(originalUrl, {
+          ...originalOptions,
           credentials: "include",
-          signal: AbortSignal.timeout(this.config.recheckTimeout),
         });
-
-        if (recheckResponse.ok) {
-          // ノイズ401ならリトライ - retry the original request
-          return fetch(originalUrl, {
-            ...originalOptions,
-            credentials: "include",
-          });
-        }
-      } catch (recheckError) {}
-    }
+      }
+    } catch (recheckError) { }
 
     // ここで即遷移しない。ページ上部に「再ログインしてね」バナーを出すだけ。
     this.config.onAuthRequired();
