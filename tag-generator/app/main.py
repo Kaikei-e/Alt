@@ -85,7 +85,7 @@ class TagGeneratorService:
                     logger.error(f"Failed to read password file: {e}")
 
         if not password:
-             raise ValueError("Missing DB_TAG_GENERATOR_PASSWORD or DB_TAG_GENERATOR_PASSWORD_FILE")
+            raise ValueError("Missing DB_TAG_GENERATOR_PASSWORD or DB_TAG_GENERATOR_PASSWORD_FILE")
 
         required_vars = [
             "DB_TAG_GENERATOR_USER",
