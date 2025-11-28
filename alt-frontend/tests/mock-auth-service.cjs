@@ -504,12 +504,91 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Mock backend API endpoint for cursor-based feed fetch
+    if (req.method === "GET" && path === "/v1/feeds/fetch/cursor") {
+      const mockFeedsCursor = {
+        data: [
+          {
+            title: "Mobile Feed 1",
+            description: "Description 1",
+            link: "https://example.com/1",
+            published: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            author: { name: "Author 1" },
+            tags: ["Tag1"],
+          },
+          {
+            title: "Mobile Feed 2",
+            description: "Description 2",
+            link: "https://example.com/2",
+            published: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            author: { name: "Author 2" },
+            tags: ["Tag2"],
+          },
+        ],
+        next_cursor: "next-cursor-123",
+        has_more: true,
+      };
+      log(`Mock API: Returning cursor feeds`, mockFeedsCursor);
+      await sendResponse(res, 200, mockFeedsCursor);
+      return;
+    }
+
+    // Mock backend API endpoint for article details
+    if (req.method === "GET" && path.match(/^\/v1\/articles\/[^/]+$/)) {
+      const articleId = path.split("/").pop();
+      const mockArticle = {
+        id: articleId,
+        title: "Mock Article Title",
+        content: "<h1>Mock Article Title</h1><p>This is the content of the mock article.</p>",
+        url: "https://example.com/article",
+        published_at: new Date().toISOString(),
+        feed: {
+          id: "feed-1",
+          title: "Mock Feed",
+        },
+      };
+      log(`Mock API: Returning article details for ${articleId}`, mockArticle);
+      await sendResponse(res, 200, mockArticle);
+      return;
+    }
+
     // Legacy auth validation endpoint
     if (req.method === "GET" && req.url === "/v1/auth/validate") {
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
       res.setHeader("Set-Cookie", "auth_session=mock; HttpOnly");
       res.end(JSON.stringify({ id: "mock-user", name: "Mock User" }));
+      return;
+    }
+
+    // [DEBUG] Endpoint to create a session directly for testing
+    if (req.method === "POST" && path === "/debug/create-session") {
+      const sessionId = generateId();
+      const session = {
+        id: sessionId,
+        active: true,
+        identity: {
+          id: "test-user-id",
+          schema_id: "default",
+          traits: {
+            email: "test@example.com",
+            name: "Test User",
+          },
+        },
+        createdAt: Date.now(),
+      };
+      sessions.set(sessionId, session);
+
+      res.setHeader(
+        "Set-Cookie",
+        `ory_kratos_session=${sessionId}; Domain=localhost; HttpOnly; Path=/; SameSite=Lax`,
+      );
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(session));
+      log(`[DEBUG] Created session ${sessionId} for testing`);
       return;
     }
 

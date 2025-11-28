@@ -1,186 +1,86 @@
-import { defineConfig, devices } from "@playwright/test";
-import * as dotenv from "dotenv";
+import { defineConfig, devices } from '@playwright/test';
+import dotenv from 'dotenv';
+import path from 'path';
 
-// Load test environment variables
-dotenv.config({ path: ".env.test" });
-
-const isCI = !!process.env.CI;
-const mockPort = Number(process.env.PW_MOCK_PORT || "4545");
-const appPort = Number(process.env.PW_APP_PORT || "3010");
+// Read from .env.test or .env
+dotenv.config({ path: path.resolve(process.cwd(), '.env.test') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 export default defineConfig({
-  testDir: "./",
-  testIgnore: "**/node_modules/**",
-  globalSetup: "./playwright.setup.ts",
-
-  // Optimized timeouts - increased for stability
-  timeout: 30 * 1000, // 30 seconds for better stability
-  expect: {
-    timeout: 15 * 1000, // 15 seconds
-  },
-  globalTimeout: 20 * 60 * 1000, // 20 minutes for full test suite
-
-  // Optimized retry strategy with better local dev experience
-  retries: process.env.CI ? 2 : 2, // Increased local retries for flaky tests
-  forbidOnly: isCI,
-
-  // Enable parallel execution for better performance
-  fullyParallel: !process.env.CI, // Full parallel locally only
-  workers: process.env.CI ? 2 : 20,
-
-  // Enhanced reporting configuration
-  reporter: process.env.CI
-    ? [
-        ["html"],
-        ["json", { outputFile: "test-results/results.json" }],
-        ["./tests/reporters/custom-reporter.ts"],
-        ["github"], // For GitHub Actions annotations
-      ]
-    : [["html", { open: "never" }], ["./tests/reporters/custom-reporter.ts"]],
-
+  testDir: './e2e',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : 20,
+  reporter: 'html',
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${appPort}`,
-    headless: true,
-    actionTimeout: 15 * 1000, // 15 seconds
-    navigationTimeout: 30 * 1000, // 30 seconds for stability
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
+    trace: 'on-first-retry',
+    video: 'on-first-retry',
+  },
 
-    // Enhanced debugging for test failures
-    trace: "retain-on-failure",
-    video: "retain-on-failure",
-    screenshot: "only-on-failure",
-
-    // パフォーマンス改善のためのデフォルト設定
-    launchOptions: {
-      args: [
-        "--no-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-extensions",
-        "--disable-gpu",
-        "--disable-background-timer-throttling",
-        "--disable-backgrounding-occluded-windows",
-        "--disable-renderer-backgrounding",
-      ],
-    },
+  webServer: {
+    command: 'PORT=3010 NEXT_PUBLIC_APP_ORIGIN=http://localhost:3010 NEXT_PUBLIC_KRATOS_PUBLIC_URL=http://localhost:4545 NEXT_PUBLIC_IDP_ORIGIN=http://localhost:4545 NEXT_PUBLIC_BACKEND_URL=http://localhost:9000 AUTH_HUB_INTERNAL_URL=http://localhost:4545 NODE_ENV=test pnpm dev',
+    url: 'http://localhost:3010',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120 * 1000,
   },
 
   projects: [
     // Setup project for authentication
     {
-      name: "setup",
-      testMatch: "tests/*.setup.ts",
-      use: { ...devices["Desktop Chrome"] },
+      name: 'setup',
+      testMatch: /.*\.setup\.ts/,
     },
 
-    // Authenticated tests - Chrome
     {
-      name: "authenticated-chrome",
+      name: 'chromium',
       use: {
-        ...devices["Desktop Chrome"],
-        storageState: "playwright/.auth/user.json",
+        ...devices['Desktop Chrome'],
+        storageState: 'e2e/.auth/user.json',
       },
-      dependencies: ["setup"],
-      testMatch: "e2e/authenticated/**/*.spec.ts",
+      dependencies: ['setup'],
+      testMatch: /.*\/desktop\/.*\.spec\.ts/,
     },
 
-    // Authenticated tests - Firefox
     {
-      name: "authenticated-firefox",
+      name: 'firefox',
       use: {
-        ...devices["Desktop Firefox"],
-        storageState: "playwright/.auth/user.json",
+        ...devices['Desktop Firefox'],
+        storageState: 'e2e/.auth/user.json',
       },
-      dependencies: ["setup"],
-      testMatch: "e2e/authenticated/**/*.spec.ts",
+      dependencies: ['setup'],
+      testMatch: /.*\/desktop\/.*\.spec\.ts/,
     },
 
-    // Desktop/feeds tests (authenticated)
     {
-      name: "desktop-chrome",
+      name: 'webkit',
       use: {
-        ...devices["Desktop Chrome"],
-        storageState: "playwright/.auth/user.json",
+        ...devices['Desktop Safari'],
+        storageState: 'e2e/.auth/user.json',
       },
-      dependencies: ["setup"],
-      testMatch: ["e2e/desktop/**/*.spec.ts", "e2e/specs/desktop/**/*.spec.ts"],
+      dependencies: ['setup'],
+      testMatch: /.*\/desktop\/.*\.spec\.ts/,
     },
 
-    // Non-authenticated tests (auth flow tests) - Chrome
+    /* Mobile Viewports */
     {
-      name: "auth-flow-chrome",
-      use: { ...devices["Desktop Chrome"] },
-      testMatch: ["e2e/auth/**/*.spec.ts", "e2e/specs/auth/**/*.spec.ts"],
-    },
-
-    // Non-authenticated tests (auth flow tests) - Firefox
-    {
-      name: "auth-flow-firefox",
-      use: { ...devices["Desktop Firefox"] },
-      testMatch: ["e2e/auth/**/*.spec.ts", "e2e/specs/auth/**/*.spec.ts"],
-    },
-
-    // Error scenarios tests
-    {
-      name: "error-scenarios",
-      use: { ...devices["Desktop Chrome"] },
-      testMatch: "e2e/errors/**/*.spec.ts",
-    },
-
-    // Component tests (require authentication)
-    {
-      name: "components",
+      name: 'Mobile Chrome',
       use: {
-        ...devices["Desktop Chrome"],
-        storageState: "playwright/.auth/user.json",
+        ...devices['Pixel 5'],
+        storageState: 'e2e/.auth/user.json',
       },
-      dependencies: ["setup"],
-      testMatch: "e2e/components/**/*.spec.ts",
+      dependencies: ['setup'],
+      testMatch: /.*\/mobile\/.*\.spec\.ts/,
     },
-
-    // Public pages tests (no authentication required)
     {
-      name: "public-pages",
-      use: { ...devices["Desktop Chrome"] },
-      testMatch: "e2e/specs/public/**/*.spec.ts",
-    },
-
-    // Mobile pages tests (authenticated)
-    {
-      name: "mobile-pages",
+      name: 'Mobile Safari',
       use: {
-        ...devices["iPhone 13"],
-        storageState: "playwright/.auth/user.json",
+        ...devices['iPhone 12'],
+        storageState: 'e2e/.auth/user.json',
       },
-      dependencies: ["setup"],
-      testMatch: "e2e/specs/mobile/**/*.spec.ts",
-    },
-
-    // E2E user flow tests
-    {
-      name: "e2e-flows",
-      use: {
-        ...devices["Desktop Chrome"],
-      },
-      testMatch: "e2e/specs/e2e-flows/**/*.spec.ts",
-      fullyParallel: false, // Run sequentially for flow tests
-    },
-  ],
-
-  // WebServerの設定
-  webServer: [
-    {
-      command: "node tests/mock-auth-service.cjs",
-      port: mockPort,
-      reuseExistingServer: !isCI, // Reuse in local dev, start fresh in CI
-    },
-    {
-      // Use actual Next.js dev server instead of test-server.cjs
-      command: `NEXT_PUBLIC_IDP_ORIGIN=http://localhost:${mockPort} NEXT_PUBLIC_KRATOS_PUBLIC_URL=http://localhost:${mockPort} NODE_ENV=test pnpm dev --port ${appPort}`,
-      url: `http://localhost:${appPort}`,
-      reuseExistingServer: !isCI, // Reuse in local dev, start fresh in CI
-      timeout: 180 * 1000, // 3 minutes for CI environments
-      env: {
-        NODE_ENV: "test",
-      },
+      dependencies: ['setup'],
+      testMatch: /.*\/mobile\/.*\.spec\.ts/,
     },
   ],
 });
