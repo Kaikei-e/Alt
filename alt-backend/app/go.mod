@@ -5,6 +5,7 @@ go 1.24.3
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
 	github.com/go-shiori/go-readability v0.0.0-20250217085726-9f5bf5ca7612
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/labstack/echo/v4 v4.13.4
