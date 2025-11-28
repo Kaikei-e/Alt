@@ -5,4 +5,3 @@ export type MorningUpdate = {
   primary_article: Article | null;
   duplicates: Article[];
 };
-

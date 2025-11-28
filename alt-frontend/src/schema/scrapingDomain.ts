@@ -22,4 +22,3 @@ export interface UpdateScrapingDomainRequest {
   allow_cache_days?: number;
   force_respect_robots?: boolean;
 }
-

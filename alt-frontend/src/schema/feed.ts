@@ -117,13 +117,12 @@ export function sanitizeFeed(rawFeed: BackendFeedItem): SanitizedFeed {
  * @param tags - Optional tags array (if available from backend)
  * @returns Render-ready feed with formatted display values
  */
-export function toRenderFeed(
-  feed: SanitizedFeed,
-  tags?: string[],
-): RenderFeed {
+export function toRenderFeed(feed: SanitizedFeed, tags?: string[]): RenderFeed {
   return {
     ...feed,
-    publishedAtFormatted: formatPublishedDate(feed.published || feed.created_at),
+    publishedAtFormatted: formatPublishedDate(
+      feed.published || feed.created_at,
+    ),
     mergedTagsLabel: mergeTagsLabel(tags),
     normalizedUrl: normalizeUrl(feed.link),
     excerpt: generateExcerptFromDescription(feed.description),

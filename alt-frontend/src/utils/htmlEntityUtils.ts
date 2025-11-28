@@ -232,4 +232,3 @@ export function decodeHtmlEntitiesFromUrl(url: string): string {
     return "";
   }
 }
-

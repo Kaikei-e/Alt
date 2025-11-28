@@ -115,7 +115,6 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     }
   }
 
-
   /**
    * Decode HTML entities specifically for URLs with comprehensive security protection
    * SECURITY FIX: URL sanitization should focus on blocking dangerous schemes,
