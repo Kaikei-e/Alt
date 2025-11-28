@@ -102,7 +102,9 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
         }
 
         // Convert SanitizedFeed to RenderFeed
-        const renderFeeds = response.data.map((feed: SanitizedFeed) => toRenderFeed(feed));
+        const renderFeeds = response.data.map((feed: SanitizedFeed) =>
+          toRenderFeed(feed),
+        );
 
         if (resetData) {
           setFeeds(renderFeeds);
@@ -166,7 +168,9 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
           initialLimit,
         );
         // Convert SanitizedFeed to RenderFeed
-        const renderFeeds = response.data.map((feed: SanitizedFeed) => toRenderFeed(feed));
+        const renderFeeds = response.data.map((feed: SanitizedFeed) =>
+          toRenderFeed(feed),
+        );
         setFeeds(renderFeeds);
         setCursor(response.next_cursor || undefined);
         setHasMore(response.next_cursor !== null);

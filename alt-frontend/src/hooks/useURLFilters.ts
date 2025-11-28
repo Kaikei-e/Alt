@@ -88,7 +88,7 @@ export const useURLFilters = (
     if (searchChanged) {
       onSearchChange(urlSearch);
     }
-  }, []);  
+  }, []);
 
   // Update URL when filters change
   const updateURL = useCallback(

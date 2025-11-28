@@ -575,7 +575,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => {
       isMounted = false;
     };
-     
   }, []); // Empty deps - only run once on mount
 
   // 🚀 X24 Phase 3: Enhanced session monitoring with security checks
