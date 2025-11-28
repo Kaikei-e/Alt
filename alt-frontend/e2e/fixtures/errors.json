@@ -1,0 +1,23 @@
+{
+  "404": {
+    "error": {
+      "message": "Not Found",
+      "code": 404,
+      "status": "Not Found"
+    }
+  },
+  "401": {
+    "error": {
+      "message": "Unauthorized",
+      "code": 401,
+      "status": "Unauthorized"
+    }
+  },
+  "500": {
+    "error": {
+      "message": "Internal Server Error",
+      "code": 500,
+      "status": "Internal Server Error"
+    }
+  }
+}
