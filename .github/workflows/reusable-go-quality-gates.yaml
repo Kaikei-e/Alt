@@ -115,27 +115,14 @@ jobs:
             sed "s|${USER}|***|g" | \
             sed "s|$(whoami)|***|g" || true
 
-      - name: Fix SARIF (gosec) - remove invalid fixes
+      - name: Fix SARIF (gosec) - remove fixes field
         working-directory: ${{ inputs.working-directory }}
         run: |
-          # Fix invalid fixes.artifactChanges (null instead of array) in gosec SARIF output
-          # This is a known issue with gosec's SARIF format - remove fixes with null/invalid artifactChanges
+          # Remove fixes field from SARIF output (not needed for OSS projects)
+          # This fixes gosec's invalid fixes.artifactChanges (null instead of array) issue
           if [ -f ./_reports/gosec.sarif ]; then
-            # Remove fixes entries that have null or non-array artifactChanges
-            # SARIF schema requires artifactChanges to be an array, not null
-            jq 'walk(
-              if type == "object" and has("fixes") then
-                .fixes = (.fixes | map(
-                  if has("artifactChanges") then
-                    if (.artifactChanges | type) == "array" then . else empty end
-                  else
-                    .
-                  end
-                ))
-              else
-                .
-              end
-            )' ./_reports/gosec.sarif > ./_reports/gosec.sarif.tmp && \
+            # Remove fixes field from all results to avoid schema validation errors
+            jq '.runs[].results[] |= del(.fixes)' ./_reports/gosec.sarif > ./_reports/gosec.sarif.tmp && \
             mv ./_reports/gosec.sarif.tmp ./_reports/gosec.sarif
           fi
 
