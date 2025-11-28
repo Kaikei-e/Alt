@@ -73,9 +73,22 @@ class TagGeneratorService:
 
     def _get_database_dsn(self) -> str:
         """Build database connection string from environment variables."""
+        # Check password (env var or file)
+        password = os.getenv("DB_TAG_GENERATOR_PASSWORD")
+        if not password:
+            password_file = os.getenv("DB_TAG_GENERATOR_PASSWORD_FILE")
+            if password_file:
+                try:
+                    with open(password_file, 'r') as f:
+                        password = f.read().strip()
+                except Exception as e:
+                    logger.error(f"Failed to read password file: {e}")
+
+        if not password:
+             raise ValueError("Missing DB_TAG_GENERATOR_PASSWORD or DB_TAG_GENERATOR_PASSWORD_FILE")
+
         required_vars = [
             "DB_TAG_GENERATOR_USER",
-            "DB_TAG_GENERATOR_PASSWORD",
             "DB_HOST",
             "DB_PORT",
             "DB_NAME",
@@ -87,7 +100,7 @@ class TagGeneratorService:
 
         dsn = (
             f"postgresql://{os.getenv('DB_TAG_GENERATOR_USER')}:"
-            f"{os.getenv('DB_TAG_GENERATOR_PASSWORD')}@"
+            f"{password}@"
             f"{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/"
             f"{os.getenv('DB_NAME')}"
         )
