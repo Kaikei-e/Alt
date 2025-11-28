@@ -55,7 +55,9 @@ type JWTAuthMiddleware struct {
 func NewJWTAuthMiddleware(logger *slog.Logger, cfg *config.Config) *JWTAuthMiddleware {
 	secret := []byte(cfg.Auth.BackendTokenSecret)
 	if len(secret) == 0 {
-		logger.Warn("BACKEND_TOKEN_SECRET not set, JWT auth will deny all requests")
+		if logger != nil {
+			logger.Warn("BACKEND_TOKEN_SECRET not set, JWT auth will deny all requests")
+		}
 	}
 
 	return &JWTAuthMiddleware{
