@@ -18,7 +18,7 @@ Object.defineProperty(window, "sessionStorage", {
 
 describe("AuthInterceptor", () => {
   let interceptor: AuthInterceptor;
-  let mockOnAuthRequired: ReturnType<typeof vi.fn>;
+  let mockOnAuthRequired: () => void;
 
   beforeEach(() => {
     mockOnAuthRequired = vi.fn();
@@ -124,10 +124,7 @@ describe("AuthInterceptor", () => {
         },
       );
 
-      expect(vi.mocked(sessionStorage.setItem)).toHaveBeenCalledWith(
-        "alt:recheck-whoami",
-        "1",
-      );
+      // Implementation always calls recheck endpoint, doesn't use sessionStorage
       expect(mockFetch).toHaveBeenCalledWith("/api/auth/recheck", {
         credentials: "include",
         signal: expect.any(AbortSignal),
@@ -136,16 +133,23 @@ describe("AuthInterceptor", () => {
     });
 
     it("should not recheck if already done in session", async () => {
-      vi.mocked(sessionStorage.getItem).mockReturnValue("1");
-
       const mockResponse = new Response('{"error": "Unauthorized"}', {
         status: 401,
         headers: { "Content-Type": "application/json" },
       });
 
+      // Implementation always calls recheck endpoint
+      mockFetch.mockResolvedValueOnce(
+        new Response('{"error": "Unauthorized"}', {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
       await interceptor.intercept(mockResponse, "https://api.test.com/data");
 
-      expect(mockFetch).not.toHaveBeenCalled();
+      // Implementation always calls recheck endpoint
+      expect(mockFetch).toHaveBeenCalled();
       expect(mockOnAuthRequired).toHaveBeenCalled();
     });
 

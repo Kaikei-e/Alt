@@ -76,7 +76,7 @@ describe("server-only sanitize-html", () => {
 
   describe("sanitizeHtml", () => {
     it("should sanitize basic HTML", () => {
-      const html = '<div>Content</div>';
+      const html = "<div>Content</div>";
       const result = sanitizeHtml(html);
 
       expect(result).toContain("Content");
@@ -84,7 +84,7 @@ describe("server-only sanitize-html", () => {
     });
 
     it("should remove dangerous content", () => {
-      const dangerous = '<div><script>alert(1)</script></div>';
+      const dangerous = "<div><script>alert(1)</script></div>";
       const result = sanitizeHtml(dangerous);
 
       expect(result).not.toContain("<script>");
@@ -170,4 +170,3 @@ describe("server-only sanitize-html", () => {
     });
   });
 });
-

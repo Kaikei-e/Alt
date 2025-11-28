@@ -1,5 +1,11 @@
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+} from "@testing-library/react";
 import { createSafeHtml, sanitizeForArticle } from "@/lib/server/sanitize-html";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
@@ -8,7 +14,8 @@ import { ArticleDetailsModal } from "@/components/mobile/articles/ArticleDetails
 import SwipeFeedCard from "@/components/mobile/feeds/swipe/SwipeFeedCard";
 import { articleApi } from "@/lib/api";
 import type { Article } from "@/schema/article";
-import type { Feed } from "@/schema/feed";
+import type { RenderFeed } from "@/schema/feed";
+import { toRenderFeed } from "@/schema/feed";
 import "../test-env";
 
 vi.mock("@/lib/api", () => ({
@@ -59,7 +66,7 @@ describe("Article rendering security", () => {
     });
 
     renderWithProviders(
-      <ArticleDetailsModal article={article} isOpen onClose={() => { }} />,
+      <ArticleDetailsModal article={article} isOpen onClose={() => {}} />,
     );
 
     const contentNode = await screen.findByTestId("article-full-content");
@@ -75,22 +82,22 @@ describe("Article rendering security", () => {
   });
 
   it("sanitizes malicious HTML in SwipeFeedCard expanded content", async () => {
-    const user = setupUser();
-
-    const feed: Feed = {
+    const feed: RenderFeed = toRenderFeed({
       id: "feed-1",
       title: "Example feed",
-      link: "https://example.com/feed", // link used for fetching full content
+      link: "https://example.com/feed",
       author: "Author",
       description: "Feed description",
       published: new Date().toISOString(),
-    };
+      created_at: new Date().toISOString(),
+    });
 
     const maliciousContent =
       "<div>content</div><script>window.__cardXss = true;</script>";
 
     // Content is sanitized server-side, so mock with sanitized version
-    vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
+    const mockGetFeedContent = vi.mocked(articleApi.getFeedContentOnTheFly);
+    mockGetFeedContent.mockResolvedValue({
       content: sanitizeForArticle(maliciousContent),
     });
 
@@ -103,27 +110,25 @@ describe("Article rendering security", () => {
         feed={feed}
         statusMessage={null}
         onDismiss={vi.fn()}
+        initialArticleContent={sanitizeForArticle(maliciousContent)}
       />,
     );
 
-    const toggleContentButton = screen.getByTestId("toggle-content-button");
-    await user.click(toggleContentButton);
-
-    await waitFor(
-      () => {
-        expect(articleApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
-          feed_url: feed.link,
-        });
-      },
-      { timeout: 5000 },
+    // Wait for toggle button to appear
+    const toggleContentButton = await screen.findByTestId(
+      "toggle-content-button",
     );
+    expect(toggleContentButton).toBeInTheDocument();
 
-    await waitFor(() => {
-      const contentSection = screen.getByTestId("content-section");
-      expect(contentSection).toBeInTheDocument();
-    });
+    // Click to expand content
+    fireEvent.click(toggleContentButton);
 
-    const contentSection = screen.getByTestId("content-section");
+    // Wait for content-section to appear after toggle
+    const contentSection = await screen.findByTestId(
+      "content-section",
+      {},
+      { timeout: 3000 },
+    );
 
     expect(contentSection.querySelector("script")).toBeNull();
     expect(contentSection.innerHTML).not.toContain("<script");

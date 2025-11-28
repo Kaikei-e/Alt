@@ -4,7 +4,8 @@ import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SwipeFeedScreen from "@/components/mobile/feeds/swipe/SwipeFeedScreen";
 import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
-import type { Feed } from "@/schema/feed";
+import type { RenderFeed } from "@/schema/feed";
+import { toRenderFeed } from "@/schema/feed";
 
 vi.mock("@/components/mobile/feeds/swipe/useSwipeFeedController", () => ({
   useSwipeFeedController: vi.fn(),
@@ -16,9 +17,11 @@ vi.mock("@/components/mobile/utils/FloatingMenu", () => ({
 
 const renderWithProviders = () =>
   render(
-    <ChakraProvider value={defaultSystem}>
-      <SwipeFeedScreen />
-    </ChakraProvider> as ReactElement,
+    (
+      <ChakraProvider value={defaultSystem}>
+        <SwipeFeedScreen />
+      </ChakraProvider>
+    ) as ReactElement,
   );
 
 const mockMatchMedia = (reduceMotion: boolean) => {
@@ -35,16 +38,17 @@ const mockMatchMedia = (reduceMotion: boolean) => {
   }));
 };
 
-const fallbackFeed: Feed = {
+const fallbackFeed: RenderFeed = toRenderFeed({
   id: "placeholder",
   title: "Placeholder",
   description: "",
   link: "https://example.com/placeholder",
   published: "",
-};
+  created_at: "",
+});
 
 const baseState = {
-  feeds: [] as Feed[],
+  feeds: [] as RenderFeed[],
   activeFeed: fallbackFeed,
   activeIndex: 0,
   hasMore: false,
@@ -74,7 +78,7 @@ describe("SwipeFeedScreen", () => {
     mockedUseSwipeFeedController.mockReturnValue({
       ...baseState,
       feeds: [],
-      activeFeed: undefined as unknown as Feed,
+      activeFeed: undefined as unknown as RenderFeed,
       isInitialLoading: false,
       isValidating: true,
       hasMore: true,
@@ -90,7 +94,7 @@ describe("SwipeFeedScreen", () => {
     mockedUseSwipeFeedController.mockReturnValue({
       ...baseState,
       feeds: [],
-      activeFeed: undefined as unknown as Feed,
+      activeFeed: undefined as unknown as RenderFeed,
       hasMore: false,
       isInitialLoading: false,
       isValidating: true,
@@ -105,7 +109,7 @@ describe("SwipeFeedScreen", () => {
     mockedUseSwipeFeedController.mockReturnValue({
       ...baseState,
       feeds: [],
-      activeFeed: undefined as unknown as Feed,
+      activeFeed: undefined as unknown as RenderFeed,
       isInitialLoading: true,
     });
 
@@ -116,14 +120,15 @@ describe("SwipeFeedScreen", () => {
     expect(screen.getByTestId("swipe-skeleton-hint")).toBeInTheDocument();
   });
 
-  it("shows progress overlay when validating additional feeds", () => {
-    const feed: Feed = {
+  it("shows progress overlay when validating additional feeds", async () => {
+    const feed: RenderFeed = toRenderFeed({
       id: "feed-1",
       title: "Example feed",
       description: "desc",
       link: "https://example.com",
       published: new Date().toISOString(),
-    };
+      created_at: new Date().toISOString(),
+    });
 
     mockedUseSwipeFeedController.mockReturnValue({
       ...baseState,
@@ -133,6 +138,9 @@ describe("SwipeFeedScreen", () => {
     });
 
     renderWithProviders();
+
+    // Wait for chrome to render (showChrome state)
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     expect(screen.getByTestId("swipe-progress-indicator")).toBeInTheDocument();
     const announcements = screen.getAllByText("新しい記事を読み込んでいます");
@@ -161,7 +169,7 @@ describe("SwipeFeedScreen", () => {
     mockedUseSwipeFeedController.mockReturnValue({
       ...baseState,
       feeds: [],
-      activeFeed: undefined as unknown as Feed,
+      activeFeed: undefined as unknown as RenderFeed,
       hasMore: false,
       isInitialLoading: false,
       isValidating: false,
@@ -179,7 +187,7 @@ describe("SwipeFeedScreen", () => {
     mockedUseSwipeFeedController.mockReturnValue({
       ...baseState,
       feeds: [],
-      activeFeed: undefined as unknown as Feed,
+      activeFeed: undefined as unknown as RenderFeed,
       hasMore: true,
       isInitialLoading: false,
       isValidating: true,

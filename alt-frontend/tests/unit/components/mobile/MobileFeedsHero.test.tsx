@@ -56,4 +56,3 @@ describe("MobileFeedsHero", () => {
     expect(tipSection).toHaveAttribute("aria-label", "Tip");
   });
 });
-

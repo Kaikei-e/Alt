@@ -167,7 +167,7 @@ describe("useArticleContentPrefetch", () => {
   it("should handle prefetch errors gracefully without crashing", async () => {
     const consoleWarnSpy = vi
       .spyOn(console, "warn")
-      .mockImplementation(() => { });
+      .mockImplementation(() => {});
     vi.mocked(articleApi.getFeedContentOnTheFly).mockRejectedValue(
       new Error("Network error"),
     );
@@ -319,7 +319,7 @@ describe("useArticleContentPrefetch", () => {
   it("should not block on archive failures", async () => {
     const consoleWarnSpy = vi
       .spyOn(console, "warn")
-      .mockImplementation(() => { });
+      .mockImplementation(() => {});
     vi.mocked(articleApi.getFeedContentOnTheFly).mockResolvedValue({
       content: createSafeHtml("<p>Article content</p>"),
     });
@@ -369,7 +369,10 @@ describe("useArticleContentPrefetch", () => {
     vi.mocked(articleApi.getFeedContentOnTheFly).mockImplementation(
       () =>
         new Promise((resolve) => {
-          setTimeout(() => resolve({ content: createSafeHtml("<p>Content</p>") }), 5000);
+          setTimeout(
+            () => resolve({ content: createSafeHtml("<p>Content</p>") }),
+            5000,
+          );
         }),
     );
 

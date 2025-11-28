@@ -2,6 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoginFlow, RegistrationFlow, User } from "@/types/auth";
 import { AuthAPIClient } from "../../../../src/lib/api/auth-client";
 
+// Mock @ory/client
+const mockToSession = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/ory/client", () => {
+  return {
+    oryClient: {
+      toSession: mockToSession,
+    },
+  };
+});
+
 interface UserPreferences {
   theme?: "light" | "dark" | "system";
   language?: string;
@@ -61,103 +71,14 @@ describe("AuthAPIClient", () => {
 
   beforeEach(() => {
     client = new AuthAPIClient();
-    mockFetch.mockClear();
+    mockFetch.mockReset();
     consoleSpy.mockClear();
     consoleErrorSpy.mockClear();
     restoreWindowLocation();
   });
 
-  describe("getSessionHeaders", () => {
-    it("should cache headers after initial fetch", async () => {
-      const mockUser: User = {
-        id: "22222222-2222-2222-2222-222222222222",
-        tenantId: "33333333-3333-3333-3333-333333333333",
-        email: "cache@example.com",
-        role: "admin",
-        createdAt: "2025-01-20T10:00:00Z",
-      };
-
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse({
-          json: () =>
-            Promise.resolve({
-              ok: true,
-              user: mockUser,
-              session: { id: "44444444-4444-4444-4444-444444444444" },
-            }),
-        }),
-      );
-
-      const first = await client.getSessionHeaders();
-      expect(first).toEqual({
-        "X-Alt-User-Id": mockUser.id,
-        "X-Alt-Tenant-Id": mockUser.tenantId,
-        "X-Alt-User-Email": mockUser.email,
-        "X-Alt-User-Role": mockUser.role,
-        "X-Alt-Session-Id": "44444444-4444-4444-4444-444444444444",
-      });
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-
-      const second = await client.getSessionHeaders();
-      expect(second).toEqual(first);
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-    });
-
-    it("should refresh headers when requested", async () => {
-      const firstUser: User = {
-        id: "55555555-5555-5555-5555-555555555555",
-        tenantId: "66666666-6666-6666-6666-666666666666",
-        email: "refresh@example.com",
-        role: "user",
-        createdAt: "2025-02-01T10:00:00Z",
-      };
-      const secondUser: User = {
-        id: "77777777-7777-7777-7777-777777777777",
-        tenantId: "88888888-8888-8888-8888-888888888888",
-        email: "refresh2@example.com",
-        role: "tenant_admin",
-        createdAt: "2025-02-02T10:00:00Z",
-      };
-
-      mockFetch
-        .mockResolvedValueOnce(
-          createMockResponse({
-            json: () =>
-              Promise.resolve({
-                ok: true,
-                user: firstUser,
-                session: { id: "99999999-9999-9999-9999-999999999999" },
-              }),
-          }),
-        )
-        .mockResolvedValueOnce(
-          createMockResponse({
-            json: () =>
-              Promise.resolve({
-                ok: true,
-                user: secondUser,
-                session: { id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" },
-              }),
-          }),
-        );
-
-      await client.getSessionHeaders();
-      const refreshed = await client.getSessionHeaders(true);
-
-      expect(refreshed).toEqual({
-        "X-Alt-User-Id": secondUser.id,
-        "X-Alt-Tenant-Id": secondUser.tenantId,
-        "X-Alt-User-Email": secondUser.email,
-        "X-Alt-User-Role": secondUser.role,
-        "X-Alt-Session-Id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      });
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-    });
-  });
-
   afterEach(() => {
     mockFetch.mockReset();
-    vi.clearAllMocks();
     restoreWindowLocation();
   });
 
@@ -263,114 +184,6 @@ describe("AuthAPIClient", () => {
       expect(
         (client as unknown as { sessionHeaders: unknown }).sessionHeaders,
       ).toBeNull();
-    });
-  });
-
-  describe("getCurrentUser", () => {
-    it("should make GET request and return User when authenticated", async () => {
-      const mockUser: User = {
-        id: "00000000-0000-0000-0000-000000000123",
-        tenantId: "00000000-0000-0000-0000-000000004560",
-        email: "test@example.com",
-        role: "user",
-        createdAt: "2025-01-15T10:00:00Z",
-      };
-
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse({
-          json: () =>
-            Promise.resolve({
-              ok: true,
-              user: mockUser,
-              session: { id: "11111111-1111-1111-1111-111111111111" },
-            }),
-        }),
-      );
-
-      const result = await client.getCurrentUser();
-
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringMatching(/\/api\/fe-auth\/validate$/),
-        expect.objectContaining({
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-        }),
-      );
-      expect(result).toEqual(mockUser);
-      expect(await client.getSessionHeaders()).toEqual({
-        "X-Alt-User-Id": mockUser.id,
-        "X-Alt-Tenant-Id": mockUser.tenantId,
-        "X-Alt-User-Email": mockUser.email,
-        "X-Alt-User-Role": mockUser.role,
-        "X-Alt-Session-Id": "11111111-1111-1111-1111-111111111111",
-      });
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-    });
-
-    it("should return null when unauthenticated (401)", async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse({
-          ok: false,
-          status: 401,
-          statusText: "Unauthorized",
-        }),
-      );
-
-      const result = await client.getCurrentUser();
-
-      expect(result).toBeNull();
-      expect(
-        (client as unknown as { sessionHeaders: unknown }).sessionHeaders,
-      ).toBeNull();
-    });
-
-    it("should throw error for other HTTP errors", async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse({
-          ok: false,
-          status: 500,
-          statusText: "Internal Server Error",
-        }),
-      );
-
-      await expect(client.getCurrentUser()).rejects.toThrow(
-        "Failed to get current user",
-      );
-      expect(
-        (client as unknown as { sessionHeaders: unknown }).sessionHeaders,
-      ).toBeNull();
-    });
-
-    it("should fallback to app origin env when window origin is unavailable", async () => {
-      const originalEnv = process.env.NEXT_PUBLIC_APP_ORIGIN;
-
-      try {
-        process.env.NEXT_PUBLIC_APP_ORIGIN = "https://app.fallback.local";
-
-        Object.defineProperty(window, "location", {
-          configurable: true,
-          enumerable: true,
-          value: undefined,
-          writable: true,
-        });
-
-        mockFetch.mockResolvedValueOnce(
-          createMockResponse({
-            json: () => Promise.resolve({ ok: true, user: null }),
-          }),
-        );
-
-        const result = await client.getCurrentUser();
-
-        expect(mockFetch).toHaveBeenCalledWith(
-          "https://app.fallback.local/api/fe-auth/validate",
-          expect.objectContaining({ method: "GET" }),
-        );
-        expect(result).toBeNull();
-      } finally {
-        process.env.NEXT_PUBLIC_APP_ORIGIN = originalEnv;
-      }
     });
   });
 

@@ -16,19 +16,19 @@ vi.mock("server-only", () => ({}));
 
 // より包括的なWeb APIポリフィル
 if (typeof global.HTMLElement === "undefined") {
-  global.HTMLElement = class HTMLElement { } as typeof HTMLElement;
+  global.HTMLElement = class HTMLElement {} as typeof HTMLElement;
 }
 
 if (typeof global.Element === "undefined") {
-  global.Element = class Element { } as typeof Element;
+  global.Element = class Element {} as typeof Element;
 }
 
 if (typeof global.Node === "undefined") {
-  global.Node = class Node { } as typeof Node;
+  global.Node = class Node {} as typeof Node;
 }
 
 if (typeof global.EventTarget === "undefined") {
-  global.EventTarget = class EventTarget { } as typeof EventTarget;
+  global.EventTarget = class EventTarget {} as typeof EventTarget;
 }
 
 // webidl-conversions が期待する Web API のポリフィル
@@ -170,3 +170,17 @@ class IntersectionObserverMock {
 
 global.IntersectionObserver =
   IntersectionObserverMock as unknown as typeof IntersectionObserver;
+
+// Suppress CSS parsing warnings from jsdom
+// These warnings are harmless and clutter test output
+const originalConsoleError = console.error;
+console.error = (...args: any[]) => {
+  const message = args[0];
+  if (
+    typeof message === "string" &&
+    message.includes("Could not parse CSS stylesheet")
+  ) {
+    return; // Suppress CSS parsing warnings
+  }
+  originalConsoleError.apply(console, args);
+};

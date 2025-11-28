@@ -30,8 +30,7 @@ const jsxA11yPlugin = requireModule(
   resolveFromNextConfig("eslint-plugin-jsx-a11y"),
 );
 
-const reactRecommended =
-  reactPlugin.configs?.flat?.recommended ??
+const reactRecommended = reactPlugin.configs?.flat?.recommended ??
   reactPlugin.configs?.recommended ?? {
     plugins: {},
     rules: {},

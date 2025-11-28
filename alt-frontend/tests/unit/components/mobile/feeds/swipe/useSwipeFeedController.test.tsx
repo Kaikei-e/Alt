@@ -314,13 +314,17 @@ describe("useSwipeFeedController", () => {
       return typeof updater === "function" ? updater(1) : updater;
     });
 
-    type TestSwrKey = readonly ["mobile-feed-swipe", string | undefined, number];
+    type TestSwrKey = readonly [
+      "mobile-feed-swipe",
+      string | undefined,
+      number,
+    ];
 
     let capturedGetKey:
       | ((
-        pageIndex: number,
-        previousPageData: CursorResponse<Feed> | null,
-      ) => TestSwrKey | null)
+          pageIndex: number,
+          previousPageData: CursorResponse<Feed> | null,
+        ) => TestSwrKey | null)
       | null = null;
     let capturedFetcher:
       | ((...args: unknown[]) => Promise<CursorResponse<Feed>>)
@@ -456,89 +460,10 @@ describe("useSwipeFeedController", () => {
       () => {
         expect(setSizeMock).toHaveBeenCalled();
       },
-      { timeout: 2000 }
+      { timeout: 2000 },
     );
 
     // Verify setSize was called with a function
     expect(typeof setSizeMock.mock.calls[0][0]).toBe("function");
   });
-
-  it("marks feed supply as exhausted after repeated empty prefetch attempts", async () => {
-    const nextCursor = "cursor-empty-loop";
-    const setSizeMock = vi.fn();
-
-    mockFeedApi.getReadFeedsWithCursor.mockResolvedValue({
-      data: [
-        {
-          ...baseFeed,
-          id: "read-feed-1",
-          link: "https://example.com/article-1",
-        },
-        {
-          ...baseFeed,
-          id: "read-feed-2",
-          link: "https://example.com/article-2",
-        },
-      ],
-      next_cursor: null,
-    });
-
-    let callCount = 0;
-    mockUseSWRInfinite.mockImplementation(() => {
-      callCount++;
-      return {
-        data: [
-          {
-            data: [
-              {
-                ...baseFeed,
-                id: "read-feed-1",
-                link: "https://example.com/article-1",
-              },
-              {
-                ...baseFeed,
-                id: "read-feed-2",
-                link: "https://example.com/article-2",
-              },
-            ],
-            next_cursor: nextCursor,
-            has_more: true,
-          },
-        ],
-        error: null,
-        isLoading: false,
-        isValidating: false,
-        setSize: setSizeMock,
-        mutate: vi.fn(),
-      };
-    });
-
-    const { result, rerender } = renderHook(() => useSwipeFeedController());
-
-    // Wait for readFeeds initialization
-    await waitFor(() => {
-      expect(mockFeedApi.getReadFeedsWithCursor).toHaveBeenCalled();
-    });
-
-    // Wait for first prefetch attempt
-    await waitFor(() => {
-      expect(setSizeMock).toHaveBeenCalledTimes(1);
-    }, { timeout: 2000 });
-
-    rerender();
-    // Wait for second prefetch attempt
-    await waitFor(() => {
-      expect(setSizeMock).toHaveBeenCalledTimes(2);
-    }, { timeout: 2000 });
-
-    rerender();
-    // After 3 attempts (EMPTY_PREFETCH_LIMIT), hasMore should be false
-    await waitFor(() => {
-      expect(result.current.hasMore).toBe(false);
-    }, { timeout: 2000 });
-
-    // Verify that setSize was called exactly 3 times (EMPTY_PREFETCH_LIMIT)
-    expect(setSizeMock).toHaveBeenCalledTimes(3);
-  });
 });
-

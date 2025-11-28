@@ -154,7 +154,8 @@ const nextConfig = {
       `production-${Date.now().toString(36)}`;
     return [
       {
-        source: "/((?!_next/static|_next/image|favicon.ico|robots.txt|icon.svg).*)",
+        source:
+          "/((?!_next/static|_next/image|favicon.ico|robots.txt|icon.svg).*)",
         headers: [
           {
             key: "Cache-Control",
@@ -198,7 +199,11 @@ const nextConfig = {
 
   // Experimental optimizations
   experimental: {
-    optimizePackageImports: ["@chakra-ui/react", "@emotion/react", "lucide-react"],
+    optimizePackageImports: [
+      "@chakra-ui/react",
+      "@emotion/react",
+      "lucide-react",
+    ],
     esmExternals: true,
   },
   reactCompiler: true,

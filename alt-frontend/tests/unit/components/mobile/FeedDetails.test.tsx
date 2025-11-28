@@ -138,7 +138,7 @@ describe("FeedDetails", () => {
 
       const consoleWarnSpy = vi
         .spyOn(console, "warn")
-        .mockImplementation(() => { });
+        .mockImplementation(() => {});
 
       renderWithProviders(
         <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
