@@ -91,11 +91,53 @@ impl MlLlmDispatchStage {
             "clustering genre"
         );
 
-        let clustering_response = self
+        let mut clustering_response = self
             .subworker_client
             .cluster_corpus(job_id, evidence)
             .await
             .context("clustering failed")?;
+
+        // Handle fallback response (run_id == 0)
+        // If the subworker client returns a fallback response (due to insufficient documents),
+        // it will have run_id = 0, which doesn't exist in the database.
+        // We need to insert a record for it so that we can persist clusters (foreign key constraint).
+        if clustering_response.run_id == 0 {
+            info!(
+                job_id = %job_id,
+                genre = %genre,
+                "handling fallback clustering response (run_id=0), creating db record"
+            );
+
+            let run = crate::store::models::NewSubworkerRun::new(
+                job_id,
+                genre,
+                serde_json::json!({
+                    "fallback": true,
+                    "reason": "insufficient_documents",
+                    "article_count": evidence.articles.len()
+                }),
+            )
+            .with_status(crate::store::models::SubworkerRunStatus::Succeeded);
+
+            let new_run_id = self
+                .dao
+                .insert_subworker_run(&run)
+                .await
+                .context("failed to insert fallback subworker run")?;
+
+            // Update the response with the real DB ID
+            clustering_response.run_id = new_run_id;
+
+            // Also mark it as success with the cluster count
+            self.dao
+                .mark_subworker_run_success(
+                    new_run_id,
+                    clustering_response.clusters.len() as i32,
+                    &serde_json::json!({"fallback": true}),
+                )
+                .await
+                .context("failed to mark fallback run as success")?;
+        }
 
         info!(
             job_id = %job_id,
