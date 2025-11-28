@@ -24,6 +24,35 @@ function checkPortAvailable(port) {
   });
 }
 
+async function cleanupPorts() {
+  const ports = [3010, 4545];
+  const { promisify } = require("util");
+  const execAsync = promisify(exec);
+
+  for (const port of ports) {
+    try {
+      // Find processes using the port
+      const { stdout } = await execAsync(`lsof -ti :${port}`);
+      if (stdout.trim()) {
+        const pids = stdout.trim().split("\n");
+        console.log(`🧹 Cleaning up port ${port} (PIDs: ${pids.join(", ")})`);
+        // Kill processes using the port
+        for (const pid of pids) {
+          try {
+            await execAsync(`kill -9 ${pid}`);
+          } catch (killError) {
+            // Process may have already terminated
+          }
+        }
+        // Wait a bit for ports to be released
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    } catch (error) {
+      // Port is not in use, which is fine
+    }
+  }
+}
+
 function validateEnvironment() {
   const requiredEnvVars = [
     "NEXT_PUBLIC_APP_ORIGIN",
@@ -122,6 +151,12 @@ async function main() {
 
   let allGood = true;
 
+  // Clean up ports from previous runs (especially important for CI)
+  if (process.env.CI) {
+    console.log("🧹 Cleaning up ports from previous runs...");
+    await cleanupPorts();
+  }
+
   // Check dependencies
   if (!checkDependencies()) allGood = false;
 
@@ -131,6 +166,15 @@ async function main() {
   // Check ports
   if (!(await checkPorts())) {
     console.log("ℹ️  Port conflicts detected but tests may still work");
+    // In CI, try to clean up again
+    if (process.env.CI) {
+      console.log("🧹 Attempting to clean up conflicting ports...");
+      await cleanupPorts();
+      // Re-check ports
+      if (await checkPorts()) {
+        console.log("✅ Ports cleaned up successfully");
+      }
+    }
   }
 
   // Check browsers

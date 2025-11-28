@@ -20,14 +20,16 @@ export default defineConfig({
   },
 
   webServer: [
+    // Start mock auth service first (array order matters)
     {
       command: 'node tests/mock-auth-service.cjs',
       url: 'http://localhost:4545/v1/health',
       reuseExistingServer: !process.env.CI,
-      timeout: 10 * 1000,
+      timeout: 15 * 1000, // Increased timeout for CI environments
       stdout: 'pipe',
       stderr: 'pipe',
     },
+    // Then start Next.js dev server (waits for mock service to be ready)
     {
       command: 'PORT=3010 NEXT_PUBLIC_APP_ORIGIN=http://localhost:3010 NEXT_PUBLIC_KRATOS_PUBLIC_URL=http://localhost:4545 NEXT_PUBLIC_IDP_ORIGIN=http://localhost:4545 NEXT_PUBLIC_BACKEND_URL=http://localhost:9000 AUTH_HUB_INTERNAL_URL=http://localhost:4545 NODE_ENV=test pnpm dev',
       url: 'http://localhost:3010',

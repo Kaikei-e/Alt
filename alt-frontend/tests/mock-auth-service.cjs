@@ -185,6 +185,22 @@ const server = http.createServer(async (req, res) => {
 
   log(`${req.method} ${req.url}`);
 
+  // Handle request errors (client disconnect, etc.)
+  req.on("error", (err) => {
+    // Ignore aborted errors - these are normal when clients disconnect
+    if (err.code !== "ECONNRESET" && err.code !== "EPIPE" && err.message !== "aborted") {
+      log("Request error:", err.message);
+    }
+  });
+
+  // Handle response errors (client disconnect during response, etc.)
+  res.on("error", (err) => {
+    // Ignore aborted errors - these are normal when clients disconnect
+    if (err.code !== "ECONNRESET" && err.code !== "EPIPE" && err.message !== "aborted") {
+      log("Response error:", err.message);
+    }
+  });
+
   // Enhanced CORS headers with more comprehensive support
   res.setHeader("Access-Control-Allow-Origin", "http://localhost:3010");
   res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -208,7 +224,14 @@ const server = http.createServer(async (req, res) => {
 
   // Add preflight handling
   if (req.method === "OPTIONS") {
-    await sendResponse(res, 200, "");
+    try {
+      await sendResponse(res, 200, "");
+    } catch (err) {
+      // Ignore errors if client disconnected
+      if (err.code !== "ECONNRESET" && err.code !== "EPIPE" && err.message !== "aborted") {
+        log("Error sending OPTIONS response:", err.message);
+      }
+    }
     return;
   }
 
@@ -601,17 +624,55 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 404 for unhandled routes
-    await sendError(res, 404, "Not found");
+    try {
+      await sendError(res, 404, "Not found");
+    } catch (err) {
+      // Ignore errors if client disconnected
+      if (err.code !== "ECONNRESET" && err.code !== "EPIPE" && err.message !== "aborted") {
+        log("Error sending 404 response:", err.message);
+      }
+    }
   } catch (error) {
+    // Ignore aborted errors - these are normal when clients disconnect
+    if (error.code === "ECONNRESET" || error.code === "EPIPE" || error.message === "aborted") {
+      return;
+    }
     log("Unexpected error:", error);
     try {
       await sendError(res, 500, "Internal server error");
     } catch (sendError) {
-      log("Failed to send error response:", sendError);
-      res.statusCode = 500;
-      res.end("Internal Server Error");
+      // Ignore errors if client disconnected
+      if (sendError.code !== "ECONNRESET" && sendError.code !== "EPIPE" && sendError.message !== "aborted") {
+        log("Failed to send error response:", sendError);
+        try {
+          res.statusCode = 500;
+          res.end("Internal Server Error");
+        } catch (finalError) {
+          // Client already disconnected, ignore
+        }
+      }
     }
   }
+});
+
+// Handle server-level errors
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    log(`Port ${port} is already in use. Another instance may be running.`);
+    process.exit(1);
+  } else {
+    log("Server error:", err.message);
+    process.exit(1);
+  }
+});
+
+// Handle client connection errors
+server.on("clientError", (err, socket) => {
+  // Ignore aborted errors - these are normal when clients disconnect
+  if (err.code !== "ECONNRESET" && err.code !== "EPIPE" && err.message !== "aborted") {
+    log("Client error:", err.message);
+  }
+  socket.destroy();
 });
 
 server.listen(port, () => {
@@ -655,10 +716,37 @@ setInterval(
 // Gracefully shut down on termination signals
 const close = () => {
   log("Shutting down mock auth service...");
+  // Stop accepting new connections
   server.close(() => {
     log("Mock auth service stopped");
     process.exit(0);
   });
+
+  // Force close after 5 seconds if graceful shutdown fails
+  setTimeout(() => {
+    log("Forcing shutdown...");
+    process.exit(0);
+  }, 5000);
 };
+
+// Handle uncaught exceptions (but ignore aborted errors)
+process.on("uncaughtException", (err) => {
+  // Ignore aborted errors - these are normal when clients disconnect
+  if (err.code === "ECONNRESET" || err.code === "EPIPE" || err.message === "aborted") {
+    return;
+  }
+  log("Uncaught exception:", err);
+  close();
+});
+
+// Handle unhandled promise rejections
+process.on("unhandledRejection", (reason, promise) => {
+  // Ignore aborted errors
+  if (reason && (reason.code === "ECONNRESET" || reason.code === "EPIPE" || reason.message === "aborted")) {
+    return;
+  }
+  log("Unhandled rejection:", reason);
+});
+
 process.on("SIGINT", close);
 process.on("SIGTERM", close);
