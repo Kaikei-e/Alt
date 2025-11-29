@@ -98,22 +98,31 @@ test.describe('Desktop Feed', () => {
     const firstCard = feedPage.feedCards.first();
     const markAsReadButton = firstCard.getByRole('button', { name: /mark as read/i });
 
+    // Best practice: set up wait promise BEFORE the action to avoid race conditions
+    // Set up API request wait promise BEFORE clicking (Playwright best practice)
+    const requestPromise = page.waitForRequest(
+      (request) => request.url().includes('/api/frontend/v1/feeds') && request.method() === 'POST',
+      { timeout: 10000 }
+    ).catch(() => {
+      // If API doesn't fire, that's okay - some implementations might not fire on click
+      return null;
+    });
+
     // Wait for button to be visible (it only appears for unread feeds)
+    // Increased timeout to handle slower rendering
     try {
-      await expect(markAsReadButton).toBeVisible({ timeout: 2000 });
+      await expect(markAsReadButton).toBeVisible({ timeout: 5000 });
+      // Button is visible, click it
       await markAsReadButton.click();
+      // Wait for API request to complete (if it fires)
+      await requestPromise;
     } catch {
       // If button is not visible, the feed might already be read
-      // Try clicking the card itself
+      // Try clicking the card itself (some implementations mark as read on card click)
       await firstCard.click();
+      // Wait for API request to complete (if it fires)
+      await requestPromise;
     }
-
-    // Wait for API request to complete (wait for actual network state)
-    await page.waitForRequest(
-      (request) => request.url().includes('/api/frontend/v1/feeds') && request.method() === 'POST'
-    ).catch(() => {
-      // If API doesn't fire, continue anyway
-    });
 
     // Verify that the read API was called (if button was clicked)
     // Note: This depends on the actual implementation

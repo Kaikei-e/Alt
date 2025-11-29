@@ -53,32 +53,39 @@ test.describe('Desktop Article', () => {
     expect(articleUrl).toMatch(/\/desktop\/articles\/feed-1/);
 
     // Article detail page doesn't have a back button, so use browser back
-    // Best practice: wait for URL change and feeds to be loaded after navigation
-    // Set up wait before action to avoid race conditions
+    // Best practice: set up wait promises BEFORE the action to avoid race conditions
+    // WebKit (Safari) specific: bfcache (back/forward cache) may restore DOM but React
+    // may not have re-rendered yet, so we need multiple wait strategies
+
+    // Set up URL wait promise BEFORE goBack() action (Playwright best practice)
     const urlPromise = page.waitForURL(/\/desktop\/(feeds|home)/, {
-      waitUntil: 'domcontentloaded'
+      waitUntil: 'domcontentloaded',
+      timeout: 10000
     });
+
+    // Set up load state wait promises BEFORE goBack() action
+    // WebKit needs both 'domcontentloaded' and 'load' states for bfcache restoration
+    const domContentLoadedPromise = page.waitForLoadState('domcontentloaded', { timeout: 10000 });
+    const loadStatePromise = page.waitForLoadState('load', { timeout: 10000 });
+
+    // Perform the navigation action
     await page.goBack();
+
+    // Wait for URL change (this ensures navigation started)
     await urlPromise;
 
-    // Wait for page to be fully loaded (wait for actual page state)
-    await page.waitForLoadState('domcontentloaded');
+    // Wait for DOM to be ready (domcontentloaded)
+    await domContentLoadedPromise;
 
-    // Wait for feeds to be actually loaded and visible (wait for real DOM state)
-    // Browser back navigation may restore from cache, so we wait for DOM elements
-    // rather than API responses which may not fire again
-    // First check if feed cards are already visible (cached page)
-    const feedCards = page.locator('[data-testid^="desktop-feed-card-"]');
-    const feedCardsCount = await feedCards.count();
+    // Wait for load state (WebKit bfcache restoration may need this)
+    await loadStatePromise;
 
-    if (feedCardsCount === 0) {
-      // If no feed cards visible, wait for them to appear
-      // This handles the case where page is restored from cache but React hasn't rendered yet
-      await feedPage.waitForFeeds();
-    } else {
-      // If feed cards are already visible, verify at least one is visible
-      await expect(feedCards.first()).toBeVisible();
-    }
+    // WebKit bfcache restoration: DOM exists but React may not have re-rendered yet
+    // Use FeedPage's waitForFeeds() method for robust waiting
+    // This uses expect().toBeVisible() which has built-in retry logic and handles
+    // both cached page restoration and fresh page loads
+    // The method automatically waits for feed cards to be visible and interactive
+    await feedPage.waitForFeeds();
 
     // Verify we're back on the feed list
     const finalUrl = page.url();

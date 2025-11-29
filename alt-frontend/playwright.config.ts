@@ -12,11 +12,21 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : 20,
+  // Increase timeout for CI environments where tests may run slower
+  timeout: process.env.CI ? 60 * 1000 : 30 * 1000,
+  // Increase expect timeout for CI environments (especially for mobile Safari)
+  expect: {
+    timeout: process.env.CI ? 15 * 1000 : 5 * 1000,
+  },
   reporter: 'html',
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
     trace: 'on-first-retry',
     video: 'on-first-retry',
+    // Increase action timeout for CI environments
+    actionTimeout: process.env.CI ? 15 * 1000 : 10 * 1000,
+    // Increase navigation timeout for CI environments
+    navigationTimeout: process.env.CI ? 30 * 1000 : 15 * 1000,
   },
 
   webServer: [

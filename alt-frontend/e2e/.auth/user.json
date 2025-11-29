@@ -2,10 +2,10 @@
   "cookies": [
     {
       "name": "ory_kratos_session",
-      "value": "cb9283241b86b9d39cf3895c8d57c164",
+      "value": "67bc5a83c0515da6682b99f12e097eef",
       "domain": "localhost",
       "path": "/",
-      "expires": 1764445682.937,
+      "expires": 1764518555.293,
       "httpOnly": true,
       "secure": false,
       "sameSite": "Lax"
