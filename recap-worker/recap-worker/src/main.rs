@@ -56,7 +56,8 @@ async fn main() -> anyhow::Result<()> {
     } else {
         let _batch_daemon = spawn_jst_batch_daemon(scheduler.clone(), default_genres);
     }
-    let _morning_daemon = recap_worker::scheduler::daemon::spawn_morning_update_daemon(scheduler);
+    // Morning Letter機能を一時停止
+    // let _morning_daemon = recap_worker::scheduler::daemon::spawn_morning_update_daemon(scheduler);
     let router = build_router(registry);
 
     let listener = TcpListener::bind(bind_addr)
