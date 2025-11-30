@@ -190,82 +190,110 @@ graph TD
     %% Nodes
     User((User))
     Browser[Browser / Mobile]
+    Nginx[Nginx Gateway]
 
-    subgraph "Frontend Layer"
+    subgraph Frontend
         AltFrontend[alt-frontend]
     end
 
-    subgraph "Gateway & Auth"
-        AuthHub[auth-hub]
-        Kratos[Ory Kratos]
-    end
-
-    subgraph "Core Services"
+    subgraph Backend
         AltBackend[alt-backend]
+        AuthHub[auth-hub]
     end
 
-    subgraph "Ingestion & Processing"
-        PreProcessor[pre-processor]
-        TagGenerator[tag-generator]
-        SearchIndexer[search-indexer]
-    end
-
-    subgraph "Recap Pipeline"
+    subgraph Workers
+        NewsCreator[news-creator]
         RecapWorker[recap-worker]
         RecapSubworker[recap-subworker]
-        NewsCreator[news-creator]
+        PreProcessor[pre-processor]
+        SearchIndexer[search-indexer]
+        TagGenerator[tag-generator]
     end
 
-    subgraph "Data & AI Infrastructure"
-        Postgres[(PostgreSQL)]
+    subgraph Infrastructure
+        Kratos[Ory Kratos]
+        KratosDB[(Postgres: kratos-db)]
+        AltDB[(Postgres: alt-db)]
+        RecapDB[(Postgres: recap-db)]
         Meilisearch[(Meilisearch)]
         Ollama[Ollama LLM]
+        Clickhouse[(Clickhouse)]
     end
 
-    %% Edges
+    subgraph Observability
+        RaskForwarder[rask-log-forwarder]
+        RaskAggregator[rask-log-aggregator]
+    end
+
+    %% External Access
     User --> Browser
-    Browser -->|HTTPS /| AltFrontend
-    Browser -->|HTTPS /api| AuthHub
+    Browser -->|HTTPS| Nginx
 
-    AltFrontend -->|REST API| AltBackend
+    %% Nginx Routing
+    Nginx -->|/| AltFrontend
+    Nginx -->|/api/frontend| AltFrontend
+    Nginx -->|/api/backend| AltBackend
+    Nginx -->|/api/v1/sse| AltBackend
+    Nginx -->|/ory| Kratos
+    Nginx -->|/api/auth/csrf| AuthHub
+    Nginx -->|/auth-validate| AuthHub
 
-    AuthHub -->|Validate Session| Kratos
-    AuthHub -->|X-Alt-* Headers| AltBackend
+    %% Frontend Interactions
+    AltFrontend -->|SSR/API| AltBackend
+    AltFrontend -->|Auth Validation| AuthHub
 
-    AltBackend -->|Read/Write| Postgres
-    AltBackend -->|Search Query| SearchIndexer
-    AltBackend -->|Get Recaps| RecapWorker
+    %% Backend Interactions
+    AltBackend -->|SQL| AltDB
+    AltBackend -->|Token Issue| AuthHub
+    AltBackend -->|Config/Usage| PreProcessor
+    AltBackend -->|Recap Data| RecapWorker
+    AltBackend -->|Tags| TagGenerator
 
-    PreProcessor -->|Summarize| NewsCreator
-    PreProcessor -->|Write| Postgres
-
-    TagGenerator -->|Read/Write| Postgres
-
-    SearchIndexer -->|Read| Postgres
-    SearchIndexer -->|Index/Search| Meilisearch
-
-    RecapWorker -->|Fetch Articles| AltBackend
-    RecapWorker -->|Generate Summary| NewsCreator
-    RecapWorker -->|Clustering| RecapSubworker
-    RecapWorker -->|Generate Tags| TagGenerator
-    RecapWorker -->|Read/Write| Postgres
-
-    RecapSubworker -->|Read/Write| Postgres
-
+    %% Worker Interactions
     NewsCreator -->|Inference| Ollama
+    NewsCreator -->|Auth| AuthHub
 
-    %% Styling
+    RecapWorker -->|SQL| RecapDB
+    RecapWorker -->|Gen| NewsCreator
+    RecapWorker -->|Sub-task| RecapSubworker
+    RecapWorker -->|API| AltBackend
+    RecapWorker -->|Tags| TagGenerator
+
+    RecapSubworker -->|SQL| RecapDB
+    RecapSubworker -->|Learning| RecapWorker
+
+    PreProcessor -->|SQL| AltDB
+    PreProcessor -->|Gen| NewsCreator
+
+    SearchIndexer -->|SQL| AltDB
+    SearchIndexer -->|Index| Meilisearch
+
+    TagGenerator -->|SQL| AltDB
+
+    AuthHub -->|Identity| Kratos
+    Kratos -->|SQL| KratosDB
+
+    %% Observability Flows
+    AltBackend -.->|Logs| RaskForwarder
+    TagGenerator -.->|Logs| RaskForwarder
+    Nginx -.->|Logs| RaskForwarder
+    RaskForwarder -->|Forward| RaskAggregator
+    RaskAggregator -->|Store| Clickhouse
+
+    %% Styles
     classDef frontend fill:#d4e6f1,stroke:#2874a6,stroke-width:2px;
     classDef backend fill:#d5f5e3,stroke:#1e8449,stroke-width:2px;
     classDef worker fill:#fcf3cf,stroke:#d4ac0d,stroke-width:2px;
     classDef infra fill:#f2f3f4,stroke:#7f8c8d,stroke-width:2px,stroke-dasharray: 5 5;
     classDef gateway fill:#e8daef,stroke:#8e44ad,stroke-width:2px;
+    classDef observability fill:#fadbd8,stroke:#c0392b,stroke-width:2px;
 
     class AltFrontend frontend;
     class AltBackend,AuthHub backend;
     class NewsCreator,RecapWorker,RecapSubworker,PreProcessor,SearchIndexer,TagGenerator worker;
-    class Kratos,Postgres,Meilisearch,Ollama infra;
-    class Browser gateway;
+    class Kratos,KratosDB,AltDB,RecapDB,Meilisearch,Ollama,Clickhouse infra;
+    class Nginx,Browser gateway;
+    class RaskForwarder,RaskAggregator observability;
 ```
 
 ### Identity & Edge Access
