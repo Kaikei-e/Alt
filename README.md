@@ -255,15 +255,17 @@ graph TD
     NewsCreator -->|Inference| Ollama
 
     %% Styling
-    classDef core fill:#ff9,stroke:#333,stroke-width:2px;
-    classDef pipeline fill:#bbf,stroke:#333,stroke-width:2px;
-    classDef data fill:#dfd,stroke:#333,stroke-width:2px;
-    classDef frontend fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef frontend fill:#d4e6f1,stroke:#2874a6,stroke-width:2px;
+    classDef backend fill:#d5f5e3,stroke:#1e8449,stroke-width:2px;
+    classDef worker fill:#fcf3cf,stroke:#d4ac0d,stroke-width:2px;
+    classDef infra fill:#f2f3f4,stroke:#7f8c8d,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef gateway fill:#e8daef,stroke:#8e44ad,stroke-width:2px;
 
-    class AltBackend,AuthHub core;
-    class RecapWorker,RecapSubworker,NewsCreator,PreProcessor,TagGenerator,SearchIndexer pipeline;
-    class Postgres,Meilisearch,Ollama,Kratos data;
     class AltFrontend frontend;
+    class AltBackend,AuthHub backend;
+    class NewsCreator,RecapWorker,RecapSubworker,PreProcessor,SearchIndexer,TagGenerator worker;
+    class Kratos,Postgres,Meilisearch,Ollama infra;
+    class Browser gateway;
 ```
 
 ### Identity & Edge Access
