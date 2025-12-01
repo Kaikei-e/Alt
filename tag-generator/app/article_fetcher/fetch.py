@@ -181,6 +181,48 @@ class ArticleFetcher:
             logger.error("Failed to fetch articles by tag status", error=str(e))
             raise ArticleFetchError("Failed to fetch articles") from e
 
+    def fetch_new_articles(
+        self,
+        conn: Connection,
+        last_created_at: str,
+        last_id: str,
+        custom_batch_size: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch untagged articles newer than the provided cursor in ascending order."""
+
+        self._validate_cursor_params(last_created_at, last_id)
+
+        batch_size = custom_batch_size or self.config.batch_size
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+
+        query = """
+            SELECT
+                a.id::text AS id,
+                a.title,
+                a.content,
+                a.created_at,
+                COALESCE(a.feed_id::text, NULL) AS feed_id,
+                a.url
+            FROM articles a
+            LEFT JOIN article_tags at ON a.id = at.article_id
+            WHERE at.article_id IS NULL AND (
+                a.created_at > %s OR (a.created_at = %s AND a.id::text > %s)
+            )
+            ORDER BY a.created_at ASC, a.id ASC
+            LIMIT %s
+        """
+
+        try:
+            with conn.cursor(cursor_factory=DictCursor) as cursor:
+                cursor.execute(query, (last_created_at, last_created_at, last_id, batch_size))
+                rows = cursor.fetchall()
+                logger.info("Fetched forward articles by cursor", count=len(rows))
+                return [dict(row) for row in rows]
+        except psycopg2.Error as e:
+            logger.error("Failed to fetch new articles", error=str(e))
+            raise ArticleFetchError("Failed to fetch articles") from e
+
     def count_untagged_articles(self, conn: Connection) -> int:
         """
         Count the number of articles without tags.
