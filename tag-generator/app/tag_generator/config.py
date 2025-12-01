@@ -7,7 +7,8 @@ from dataclasses import dataclass
 class TagGeneratorConfig:
     """Configuration for the tag generation service."""
 
-    processing_interval: int = 1800  # seconds between processing batches
+    processing_interval: int = 300  # seconds between processing batches when idle (5 minutes)
+    active_processing_interval: int = 180  # seconds between processing batches when work is pending (3 minutes)
     error_retry_interval: int = 60  # seconds to wait after errors
     batch_limit: int = 75  # articles per processing cycle
     progress_log_interval: int = 10  # log progress every N articles

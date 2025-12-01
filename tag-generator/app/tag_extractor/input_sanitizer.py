@@ -34,10 +34,6 @@ _ADVANCED_PROMPT_INJECTION_PATTERNS = tuple(
         r"disregard\s+(?:all\s+)?previous\s+",
         r"forget\s+(?:all\s+)?previous\s+",
         r"override\s+(?:all\s+)?previous\s+",
-        r"system\s*:\s*",
-        r"human\s*:\s*",
-        r"assistant\s*:\s*",
-        r"ai\s*:\s*",
         r"jailbreak",
         r"prompt\s+injection",
         r"escape\s+(?:the\s+)?system",
@@ -52,7 +48,7 @@ class SanitizationConfig(BaseModel):
     """Configuration for input sanitization."""
 
     max_title_length: int = 1000
-    max_content_length: int = 50000
+    max_content_length: int = 100000
     min_title_length: int = 1
     min_content_length: int = 1
     allow_html: bool = False
@@ -70,7 +66,7 @@ class ArticleInput(BaseModel):
     """Pydantic model for article input validation."""
 
     title: str = Field(..., min_length=1, max_length=1000)
-    content: str = Field(..., min_length=1, max_length=50000)
+    content: str = Field(..., min_length=1, max_length=100000)
     url: str | None = Field(default=None, max_length=2048)
 
     @field_validator("title", mode="before")
@@ -93,7 +89,7 @@ class ArticleInput(BaseModel):
         """Validate content."""
         if not v or len(v.strip()) == 0:
             raise ValueError("Content too short")
-        if len(v) > 50000:
+        if len(v) > 100000:
             raise ValueError("Content too long")
         # Check for control characters
         if any(ord(c) < 32 and c not in "\t\n\r" for c in v):
@@ -118,30 +114,67 @@ class ArticleInput(BaseModel):
 
     @staticmethod
     def _contains_prompt_injection(text: str) -> bool:
-        """Check if text contains prompt injection patterns."""
+        """Check if text contains prompt injection patterns with context awareness."""
         # Convert to lowercase for case-insensitive matching
         text_lower = text.lower()
 
-        # Common prompt injection patterns
-        injection_patterns = [
+        # High-confidence patterns that are almost always malicious
+        high_confidence_patterns = [
             "ignore previous instructions",
-            "system:",
-            "human:",
-            "assistant:",
-            "act as if you were",
-            "pretend to be",
-            "you are now",
-            "forget everything",
-            "disregard",
-            "override",
-            "new instructions",
             "ignore all previous",
+            "disregard all previous",
+            "forget all previous",
+            "override all previous",
+            "new instructions",
             "system prompt",
             "jailbreak",
             "prompt injection",
+            "escape the system",
         ]
 
-        return any(pattern in text_lower for pattern in injection_patterns)
+        # Check high-confidence patterns first
+        for pattern in high_confidence_patterns:
+            if pattern in text_lower:
+                return True
+
+        # Context-aware patterns that require surrounding context
+        # These are less likely to be false positives when checked with context
+        context_patterns = [
+            (r"system\s*:\s*(you|now|are|must|should)", "system: with directive"),
+            (r"human\s*:\s*(ignore|disregard|forget|override)", "human: with override"),
+            (r"assistant\s*:\s*(ignore|disregard|forget|override)", "assistant: with override"),
+            (r"act\s+as\s+(if\s+you\s+were\s+)?a\s+(hacker|admin|root|system)", "act as system role"),
+            (r"pretend\s+to\s+be\s+(a\s+)?(hacker|admin|root|system)", "pretend to be system role"),
+            (r"you\s+are\s+now\s+(a\s+)?(hacker|admin|root|system)", "you are now system role"),
+            (r"forget\s+everything\s+(you|that)", "forget everything directive"),
+        ]
+
+        for pattern, description in context_patterns:
+            if re.search(pattern, text_lower):
+                return True
+
+        # Low-confidence patterns that need additional context
+        # Only flag if they appear with suspicious surrounding words
+        low_confidence_patterns = [
+            ("system:", ["ignore", "disregard", "forget", "override", "new", "instructions"]),
+            ("human:", ["ignore", "disregard", "forget", "override", "new", "instructions"]),
+            ("assistant:", ["ignore", "disregard", "forget", "override", "new", "instructions"]),
+            ("disregard", ["previous", "all", "instructions", "system"]),
+            ("override", ["previous", "all", "instructions", "system"]),
+        ]
+
+        for pattern, suspicious_words in low_confidence_patterns:
+            if pattern in text_lower:
+                # Check if pattern appears near suspicious words (within 50 chars)
+                pattern_pos = text_lower.find(pattern)
+                if pattern_pos >= 0:
+                    context_start = max(0, pattern_pos - 25)
+                    context_end = min(len(text_lower), pattern_pos + len(pattern) + 25)
+                    context = text_lower[context_start:context_end]
+                    if any(word in context for word in suspicious_words):
+                        return True
+
+        return False
 
     @staticmethod
     def _is_valid_url(url: str) -> bool:

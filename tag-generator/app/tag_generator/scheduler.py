@@ -21,12 +21,11 @@ class ProcessingScheduler:
         """Derive the delay before the next cycle based on recent work."""
         assert self.service.config is not None
 
-        if processing_stats.get("has_more_pending"):
-            return 0
+        # If there's more work pending or articles were processed, use active interval (3 minutes)
+        if processing_stats.get("has_more_pending") or processing_stats.get("total_processed", 0) > 0:
+            return self.service.config.active_processing_interval
 
-        if processing_stats.get("total_processed", 0) > 0:
-            return 0
-
+        # If nothing was processed, use longer interval (5 minutes)
         return self.service.config.processing_interval
 
     def run_cycle(self) -> int:

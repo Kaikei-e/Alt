@@ -1,6 +1,7 @@
 import json
 import logging
 import sys
+from datetime import UTC, datetime
 
 import structlog
 
@@ -40,9 +41,19 @@ class JsonFormatter(logging.Formatter):
             "threadName",
         }
 
+        # Get timestamp - prefer structlog's timestamp if available, otherwise format it
+        timestamp = None
+        if hasattr(record, "timestamp"):
+            timestamp = record.timestamp
+        elif self.datefmt == "iso":
+            # Generate ISO format timestamp
+            timestamp = datetime.fromtimestamp(record.created, tz=UTC).isoformat()
+        else:
+            timestamp = self.formatTime(record, self.datefmt)
+
         # Start with the basics from the LogRecord.
         log_record = {
-            "timestamp": self.formatTime(record, self.datefmt),
+            "timestamp": timestamp,
             "level": record.levelname.lower(),
             "logger": record.name,
         }

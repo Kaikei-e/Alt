@@ -187,15 +187,70 @@ class TagExtractor:
         logger.warning("No tags could be extracted")
         return [], {}
 
+    def _truncate_content(self, title: str, content: str, max_content_length: int) -> tuple[str, str]:
+        """
+        Truncate content to fit within sanitization limits while preserving title.
+
+        Args:
+            title: Article title
+            content: Article content
+            max_content_length: Maximum allowed content length
+
+        Returns:
+            Tuple of (truncated_title, truncated_content)
+        """
+        # Truncate title if needed (preserve max_title_length)
+        max_title_length = 1000
+        truncated_title = title[:max_title_length] if len(title) > max_title_length else title
+
+        # Truncate content if needed
+        if len(content) > max_content_length:
+            # Try to truncate at sentence boundary for better quality
+            truncated_content = content[:max_content_length]
+            # Find last sentence boundary (period, exclamation, question mark)
+            last_sentence_end = max(
+                truncated_content.rfind('.'),
+                truncated_content.rfind('!'),
+                truncated_content.rfind('?'),
+            )
+            if last_sentence_end > max_content_length * 0.8:  # Only use if we keep at least 80% of content
+                truncated_content = content[:last_sentence_end + 1]
+            else:
+                truncated_content = content[:max_content_length]
+            logger.info(
+                "Content truncated for sanitization",
+                original_length=len(content),
+                truncated_length=len(truncated_content),
+            )
+        else:
+            truncated_content = content
+
+        return truncated_title, truncated_content
+
     def extract_tags_with_metrics(self, title: str, content: str) -> TagExtractionOutcome:
         """
         Extract tags and capture metrics for cascade decisions.
         """
         start_time = time.perf_counter()
-        sanitization_result = self._input_sanitizer.sanitize(title, content)
+
+        # Truncate content before sanitization to avoid "Content too long" errors
+        max_content_length = self._input_sanitizer.config.max_content_length
+        truncated_title, truncated_content = self._truncate_content(title, content, max_content_length)
+
+        sanitization_result = self._input_sanitizer.sanitize(truncated_title, truncated_content)
 
         if not sanitization_result.is_valid or sanitization_result.sanitized_input is None:
-            logger.warning("Input sanitization failed", violations=sanitization_result.violations)
+            # Log rejected article information for debugging
+            title_preview = title[:100] if len(title) > 100 else title
+            content_preview = content[:100] if len(content) > 100 else content
+            logger.warning(
+                "Input sanitization failed",
+                violations=sanitization_result.violations,
+                title_preview=title_preview,
+                content_preview=content_preview,
+                title_length=len(title),
+                content_length=len(content),
+            )
             return TagExtractionOutcome(
                 tags=[],
                 confidence=0.0,

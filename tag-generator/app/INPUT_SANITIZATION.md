@@ -53,7 +53,7 @@ Detects 15+ common prompt injection patterns:
 ### 2. Input Length Limits
 
 - **Title**: 1-1000 characters (configurable)
-- **Content**: 1-50,000 characters (configurable)
+- **Content**: 1-100,000 characters (configurable)
 - **URL**: Up to 2048 characters
 
 ### 3. HTML Sanitization
@@ -83,7 +83,7 @@ Removes dangerous control characters:
 ```python
 class SanitizationConfig:
     max_title_length: int = 1000
-    max_content_length: int = 50000
+    max_content_length: int = 100000
     min_title_length: int = 1
     min_content_length: int = 1
     allow_html: bool = False
@@ -230,13 +230,13 @@ The system provides detailed logging:
 
 ```python
 # Valid input
-logger.info("Processing sanitized text", 
+logger.info("Processing sanitized text",
            char_count=len(raw_text),
            original_length=sanitized_input.original_length,
            sanitized_length=sanitized_input.sanitized_length)
 
 # Invalid input
-logger.warning("Input sanitization failed", 
+logger.warning("Input sanitization failed",
                violations=sanitization_result.violations)
 ```
 
