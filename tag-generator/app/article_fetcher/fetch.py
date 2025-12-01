@@ -41,21 +41,32 @@ class ArticleFetcher:
         if not isinstance(last_id, str) or not last_id.strip():
             raise ValueError("last_id must be a non-empty string")
 
-    def _build_fetch_query(self) -> str:
+    def _build_fetch_query(self, untagged_only: bool = True) -> str:
         """Build the SQL query for fetching articles."""
-        return """
+        untagged_filter = ""
+        if untagged_only:
+            untagged_filter = """
+                LEFT JOIN article_tags at ON articles.id = at.article_id
+                WHERE at.article_id IS NULL
+                AND (
+            """
+        else:
+            untagged_filter = "WHERE ("
+
+        return f"""
             SELECT
-                id::text AS id,
-                title,
-                content,
-                created_at,
-                COALESCE(feed_id::text, NULL) AS feed_id,
-                url
+                articles.id::text AS id,
+                articles.title,
+                articles.content,
+                articles.created_at,
+                COALESCE(articles.feed_id::text, NULL) AS feed_id,
+                articles.url
             FROM articles
-            WHERE
-                (created_at < %s)
-                OR (created_at = %s AND id::text < %s)
-            ORDER BY created_at DESC, id DESC
+            {untagged_filter}
+                (articles.created_at < %s)
+                OR (articles.created_at = %s AND articles.id::text < %s)
+            )
+            ORDER BY articles.created_at DESC, articles.id DESC
             LIMIT %s
         """
 
@@ -65,15 +76,18 @@ class ArticleFetcher:
         last_created_at: str,
         last_id: str,
         custom_batch_size: int | None = None,
+        untagged_only: bool = True,
     ) -> list[dict[str, Any]]:
         """
         Fetch articles from the database using cursor-based pagination.
+        By default, fetches only untagged articles in descending order (newest to oldest).
 
         Args:
             conn: Database connection
             last_created_at: ISO timestamp string for pagination
             last_id: Article ID string for pagination
             custom_batch_size: Override default batch size if provided
+            untagged_only: If True, fetch only untagged articles (default: True)
 
         Returns:
             List of article dictionaries with id, title, content, created_at
@@ -94,17 +108,18 @@ class ArticleFetcher:
             created_at=last_created_at,
             id=last_id,
             batch_size=batch_size,
+            untagged_only=untagged_only,
         )
 
         try:
-            query = self._build_fetch_query()
+            query = self._build_fetch_query(untagged_only=untagged_only)
 
             with conn.cursor(cursor_factory=DictCursor) as cursor:
                 cursor.execute(query, (last_created_at, last_created_at, last_id, batch_size))
 
                 rows = cursor.fetchall()
 
-                logger.info("Successfully fetched articles", count=len(rows))
+                logger.info("Fetched articles by cursor", count=len(rows), untagged_only=untagged_only)
 
                 # Convert DictRow to regular dict for better type safety
                 articles = [dict(row) for row in rows]
