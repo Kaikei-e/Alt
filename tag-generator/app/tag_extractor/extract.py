@@ -209,12 +209,12 @@ class TagExtractor:
             truncated_content = content[:max_content_length]
             # Find last sentence boundary (period, exclamation, question mark)
             last_sentence_end = max(
-                truncated_content.rfind('.'),
-                truncated_content.rfind('!'),
-                truncated_content.rfind('?'),
+                truncated_content.rfind("."),
+                truncated_content.rfind("!"),
+                truncated_content.rfind("?"),
             )
             if last_sentence_end > max_content_length * 0.8:  # Only use if we keep at least 80% of content
-                truncated_content = content[:last_sentence_end + 1]
+                truncated_content = content[: last_sentence_end + 1]
             else:
                 truncated_content = content[:max_content_length]
             logger.info(
@@ -240,10 +240,10 @@ class TagExtractor:
         sanitization_result = self._input_sanitizer.sanitize(truncated_title, truncated_content)
 
         if not sanitization_result.is_valid or sanitization_result.sanitized_input is None:
-            # Log rejected article information for debugging
+            # Log rejected article information for debugging (debug level to reduce log noise)
             title_preview = title[:100] if len(title) > 100 else title
             content_preview = content[:100] if len(content) > 100 else content
-            logger.warning(
+            logger.debug(
                 "Input sanitization failed",
                 violations=sanitization_result.violations,
                 title_preview=title_preview,

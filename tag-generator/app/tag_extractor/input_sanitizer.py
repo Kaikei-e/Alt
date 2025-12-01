@@ -23,24 +23,6 @@ URL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-_ADVANCED_PROMPT_INJECTION_PATTERNS = tuple(
-    re.compile(pattern, re.IGNORECASE)
-    for pattern in (
-        r"you\s+are\s+now\s+a\s+",
-        r"pretend\s+to\s+be\s+",
-        r"act\s+as\s+(?:if\s+you\s+were\s+)?a\s+",
-        r"imagine\s+you\s+are\s+",
-        r"ignore\s+(?:all\s+)?previous\s+instructions",
-        r"disregard\s+(?:all\s+)?previous\s+",
-        r"forget\s+(?:all\s+)?previous\s+",
-        r"override\s+(?:all\s+)?previous\s+",
-        r"jailbreak",
-        r"prompt\s+injection",
-        r"escape\s+(?:the\s+)?system",
-    )
-)
-
-
 logger = structlog.get_logger(__name__)
 
 
@@ -79,9 +61,6 @@ class ArticleInput(BaseModel):
         # Check for control characters
         if any(ord(c) < 32 and c not in "\t\n\r" for c in v):
             raise ValueError("Contains control characters")
-        # Check for prompt injection patterns
-        if cls._contains_prompt_injection(v):
-            raise ValueError("Potential prompt injection detected")
         return v
 
     @field_validator("content", mode="before")
@@ -94,9 +73,6 @@ class ArticleInput(BaseModel):
         # Check for control characters
         if any(ord(c) < 32 and c not in "\t\n\r" for c in v):
             raise ValueError("Contains control characters")
-        # Check for prompt injection patterns
-        if cls._contains_prompt_injection(v):
-            raise ValueError("Potential prompt injection detected")
         return v
 
     @field_validator("url", mode="before")
@@ -111,70 +87,6 @@ class ArticleInput(BaseModel):
         except Exception as e:
             raise ValueError("Invalid URL format") from e
         return v
-
-    @staticmethod
-    def _contains_prompt_injection(text: str) -> bool:
-        """Check if text contains prompt injection patterns with context awareness."""
-        # Convert to lowercase for case-insensitive matching
-        text_lower = text.lower()
-
-        # High-confidence patterns that are almost always malicious
-        high_confidence_patterns = [
-            "ignore previous instructions",
-            "ignore all previous",
-            "disregard all previous",
-            "forget all previous",
-            "override all previous",
-            "new instructions",
-            "system prompt",
-            "jailbreak",
-            "prompt injection",
-            "escape the system",
-        ]
-
-        # Check high-confidence patterns first
-        for pattern in high_confidence_patterns:
-            if pattern in text_lower:
-                return True
-
-        # Context-aware patterns that require surrounding context
-        # These are less likely to be false positives when checked with context
-        context_patterns = [
-            (r"system\s*:\s*(you|now|are|must|should)", "system: with directive"),
-            (r"human\s*:\s*(ignore|disregard|forget|override)", "human: with override"),
-            (r"assistant\s*:\s*(ignore|disregard|forget|override)", "assistant: with override"),
-            (r"act\s+as\s+(if\s+you\s+were\s+)?a\s+(hacker|admin|root|system)", "act as system role"),
-            (r"pretend\s+to\s+be\s+(a\s+)?(hacker|admin|root|system)", "pretend to be system role"),
-            (r"you\s+are\s+now\s+(a\s+)?(hacker|admin|root|system)", "you are now system role"),
-            (r"forget\s+everything\s+(you|that)", "forget everything directive"),
-        ]
-
-        for pattern, description in context_patterns:
-            if re.search(pattern, text_lower):
-                return True
-
-        # Low-confidence patterns that need additional context
-        # Only flag if they appear with suspicious surrounding words
-        low_confidence_patterns = [
-            ("system:", ["ignore", "disregard", "forget", "override", "new", "instructions"]),
-            ("human:", ["ignore", "disregard", "forget", "override", "new", "instructions"]),
-            ("assistant:", ["ignore", "disregard", "forget", "override", "new", "instructions"]),
-            ("disregard", ["previous", "all", "instructions", "system"]),
-            ("override", ["previous", "all", "instructions", "system"]),
-        ]
-
-        for pattern, suspicious_words in low_confidence_patterns:
-            if pattern in text_lower:
-                # Check if pattern appears near suspicious words (within 50 chars)
-                pattern_pos = text_lower.find(pattern)
-                if pattern_pos >= 0:
-                    context_start = max(0, pattern_pos - 25)
-                    context_end = min(len(text_lower), pattern_pos + len(pattern) + 25)
-                    context = text_lower[context_start:context_end]
-                    if any(word in context for word in suspicious_words):
-                        return True
-
-        return False
 
     @staticmethod
     def _is_valid_url(url: str) -> bool:
@@ -294,10 +206,6 @@ class InputSanitizer:
                 if any(ord(c) < 32 and c not in "\t\n\r" for c in content):
                     raise ValueError("Contains control characters")
 
-                # Check for prompt injection patterns
-                if ArticleInput._contains_prompt_injection(title) or ArticleInput._contains_prompt_injection(content):
-                    raise ValueError("Potential prompt injection detected")
-
                 # URL validation if provided
                 if url and len(url) > 2048:
                     raise ValueError("URL too long")
@@ -306,7 +214,6 @@ class InputSanitizer:
 
             except ValueError as e:
                 violations.append(str(e))
-                logger.warning("Input validation failed", error=str(e))
                 return SanitizationResult(
                     is_valid=False,
                     sanitized_input=None,
@@ -328,7 +235,6 @@ class InputSanitizer:
 
             # Step 5: Final validation
             if violations:
-                logger.warning("Sanitization violations detected", violations=violations)
                 return SanitizationResult(
                     is_valid=False,
                     sanitized_input=None,
@@ -398,20 +304,12 @@ class InputSanitizer:
         """Perform additional security checks."""
         violations = []
 
-        # Check for remaining prompt injection patterns after sanitization
-        combined_text = f"{title} {content}"
-        if self._advanced_prompt_injection_check(combined_text):
-            violations.append("Advanced prompt injection pattern detected")
-
         # Check for suspicious patterns
+        combined_text = f"{title} {content}"
         if self._contains_suspicious_patterns(combined_text):
             violations.append("Suspicious patterns detected")
 
         return violations
-
-    def _advanced_prompt_injection_check(self, text: str) -> bool:
-        """Advanced prompt injection detection."""
-        return any(pattern.search(text) for pattern in _ADVANCED_PROMPT_INJECTION_PATTERNS)
 
     def _contains_suspicious_patterns(self, text: str) -> bool:
         """Check for other suspicious patterns."""
