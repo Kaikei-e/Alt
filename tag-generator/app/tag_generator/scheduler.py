@@ -7,7 +7,7 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
-    from main import TagGeneratorService
+    from tag_generator.service import TagGeneratorService
 
 
 class ProcessingScheduler:
@@ -34,37 +34,32 @@ class ProcessingScheduler:
         service = self.service
         assert service.config is not None
 
-        service.total_cycles += 1
-        logger.info(f"=== Processing Cycle {service.total_cycles} ===")
-
         result = service._run_processing_cycle_with_monitoring()
 
         if result.get("success", False):
             articles_processed = result.get("successful", 0)
             total_in_batch = result.get("total_processed", 0)
 
-            if total_in_batch == 0:
-                service.consecutive_empty_cycles += 1
-            else:
-                service.consecutive_empty_cycles = 0
-                service.total_articles_processed += articles_processed
+            # Record cycle in health monitor
+            service.health_monitor.record_cycle(articles_processed)
 
-            if (service.total_cycles - service.last_health_check_cycle) >= service.config.health_check_interval:
-                service._perform_health_check()
-                service.last_health_check_cycle = service.total_cycles
+            # Perform health check if needed
+            if service.health_monitor.should_perform_health_check():
+                service.health_monitor.perform_health_check()
+                service.health_monitor.mark_health_check_completed()
 
             sleep_interval = self.calculate_next_sleep(result)
             logger.info(
-                f"Cycle {service.total_cycles} completed successfully. "
+                f"Cycle {service.health_monitor.total_cycles} completed successfully. "
                 f"Processed: {articles_processed}/{total_in_batch} articles. "
-                f"Empty cycles: {service.consecutive_empty_cycles}. "
+                f"Empty cycles: {service.health_monitor.consecutive_empty_cycles}. "
                 f"Sleeping for {sleep_interval} seconds..."
             )
             return sleep_interval
 
-        service.consecutive_empty_cycles += 1
+        service.health_monitor.record_cycle(0)
         logger.error(
-            f"Cycle {service.total_cycles} failed: {result.get('error', 'Unknown error')}. "
+            f"Cycle {service.health_monitor.total_cycles} failed: {result.get('error', 'Unknown error')}. "
             f"Failed: {result.get('failed', 0)}/{result.get('total_processed', 0)} articles. "
             f"Retrying in {service.config.error_retry_interval} seconds..."
         )

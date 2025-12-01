@@ -405,15 +405,21 @@ class TestArticleFetcher:
     def test_should_build_correct_fetch_query(self):
         """Should build the correct SQL query for fetching articles."""
         fetcher = ArticleFetcher()
-        query = fetcher._build_fetch_query()
+        query = fetcher._build_fetch_query(untagged_only=True)
 
         # Check that query contains expected components
         assert "SELECT" in query
         assert "id::text AS id" in query
         assert "FROM articles" in query
         assert "WHERE" in query
+        assert "LEFT JOIN article_tags" in query
+        assert "at.article_id IS NULL" in query
         assert "ORDER BY created_at DESC, id DESC" in query
         assert "LIMIT %s" in query
+
+        # Test without untagged filter
+        query_all = fetcher._build_fetch_query(untagged_only=False)
+        assert "LEFT JOIN article_tags" not in query_all
 
     def test_should_fetch_articles_with_correct_parameters(self):
         """Should execute query with correct parameters."""
@@ -1069,6 +1075,7 @@ class TestTagGeneratorService:
 
         with (
             patch.object(service, "_has_existing_tags", return_value=True),
+            patch.object(service, "backfill_completed", True),  # Set backfill as completed
             patch.object(service, "_get_forward_cursor_position", return_value=("2024-01-04T00:00:00Z", "seed")),
             patch.object(service.article_fetcher, "fetch_new_articles", return_value=forward_articles) as mock_fetch,
             patch.object(
