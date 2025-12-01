@@ -714,10 +714,12 @@ class TestTagGeneratorService:
         """TagGeneratorService should initialize with default configuration."""
         service = TagGeneratorService()
         assert service.config.batch_limit == 75
-        assert service.config.processing_interval == 60
+        assert service.config.processing_interval == 1800
         assert isinstance(service.article_fetcher, ArticleFetcher)
         assert isinstance(service.tag_extractor, TagExtractor)
         assert isinstance(service.tag_inserter, TagInserter)
+        assert service.forward_cursor_created_at is None
+        assert service.forward_cursor_id is None
 
     def test_should_build_database_dsn_from_environment(self):
         """Should build database DSN from environment variables."""
@@ -919,6 +921,98 @@ class TestTagGeneratorService:
             # Should update cursor position
             assert service.last_processed_created_at == "2023-01-02T00:00:00Z"
             assert service.last_processed_id == "uuid-2"
+
+    def test_should_skip_processing_when_no_new_articles(self):
+        """Skip tagging work if there are no forward articles to process."""
+        service = TagGeneratorService()
+        mock_conn = Mock()
+
+        with (
+            patch.object(service, "_has_existing_tags", return_value=True),
+            patch.object(service, "_get_forward_cursor_position", return_value=("2024-01-01T00:00:00Z", "base-id")),
+            patch.object(service.article_fetcher, "fetch_new_articles", return_value=[]),
+            patch.object(service, "_process_articles_as_batch") as mock_process,
+        ):
+            stats = service._process_article_batch(mock_conn)
+
+        assert stats["total_processed"] == 0
+        assert stats["successful"] == 0
+        assert stats["failed"] == 0
+        mock_process.assert_not_called()
+
+    def test_backfill_should_update_forward_cursor_from_latest_article(self):
+        """Backfill run sets forward cursor based on newest processed article."""
+        service = TagGeneratorService()
+        mock_conn = Mock()
+        articles = [
+            {
+                "id": "newest",
+                "title": "Title 1",
+                "content": "Content 1",
+                "created_at": "2024-01-03T00:00:00Z",
+            },
+            {
+                "id": "older",
+                "title": "Title 2",
+                "content": "Content 2",
+                "created_at": "2024-01-02T00:00:00Z",
+            },
+        ]
+
+        with (
+            patch.object(service, "_has_existing_tags", return_value=False),
+            patch.object(service, "_get_initial_cursor_position", return_value=("2024-01-04T00:00:00Z", "cursor")),
+            patch.object(service.article_fetcher, "fetch_articles", return_value=articles),
+            patch.object(
+                service,
+                "_process_articles_as_batch",
+                return_value={"total_processed": 2, "successful": 2, "failed": 0},
+            ),
+        ):
+            stats = service._process_article_batch(mock_conn)
+
+        assert service.forward_cursor_created_at == "2024-01-03T00:00:00Z"
+        assert service.forward_cursor_id == "newest"
+        assert stats["last_created_at"] == "2024-01-02T00:00:00Z"
+        assert stats["last_id"] == "older"
+
+    def test_forward_mode_updates_cursor_and_processes_new_articles(self):
+        """Forward processing fetches new articles and advances cursor."""
+        service = TagGeneratorService()
+        mock_conn = Mock()
+        forward_articles = [
+            {
+                "id": "a1",
+                "title": "Forward 1",
+                "content": "Content",
+                "created_at": "2024-01-05T00:00:00Z",
+            },
+            {
+                "id": "a2",
+                "title": "Forward 2",
+                "content": "Content",
+                "created_at": "2024-01-06T00:00:00Z",
+            },
+        ]
+
+        with (
+            patch.object(service, "_has_existing_tags", return_value=True),
+            patch.object(service, "_get_forward_cursor_position", return_value=("2024-01-04T00:00:00Z", "seed")),
+            patch.object(service.article_fetcher, "fetch_new_articles", return_value=forward_articles) as mock_fetch,
+            patch.object(
+                service,
+                "_process_articles_as_batch",
+                return_value={"total_processed": 2, "successful": 2, "failed": 0},
+            ) as mock_process,
+        ):
+            stats = service._process_article_batch(mock_conn)
+
+        mock_fetch.assert_called_once_with(mock_conn, "2024-01-04T00:00:00Z", "seed", service.config.batch_limit)
+        mock_process.assert_called_once()
+        assert service.forward_cursor_created_at == "2024-01-06T00:00:00Z"
+        assert service.forward_cursor_id == "a2"
+        assert stats["last_created_at"] == "2024-01-06T00:00:00Z"
+        assert stats["last_id"] == "a2"
 
 
 if __name__ == "__main__":

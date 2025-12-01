@@ -15,6 +15,7 @@ from article_fetcher.fetch import ArticleFetcher
 from tag_extractor.extract import TagExtractor
 from tag_generator.cascade import CascadeController
 from tag_generator.logging_config import setup_logging
+from tag_generator.scheduler import ProcessingScheduler
 from tag_inserter.upsert_tags import TagInserter
 
 # Configure logging
@@ -26,7 +27,7 @@ logger = structlog.get_logger(__name__)
 class TagGeneratorConfig:
     """Configuration for the tag generation service."""
 
-    processing_interval: int = 60  # seconds between processing batches
+    processing_interval: int = 1800  # seconds between processing batches
     error_retry_interval: int = 60  # seconds to wait after errors
     batch_limit: int = 75  # articles per processing cycle
     progress_log_interval: int = 10  # log progress every N articles
@@ -58,6 +59,8 @@ class TagGeneratorService:
         # Persistent cursor position for pagination between cycles
         self.last_processed_created_at: str | None = None
         self.last_processed_id: str | None = None
+        self.forward_cursor_created_at: str | None = None
+        self.forward_cursor_id: str | None = None
 
         # Health monitoring
         self.consecutive_empty_cycles = 0
@@ -404,6 +407,118 @@ class TagGeneratorService:
             return False
 
     def _process_article_batch(self, conn: Connection) -> dict[str, Any]:
+        """Choose processing strategy based on tagging state."""
+        if self._has_existing_tags(conn):
+            return self._process_article_batch_forward(conn)
+        return self._process_article_batch_backfill(conn)
+
+    def _has_existing_tags(self, conn: Connection) -> bool:
+        """Check whether any tags already exist in the database."""
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT EXISTS (SELECT 1 FROM article_tags)")
+                result = cursor.fetchone()
+                return bool(result and result[0])
+        except Exception as exc:
+            logger.warning("Failed to check existing tags", error=str(exc))
+            return False
+
+    def _get_forward_cursor_position(self, conn: Connection) -> tuple[str, str]:
+        """Get the cursor for forward processing starting point."""
+        if self.forward_cursor_created_at and self.forward_cursor_id:
+            return self.forward_cursor_created_at, self.forward_cursor_id
+
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT a.created_at, a.id::text
+                    FROM articles a
+                    JOIN article_tags at ON a.id = at.article_id
+                    ORDER BY a.created_at DESC, a.id DESC
+                    LIMIT 1
+                    """
+                )
+                result = cursor.fetchone()
+                if result:
+                    created_at = result[0]
+                    created_at_str = created_at if isinstance(created_at, str) else created_at.isoformat()
+                    self.forward_cursor_created_at = created_at_str
+                    self.forward_cursor_id = result[1]
+                    return created_at_str, cast(str, result[1])
+        except Exception as exc:
+            logger.warning("Failed to derive forward cursor from tags", error=str(exc))
+
+        fallback_time = datetime.now(UTC).isoformat()
+        self.forward_cursor_created_at = fallback_time
+        self.forward_cursor_id = "00000000-0000-0000-0000-000000000000"
+        return fallback_time, "00000000-0000-0000-0000-000000000000"
+
+    def _process_article_batch_forward(self, conn: Connection) -> dict[str, Any]:
+        """Process articles newer than the current forward cursor."""
+        assert self.config is not None
+        start_created_at, start_id = self._get_forward_cursor_position(conn)
+
+        batch_stats = {
+            "total_processed": 0,
+            "successful": 0,
+            "failed": 0,
+            "last_created_at": start_created_at,
+            "last_id": start_id,
+            "has_more_pending": False,
+        }
+
+        articles = self.article_fetcher.fetch_new_articles(conn, start_created_at, start_id, self.config.batch_limit)
+
+        batch_stats["has_more_pending"] = len(articles) >= self.config.batch_limit
+
+        if not articles:
+            logger.info("No new articles found for forward processing")
+            return batch_stats
+
+        try:
+            if conn.autocommit:
+                conn.autocommit = False
+
+            batch_stats = self._process_articles_as_batch(conn, articles)
+
+            last_article = articles[-1]
+            latest_created_at = (
+                last_article["created_at"]
+                if isinstance(last_article["created_at"], str)
+                else last_article["created_at"].isoformat()
+            )
+            self.forward_cursor_created_at = latest_created_at
+            self.forward_cursor_id = last_article["id"]
+            self.last_processed_created_at = latest_created_at
+            self.last_processed_id = last_article["id"]
+
+            batch_stats["last_created_at"] = latest_created_at
+            batch_stats["last_id"] = last_article["id"]
+            batch_stats["has_more_pending"] = len(articles) >= self.config.batch_limit
+
+            if cast(int, batch_stats.get("successful", 0)) > 0:
+                conn.commit()
+            else:
+                conn.rollback()
+                logger.warning("Transaction rolled back due to forward batch failure")
+        except Exception as exc:
+            logger.error(f"Error during forward batch processing: {exc}")
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Failed to rollback forward transaction: {rollback_error}")
+            raise
+        finally:
+            try:
+                if not conn.autocommit:
+                    conn.autocommit = True
+            except Exception as exc:
+                logger.warning(f"Failed to restore autocommit mode after forward batch: {exc}")
+
+        return batch_stats
+
+    def _process_article_batch_backfill(self, conn: Connection) -> dict[str, Any]:
         """
         Process a batch of articles for tag generation using true batch processing.
         Includes fallback mechanism for cursor pagination failures.
@@ -423,7 +538,17 @@ class TagGeneratorService:
             "failed": 0,
             "last_created_at": last_created_at,
             "last_id": last_id,
+            "has_more_pending": False,
         }
+
+        # Avoid heavy processing when nothing is pending
+        try:
+            untagged_count = self.article_fetcher.count_untagged_articles(conn)
+            if untagged_count == 0:
+                logger.info("No untagged articles available; skipping backfill batch")
+                return batch_stats
+        except Exception as exc:
+            logger.warning("Could not count untagged articles before backfill", error=str(exc))
 
         # Collect articles for batch processing (keep autocommit for fetching)
         articles_to_process: list[dict[str, Any]] = []
@@ -512,10 +637,19 @@ class TagGeneratorService:
                 # Ensure string format for batch stats
                 batch_stats["last_created_at"] = last_created_at
                 batch_stats["last_id"] = last_id
+                batch_stats["has_more_pending"] = len(articles_to_process) >= self.config.batch_limit
 
                 # Update persistent cursor position for next cycle (ensure string format)
                 self.last_processed_created_at = last_created_at
                 self.last_processed_id = last_id
+                newest_article = articles_to_process[0]
+                newest_created_at = (
+                    newest_article["created_at"]
+                    if isinstance(newest_article["created_at"], str)
+                    else newest_article["created_at"].isoformat()
+                )
+                self.forward_cursor_created_at = newest_created_at
+                self.forward_cursor_id = newest_article["id"]
                 logger.info(f"Updated cursor position for next cycle: {self.last_processed_created_at}, ID: {last_id}")
 
                 # Commit the transaction only if batch processing was successful
@@ -713,58 +847,11 @@ class TagGeneratorService:
 
     def run_service(self) -> None:
         """Run the tag generation service continuously with health monitoring."""
-        assert self.config is not None
         logger.info("Starting Tag Generation Service")
         logger.info("Service will run continuously. Press Ctrl+C to stop.")
 
-        try:
-            while True:
-                self.total_cycles += 1
-                logger.info(f"=== Processing Cycle {self.total_cycles} ===")
-
-                # Run processing cycle
-                result = self._run_processing_cycle_with_monitoring()
-
-                if result.get("success", False):
-                    articles_processed = result.get("successful", 0)
-                    total_in_batch = result.get("total_processed", 0)
-
-                    # Update health monitoring
-                    if total_in_batch == 0:
-                        self.consecutive_empty_cycles += 1
-                    else:
-                        self.consecutive_empty_cycles = 0
-                        self.total_articles_processed += articles_processed
-
-                    # Perform health check periodically
-                    if (self.total_cycles - self.last_health_check_cycle) >= self.config.health_check_interval:
-                        self._perform_health_check()
-                        self.last_health_check_cycle = self.total_cycles
-
-                    logger.info(
-                        f"Cycle {self.total_cycles} completed successfully. "
-                        f"Processed: {articles_processed}/{total_in_batch} articles. "
-                        f"Empty cycles: {self.consecutive_empty_cycles}. "
-                        f"Sleeping for {self.config.processing_interval} seconds..."
-                    )
-                    time.sleep(self.config.processing_interval)
-                else:
-                    self.consecutive_empty_cycles += 1
-                    logger.error(
-                        f"Cycle {self.total_cycles} failed: {result.get('error', 'Unknown error')}. "
-                        f"Failed: {result.get('failed', 0)}/{result.get('total_processed', 0)} articles. "
-                        f"Retrying in {self.config.error_retry_interval} seconds..."
-                    )
-                    time.sleep(self.config.error_retry_interval)
-
-        except KeyboardInterrupt:
-            logger.info("Service stopped by user")
-        except Exception as e:
-            logger.error(f"Service crashed: {e}")
-            raise
-        finally:
-            # Cleanup connection pool
-            self._cleanup()
+        scheduler = ProcessingScheduler(self)
+        scheduler.run_forever()
 
     def _run_processing_cycle_with_monitoring(self) -> dict[str, Any]:
         """Run processing cycle with enhanced monitoring."""
