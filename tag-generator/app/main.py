@@ -488,16 +488,16 @@ class TagGeneratorService:
                 if isinstance(last_article["created_at"], str)
                 else last_article["created_at"].isoformat()
             )
-            self.forward_cursor_created_at = latest_created_at
-            self.forward_cursor_id = last_article["id"]
-            self.last_processed_created_at = latest_created_at
-            self.last_processed_id = last_article["id"]
 
             batch_stats["last_created_at"] = latest_created_at
             batch_stats["last_id"] = last_article["id"]
             batch_stats["has_more_pending"] = len(articles) >= self.config.batch_limit
 
             if cast(int, batch_stats.get("successful", 0)) > 0:
+                self.forward_cursor_created_at = latest_created_at
+                self.forward_cursor_id = last_article["id"]
+                self.last_processed_created_at = latest_created_at
+                self.last_processed_id = last_article["id"]
                 conn.commit()
             else:
                 conn.rollback()
@@ -639,21 +639,22 @@ class TagGeneratorService:
                 batch_stats["last_id"] = last_id
                 batch_stats["has_more_pending"] = len(articles_to_process) >= self.config.batch_limit
 
-                # Update persistent cursor position for next cycle (ensure string format)
-                self.last_processed_created_at = last_created_at
-                self.last_processed_id = last_id
-                newest_article = articles_to_process[0]
-                newest_created_at = (
-                    newest_article["created_at"]
-                    if isinstance(newest_article["created_at"], str)
-                    else newest_article["created_at"].isoformat()
-                )
-                self.forward_cursor_created_at = newest_created_at
-                self.forward_cursor_id = newest_article["id"]
-                logger.info(f"Updated cursor position for next cycle: {self.last_processed_created_at}, ID: {last_id}")
-
                 # Commit the transaction only if batch processing was successful
                 if cast(int, batch_stats.get("successful", 0)) > 0:
+                    # Update persistent cursor position for next cycle (ensure string format)
+                    self.last_processed_created_at = last_created_at
+                    self.last_processed_id = last_id
+                    newest_article = articles_to_process[0]
+                    newest_created_at = (
+                        newest_article["created_at"]
+                        if isinstance(newest_article["created_at"], str)
+                        else newest_article["created_at"].isoformat()
+                    )
+                    self.forward_cursor_created_at = newest_created_at
+                    self.forward_cursor_id = newest_article["id"]
+                    logger.info(
+                        f"Updated cursor position for next cycle: {self.last_processed_created_at}, ID: {last_id}"
+                    )
                     conn.commit()
                 else:
                     conn.rollback()
