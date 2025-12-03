@@ -62,8 +62,8 @@ export function setupSSEWithReconnect(
 	let reconnectAttempts = 0;
 	let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 	let hasReceivedData = false; // Track if we've actually received data
-	let lastDataReceivedTime = 0; // Track when we last received data
-	let connectionStartTime = Date.now(); // Track connection start time
+	let _lastDataReceivedTime = 0; // Track when we last received data
+	const _connectionStartTime = Date.now(); // Track connection start time
 	const reconnectDelays: number[] = []; // Track reconnect delays for monitoring
 
 	const connect = () => {
@@ -74,7 +74,7 @@ export function setupSSEWithReconnect(
 				eventSource = null;
 			}
 
-			const attemptStartTime = Date.now();
+			const _attemptStartTime = Date.now();
 			eventSource = new EventSource(endpoint);
 
 			eventSource.onopen = () => {
@@ -94,7 +94,7 @@ export function setupSSEWithReconnect(
 					// Handle heartbeat comments - update lastDataReceivedTime but don't process as data
 					if (event.data.trim().startsWith(":")) {
 						// Heartbeat received - update timestamp to indicate connection is alive
-						lastDataReceivedTime = Date.now();
+						_lastDataReceivedTime = Date.now();
 						// Call heartbeat callback if provided
 						if (onHeartbeat) {
 							onHeartbeat();
@@ -109,7 +109,7 @@ export function setupSSEWithReconnect(
 						if (!hasReceivedData) {
 							hasReceivedData = true;
 						}
-						lastDataReceivedTime = Date.now();
+						_lastDataReceivedTime = Date.now();
 						reconnectAttempts = 0; // Reset only on successful data reception
 						reconnectDelays.length = 0; // Clear delay history on successful data
 						onData(data);
@@ -122,7 +122,7 @@ export function setupSSEWithReconnect(
 				}
 			};
 
-			eventSource.onerror = (error) => {
+			eventSource.onerror = (_error) => {
 				const readyState = eventSource?.readyState ?? EventSource.CLOSED;
 
 				if (onError) {
@@ -134,7 +134,8 @@ export function setupSSEWithReconnect(
 				// 1. We haven't exceeded max attempts
 				// 2. Connection is actually closed (not just a temporary error)
 				const shouldReconnect =
-					reconnectAttempts < maxReconnectAttempts && readyState === EventSource.CLOSED;
+					reconnectAttempts < maxReconnectAttempts &&
+					readyState === EventSource.CLOSED;
 
 				if (shouldReconnect) {
 					// Close current connection
@@ -142,7 +143,10 @@ export function setupSSEWithReconnect(
 
 					reconnectAttempts++;
 					// Exponential backoff with jitter: base delay * 2^(attempt-1) + random(0-1000ms)
-					const baseDelay = Math.min(2 ** (reconnectAttempts - 1) * 1000, 10000);
+					const baseDelay = Math.min(
+						2 ** (reconnectAttempts - 1) * 1000,
+						10000,
+					);
 					const jitter = Math.floor(Math.random() * 1000);
 					const delay = baseDelay + jitter;
 					reconnectDelays.push(delay);
@@ -195,4 +199,3 @@ export function setupSSEWithReconnect(
 
 	return { eventSource, cleanup };
 }
-

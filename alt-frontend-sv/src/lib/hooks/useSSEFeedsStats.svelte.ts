@@ -1,11 +1,14 @@
 import { onMount } from "svelte";
-import { setupSSEWithReconnect } from "$lib/api/sse";
 import type { UnsummarizedFeedStatsSummary } from "$lib/api/sse";
+import { setupSSEWithReconnect } from "$lib/api/sse";
 
 // Type guard for validating numeric amounts
 const isValidAmount = (value: unknown): value is number => {
 	return (
-		typeof value === "number" && !isNaN(value) && value >= 0 && isFinite(value)
+		typeof value === "number" &&
+		!Number.isNaN(value) &&
+		value >= 0 &&
+		Number.isFinite(value)
 	);
 };
 
@@ -163,7 +166,9 @@ export function useSSEFeedsStats() {
 	const derivedIsConnected = $derived(isConnected);
 	const derivedRetryCount = $derived(retryCount);
 	const derivedFeedAmount = $derived(feedAmount);
-	const derivedUnsummarizedArticlesAmount = $derived(unsummarizedArticlesAmount);
+	const derivedUnsummarizedArticlesAmount = $derived(
+		unsummarizedArticlesAmount,
+	);
 	const derivedTotalArticlesAmount = $derived(totalArticlesAmount);
 
 	return {
@@ -184,4 +189,3 @@ export function useSSEFeedsStats() {
 		},
 	};
 }
-

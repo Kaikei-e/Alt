@@ -44,8 +44,7 @@ async function getBackendToken(cookie: string | null): Promise<string | null> {
 		}
 		return token;
 	} catch (error) {
-		const errorMessage =
-			error instanceof Error ? error.message : String(error);
+		const errorMessage = error instanceof Error ? error.message : String(error);
 		console.error("Failed to get backend token:", {
 			message: errorMessage,
 			authHubUrl: AUTH_HUB_URL,
@@ -81,12 +80,15 @@ async function callBackendAPI<T>(
 
 		if (!response.ok) {
 			const errorText = await response.text().catch(() => "");
-			console.error(`API call failed: ${response.status} ${response.statusText}`, {
-				url,
-				status: response.status,
-				statusText: response.statusText,
-				errorBody: errorText.substring(0, 200),
-			});
+			console.error(
+				`API call failed: ${response.status} ${response.statusText}`,
+				{
+					url,
+					status: response.status,
+					statusText: response.statusText,
+					errorBody: errorText.substring(0, 200),
+				},
+			);
 			throw new Error(
 				`API call failed: ${response.status} ${response.statusText}`,
 			);
@@ -97,8 +99,7 @@ async function callBackendAPI<T>(
 		if (error instanceof Error && error.message.includes("API call failed")) {
 			throw error;
 		}
-		const errorMessage =
-			error instanceof Error ? error.message : String(error);
+		const errorMessage = error instanceof Error ? error.message : String(error);
 		console.error("Network error calling backend API:", {
 			url,
 			message: errorMessage,
