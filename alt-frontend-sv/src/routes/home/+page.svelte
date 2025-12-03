@@ -1,29 +1,85 @@
 <script lang="ts">
-import { BookOpen, FileText, Layers, Rss } from "@lucide/svelte";
+	import { BookOpen, FileText, Layers, Rss } from "@lucide/svelte";
+	import { useSSEFeedsStats } from "$lib/hooks/useSSEFeedsStats";
 
-interface StatsData {
-	feed_amount: { amount: number };
-	total_articles: { amount: number };
-	unsummarized_articles: { amount: number };
-}
+	interface StatsData {
+		feed_amount: { amount: number };
+		total_articles: { amount: number };
+		unsummarized_articles: { amount: number };
+	}
 
-interface PageData {
-	stats: StatsData;
-	unreadCount: number;
-	error?: string;
-}
+	interface PageData {
+		stats: StatsData;
+		unreadCount: number;
+		error?: string;
+	}
 
-interface Props {
-	data: PageData;
-}
+	interface Props {
+		data: PageData;
+	}
 
-const { data }: Props = $props();
+	const { data }: Props = $props();
+
+	// SSE接続を確立
+	const sseStats = useSSEFeedsStats();
+
+	// 初期値としてサーバーサイドデータを使用、その後SSEで更新
+	let feedAmount = $state(0);
+	let totalArticlesAmount = $state(0);
+	let unsummarizedArticlesAmount = $state(0);
+
+	// SSEデータとサーバーデータを監視して更新
+	$effect(() => {
+		// SSEデータが利用可能な場合はそれを使用、そうでない場合はサーバーデータを使用
+		feedAmount =
+			sseStats.feedAmount > 0
+				? sseStats.feedAmount
+				: data.stats.feed_amount.amount;
+		totalArticlesAmount =
+			sseStats.totalArticlesAmount > 0
+				? sseStats.totalArticlesAmount
+				: data.stats.total_articles.amount;
+		unsummarizedArticlesAmount =
+			sseStats.unsummarizedArticlesAmount > 0
+				? sseStats.unsummarizedArticlesAmount
+				: data.stats.unsummarized_articles.amount;
+	});
 </script>
 
 <div class="p-8 max-w-4xl mx-auto" data-style="alt-paper">
 	<h1 class="text-3xl font-bold mb-6" style="color: var(--text-primary);">
 		Statistics
 	</h1>
+
+	<!-- 接続状態インジケータ -->
+	<div
+		class="p-4 border rounded-lg shadow-sm mb-6"
+		style="
+			background: var(--surface-bg);
+			border-color: var(--surface-border);
+			box-shadow: var(--shadow-sm);
+		"
+	>
+		<div class="flex items-center gap-2">
+			<div
+				class="w-2 h-2 rounded-full transition-colors"
+				style="
+					background-color: {sseStats.isConnected
+						? 'var(--alt-success)'
+						: sseStats.retryCount > 0
+							? 'var(--alt-warning)'
+							: 'var(--alt-error)'};
+				"
+			></div>
+			<p class="text-sm" style="color: var(--text-primary);">
+				{sseStats.isConnected
+					? "Connected"
+					: sseStats.retryCount > 0
+						? `Reconnecting (${sseStats.retryCount}/3)`
+						: "Disconnected"}
+			</p>
+		</div>
+	</div>
 
 	{#if data.error}
 		<div
@@ -56,7 +112,7 @@ const { data }: Props = $props();
 				class="text-3xl font-bold mb-2"
 				style="color: var(--text-primary);"
 			>
-				{data.stats.feed_amount.amount.toLocaleString()}
+				{feedAmount.toLocaleString()}
 			</p>
 			<p class="text-sm" style="color: var(--text-muted);">
 				RSS feeds being monitored
@@ -85,7 +141,7 @@ const { data }: Props = $props();
 				class="text-3xl font-bold mb-2"
 				style="color: var(--text-primary);"
 			>
-				{data.stats.total_articles.amount.toLocaleString()}
+				{totalArticlesAmount.toLocaleString()}
 			</p>
 			<p class="text-sm" style="color: var(--text-muted);">
 				All articles across RSS feeds
@@ -114,7 +170,7 @@ const { data }: Props = $props();
 				class="text-3xl font-bold mb-2"
 				style="color: var(--text-primary);"
 			>
-				{data.stats.unsummarized_articles.amount.toLocaleString()}
+				{unsummarizedArticlesAmount.toLocaleString()}
 			</p>
 			<p class="text-sm" style="color: var(--text-muted);">
 				Articles waiting for AI summarization
