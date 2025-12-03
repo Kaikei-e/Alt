@@ -1,10 +1,14 @@
 <script lang="ts">
 import { Button } from "$lib/components/ui/button";
 import { auth } from "$lib/stores/auth.svelte";
+import logo from "$lib/assets/favicon.svg";
 </script>
 
 <div class="p-8 max-w-2xl mx-auto">
-  <h1 class="text-3xl font-bold mb-6">Alt: The AI Powered RSS Reader</h1>
+  <div class="flex flex-col items-center mb-6">
+    <img src={logo} alt="Alt Logo" class="w-24 h-24 mb-4" />
+    <h1 class="text-3xl font-bold">Alt: The AI Powered RSS Reader</h1>
+  </div>
 
   <div class="p-6 border rounded-lg shadow-sm bg-card text-card-foreground">
     <h2 class="text-xl font-semibold mb-4">Authentication Status</h2>

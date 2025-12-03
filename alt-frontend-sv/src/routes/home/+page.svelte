@@ -28,6 +28,11 @@
 	let totalArticlesAmount = $state(0);
 	let unsummarizedArticlesAmount = $state(0);
 
+	// Debug: Monitor isConnected changes
+	$effect(() => {
+		console.log(`[Page] sseStats.isConnected changed:`, sseStats.isConnected);
+	});
+
 	// SSEデータとサーバーデータを監視して更新
 	$effect(() => {
 		// SSEデータが利用可能な場合はそれを使用、そうでない場合はサーバーデータを使用
