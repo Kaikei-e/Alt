@@ -19,27 +19,27 @@ export const load: PageServerLoad = async ({ url, locals }) => {
   const flow = url.searchParams.get("flow");
   const returnTo = url.searchParams.get("return_to");
 
-  // If no flow, initiate registration flow
+  // If no flow, initiate login flow
   if (!flow) {
-    // return_toが指定されていない場合は、現在の登録ページへのリダイレクトを設定
+    // return_toが指定されていない場合は、現在のログインページへのリダイレクトを設定
     const returnUrl =
-      returnTo || `${appOrigin}${basePath}/register`;
-    const initUrl = new URL(`${kratosPublicUrl}/self-service/registration/browser`);
+      returnTo || `${appOrigin}${basePath}/login`;
+    const initUrl = new URL(`${kratosPublicUrl}/self-service/login/browser`);
     initUrl.searchParams.set("return_to", returnUrl);
     throw redirect(303, initUrl.toString());
   }
 
   // Fetch flow data
   try {
-    const { data: flowData } = await ory.getRegistrationFlow({ id: flow });
+    const { data: flowData } = await ory.getLoginFlow({ id: flow });
     return {
       flow: flowData,
     };
   } catch (error) {
     // If flow is invalid or expired, redirect to init
     const returnUrl =
-      returnTo || `${appOrigin}${basePath}/register`;
-    const initUrl = new URL(`${kratosPublicUrl}/self-service/registration/browser`);
+      returnTo || `${appOrigin}${basePath}/login`;
+    const initUrl = new URL(`${kratosPublicUrl}/self-service/login/browser`);
     initUrl.searchParams.set("return_to", returnUrl);
     throw redirect(303, initUrl.toString());
   }
