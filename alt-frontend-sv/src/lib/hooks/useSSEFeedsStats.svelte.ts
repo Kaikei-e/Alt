@@ -88,12 +88,6 @@ export function useSSEFeedsStats() {
 
 				isConnected = true;
 				retryCount = 0;
-				console.log(`[SSE] Data received, updating connection state`, {
-					lastDataReceived: now,
-					isConnected: true,
-					// Verify state after assignment
-					actualIsConnected: isConnected,
-				});
 			},
 			() => {
 				// Handle SSE connection error
@@ -111,20 +105,11 @@ export function useSSEFeedsStats() {
 				lastDataReceived = now;
 				isConnected = true;
 				retryCount = 0;
-				console.log(`[SSE] Connection opened successfully`, {
-					lastDataReceived: now,
-					isConnected: true,
-					// Verify state after assignment
-					actualIsConnected: isConnected,
-				});
 			},
 			() => {
 				// Handle heartbeat - update lastDataReceived to keep connection state healthy
 				const now = Date.now();
 				lastDataReceived = now;
-				console.log(`[SSE] Heartbeat received, updating lastDataReceived`, {
-					lastDataReceived: now,
-				});
 				// Don't change isConnected here - let health check handle it
 				// But update timestamp so health check knows connection is alive
 			},
@@ -153,44 +138,13 @@ export function useSSEFeedsStats() {
 			// 2. We've received data recently (within timeout)
 			const shouldBeConnected = isConnectionOpen && isReceivingData;
 
-			// Debug log every health check (use console.log for visibility)
-			console.log(`[SSE] Health check`, {
-				readyState: readyState === EventSource.OPEN ? "OPEN" : readyState === EventSource.CONNECTING ? "CONNECTING" : "CLOSED",
-				timeSinceLastData: `${timeSinceLastData}ms`,
-				isReceivingData,
-				isConnectionOpen,
-				shouldBeConnected,
-				currentIsConnected: isConnected,
-			});
-
-			// Log state changes for debugging
+			// Update connection state if it changed
 			if (isConnected !== shouldBeConnected) {
-				if (shouldBeConnected) {
-					console.log(`[SSE] Connection state: CONNECTED`, {
-						readyState: readyState === EventSource.OPEN ? "OPEN" : "CLOSED",
-						timeSinceLastData: `${timeSinceLastData}ms`,
-					});
-				} else {
-					console.warn(`[SSE] Connection state: DISCONNECTED`, {
-						readyState: readyState === EventSource.OPEN ? "OPEN" : "CLOSED",
-						timeSinceLastData: `${timeSinceLastData}ms`,
-						timeout: `${DATA_TIMEOUT_MS}ms`,
-					});
-				}
 				isConnected = shouldBeConnected;
-			}
-
-			// Warn if connection is open but we haven't received data in a while
-			if (isConnectionOpen && !isReceivingData && timeSinceLastData > DATA_TIMEOUT_MS) {
-				console.warn(`[SSE] Connection open but no data received`, {
-					timeSinceLastData: `${timeSinceLastData}ms`,
-					timeout: `${DATA_TIMEOUT_MS}ms`,
-				});
 			}
 		}, HEALTH_CHECK_INTERVAL_MS);
 
 		cleanupFn = () => {
-			console.log(`[SSE] Cleaning up useSSEFeedsStats`);
 			if (healthCheckInterval) {
 				clearInterval(healthCheckInterval);
 				healthCheckInterval = null;
@@ -202,11 +156,6 @@ export function useSSEFeedsStats() {
 		};
 
 		return cleanupFn;
-	});
-
-	// Debug: Log when isConnected changes
-	$effect(() => {
-		console.log(`[Hook] isConnected state changed:`, isConnected);
 	});
 
 	// Use $derived to ensure reactivity is preserved when returning from function

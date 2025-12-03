@@ -75,24 +75,11 @@ export function setupSSEWithReconnect(
 			}
 
 			const attemptStartTime = Date.now();
-			console.log(`[SSE] Attempting to connect (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts + 1})`, {
-				endpoint,
-				reconnectAttempts,
-			});
-
 			eventSource = new EventSource(endpoint);
 
 			eventSource.onopen = () => {
-				const connectionTime = Date.now() - attemptStartTime;
-				console.log(`[SSE] Connection opened`, {
-					endpoint,
-					connectionTime: `${connectionTime}ms`,
-					readyState: eventSource?.readyState,
-				});
-
 				// Reset reconnect attempts on successful open
 				if (reconnectAttempts > 0) {
-					console.log(`[SSE] Connection restored after ${reconnectAttempts} reconnection attempts`);
 					reconnectAttempts = 0;
 					reconnectDelays.length = 0; // Clear delay history
 				}
@@ -108,7 +95,6 @@ export function setupSSEWithReconnect(
 					if (event.data.trim().startsWith(":")) {
 						// Heartbeat received - update timestamp to indicate connection is alive
 						lastDataReceivedTime = Date.now();
-						console.debug(`[SSE] Heartbeat received`);
 						// Call heartbeat callback if provided
 						if (onHeartbeat) {
 							onHeartbeat();
@@ -122,11 +108,6 @@ export function setupSSEWithReconnect(
 						// Only reset attempts when we successfully receive and parse data
 						if (!hasReceivedData) {
 							hasReceivedData = true;
-							const timeToFirstData = Date.now() - connectionStartTime;
-							console.log(`[SSE] First data received`, {
-								endpoint,
-								timeToFirstData: `${timeToFirstData}ms`,
-							});
 						}
 						lastDataReceivedTime = Date.now();
 						reconnectAttempts = 0; // Reset only on successful data reception
@@ -143,19 +124,6 @@ export function setupSSEWithReconnect(
 
 			eventSource.onerror = (error) => {
 				const readyState = eventSource?.readyState ?? EventSource.CLOSED;
-				const states = ["CONNECTING", "OPEN", "CLOSED"];
-				const stateName = states[readyState] ?? "UNKNOWN";
-
-				console.warn(`[SSE] Connection error`, {
-					endpoint,
-					readyState: stateName,
-					reconnectAttempts,
-					maxReconnectAttempts,
-					hasReceivedData,
-					timeSinceLastData: lastDataReceivedTime
-						? `${Date.now() - lastDataReceivedTime}ms`
-						: "never",
-				});
 
 				if (onError) {
 					onError();
@@ -179,24 +147,13 @@ export function setupSSEWithReconnect(
 					const delay = baseDelay + jitter;
 					reconnectDelays.push(delay);
 
-					console.log(`[SSE] Scheduling reconnection`, {
-						endpoint,
-						attempt: reconnectAttempts + 1,
-						delay: `${delay}ms`,
-						delays: reconnectDelays,
-					});
-
 					reconnectTimeout = setTimeout(() => {
 						connect();
 					}, delay);
 				} else {
 					// Max attempts reached or connection not closed
 					if (reconnectAttempts >= maxReconnectAttempts) {
-						console.error(`[SSE] Max reconnection attempts reached`, {
-							endpoint,
-							attempts: reconnectAttempts,
-							delays: reconnectDelays,
-						});
+						console.error(`[SSE] Max reconnection attempts reached`);
 					}
 					eventSource?.close();
 				}
@@ -224,12 +181,6 @@ export function setupSSEWithReconnect(
 	};
 
 	const cleanup = () => {
-		console.log(`[SSE] Cleaning up connection`, {
-			endpoint,
-			reconnectAttempts,
-			hasReceivedData,
-		});
-
 		if (reconnectTimeout) {
 			clearTimeout(reconnectTimeout);
 			reconnectTimeout = null;
