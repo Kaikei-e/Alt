@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { UiNode } from "@ory/client";
 import { Button } from "$lib/components/ui/button";
 import {
 	Card,
@@ -16,20 +17,20 @@ const { data }: { data: PageData } = $props();
 const flow = $derived(data.flow);
 
 // Helper to find node by name
-function getNode(name: string) {
+function getNode(name: string): UiNode | undefined {
 	return flow.ui.nodes.find(
 		(n) => (n.attributes as { name?: string }).name === name,
 	);
 }
 
 // Helper to get value from node
-function getValue(node: any) {
-	return node?.attributes?.value || "";
+function getValue(node: UiNode | undefined): string {
+	return (node?.attributes as { value?: string })?.value || "";
 }
 
 // Helper to get error message
-function getError(node: any) {
-	return node?.messages?.map((m: any) => m.text).join(" ");
+function getError(node: UiNode | undefined): string {
+	return node?.messages?.map((m) => m.text).join(" ") || "";
 }
 </script>
 

@@ -34,7 +34,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		return {
 			flow: flowData,
 		};
-	} catch (error) {
+	} catch (_error) {
 		// If flow is invalid or expired, redirect to init
 		const returnUrl = returnTo || `${appOrigin}${basePath}/login`;
 		const initUrl = new URL(`${kratosPublicUrl}/self-service/login/browser`);
