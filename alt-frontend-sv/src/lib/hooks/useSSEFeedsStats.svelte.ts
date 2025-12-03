@@ -23,8 +23,9 @@ export function useSSEFeedsStats() {
 
 	onMount(() => {
 		// SSE endpoint configuration
-		const apiBaseUrl = import.meta.env.PUBLIC_API_BASE_URL || "http://localhost:9000";
-		const sseUrl = `${apiBaseUrl}/v1/sse/feeds/stats`;
+		// Use relative path to go through nginx proxy for proper SSE handling
+		// nginx has special configuration for /api/v1/sse/ with proxy_buffering off
+		const sseUrl = "/api/v1/sse/feeds/stats";
 
 		// Set initial disconnected state
 		isConnected = false;
