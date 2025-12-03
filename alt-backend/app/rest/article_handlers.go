@@ -113,7 +113,7 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 		}
 
 		// Ensure UTF-8 JSON and disallow MIME sniffing
-		c.Response().Header().Set(echo.HeaderContentType, echo.MIMEApplicationJSONCharsetUTF8)
+		c.Response().Header().Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		c.Response().Header().Set("X-Content-Type-Options", "nosniff")
 
 		response := map[string]string{
