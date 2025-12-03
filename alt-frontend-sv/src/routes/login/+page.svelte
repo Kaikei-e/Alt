@@ -1,34 +1,36 @@
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import { Label } from "$lib/components/ui/label";
-  import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-  } from "$lib/components/ui/card";
-  import type { PageData } from "./$types";
+import { Button } from "$lib/components/ui/button";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardFooter,
+	CardHeader,
+	CardTitle,
+} from "$lib/components/ui/card";
+import { Input } from "$lib/components/ui/input";
+import { Label } from "$lib/components/ui/label";
+import type { PageData } from "./$types";
 
-  let { data }: { data: PageData } = $props();
-  let flow = $derived(data.flow);
+const { data }: { data: PageData } = $props();
+const flow = $derived(data.flow);
 
-  // Helper to find node by name
-  function getNode(name: string) {
-    return flow.ui.nodes.find((n) => (n.attributes as { name?: string }).name === name);
-  }
+// Helper to find node by name
+function getNode(name: string) {
+	return flow.ui.nodes.find(
+		(n) => (n.attributes as { name?: string }).name === name,
+	);
+}
 
-  // Helper to get value from node
-  function getValue(node: any) {
-    return node?.attributes?.value || "";
-  }
+// Helper to get value from node
+function getValue(node: any) {
+	return node?.attributes?.value || "";
+}
 
-  // Helper to get error message
-  function getError(node: any) {
-    return node?.messages?.map((m: any) => m.text).join(" ");
-  }
+// Helper to get error message
+function getError(node: any) {
+	return node?.messages?.map((m: any) => m.text).join(" ");
+}
 </script>
 
 <div class="flex items-center justify-center min-h-screen" style="background: var(--app-bg);">
