@@ -1,7 +1,7 @@
 <script lang="ts">
+import logo from "$lib/assets/favicon.svg";
 import { Button } from "$lib/components/ui/button";
 import { auth } from "$lib/stores/auth.svelte";
-import logo from "$lib/assets/favicon.svg";
 </script>
 
 <div class="p-8 max-w-2xl mx-auto">
