@@ -7,25 +7,25 @@ import { tv, type VariantProps } from "tailwind-variants";
 import type { WithElementRef } from "$lib/utils.js";
 
 export const buttonVariants = tv({
-	base: "focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium outline-none transition-all focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+	base: "focus-visible:outline-none inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-none text-base font-bold outline-none transition-all disabled:pointer-events-none disabled:opacity-60 aria-disabled:pointer-events-none aria-disabled:opacity-60 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 	variants: {
 		variant: {
 			default:
-				"bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
+				"bg-[var(--surface-bg)] text-[var(--text-primary)] border-2 border-[var(--alt-primary)] shadow-[var(--shadow-sm)] hover:bg-[var(--alt-primary)] hover:text-white hover:shadow-[var(--shadow-md)]",
 			destructive:
-				"bg-destructive shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 text-white",
+				"bg-[var(--surface-bg)] text-[#dc2626] border-2 border-[#dc2626] shadow-[var(--shadow-sm)] hover:bg-[#dc2626] hover:text-white hover:shadow-[var(--shadow-md)]",
 			outline:
-				"bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 border",
+				"bg-[var(--surface-bg)] text-[var(--text-primary)] border-2 border-[var(--surface-border)] shadow-[var(--shadow-sm)] hover:bg-[var(--surface-hover)] hover:border-[var(--alt-primary)]",
 			secondary:
-				"bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
+				"bg-[var(--surface-bg)] text-[var(--text-secondary)] border-2 border-[var(--alt-secondary)] shadow-[var(--shadow-sm)] hover:bg-[var(--alt-secondary)] hover:text-white",
 			ghost:
-				"hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
-			link: "text-primary underline-offset-4 hover:underline",
+				"bg-transparent text-[var(--text-primary)] border-2 border-transparent hover:bg-[var(--surface-hover)] hover:border-[var(--surface-border)]",
+			link: "text-[var(--alt-primary)] underline-offset-4 hover:underline border-0 bg-transparent shadow-none",
 		},
 		size: {
 			default: "h-9 px-4 py-2 has-[>svg]:px-3",
-			sm: "h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",
-			lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
+			sm: "h-8 gap-1.5 px-3 has-[>svg]:px-2.5 text-sm",
+			lg: "h-10 px-6 has-[>svg]:px-4 text-lg",
 			icon: "size-9",
 			"icon-sm": "size-8",
 			"icon-lg": "size-10",
