@@ -179,6 +179,8 @@ services:
       - PORT=4173
       - ORIGIN=http://localhost:4173
       - BODY_SIZE_LIMIT=Infinity
+      - KRATOS_INTERNAL_URL=${KRATOS_INTERNAL_URL:-http://kratos:4433}
+      - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
     ports:
       - "4173:4173"
     restart: always
@@ -947,18 +949,18 @@ services:
       - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
       - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
       - KRATOS_ADMIN_URL=${KRATOS_ADMIN_URL:-http://kratos-admin:4434/}
-      - KRATOS_CORS_ALLOWED_ORIGIN_1=${KRATOS_CORS_ALLOWED_ORIGIN_1:-http://localhost:3000}
+      - KRATOS_CORS_ALLOWED_ORIGIN_1=${KRATOS_CORS_ALLOWED_ORIGIN_1:-http://localhost:4173}
       - KRATOS_CORS_ALLOWED_ORIGIN_2=${KRATOS_CORS_ALLOWED_ORIGIN_2:-http://localhost}
-      - KRATOS_DEFAULT_BROWSER_RETURN_URL=${KRATOS_DEFAULT_BROWSER_RETURN_URL:-http://localhost:3000/}
-      - KRATOS_ALLOWED_RETURN_URL_1=${KRATOS_ALLOWED_RETURN_URL_1:-http://localhost:3000/}
-      - KRATOS_ALLOWED_RETURN_URL_2=${KRATOS_ALLOWED_RETURN_URL_2:-http://localhost:3000/home}
-      - KRATOS_ALLOWED_RETURN_URL_3=${KRATOS_ALLOWED_RETURN_URL_3:-http://localhost:3000/auth/login}
-      - KRATOS_LOGIN_UI_URL=${KRATOS_LOGIN_UI_URL:-http://localhost:3000/auth/login}
-      - KRATOS_REGISTRATION_UI_URL=${KRATOS_REGISTRATION_UI_URL:-http://localhost:3000/auth/register}
-      - KRATOS_ERROR_UI_URL=${KRATOS_ERROR_UI_URL:-http://localhost:3000/auth/error}
-      - KRATOS_SETTINGS_UI_URL=${KRATOS_SETTINGS_UI_URL:-http://localhost:3000/auth/settings}
-      - KRATOS_RECOVERY_UI_URL=${KRATOS_RECOVERY_UI_URL:-http://localhost:3000/auth/recovery}
-      - KRATOS_VERIFICATION_UI_URL=${KRATOS_VERIFICATION_UI_URL:-http://localhost:3000/auth/verification}
+      - KRATOS_DEFAULT_BROWSER_RETURN_URL=${KRATOS_DEFAULT_BROWSER_RETURN_URL:-http://localhost:4173/sv/}
+      - KRATOS_ALLOWED_RETURN_URL_1=${KRATOS_ALLOWED_RETURN_URL_1:-http://localhost:4173/sv/}
+      - KRATOS_ALLOWED_RETURN_URL_2=${KRATOS_ALLOWED_RETURN_URL_2:-http://localhost:4173/sv/home}
+      - KRATOS_ALLOWED_RETURN_URL_3=${KRATOS_ALLOWED_RETURN_URL_3:-http://localhost:4173/sv/login}
+      - KRATOS_LOGIN_UI_URL=${KRATOS_LOGIN_UI_URL:-http://localhost:4173/sv/login}
+      - KRATOS_REGISTRATION_UI_URL=${KRATOS_REGISTRATION_UI_URL:-http://localhost:4173/sv/register}
+      - KRATOS_ERROR_UI_URL=${KRATOS_ERROR_UI_URL:-http://localhost:4173/sv/error}
+      - KRATOS_SETTINGS_UI_URL=${KRATOS_SETTINGS_UI_URL:-http://localhost:4173/sv/settings}
+      - KRATOS_RECOVERY_UI_URL=${KRATOS_RECOVERY_UI_URL:-http://localhost:4173/sv/recovery}
+      - KRATOS_VERIFICATION_UI_URL=${KRATOS_VERIFICATION_UI_URL:-http://localhost:4173/sv/verification}
       - KRATOS_COOKIE_SECRET_FILE=/run/secrets/kratos_cookie_secret
       - KRATOS_CIPHER_SECRET_FILE=/run/secrets/kratos_cipher_secret
     secrets:
