@@ -40,12 +40,20 @@
 	},
 	"overrides": [
 		{
-			"includes": ["*.svelte"],
+			"includes": ["**/*.svelte"],
 			"linter": {
 				"rules": {
 					"correctness": {
 						"noUnusedImports": "off",
-						"noUnusedVariables": "off"
+						"noUnusedVariables": {
+							"level": "off",
+							"options": {
+								"ignoreRestSiblings": true
+							}
+						}
+					},
+					"style": {
+						"useConst": "off"
 					}
 				}
 			}
