@@ -11,7 +11,11 @@ export async function callClientAPI<T>(
 		throw new Error("This function can only be called from the client");
 	}
 
-	const url = `/api${endpoint}`;
+	// Use base path from config (matches svelte.config.js paths.base)
+	// For dynamic API paths, we need to use the base path directly
+	// since resolve() only works with static route paths
+	const base = "/sv";
+	const url = `${base}/api${endpoint}`;
 	try {
 		const response = await fetch(url, {
 			...options,
