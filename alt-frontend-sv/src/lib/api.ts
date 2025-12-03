@@ -130,3 +130,107 @@ export async function getTodayUnreadCount(
 		cookie,
 	);
 }
+
+/**
+ * カーソルベースのレスポンス型
+ */
+export interface CursorResponse<T> {
+	data: T[];
+	next_cursor: string | null;
+	has_more?: boolean;
+}
+
+/**
+ * カーソルベースでフィードを取得
+ */
+export async function getFeedsWithCursor(
+	cookie: string | null,
+	cursor?: string,
+	limit: number = 20,
+): Promise<CursorResponse<unknown>> {
+	const params = new URLSearchParams();
+	params.set("limit", limit.toString());
+	if (cursor) {
+		params.set("cursor", cursor);
+	}
+
+	return callBackendAPI<CursorResponse<unknown>>(
+		`/v1/feeds/fetch/cursor?${params.toString()}`,
+		cookie,
+	);
+}
+
+/**
+ * フィードを既読にする
+ */
+export async function updateFeedReadStatus(
+	cookie: string | null,
+	feedUrl: string,
+): Promise<void> {
+	const token = await getBackendToken(cookie);
+
+	const headers: HeadersInit = {
+		"Content-Type": "application/json",
+	};
+
+	if (token) {
+		headers["X-Alt-Backend-Token"] = token;
+	}
+
+	const url = `${BACKEND_BASE_URL}/v1/feeds/read`;
+	try {
+		const response = await fetch(url, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ feed_url: feedUrl }),
+			cache: "no-store",
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => "");
+			console.error(
+				`API call failed: ${response.status} ${response.statusText}`,
+				{
+					url,
+					status: response.status,
+					statusText: response.statusText,
+					errorBody: errorText.substring(0, 200),
+				},
+			);
+			throw new Error(
+				`API call failed: ${response.status} ${response.statusText}`,
+			);
+		}
+	} catch (error) {
+		if (error instanceof Error && error.message.includes("API call failed")) {
+			throw error;
+		}
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		console.error("Network error calling backend API:", {
+			url,
+			message: errorMessage,
+			backendBaseUrl: BACKEND_BASE_URL,
+		});
+		throw new Error(`Failed to connect to backend: ${errorMessage}`);
+	}
+}
+
+/**
+ * カーソルベースで既読フィードを取得
+ */
+export async function getReadFeedsWithCursor(
+	cookie: string | null,
+	cursor?: string,
+	limit: number = 32,
+): Promise<CursorResponse<unknown>> {
+	const params = new URLSearchParams();
+	params.set("limit", limit.toString());
+	if (cursor) {
+		params.set("cursor", cursor);
+	}
+
+	return callBackendAPI<CursorResponse<unknown>>(
+		`/v1/feeds/fetch/viewed/cursor?${params.toString()}`,
+		cookie,
+	);
+}
