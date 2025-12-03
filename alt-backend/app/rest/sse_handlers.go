@@ -17,12 +17,54 @@ func registerSSERoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg 
 
 func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		// Log SSE connection attempt for monitoring
+		origin := c.Request().Header.Get("Origin")
+		remoteAddr := c.RealIP()
+		logger.Logger.Info("SSE connection attempt",
+			"path", c.Path(),
+			"origin", origin,
+			"remote_addr", remoteAddr,
+		)
+
+		// Validate and set CORS headers - use same origins as routes.go
+		allowedOrigins := []string{
+			"http://localhost:3000",
+			"http://localhost:80",
+			"http://localhost:4173",
+			"https://curionoah.com",
+		}
+
+		// Check if origin is allowed
+		originAllowed := false
+		if origin != "" {
+			for _, allowed := range allowedOrigins {
+				if origin == allowed {
+					originAllowed = true
+					break
+				}
+			}
+		} else {
+			// If no origin header (same-origin request), allow it
+			originAllowed = true
+		}
+
+		if originAllowed && origin != "" {
+			c.Response().Header().Set("Access-Control-Allow-Origin", origin)
+			c.Response().Header().Set("Access-Control-Allow-Credentials", "true")
+		}
+
 		// Set SSE headers using Echo's response
 		c.Response().Header().Set("Content-Type", "text/event-stream")
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		c.Response().Header().Set("Connection", "keep-alive")
-		c.Response().Header().Set("Access-Control-Allow-Origin", "*")
-		c.Response().Header().Set("Access-Control-Allow-Headers", "Cache-Control")
+		c.Response().Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		c.Response().Header().Set("Access-Control-Allow-Headers", "Accept, Cache-Control, Cookie")
+		c.Response().Header().Set("Access-Control-Expose-Headers", "Content-Type, Cache-Control")
+
+		// Security headers
+		c.Response().Header().Set("X-Content-Type-Options", "nosniff")
+		c.Response().Header().Set("X-Frame-Options", "DENY")
+
 		// Disable nginx buffering for SSE (even though nginx config has proxy_buffering off)
 		c.Response().Header().Set("X-Accel-Buffering", "no")
 
@@ -76,6 +118,9 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 		heartbeatTicker := time.NewTicker(10 * time.Second)
 		defer heartbeatTicker.Stop()
 
+		// Track connection start time for monitoring
+		connectionStartTime := time.Now()
+
 		// Keep connection alive
 		for {
 			select {
@@ -83,7 +128,12 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 				// Send heartbeat comment to keep connection alive
 				_, err := c.Response().Write([]byte(": heartbeat\n\n"))
 				if err != nil {
-					logger.Logger.Info("Client disconnected during heartbeat", "error", err)
+					duration := time.Since(connectionStartTime)
+					logger.Logger.Info("Client disconnected during heartbeat",
+						"error", err,
+						"duration", duration,
+						"remote_addr", remoteAddr,
+					)
 					return nil
 				}
 				flusher.Flush()
@@ -124,7 +174,12 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 				// Write in SSE format
 				_, err = c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
 				if err != nil {
-					logger.Logger.Info("Client disconnected", "error", err)
+					duration := time.Since(connectionStartTime)
+					logger.Logger.Info("Client disconnected during data send",
+						"error", err,
+						"duration", duration,
+						"remote_addr", remoteAddr,
+					)
 					return nil
 				}
 
@@ -132,7 +187,11 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 				flusher.Flush()
 
 			case <-c.Request().Context().Done():
-				logger.Logger.Info("SSE connection closed by client")
+				duration := time.Since(connectionStartTime)
+				logger.Logger.Info("SSE connection closed by client",
+					"duration", duration,
+					"remote_addr", remoteAddr,
+				)
 				return nil
 			}
 		}
