@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { auth } from "$lib/stores/auth.svelte";
-  import { Button } from "$lib/components/ui/button";
+import { Button } from "$lib/components/ui/button";
+import { auth } from "$lib/stores/auth.svelte";
 </script>
 
 <div class="p-8 max-w-2xl mx-auto">
@@ -10,19 +10,22 @@
     <h2 class="text-xl font-semibold mb-4">Authentication Status</h2>
 
     {#if auth.isAuthenticated}
-      <div class="space-y-4">
+      <div class="space-y-6">
         <div
-          class="p-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-md"
+          class="p-6 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg border border-green-200 dark:border-green-800"
         >
-          <p class="font-medium">✅ Logged In</p>
-        </div>
-
-        <div class="grid grid-cols-[100px_1fr] gap-2 text-sm">
-          <span class="font-medium text-muted-foreground">Email:</span>
-          <span>{auth.user?.traits?.email || "Unknown"}</span>
-
-          <span class="font-medium text-muted-foreground">ID:</span>
-          <span class="font-mono text-xs">{auth.user?.id}</span>
+          <h3 class="text-2xl font-bold mb-2 text-primary">Welcome Back</h3>
+          <p class="text-lg text-primary mb-6">
+            Embark on a Journey of Discovery
+          </p>
+          <Button
+            href="/sv/home"
+            size="lg"
+            class="w-full sm:w-auto"
+            variant="secondary"
+          >
+            Explore Now →
+          </Button>
         </div>
 
         <div class="pt-4 border-t">

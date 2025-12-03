@@ -4,15 +4,15 @@ declare global {
 	namespace App {
 		// interface Error {}
 		interface Locals {
-			user: import('@ory/client').Identity | null;
-			session: import('@ory/client').Session | null;
+			user: import("@ory/client").Identity | null;
+			session: import("@ory/client").Session | null;
 		}
 		interface PageData {
-			user: import('@ory/client').Identity | null;
+			user: import("@ory/client").Identity | null;
 		}
 		// interface PageState {}
 		// interface Platform {}
 	}
 }
 
-export { };
+export {};
