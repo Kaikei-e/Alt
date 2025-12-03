@@ -99,6 +99,13 @@ export function useSSEFeedsStats() {
 				retryCount = 0;
 				console.log(`[SSE] Connection opened successfully`);
 			},
+			() => {
+				// Handle heartbeat - update lastDataReceived to keep connection state healthy
+				const now = Date.now();
+				lastDataReceived = now;
+				// Don't change isConnected here - let health check handle it
+				// But update timestamp so health check knows connection is alive
+			},
 		);
 
 		currentEventSource = es;

@@ -52,6 +52,7 @@ export function setupSSEWithReconnect(
 	onError?: () => void,
 	maxReconnectAttempts: number = 3,
 	onOpen?: () => void,
+	onHeartbeat?: () => void,
 ): { eventSource: EventSource | null; cleanup: () => void } {
 	if (!browser) {
 		return { eventSource: null, cleanup: () => {} };
@@ -103,8 +104,15 @@ export function setupSSEWithReconnect(
 
 			eventSource.onmessage = (event) => {
 				try {
-					// Ignore heartbeat comments
+					// Handle heartbeat comments - update lastDataReceivedTime but don't process as data
 					if (event.data.trim().startsWith(":")) {
+						// Heartbeat received - update timestamp to indicate connection is alive
+						lastDataReceivedTime = Date.now();
+						console.debug(`[SSE] Heartbeat received`);
+						// Call heartbeat callback if provided
+						if (onHeartbeat) {
+							onHeartbeat();
+						}
 						return;
 					}
 
