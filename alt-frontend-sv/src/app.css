@@ -1,0 +1,201 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+	:root {
+		--background: 0 0% 100%;
+		--foreground: 240 10% 3.9%;
+		--card: 0 0% 100%;
+		--card-foreground: 240 10% 3.9%;
+		--popover: 0 0% 100%;
+		--popover-foreground: 240 10% 3.9%;
+		--primary: 240 5.9% 10%;
+		--primary-foreground: 0 0% 98%;
+		--secondary: 240 4.8% 95.9%;
+		--secondary-foreground: 240 5.9% 10%;
+		--muted: 240 4.8% 95.9%;
+		--muted-foreground: 240 3.8% 46.1%;
+		--accent: 240 4.8% 95.9%;
+		--accent-foreground: 240 5.9% 10%;
+		--destructive: 0 72.22% 50.59%;
+		--destructive-foreground: 0 0% 98%;
+		--border: 240 5.9% 90%;
+		--input: 240 5.9% 90%;
+		--ring: 240 5.9% 10%;
+		--radius: 0.5rem;
+
+		/* --- Base Brand Colors (Vaporwave) --- */
+		--alt-pink: #ff006e;
+		--alt-purple: #8338ec;
+		--alt-blue: #3a86ff;
+
+		/* --- Base Brand Colors (Liquid-Beige) --- */
+		--alt-terracotta: #b85450;
+		--alt-sage: #7c9070;
+		--alt-sand: #d4a574;
+
+		/* --- Base Brand Colors (Alt-Paper) --- */
+		--alt-charcoal: #1a1a1a;
+		--alt-slate: #666666;
+		--alt-ash: #999999;
+
+		/* --- Swappable Theme Colors --- */
+		--alt-primary: #2f4f4f;
+		--alt-secondary: #696969;
+		--alt-tertiary: #808080;
+
+		--alt-success: #00ff00;
+		--alt-error: #ff0000;
+		--alt-warning: #ffff00;
+
+		/* --- Glass effect variables --- */
+		--alt-glass: rgba(255, 255, 255, 0.1);
+		--alt-glass-border: rgba(255, 255, 255, 0.2);
+		--alt-glass-hover: rgba(255, 255, 255, 0.15);
+		--alt-glass-blur: 20px;
+		--alt-glass-shadow: rgba(0, 0, 0, 0.1);
+
+		--app-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+		--accent-gradient: linear-gradient(
+			45deg,
+			var(--alt-primary),
+			var(--alt-secondary),
+			var(--alt-tertiary)
+		);
+	}
+
+	.dark {
+		--background: 240 10% 3.9%;
+		--foreground: 0 0% 98%;
+		--card: 240 10% 3.9%;
+		--card-foreground: 0 0% 98%;
+		--popover: 240 10% 3.9%;
+		--popover-foreground: 0 0% 98%;
+		--primary: 0 0% 98%;
+		--primary-foreground: 240 5.9% 10%;
+		--secondary: 240 3.7% 15.9%;
+		--secondary-foreground: 0 0% 98%;
+		--muted: 240 3.7% 15.9%;
+		--muted-foreground: 240 5% 64.9%;
+		--accent: 240 3.7% 15.9%;
+		--accent-foreground: 0 0% 98%;
+		--destructive: 0 62.8% 30.6%;
+		--destructive-foreground: 0 0% 98%;
+		--border: 240 3.7% 15.9%;
+		--input: 240 3.7% 15.9%;
+		--ring: 240 4.9% 83.9%;
+	}
+}
+
+@layer base {
+	* {
+		@apply border-border;
+	}
+	body {
+		@apply bg-background text-foreground;
+	}
+}
+
+/* ---------------------------------------------------------------------------
+   THEME VARIANTS
+   ---------------------------------------------------------------------------*/
+
+/* Vaporwave Theme (Neon Cyber) */
+[data-style="vaporwave"] {
+	--alt-primary: var(--alt-pink);
+	--alt-secondary: var(--alt-purple);
+	--alt-tertiary: var(--alt-blue);
+
+	--surface-bg: rgba(255, 255, 255, 0.1);
+	--surface-border: rgba(255, 255, 255, 0.2);
+	--surface-hover: rgba(255, 255, 255, 0.15);
+	--surface-blur: 20px;
+
+	--alt-glass: var(--surface-bg);
+	--alt-glass-border: var(--surface-border);
+	--alt-glass-hover: var(--surface-hover);
+	--alt-glass-blur: var(--surface-blur);
+	--alt-glass-shadow: rgba(0, 0, 0, 0.1);
+
+	--app-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+	--accent-gradient: linear-gradient(
+		45deg,
+		var(--alt-primary),
+		var(--alt-secondary),
+		var(--alt-tertiary)
+	);
+}
+
+/* Liquid-Beige Theme (Earthy Luxury) */
+[data-style="liquid-beige"] {
+	--alt-primary: var(--alt-terracotta);
+	--alt-secondary: var(--alt-sage);
+	--alt-tertiary: var(--alt-sand);
+
+	--surface-bg: rgba(255, 253, 250, 0.1);
+	--surface-border: rgba(139, 119, 101, 0.3);
+	--surface-hover: rgba(255, 253, 250, 0.6);
+	--surface-blur: 12px;
+
+	--alt-glass: var(--surface-bg);
+	--alt-glass-border: var(--surface-border);
+	--alt-glass-hover: var(--surface-hover);
+	--alt-glass-blur: var(--surface-blur);
+	--alt-glass-shadow: rgba(139, 119, 101, 0.15);
+
+	--app-bg: linear-gradient(
+		135deg,
+		#e8ded1 0%,
+		#dfd4c5 25%,
+		#d6c8b9 50%,
+		#cdbaa8 75%,
+		#c8b8a1 100%
+	);
+	--accent-gradient: linear-gradient(
+		135deg,
+		var(--alt-primary) 0%,
+		var(--alt-secondary) 50%,
+		var(--alt-tertiary) 100%
+	);
+}
+
+/* Alt-Paper Theme (Newspaper/Instapaper Style) */
+[data-style="alt-paper"] {
+	--alt-primary: #2f4f4f;
+	--alt-secondary: #696969;
+	--alt-tertiary: #808080;
+
+	--surface-bg: #dedede;
+	--surface-border: #e0e0e0;
+	--surface-hover: #f8f8f8;
+	--surface-blur: 0px;
+
+	--alt-glass: var(--surface-bg);
+	--alt-glass-border: var(--surface-border);
+	--alt-glass-hover: var(--surface-hover);
+	--alt-glass-blur: 0px;
+	--alt-glass-shadow: rgba(0, 0, 0, 0.08);
+
+	--app-bg: #ffffff;
+	--accent-gradient: linear-gradient(
+		135deg,
+		var(--alt-primary) 0%,
+		var(--alt-secondary) 50%,
+		var(--alt-tertiary) 100%
+	);
+}
+
+/* Utility Classes for Glassmorphism */
+.glass {
+	background: var(--alt-glass);
+	border: 1px solid var(--alt-glass-border);
+	backdrop-filter: blur(var(--alt-glass-blur)) saturate(120%);
+	-webkit-backdrop-filter: blur(var(--alt-glass-blur)) saturate(120%);
+	box-shadow: 0 4px 6px var(--alt-glass-shadow);
+	transition: all 0.2s ease;
+}
+
+.glass:hover {
+	background: var(--alt-glass-hover);
+}
