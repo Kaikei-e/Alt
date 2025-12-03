@@ -1,19 +1,19 @@
 <script lang="ts">
-	import { cn } from "$lib/utils.js";
-	import type { HTMLLabelAttributes } from "svelte/elements";
-	import type { WithElementRef } from "$lib/utils.js";
-	import type { Snippet } from "svelte";
+import type { Snippet } from "svelte";
+import type { HTMLLabelAttributes } from "svelte/elements";
+import type { WithElementRef } from "$lib/utils.js";
+import { cn } from "$lib/utils.js";
 
-	type LabelProps = WithElementRef<HTMLLabelAttributes> & {
-		children?: Snippet;
-	};
+type LabelProps = WithElementRef<HTMLLabelAttributes> & {
+	children?: Snippet;
+};
 
-	let {
-		class: className,
-		ref = $bindable(null),
-		children,
-		...restProps
-	}: LabelProps = $props();
+let {
+	class: className,
+	ref = $bindable(null),
+	children,
+	...restProps
+}: LabelProps = $props();
 </script>
 
 <label
