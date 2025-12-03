@@ -10,6 +10,16 @@ Complete reference for all environment variables used by Recap Worker.
 |----------|-------------|---------|
 | `RECAP_DB_DSN` | PostgreSQL connection string for recap-db | `postgresql://user:pass@localhost:5432/recap_db` |
 
+### Database Connection Pool
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RECAP_DB_MAX_CONNECTIONS` | `50` | Maximum number of connections in the pool. Lowered from 100 to support multiple worker instances (5 instances × 50 = 250, within DB limit) |
+| `RECAP_DB_MIN_CONNECTIONS` | `5` | Minimum number of connections to maintain in the pool |
+| `RECAP_DB_ACQUIRE_TIMEOUT_SECS` | `60` | Maximum time to wait when acquiring a connection from the pool (seconds) |
+| `RECAP_DB_IDLE_TIMEOUT_SECS` | `600` | Maximum time a connection can remain idle before being closed (seconds) |
+| `RECAP_DB_MAX_LIFETIME_SECS` | `1800` | Maximum lifetime of a connection before it is recycled (seconds) |
+
 ### External Services
 
 | Variable | Description | Example |
@@ -107,6 +117,13 @@ Complete reference for all environment variables used by Recap Worker.
 ```bash
 # Database
 RECAP_DB_DSN=postgresql://recap_user:recap_pass@localhost:5432/recap_db
+
+# Database connection pool (optional, defaults shown)
+RECAP_DB_MAX_CONNECTIONS=50
+RECAP_DB_MIN_CONNECTIONS=5
+RECAP_DB_ACQUIRE_TIMEOUT_SECS=60
+RECAP_DB_IDLE_TIMEOUT_SECS=600
+RECAP_DB_MAX_LIFETIME_SECS=1800
 
 # External services
 ALT_BACKEND_BASE_URL=http://alt-backend:9000
