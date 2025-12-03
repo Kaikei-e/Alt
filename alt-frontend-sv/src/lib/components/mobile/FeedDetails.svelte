@@ -160,224 +160,238 @@ const handleShowDetails = async () => {
 {/if}
 
 {#if isOpen}
-		<!-- Modal Backdrop -->
-		<div
-			class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-			style="
+	<!-- Modal Backdrop -->
+	<div
+		class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+		style="
 				background: rgba(0, 0, 0, 0.6);
 				backdrop-filter: blur(12px);
 				touch-action: manipulation;
 			"
-			data-testid="modal-backdrop"
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="summary-header"
-			aria-describedby="summary-content"
-			tabindex="-1"
-			onclick={(e) => {
-				if (e.target === e.currentTarget) {
-					handleHideDetails();
-				}
-			}}
-			onkeydown={(e) => {
-				if (e.key === "Escape") {
-					handleHideDetails();
-				}
-			}}
-			ontouchend={(e) => {
-				if (e.target === e.currentTarget) {
-					e.preventDefault();
-					handleHideDetails();
-				}
-			}}
-		>
-			<!-- Modal Content -->
-			<div
-				class="w-[95vw] max-w-[450px] h-[85vh] max-h-[700px] min-h-[400px] rounded-2xl border flex flex-col overflow-hidden"
-				style="
+		data-testid="modal-backdrop"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="summary-header"
+		aria-describedby="summary-content"
+		tabindex="-1"
+		onclick={(e) => {
+			if (e.target === e.currentTarget) {
+				handleHideDetails();
+			}
+		}}
+		onkeydown={(e) => {
+			if (e.key === "Escape") {
+				handleHideDetails();
+			}
+		}}
+		ontouchend={(e) => {
+			if (e.target === e.currentTarget) {
+				e.preventDefault();
+				handleHideDetails();
+			}
+		}}
+	>
+		<!-- Modal Content -->
+		<div
+			class="w-[95vw] max-w-[450px] h-[85vh] max-h-[700px] min-h-[400px] rounded-2xl border flex flex-col overflow-hidden"
+			style="
 					background: var(--app-bg);
 					box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
 					border-color: rgba(255, 255, 255, 0.1);
 					padding-bottom: env(safe-area-inset-bottom, 0px);
 				"
-				data-testid="modal-content"
-				role="region"
-				aria-label="Article summary content"
-			>
-				<!-- Header -->
-				<div
-					class="sticky top-0 z-[2] h-[60px] min-h-[60px] backdrop-blur-[20px] border-b px-4 py-3 flex items-center justify-center rounded-t-2xl"
-					style="
+			data-testid="modal-content"
+			role="region"
+			aria-label="Article summary content"
+		>
+			<!-- Header -->
+			<div
+				class="sticky top-0 z-[2] h-[60px] min-h-[60px] backdrop-blur-[20px] border-b px-4 py-3 flex items-center justify-center rounded-t-2xl"
+				style="
 						background: rgba(255, 255, 255, 0.05);
 						border-color: rgba(255, 255, 255, 0.1);
 					"
-					data-testid="summary-header"
-					id="summary-header"
-				>
-					<p
-						class="font-bold text-base"
-						style="
+				data-testid="summary-header"
+				id="summary-header"
+			>
+				<p
+					class="font-bold text-base"
+					style="
 							color: var(--text-primary);
 							text-shadow: 0 2px 4px var(--alt-glass-shadow);
 						"
-					>
-						Article Summary
-					</p>
-				</div>
-
-				<!-- Content -->
-				<div
-					class="flex-1 overflow-auto px-0 py-0 scroll-smooth overscroll-contain will-change-[scroll-position]"
-					data-testid="scrollable-content"
-					id="summary-content"
-					style="background: transparent;"
 				>
+					Article Summary
+				</p>
+			</div>
+
+			<!-- Content -->
+			<div
+				class="flex-1 overflow-auto px-0 py-0 scroll-smooth overscroll-contain will-change-[scroll-position]"
+				data-testid="scrollable-content"
+				id="summary-content"
+				style="background: transparent;"
+			>
+				{#if feedDetails || articleSummary}
+					<div class="h-full overflow-y-auto scrollable-content">
+						<RenderFeedDetails
+							feedDetails={feedDetails ?? articleSummary}
+							isLoading={false}
+							error={null}
+						/>
+					</div>
+				{:else}
 					<RenderFeedDetails
 						feedDetails={articleSummary || feedDetails}
-						isLoading={isLoading}
-						error={error}
+						{isLoading}
+						{error}
 					/>
+				{/if}
 
-					<!-- Display Japanese Summary -->
-					{#if summary}
-						<div
-							class="mt-4 px-4 py-4 rounded-xl border mx-4 mb-4"
-							style="
+				<!-- Display Japanese Summary -->
+				{#if summary}
+					<div
+						class="mt-4 px-4 py-4 rounded-xl border mx-4 mb-4"
+						style="
 								background: rgba(255, 255, 255, 0.03);
 								border-color: rgba(255, 255, 255, 0.1);
 							"
+					>
+						<p
+							class="text-xs font-bold mb-2 uppercase tracking-wider"
+							style="color: var(--text-secondary);"
 						>
-							<p
-								class="text-xs font-bold mb-2 uppercase tracking-wider"
-								style="color: var(--text-secondary);"
-							>
-								日本語要約 / Japanese Summary
-							</p>
-							<p
-								class="text-sm leading-relaxed whitespace-pre-wrap"
-								style="color: var(--text-primary);"
-							>
-								{summary}
-							</p>
-						</div>
-					{/if}
+							日本語要約 / Japanese Summary
+						</p>
+						<p
+							class="text-sm leading-relaxed whitespace-pre-wrap"
+							style="color: var(--text-primary);"
+						>
+							{summary}
+						</p>
+					</div>
+				{/if}
 
-					{#if summaryError}
-						<div
-							class="mt-4 px-4 py-4 rounded-xl border mx-4 mb-4"
-							style="
+				{#if summaryError}
+					<div
+						class="mt-4 px-4 py-4 rounded-xl border mx-4 mb-4"
+						style="
 								background: rgba(255, 99, 71, 0.12);
 								border-color: rgba(255, 255, 255, 0.1);
 							"
+					>
+						<p
+							class="text-xs font-bold mb-2 uppercase tracking-wider"
+							style="color: var(--text-secondary);"
 						>
-							<p
-								class="text-xs font-bold mb-2 uppercase tracking-wider"
-								style="color: var(--text-secondary);"
-							>
-								要約エラー / Summary Error
-							</p>
-							<p class="text-sm leading-relaxed" style="color: var(--text-primary);">
-								{summaryError}
-							</p>
-						</div>
-					{/if}
-				</div>
+							要約エラー / Summary Error
+						</p>
+						<p
+							class="text-sm leading-relaxed"
+							style="color: var(--text-primary);"
+						>
+							{summaryError}
+						</p>
+					</div>
+				{/if}
+			</div>
 
-				<!-- Footer -->
-				<div
-					class="sticky bottom-0 z-[2] backdrop-blur-[20px] border-t px-3 py-3 rounded-b-2xl flex items-center justify-between min-h-[60px] gap-2"
-					style="
+			<!-- Footer -->
+			<div
+				class="sticky bottom-0 z-[2] backdrop-blur-[20px] border-t px-3 py-3 rounded-b-2xl flex items-center justify-between min-h-[60px] gap-2"
+				style="
 						background: rgba(255, 255, 255, 0.05);
 						border-color: rgba(255, 255, 255, 0.1);
 					"
+			>
+				<Button
+					class="rounded-full p-2 min-h-[36px] min-w-[36px] text-sm font-bold border border-white/20 disabled:opacity-50"
+					style="background: var(--alt-primary); color: var(--text-primary);"
+					onclick={async () => {
+						if (!feedURL) return;
+						try {
+							isFavoriting = true;
+							await registerFavoriteFeedClient(feedURL);
+							isBookmarked = true;
+						} catch (e) {
+							console.error("Failed to favorite feed", e);
+						} finally {
+							isFavoriting = false;
+						}
+					}}
+					disabled={isFavoriting || isBookmarked}
+					title="Favorite"
 				>
-					<Button
-						class="rounded-full p-2 min-h-[36px] min-w-[36px] text-sm font-bold border border-white/20 disabled:opacity-50"
-						style="background: var(--alt-primary); color: var(--text-primary);"
-						onclick={async () => {
-							if (!feedURL) return;
-							try {
-								isFavoriting = true;
-								await registerFavoriteFeedClient(feedURL);
-								isBookmarked = true;
-							} catch (e) {
-								console.error("Failed to favorite feed", e);
-							} finally {
-								isFavoriting = false;
-							}
-						}}
-						disabled={isFavoriting || isBookmarked}
-						title="Favorite"
-					>
-						<Star size={16} />
-					</Button>
-					<Button
-						class="rounded-full px-3 min-h-[36px] text-xs font-bold border border-white/20 disabled:opacity-50"
-						style="background: var(--alt-primary); color: var(--text-primary);"
-						onclick={async () => {
-							if (!feedURL) return;
-							try {
-								isArchiving = true;
-								await archiveContentClient(feedURL, feedTitle);
-								isArchived = true;
-							} catch (e) {
-								console.error("Error archiving feed:", e);
-							} finally {
-								isArchiving = false;
-							}
-						}}
-						disabled={isArchiving || isArchived}
-						title="Archive"
-					>
-						<Archive size={14} style="margin-right: 4px;" />
-						{isArchiving ? "..." : isArchived ? "✓" : "Archive"}
-					</Button>
-					<Button
-						class="rounded-full px-3 min-h-[36px] text-xs font-bold border border-white/20 disabled:opacity-50"
-						style="background: var(--alt-secondary); color: var(--text-primary);"
-						onclick={async () => {
-							if (!feedURL) return;
-							isSummarizing = true;
-							summaryError = null;
-							try {
-								const result = await summarizeArticleClient(feedURL);
-								const trimmedSummary = result.summary?.trim();
+					<Star size={16} />
+				</Button>
+				<Button
+					class="rounded-full px-3 min-h-[36px] text-xs font-bold border border-white/20 disabled:opacity-50"
+					style="background: var(--alt-primary); color: var(--text-primary);"
+					onclick={async () => {
+						if (!feedURL) return;
+						try {
+							isArchiving = true;
+							await archiveContentClient(feedURL, feedTitle);
+							isArchived = true;
+						} catch (e) {
+							console.error("Error archiving feed:", e);
+						} finally {
+							isArchiving = false;
+						}
+					}}
+					disabled={isArchiving || isArchived}
+					title="Archive"
+				>
+					<Archive size={14} style="margin-right: 4px;" />
+					{isArchiving ? "..." : isArchived ? "✓" : "Archive"}
+				</Button>
+				<Button
+					class="rounded-full px-3 min-h-[36px] text-xs font-bold border border-white/20 disabled:opacity-50"
+					style="background: var(--alt-secondary); color: var(--text-primary);"
+					onclick={async () => {
+						if (!feedURL) return;
+						isSummarizing = true;
+						summaryError = null;
+						try {
+							const result = await summarizeArticleClient(feedURL);
+							const trimmedSummary = result.summary?.trim();
 
-								if (trimmedSummary) {
-									summary = trimmedSummary;
-									summaryError = null;
-								} else {
-									summaryError = "要約を取得できませんでした。";
-								}
-							} catch (e) {
-								console.error("Failed to summarize article", e);
-								summaryError = "要約の生成に失敗しました。もう一度お試しください。";
-							} finally {
-								isSummarizing = false;
+							if (trimmedSummary) {
+								summary = trimmedSummary;
+								summaryError = null;
+							} else {
+								summaryError = "要約を取得できませんでした。";
 							}
-						}}
-						disabled={isSummarizing}
-						title="Summarize to Japanese"
-					>
-						{isSummarizing ? "要約中..." : "要約"}
-					</Button>
-					<Button
-						class="rounded-full p-2.5 min-h-[36px] min-w-[36px] text-base font-bold border border-white/20 transition-all duration-200"
-						style="
+						} catch (e) {
+							console.error("Failed to summarize article", e);
+							summaryError =
+								"要約の生成に失敗しました。もう一度お試しください。";
+						} finally {
+							isSummarizing = false;
+						}
+					}}
+					disabled={isSummarizing}
+					title="Summarize to Japanese"
+				>
+					{isSummarizing ? "要約中..." : "要約"}
+				</Button>
+				<Button
+					class="rounded-full p-2.5 min-h-[36px] min-w-[36px] text-base font-bold border border-white/20 transition-all duration-200"
+					style="
 							background: var(--accent-gradient);
 							color: var(--text-primary);
 							box-shadow: var(--btn-shadow);
 							border-color: var(--alt-glass-border);
 						"
-						onclick={handleHideDetails}
-						data-testid="hide-details-button-{uniqueId}"
-					>
-						<X size={16} />
-					</Button>
-				</div>
+					onclick={handleHideDetails}
+					data-testid="hide-details-button-{uniqueId}"
+				>
+					<X size={16} />
+				</Button>
 			</div>
 		</div>
-	{/if}
+	</div>
+{/if}
 
 <style>
 	:global(.scrollable-content::-webkit-scrollbar) {
@@ -398,4 +412,3 @@ const handleShowDetails = async () => {
 		background: rgba(255, 255, 255, 0.3);
 	}
 </style>
-

@@ -17,24 +17,15 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 </script>
 
 {#if isLoading}
-	<p
-		class="text-center py-8 italic"
-		style="color: var(--text-secondary);"
-	>
+	<p class="text-center py-8 italic" style="color: var(--text-secondary);">
 		Loading summary...
 	</p>
 {:else if error}
-	<p
-		class="text-center py-8 italic"
-		style="color: var(--text-secondary);"
-	>
+	<p class="text-center py-8 italic" style="color: var(--text-secondary);">
 		{error}
 	</p>
 {:else if !feedDetails}
-	<p
-		class="text-center py-8 italic"
-		style="color: var(--text-secondary);"
-	>
+	<p class="text-center py-8 italic" style="color: var(--text-secondary);">
 		No summary available for this article
 	</p>
 {:else if "matched_articles" in feedDetails && feedDetails.matched_articles?.length > 0}
@@ -56,7 +47,10 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 				{article.title}
 			</h2>
 
-			<div class="flex items-center gap-3 text-base" style="color: var(--text-secondary);">
+			<div
+				class="flex items-center gap-3 text-base"
+				style="color: var(--text-secondary);"
+			>
 				{#if article.author}
 					<p>By {article.author}</p>
 				{/if}
@@ -105,10 +99,7 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 		</div>
 	</div>
 {:else}
-	<p
-		class="text-center py-8 italic"
-		style="color: var(--text-secondary);"
-	>
+	<p class="text-center py-8 italic" style="color: var(--text-secondary);">
 		No summary available for this article
 	</p>
 {/if}
@@ -238,4 +229,3 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 		background: rgba(255, 255, 255, 0.3);
 	}
 </style>
-
