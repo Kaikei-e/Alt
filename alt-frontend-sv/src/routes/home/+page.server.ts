@@ -33,8 +33,7 @@ export const load: ServerLoad = async ({ request }) => {
 		};
 	} catch (error) {
 		// エラーの詳細をログに記録
-		const errorMessage =
-			error instanceof Error ? error.message : String(error);
+		const errorMessage = error instanceof Error ? error.message : String(error);
 		const errorStack = error instanceof Error ? error.stack : undefined;
 		console.error("Failed to load stats:", {
 			message: errorMessage,

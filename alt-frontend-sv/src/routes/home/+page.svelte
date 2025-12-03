@@ -1,49 +1,49 @@
 <script lang="ts">
-	import { BookOpen, FileText, Layers, Rss } from "@lucide/svelte";
-	import { useSSEFeedsStats } from "$lib/hooks/useSSEFeedsStats.svelte";
+import { BookOpen, FileText, Layers, Rss } from "@lucide/svelte";
+import { useSSEFeedsStats } from "$lib/hooks/useSSEFeedsStats.svelte";
 
-	interface StatsData {
-		feed_amount: { amount: number };
-		total_articles: { amount: number };
-		unsummarized_articles: { amount: number };
-	}
+interface StatsData {
+	feed_amount: { amount: number };
+	total_articles: { amount: number };
+	unsummarized_articles: { amount: number };
+}
 
-	interface PageData {
-		stats: StatsData;
-		unreadCount: number;
-		error?: string;
-	}
+interface PageData {
+	stats: StatsData;
+	unreadCount: number;
+	error?: string;
+}
 
-	interface Props {
-		data: PageData;
-	}
+interface Props {
+	data: PageData;
+}
 
-	const { data }: Props = $props();
+const { data }: Props = $props();
 
-	// SSE接続を確立
-	const sseStats = useSSEFeedsStats();
+// SSE接続を確立
+const sseStats = useSSEFeedsStats();
 
-	// 初期値としてサーバーサイドデータを使用、その後SSEで更新
-	let feedAmount = $state(0);
-	let totalArticlesAmount = $state(0);
-	let unsummarizedArticlesAmount = $state(0);
+// 初期値としてサーバーサイドデータを使用、その後SSEで更新
+let feedAmount = $state(0);
+let totalArticlesAmount = $state(0);
+let unsummarizedArticlesAmount = $state(0);
 
-	// SSEデータとサーバーデータを監視して更新
-	$effect(() => {
-		// SSEデータが利用可能な場合はそれを使用、そうでない場合はサーバーデータを使用
-		feedAmount =
-			sseStats.feedAmount > 0
-				? sseStats.feedAmount
-				: data.stats.feed_amount.amount;
-		totalArticlesAmount =
-			sseStats.totalArticlesAmount > 0
-				? sseStats.totalArticlesAmount
-				: data.stats.total_articles.amount;
-		unsummarizedArticlesAmount =
-			sseStats.unsummarizedArticlesAmount > 0
-				? sseStats.unsummarizedArticlesAmount
-				: data.stats.unsummarized_articles.amount;
-	});
+// SSEデータとサーバーデータを監視して更新
+$effect(() => {
+	// SSEデータが利用可能な場合はそれを使用、そうでない場合はサーバーデータを使用
+	feedAmount =
+		sseStats.feedAmount > 0
+			? sseStats.feedAmount
+			: data.stats.feed_amount.amount;
+	totalArticlesAmount =
+		sseStats.totalArticlesAmount > 0
+			? sseStats.totalArticlesAmount
+			: data.stats.total_articles.amount;
+	unsummarizedArticlesAmount =
+		sseStats.unsummarizedArticlesAmount > 0
+			? sseStats.unsummarizedArticlesAmount
+			: data.stats.unsummarized_articles.amount;
+});
 </script>
 
 <div class="p-8 max-w-4xl mx-auto" data-style="alt-paper">
