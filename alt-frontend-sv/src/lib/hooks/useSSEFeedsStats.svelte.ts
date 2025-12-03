@@ -20,8 +20,16 @@ export function useSSEFeedsStats() {
 	// Connection health check
 	let healthCheckInterval: ReturnType<typeof setInterval> | null = null;
 	let currentEventSource: EventSource | null = null;
+	let cleanupFn: (() => void) | null = null;
+	let isInitialized = false;
 
 	onMount(() => {
+		// Prevent multiple initializations
+		if (isInitialized) {
+			console.warn(`[SSE] useSSEFeedsStats already initialized, skipping`);
+			return;
+		}
+		isInitialized = true;
 		// SSE endpoint configuration
 		// Use relative path to go through nginx proxy for proper SSE handling
 		// nginx has special configuration for /api/v1/sse/ with proxy_buffering off
@@ -80,6 +88,12 @@ export function useSSEFeedsStats() {
 
 				isConnected = true;
 				retryCount = 0;
+				console.log(`[SSE] Data received, updating connection state`, {
+					lastDataReceived: now,
+					isConnected: true,
+					// Verify state after assignment
+					actualIsConnected: isConnected,
+				});
 			},
 			() => {
 				// Handle SSE connection error
@@ -97,12 +111,20 @@ export function useSSEFeedsStats() {
 				lastDataReceived = now;
 				isConnected = true;
 				retryCount = 0;
-				console.log(`[SSE] Connection opened successfully`);
+				console.log(`[SSE] Connection opened successfully`, {
+					lastDataReceived: now,
+					isConnected: true,
+					// Verify state after assignment
+					actualIsConnected: isConnected,
+				});
 			},
 			() => {
 				// Handle heartbeat - update lastDataReceived to keep connection state healthy
 				const now = Date.now();
 				lastDataReceived = now;
+				console.log(`[SSE] Heartbeat received, updating lastDataReceived`, {
+					lastDataReceived: now,
+				});
 				// Don't change isConnected here - let health check handle it
 				// But update timestamp so health check knows connection is alive
 			},
@@ -131,6 +153,16 @@ export function useSSEFeedsStats() {
 			// 2. We've received data recently (within timeout)
 			const shouldBeConnected = isConnectionOpen && isReceivingData;
 
+			// Debug log every health check (use console.log for visibility)
+			console.log(`[SSE] Health check`, {
+				readyState: readyState === EventSource.OPEN ? "OPEN" : readyState === EventSource.CONNECTING ? "CONNECTING" : "CLOSED",
+				timeSinceLastData: `${timeSinceLastData}ms`,
+				isReceivingData,
+				isConnectionOpen,
+				shouldBeConnected,
+				currentIsConnected: isConnected,
+			});
+
 			// Log state changes for debugging
 			if (isConnected !== shouldBeConnected) {
 				if (shouldBeConnected) {
@@ -157,20 +189,50 @@ export function useSSEFeedsStats() {
 			}
 		}, HEALTH_CHECK_INTERVAL_MS);
 
-		return () => {
+		cleanupFn = () => {
+			console.log(`[SSE] Cleaning up useSSEFeedsStats`);
 			if (healthCheckInterval) {
 				clearInterval(healthCheckInterval);
+				healthCheckInterval = null;
 			}
-			cleanup();
+			if (cleanup) {
+				cleanup();
+			}
+			isInitialized = false;
 		};
+
+		return cleanupFn;
 	});
 
+	// Debug: Log when isConnected changes
+	$effect(() => {
+		console.log(`[Hook] isConnected state changed:`, isConnected);
+	});
+
+	// Use $derived to ensure reactivity is preserved when returning from function
+	// This ensures that changes to isConnected are tracked by consumers
+	const derivedIsConnected = $derived(isConnected);
+	const derivedRetryCount = $derived(retryCount);
+	const derivedFeedAmount = $derived(feedAmount);
+	const derivedUnsummarizedArticlesAmount = $derived(unsummarizedArticlesAmount);
+	const derivedTotalArticlesAmount = $derived(totalArticlesAmount);
+
 	return {
-		feedAmount,
-		unsummarizedArticlesAmount,
-		totalArticlesAmount,
-		isConnected,
-		retryCount,
+		get feedAmount() {
+			return derivedFeedAmount;
+		},
+		get unsummarizedArticlesAmount() {
+			return derivedUnsummarizedArticlesAmount;
+		},
+		get totalArticlesAmount() {
+			return derivedTotalArticlesAmount;
+		},
+		get isConnected() {
+			return derivedIsConnected;
+		},
+		get retryCount() {
+			return derivedRetryCount;
+		},
 	};
 }
 
