@@ -17,7 +17,9 @@ export interface UnreadCount {
 /**
  * auth-hubからバックエンドトークンを取得
  */
-async function getBackendToken(cookie: string | null): Promise<string | null> {
+export async function getBackendToken(
+	cookie: string | null,
+): Promise<string | null> {
 	if (!cookie) {
 		console.warn("No cookie provided for backend token");
 		return null;
