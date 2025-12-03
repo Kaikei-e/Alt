@@ -56,7 +56,14 @@ onMount(() => {
 			}
 			readFeeds = readFeedLinks;
 		} catch (err) {
-			console.error("Failed to initialize read feeds:", err);
+			// Log error but don't crash the app - read feeds initialization is optional
+			const errorMessage = err instanceof Error ? err.message : String(err);
+			console.error("Failed to initialize read feeds:", {
+				error: errorMessage,
+				message: "This is non-critical - feeds will still load, but read status may not be accurate",
+			});
+			// Set empty set to prevent further errors
+			readFeeds = new Set();
 		}
 	};
 
