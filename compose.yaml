@@ -170,6 +170,35 @@ services:
       start_period: 30s
     tty: true
 
+  alt-frontend-sv:
+    <<: *shared-env-file
+    build:
+      context: ./alt-frontend-sv
+      dockerfile: Dockerfile
+    environment:
+      - PORT=4173
+      - ORIGIN=http://localhost:4173
+      - BODY_SIZE_LIMIT=Infinity
+    ports:
+      - "4173:4173"
+    restart: always
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    tty: true
+    labels:
+      - rask.group=alt-frontend-sv
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   alt-backend:
     <<: *shared-env-file
     build:
