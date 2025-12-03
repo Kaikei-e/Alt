@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { BookOpen, FileText, Layers, Rss } from "@lucide/svelte";
-	import { useSSEFeedsStats } from "$lib/hooks/useSSEFeedsStats";
+	import { useSSEFeedsStats } from "$lib/hooks/useSSEFeedsStats.svelte";
 
 	interface StatsData {
 		feed_amount: { amount: number };
