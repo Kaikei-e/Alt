@@ -181,6 +181,9 @@ services:
       - BODY_SIZE_LIMIT=Infinity
       - KRATOS_INTERNAL_URL=${KRATOS_INTERNAL_URL:-http://kratos:4433}
       - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
+      - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL:-http://localhost:9000}
+      - BACKEND_BASE_URL=${BACKEND_BASE_URL:-http://alt-backend:9000}
+      - AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL:-http://auth-hub:8888}
     ports:
       - "4173:4173"
     restart: always
