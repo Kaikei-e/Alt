@@ -23,6 +23,8 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 		c.Response().Header().Set("Connection", "keep-alive")
 		c.Response().Header().Set("Access-Control-Allow-Origin", "*")
 		c.Response().Header().Set("Access-Control-Allow-Headers", "Cache-Control")
+		// Disable nginx buffering for SSE (even though nginx config has proxy_buffering off)
+		c.Response().Header().Set("X-Accel-Buffering", "no")
 
 		// Don't let Echo write its own status
 		c.Response().WriteHeader(http.StatusOK)
