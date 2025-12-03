@@ -3,11 +3,16 @@
 declare global {
 	namespace App {
 		// interface Error {}
-		// interface Locals {}
-		// interface PageData {}
+		interface Locals {
+			user: import('@ory/client').Identity | null;
+			session: import('@ory/client').Session | null;
+		}
+		interface PageData {
+			user: import('@ory/client').Identity | null;
+		}
 		// interface PageState {}
 		// interface Platform {}
 	}
 }
 
-export {};
+export { };

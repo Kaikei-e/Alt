@@ -64,11 +64,23 @@ const config: Config = {
 					warning: "var(--alt-warning)",
 					glass: "var(--alt-glass)",
 				},
+				// Alt Design System Colors
+				"text-primary": "var(--text-primary)",
+				"text-secondary": "var(--text-secondary)",
+				"text-muted": "var(--text-muted)",
+				"surface-bg": "var(--surface-bg)",
+				"surface-border": "var(--surface-border)",
+				"surface-hover": "var(--surface-hover)",
 			},
 			borderRadius: {
-				lg: "var(--radius)",
-				md: "calc(var(--radius) - 2px)",
-				sm: "calc(var(--radius) - 4px)",
+				lg: "0", // Alt-Paper style: no rounded corners
+				md: "0",
+				sm: "0",
+			},
+			boxShadow: {
+				sm: "var(--shadow-sm)",
+				md: "var(--shadow-md)",
+				lg: "var(--shadow-lg)",
 			},
 			fontFamily: {
 				sans: [...defaultTheme.fontFamily.sans],

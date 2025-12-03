@@ -160,7 +160,8 @@
 	);
 }
 
-/* Alt-Paper Theme (Newspaper/Instapaper Style) */
+/* Alt-Paper Theme (Newspaper Style) - Default */
+:root,
 [data-style="alt-paper"] {
 	--alt-primary: #2f4f4f;
 	--alt-secondary: #696969;
@@ -184,6 +185,16 @@
 		var(--alt-secondary) 50%,
 		var(--alt-tertiary) 100%
 	);
+
+	/* Text colors - high contrast black on white */
+	--text-primary: #1a1a1a;
+	--text-secondary: #333333;
+	--text-muted: #666666;
+
+	/* Paper-specific shadows - subtle and minimal */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+	--shadow-md: 0 2px 4px rgba(0, 0, 0, 0.08);
+	--shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.12);
 }
 
 /* Utility Classes for Glassmorphism */
