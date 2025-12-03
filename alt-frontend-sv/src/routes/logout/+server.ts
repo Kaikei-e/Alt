@@ -1,6 +1,5 @@
-import { redirect } from "@sveltejs/kit";
+import { redirect, type RequestHandler } from "@sveltejs/kit";
 import { ory } from "$lib/ory";
-import type { RequestHandler } from "./$types";
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!locals.session) {
