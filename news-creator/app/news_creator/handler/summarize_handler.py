@@ -56,11 +56,18 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         except RuntimeError as exc:
+            error_detail = str(exc)
             logger.error(
                 "Failed to generate summary",
-                extra={"error": str(exc), "article_id": request.article_id},
+                extra={
+                    "error": error_detail,
+                    "article_id": request.article_id,
+                    "error_type": type(exc).__name__,
+                    "content_length": len(request.content) if request.content else 0,
+                },
+                exc_info=True,  # Include full traceback for debugging
             )
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            raise HTTPException(status_code=502, detail=error_detail) from exc
 
         except Exception as exc:
             logger.exception(

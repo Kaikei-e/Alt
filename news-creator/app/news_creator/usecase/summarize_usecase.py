@@ -38,10 +38,13 @@ class SummarizeUsecase:
         if not content or not content.strip():
             raise ValueError("content cannot be empty")
 
-        # Truncate content to fit within 64K context window
-        # 64K tokens ≈ 256K-512K chars, but we need to reserve space for prompt template
-        # Using ~200K chars (≈50K tokens) for content to leave room for prompt template
-        MAX_CONTENT_LENGTH = 200_000  # characters
+        # Truncate content to fit within context window
+        # Context window is now 80K tokens (81920), configured in entrypoint.sh and config.py
+        # We need to account for prompt template (~500 chars ≈ ~200 tokens)
+        # Conservative estimate: 1 char ≈ 0.25-0.5 tokens (Japanese text)
+        # Reserve ~5K tokens for prompt template and safety margin, leaving ~75K tokens for content
+        # Using ~280K chars (≈70K tokens) for content to avoid truncation and stay within 80K limit
+        MAX_CONTENT_LENGTH = 280_000  # characters (conservative estimate for ~70K tokens in 80K context)
         original_length = len(content)
         truncated_content = content.strip()[:MAX_CONTENT_LENGTH]
 
@@ -76,10 +79,75 @@ class SummarizeUsecase:
 
         # Clean and validate summary
         raw_summary = llm_response.response
-        cleaned_summary = self._clean_summary_text(raw_summary)
+
+        # Log raw summary for debugging
+        logger.debug(
+            "Raw summary received from LLM",
+            extra={
+                "article_id": article_id,
+                "raw_summary_length": len(raw_summary) if raw_summary else 0,
+                "raw_summary_preview": raw_summary[:200] if raw_summary else "",
+            }
+        )
+
+        cleaned_summary = self._clean_summary_text(raw_summary, article_id)
+
+        # Log cleaned summary for debugging
+        logger.debug(
+            "Cleaned summary after processing",
+            extra={
+                "article_id": article_id,
+                "cleaned_summary_length": len(cleaned_summary) if cleaned_summary else 0,
+                "cleaned_summary_preview": cleaned_summary[:200] if cleaned_summary else "",
+            }
+        )
 
         if not cleaned_summary:
-            raise RuntimeError("LLM returned an empty summary")
+            # Fallback: try to extract from raw_summary with minimal cleaning
+            logger.warning(
+                "Cleaned summary is empty, attempting fallback extraction",
+                extra={
+                    "article_id": article_id,
+                    "raw_summary_length": len(raw_summary) if raw_summary else 0,
+                    "raw_summary": raw_summary[:500] if raw_summary else "",
+                }
+            )
+
+            # Minimal fallback cleaning: just remove turn tokens and trim
+            fallback_summary = raw_summary
+            if fallback_summary:
+                fallback_summary = (
+                    fallback_summary.replace("<start_of_turn>", "")
+                    .replace("<end_of_turn>", "")
+                    .replace("<|system|>", "")
+                    .replace("<|user|>", "")
+                    .replace("<|assistant|>", "")
+                    .strip()
+                )
+
+            if not fallback_summary or not fallback_summary.strip():
+                error_msg = (
+                    f"LLM returned an empty summary after cleaning. "
+                    f"Raw summary length: {len(raw_summary) if raw_summary else 0}, "
+                    f"Raw preview: {raw_summary[:300] if raw_summary else 'None'}"
+                )
+                logger.error(
+                    error_msg,
+                    extra={
+                        "article_id": article_id,
+                        "raw_summary": raw_summary[:500] if raw_summary else "",
+                    }
+                )
+                raise RuntimeError(error_msg)
+
+            cleaned_summary = fallback_summary
+            logger.info(
+                "Fallback extraction succeeded",
+                extra={
+                    "article_id": article_id,
+                    "fallback_summary_length": len(cleaned_summary),
+                }
+            )
 
         # Enforce 500 character max as per prompt guidance
         truncated_summary = cleaned_summary[:600]
@@ -104,25 +172,46 @@ class SummarizeUsecase:
         return truncated_summary, metadata
 
     @staticmethod
-    def _clean_summary_text(content: str) -> str:
+    def _clean_summary_text(content: str, article_id: str = "") -> str:
         """
         Clean LLM output to extract clean summary text.
 
         Args:
             content: Raw LLM output
+            article_id: Article ID for logging (optional)
 
         Returns:
             Cleaned summary text
         """
         if not content:
+            if article_id:
+                logger.warning(
+                    "Empty content provided to _clean_summary_text",
+                    extra={"article_id": article_id}
+                )
             return ""
 
-        # Remove special tokens
+        original_length = len(content)
+
+        # Remove Gemma3 turn tokens first (most important)
         cleaned = (
-            content.replace("<|system|>", "")
+            content.replace("<start_of_turn>", "")
+            .replace("<end_of_turn>", "")
+            .replace("<|system|>", "")
             .replace("<|user|>", "")
             .replace("<|assistant|>", "")
         )
+
+        # Log removal of turn tokens
+        if len(cleaned) != original_length:
+            logger.debug(
+                "Removed turn tokens from summary",
+                extra={
+                    "article_id": article_id,
+                    "original_length": original_length,
+                    "after_token_removal": len(cleaned),
+                }
+            )
 
         # Remove markdown code blocks (```...```)
         import re
@@ -161,7 +250,30 @@ class SummarizeUsecase:
 
         # Final cleanup: remove any remaining repetitive patterns
         # Check for patterns like "word-word-word" (3+ repetitions)
+        before_final = result
         result = re.sub(r'\b(\w+)(-\1){2,}\b', '', result, flags=re.IGNORECASE)
+
+        # Log if final cleanup removed significant content
+        if len(result) < len(before_final) * 0.9:  # More than 10% removed
+            logger.debug(
+                "Final cleanup removed significant content",
+                extra={
+                    "article_id": article_id,
+                    "before_final_length": len(before_final),
+                    "after_final_length": len(result),
+                }
+            )
+
+        # Warn if result is empty after all cleaning
+        if not result and original_length > 0:
+            logger.warning(
+                "Summary became empty after cleaning",
+                extra={
+                    "article_id": article_id,
+                    "original_length": original_length,
+                    "original_preview": content[:200],
+                }
+            )
 
         return result
 

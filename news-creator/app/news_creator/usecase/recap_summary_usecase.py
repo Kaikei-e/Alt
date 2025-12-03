@@ -147,10 +147,12 @@ class RecapSummaryUsecase:
         raise RuntimeError("Failed to generate recap summary")
 
     def _build_prompt(self, request: RecapSummaryRequest, max_bullets: int) -> str:
-        # Truncate cluster section to fit within 64K context window
-        # 64K tokens ≈ 256K-512K chars, but we need to reserve space for prompt template
-        # Using ~200K chars (≈50K tokens) for cluster_section to leave room for prompt template
-        MAX_CLUSTER_SECTION_LENGTH = 200_000  # characters
+        # Truncate cluster section to fit within 80K context window
+        # Context window is now 80K tokens (81920), configured in entrypoint.sh and config.py
+        # 80K tokens ≈ 320K-640K chars, but we need to reserve space for prompt template
+        # Reserve ~5K tokens for prompt template and safety margin, leaving ~75K tokens for content
+        # Using ~280K chars (≈70K tokens) for cluster_section to leave room for prompt template
+        MAX_CLUSTER_SECTION_LENGTH = 280_000  # characters (conservative estimate for ~70K tokens in 80K context)
 
         max_clusters = max(3, min(len(request.clusters), max_bullets + 2))
         cluster_lines: List[str] = []

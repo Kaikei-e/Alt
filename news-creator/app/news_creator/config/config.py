@@ -41,8 +41,8 @@ class NewsCreatorConfig:
         self.ollama_request_concurrency = self._get_int("OLLAMA_REQUEST_CONCURRENCY", 2)
 
         # ---- Generation parameters (Gemma3 + Ollama options) ----
-        # 実効 64k 前提。必要なら環境変数で上書き
-        self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 65536)
+        # 実効 80k 前提。必要なら環境変数で上書き（7GBギリギリまで使用）
+        self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 81920)
         self.llm_num_predict = self._get_int("LLM_NUM_PREDICT", 1200)  # 復活
         self.llm_temperature = self._get_float("LLM_TEMPERATURE", 0.2)
         self.llm_top_p = self._get_float("LLM_TOP_P", 0.9)             # 復活
