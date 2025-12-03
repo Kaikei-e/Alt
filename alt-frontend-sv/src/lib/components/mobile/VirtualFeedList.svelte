@@ -24,7 +24,7 @@ const { feeds, readFeeds, onMarkAsRead }: Props = $props();
 			<FeedCard
 				{feed}
 				isReadStatus={readFeeds.has(feed.normalizedUrl)}
-				setIsReadStatus={() => onMarkAsRead(feed.normalizedUrl)}
+				setIsReadStatus={(feedLink: string) => onMarkAsRead(feedLink)}
 			/>
 		</div>
 	{/each}

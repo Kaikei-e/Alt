@@ -13,3 +13,17 @@ export {
 	updateFeedReadStatusClient,
 } from "./feeds";
 
+// 記事関連のAPI
+export {
+	getArticleSummaryClient,
+	getFeedContentOnTheFlyClient,
+	archiveContentClient,
+	summarizeArticleClient,
+	registerFavoriteFeedClient,
+	type FetchArticleSummaryResponse,
+	type FeedContentOnTheFlyResponse,
+	type ArticleSummaryItem,
+	type SummarizeArticleResponse,
+	type MessageResponse,
+} from "./articles";
+
