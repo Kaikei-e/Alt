@@ -69,4 +69,3 @@ export async function callClientAPI<T>(
 		throw new Error(`Failed to connect to API: ${errorMessage}`);
 	}
 }
-

@@ -58,16 +58,13 @@ export interface SummarizeArticleResponse {
 export async function getArticleSummaryClient(
 	feedUrl: string,
 ): Promise<FetchArticleSummaryResponse> {
-	return callClientAPI<FetchArticleSummaryResponse>(
-		"/v1/articles/summary",
-		{
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({ feed_urls: [feedUrl] }),
+	return callClientAPI<FetchArticleSummaryResponse>("/v1/articles/summary", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
 		},
-	);
+		body: JSON.stringify({ feed_urls: [feedUrl] }),
+	});
 }
 
 /**
@@ -76,16 +73,13 @@ export async function getArticleSummaryClient(
 export async function getFeedContentOnTheFlyClient(
 	feedUrl: string,
 ): Promise<FeedContentOnTheFlyResponse> {
-	return callClientAPI<FeedContentOnTheFlyResponse>(
-		"/v1/articles/content",
-		{
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({ url: feedUrl }),
+	return callClientAPI<FeedContentOnTheFlyResponse>("/v1/articles/content", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
 		},
-	);
+		body: JSON.stringify({ url: feedUrl }),
+	});
 }
 
 /**
@@ -138,4 +132,3 @@ export async function registerFavoriteFeedClient(
 		body: JSON.stringify({ url }),
 	});
 }
-

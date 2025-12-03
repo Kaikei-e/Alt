@@ -71,4 +71,3 @@ export async function getReadFeedsWithCursorClient(
 		has_more: response.has_more ?? response.next_cursor !== null,
 	};
 }
-

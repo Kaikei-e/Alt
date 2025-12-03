@@ -60,7 +60,8 @@ onMount(() => {
 			const errorMessage = err instanceof Error ? err.message : String(err);
 			console.error("Failed to initialize read feeds:", {
 				error: errorMessage,
-				message: "This is non-critical - feeds will still load, but read status may not be accurate",
+				message:
+					"This is non-critical - feeds will still load, but read status may not be accurate",
 			});
 			// Set empty set to prevent further errors
 			readFeeds = new Set();

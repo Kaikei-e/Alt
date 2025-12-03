@@ -1,11 +1,14 @@
 <script lang="ts">
 import type {
-	FetchArticleSummaryResponse,
 	FeedContentOnTheFlyResponse,
+	FetchArticleSummaryResponse,
 } from "$lib/api/client";
 
 interface Props {
-	feedDetails?: FetchArticleSummaryResponse | FeedContentOnTheFlyResponse | null;
+	feedDetails?:
+		| FetchArticleSummaryResponse
+		| FeedContentOnTheFlyResponse
+		| null;
 	isLoading?: boolean;
 	error?: string | null;
 }

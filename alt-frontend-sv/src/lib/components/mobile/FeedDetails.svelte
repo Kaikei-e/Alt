@@ -1,17 +1,17 @@
 <script lang="ts">
+import { Archive, Star, X } from "@lucide/svelte";
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
-import { Archive, Star, X } from "@lucide/svelte";
-import { Button } from "$lib/components/ui/button";
 import {
+	archiveContentClient,
+	type FeedContentOnTheFlyResponse,
+	type FetchArticleSummaryResponse,
 	getArticleSummaryClient,
 	getFeedContentOnTheFlyClient,
-	archiveContentClient,
-	summarizeArticleClient,
 	registerFavoriteFeedClient,
-	type FetchArticleSummaryResponse,
-	type FeedContentOnTheFlyResponse,
+	summarizeArticleClient,
 } from "$lib/api/client";
+import { Button } from "$lib/components/ui/button";
 import RenderFeedDetails from "./RenderFeedDetails.svelte";
 
 interface Props {
@@ -112,12 +112,11 @@ const handleShowDetails = async () => {
 
 		// Check if summary has valid content
 		const hasValidSummary =
-			summaryResult &&
-			summaryResult.matched_articles &&
+			summaryResult?.matched_articles &&
 			summaryResult.matched_articles.length > 0;
 		// Check if details has valid content
 		const hasValidDetails =
-			detailsResult && detailsResult.content && detailsResult.content.trim() !== "";
+			detailsResult?.content && detailsResult.content.trim() !== "";
 
 		if (hasValidSummary) {
 			articleSummary = summaryResult;
@@ -148,20 +147,19 @@ const handleShowDetails = async () => {
 };
 </script>
 
-<div class="flex justify-between items-center">
-	{#if !isOpen}
-		<Button
-			class="text-sm font-bold px-4 min-h-[44px] min-w-[120px] rounded-full border border-white/20 disabled:opacity-50"
-			style="background: var(--alt-secondary); color: var(--text-primary);"
-			onclick={handleShowDetails}
-			data-testid="show-details-button-{uniqueId}"
-			disabled={isLoading}
-		>
-			{isLoading ? "Loading" : "Show Details"}
-		</Button>
-	{/if}
+{#if !isOpen}
+	<Button
+		class="text-sm font-bold px-4 min-h-[44px] min-w-[120px] rounded-full border border-white/20 disabled:opacity-50 transition-all duration-200 hover:brightness-110 hover:-translate-y-[1px] active:scale-[0.98]"
+		style="background: var(--alt-secondary); color: var(--text-primary);"
+		onclick={handleShowDetails}
+		data-testid="show-details-button-{uniqueId}"
+		disabled={isLoading}
+	>
+		{isLoading ? "Loading" : "Show Details"}
+	</Button>
+{/if}
 
-	{#if isOpen}
+{#if isOpen}
 		<!-- Modal Backdrop -->
 		<div
 			class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
@@ -380,7 +378,6 @@ const handleShowDetails = async () => {
 			</div>
 		</div>
 	{/if}
-</div>
 
 <style>
 	:global(.scrollable-content::-webkit-scrollbar) {

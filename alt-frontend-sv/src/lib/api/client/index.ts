@@ -3,27 +3,24 @@
  * 各モジュールから必要な関数を再エクスポート
  */
 
+// 記事関連のAPI
+export {
+	type ArticleSummaryItem,
+	archiveContentClient,
+	type FeedContentOnTheFlyResponse,
+	type FetchArticleSummaryResponse,
+	getArticleSummaryClient,
+	getFeedContentOnTheFlyClient,
+	type MessageResponse,
+	registerFavoriteFeedClient,
+	type SummarizeArticleResponse,
+	summarizeArticleClient,
+} from "./articles";
 // 共通のAPI呼び出しロジック
 export { callClientAPI } from "./core";
-
 // フィード関連のAPI
 export {
 	getFeedsWithCursorClient,
 	getReadFeedsWithCursorClient,
 	updateFeedReadStatusClient,
 } from "./feeds";
-
-// 記事関連のAPI
-export {
-	getArticleSummaryClient,
-	getFeedContentOnTheFlyClient,
-	archiveContentClient,
-	summarizeArticleClient,
-	registerFavoriteFeedClient,
-	type FetchArticleSummaryResponse,
-	type FeedContentOnTheFlyResponse,
-	type ArticleSummaryItem,
-	type SummarizeArticleResponse,
-	type MessageResponse,
-} from "./articles";
-
