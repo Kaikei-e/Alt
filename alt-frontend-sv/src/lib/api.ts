@@ -19,6 +19,7 @@ export interface UnreadCount {
  */
 async function getBackendToken(cookie: string | null): Promise<string | null> {
 	if (!cookie) {
+		console.warn("No cookie provided for backend token");
 		return null;
 	}
 
@@ -31,13 +32,24 @@ async function getBackendToken(cookie: string | null): Promise<string | null> {
 		});
 
 		if (!response.ok) {
+			console.warn(
+				`Auth-hub session endpoint returned ${response.status}: ${response.statusText}`,
+			);
 			return null;
 		}
 
 		const token = response.headers.get("X-Alt-Backend-Token");
+		if (!token) {
+			console.warn("X-Alt-Backend-Token header not found in response");
+		}
 		return token;
 	} catch (error) {
-		console.error("Failed to get backend token:", error);
+		const errorMessage =
+			error instanceof Error ? error.message : String(error);
+		console.error("Failed to get backend token:", {
+			message: errorMessage,
+			authHubUrl: AUTH_HUB_URL,
+		});
 		return null;
 	}
 }
@@ -60,18 +72,40 @@ async function callBackendAPI<T>(
 		headers["X-Alt-Backend-Token"] = token;
 	}
 
-	const response = await fetch(`${BACKEND_BASE_URL}${endpoint}`, {
-		headers,
-		cache: "no-store",
-	});
+	const url = `${BACKEND_BASE_URL}${endpoint}`;
+	try {
+		const response = await fetch(url, {
+			headers,
+			cache: "no-store",
+		});
 
-	if (!response.ok) {
-		throw new Error(
-			`API call failed: ${response.status} ${response.statusText}`,
-		);
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => "");
+			console.error(`API call failed: ${response.status} ${response.statusText}`, {
+				url,
+				status: response.status,
+				statusText: response.statusText,
+				errorBody: errorText.substring(0, 200),
+			});
+			throw new Error(
+				`API call failed: ${response.status} ${response.statusText}`,
+			);
+		}
+
+		return response.json();
+	} catch (error) {
+		if (error instanceof Error && error.message.includes("API call failed")) {
+			throw error;
+		}
+		const errorMessage =
+			error instanceof Error ? error.message : String(error);
+		console.error("Network error calling backend API:", {
+			url,
+			message: errorMessage,
+			backendBaseUrl: BACKEND_BASE_URL,
+		});
+		throw new Error(`Failed to connect to backend: ${errorMessage}`);
 	}
-
-	return response.json();
 }
 
 /**

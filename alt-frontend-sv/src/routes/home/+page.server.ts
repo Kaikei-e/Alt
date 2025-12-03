@@ -32,7 +32,17 @@ export const load: ServerLoad = async ({ request }) => {
 			unreadCount: unreadCount.count,
 		};
 	} catch (error) {
-		console.error("Failed to load stats:", error);
+		// エラーの詳細をログに記録
+		const errorMessage =
+			error instanceof Error ? error.message : String(error);
+		const errorStack = error instanceof Error ? error.stack : undefined;
+		console.error("Failed to load stats:", {
+			message: errorMessage,
+			stack: errorStack,
+			cookieHeader: cookieHeader ? "present" : "missing",
+		});
+
+		// エラーが発生しても500エラーを返さず、デフォルト値を返す
 		return {
 			stats: {
 				feed_amount: { amount: 0 },
