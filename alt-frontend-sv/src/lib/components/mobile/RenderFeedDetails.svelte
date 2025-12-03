@@ -1,19 +1,19 @@
 <script lang="ts">
-	import type {
-		FeedContentOnTheFlyResponse,
-		FetchArticleSummaryResponse,
-	} from "$lib/api/client";
+import type {
+	FeedContentOnTheFlyResponse,
+	FetchArticleSummaryResponse,
+} from "$lib/api/client";
 
-	interface Props {
-		feedDetails?:
-			| FetchArticleSummaryResponse
-			| FeedContentOnTheFlyResponse
-			| null;
-		isLoading?: boolean;
-		error?: string | null;
-	}
+interface Props {
+	feedDetails?:
+		| FetchArticleSummaryResponse
+		| FeedContentOnTheFlyResponse
+		| null;
+	isLoading?: boolean;
+	error?: string | null;
+}
 
-	const { feedDetails, isLoading = false, error = null }: Props = $props();
+const { feedDetails, isLoading = false, error = null }: Props = $props();
 </script>
 
 {#if isLoading}
