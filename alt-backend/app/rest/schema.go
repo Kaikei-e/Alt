@@ -28,6 +28,12 @@ type UnsummarizedFeedStatsSummary struct {
 	ArticleAmount          articleAmount          `json:"total_articles,omitempty"`
 }
 
+type DetailedFeedStatsSummary struct {
+	FeedAmount             feedAmount             `json:"feed_amount"`
+	ArticleAmount          articleAmount          `json:"total_articles"`
+	UnsummarizedFeedAmount unsummarizedFeedAmount `json:"unsummarized_articles"`
+}
+
 type feedAmount struct {
 	Amount int `json:"amount"`
 }

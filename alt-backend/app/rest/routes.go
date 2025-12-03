@@ -29,7 +29,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 	// 4. CORS middleware - クロスオリジン制御
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "https://curionoah.com"},
+		AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "http://localhost:4173", "https://curionoah.com"},
 		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, "Cache-Control", "Authorization", "X-Requested-With", "X-CSRF-Token"},
 		MaxAge:       86400, // Cache preflight for 24 hours

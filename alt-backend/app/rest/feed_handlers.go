@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,6 +45,7 @@ func registerFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	feeds.POST("/search", handleSearchFeeds(container))
 	feeds.POST("/fetch/details", handleFetchFeedDetails(container))
 	feeds.GET("/stats", handleFeedStats(container, cfg))
+	feeds.GET("/stats/detailed", handleDetailedFeedStats(container, cfg))
 	feeds.POST("/tags", handleFetchFeedTags(container))
 	feeds.POST("/fetch/summary/provided", handleFetchInoreaderSummary(container))
 	feeds.POST("/fetch/summary", handleFetchArticleSummary(container, cfg))
@@ -490,6 +492,101 @@ func handleFeedStats(container *di.ApplicationComponents, cfg *config.Config) ec
 		logger.Logger.Info("Feed stats retrieved successfully",
 			"feed_count", feedCount,
 			"summarized_count", summarizedCount)
+
+		return c.JSON(http.StatusOK, stats)
+	}
+}
+
+func handleDetailedFeedStats(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		// Add caching headers for stats
+		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.FeedCacheExpiry.Seconds())))
+		c.Response().Header().Set("ETag", `"feeds-stats-detailed"`)
+
+		ctx := c.Request().Context()
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		var firstErr error
+
+		// Results storage
+		var feedCount int
+		var totalArticlesCount int
+		var unsummarizedCount int
+
+		// Fetch feed amount in parallel
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			count, err := container.FeedAmountUsecase.Execute(ctx)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("failed to fetch feed amount: %w", err)
+				}
+				logger.Logger.Error("Error fetching feed amount", "error", err)
+				return
+			}
+			feedCount = count
+		}()
+
+		// Fetch total articles count in parallel
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			count, err := container.TotalArticlesCountUsecase.Execute(ctx)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("failed to fetch total articles count: %w", err)
+				}
+				logger.Logger.Error("Error fetching total articles count", "error", err)
+				return
+			}
+			totalArticlesCount = count
+		}()
+
+		// Fetch unsummarized articles count in parallel
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			count, err := container.UnsummarizedArticlesCountUsecase.Execute(ctx)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("failed to fetch unsummarized articles count: %w", err)
+				}
+				logger.Logger.Error("Error fetching unsummarized articles count", "error", err)
+				return
+			}
+			unsummarizedCount = count
+		}()
+
+		// Wait for all goroutines to complete
+		wg.Wait()
+
+		// Check for errors
+		mu.Lock()
+		err := firstErr
+		mu.Unlock()
+
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feed statistics"})
+		}
+
+		// Create response in expected format
+		stats := DetailedFeedStatsSummary{
+			FeedAmount:             feedAmount{Amount: feedCount},
+			ArticleAmount:          articleAmount{Amount: totalArticlesCount},
+			UnsummarizedFeedAmount: unsummarizedFeedAmount{Amount: unsummarizedCount},
+		}
+
+		logger.Logger.Info("Detailed feed stats retrieved successfully",
+			"feed_count", feedCount,
+			"total_articles_count", totalArticlesCount,
+			"unsummarized_count", unsummarizedCount)
 
 		return c.JSON(http.StatusOK, stats)
 	}
