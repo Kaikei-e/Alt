@@ -15,7 +15,8 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.3.8",
-        "@lucide/svelte": "^0.555.0",
+        "@internationalized/date": "^3.8.1",
+        "@lucide/svelte": "^0.544.0",
         "@sveltejs/adapter-auto": "^7.0.0",
         "@sveltejs/adapter-node": "^5.4.0",
         "@sveltejs/enhanced-img": "^0.9.2",
@@ -173,7 +174,7 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
-    "@lucide/svelte": ["@lucide/svelte@0.555.0", "", { "peerDependencies": { "svelte": "^5" } }, "sha512-aqTOMjBjf/HNwrhggRdb83T0QslZdpJTyTwr/chtXTGw7u4Hcu4zQb/5uA+csF0KKawKWVnsNI1MdHEHeEXTcQ=="],
+    "@lucide/svelte": ["@lucide/svelte@0.544.0", "", { "peerDependencies": { "svelte": "^5" } }, "sha512-9f9O6uxng2pLB01sxNySHduJN3HTl5p0HDu4H26VR51vhZfiMzyOMe9Mhof3XAk4l813eTtl+/DYRvGyoRR+yw=="],
 
     "@ory/client": ["@ory/client@1.22.13", "", { "dependencies": { "axios": "^1.6.1" } }, "sha512-EW+5eqGyMbTkseRQObK8NsnowMeVcGxbZs+O3XLigVjikDLGKHrR5/WZCMTHeBFf2FST73BhLkNgSXg/mLlriA=="],
 

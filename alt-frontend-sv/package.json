@@ -24,7 +24,8 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.8",
-		"@lucide/svelte": "^0.555.0",
+		"@internationalized/date": "^3.8.1",
+		"@lucide/svelte": "^0.544.0",
 		"@sveltejs/adapter-auto": "^7.0.0",
 		"@sveltejs/adapter-node": "^5.4.0",
 		"@sveltejs/enhanced-img": "^0.9.2",
