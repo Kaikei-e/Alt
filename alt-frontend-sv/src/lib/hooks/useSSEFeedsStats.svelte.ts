@@ -83,6 +83,10 @@ export function useSSEFeedsStats() {
 			},
 			() => {
 				// Handle SSE connection error
+				console.warn(`[SSE] Connection error occurred`, {
+					retryCount: retryCount + 1,
+					readyState: currentEventSource?.readyState,
+				});
 				isConnected = false;
 				retryCount++;
 			},
@@ -93,29 +97,58 @@ export function useSSEFeedsStats() {
 				lastDataReceived = now;
 				isConnected = true;
 				retryCount = 0;
+				console.log(`[SSE] Connection opened successfully`);
 			},
 		);
 
 		currentEventSource = es;
 
 		// Connection health check
+		// Backend sends heartbeat every 10s and data updates periodically
+		// Use 25s timeout (2.5x heartbeat interval) to account for network delays
+		const DATA_TIMEOUT_MS = 25000; // 25 seconds - backend heartbeat is 10s
+		const HEALTH_CHECK_INTERVAL_MS = 5000; // Check every 5 seconds
+
 		healthCheckInterval = setInterval(() => {
 			const now = Date.now();
 			const timeSinceLastData = now - lastDataReceived;
 			const readyState = currentEventSource?.readyState ?? EventSource.CLOSED;
 
-			// Backend sends data every 5s, so 15s timeout gives buffer for network delays
-			const isReceivingData = timeSinceLastData < 15000; // 15s timeout (3x backend interval)
+			// Check if we're receiving data regularly
+			// Backend sends heartbeat every 10s, so we should receive something within 25s
+			const isReceivingData = timeSinceLastData < DATA_TIMEOUT_MS;
 			const isConnectionOpen = readyState === EventSource.OPEN;
 
-			// Connection is healthy if open AND receiving data regularly
+			// Connection is healthy if:
+			// 1. Connection is open (readyState === OPEN)
+			// 2. We've received data recently (within timeout)
 			const shouldBeConnected = isConnectionOpen && isReceivingData;
 
-			// Only update state if it actually changed to prevent unnecessary re-renders
+			// Log state changes for debugging
 			if (isConnected !== shouldBeConnected) {
+				if (shouldBeConnected) {
+					console.log(`[SSE] Connection state: CONNECTED`, {
+						readyState: readyState === EventSource.OPEN ? "OPEN" : "CLOSED",
+						timeSinceLastData: `${timeSinceLastData}ms`,
+					});
+				} else {
+					console.warn(`[SSE] Connection state: DISCONNECTED`, {
+						readyState: readyState === EventSource.OPEN ? "OPEN" : "CLOSED",
+						timeSinceLastData: `${timeSinceLastData}ms`,
+						timeout: `${DATA_TIMEOUT_MS}ms`,
+					});
+				}
 				isConnected = shouldBeConnected;
 			}
-		}, 5000); // Check every 5 seconds to reduce overhead
+
+			// Warn if connection is open but we haven't received data in a while
+			if (isConnectionOpen && !isReceivingData && timeSinceLastData > DATA_TIMEOUT_MS) {
+				console.warn(`[SSE] Connection open but no data received`, {
+					timeSinceLastData: `${timeSinceLastData}ms`,
+					timeout: `${DATA_TIMEOUT_MS}ms`,
+				});
+			}
+		}, HEALTH_CHECK_INTERVAL_MS);
 
 		return () => {
 			if (healthCheckInterval) {
