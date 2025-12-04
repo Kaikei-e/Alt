@@ -7,6 +7,7 @@ from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.prompts import SUMMARY_PROMPT_TEMPLATE
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
+from news_creator.utils.html_cleaner import clean_html_content
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,38 @@ class SummarizeUsecase:
             raise ValueError("article_id cannot be empty")
         if not content or not content.strip():
             raise ValueError("content cannot be empty")
+
+        # Clean HTML from content if present
+        original_content_length = len(content)
+        cleaned_content, was_html = clean_html_content(content, article_id)
+        if was_html:
+            logger.warning(
+                "HTML detected and removed from article content",
+                extra={
+                    "article_id": article_id,
+                    "original_length": original_content_length,
+                    "cleaned_length": len(cleaned_content),
+                }
+            )
+            content = cleaned_content
+
+        # Validate that we have meaningful content after cleaning
+        if not content or not content.strip() or len(content.strip()) < 100:
+            error_msg = (
+                f"Content is empty or too short after HTML cleaning. "
+                f"Original length: {original_content_length}, "
+                f"Cleaned length: {len(content)}"
+            )
+            logger.error(
+                error_msg,
+                extra={
+                    "article_id": article_id,
+                    "was_html": was_html,
+                    "original_length": original_content_length,
+                    "cleaned_length": len(content),
+                }
+            )
+            raise ValueError(error_msg)
 
         # Truncate content to fit within context window
         # Context window is now 80K tokens (81920), configured in entrypoint.sh and config.py
@@ -110,14 +143,14 @@ class SummarizeUsecase:
                 "repeat_penalty": current_repeat_penalty,
             }
 
-            llm_response = await self.llm_provider.generate(
-                prompt,
-                num_predict=self.config.summary_num_predict,
+        llm_response = await self.llm_provider.generate(
+            prompt,
+            num_predict=self.config.summary_num_predict,
                 options=llm_options,
-            )
+        )
 
-            # Clean and validate summary
-            raw_summary = llm_response.response
+        # Clean and validate summary
+        raw_summary = llm_response.response
 
             # Check for repetition
             has_repetition, rep_score, rep_patterns = detect_repetition(
@@ -177,8 +210,8 @@ class SummarizeUsecase:
                     "repetition_score": rep_score,
                     "patterns": rep_patterns,
                     "max_retries": max_retries,
-                }
-            )
+            }
+        )
 
         cleaned_summary = self._clean_summary_text(raw_summary, article_id)
 
@@ -244,12 +277,12 @@ class SummarizeUsecase:
 
         # Build metadata
         if llm_response:
-            metadata = {
-                "model": llm_response.model,
-                "prompt_tokens": llm_response.prompt_eval_count,
-                "completion_tokens": llm_response.eval_count,
-                "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
-            }
+        metadata = {
+            "model": llm_response.model,
+            "prompt_tokens": llm_response.prompt_eval_count,
+            "completion_tokens": llm_response.eval_count,
+            "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
+        }
         elif last_metadata:
             metadata = last_metadata
         else:
