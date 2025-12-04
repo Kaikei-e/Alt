@@ -143,14 +143,14 @@ class SummarizeUsecase:
                 "repeat_penalty": current_repeat_penalty,
             }
 
-        llm_response = await self.llm_provider.generate(
-            prompt,
-            num_predict=self.config.summary_num_predict,
+            llm_response = await self.llm_provider.generate(
+                prompt,
+                num_predict=self.config.summary_num_predict,
                 options=llm_options,
-        )
+            )
 
-        # Clean and validate summary
-        raw_summary = llm_response.response
+            # Clean and validate summary
+            raw_summary = llm_response.response
 
             # Check for repetition
             has_repetition, rep_score, rep_patterns = detect_repetition(
@@ -210,8 +210,8 @@ class SummarizeUsecase:
                     "repetition_score": rep_score,
                     "patterns": rep_patterns,
                     "max_retries": max_retries,
-            }
-        )
+                }
+            )
 
         cleaned_summary = self._clean_summary_text(raw_summary, article_id)
 
@@ -277,12 +277,12 @@ class SummarizeUsecase:
 
         # Build metadata
         if llm_response:
-        metadata = {
-            "model": llm_response.model,
-            "prompt_tokens": llm_response.prompt_eval_count,
-            "completion_tokens": llm_response.eval_count,
-            "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
-        }
+            metadata = {
+                "model": llm_response.model,
+                "prompt_tokens": llm_response.prompt_eval_count,
+                "completion_tokens": llm_response.eval_count,
+                "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
+            }
         elif last_metadata:
             metadata = last_metadata
         else:
