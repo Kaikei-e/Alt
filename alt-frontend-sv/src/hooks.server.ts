@@ -48,7 +48,7 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	if (!isPublic && !event.locals.session) {
 		// /sv/ へのアクセスの場合は、/sv/home を return_to として設定（ループを防ぐ）
 		let returnTo: string;
-		if (pathname === '/sv' || pathname === '/sv/') {
+		if (pathname === "/sv" || pathname === "/sv/") {
 			returnTo = encodeURIComponent(`${url.origin}/sv/home`);
 		} else {
 			returnTo = encodeURIComponent(`${pathname}${url.search}`);

@@ -6,10 +6,10 @@ import {
 	getReadFeedsWithCursorClient,
 	updateFeedReadStatusClient,
 } from "$lib/api/client";
+import InfiniteScroll from "$lib/components/InfiniteScroll.svelte";
 import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
 import { canonicalize } from "$lib/utils/feed";
-import InfiniteScroll from "$lib/components/InfiniteScroll.svelte";
 import EmptyFeedState from "./EmptyFeedState.svelte";
 import VirtualFeedList from "./VirtualFeedList.svelte";
 
@@ -126,7 +126,11 @@ const loadInitial = async () => {
 const loadMore = async () => {
 	// Strong guards to prevent duplicate requests
 	if (isLoading || !hasMore || !cursor) {
-		console.log("[FeedsClient] loadMore blocked:", { isLoading, hasMore, cursor: cursor ? "exists" : "null" });
+		console.log("[FeedsClient] loadMore blocked:", {
+			isLoading,
+			hasMore,
+			cursor: cursor ? "exists" : "null",
+		});
 		return;
 	}
 
@@ -134,7 +138,7 @@ const loadMore = async () => {
 	const currentCursor = cursor;
 
 	console.log("[FeedsClient] loadMore called", {
-		cursor: currentCursor ? currentCursor.substring(0, 20) + "..." : "null",
+		cursor: currentCursor ? `${currentCursor.substring(0, 20)}...` : "null",
 	});
 
 	// Set loading state immediately to prevent concurrent requests
@@ -145,7 +149,7 @@ const loadMore = async () => {
 
 	try {
 		console.log("[FeedsClient] loadMore: starting API request", {
-			cursor: currentCursor ? currentCursor.substring(0, 20) + "..." : "null",
+			cursor: currentCursor ? `${currentCursor.substring(0, 20)}...` : "null",
 		});
 		const response = await getFeedsWithCursorClient(currentCursor, PAGE_SIZE);
 		const requestDuration = Date.now() - requestStartTime;
@@ -177,7 +181,10 @@ const loadMore = async () => {
 
 			// Update visibleCount to show new feeds
 			const allFeedsCount = initialFeeds.length + feeds.length;
-			visibleCount = Math.min(visibleCount + response.data.length, allFeedsCount);
+			visibleCount = Math.min(
+				visibleCount + response.data.length,
+				allFeedsCount,
+			);
 
 			console.log("[FeedsClient] loadMore: added feeds", {
 				newFeedsCount: response.data.length,
@@ -343,15 +350,8 @@ $effect(() => {
 
 	const hasAnyFetched = initialFeeds.length > 0 || feeds.length > 0;
 
-	if (
-		hasAnyFetched &&
-		visibleFeeds.length === 0 &&
-		hasMore &&
-		cursor
-	) {
-		console.log(
-			"[FeedsClient] visibleFeeds=0 & hasMore=true -> auto loadMore",
-		);
+	if (hasAnyFetched && visibleFeeds.length === 0 && hasMore && cursor) {
+		console.log("[FeedsClient] visibleFeeds=0 & hasMore=true -> auto loadMore");
 		void loadMore();
 	}
 });

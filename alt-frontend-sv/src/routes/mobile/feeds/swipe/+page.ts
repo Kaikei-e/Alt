@@ -21,7 +21,9 @@ export const load: PageLoad = async ({ fetch }) => {
 				contentType: feedsRes.headers.get("content-type"),
 				bodyPreview: errorText.substring(0, 200),
 			});
-			throw new Error(`Failed to fetch feeds: ${feedsRes.status} ${feedsRes.statusText}`);
+			throw new Error(
+				`Failed to fetch feeds: ${feedsRes.status} ${feedsRes.statusText}`,
+			);
 		}
 
 		// Check Content-Type before parsing JSON

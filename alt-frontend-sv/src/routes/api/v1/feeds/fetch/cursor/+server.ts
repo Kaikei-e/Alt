@@ -18,7 +18,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		const errorStack = error instanceof Error ? error.stack : undefined;
-		const errorName = error instanceof Error ? error.constructor.name : typeof error;
+		const errorName =
+			error instanceof Error ? error.constructor.name : typeof error;
 
 		console.error("Error in /api/v1/feeds/fetch/cursor:", {
 			message: errorMessage,
@@ -26,7 +27,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			errorType: errorName,
 			cookiePresent: !!cookieHeader,
 			limit,
-			cursor: cursor ? cursor.substring(0, 20) + "..." : null,
+			cursor: cursor ? `${cursor.substring(0, 20)}...` : null,
 		});
 
 		// Always return JSON response, never HTML
