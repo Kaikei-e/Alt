@@ -1,212 +1,231 @@
 <script lang="ts">
-import {
-	BookOpen,
-	Loader2,
-	Sparkles,
-	SquareArrowOutUpRight,
-} from "@lucide/svelte";
-import { onDestroy, onMount } from "svelte";
-import { fade } from "svelte/transition";
-import { type SwipeDirection, swipe } from "$lib/actions/swipe";
-import {
-	getArticleSummaryClient,
-	getFeedContentOnTheFlyClient,
-	summarizeArticleClient,
-} from "$lib/api/client";
-import { Button } from "$lib/components/ui/button";
-import type { RenderFeed } from "$lib/schema/feed";
+  import {
+    BookOpen,
+    Loader,
+    Sparkles,
+    SquareArrowOutUpRight,
+  } from "@lucide/svelte";
+  import { onMount } from "svelte";
+  import { fade } from "svelte/transition";
+  import { Spring } from "svelte/motion";
+  import { type SwipeDirection, swipe } from "$lib/actions/swipe";
+  import {
+    getFeedContentOnTheFlyClient,
+    summarizeArticleClient,
+  } from "$lib/api/client";
+  import { Button } from "$lib/components/ui/button";
+  import type { RenderFeed } from "$lib/schema/feed";
 
-interface Props {
-	feed: RenderFeed;
-	statusMessage: string | null;
-	onDismiss: (direction: number) => Promise<void> | void;
-	getCachedContent?: (feedUrl: string) => string | null;
-	isBusy?: boolean;
-	initialArticleContent?: string | null;
-}
+  interface Props {
+    feed: RenderFeed;
+    statusMessage: string | null;
+    onDismiss: (direction: number) => Promise<void> | void;
+    getCachedContent?: (feedUrl: string) => string | null;
+    isBusy?: boolean;
+    initialArticleContent?: string | null;
+  }
 
-const {
-	feed,
-	statusMessage,
-	onDismiss,
-	getCachedContent,
-	isBusy = false,
-	initialArticleContent,
-}: Props = $props();
+  const {
+    feed,
+    statusMessage,
+    onDismiss,
+    getCachedContent,
+    isBusy = false,
+    initialArticleContent,
+  }: Props = $props();
 
-// State
-let isSummaryExpanded = $state(false);
-let summary = $state<string | null>(null);
-let isLoadingSummary = $state(false);
-let summaryError = $state<string | null>(null);
-let isSummarizing = $state(false);
+  // State
+  let isAISummaryRequested = $state(false);
+  let aiSummary = $state<string | null>(null);
+  let summaryError = $state<string | null>(null);
+  let isSummarizing = $state(false);
 
-let isContentExpanded = $state(false);
-let fullContent = $state<string | null>(null);
-let isLoadingContent = $state(false);
-let contentError = $state<string | null>(null);
+  let isContentExpanded = $state(false);
+  let fullContent = $state<string | null>(null);
+  let isLoadingContent = $state(false);
+  let contentError = $state<string | null>(null);
 
-// Swipe state
-let translateX = $state(0);
-let isDragging = $state(false);
-let swipeElement: HTMLDivElement | null = $state(null);
+  // Swipe state with Spring
+  let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
+  let isDragging = $state(false);
+  let swipeElement: HTMLDivElement | null = $state(null);
 
-// Derived
-const sanitizedFullContent = $derived(fullContent);
-const hasDescription = $derived(Boolean(feed.description));
-const publishedLabel = $derived.by(() => {
-	if (feed.created_at) {
-		try {
-			return new Date(feed.created_at).toLocaleString();
-		} catch {
-			// Fallback
-		}
-	}
-	if (!feed.published) return null;
-	try {
-		return new Date(feed.published).toLocaleString();
-	} catch {
-		return feed.published;
-	}
-});
+  // Derived styles
+  const cardStyle = $derived.by(() => {
+    const opacity = Math.max(0.3, 1 - Math.abs(x.current) / 500);
+    const transition = isDragging ? "" : ""; // spring側で補間するので CSS transition は不要
 
-// Auto-fetch content
-onMount(() => {
-	// Initialize with prop value if available
-	if (initialArticleContent) {
-		fullContent = initialArticleContent;
-	}
+    return [
+      "max-width: calc(100% - 1rem)",
+      `transform: translate3d(${x.current}px, 0, 0)`,
+      `opacity: ${opacity}`,
+      "will-change: transform, opacity",
+      transition && `transition: ${transition}`,
+    ]
+      .filter(Boolean)
+      .join("; ");
+  });
 
-	if (fullContent) {
-		// Still need to set up swipe listener even if content is already loaded
-		if (swipeElement) {
-			const swipeHandler = (event: Event) => {
-				handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
-			};
-			swipeElement.addEventListener("swipe", swipeHandler);
-			return () => {
-				swipeElement?.removeEventListener("swipe", swipeHandler);
-			};
-		}
-		return;
-	}
+  // Derived
+  const sanitizedFullContent = $derived(fullContent);
+  const hasDescription = $derived(Boolean(feed.description));
+  const publishedLabel = $derived.by(() => {
+    if (feed.created_at) {
+      try {
+        return new Date(feed.created_at).toLocaleString();
+      } catch {
+        // Fallback
+      }
+    }
+    if (!feed.published) return null;
+    try {
+      return new Date(feed.published).toLocaleString();
+    } catch {
+      return feed.published;
+    }
+  });
 
-	const cached = getCachedContent?.(feed.link);
-	if (cached) {
-		fullContent = cached;
-	} else {
-		// Background fetch
-		getFeedContentOnTheFlyClient(feed.link)
-			.then((res) => {
-				if (res.content) {
-					fullContent = res.content;
-				}
-			})
-			.catch((err) => {
-				console.error("[SwipeFeedCard] Error auto-fetching content:", err);
-			});
-	}
+  // Auto-fetch content
+  onMount(() => {
+    // Initialize with prop value if available
+    if (initialArticleContent) {
+      fullContent = initialArticleContent;
+    }
 
-	// Add swipe event listener
-	if (swipeElement) {
-		const swipeHandler = (event: Event) => {
-			handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
-		};
-		swipeElement.addEventListener("swipe", swipeHandler);
-		return () => {
-			swipeElement?.removeEventListener("swipe", swipeHandler);
-		};
-	}
-});
+    const cached = getCachedContent?.(feed.link);
+    if (cached) {
+      fullContent = cached;
+    } else if (!fullContent) {
+      // Background fetch
+      getFeedContentOnTheFlyClient(feed.link)
+        .then((res) => {
+          if (res.content) {
+            fullContent = res.content;
+          }
+        })
+        .catch((err) => {
+          console.error("[SwipeFeedCard] Error auto-fetching content:", err);
+        });
+    }
+  });
 
-async function handleToggleContent() {
-	if (!isContentExpanded && !fullContent) {
-		const cached = getCachedContent?.(feed.link);
-		if (cached) {
-			fullContent = cached;
-			isContentExpanded = true;
-			return;
-		}
+  // Set up swipe event listeners reactively
+  $effect(() => {
+    if (!swipeElement) return;
 
-		isLoadingContent = true;
-		contentError = null;
+    const swipeHandler = (event: Event) => {
+      handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
+    };
 
-		try {
-			const res = await getFeedContentOnTheFlyClient(feed.link);
-			if (res.content) {
-				fullContent = res.content;
-			} else {
-				contentError = "Could not fetch article content";
-			}
-		} catch (err) {
-			console.error("Error fetching content:", err);
-			contentError = "Could not fetch article content";
-		} finally {
-			isLoadingContent = false;
-		}
-	}
-	isContentExpanded = !isContentExpanded;
-}
+    const swipeMoveHandler = (event: Event) => {
+      const moveEvent = event as CustomEvent<{
+        deltaX: number;
+        deltaY: number;
+      }>;
+      const { deltaX, deltaY } = moveEvent.detail;
+      // Only update x for horizontal swipes
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        // ドラッグ中は指に追従させたいので instant=true で即座に追従
+        x.set(deltaX, { instant: true });
+        isDragging = true;
+      }
+    };
 
-async function fetchSummary() {
-	isLoadingSummary = true;
-	summaryError = null;
-	try {
-		const res = await getArticleSummaryClient(feed.link);
-		if (res.matched_articles && res.matched_articles.length > 0) {
-			summary = res.matched_articles[0].content;
-		} else {
-			summaryError = "Could not fetch summary";
-		}
-	} catch (err) {
-		console.error("Error fetching summary:", err);
-		summaryError = "Could not fetch summary";
-	} finally {
-		isLoadingSummary = false;
-	}
-}
+    const swipeEndHandler = (event: Event) => {
+      const endEvent = event as CustomEvent<{ deltaX: number; deltaY: number }>;
+      const { deltaX } = endEvent.detail;
 
-async function handleToggleSummary() {
-	if (!isSummaryExpanded && !summary) {
-		await fetchSummary();
-	}
-	isSummaryExpanded = !isSummaryExpanded;
-}
+      // 閾値未満ならスプリングで元の位置に戻す
+      if (Math.abs(deltaX) < 80) {
+        x.target = 0;
+      }
+      isDragging = false;
+    };
 
-async function handleSummarizeNow() {
-	isSummarizing = true;
-	summaryError = null;
-	try {
-		const res = await summarizeArticleClient(feed.link);
-		if (res.success && res.summary) {
-			summary = res.summary;
-		} else {
-			summaryError = "Failed to generate the summary";
-		}
-	} catch (err) {
-		console.error("Error summarizing article:", err);
-		summaryError = "Failed to generate the summary";
-	} finally {
-		isSummarizing = false;
-	}
-}
+    swipeElement.addEventListener("swipe", swipeHandler);
+    swipeElement.addEventListener("swipe:move", swipeMoveHandler);
+    swipeElement.addEventListener("swipe:end", swipeEndHandler);
 
-function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
-	const dir = event.detail.direction;
-	if (dir === "left") {
-		void onDismiss(-1);
-	} else if (dir === "right") {
-		void onDismiss(1);
-	}
-}
+    return () => {
+      swipeElement?.removeEventListener("swipe", swipeHandler);
+      swipeElement?.removeEventListener("swipe:move", swipeMoveHandler);
+      swipeElement?.removeEventListener("swipe:end", swipeEndHandler);
+    };
+  });
+
+  async function handleToggleContent() {
+    if (!isContentExpanded && !fullContent) {
+      const cached = getCachedContent?.(feed.link);
+      if (cached) {
+        fullContent = cached;
+        isContentExpanded = true;
+        return;
+      }
+
+      isLoadingContent = true;
+      contentError = null;
+
+      try {
+        const res = await getFeedContentOnTheFlyClient(feed.link);
+        if (res.content) {
+          fullContent = res.content;
+        } else {
+          contentError = "Could not fetch article content";
+        }
+      } catch (err) {
+        console.error("Error fetching content:", err);
+        contentError = "Could not fetch article content";
+      } finally {
+        isLoadingContent = false;
+      }
+    }
+    isContentExpanded = !isContentExpanded;
+  }
+
+  async function handleGenerateAISummary() {
+    // Hide existing SUMMARY section
+    isAISummaryRequested = true;
+    isSummarizing = true;
+    summaryError = null;
+
+    try {
+      const res = await summarizeArticleClient(feed.link);
+      if (res.success && res.summary) {
+        aiSummary = res.summary;
+      } else {
+        summaryError = "Failed to generate the summary";
+      }
+    } catch (err) {
+      console.error("Error summarizing article:", err);
+      summaryError = "Failed to generate the summary";
+    } finally {
+      isSummarizing = false;
+    }
+  }
+
+  async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
+    const dir = event.detail.direction;
+    isDragging = false;
+
+    const width = swipeElement?.clientWidth ?? window.innerWidth;
+    x.target = dir === "left" ? -width : width;
+
+    // スプリングが飛び出し切るまで待つ
+    await x.set(x.target, { preserveMomentum: 120 });
+    await onDismiss(dir === "left" ? -1 : 1);
+
+    // 次のカード用にリセット（親でカード差し替えるなら不要）
+    x.set(0, { instant: true });
+  }
 </script>
 
 <div
   bind:this={swipeElement}
-  class="absolute w-full max-w-[30rem] h-[95dvh] bg-[var(--alt-glass)] text-[var(--alt-text-primary)] border-2 border-[var(--alt-glass-border)] shadow-[0_12px_40px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.1)] rounded-2xl p-4 backdrop-blur-[20px] touch-none select-none"
+  class="absolute w-full h-[95dvh] bg-[var(--alt-glass)] text-[var(--alt-text-primary)] border-2 border-[var(--alt-glass-border)] shadow-[0_12px_40px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.1)] rounded-2xl p-4 backdrop-blur-[20px] touch-action-pan-y select-none"
   use:swipe={{ threshold: 80, restraint: 100, allowedTime: 500 }}
   aria-busy={isBusy}
   data-testid="swipe-card"
+  style={cardStyle}
 >
   <div class="flex flex-col gap-0 h-full">
     <!-- Header -->
@@ -246,27 +265,67 @@ function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
       {/if}
     </div>
 
-    <!-- Scroll Area -->
+    <!-- Only Vertical Scroll Area -->
     <div
-      class="flex-1 overflow-auto px-2 py-2 bg-transparent scroll-smooth overscroll-contain scrollbar-thin"
+      style="touch-action: pan-y; overflow-x: hidden;"
+      class="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 bg-transparent scroll-smooth overscroll-contain scrollbar-thin"
       data-testid="unified-scroll-area"
     >
-      {#if hasDescription}
-        <div class="mb-4">
+      {#if hasDescription && !isAISummaryRequested}
+        <div class="mb-4 overflow-x-hidden" transition:fade>
           <p
             class="text-xs text-[var(--alt-text-secondary)] font-bold mb-2 uppercase tracking-widest"
           >
             Summary
           </p>
-          <p class="text-sm text-[var(--alt-text-primary)] leading-[1.7]">
+          <div
+            class="text-sm text-[var(--alt-text-primary)] leading-[1.7] break-words overflow-wrap-anywhere"
+          >
             {@html feed.description}
+          </div>
+        </div>
+      {/if}
+
+      {#if isAISummaryRequested}
+        <div
+          class="px-4 pt-2 pb-4 border-t mb-4 overflow-x-hidden"
+          data-testid="ai-summary-section"
+          transition:fade
+        >
+          <p
+            class="text-xs text-[var(--alt-text-secondary)] font-semibold mb-2 uppercase tracking-[0.18em]"
+          >
+            {isSummarizing ? "SUMMARY" : "AI SUMMARY"}
           </p>
+          {#if isSummarizing}
+            <div class="flex flex-col items-center gap-3 py-4">
+              <Loader
+                class="animate-spin text-[var(--alt-primary)]"
+                size={20}
+              />
+              <span class="text-[var(--alt-text-secondary)] text-sm"
+                >Now summarizing ....</span
+              >
+            </div>
+          {:else if summaryError}
+            <p
+              class="text-[var(--alt-text-secondary)] text-sm text-center py-4"
+            >
+              {summaryError}
+            </p>
+          {:else if aiSummary}
+            <p
+              class="text-sm text-[var(--alt-text-primary)] leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere"
+            >
+              {aiSummary}
+            </p>
+          {/if}
         </div>
       {/if}
 
       {#if isContentExpanded}
         <div
-          class="mb-4 p-4 bg-[rgba(255,255,255,0.03)] rounded-xl border border-[var(--alt-glass-border)]"
+          class="mb-4 p-4 bg-[rgba(255,255,255,0.03)] rounded-xl border border-[var(--alt-glass-border)] overflow-x-hidden"
           data-testid="content-section"
           transition:fade
         >
@@ -277,7 +336,7 @@ function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
           </p>
           {#if isLoadingContent}
             <div class="flex justify-center py-4 gap-2">
-              <Loader2
+              <Loader
                 class="animate-spin text-[var(--alt-primary)]"
                 size={20}
               />
@@ -291,107 +350,9 @@ function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
             </p>
           {:else if sanitizedFullContent}
             <div
-              class="text-sm text-[var(--alt-text-primary)] leading-[1.7] prose prose-invert max-w-none"
+              class="text-sm text-[var(--alt-text-primary)] leading-[1.7] prose prose-invert max-w-none break-words overflow-wrap-anywhere overflow-x-hidden"
             >
               {@html sanitizedFullContent}
-            </div>
-          {/if}
-        </div>
-      {/if}
-
-      {#if isSummaryExpanded}
-        <div
-          class="p-4 bg-[rgba(255,255,255,0.03)] rounded-xl border border-[var(--alt-glass-border)]"
-          data-testid="summary-section"
-          transition:fade
-        >
-          <p
-            class="text-xs text-[var(--alt-text-secondary)] font-bold mb-2 uppercase tracking-widest"
-          >
-            Summary
-          </p>
-          {#if isLoadingSummary}
-            <div class="flex justify-center py-4 gap-2">
-              <Loader2
-                class="animate-spin text-[var(--alt-primary)]"
-                size={20}
-              />
-              <span class="text-[var(--alt-text-secondary)] text-sm"
-                >Loading summary...</span
-              >
-            </div>
-          {:else if isSummarizing}
-            <div class="flex flex-col gap-3 py-4">
-              <div class="flex justify-center gap-2">
-                <Loader2
-                  class="animate-spin text-[var(--alt-primary)]"
-                  size={20}
-                />
-                <span class="text-[var(--alt-text-secondary)] text-sm"
-                  >Generating summary...</span
-                >
-              </div>
-              <p class="text-[var(--alt-text-secondary)] text-xs text-center">
-                This may take a few seconds
-              </p>
-            </div>
-          {:else if summaryError}
-            <div class="flex flex-col gap-3 w-full">
-              <p class="text-[var(--alt-text-secondary)] text-sm text-center">
-                {summaryError}
-              </p>
-              {#if summaryError === "Could not fetch summary"}
-                <div class="flex flex-col gap-2 w-full">
-                  <Button
-                    size="sm"
-                    onclick={fetchSummary}
-                    class="w-full rounded-xl bg-[var(--alt-primary)] text-white hover:bg-[var(--alt-secondary)]"
-                    disabled={isLoadingSummary}
-                  >
-                    Retry
-                  </Button>
-                  <Button
-                    size="sm"
-                    onclick={handleSummarizeNow}
-                    class="w-full rounded-xl bg-[var(--alt-primary)] text-white hover:bg-[var(--alt-secondary)]"
-                    disabled={isSummarizing}
-                  >
-                    {#if isSummarizing}
-                      <Loader2 class="mr-2 h-4 w-4 animate-spin" />
-                      Generating...
-                    {:else}
-                      <Sparkles class="mr-2 h-4 w-4" />
-                      Summarize Now
-                    {/if}
-                  </Button>
-                </div>
-              {/if}
-            </div>
-          {:else if summary}
-            <p
-              class="text-sm text-[var(--alt-text-primary)] leading-[1.7] whitespace-pre-wrap"
-            >
-              {summary}
-            </p>
-          {:else}
-            <div class="flex flex-col gap-3 w-full">
-              <p class="text-[var(--alt-text-secondary)] text-sm text-center">
-                No summary available for this article
-              </p>
-              <Button
-                size="sm"
-                onclick={handleSummarizeNow}
-                class="w-full rounded-xl bg-[var(--alt-primary)] text-white hover:bg-[var(--alt-secondary)]"
-                disabled={isSummarizing}
-              >
-                {#if isSummarizing}
-                  <Loader2 class="mr-2 h-4 w-4 animate-spin" />
-                  Generating...
-                {:else}
-                  <Sparkles class="mr-2 h-4 w-4" />
-                  Summarize Now
-                {/if}
-              </Button>
             </div>
           {/if}
         </div>
@@ -400,16 +361,16 @@ function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
     <!-- Footer -->
     <div
-      class="relative z-[2] bg-[rgba(255,255,255,0.05)] backdrop-blur-[20px] border-t border-[var(--alt-glass-border)] px-3 py-3 rounded-b-2xl"
+      class="relative z-[2] bg-[rgba(0,0,0,0.4)] backdrop-blur-[20px] border-t border-[var(--alt-glass-border)] px-3 py-3 rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
       data-testid="action-footer"
     >
       <div class="flex gap-2 w-full justify-between">
         <Button
           onclick={handleToggleContent}
           size="sm"
-          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 {isContentExpanded
-            ? 'bg-[var(--alt-secondary)]'
-            : 'bg-[var(--alt-primary)]'}"
+          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isContentExpanded
+            ? 'bg-[var(--alt-secondary)] shadow-[var(--alt-secondary)]/50'
+            : 'bg-[var(--alt-primary)] shadow-[var(--alt-primary)]/50'}"
           disabled={isLoadingContent}
         >
           <BookOpen class="mr-2 h-4 w-4" />
@@ -420,14 +381,19 @@ function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
               : "Article"}
         </Button>
         <Button
-          onclick={handleToggleSummary}
+          onclick={handleGenerateAISummary}
           size="sm"
-          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 {isSummaryExpanded
-            ? 'bg-[var(--alt-secondary)]'
-            : 'bg-[var(--alt-primary)]'}"
+          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isAISummaryRequested
+            ? 'bg-[var(--alt-secondary)] shadow-[var(--alt-secondary)]/50'
+            : 'bg-[var(--alt-primary)] shadow-[var(--alt-primary)]/50'}"
+          disabled={isSummarizing}
         >
           <Sparkles class="mr-2 h-4 w-4" />
-          {isSummaryExpanded ? "Hide" : "Summary"}
+          {isSummarizing
+            ? "Summarizing..."
+            : isAISummaryRequested
+              ? "Summary"
+              : "Summary"}
         </Button>
       </div>
     </div>

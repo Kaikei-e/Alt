@@ -47,9 +47,12 @@ export async function getBackendToken(
 		return token;
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
+		const errorStack = error instanceof Error ? error.stack : undefined;
 		console.error("Failed to get backend token:", {
 			message: errorMessage,
+			stack: errorStack,
 			authHubUrl: AUTH_HUB_URL,
+			hasCookie: !!cookie,
 		});
 		return null;
 	}
@@ -81,6 +84,7 @@ async function callBackendAPI<T>(
 		});
 
 		if (!response.ok) {
+			const contentType = response.headers.get("content-type") || "";
 			const errorText = await response.text().catch(() => "");
 			console.error(
 				`API call failed: ${response.status} ${response.statusText}`,
@@ -88,7 +92,9 @@ async function callBackendAPI<T>(
 					url,
 					status: response.status,
 					statusText: response.statusText,
+					contentType,
 					errorBody: errorText.substring(0, 200),
+					hasToken: !!token,
 				},
 			);
 			throw new Error(
@@ -96,16 +102,56 @@ async function callBackendAPI<T>(
 			);
 		}
 
-		return response.json();
+		// Check Content-Type before parsing JSON
+		const contentType = response.headers.get("content-type") || "";
+		const isJson = contentType.includes("application/json");
+
+		if (!isJson) {
+			const text = await response.text().catch(() => "");
+			console.error("Backend API returned non-JSON response:", {
+				url,
+				contentType,
+				status: response.status,
+				bodyPreview: text.substring(0, 200),
+			});
+			throw new Error(
+				`Backend API returned non-JSON response (${contentType}). Expected application/json.`,
+			);
+		}
+
+		try {
+			return await response.json();
+		} catch (jsonError) {
+			const errorMessage =
+				jsonError instanceof Error ? jsonError.message : String(jsonError);
+			console.error("Failed to parse JSON response from backend API:", {
+				url,
+				contentType,
+				error: errorMessage,
+			});
+			throw new Error(
+				`Failed to parse JSON response from backend: ${errorMessage}`,
+			);
+		}
 	} catch (error) {
 		if (error instanceof Error && error.message.includes("API call failed")) {
 			throw error;
 		}
+		if (
+			error instanceof Error &&
+			(error.message.includes("non-JSON response") ||
+				error.message.includes("Failed to parse JSON"))
+		) {
+			throw error;
+		}
 		const errorMessage = error instanceof Error ? error.message : String(error);
+		const errorStack = error instanceof Error ? error.stack : undefined;
 		console.error("Network error calling backend API:", {
 			url,
 			message: errorMessage,
+			stack: errorStack,
 			backendBaseUrl: BACKEND_BASE_URL,
+			hasToken: !!token,
 		});
 		throw new Error(`Failed to connect to backend: ${errorMessage}`);
 	}

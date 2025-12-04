@@ -13,105 +13,144 @@ interface SwipeDetail {
 	direction: SwipeDirection;
 	deltaX: number;
 	deltaY: number;
+	elapsedTime: number;
+	pointerType: string;
+}
+
+interface SwipeMoveDetail {
+	deltaX: number;
+	deltaY: number;
 }
 
 export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
-	const threshold = options.threshold ?? 50;
-	const restraint = options.restraint ?? 100;
-	const allowedTime = options.allowedTime ?? 500;
+	let threshold = options.threshold ?? 80;
+	let restraint = options.restraint ?? 100;
+	let allowedTime = options.allowedTime ?? 500;
 
 	let startX = 0;
 	let startY = 0;
 	let startTime = 0;
 	let pointerId: number | null = null;
-	let isPointerDown = false;
+	let pointerType = "mouse";
+	let active = false;
 
-	function onPointerDown(event: PointerEvent) {
-		isPointerDown = true;
-		pointerId = event.pointerId;
+	let lastDx = 0;
+	let lastDy = 0;
+	let frameRequested = false;
 
-		startX = event.clientX;
-		startY = event.clientY;
-		startTime = Date.now();
+	function emitMove() {
+		frameRequested = false;
+		if (!active) return;
 
-		node.setPointerCapture(pointerId);
+		const detail: SwipeMoveDetail = { deltaX: lastDx, deltaY: lastDy };
+		node.dispatchEvent(new CustomEvent<SwipeMoveDetail>("swipe:move", { detail }));
 	}
 
-	function onPointerMove(_event: PointerEvent) {
-		// Optional: Add logic here if you want to track movement during drag
-	}
+	function onPointerDown(ev: PointerEvent) {
+		if (active) return;
+		active = true;
+		pointerId = ev.pointerId;
+		pointerType = ev.pointerType;
 
-	function onPointerEnd(event: PointerEvent) {
-		if (!isPointerDown) return;
+		startX = ev.clientX;
+		startY = ev.clientY;
+		startTime = performance.now();
+		lastDx = 0;
+		lastDy = 0;
 
-		const endX = event.clientX;
-		const endY = event.clientY;
-		const distX = endX - startX;
-		const distY = endY - startY;
-		const elapsed = Date.now() - startTime;
-
-		isPointerDown = false;
-
-		if (pointerId !== null) {
-			try {
-				node.releasePointerCapture(pointerId);
-			} catch {
-				// Ignore if already released
-			}
-			pointerId = null;
+		try {
+			node.setPointerCapture(ev.pointerId);
+		} catch {
+			/* ignore */
 		}
+	}
 
-		// Time constraint
-		if (elapsed > allowedTime) return;
+	function onPointerMove(ev: PointerEvent) {
+		if (!active || ev.pointerId !== pointerId) return;
+
+		lastDx = ev.clientX - startX;
+		lastDy = ev.clientY - startY;
+
+		// pointermove を requestAnimationFrame に束ねる
+		if (!frameRequested) {
+			frameRequested = true;
+			requestAnimationFrame(emitMove);
+		}
+	}
+
+	function finish(ev: PointerEvent) {
+		if (!active || ev.pointerId !== pointerId) return;
+
+		active = false;
+
+		const distX = ev.clientX - startX;
+		const distY = ev.clientY - startY;
+		const elapsed = performance.now() - startTime;
+
+		const endDetail: SwipeMoveDetail = { deltaX: distX, deltaY: distY };
+		node.dispatchEvent(new CustomEvent<SwipeMoveDetail>("swipe:end", { detail: endDetail }));
 
 		let direction: SwipeDirection | null = null;
 
-		// Horizontal swipe
-		if (Math.abs(distX) >= threshold && Math.abs(distY) <= restraint) {
-			direction = distX > 0 ? "right" : "left";
+		if (elapsed <= allowedTime) {
+			if (Math.abs(distX) >= threshold && Math.abs(distY) <= restraint) {
+				direction = distX > 0 ? "right" : "left";
+			} else if (Math.abs(distY) >= threshold && Math.abs(distX) <= restraint) {
+				direction = distY > 0 ? "down" : "up";
+			}
 		}
-		// Vertical swipe
-		else if (Math.abs(distY) >= threshold && Math.abs(distX) <= restraint) {
-			direction = distY > 0 ? "down" : "up";
+
+		if (direction) {
+			const detail: SwipeDetail = {
+				direction,
+				deltaX: distX,
+				deltaY: distY,
+				elapsedTime: elapsed,
+				pointerType,
+			};
+			node.dispatchEvent(new CustomEvent<SwipeDetail>("swipe", { detail }));
+
+			// Direction-specific events
+			node.dispatchEvent(
+				new CustomEvent<SwipeDirection>(`swipe${direction}`, {
+					detail: direction,
+				}),
+			);
 		}
 
-		if (!direction) return;
-
-		const detail: SwipeDetail = {
-			direction,
-			deltaX: distX,
-			deltaY: distY,
-		};
-
-		// Generic swipe event
-		node.dispatchEvent(new CustomEvent<SwipeDetail>("swipe", { detail }));
-
-		// Direction-specific events
-		node.dispatchEvent(
-			new CustomEvent<SwipeDirection>(`swipe${direction}`, {
-				detail: direction,
-			}),
-		);
+		try {
+			if (pointerId !== null) node.releasePointerCapture(pointerId);
+		} catch {
+			/* ignore */
+		}
+		pointerId = null;
+		frameRequested = false;
 	}
 
-	function onPointerCancel(event: PointerEvent) {
-		onPointerEnd(event);
+	function onPointerUp(ev: PointerEvent) {
+		finish(ev);
+	}
+
+	function onPointerCancel(ev: PointerEvent) {
+		finish(ev);
 	}
 
 	node.addEventListener("pointerdown", onPointerDown);
 	node.addEventListener("pointermove", onPointerMove);
-	node.addEventListener("pointerup", onPointerEnd);
+	node.addEventListener("pointerup", onPointerUp);
 	node.addEventListener("pointercancel", onPointerCancel);
 	node.addEventListener("pointerleave", onPointerCancel);
 
 	return {
-		update(_newOptions: SwipeOptions) {
-			// Update options if needed
+		update(newOptions: SwipeOptions) {
+			threshold = newOptions.threshold ?? threshold;
+			restraint = newOptions.restraint ?? restraint;
+			allowedTime = newOptions.allowedTime ?? allowedTime;
 		},
 		destroy() {
 			node.removeEventListener("pointerdown", onPointerDown);
 			node.removeEventListener("pointermove", onPointerMove);
-			node.removeEventListener("pointerup", onPointerEnd);
+			node.removeEventListener("pointerup", onPointerUp);
 			node.removeEventListener("pointercancel", onPointerCancel);
 			node.removeEventListener("pointerleave", onPointerCancel);
 		},

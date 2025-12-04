@@ -1,6 +1,6 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { fade } from "svelte/transition";
+import { fade, fly } from "svelte/transition";
 import { browser } from "$app/environment";
 import {
 	getFeedsWithCursorClient,
@@ -194,11 +194,11 @@ function getCachedContent(url: string) {
       <Button onclick={() => void loadMore()}>Retry</Button>
     </div>
   {:else if activeFeed}
-    <div class="relative w-full max-w-[30rem] h-[95dvh] px-4">
+    <div class="relative w-full max-w-[30rem] h-[95dvh] px-2 sm:px-4 overflow-hidden">
       <!-- Next card (background) -->
       {#if nextFeed}
         <div
-          class="absolute inset-0 px-4 scale-95 opacity-50 pointer-events-none"
+          class="absolute inset-0 px-2 sm:px-4 scale-95 opacity-50 pointer-events-none"
           aria-hidden="true"
         >
           <div
@@ -209,16 +209,21 @@ function getCachedContent(url: string) {
 
       <!-- Active card -->
       {#key activeFeed.id}
-        <SwipeFeedCard
-          feed={activeFeed}
-          statusMessage={liveRegionMessage}
-          onDismiss={handleDismiss}
-          {getCachedContent}
-          isBusy={isLoading}
-          initialArticleContent={activeIndex === 0
-            ? initialArticleContent
-            : undefined}
-        />
+        <div
+          in:fly={{ x: 0, y: 0, duration: 300 }}
+          out:fly={{ x: 0, y: 0, duration: 300 }}
+        >
+          <SwipeFeedCard
+            feed={activeFeed}
+            statusMessage={liveRegionMessage}
+            onDismiss={handleDismiss}
+            {getCachedContent}
+            isBusy={isLoading}
+            initialArticleContent={activeIndex === 0
+              ? initialArticleContent
+              : undefined}
+          />
+        </div>
       {/key}
     </div>
   {:else}
