@@ -250,48 +250,50 @@ export const FloatingMenu = () => {
         onOpenChange={(e) => setIsOpen(e.open)}
         placement="bottom"
       >
-        <Drawer.Trigger asChild>
-          <Box
-            position="fixed"
-            bottom={6}
-            right={6}
-            zIndex={1000}
-            css={{
-              paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
-            }}
-          >
-            <Button
-              data-testid="floating-menu-button"
-              size="md"
-              borderRadius="full"
-              bg="var(--bg-surface)"
-              backdropFilter="blur(12px)"
-              color="var(--text-primary)"
-              p={0}
-              w="48px"
-              h="48px"
-              border="2px solid var(--text-primary)"
-              boxShadow="var(--shadow-glass)"
-              _hover={{
-                transform: "scale(1.05) rotate(90deg)",
-                bg: "var(--bg-surface-hover)",
-                borderColor: "var(--accent-primary)",
+        {!isOpen && (
+          <Drawer.Trigger asChild>
+            <Box
+              position="fixed"
+              bottom={6}
+              right={6}
+              zIndex={1000}
+              css={{
+                paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
               }}
-              _active={{
-                transform: "scale(0.95) rotate(90deg)",
-              }}
-              transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-              tabIndex={0}
-              role="button"
-              aria-label="Open floating menu"
-              position="relative"
-              overflow="hidden"
-              onClick={() => setIsOpen(true)}
             >
-              <Menu size={20} style={{ position: "relative", zIndex: 1 }} />
-            </Button>
-          </Box>
-        </Drawer.Trigger>
+              <Button
+                data-testid="floating-menu-button"
+                size="md"
+                borderRadius="full"
+                bg="var(--bg-surface)"
+                backdropFilter="blur(12px)"
+                color="var(--text-primary)"
+                p={0}
+                w="48px"
+                h="48px"
+                border="2px solid var(--text-primary)"
+                boxShadow="var(--shadow-glass)"
+                _hover={{
+                  transform: "scale(1.05) rotate(90deg)",
+                  bg: "var(--bg-surface-hover)",
+                  borderColor: "var(--accent-primary)",
+                }}
+                _active={{
+                  transform: "scale(0.95) rotate(90deg)",
+                }}
+                transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                tabIndex={0}
+                role="button"
+                aria-label="Open floating menu"
+                position="relative"
+                overflow="hidden"
+                onClick={() => setIsOpen(true)}
+              >
+                <Menu size={20} style={{ position: "relative", zIndex: 1 }} />
+              </Button>
+            </Box>
+          </Drawer.Trigger>
+        )}
 
         <Portal>
           <Drawer.Backdrop
@@ -303,7 +305,7 @@ export const FloatingMenu = () => {
             <Drawer.Content
               w="100vw"
               maxW="100vw"
-              bg="var(--app-bg)"
+              bg="white"
               backdropFilter="blur(20px)"
               color="var(--text-primary)"
               borderTopRadius="32px"
@@ -329,6 +331,32 @@ export const FloatingMenu = () => {
                 mx="auto"
                 mb={6}
               />
+
+              <Drawer.CloseTrigger asChild>
+                <Button
+                  aria-label="Close menu"
+                  data-testid="close-menu-button"
+                  bg="var(--bg-glass)"
+                  backdropFilter="blur(12px)"
+                  color="var(--text-primary)"
+                  borderRadius="full"
+                  border="1px solid var(--border-glass)"
+                  _hover={{
+                    bg: "var(--bg-surface-hover)",
+                    transform: "rotate(90deg)",
+                    borderColor: "var(--accent-primary)",
+                  }}
+                  position="absolute"
+                  top="24px"
+                  right="24px"
+                  w="40px"
+                  h="40px"
+                  transition="all 0.2s ease"
+                  zIndex={10}
+                >
+                  <X size={18} />
+                </Button>
+              </Drawer.CloseTrigger>
 
               <Drawer.Header
                 borderBottom="1px solid var(--border-glass)"
@@ -492,31 +520,6 @@ export const FloatingMenu = () => {
                   <ThemeToggle size="md" showLabel />
                 </Box>
               </Drawer.Body>
-
-              <Drawer.CloseTrigger asChild>
-                <Button
-                  aria-label="Close menu"
-                  data-testid="close-menu-button"
-                  bg="var(--bg-glass)"
-                  backdropFilter="blur(12px)"
-                  color="var(--text-primary)"
-                  borderRadius="full"
-                  border="1px solid var(--border-glass)"
-                  _hover={{
-                    bg: "var(--bg-surface-hover)",
-                    transform: "rotate(90deg)",
-                    borderColor: "var(--accent-primary)",
-                  }}
-                  position="absolute"
-                  top="24px"
-                  right="24px"
-                  w="40px"
-                  h="40px"
-                  transition="all 0.2s ease"
-                >
-                  <X size={18} />
-                </Button>
-              </Drawer.CloseTrigger>
             </Drawer.Content>
           </Drawer.Positioner>
         </Portal>

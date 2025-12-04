@@ -215,7 +215,7 @@ const CardView = memo(
         return new Promise<void>((resolve) => {
           api.start({
             x: direction * width * 1.2,
-            config: { tension: 350, friction: 25 },
+            config: { tension: 450, friction: 25 },
             onRest: () => {
               animationInFlightRef.current = false;
               resolve();
@@ -346,7 +346,7 @@ const CardView = memo(
 
           // Small delay to ensure animation frame has started
           // This prevents the state update from happening before the transform is applied
-          await new Promise((resolve) => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 5));
 
           await onDismiss(normalized);
 
@@ -899,7 +899,7 @@ const SwipeFeedCard = memo((props: SwipeFeedCardProps) => {
       if (String(state) === "leave") {
         return { tension: 600, friction: 30 };
       }
-      return { tension: 500, friction: 28 };
+      return { tension: 700, friction: 25 };
     },
   });
 
