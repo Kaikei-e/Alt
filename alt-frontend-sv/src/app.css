@@ -237,7 +237,7 @@
 	--alt-glass-blur: 0px;
 	--alt-glass-shadow: rgba(0, 0, 0, 0.08);
 
-	--app-bg: #ffffff;
+	--app-bg: #e4e3e3;
 	--accent-gradient: linear-gradient(
 		135deg,
 		var(--alt-primary) 0%,
