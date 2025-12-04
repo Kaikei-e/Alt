@@ -31,15 +31,23 @@
   const PAGE_SIZE = 20;
 
   // State
-  let feeds = $state<RenderFeed[]>([...(initialFeeds ?? [])]);
-  let cursor = $state<string | null>(initialNextCursor ?? null);
-  let hasMore = $state(!!initialNextCursor);
+  let feeds = $state<RenderFeed[]>([]);
+  let cursor = $state<string | null>(null);
+  let hasMore = $state(false);
   let isLoading = $state(false);
   let error = $state<string | null>(null);
   let readFeeds = $state<Set<string>>(new Set());
   let activeIndex = $state(0);
-  let isInitialLoading = $state((initialFeeds ?? []).length === 0);
+  let isInitialLoading = $state(true);
   let liveRegionMessage = $state("");
+
+  // Initialize state from props
+  $effect(() => {
+    feeds = [...(initialFeeds ?? [])];
+    cursor = initialNextCursor ?? null;
+    hasMore = !!initialNextCursor;
+    isInitialLoading = (initialFeeds ?? []).length === 0;
+  });
 
   // Derived
   const activeFeed = $derived(feeds[activeIndex]);
