@@ -9,6 +9,7 @@ import {
 import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
 import { canonicalize } from "$lib/utils/feed";
+import InfiniteScroll from "$lib/components/InfiniteScroll.svelte";
 import EmptyFeedState from "./EmptyFeedState.svelte";
 import VirtualFeedList from "./VirtualFeedList.svelte";
 
@@ -35,7 +36,6 @@ let liveRegionMessage = $state("");
 let isRetrying = $state(false);
 
 let scrollContainerRef: HTMLDivElement | null = $state(null);
-let sentinelRef: HTMLDivElement | null = $state(null);
 
 // Initialize readFeeds set from backend on mount
 onMount(() => {
@@ -122,25 +122,78 @@ const loadInitial = async () => {
 	}
 };
 
-// Load more feeds
+// Load more feeds with enhanced duplicate request prevention
 const loadMore = async () => {
+	// Strong guards to prevent duplicate requests
 	if (isLoading || !hasMore || !cursor) {
+		console.log("[FeedsClient] loadMore blocked:", { isLoading, hasMore, cursor: cursor ? "exists" : "null" });
 		return;
 	}
 
+	// Store current cursor to prevent duplicate requests
+	const currentCursor = cursor;
+
+	console.log("[FeedsClient] loadMore called", {
+		cursor: currentCursor ? currentCursor.substring(0, 20) + "..." : "null",
+	});
+
+	// Set loading state immediately to prevent concurrent requests
 	isLoading = true;
 	error = null;
 
-	try {
-		const response = await getFeedsWithCursorClient(cursor, PAGE_SIZE);
-		feeds = [...feeds, ...response.data];
-		cursor = response.next_cursor;
-		hasMore = response.next_cursor !== null;
+	const requestStartTime = Date.now();
 
-		// Update visibleCount to show new feeds
-		const allFeedsCount = initialFeeds.length + feeds.length;
-		visibleCount = Math.min(visibleCount + response.data.length, allFeedsCount);
+	try {
+		console.log("[FeedsClient] loadMore: starting API request", {
+			cursor: currentCursor ? currentCursor.substring(0, 20) + "..." : "null",
+		});
+		const response = await getFeedsWithCursorClient(currentCursor, PAGE_SIZE);
+		const requestDuration = Date.now() - requestStartTime;
+		console.log("[FeedsClient] loadMore: API request completed", {
+			duration: `${requestDuration}ms`,
+		});
+
+		console.log("[FeedsClient] loadMore: response received", {
+			dataLength: response.data.length,
+			nextCursor: response.next_cursor ? "exists" : "null",
+		});
+
+		// Check if we got new data
+		if (response.data.length === 0) {
+			// No new data, update hasMore based on next_cursor
+			console.log("[FeedsClient] loadMore: no new data, updating cursor");
+			hasMore = response.next_cursor !== null;
+			if (response.next_cursor) {
+				cursor = response.next_cursor;
+			} else {
+				hasMore = false;
+				cursor = null;
+			}
+		} else {
+			// Add new feeds
+			feeds = [...feeds, ...response.data];
+			cursor = response.next_cursor;
+			hasMore = response.next_cursor !== null;
+
+			// Update visibleCount to show new feeds
+			const allFeedsCount = initialFeeds.length + feeds.length;
+			visibleCount = Math.min(visibleCount + response.data.length, allFeedsCount);
+
+			console.log("[FeedsClient] loadMore: added feeds", {
+				newFeedsCount: response.data.length,
+				totalFeedsCount: feeds.length,
+				visibleCount,
+				hasMore,
+			});
+		}
 	} catch (err) {
+		const requestDuration = Date.now() - requestStartTime;
+		console.error("[FeedsClient] loadMore: error occurred", {
+			error: err,
+			duration: `${requestDuration}ms`,
+			errorType: err instanceof Error ? err.constructor.name : typeof err,
+			errorMessage: err instanceof Error ? err.message : String(err),
+		});
 		if (err instanceof Error && err.message.includes("404")) {
 			hasMore = false;
 			cursor = null;
@@ -150,6 +203,12 @@ const loadMore = async () => {
 				err instanceof Error ? err : new Error("Failed to load more data");
 		}
 	} finally {
+		const totalDuration = Date.now() - requestStartTime;
+		console.log("[FeedsClient] loadMore: finally block", {
+			duration: `${totalDuration}ms`,
+			isLoading: "will be set to false",
+		});
+		// ★ 無条件で戻す
 		isLoading = false;
 	}
 };
@@ -207,91 +266,19 @@ onMount(() => {
 });
 
 // Progressive rendering: increase visibleCount when user scrolls near the end
-// Setup IntersectionObserver and scroll handler once on mount
-let observer: IntersectionObserver | null = $state(null);
-let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
-
-onMount(() => {
-	if (!browser || !scrollContainerRef) return;
-
-	// Setup IntersectionObserver for sentinel
-	observer = new IntersectionObserver(
-		(entries) => {
-			entries.forEach((entry) => {
-				if (entry.isIntersecting) {
-					const allFeedsCount = initialFeeds.length + feeds.length;
-					const nextCount = Math.min(visibleCount + STEP, allFeedsCount);
-
-					// If we've shown all initial feeds and need more, trigger API load
-					if (nextCount >= initialFeeds.length && hasMore && !isLoading) {
-						void loadMore();
-					}
-
-					visibleCount = nextCount;
-				}
-			});
-		},
-		{
-			root: scrollContainerRef,
-			rootMargin: "200px 0px",
-			threshold: 0.1,
-		},
-	);
-
-	// Setup scroll handler with throttling
-	const handleScroll = () => {
-		if (!scrollContainerRef) return;
-
-		if (scrollTimeout) {
-			clearTimeout(scrollTimeout);
-		}
-
-		scrollTimeout = setTimeout(() => {
-			if (!scrollContainerRef) return;
-
-			const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef;
-			const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100;
-
-			if (isNearBottom && hasMore && !isLoading) {
-				const allFeedsCount = initialFeeds.length + feeds.length;
-				if (visibleCount < allFeedsCount) {
-					// Show more feeds progressively
-					visibleCount = Math.min(visibleCount + STEP, allFeedsCount);
-				} else if (visibleCount >= initialFeeds.length) {
-					// Load more from API
-					void loadMore();
-				}
-			}
-		}, 100);
-	};
-
-	scrollContainerRef.addEventListener("scroll", handleScroll, { passive: true });
-
-	return () => {
-		if (observer) {
-			observer.disconnect();
-			observer = null;
-		}
-		if (scrollTimeout) {
-			clearTimeout(scrollTimeout);
-			scrollTimeout = null;
-		}
-		scrollContainerRef?.removeEventListener("scroll", handleScroll);
-	};
-});
-
-// Reactively observe sentinelRef when it changes
+// This is handled by InfiniteScroll component, but we still need to manage visibleCount
+// when new feeds are loaded
 $effect(() => {
-	if (!browser || !observer || !sentinelRef) return;
+	if (!browser) return;
 
-	const currentSentinel = sentinelRef;
-	observer.observe(currentSentinel);
+	const allFeedsCount = initialFeeds.length + feeds.length;
 
-	return () => {
-		if (observer && currentSentinel) {
-			observer.unobserve(currentSentinel);
-		}
-	};
+	// When new feeds are added, increase visibleCount progressively
+	if (visibleCount < allFeedsCount) {
+		// Gradually increase visibleCount, but don't exceed allFeedsCount
+		const targetCount = Math.min(visibleCount + STEP, allFeedsCount);
+		visibleCount = targetCount;
+	}
 });
 
 // Handle marking feed as read with optimistic update
@@ -348,6 +335,26 @@ const hasVisibleContent = $derived(initialFeeds.length > 0 || feeds.length > 0);
 const isInitialLoadingState = $derived(
 	isInitialLoading && initialFeeds.length === 0 && feeds.length === 0,
 );
+
+// visibleFeeds が 0 だが hasMore/cursor があるときは、自動で次ページを読む
+$effect(() => {
+	if (!browser) return;
+	if (isLoading) return;
+
+	const hasAnyFetched = initialFeeds.length > 0 || feeds.length > 0;
+
+	if (
+		hasAnyFetched &&
+		visibleFeeds.length === 0 &&
+		hasMore &&
+		cursor
+	) {
+		console.log(
+			"[FeedsClient] visibleFeeds=0 & hasMore=true -> auto loadMore",
+		);
+		void loadMore();
+	}
+});
 </script>
 
 <div class="h-full flex flex-col" style="background: var(--app-bg);">
@@ -365,73 +372,73 @@ const isInitialLoadingState = $derived(
 		data-testid="feeds-scroll-container"
 		style="background: var(--app-bg);"
 	>
-		{#if isInitialLoadingState && !hasVisibleContent}
-			<!-- Skeleton loading state -->
-			<div class="flex flex-col gap-4">
-				{#each Array(INITIAL_VISIBLE_CARDS) as _}
+		<InfiniteScroll
+			{loadMore}
+			root={scrollContainerRef}
+			disabled={!hasMore || isLoading}
+			rootMargin="0px 0px 200px 0px"
+			threshold={0.2}
+		>
+			{#if isInitialLoadingState && !hasVisibleContent}
+				<!-- Skeleton loading state -->
+				<div class="flex flex-col gap-4">
+					{#each Array(INITIAL_VISIBLE_CARDS) as _}
+						<div
+							class="p-4 rounded-2xl border-2 border-border animate-pulse"
+							style="background: var(--surface-bg);"
+						>
+							<div class="h-4 bg-muted rounded w-3/4 mb-2"></div>
+							<div class="h-3 bg-muted rounded w-full mb-1"></div>
+							<div class="h-3 bg-muted rounded w-5/6"></div>
+						</div>
+					{/each}
+				</div>
+			{:else if error}
+				<!-- Error state -->
+				<div class="flex flex-col items-center justify-center min-h-[50vh] p-6">
 					<div
-						class="p-4 rounded-2xl border-2 border-border animate-pulse"
-						style="background: var(--surface-bg);"
+						class="p-6 rounded-lg border text-center"
+						style="background: var(--surface-bg); border-color: var(--destructive);"
 					>
-						<div class="h-4 bg-muted rounded w-3/4 mb-2"></div>
-						<div class="h-3 bg-muted rounded w-full mb-1"></div>
-						<div class="h-3 bg-muted rounded w-5/6"></div>
+						<p class="text-destructive font-semibold mb-2">Error loading feeds</p>
+						<p class="text-sm text-muted-foreground mb-4">{error.message}</p>
+						<button
+							onclick={() => void retryFetch()}
+							disabled={isRetrying}
+							class="px-4 py-2 rounded bg-primary text-primary-foreground disabled:opacity-50"
+						>
+							{isRetrying ? "Retrying..." : "Retry"}
+						</button>
 					</div>
-				{/each}
-			</div>
-		{:else if error}
-			<!-- Error state -->
-			<div class="flex flex-col items-center justify-center min-h-[50vh] p-6">
-				<div
-					class="p-6 rounded-lg border text-center"
-					style="background: var(--surface-bg); border-color: var(--destructive);"
-				>
-					<p class="text-destructive font-semibold mb-2">Error loading feeds</p>
-					<p class="text-sm text-muted-foreground mb-4">{error.message}</p>
-					<button
-						onclick={() => void retryFetch()}
-						disabled={isRetrying}
-						class="px-4 py-2 rounded bg-primary text-primary-foreground disabled:opacity-50"
+				</div>
+			{:else if visibleFeeds.length > 0}
+				<!-- Feed list rendering -->
+				<VirtualFeedList
+					feeds={visibleFeeds}
+					{readFeeds}
+					onMarkAsRead={handleMarkAsRead}
+				/>
+
+				<!-- No more feeds indicator -->
+				{#if !hasMore && visibleFeeds.length > 0}
+					<p
+						class="text-center text-sm mt-8 mb-4"
+						style="color: var(--alt-text-secondary);"
 					>
-						{isRetrying ? "Retrying..." : "Retry"}
-					</button>
-				</div>
-			</div>
-		{:else if visibleFeeds.length > 0}
-			<!-- Feed list rendering -->
-			<VirtualFeedList
-				feeds={visibleFeeds}
-				{readFeeds}
-				onMarkAsRead={handleMarkAsRead}
-			/>
+						No more feeds to load
+					</p>
+				{/if}
 
-			<!-- No more feeds indicator -->
-			{#if !hasMore && visibleFeeds.length > 0}
-				<p
-					class="text-center text-sm mt-8 mb-4"
-					style="color: var(--alt-text-secondary);"
-				>
-					No more feeds to load
-				</p>
+				<!-- Loading indicator -->
+				{#if isLoading}
+					<div class="py-4 text-center text-sm" style="color: var(--alt-text-secondary);">
+						Loading more...
+					</div>
+				{/if}
+			{:else}
+				<!-- Empty state -->
+				<EmptyFeedState />
 			{/if}
-
-			<!-- Infinite scroll sentinel -->
-			{#if visibleFeeds.length > 0 && hasMore}
-				<div
-					bind:this={sentinelRef}
-					class="h-[50px] w-full bg-transparent my-[10px] relative z-[1] flex items-center justify-center flex-shrink-0"
-					data-testid="infinite-scroll-sentinel"
-				>
-					{#if isLoading}
-						<p class="text-sm" style="color: var(--alt-text-secondary);">
-							Loading more...
-						</p>
-					{/if}
-				</div>
-			{/if}
-		{:else}
-			<!-- Empty state -->
-			<EmptyFeedState />
-		{/if}
+		</InfiniteScroll>
 	</div>
 </div>

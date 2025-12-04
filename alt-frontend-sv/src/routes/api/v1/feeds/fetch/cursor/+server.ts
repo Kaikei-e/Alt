@@ -17,7 +17,27 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		return json(response);
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
-		console.error("Error in /api/v1/feeds/fetch/cursor:", errorMessage);
-		return json({ error: errorMessage }, { status: 500 });
+		const errorStack = error instanceof Error ? error.stack : undefined;
+		const errorName = error instanceof Error ? error.constructor.name : typeof error;
+
+		console.error("Error in /api/v1/feeds/fetch/cursor:", {
+			message: errorMessage,
+			stack: errorStack,
+			errorType: errorName,
+			cookiePresent: !!cookieHeader,
+			limit,
+			cursor: cursor ? cursor.substring(0, 20) + "..." : null,
+		});
+
+		// Always return JSON response, never HTML
+		return json(
+			{
+				error: errorMessage,
+				data: [],
+				next_cursor: null,
+				has_more: false,
+			},
+			{ status: 500 },
+		);
 	}
 };
