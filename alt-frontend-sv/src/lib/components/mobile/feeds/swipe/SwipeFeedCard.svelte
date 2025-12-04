@@ -1,231 +1,231 @@
 <script lang="ts">
-  import {
-    BookOpen,
-    Loader,
-    Sparkles,
-    SquareArrowOutUpRight,
-  } from "@lucide/svelte";
-  import { onMount } from "svelte";
-  import { Spring } from "svelte/motion";
-  import { fade } from "svelte/transition";
-  import { type SwipeDirection, swipe } from "$lib/actions/swipe";
-  import {
-    getFeedContentOnTheFlyClient,
-    summarizeArticleClient,
-  } from "$lib/api/client";
-  import { Button } from "$lib/components/ui/button";
-  import type { RenderFeed } from "$lib/schema/feed";
+import {
+	BookOpen,
+	Loader,
+	Sparkles,
+	SquareArrowOutUpRight,
+} from "@lucide/svelte";
+import { onMount } from "svelte";
+import { Spring } from "svelte/motion";
+import { fade } from "svelte/transition";
+import { type SwipeDirection, swipe } from "$lib/actions/swipe";
+import {
+	getFeedContentOnTheFlyClient,
+	summarizeArticleClient,
+} from "$lib/api/client";
+import { Button } from "$lib/components/ui/button";
+import type { RenderFeed } from "$lib/schema/feed";
 
-  interface Props {
-    feed: RenderFeed;
-    statusMessage: string | null;
-    onDismiss: (direction: number) => Promise<void> | void;
-    getCachedContent?: (feedUrl: string) => string | null;
-    isBusy?: boolean;
-    initialArticleContent?: string | null;
-  }
+interface Props {
+	feed: RenderFeed;
+	statusMessage: string | null;
+	onDismiss: (direction: number) => Promise<void> | void;
+	getCachedContent?: (feedUrl: string) => string | null;
+	isBusy?: boolean;
+	initialArticleContent?: string | null;
+}
 
-  const {
-    feed,
-    statusMessage,
-    onDismiss,
-    getCachedContent,
-    isBusy = false,
-    initialArticleContent,
-  }: Props = $props();
+const {
+	feed,
+	statusMessage,
+	onDismiss,
+	getCachedContent,
+	isBusy = false,
+	initialArticleContent,
+}: Props = $props();
 
-  // State
-  let isAISummaryRequested = $state(false);
-  let aiSummary = $state<string | null>(null);
-  let summaryError = $state<string | null>(null);
-  let isSummarizing = $state(false);
+// State
+let isAISummaryRequested = $state(false);
+let aiSummary = $state<string | null>(null);
+let summaryError = $state<string | null>(null);
+let isSummarizing = $state(false);
 
-  let isContentExpanded = $state(false);
-  let fullContent = $state<string | null>(null);
-  let isLoadingContent = $state(false);
-  let contentError = $state<string | null>(null);
+let isContentExpanded = $state(false);
+let fullContent = $state<string | null>(null);
+let isLoadingContent = $state(false);
+let contentError = $state<string | null>(null);
 
-  // Swipe state with Spring
-  const SWIPE_THRESHOLD = 80;
-  let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
-  let isDragging = $state(false);
-  let hasSwiped = $state(false);
-  let swipeElement: HTMLDivElement | null = $state(null);
+// Swipe state with Spring
+const SWIPE_THRESHOLD = 80;
+let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
+let isDragging = $state(false);
+let hasSwiped = $state(false);
+let swipeElement: HTMLDivElement | null = $state(null);
 
-  // Derived styles
-  const cardStyle = $derived.by(() => {
-    const translate = x.current;
-    const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
+// Derived styles
+const cardStyle = $derived.by(() => {
+	const translate = x.current;
+	const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
 
-    return [
-      "max-width: calc(100% - 1rem)",
-      `transform: translate3d(${translate}px, 0, 0)`,
-      `opacity: ${opacity}`,
-      "will-change: transform, opacity",
-    ].join("; ");
-  });
+	return [
+		"max-width: calc(100% - 1rem)",
+		`transform: translate3d(${translate}px, 0, 0)`,
+		`opacity: ${opacity}`,
+		"will-change: transform, opacity",
+	].join("; ");
+});
 
-  // Derived
-  const sanitizedFullContent = $derived(fullContent);
-  const hasDescription = $derived(Boolean(feed.description));
-  const publishedLabel = $derived.by(() => {
-    if (feed.created_at) {
-      try {
-        return new Date(feed.created_at).toLocaleString();
-      } catch {
-        // Fallback
-      }
-    }
-    if (!feed.published) return null;
-    try {
-      return new Date(feed.published).toLocaleString();
-    } catch {
-      return feed.published;
-    }
-  });
+// Derived
+const sanitizedFullContent = $derived(fullContent);
+const hasDescription = $derived(Boolean(feed.description));
+const publishedLabel = $derived.by(() => {
+	if (feed.created_at) {
+		try {
+			return new Date(feed.created_at).toLocaleString();
+		} catch {
+			// Fallback
+		}
+	}
+	if (!feed.published) return null;
+	try {
+		return new Date(feed.published).toLocaleString();
+	} catch {
+		return feed.published;
+	}
+});
 
-  // Auto-fetch content
-  onMount(() => {
-    // Initialize with prop value if available
-    if (initialArticleContent) {
-      fullContent = initialArticleContent;
-    }
+// Auto-fetch content
+onMount(() => {
+	// Initialize with prop value if available
+	if (initialArticleContent) {
+		fullContent = initialArticleContent;
+	}
 
-    const cached = getCachedContent?.(feed.link);
-    if (cached) {
-      fullContent = cached;
-    } else if (!fullContent) {
-      // Background fetch
-      getFeedContentOnTheFlyClient(feed.link)
-        .then((res) => {
-          if (res.content) {
-            fullContent = res.content;
-          }
-        })
-        .catch((err) => {
-          console.error("[SwipeFeedCard] Error auto-fetching content:", err);
-        });
-    }
-  });
+	const cached = getCachedContent?.(feed.link);
+	if (cached) {
+		fullContent = cached;
+	} else if (!fullContent) {
+		// Background fetch
+		getFeedContentOnTheFlyClient(feed.link)
+			.then((res) => {
+				if (res.content) {
+					fullContent = res.content;
+				}
+			})
+			.catch((err) => {
+				console.error("[SwipeFeedCard] Error auto-fetching content:", err);
+			});
+	}
+});
 
-  // Set up swipe event listeners reactively
-  $effect(() => {
-    if (!swipeElement) return;
+// Set up swipe event listeners reactively
+$effect(() => {
+	if (!swipeElement) return;
 
-    const swipeHandler = (event: Event) => {
-      handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
-    };
+	const swipeHandler = (event: Event) => {
+		handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
+	};
 
-    const swipeMoveHandler = (event: Event) => {
-      const moveEvent = event as CustomEvent<{
-        deltaX: number;
-        deltaY: number;
-      }>;
-      const { deltaX, deltaY } = moveEvent.detail;
+	const swipeMoveHandler = (event: Event) => {
+		const moveEvent = event as CustomEvent<{
+			deltaX: number;
+			deltaY: number;
+		}>;
+		const { deltaX, deltaY } = moveEvent.detail;
 
-      // 横方向の動きが優勢なときだけ追従させる
-      if (Math.abs(deltaX) > Math.abs(deltaY)) {
-        isDragging = true;
-        x.set(deltaX, { instant: true });
-      }
-    };
+		// 横方向の動きが優勢なときだけ追従させる
+		if (Math.abs(deltaX) > Math.abs(deltaY)) {
+			isDragging = true;
+			x.set(deltaX, { instant: true });
+		}
+	};
 
-    const swipeEndHandler = (event: Event) => {
-      isDragging = false;
+	const swipeEndHandler = (event: Event) => {
+		isDragging = false;
 
-      // すでに handleSwipe 側で処理済みなら何もしない
-      if (hasSwiped) return;
+		// すでに handleSwipe 側で処理済みなら何もしない
+		if (hasSwiped) return;
 
-      const endEvent = event as CustomEvent<{ deltaX: number; deltaY: number }>;
-      const { deltaX } = endEvent.detail;
+		const endEvent = event as CustomEvent<{ deltaX: number; deltaY: number }>;
+		const { deltaX } = endEvent.detail;
 
-      // 閾値未満 → スワイプ不成立 → 中央に戻す
-      if (Math.abs(deltaX) < SWIPE_THRESHOLD) {
-        x.target = 0;
-      }
-    };
+		// 閾値未満 → スワイプ不成立 → 中央に戻す
+		if (Math.abs(deltaX) < SWIPE_THRESHOLD) {
+			x.target = 0;
+		}
+	};
 
-    swipeElement.addEventListener("swipe", swipeHandler);
-    swipeElement.addEventListener("swipe:move", swipeMoveHandler);
-    swipeElement.addEventListener("swipe:end", swipeEndHandler);
+	swipeElement.addEventListener("swipe", swipeHandler);
+	swipeElement.addEventListener("swipe:move", swipeMoveHandler);
+	swipeElement.addEventListener("swipe:end", swipeEndHandler);
 
-    return () => {
-      swipeElement?.removeEventListener("swipe", swipeHandler);
-      swipeElement?.removeEventListener("swipe:move", swipeMoveHandler);
-      swipeElement?.removeEventListener("swipe:end", swipeEndHandler);
-    };
-  });
+	return () => {
+		swipeElement?.removeEventListener("swipe", swipeHandler);
+		swipeElement?.removeEventListener("swipe:move", swipeMoveHandler);
+		swipeElement?.removeEventListener("swipe:end", swipeEndHandler);
+	};
+});
 
-  async function handleToggleContent() {
-    if (!isContentExpanded && !fullContent) {
-      const cached = getCachedContent?.(feed.link);
-      if (cached) {
-        fullContent = cached;
-        isContentExpanded = true;
-        return;
-      }
+async function handleToggleContent() {
+	if (!isContentExpanded && !fullContent) {
+		const cached = getCachedContent?.(feed.link);
+		if (cached) {
+			fullContent = cached;
+			isContentExpanded = true;
+			return;
+		}
 
-      isLoadingContent = true;
-      contentError = null;
+		isLoadingContent = true;
+		contentError = null;
 
-      try {
-        const res = await getFeedContentOnTheFlyClient(feed.link);
-        if (res.content) {
-          fullContent = res.content;
-        } else {
-          contentError = "Could not fetch article content";
-        }
-      } catch (err) {
-        console.error("Error fetching content:", err);
-        contentError = "Could not fetch article content";
-      } finally {
-        isLoadingContent = false;
-      }
-    }
-    isContentExpanded = !isContentExpanded;
-  }
+		try {
+			const res = await getFeedContentOnTheFlyClient(feed.link);
+			if (res.content) {
+				fullContent = res.content;
+			} else {
+				contentError = "Could not fetch article content";
+			}
+		} catch (err) {
+			console.error("Error fetching content:", err);
+			contentError = "Could not fetch article content";
+		} finally {
+			isLoadingContent = false;
+		}
+	}
+	isContentExpanded = !isContentExpanded;
+}
 
-  async function handleGenerateAISummary() {
-    // Hide existing SUMMARY section
-    isAISummaryRequested = true;
-    isSummarizing = true;
-    summaryError = null;
+async function handleGenerateAISummary() {
+	// Hide existing SUMMARY section
+	isAISummaryRequested = true;
+	isSummarizing = true;
+	summaryError = null;
 
-    try {
-      const res = await summarizeArticleClient(feed.link);
-      if (res.success && res.summary) {
-        aiSummary = res.summary;
-      } else {
-        summaryError = "Failed to generate the summary";
-      }
-    } catch (err) {
-      console.error("Error summarizing article:", err);
-      summaryError = "Failed to generate the summary";
-    } finally {
-      isSummarizing = false;
-    }
-  }
+	try {
+		const res = await summarizeArticleClient(feed.link);
+		if (res.success && res.summary) {
+			aiSummary = res.summary;
+		} else {
+			summaryError = "Failed to generate the summary";
+		}
+	} catch (err) {
+		console.error("Error summarizing article:", err);
+		summaryError = "Failed to generate the summary";
+	} finally {
+		isSummarizing = false;
+	}
+}
 
-  async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
-    const dir = event.detail.direction;
-    if (dir !== "left" && dir !== "right") return;
+async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
+	const dir = event.detail.direction;
+	if (dir !== "left" && dir !== "right") return;
 
-    hasSwiped = true;
-    isDragging = false;
+	hasSwiped = true;
+	isDragging = false;
 
-    const width = swipeElement?.clientWidth ?? window.innerWidth;
-    const target = dir === "left" ? -width : width;
+	const width = swipeElement?.clientWidth ?? window.innerWidth;
+	const target = dir === "left" ? -width : width;
 
-    // 画面外までスプリングで飛ばす（慣性付きで気持ちよく）
-    await x.set(target, { preserveMomentum: 120 });
+	// 画面外までスプリングで飛ばす（慣性付きで気持ちよく）
+	await x.set(target, { preserveMomentum: 120 });
 
-    // ここで「次の記事へ」「前の記事へ」のロジックを呼ぶ
-    await onDismiss(dir === "left" ? -1 : 1);
+	// ここで「次の記事へ」「前の記事へ」のロジックを呼ぶ
+	await onDismiss(dir === "left" ? -1 : 1);
 
-    // 次のカードに備えてリセット
-    hasSwiped = false;
-    await x.set(0, { instant: true });
-  }
+	// 次のカードに備えてリセット
+	hasSwiped = false;
+	await x.set(0, { instant: true });
+}
 </script>
 
 <div
@@ -242,7 +242,7 @@
       class="relative z-[2] bg-[rgba(255,255,255,0.03)] backdrop-blur-[20px] border-b border-[var(--alt-glass-border)] px-2 py-2 rounded-t-2xl"
     >
       <p
-        class="text-sm text-[var(--alt-text-secondary)] mb-2 uppercase tracking-[0.08em] font-semibold bg-clip-text text-transparent bg-[var(--accent-gradient)]"
+        class="text-sm text-[slate-700] mb-2 uppercase tracking-[0.08em] font-semibold bg-clip-text text-transparent bg-[var(--accent-gradient)]"
       >
         Swipe to mark as read
       </p>
@@ -370,7 +370,7 @@
 
     <!-- Footer -->
     <div
-      class="relative z-[2] bg-[rgba(0,0,0,0.4)] backdrop-blur-[20px] border-t border-[var(--alt-glass-border)] px-3 py-3 rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
+      class="relative z-[2] bg-[rgba(0,0,0,0.25)] backdrop-blur-[20px] border-t border-[var(--alt-glass-border)] px-3 py-3 rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
       data-testid="action-footer"
     >
       <div class="flex gap-2 w-full justify-between">
@@ -378,8 +378,8 @@
           onclick={handleToggleContent}
           size="sm"
           class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isContentExpanded
-            ? 'bg-[var(--alt-secondary)] shadow-[var(--alt-secondary)]/50'
-            : 'bg-[var(--alt-primary)] shadow-[var(--alt-primary)]/50'}"
+            ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
+            : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
           disabled={isLoadingContent}
         >
           <BookOpen class="mr-2 h-4 w-4" />
@@ -393,8 +393,8 @@
           onclick={handleGenerateAISummary}
           size="sm"
           class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isAISummaryRequested
-            ? 'bg-[var(--alt-secondary)] shadow-[var(--alt-secondary)]/50'
-            : 'bg-[var(--alt-primary)] shadow-[var(--alt-primary)]/50'}"
+            ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
+            : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
           disabled={isSummarizing}
         >
           <Sparkles class="mr-2 h-4 w-4" />
