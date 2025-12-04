@@ -83,13 +83,6 @@ jobs:
           cargo --version
           cargo clippy --version
 
-      - name: Build (release)
-        working-directory: recap-worker/recap-worker
-        run: |
-          cargo build --release --verbose
-        env:
-          RUST_BACKTRACE: 1
-
       - name: Run clippy
         working-directory: recap-worker/recap-worker
         run: |
