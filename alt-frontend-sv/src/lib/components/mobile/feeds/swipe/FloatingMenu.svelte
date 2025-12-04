@@ -20,18 +20,40 @@
 	import { page } from "$app/state";
 	import * as Accordion from "$lib/components/ui/accordion";
 	import { Button } from "$lib/components/ui/button";
-	import * as Dialog from "$lib/components/ui/dialog";
+	import * as Sheet from "$lib/components/ui/sheet";
 
 	let isOpen = $state(false);
 	let isPrefetched = $state(false);
 
-	// Prevent body scroll lock when dialog is closed
+	// Prevent body scroll lock when dialog is closed (following React version pattern)
+	// This effect runs whenever isOpen changes and ensures body scroll is properly controlled
 	$effect(() => {
 		if (!browser) return;
-		if (!isOpen) {
-			// Ensure body scroll is enabled when dialog is closed
-			document.body.style.overflow = "";
-		}
+
+		// Use requestAnimationFrame to ensure this runs after bits-ui's internal scroll lock
+		requestAnimationFrame(() => {
+			if (isOpen) {
+				// Prevent background scrolling when menu is open
+				document.body.style.overflow = "hidden";
+				document.body.style.position = "fixed";
+				document.body.style.width = "100%";
+			} else {
+				// Ensure body scroll is enabled when dialog is closed
+				// Override any scroll lock that bits-ui might have set
+				document.body.style.overflow = "";
+				document.body.style.position = "";
+				document.body.style.width = "";
+			}
+		});
+
+		// Cleanup function to ensure body scroll is restored
+		return () => {
+			requestAnimationFrame(() => {
+				document.body.style.overflow = "";
+				document.body.style.position = "";
+				document.body.style.width = "";
+			});
+		};
 	});
 
 	const svBasePath = "/sv";
@@ -183,25 +205,19 @@
 	});
 </script>
 
-<Dialog.Root bind:open={isOpen}>
-	{#if !isOpen}
-		<div
-			class="fixed bottom-6 right-6 z-[1000] pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] pointer-events-auto"
-		>
-			<Dialog.Trigger
-				class="h-12 w-12 rounded-full border-2 border-[var(--text-primary)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-[var(--shadow-glass)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:rotate-90 hover:bg-[var(--bg-surface-hover)] hover:border-[var(--accent-primary)] active:scale-95 active:rotate-90 inline-flex shrink-0 items-center justify-center focus-visible:outline-none outline-none disabled:pointer-events-none disabled:opacity-60"
-				aria-label="Open floating menu"
-			>
-				<Menu class="h-5 w-5 relative z-[1]" />
-			</Dialog.Trigger>
-		</div>
-	{/if}
-	<Dialog.Content
-		showCloseButton={false}
-		class="max-h-[90vh] min-h-[70vh] rounded-t-[32px] border-t border-[var(--border-glass)] text-[var(--text-primary)] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] backdrop-blur-[20px] !fixed !bottom-0 !left-0 !right-0 !top-auto !translate-x-0 !translate-y-0 !start-auto w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden"
-		style="background: var(--app-bg);"
+<Sheet.Root bind:open={isOpen}>
+	<Sheet.Trigger
+		class="fixed bottom-6 right-6 z-[1000] h-12 w-12 rounded-full border-2 border-[var(--text-primary)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-[var(--shadow-glass)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:rotate-90 hover:bg-[var(--bg-surface-hover)] hover:border-[var(--accent-primary)] active:scale-95 active:rotate-90 inline-flex shrink-0 items-center justify-center focus-visible:outline-none outline-none disabled:pointer-events-none disabled:opacity-60"
+		aria-label="Open floating menu"
 	>
-		<Dialog.Header class="border-b border-[var(--border-glass)] px-6 pb-6">
+		<Menu class="h-5 w-5 relative z-[1]" />
+	</Sheet.Trigger>
+	<Sheet.Content
+		side="bottom"
+		class="max-h-[90vh] min-h-[70vh] rounded-t-[32px] border-t border-[var(--border-glass)] text-[var(--text-primary)] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] backdrop-blur-[20px] w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden"
+		style="background: var(--app-bg) !important; background-color: var(--app-bg) !important;"
+	>
+		<Sheet.Header class="border-b border-[var(--border-glass)] px-6 pb-6 pt-6">
 			<div class="flex items-center justify-between">
 				<div class="flex gap-3">
 					<div
@@ -210,16 +226,16 @@
 						<Star class="h-5 w-5 text-[var(--accent-primary)]" />
 					</div>
 					<div class="text-left">
-						<Dialog.Title class="text-xl font-bold text-[var(--text-primary)]">
+						<Sheet.Title class="text-xl font-bold text-[var(--text-primary)]">
 							Navigation
-						</Dialog.Title>
-						<Dialog.Description class="text-sm text-[var(--text-secondary)]">
+						</Sheet.Title>
+						<Sheet.Description class="text-sm text-[var(--text-secondary)]">
 							Quick access to all features
-						</Dialog.Description>
+						</Sheet.Description>
 					</div>
 				</div>
 			</div>
-		</Dialog.Header>
+		</Sheet.Header>
 		<div
 			class="overflow-y-auto px-6 py-6 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
 		>
@@ -284,11 +300,11 @@
 				{/each}
 			</Accordion.Root>
 		</div>
-		<Dialog.Close
+		<Sheet.Close
 			class="absolute right-6 top-6 h-10 w-10 rounded-full border-2 border-transparent bg-transparent text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] hover:border-[var(--surface-border)] hover:rotate-90 hover:border-[var(--accent-primary)] transition-all duration-200 inline-flex shrink-0 items-center justify-center focus-visible:outline-none outline-none disabled:pointer-events-none disabled:opacity-60 border border-[var(--border-glass)] bg-[var(--bg-glass)] backdrop-blur-md"
 			aria-label="Close dialog"
 		>
 			<X class="h-4 w-4" />
-		</Dialog.Close>
-	</Dialog.Content>
-</Dialog.Root>
+		</Sheet.Close>
+	</Sheet.Content>
+</Sheet.Root>
