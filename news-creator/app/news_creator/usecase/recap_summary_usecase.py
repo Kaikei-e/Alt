@@ -21,6 +21,7 @@ from news_creator.domain.models import (
 )
 from news_creator.domain.prompts import RECAP_CLUSTER_SUMMARY_PROMPT
 from news_creator.port.llm_provider_port import LLMProviderPort
+from news_creator.utils.repetition_detector import detect_repetition
 
 logger = logging.getLogger(__name__)
 
@@ -58,34 +59,47 @@ class RecapSummaryUsecase:
             },
         )
 
-        max_retries = 2
+        max_retries = max(2, self.config.max_repetition_retries)
         last_error = None
         last_response = None
 
         for attempt in range(max_retries + 1):
-            # リトライ時は温度を下げる
+            # リトライ時は温度を下げる、Repetition Penaltyを上げる
             current_temp = temperature_override
+            current_repeat_penalty = self.config.llm_repeat_penalty
+
             if attempt > 0:
                 base_temp = temperature_override if temperature_override is not None else self.config.llm_temperature
-                current_temp = max(0.0, base_temp - (0.1 * attempt))
+                current_temp = max(0.05, base_temp - (0.05 * attempt))
+                current_repeat_penalty = min(1.2, current_repeat_penalty + (0.05 * attempt))
                 logger.warning(
-                    "Retrying recap summary generation with lower temperature",
+                    "Retrying recap summary generation with adjusted parameters",
                     extra={
                         "job_id": str(request.job_id),
                         "attempt": attempt + 1,
                         "temperature": current_temp,
+                        "repeat_penalty": current_repeat_penalty,
                     },
                 )
 
             llm_options_retry: Optional[Dict[str, Any]] = None
             if current_temp is not None:
-                # Merge temperature override into existing options to preserve other settings
+                # Merge temperature and repetition penalty into existing options
                 if llm_options is not None:
-                    llm_options_retry = {**llm_options, "temperature": float(current_temp)}
+                    llm_options_retry = {
+                        **llm_options,
+                        "temperature": float(current_temp),
+                        "repeat_penalty": float(current_repeat_penalty),
+                    }
                 else:
-                    llm_options_retry = {"temperature": float(current_temp)}
+                    llm_options_retry = {
+                        "temperature": float(current_temp),
+                        "repeat_penalty": float(current_repeat_penalty),
+                    }
             elif llm_options is not None:
-                llm_options_retry = llm_options
+                llm_options_retry = {**llm_options, "repeat_penalty": float(current_repeat_penalty)}
+            else:
+                llm_options_retry = {"repeat_penalty": float(current_repeat_penalty)}
 
             # Use JSON format for structured output (Ollama structured output mode)
             llm_response = await self.llm_provider.generate(
@@ -95,8 +109,51 @@ class RecapSummaryUsecase:
                 options=llm_options_retry,
             )
 
+            # Check for repetition in raw response (before JSON parsing)
+            has_repetition, rep_score, rep_patterns = detect_repetition(
+                llm_response.response,
+                threshold=self.config.repetition_threshold
+            )
+
+            if has_repetition and attempt < max_retries:
+                logger.warning(
+                    "Repetition detected in recap summary, will retry",
+                    extra={
+                        "job_id": str(request.job_id),
+                        "genre": request.genre,
+                        "attempt": attempt + 1,
+                        "repetition_score": rep_score,
+                        "patterns": rep_patterns,
+                        "response_preview": llm_response.response[:200],
+                    }
+                )
+                last_error = RuntimeError(f"Repetition detected (score: {rep_score:.2f})")
+                last_response = llm_response
+                continue  # Retry
+
             try:
                 summary_payload = self._parse_summary_json(llm_response.response, max_bullets)
+
+                # Also check for repetition in parsed summary text
+                summary_text = summary_payload.get("title", "") + " " + " ".join(summary_payload.get("bullets", []))
+                has_repetition_in_summary, rep_score_summary, rep_patterns_summary = detect_repetition(
+                    summary_text,
+                    threshold=self.config.repetition_threshold
+                )
+
+                if has_repetition_in_summary and attempt < max_retries:
+                    logger.warning(
+                        "Repetition detected in parsed recap summary, will retry",
+                        extra={
+                            "job_id": str(request.job_id),
+                            "genre": request.genre,
+                            "attempt": attempt + 1,
+                            "repetition_score": rep_score_summary,
+                            "patterns": rep_patterns_summary,
+                        }
+                    )
+                    last_error = RuntimeError(f"Repetition in parsed summary (score: {rep_score_summary:.2f})")
+                    continue  # Retry
                 # 成功した場合は結果を返す
                 summary = RecapSummary(**summary_payload)
 
@@ -108,15 +165,26 @@ class RecapSummaryUsecase:
                     processing_time_ms=self._nanoseconds_to_milliseconds(llm_response.total_duration),
                 )
 
-                logger.info(
-                    "Recap summary generated",
-                    extra={
-                        "job_id": str(request.job_id),
-                        "genre": request.genre,
-                        "bullet_count": len(summary.bullets),
-                        "attempt": attempt + 1,
-                    },
-                )
+                if attempt > 0:
+                    logger.info(
+                        "Recap summary generated successfully after retry",
+                        extra={
+                            "job_id": str(request.job_id),
+                            "genre": request.genre,
+                            "bullet_count": len(summary.bullets),
+                            "attempts": attempt + 1,
+                        },
+                    )
+                else:
+                    logger.info(
+                        "Recap summary generated",
+                        extra={
+                            "job_id": str(request.job_id),
+                            "genre": request.genre,
+                            "bullet_count": len(summary.bullets),
+                            "attempt": attempt + 1,
+                        },
+                    )
 
                 return RecapSummaryResponse(
                     job_id=request.job_id,

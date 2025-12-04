@@ -6,6 +6,7 @@ from typing import Tuple, Dict, Any, List, Optional
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.prompts import SUMMARY_PROMPT_TEMPLATE
 from news_creator.port.llm_provider_port import LLMProviderPort
+from news_creator.utils.repetition_detector import detect_repetition
 
 logger = logging.getLogger(__name__)
 
@@ -71,16 +72,93 @@ class SummarizeUsecase:
         # Build prompt from template
         prompt = SUMMARY_PROMPT_TEMPLATE.format(content=truncated_content)
 
-        # Call LLM provider
-        llm_response = await self.llm_provider.generate(
-            prompt,
-            num_predict=self.config.summary_num_predict,
-        )
+        # Retry loop with repetition detection
+        max_retries = self.config.max_repetition_retries
+        last_error = None
+        last_metadata = None
+        has_repetition = False
+        rep_score = 0.0
+        rep_patterns: List[str] = []
+        attempt = 0
+        raw_summary = ""
+        llm_response = None
 
-        # Clean and validate summary
-        raw_summary = llm_response.response
+        for attempt in range(max_retries + 1):
+            # Adjust temperature and repetition penalty for retries
+            current_temp = self.config.summary_temperature
+            current_repeat_penalty = self.config.llm_repeat_penalty
+
+            if attempt > 0:
+                # Progressively lower temperature and increase repetition penalty
+                current_temp = max(0.05, current_temp - (0.05 * attempt))
+                current_repeat_penalty = min(1.2, current_repeat_penalty + (0.05 * attempt))
+
+                logger.warning(
+                    "Retrying summary generation due to repetition",
+                    extra={
+                        "article_id": article_id,
+                        "attempt": attempt + 1,
+                        "max_retries": max_retries + 1,
+                        "temperature": current_temp,
+                        "repeat_penalty": current_repeat_penalty,
+                    }
+                )
+
+            # Call LLM provider with adjusted parameters
+            llm_options = {
+                "temperature": current_temp,
+                "repeat_penalty": current_repeat_penalty,
+            }
+
+            llm_response = await self.llm_provider.generate(
+                prompt,
+                num_predict=self.config.summary_num_predict,
+                options=llm_options,
+            )
+
+            # Clean and validate summary
+            raw_summary = llm_response.response
+
+            # Check for repetition
+            has_repetition, rep_score, rep_patterns = detect_repetition(
+                raw_summary,
+                threshold=self.config.repetition_threshold
+            )
+
+            if has_repetition and attempt < max_retries:
+                logger.warning(
+                    "Repetition detected in generated summary, will retry",
+                    extra={
+                        "article_id": article_id,
+                        "attempt": attempt + 1,
+                        "repetition_score": rep_score,
+                        "patterns": rep_patterns,
+                        "raw_summary_preview": raw_summary[:200],
+                    }
+                )
+                last_error = f"Repetition detected (score: {rep_score:.2f})"
+                last_metadata = {
+                    "model": llm_response.model,
+                    "prompt_tokens": llm_response.prompt_eval_count,
+                    "completion_tokens": llm_response.eval_count,
+                    "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
+                }
+                continue  # Retry
+
+            # No repetition detected or max retries reached, proceed with cleaning
+            break
 
         # Log raw summary for debugging
+        if attempt > 0:
+            logger.info(
+                "Summary generation succeeded after retry",
+                extra={
+                    "article_id": article_id,
+                    "attempts": attempt + 1,
+                    "raw_summary_length": len(raw_summary) if raw_summary else 0,
+                }
+            )
+
         logger.debug(
             "Raw summary received from LLM",
             extra={
@@ -89,6 +167,18 @@ class SummarizeUsecase:
                 "raw_summary_preview": raw_summary[:200] if raw_summary else "",
             }
         )
+
+        # If we exhausted retries and still have repetition, log warning but proceed
+        if has_repetition and attempt >= max_retries and llm_response:
+            logger.error(
+                "Repetition still detected after all retries, using summary anyway",
+                extra={
+                    "article_id": article_id,
+                    "repetition_score": rep_score,
+                    "patterns": rep_patterns,
+                    "max_retries": max_retries,
+                }
+            )
 
         cleaned_summary = self._clean_summary_text(raw_summary, article_id)
 
@@ -153,12 +243,23 @@ class SummarizeUsecase:
         truncated_summary = cleaned_summary[:600]
 
         # Build metadata
-        metadata = {
-            "model": llm_response.model,
-            "prompt_tokens": llm_response.prompt_eval_count,
-            "completion_tokens": llm_response.eval_count,
-            "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
-        }
+        if llm_response:
+            metadata = {
+                "model": llm_response.model,
+                "prompt_tokens": llm_response.prompt_eval_count,
+                "completion_tokens": llm_response.eval_count,
+                "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
+            }
+        elif last_metadata:
+            metadata = last_metadata
+        else:
+            # Fallback metadata if something went wrong
+            metadata = {
+                "model": "unknown",
+                "prompt_tokens": None,
+                "completion_tokens": None,
+                "total_duration_ms": None,
+            }
 
         logger.info(
             "Summary generated successfully",

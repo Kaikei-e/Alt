@@ -44,10 +44,11 @@ class NewsCreatorConfig:
         # 実効 80k 前提。必要なら環境変数で上書き（7GBギリギリまで使用）
         self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 81920)
         self.llm_num_predict = self._get_int("LLM_NUM_PREDICT", 1200)  # 復活
-        self.llm_temperature = self._get_float("LLM_TEMPERATURE", 0.2)
-        self.llm_top_p = self._get_float("LLM_TOP_P", 0.9)             # 復活
-        self.llm_top_k = self._get_int("LLM_TOP_K", 50)
-        self.llm_repeat_penalty = self._get_float("LLM_REPEAT_PENALTY", 1.07)
+        # 調査に基づく推奨値に更新: 繰り返し問題対策
+        self.llm_temperature = self._get_float("LLM_TEMPERATURE", 0.15)  # 0.2 → 0.15
+        self.llm_top_p = self._get_float("LLM_TOP_P", 0.85)             # 0.9 → 0.85
+        self.llm_top_k = self._get_int("LLM_TOP_K", 40)                 # 50 → 40
+        self.llm_repeat_penalty = self._get_float("LLM_REPEAT_PENALTY", 1.15)  # 1.07 → 1.15
         self.llm_num_keep = self._get_int("LLM_NUM_KEEP", -1)          # system保持
 
         # Stop tokens（Gemma3 は <start_of_turn>/<end_of_turn>）
@@ -61,6 +62,11 @@ class NewsCreatorConfig:
 
         # Summary-specific settings
         self.summary_num_predict = self._get_int("SUMMARY_NUM_PREDICT", 300)
+        self.summary_temperature = self._get_float("SUMMARY_TEMPERATURE", 0.1)  # サマリー生成専用の低い温度
+
+        # Repetition detection and retry settings
+        self.max_repetition_retries = self._get_int("MAX_REPETITION_RETRIES", 3)
+        self.repetition_threshold = self._get_float("REPETITION_THRESHOLD", 0.3)
 
         logger.info(
             "News creator configuration initialized",
