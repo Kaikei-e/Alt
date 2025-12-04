@@ -3,9 +3,11 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"pre-processor/models"
 	"pre-processor/repository"
+	"pre-processor/utils/html_parser"
 
 	"github.com/labstack/echo/v4"
 )
@@ -75,7 +77,20 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 			h.logger.Warn("article found but content is empty", "article_id", req.ArticleID)
 			return echo.NewHTTPError(http.StatusBadRequest, "Article content is empty in database")
 		}
-		req.Content = fetchedArticle.Content
+		// Check if content is HTML and extract text if needed
+		content := fetchedArticle.Content
+		if strings.Contains(content, "<") && strings.Contains(content, ">") {
+			// Content appears to be HTML, extract text
+			h.logger.Info("detected HTML content, extracting text", "article_id", req.ArticleID)
+			extractedText := html_parser.ExtractArticleText(content)
+			if extractedText != "" {
+				content = extractedText
+				h.logger.Info("HTML content extracted successfully", "article_id", req.ArticleID, "original_length", len(fetchedArticle.Content), "extracted_length", len(extractedText))
+			} else {
+				h.logger.Warn("HTML extraction returned empty, using original content", "article_id", req.ArticleID)
+			}
+		}
+		req.Content = content
 		// Also update title if missing
 		if req.Title == "" {
 			req.Title = fetchedArticle.Title

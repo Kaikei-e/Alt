@@ -411,12 +411,12 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 
 	// レスポンス読み取り時間測定
 	readStart := time.Now()
-	article, err := readability.FromReader(resp.Body, &url)
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // Limit to 10MB
 	readDuration := time.Since(readStart)
 
 	if err != nil {
 		totalDuration := time.Since(start)
-		s.logger.Error("Failed to parse article",
+		s.logger.Error("Failed to read response body",
 			"url", url.String(),
 			"domain", domain,
 			"error", err,
@@ -426,32 +426,45 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 		return nil, err
 	}
 
-	if article.TextContent == "" {
+	htmlContent := string(bodyBytes)
+
+	// Extract title from HTML
+	extractStart := time.Now()
+	title := html_parser.ExtractTitle(htmlContent)
+
+	// Extract text content from HTML using html_parser
+	extractedText := html_parser.ExtractArticleText(htmlContent)
+	extractDuration := time.Since(extractStart)
+
+	if extractedText == "" {
 		totalDuration := time.Since(start)
-		s.logger.Error("Article content is empty",
+		s.logger.Error("Article content is empty after extraction",
 			"url", url.String(),
 			"domain", domain,
 			"http_duration_ms", httpDuration.Milliseconds(),
 			"read_duration_ms", readDuration.Milliseconds(),
+			"extract_duration_ms", extractDuration.Milliseconds(),
 			"total_duration_ms", totalDuration.Milliseconds())
-		return nil, errors.New("article content is empty")
+		return nil, errors.New("article content is empty after extraction")
 	}
 
 	// Content validation
-	if err := s.validateContent(article.TextContent, url.String()); err != nil {
+	if err := s.validateContent(extractedText, url.String()); err != nil {
 		totalDuration := time.Since(start)
 		s.logger.Error("Article content validation failed",
 			"url", url.String(),
 			"domain", domain,
 			"error", err,
-			"content_size", len(article.TextContent),
+			"content_size", len(extractedText),
 			"http_duration_ms", httpDuration.Milliseconds(),
 			"read_duration_ms", readDuration.Milliseconds(),
+			"extract_duration_ms", extractDuration.Milliseconds(),
 			"total_duration_ms", totalDuration.Milliseconds())
 		return nil, err
 	}
 
-	cleanedContent := strings.ReplaceAll(article.TextContent, "\n", " ")
+	// Normalize whitespace (replace newlines with spaces for consistency)
+	cleanedContent := strings.ReplaceAll(extractedText, "\n", " ")
 	contentSize := len(cleanedContent)
 	totalDuration := time.Since(start)
 
@@ -468,7 +481,7 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 		"throughput_bytes_per_second", float64(contentSize)/totalDuration.Seconds())
 
 	return &models.Article{
-		Title:   article.Title,
+		Title:   title,
 		Content: cleanedContent,
 		URL:     url.String(),
 	}, nil
