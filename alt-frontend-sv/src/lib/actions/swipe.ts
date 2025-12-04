@@ -24,7 +24,7 @@ interface SwipeMoveDetail {
 
 export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 	let threshold = options.threshold ?? 80;
-	let restraint = options.restraint ?? 100;
+	let restraint = options.restraint ?? 120;
 	let allowedTime = options.allowedTime ?? 500;
 
 	let startX = 0;
@@ -36,32 +36,36 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 
 	let lastDx = 0;
 	let lastDy = 0;
-	let frameRequested = false;
+	let rafId = 0;
 
 	function emitMove() {
-		frameRequested = false;
+		rafId = 0;
 		if (!active) return;
 
 		const detail: SwipeMoveDetail = { deltaX: lastDx, deltaY: lastDy };
-		node.dispatchEvent(new CustomEvent<SwipeMoveDetail>("swipe:move", { detail }));
+		node.dispatchEvent(
+			new CustomEvent<SwipeMoveDetail>("swipe:move", { detail }),
+		);
 	}
 
 	function onPointerDown(ev: PointerEvent) {
 		if (active) return;
 		active = true;
+
 		pointerId = ev.pointerId;
 		pointerType = ev.pointerType;
 
 		startX = ev.clientX;
 		startY = ev.clientY;
 		startTime = performance.now();
+
 		lastDx = 0;
 		lastDy = 0;
 
 		try {
 			node.setPointerCapture(ev.pointerId);
 		} catch {
-			/* ignore */
+			// ignore
 		}
 	}
 
@@ -71,40 +75,47 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 		lastDx = ev.clientX - startX;
 		lastDy = ev.clientY - startY;
 
-		// pointermove を requestAnimationFrame に束ねる
-		if (!frameRequested) {
-			frameRequested = true;
-			requestAnimationFrame(emitMove);
+		if (!rafId) {
+			rafId = requestAnimationFrame(emitMove);
 		}
 	}
 
-	function finish(ev: PointerEvent) {
+	function endPointer(ev: PointerEvent) {
 		if (!active || ev.pointerId !== pointerId) return;
 
 		active = false;
 
-		const distX = ev.clientX - startX;
-		const distY = ev.clientY - startY;
+		if (rafId) {
+			cancelAnimationFrame(rafId);
+			rafId = 0;
+		}
+
+		const dx = ev.clientX - startX;
+		const dy = ev.clientY - startY;
 		const elapsed = performance.now() - startTime;
 
-		const endDetail: SwipeMoveDetail = { deltaX: distX, deltaY: distY };
-		node.dispatchEvent(new CustomEvent<SwipeMoveDetail>("swipe:end", { detail: endDetail }));
+		// ★ 時間に関係なく「必ず」 swipe:end を飛ばす
+		const endDetail: SwipeMoveDetail = { deltaX: dx, deltaY: dy };
+		node.dispatchEvent(
+			new CustomEvent<SwipeMoveDetail>("swipe:end", { detail: endDetail }),
+		);
 
+		// ここからは「スワイプ成立」の判定
 		let direction: SwipeDirection | null = null;
 
 		if (elapsed <= allowedTime) {
-			if (Math.abs(distX) >= threshold && Math.abs(distY) <= restraint) {
-				direction = distX > 0 ? "right" : "left";
-			} else if (Math.abs(distY) >= threshold && Math.abs(distX) <= restraint) {
-				direction = distY > 0 ? "down" : "up";
+			if (Math.abs(dx) >= threshold && Math.abs(dy) <= restraint) {
+				direction = dx > 0 ? "right" : "left";
+			} else if (Math.abs(dy) >= threshold && Math.abs(dx) <= restraint) {
+				direction = dy > 0 ? "down" : "up";
 			}
 		}
 
 		if (direction) {
 			const detail: SwipeDetail = {
 				direction,
-				deltaX: distX,
-				deltaY: distY,
+				deltaX: dx,
+				deltaY: dy,
 				elapsedTime: elapsed,
 				pointerType,
 			};
@@ -119,20 +130,19 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 		}
 
 		try {
-			if (pointerId !== null) node.releasePointerCapture(pointerId);
+			node.releasePointerCapture(ev.pointerId);
 		} catch {
-			/* ignore */
+			// ignore
 		}
 		pointerId = null;
-		frameRequested = false;
 	}
 
 	function onPointerUp(ev: PointerEvent) {
-		finish(ev);
+		endPointer(ev);
 	}
 
 	function onPointerCancel(ev: PointerEvent) {
-		finish(ev);
+		endPointer(ev);
 	}
 
 	node.addEventListener("pointerdown", onPointerDown);
@@ -153,6 +163,7 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 			node.removeEventListener("pointerup", onPointerUp);
 			node.removeEventListener("pointercancel", onPointerCancel);
 			node.removeEventListener("pointerleave", onPointerCancel);
+			if (rafId) cancelAnimationFrame(rafId);
 		},
 	};
 }

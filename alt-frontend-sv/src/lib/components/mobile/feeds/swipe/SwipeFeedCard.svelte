@@ -6,8 +6,8 @@
     SquareArrowOutUpRight,
   } from "@lucide/svelte";
   import { onMount } from "svelte";
-  import { fade } from "svelte/transition";
   import { Spring } from "svelte/motion";
+  import { fade } from "svelte/transition";
   import { type SwipeDirection, swipe } from "$lib/actions/swipe";
   import {
     getFeedContentOnTheFlyClient,
@@ -46,24 +46,23 @@
   let contentError = $state<string | null>(null);
 
   // Swipe state with Spring
+  const SWIPE_THRESHOLD = 80;
   let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
   let isDragging = $state(false);
+  let hasSwiped = $state(false);
   let swipeElement: HTMLDivElement | null = $state(null);
 
   // Derived styles
   const cardStyle = $derived.by(() => {
-    const opacity = Math.max(0.3, 1 - Math.abs(x.current) / 500);
-    const transition = isDragging ? "" : ""; // spring側で補間するので CSS transition は不要
+    const translate = x.current;
+    const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
 
     return [
       "max-width: calc(100% - 1rem)",
-      `transform: translate3d(${x.current}px, 0, 0)`,
+      `transform: translate3d(${translate}px, 0, 0)`,
       `opacity: ${opacity}`,
       "will-change: transform, opacity",
-      transition && `transition: ${transition}`,
-    ]
-      .filter(Boolean)
-      .join("; ");
+    ].join("; ");
   });
 
   // Derived
@@ -123,23 +122,27 @@
         deltaY: number;
       }>;
       const { deltaX, deltaY } = moveEvent.detail;
-      // Only update x for horizontal swipes
+
+      // 横方向の動きが優勢なときだけ追従させる
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
-        // ドラッグ中は指に追従させたいので instant=true で即座に追従
-        x.set(deltaX, { instant: true });
         isDragging = true;
+        x.set(deltaX, { instant: true });
       }
     };
 
     const swipeEndHandler = (event: Event) => {
+      isDragging = false;
+
+      // すでに handleSwipe 側で処理済みなら何もしない
+      if (hasSwiped) return;
+
       const endEvent = event as CustomEvent<{ deltaX: number; deltaY: number }>;
       const { deltaX } = endEvent.detail;
 
-      // 閾値未満ならスプリングで元の位置に戻す
-      if (Math.abs(deltaX) < 80) {
+      // 閾値未満 → スワイプ不成立 → 中央に戻す
+      if (Math.abs(deltaX) < SWIPE_THRESHOLD) {
         x.target = 0;
       }
-      isDragging = false;
     };
 
     swipeElement.addEventListener("swipe", swipeHandler);
@@ -205,24 +208,30 @@
 
   async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
     const dir = event.detail.direction;
+    if (dir !== "left" && dir !== "right") return;
+
+    hasSwiped = true;
     isDragging = false;
 
     const width = swipeElement?.clientWidth ?? window.innerWidth;
-    x.target = dir === "left" ? -width : width;
+    const target = dir === "left" ? -width : width;
 
-    // スプリングが飛び出し切るまで待つ
-    await x.set(x.target, { preserveMomentum: 120 });
+    // 画面外までスプリングで飛ばす（慣性付きで気持ちよく）
+    await x.set(target, { preserveMomentum: 120 });
+
+    // ここで「次の記事へ」「前の記事へ」のロジックを呼ぶ
     await onDismiss(dir === "left" ? -1 : 1);
 
-    // 次のカード用にリセット（親でカード差し替えるなら不要）
-    x.set(0, { instant: true });
+    // 次のカードに備えてリセット
+    hasSwiped = false;
+    await x.set(0, { instant: true });
   }
 </script>
 
 <div
   bind:this={swipeElement}
   class="absolute w-full h-[95dvh] bg-[var(--alt-glass)] text-[var(--alt-text-primary)] border-2 border-[var(--alt-glass-border)] shadow-[0_12px_40px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.1)] rounded-2xl p-4 backdrop-blur-[20px] touch-action-pan-y select-none"
-  use:swipe={{ threshold: 80, restraint: 100, allowedTime: 500 }}
+  use:swipe={{ threshold: SWIPE_THRESHOLD, restraint: 120, allowedTime: 500 }}
   aria-busy={isBusy}
   data-testid="swipe-card"
   style={cardStyle}
