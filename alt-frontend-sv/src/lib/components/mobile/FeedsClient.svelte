@@ -291,7 +291,7 @@ const isInitialLoadingState = $derived(
 );
 </script>
 
-<div class="h-full relative flex flex-col" style="background: var(--app-bg);">
+<div class="flex-1 min-h-0 relative flex flex-col" style="background: var(--app-bg);">
 	<div
 		aria-live="polite"
 		aria-atomic="true"
