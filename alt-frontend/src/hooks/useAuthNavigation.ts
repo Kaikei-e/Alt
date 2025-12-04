@@ -129,12 +129,12 @@ export function useAuthNavigation(currentPathname?: string): NavigationState {
     (href: string, requireAuth?: boolean, requiredRole?: string) => {
       // Check authentication requirement
       if (requireAuth && !isAuthenticated) {
-        // Redirect to Kratos browser login with absolute return URL
+        // Redirect to SvelteKit's login page with absolute return URL
         const abs =
           typeof window !== "undefined"
             ? new URL(href, window.location.origin).toString()
             : href;
-        window.location.href = `/auth/login?return_to=${encodeURIComponent(abs)}`;
+        window.location.href = `/sv/auth/login?return_to=${encodeURIComponent(abs)}`;
         return;
       }
 

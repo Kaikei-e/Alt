@@ -40,12 +40,12 @@ export async function middleware(req: NextRequest) {
   const effectiveSessionCookie = sessionCookie || altSessionCookie;
 
   if (!effectiveSessionCookie?.value) {
-    // No cookie: redirect to landing page with return URL
+    // No cookie: redirect to SvelteKit's login page with return URL
     const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN || req.nextUrl.origin;
     const returnUrl = encodeURIComponent(`${pathname}${search}`);
-    const landingUrl = `${appOrigin}/public/landing?return_to=${returnUrl}`;
+    const loginUrl = `${appOrigin}/sv/auth/login?return_to=${returnUrl}`;
 
-    return NextResponse.redirect(landingUrl, 303);
+    return NextResponse.redirect(loginUrl, 303);
   }
 
   // Validate session with auth-hub (uses 5min cache)
@@ -72,18 +72,18 @@ export async function middleware(req: NextRequest) {
       return NextResponse.next();
     }
 
-    // Session invalid or expired: redirect to landing
+    // Session invalid or expired: redirect to SvelteKit's login page
     const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN || req.nextUrl.origin;
     const returnUrl = encodeURIComponent(`${pathname}${search}`);
-    const landingUrl = `${appOrigin}/public/landing?return_to=${returnUrl}`;
-    return NextResponse.redirect(landingUrl, 303);
+    const loginUrl = `${appOrigin}/sv/auth/login?return_to=${returnUrl}`;
+    return NextResponse.redirect(loginUrl, 303);
   } catch (error) {
     console.error("[Middleware] Session validation error:", error);
-    // On error, redirect to landing (fail closed for security)
+    // On error, redirect to SvelteKit's login page (fail closed for security)
     const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN || req.nextUrl.origin;
     const returnUrl = encodeURIComponent(`${pathname}${search}`);
-    const landingUrl = `${appOrigin}/public/landing?return_to=${returnUrl}`;
-    return NextResponse.redirect(landingUrl, 303);
+    const loginUrl = `${appOrigin}/sv/auth/login?return_to=${returnUrl}`;
+    return NextResponse.redirect(loginUrl, 303);
   }
 }
 
