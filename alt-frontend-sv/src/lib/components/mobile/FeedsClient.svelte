@@ -1,189 +1,78 @@
 <script lang="ts">
-import { onMount } from "svelte";
-import { browser } from "$app/environment";
-import {
-	getFeedsWithCursorClient,
-	getReadFeedsWithCursorClient,
-	updateFeedReadStatusClient,
-} from "$lib/api/client";
-import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
-import { toRenderFeed } from "$lib/schema/feed";
-import { canonicalize } from "$lib/utils/feed";
-import EmptyFeedState from "./EmptyFeedState.svelte";
-import VirtualFeedList from "./VirtualFeedList.svelte";
+	import { onMount } from "svelte";
+	import { browser } from "$app/environment";
+	import {
+		getFeedsWithCursorClient,
+		getReadFeedsWithCursorClient,
+		updateFeedReadStatusClient,
+	} from "$lib/api/client";
+	import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
+	import { toRenderFeed } from "$lib/schema/feed";
+	import { canonicalize } from "$lib/utils/feed";
+	import EmptyFeedState from "./EmptyFeedState.svelte";
+	import VirtualFeedList from "./VirtualFeedList.svelte";
 
-interface Props {
-	initialFeeds?: RenderFeed[];
-}
+	interface Props {
+		initialFeeds?: RenderFeed[];
+	}
 
-const { initialFeeds = [] }: Props = $props();
+	const { initialFeeds = [] }: Props = $props();
 
-const PAGE_SIZE = 20;
-const INITIAL_VISIBLE_CARDS = 3;
-const STEP = 5;
+	const PAGE_SIZE = 20;
+	const INITIAL_VISIBLE_CARDS = 3;
+	const STEP = 5;
 
-// State
-let feeds = $state<SanitizedFeed[]>([]);
-let cursor = $state<string | null>(null);
-let hasMore = $state(true);
-let isLoading = $state(false);
-let isInitialLoading = $state(false);
-let error = $state<Error | null>(null);
-let readFeeds = $state<Set<string>>(new Set());
-let visibleCount = $state(INITIAL_VISIBLE_CARDS);
-let liveRegionMessage = $state("");
-let isRetrying = $state(false);
+	// State
+	let feeds = $state<SanitizedFeed[]>([]);
+	let cursor = $state<string | null>(null);
+	let hasMore = $state(true);
+	let isLoading = $state(false);
+	let isInitialLoading = $state(false);
+	let error = $state<Error | null>(null);
+	let readFeeds = $state<Set<string>>(new Set());
+	let visibleCount = $state(INITIAL_VISIBLE_CARDS);
+	let liveRegionMessage = $state("");
+	let isRetrying = $state(false);
 
-let scrollContainerRef: HTMLDivElement | null = $state(null);
-let sentinelRef: HTMLDivElement | null = $state(null);
+	let scrollContainerRef: HTMLDivElement | null = $state(null);
+	let sentinelRef: HTMLDivElement | null = $state(null);
 
-// Initialize readFeeds set from backend on mount
-onMount(() => {
-	if (!browser) return;
+	// Initialize readFeeds set from backend on mount
+	onMount(() => {
+		if (!browser) return;
 
-	const initializeReadFeeds = async () => {
-		try {
-			const readFeedsResponse = await getReadFeedsWithCursorClient(
-				undefined,
-				32,
-			);
-			const readFeedLinks = new Set<string>();
-			if (readFeedsResponse?.data) {
-				readFeedsResponse.data.forEach((feed: SanitizedFeed) => {
-					const canonical = canonicalize(feed.link);
-					readFeedLinks.add(canonical);
+		const initializeReadFeeds = async () => {
+			try {
+				const readFeedsResponse = await getReadFeedsWithCursorClient(
+					undefined,
+					32,
+				);
+				const readFeedLinks = new Set<string>();
+				if (readFeedsResponse?.data) {
+					readFeedsResponse.data.forEach((feed: SanitizedFeed) => {
+						const canonical = canonicalize(feed.link);
+						readFeedLinks.add(canonical);
+					});
+				}
+				readFeeds = readFeedLinks;
+			} catch (err) {
+				// Log error but don't crash the app - read feeds initialization is optional
+				const errorMessage = err instanceof Error ? err.message : String(err);
+				console.error("Failed to initialize read feeds:", {
+					error: errorMessage,
+					message:
+						"This is non-critical - feeds will still load, but read status may not be accurate",
 				});
+				// Set empty set to prevent further errors
+				readFeeds = new Set();
 			}
-			readFeeds = readFeedLinks;
-		} catch (err) {
-			// Log error but don't crash the app - read feeds initialization is optional
-			const errorMessage = err instanceof Error ? err.message : String(err);
-			console.error("Failed to initialize read feeds:", {
-				error: errorMessage,
-				message:
-					"This is non-critical - feeds will still load, but read status may not be accurate",
-			});
-			// Set empty set to prevent further errors
-			readFeeds = new Set();
-		}
-	};
-
-	// Use requestIdleCallback to defer initialization
-	if ("requestIdleCallback" in window) {
-		const idleCallbackId = window.requestIdleCallback(
-			() => {
-				void initializeReadFeeds();
-			},
-			{ timeout: 2000 },
-		);
-		return () => {
-			window.cancelIdleCallback(idleCallbackId);
 		};
-	} else {
-		const timeoutId = setTimeout(() => {
-			void initializeReadFeeds();
-		}, 100);
-		return () => clearTimeout(timeoutId);
-	}
-});
 
-// Ensure we start at the top of the list on first render
-onMount(() => {
-	if (scrollContainerRef) {
-		scrollContainerRef.scrollTop = 0;
-	}
-});
-
-// Load initial feeds
-const loadInitial = async () => {
-	isInitialLoading = true;
-	isLoading = true;
-	error = null;
-
-	try {
-		const response = await getFeedsWithCursorClient(undefined, PAGE_SIZE);
-		feeds = response.data;
-		cursor = response.next_cursor;
-		hasMore = response.next_cursor !== null;
-	} catch (err) {
-		if (err instanceof Error && err.message.includes("404")) {
-			feeds = [];
-			cursor = null;
-			hasMore = false;
-			error = null;
-		} else {
-			error = err instanceof Error ? err : new Error("Failed to load data");
-			feeds = [];
-			hasMore = false;
-		}
-	} finally {
-		isLoading = false;
-		isInitialLoading = false;
-	}
-};
-
-// Load more feeds
-const loadMore = async () => {
-	if (isLoading || !hasMore || !cursor) {
-		return;
-	}
-
-	isLoading = true;
-	error = null;
-
-	try {
-		const response = await getFeedsWithCursorClient(cursor, PAGE_SIZE);
-		feeds = [...feeds, ...response.data];
-		cursor = response.next_cursor;
-		hasMore = response.next_cursor !== null;
-	} catch (err) {
-		if (err instanceof Error && err.message.includes("404")) {
-			hasMore = false;
-			cursor = null;
-			error = null;
-		} else {
-			error =
-				err instanceof Error ? err : new Error("Failed to load more data");
-		}
-	} finally {
-		isLoading = false;
-	}
-};
-
-// Refresh feeds
-const refresh = async () => {
-	cursor = null;
-	hasMore = true;
-	await loadInitial();
-};
-
-// Retry functionality
-const retryFetch = async () => {
-	isRetrying = true;
-	try {
-		await refresh();
-	} catch (err) {
-		console.error("Retry failed:", err);
-		throw err;
-	} finally {
-		isRetrying = false;
-	}
-};
-
-// Initialize isInitialLoading based on initialFeeds
-onMount(() => {
-	isInitialLoading = initialFeeds.length === 0;
-});
-
-// Start loading feeds after initial render
-onMount(() => {
-	if (hasMore && !isLoading && feeds.length === 0) {
-		const shouldDefer = initialFeeds.length > 0;
-
-		if (shouldDefer && "requestIdleCallback" in window) {
+		// Use requestIdleCallback to defer initialization
+		if ("requestIdleCallback" in window) {
 			const idleCallbackId = window.requestIdleCallback(
 				() => {
-					void loadInitial();
+					void initializeReadFeeds();
 				},
 				{ timeout: 2000 },
 			);
@@ -191,109 +80,220 @@ onMount(() => {
 				window.cancelIdleCallback(idleCallbackId);
 			};
 		} else {
-			const timeoutId = setTimeout(
-				() => {
-					void loadInitial();
-				},
-				shouldDefer ? 500 : 100,
-			);
+			const timeoutId = setTimeout(() => {
+				void initializeReadFeeds();
+			}, 100);
 			return () => clearTimeout(timeoutId);
 		}
-	}
-});
+	});
 
-// Progressive rendering: increase visibleCount when user scrolls near the end
-onMount(() => {
-	if (!browser) return;
+	// Ensure we start at the top of the list on first render
+	onMount(() => {
+		if (scrollContainerRef) {
+			scrollContainerRef.scrollTop = 0;
+		}
+	});
 
-	const observer = new IntersectionObserver(
-		(entries) => {
-			entries.forEach((entry) => {
-				if (entry.isIntersecting) {
-					const allFeedsCount = initialFeeds.length + feeds.length;
-					const nextCount = Math.min(visibleCount + STEP, allFeedsCount);
+	// Load initial feeds
+	const loadInitial = async () => {
+		isInitialLoading = true;
+		isLoading = true;
+		error = null;
 
-					// If we've shown all initial feeds and need more, trigger API load
-					if (nextCount >= initialFeeds.length && hasMore && !isLoading) {
-						void loadMore();
-					}
-
-					visibleCount = nextCount;
-				}
-			});
-		},
-		{
-			rootMargin: "200px 0px",
-			threshold: 0.1,
-		},
-	);
-
-	if (sentinelRef) {
-		observer.observe(sentinelRef);
-	}
-
-	return () => {
-		observer.disconnect();
+		try {
+			const response = await getFeedsWithCursorClient(undefined, PAGE_SIZE);
+			feeds = response.data;
+			cursor = response.next_cursor;
+			hasMore = response.next_cursor !== null;
+		} catch (err) {
+			if (err instanceof Error && err.message.includes("404")) {
+				feeds = [];
+				cursor = null;
+				hasMore = false;
+				error = null;
+			} else {
+				error = err instanceof Error ? err : new Error("Failed to load data");
+				feeds = [];
+				hasMore = false;
+			}
+		} finally {
+			isLoading = false;
+			isInitialLoading = false;
+		}
 	};
-});
 
-// Handle marking feed as read with optimistic update
-const handleMarkAsRead = async (rawLink: string) => {
-	const link =
-		rawLink.includes("?") || rawLink.includes("#")
-			? canonicalize(rawLink)
-			: rawLink;
+	// Load more feeds
+	const loadMore = async () => {
+		if (isLoading || !hasMore || !cursor) {
+			return;
+		}
 
-	// Optimistic update
-	readFeeds = new Set(readFeeds).add(link);
-	liveRegionMessage = "Feed marked as read";
-	setTimeout(() => {
-		liveRegionMessage = "";
-	}, 1000);
+		isLoading = true;
+		error = null;
 
-	// Server update (rollback on failure)
-	try {
-		await updateFeedReadStatusClient(link);
-	} catch (e) {
-		readFeeds = new Set(readFeeds);
-		readFeeds.delete(link);
-		console.error("Failed to mark feed as read:", e);
-	}
-};
+		try {
+			const response = await getFeedsWithCursorClient(cursor, PAGE_SIZE);
+			feeds = [...feeds, ...response.data];
+			cursor = response.next_cursor;
+			hasMore = response.next_cursor !== null;
+		} catch (err) {
+			if (err instanceof Error && err.message.includes("404")) {
+				hasMore = false;
+				cursor = null;
+				error = null;
+			} else {
+				error =
+					err instanceof Error ? err : new Error("Failed to load more data");
+			}
+		} finally {
+			isLoading = false;
+		}
+	};
 
-// Merge initialFeeds with fetched feeds and filter/memoize visible feeds
-const visibleFeeds = $derived.by(() => {
-	// Start with initialFeeds (already RenderFeed[])
-	const allFeeds: RenderFeed[] = [...initialFeeds];
+	// Refresh feeds
+	const refresh = async () => {
+		cursor = null;
+		hasMore = true;
+		await loadInitial();
+	};
 
-	// Add fetched feeds (convert SanitizedFeed to RenderFeed)
-	if (feeds.length > 0) {
-		const renderFeeds: RenderFeed[] = feeds.map((feed: SanitizedFeed) =>
-			toRenderFeed(feed),
+	// Retry functionality
+	const retryFetch = async () => {
+		isRetrying = true;
+		try {
+			await refresh();
+		} catch (err) {
+			console.error("Retry failed:", err);
+			throw err;
+		} finally {
+			isRetrying = false;
+		}
+	};
+
+	// Initialize isInitialLoading based on initialFeeds
+	onMount(() => {
+		isInitialLoading = initialFeeds.length === 0;
+	});
+
+	// Start loading feeds after initial render
+	onMount(() => {
+		if (hasMore && !isLoading && feeds.length === 0) {
+			const shouldDefer = initialFeeds.length > 0;
+
+			if (shouldDefer && "requestIdleCallback" in window) {
+				const idleCallbackId = window.requestIdleCallback(
+					() => {
+						void loadInitial();
+					},
+					{ timeout: 2000 },
+				);
+				return () => {
+					window.cancelIdleCallback(idleCallbackId);
+				};
+			} else {
+				const timeoutId = setTimeout(
+					() => {
+						void loadInitial();
+					},
+					shouldDefer ? 500 : 100,
+				);
+				return () => clearTimeout(timeoutId);
+			}
+		}
+	});
+
+	// Progressive rendering: increase visibleCount when user scrolls near the end
+	onMount(() => {
+		if (!browser) return;
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				entries.forEach((entry) => {
+					if (entry.isIntersecting) {
+						const allFeedsCount = initialFeeds.length + feeds.length;
+						const nextCount = Math.min(visibleCount + STEP, allFeedsCount);
+
+						// If we've shown all initial feeds and need more, trigger API load
+						if (nextCount >= initialFeeds.length && hasMore && !isLoading) {
+							void loadMore();
+						}
+
+						visibleCount = nextCount;
+					}
+				});
+			},
+			{
+				root: scrollContainerRef,
+				rootMargin: "200px 0px",
+				threshold: 0.1,
+			},
 		);
-		allFeeds.push(...renderFeeds);
-	}
 
-	// Filter out read feeds using normalizedUrl
-	const filtered = allFeeds.filter(
-		(feed) => !readFeeds.has(feed.normalizedUrl),
+		if (sentinelRef) {
+			observer.observe(sentinelRef);
+		}
+
+		return () => {
+			observer.disconnect();
+		};
+	});
+
+	// Handle marking feed as read with optimistic update
+	const handleMarkAsRead = async (rawLink: string) => {
+		const link =
+			rawLink.includes("?") || rawLink.includes("#")
+				? canonicalize(rawLink)
+				: rawLink;
+
+		// Optimistic update
+		readFeeds = new Set(readFeeds).add(link);
+		liveRegionMessage = "Feed marked as read";
+		setTimeout(() => {
+			liveRegionMessage = "";
+		}, 1000);
+
+		// Server update (rollback on failure)
+		try {
+			await updateFeedReadStatusClient(link);
+		} catch (e) {
+			readFeeds = new Set(readFeeds);
+			readFeeds.delete(link);
+			console.error("Failed to mark feed as read:", e);
+		}
+	};
+
+	// Merge initialFeeds with fetched feeds and filter/memoize visible feeds
+	const visibleFeeds = $derived.by(() => {
+		// Start with initialFeeds (already RenderFeed[])
+		const allFeeds: RenderFeed[] = [...initialFeeds];
+
+		// Add fetched feeds (convert SanitizedFeed to RenderFeed)
+		if (feeds.length > 0) {
+			const renderFeeds: RenderFeed[] = feeds.map((feed: SanitizedFeed) =>
+				toRenderFeed(feed),
+			);
+			allFeeds.push(...renderFeeds);
+		}
+
+		// Filter out read feeds using normalizedUrl
+		const filtered = allFeeds.filter(
+			(feed) => !readFeeds.has(feed.normalizedUrl),
+		);
+
+		// Limit to visibleCount items for progressive rendering
+		return filtered.slice(0, visibleCount);
+	});
+
+	const hasVisibleContent = $derived(
+		initialFeeds.length > 0 || feeds.length > 0,
 	);
 
-	// Limit to visibleCount items for progressive rendering
-	return filtered.slice(0, visibleCount);
-});
-
-const hasVisibleContent = $derived(initialFeeds.length > 0 || feeds.length > 0);
-
-const isInitialLoadingState = $derived(
-	isInitialLoading && initialFeeds.length === 0 && feeds.length === 0,
-);
+	const isInitialLoadingState = $derived(
+		isInitialLoading && initialFeeds.length === 0 && feeds.length === 0,
+	);
 </script>
 
-<div
-	class="min-h-screen relative flex flex-col"
-	style="background: var(--app-bg);"
->
+<div class="h-full relative flex flex-col" style="background: var(--app-bg);">
 	<div
 		aria-live="polite"
 		aria-atomic="true"
@@ -366,10 +366,7 @@ const isInitialLoadingState = $derived(
 					data-testid="infinite-scroll-sentinel"
 				>
 					{#if isLoading}
-						<p
-							class="text-sm"
-							style="color: var(--alt-text-secondary);"
-						>
+						<p class="text-sm" style="color: var(--alt-text-secondary);">
 							Loading more...
 						</p>
 					{/if}
@@ -381,4 +378,3 @@ const isInitialLoadingState = $derived(
 		{/if}
 	</div>
 </div>
-
