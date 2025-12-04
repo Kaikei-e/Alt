@@ -1,204 +1,204 @@
 <script lang="ts">
-  import { swipe, type SwipeDirection } from "$lib/actions/swipe";
-  import type { RenderFeed } from "$lib/schema/feed";
-  import {
-    BookOpen,
-    Sparkles,
-    SquareArrowOutUpRight,
-    Loader2,
-  } from "@lucide/svelte";
-  import { Button } from "$lib/components/ui/button";
-  import {
-    getFeedContentOnTheFlyClient,
-    getArticleSummaryClient,
-    summarizeArticleClient,
-  } from "$lib/api/client";
-  import { onMount, onDestroy } from "svelte";
-  import { fade } from "svelte/transition";
+import {
+	BookOpen,
+	Loader2,
+	Sparkles,
+	SquareArrowOutUpRight,
+} from "@lucide/svelte";
+import { onDestroy, onMount } from "svelte";
+import { fade } from "svelte/transition";
+import { type SwipeDirection, swipe } from "$lib/actions/swipe";
+import {
+	getArticleSummaryClient,
+	getFeedContentOnTheFlyClient,
+	summarizeArticleClient,
+} from "$lib/api/client";
+import { Button } from "$lib/components/ui/button";
+import type { RenderFeed } from "$lib/schema/feed";
 
-  interface Props {
-    feed: RenderFeed;
-    statusMessage: string | null;
-    onDismiss: (direction: number) => Promise<void> | void;
-    getCachedContent?: (feedUrl: string) => string | null;
-    isBusy?: boolean;
-    initialArticleContent?: string | null;
-  }
+interface Props {
+	feed: RenderFeed;
+	statusMessage: string | null;
+	onDismiss: (direction: number) => Promise<void> | void;
+	getCachedContent?: (feedUrl: string) => string | null;
+	isBusy?: boolean;
+	initialArticleContent?: string | null;
+}
 
-  const {
-    feed,
-    statusMessage,
-    onDismiss,
-    getCachedContent,
-    isBusy = false,
-    initialArticleContent,
-  }: Props = $props();
+const {
+	feed,
+	statusMessage,
+	onDismiss,
+	getCachedContent,
+	isBusy = false,
+	initialArticleContent,
+}: Props = $props();
 
-  // State
-  let isSummaryExpanded = $state(false);
-  let summary = $state<string | null>(null);
-  let isLoadingSummary = $state(false);
-  let summaryError = $state<string | null>(null);
-  let isSummarizing = $state(false);
+// State
+let isSummaryExpanded = $state(false);
+let summary = $state<string | null>(null);
+let isLoadingSummary = $state(false);
+let summaryError = $state<string | null>(null);
+let isSummarizing = $state(false);
 
-  let isContentExpanded = $state(false);
-  let fullContent = $state<string | null>(null);
-  let isLoadingContent = $state(false);
-  let contentError = $state<string | null>(null);
+let isContentExpanded = $state(false);
+let fullContent = $state<string | null>(null);
+let isLoadingContent = $state(false);
+let contentError = $state<string | null>(null);
 
-  // Swipe state
-  let translateX = $state(0);
-  let isDragging = $state(false);
-  let swipeElement: HTMLDivElement | null = $state(null);
+// Swipe state
+let translateX = $state(0);
+let isDragging = $state(false);
+let swipeElement: HTMLDivElement | null = $state(null);
 
-  // Derived
-  const sanitizedFullContent = $derived(fullContent);
-  const hasDescription = $derived(Boolean(feed.description));
-  const publishedLabel = $derived.by(() => {
-    if (feed.created_at) {
-      try {
-        return new Date(feed.created_at).toLocaleString();
-      } catch {
-        // Fallback
-      }
-    }
-    if (!feed.published) return null;
-    try {
-      return new Date(feed.published).toLocaleString();
-    } catch {
-      return feed.published;
-    }
-  });
+// Derived
+const sanitizedFullContent = $derived(fullContent);
+const hasDescription = $derived(Boolean(feed.description));
+const publishedLabel = $derived.by(() => {
+	if (feed.created_at) {
+		try {
+			return new Date(feed.created_at).toLocaleString();
+		} catch {
+			// Fallback
+		}
+	}
+	if (!feed.published) return null;
+	try {
+		return new Date(feed.published).toLocaleString();
+	} catch {
+		return feed.published;
+	}
+});
 
-  // Auto-fetch content
-  onMount(() => {
-    // Initialize with prop value if available
-    if (initialArticleContent) {
-      fullContent = initialArticleContent;
-    }
+// Auto-fetch content
+onMount(() => {
+	// Initialize with prop value if available
+	if (initialArticleContent) {
+		fullContent = initialArticleContent;
+	}
 
-    if (fullContent) {
-      // Still need to set up swipe listener even if content is already loaded
-      if (swipeElement) {
-        const swipeHandler = (event: Event) => {
-          handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
-        };
-        swipeElement.addEventListener("swipe", swipeHandler);
-        return () => {
-          swipeElement?.removeEventListener("swipe", swipeHandler);
-        };
-      }
-      return;
-    }
+	if (fullContent) {
+		// Still need to set up swipe listener even if content is already loaded
+		if (swipeElement) {
+			const swipeHandler = (event: Event) => {
+				handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
+			};
+			swipeElement.addEventListener("swipe", swipeHandler);
+			return () => {
+				swipeElement?.removeEventListener("swipe", swipeHandler);
+			};
+		}
+		return;
+	}
 
-    const cached = getCachedContent?.(feed.link);
-    if (cached) {
-      fullContent = cached;
-    } else {
-      // Background fetch
-      getFeedContentOnTheFlyClient(feed.link)
-        .then((res) => {
-          if (res.content) {
-            fullContent = res.content;
-          }
-        })
-        .catch((err) => {
-          console.error("[SwipeFeedCard] Error auto-fetching content:", err);
-        });
-    }
+	const cached = getCachedContent?.(feed.link);
+	if (cached) {
+		fullContent = cached;
+	} else {
+		// Background fetch
+		getFeedContentOnTheFlyClient(feed.link)
+			.then((res) => {
+				if (res.content) {
+					fullContent = res.content;
+				}
+			})
+			.catch((err) => {
+				console.error("[SwipeFeedCard] Error auto-fetching content:", err);
+			});
+	}
 
-    // Add swipe event listener
-    if (swipeElement) {
-      const swipeHandler = (event: Event) => {
-        handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
-      };
-      swipeElement.addEventListener("swipe", swipeHandler);
-      return () => {
-        swipeElement?.removeEventListener("swipe", swipeHandler);
-      };
-    }
-  });
+	// Add swipe event listener
+	if (swipeElement) {
+		const swipeHandler = (event: Event) => {
+			handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
+		};
+		swipeElement.addEventListener("swipe", swipeHandler);
+		return () => {
+			swipeElement?.removeEventListener("swipe", swipeHandler);
+		};
+	}
+});
 
-  async function handleToggleContent() {
-    if (!isContentExpanded && !fullContent) {
-      const cached = getCachedContent?.(feed.link);
-      if (cached) {
-        fullContent = cached;
-        isContentExpanded = true;
-        return;
-      }
+async function handleToggleContent() {
+	if (!isContentExpanded && !fullContent) {
+		const cached = getCachedContent?.(feed.link);
+		if (cached) {
+			fullContent = cached;
+			isContentExpanded = true;
+			return;
+		}
 
-      isLoadingContent = true;
-      contentError = null;
+		isLoadingContent = true;
+		contentError = null;
 
-      try {
-        const res = await getFeedContentOnTheFlyClient(feed.link);
-        if (res.content) {
-          fullContent = res.content;
-        } else {
-          contentError = "Could not fetch article content";
-        }
-      } catch (err) {
-        console.error("Error fetching content:", err);
-        contentError = "Could not fetch article content";
-      } finally {
-        isLoadingContent = false;
-      }
-    }
-    isContentExpanded = !isContentExpanded;
-  }
+		try {
+			const res = await getFeedContentOnTheFlyClient(feed.link);
+			if (res.content) {
+				fullContent = res.content;
+			} else {
+				contentError = "Could not fetch article content";
+			}
+		} catch (err) {
+			console.error("Error fetching content:", err);
+			contentError = "Could not fetch article content";
+		} finally {
+			isLoadingContent = false;
+		}
+	}
+	isContentExpanded = !isContentExpanded;
+}
 
-  async function fetchSummary() {
-    isLoadingSummary = true;
-    summaryError = null;
-    try {
-      const res = await getArticleSummaryClient(feed.link);
-      if (res.matched_articles && res.matched_articles.length > 0) {
-        summary = res.matched_articles[0].content;
-      } else {
-        summaryError = "Could not fetch summary";
-      }
-    } catch (err) {
-      console.error("Error fetching summary:", err);
-      summaryError = "Could not fetch summary";
-    } finally {
-      isLoadingSummary = false;
-    }
-  }
+async function fetchSummary() {
+	isLoadingSummary = true;
+	summaryError = null;
+	try {
+		const res = await getArticleSummaryClient(feed.link);
+		if (res.matched_articles && res.matched_articles.length > 0) {
+			summary = res.matched_articles[0].content;
+		} else {
+			summaryError = "Could not fetch summary";
+		}
+	} catch (err) {
+		console.error("Error fetching summary:", err);
+		summaryError = "Could not fetch summary";
+	} finally {
+		isLoadingSummary = false;
+	}
+}
 
-  async function handleToggleSummary() {
-    if (!isSummaryExpanded && !summary) {
-      await fetchSummary();
-    }
-    isSummaryExpanded = !isSummaryExpanded;
-  }
+async function handleToggleSummary() {
+	if (!isSummaryExpanded && !summary) {
+		await fetchSummary();
+	}
+	isSummaryExpanded = !isSummaryExpanded;
+}
 
-  async function handleSummarizeNow() {
-    isSummarizing = true;
-    summaryError = null;
-    try {
-      const res = await summarizeArticleClient(feed.link);
-      if (res.success && res.summary) {
-        summary = res.summary;
-      } else {
-        summaryError = "Failed to generate the summary";
-      }
-    } catch (err) {
-      console.error("Error summarizing article:", err);
-      summaryError = "Failed to generate the summary";
-    } finally {
-      isSummarizing = false;
-    }
-  }
+async function handleSummarizeNow() {
+	isSummarizing = true;
+	summaryError = null;
+	try {
+		const res = await summarizeArticleClient(feed.link);
+		if (res.success && res.summary) {
+			summary = res.summary;
+		} else {
+			summaryError = "Failed to generate the summary";
+		}
+	} catch (err) {
+		console.error("Error summarizing article:", err);
+		summaryError = "Failed to generate the summary";
+	} finally {
+		isSummarizing = false;
+	}
+}
 
-  function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
-    const dir = event.detail.direction;
-    if (dir === "left") {
-      void onDismiss(-1);
-    } else if (dir === "right") {
-      void onDismiss(1);
-    }
-  }
+function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
+	const dir = event.detail.direction;
+	if (dir === "left") {
+		void onDismiss(-1);
+	} else if (dir === "right") {
+		void onDismiss(1);
+	}
+}
 </script>
 
 <div

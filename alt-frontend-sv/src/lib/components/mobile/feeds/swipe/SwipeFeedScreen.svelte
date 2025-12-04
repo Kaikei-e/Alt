@@ -1,172 +1,169 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { browser } from "$app/environment";
-  import {
-    getFeedsWithCursorClient,
-    getReadFeedsWithCursorClient,
-    updateFeedReadStatusClient,
-  } from "$lib/api/client";
-  import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
-  import { toRenderFeed } from "$lib/schema/feed";
-  import { canonicalize } from "$lib/utils/feed";
-  import SwipeFeedCard from "./SwipeFeedCard.svelte";
-  import SwipeLoadingOverlay from "./SwipeLoadingOverlay.svelte";
-  import FloatingMenu from "./FloatingMenu.svelte";
-  import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
-  import { fade } from "svelte/transition";
-  import { Button } from "$lib/components/ui/button";
+import { onMount } from "svelte";
+import { fade } from "svelte/transition";
+import { browser } from "$app/environment";
+import {
+	getFeedsWithCursorClient,
+	getReadFeedsWithCursorClient,
+	updateFeedReadStatusClient,
+} from "$lib/api/client";
+import { Button } from "$lib/components/ui/button";
+import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
+import { toRenderFeed } from "$lib/schema/feed";
+import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
+import { canonicalize } from "$lib/utils/feed";
+import FloatingMenu from "./FloatingMenu.svelte";
+import SwipeFeedCard from "./SwipeFeedCard.svelte";
+import SwipeLoadingOverlay from "./SwipeLoadingOverlay.svelte";
 
-  interface Props {
-    initialFeeds?: RenderFeed[];
-    initialNextCursor?: string | null;
-    initialArticleContent?: string | null;
-  }
+interface Props {
+	initialFeeds?: RenderFeed[];
+	initialNextCursor?: string | null;
+	initialArticleContent?: string | null;
+}
 
-  const {
-    initialFeeds = [],
-    initialNextCursor,
-    initialArticleContent,
-  }: Props = $props();
+const {
+	initialFeeds = [],
+	initialNextCursor,
+	initialArticleContent,
+}: Props = $props();
 
-  const PAGE_SIZE = 20;
+const PAGE_SIZE = 20;
 
-  // State
-  let feeds = $state<RenderFeed[]>([]);
-  let cursor = $state<string | null>(null);
-  let hasMore = $state(false);
-  let isLoading = $state(false);
-  let error = $state<string | null>(null);
-  let readFeeds = $state<Set<string>>(new Set());
-  let activeIndex = $state(0);
-  let isInitialLoading = $state(true);
-  let liveRegionMessage = $state("");
+// State
+let feeds = $state<RenderFeed[]>([]);
+let cursor = $state<string | null>(null);
+let hasMore = $state(false);
+let isLoading = $state(false);
+let error = $state<string | null>(null);
+let readFeeds = $state<Set<string>>(new Set());
+let activeIndex = $state(0);
+let isInitialLoading = $state(true);
+let liveRegionMessage = $state("");
 
-  // Initialize state from props
-  $effect(() => {
-    feeds = [...(initialFeeds ?? [])];
-    cursor = initialNextCursor ?? null;
-    hasMore = !!initialNextCursor;
-    isInitialLoading = (initialFeeds ?? []).length === 0;
-  });
+// Initialize state from props
+$effect(() => {
+	feeds = [...(initialFeeds ?? [])];
+	cursor = initialNextCursor ?? null;
+	hasMore = !!initialNextCursor;
+	isInitialLoading = (initialFeeds ?? []).length === 0;
+});
 
-  // Derived
-  const activeFeed = $derived(feeds[activeIndex]);
-  const nextFeed = $derived(feeds[activeIndex + 1]);
+// Derived
+const activeFeed = $derived(feeds[activeIndex]);
+const nextFeed = $derived(feeds[activeIndex + 1]);
 
-  // Initialize read feeds
-  onMount(() => {
-    if (!browser) return;
+// Initialize read feeds
+onMount(() => {
+	if (!browser) return;
 
-    const initializeReadFeeds = async () => {
-      try {
-        const res = await getReadFeedsWithCursorClient(undefined, 32);
-        const links = new Set<string>();
-        if (res?.data) {
-          res.data.forEach((feed: SanitizedFeed) => {
-            links.add(canonicalize(feed.link));
-          });
-        }
-        readFeeds = links;
-      } catch (err) {
-        console.error("Failed to initialize read feeds:", err);
-      }
-    };
+	const initializeReadFeeds = async () => {
+		try {
+			const res = await getReadFeedsWithCursorClient(undefined, 32);
+			const links = new Set<string>();
+			if (res?.data) {
+				res.data.forEach((feed: SanitizedFeed) => {
+					links.add(canonicalize(feed.link));
+				});
+			}
+			readFeeds = links;
+		} catch (err) {
+			console.error("Failed to initialize read feeds:", err);
+		}
+	};
 
-    if ("requestIdleCallback" in window) {
-      window.requestIdleCallback(() => void initializeReadFeeds());
-    } else {
-      setTimeout(() => void initializeReadFeeds(), 100);
-    }
-  });
+	if ("requestIdleCallback" in window) {
+		window.requestIdleCallback(() => void initializeReadFeeds());
+	} else {
+		setTimeout(() => void initializeReadFeeds(), 100);
+	}
+});
 
-  // Initial load if needed
-  onMount(() => {
-    if (feeds.length === 0 && hasMore) {
-      void loadMore();
-    } else {
-      isInitialLoading = false;
-    }
-  });
+// Initial load if needed
+onMount(() => {
+	if (feeds.length === 0 && hasMore) {
+		void loadMore();
+	} else {
+		isInitialLoading = false;
+	}
+});
 
-  // Prefetch next feeds
-  $effect(() => {
-    if (feeds.length > 0) {
-      articlePrefetcher.triggerPrefetch(feeds, activeIndex);
-    }
-  });
+// Prefetch next feeds
+$effect(() => {
+	if (feeds.length > 0) {
+		articlePrefetcher.triggerPrefetch(feeds, activeIndex);
+	}
+});
 
-  // Load more when running low
-  $effect(() => {
-    if (
-      !isLoading &&
-      hasMore &&
-      feeds.length - activeIndex < 5 &&
-      feeds.length > 0
-    ) {
-      void loadMore();
-    }
-  });
+// Load more when running low
+$effect(() => {
+	if (
+		!isLoading &&
+		hasMore &&
+		feeds.length - activeIndex < 5 &&
+		feeds.length > 0
+	) {
+		void loadMore();
+	}
+});
 
-  async function loadMore() {
-    if (isLoading || !hasMore) return;
-    isLoading = true;
-    error = null;
+async function loadMore() {
+	if (isLoading || !hasMore) return;
+	isLoading = true;
+	error = null;
 
-    try {
-      const res = await getFeedsWithCursorClient(
-        cursor ?? undefined,
-        PAGE_SIZE,
-      );
-      const newFeeds = res.data.map((f: SanitizedFeed) => toRenderFeed(f));
+	try {
+		const res = await getFeedsWithCursorClient(cursor ?? undefined, PAGE_SIZE);
+		const newFeeds = res.data.map((f: SanitizedFeed) => toRenderFeed(f));
 
-      // Filter out read feeds
-      const filtered = newFeeds.filter(
-        (f) => !readFeeds.has(canonicalize(f.link)),
-      );
+		// Filter out read feeds
+		const filtered = newFeeds.filter(
+			(f) => !readFeeds.has(canonicalize(f.link)),
+		);
 
-      feeds = [...feeds, ...filtered];
-      cursor = res.next_cursor;
-      hasMore = res.next_cursor !== null;
-    } catch (err) {
-      console.error("Error loading feeds:", err);
-      error = "Failed to load feeds";
-    } finally {
-      isLoading = false;
-      isInitialLoading = false;
-    }
-  }
+		feeds = [...feeds, ...filtered];
+		cursor = res.next_cursor;
+		hasMore = res.next_cursor !== null;
+	} catch (err) {
+		console.error("Error loading feeds:", err);
+		error = "Failed to load feeds";
+	} finally {
+		isLoading = false;
+		isInitialLoading = false;
+	}
+}
 
-  async function handleDismiss(direction: number) {
-    if (!activeFeed) return;
+async function handleDismiss(_direction: number) {
+	if (!activeFeed) return;
 
-    const currentLink = canonicalize(activeFeed.link);
+	const currentLink = canonicalize(activeFeed.link);
 
-    // Optimistic update
-    readFeeds.add(currentLink);
-    readFeeds = new Set(readFeeds); // Trigger reactivity
+	// Optimistic update
+	readFeeds.add(currentLink);
+	readFeeds = new Set(readFeeds); // Trigger reactivity
 
-    liveRegionMessage = "Feed marked as read";
-    setTimeout(() => {
-      liveRegionMessage = "";
-    }, 1000);
+	liveRegionMessage = "Feed marked as read";
+	setTimeout(() => {
+		liveRegionMessage = "";
+	}, 1000);
 
-    articlePrefetcher.markAsDismissed(currentLink);
+	articlePrefetcher.markAsDismissed(currentLink);
 
-    // Move to next
-    activeIndex++;
+	// Move to next
+	activeIndex++;
 
-    // Server update
-    try {
-      await updateFeedReadStatusClient(currentLink);
-    } catch (err) {
-      console.error("Failed to mark as read:", err);
-      // Rollback if needed, but for now we keep moving forward
-    }
-  }
+	// Server update
+	try {
+		await updateFeedReadStatusClient(currentLink);
+	} catch (err) {
+		console.error("Failed to mark as read:", err);
+		// Rollback if needed, but for now we keep moving forward
+	}
+}
 
-  function getCachedContent(url: string) {
-    return articlePrefetcher.getCachedContent(url);
-  }
+function getCachedContent(url: string) {
+	return articlePrefetcher.getCachedContent(url);
+}
 </script>
 
 <div

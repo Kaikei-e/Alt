@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { fade } from "svelte/transition";
+import { fade } from "svelte/transition";
 
-  interface Props {
-    isVisible: boolean;
-    reduceMotion?: boolean;
-  }
+interface Props {
+	isVisible: boolean;
+	reduceMotion?: boolean;
+}
 
-  const { isVisible, reduceMotion = false }: Props = $props();
+const { isVisible, reduceMotion = false }: Props = $props();
 </script>
 
 {#if isVisible}
