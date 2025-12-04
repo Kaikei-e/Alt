@@ -177,7 +177,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - PORT=4173
-      - ORIGIN=http://localhost:4173
+      - ORIGIN=${ORIGIN:-http://localhost:4173}
       - BODY_SIZE_LIMIT=Infinity
       - KRATOS_INTERNAL_URL=${KRATOS_INTERNAL_URL:-http://kratos:4433}
       - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
@@ -957,8 +957,8 @@ services:
       - KRATOS_DEFAULT_BROWSER_RETURN_URL=${KRATOS_DEFAULT_BROWSER_RETURN_URL:-http://localhost:4173/sv/}
       - KRATOS_ALLOWED_RETURN_URL_1=${KRATOS_ALLOWED_RETURN_URL_1:-http://localhost:4173/sv/}
       - KRATOS_ALLOWED_RETURN_URL_2=${KRATOS_ALLOWED_RETURN_URL_2:-http://localhost:4173/sv/home}
-      - KRATOS_ALLOWED_RETURN_URL_3=${KRATOS_ALLOWED_RETURN_URL_3:-http://localhost:4173/sv/login}
-      - KRATOS_LOGIN_UI_URL=${KRATOS_LOGIN_UI_URL:-http://localhost:4173/sv/login}
+      - KRATOS_ALLOWED_RETURN_URL_3=${KRATOS_ALLOWED_RETURN_URL_3:-http://localhost:4173/sv/auth/login}
+      - KRATOS_LOGIN_UI_URL=${KRATOS_LOGIN_UI_URL:-http://localhost:4173/sv/auth/login}
       - KRATOS_REGISTRATION_UI_URL=${KRATOS_REGISTRATION_UI_URL:-http://localhost:4173/sv/register}
       - KRATOS_ERROR_UI_URL=${KRATOS_ERROR_UI_URL:-http://localhost:4173/sv/error}
       - KRATOS_SETTINGS_UI_URL=${KRATOS_SETTINGS_UI_URL:-http://localhost:4173/sv/settings}
