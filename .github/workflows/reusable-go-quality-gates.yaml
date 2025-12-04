@@ -17,6 +17,11 @@ on:
         required: false
         type: boolean
         default: true
+      upload-sarif:
+        description: "Upload SARIF files to Code Scanning"
+        required: false
+        type: boolean
+        default: true
 
 # 最小権限 + SARIF アップロード用の権限
 permissions:
@@ -127,23 +132,29 @@ jobs:
           fi
 
       - name: Upload SARIF (gosec)
+        if: ${{ inputs.upload-sarif }}
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ inputs.working-directory }}/_reports/gosec.sarif
           category: gosec
 
       # --- Security: govulncheck → SARIF（Code Scanning 連携） ---
+      - name: Prepare reports directory
+        working-directory: ${{ inputs.working-directory }}
+        run: mkdir -p ./_reports
+
       - name: Govulncheck (SARIF)
         uses: golang/govulncheck-action@v1
         with:
           # go-version / caching は setup-go に追従
-          working-directory: ${{ inputs.working-directory }}
-          format: sarif
+          work-dir: ${{ inputs.working-directory }}
+          output-format: sarif
           output-file: _reports/govulncheck.sarif
           # exit-code は format=sarif の場合でも脆弱性検知で fail させたいなら下記を有効化
           # fail-on-vuln: true
 
       - name: Upload SARIF (govulncheck)
+        if: ${{ inputs.upload-sarif }}
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ inputs.working-directory }}/_reports/govulncheck.sarif

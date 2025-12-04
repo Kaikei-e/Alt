@@ -4,13 +4,13 @@ permissions:
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
     paths:
-      - 'pre-processor/**'
+      - "pre-processor/**"
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
     paths:
-      - 'pre-processor/**'
+      - "pre-processor/**"
   workflow_dispatch:
 
 concurrency:
@@ -21,10 +21,10 @@ jobs:
   tests:
     uses: ./.github/workflows/reusable-test-go.yaml
     with:
-      working-directory: 'pre-processor/app'
-      go-version: '1.24'
-      coverage-flags: 'pre-processor'
-      sparse-checkout: 'pre-processor'
+      working-directory: "pre-processor/app"
+      go-version: "1.24"
+      coverage-flags: "pre-processor"
+      sparse-checkout: "pre-processor"
       upload-coverage: true
     permissions:
       contents: read
@@ -33,8 +33,9 @@ jobs:
     uses: ./.github/workflows/reusable-go-quality-gates.yaml
     needs: tests
     with:
-      working-directory: 'pre-processor/app'
-      go-version: '1.24'
+      working-directory: "pre-processor/app"
+      go-version: "1.24"
+      upload-sarif: false
     permissions:
       contents: read
       security-events: write
