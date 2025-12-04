@@ -16,6 +16,7 @@
 		X,
 	} from "@lucide/svelte";
 	import { onMount } from "svelte";
+	import { browser } from "$app/environment";
 	import { page } from "$app/state";
 	import * as Accordion from "$lib/components/ui/accordion";
 	import { Button } from "$lib/components/ui/button";
@@ -23,6 +24,15 @@
 
 	let isOpen = $state(false);
 	let isPrefetched = $state(false);
+
+	// Prevent body scroll lock when dialog is closed
+	$effect(() => {
+		if (!browser) return;
+		if (!isOpen) {
+			// Ensure body scroll is enabled when dialog is closed
+			document.body.style.overflow = "";
+		}
+	});
 
 	const svBasePath = "/sv";
 
@@ -188,7 +198,8 @@
 	{/if}
 	<Dialog.Content
 		showCloseButton={false}
-		class="max-h-[90vh] min-h-[70vh] rounded-t-[32px] border-t border-[var(--border-glass)] bg-[var(--app-bg)] text-[var(--text-primary)] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] backdrop-blur-[20px] !fixed !bottom-0 !left-0 !right-0 !top-auto !translate-x-0 !translate-y-0 !start-auto w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden"
+		class="max-h-[90vh] min-h-[70vh] rounded-t-[32px] border-t border-[var(--border-glass)] text-[var(--text-primary)] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] backdrop-blur-[20px] !fixed !bottom-0 !left-0 !right-0 !top-auto !translate-x-0 !translate-y-0 !start-auto w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden"
+		style="background: var(--app-bg);"
 	>
 		<Dialog.Header class="border-b border-[var(--border-glass)] px-6 pb-6">
 			<div class="flex items-center justify-between">
