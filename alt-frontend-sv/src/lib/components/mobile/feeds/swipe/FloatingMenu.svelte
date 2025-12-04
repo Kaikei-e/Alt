@@ -216,7 +216,7 @@ onMount(() => {
 	{/if}
 	<Sheet.Content
 		side="bottom"
-		class="max-h-[90vh] min-h-[70vh] rounded-t-[32px] border-t border-[var(--border-glass)] text-[var(--text-primary)] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] backdrop-blur-[20px] w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button:not([data-slot])]:hidden"
+		class="max-h-[90vh] min-h-[70vh] rounded-t-[32px] border-t border-[var(--border-glass)] text-[var(--text-primary)] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] backdrop-blur-[20px] w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
 		style="background: white !important; background-color: white !important;"
 	>
 		<Sheet.Header class="border-b border-[var(--border-glass)] px-6 pb-6 pt-6">

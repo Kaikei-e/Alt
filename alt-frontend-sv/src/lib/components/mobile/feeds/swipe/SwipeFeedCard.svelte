@@ -131,18 +131,12 @@ $effect(() => {
 	};
 
 	const swipeEndHandler = (event: Event) => {
+		// ドラッグが終わったので中央に戻す
+		// 実際にスワイプが成立した場合は、swipe イベント → handleSwipe → onDismiss が走るので、
+		// カード自体はすぐ差し替えられる
+		// 成立しなかった場合だけ「中央にスナップバック」という役割分担
+		x.target = 0;
 		isDragging = false;
-
-		// すでに handleSwipe 側で処理済みなら何もしない
-		if (hasSwiped) return;
-
-		const endEvent = event as CustomEvent<{ deltaX: number; deltaY: number }>;
-		const { deltaX } = endEvent.detail;
-
-		// 閾値未満 → スワイプ不成立 → 中央に戻す
-		if (Math.abs(deltaX) < SWIPE_THRESHOLD) {
-			x.target = 0;
-		}
 	};
 
 	swipeElement.addEventListener("swipe", swipeHandler);

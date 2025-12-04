@@ -100,15 +100,13 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 			new CustomEvent<SwipeMoveDetail>("swipe:end", { detail: endDetail }),
 		);
 
-		// ここからは「スワイプ成立」の判定
+		// ここからは「スワイプ成立」の判定（距離だけで判定）
 		let direction: SwipeDirection | null = null;
 
-		if (elapsed <= allowedTime) {
-			if (Math.abs(dx) >= threshold && Math.abs(dy) <= restraint) {
-				direction = dx > 0 ? "right" : "left";
-			} else if (Math.abs(dy) >= threshold && Math.abs(dx) <= restraint) {
-				direction = dy > 0 ? "down" : "up";
-			}
+		if (Math.abs(dx) >= threshold && Math.abs(dy) <= restraint) {
+			direction = dx > 0 ? "right" : "left";
+		} else if (Math.abs(dy) >= threshold && Math.abs(dx) <= restraint) {
+			direction = dy > 0 ? "down" : "up";
 		}
 
 		if (direction) {
