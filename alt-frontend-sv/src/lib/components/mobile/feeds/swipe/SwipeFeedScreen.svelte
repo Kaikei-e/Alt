@@ -6,6 +6,7 @@ import {
 	getFeedsWithCursorClient,
 	getReadFeedsWithCursorClient,
 	updateFeedReadStatusClient,
+	getFeedContentOnTheFlyClient,
 } from "$lib/api/client";
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
@@ -112,24 +113,89 @@ async function loadMore() {
 	isLoading = true;
 	error = null;
 
+	const isFirstLoad = feeds.length === 0;
+
 	try {
-		const res = await getFeedsWithCursorClient(cursor ?? undefined, PAGE_SIZE);
-		const newFeeds = res.data.map((f: SanitizedFeed) => toRenderFeed(f));
+		// 最初のフィード読み込み時は、feedとarticleを並列で取得
+		if (isFirstLoad) {
+			const feedsPromise = getFeedsWithCursorClient(
+				cursor ?? undefined,
+				PAGE_SIZE,
+			);
 
-		// Filter out read feeds
-		const filtered = newFeeds.filter(
-			(f) => !readFeeds.has(canonicalize(f.link)),
-		);
+			// feed取得を開始（article取得は後で開始）
+			const res = await feedsPromise;
+			const newFeeds = res.data.map((f: SanitizedFeed) => toRenderFeed(f));
 
-		feeds = [...feeds, ...filtered];
-		cursor = res.next_cursor;
-		hasMore = res.next_cursor !== null;
+			// Filter out read feeds
+			const filtered = newFeeds.filter(
+				(f) => !readFeeds.has(canonicalize(f.link)),
+			);
+
+			// feedが取得できたらすぐに表示
+			feeds = [...feeds, ...filtered];
+			cursor = res.next_cursor;
+			hasMore = res.next_cursor !== null;
+			isInitialLoading = false;
+
+			// 最初のフィードのarticleをバックグラウンドで取得
+			if (filtered.length > 0) {
+				const firstFeed = filtered[0];
+				const feedUrl = firstFeed.link;
+
+				// キャッシュに既に存在するかチェック
+				if (!articlePrefetcher.getCachedContent(feedUrl)) {
+					// バックグラウンドでarticle取得を開始
+					getFeedContentOnTheFlyClient(feedUrl)
+						.then((articleRes) => {
+							if (articleRes.content) {
+								// articlePrefetcherのキャッシュに直接保存
+								// contentCacheはprivateなので、既存のprefetchContentロジックを参考に
+								// 簡易的に直接キャッシュに設定（型安全性のため、anyを使用）
+								const cache = (articlePrefetcher as any).contentCache as Map<
+									string,
+									string | "loading"
+								>;
+								cache.set(feedUrl, articleRes.content);
+
+								// キャッシュサイズ制限のチェック
+								if (cache.size > 5) {
+									const entries = Array.from(cache.keys());
+									const oldestKey = entries[0];
+									cache.delete(oldestKey);
+								}
+							}
+						})
+						.catch((err) => {
+							console.warn(
+								`[SwipeFeedScreen] Failed to fetch article content for first feed: ${feedUrl}`,
+								err,
+							);
+						});
+				}
+			}
+		} else {
+			// 通常の読み込み（2回目以降）
+			const res = await getFeedsWithCursorClient(cursor ?? undefined, PAGE_SIZE);
+			const newFeeds = res.data.map((f: SanitizedFeed) => toRenderFeed(f));
+
+			// Filter out read feeds
+			const filtered = newFeeds.filter(
+				(f) => !readFeeds.has(canonicalize(f.link)),
+			);
+
+			feeds = [...feeds, ...filtered];
+			cursor = res.next_cursor;
+			hasMore = res.next_cursor !== null;
+		}
 	} catch (err) {
 		console.error("Error loading feeds:", err);
 		error = "Failed to load feeds";
 	} finally {
 		isLoading = false;
-		isInitialLoading = false;
+		if (!isFirstLoad) {
+			isInitialLoading = false;
+		}
 	}
 }
 
