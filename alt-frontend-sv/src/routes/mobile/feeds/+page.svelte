@@ -19,6 +19,6 @@
 	<MobileFeedsHero />
 	<div class="flex-1 relative">
 		<FeedsClient initialFeeds={data.initialFeeds || []} />
+		<FloatingMenu />
 	</div>
-	<FloatingMenu />
 </div>
