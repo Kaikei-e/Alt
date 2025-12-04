@@ -1,5 +1,6 @@
 <script lang="ts">
-import type { Accordion as AccordionPrimitive } from "bits-ui";
+// @biome-ignore lint/style/useImportType: AccordionPrimitive is used as a component, not just a type
+import { Accordion as AccordionPrimitive } from "bits-ui";
 import { cn, type WithoutChild } from "$lib/utils.js";
 
 let {
