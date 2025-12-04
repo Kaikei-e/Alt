@@ -73,15 +73,23 @@ if ! curl -fs "http://$OLLAMA_HOST/api/tags" >/dev/null 2>&1; then
   exit 1
 fi
 
-# --- ensure model ------------------------------------------------------------
-echo "Checking for gemma3:4b model..."
+# --- ensure model (always pull latest) ----------------------------------------
+echo "Ensuring gemma3:4b model is up to date..."
 if ! ollama list 2>/dev/null | grep -q "gemma3:4b"; then
   echo "Pulling gemma3:4b model (this may take a few minutes)..."
   if ! ollama pull gemma3:4b; then
     echo "Warning: Failed to pull model"
+  else
+    echo "  Model gemma3:4b pulled successfully"
   fi
 else
-  echo "  Model gemma3:4b already exists"
+  echo "  Model gemma3:4b exists, pulling latest version..."
+  # Always pull to ensure we have the latest version
+  if ! ollama pull gemma3:4b; then
+    echo "Warning: Failed to update model (using existing version)"
+  else
+    echo "  Model gemma3:4b updated to latest version"
+  fi
 fi
 
 # 事前ロード（/api/chat 推奨。テンプレ適用＆将来の呼び出しに近い）  :contentReference[oaicite:6]{index=6}
