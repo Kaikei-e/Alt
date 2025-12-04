@@ -136,6 +136,10 @@ const loadMore = async () => {
 		feeds = [...feeds, ...response.data];
 		cursor = response.next_cursor;
 		hasMore = response.next_cursor !== null;
+
+		// Update visibleCount to show new feeds
+		const allFeedsCount = initialFeeds.length + feeds.length;
+		visibleCount = Math.min(visibleCount + response.data.length, allFeedsCount);
 	} catch (err) {
 		if (err instanceof Error && err.message.includes("404")) {
 			hasMore = false;
@@ -203,10 +207,15 @@ onMount(() => {
 });
 
 // Progressive rendering: increase visibleCount when user scrolls near the end
-onMount(() => {
-	if (!browser) return;
+// Setup IntersectionObserver and scroll handler once on mount
+let observer: IntersectionObserver | null = $state(null);
+let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	const observer = new IntersectionObserver(
+onMount(() => {
+	if (!browser || !scrollContainerRef) return;
+
+	// Setup IntersectionObserver for sentinel
+	observer = new IntersectionObserver(
 		(entries) => {
 			entries.forEach((entry) => {
 				if (entry.isIntersecting) {
@@ -229,12 +238,59 @@ onMount(() => {
 		},
 	);
 
-	if (sentinelRef) {
-		observer.observe(sentinelRef);
-	}
+	// Setup scroll handler with throttling
+	const handleScroll = () => {
+		if (!scrollContainerRef) return;
+
+		if (scrollTimeout) {
+			clearTimeout(scrollTimeout);
+		}
+
+		scrollTimeout = setTimeout(() => {
+			if (!scrollContainerRef) return;
+
+			const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef;
+			const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100;
+
+			if (isNearBottom && hasMore && !isLoading) {
+				const allFeedsCount = initialFeeds.length + feeds.length;
+				if (visibleCount < allFeedsCount) {
+					// Show more feeds progressively
+					visibleCount = Math.min(visibleCount + STEP, allFeedsCount);
+				} else if (visibleCount >= initialFeeds.length) {
+					// Load more from API
+					void loadMore();
+				}
+			}
+		}, 100);
+	};
+
+	scrollContainerRef.addEventListener("scroll", handleScroll, { passive: true });
 
 	return () => {
-		observer.disconnect();
+		if (observer) {
+			observer.disconnect();
+			observer = null;
+		}
+		if (scrollTimeout) {
+			clearTimeout(scrollTimeout);
+			scrollTimeout = null;
+		}
+		scrollContainerRef?.removeEventListener("scroll", handleScroll);
+	};
+});
+
+// Reactively observe sentinelRef when it changes
+$effect(() => {
+	if (!browser || !observer || !sentinelRef) return;
+
+	const currentSentinel = sentinelRef;
+	observer.observe(currentSentinel);
+
+	return () => {
+		if (observer && currentSentinel) {
+			observer.unobserve(currentSentinel);
+		}
 	};
 });
 
@@ -281,7 +337,10 @@ const visibleFeeds = $derived.by(() => {
 	);
 
 	// Limit to visibleCount items for progressive rendering
-	return filtered.slice(0, visibleCount);
+	// Always show at least visibleCount items, but ensure sentinel is visible
+	const allFeedsCount = filtered.length;
+	const countToShow = Math.min(visibleCount, allFeedsCount);
+	return filtered.slice(0, countToShow);
 });
 
 const hasVisibleContent = $derived(initialFeeds.length > 0 || feeds.length > 0);
@@ -291,7 +350,7 @@ const isInitialLoadingState = $derived(
 );
 </script>
 
-<div class="flex-1 min-h-0 relative flex flex-col" style="background: var(--app-bg);">
+<div class="h-full flex flex-col" style="background: var(--app-bg);">
 	<div
 		aria-live="polite"
 		aria-atomic="true"
@@ -302,7 +361,7 @@ const isInitialLoadingState = $derived(
 
 	<div
 		bind:this={scrollContainerRef}
-		class="p-5 max-w-2xl mx-auto overflow-y-auto overflow-x-hidden flex-1"
+		class="p-5 max-w-2xl mx-auto overflow-y-auto overflow-x-hidden flex-1 min-h-0"
 		data-testid="feeds-scroll-container"
 		style="background: var(--app-bg);"
 	>

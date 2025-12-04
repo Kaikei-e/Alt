@@ -17,8 +17,8 @@ const { data }: { data: PageData } = $props();
 	style="background: var(--app-bg);"
 >
 	<MobileFeedsHero />
-	<div class="flex-1 relative">
+	<div class="flex-1 min-h-0 flex flex-col">
 		<FeedsClient initialFeeds={data.initialFeeds || []} />
-		<FloatingMenu />
 	</div>
+	<FloatingMenu />
 </div>
