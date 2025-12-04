@@ -174,16 +174,18 @@
 </script>
 
 <Dialog.Root bind:open={isOpen}>
-	<div
-		class="fixed bottom-6 right-6 z-[1000] pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
-	>
-		<Dialog.Trigger
-			class="h-12 w-12 rounded-full border-2 border-[var(--text-primary)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-[var(--shadow-glass)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:rotate-90 hover:bg-[var(--bg-surface-hover)] hover:border-[var(--accent-primary)] active:scale-95 active:rotate-90 inline-flex shrink-0 items-center justify-center focus-visible:outline-none outline-none disabled:pointer-events-none disabled:opacity-60"
-			aria-label="Open floating menu"
+	{#if !isOpen}
+		<div
+			class="fixed bottom-6 right-6 z-[1000] pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] pointer-events-auto"
 		>
-			<Menu class="h-5 w-5 relative z-[1]" />
-		</Dialog.Trigger>
-	</div>
+			<Dialog.Trigger
+				class="h-12 w-12 rounded-full border-2 border-[var(--text-primary)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-[var(--shadow-glass)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:rotate-90 hover:bg-[var(--bg-surface-hover)] hover:border-[var(--accent-primary)] active:scale-95 active:rotate-90 inline-flex shrink-0 items-center justify-center focus-visible:outline-none outline-none disabled:pointer-events-none disabled:opacity-60"
+				aria-label="Open floating menu"
+			>
+				<Menu class="h-5 w-5 relative z-[1]" />
+			</Dialog.Trigger>
+		</div>
+	{/if}
 	<Dialog.Content
 		showCloseButton={false}
 		class="max-h-[90vh] min-h-[70vh] rounded-t-[32px] border-t border-[var(--border-glass)] bg-[var(--app-bg)] text-[var(--text-primary)] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] backdrop-blur-[20px] !fixed !bottom-0 !left-0 !right-0 !top-auto !translate-x-0 !translate-y-0 !start-auto w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden"
