@@ -1,6 +1,6 @@
 import type { CursorResponse } from "$lib/api";
-import { sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
 import type { BackendFeedItem } from "$lib/schema/feed";
+import { sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
 import type { PageLoad } from "./$types";
 
 export const load: PageLoad = async ({ fetch }) => {
