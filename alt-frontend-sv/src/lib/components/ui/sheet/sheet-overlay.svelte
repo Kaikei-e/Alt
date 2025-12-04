@@ -1,12 +1,13 @@
 <script lang="ts">
-	import { Dialog as SheetPrimitive } from "bits-ui";
-	import { cn } from "$lib/utils.js";
+// @biome-ignore lint/style/useImportType: SheetPrimitive is used as a component, not just a type
+import { Dialog as SheetPrimitive } from "bits-ui";
+import { cn } from "$lib/utils.js";
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		...restProps
-	}: SheetPrimitive.OverlayProps = $props();
+let {
+	ref = $bindable(null),
+	class: className,
+	...restProps
+}: SheetPrimitive.OverlayProps = $props();
 </script>
 
 <SheetPrimitive.Overlay

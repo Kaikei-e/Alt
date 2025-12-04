@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { Dialog as SheetPrimitive } from "bits-ui";
+// @biome-ignore lint/style/useImportType: SheetPrimitive is used as a component, not just a type
+import { Dialog as SheetPrimitive } from "bits-ui";
 
-	let { open = $bindable(false), ...restProps }: SheetPrimitive.RootProps = $props();
+let { open = $bindable(false), ...restProps }: SheetPrimitive.RootProps =
+	$props();
 </script>
 
 <SheetPrimitive.Root bind:open {...restProps} />
