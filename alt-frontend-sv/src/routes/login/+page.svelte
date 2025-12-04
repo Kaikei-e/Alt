@@ -14,12 +14,14 @@ import { Label } from "$lib/components/ui/label";
 import type { PageData } from "./$types";
 
 const { data }: { data: PageData } = $props();
-const flow = $derived(data.flow);
+// This page always redirects, so data is never, but we need to handle the type
+const flow = $derived((data as { flow?: { ui: { nodes: UiNode[]; action?: string; method?: string; messages?: Array<{ text: string }> } } })?.flow);
 
 // Helper to find node by name
 function getNode(name: string): UiNode | undefined {
+	if (!flow) return undefined;
 	return flow.ui.nodes.find(
-		(n) => (n.attributes as { name?: string }).name === name,
+		(n: UiNode) => (n.attributes as { name?: string }).name === name,
 	);
 }
 
@@ -43,6 +45,7 @@ function getError(node: UiNode | undefined): string {
       >
     </CardHeader>
     <CardContent>
+      {#if flow}
       <form action={flow.ui.action} method={(flow.ui.method || "post").toLowerCase() as "get" | "post"} class="space-y-4">
         <!-- CSRF Token -->
         {#if getNode("csrf_token")}
@@ -95,6 +98,9 @@ function getError(node: UiNode | undefined): string {
 
         <Button type="submit" class="w-full">Login</Button>
       </form>
+      {:else}
+      <p>Redirecting...</p>
+      {/if}
     </CardContent>
     <CardFooter class="flex justify-center">
       <a href="/register" class="text-sm hover:underline" style="color: var(--text-muted);">
