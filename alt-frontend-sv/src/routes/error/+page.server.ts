@@ -6,4 +6,3 @@ export const load: PageServerLoad = async ({ url }: { url: URL }) => {
 		errorId,
 	};
 };
-

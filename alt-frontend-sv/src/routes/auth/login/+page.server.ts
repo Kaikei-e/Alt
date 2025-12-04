@@ -41,15 +41,20 @@ function sanitizeReturnTo(returnTo: string | null, origin: string): string {
 	}
 
 	// return_toからクエリパラメータを削除（ループを防ぐため）
-	cleanUrl = cleanUrl.split('?')[0];
+	cleanUrl = cleanUrl.split("?")[0];
 
 	// /login や /auth/login を /sv/home に変換（ループを防ぐ）
-	if (cleanUrl.endsWith('/login') || cleanUrl.endsWith('/auth/login')) {
+	if (cleanUrl.endsWith("/login") || cleanUrl.endsWith("/auth/login")) {
 		return `${origin}/sv/home`;
 	}
 
 	// /sv/auth/login や /sv/login や /sv/ の場合は /sv/home にリダイレクト（ループを防ぐ）
-	if (cleanUrl.includes('/sv/auth/login') || cleanUrl.includes('/sv/login') || cleanUrl.endsWith('/sv/') || cleanUrl === `${origin}/sv`) {
+	if (
+		cleanUrl.includes("/sv/auth/login") ||
+		cleanUrl.includes("/sv/login") ||
+		cleanUrl.endsWith("/sv/") ||
+		cleanUrl === `${origin}/sv`
+	) {
 		return `${origin}/sv/home`;
 	}
 
@@ -79,18 +84,23 @@ export const load: PageServerLoad = async ({ url, locals, request }) => {
 		}
 
 		// return_toからクエリパラメータを削除（ループを防ぐため）
-		cleanUrl = cleanUrl.split('?')[0];
+		cleanUrl = cleanUrl.split("?")[0];
 
 		// /login や /auth/login を /sv/home に変換（ループを防ぐ）
-		if (cleanUrl.endsWith('/login') || cleanUrl.endsWith('/auth/login')) {
+		if (cleanUrl.endsWith("/login") || cleanUrl.endsWith("/auth/login")) {
 			cleanUrl = `${url.origin}/sv/home`;
 		} else {
 			// /auth/login を /sv/home に変換
-			cleanUrl = cleanUrl.replace('/auth/login', '/sv/home');
+			cleanUrl = cleanUrl.replace("/auth/login", "/sv/home");
 		}
 
 		// /sv/auth/login や /sv/login や /sv/ を含む場合は /sv/home に変更（ループを防ぐ）
-		if (cleanUrl.includes('/sv/auth/login') || cleanUrl.includes('/sv/login') || cleanUrl.endsWith('/sv/') || cleanUrl === `${url.origin}/sv`) {
+		if (
+			cleanUrl.includes("/sv/auth/login") ||
+			cleanUrl.includes("/sv/login") ||
+			cleanUrl.endsWith("/sv/") ||
+			cleanUrl === `${url.origin}/sv`
+		) {
 			cleanUrl = `${url.origin}/sv/home`;
 		}
 
@@ -113,8 +123,9 @@ export const load: PageServerLoad = async ({ url, locals, request }) => {
 
 		// 無限ループを防ぐため、エラーページにリダイレクト
 		// ユーザーはエラーページから再度ログインを試みることができる
-		const errorMessage = encodeURIComponent("ログインフローが無効または期限切れです。再度ログインしてください。");
+		const errorMessage = encodeURIComponent(
+			"ログインフローが無効または期限切れです。再度ログインしてください。",
+		);
 		throw redirect(303, `/sv/error?error=${errorMessage}`);
 	}
 };
-

@@ -1,4 +1,5 @@
 <script lang="ts">
+import { resolve } from "$app/paths";
 import { Button } from "$lib/components/ui/button";
 import {
 	Card,
@@ -8,7 +9,6 @@ import {
 	CardHeader,
 	CardTitle,
 } from "$lib/components/ui/card";
-import { resolve } from "$app/paths";
 import type { PageData } from "./$types";
 
 const { data }: { data: PageData } = $props();

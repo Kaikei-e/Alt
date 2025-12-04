@@ -15,7 +15,20 @@ import type { PageData } from "./$types";
 
 const { data }: { data: PageData } = $props();
 // This page always redirects, so data is never, but we need to handle the type
-const flow = $derived((data as { flow?: { ui: { nodes: UiNode[]; action?: string; method?: string; messages?: Array<{ text: string }> } } })?.flow);
+const flow = $derived(
+	(
+		data as {
+			flow?: {
+				ui: {
+					nodes: UiNode[];
+					action?: string;
+					method?: string;
+					messages?: Array<{ text: string }>;
+				};
+			};
+		}
+	)?.flow,
+);
 
 // Helper to find node by name
 function getNode(name: string): UiNode | undefined {
