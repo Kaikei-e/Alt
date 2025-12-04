@@ -82,7 +82,8 @@ func (s *qualityCheckerService) CheckQuality(ctx context.Context, batchSize int)
 		driverArticle := s.convertToDriverArticle(articleWithSummary)
 
 		// Use the actual LLM-based quality scoring from quality_judger.go
-		err := qualitychecker.RemoveLowScoreSummary(ctx, s.dbPool, driverArticle)
+		// JudgeArticleQuality handles scoring and removal of low-quality summaries
+		err := qualitychecker.JudgeArticleQuality(ctx, s.dbPool, driverArticle)
 		if err != nil {
 			s.logger.Error("failed to process quality check with LLM", "article_id", articleWithSummary.ArticleID, "error", err)
 
