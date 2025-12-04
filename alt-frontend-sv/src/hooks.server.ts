@@ -3,25 +3,28 @@ import { redirect } from "@sveltejs/kit";
 import { ory } from "$lib/ory";
 
 const PUBLIC_ROUTES = [
-	/^\/auth(\/|$)/,
-	/^\/api(\/|$)/,
-	/^\/login(\/|$)/,
-	/^\/register(\/|$)/,
-	/^\/logout(\/|$)/,
-	/^\/recovery(\/|$)/,
-	/^\/verification(\/|$)/,
-	/^\/public\/landing(\/|$)/,
-	/^\/landing$/,
-	/^\/favicon\.ico$/,
-	/^\/icon\.svg$/,
-	/^\/test(\/|$)/,
+	/\/auth(\/|$)/,
+	/\/api(\/|$)/,
+	/\/login(\/|$)/,
+	/\/register(\/|$)/,
+	/\/logout(\/|$)/,
+	/\/recovery(\/|$)/,
+	/\/verification(\/|$)/,
+	/\/error(\/|$)/,
+	/\/public\/landing(\/|$)/,
+	/\/landing$/,
+	/\/favicon\.ico$/,
+	/\/icon\.svg$/,
+	/\/test(\/|$)/,
 ];
 
-export const handle: Handle = async ({ event, resolve }) => {
+export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	const { url } = event;
 	const pathname = url.pathname;
 
 	// Check if the route is public
+	// SvelteKit automatically handles basePath, so we can use pathname directly
+	// The pathname will be like /sv/login, and we check against patterns
 	const isPublic = PUBLIC_ROUTES.some((pattern) => pattern.test(pathname));
 
 	// Validate session
@@ -43,10 +46,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	// Protect routes
 	if (!isPublic && !event.locals.session) {
-		const returnTo = encodeURIComponent(`${pathname}${url.search}`);
-		// Redirect to login page with return_to parameter
-		throw redirect(303, `/login?return_to=${returnTo}`);
+		// /sv/ へのアクセスの場合は、/sv/home を return_to として設定（ループを防ぐ）
+		let returnTo: string;
+		if (pathname === '/sv' || pathname === '/sv/') {
+			returnTo = encodeURIComponent(`${url.origin}/sv/home`);
+		} else {
+			returnTo = encodeURIComponent(`${pathname}${url.search}`);
+		}
+		// Redirect to login page - explicitly include basePath to ensure correct routing
+		// SvelteKit's redirect() should add basePath automatically, but we include it explicitly to be safe
+		throw redirect(303, `/sv/login?return_to=${returnTo}`);
 	}
 
-	return resolve(event);
+	return resolveEvent(event);
 };

@@ -1,44 +1,26 @@
+// Legacy /sv/login route - redirect to /sv/auth/login
+// This route is kept for backward compatibility with Kratos redirects
+// that may still point to /sv/login before the service is restarted
 import { redirect } from "@sveltejs/kit";
-import { env } from "$env/dynamic/private";
-import { ory } from "$lib/ory";
 import type { PageServerLoad } from "./$types";
 
-// KratosパブリックURL（ブラウザからのアクセス用）
-const kratosPublicUrl = env.KRATOS_PUBLIC_URL || "http://localhost/ory";
-// アプリケーションのベースURL
-const appOrigin = env.ORIGIN || "http://localhost:4173";
-const basePath = "/sv";
-
-export const load: PageServerLoad = async ({ url, locals }) => {
-	// If already logged in, redirect to home or return_to
-	if (locals.session) {
-		const returnTo = url.searchParams.get("return_to") || `${basePath}/`;
-		throw redirect(303, returnTo);
-	}
-
+export const load: PageServerLoad = async ({ url }) => {
+	// Redirect to the new unified auth/login route
+	// Preserve flow and return_to parameters if present
 	const flow = url.searchParams.get("flow");
 	const returnTo = url.searchParams.get("return_to");
 
-	// If no flow, initiate login flow
-	if (!flow) {
-		// return_toが指定されていない場合は、現在のログインページへのリダイレクトを設定
-		const returnUrl = returnTo || `${appOrigin}${basePath}/login`;
-		const initUrl = new URL(`${kratosPublicUrl}/self-service/login/browser`);
-		initUrl.searchParams.set("return_to", returnUrl);
-		throw redirect(303, initUrl.toString());
+	let redirectUrl = "/sv/auth/login";
+	const params = new URLSearchParams();
+	if (flow) {
+		params.set("flow", flow);
+	}
+	if (returnTo) {
+		params.set("return_to", returnTo);
+	}
+	if (params.toString()) {
+		redirectUrl += `?${params.toString()}`;
 	}
 
-	// Fetch flow data
-	try {
-		const { data: flowData } = await ory.getLoginFlow({ id: flow });
-		return {
-			flow: flowData,
-		};
-	} catch (_error) {
-		// If flow is invalid or expired, redirect to init
-		const returnUrl = returnTo || `${appOrigin}${basePath}/login`;
-		const initUrl = new URL(`${kratosPublicUrl}/self-service/login/browser`);
-		initUrl.searchParams.set("return_to", returnUrl);
-		throw redirect(303, initUrl.toString());
-	}
+	throw redirect(303, redirectUrl);
 };
