@@ -150,9 +150,7 @@ impl HashDedupStage {
                 if window_similarity(other, &signature) >= self.near_duplicate_threshold {
                     state.keep_flags[signature.index] = false;
                     state.stats.duplicate_articles += 1;
-                    debug!(
-                        "dropped duplicate article (near match)"
-                    );
+                    debug!("dropped duplicate article (near match)");
                     state
                         .duplicates_map
                         .entry(unique_idx)
@@ -258,7 +256,10 @@ impl DedupStage for HashDedupStage {
             ..Default::default()
         };
 
-        let articles = corpus.articles;
+        let mut articles = corpus.articles;
+        // Timestamp prioritized: Sort by published_at descending (newest first)
+        articles.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+
         let signatures = build_signatures(&articles, self.window_size);
 
         let mut keep_flags = vec![true; total_articles];
@@ -434,6 +435,7 @@ fn deduplicate_sentences(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
 
     fn article(id: &str, body: &str, title: Option<&str>) -> PreprocessedArticle {
         PreprocessedArticle {
@@ -443,10 +445,8 @@ mod tests {
             language: "en".to_string(),
             char_count: body.chars().count(),
             is_html_cleaned: false,
-            tokens: body
-                .split_whitespace()
-                .map(str::to_lowercase)
-                .collect(),
+            published_at: Some(Utc::now()),
+            tokens: body.split_whitespace().map(str::to_lowercase).collect(),
             tags: Vec::new(),
         }
     }

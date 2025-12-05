@@ -4,6 +4,7 @@ use std::sync::Arc;
 use ammonia::clean;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::json;
@@ -19,6 +20,7 @@ use crate::store::{dao::RecapDao, models::PreprocessMetrics};
 
 use super::fetch::{FetchedArticle, FetchedCorpus};
 use super::tag_signal::TagSignal;
+use crate::clients::SubworkerClient;
 
 /// 前処理後の記事データ。
 #[derive(Debug, Clone, PartialEq)]
@@ -29,6 +31,7 @@ pub(crate) struct PreprocessedArticle {
     pub(crate) language: String,
     pub(crate) char_count: usize,
     pub(crate) is_html_cleaned: bool,
+    pub(crate) published_at: Option<DateTime<Utc>>,
     pub(crate) tokens: Vec<String>,
     pub(crate) tags: Vec<TagSignal>,
 }
@@ -55,6 +58,7 @@ pub(crate) trait PreprocessStage: Send + Sync {
 pub struct TextPreprocessStage {
     semaphore: Arc<Semaphore>,
     dao: Arc<RecapDao>,
+    subworker: Arc<SubworkerClient>,
 }
 
 impl TextPreprocessStage {
@@ -63,10 +67,15 @@ impl TextPreprocessStage {
     /// # Arguments
     /// * `max_concurrent` - 同時に処理できる記事の最大数
     /// * `dao` - データベースアクセスオブジェクト
-    pub(crate) fn new(max_concurrent: usize, dao: Arc<RecapDao>) -> Self {
+    pub(crate) fn new(
+        max_concurrent: usize,
+        dao: Arc<RecapDao>,
+        subworker: Arc<SubworkerClient>,
+    ) -> Self {
         Self {
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
             dao,
+            subworker,
         }
     }
 }
@@ -90,6 +99,8 @@ impl PreprocessStage for TextPreprocessStage {
         for article in corpus.articles {
             let semaphore = Arc::clone(&self.semaphore);
 
+            let subworker = Arc::clone(&self.subworker);
+
             let task = tokio::spawn(async move {
                 // セマフォで同時実行数を制限
                 let _permit = semaphore
@@ -97,10 +108,7 @@ impl PreprocessStage for TextPreprocessStage {
                     .await
                     .expect("semaphore should not be closed");
 
-                // CPUバインド処理をspawn_blockingでオフロード
-                tokio::task::spawn_blocking(move || preprocess_article(article))
-                    .await
-                    .context("preprocessing task panicked")
+                preprocess_article(article, subworker).await
             });
 
             tasks.push(task);
@@ -118,7 +126,7 @@ impl PreprocessStage for TextPreprocessStage {
 
         for result in results {
             match result {
-                Ok(Ok(Ok(Some(article)))) => {
+                Ok(Ok(Some(article))) => {
                     total_characters += article.char_count;
                     if article.is_html_cleaned {
                         html_cleaned_count += 1;
@@ -128,15 +136,11 @@ impl PreprocessStage for TextPreprocessStage {
                     articles.push(article);
                     processed_count += 1;
                 }
-                Ok(Ok(Ok(None))) => {
-                    dropped_count += 1;
-                }
-                Ok(Ok(Err(e))) => {
-                    debug!(error = ?e, "article preprocessing failed, dropping");
+                Ok(Ok(None)) => {
                     dropped_count += 1;
                 }
                 Ok(Err(e)) => {
-                    debug!(error = ?e, "blocking task failed, dropping");
+                    debug!(error = ?e, "article preprocessing failed, dropping");
                     dropped_count += 1;
                 }
                 Err(e) => {
@@ -179,17 +183,30 @@ impl PreprocessStage for TextPreprocessStage {
     }
 }
 
-/// 単一記事の前処理を実行する（CPU heavy）。
+/// 単一記事の前処理を実行する。
 ///
-/// 1. HTMLサニタイズ（ammoniaで安全にタグ除去）
-/// 2. プレーン化（html2textで変換）
-/// 3. Unicode正規化（NFC）
-/// 4. 言語検出
-pub(crate) fn preprocess_article(article: FetchedArticle) -> Result<Option<PreprocessedArticle>> {
-    // 1. HTMLサニタイズとプレーン化
-    let (cleaned_body, is_html_cleaned) = clean_html(&article.body)?;
+/// 1. Subworkerによる抽出 (Trafilatura)
+/// 2. フォールバック処理 (Ammonia + html2text)
+/// 3. Unicode正規化など
+pub(crate) async fn preprocess_article(
+    article: FetchedArticle,
+    subworker: Arc<SubworkerClient>,
+) -> Result<Option<PreprocessedArticle>> {
+    // 1. Subworkerによる抽出
+    let (cleaned_body, is_html_cleaned) = match subworker.extract_content(&article.body).await {
+        Ok(text) if !text.trim().is_empty() => (text, true),
+        _ => {
+            // Fallback to local cleaning if subworker fails or returns empty
+            // Use spawn_blocking for CPU bound local cleaning
+            let body = article.body.clone();
+            let (text, cleaned) = tokio::task::spawn_blocking(move || clean_html(&body)).await??;
+            (text, cleaned)
+        }
+    };
 
-    // 2. Unicode正規化（NFC）
+    // CPUバインド処理: 正規化、トークナイズ
+    // 短いのでインラインで実行するか、必要ならブロック化
+    // ここでは単純化のためインライン実行（必要に応じて最適化）
     let normalized = cleaned_body.nfc().collect::<String>();
     let trimmed = normalized.trim();
 
@@ -200,17 +217,23 @@ pub(crate) fn preprocess_article(article: FetchedArticle) -> Result<Option<Prepr
     // 3. 言語検出
     let language = article
         .language
+        .clone()
         .or_else(|| detect(trimmed).map(|info| info.lang().code().to_string()))
         .unwrap_or_else(|| "und".to_string());
 
     // 4. タイトル処理
-    let title = article.title.map(|t| {
+    let title = article.title.clone().map(|t| {
         let cleaned_title = if contains_html_tags(&t) { clean(&t) } else { t };
         cleaned_title.nfc().collect::<String>()
     });
 
     let char_count = trimmed.chars().count();
     let tokens = tokenize_text(trimmed, &language);
+
+    if !is_valid_content(trimmed, &language, char_count) {
+        debug!(id = %article.id, lang = %language, len = char_count, "filtered out short content");
+        return Ok(None);
+    }
 
     Ok(Some(PreprocessedArticle {
         id: article.id,
@@ -219,6 +242,7 @@ pub(crate) fn preprocess_article(article: FetchedArticle) -> Result<Option<Prepr
         language,
         char_count,
         is_html_cleaned,
+        published_at: article.published_at,
         tokens,
         tags: article.tags,
     }))
@@ -324,11 +348,58 @@ fn contains_html_tags(text: &str) -> bool {
     false
 }
 
+/// コンテンツが有効（短すぎない、または例外条件を満たす）かどうかを判定する。
+fn is_valid_content(text: &str, _lang: &str, char_count: usize) -> bool {
+    let ja_ratio = calculate_ja_ratio(text);
+    let min_len = if ja_ratio >= 0.3 { 10 } else { 20 };
+
+    if char_count >= min_len {
+        return true;
+    }
+
+    // Exception: Ends with a Japanese period (likely a complete sentence)
+    if text.trim().ends_with('。') {
+        return true;
+    }
+
+    // Exception: Contains numbers (likely data-heavy or specific info)
+    if text.chars().any(char::is_numeric) {
+        return true;
+    }
+
+    false
+}
+
+fn calculate_ja_ratio(text: &str) -> f32 {
+    let mut ja_count = 0;
+    let mut total = 0;
+
+    for c in text.chars() {
+        if c.is_whitespace() {
+            continue;
+        }
+        total += 1;
+        // Simple range check for Hiragana, Katakana, Kanji
+        // Hiragana: 3040-309F
+        // Katakana: 30A0-30FF
+        // Kanji: 4E00-9FAF (Common)
+        if matches!(c, '\u{3040}'..='\u{309F}' | '\u{30A0}'..='\u{30FF}' | '\u{4E00}'..='\u{9FAF}')
+        {
+            ja_count += 1;
+        }
+    }
+
+    if total == 0 {
+        0.0
+    } else {
+        ja_count as f32 / total as f32
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::Utc;
-    use rstest::rstest;
 
     fn article(
         id: &str,
@@ -347,15 +418,14 @@ mod tests {
         }
     }
 
-    #[rstest]
-    #[case("  正規化テキスト  ", Some("ja"))]
-    #[case("Text with spaces", None)]
-    fn preprocess_article_trims_and_detects_language(
-        #[case] body: &str,
-        #[case] language: Option<&str>,
-    ) {
+    #[tokio::test]
+    async fn preprocess_article_trims_and_detects_language_case_1() {
+        let body = "  正規化テキスト  ";
+        let language = Some("ja");
+        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
         let fetched = article("art-1", body, Some("Title"), language);
-        let result = preprocess_article(fetched)
+        let result = preprocess_article(fetched, subworker)
+            .await
             .expect("preprocessing should succeed")
             .expect("article should remain");
         assert_eq!(result.body, body.trim());
@@ -367,22 +437,41 @@ mod tests {
         assert!(!result.tokens.is_empty());
     }
 
-    #[test]
-    fn preprocess_article_drops_empty() {
-        let result = preprocess_article(article("art-1", "   ", None, None))
+    #[tokio::test]
+    async fn preprocess_article_trims_and_detects_language_case_2() {
+        let body = "Text with spaces";
+        let language = None;
+        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let fetched = article("art-2", body, Some("Title"), language);
+        let result = preprocess_article(fetched, subworker)
+            .await
+            .expect("preprocessing should succeed")
+            .expect("article should remain");
+        assert_eq!(result.body, body.trim());
+        assert!(!result.language.is_empty());
+        assert!(!result.tokens.is_empty());
+    }
+
+    #[tokio::test]
+    async fn preprocess_article_drops_empty() {
+        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let result = preprocess_article(article("art-1", "   ", None, None), subworker)
+            .await
             .expect("preprocessing should succeed");
         assert!(result.is_none());
     }
 
-    #[test]
-    fn preprocess_article_tokenizes_japanese() {
+    #[tokio::test]
+    async fn preprocess_article_tokenizes_japanese() {
+        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
         let fetched = article(
             "art-ja",
             "東京大学で量子コンピューターの研究が進んでいます。",
             Some("タイトル"),
             Some("ja"),
         );
-        let result = preprocess_article(fetched)
+        let result = preprocess_article(fetched, subworker)
+            .await
             .expect("preprocessing should succeed")
             .expect("article should remain");
         assert!(result.tokens.iter().any(|t| t.contains("東京")));

@@ -49,9 +49,17 @@ impl MorningPipeline {
             1, // 1 day window
         ));
 
+        let subworker_client = Arc::new(
+            crate::clients::SubworkerClient::new(
+                config.subworker_base_url(),
+                config.min_documents_per_genre(),
+            )
+            .expect("failed to create subworker client"),
+        );
         let preprocess = Arc::new(TextPreprocessStage::new(
             max_concurrent.max(2),
             Arc::clone(&recap_dao),
+            Arc::clone(&subworker_client),
         ));
 
         let dedup = Arc::new(HashDedupStage::with_defaults());

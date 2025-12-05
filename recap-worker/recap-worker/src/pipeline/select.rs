@@ -5,6 +5,7 @@ use crate::scheduler::JobContext;
 
 use super::embedding::{EmbeddingService, cosine_similarity};
 use super::genre::{GenreAssignment, GenreBundle};
+use crate::clients::SubworkerClient;
 use crate::store::dao::RecapDao;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -31,6 +32,7 @@ pub(crate) struct SummarySelectStage {
     similarity_threshold: f32,
     embedding_service: Option<EmbeddingService>,
     dao: Option<Arc<RecapDao>>,
+    subworker: Option<Arc<SubworkerClient>>,
 }
 
 impl SummarySelectStage {
@@ -39,6 +41,7 @@ impl SummarySelectStage {
         min_documents_per_genre: usize,
         similarity_threshold: f32,
         dao: Option<Arc<RecapDao>>,
+        subworker: Option<Arc<SubworkerClient>>,
     ) -> Self {
         Self {
             max_articles_per_genre: 20,
@@ -46,6 +49,7 @@ impl SummarySelectStage {
             similarity_threshold,
             embedding_service,
             dao,
+            subworker,
         }
     }
 
@@ -76,6 +80,67 @@ impl SummarySelectStage {
             }
         }
         HashMap::new()
+    }
+
+    async fn subcluster_others(
+        &self,
+        assignments: Vec<GenreAssignment>,
+    ) -> anyhow::Result<Vec<GenreAssignment>> {
+        if self.subworker.is_none() {
+            return Ok(assignments);
+        }
+        let subworker = self.subworker.as_ref().unwrap();
+
+        // Separate "other" assignments
+        let (mut others, mut rest): (Vec<GenreAssignment>, Vec<GenreAssignment>) = assignments
+            .into_iter()
+            .partition(|a| matches!(a.primary_genre(), None | Some("other")));
+
+        if others.is_empty() {
+            return Ok(rest);
+        }
+
+        let texts: Vec<String> = others
+            .iter()
+            .map(|a| {
+                let title = a.article.title.as_deref().unwrap_or("");
+                let body = a
+                    .article
+                    .sentences
+                    .iter()
+                    .take(3)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                format!("{title}\n{body}")
+            })
+            .collect();
+
+        match subworker.cluster_other(texts).await {
+            Ok((cluster_ids, _, _)) => {
+                for (i, cluster_id) in cluster_ids.iter().enumerate() {
+                    if *cluster_id >= 0 {
+                        // Assign new genre: other.{cluster_id}
+                        // Since GenreAssignment::genres is a Vec, we can prepend or replace.
+                        // Usually primary_genre is the first one.
+                        if let Some(assignment) = others.get_mut(i) {
+                            let new_genre = format!("other.{}", cluster_id);
+                            // Insert at index 0 to make it primary
+                            assignment.genres.insert(0, new_genre.clone());
+                            assignment.genre_scores.insert(new_genre.clone(), 100); // Mock score
+                            assignment.genre_confidence.insert(new_genre, 1.0);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("failed to subcluster others: {}", e);
+                // On failure, keep as is
+            }
+        }
+
+        rest.append(&mut others);
+        Ok(rest)
     }
 
     fn trim_assignments(
@@ -283,7 +348,7 @@ impl SummarySelectStage {
 
 impl Default for SummarySelectStage {
     fn default() -> Self {
-        Self::new(None, 5, 0.5, None)
+        Self::new(None, 5, 0.5, None, None)
     }
 }
 
@@ -296,8 +361,34 @@ impl SelectStage for SummarySelectStage {
     ) -> anyhow::Result<SelectedSummary> {
         let thresholds = self.get_dynamic_thresholds().await;
 
-        let pre_trim_count = bundle.assignments.len();
-        let mut assignments = self.trim_assignments(bundle, &thresholds);
+        // Sub-cluster "other" genre items
+        let assignments = self
+            .subcluster_others(bundle.assignments)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!("subclustering failed: {}", e);
+                // On fatal error (should not happen due to internal handling), we might lose assignments if we propagated error.
+                // But subcluster_others implementation above handles errors internally or returns original assignments on simple failure?
+                // Wait, I implemented it to return Result.
+                // If subworker call fails, I catch it inside? No, I catch it inside match, but if something else fails...
+                // Let's assume on error we probably lost the "other" separation but returned `rest` + unmodified `others`?
+                // Actually my implementation consumes `assignments`...
+                // I should make sure I don't drop data.
+                // In implementation above: `match subworker... Err(e) -> warn`. `rest.append(&mut others)`. `Ok(rest)`.
+                // So it's safe.
+                vec![] // Should be unreachable given implementation, but needs specific handling if I failed to execute subcluster_others at all before splitting?
+                // Actually if subcluster_others returns Err, it means catastrophic failure.
+                // But I made sure to handle subworker error.
+            });
+
+        let pre_trim_count = assignments.len();
+        let mut assignments = self.trim_assignments(
+            GenreBundle {
+                assignments,
+                ..bundle
+            },
+            &thresholds,
+        );
         let post_trim_count = assignments.len();
 
         if let Some(service) = &self.embedding_service {
@@ -362,6 +453,7 @@ mod tests {
             similarity_threshold: 0.5,
             embedding_service: None,
             dao: None,
+            subworker: None,
         };
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let bundle = GenreBundle {
@@ -394,6 +486,7 @@ mod tests {
             similarity_threshold: 0.5,
             embedding_service: None,
             dao: None,
+            subworker: None,
         };
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         // Create 15 assignments for a single genre to test max_articles adjustment
@@ -428,6 +521,7 @@ mod tests {
             similarity_threshold: 0.5,
             embedding_service: None,
             dao: None,
+            subworker: None,
         };
         let assignments: Vec<GenreAssignment> = (0..15)
             .map(|i| {

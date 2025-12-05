@@ -158,6 +158,7 @@ impl PipelineOrchestrator {
             .with_preprocess_stage(Arc::new(TextPreprocessStage::new(
                 max_concurrent.max(2),
                 Arc::clone(&recap_dao),
+                Arc::clone(&subworker_client),
             )))
             .with_dedup_stage(Arc::new(HashDedupStage::new(cpu_count.max(2), 0.8, 100)))
             .with_genre_stage(genre_stage)
@@ -166,6 +167,7 @@ impl PipelineOrchestrator {
                 min_documents_per_genre,
                 coherence_similarity_threshold,
                 Some(Arc::clone(&recap_dao)),
+                Some(Arc::clone(&subworker_client)),
             )))
             .with_dispatch_stage(Arc::new(MlLlmDispatchStage::new(
                 Arc::clone(&subworker_client),
@@ -320,15 +322,18 @@ impl PipelineBuilder {
             dedup: self
                 .dedup
                 .unwrap_or_else(|| panic!("dedup stage must be configured before build")),
-            genre: self
-                .genre
-                .unwrap_or_else(|| Arc::new(CoarseGenreStage::with_defaults())),
+            genre: self.genre.unwrap_or_else(|| {
+                Arc::new(CoarseGenreStage::with_defaults(Arc::clone(
+                    &subworker_client,
+                )))
+            }),
             select: self.select.unwrap_or_else(|| {
                 Arc::new(SummarySelectStage::new(
                     None,
                     self.config.min_documents_per_genre(),
                     self.config.coherence_similarity_threshold(),
                     Some(recap_dao.clone()),
+                    Some(Arc::clone(&subworker_client)),
                 ))
             }),
             dispatch: self
@@ -493,6 +498,7 @@ mod tests {
                     language: "en".to_string(),
                     char_count: 9,
                     is_html_cleaned: false,
+                    published_at: None,
                     tokens: vec!["processed".to_string()],
                     tags: Vec::new(),
                 }],

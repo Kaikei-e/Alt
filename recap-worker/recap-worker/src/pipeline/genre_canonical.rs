@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 
 /// Canonical sentences for each genre to be used for embedding-based filtering.
 /// These sentences represent the "ideal" content for a genre.
+#[allow(dead_code)] // May be used in future refactoring
 static CANONICAL_SENTENCES: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|| {
     let mut m = HashMap::new();
 
@@ -77,6 +78,7 @@ static CANONICAL_SENTENCES: Lazy<HashMap<&'static str, Vec<&'static str>>> = Laz
     m
 });
 
+#[allow(dead_code)] // May be used in future refactoring
 pub fn get_canonical_sentences(genre: &str) -> Option<&'static Vec<&'static str>> {
     CANONICAL_SENTENCES.get(genre)
 }
