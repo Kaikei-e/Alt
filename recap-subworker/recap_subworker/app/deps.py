@@ -17,6 +17,8 @@ from ..services.pipeline import EvidencePipeline
 from ..services.pipeline_runner import PipelineTaskRunner
 from ..services.run_manager import RunManager
 from ..services.classifier import GenreClassifierService
+from ..services.extraction import ContentExtractor
+from ..services.classification import CoarseClassifier
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Module-level singletons to avoid lru_cache issues with unhashable Settings
@@ -28,6 +30,8 @@ _run_manager: RunManager | None = None
 _learning_client: LearningClient | None = None
 _learning_scheduler: LearningScheduler | None = None
 _classifier: GenreClassifierService | None = None
+_content_extractor: ContentExtractor | None = None
+_coarse_classifier: CoarseClassifier | None = None
 
 
 def _get_process_pool(settings: Settings) -> ProcessPoolExecutor:
@@ -190,6 +194,20 @@ def _get_classifier(settings: Settings) -> GenreClassifierService:
 
 def get_classifier_dep(settings: Settings = Depends(get_settings_dep)) -> GenreClassifierService:
     return _get_classifier(settings)
+
+
+def get_content_extractor_dep() -> ContentExtractor:
+    global _content_extractor
+    if _content_extractor is None:
+        _content_extractor = ContentExtractor()
+    return _content_extractor
+
+
+def get_coarse_classifier_dep(settings: Settings = Depends(get_settings_dep)) -> CoarseClassifier:
+    global _coarse_classifier
+    if _coarse_classifier is None:
+        _coarse_classifier = CoarseClassifier(embedder=_get_embedder(settings))
+    return _coarse_classifier
 
 
 def register_lifecycle(app) -> None:

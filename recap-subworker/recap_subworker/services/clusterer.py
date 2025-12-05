@@ -146,3 +146,15 @@ class Clusterer:
             return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
 
         return best_result
+
+    def subcluster_other(self, embeddings: np.ndarray) -> ClusterResult:
+        """
+        Specialized clustering for 'Other' genre to break it down.
+        Uses smaller parameters to find smaller, tighter clusters.
+        """
+        # Range optimized for finding small clusters in noise
+        return self.optimize_clustering(
+            embeddings,
+            min_cluster_size_range=range(2, 6),
+            min_samples_range=range(1, 4)
+        )
