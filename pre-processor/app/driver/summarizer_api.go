@@ -3,10 +3,12 @@ package driver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"pre-processor/config"
@@ -36,7 +38,36 @@ type SummarizeResponse struct {
 	TotalDurationMs  *float64 `json:"total_duration_ms,omitempty"`
 }
 
+var (
+	htmlTagRegex = regexp.MustCompile(`<[^>]+>`)
+	// ErrContentTooShort is returned when article content is too short for summarization
+	ErrContentTooShort = errors.New("article content too short for summarization (less than 100 characters)")
+)
+
+// estimateContentLength estimates the content length after HTML tag removal
+func estimateContentLength(content string) int {
+	if content == "" {
+		return 0
+	}
+	// Remove HTML tags for estimation
+	cleaned := htmlTagRegex.ReplaceAllString(content, "")
+	cleaned = strings.TrimSpace(cleaned)
+	return len(cleaned)
+}
+
 func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cfg *config.Config, logger *slog.Logger) (*SummarizedContent, error) {
+	// Check content length before sending request (after HTML tag removal estimation)
+	const minContentLength = 100
+	estimatedLength := estimateContentLength(article.Content)
+	if estimatedLength < minContentLength {
+		logger.Info("Skipping summarization: content too short",
+			"article_id", article.ID,
+			"original_length", len(article.Content),
+			"estimated_length", estimatedLength,
+			"min_required", minContentLength)
+		return nil, ErrContentTooShort
+	}
+
 	// Construct API URL from config
 	apiURL := cfg.NewsCreator.Host + cfg.NewsCreator.APIPath
 

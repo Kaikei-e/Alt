@@ -55,14 +55,60 @@ type Score struct {
 
 const JudgeTemplate = `
 <start_of_turn>user
-You are a strict grader. Read the Article and the Summary, then rate the Summary’s writing quality as a single integer from 1 to 10 (10 = best).
+You are an expert Japanese news editor and quality evaluator. Your task is to rigorously assess the quality of a Japanese news summary against its source article.
 
-Hard rules:
+ROLE:
+You are a strict, objective quality grader specializing in Japanese news summarization. You evaluate summaries based on factual accuracy, completeness, readability, style, and information coverage.
+
+TASK:
+Read the provided Article (English source) and Summary (Japanese). Evaluate the Summary's quality across multiple dimensions and assign a single integer score from 1 to 10 (10 = best quality).
+
+EVALUATION CRITERIA:
+Evaluate the Summary based on these five dimensions:
+
+1. ACCURACY (正確性):
+   - Does the Summary accurately reflect facts from the Article?
+   - Are there any factual errors, misrepresentations, or distortions?
+   - Are numbers, dates, names, and key details correct?
+
+2. COMPLETENESS (完全性):
+   - Does the Summary include essential information: 5W1H (Who, What, When, Where, Why, How)?
+   - Are there at least 2 numerical values (dates, amounts, counts, ratios)?
+   - Are proper nouns included (with English notation on first mention if applicable)?
+   - Are background/context, developments, and implications covered?
+
+3. READABILITY (読みやすさ):
+   - Is the Japanese natural and easy to understand?
+   - Is the text coherent and well-structured?
+   - Are there any awkward phrasings or unclear sentences?
+
+4. STYLE (文体の適切性):
+   - Is the style 常体（〜だ／である）consistently used?
+   - Are there no headlines, bullet points, or unnecessary formatting?
+   - Is the writing concise and appropriate for news style?
+
+5. COVERAGE (情報の網羅性):
+   - Does the Summary include: lead (most important facts + 5W1H), background/context, and implications/outlook?
+   - Is the information balanced and comprehensive?
+
+SCORING GUIDELINES:
+- Score 1-3: Very poor quality (factual errors, missing critical information, poor readability)
+- Score 4-6: Low quality (some missing information, style issues, incomplete coverage)
+- Score 7-8: Acceptable quality (meets basic requirements, minor issues)
+- Score 9-10: High quality (accurate, complete, readable, proper style, comprehensive coverage)
+
+OUTPUT FORMAT:
 - Output exactly one XML tag: <score>X</score>
-- X must be an integer 1-10 (no decimals)
-- Do not output anything else: no explanations, no quotes, no extra tags
+- X must be an integer 1-10 (no decimals, no fractions)
+- Do not output anything else: no explanations, no quotes, no extra tags, no preamble
 - No leading/trailing spaces or newlines
 - Do not output control tokens (e.g., <end_of_turn>)
+
+CRITICAL RULES:
+- Base your score on objective evaluation of all five criteria
+- Be strict but fair: high scores (9-10) require excellence across all dimensions
+- Low scores (1-3) indicate serious quality issues that would mislead readers
+- Output ONLY the XML tag, nothing else
 
 Article:
 %s

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -55,6 +56,11 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 	// Use existing driver function
 	driverSummary, err := driver.ArticleSummarizerAPIClient(ctx, article, r.config, r.logger)
 	if err != nil {
+		// Handle content too short as a normal case, not an error
+		if errors.Is(err, driver.ErrContentTooShort) {
+			r.logger.Info("skipping summarization: content too short", "article_id", article.ID)
+			return nil, driver.ErrContentTooShort
+		}
 		r.logger.Error("failed to summarize article", "error", err, "article_id", article.ID)
 		return nil, fmt.Errorf("failed to summarize article: %w", err)
 	}
