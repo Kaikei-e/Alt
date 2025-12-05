@@ -264,13 +264,10 @@ function getCachedContent(url: string) {
       <!-- Next card (background) -->
       {#if nextFeed}
         <div
-          class="absolute inset-0 px-2 sm:px-4 scale-95 opacity-50 pointer-events-none"
+          class="absolute w-full h-[95dvh] bg-[var(--alt-glass)] border-2 border-[var(--alt-glass-border)] rounded-2xl p-4 opacity-50 pointer-events-none"
           aria-hidden="true"
-        >
-          <div
-            class="w-full h-full bg-[var(--alt-glass)] border-2 border-[var(--alt-glass-border)] rounded-2xl"
-          ></div>
-        </div>
+          style="max-width: calc(100% - 1rem)"
+        ></div>
       {/if}
 
       <!-- Active card -->

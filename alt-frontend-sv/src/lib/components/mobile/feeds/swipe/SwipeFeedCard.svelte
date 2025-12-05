@@ -47,10 +47,13 @@ let contentError = $state<string | null>(null);
 
 // Swipe state with Spring
 const SWIPE_THRESHOLD = 80;
+const HORIZONTAL_SWIPE_THRESHOLD = 15; // 横スワイプ検出の閾値（px）
 let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
 let isDragging = $state(false);
 let hasSwiped = $state(false);
 let swipeElement: HTMLDivElement | null = $state(null);
+let scrollAreaRef: HTMLDivElement | null = $state(null);
+let isHorizontalSwipeActive = $state(false);
 
 // Derived styles
 const cardStyle = $derived.by(() => {
@@ -127,6 +130,14 @@ $effect(() => {
 		if (Math.abs(deltaX) > Math.abs(deltaY)) {
 			isDragging = true;
 			x.set(deltaX, { instant: true });
+
+			// 横方向の動きが閾値を超えたら、スクロールを無効化してカードのスワイプを優先
+			if (Math.abs(deltaX) >= HORIZONTAL_SWIPE_THRESHOLD && scrollAreaRef) {
+				if (!isHorizontalSwipeActive) {
+					isHorizontalSwipeActive = true;
+					scrollAreaRef.style.touchAction = "none";
+				}
+			}
 		}
 	};
 
@@ -137,6 +148,13 @@ $effect(() => {
 		// 成立しなかった場合だけ「中央にスナップバック」という役割分担
 		x.target = 0;
 		isDragging = false;
+
+		// スワイプが成立しなかった場合、touch-action をリセット
+		// スワイプが成立した場合は handleSwipe で処理されるため、そのまま維持
+		if (isHorizontalSwipeActive && scrollAreaRef && !hasSwiped) {
+			isHorizontalSwipeActive = false;
+			scrollAreaRef.style.touchAction = "pan-y";
+		}
 	};
 
 	swipeElement.addEventListener("swipe", swipeHandler);
@@ -219,6 +237,12 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 	// 次のカードに備えてリセット
 	hasSwiped = false;
 	await x.set(0, { instant: true });
+
+	// touch-action もリセット
+	if (isHorizontalSwipeActive && scrollAreaRef) {
+		isHorizontalSwipeActive = false;
+		scrollAreaRef.style.touchAction = "pan-y";
+	}
 }
 </script>
 
@@ -270,6 +294,7 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
     <!-- Only Vertical Scroll Area -->
     <div
+      bind:this={scrollAreaRef}
       style="touch-action: pan-y; overflow-x: hidden;"
       class="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 bg-transparent scroll-smooth overscroll-contain scrollbar-thin"
       data-testid="unified-scroll-area"
