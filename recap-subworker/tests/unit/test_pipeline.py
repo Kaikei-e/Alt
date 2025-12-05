@@ -31,6 +31,9 @@ class FakeClusterer:
         probs = np.ones_like(labels, dtype=float)
         return ClusterResult(labels, probs, False, HDBSCANSettings(min_cluster_size=min_cluster_size, min_samples=min_samples))
 
+    def optimize_clustering(self, embeddings, *, min_cluster_size_range, min_samples_range):
+        return self.cluster(embeddings, min_cluster_size=min_cluster_size_range[0], min_samples=min_samples_range[0])
+
 
 class SplitClusterer:
     """Clusterer that forces each sentence into its own cluster."""
@@ -44,6 +47,9 @@ class SplitClusterer:
             False,
             HDBSCANSettings(min_cluster_size=min_cluster_size, min_samples=min_samples),
         )
+
+    def optimize_clustering(self, embeddings, *, min_cluster_size_range, min_samples_range):
+        return self.cluster(embeddings, min_cluster_size=min_cluster_size_range[0], min_samples=min_samples_range[0])
 
 
 def test_pipeline_basic_flow():
