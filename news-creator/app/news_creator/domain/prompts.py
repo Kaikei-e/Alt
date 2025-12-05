@@ -36,7 +36,7 @@ Write exactly 3 short paragraphs in Japanese. Count characters as you write. Sto
 """
 
 
-RECAP_CLUSTER_SUMMARY_PROMPT = """<start_of_turn>system
+RECAP_CLUSTER_SUMMARY_PROMPT = r"""<start_of_turn>system
 You are an expert Japanese news editor. Generate structured Japanese recap bullets strictly following the contract below.
 Return a single JSON object and nothing else.
 
@@ -53,50 +53,39 @@ IMPORTANT:
 - Ensure the JSON is valid and strictly follows the schema below.
 - Use double quotes for all strings. No trailing commas.
 - The title field must be a plain string, NOT a code block marker like "```json"
+- Do NOT include any introductory text or explanations.
 
-WRONG (do NOT output like this):
-```json
-{{"title": "..."}}
-```
-
-CORRECT (output like this):
-{{"title": "..."}}
-
-Expected JSON Schema:
+SCHEMA:
 {{
-  "title": "15〜45文字の日本語タイトル（句読点含む）",
+  "title": "Topic Title (Max 45 chars)",
   "bullets": [
-    "1文800〜1000文字程度の要点（常体、箇条書き用）"
-  ],
-  "language": "ja"
-}}
-
-Example Output:
-{{
-  "title": "AI業界の大型買収と技術統合",
-  "bullets": [
-    "米TechFusion社は2025年11月7日、AIスタートアップNova Labsを総額12億ドルで買収したと発表した。Nova Labsは生成AIモデルの高速最適化技術を持ち、買収後はTechFusionの研究開発拠点として運営される。規制当局の承認は未提示だが、TechFusionは統合完了を2026年3月と見込み、世界シェア拡大を狙う。",
-    "業界関係者は、この買収が生成AI市場の再編を加速させると分析している。TechFusionは既存のクラウドインフラとNova Labsの最適化技術を組み合わせることで、競合他社に対して技術的優位性を確立できると見ている。"
+    "Bullet 1 (Subject + Predicate structure, 50-100 chars)",
+    "Bullet 2 (Detail/Context, 50-100 chars)",
+    "Bullet 3 (Impact/Future, 50-100 chars)"
   ],
   "language": "ja"
 }}
 
 Instructions:
-- Bullet count must be between 3 and {max_bullets}. Prefer {max_bullets} when enough evidence exists.
-- Each bullet MUST combine 2短文以上 into a single sentence (800〜1000文字) describing背景→展開→影響を含める。
-- Use 常体（〜だ／である）。禁止事項: Markdown記号、番号付き箇条書き、英数字以外の記号の羅列。
-- Include具体的数値・日付・固有名詞を優先。情報が無い場合は「未提示」と明記。
-- Bullets must be unique, covering 見出し理由 / 経緯 / 影響 / 見通し をバランス良く網羅する。
-- Do NOT exceed {max_bullets} elements in the bullets array. If情報不足, produce at least 3 bullets summarizing全体像.
+- Bullet count: MUST be between 3 and {max_bullets}.
+- Granularity: Each bullet represents a specific fact or event. Do NOT combine unrelated facts.
+- Structure: Each bullet MUST have a clear Subject (主語) and Predicate (述語).
+  - Bad: "Reorganization of the market." (Noun phrase)
+  - Good: "The acquisition accelerates the reorganization of the market." (Full sentence)
+- Length: Keep each bullet concise (50-100 characters). Avoid overly long compound sentences.
+- Style: 常体（〜だ／である）。
+- Content: Prioritize 具体的数値 (dates, amounts), 固有名詞 (names), and defined actions.
+- Missing Info: If key info is missing, state "未提示" explicitly.
+- "[Main Point]" sentences in the input are priority.
+
 Validation gates:
-- If生成途中でJSON以外のテキストが出そうになったら即停止してJSONを再出力する。
-- If bullets would exceed {max_bullets}, merge余剰内容 into existing bullets instead.
+- If bullets would exceed {max_bullets}, pick the top {max_bullets} most important facts.
+- Ensure strict JSON syntax. Escape quotes if necessary.
 
 Before generating, verify:
 1. Response starts with {{
 2. Response ends with }}
 3. No markdown formatting
-4. No text before or after the JSON object
 <end_of_turn>
 <start_of_turn>user
 Job ID: {job_id}
@@ -106,7 +95,7 @@ Use them to infer the overall storyline and synthesize the summary.
 
 {cluster_section}
 
-Return ONLY the JSON object, without explanations. Start with {{ and end with }}.
+Return ONLY the JSON object. Start with {{ and end with }}.
 <end_of_turn>
 <start_of_turn>model
 """

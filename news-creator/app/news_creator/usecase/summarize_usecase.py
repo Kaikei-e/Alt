@@ -55,30 +55,37 @@ class SummarizeUsecase:
             content = cleaned_content
 
         # Validate that we have meaningful content after cleaning
-        if not content or not content.strip() or len(content.strip()) < 100:
+        min_content_length = 100
+        if not content or not content.strip() or len(content.strip()) < min_content_length:
             error_msg = (
                 f"Content is empty or too short after HTML cleaning. "
                 f"Original length: {original_content_length}, "
-                f"Cleaned length: {len(content)}"
+                f"Cleaned length: {len(content)}, "
+                f"Minimum required: {min_content_length} characters. "
+                f"This article may not have enough content to generate a meaningful summary."
             )
-            logger.error(
-                error_msg,
+            # Short content is a normal business case, not an error
+            # Log as warning to reduce noise in error logs
+            logger.warning(
+                "Article content too short for summarization",
                 extra={
                     "article_id": article_id,
                     "was_html": was_html,
                     "original_length": original_content_length,
                     "cleaned_length": len(content),
+                    "min_required": min_content_length,
+                    "content_preview": content[:100] if content else "",
                 }
             )
             raise ValueError(error_msg)
 
         # Truncate content to fit within context window
-        # Context window is now 80K tokens (81920), configured in entrypoint.sh and config.py
+        # Context window is now 71K tokens (71000), configured in entrypoint.sh and config.py
         # We need to account for prompt template (~500 chars ≈ ~200 tokens)
         # Conservative estimate: 1 char ≈ 0.25-0.5 tokens (Japanese text)
-        # Reserve ~5K tokens for prompt template and safety margin, leaving ~75K tokens for content
-        # Using ~280K chars (≈70K tokens) for content to avoid truncation and stay within 80K limit
-        MAX_CONTENT_LENGTH = 280_000  # characters (conservative estimate for ~70K tokens in 80K context)
+        # Reserve ~1K tokens for prompt template and safety margin, leaving ~70K tokens for content
+        # Using ~280K chars (≈70K tokens) for content to avoid truncation and stay within 71K limit
+        MAX_CONTENT_LENGTH = 280_000  # characters (conservative estimate for ~70K tokens in 71K context)
         original_length = len(content)
         truncated_content = content.strip()[:MAX_CONTENT_LENGTH]
 
@@ -104,6 +111,21 @@ class SummarizeUsecase:
 
         # Build prompt from template
         prompt = SUMMARY_PROMPT_TEMPLATE.format(content=truncated_content)
+
+        # Estimate prompt tokens (rough estimate: 1 token ≈ 4 characters for Japanese/English mixed)
+        estimated_prompt_tokens = len(prompt) // 4
+        context_window = self.config.llm_num_ctx
+
+        if estimated_prompt_tokens > context_window * 0.9:  # Warn if using >90% of context window
+            logger.warning(
+                "Prompt may be close to context window limit",
+                extra={
+                    "article_id": article_id,
+                    "estimated_prompt_tokens": estimated_prompt_tokens,
+                    "context_window": context_window,
+                    "usage_percent": round((estimated_prompt_tokens / context_window) * 100, 1),
+                }
+            )
 
         # Retry loop with repetition detection
         max_retries = self.config.max_repetition_retries
@@ -249,16 +271,32 @@ class SummarizeUsecase:
                 )
 
             if not fallback_summary or not fallback_summary.strip():
+                # Check if prompt might have been truncated
+                estimated_prompt_tokens = len(prompt) // 4
+                context_window = self.config.llm_num_ctx
+                prompt_truncated = estimated_prompt_tokens > context_window
+
                 error_msg = (
                     f"LLM returned an empty summary after cleaning. "
                     f"Raw summary length: {len(raw_summary) if raw_summary else 0}, "
                     f"Raw preview: {raw_summary[:300] if raw_summary else 'None'}"
                 )
+                if prompt_truncated:
+                    error_msg += (
+                        f" WARNING: Prompt may have been truncated. "
+                        f"Estimated tokens: {estimated_prompt_tokens}, "
+                        f"Context window: {context_window}. "
+                        f"Consider increasing LLM_NUM_CTX or reducing content length."
+                    )
+
                 logger.error(
                     error_msg,
                     extra={
                         "article_id": article_id,
                         "raw_summary": raw_summary[:500] if raw_summary else "",
+                        "estimated_prompt_tokens": estimated_prompt_tokens,
+                        "context_window": context_window,
+                        "prompt_truncated": prompt_truncated,
                     }
                 )
                 raise RuntimeError(error_msg)

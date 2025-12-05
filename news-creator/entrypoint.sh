@@ -19,7 +19,7 @@ fi
 # GPUメモリ最適化: 7GBギリギリまで使用（80K時は約7.0-7.5 GiB使用予定）
 # コンテキスト長を統一することでランナー再利用を改善し、メモリ使用を安定化
 export OLLAMA_HOST="${OLLAMA_HOST:-127.0.0.1:11435}"   # 明示的にポート11435を指定
-export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-75200}" # 75Kコンテキスト（7GBギリギリまで使用）
+export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-71000}" # 71Kコンテキスト（メモリ制約を考慮）
 export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-1}"         # 8GB では並列 1 が安定
 export OLLAMA_MAX_LOADED_MODELS="${OLLAMA_MAX_LOADED_MODELS:-1}" # 同じコンテキスト長なら再利用される
 export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-24h}"   # 24時間保持してランナー再利用を促進

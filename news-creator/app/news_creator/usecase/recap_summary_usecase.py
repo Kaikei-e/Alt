@@ -217,10 +217,10 @@ class RecapSummaryUsecase:
     def _build_prompt(self, request: RecapSummaryRequest, max_bullets: int) -> str:
         # Truncate cluster section to fit within 80K context window
         # Context window is now 80K tokens (81920), configured in entrypoint.sh and config.py
-        # 80K tokens ≈ 320K-640K chars, but we need to reserve space for prompt template
-        # Reserve ~5K tokens for prompt template and safety margin, leaving ~75K tokens for content
+        # 71K tokens ≈ 284K-568K chars, but we need to reserve space for prompt template
+        # Reserve ~1K tokens for prompt template and safety margin, leaving ~70K tokens for content
         # Using ~280K chars (≈70K tokens) for cluster_section to leave room for prompt template
-        MAX_CLUSTER_SECTION_LENGTH = 280_000  # characters (conservative estimate for ~70K tokens in 80K context)
+        MAX_CLUSTER_SECTION_LENGTH = 280_000  # characters (conservative estimate for ~70K tokens in 71K context)
 
         max_clusters = max(3, min(len(request.clusters), max_bullets + 2))
         cluster_lines: List[str] = []
@@ -230,7 +230,8 @@ class RecapSummaryUsecase:
             top_terms = ", ".join(cluster.top_terms or []) or "未提示"
             sentence_lines: List[str] = []
             for sentence in cluster.representative_sentences:
-                parts: List[str] = [f"- {sentence.text}"]
+                prefix = "- [Main Point] " if sentence.is_centroid else "- "
+                parts: List[str] = [f"{prefix}{sentence.text}"]
                 if sentence.published_at:
                     parts.append(f"  (公開日: {sentence.published_at})")
                 if sentence.source_url:

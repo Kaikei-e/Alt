@@ -81,6 +81,7 @@ class RepresentativeSentence(BaseModel):
     )
     source_url: Optional[str] = Field(default=None, description="Source article URL")
     article_id: Optional[str] = Field(default=None, description="Source article ID")
+    is_centroid: bool = Field(default=False, description="Whether this is the centroid sentence")
 
 
 class RecapClusterInput(BaseModel):
@@ -107,6 +108,7 @@ class RecapClusterInput(BaseModel):
                         published_at=sentence.published_at,
                         source_url=sentence.source_url,
                         article_id=sentence.article_id,
+                        is_centroid=sentence.is_centroid,
                     )
                 )
         if not cleaned:
