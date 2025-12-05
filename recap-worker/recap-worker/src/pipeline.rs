@@ -22,6 +22,7 @@ pub(crate) mod genre;
 pub(crate) mod genre_canonical;
 pub(crate) mod genre_keywords;
 pub(crate) mod genre_refine;
+pub(crate) mod genre_remote;
 pub(crate) mod graph_override;
 pub mod morning;
 pub(crate) mod persist;
@@ -113,7 +114,8 @@ impl PipelineOrchestrator {
             );
         }
 
-        let coarse_stage = Arc::new(CoarseGenreStage::new(1, 3, embedding_service.clone()));
+        use crate::pipeline::genre_remote::RemoteGenreStage;
+        let coarse_stage = Arc::new(RemoteGenreStage::new(Arc::clone(&subworker_client)));
         let rollout = RefineRollout::new(config.genre_refine_rollout_pct());
         let genre_stage: Arc<dyn GenreStage> = if config.genre_refine_enabled() {
             // デフォルト設定でRefineConfigを初期化（実行時に動的に更新される）
@@ -130,7 +132,7 @@ impl PipelineOrchestrator {
             let graph_source: Arc<dyn TagLabelGraphSource> = graph_loader;
             let refine_engine = Arc::new(DefaultRefineEngine::new(refine_config, graph_source));
             Arc::new(TwoStageGenreStage::new(
-                Arc::clone(&coarse_stage),
+                Arc::clone(&coarse_stage) as Arc<dyn GenreStage>,
                 refine_engine,
                 Arc::clone(&recap_dao),
                 config.genre_refine_require_tags(),
@@ -163,6 +165,7 @@ impl PipelineOrchestrator {
                 embedding_service,
                 min_documents_per_genre,
                 coherence_similarity_threshold,
+                Some(Arc::clone(&recap_dao)),
             )))
             .with_dispatch_stage(Arc::new(MlLlmDispatchStage::new(
                 Arc::clone(&subworker_client),
@@ -320,9 +323,14 @@ impl PipelineBuilder {
             genre: self
                 .genre
                 .unwrap_or_else(|| Arc::new(CoarseGenreStage::with_defaults())),
-            select: self
-                .select
-                .unwrap_or_else(|| Arc::new(SummarySelectStage::default())),
+            select: self.select.unwrap_or_else(|| {
+                Arc::new(SummarySelectStage::new(
+                    None,
+                    self.config.min_documents_per_genre(),
+                    self.config.coherence_similarity_threshold(),
+                    Some(recap_dao.clone()),
+                ))
+            }),
             dispatch: self
                 .dispatch
                 .expect("dispatch stage must be configured before build"),

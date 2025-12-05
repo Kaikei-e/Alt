@@ -1,7 +1,6 @@
-use recap_worker::classification::FeatureVector;
-use recap_worker::classifier::centroid::{Article, CentroidClassifier};
+use recap_worker::classification::{Article, FeatureVector};
 use recap_worker::classifier::graph::GraphPropagator;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[test]
 fn test_rescue_pass_with_dynamic_thresholds() {
@@ -41,9 +40,10 @@ fn test_rescue_pass_with_dynamic_thresholds() {
         });
     }
 
-    let mut classifier = CentroidClassifier::new(2);
-    classifier.train(&articles).expect("Training failed");
-    let thresholds = classifier.get_thresholds();
+    // CentroidClassifierは削除されたため、手動で閾値を設定
+    let mut thresholds = HashMap::new();
+    thresholds.insert("loose".to_string(), 0.3); // 低い閾値（高分散）
+    thresholds.insert("tight".to_string(), 0.85); // 高い閾値（低分散）
     println!("Thresholds: {:?}", thresholds);
 
     // 2. Build GraphPropagator
@@ -64,7 +64,7 @@ fn test_rescue_pass_with_dynamic_thresholds() {
         bm25: vec![],
         embedding: vec![],
     };
-    let pred_loose = propagator.predict_by_neighbors(&target_loose, 5, thresholds);
+    let pred_loose = propagator.predict_by_neighbors(&target_loose, 5, &thresholds);
     println!("Prediction for loose target: {:?}", pred_loose);
     assert!(
         pred_loose.is_some(),
@@ -83,7 +83,7 @@ fn test_rescue_pass_with_dynamic_thresholds() {
         bm25: vec![],
         embedding: vec![],
     };
-    let pred_tight_fail = propagator.predict_by_neighbors(&target_tight_fail, 5, thresholds);
+    let pred_tight_fail = propagator.predict_by_neighbors(&target_tight_fail, 5, &thresholds);
     println!(
         "Prediction for tight target (fail case): {:?}",
         pred_tight_fail

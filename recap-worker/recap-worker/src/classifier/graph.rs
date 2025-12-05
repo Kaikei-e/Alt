@@ -9,9 +9,7 @@ use ndarray::Array1;
 use petgraph::{Graph, Undirected, graph::NodeIndex};
 use sprs::CsMat;
 
-use crate::classification::FeatureVector;
-
-use super::centroid::Article;
+use crate::classification::{Article, FeatureVector};
 
 /// グラフノードのデータ
 #[derive(Debug, Clone)]

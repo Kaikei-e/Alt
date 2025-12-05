@@ -92,7 +92,7 @@ pub(crate) trait GenreStage: Send + Sync {
 
 /// Coarse+Refineを統合するステージ。
 pub(crate) struct TwoStageGenreStage {
-    coarse: Arc<CoarseGenreStage>,
+    coarse: Arc<dyn GenreStage>,
     refine_engine: Arc<dyn RefineEngine>,
     dao: Arc<RecapDao>,
     require_tags: bool,
@@ -126,7 +126,7 @@ impl RefineRollout {
 
 impl TwoStageGenreStage {
     pub(crate) fn new(
-        coarse: Arc<CoarseGenreStage>,
+        coarse: Arc<dyn GenreStage>,
         refine_engine: Arc<dyn RefineEngine>,
         dao: Arc<RecapDao>,
         require_tags: bool,

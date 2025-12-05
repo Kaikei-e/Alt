@@ -5,6 +5,9 @@ use crate::scheduler::JobContext;
 
 use super::embedding::{EmbeddingService, cosine_similarity};
 use super::genre::{GenreAssignment, GenreBundle};
+use crate::store::dao::RecapDao;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SelectedSummary {
@@ -27,6 +30,7 @@ pub(crate) struct SummarySelectStage {
     min_documents_per_genre: usize,
     similarity_threshold: f32,
     embedding_service: Option<EmbeddingService>,
+    dao: Option<Arc<RecapDao>>,
 }
 
 impl SummarySelectStage {
@@ -34,16 +38,51 @@ impl SummarySelectStage {
         embedding_service: Option<EmbeddingService>,
         min_documents_per_genre: usize,
         similarity_threshold: f32,
+        dao: Option<Arc<RecapDao>>,
     ) -> Self {
         Self {
             max_articles_per_genre: 20,
             min_documents_per_genre,
             similarity_threshold,
             embedding_service,
+            dao,
         }
     }
 
-    fn trim_assignments(&self, bundle: GenreBundle) -> Vec<GenreAssignment> {
+    async fn get_dynamic_thresholds(&self) -> HashMap<String, usize> {
+        if let Some(dao) = &self.dao {
+            match dao.get_latest_worker_config("genre_distribution").await {
+                Ok(Some(payload)) => {
+                    // payload is {"genre": {"min_docs_threshold": N, ...}}
+                    if let Some(obj) = payload.as_object() {
+                        let mut map = HashMap::new();
+                        for (genre, stats) in obj {
+                            if let Some(threshold) = stats
+                                .get("min_docs_threshold")
+                                .and_then(serde_json::Value::as_u64)
+                            {
+                                map.insert(genre.clone(), threshold as usize);
+                            }
+                        }
+                        return map;
+                    }
+                }
+                Ok(None) => {
+                    tracing::debug!("no dynamic genre distribution config found");
+                }
+                Err(e) => {
+                    tracing::warn!("failed to fetch dynamic genre distribution config: {}", e);
+                }
+            }
+        }
+        HashMap::new()
+    }
+
+    fn trim_assignments(
+        &self,
+        bundle: GenreBundle,
+        thresholds: &HashMap<String, usize>,
+    ) -> Vec<GenreAssignment> {
         let mut per_genre_count = std::collections::HashMap::new();
         let mut selected = Vec::new();
 
@@ -56,16 +95,20 @@ impl SummarySelectStage {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Adjust max_articles_per_genre to ensure we can meet min_documents_per_genre
-        let adjusted_max = self
-            .max_articles_per_genre
-            .max(self.min_documents_per_genre * 2);
-
         for assignment in ranked {
             // 最初のジャンルを使用（複数ジャンルがある場合は最初のもの）
             let primary_genre = assignment
                 .primary_genre()
                 .map_or_else(|| "other".to_string(), std::string::ToString::to_string);
+
+            let min_docs = thresholds
+                .get(&primary_genre)
+                .copied()
+                .unwrap_or(self.min_documents_per_genre);
+
+            // Adjust max_articles_per_genre to ensure we can meet min_documents_per_genre
+            let adjusted_max = self.max_articles_per_genre.max(min_docs * 2);
+
             let count = per_genre_count
                 .entry(primary_genre.clone())
                 .or_insert(0usize);
@@ -104,6 +147,7 @@ impl SummarySelectStage {
         &self,
         service: &EmbeddingService,
         assignments: Vec<GenreAssignment>,
+        thresholds: &HashMap<String, usize>,
     ) -> Vec<GenreAssignment> {
         // Group by genre
         let mut by_genre: std::collections::HashMap<String, Vec<GenreAssignment>> =
@@ -168,6 +212,11 @@ impl SummarySelectStage {
                     .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
                 // Filter by threshold, but ensure we have at least min_documents_per_genre
+                let min_docs = thresholds
+                    .get(&genre)
+                    .copied()
+                    .unwrap_or(self.min_documents_per_genre);
+
                 let mut valid_assignments: Vec<GenreAssignment> = Vec::new();
                 let mut filtered_out: Vec<(f32, GenreAssignment)> = Vec::new();
                 let mut filtered_out_count = 0;
@@ -189,13 +238,13 @@ impl SummarySelectStage {
                 }
 
                 // Fallback: if we don't have enough after filtering, add back top-scoring articles
-                if valid_assignments.len() < self.min_documents_per_genre {
-                    let needed = self.min_documents_per_genre - valid_assignments.len();
+                if valid_assignments.len() < min_docs {
+                    let needed = min_docs - valid_assignments.len();
                     tracing::warn!(
                         genre = %genre,
                         pre_filter = pre_filter_count,
                         post_filter = valid_assignments.len(),
-                        min_required = self.min_documents_per_genre,
+                        min_required = min_docs,
                         adding_back = needed,
                         "filtered too many articles, adding back top-scoring ones"
                     );
@@ -234,7 +283,7 @@ impl SummarySelectStage {
 
 impl Default for SummarySelectStage {
     fn default() -> Self {
-        Self::new(None, 10, 0.5)
+        Self::new(None, 5, 0.5, None)
     }
 }
 
@@ -245,13 +294,17 @@ impl SelectStage for SummarySelectStage {
         job: &JobContext,
         bundle: GenreBundle,
     ) -> anyhow::Result<SelectedSummary> {
+        let thresholds = self.get_dynamic_thresholds().await;
+
         let pre_trim_count = bundle.assignments.len();
-        let mut assignments = self.trim_assignments(bundle);
+        let mut assignments = self.trim_assignments(bundle, &thresholds);
         let post_trim_count = assignments.len();
 
         if let Some(service) = &self.embedding_service {
             let pre_outlier_count = assignments.len();
-            assignments = self.filter_outliers(service, assignments).await;
+            assignments = self
+                .filter_outliers(service, assignments, &thresholds)
+                .await;
             let post_outlier_count = assignments.len();
             tracing::debug!(
                 job_id = %job.job_id,
@@ -308,6 +361,7 @@ mod tests {
             min_documents_per_genre: 10,
             similarity_threshold: 0.5,
             embedding_service: None,
+            dao: None,
         };
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let bundle = GenreBundle {
@@ -339,6 +393,7 @@ mod tests {
             min_documents_per_genre: 10,
             similarity_threshold: 0.5,
             embedding_service: None,
+            dao: None,
         };
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         // Create 15 assignments for a single genre to test max_articles adjustment
@@ -372,6 +427,7 @@ mod tests {
             min_documents_per_genre: 10,
             similarity_threshold: 0.5,
             embedding_service: None,
+            dao: None,
         };
         let assignments: Vec<GenreAssignment> = (0..15)
             .map(|i| {
@@ -386,7 +442,7 @@ mod tests {
             genre_distribution: std::collections::HashMap::new(),
         };
 
-        let trimmed = stage.trim_assignments(bundle);
+        let trimmed = stage.trim_assignments(bundle, &HashMap::new());
 
         // Should select at least min_documents_per_genre * 2 = 20, but we only have 15
         // So all 15 should be selected

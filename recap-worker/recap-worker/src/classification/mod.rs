@@ -16,6 +16,15 @@ pub use features::{FeatureExtractor, FeatureVector};
 use model::HybridModel;
 pub use tokenizer::{NormalizedDocument, TokenPipeline};
 
+/// 記事データ構造（Golden Dataset用）
+#[derive(Debug, Clone)]
+pub struct Article {
+    pub id: String,
+    pub content: String,
+    pub genres: Vec<String>,
+    pub feature_vector: Option<FeatureVector>,
+}
+
 /// 分類対象テキストの言語。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClassificationLanguage {
@@ -97,6 +106,12 @@ impl GenreClassifier {
             keyword_matcher: default_matcher(),
             genre_thresholds: default_thresholds(),
         }
+    }
+
+    /// サポートしているジャンル一覧を返す。
+    #[must_use]
+    pub fn known_genres(&self) -> Vec<String> {
+        self.genre_thresholds.keys().cloned().collect()
     }
 
     /// テスト用ヘルパー。

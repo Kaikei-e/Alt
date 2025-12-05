@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::classification::{
-    ClassificationLanguage, ClassificationResult, FeatureExtractor, GenreClassifier, TokenPipeline,
+    Article, ClassificationLanguage, ClassificationResult, FeatureExtractor, GenreClassifier,
+    TokenPipeline,
 };
-use crate::classifier::{CentroidClassifier, GraphPropagator, centroid::Article};
+use crate::classifier::GraphPropagator;
 
 // Rescue Passの統計カウンター（ログサンプリング用）
 static RESCUE_ATTEMPT_COUNT: std::sync::atomic::AtomicUsize =
@@ -44,7 +45,6 @@ struct FeatureExtractionStats {
 /// Golden Datasetが読み込めない場合は、既存のGenreClassifierにフォールバック
 #[derive(Debug)]
 pub struct ClassificationPipeline {
-    centroid_classifier: Option<CentroidClassifier>,
     graph_propagator: Option<GraphPropagator>,
     fallback_classifier: Option<GenreClassifier>,
     feature_extractor: FeatureExtractor,
@@ -75,7 +75,7 @@ impl ClassificationPipeline {
             match Self::from_golden_dataset(default_path) {
                 Ok(pipeline) => {
                     tracing::info!(
-                        "ClassificationPipeline initialized with CentroidClassifier from {}",
+                        "ClassificationPipeline initialized from {}",
                         default_path.display()
                     );
                     return pipeline;
@@ -108,7 +108,7 @@ impl ClassificationPipeline {
                 match Self::from_golden_dataset(path) {
                     Ok(pipeline) => {
                         tracing::info!(
-                            "ClassificationPipeline initialized with CentroidClassifier from {}",
+                            "ClassificationPipeline initialized from {}",
                             path.display()
                         );
                         return pipeline;
@@ -139,7 +139,6 @@ impl ClassificationPipeline {
         let token_pipeline = TokenPipeline::new();
 
         Self {
-            centroid_classifier: None,
             graph_propagator: None,
             fallback_classifier: Some(GenreClassifier::new_default()),
             feature_extractor,
@@ -223,16 +222,7 @@ impl ClassificationPipeline {
             );
         }
 
-        // 5. CentroidClassifierを学習
-        let mut centroid_classifier = CentroidClassifier::new(feature_dim);
-        centroid_classifier.train(&labeled_articles)?;
-
-        let trained_genres = centroid_classifier.trained_genres();
-        tracing::info!(
-            "CentroidClassifier trained successfully: {} genres, {} articles",
-            trained_genres.len(),
-            labeled_articles.len()
-        );
+        // 5. CentroidClassifier Removed
 
         // Initialize GraphPropagator with lower threshold
         let mut graph_propagator = GraphPropagator::new(0.5); // エッジ構築用閾値
@@ -247,9 +237,28 @@ impl ClassificationPipeline {
         }
 
         Ok(Self {
-            centroid_classifier: Some(centroid_classifier),
             graph_propagator: Some(graph_propagator),
-            fallback_classifier: None,
+            // fallback_classifier: Some(GenreClassifier::new_default()), // REMOVED: Specified in line above?
+            // Oh wait, duplicate field error was in struct usage?
+            // "field fallback_classifier specified more than once"
+            // Let's see lines 249-253 in original view:
+            // 249:             centroid_classifier: Some(centroid_classifier),
+            // 250:             graph_propagator: Some(graph_propagator),
+            // 251:             fallback_classifier: None,
+            // 252:             feature_extractor,
+            // 253:             token_pipeline: TokenPipeline::new(),
+            // I replaced lines 226-255.
+            // My replacement was:
+            // ...
+            // Ok(Self {
+            //    graph_propagator: Some(graph_propagator),
+            //    fallback_classifier: None,
+            //    fallback_classifier: Some(GenreClassifier::new_default()),
+            //    feature_extractor,
+            //    token_pipeline: TokenPipeline::new(),
+            // })
+            // Yes, I duplicated it blindly. I should remove one.
+            fallback_classifier: Some(GenreClassifier::new_default()),
             feature_extractor,
             token_pipeline: TokenPipeline::new(),
         })
@@ -308,15 +317,25 @@ impl ClassificationPipeline {
             );
         }
 
-        // Fast Pass: Centroid Classifierで分類
-        if let Some(genre) =
-            self.try_fast_pass(article_id, content, &feature_vector, language, sample_count)?
-        {
-            return Ok(genre);
+        // Fast Pass: Fallback (GenreClassifier) で分類
+        let fallback_result = if let Some(ref fallback) = self.fallback_classifier {
+            fallback.predict("", content, language).ok()
+        } else {
+            None
+        };
+
+        if let Some(res) = fallback_result {
+            if let Some(genre) = res.top_genres.first() {
+                // "other" 以外なら採用、あるいは信頼度チェック？
+                // GenreClassifierは閾値判定済みなので、返ってきたものは採用してよい。
+                if genre != "other" {
+                    return Ok(genre.clone());
+                }
+            }
         }
 
         // Rescue Pass: Graph Label Propagation
-        if let Some(genre) = self.try_rescue_pass(
+        if let Some(genre) = Self::try_rescue_pass(
             article_id,
             content,
             all_articles,
@@ -426,7 +445,7 @@ impl ClassificationPipeline {
 
     /// ゼロベクトルをチェックしてログを出力する。
     fn check_zero_vector(
-        article_id: &str,
+        _article_id: &str,
         normalized: &crate::classification::NormalizedDocument,
         feature_vector: &crate::classification::FeatureVector,
     ) {
@@ -443,8 +462,7 @@ impl ClassificationPipeline {
         let norm = combined.dot(&combined).sqrt();
         if norm <= 0.0 {
             tracing::warn!(
-                "CentroidClassifier: zero-norm feature vector for article_id={}, tokens={}, tfidf_sum={:.4}, bm25_sum={:.4}, embedding_sum={:.4}",
-                article_id,
+                "Zero-norm feature vector: tokens={}, tfidf_sum={:.4}, bm25_sum={:.4}, embedding_sum={:.4}",
                 normalized.tokens.len(),
                 feature_vector.tfidf.iter().sum::<f32>(),
                 feature_vector.bm25.iter().sum::<f32>(),
@@ -453,80 +471,18 @@ impl ClassificationPipeline {
         }
     }
 
-    /// Fast Pass（Centroid Classifier）で分類を試みる。
-    fn try_fast_pass(
-        &self,
-        article_id: &str,
-        content: &str,
-        feature_vector: &crate::classification::FeatureVector,
-        language: ClassificationLanguage,
-        sample_count: usize,
-    ) -> Result<Option<String>> {
-        if let Some(ref centroid_classifier) = self.centroid_classifier {
-            if let Some((genre, score)) = centroid_classifier.predict(feature_vector) {
-                if sample_count < 10 {
-                    tracing::info!(
-                        "ClassificationPipeline Fast Pass: article_id={}, genre={}, score={:.4}",
-                        article_id,
-                        genre,
-                        score
-                    );
-                }
-                return Ok(Some(genre));
-            }
-            // 予測失敗時: 全ジャンル中の最大類似度を計算
-            if sample_count < 10 {
-                if let Some((genre, similarity, thresh)) =
-                    centroid_classifier.get_top_similarity(feature_vector)
-                {
-                    tracing::warn!(
-                        "CentroidClassifier prediction failed: article_id={}, top_genre={}, top_score={:.4}, threshold={:.4}, gap={:.4}",
-                        article_id,
-                        genre,
-                        similarity,
-                        thresh,
-                        thresh - similarity
-                    );
-                }
-            }
-            if sample_count < 10 {
-                tracing::warn!(
-                    "ClassificationPipeline Fast Pass failed: article_id={}, falling back to GraphPropagator",
-                    article_id
-                );
-            }
-        } else {
-            // Centroid Classifierが利用できない場合は、フォールバックを使用
-            if let Some(ref fallback) = self.fallback_classifier {
-                let result = fallback.predict("", content, language)?;
-                if let Some(genre) = result.top_genres.first() {
-                    return Ok(Some(genre.clone()));
-                }
-            }
-            return Ok(Some("other".to_string()));
-        }
-        Ok(None)
-    }
-
     /// Rescue Pass（Graph Label Propagation）で分類を試みる。
     fn try_rescue_pass(
-        &self,
         article_id: &str,
         content: &str,
         all_articles: &[Article],
         feature_vector: &crate::classification::FeatureVector,
         sample_count: usize,
     ) -> Result<Option<String>> {
-        // Centroid Classifierで候補に絞る
+        // Centroid Classifierで候補に絞るロジックを廃止し、全記事を候補とする
         let mut centroid_candidates = HashSet::new();
-        if let Some(ref centroid_classifier) = self.centroid_classifier {
-            for article in all_articles {
-                if let Some(ref fv) = article.feature_vector {
-                    if centroid_classifier.predict(fv).is_some() {
-                        centroid_candidates.insert(article.id.clone());
-                    }
-                }
-            }
+        for article in all_articles {
+            centroid_candidates.insert(article.id.clone());
         }
 
         // 現在の記事も候補に追加（これがないとグラフに含まれない）
@@ -587,11 +543,10 @@ impl ClassificationPipeline {
     /// 学習済みのジャンル一覧を取得する。
     #[must_use]
     pub fn trained_genres(&self) -> Vec<String> {
-        if let Some(ref classifier) = self.centroid_classifier {
-            classifier.trained_genres()
-        } else {
-            Vec::new()
-        }
+        self.fallback_classifier
+            .as_ref()
+            .map(crate::classification::GenreClassifier::known_genres)
+            .unwrap_or_default()
     }
 
     /// predictメソッド内でRescue Passを試行する（ログのサンプリング付き）。
@@ -615,19 +570,13 @@ impl ClassificationPipeline {
                 );
             }
 
-            // k=5, dynamic thresholds with relaxation
-            let empty_thresholds = HashMap::new();
-            let thresholds = self
-                .centroid_classifier
-                .as_ref()
-                .map_or(empty_thresholds, |c| {
-                    let mut t = c.get_thresholds().clone();
-                    // Relax thresholds for Rescue Pass (80% of Centroid threshold)
-                    for val in t.values_mut() {
-                        *val *= 0.8;
-                    }
-                    t
-                });
+            // k=5, static thresholds since Centroid is gone
+            let mut thresholds = HashMap::new();
+            if let Some(_fallback) = &self.fallback_classifier {
+                // Use default threshold from GenreClassifier as base?
+                // Just use 0.5 for now as a safe bet for Rescue
+                thresholds.insert("default".to_string(), 0.5);
+            }
 
             if let Some((rescued_genre, score)) =
                 propagator.predict_by_neighbors(feature_vector, 5, &thresholds)
@@ -681,101 +630,53 @@ impl ClassificationPipeline {
 
         let sample_count = PREDICT_SAMPLE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        // Centroid Classifierが利用可能な場合はそれを使用
-        if let Some(ref centroid_classifier) = self.centroid_classifier {
-            let normalized = self.token_pipeline.preprocess(title, body, language);
-            let feature_vector = self.feature_extractor.extract(&normalized.tokens);
+        // GenreClassifier (Fallback) を使用
+        if let Some(ref fallback) = self.fallback_classifier {
+            let mut result = fallback.predict(title, body, language)?;
 
-            // Centroid Classifierで分類を試みる
-            let mut scores = HashMap::new();
-            let mut ranking = Vec::new();
+            // Rescue Pass (Graph Label Propagation)
+            if result.top_genres.first().is_none_or(|g| g == "other") {
+                // 特徴ベクトル抽出 (FeatureExtractorはPipelineが持っているものを使う)
+                let normalized = self.token_pipeline.preprocess(title, body, language);
+                let feature_vector = self.feature_extractor.extract(&normalized.tokens);
 
-            if let Some((genre, score)) = centroid_classifier.predict(&feature_vector) {
-                if sample_count < 10 {
-                    tracing::debug!(
-                        "CentroidClassifier prediction: genre={}, score={:.4}",
-                        genre,
-                        score
-                    );
-                }
-                scores.insert(genre.clone(), score);
-                ranking.push((genre, score));
-            } else {
-                // 閾値未満の場合、トップの類似度を取得して候補として追加
-                if let Some((genre, similarity, threshold)) =
-                    centroid_classifier.get_top_similarity(&feature_vector)
-                {
-                    if sample_count < 10 {
-                        tracing::debug!(
-                            "CentroidClassifier prediction: no genre above threshold, top_genre={}, similarity={:.4}, threshold={:.4}",
-                            genre,
-                            similarity,
-                            threshold
-                        );
-                    }
-                    // 類似度が低くても候補として追加（後段のキーワードマッチング等で救える可能性を広げる）
-                    scores.insert(genre.clone(), similarity);
-                    ranking.push((genre, similarity));
-                } else if sample_count < 10 {
-                    tracing::debug!(
-                        "CentroidClassifier prediction: no genre above threshold (trained_genres: {:?})",
-                        centroid_classifier.trained_genres()
-                    );
-                }
-            }
+                // Resultのランキングを更新するために、mutable scores/rankingが必要だが
+                // ClassificationResultはfeature_snapshotなどを持っている。
+                // FeatureVectorを再計算してしまっているが、ここではPipelineのfeature_extractorを使う必要がある
+                // (Fallback内部のTFIDFとは違う可能性があるため)
 
-            // スコアが空の場合はRescue Pass (Graph Propagator) を試行
-            if scores.is_empty() {
+                // ここでRescue Passを呼び出し、もし結果があればresultを上書き/マージする
+                // しかし try_rescue_pass は all_articles が必要だが、predictの引数にはない。
+                // したがって、この signature の predict では Rescue Pass は実行できない。
+                // try_rescue_pass_in_predict も Ranking を更新するヘルパーだが、GraphPropagatorが必要。
+                // GraphPropagator は self にあるので呼べる。
+
+                // 既存の try_rescue_pass_in_predict を流用する
                 self.try_rescue_pass_in_predict(
                     &feature_vector,
-                    &mut scores,
-                    &mut ranking,
+                    &mut result.scores,
+                    &mut result.ranking,
                     sample_count,
                 );
+
+                // ランキング再ソート
+                result
+                    .ranking
+                    .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+                // top_genres更新
+                let top_genres: Vec<String> = result
+                    .ranking
+                    .iter()
+                    .take(3)
+                    .map(|(genre, _)| genre.clone())
+                    .collect();
+                result.top_genres = top_genres;
             }
 
-            // それでもスコアが空の場合は"other"を追加
-            if scores.is_empty() {
-                tracing::debug!("CentroidClassifier: no matches, falling back to 'other'");
-                scores.insert("other".to_string(), 0.0);
-                ranking.push(("other".to_string(), 0.0));
-            }
-
-            // ランキングをスコア順にソート
-            ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-            // top_genresを取得（最大3つ）
-            let top_genres: Vec<String> = ranking
-                .iter()
-                .take(3)
-                .map(|(genre, _)| genre.clone())
-                .collect();
-
-            // keyword_hitsを設定（既存のGenreClassifierインターフェースとの互換性のため）
-            // スコアを100倍して整数に変換（既存のロジックとの互換性のため）
-            let mut keyword_hits = HashMap::new();
-            for (genre, score) in &scores {
-                let rounded = (score.max(0.0) * 100.0).round().max(0.0);
-                let hit_count = u32::try_from(rounded as i64).unwrap_or(0).max(1);
-                keyword_hits.insert(genre.clone(), hit_count as usize);
-            }
-
-            return Ok(ClassificationResult {
-                top_genres,
-                scores,
-                ranking,
-                feature_snapshot: feature_vector,
-                keyword_hits,
-                token_count: normalized.tokens.len(),
-            });
+            return Ok(result);
         }
 
-        // フォールバック: 既存のGenreClassifierを使用
-        if let Some(ref fallback) = self.fallback_classifier {
-            return fallback.predict(title, body, language);
-        }
-
-        // どちらも利用できない場合はエラー
-        anyhow::bail!("Neither CentroidClassifier nor GenreClassifier is available")
+        anyhow::bail!("GenreClassifier is not available")
     }
 }

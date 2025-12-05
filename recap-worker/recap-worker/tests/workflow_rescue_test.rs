@@ -1,5 +1,4 @@
-use recap_worker::classification::{ClassificationLanguage, TokenPipeline};
-use recap_worker::classifier::centroid::Article;
+use recap_worker::classification::{Article, ClassificationLanguage, TokenPipeline};
 use recap_worker::classifier::workflow::{ClassificationPipeline, GoldenItem};
 use std::fs::File;
 

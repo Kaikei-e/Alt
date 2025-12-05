@@ -5,7 +5,7 @@ use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::time::sleep;
-use tracing::{debug, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::pipeline::evidence::{ArticleFeatureSignal, CorpusMetadata, EvidenceCorpus};
@@ -23,10 +23,10 @@ const DEFAULT_UMAP_N_COMPONENTS: usize = 25;
 const DEFAULT_HDBSCAN_MIN_CLUSTER_SIZE: usize = 5;
 const DEFAULT_MMR_LAMBDA: f32 = 0.35;
 const MIN_PARAGRAPH_LEN: usize = 30;
-const MAX_POLL_ATTEMPTS: usize = 30;
-const INITIAL_POLL_INTERVAL_MS: u64 = 500;
-const MAX_POLL_INTERVAL_MS: u64 = 5_000;
-const SUBWORKER_TIMEOUT_SECS: u64 = 120;
+const MAX_POLL_ATTEMPTS: usize = 40; // 40 attempts × 60s = 40 minutes max wait time
+const INITIAL_POLL_INTERVAL_MS: u64 = 60_000; // 60 seconds
+const MAX_POLL_INTERVAL_MS: u64 = 60_000; // 60 seconds (fixed interval for classification)
+const SUBWORKER_TIMEOUT_SECS: u64 = 900; // 15 minutes (async job pattern returns immediately, polling handles long operations)
 const MAX_ERROR_MESSAGE_LENGTH: usize = 500;
 const MIN_FALLBACK_DOCUMENTS: usize = 2;
 
@@ -132,6 +132,8 @@ pub(crate) struct ClusterRepresentative {
     pub(crate) lang: Option<String>,
     #[serde(default)]
     pub(crate) score: Option<f32>,
+    #[serde(default)]
+    pub(crate) reasons: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -170,6 +172,35 @@ struct ClusterDocument<'a> {
     signals: Option<&'a ArticleFeatureSignal>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct ClassificationRequest {
+    texts: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct ClassificationResult {
+    pub(crate) top_genre: String,
+    pub(crate) confidence: f32,
+    pub(crate) scores: HashMap<String, f32>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+struct ClassificationResponse {
+    results: Vec<ClassificationResult>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+struct ClassificationJobResponse {
+    run_id: i64,
+    job_id: String,
+    status: String,
+    result_count: usize,
+    results: Option<Vec<ClassificationResult>>,
+    error_message: Option<String>,
+}
+
 impl SubworkerClient {
     pub(crate) fn new(endpoint: impl Into<String>, min_documents_per_genre: usize) -> Result<Self> {
         let client = Client::builder()
@@ -184,6 +215,240 @@ impl SubworkerClient {
             base_url,
             min_documents_per_genre,
         })
+    }
+
+    pub(crate) async fn classify_texts(
+        &self,
+        job_id: Uuid,
+        texts: Vec<String>,
+    ) -> Result<Vec<ClassificationResult>> {
+        // Use async job pattern: POST /v1/classify-runs
+        let url = self
+            .base_url
+            .join("v1/classify-runs")
+            .context("failed to build classify-runs URL")?;
+
+        info!(
+            job_id = %job_id,
+            text_count = texts.len(),
+            url = %url,
+            "sending classification job request"
+        );
+
+        let request = ClassificationRequest { texts };
+        let response = self
+            .client
+            .post(url.clone())
+            .header("X-Alt-Job-Id", job_id.to_string())
+            .json(&request)
+            .send()
+            .await
+            .with_context(|| format!("classify-runs POST request failed for job {}", job_id))?;
+
+        let status = response.status();
+        info!(
+            job_id = %job_id,
+            http_status = %status,
+            "received classification job response"
+        );
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            let truncated_body = truncate_error_message(&body);
+            error!(
+                job_id = %job_id,
+                http_status = %status,
+                error_body = %truncated_body,
+                "classify-runs endpoint returned error status"
+            );
+            return Err(anyhow!(
+                "classify-runs endpoint returned error status {}: {}",
+                status,
+                truncated_body
+            ));
+        }
+
+        let body: ClassificationJobResponse = response.json().await.with_context(|| {
+            format!("failed to parse classify-runs response for job {}", job_id)
+        })?;
+
+        info!(
+            job_id = %job_id,
+            run_id = body.run_id,
+            status = %body.status,
+            "classification job created"
+        );
+
+        // Poll for completion
+        if body.status == "running" {
+            info!(
+                job_id = %job_id,
+                run_id = body.run_id,
+                "starting classification run polling"
+            );
+            let results = self.poll_classification_run(body.run_id).await?;
+            info!(
+                job_id = %job_id,
+                run_id = body.run_id,
+                result_count = results.len(),
+                "classification run polling completed"
+            );
+            Ok(results)
+        } else if body.status == "succeeded" {
+            info!(
+                job_id = %job_id,
+                run_id = body.run_id,
+                result_count = body.results.as_ref().map_or(0, Vec::len),
+                "classification job already completed"
+            );
+            Ok(body.results.unwrap_or_default())
+        } else {
+            error!(
+                job_id = %job_id,
+                run_id = body.run_id,
+                status = %body.status,
+                error_message = %body.error_message.as_deref().unwrap_or(""),
+                "classification run finished with non-success status"
+            );
+            Err(anyhow!(
+                "classification run {} finished with status {}: {}",
+                body.run_id,
+                body.status,
+                body.error_message.unwrap_or_default()
+            ))
+        }
+    }
+
+    async fn poll_classification_run(&self, run_id: i64) -> Result<Vec<ClassificationResult>> {
+        let run_url = self
+            .base_url
+            .join(&format!("v1/classify-runs/{}", run_id))
+            .with_context(|| format!("failed to build classify-run URL for run_id {}", run_id))?;
+
+        info!(run_id, url = %run_url, "starting classification run polling");
+
+        for attempt in 0..MAX_POLL_ATTEMPTS {
+            Self::log_polling_attempt(run_id, attempt, &run_url);
+
+            let response = self
+                .client
+                .get(run_url.clone())
+                .send()
+                .await
+                .with_context(|| {
+                    format!(
+                        "classification run polling request failed for run_id {} (attempt {})",
+                        run_id,
+                        attempt + 1
+                    )
+                })?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                let truncated_body = truncate_error_message(&body);
+                return Err(anyhow!(
+                    "classification run polling endpoint returned error status {} for run_id {}: {}",
+                    status,
+                    run_id,
+                    truncated_body
+                ));
+            }
+
+            let body: ClassificationJobResponse = response.json().await.with_context(|| {
+                format!(
+                    "failed to deserialize polling response for run_id {}",
+                    run_id
+                )
+            })?;
+
+            if let Some(result) = Self::handle_classification_status(run_id, attempt, &body)? {
+                return Ok(result);
+            }
+
+            Self::log_progress(run_id, attempt, &body.status);
+            Self::sleep_with_backoff(attempt).await;
+        }
+
+        Err(anyhow!(
+            "classification run {} did not complete within timeout ({} attempts)",
+            run_id,
+            MAX_POLL_ATTEMPTS
+        ))
+    }
+
+    fn log_polling_attempt(run_id: i64, attempt: usize, run_url: &Url) {
+        #[allow(clippy::manual_is_multiple_of)]
+        if attempt == 0 || (attempt + 1) % 5 == 0 {
+            info!(
+                run_id,
+                attempt = attempt + 1,
+                max_attempts = MAX_POLL_ATTEMPTS,
+                "polling classification run status"
+            );
+        } else {
+            debug!(
+                run_id,
+                attempt = attempt + 1,
+                url = %run_url,
+                "sending classification run polling request"
+            );
+        }
+    }
+
+    fn handle_classification_status(
+        run_id: i64,
+        attempt: usize,
+        body: &ClassificationJobResponse,
+    ) -> Result<Option<Vec<ClassificationResult>>> {
+        if body.status == "succeeded" {
+            info!(
+                run_id,
+                attempt = attempt + 1,
+                result_count = body.results.as_ref().map_or(0, Vec::len),
+                "classification run completed successfully"
+            );
+            Ok(Some(body.results.clone().unwrap_or_default()))
+        } else if body.status == "failed" {
+            error!(
+                run_id,
+                attempt = attempt + 1,
+                error_message = %body.error_message.as_deref().unwrap_or(""),
+                "classification run failed"
+            );
+            Err(anyhow!(
+                "classification run {} failed: {}",
+                run_id,
+                body.error_message.as_deref().unwrap_or("")
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn log_progress(run_id: i64, attempt: usize, status: &str) {
+        #[allow(clippy::manual_is_multiple_of)]
+        if (attempt + 1) % 5 == 0 {
+            info!(
+                run_id,
+                attempt = attempt + 1,
+                status = %status,
+                "classification run still in progress"
+            );
+        } else {
+            debug!(
+                run_id,
+                attempt,
+                status = %status,
+                "classification run still in progress"
+            );
+        }
+    }
+
+    async fn sleep_with_backoff(_attempt: usize) {
+        // Use fixed 60-second interval for classification polling
+        // (no exponential backoff needed since classification runs can take 20-30 minutes)
+        sleep(Duration::from_millis(MAX_POLL_INTERVAL_MS)).await;
     }
 
     pub(crate) async fn ping(&self) -> Result<()> {
@@ -317,6 +582,7 @@ impl SubworkerClient {
                     text: first_sentence.clone(),
                     lang: Some(article.language.clone()),
                     score: Some(1.0),
+                    reasons: vec!["fallback".to_string()],
                 });
             }
         }
