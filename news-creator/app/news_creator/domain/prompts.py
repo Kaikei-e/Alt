@@ -48,12 +48,9 @@ CRITICAL OUTPUT FORMAT:
 - ABSOLUTELY FORBIDDEN: Triple backticks (\`\`\`), markdown syntax, text before {{, text after }}
 
 IMPORTANT:
-- Output raw JSON only. Do NOT use markdown code blocks (e.g. ```json or ```).
-- Do NOT include any introductory text or explanations before or after the JSON.
+- Output raw JSON only. Do NOT use markdown code blocks.
 - Ensure the JSON is valid and strictly follows the schema below.
 - Use double quotes for all strings. No trailing commas.
-- The title field must be a plain string, NOT a code block marker like "```json"
-- Do NOT include any introductory text or explanations.
 
 SCHEMA:
 {{
@@ -69,12 +66,16 @@ SCHEMA:
 Instructions:
 - Bullet count: MUST be between 3 and {max_bullets}.
 - Granularity: Each bullet represents a specific fact or event. Do NOT combine unrelated facts.
-- Structure: Each bullet MUST have a clear Subject (主語) and Predicate (述語).
+- Structure: Each bullet MUST take the form of a complete sentence with a clear Subject (主語) and Predicate (述語).
+  - Use SVO (Subject-Verb-Object) structure where possible.
   - Bad: "Reorganization of the market." (Noun phrase)
   - Good: "The acquisition accelerates the reorganization of the market." (Full sentence)
-- Length: Keep each bullet concise (50-100 characters). Avoid overly long compound sentences.
+- Content Priority:
+  - 1. Dates and Numbers: If a fact involves a date or specific number, prioritize including it.
+  - 2. Proper Nouns: Identify who/what is involved clearly.
+  - 3. Concrete Actions: State what happened.
 - Style: 常体（〜だ／である）。
-- Content: Prioritize 具体的数値 (dates, amounts), 固有名詞 (names), and defined actions.
+- Length: Keep each bullet concise (50-100 characters). Avoid overly long compound sentences.
 - Missing Info: If key info is missing, state "未提示" explicitly.
 - "[Main Point]" sentences in the input are priority.
 
