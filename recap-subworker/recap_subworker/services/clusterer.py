@@ -23,6 +23,7 @@ class ClusterResult:
     probabilities: np.ndarray
     used_umap: bool
     params: HDBSCANSettings
+    dbcv_score: float = 0.0
 
 
 class Clusterer:
@@ -41,14 +42,14 @@ class Clusterer:
         if embeddings.size == 0:
             empty = np.empty((0,), dtype=int)
             return ClusterResult(
-                empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0)
+                empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0), 0.0
             )
 
         # Validation: Check for NaNs or Infs
         if not np.isfinite(embeddings).all():
             empty = np.empty((0,), dtype=int)
             return ClusterResult(
-                empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0)
+                empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0), 0.0
             )
 
         # Validation: Check for zero vectors (which break cosine metric)
@@ -56,7 +57,7 @@ class Clusterer:
         if (norms == 0).any():
             empty = np.empty((0,), dtype=int)
             return ClusterResult(
-                empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0)
+                empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0), 0.0
             )
 
         use_umap = bool(
@@ -81,6 +82,7 @@ class Clusterer:
             min_samples=max(1, min_samples),
             metric="euclidean",
             cluster_selection_method="eom",
+            gen_min_span_tree=True,
         )
         clusterer.fit(reduced)
         labels = clusterer.labels_
@@ -90,6 +92,11 @@ class Clusterer:
             probs = np.ones_like(labels, dtype=float)
             use_umap = False
 
+        try:
+            dbcv = clusterer.relative_validity_
+        except Exception:
+            dbcv = 0.0
+
         return ClusterResult(
             labels=labels,
             probabilities=probs,
@@ -98,4 +105,44 @@ class Clusterer:
                 min_cluster_size=min_cluster_size,
                 min_samples=min_samples,
             ),
+            dbcv_score=dbcv,
         )
+
+    def optimize_clustering(
+        self,
+        embeddings: np.ndarray,
+        *,
+        min_cluster_size_range: range | list[int] = range(3, 10),
+        min_samples_range: range | list[int] = range(1, 5),
+    ) -> ClusterResult:
+        """Perform grid search to find best clustering parameters based on DBCV."""
+        best_score = -1.0
+        best_result = None
+
+        # If embeddings are empty or invalid, return default empty result immediately
+        # by calling cluster with default params
+        if embeddings.size == 0 or not np.isfinite(embeddings).all():
+             return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
+
+        for mcs in min_cluster_size_range:
+            for ms in min_samples_range:
+                # Skip invalid combinations if any
+                if ms >= mcs:
+                    continue
+
+                result = self.cluster(
+                    embeddings,
+                    min_cluster_size=mcs,
+                    min_samples=ms,
+                )
+
+                # Prefer higher score. If score is same, prefer larger min_cluster_size (more stability)
+                if result.dbcv_score > best_score:
+                    best_score = result.dbcv_score
+                    best_result = result
+
+        if best_result is None:
+            # Fallback to default
+            return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
+
+        return best_result

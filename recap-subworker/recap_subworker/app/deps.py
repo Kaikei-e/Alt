@@ -16,6 +16,7 @@ from ..services.learning_scheduler import LearningScheduler
 from ..services.pipeline import EvidencePipeline
 from ..services.pipeline_runner import PipelineTaskRunner
 from ..services.run_manager import RunManager
+from ..services.classifier import GenreClassifierService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Module-level singletons to avoid lru_cache issues with unhashable Settings
@@ -26,6 +27,7 @@ _pipeline_runner: PipelineTaskRunner | None = None
 _run_manager: RunManager | None = None
 _learning_client: LearningClient | None = None
 _learning_scheduler: LearningScheduler | None = None
+_classifier: GenreClassifierService | None = None
 
 
 def _get_process_pool(settings: Settings) -> ProcessPoolExecutor:
@@ -80,6 +82,7 @@ def _get_run_manager(settings: Settings) -> RunManager:
             session_factory,
             pipeline=pipeline,
             pipeline_runner=_get_pipeline_runner(settings),
+            classifier=_get_classifier(settings),
         )
     return _run_manager
 
@@ -173,6 +176,20 @@ def _get_learning_scheduler(settings: Settings) -> LearningScheduler | None:
             interval_hours=settings.learning_scheduler_interval_hours,
         )
     return _learning_scheduler
+
+
+def _get_classifier(settings: Settings) -> GenreClassifierService:
+    global _classifier
+    if _classifier is None:
+        _classifier = GenreClassifierService(
+            model_path=settings.genre_classifier_model_path,
+            embedder=_get_embedder(settings),
+        )
+    return _classifier
+
+
+def get_classifier_dep(settings: Settings = Depends(get_settings_dep)) -> GenreClassifierService:
+    return _get_classifier(settings)
 
 
 def register_lifecycle(app) -> None:

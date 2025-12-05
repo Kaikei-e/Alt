@@ -22,6 +22,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode='after')
     def inject_db_password(self) -> 'Settings':
+        # If RECAP_SUBWORKER_DB_PASSWORD_FILE is set, read password from that file
+        import os
+        password_file = os.getenv("RECAP_SUBWORKER_DB_PASSWORD_FILE")
+        if password_file and not self.recap_db_password:
+            try:
+                with open(password_file, "r") as f:
+                    self.recap_db_password = f.read().strip()
+            except Exception:
+                pass  # Fall back to secrets_dir or default
+
         if self.recap_db_password:
             u = urlparse(self.db_url)
             # u.netloc is "user:pass@host:port"
@@ -88,6 +98,21 @@ class Settings(BaseSettings):
     default_hdbscan_min_cluster_size: int = Field(5, ge=2)
     default_hdbscan_min_samples: int | None = Field(default=None, ge=1)
     default_umap_n_components: int = Field(25, ge=0)
+    clustering_search_range_mcs_window_lower: int = Field(
+        2,
+        ge=0,
+        description="Lower bound window size for min_cluster_size grid search (base - lower)",
+    )
+    clustering_search_range_mcs_window_upper: int = Field(
+        5,
+        ge=0,
+        description="Upper bound window size for min_cluster_size grid search (base + upper)",
+    )
+    clustering_search_range_ms_max: int = Field(
+        6,
+        ge=2,
+        description="Maximum value for min_samples grid search (range is 1 to max-1)",
+    )
     max_tokens_budget: int = Field(12_000, ge=512, description="Token budget per request")
     dedup_threshold: float = Field(0.92, ge=0.0, le=1.0)
     embed_cache_size: int = Field(
@@ -134,7 +159,7 @@ class Settings(BaseSettings):
         description="Maximum concurrent pipeline runs handled inside this instance",
     )
     run_execution_timeout_seconds: int = Field(
-        900,
+        2400,  # 40 minutes - matches recap-worker's MAX_POLL_ATTEMPTS (40 × 60s)
         ge=60,
         description="Hard timeout for a single genre run before it is aborted",
     )
@@ -253,6 +278,10 @@ class Settings(BaseSettings):
         3,
         ge=1,
         description="Minimum article count for an edge",
+    )
+    genre_classifier_model_path: str = Field(
+        "data/genre_classifier.joblib",
+        description="Path to the trained genre classifier model",
     )
 
 

@@ -135,10 +135,19 @@ class EvidencePipeline:
             min_samples=cluster_params[1],
         )
         cluster_start = time.perf_counter()
-        cluster_result = self.clusterer.cluster(
+        base_mcs, base_ms = cluster_params
+
+        # Define search range around the heuristic base
+        mcs_range = range(
+            max(2, base_mcs - self.settings.clustering_search_range_mcs_window_lower),
+            base_mcs + self.settings.clustering_search_range_mcs_window_upper,
+        )
+        ms_range = range(1, self.settings.clustering_search_range_ms_max)
+
+        cluster_result = self.clusterer.optimize_clustering(
             embeddings,
-            min_cluster_size=cluster_params[0],
-            min_samples=cluster_params[1],
+            min_cluster_size_range=mcs_range,
+            min_samples_range=ms_range,
         )
         hdbscan_duration = time.perf_counter() - cluster_start
         HDBSCAN_SECONDS.observe(hdbscan_duration)
@@ -177,6 +186,7 @@ class EvidencePipeline:
         response.diagnostics.dedup_pairs = removed
         response.diagnostics.umap_used = cluster_result.used_umap
         response.diagnostics.hdbscan = cluster_result.params
+        response.diagnostics.dbcv_score = cluster_result.dbcv_score
         logger.info(
             "pipeline.clusters.built",
             clusters=len(response.clusters),

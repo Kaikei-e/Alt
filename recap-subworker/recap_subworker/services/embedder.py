@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import math
+import time
 from dataclasses import dataclass
 from typing import Iterable, Literal, Sequence
 
 import numpy as np
+import structlog
 
 from ..infra.cache import LRUCache
+
+logger = structlog.get_logger(__name__)
 
 
 BackendLiteral = Literal["sentence-transformers", "onnx", "hash"]
@@ -37,6 +41,19 @@ class Embedder:
     def _load_sentence_transformer(self):
         from sentence_transformers import SentenceTransformer  # lazy import
 
+        logger.info(
+            "Loading SentenceTransformer",
+            model_id=self.config.model_id,
+            backend=self.config.backend
+        )
+
+        if self.config.model_id != "intfloat/multilingual-e5-large":
+            logger.warn(
+                "Model ID mismatch recommendation",
+                current=self.config.model_id,
+                recommended="intfloat/multilingual-e5-large"
+            )
+
         return SentenceTransformer(self.config.model_id, device=self.config.device)
 
     def _ensure_model(self):
@@ -57,9 +74,12 @@ class Embedder:
 
         if not sentences:
             return np.empty((0, 0), dtype=np.float32)
+
+        total_sentences = len(sentences)
         cached = self._fetch_cached(sentences)
         pending = [s for s in sentences if s not in cached]
         fresh: dict[str, np.ndarray] = {}
+
         if pending:
             self._ensure_model()
             if self.config.backend == "hash":
@@ -70,11 +90,72 @@ class Embedder:
             else:
                 model = self._model
                 assert model is not None
-                embeddings = model.encode(  # type: ignore[attr-defined]
-                    pending,
-                    batch_size=self.config.batch_size,
-                    normalize_embeddings=True,
-                )
+
+                # Manual batching with progress logging for large batches
+                if len(pending) > self.config.batch_size * 2:
+                    logger.info(
+                        "Starting embedding generation with progress tracking",
+                        total_sentences=total_sentences,
+                        cached_count=len(cached),
+                        pending_count=len(pending),
+                        batch_size=self.config.batch_size,
+                        estimated_batches=math.ceil(len(pending) / self.config.batch_size),
+                    )
+
+                    all_embeddings = []
+                    start_time = time.time()
+
+                    for batch_idx in range(0, len(pending), self.config.batch_size):
+                        batch = pending[batch_idx:batch_idx + self.config.batch_size]
+                        batch_start = time.time()
+
+                        batch_embeddings = model.encode(  # type: ignore[attr-defined]
+                            batch,
+                            batch_size=len(batch),
+                            normalize_embeddings=True,
+                            show_progress_bar=False,  # Disable tqdm progress bar
+                        )
+
+                        batch_elapsed = time.time() - batch_start
+                        batch_num = (batch_idx // self.config.batch_size) + 1
+                        total_batches = math.ceil(len(pending) / self.config.batch_size)
+                        progress_pct = (batch_num / total_batches) * 100
+                        elapsed_total = time.time() - start_time
+                        avg_time_per_batch = elapsed_total / batch_num
+                        remaining_batches = total_batches - batch_num
+                        eta_seconds = avg_time_per_batch * remaining_batches
+
+                        logger.info(
+                            "Embedding batch progress",
+                            batch_num=batch_num,
+                            total_batches=total_batches,
+                            progress_percent=round(progress_pct, 1),
+                            batch_size=len(batch),
+                            batch_seconds=round(batch_elapsed, 2),
+                            elapsed_seconds=round(elapsed_total, 2),
+                            avg_seconds_per_batch=round(avg_time_per_batch, 2),
+                            eta_seconds=round(eta_seconds, 2),
+                            eta_minutes=round(eta_seconds / 60, 1),
+                        )
+
+                        all_embeddings.extend(batch_embeddings)
+
+                    embeddings = np.array(all_embeddings)
+                    total_elapsed = time.time() - start_time
+                    logger.info(
+                        "Embedding generation completed",
+                        total_sentences=len(pending),
+                        total_seconds=round(total_elapsed, 2),
+                        throughput_per_sec=round(len(pending) / total_elapsed, 2) if total_elapsed > 0 else 0,
+                    )
+                else:
+                    # Small batches: use direct encoding without progress logging
+                    embeddings = model.encode(  # type: ignore[attr-defined]
+                        pending,
+                        batch_size=self.config.batch_size,
+                        normalize_embeddings=True,
+                    )
+
                 for sentence, vector in zip(pending, embeddings):
                     stored = np.asarray(vector, dtype=np.float32)
                     fresh[sentence] = stored

@@ -11,6 +11,34 @@ from pydantic import BaseModel, Field, HttpUrl, ConfigDict, field_validator
 RunStatusLiteral = Literal["running", "succeeded", "partial", "failed"]
 
 
+# Classification models
+class ClassificationJobPayload(BaseModel):
+    """Request body for POST /v1/classify-runs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    texts: list[str] = Field(..., min_length=1)
+
+
+class ClassificationResult(BaseModel):
+    """Single classification result."""
+
+    top_genre: str
+    confidence: float
+    scores: dict[str, float]
+
+
+class ClassificationJobResponse(BaseModel):
+    """Response for classification run endpoints."""
+
+    run_id: int
+    job_id: str
+    status: RunStatusLiteral
+    result_count: int = Field(default=0)
+    results: Optional[list[ClassificationResult]] = None
+    error_message: Optional[str] = None
+
+
 class ClusterJobParams(BaseModel):
     """Incoming clustering parameters exposed via the public API."""
 
@@ -228,6 +256,7 @@ class Diagnostics(BaseModel):
     embedding_ms: Optional[float] = None
     hdbscan_ms: Optional[float] = None
     noise_ratio: Optional[float] = None
+    dbcv_score: Optional[float] = None
 
 
 class EvidenceResponse(BaseModel):
