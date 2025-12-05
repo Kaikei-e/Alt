@@ -24,3 +24,5 @@ export {
 	getReadFeedsWithCursorClient,
 	updateFeedReadStatusClient,
 } from "./feeds";
+// リキャップ関連のAPI
+export { get7DaysRecapClient } from "./recap";
