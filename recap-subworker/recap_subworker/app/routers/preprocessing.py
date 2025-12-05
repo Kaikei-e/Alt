@@ -3,17 +3,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 import numpy as np
 
-from ..services.extraction import ContentExtractor
-from ..services.classification import CoarseClassifier
-from ..services.clusterer import Clusterer, ClusterResult
-from ..services.embedder import Embedder
+from ...services.extraction import ContentExtractor
+from ...services.classification import CoarseClassifier
+from ...services.clusterer import Clusterer, ClusterResult
+from ...services.embedder import Embedder
 from ..deps import (
     get_content_extractor_dep,
     get_coarse_classifier_dep,
     get_embedder_dep,
     get_settings_dep
 )
-from ..infra.config import Settings
+from ...infra.config import Settings
 
 router = APIRouter()
 
