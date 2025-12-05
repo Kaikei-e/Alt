@@ -201,6 +201,39 @@ struct ClassificationJobResponse {
     error_message: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct ExtractRequest<'a> {
+    html: &'a str,
+    include_comments: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ExtractResponse {
+    text: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct CoarseClassifyRequest<'a> {
+    text: &'a str,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CoarseClassifyResponse {
+    scores: HashMap<String, f32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SubClusterOtherRequest {
+    texts: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SubClusterOtherResponse {
+    labels: Vec<i32>,
+    probabilities: Vec<f32>,
+    diagnostics: Value,
+}
+
 impl SubworkerClient {
     pub(crate) fn new(endpoint: impl Into<String>, min_documents_per_genre: usize) -> Result<Self> {
         let client = Client::builder()
@@ -560,6 +593,107 @@ impl SubworkerClient {
 
         tracing::info!("graph refresh and learning sequence completed");
         Ok(())
+    }
+
+    pub(crate) async fn extract_content(&self, html: &str) -> Result<String> {
+        let url = self
+            .base_url
+            .join("v1/extract")
+            .context("failed to build extract URL")?;
+
+        let request = ExtractRequest {
+            html,
+            include_comments: false,
+        };
+
+        let response = self
+            .client
+            .post(url)
+            .json(&request)
+            .send()
+            .await
+            .context("extract request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow!("extract endpoint error {}: {}", status, body));
+        }
+
+        let body: ExtractResponse = response
+            .json()
+            .await
+            .context("failed to parse extract response")?;
+        Ok(body.text)
+    }
+
+    pub(crate) async fn classify_coarse(&self, text: &str) -> Result<HashMap<String, f32>> {
+        let url = self
+            .base_url
+            .join("v1/classify/coarse")
+            .context("failed to build classify_coarse URL")?;
+
+        // Truncate text if too long to avoid huge payload?
+        // Implementer responsibility, but subworker endpoint handles 2000 chars prefix.
+        // We send full text, let server handle it or truncate here?
+        // Server truncates.
+        let request = CoarseClassifyRequest { text };
+
+        let response = self
+            .client
+            .post(url)
+            .json(&request)
+            .send()
+            .await
+            .context("classify_coarse request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "classify_coarse endpoint error {}: {}",
+                status,
+                body
+            ));
+        }
+
+        let body: CoarseClassifyResponse = response
+            .json()
+            .await
+            .context("failed to parse classify_coarse response")?;
+        Ok(body.scores)
+    }
+
+    pub(crate) async fn cluster_other(
+        &self,
+        texts: Vec<String>,
+    ) -> Result<(Vec<i32>, Vec<f32>, Value)> {
+        let url = self
+            .base_url
+            .join("v1/cluster/other")
+            .context("failed to build cluster_other URL")?;
+
+        let request = SubClusterOtherRequest { texts };
+
+        let response = self
+            .client
+            .post(url)
+            .json(&request)
+            .send()
+            .await
+            .context("cluster_other request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow!("cluster_other endpoint error {}: {}", status, body));
+        }
+
+        let body: SubClusterOtherResponse = response
+            .json()
+            .await
+            .context("failed to parse cluster_other response")?;
+        Ok((body.labels, body.probabilities, body.diagnostics))
     }
 
     /// フォールバック用の単一クラスタレスポンスを生成する。

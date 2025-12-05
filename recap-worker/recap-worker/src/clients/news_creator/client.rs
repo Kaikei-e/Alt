@@ -34,7 +34,14 @@ impl NewsCreatorClient {
 
         let base_url = Url::parse(&base_url.into()).context("invalid news-creator base URL")?;
 
-        let token_counter = TokenCounter::new().context("failed to initialize token counter")?;
+        // Try to initialize TokenCounter, fallback to dummy if it fails (e.g., in test environments)
+        let token_counter = TokenCounter::new().unwrap_or_else(|e| {
+            tracing::warn!(
+                "Failed to initialize TokenCounter: {}. Using dummy tokenizer (character count only).",
+                e
+            );
+            TokenCounter::dummy()
+        });
 
         Ok(Self {
             client,

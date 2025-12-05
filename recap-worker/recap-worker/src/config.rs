@@ -438,7 +438,7 @@ fn load_tag_config() -> Result<(String, Option<String>, Duration, Duration), Con
 }
 
 fn load_subworker_config() -> Result<(usize, f32), ConfigError> {
-    let min_documents = parse_usize("RECAP_MIN_DOCUMENTS_PER_GENRE", 10)?;
+    let min_documents = parse_usize("RECAP_MIN_DOCUMENTS_PER_GENRE", 3)?;
     let similarity_threshold = parse_f64("RECAP_COHERENCE_SIMILARITY_THRESHOLD", 0.5)? as f32;
     Ok((min_documents, similarity_threshold))
 }

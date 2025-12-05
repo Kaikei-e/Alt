@@ -68,7 +68,7 @@ impl TokenCounter {
     }
 
     /// テスト用のダミーTokenCounterを作成する（トークナイザーなし、文字数カウントのみ）。
-    #[cfg(test)]
+    /// 本番環境でも初期化に失敗した場合のフォールバックとして使用可能。
     pub(crate) fn dummy() -> Self {
         Self { tokenizer: None }
     }

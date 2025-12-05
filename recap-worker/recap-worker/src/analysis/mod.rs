@@ -1,8 +1,7 @@
 //! 計測・評価用のユーティリティ群。
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use std::collections::HashMap;
-
-use crate::pipeline::preprocess::preprocess_article;
+use std::sync::Arc;
 
 /// 合成記事を生成する。
 ///
@@ -220,7 +219,40 @@ pub fn preprocess_documents(bodies: &[String]) -> (usize, Vec<ProcessedDocument>
             tags: Vec::new(),
         };
 
-        if let Ok(Some(result)) = preprocess_article(article) {
+        // Create a dummy subworker client for analysis/testing
+        // Using a dummy URL since this is for analysis only
+        let subworker = std::sync::Arc::new(
+            crate::clients::SubworkerClient::new("http://localhost:18002", 3).unwrap_or_else(
+                |_| {
+                    // Fallback: create with minimal config if URL parsing fails
+                    crate::clients::SubworkerClient::new("http://127.0.0.1:18002", 3)
+                        .expect("failed to create subworker client")
+                },
+            ),
+        );
+        // Use block_on since this is a synchronous function
+        let article_clone = article.clone();
+        let subworker_clone = Arc::clone(&subworker);
+        let result = tokio::runtime::Handle::try_current().map_or_else(
+            |_| {
+                // If no runtime is available, create a new one
+                let article_clone2 = article.clone();
+                let subworker_clone2 = Arc::clone(&subworker);
+                tokio::runtime::Runtime::new()
+                    .expect("failed to create tokio runtime")
+                    .block_on(crate::pipeline::preprocess::preprocess_article(
+                        article_clone2,
+                        subworker_clone2,
+                    ))
+            },
+            |handle| {
+                handle.block_on(crate::pipeline::preprocess::preprocess_article(
+                    article_clone.clone(),
+                    Arc::clone(&subworker_clone),
+                ))
+            },
+        );
+        if let Ok(Some(result)) = result {
             processed.push(ProcessedDocument {
                 body: result.body,
                 language: result.language,

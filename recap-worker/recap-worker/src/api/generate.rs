@@ -121,6 +121,11 @@ mod tests {
                 std::env::set_var("ALT_BACKEND_BASE_URL", "http://localhost:19000/");
                 std::env::set_var("RECAP_GENRES", "ai,space");
                 std::env::remove_var("ALT_BACKEND_SERVICE_TOKEN");
+                // Set dummy token path for testing (file doesn't need to exist, will fail gracefully)
+                std::env::set_var(
+                    "HUGGING_FACE_TOKEN_PATH",
+                    "/tmp/test-token-which-does-not-exist",
+                );
             }
             Config::from_env().expect("config loads")
         };

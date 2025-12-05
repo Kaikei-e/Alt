@@ -149,6 +149,11 @@ mod tests {
                 std::env::set_var("SUBWORKER_BASE_URL", "http://localhost:8002/");
                 std::env::set_var("ALT_BACKEND_BASE_URL", "http://localhost:9000/");
                 std::env::remove_var("ALT_BACKEND_SERVICE_TOKEN");
+                // Set dummy token path for testing (file doesn't need to exist, will fail gracefully)
+                std::env::set_var(
+                    "HUGGING_FACE_TOKEN_PATH",
+                    "/tmp/test-token-which-does-not-exist",
+                );
             }
 
             Config::from_env().expect("config loads")
