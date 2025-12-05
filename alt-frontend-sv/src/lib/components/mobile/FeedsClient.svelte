@@ -6,7 +6,7 @@ import {
 	getReadFeedsWithCursorClient,
 	updateFeedReadStatusClient,
 } from "$lib/api/client";
-import InfiniteScroll from "$lib/components/InfiniteScroll.svelte";
+import { infiniteScroll } from "$lib/actions/infinite-scroll";
 import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
 import { canonicalize } from "$lib/utils/feed";
@@ -36,6 +36,11 @@ let liveRegionMessage = $state("");
 let isRetrying = $state(false);
 
 let scrollContainerRef: HTMLDivElement | null = $state(null);
+
+// Use the scroll container as root for IntersectionObserver
+// This ensures the observer correctly detects when sentinel enters the scrollable area
+// Use $derived() instead of $derived.by() to ensure reference stability
+const getScrollRoot = $derived(browser ? scrollContainerRef : null);
 
 // Initialize readFeeds set from backend on mount
 onMount(() => {
@@ -122,50 +127,22 @@ const loadInitial = async () => {
 	}
 };
 
-// Load more feeds with enhanced duplicate request prevention
+// Load more feeds
 const loadMore = async () => {
-	// Strong guards to prevent duplicate requests
-	if (isLoading || !hasMore || !cursor) {
-		console.log("[FeedsClient] loadMore blocked:", {
-			isLoading,
-			hasMore,
-			cursor: cursor ? "exists" : "null",
-		});
-		return;
-	}
+	if (isLoading) return;
+	if (!hasMore) return;
 
-	// Store current cursor to prevent duplicate requests
 	const currentCursor = cursor;
-
-	console.log("[FeedsClient] loadMore called", {
-		cursor: currentCursor ? `${currentCursor.substring(0, 20)}...` : "null",
-	});
-
-	// Set loading state immediately to prevent concurrent requests
 	isLoading = true;
 	error = null;
 
-	const requestStartTime = Date.now();
-
 	try {
-		console.log("[FeedsClient] loadMore: starting API request", {
-			cursor: currentCursor ? `${currentCursor.substring(0, 20)}...` : "null",
-		});
-		const response = await getFeedsWithCursorClient(currentCursor, PAGE_SIZE);
-		const requestDuration = Date.now() - requestStartTime;
-		console.log("[FeedsClient] loadMore: API request completed", {
-			duration: `${requestDuration}ms`,
-		});
+		const response = await getFeedsWithCursorClient(
+			currentCursor ?? undefined,
+			PAGE_SIZE,
+		);
 
-		console.log("[FeedsClient] loadMore: response received", {
-			dataLength: response.data.length,
-			nextCursor: response.next_cursor ? "exists" : "null",
-		});
-
-		// Check if we got new data
 		if (response.data.length === 0) {
-			// No new data, update hasMore based on next_cursor
-			console.log("[FeedsClient] loadMore: no new data, updating cursor");
 			hasMore = response.next_cursor !== null;
 			if (response.next_cursor) {
 				cursor = response.next_cursor;
@@ -180,27 +157,31 @@ const loadMore = async () => {
 			hasMore = response.next_cursor !== null;
 
 			// Update visibleCount to show new feeds
-			const allFeedsCount = initialFeeds.length + feeds.length;
+			const allFeeds: RenderFeed[] = [...initialFeeds];
+			const renderFeeds: RenderFeed[] = feeds.map((f: SanitizedFeed) =>
+				toRenderFeed(f),
+			);
+			allFeeds.push(...renderFeeds);
+			const filteredCount = allFeeds.filter(
+				(feed) => !readFeeds.has(feed.normalizedUrl),
+			).length;
+
+			// 新しいフィードが追加されたが、すべて既読の場合
+			// 無限ループを防ぐために hasMore を false にする
+			if (filteredCount === 0 && allFeeds.length > 0 && response.next_cursor === null) {
+				hasMore = false;
+				cursor = null;
+				console.log(
+					"[FeedsClient] All loaded feeds are read and no more cursor, setting hasMore=false",
+				);
+			}
+
 			visibleCount = Math.min(
 				visibleCount + response.data.length,
-				allFeedsCount,
+				filteredCount,
 			);
-
-			console.log("[FeedsClient] loadMore: added feeds", {
-				newFeedsCount: response.data.length,
-				totalFeedsCount: feeds.length,
-				visibleCount,
-				hasMore,
-			});
 		}
 	} catch (err) {
-		const requestDuration = Date.now() - requestStartTime;
-		console.error("[FeedsClient] loadMore: error occurred", {
-			error: err,
-			duration: `${requestDuration}ms`,
-			errorType: err instanceof Error ? err.constructor.name : typeof err,
-			errorMessage: err instanceof Error ? err.message : String(err),
-		});
 		if (err instanceof Error && err.message.includes("404")) {
 			hasMore = false;
 			cursor = null;
@@ -209,13 +190,8 @@ const loadMore = async () => {
 			error =
 				err instanceof Error ? err : new Error("Failed to load more data");
 		}
+		console.error("[FeedsClient] loadMore error:", err);
 	} finally {
-		const totalDuration = Date.now() - requestStartTime;
-		console.log("[FeedsClient] loadMore: finally block", {
-			duration: `${totalDuration}ms`,
-			isLoading: "will be set to false",
-		});
-		// ★ 無条件で戻す
 		isLoading = false;
 	}
 };
@@ -273,7 +249,7 @@ onMount(() => {
 });
 
 // Progressive rendering: increase visibleCount when user scrolls near the end
-// This is handled by InfiniteScroll component, but we still need to manage visibleCount
+// This is handled by infiniteScroll action, but we still need to manage visibleCount
 // when new feeds are loaded
 $effect(() => {
 	if (!browser) return;
@@ -333,6 +309,8 @@ const visibleFeeds = $derived.by(() => {
 	// Limit to visibleCount items for progressive rendering
 	// Always show at least visibleCount items, but ensure sentinel is visible
 	const allFeedsCount = filtered.length;
+	// Show at least visibleCount items, but don't exceed allFeedsCount
+	// This ensures sentinel is always visible when there are more feeds to load
 	const countToShow = Math.min(visibleCount, allFeedsCount);
 	return filtered.slice(0, countToShow);
 });
@@ -344,15 +322,80 @@ const isInitialLoadingState = $derived(
 );
 
 // visibleFeeds が 0 だが hasMore/cursor があるときは、自動で次ページを読む
+// 無限ループ防止: 連続実行防止と既読フィードのみの場合の処理
+let lastAutoLoadTime = $state(0);
+let autoLoadAttempts = $state(0);
+let lastFeedsLength = $state(0);
+let lastVisibleFeedsLength = $state(-1); // Track previous visibleFeeds.length to avoid unnecessary re-runs
+const AUTO_LOAD_COOLDOWN = 1000; // 1秒のクールダウン
+const MAX_AUTO_LOAD_ATTEMPTS = 3; // 最大試行回数
+
+// Track visibleFeeds.length separately to optimize $effect dependencies
+const visibleFeedsLength = $derived(visibleFeeds.length);
+
 $effect(() => {
 	if (!browser) return;
 	if (isLoading) return;
 
+	const currentVisibleFeedsLength = visibleFeedsLength;
 	const hasAnyFetched = initialFeeds.length > 0 || feeds.length > 0;
+	const now = Date.now();
+	const currentFeedsLength = initialFeeds.length + feeds.length;
 
-	if (hasAnyFetched && visibleFeeds.length === 0 && hasMore && cursor) {
-		console.log("[FeedsClient] visibleFeeds=0 & hasMore=true -> auto loadMore");
-		void loadMore();
+	// Skip if visibleFeeds.length hasn't changed (optimization to reduce unnecessary re-runs)
+	if (currentVisibleFeedsLength === lastVisibleFeedsLength && lastVisibleFeedsLength !== -1) {
+		return;
+	}
+	lastVisibleFeedsLength = currentVisibleFeedsLength;
+
+	// 連続実行防止: クールダウン期間内は実行しない
+	if (now - lastAutoLoadTime < AUTO_LOAD_COOLDOWN) {
+		return;
+	}
+
+	// フィード数が増えた場合は試行回数をリセット
+	if (currentFeedsLength > lastFeedsLength) {
+		autoLoadAttempts = 0;
+		lastFeedsLength = currentFeedsLength;
+	}
+
+	// visibleFeedsが0で、hasMoreとcursorがある場合のみ自動読み込み
+	if (hasAnyFetched && currentVisibleFeedsLength === 0 && hasMore && cursor) {
+		// 最大試行回数を超えた場合は、すべて既読と判断して hasMore を false にする
+		if (autoLoadAttempts >= MAX_AUTO_LOAD_ATTEMPTS) {
+			console.log(
+				"[FeedsClient] Max auto-load attempts reached, setting hasMore=false to prevent infinite loop",
+			);
+			hasMore = false;
+			cursor = null;
+			return;
+		}
+
+		const allFeedsCount = initialFeeds.length + feeds.length;
+		if (allFeedsCount > 0 && currentVisibleFeedsLength === 0) {
+			// 既にフィードがあるのにvisibleFeedsが0 = すべて既読
+			// この場合、新しいフィードを読み込んでみる
+			console.log(
+				"[FeedsClient] visibleFeeds=0 & hasMore=true -> auto loadMore (all feeds read, attempt:",
+				autoLoadAttempts + 1,
+				")",
+			);
+			lastAutoLoadTime = now;
+			autoLoadAttempts++;
+			void loadMore();
+		} else if (allFeedsCount === 0) {
+			// まだフィードがない場合のみ自動読み込み
+			console.log(
+				"[FeedsClient] visibleFeeds=0 & hasMore=true -> auto loadMore (no feeds yet)",
+			);
+			lastAutoLoadTime = now;
+			autoLoadAttempts++;
+			void loadMore();
+		}
+	} else {
+		// 条件が満たされない場合は試行回数をリセット
+		autoLoadAttempts = 0;
+		lastFeedsLength = currentFeedsLength;
 	}
 });
 </script>
@@ -372,73 +415,80 @@ $effect(() => {
 		data-testid="feeds-scroll-container"
 		style="background: var(--app-bg);"
 	>
-		<InfiniteScroll
-			{loadMore}
-			root={scrollContainerRef}
-			disabled={!hasMore || isLoading}
-			rootMargin="0px 0px 200px 0px"
-			threshold={0.2}
-		>
-			{#if isInitialLoadingState && !hasVisibleContent}
-				<!-- Skeleton loading state -->
-				<div class="flex flex-col gap-4">
-					{#each Array(INITIAL_VISIBLE_CARDS) as _}
-						<div
-							class="p-4 rounded-2xl border-2 border-border animate-pulse"
-							style="background: var(--surface-bg);"
-						>
-							<div class="h-4 bg-muted rounded w-3/4 mb-2"></div>
-							<div class="h-3 bg-muted rounded w-full mb-1"></div>
-							<div class="h-3 bg-muted rounded w-5/6"></div>
-						</div>
-					{/each}
-				</div>
-			{:else if error}
-				<!-- Error state -->
-				<div class="flex flex-col items-center justify-center min-h-[50vh] p-6">
+		{#if isInitialLoadingState && !hasVisibleContent}
+			<!-- Skeleton loading state -->
+			<div class="flex flex-col gap-4">
+				{#each Array(INITIAL_VISIBLE_CARDS) as _}
 					<div
-						class="p-6 rounded-lg border text-center"
-						style="background: var(--surface-bg); border-color: var(--destructive);"
+						class="p-4 rounded-2xl border-2 border-border animate-pulse"
+						style="background: var(--surface-bg);"
 					>
-						<p class="text-destructive font-semibold mb-2">Error loading feeds</p>
-						<p class="text-sm text-muted-foreground mb-4">{error.message}</p>
-						<button
-							onclick={() => void retryFetch()}
-							disabled={isRetrying}
-							class="px-4 py-2 rounded bg-primary text-primary-foreground disabled:opacity-50"
-						>
-							{isRetrying ? "Retrying..." : "Retry"}
-						</button>
+						<div class="h-4 bg-muted rounded w-3/4 mb-2"></div>
+						<div class="h-3 bg-muted rounded w-full mb-1"></div>
+						<div class="h-3 bg-muted rounded w-5/6"></div>
 					</div>
+				{/each}
+			</div>
+		{:else if error}
+			<!-- Error state -->
+			<div class="flex flex-col items-center justify-center min-h-[50vh] p-6">
+				<div
+					class="p-6 rounded-lg border text-center"
+					style="background: var(--surface-bg); border-color: var(--destructive);"
+				>
+					<p class="text-destructive font-semibold mb-2">Error loading feeds</p>
+					<p class="text-sm text-muted-foreground mb-4">{error.message}</p>
+					<button
+						onclick={() => void retryFetch()}
+						disabled={isRetrying}
+						class="px-4 py-2 rounded bg-primary text-primary-foreground disabled:opacity-50"
+					>
+						{isRetrying ? "Retrying..." : "Retry"}
+					</button>
 				</div>
-			{:else if visibleFeeds.length > 0}
-				<!-- Feed list rendering -->
-				<VirtualFeedList
-					feeds={visibleFeeds}
-					{readFeeds}
-					onMarkAsRead={handleMarkAsRead}
-				/>
+			</div>
+		{:else if visibleFeeds.length > 0}
+			<!-- Feed list rendering -->
+			<VirtualFeedList
+				feeds={visibleFeeds}
+				{readFeeds}
+				onMarkAsRead={handleMarkAsRead}
+			/>
 
-				<!-- No more feeds indicator -->
-				{#if !hasMore && visibleFeeds.length > 0}
-					<p
-						class="text-center text-sm mt-8 mb-4"
-						style="color: var(--alt-text-secondary);"
-					>
-						No more feeds to load
-					</p>
-				{/if}
-
-				<!-- Loading indicator -->
-				{#if isLoading}
-					<div class="py-4 text-center text-sm" style="color: var(--alt-text-secondary);">
-						Loading more...
-					</div>
-				{/if}
-			{:else}
-				<!-- Empty state -->
-				<EmptyFeedState />
+			<!-- No more feeds indicator -->
+			{#if !hasMore && visibleFeeds.length > 0}
+				<p
+					class="text-center text-sm mt-8 mb-4"
+					style="color: var(--alt-text-secondary);"
+				>
+					No more feeds to load
+				</p>
 			{/if}
-		</InfiniteScroll>
+
+			<!-- Loading indicator -->
+			{#if isLoading}
+				<div class="py-4 text-center text-sm" style="color: var(--alt-text-secondary);">
+					Loading more...
+				</div>
+			{/if}
+
+			<!-- Infinite scroll sentinel -->
+			{#if hasMore}
+				<div
+					use:infiniteScroll={{
+						callback: loadMore,
+						root: getScrollRoot,
+						disabled: isLoading || !getScrollRoot,
+						rootMargin: "0px 0px 200px 0px",
+						threshold: 0.1,
+					}}
+					aria-hidden="true"
+					style="height: 10px; min-height: 10px; width: 100%;"
+				></div>
+			{/if}
+		{:else}
+			<!-- Empty state -->
+			<EmptyFeedState />
+		{/if}
 	</div>
 </div>
