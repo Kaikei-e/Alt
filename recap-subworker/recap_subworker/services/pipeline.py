@@ -144,12 +144,15 @@ class EvidencePipeline:
         )
         ms_range = range(1, self.settings.clustering_search_range_ms_max)
 
-        cluster_result = self.clusterer.optimize_clustering(
-            embeddings,
-            min_cluster_size_range=mcs_range,
-            min_samples_range=ms_range,
-            umap_n_neighbors_range=[15, 30] if self.settings.enable_umap_auto else None,
-        )
+        if request.genre == "other":
+            cluster_result = self.clusterer.subcluster_other(embeddings)
+        else:
+            cluster_result = self.clusterer.optimize_clustering(
+                embeddings,
+                min_cluster_size_range=mcs_range,
+                min_samples_range=ms_range,
+                umap_n_neighbors_range=[15, 30] if self.settings.enable_umap_auto else None,
+            )
         hdbscan_duration = time.perf_counter() - cluster_start
         HDBSCAN_SECONDS.observe(hdbscan_duration)
         response.diagnostics.hdbscan_ms = hdbscan_duration * 1000

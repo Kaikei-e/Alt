@@ -104,10 +104,21 @@ class EvaluationService:
         if not golden_data:
             raise ValueError("Golden dataset is empty")
 
-        if self.use_cross_validation:
-            return self._evaluate_with_cv(golden_data)
+        # 新しいスキーマ（items配列あり）とレガシースキーマ（直接配列）の両方に対応
+        if isinstance(golden_data, dict) and "items" in golden_data:
+            items = golden_data["items"]
+        elif isinstance(golden_data, list):
+            items = golden_data  # レガシー形式
         else:
-            return self._evaluate_single(golden_data)
+            raise ValueError("Golden dataset has invalid structure")
+
+        if not items:
+            raise ValueError("Golden dataset contains no items")
+
+        if self.use_cross_validation:
+            return self._evaluate_with_cv(items)
+        else:
+            return self._evaluate_single(items)
 
     def _evaluate_single(self, golden_data: List[Dict]) -> Dict:
         """単一の評価を実行。"""
@@ -270,9 +281,16 @@ class EvaluationService:
         self, item: Dict
     ) -> Optional[Tuple[List[str], List[str], bool]]:
         """単一アイテムを評価。"""
-        # データ形式の確認
-        if "content" in item:
+        # データ形式の確認（content_en優先、次にcontent_ja、最後にcontent）
+        content = None
+        if "content_en" in item and item.get("content_en"):
+            content = item["content_en"]
+        elif "content_ja" in item and item.get("content_ja"):
+            content = item["content_ja"]
+        elif "content" in item:
             content = item["content"]
+
+        if content:
             title = ""
             body = content
         elif "title" in item and "body" in item:
