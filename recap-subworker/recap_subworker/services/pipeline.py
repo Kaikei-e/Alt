@@ -148,6 +148,7 @@ class EvidencePipeline:
             embeddings,
             min_cluster_size_range=mcs_range,
             min_samples_range=ms_range,
+            umap_n_neighbors_range=[15, 30] if self.settings.enable_umap_auto else None,
         )
         hdbscan_duration = time.perf_counter() - cluster_start
         HDBSCAN_SECONDS.observe(hdbscan_duration)

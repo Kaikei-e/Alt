@@ -38,6 +38,9 @@ class Clusterer:
         *,
         min_cluster_size: int,
         min_samples: int,
+        umap_n_neighbors: int | None = None,
+        umap_n_components: int | None = None,
+        umap_min_dist: float | None = None,
     ) -> ClusterResult:
         if embeddings.size == 0:
             empty = np.empty((0,), dtype=int)
@@ -69,20 +72,26 @@ class Clusterer:
             from umap import UMAP  # lazy import
 
             reducer = UMAP(
-                n_neighbors=30,
-                min_dist=0.0,
-                n_components=min(embeddings.shape[1], 50),
+                n_components=umap_n_components or self.settings.umap_n_components,
+                n_neighbors=umap_n_neighbors or self.settings.umap_n_neighbors,
                 metric="cosine",
-                random_state=42,
+                min_dist=umap_min_dist or self.settings.umap_min_dist,
+                random_state=42,  # reproducible
+                n_jobs=1,
             )
             reduced = reducer.fit_transform(embeddings)
 
+        # HDBSCAN
         clusterer = hdbscan.HDBSCAN(
-            min_cluster_size=max(2, min_cluster_size),
-            min_samples=max(1, min_samples),
-            metric="euclidean",
-            cluster_selection_method="eom",
-            gen_min_span_tree=True,
+            min_cluster_size=min_cluster_size if min_cluster_size > 0 else self.settings.hdbscan_min_cluster_size,
+            min_samples=min_samples if min_samples > 0 else self.settings.hdbscan_min_samples,
+            metric="euclidean" if use_umap else "euclidean", # UMAP reduces to euclidean space usually, or if raw embeddings we might use cosine?
+            # Actually standard practice with E5/Cosine embeddings:
+            # If UMAP used -> Euclidean on reduced.
+            # If Raw -> HDBSCAN doesn't support 'cosine' efficiently without precomputed distance matrix usually, but let's check.
+            # The original code might have been using default.
+            cluster_selection_method=self.settings.hdbscan_cluster_selection_method,
+            prediction_data=True,
         )
         clusterer.fit(reduced)
         labels = clusterer.labels_
@@ -114,6 +123,7 @@ class Clusterer:
         *,
         min_cluster_size_range: range | list[int] = range(3, 10),
         min_samples_range: range | list[int] = range(1, 5),
+        umap_n_neighbors_range: range | list[int] | None = None,
     ) -> ClusterResult:
         """Perform grid search to find best clustering parameters based on DBCV."""
         best_score = -1.0
@@ -124,17 +134,22 @@ class Clusterer:
         if embeddings.size == 0 or not np.isfinite(embeddings).all():
              return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
 
-        for mcs in min_cluster_size_range:
-            for ms in min_samples_range:
-                # Skip invalid combinations if any
-                if ms >= mcs:
-                    continue
+        # Default to single run if no UMAP range provided
+        n_neighbors_list = umap_n_neighbors_range if umap_n_neighbors_range is not None else [None]
 
-                result = self.cluster(
-                    embeddings,
-                    min_cluster_size=mcs,
-                    min_samples=ms,
-                )
+        for n_neighbors in n_neighbors_list:
+            for mcs in min_cluster_size_range:
+                for ms in min_samples_range:
+                    # Skip invalid combinations if any
+                    if ms >= mcs:
+                        continue
+
+                    result = self.cluster(
+                        embeddings,
+                        min_cluster_size=mcs,
+                        min_samples=ms,
+                        umap_n_neighbors=n_neighbors,
+                    )
 
                 # Prefer higher score. If score is same, prefer larger min_cluster_size (more stability)
                 if result.dbcv_score > best_score:

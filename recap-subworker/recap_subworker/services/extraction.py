@@ -1,5 +1,8 @@
+import logging
 import trafilatura
-from typing import Optional
+
+# Suppress noisy trafilatura logs
+logging.getLogger("trafilatura").setLevel(logging.CRITICAL)
 
 class ContentExtractor:
     """Service for extracting main content from HTML using trafilatura."""
@@ -15,7 +18,8 @@ class ContentExtractor:
         Returns:
             Extracted text content or empty string if extraction fails
         """
-        if not html:
+        # Improved validation: check for empty, whitespace-only, or too short content
+        if not html or not html.strip() or len(html.strip()) < 10:
             return ""
 
         try:
@@ -27,8 +31,6 @@ class ContentExtractor:
                 no_fallback=False
             )
             return text if text else ""
-        except Exception as e:
-            # Log error if logging is available, otherwise just return empty
-            # In production, we'd want proper logging here
-            print(f"Trafilatura extraction failed: {e}")
+        except Exception:
+            # Squelch all errors to avoid log spam, return empty as fallback logic exists in worker
             return ""

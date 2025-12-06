@@ -51,6 +51,18 @@ class Settings(BaseSettings):
         description="Async SQLAlchemy connection string",
         validation_alias=AliasChoices("RECAP_DB_URL", "RECAP_SUBWORKER_DB_URL"),
     )
+    enable_umap_auto: bool = Field(True, validation_alias=AliasChoices("RECAP_ENABLE_UMAP_AUTO", "RECAP_SUBWORKER_ENABLE_UMAP_AUTO"))
+    umap_threshold_sentences: int = Field(50, validation_alias=AliasChoices("RECAP_UMAP_THRESHOLD_SENTENCES", "RECAP_SUBWORKER_UMAP_THRESHOLD_SENTENCES"))
+
+    # UMAP Parameters
+    umap_n_components: int = Field(15, validation_alias=AliasChoices("RECAP_UMAP_N_COMPONENTS", "RECAP_SUBWORKER_UMAP_N_COMPONENTS"))
+    umap_n_neighbors: int = Field(30, validation_alias=AliasChoices("RECAP_UMAP_N_NEIGHBORS", "RECAP_SUBWORKER_UMAP_N_NEIGHBORS"))
+    umap_min_dist: float = Field(0.0, validation_alias=AliasChoices("RECAP_UMAP_MIN_DIST", "RECAP_SUBWORKER_UMAP_MIN_DIST"))
+
+    # HDBSCAN Parameters
+    hdbscan_min_cluster_size: int = Field(5, validation_alias=AliasChoices("RECAP_HDBSCAN_MIN_CLUSTER_SIZE", "RECAP_SUBWORKER_HDBSCAN_MIN_CLUSTER_SIZE"))
+    hdbscan_min_samples: int = Field(5, validation_alias=AliasChoices("RECAP_HDBSCAN_MIN_SAMPLES", "RECAP_SUBWORKER_HDBSCAN_MIN_SAMPLES"))
+    hdbscan_cluster_selection_method: Literal["eom", "leaf"] = Field("eom", validation_alias=AliasChoices("RECAP_HDBSCAN_SELECTION_METHOD", "RECAP_SUBWORKER_HDBSCAN_SELECTION_METHOD"))
     http_host: str = Field(
         "0.0.0.0",
         description="Bind host for the HTTP server",

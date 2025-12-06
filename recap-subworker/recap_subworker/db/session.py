@@ -28,6 +28,15 @@ def get_engine(settings: Settings) -> AsyncEngine:
             pool_pre_ping=True,
             pool_size=5,  # 基本接続プールサイズ
             max_overflow=5,  # オーバーフロー接続数
+            pool_recycle=1800,  # 接続の最大ライフタイム（30分）- イベントループエラーを防ぐ
+            pool_timeout=30,  # 接続取得のタイムアウト（秒）
+            # asyncpg固有の設定: 接続タイムアウトとコマンドタイムアウトを設定
+            connect_args={
+                "command_timeout": 60,  # コマンド実行のタイムアウト（秒）
+                "server_settings": {
+                    "application_name": "recap-subworker",
+                },
+            },
         )
     return _ENGINE
 
