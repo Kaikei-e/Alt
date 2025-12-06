@@ -260,7 +260,8 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
       class="relative z-[2] bg-[rgba(255,255,255,0.03)] backdrop-blur-[20px] border-b border-[var(--alt-glass-border)] px-2 py-2 rounded-t-2xl"
     >
       <p
-        class="text-sm text-[slate-700] mb-2 uppercase tracking-[0.08em] font-semibold bg-clip-text text-transparent bg-[var(--accent-gradient)]"
+        class="text-sm mb-2 uppercase tracking-[0.08em] font-semibold"
+        style="color: black;"
       >
         Swipe to mark as read
       </p>
