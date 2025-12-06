@@ -56,7 +56,7 @@ SCHEMA:
 {{
   "title": "Topic Title (Max 45 chars)",
   "bullets": [
-    "Bullet 1 (Subject + Predicate structure, 100-200 chars)",
+    "Bullet 1 (Subject + Predicate structure, 200-300 chars)",
     "Bullet 2 (Detail/Context, 200-300 chars)",
     "Bullet 3 (Impact/Future, 200-300 chars)"
   ],
