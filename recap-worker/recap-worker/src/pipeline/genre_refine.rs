@@ -597,16 +597,6 @@ impl RefineEngine for DefaultRefineEngine {
             ));
         }
 
-        if input.candidates.is_empty() {
-            return Ok(RefineOutcome::new(
-                config.fallback_genre.clone(),
-                0.0,
-                RefineStrategy::FallbackOther,
-                None,
-                HashMap::new(),
-            ));
-        }
-
         let graph_cache = match self.graph.snapshot().await {
             Ok(cache) => cache,
             Err(err) => {
@@ -639,6 +629,16 @@ impl RefineEngine for DefaultRefineEngine {
             );
         }
 
+        if expanded_candidates.is_empty() {
+            return Ok(RefineOutcome::new(
+                config.fallback_genre.clone(),
+                0.0,
+                RefineStrategy::FallbackOther,
+                None,
+                HashMap::new(),
+            ));
+        }
+
         let normalized_candidates: Vec<(String, &GenreCandidate)> = expanded_candidates
             .iter()
             .map(|candidate| (normalize(&candidate.name), candidate))
@@ -648,8 +648,7 @@ impl RefineEngine for DefaultRefineEngine {
             tag_consistency_winner(&config, &normalized_candidates, &input.tag_profile.top_tags);
         if let Some((winner_name, confidence)) = consistent_candidate {
             let outcome_conf = confidence.max(
-                input
-                    .candidates
+                expanded_candidates
                     .iter()
                     .find(|c| c.name.eq_ignore_ascii_case(&winner_name))
                     .map_or(0.0, |c| c.classifier_confidence),
@@ -688,8 +687,7 @@ impl RefineEngine for DefaultRefineEngine {
             );
         }
 
-        let mut scored: Vec<(&GenreCandidate, f32)> = input
-            .candidates
+        let mut scored: Vec<(&GenreCandidate, f32)> = expanded_candidates
             .iter()
             .map(|candidate| {
                 let boost = graph_boosts
@@ -865,24 +863,17 @@ fn compute_graph_boosts(
             if matched_tags.is_empty() && !unmatched_tags.is_empty() {
                 // Debug: Check if graph is empty
                 let (graph_genre_count, graph_total_tags, graph_sample_tags) = graph.debug_stats();
-
-                tracing::warn!(
-                    genre = %candidate.name,
-                    genre_normalized = %normalize(&candidate.name),
-                    tag_count = tags.len(),
-                    unmatched_sample = ?unmatched_tags.iter().take(5).map(|(l, n)| format!("{} -> {}", l, n)).collect::<Vec<_>>(),
+                tracing::debug!(
+                    genre = %normalized,
                     graph_genre_count = graph_genre_count,
                     graph_total_tags = graph_total_tags,
                     graph_sample_tags = ?graph_sample_tags,
                     "no graph boost matches found for genre"
                 );
             } else if !matched_tags.is_empty() {
-                tracing::warn!(
-                    genre = %candidate.name,
-                    genre_normalized = %normalize(&candidate.name),
+                tracing::debug!(
+                    genre = %normalized,
                     matched_count = matched_tags.len(),
-                    total_boost = candidate_boost,
-                    matched_sample = ?matched_tags.iter().take(3).map(|(l, n, w, c)| format!("{} -> {} (w={}, c={})", l, n, w, c)).collect::<Vec<_>>(),
                     "graph boost matches found"
                 );
             }
@@ -954,12 +945,9 @@ fn expand_candidates_from_tags(
     }
 
     if !added_genres.is_empty() || !skipped_below_threshold.is_empty() {
-        tracing::warn!(
+        tracing::debug!(
             added_count = added_genres.len(),
-            added_genres = ?added_genres.iter().take(5).map(|(g, w)| format!("{}:{:.3}", g, w)).collect::<Vec<_>>(),
             skipped_count = skipped_below_threshold.len(),
-            skipped_sample = ?skipped_below_threshold.iter().take(3).map(|(g, w)| format!("{}:{:.3}", g, w)).collect::<Vec<_>>(),
-            threshold = CANDIDATE_EXPANSION_MIN_WEIGHT,
             "candidate expansion from tags"
         );
     }

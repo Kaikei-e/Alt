@@ -23,13 +23,53 @@ static RESCUE_SUCCESS_COUNT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 static RESCUE_FAIL_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+/// Golden Datasetのトップレベル構造
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct GoldenDatasetRoot {
+    #[serde(default)]
+    schema_version: Option<String>,
+    #[serde(default)]
+    taxonomy_version: Option<String>,
+    #[serde(default)]
+    genres: Vec<String>,
+    #[serde(default, rename = "facets_suggestion")]
+    facets_suggestion: Vec<String>,
+    items: Vec<GoldenItem>,
+}
+
 /// Golden Datasetのアイテム（JSON形式）
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GoldenItem {
     pub id: String,
-    pub content: String,
+    #[serde(default)]
+    pub content_ja: Option<String>,
+    #[serde(default)]
+    pub content_en: Option<String>,
+    #[serde(default)]
+    pub content: Option<String>, // レガシー対応
     #[serde(rename = "expected_genres")]
     pub genres: Vec<String>,
+}
+
+impl GoldenItem {
+    /// コンテンツを取得（content_en優先、次にcontent_ja、最後にcontent）
+    pub fn content(&self) -> String {
+        if let Some(ref en) = self.content_en {
+            if !en.trim().is_empty() {
+                return en.clone();
+            }
+        }
+        if let Some(ref ja) = self.content_ja {
+            if !ja.trim().is_empty() {
+                return ja.clone();
+            }
+        }
+        if let Some(ref content) = self.content {
+            return content.clone();
+        }
+        String::new()
+    }
 }
 
 /// 特徴ベクトル抽出の統計情報
@@ -161,8 +201,16 @@ impl ClassificationPipeline {
                 golden_dataset_path.display()
             )
         })?;
+
+        // 新しいスキーマ（items配列あり）とレガシースキーマ（直接配列）の両方に対応
         let golden_items: Vec<GoldenItem> =
-            serde_json::from_str(&content).context("failed to parse golden dataset JSON")?;
+            if let Ok(root) = serde_json::from_str::<GoldenDatasetRoot>(&content) {
+                root.items
+            } else {
+                // レガシー形式：直接配列としてパース
+                serde_json::from_str(&content)
+                    .context("failed to parse golden dataset JSON (legacy format)")?
+            };
 
         let token_pipeline = TokenPipeline::new();
 
@@ -170,7 +218,8 @@ impl ClassificationPipeline {
         let mut tokenized_corpus = Vec::new();
         for item in &golden_items {
             let language = ClassificationLanguage::Unknown;
-            let normalized = token_pipeline.preprocess(&item.content, "", language);
+            let content = item.content();
+            let normalized = token_pipeline.preprocess(&content, "", language);
             tokenized_corpus.push(normalized.tokens);
         }
 
@@ -410,7 +459,7 @@ impl ClassificationPipeline {
 
             labeled_articles.push(Article {
                 id: item.id.clone(),
-                content: item.content.clone(),
+                content: item.content(),
                 genres: item.genres.clone(),
                 feature_vector: Some(feature_vector),
             });

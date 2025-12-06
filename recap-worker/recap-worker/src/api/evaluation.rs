@@ -106,9 +106,35 @@ fn analyze_golden_dataset(items: &[GoldenItem]) -> DatasetQualityReport {
     }
 }
 
+/// Golden Datasetのトップレベル構造
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct GoldenDatasetRoot {
+    #[serde(default)]
+    schema_version: Option<String>,
+    #[serde(default)]
+    taxonomy_version: Option<String>,
+    #[serde(default)]
+    genres: Vec<String>,
+    #[serde(default, rename = "facets_suggestion")]
+    facets_suggestion: Vec<String>,
+    items: Vec<GoldenItem>,
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 enum GoldenItem {
+    /// Bilingual format: content_ja and content_en
+    Bilingual {
+        id: String,
+        #[serde(default)]
+        content_ja: Option<String>,
+        #[serde(default)]
+        content_en: Option<String>,
+        #[serde(default)]
+        content: Option<String>, // レガシー対応
+        expected_genres: Vec<String>,
+    },
     /// New format: single content field
     Simple {
         id: String,
@@ -132,12 +158,34 @@ impl GoldenItem {
     #[allow(clippy::match_same_arms)]
     fn id(&self) -> &str {
         match self {
-            Self::Simple { id, .. } | Self::Legacy { id, .. } => id,
+            Self::Bilingual { id, .. } | Self::Simple { id, .. } | Self::Legacy { id, .. } => id,
         }
     }
 
     fn content(&self) -> String {
         match self {
+            Self::Bilingual {
+                content_en,
+                content_ja,
+                content,
+                ..
+            } => {
+                // content_en優先、次にcontent_ja、最後にcontent
+                if let Some(en) = content_en {
+                    if !en.trim().is_empty() {
+                        return en.clone();
+                    }
+                }
+                if let Some(ja) = content_ja {
+                    if !ja.trim().is_empty() {
+                        return ja.clone();
+                    }
+                }
+                if let Some(c) = content {
+                    return c.clone();
+                }
+                String::new()
+            }
             Self::Simple { content, .. } => content.clone(),
             Self::Legacy { title, body, .. } => {
                 if let Some(title) = title {
@@ -152,7 +200,10 @@ impl GoldenItem {
     #[allow(clippy::match_same_arms)]
     fn expected_genres(&self) -> &[String] {
         match self {
-            Self::Simple {
+            Self::Bilingual {
+                expected_genres, ..
+            }
+            | Self::Simple {
                 expected_genres, ..
             }
             | Self::Legacy {
@@ -401,13 +452,20 @@ fn load_golden_dataset(path: &PathBuf) -> anyhow::Result<Vec<GoldenItem>> {
         anyhow::bail!("Golden dataset file is empty: {}", path.display());
     }
 
-    let items: Vec<GoldenItem> = serde_json::from_str(&content).with_context(|| {
-        format!(
-            "Failed to parse golden dataset JSON from {}. Content preview: {}",
-            path.display(),
-            content.chars().take(200).collect::<String>()
-        )
-    })?;
+    // 新しいスキーマ（items配列あり）とレガシースキーマ（直接配列）の両方に対応
+    let items: Vec<GoldenItem> =
+        if let Ok(root) = serde_json::from_str::<GoldenDatasetRoot>(&content) {
+            root.items
+        } else {
+            // レガシー形式：直接配列としてパース
+            serde_json::from_str(&content).with_context(|| {
+                format!(
+                    "Failed to parse golden dataset JSON from {}. Content preview: {}",
+                    path.display(),
+                    content.chars().take(200).collect::<String>()
+                )
+            })?
+        };
 
     if items.is_empty() {
         anyhow::bail!("Golden dataset contains no items: {}", path.display());

@@ -10,7 +10,9 @@ fn test_rescue_pass_integration() {
     for i in 0..5 {
         golden_items.push(GoldenItem {
             id: format!("train_{}", i),
-            content: "apple apple apple".to_string(),
+            content_ja: None,
+            content_en: Some("apple apple apple".to_string()),
+            content: None,
             genres: vec!["tight_genre".to_string()],
         });
     }
@@ -81,7 +83,9 @@ fn test_rescue_pass_with_labeled_neighbor() {
     // 1. Create a temporary Golden Dataset (needed for pipeline init)
     let golden_items = vec![GoldenItem {
         id: "train_0".to_string(),
-        content: "apple".to_string(),
+        content_ja: None,
+        content_en: Some("apple".to_string()),
+        content: None,
         genres: vec!["fruit".to_string()],
     }];
 
@@ -170,7 +174,9 @@ fn test_predict_rescue_pass() {
     // 1. Create a temporary Golden Dataset
     let golden_items = vec![GoldenItem {
         id: "train_0".to_string(),
-        content: "apple".to_string(),
+        content_ja: None,
+        content_en: Some("apple".to_string()),
+        content: None,
         genres: vec!["fruit".to_string()],
     }];
 
