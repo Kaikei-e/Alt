@@ -56,9 +56,9 @@ SCHEMA:
 {{
   "title": "Topic Title (Max 45 chars)",
   "bullets": [
-    "Bullet 1 (Subject + Predicate structure, 50-100 chars)",
-    "Bullet 2 (Detail/Context, 50-100 chars)",
-    "Bullet 3 (Impact/Future, 50-100 chars)"
+    "Bullet 1 (Subject + Predicate structure, 100-200 chars)",
+    "Bullet 2 (Detail/Context, 200-300 chars)",
+    "Bullet 3 (Impact/Future, 200-300 chars)"
   ],
   "language": "ja"
 }}
@@ -75,7 +75,7 @@ Instructions:
   - 2. Proper Nouns: Identify who/what is involved clearly.
   - 3. Concrete Actions: State what happened.
 - Style: 常体（〜だ／である）。
-- Length: Keep each bullet concise (50-100 characters). Avoid overly long compound sentences.
+- Length: Keep each bullet concise (200-300 characters). Avoid overly long compound sentences.
 - Missing Info: If key info is missing, state "未提示" explicitly.
 - "[Main Point]" sentences in the input are priority.
 
