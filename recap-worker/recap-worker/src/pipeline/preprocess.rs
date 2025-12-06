@@ -420,7 +420,7 @@ mod tests {
 
     #[tokio::test]
     async fn preprocess_article_trims_and_detects_language_case_1() {
-        let body = "  正規化テキスト  ";
+        let body = "  正規化テキストの処理を実行します。これは日本語のテストです。  ";
         let language = Some("ja");
         let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
         let fetched = article("art-1", body, Some("Title"), language);
@@ -439,7 +439,7 @@ mod tests {
 
     #[tokio::test]
     async fn preprocess_article_trims_and_detects_language_case_2() {
-        let body = "Text with spaces";
+        let body = "This is a longer text with spaces that meets the minimum length requirement for English content.";
         let language = None;
         let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
         let fetched = article("art-2", body, Some("Title"), language);

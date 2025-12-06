@@ -14,11 +14,12 @@ use crate::scheduler::JobContext;
 
 pub(crate) struct RemoteGenreStage {
     client: Arc<SubworkerClient>,
+    threshold: f32,
 }
 
 impl RemoteGenreStage {
-    pub(crate) fn new(client: Arc<SubworkerClient>) -> Self {
-        Self { client }
+    pub(crate) fn new(client: Arc<SubworkerClient>, threshold: f32) -> Self {
+        Self { client, threshold }
     }
 }
 
@@ -41,13 +42,13 @@ impl GenreStage for RemoteGenreStage {
         }
 
         // Prepare texts for classification
-        // We use title + body as the input text
+        // We use title + first 5 sentences as the input text
         let texts: Vec<String> = corpus
             .articles
             .iter()
             .map(|a| {
                 let title = a.title.as_deref().unwrap_or("");
-                let body = a.sentences.join(" ");
+                let body = a.sentences.iter().take(5).cloned().collect::<Vec<_>>().join(" ");
                 format!("{title} {body}")
             })
             .collect();
@@ -59,7 +60,11 @@ impl GenreStage for RemoteGenreStage {
         let mut genre_distribution: HashMap<String, usize> = HashMap::new();
 
         for (article, result) in corpus.articles.into_iter().zip(results) {
-            let top_genre = result.top_genre;
+            let top_genre = if result.confidence >= self.threshold {
+                result.top_genre
+            } else {
+                "other".to_string()
+            };
 
             debug!(
                 article_id = %article.id,

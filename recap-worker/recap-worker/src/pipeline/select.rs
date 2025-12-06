@@ -53,22 +53,29 @@ impl SummarySelectStage {
         }
     }
 
-    async fn get_dynamic_thresholds(&self) -> HashMap<String, usize> {
+    async fn get_dynamic_thresholds(&self) -> (HashMap<String, usize>, HashMap<String, f32>) {
         if let Some(dao) = &self.dao {
             match dao.get_latest_worker_config("genre_distribution").await {
                 Ok(Some(payload)) => {
-                    // payload is {"genre": {"min_docs_threshold": N, ...}}
+                    // payload is {"genre": {"min_docs_threshold": N, "cosine_threshold": F, ...}}
                     if let Some(obj) = payload.as_object() {
-                        let mut map = HashMap::new();
+                        let mut min_docs_map = HashMap::new();
+                        let mut cosine_map = HashMap::new();
                         for (genre, stats) in obj {
                             if let Some(threshold) = stats
                                 .get("min_docs_threshold")
                                 .and_then(serde_json::Value::as_u64)
                             {
-                                map.insert(genre.clone(), threshold as usize);
+                                min_docs_map.insert(genre.clone(), threshold as usize);
+                            }
+                            if let Some(threshold) = stats
+                                .get("cosine_threshold")
+                                .and_then(serde_json::Value::as_f64)
+                            {
+                                cosine_map.insert(genre.clone(), threshold as f32);
                             }
                         }
-                        return map;
+                        return (min_docs_map, cosine_map);
                     }
                 }
                 Ok(None) => {
@@ -79,7 +86,7 @@ impl SummarySelectStage {
                 }
             }
         }
-        HashMap::new()
+        (HashMap::new(), HashMap::new())
     }
 
     async fn subcluster_others(
@@ -212,7 +219,8 @@ impl SummarySelectStage {
         &self,
         service: &EmbeddingService,
         assignments: Vec<GenreAssignment>,
-        thresholds: &HashMap<String, usize>,
+        min_docs_thresholds: &HashMap<String, usize>,
+        cosine_thresholds: &HashMap<String, f32>,
     ) -> Vec<GenreAssignment> {
         // Group by genre
         let mut by_genre: std::collections::HashMap<String, Vec<GenreAssignment>> =
@@ -277,17 +285,22 @@ impl SummarySelectStage {
                     .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
                 // Filter by threshold, but ensure we have at least min_documents_per_genre
-                let min_docs = thresholds
+                let min_docs = min_docs_thresholds
                     .get(&genre)
                     .copied()
                     .unwrap_or(self.min_documents_per_genre);
+
+                let threshold = cosine_thresholds
+                    .get(&genre)
+                    .copied()
+                    .unwrap_or(self.similarity_threshold);
 
                 let mut valid_assignments: Vec<GenreAssignment> = Vec::new();
                 let mut filtered_out: Vec<(f32, GenreAssignment)> = Vec::new();
                 let mut filtered_out_count = 0;
 
                 for (similarity, assignment) in all_with_similarity {
-                    if similarity >= self.similarity_threshold {
+                    if similarity >= threshold {
                         valid_assignments.push(assignment);
                     } else {
                         let article_id = assignment.article.id.clone();
@@ -297,6 +310,7 @@ impl SummarySelectStage {
                             article_id = %article_id,
                             genre = %genre,
                             similarity = %similarity,
+                            threshold = %threshold,
                             "filtered out outlier article"
                         );
                     }
@@ -359,7 +373,7 @@ impl SelectStage for SummarySelectStage {
         job: &JobContext,
         bundle: GenreBundle,
     ) -> anyhow::Result<SelectedSummary> {
-        let thresholds = self.get_dynamic_thresholds().await;
+        let (min_docs_thresholds, cosine_thresholds) = self.get_dynamic_thresholds().await;
 
         // Sub-cluster "other" genre items
         let assignments = self
@@ -387,14 +401,19 @@ impl SelectStage for SummarySelectStage {
                 assignments,
                 ..bundle
             },
-            &thresholds,
+            &min_docs_thresholds,
         );
         let post_trim_count = assignments.len();
 
         if let Some(service) = &self.embedding_service {
             let pre_outlier_count = assignments.len();
             assignments = self
-                .filter_outliers(service, assignments, &thresholds)
+                .filter_outliers(
+                    service,
+                    assignments,
+                    &min_docs_thresholds,
+                    &cosine_thresholds,
+                )
                 .await;
             let post_outlier_count = assignments.len();
             tracing::debug!(

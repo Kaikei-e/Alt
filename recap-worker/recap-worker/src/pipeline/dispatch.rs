@@ -97,6 +97,18 @@ impl MlLlmDispatchStage {
             .await
             .context("clustering failed")?;
 
+        // Fallback: If clustering succeeded but returned NO clusters (e.g. all noise),
+        // we force a fallback response using the evidence corpus.
+        if clustering_response.clusters.is_empty() && !evidence.articles.is_empty() {
+            warn!(
+                job_id = %job_id,
+                genre = %genre,
+                article_count = evidence.articles.len(),
+                "clustering returned no clusters (noise), forcing fallback response"
+            );
+            clustering_response = SubworkerClient::create_fallback_response(job_id, evidence);
+        }
+
         // Handle fallback response (run_id == 0)
         // If the subworker client returns a fallback response (due to insufficient documents),
         // it will have run_id = 0, which doesn't exist in the database.

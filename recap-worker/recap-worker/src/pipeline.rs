@@ -115,7 +115,10 @@ impl PipelineOrchestrator {
         }
 
         use crate::pipeline::genre_remote::RemoteGenreStage;
-        let coarse_stage = Arc::new(RemoteGenreStage::new(Arc::clone(&subworker_client)));
+        let coarse_stage = Arc::new(RemoteGenreStage::new(
+            Arc::clone(&subworker_client),
+            config.genre_classifier_threshold(),
+        ));
         let rollout = RefineRollout::new(config.genre_refine_rollout_pct());
         let genre_stage: Arc<dyn GenreStage> = if config.genre_refine_enabled() {
             // デフォルト設定でRefineConfigを初期化（実行時に動的に更新される）

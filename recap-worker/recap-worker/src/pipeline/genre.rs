@@ -305,6 +305,7 @@ pub(crate) struct CoarseGenreStage {
     max_genres: usize,
     embedding_service: Option<EmbeddingService>,
     canonical_embeddings: Arc<tokio::sync::RwLock<HashMap<String, Vec<Vec<f32>>>>>,
+    threshold: f32,
 }
 
 impl CoarseGenreStage {
@@ -314,6 +315,7 @@ impl CoarseGenreStage {
     /// * `min_genres` - 最小ジャンル数（デフォルト: 1）
     /// * `max_genres` - 最大ジャンル数（デフォルト: 3）
     /// * `embedding_service` - Embeddingサービス（オプション）
+    /// * `threshold` - ジャンル分類の閾値
     ///
     /// # Note
     /// ClassificationPipelineの初期化は常に成功します。
@@ -323,6 +325,7 @@ impl CoarseGenreStage {
         max_genres: usize,
         embedding_service: Option<EmbeddingService>,
         subworker: Arc<SubworkerClient>,
+        threshold: f32,
     ) -> Self {
         Self {
             subworker,
@@ -330,12 +333,13 @@ impl CoarseGenreStage {
             max_genres,
             embedding_service,
             canonical_embeddings: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            threshold,
         }
     }
 
     /// デフォルトパラメータで作成する（1〜3ジャンル）。
     pub(crate) fn with_defaults(subworker: Arc<SubworkerClient>) -> Self {
-        Self::new(1, 3, None, subworker)
+        Self::new(1, 3, None, subworker, 0.0)
     }
 
     /// 記事からジャンル候補を生成する。
@@ -348,7 +352,7 @@ impl CoarseGenreStage {
         let body_snippet: String = article
             .sentences
             .iter()
-            .take(10)
+            .take(5)
             .cloned()
             .collect::<Vec<_>>()
             .join(" ");
@@ -377,7 +381,7 @@ impl CoarseGenreStage {
         let mut selected_genres: Vec<String> = sorted_genres
             .iter()
             .take(self.max_genres)
-            .filter(|(_, score)| *score > 0.0) // Basic threshold, maybe move to config
+            .filter(|(_, score)| *score > self.threshold)
             .map(|(g, _)| g.clone())
             .collect();
 
@@ -388,7 +392,7 @@ impl CoarseGenreStage {
 
         // Embedding Filter (Logic kept similar but adapted if needed)
         // With E5 coarse classifier, we might not need extra embedding filter if the classifier ITSELF is E5 based.
-        // But the previous implementation applied "Canonical Embeddings"check.
+        // But the previous implementation applied "Canonical Embeddings" check.
         // If the Coarse Classifier is already using E5 Prototypes (which ARE canonical embeddings), this step is redundant.
         // The Coarse Classifier (Subworker) uses prototypes. So we can skip `apply_embedding_filter`.
 
@@ -904,7 +908,7 @@ mod tests {
     #[tokio::test]
     async fn respects_max_genres_limit() {
         let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
-        let stage = CoarseGenreStage::new(1, 2, None, subworker);
+        let stage = CoarseGenreStage::new(1, 2, None, subworker, 0.0);
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
             job_id: job.job_id,

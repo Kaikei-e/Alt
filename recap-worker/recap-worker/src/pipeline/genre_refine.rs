@@ -578,6 +578,10 @@ impl RefineEngine for DefaultRefineEngine {
         }
 
         if config.require_tags && !input.tag_profile.has_tags() {
+            tracing::info!(
+                article_id = %input.article.id,
+                "falling back to coarse strategy due to missing tags (require_tags=true)"
+            );
             return Ok(RefineOutcome::new(
                 input
                     .candidates
@@ -625,7 +629,7 @@ impl RefineEngine for DefaultRefineEngine {
                 .skip(input.candidates.len())
                 .map(|c| c.name.clone())
                 .collect();
-            tracing::warn!(
+            tracing::debug!(
                 article_id = %input.article.id,
                 original_candidates = input.candidates.len(),
                 expanded_candidates = expanded_candidates.len(),
@@ -669,11 +673,13 @@ impl RefineEngine for DefaultRefineEngine {
         let active_boost_count = graph_boosts.values().filter(|&&v| v > 0.0).count();
         let total_boost_sum: f32 = graph_boosts.values().sum();
         if active_boost_count == 0 {
-            tracing::warn!(
-                total_tags = input.tag_profile.top_tags.len(),
-                total_boost_sum = total_boost_sum,
-                "no active graph boosts - tag_label_graph may be empty or tags don't match"
-            );
+            // WARN -> INFO/DEBUG if valid tags exist but no matches
+            if !input.tag_profile.top_tags.is_empty() {
+                tracing::debug!(
+                    total_tags = input.tag_profile.top_tags.len(),
+                    "no graph boost matches found for tags - graph may be incomplete or tags are new"
+                );
+            }
         } else {
             tracing::debug!(
                 active_boost_count = active_boost_count,
@@ -1275,6 +1281,35 @@ mod tests {
             .expect("refine should succeed");
 
         assert_eq!(outcome.final_genre, "ai");
+        assert_eq!(outcome.strategy, RefineStrategy::CoarseOnly);
+    }
+
+    #[tokio::test]
+    async fn verify_no_graph_match_leads_to_coarse_strategy() {
+        let job = JobContext::new(Uuid::new_v4(), vec![]);
+        let tags = vec![TagSignal::new("unknown_tag", 0.9, None, None)];
+        let article = article_with_tags(tags.clone());
+        let candidates = vec![candidate("tech", 0.8, 0.7)];
+        let tag_profile = TagProfile {
+            top_tags: tags,
+            entropy: 0.5,
+        };
+        // Empty graph means no matches for "unknown_tag"
+        let graph = static_graph(TagLabelGraphCache::empty());
+        let engine = DefaultRefineEngine::new(RefineConfig::new(true), graph);
+
+        let outcome = engine
+            .refine(RefineInput {
+                job: &job,
+                article: &article,
+                candidates: &candidates,
+                tag_profile: &tag_profile,
+                fallback: TagFallbackMode::AllowRefine,
+            })
+            .await
+            .expect("refine should succeed");
+
+        assert_eq!(outcome.final_genre, "tech"); // Falls back to top coarse candidate
         assert_eq!(outcome.strategy, RefineStrategy::CoarseOnly);
     }
 }

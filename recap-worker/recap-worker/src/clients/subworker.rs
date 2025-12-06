@@ -28,6 +28,7 @@ const INITIAL_POLL_INTERVAL_MS: u64 = 60_000; // 60 seconds
 const MAX_POLL_INTERVAL_MS: u64 = 60_000; // 60 seconds (fixed interval for classification)
 const SUBWORKER_TIMEOUT_SECS: u64 = 900; // 15 minutes (async job pattern returns immediately, polling handles long operations)
 const MAX_ERROR_MESSAGE_LENGTH: usize = 500;
+const EXTRACTION_TIMEOUT_SECS: u64 = 30; // 30 seconds for content extraction
 const MIN_FALLBACK_DOCUMENTS: usize = 2;
 
 /// エラーメッセージを要約して切り詰める。
@@ -610,6 +611,7 @@ impl SubworkerClient {
             .client
             .post(url)
             .json(&request)
+            .timeout(Duration::from_secs(EXTRACTION_TIMEOUT_SECS))
             .send()
             .await
             .context("extract request failed")?;
@@ -704,7 +706,10 @@ impl SubworkerClient {
     ///
     /// # Returns
     /// 全記事を含む単一クラスタのレスポンス
-    fn create_fallback_response(job_id: Uuid, corpus: &EvidenceCorpus) -> ClusteringResponse {
+    pub(crate) fn create_fallback_response(
+        job_id: Uuid,
+        corpus: &EvidenceCorpus,
+    ) -> ClusteringResponse {
         // 全記事を含む単一クラスタを構築
         let mut representatives = Vec::new();
         for article in &corpus.articles {
