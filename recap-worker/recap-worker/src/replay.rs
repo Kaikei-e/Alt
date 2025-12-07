@@ -146,6 +146,8 @@ async fn process_record(
             .lang_hint
             .clone()
             .unwrap_or_else(|| "unknown".to_string()),
+        published_at: None,
+        source_url: None,
         tags: tag_signals.clone(),
         duplicates: Vec::new(),
     };

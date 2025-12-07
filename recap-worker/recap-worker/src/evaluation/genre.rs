@@ -222,6 +222,8 @@ async fn refine_prediction(
         },
         sentence_hashes: Vec::new(),
         language: sample.language.clone(),
+        published_at: None,
+        source_url: None,
         tags: tag_profile.top_tags.clone(),
         duplicates: Vec::new(),
     };

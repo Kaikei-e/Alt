@@ -449,6 +449,29 @@ impl RecapDao {
         Ok(())
     }
 
+    /// システムメトリクスを保存する。
+    pub async fn save_system_metrics(
+        &self,
+        job_id: Uuid,
+        metric_type: &str,
+        metrics: &Value,
+    ) -> Result<()> {
+        sqlx::query(
+            r"
+            INSERT INTO recap_system_metrics (job_id, metric_type, metrics, timestamp)
+            VALUES ($1, $2, $3, NOW())
+            ",
+        )
+        .bind(job_id)
+        .bind(metric_type)
+        .bind(Json(metrics))
+        .execute(&self.pool)
+        .await
+        .context("failed to insert system metrics")?;
+
+        Ok(())
+    }
+
     #[allow(dead_code)]
     pub(crate) async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> Result<i64> {
         ensure!(
