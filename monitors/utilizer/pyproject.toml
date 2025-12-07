@@ -1,0 +1,23 @@
+[project]
+name = "utilizer"
+version = "0.1.0"
+description = "Real-time resource monitoring for Recap Job"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "websockets>=12.0",
+    "psutil>=5.9.0",
+]
+
+[project.scripts]
+utilizer = "utilizer.cli:main"
+utilizer-web = "utilizer.web:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []
