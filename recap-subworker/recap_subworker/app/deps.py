@@ -183,12 +183,43 @@ def _get_learning_scheduler(settings: Settings) -> LearningScheduler | None:
 
 
 def _get_classifier(settings: Settings) -> GenreClassifierService:
+    import structlog
+    from pathlib import Path
+
+    logger = structlog.get_logger(__name__)
     global _classifier
     if _classifier is None:
-        _classifier = GenreClassifierService(
-            model_path=settings.genre_classifier_model_path,
-            embedder=_get_embedder(settings),
-        )
+        model_path = Path(settings.genre_classifier_model_path)
+        # Early validation: check if model file exists
+        if not model_path.exists():
+            logger.error(
+                "classifier.model_not_found",
+                model_path=str(model_path),
+                message="Classification model file not found during initialization",
+            )
+            raise FileNotFoundError(
+                f"Classification model not found at {model_path}. "
+                "Please ensure the model file exists and the path is correct."
+            )
+        try:
+            _classifier = GenreClassifierService(
+                model_path=settings.genre_classifier_model_path,
+                embedder=_get_embedder(settings),
+            )
+            logger.info(
+                "classifier.initialized",
+                model_path=str(model_path),
+                message="Classification service initialized successfully",
+            )
+        except Exception as exc:
+            logger.exception(
+                "classifier.initialization_failed",
+                model_path=str(model_path),
+                error_type=type(exc).__name__,
+                error=str(exc),
+                message="Failed to initialize classification service",
+            )
+            raise
     return _classifier
 
 
@@ -224,11 +255,95 @@ def register_lifecycle(app) -> None:
     async def shutdown_event() -> None:  # pragma: no cover - FastAPI runtime hook
         # Note: Learning scheduler is stopped in Gunicorn master process
         # (see recap_subworker/infra/gunicorn_conf.py on_exit hook)
-        if _process_pool is not None:
-            _process_pool.shutdown(wait=False)
-        if _embedder is not None:
-            _embedder.close()
+        import structlog
+
+        logger = structlog.get_logger(__name__)
+        logger.info("shutting down recap-subworker resources")
+
+        # Shutdown RunManager first to cancel pending tasks and prevent memory leaks
+        if _run_manager is not None:
+            try:
+                await _run_manager.shutdown()
+            except Exception as exc:
+                logger.warning(
+                    "error shutting down RunManager",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+
+        # Shutdown pipeline runner (this will properly clean up ProcessPoolExecutor)
         if _pipeline_runner is not None:
-            _pipeline_runner.shutdown()
+            try:
+                _pipeline_runner.shutdown()
+            except Exception as exc:
+                logger.warning(
+                    "error shutting down pipeline runner",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+
+        # Shutdown process pool with wait=True to ensure proper cleanup
+        # This prevents memory leaks from orphaned worker processes
+        # Use a timeout to prevent hanging during shutdown
+        if _process_pool is not None:
+            try:
+                import threading
+
+                shutdown_complete = threading.Event()
+                shutdown_error = [None]
+
+                def shutdown_with_timeout():
+                    try:
+                        _process_pool.shutdown(wait=True)
+                        shutdown_complete.set()
+                    except Exception as exc:
+                        shutdown_error[0] = exc
+                        shutdown_complete.set()
+
+                shutdown_thread = threading.Thread(target=shutdown_with_timeout, daemon=True)
+                shutdown_thread.start()
+
+                # Wait up to 10 seconds for shutdown to complete
+                if not shutdown_complete.wait(timeout=10.0):
+                    logger.warning(
+                        "process pool shutdown timed out, forcing shutdown",
+                        timeout_seconds=10.0,
+                    )
+                    # Force shutdown if timeout
+                    _process_pool.shutdown(wait=False)
+                elif shutdown_error[0] is not None:
+                    logger.warning(
+                        "error during process pool shutdown",
+                        error=str(shutdown_error[0]),
+                        error_type=type(shutdown_error[0]).__name__,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "error shutting down process pool",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+
+        # Close embedder to release model memory
+        if _embedder is not None:
+            try:
+                _embedder.close()
+            except Exception as exc:
+                logger.warning(
+                    "error closing embedder",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+
+        # Close learning client
         if _learning_client is not None:
-            await _learning_client.close()
+            try:
+                await _learning_client.close()
+            except Exception as exc:
+                logger.warning(
+                    "error closing learning client",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+
+        logger.info("recap-subworker shutdown complete")

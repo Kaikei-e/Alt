@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Optional
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+from sqlalchemy.exc import DatabaseError, IntegrityError, OperationalError
 
 from ...domain.models import (
     ClassificationJobPayload,
@@ -21,6 +23,7 @@ from ...services.run_manager import (
 from ..deps import get_run_manager_dep
 
 router = APIRouter()
+LOGGER = structlog.get_logger(__name__)
 
 
 def _record_to_classification_response(record) -> ClassificationJobResponse:
@@ -68,9 +71,53 @@ async def create_classification_run(
     try:
         record = await manager.create_classification_run(submission)
     except IdempotencyMismatchError as exc:
+        LOGGER.warning(
+            "classification.run.idempotency_mismatch",
+            job_id=str(job_id),
+            error=str(exc),
+        )
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ConcurrentRunError as exc:
+        LOGGER.warning(
+            "classification.run.concurrent",
+            job_id=str(job_id),
+            error=str(exc),
+        )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (OperationalError, IntegrityError, DatabaseError) as exc:
+        LOGGER.error(
+            "classification.run.database_error",
+            job_id=str(job_id),
+            error_type=type(exc).__name__,
+            error=str(exc),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Database service temporarily unavailable",
+        ) from exc
+    except FileNotFoundError as exc:
+        LOGGER.error(
+            "classification.run.model_not_found",
+            job_id=str(job_id),
+            error=str(exc),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Classification service temporarily unavailable",
+        ) from exc
+    except Exception as exc:
+        LOGGER.exception(
+            "classification.run.unexpected_error",
+            job_id=str(job_id),
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error",
+        ) from exc
 
     return _record_to_classification_response(record)
 

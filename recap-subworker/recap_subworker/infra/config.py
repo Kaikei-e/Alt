@@ -52,10 +52,15 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("RECAP_DB_URL", "RECAP_SUBWORKER_DB_URL"),
     )
     enable_umap_auto: bool = Field(True, validation_alias=AliasChoices("RECAP_ENABLE_UMAP_AUTO", "RECAP_SUBWORKER_ENABLE_UMAP_AUTO"))
-    umap_threshold_sentences: int = Field(50, validation_alias=AliasChoices("RECAP_UMAP_THRESHOLD_SENTENCES", "RECAP_SUBWORKER_UMAP_THRESHOLD_SENTENCES"))
+    enable_umap_force: bool = Field(
+        False,
+        description="Force UMAP usage regardless of sentence count threshold",
+        validation_alias=AliasChoices("RECAP_ENABLE_UMAP_FORCE", "RECAP_SUBWORKER_ENABLE_UMAP_FORCE"),
+    )
+    umap_threshold_sentences: int = Field(10, validation_alias=AliasChoices("RECAP_UMAP_THRESHOLD_SENTENCES", "RECAP_SUBWORKER_UMAP_THRESHOLD_SENTENCES"))
 
     # UMAP Parameters
-    umap_n_components: int = Field(15, validation_alias=AliasChoices("RECAP_UMAP_N_COMPONENTS", "RECAP_SUBWORKER_UMAP_N_COMPONENTS"))
+    umap_n_components: int = Field(20, validation_alias=AliasChoices("RECAP_UMAP_N_COMPONENTS", "RECAP_SUBWORKER_UMAP_N_COMPONENTS"))
     umap_n_neighbors: int = Field(30, validation_alias=AliasChoices("RECAP_UMAP_N_NEIGHBORS", "RECAP_SUBWORKER_UMAP_N_NEIGHBORS"))
     umap_min_dist: float = Field(0.0, validation_alias=AliasChoices("RECAP_UMAP_MIN_DIST", "RECAP_SUBWORKER_UMAP_MIN_DIST"))
 
@@ -131,15 +136,6 @@ class Settings(BaseSettings):
         256,
         ge=0,
         description="Maximum cached embedding entries when cache is enabled",
-    )
-    enable_umap_auto: bool = Field(
-        True,
-        description="Toggle automatic UMAP dimensionality reduction for large corpora",
-    )
-    umap_threshold_sentences: int = Field(
-        10_000,
-        ge=100,
-        description="Sentence count above which UMAP pre-processing is attempted",
     )
     prometheus_namespace: str = Field(
         "recap_subworker",

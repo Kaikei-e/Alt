@@ -44,7 +44,7 @@ class ClusterJobParams(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    max_sentences_total: int = Field(..., ge=100, le=10_000)
+    max_sentences_total: int = Field(..., ge=50, le=10_000)
     umap_n_components: int = Field(..., ge=0, le=128)
     hdbscan_min_cluster_size: int = Field(..., ge=3, le=500)
     mmr_lambda: float = Field(..., ge=0.0, le=1.0)
@@ -78,7 +78,7 @@ class ClusterJobPayload(BaseModel):
     """Request body for POST /v1/runs."""
 
     params: ClusterJobParams
-    documents: list[ClusterDocument] = Field(..., min_length=10)
+    documents: list[ClusterDocument] = Field(..., min_length=3)
     metadata: Optional["CorpusMetadata"] = Field(default=None)
 
 
