@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
@@ -24,6 +25,8 @@ pub(crate) struct DeduplicatedArticle {
     pub(crate) sentences: Vec<String>,
     pub(crate) sentence_hashes: Vec<u64>,
     pub(crate) language: String,
+    pub(crate) published_at: Option<DateTime<Utc>>,
+    pub(crate) source_url: Option<String>,
     pub(crate) tags: Vec<TagSignal>,
     pub(crate) duplicates: Vec<String>,
 }
@@ -422,6 +425,8 @@ fn deduplicate_sentences(
         sentences: unique_sentences,
         sentence_hashes,
         language: article.language,
+        published_at: article.published_at,
+        source_url: article.source_url,
         tags: article.tags,
         duplicates: Vec::new(),
     };
@@ -446,6 +451,7 @@ mod tests {
             char_count: body.chars().count(),
             is_html_cleaned: false,
             published_at: Some(Utc::now()),
+            source_url: None,
             tokens: body.split_whitespace().map(str::to_lowercase).collect(),
             tags: Vec::new(),
         }

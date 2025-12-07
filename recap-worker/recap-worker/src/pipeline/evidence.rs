@@ -2,12 +2,15 @@
 ///
 /// GenreStageの出力から、各ジャンルごとに記事をグループ化し、
 /// Subworkerに送信するための証拠コーパスを構築します。
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use super::embedding::cosine_similarity;
 use super::genre::{GenreAssignment, GenreBundle};
 
 /// Subworkerが受け付ける文の最小文字数（空白除外）。
@@ -29,6 +32,9 @@ pub(crate) struct EvidenceArticle {
     pub(crate) title: Option<String>,
     pub(crate) sentences: Vec<String>,
     pub(crate) language: String,
+    pub(crate) published_at: Option<DateTime<Utc>>,
+    pub(crate) source_url: Option<String>,
+    pub(crate) score: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) genre_scores: Option<HashMap<String, usize>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -73,15 +79,13 @@ pub(crate) struct EvidenceBundle {
     pub(crate) corpora: HashMap<String, EvidenceCorpus>,
 }
 
+struct ScoredAssignment<'a> {
+    assignment: &'a GenreAssignment,
+    score: f32,
+}
+
 impl EvidenceBundle {
     /// GenreBundleから証拠コーパスを構築する。
-    ///
-    /// # Arguments
-    /// * `job_id` - ジョブID
-    /// * `bundle` - ジャンル付き記事バンドル
-    ///
-    /// # Returns
-    /// ジャンル別にグループ化された証拠コーパス
     pub(crate) fn from_genre_bundle(job_id: Uuid, bundle: GenreBundle) -> Self {
         info!(
             job_id = %job_id,
@@ -93,7 +97,6 @@ impl EvidenceBundle {
         let mut genre_groups: HashMap<String, Vec<&GenreAssignment>> = HashMap::new();
 
         for assignment in &bundle.assignments {
-            // 各記事は複数のジャンルに属する可能性がある
             for genre in &assignment.genres {
                 genre_groups
                     .entry(genre.clone())
@@ -102,22 +105,66 @@ impl EvidenceBundle {
             }
         }
 
-        // 各ジャンルグループから証拠コーパスを構築
         let mut corpora = HashMap::new();
-
-        for (genre, assignments) in &genre_groups {
-            // ジャンル別記事数が少ない場合のWARNログ
-            if assignments.len() < 3 {
-                tracing::warn!(
-                    "Evidence corpus: genre '{}' has only {} articles (minimum recommended: 3)",
-                    genre,
-                    assignments.len()
-                );
-            }
-        }
+        let now = Utc::now();
 
         for (genre, assignments) in genre_groups {
-            let corpus = build_corpus_for_genre(&genre, &assignments);
+            let n_g = assignments.len();
+
+            // 記事スコアリングとランキング
+            let mut scored_assignments: Vec<ScoredAssignment> = assignments
+                .iter()
+                .map(|&a| {
+                    let score = calculate_score(a, &genre, now, &assignments);
+                    ScoredAssignment {
+                        assignment: a,
+                        score,
+                    }
+                })
+                .collect();
+
+            // スコア順に降順ソート
+            scored_assignments.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            // 重複除外
+            let deduplicated = deduplicate_assignments(scored_assignments);
+
+            // 動的な最小件数設定
+            let min_docs = if genre == "other" {
+                5
+            } else {
+                let computed_f64 = (n_g as f64 * 0.2).ceil().max(0.0);
+                // computed_f64は既に非負（.max(0.0)で保証）かつusize::MAX以下であることを確認済み
+                let computed = if computed_f64 <= usize::MAX as f64 && computed_f64 >= 0.0 {
+                    // f64をfloor()で整数に丸めてからi64に変換し、usizeに変換（符号損失を回避）
+                    let value_i64 = computed_f64.floor() as i64;
+                    usize::try_from(value_i64).unwrap_or(0)
+                } else {
+                    usize::MAX
+                };
+                computed.clamp(3, 20)
+            };
+
+            // 上位N件を選択
+            let selected: Vec<&GenreAssignment> = deduplicated
+                .into_iter()
+                .take(min_docs)
+                .map(|sa| sa.assignment)
+                .collect();
+
+            if selected.len() < 3 {
+                warn!(
+                    "Evidence corpus: genre '{}' has only {} articles (minimum recommended: 3)",
+                    genre,
+                    selected.len()
+                );
+            }
+
+            let corpus = build_corpus_for_genre(&genre, &selected);
 
             debug!(
                 genre = %genre,
@@ -127,14 +174,13 @@ impl EvidenceBundle {
                 "built evidence corpus for genre"
             );
 
-            corpora.insert(genre.clone(), corpus);
+            corpora.insert(genre, corpus);
         }
 
         let evidence_bundle = Self { job_id, corpora };
 
-        // ジャンル別の詳細を計算
         let genres_with_articles = evidence_bundle.genres().len();
-        let genres_without_articles: Vec<String> = Vec::new(); // 現在の実装では、記事がないジャンルはグループ化されないため空
+        let genres_without_articles: Vec<String> = Vec::new();
 
         info!(
             job_id = %job_id,
@@ -145,7 +191,6 @@ impl EvidenceBundle {
             "completed evidence corpus construction"
         );
 
-        // 証拠コーパス構築完了時の詳細ログ
         tracing::info!(
             "Evidence corpus construction: genre_count={}, genres_with_articles={}, genres_without_articles={:?}",
             evidence_bundle.genres().len(),
@@ -185,6 +230,112 @@ impl EvidenceBundle {
     }
 }
 
+fn calculate_score(
+    assignment: &GenreAssignment,
+    genre: &str,
+    now: DateTime<Utc>,
+    all_assignments: &[&GenreAssignment],
+) -> f32 {
+    let confidence = assignment
+        .genre_confidence
+        .get(genre)
+        .copied()
+        .unwrap_or(0.0);
+
+    // Info Score: keyword_hits + token_count factor
+    // Normalize token_count roughly (e.g. 1000 chars = 1.0)
+    let info_score = {
+        let keyword_factor = (assignment.feature_profile.tag_overlap_count as f32 * 0.1).min(1.0);
+        let length_factor = (assignment.feature_profile.token_count as f32 / 2000.0).min(1.0);
+        f32::midpoint(keyword_factor, length_factor)
+    };
+
+    // Freshness: exp(-age_days / 7)
+    let fresh_score = if let Some(published_at) = assignment.article.published_at {
+        let age = now.signed_duration_since(published_at).num_days().max(0) as f32;
+        (-age / 7.0).exp()
+    } else {
+        0.5 // Default for unknown date
+    };
+
+    // Diversity Penalty
+    // Calculate how many times this domain appears in the group (simplified check)
+    // For a strictly correct penalty, we'd need to sort first, but here we can just punish "popular" domains
+    // Or we can calculate this during the selection phase.
+    // For now, let's use a simple heuristic: if domain is very frequent in the set, penalize slightly.
+    // However, exact penalty requires the ordered list context which is circular.
+    // Instead, let's penalize if we've seen this domain many times in `all_assignments`.
+    let domain = extract_domain(assignment.article.source_url.as_deref());
+    let domain_count = all_assignments
+        .iter()
+        .filter(|a| extract_domain(a.article.source_url.as_deref()) == domain)
+        .count();
+
+    let diversity_penalty = if domain_count > 3 { 0.2 } else { 0.0 };
+
+    // Weighting: 0.5 * conf + 0.3 * info + 0.2 * fresh - diversity
+    // Plan: 0.5 * confidence + 0.3 * info_score + 0.1 * fresh_score (modified to 0.2 here)
+    let base_score = 0.5 * confidence + 0.3 * info_score + 0.2 * fresh_score;
+    let final_score = base_score - diversity_penalty;
+
+    final_score.max(0.0)
+}
+
+fn extract_domain(url: Option<&str>) -> Option<String> {
+    url.and_then(|u| {
+        u.split("://")
+            .nth(1)
+            .and_then(|h| h.split('/').next())
+            .map(String::from)
+    })
+}
+
+fn deduplicate_assignments(assignments: Vec<ScoredAssignment>) -> Vec<ScoredAssignment> {
+    let mut kept = Vec::new();
+    let mut seen_embeddings: Vec<Vec<f32>> = Vec::new();
+    let mut seen_titles = HashSet::new();
+    let mut seen_urls = HashSet::new();
+
+    for sa in assignments {
+        // 1. Source/URL Check
+        if let Some(url) = &sa.assignment.article.source_url {
+            if seen_urls.contains(url) {
+                continue;
+            }
+            seen_urls.insert(url.clone());
+        }
+
+        // 2. Title Check (Exact match for now, could be normalized)
+        if let Some(title) = &sa.assignment.article.title {
+            if seen_titles.contains(title) {
+                continue;
+            }
+            seen_titles.insert(title.clone());
+        }
+
+        // 3. Embedding Similarity Check
+        if let Some(embedding) = &sa.assignment.embedding {
+            let mut is_similar = false;
+            for seen in &seen_embeddings {
+                let sim = cosine_similarity(embedding, seen);
+                if sim > 0.9 {
+                    is_similar = true;
+                    break;
+                }
+            }
+            if is_similar {
+                continue;
+            }
+            seen_embeddings.push(embedding.clone());
+        }
+
+        // 4. Content Similarity (Optional/Heavy - skip for now as embedding covers most)
+
+        kept.push(sa);
+    }
+    kept
+}
+
 /// 特定のジャンルに対する証拠コーパスを構築する。
 fn build_corpus_for_genre(genre: &str, assignments: &[&GenreAssignment]) -> EvidenceCorpus {
     let (articles, stats) = process_assignments(genre, assignments);
@@ -218,6 +369,9 @@ fn process_assignments(
     let mut dropped_sentences = 0usize;
     let mut confidences: Vec<f32> = Vec::new();
     let mut supporting_articles = 0usize;
+
+    // Recalculate score for the record since we want it in EvidenceArticle
+    let now = Utc::now();
 
     for assignment in assignments {
         let article = &assignment.article;
@@ -263,11 +417,16 @@ fn process_assignments(
             confidences.push(conf.clamp(0.0, 1.0));
         }
 
+        let score = calculate_score(assignment, genre, now, assignments);
+
         articles.push(EvidenceArticle {
             article_id: article.id.clone(),
             title: article.title.clone(),
             sentences: filtered_sentences,
             language: article.language.clone(),
+            published_at: article.published_at,
+            source_url: article.source_url.clone(),
+            score,
             genre_scores: Some(assignment.genre_scores.clone()),
             confidence,
             signals: Some(ArticleFeatureSignal {
@@ -364,6 +523,8 @@ mod tests {
             sentences: sentences.into_iter().map(String::from).collect(),
             sentence_hashes: vec![],
             language: language.to_string(),
+            published_at: Some(Utc::now()),
+            source_url: Some(format!("https://example.com/{}", id)),
             tags: Vec::new(),
             duplicates: Vec::new(),
         };
@@ -397,6 +558,7 @@ mod tests {
             genre_confidence,
             feature_profile,
             article,
+            embedding: None,
         }
     }
 

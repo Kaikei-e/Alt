@@ -32,6 +32,7 @@ pub(crate) struct PreprocessedArticle {
     pub(crate) char_count: usize,
     pub(crate) is_html_cleaned: bool,
     pub(crate) published_at: Option<DateTime<Utc>>,
+    pub(crate) source_url: Option<String>,
     pub(crate) tokens: Vec<String>,
     pub(crate) tags: Vec<TagSignal>,
 }
@@ -243,6 +244,7 @@ pub(crate) async fn preprocess_article(
         char_count,
         is_html_cleaned,
         published_at: article.published_at,
+        source_url: article.source_url,
         tokens,
         tags: article.tags,
     }))

@@ -1100,6 +1100,8 @@ mod tests {
             sentences: vec!["body text about ai and tech".to_string()],
             sentence_hashes: vec![],
             language: "en".to_string(),
+            published_at: None,
+            source_url: None,
             tags,
             duplicates: Vec::new(),
         }

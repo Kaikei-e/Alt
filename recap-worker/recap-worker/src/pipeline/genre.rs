@@ -45,6 +45,7 @@ type ProduceCandidatesResult = (
     HashMap<String, usize>,
     HashMap<String, f32>,
     FeatureProfile,
+    Option<Vec<f32>>,
 );
 
 /// ジャンル付き記事。
@@ -56,6 +57,7 @@ pub(crate) struct GenreAssignment {
     pub(crate) genre_confidence: HashMap<String, f32>,
     pub(crate) feature_profile: FeatureProfile,
     pub(crate) article: DeduplicatedArticle,
+    pub(crate) embedding: Option<Vec<f32>>,
 }
 
 impl GenreAssignment {
@@ -429,12 +431,26 @@ impl CoarseGenreStage {
             })
             .collect();
 
+        // Generate embedding if service is available
+        let embedding = if let Some(service) = &self.embedding_service {
+            match service.encode(&[combined_text]).await {
+                Ok(vecs) => vecs.into_iter().next(),
+                Err(e) => {
+                    tracing::warn!(article_id = %article.id, error = %e, "failed to generate embedding");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Ok((
             candidates,
             selected_genres,
             genre_scores,
             genre_confidence,
             feature_profile,
+            embedding,
         ))
     }
 
@@ -628,7 +644,7 @@ impl GenreStage for CoarseGenreStage {
         let mut genre_distribution: HashMap<String, usize> = HashMap::new();
 
         for article in corpus.articles {
-            let (candidates, genres, genre_scores, genre_confidence, feature_profile) =
+            let (candidates, genres, genre_scores, genre_confidence, feature_profile, embedding) =
                 self.produce_candidates(&article).await?;
 
             debug!(
@@ -650,6 +666,7 @@ impl GenreStage for CoarseGenreStage {
                 genre_confidence,
                 feature_profile,
                 article,
+                embedding,
             });
         }
 
@@ -807,6 +824,8 @@ mod tests {
             sentences: sentences.into_iter().map(String::from).collect(),
             sentence_hashes: vec![],
             language: "en".to_string(),
+            published_at: Some(Utc::now()),
+            source_url: None,
             tags: Vec::new(),
             duplicates: Vec::new(),
         }

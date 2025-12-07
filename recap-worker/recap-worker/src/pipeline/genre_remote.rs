@@ -48,7 +48,13 @@ impl GenreStage for RemoteGenreStage {
             .iter()
             .map(|a| {
                 let title = a.title.as_deref().unwrap_or("");
-                let body = a.sentences.iter().take(5).cloned().collect::<Vec<_>>().join(" ");
+                let body = a
+                    .sentences
+                    .iter()
+                    .take(5)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 format!("{title} {body}")
             })
             .collect();
@@ -126,8 +132,10 @@ impl GenreStage for RemoteGenreStage {
                 candidates,
                 genre_scores,
                 genre_confidence: result.scores,
-                feature_profile: FeatureProfile::default(), // We don't have feature profile from remote yet
+                // Remote stage assumes refinement happens later or remotely, so empty profile initially
+                feature_profile: FeatureProfile::default(),
                 article,
+                embedding: None,
             });
         }
 

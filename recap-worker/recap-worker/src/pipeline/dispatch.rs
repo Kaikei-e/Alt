@@ -158,6 +158,20 @@ impl MlLlmDispatchStage {
             "clustering completed successfully"
         );
 
+        // システムメトリクス（クラスタリング）を保存
+        if let Err(e) = self
+            .dao
+            .save_system_metrics(job_id, "clustering", &clustering_response.diagnostics)
+            .await
+        {
+            warn!(
+                job_id = %job_id,
+                genre = %genre,
+                error = ?e,
+                "failed to save clustering metrics"
+            );
+        }
+
         Ok(clustering_response)
     }
 
@@ -543,6 +557,38 @@ impl MlLlmDispatchStage {
                     let summary_result = self
                         .generate_summary_with_metadata(job.job_id, &genre, &clustering_response)
                         .await;
+
+                    // システムメトリクス（要約）を保存
+                    if let Ok(ref response) = summary_result {
+                        match serde_json::to_value(&response.metadata) {
+                            Ok(metadata_value) => {
+                                if let Err(e) = self
+                                    .dao
+                                    .save_system_metrics(
+                                        job.job_id,
+                                        "summarization",
+                                        &metadata_value,
+                                    )
+                                    .await
+                                {
+                                    warn!(
+                                        job_id = %job.job_id,
+                                        genre = %genre,
+                                        error = ?e,
+                                        "failed to save summarization metrics"
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                warn!(
+                                    job_id = %job.job_id,
+                                    genre = %genre,
+                                    error = ?e,
+                                    "failed to serialize summary metadata for metrics"
+                                );
+                            }
+                        }
+                    }
 
                     let genre_result =
                         Self::build_genre_result(&genre, clustering_response, summary_result);
