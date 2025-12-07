@@ -90,7 +90,7 @@ class RecapClusterInput(BaseModel):
     cluster_id: int = Field(ge=0)
     representative_sentences: List[RepresentativeSentence] = Field(
         min_length=1,
-        max_length=10,
+        max_length=20,
         description="Representative sentences extracted by the subworker",
     )
     top_terms: Optional[List[str]] = Field(default=None)
