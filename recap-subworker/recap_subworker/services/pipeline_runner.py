@@ -76,18 +76,22 @@ class PipelineTaskRunner:
             ) from exc
 
     async def run(self, request: EvidenceRequest) -> EvidenceResponse:
+        """Execute the evidence pipeline in a worker process."""
         payload = request.model_dump(mode="json")
+        # Use apply_async for non-blocking execution, then wrap the AsyncResult in asyncio
+        async_result = self._pool.apply_async(pipeline_worker.run_pipeline, (payload,))
+        # Wait for the result in an executor to avoid blocking the event loop
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None, self._pool.apply, pipeline_worker.run_pipeline, (payload,)
-        )
+        result = await loop.run_in_executor(None, async_result.get)
         return EvidenceResponse.model_validate(result)
 
     async def warmup(self, samples: Sequence[str] | None = None) -> WarmupResponse:
+        """Warmup the pipeline in a worker process."""
+        # Use apply_async for non-blocking execution, then wrap the AsyncResult in asyncio
+        async_result = self._pool.apply_async(pipeline_worker.warmup, (list(samples or []),))
+        # Wait for the result in an executor to avoid blocking the event loop
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None, self._pool.apply, pipeline_worker.warmup, (list(samples or []),)
-        )
+        result = await loop.run_in_executor(None, async_result.get)
         return WarmupResponse.model_validate(result)
 
     def shutdown(self) -> None:
