@@ -107,6 +107,52 @@ def get_recap_processes() -> int:
         return 0
 
 
+def get_gpu_info() -> dict[str, Any]:
+    """GPU使用状況を取得（nvidia-smiを使用）"""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,name", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+        lines = result.stdout.strip().split("\n")
+        if not lines or not lines[0]:
+            return {"available": False, "gpus": []}
+
+        gpus = []
+        for line in lines:
+            if not line.strip():
+                continue
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) >= 5:
+                try:
+                    gpus.append({
+                        "utilization": float(parts[0]),
+                        "memory_used": int(parts[1]),
+                        "memory_total": int(parts[2]),
+                        "temperature": int(parts[3]),
+                        "name": parts[4],
+                        "memory_percent": round((int(parts[1]) / int(parts[2]) * 100) if int(parts[2]) > 0 else 0, 1),
+                    })
+                except (ValueError, IndexError):
+                    continue
+
+        return {
+            "available": True,
+            "gpus": gpus,
+            "total_gpus": len(gpus),
+        }
+    except FileNotFoundError:
+        # nvidia-smiがインストールされていない
+        return {"available": False, "gpus": [], "error": "nvidia-smi not found"}
+    except subprocess.TimeoutExpired:
+        return {"available": False, "gpus": [], "error": "timeout"}
+    except Exception as e:
+        return {"available": False, "gpus": [], "error": str(e)}
+
+
 def get_top_processes(limit: int = 5) -> list[dict[str, Any]]:
     """メモリ使用量の多いプロセスを取得"""
     try:

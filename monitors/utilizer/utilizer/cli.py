@@ -9,6 +9,7 @@ from datetime import datetime
 
 from .monitors import (
     get_cpu_info,
+    get_gpu_info,
     get_hanging_processes,
     get_memory_info,
     get_recap_processes,
@@ -63,6 +64,7 @@ def main() -> None:
             # 情報取得
             mem_info = get_memory_info()
             cpu_info = get_cpu_info()
+            gpu_info = get_gpu_info()
             hanging_count = get_hanging_processes()
             recap_processes = get_recap_processes()
             top_processes = get_top_processes(5)
@@ -109,6 +111,14 @@ def main() -> None:
             print(
                 f"{YELLOW}CPU使用率: {NC}{cpu_info['percent']}% {cpu_delta_str}"
             )
+            # GPU情報表示
+            if gpu_info.get("available") and gpu_info.get("gpus"):
+                for idx, gpu in enumerate(gpu_info["gpus"]):
+                    print(
+                        f"{YELLOW}GPU {idx} ({gpu['name']}): {NC}使用率 {gpu['utilization']}% | "
+                        f"メモリ {gpu['memory_percent']}% ({gpu['memory_used']//1024}GB/{gpu['memory_total']//1024}GB) | "
+                        f"温度 {gpu['temperature']}°C"
+                    )
             print(f"{YELLOW}ハングプロセス: {NC}{hanging_count}個")
             print(f"{YELLOW}Recap関連プロセス: {NC}{recap_processes}個")
             if alerts:

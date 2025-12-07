@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 
 from .monitors import (
     get_cpu_info,
+    get_gpu_info,
     get_hanging_processes,
     get_memory_info,
     get_top_processes,
@@ -272,6 +273,34 @@ async def index() -> HTMLResponse:
             color: var(--text-secondary);
         }
 
+        .gpu-card {
+            position: relative;
+        }
+
+        .gpu-name {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .gpu-temp {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .gpu-memory {
+            margin-top: 12px;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
         /* スクロールバーのスタイル */
         ::-webkit-scrollbar {
             width: 8px;
@@ -323,6 +352,9 @@ async def index() -> HTMLResponse:
                 <div class="metric-label">spawn_main / multiprocessing-fork</div>
                 <div id="hanging-alert"></div>
             </div>
+        </div>
+        <div class="grid" id="gpu-grid" style="display: none;">
+            <!-- GPUカードは動的に生成 -->
         </div>
         <div class="card">
             <h2>📈 トッププロセス（メモリ使用量）</h2>
@@ -424,6 +456,39 @@ async def index() -> HTMLResponse:
                 hangingAlert.innerHTML = '';
             }
 
+            // GPU情報
+            const gpuGrid = document.getElementById('gpu-grid');
+            if (data.gpu && data.gpu.available && data.gpu.gpus && data.gpu.gpus.length > 0) {
+                gpuGrid.style.display = 'grid';
+                gpuGrid.innerHTML = data.gpu.gpus.map((gpu, index) => {
+                    const gpuUtilClass = gpu.utilization > 90 ? 'danger' : gpu.utilization > 70 ? 'warning' : '';
+                    const memUtilClass = gpu.memory_percent > 90 ? 'danger' : gpu.memory_percent > 70 ? 'warning' : '';
+                    return `
+                        <div class="card gpu-card">
+                            <h2>🎮 GPU ${index} - ${gpu.name}</h2>
+                            <div class="gpu-temp">🌡️ ${gpu.temperature}°C</div>
+                            <div class="metric" id="gpu-util-${index}">${gpu.utilization}%</div>
+                            <div class="metric-label">使用率</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill ${gpuUtilClass}" id="gpu-progress-${index}" style="width: ${gpu.utilization}%">
+                                    <span class="progress-text">${gpu.utilization}%</span>
+                                </div>
+                            </div>
+                            <div class="gpu-memory">
+                                メモリ: ${(gpu.memory_used / 1024).toFixed(1)}GB / ${(gpu.memory_total / 1024).toFixed(1)}GB (${gpu.memory_percent}%)
+                            </div>
+                            <div class="progress-bar" style="margin-top: 8px;">
+                                <div class="progress-fill ${memUtilClass}" style="width: ${gpu.memory_percent}%">
+                                    <span class="progress-text">${gpu.memory_percent}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                gpuGrid.style.display = 'none';
+            }
+
             // プロセス一覧 - 必ず更新されるようにする
             const tbody = document.getElementById('process-body');
             if (!tbody) {
@@ -490,6 +555,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 # 各データを個別に取得してエラーハンドリング
                 memory_info = get_memory_info()
                 cpu_info = get_cpu_info()
+                gpu_info = get_gpu_info()
                 hanging_count = get_hanging_processes()
                 top_processes = get_top_processes(10)
 
@@ -497,6 +563,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     "timestamp": datetime.now().isoformat(),
                     "memory": memory_info,
                     "cpu": cpu_info,
+                    "gpu": gpu_info,
                     "hanging_count": hanging_count,
                     "top_processes": top_processes,
                 }
@@ -509,6 +576,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     "timestamp": datetime.now().isoformat(),
                     "memory": {"total": 0, "used": 0, "available": 0, "percent": 0},
                     "cpu": {"percent": 0.0},
+                    "gpu": {"available": False, "gpus": []},
                     "hanging_count": 0,
                     "top_processes": [],
                     "error": str(exc),
