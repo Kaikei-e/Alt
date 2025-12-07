@@ -511,6 +511,7 @@ const CardView = memo(
             scrollBehavior="smooth"
             overscrollBehavior="contain"
             css={scrollAreaStyles}
+            style={{ touchAction: "pan-y" }}
             data-testid="unified-scroll-area"
           >
             {hasDescription && (

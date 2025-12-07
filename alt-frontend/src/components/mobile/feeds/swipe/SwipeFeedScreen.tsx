@@ -231,7 +231,6 @@ const SwipeFeedScreen = ({
           px={4}
           style={{
             overscrollBehavior: "contain",
-            touchAction: "pan-y",
           }}
         >
           <SwipeFeedCard
