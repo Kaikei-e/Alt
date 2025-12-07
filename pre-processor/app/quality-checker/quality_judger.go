@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -295,63 +296,31 @@ func attemptEmergencyParsing(response string) *Score {
 	return nil
 }
 
-// scoreSummaryWithRetry attempts to score a summary with retries and exponential backoff.
-func scoreSummaryWithRetry(ctx context.Context, prompt string, maxRetries int) (*Score, error) {
-	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		score, err := scoreSummary(ctx, prompt)
-		if err == nil && score != nil {
-			return score, nil
-		}
-		lastErr = err
-		logger.Logger.Warn("Failed to score summary, retrying...", "attempt", attempt+1, "max_retries", maxRetries, "error", err)
-		time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond) // Simple exponential backoff
-	}
-	return nil, lastErr
-}
-
-// JudgeArticleQuality judges the quality of an article's summary and takes action if the score is low.
-func JudgeArticleQuality(ctx context.Context, dbPool *pgxpool.Pool, articleWithSummary *driver.ArticleWithSummary) error {
-	if articleWithSummary == nil || articleWithSummary.ArticleID == "" {
-		return errors.New("article with summary is invalid")
-	}
-
-	prompt := fmt.Sprintf(JudgeTemplate, articleWithSummary.Content, articleWithSummary.SummaryJapanese)
-	score, err := scoreSummaryWithRetry(ctx, prompt, 3)
-	if err != nil {
-		logger.Logger.Error("Failed to get summary score after retries", "articleID", articleWithSummary.ArticleID, "error", err)
-		// Fallback: if scoring consistently fails, assign a low score to be safe
-		score = &Score{Overall: 1}
-		logger.Logger.Warn("Using fallback score due to persistent failures", "articleID", articleWithSummary.ArticleID, "score", score)
-	}
-
-	if score == nil {
-		return errors.New("received nil score for article " + articleWithSummary.ArticleID)
-	}
-
-	// If score is too low, remove the summary (but keep the article)
-	if score.Overall < lowScoreThreshold {
-		logger.Logger.Info("Removing low quality summary",
-			"articleID", articleWithSummary.ArticleID,
-			"score", score.Overall,
-			"threshold", lowScoreThreshold)
-		return RemoveLowScoreSummary(ctx, dbPool, articleWithSummary)
-	}
-
-	logger.Logger.Info("Summary quality is acceptable", "articleID", articleWithSummary.ArticleID, "score", score.Overall)
-	return nil
-}
-
 func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWithSummary *driver.ArticleWithSummary) error {
+	// Validate dbPool is not nil
+	if dbPool == nil {
+		return errors.New("database pool is nil, cannot delete summary")
+	}
+
 	// Create the proper prompt for scoring
 	prompt := fmt.Sprintf(JudgeTemplate, articleWithSummary.Content, articleWithSummary.SummaryJapanese)
 
 	score, err := scoreSummaryWithRetry(ctx, prompt, 3)
 	if err != nil {
-		logger.Logger.Error("Failed to score summary after retries", "error", err, "articleID", articleWithSummary.ArticleID)
-		// Use fallback scoring instead of failing completely
-		score = &Score{Overall: 1}
-		logger.Logger.Warn("Using fallback score due to persistent failures", "articleID", articleWithSummary.ArticleID, "score", score)
+		// Check if this is a connection error (service unavailable)
+		if isConnectionError(err) {
+			logger.Logger.Warn("Connection error while scoring summary in RemoveLowScoreSummary, aborting deletion to prevent data loss",
+				"error", err,
+				"articleID", articleWithSummary.ArticleID)
+			// Return error without deleting data - this indicates service unavailability, not low quality
+			return fmt.Errorf("failed to connect to news-creator service: %w", err)
+		}
+
+		// For non-connection errors, we should not delete data
+		logger.Logger.Error("Failed to score summary after retries (non-connection error) in RemoveLowScoreSummary",
+			"error", err,
+			"articleID", articleWithSummary.ArticleID)
+		return fmt.Errorf("failed to score summary (non-connection error): %w", err)
 	}
 
 	if score == nil {
@@ -364,6 +333,7 @@ func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWit
 		"score", score.Overall)
 
 	// If score is too low, remove the summary (but keep the article)
+	// This only happens when we successfully got a score from the service
 	if score.Overall < lowScoreThreshold {
 		logger.Logger.Info("Removing low quality summary",
 			"articleID", articleWithSummary.ArticleID,
@@ -402,5 +372,102 @@ func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWit
 		logger.Logger.Info("Summary quality is acceptable", "articleID", articleWithSummary.ArticleID, "score", score.Overall)
 	}
 
+	return nil
+}
+
+// isConnectionError checks if an error is a connection-related error (network, timeout, context cancellation).
+// This helps distinguish between actual service unavailability and low-quality scores.
+func isConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for context errors (timeout, cancellation)
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+
+	// Check for network errors
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+
+	// Check for DNS errors
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+
+	// Check for connection refused errors (common when service is down)
+	errStr := err.Error()
+	if strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "no such host") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "broken pipe") ||
+		strings.Contains(errStr, "i/o timeout") {
+		return true
+	}
+
+	return false
+}
+
+// scoreSummaryWithRetry attempts to score a summary with retries and exponential backoff.
+func scoreSummaryWithRetry(ctx context.Context, prompt string, maxRetries int) (*Score, error) {
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		score, err := scoreSummary(ctx, prompt)
+		if err == nil && score != nil {
+			return score, nil
+		}
+		lastErr = err
+		logger.Logger.Warn("Failed to score summary, retrying...", "attempt", attempt+1, "max_retries", maxRetries, "error", err)
+		time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond) // Simple exponential backoff
+	}
+	return nil, lastErr
+}
+
+// JudgeArticleQuality judges the quality of an article's summary and takes action if the score is low.
+func JudgeArticleQuality(ctx context.Context, dbPool *pgxpool.Pool, articleWithSummary *driver.ArticleWithSummary) error {
+	if articleWithSummary == nil || articleWithSummary.ArticleID == "" {
+		return errors.New("article with summary is invalid")
+	}
+
+	prompt := fmt.Sprintf(JudgeTemplate, articleWithSummary.Content, articleWithSummary.SummaryJapanese)
+	score, err := scoreSummaryWithRetry(ctx, prompt, 3)
+	if err != nil {
+		// Check if this is a connection error (service unavailable)
+		if isConnectionError(err) {
+			logger.Logger.Warn("Connection error while scoring summary, skipping quality check to prevent data loss",
+				"articleID", articleWithSummary.ArticleID,
+				"error", err)
+			// Return error without deleting data - this indicates service unavailability, not low quality
+			return fmt.Errorf("failed to connect to news-creator service: %w", err)
+		}
+
+		// For non-connection errors (e.g., parsing errors, invalid responses), we still need to handle them
+		// However, we should not delete data based on connection failures
+		logger.Logger.Error("Failed to get summary score after retries (non-connection error)",
+			"articleID", articleWithSummary.ArticleID,
+			"error", err)
+		// For non-connection errors, we skip the quality check rather than deleting data
+		return fmt.Errorf("failed to score summary (non-connection error): %w", err)
+	}
+
+	if score == nil {
+		return errors.New("received nil score for article " + articleWithSummary.ArticleID)
+	}
+
+	// If score is too low, remove the summary (but keep the article)
+	// This only happens when we successfully got a score from the service
+	if score.Overall < lowScoreThreshold {
+		logger.Logger.Info("Removing low quality summary",
+			"articleID", articleWithSummary.ArticleID,
+			"score", score.Overall,
+			"threshold", lowScoreThreshold)
+		return RemoveLowScoreSummary(ctx, dbPool, articleWithSummary)
+	}
+
+	logger.Logger.Info("Summary quality is acceptable", "articleID", articleWithSummary.ArticleID, "score", score.Overall)
 	return nil
 }

@@ -6,10 +6,13 @@ package qualitychecker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"pre-processor/driver"
 
@@ -551,4 +554,176 @@ func TestScoreBoundaryConditions(t *testing.T) {
 			assert.Equal(t, tc.expected, score.Overall)
 		})
 	}
+}
+
+// TestIsConnectionError tests the isConnectionError function
+func TestIsConnectionError(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		expected    bool
+		description string
+	}{
+		{
+			name:        "context_deadline_exceeded",
+			err:         context.DeadlineExceeded,
+			expected:    true,
+			description: "Should detect context deadline exceeded as connection error",
+		},
+		{
+			name:        "context_canceled",
+			err:         context.Canceled,
+			expected:    true,
+			description: "Should detect context canceled as connection error",
+		},
+		{
+			name:        "connection_refused",
+			err:         errors.New("dial tcp: connection refused"),
+			expected:    true,
+			description: "Should detect connection refused error",
+		},
+		{
+			name:        "no_such_host",
+			err:         errors.New("no such host"),
+			expected:    true,
+			description: "Should detect DNS error (no such host)",
+		},
+		{
+			name:        "connection_reset",
+			err:         errors.New("connection reset by peer"),
+			expected:    true,
+			description: "Should detect connection reset error",
+		},
+		{
+			name:        "io_timeout",
+			err:         errors.New("i/o timeout"),
+			expected:    true,
+			description: "Should detect I/O timeout error",
+		},
+		{
+			name:        "net_error",
+			err:         &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")},
+			expected:    true,
+			description: "Should detect net.Error as connection error",
+		},
+		{
+			name:        "dns_error",
+			err:         &net.DNSError{Err: "no such host", Name: "example.com"},
+			expected:    true,
+			description: "Should detect DNS error",
+		},
+		{
+			name:        "parsing_error",
+			err:         errors.New("failed to parse score"),
+			expected:    false,
+			description: "Should not detect parsing error as connection error",
+		},
+		{
+			name:        "nil_error",
+			err:         nil,
+			expected:    false,
+			description: "Should return false for nil error",
+		},
+		{
+			name:        "generic_error",
+			err:         errors.New("some other error"),
+			expected:    false,
+			description: "Should not detect generic error as connection error",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := isConnectionError(tc.err)
+			assert.Equal(t, tc.expected, result, tc.description)
+		})
+	}
+}
+
+// TestJudgeArticleQualityConnectionError tests that JudgeArticleQuality does not delete data on connection errors
+func TestJudgeArticleQualityConnectionError(t *testing.T) {
+	// Test with connection refused error (simulating news-creator being down)
+	// Use an invalid URL to trigger connection error
+	originalURL := qualityCheckerAPIURL
+	qualityCheckerAPIURL = "http://localhost:99999/api/generate" // Invalid port to trigger connection error
+	defer func() { qualityCheckerAPIURL = originalURL }()
+
+	article := &driver.ArticleWithSummary{
+		ArticleID:       "test-article-connection-error",
+		Content:         "Test content",
+		SummaryJapanese: "テスト要約",
+	}
+
+	// Use a short timeout context to trigger connection error faster
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	// JudgeArticleQuality should return an error without deleting data
+	err := JudgeArticleQuality(ctx, nil, article)
+	require.Error(t, err, "Should return error on connection failure")
+	assert.Contains(t, err.Error(), "failed to connect to news-creator service", "Error should indicate connection failure")
+}
+
+// TestJudgeArticleQualityTimeoutError tests that JudgeArticleQuality handles timeout errors correctly
+func TestJudgeArticleQualityTimeoutError(t *testing.T) {
+	// Create a server that never responds (to simulate timeout)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Sleep longer than context timeout
+		time.Sleep(2 * time.Second)
+	}))
+	defer server.Close()
+
+	originalURL := qualityCheckerAPIURL
+	qualityCheckerAPIURL = server.URL
+	defer func() { qualityCheckerAPIURL = originalURL }()
+
+	article := &driver.ArticleWithSummary{
+		ArticleID:       "test-article-timeout",
+		Content:         "Test content",
+		SummaryJapanese: "テスト要約",
+	}
+
+	// Use a short timeout context
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	// JudgeArticleQuality should return an error without deleting data
+	err := JudgeArticleQuality(ctx, nil, article)
+	require.Error(t, err, "Should return error on timeout")
+	assert.Contains(t, err.Error(), "failed to connect to news-creator service", "Error should indicate connection failure")
+}
+
+// TestJudgeArticleQualityLowScoreStillDeletes tests that low scores from successful responses still trigger deletion
+func TestJudgeArticleQualityLowScoreStillDeletes(t *testing.T) {
+	// Create a server that returns a low score (below threshold)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := ollamaResponse{
+			Response: "<score>5</score>", // Low score (below threshold of 7)
+			Done:     true,
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	originalURL := qualityCheckerAPIURL
+	qualityCheckerAPIURL = server.URL
+	defer func() { qualityCheckerAPIURL = originalURL }()
+
+	article := &driver.ArticleWithSummary{
+		ArticleID:       "test-article-low-score",
+		Content:         "Test content",
+		SummaryJapanese: "テスト要約",
+	}
+
+	// Use nil dbPool to verify that JudgeArticleQuality attempts to call RemoveLowScoreSummary
+	// RemoveLowScoreSummary will return an error because dbPool is nil, but this confirms
+	// that the low score was detected and deletion was attempted
+	ctx := context.Background()
+	err := JudgeArticleQuality(ctx, nil, article)
+	// Should attempt to delete (will fail because dbPool is nil, but that's expected)
+	require.Error(t, err, "Should return error when trying to delete with nil dbPool")
+	// The error should be about database pool being nil, not connection
+	assert.Contains(t, err.Error(), "database pool is nil", "Error should indicate database pool is nil")
+	assert.NotContains(t, err.Error(), "failed to connect to news-creator service", "Error should not be about connection")
 }
