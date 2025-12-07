@@ -25,6 +25,19 @@ class GenreClassifierService:
             logger.info("Classification model loaded", model_path=str(self.model_path), classes=len(self.model.classes_))
 
     def predict_batch(self, texts: List[str]) -> List[Dict[str, Any]]:
+        """
+        Predict genres for a batch of texts.
+
+        Note: Input texts should be preprocessed to "title + lead + first N sentences"
+        format for consistency with training data. The caller (recap-worker) is
+        responsible for constructing this unified format.
+
+        Args:
+            texts: List of preprocessed text strings (title + lead + first N sentences)
+
+        Returns:
+            List of prediction results with top_genre, confidence, and scores
+        """
         self._ensure_model()
 
         total_texts = len(texts)
@@ -38,6 +51,7 @@ class GenreClassifierService:
         )
 
         # E5 expects "passage: " prefix for documents
+        # Note: Training should use the same prefix for consistency
         input_texts = [f"passage: {t}" for t in texts]
 
         # Embedding generation with progress logging

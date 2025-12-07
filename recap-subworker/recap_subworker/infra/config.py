@@ -161,6 +161,16 @@ class Settings(BaseSettings):
         ge=1,
         description="Number of dedicated pipeline worker processes when process pools are enabled",
     )
+    pipeline_worker_max_tasks_per_child: int = Field(
+        50,
+        ge=1,
+        description="Maximum number of tasks a pipeline worker process handles before being replaced (prevents memory leaks)",
+    )
+    pipeline_worker_init_timeout_seconds: int = Field(
+        60,
+        ge=10,
+        description="Timeout in seconds for pipeline worker process initialization",
+    )
     max_background_runs: int = Field(
         2,
         ge=1,

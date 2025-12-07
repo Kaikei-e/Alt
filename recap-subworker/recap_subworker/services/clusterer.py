@@ -63,23 +63,37 @@ class Clusterer:
                 empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0), 0.0
             )
 
+        # Force UMAP if enabled, otherwise use threshold-based auto-enable
         use_umap = bool(
-            self.settings.enable_umap_auto
-            and embeddings.shape[0] >= self.settings.umap_threshold_sentences
+            self.settings.enable_umap_force
+            or (
+                self.settings.enable_umap_auto
+                and embeddings.shape[0] >= self.settings.umap_threshold_sentences
+            )
         )
         reduced = embeddings
         if use_umap:
             from umap import UMAP  # lazy import
 
-            reducer = UMAP(
-                n_components=umap_n_components or self.settings.umap_n_components,
-                n_neighbors=umap_n_neighbors or self.settings.umap_n_neighbors,
-                metric="cosine",
-                min_dist=umap_min_dist or self.settings.umap_min_dist,
-                random_state=42,  # reproducible
-                n_jobs=1,
-            )
-            reduced = reducer.fit_transform(embeddings)
+            n_data_points = embeddings.shape[0]
+            requested_n_neighbors = umap_n_neighbors or self.settings.umap_n_neighbors
+            # UMAP requires n_neighbors < N (number of data points)
+            # Adjust n_neighbors to be at most N-1, and at least 2 for meaningful results
+            adjusted_n_neighbors = max(2, min(requested_n_neighbors, n_data_points - 1))
+
+            # If we have very few data points, skip UMAP to avoid issues
+            if n_data_points < 3:
+                use_umap = False
+            else:
+                reducer = UMAP(
+                    n_components=umap_n_components or self.settings.umap_n_components,
+                    n_neighbors=adjusted_n_neighbors,
+                    metric="cosine",
+                    min_dist=umap_min_dist or self.settings.umap_min_dist,
+                    random_state=42,  # reproducible
+                    n_jobs=1,
+                )
+                reduced = reducer.fit_transform(embeddings)
 
         # HDBSCAN
         clusterer = hdbscan.HDBSCAN(

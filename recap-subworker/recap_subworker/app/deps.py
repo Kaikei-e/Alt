@@ -35,9 +35,37 @@ _coarse_classifier: CoarseClassifier | None = None
 
 
 def _get_process_pool(settings: Settings) -> ProcessPoolExecutor:
+    """Get or create the process pool for CPU-heavy tasks (e.g., topic extraction).
+
+    Note: This process pool is separate from the pipeline_runner pool and is used
+    for in-process pipeline tasks. ProcessPoolExecutor doesn't support max_tasks_per_child
+    in Python < 3.13, so worker processes may accumulate memory over time. The pool is
+    properly cleaned up during shutdown in register_lifecycle.
+    """
+    import sys
+    import structlog
+
+    logger = structlog.get_logger(__name__)
     global _process_pool
     if _process_pool is None:
-        _process_pool = ProcessPoolExecutor(max_workers=settings.process_pool_size)
+        # Python 3.13+ supports max_tasks_per_child in ProcessPoolExecutor
+        # For earlier versions, we rely on proper shutdown cleanup
+        pool_kwargs: dict[str, int] = {"max_workers": settings.process_pool_size}
+        if sys.version_info >= (3, 13):
+            # Set max_tasks_per_child to prevent memory leaks
+            # This is a reasonable default - workers will be replaced after 100 tasks
+            pool_kwargs["max_tasks_per_child"] = 100
+            logger.info(
+                "creating process pool with max_tasks_per_child",
+                max_workers=settings.process_pool_size,
+                max_tasks_per_child=100,
+            )
+        else:
+            logger.info(
+                "creating process pool (Python < 3.13, max_tasks_per_child not available)",
+                max_workers=settings.process_pool_size,
+            )
+        _process_pool = ProcessPoolExecutor(**pool_kwargs)
     return _process_pool
 
 

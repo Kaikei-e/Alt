@@ -338,8 +338,48 @@ class RunManager:
                 text_count=len(submission.payload.texts),
             )
 
-        record = await self.get_run(run_id)
-        assert record is not None
+        # Try to fetch the record, but if it fails, construct it from the inserted data
+        try:
+            record = await self.get_run(run_id)
+            if record is None:
+                # Fallback: construct record from inserted data
+                LOGGER.warning(
+                    "classification.run.get_failed_fallback",
+                    run_id=run_id,
+                    job_id=str(submission.job_id),
+                    message="Failed to fetch run after insert, constructing from inserted data",
+                )
+                record = RunRecord(
+                    run_id=run_id,
+                    job_id=submission.job_id,
+                    genre="classification",
+                    status="running",
+                    cluster_count=0,
+                    request_payload=request_envelope,
+                    response_payload=None,
+                    error_message=None,
+                )
+        except Exception as exc:
+            # If get_run fails (e.g., database connection error), construct record from inserted data
+            LOGGER.warning(
+                "classification.run.get_failed_fallback",
+                run_id=run_id,
+                job_id=str(submission.job_id),
+                error_type=type(exc).__name__,
+                error=str(exc),
+                message="Failed to fetch run after insert, constructing from inserted data",
+            )
+            record = RunRecord(
+                run_id=run_id,
+                job_id=submission.job_id,
+                genre="classification",
+                status="running",
+                cluster_count=0,
+                request_payload=request_envelope,
+                response_payload=None,
+                error_message=None,
+            )
+
         task = asyncio.create_task(self._guarded_process_classification_run(run_id))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -666,6 +706,37 @@ class RunManager:
             dao = self._dao_factory(session)
             await dao.mark_run_failure(run_id, "failed", message)
             await session.commit()
+
+    async def shutdown(self) -> None:
+        """Cancel all pending tasks and wait for them to complete.
+
+        This prevents memory leaks from orphaned asyncio tasks.
+        """
+        if not self._tasks:
+            return
+
+        LOGGER.info("shutting down RunManager", pending_tasks=len(self._tasks))
+
+        # Cancel all pending tasks
+        for task in list(self._tasks):
+            if not task.done():
+                task.cancel()
+
+        # Wait for tasks to complete (with timeout to prevent hanging)
+        if self._tasks:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self._tasks, return_exceptions=True),
+                    timeout=30.0,
+                )
+            except asyncio.TimeoutError:
+                LOGGER.warning(
+                    "some tasks did not complete within timeout during shutdown",
+                    pending_count=len([t for t in self._tasks if not t.done()]),
+                )
+
+        self._tasks.clear()
+        LOGGER.info("RunManager shutdown complete")
 
 
 __all__ = [
