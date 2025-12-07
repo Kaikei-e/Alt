@@ -129,6 +129,7 @@ class RecapSummaryRequest(BaseModel):
     job_id: UUID
     genre: str = Field(min_length=1)
     clusters: List[RecapClusterInput] = Field(min_length=1, max_length=300)
+    genre_highlights: Optional[List[RepresentativeSentence]] = None
     options: Optional[RecapSummaryOptions] = None
 
 
@@ -160,6 +161,8 @@ class RecapSummaryMetadata(BaseModel):
     prompt_tokens: Optional[int] = Field(default=None, ge=0)
     completion_tokens: Optional[int] = Field(default=None, ge=0)
     processing_time_ms: Optional[int] = Field(default=None, ge=0)
+    json_validation_errors: int = Field(default=0, ge=0)
+    summary_length_bullets: int = Field(default=0, ge=0)
 
 
 class RecapSummaryResponse(BaseModel):

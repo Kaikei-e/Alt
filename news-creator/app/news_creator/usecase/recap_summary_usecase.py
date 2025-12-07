@@ -4,8 +4,12 @@ import json
 import logging
 import re
 import textwrap
-from typing import Dict, Any, List, Optional
+import os
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Tuple
 from urllib.parse import urlparse
+
+from jinja2 import Template
 
 try:
     import json_repair
@@ -19,7 +23,6 @@ from news_creator.domain.models import (
     RecapSummary,
     RecapSummaryMetadata,
 )
-from news_creator.domain.prompts import RECAP_CLUSTER_SUMMARY_PROMPT
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
 
@@ -32,6 +35,11 @@ class RecapSummaryUsecase:
     def __init__(self, config: NewsCreatorConfig, llm_provider: LLMProviderPort):
         self.config = config
         self.llm_provider = llm_provider
+
+        # Load prompt template
+        template_path = Path(__file__).parent.parent.parent / "prompts" / "recap_summary.jinja"
+        with open(template_path, "r", encoding="utf-8") as f:
+            self.template = Template(f.read())
 
     async def generate_summary(self, request: RecapSummaryRequest) -> RecapSummaryResponse:
         """Produce structured summary JSON from clustering evidence."""
@@ -62,6 +70,7 @@ class RecapSummaryUsecase:
         max_retries = max(2, self.config.max_repetition_retries)
         last_error = None
         last_response = None
+        json_validation_error_count = 0
 
         for attempt in range(max_retries + 1):
             # リトライ時は温度を下げる、Repetition Penaltyを上げる
@@ -132,7 +141,8 @@ class RecapSummaryUsecase:
                 continue  # Retry
 
             try:
-                summary_payload = self._parse_summary_json(llm_response.response, max_bullets)
+                summary_payload, parse_errors = self._parse_summary_json(llm_response.response, max_bullets)
+                json_validation_error_count += parse_errors
 
                 # Also check for repetition in parsed summary text
                 summary_text = summary_payload.get("title", "") + " " + " ".join(summary_payload.get("bullets", []))
@@ -163,6 +173,8 @@ class RecapSummaryUsecase:
                     prompt_tokens=llm_response.prompt_eval_count,
                     completion_tokens=llm_response.eval_count,
                     processing_time_ms=self._nanoseconds_to_milliseconds(llm_response.total_duration),
+                    json_validation_errors=json_validation_error_count,
+                    summary_length_bullets=len(summary.bullets),
                 )
 
                 if attempt > 0:
@@ -209,10 +221,48 @@ class RecapSummaryUsecase:
                 )
                 raise
 
+        # Fail-safe: If all retries fail, return the extracted genre highlights as the summary
+        if request.genre_highlights:
+            logger.warning(
+                "Falling back to genre highlights due to LLM failure",
+                extra={"job_id": str(request.job_id), "genre": request.genre}
+            )
+            return getattr(self, "_create_fallback_response")(request)
+
         # ここに到達することはないはずだが、念のため
         if last_error:
             raise last_error
         raise RuntimeError("Failed to generate recap summary")
+
+    def _create_fallback_response(self, request: RecapSummaryRequest) -> RecapSummaryResponse:
+        """Create a response from genre highlights when LLM generation fails."""
+        highlights = request.genre_highlights or []
+        bullets = [h.text for h in highlights[:15]]
+        if not bullets:
+            bullets = ["要約の生成に失敗しました。"]
+
+        summary = RecapSummary(
+            title=f"{request.genre}の主要トピック (自動抽出)",
+            bullets=bullets,
+            language="ja"
+        )
+
+        metadata = RecapSummaryMetadata(
+            model="extraction-fallback",
+            temperature=0.0,
+            prompt_tokens=0,
+            completion_tokens=0,
+            processing_time_ms=0,
+            json_validation_errors=1,  # Fallback implies failure
+            summary_length_bullets=len(summary.bullets),
+        )
+
+        return RecapSummaryResponse(
+            job_id=request.job_id,
+            genre=request.genre,
+            summary=summary,
+            metadata=metadata
+        )
 
     def _build_prompt(self, request: RecapSummaryRequest, max_bullets: int) -> str:
         # Truncate cluster section to fit within 80K context window
@@ -294,21 +344,44 @@ class RecapSummaryUsecase:
                 }
             )
 
-        return RECAP_CLUSTER_SUMMARY_PROMPT.format(
-            job_id=request.job_id,
-            genre=request.genre,
-            max_bullets=max_bullets,
-            cluster_section=cluster_section,
-        )
+        # Decide whether to use cluster_section or genre_highlights
+        # If genre_highlights is present and we prefer it (e.g. for efficiency), we can suppress cluster_section.
+        # However, the prompt template logic handles it:
+        # {% if cluster_section %} ... {% else %} ... {% endif %}
+        # So passing BOTH might be ambiguous if the template prioritizes one.
+        # My template says {% if cluster_section %}, so if I pass it, it uses it.
+        # To use highlights, I should NOT pass cluster_section, or update logic.
+
+        # Policy: If genre_highlights are provided, USE THEM and ignore clusters for the prompt context
+        # (unless user explicitly wants full clustering, but here we want optimization).
+        # Actually, @refine_plan4.md says: "Genre Merge Logic: ... collected into mini-summary... input to LLM".
+        # So yes, if highlights exist, we use them.
+
+        render_kwargs = {
+            "job_id": str(request.job_id),
+            "genre": request.genre,
+            "max_bullets": max_bullets,
+        }
+
+        if request.genre_highlights:
+             render_kwargs["highlights"] = request.genre_highlights
+             render_kwargs["cluster_section"] = None # Force use of highlights path
+        else:
+             render_kwargs["cluster_section"] = cluster_section
+             render_kwargs["highlights"] = None
+
+        return self.template.render(**render_kwargs)
 
     def _resolve_max_bullets(self, request: RecapSummaryRequest) -> int:
         if request.options and request.options.max_bullets is not None:
             return request.options.max_bullets
         return 15
 
-    def _parse_summary_json(self, content: str, max_bullets: int) -> Dict[str, Any]:
+    def _parse_summary_json(self, content: str, max_bullets: int) -> Tuple[Dict[str, Any], int]:
         if not content:
             raise RuntimeError("LLM returned empty response for recap summary")
+
+        errors = 0
 
         # Step 1: Clean Markdown code blocks from the response
         cleaned_content = self._clean_markdown_code_blocks(content)
@@ -321,17 +394,20 @@ class RecapSummaryUsecase:
                 "Structured JSON not found in recap summary response; falling back to heuristic parsing",
                 extra={"content_preview": cleaned_content[:200]},
             )
+            errors += 1
             fallback = self._fallback_summary_from_text(cleaned_content, max_bullets)
-            return self._sanitize_summary_payload(fallback, max_bullets)
+            return self._sanitize_summary_payload(fallback, max_bullets), errors
 
         if candidate is None:
+            errors += 1
             fallback = self._fallback_summary_from_text(cleaned_content, max_bullets)
-            return self._sanitize_summary_payload(fallback, max_bullets)
+            return self._sanitize_summary_payload(fallback, max_bullets), errors
 
         # Step 2: Try standard JSON parsing first
         try:
             parsed = json.loads(candidate)
         except json.JSONDecodeError as exc:
+            errors += 1
             logger.warning(
                 "Standard JSON parsing failed, attempting JSON repair",
                 extra={"error": str(exc), "content_preview": candidate[:200]},
@@ -348,19 +424,19 @@ class RecapSummaryUsecase:
                         extra={"repair_error": str(repair_exc), "content_preview": candidate[:200]},
                     )
                     fallback = self._fallback_summary_from_text(cleaned_content, max_bullets)
-                    return self._sanitize_summary_payload(fallback, max_bullets)
+                    return self._sanitize_summary_payload(fallback, max_bullets), errors
             else:
                 logger.error(
                     "Failed to parse recap summary JSON and json_repair not available",
                     extra={"content": candidate[:500]},
                 )
                 fallback = self._fallback_summary_from_text(cleaned_content, max_bullets)
-                return self._sanitize_summary_payload(fallback, max_bullets)
+                return self._sanitize_summary_payload(fallback, max_bullets), errors
 
         if not isinstance(parsed, dict):
             raise RuntimeError("LLM response must be a JSON object")
 
-        return self._sanitize_summary_payload(parsed, max_bullets)
+        return self._sanitize_summary_payload(parsed, max_bullets), errors
 
     def _clean_markdown_code_blocks(self, text: str) -> str:
         """
