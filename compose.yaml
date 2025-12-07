@@ -791,6 +791,31 @@ services:
     profiles:
       - recap
 
+  dashboard:
+    <<: *shared-env-file
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    profiles:
+      - recap
+    ports:
+      - "8501:8501"
+    environment:
+      - RECAP_DB_DSN=postgresql://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:5432/${RECAP_DB_NAME}
+    depends_on:
+      recap-db:
+        condition: service_healthy
+    networks:
+      - alt-network
+    restart: unless-stopped
+    labels:
+      - rask.group=dashboard
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 ################### For Rask Log Aggregator ###################
   nginx-logs:
     build:
