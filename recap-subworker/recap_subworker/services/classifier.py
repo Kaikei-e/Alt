@@ -1,4 +1,5 @@
 import joblib
+import json
 import numpy as np
 import time
 from pathlib import Path
@@ -14,31 +15,66 @@ class GenreClassifierService:
     def __init__(self, model_path: str, embedder: Embedder):
         self.embedder = embedder
         self.model_path = Path(model_path)
-        self.model = None
+        self.tfidf_path = self.model_path.parent / "tfidf_vectorizer.joblib"
+        self.thresholds_path = self.model_path.parent / "genre_thresholds.json"
 
-    def _ensure_model(self):
+        self.model = None
+        self.tfidf = None
+        self.thresholds = None
+
+    def _ensure_model(self, threshold_overrides: Dict[str, float] = None):
         if self.model is None:
             if not self.model_path.exists():
                 raise FileNotFoundError(f"Model not found at {self.model_path}")
-            logger.info("Loading classification model", model_path=str(self.model_path))
+
+            logger.info("Loading classification artifacts", model_path=str(self.model_path))
             self.model = joblib.load(self.model_path)
-            logger.info("Classification model loaded", model_path=str(self.model_path), classes=len(self.model.classes_))
 
-    def predict_batch(self, texts: List[str]) -> List[Dict[str, Any]]:
+            if self.tfidf_path.exists():
+                self.tfidf = joblib.load(self.tfidf_path)
+                logger.info("TF-IDF vectorizer loaded")
+            else:
+                logger.warning("TF-IDF vectorizer not found, will use embeddings only if model allows")
+
+            # Load base thresholds
+            if self.thresholds_path.exists():
+                with open(self.thresholds_path) as f:
+                    self.thresholds = json.load(f)
+                logger.info("Base thresholds loaded", count=len(self.thresholds))
+            else:
+                self.thresholds = {}
+                logger.warning("Thresholds not found, using default 0.5")
+
+        # Apply overrides if provided (can change at runtime even if model is loaded)
+        if threshold_overrides:
+             # Make sure we don't mutate the base thresholds permanently if we were to support dynamic updates better
+             # But for now, simple update is fine or just used during lookup.
+             # Actually, better to store overrides separately or merge effectively.
+             # For this scope, let's update simple dict if it's safe.
+             # But _ensure_model is usually called once or lazily.
+             # If overrides change, we might need to refresh.
+             # Let's assume passed overrides are always current.
+             self.current_thresholds = self.thresholds.copy()
+             self.current_thresholds.update(threshold_overrides)
+        else:
+             self.current_thresholds = self.thresholds.copy()
+
+        if self.model is None: # Should be loaded by now
+             logger.info("Classification model and artifacts loaded")
+
+
+    def predict_batch(self, texts: List[str], multi_label: bool = False, top_k: int = 5, threshold_overrides: Dict[str, float] = None) -> List[Dict[str, Any]]:
         """
-        Predict genres for a batch of texts.
-
-        Note: Input texts should be preprocessed to "title + lead + first N sentences"
-        format for consistency with training data. The caller (recap-worker) is
-        responsible for constructing this unified format.
+        Predict genres for a batch of texts using Hybrid Features (Embedding + TF-IDF)
+        and Dynamic Thresholding.
 
         Args:
-            texts: List of preprocessed text strings (title + lead + first N sentences)
-
-        Returns:
-            List of prediction results with top_genre, confidence, and scores
+            texts: List of texts to classify.
+            multi_label: If True, returns all genres above threshold (up to top_k).
+            top_k: Maximum number of genres to return per text.
+            threshold_overrides: Dictionary of genre-specific thresholds to override defaults.
         """
-        self._ensure_model()
+        self._ensure_model(threshold_overrides)
 
         total_texts = len(texts)
         if total_texts == 0:
@@ -48,58 +84,146 @@ class GenreClassifierService:
             "Starting batch prediction",
             total_texts=total_texts,
             embedding_batch_size=self.embedder.config.batch_size,
+            multi_label=multi_label,
         )
 
-        # E5 expects "passage: " prefix for documents
-        # Note: Training should use the same prefix for consistency
         input_texts = [f"passage: {t}" for t in texts]
 
-        # Embedding generation with progress logging
+        # 1. Embeddings
         embed_start = time.time()
         embeddings = self.embedder.encode(input_texts)
         embed_elapsed = time.time() - embed_start
 
         logger.info(
             "Embedding generation completed",
-            total_texts=total_texts,
-            embedding_shape=embeddings.shape if len(embeddings) > 0 else None,
             embedding_seconds=round(embed_elapsed, 2),
-            embedding_throughput=round(total_texts / embed_elapsed, 2) if embed_elapsed > 0 else 0,
         )
 
         if len(embeddings) == 0:
-            logger.warning("No embeddings generated, returning empty results")
             return []
 
-        # Predict probabilities
+        # 2. TF-IDF
+        features = embeddings
+        if self.tfidf:
+            tfidf_start = time.time()
+            tfidf_features = self.tfidf.transform(texts) # Original texts for TF-IDF
+            # Concatenate
+            combined_features = np.hstack((embeddings, tfidf_features.toarray()))
+            logger.info("TF-IDF extraction completed", seconds=round(time.time() - tfidf_start, 2))
+
+            # Check what the model expects
+            expected_features = getattr(self.model, "n_features_in_", None)
+            if expected_features:
+                 if expected_features == combined_features.shape[1]:
+                     features = combined_features
+                 elif expected_features == embeddings.shape[1]:
+                     logger.warning(
+                         "Model expects fewer features than generated. Using embeddings only.",
+                         expected=expected_features,
+                         got=combined_features.shape[1]
+                     )
+                     features = embeddings
+                 else:
+                     logger.error(
+                         "Feature dimension mismatch",
+                         expected=expected_features,
+                         got_combined=combined_features.shape[1],
+                         got_embeddings=embeddings.shape[1]
+                     )
+                     # Fallback to combined and let it crash or raise clear error?
+                     # If we are here, probably crash is inevitable or we try combined.
+                     features = combined_features
+            else:
+                 features = combined_features
+
+        # 3. Predict Probabilities
         predict_start = time.time()
-        probs_batch = self.model.predict_proba(embeddings)
+        try:
+            probs_batch = self.model.predict_proba(features)
+        except ValueError as e:
+            # Fallback for "X has Y features, but expects Z" if generic check failed
+            msg = str(e)
+            if "expecting" in msg and str(embeddings.shape[1]) in msg:
+                 logger.warning("ValueError during prediction, retrying with embeddings only", error=msg)
+                 probs_batch = self.model.predict_proba(embeddings)
+            else:
+                 raise e
         predict_elapsed = time.time() - predict_start
         classes = self.model.classes_
 
-        logger.info(
-            "Model prediction completed",
-            total_texts=total_texts,
-            num_classes=len(classes),
-            prediction_seconds=round(predict_elapsed, 2),
-            prediction_throughput=round(total_texts / predict_elapsed, 2) if predict_elapsed > 0 else 0,
-        )
-
-        # Build results
+        # 4. Apply Thresholds
         results = []
         for probs in probs_batch:
             scores = {cls: float(prob) for cls, prob in zip(classes, probs)}
-            top_class = classes[np.argmax(probs)]
-            results.append({
-                "top_genre": top_class,
-                "confidence": float(scores[top_class]),
-                "scores": scores
-            })
+
+            # Find candidate classes that pass threshold
+            candidates = []
+            for cls, score in scores.items():
+                threshold = self.current_thresholds.get(cls, 0.5)
+                if score >= threshold:
+                    candidates.append({"genre": cls, "score": score, "threshold": threshold})
+
+            # Sort candidates by score descending
+            candidates.sort(key=lambda x: x["score"], reverse=True)
+
+            if multi_label:
+                # In multi-label mode, return top_k candidates that passed threshold
+                # If no candidates passed, return empty or fallback?
+                # Usually multi-label allows empty.
+                # But for existing consumers, we might want at least one if we fallback to single behavior?
+                # Let's stick to: candidates list.
+
+                # If no candidates, effectively "other" or empty.
+                # But let's fill top_genre for backward compatibility regardless.
+                if candidates:
+                    top_match = candidates[0]
+                    top_genre = top_match["genre"]
+                    confidence = top_match["score"]
+                    final_candidates = candidates[:top_k]
+                else:
+                    # No genre passed threshold
+                    top_genre = 'other'
+                    confidence = scores.get('other', 0.0)
+                    if 'other' not in scores:
+                         # Fallback if 'other' not in model
+                         idx = np.argmax(probs)
+                         top_genre = classes[idx]
+                         confidence = float(scores[top_genre])
+
+                    final_candidates = [] # Empty candidates list if nothing passed threshold
+
+                results.append({
+                    "top_genre": top_genre,
+                    "confidence": confidence,
+                    "scores": scores,
+                    "candidates": final_candidates
+                })
+
+            else:
+                # Single label mode (backward compatible logic)
+                if candidates:
+                    top_match = candidates[0]
+                    top_genre = top_match["genre"]
+                    confidence = top_match["score"]
+                    # If we enforce strictly > threshold, this is it.
+                else:
+                    # Fallback
+                    top_genre = 'other'
+                    confidence = scores.get('other', 0.0)
+                    if 'other' not in scores:
+                        top_genre = classes[np.argmax(probs)]
+                        confidence = float(scores[top_genre])
+
+                results.append({
+                    "top_genre": top_genre,
+                    "confidence": confidence,
+                    "scores": scores,
+                    "candidates": candidates[:top_k] # Still provide candidates for debug/info
+                })
 
         logger.info(
             "Batch prediction completed",
             total_texts=total_texts,
-            results_count=len(results),
             total_seconds=round(embed_elapsed + predict_elapsed, 2),
         )
 

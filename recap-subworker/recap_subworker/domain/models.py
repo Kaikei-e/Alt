@@ -257,6 +257,7 @@ class Diagnostics(BaseModel):
     hdbscan_ms: Optional[float] = None
     noise_ratio: Optional[float] = None
     dbcv_score: Optional[float] = None
+    silhouette_score: Optional[float] = None
 
 
 class EvidenceResponse(BaseModel):
@@ -265,6 +266,7 @@ class EvidenceResponse(BaseModel):
     job_id: str
     genre: str
     clusters: list[EvidenceCluster]
+    genre_highlights: Optional[list[RepresentativeSentence]] = None
     evidence_budget: EvidenceBudget
     diagnostics: Diagnostics = Field(default_factory=Diagnostics)
 

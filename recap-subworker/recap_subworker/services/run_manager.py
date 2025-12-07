@@ -672,6 +672,10 @@ class RunManager:
             payload["noise_ratio"] = diag.noise_ratio
         if diag.hdbscan is not None:
             payload["hdbscan"] = diag.hdbscan.model_dump()
+        if diag.dbcv_score is not None:
+            payload["dbcv_score"] = diag.dbcv_score
+        if diag.silhouette_score is not None:
+            payload["silhouette_score"] = diag.silhouette_score
         return payload
 
     def _build_diagnostics_entries(self, response: EvidenceResponse) -> list[DiagnosticEntry]:
@@ -685,6 +689,8 @@ class RunManager:
             "embedding_ms": diag.embedding_ms,
             "hdbscan_ms": diag.hdbscan_ms,
             "noise_ratio": diag.noise_ratio,
+            "dbcv_score": diag.dbcv_score,
+            "silhouette_score": diag.silhouette_score,
         }
         for key, value in mapping.items():
             if value is None:

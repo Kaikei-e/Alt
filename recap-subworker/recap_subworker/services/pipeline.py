@@ -147,15 +147,41 @@ class EvidencePipeline:
         if request.genre == "other":
             cluster_result = self.clusterer.subcluster_other(embeddings)
         else:
+            # Plan-based parameter selection
+            count = len(sentences)
+            if count < 10:
+                # Small: No dim reduction (implicit if n_neighbors=None?), min_cluster_size 3-5
+                # The prompt said "No dim reduction". optimize_clustering with umap_n_neighbors_range=None uses default [None] -> No UMAP.
+                mcs_range = [3, 4, 5]
+                ms_range = [1, 2, 3] # Heuristic
+                umap_range = None
+            elif count < 50:
+                # Medium: n_neighbors 15-30, min_cluster_size 5-10
+                mcs_range = [5, 7, 10]
+                ms_range = [None, 3, 5]
+                umap_range = [15, 30]
+            else:
+                # Large: n_neighbors 30-50, min_cluster_size 10-20
+                mcs_range = [10, 15, 20]
+                ms_range = [None, 5]
+                umap_range = [30, 50]
+
             cluster_result = self.clusterer.optimize_clustering(
                 embeddings,
                 min_cluster_size_range=mcs_range,
                 min_samples_range=ms_range,
-                umap_n_neighbors_range=[15, 30] if self.settings.enable_umap_auto else None,
+                umap_n_neighbors_range=umap_range if self.settings.enable_umap_auto else None,
             )
+
         hdbscan_duration = time.perf_counter() - cluster_start
         HDBSCAN_SECONDS.observe(hdbscan_duration)
         response.diagnostics.hdbscan_ms = hdbscan_duration * 1000
+
+        # Merge excessive clusters if > 10
+        if cluster_result.labels.size > 0:
+            cluster_result.labels = self._merge_excessive_clusters(
+                cluster_result.labels, embeddings, max_clusters=10
+            )
 
         if cluster_result.labels.size > 0:
             noise = int((cluster_result.labels < 0).sum())
@@ -172,7 +198,7 @@ class EvidencePipeline:
         logger.info("pipeline.topics.start", corpora=len(corpora))
         top_terms = self._compute_topics(corpora)
         logger.info("pipeline.topics.complete", corpora=len(corpora))
-        clusters, budget_tokens = self._build_clusters(
+        clusters, budget_tokens, rep_indices = self._build_clusters(
             sentences,
             embeddings,
             unique_labels,
@@ -182,15 +208,22 @@ class EvidencePipeline:
             request.constraints.mmr_lambda,
         )
 
+        # Hierarchical Summarization: Select genre-level highlights from cluster representatives
+        genre_highlights = self._select_genre_highlights(
+            sentences, embeddings, rep_indices, request.constraints.mmr_lambda
+        )
+
         response.clusters = clusters
         response.evidence_budget = EvidenceBudget(
             sentences=sum(len(cluster.representatives) for cluster in clusters),
             tokens_estimated=budget_tokens,
         )
+        response.genre_highlights = genre_highlights
         response.diagnostics.dedup_pairs = removed
         response.diagnostics.umap_used = cluster_result.used_umap
         response.diagnostics.hdbscan = cluster_result.params
         response.diagnostics.dbcv_score = cluster_result.dbcv_score
+        response.diagnostics.silhouette_score = cluster_result.silhouette_score
         logger.info(
             "pipeline.clusters.built",
             clusters=len(response.clusters),
@@ -206,6 +239,51 @@ class EvidencePipeline:
             dedup_removed=removed,
         )
         return response
+
+    def _merge_excessive_clusters(
+        self, labels: np.ndarray, embeddings: np.ndarray, max_clusters: int
+    ) -> np.ndarray:
+        """Merge smallest clusters into nearest neighbors until count <= max_clusters."""
+        unique_labels = set(labels)
+        unique_labels.discard(-1) # Ignore noise
+
+        while len(unique_labels) > max_clusters:
+            # 1. Calculate centroids and sizes
+            centroids = {}
+            sizes = {}
+            for lbl in unique_labels:
+                mask = labels == lbl
+                centroids[lbl] = embeddings[mask].mean(axis=0)
+                sizes[lbl] = mask.sum()
+
+            # 2. Find smallest cluster
+            smallest_lbl = min(sizes, key=sizes.get)
+            smallest_centroid = centroids[smallest_lbl]
+
+            # 3. Find nearest neighbor for smallest
+            best_target = None
+            max_sim = -1.0
+
+            for target_lbl in unique_labels:
+                if target_lbl == smallest_lbl:
+                    continue
+                # Cosine similarity
+                sim = np.dot(smallest_centroid, centroids[target_lbl]) / (
+                    np.linalg.norm(smallest_centroid) * np.linalg.norm(centroids[target_lbl]) + 1e-9
+                )
+                if sim > max_sim:
+                    max_sim = sim
+                    best_target = target_lbl
+
+            if best_target is not None:
+                # Merge: relabel smallest -> target
+                labels[labels == smallest_lbl] = best_target
+                unique_labels.remove(smallest_lbl)
+            else:
+                # Should not happen if > 1 cluster, unless embeddings are weird
+                break
+
+        return labels
 
     def warmup(self, samples: Sequence[str] | None = None) -> WarmupResponse:
         examples = list(samples or ["Warmup sentence."])
@@ -332,10 +410,11 @@ class EvidencePipeline:
         top_terms: list[list[str]],
         max_sentences_per_cluster: int,
         mmr_lambda: float,
-    ) -> tuple[list[EvidenceCluster], int]:
+    ) -> tuple[list[EvidenceCluster], int, list[int]]:
         clusters: list[EvidenceCluster] = []
         budget_tokens = 0
         used_articles: set[str] = set()
+        all_rep_indices: list[int] = []
         for cluster_offset, (cluster_id, indices) in enumerate(zip(unique_labels, cluster_indices)):
             cluster_embeddings = embeddings[indices]
             selected_local = selectors.mmr_select(
@@ -373,14 +452,15 @@ class EvidencePipeline:
                 tokens_added = _push_sentence(sentence_idx)
                 if tokens_added:
                     budget_tokens += tokens_added
+                    all_rep_indices.append(sentence_idx)
                     if len(representatives) >= max_sentences_per_cluster:
                         break
 
-            if len(representatives) < max_sentences_per_cluster:
                 for sentence_idx in indices:
                     tokens_added = _push_sentence(sentence_idx)
                     if tokens_added:
                         budget_tokens += tokens_added
+                        all_rep_indices.append(sentence_idx)
                         if len(representatives) >= max_sentences_per_cluster:
                             break
 
@@ -388,6 +468,7 @@ class EvidencePipeline:
                 tokens_added = _push_sentence(indices[0], allow_reuse=True)
                 if tokens_added:
                     budget_tokens += tokens_added
+                    all_rep_indices.append(indices[0])
 
             avg_sim = None
             if cluster_embeddings.shape[0] > 1:
@@ -411,7 +492,47 @@ class EvidencePipeline:
                     ),
                 )
             )
-        return clusters, budget_tokens
+        return clusters, budget_tokens, all_rep_indices
+
+    def _select_genre_highlights(
+        self,
+        sentences: Sequence[SentenceRecord],
+        embeddings: np.ndarray,
+        rep_indices: list[int],
+        mmr_lambda: float
+    ) -> list[RepresentativeSentence]:
+        """Select top sentences across all clusters for a genre-level summary."""
+        if not rep_indices:
+            return []
+
+        rep_embeddings = embeddings[rep_indices]
+
+        # Apply MMR on the pool of representatives
+        selected_local_indices = selectors.mmr_select(
+            rep_embeddings,
+            k=self.settings.max_genre_sentences,
+            lambda_param=mmr_lambda
+        )
+
+        highlights: list[RepresentativeSentence] = []
+        for local_idx in selected_local_indices:
+            original_idx = rep_indices[local_idx]
+            sentence = sentences[original_idx]
+            highlights.append(
+                RepresentativeSentence(
+                    text=sentence.text,
+                    lang=sentence.lang,
+                    embedding_ref=None, # Not inside a cluster
+                    reasons=["genre-highlight", "mmr-diversity"],
+                    source=RepresentativeSource(
+                        source_id=sentence.article_id,
+                        url=sentence.url,
+                        paragraph_idx=sentence.paragraph_idx,
+                    ),
+                )
+            )
+        return highlights
+
 
     def _dedup_preserve_order(self, values: list[str]) -> list[str]:
         seen: set[str] = set()

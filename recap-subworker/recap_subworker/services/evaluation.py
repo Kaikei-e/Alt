@@ -38,6 +38,9 @@ ALLOWED_BASE_DIRS = [
 ]
 
 
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+
 class EvaluationService:
     """評価サービス。"""
 
@@ -550,3 +553,35 @@ class EvaluationService:
         base_result["n_folds"] = self.n_folds
 
         return base_result
+
+    async def save_metrics(
+        self,
+        metrics: Dict,
+        session: AsyncSession,
+        job_id: Optional[str] = None,
+        metric_type: str = "classification_eval",
+    ) -> None:
+        """評価指標をデータベースに保存。
+
+        Args:
+            metrics: 評価結果の辞書
+            session: データベースセッション
+            job_id: 関連するジョブID（オプション）
+            metric_type: メトリクスタイプ（デフォルト: classification_eval）
+        """
+        stmt = text(
+            """
+            INSERT INTO recap_system_metrics (job_id, metric_type, metrics, timestamp)
+            VALUES (:job_id, :metric_type, :metrics, NOW())
+            """
+        )
+
+        await session.execute(
+            stmt,
+            {
+                "job_id": job_id,
+                "metric_type": metric_type,
+                "metrics": json.dumps(metrics),
+            },
+        )
+        await session.commit()

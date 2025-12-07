@@ -107,10 +107,16 @@ class Settings(BaseSettings):
         description="Maximum sentences sampled from a single document",
     )
     max_sentences_per_cluster: int = Field(
-        7,
+        8,
         ge=1,
         le=50,
         description="Maximum representative sentences per cluster",
+    )
+    max_genre_sentences: int = Field(
+        15,
+        ge=1,
+        le=50,
+        description="Maximum sentences for genre-level highlight summary",
     )
     default_hdbscan_min_cluster_size: int = Field(5, ge=2)
     default_hdbscan_min_samples: int | None = Field(default=None, ge=1)
@@ -250,7 +256,7 @@ class Settings(BaseSettings):
     )
     learning_scheduler_interval_hours: float = Field(
         4.0,
-        ge=0.5,
+        ge=0.001,
         le=168.0,
         description="Interval between learning task executions (hours)",
     )
@@ -300,6 +306,11 @@ class Settings(BaseSettings):
     genre_classifier_model_path: str = Field(
         "data/genre_classifier.joblib",
         description="Path to the trained genre classifier model",
+    )
+    genre_subworker_threshold_overrides: str = Field(
+        "{}",
+        description="JSON string mapping genres to custom threshold values (overrides defaults and model-specific thresholds)",
+        validation_alias=AliasChoices("RECAP_GENRE_THRESHOLDS", "RECAP_SUBWORKER_GENRE_THRESHOLDS"),
     )
 
 
