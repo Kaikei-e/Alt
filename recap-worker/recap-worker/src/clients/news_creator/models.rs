@@ -71,6 +71,8 @@ pub(crate) struct SummaryRequest {
     pub(crate) genre: String,
     pub(crate) clusters: Vec<ClusterInput>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) genre_highlights: Option<Vec<RepresentativeSentence>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) options: Option<SummaryOptions>,
 }
 
@@ -106,14 +108,12 @@ pub(crate) struct SummaryOptions {
     pub(crate) temperature: Option<f64>,
 }
 
-/// 日本語要約レスポンス。
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SummaryResponse {
     pub(crate) job_id: Uuid,
     pub(crate) genre: String,
     pub(crate) summary: Summary,
-    metadata: SummaryMetadata,
+    pub(crate) metadata: SummaryMetadata,
 }
 
 /// 要約内容。

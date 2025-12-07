@@ -59,6 +59,8 @@ pub(crate) struct ClusteringResponse {
     #[serde(default)]
     pub(crate) clusters: Vec<ClusterInfo>,
     #[serde(default)]
+    pub(crate) genre_highlights: Option<Vec<ClusterRepresentative>>,
+    #[serde(default)]
     pub(crate) diagnostics: Value,
 }
 
@@ -742,6 +744,7 @@ impl SubworkerClient {
             status: ClusterJobStatus::Succeeded,
             cluster_count: 1,
             clusters: vec![cluster],
+            genre_highlights: None,
             diagnostics: serde_json::json!({
                 "fallback": true,
                 "reason": "insufficient_documents_for_clustering"
@@ -1355,8 +1358,11 @@ mod tests {
                     title: Some("Test Article 1".to_string()),
                     sentences: vec!["First sentence of article 1.".to_string()],
                     language: "en".to_string(),
-                    genre_scores: None,
-                    confidence: Some(0.8),
+                    published_at: None,
+                    source_url: None,
+                    score: 0.0,
+                    genre_scores: Some(HashMap::new()),
+                    confidence: Some(0.9),
                     signals: None,
                 },
                 EvidenceArticle {
@@ -1364,6 +1370,9 @@ mod tests {
                     title: Some("Test Article 2".to_string()),
                     sentences: vec!["First sentence of article 2.".to_string()],
                     language: "en".to_string(),
+                    published_at: None,
+                    source_url: None,
+                    score: 0.0,
                     genre_scores: None,
                     confidence: Some(0.7),
                     signals: None,

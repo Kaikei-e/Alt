@@ -223,6 +223,7 @@ impl NewsCreatorClient {
             job_id,
             genre: genre.to_string(),
             clusters: vec![cluster],
+            genre_highlights: None,
             options: Some(crate::clients::news_creator::models::SummaryOptions {
                 max_bullets: Some(5), // 中間要約は短めに
                 temperature: Some(0.7),
@@ -264,6 +265,7 @@ impl NewsCreatorClient {
             job_id,
             genre: genre.to_string(),
             clusters: vec![cluster],
+            genre_highlights: None,
             options: Some(crate::clients::news_creator::models::SummaryOptions {
                 max_bullets: Some(15), // 最終要約
                 temperature: Some(0.7),
@@ -401,6 +403,7 @@ mod tests {
                 ],
                 top_terms: None,
             }],
+            genre_highlights: None,
             options: None,
         };
 

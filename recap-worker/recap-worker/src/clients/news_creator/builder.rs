@@ -139,10 +139,34 @@ impl<'a> SummaryRequestBuilder<'a> {
             })
             .collect();
 
+        // Genre highlightsの変換
+        let genre_highlights = clustering.genre_highlights.as_ref().map(|highlights| {
+            highlights
+                .iter()
+                .map(|rep| {
+                    let text = rep.text.trim().to_string();
+                    // メタデータを取得
+                    let (published_at, source_url) = article_metadata
+                        .get(&rep.article_id)
+                        .cloned()
+                        .unwrap_or((None, None));
+
+                    RepresentativeSentence {
+                        text,
+                        published_at: published_at.map(|dt| dt.to_rfc3339()),
+                        source_url,
+                        article_id: Some(rep.article_id.clone()),
+                        is_centroid: rep.reasons.iter().any(|r| r == "centrality"),
+                    }
+                })
+                .collect()
+        });
+
         SummaryRequest {
             job_id,
             genre: clustering.genre.clone(),
             clusters,
+            genre_highlights,
             options: Some(SummaryOptions {
                 max_bullets: Some(15),
                 temperature: Some(0.7),
@@ -189,6 +213,7 @@ mod tests {
             status: ClusterJobStatus::Succeeded,
             cluster_count: 50,
             clusters,
+            genre_highlights: None,
             diagnostics: json!({}),
         };
 
@@ -268,6 +293,7 @@ mod tests {
             status: ClusterJobStatus::Succeeded,
             cluster_count: 2,
             clusters,
+            genre_highlights: None,
             diagnostics: json!({}),
         };
 
