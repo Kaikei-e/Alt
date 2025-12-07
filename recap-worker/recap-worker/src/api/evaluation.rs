@@ -556,6 +556,8 @@ async fn run_evaluation(
             sentences,
             sentence_hashes,
             language: "unknown".to_string(),
+            published_at: None,
+            source_url: None,
             tags: vec![],       // No tags in evaluation dataset
             duplicates: vec![], // No duplicates in evaluation
         };
