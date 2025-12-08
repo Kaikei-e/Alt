@@ -31,7 +31,7 @@ class FakeClusterer:
         probs = np.ones_like(labels, dtype=float)
         return ClusterResult(labels, probs, False, HDBSCANSettings(min_cluster_size=min_cluster_size, min_samples=min_samples))
 
-    def optimize_clustering(self, embeddings, *, min_cluster_size_range, min_samples_range):
+    def optimize_clustering(self, embeddings, *, min_cluster_size_range, min_samples_range, **kwargs):
         return self.cluster(embeddings, min_cluster_size=min_cluster_size_range[0], min_samples=min_samples_range[0])
 
 
@@ -48,7 +48,7 @@ class SplitClusterer:
             HDBSCANSettings(min_cluster_size=min_cluster_size, min_samples=min_samples),
         )
 
-    def optimize_clustering(self, embeddings, *, min_cluster_size_range, min_samples_range):
+    def optimize_clustering(self, embeddings, *, min_cluster_size_range, min_samples_range, **kwargs):
         return self.cluster(embeddings, min_cluster_size=min_cluster_size_range[0], min_samples=min_samples_range[0])
 
 

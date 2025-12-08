@@ -76,7 +76,7 @@ def test_post_runs_requires_job_id_header():
 
     response = client.post("/v1/runs", json=_make_payload(), headers={"X-Alt-Genre": "ai"})
 
-    assert response.status_code == 400
+    assert response.status_code == 422
 
 
 def test_get_runs_not_found(monkeypatch):
