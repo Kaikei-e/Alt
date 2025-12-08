@@ -801,6 +801,7 @@ services:
       - recap
     ports:
       - "8501:8501"
+      - "8502:8000"
     environment:
       - RECAP_DB_DSN=postgresql://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:5432/${RECAP_DB_NAME}
     depends_on:
