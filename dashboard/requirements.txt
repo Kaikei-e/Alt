@@ -1,4 +1,4 @@
-streamlit==1.32.0
+streamlit==1.37.0
 pandas==2.2.1
 sqlalchemy==2.0.28
 psycopg2-binary==2.9.9
