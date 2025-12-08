@@ -506,6 +506,7 @@ services:
       - RECAP_SUBWORKER_MODEL_ID=intfloat/multilingual-e5-large
       - RECAP_SUBWORKER_PIPELINE_MODE=processpool
       - RECAP_SUBWORKER_GUNICORN_WORKER_TIMEOUT=900
+      - RECAP_SUBWORKER_GUNICORN_MAX_REQUESTS=10000
     ports:
       - "8002:8002"
     secrets:
