@@ -6,10 +6,38 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 import structlog
+from sudachipy import tokenizer, dictionary
 
 from .embedder import Embedder
 
 logger = structlog.get_logger(__name__)
+
+class SudachiTokenizer:
+    def __init__(self, mode="C"):
+        self.mode_str = mode
+        self._init_tokenizer()
+
+    def _init_tokenizer(self):
+        self.tokenizer = dictionary.Dictionary().create()
+        if self.mode_str == "A":
+            self.mode = tokenizer.Tokenizer.SplitMode.A
+        elif self.mode_str == "B":
+            self.mode = tokenizer.Tokenizer.SplitMode.B
+        else:
+            self.mode = tokenizer.Tokenizer.SplitMode.C
+
+    def tokenize(self, text):
+        return [m.surface() for m in self.tokenizer.tokenize(text, self.mode)]
+
+    def __call__(self, text):
+        return self.tokenize(text)
+
+    def __getstate__(self):
+        return {"mode_str": self.mode_str}
+
+    def __setstate__(self, state):
+        self.mode_str = state["mode_str"]
+        self._init_tokenizer()
 
 class GenreClassifierService:
     def __init__(self, model_path: str, embedder: Embedder):

@@ -42,7 +42,7 @@ from .embedder import Embedder
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?。！？])\s+")
 _LOGGER = structlog.get_logger(__name__)
-_MIN_DOCUMENTS_PER_GENRE = 10
+_MIN_DOCUMENTS_PER_GENRE = 3
 
 
 @dataclass

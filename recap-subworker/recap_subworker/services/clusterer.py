@@ -43,7 +43,11 @@ class Clusterer:
         min_samples: int,
         umap_n_neighbors: int | None = None,
         umap_n_components: int | None = None,
+
         umap_min_dist: float | None = None,
+        hdbscan_cluster_selection_epsilon: float | None = None,
+        hdbscan_cluster_selection_method: str | None = None,
+        hdbscan_allow_single_cluster: bool | None = None,
     ) -> ClusterResult:
         if embeddings.size == 0:
             empty = np.empty((0,), dtype=int)
@@ -102,12 +106,10 @@ class Clusterer:
         clusterer = hdbscan.HDBSCAN(
             min_cluster_size=min_cluster_size if min_cluster_size > 0 else self.settings.hdbscan_min_cluster_size,
             min_samples=min_samples if min_samples > 0 else self.settings.hdbscan_min_samples,
-            metric="euclidean" if use_umap else "euclidean", # UMAP reduces to euclidean space usually, or if raw embeddings we might use cosine?
-            # Actually standard practice with E5/Cosine embeddings:
-            # If UMAP used -> Euclidean on reduced.
-            # If Raw -> HDBSCAN doesn't support 'cosine' efficiently without precomputed distance matrix usually, but let's check.
-            # The original code might have been using default.
-            cluster_selection_method=self.settings.hdbscan_cluster_selection_method,
+            metric="euclidean" if use_umap else "euclidean",
+            cluster_selection_epsilon=hdbscan_cluster_selection_epsilon if hdbscan_cluster_selection_epsilon is not None else 0.0,
+            allow_single_cluster=hdbscan_allow_single_cluster if hdbscan_allow_single_cluster is not None else False,
+            cluster_selection_method=hdbscan_cluster_selection_method or self.settings.hdbscan_cluster_selection_method,
             prediction_data=True,
         )
         clusterer.fit(reduced)
@@ -160,79 +162,89 @@ class Clusterer:
         min_cluster_size_range: list[int] | None = None,
         min_samples_range: list[int | None] | None = None,
         umap_n_neighbors_range: list[int] | None = None,
+
         umap_n_components_range: list[int] | None = None,
+        hdbscan_cluster_selection_method: str | None = None,
+        hdbscan_allow_single_cluster: bool | None = None,
     ) -> ClusterResult:
         """Perform grid search to find best clustering parameters based on DBCV."""
         # Defaults from plan
         if min_cluster_size_range is None:
-            min_cluster_size_range = [3, 5, 10, 20]
+            # Plan: [4, 6, 8, 10, 12]. Adjusted slightly to include 3 for smaller datasets per docs/heuristics.
+            min_cluster_size_range = [3, 4, 6, 8, 10, 12]
         if min_samples_range is None:
-            min_samples_range = [None, 1, 3, 5]  # None means same as min_cluster_size
+            # Plan: [1, 2, 4, 6]. None usually defaults to min_cluster_size, but we want explicit control.
+            min_samples_range = [1, 2, 4, 6]
         if umap_n_neighbors_range is None:
-            umap_n_neighbors_range = [15, 30, 50]
+            umap_n_neighbors_range = [10, 15, 30]
         if umap_n_components_range is None:
-            umap_n_components_range = [5, 10, 15]
+            umap_n_components_range = [8]
 
-        best_score = -1.0
+        best_score = -2.0  # DBCV ranges from -1 to 1, start lower
         best_result = None
 
         # Pre-validation
         if embeddings.size == 0 or not np.isfinite(embeddings).all():
              return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
 
+        n_data_points = embeddings.shape[0]
+
         # 1. Determine which UMAP configs to run (neighbors x components)
         # We run UMAP first for each config, then run HDBSCAN variations on the *reduced* data.
-        # This prevents re-running UMAP for every HDBSCAN param change if they share the same UMAP params.
-
-        # Helper to get reduced embeddings
-        # Key: (n_neighbors, n_components) -> reduced_embeddings
-        reduced_cache = {}
 
         for n_neighbors in umap_n_neighbors_range:
             for n_components in umap_n_components_range:
                 # Run HDBSCAN grid on this UMAP output
+
+                # To optimize: In a real high-perf scenario we'd cache the UMAP result here.
+                # Since 'cluster' method encapsulates UMAP + HDBSCAN, we are re-running UMAP.
+                # However, UMAP is stochastic unless random_state is fixed (which it is in our code).
+                # For now, we accept the overhead as we move to Rust later, or we could refactor.
+                # Refactoring `cluster` to accept `pre_reduced` would be cleaner but let's stick to the interface for now
+                # to avoid breaking changes in other calls. We rely on the fact that this is "optimization" mode.
+
                 for mcs in min_cluster_size_range:
-                    for ms_val in min_samples_range:
-                         # ms can be None -> same as mcs
-                        ms = ms_val if ms_val is not None else mcs
+                    # Filter mcs based on dataset size
+                    if mcs >= n_data_points:
+                        continue
+
+                    for ms in min_samples_range:
+                        # ms can be None -> same as mcs. But our list has ints.
+                        current_ms = ms if ms is not None else mcs
 
                         # Skip invalid
-                        if ms > mcs:
+                        if current_ms > mcs:
                             continue
 
                         # Perform clustering
-                        # Note: self.cluster internally handles UMAP if passed.
-                        # To optimize, we should probably decouple UMAP, but for now calling self.cluster is safer for consistency
-                        # provided we trust its caching or it's fast enough.
-                        # Actually, self.cluster re-runs UMAP every time.
-                        # For strictly following the plan and performance:
-                        # "CPU-bound processing... optimize... Rust parallelization"
-                        # Since we are in Python now, we should optimize loops.
-
-                        # But `self.cluster` logic is complex (checks 0 vectors, etc).
-                        # Let's rely on `self.cluster` for correctness now. Max combinations: 3x3 x 4x4 = 144.
-                        # 144 UMAP calls is heavy.
-                        # Let's simple-cache the UMAP part inside `cluster`? No, `cluster` is method.
-
-                        # Let's just run it. The task describes moving to Rust for performance, so Python side might be slow.
-                        # However, we can optimize by checking cached reductions.
-
                         result = self.cluster(
                             embeddings,
                             min_cluster_size=mcs,
-                            min_samples=ms,
+                            min_samples=current_ms,
                             umap_n_neighbors=n_neighbors,
                             umap_n_components=n_components,
+                            # Plan item 3: epsilon=0.5 for merging close clusters
+                            hdbscan_cluster_selection_epsilon=0.5,
+                            hdbscan_cluster_selection_method=hdbscan_cluster_selection_method,
+                            hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
                         )
 
-                        # Prefer higher score. Tie-break: larger min_cluster_size -> fewer clusters (usually) or more stability?
-                        # Plan says "optimize parameters... score is maximal".
-                        if result.dbcv_score > best_score:
-                            best_score = result.dbcv_score
+                        # Optimization metric: DBCV
+                        score = result.dbcv_score
+
+                        # Tie-breaking logic:
+                        # 1. Higher DBCV (validity)
+                        # 2. If equal, prefer larger min_cluster_size (more stable, fewer micro-clusters)
+                        if score > best_score:
+                            best_score = score
                             best_result = result
+                        elif score == best_score:
+                            if best_result and mcs > best_result.params.min_cluster_size:
+                                best_result = result
 
         if best_result is None:
-            return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
+            # Fallback for very small data or failed searches
+            return self.cluster(embeddings, min_cluster_size=max(3, n_data_points // 5), min_samples=1)
 
         return best_result
 
@@ -243,9 +255,10 @@ class Clusterer:
         """
         return self.optimize_clustering(
             embeddings,
-            min_cluster_size_range=[3, 5],
-            min_samples_range=[1, 2, 3],
-            umap_n_neighbors_range=[15, 30],
-            umap_n_components_range=[5, 10],
+            min_cluster_size_range=[3, 4, 5],
+            min_samples_range=[1, 2],
+            umap_n_neighbors_range=[10, 15],
+            umap_n_components_range=[5, 8],
+            hdbscan_cluster_selection_method="leaf",
+            hdbscan_allow_single_cluster=True,
         )
-
