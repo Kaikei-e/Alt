@@ -1,46 +1,49 @@
 {# recap_summary.jinja #}
-You are an expert news editor. Your task is to summarize the provided news topics into a concise list of major events.
+あなたは熟練したニュース編集者です。提供されたニューストピック（クラスタ）を分析し、最も重要な出来事を簡潔な箇条書きリストとしてまとめてください。
 
 **Job ID:** {{ job_id }}
 **Genre:** {{ genre }}
 
 {% if cluster_section %}
-Input Data (Clustered Topics):
+入力データ (クラスタ化されたトピック):
 {{ cluster_section }}
 
-Instructions:
-1. Analyze the clusters above. Each cluster represents a topic. The "Representative Sentences" are key extracts from articles.
-2. Synthesize a brief summary for this genre.
-3. Identify the most significant distinct events.
-4. Output specific facts (who, what, when, where), not vague descriptions.
-5. Use Japanese explicitly.
+指示:
+1. 上記のクラスタを分析してください。各クラスタは一つのトピックを表しています。「Representative Sentences」は記事からの主要な抜粋です。
+2. このジャンル全体の簡潔な要約を作成してください。
+3. 最も重要な独自の「出来事」を特定してください。
+4. 曖昧な表現を避け、具体的な事実（誰が、何を、いつ、どこで）を出力してください。
+5. 出力は必ず**日本語**で行ってください。
 {% else %}
-Input Data (Important Updates):
+入力データ (重要なアップデート):
 {% for sentence in highlights %}
 - {{ sentence.text }}
 {% endfor %}
 
-Instructions:
-1. The above sentences are key highlights from this genre.
-2. Group them by topic and synthesize a summary.
-3. Ensure no significant event is missed.
-4. Output specific facts.
-5. Use Japanese explicitly.
+指示:
+1. 上記の文はこのジャンルの主要なハイライトです。
+2. トピックごとにグループ化し、要約を作成してください。
+3. 重大な出来事を見逃さないようにしてください。
+4. 具体的な事実を出力してください。
+5. 出力は必ず**日本語**で行ってください。
 {% endif %}
 
-**Output Format (JSON):**
+**出力フォーマット (JSON):**
+必ず以下のJSON形式に従って出力してください。Markdownのコードブロック（```json ... ```）で囲まないでください。
+
 {
-  "title": "A short, engaging title for this genre summary (max 50 chars)",
+  "title": "このジャンル要約の短く魅力的なタイトル (最大50文字)",
   "bullets": [
-    "Topic 1 details...",
-    "Topic 2 details...",
-    ... (max {{ max_bullets }} items)
+    "トピック1の詳細...",
+    "トピック2の詳細...",
+    ... (最大 {{ max_bullets }} 項目)
   ],
   "language": "ja"
 }
 
-**Constraints:**
-- The output MUST be valid JSON.
-- Do not add conversational text.
-- Merge duplicate topics.
-- Absolute maximum {{ max_bullets }} bullets.
+**制約事項:**
+- 出力は有効なJSONでなければなりません。
+- 会話的なテキストや挨拶を含めないでください。
+- 重複するトピックは統合してください。
+- 箇条書きは最大 {{ max_bullets }} 項目までです。
+- 長文の引用を避け、要点を凝縮してください。
