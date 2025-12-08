@@ -7,6 +7,8 @@ use super::embedding::{EmbeddingService, cosine_similarity};
 use super::genre::{GenreAssignment, GenreBundle};
 use crate::clients::SubworkerClient;
 use crate::store::dao::RecapDao;
+use crate::util::kmeans::KMeans;
+use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -29,9 +31,11 @@ pub(crate) trait SelectStage: Send + Sync {
 pub(crate) struct SummarySelectStage {
     max_articles_per_genre: usize,
     min_documents_per_genre: usize,
-    similarity_threshold: f32,
+    #[allow(dead_code)]
+    similarity_threshold: f32, // now implicitly used only via config or unused if pure percentile
     embedding_service: Option<EmbeddingService>,
     dao: Option<Arc<RecapDao>>,
+    #[allow(dead_code)]
     subworker: Option<Arc<SubworkerClient>>,
 }
 
@@ -93,11 +97,6 @@ impl SummarySelectStage {
         &self,
         assignments: Vec<GenreAssignment>,
     ) -> anyhow::Result<Vec<GenreAssignment>> {
-        if self.subworker.is_none() {
-            return Ok(assignments);
-        }
-        let subworker = self.subworker.as_ref().unwrap();
-
         // Separate "other" assignments
         let (mut others, mut rest): (Vec<GenreAssignment>, Vec<GenreAssignment>) = assignments
             .into_iter()
@@ -107,44 +106,46 @@ impl SummarySelectStage {
             return Ok(rest);
         }
 
-        let texts: Vec<String> = others
-            .iter()
-            .map(|a| {
-                let title = a.article.title.as_deref().unwrap_or("");
-                let body = a
-                    .article
-                    .sentences
-                    .iter()
-                    .take(3)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                format!("{title}\n{body}")
-            })
-            .collect();
+        // Use local K-Means if embedding service is available
+        if let Some(service) = &self.embedding_service {
+            let texts: Vec<String> = others
+                .iter()
+                .map(|a| {
+                    let title = a.article.title.as_deref().unwrap_or("");
+                    let body = a
+                        .article
+                        .sentences
+                        .iter()
+                        .take(3)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!("{title}\n{body}")
+                })
+                .collect();
 
-        match subworker.cluster_other(texts).await {
-            Ok((cluster_ids, _, _)) => {
-                for (i, cluster_id) in cluster_ids.iter().enumerate() {
-                    if *cluster_id >= 0 {
-                        // Assign new genre: other.{cluster_id}
-                        // Since GenreAssignment::genres is a Vec, we can prepend or replace.
-                        // Usually primary_genre is the first one.
+            if let Ok(embeddings) = service.encode(&texts).await {
+                // Determine K dynamically: at least 3 items per cluster
+                let k = (others.len() / 3).clamp(1, 5);
+
+                if k > 1 {
+                    let kmeans = KMeans::new(&embeddings, k, 20);
+
+                    for (i, &cluster_id) in kmeans.assignments.iter().enumerate() {
                         if let Some(assignment) = others.get_mut(i) {
                             let new_genre = format!("other.{}", cluster_id);
                             // Insert at index 0 to make it primary
                             assignment.genres.insert(0, new_genre.clone());
-                            assignment.genre_scores.insert(new_genre.clone(), 100); // Mock score
+                            assignment.genre_scores.insert(new_genre.clone(), 100);
                             assignment.genre_confidence.insert(new_genre, 1.0);
                         }
                     }
                 }
-            }
-            Err(e) => {
-                tracing::warn!("failed to subcluster others: {}", e);
-                // On failure, keep as is
+            } else {
+                tracing::warn!("failed to embed 'other' articles for subclustering");
             }
         }
+        // If no embedding service, we just keep them as "other" (no op)
 
         rest.append(&mut others);
         Ok(rest)
@@ -155,49 +156,112 @@ impl SummarySelectStage {
         bundle: GenreBundle,
         thresholds: &HashMap<String, usize>,
     ) -> Vec<GenreAssignment> {
-        let mut per_genre_count = std::collections::HashMap::new();
         let mut selected = Vec::new();
 
-        let mut ranked = bundle.assignments;
-        ranked.sort_by(|a, b| {
-            let score_a = Self::confidence(a);
-            let score_b = Self::confidence(b);
-            score_b
-                .partial_cmp(&score_a)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        for assignment in ranked {
-            // 最初のジャンルを使用（複数ジャンルがある場合は最初のもの）
-            let primary_genre = assignment
+        // Group by genre
+        let mut by_genre: HashMap<String, Vec<GenreAssignment>> = HashMap::new();
+        for assignment in bundle.assignments {
+            let g = assignment
                 .primary_genre()
-                .map_or_else(|| "other".to_string(), std::string::ToString::to_string);
+                .map_or("other".to_string(), ToString::to_string);
+            by_genre.entry(g).or_default().push(assignment);
+        }
 
-            let min_docs = thresholds
-                .get(&primary_genre)
+        for (genre, mut candidates) in by_genre {
+            // Sort by score descending
+            candidates.sort_by(|a, b| {
+                let score_a = Self::calculate_score(a);
+                let score_b = Self::calculate_score(b);
+                score_b
+                    .partial_cmp(&score_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            // Determine limits
+            let total_in_genre = candidates.len() as f64;
+            let computed_f64 = (total_in_genre * 0.1).ceil().max(0.0);
+            // computed_f64は既に非負（.max(0.0)で保証）かつusize::MAX以下であることを確認済み
+            let dynamic_min = if computed_f64 <= usize::MAX as f64 && computed_f64 >= 0.0 {
+                // f64をfloor()で整数に丸めてからi64に変換し、usizeに変換（符号損失を回避）
+                let value_i64 = computed_f64.floor() as i64;
+                usize::try_from(value_i64).unwrap_or(0)
+            } else {
+                usize::MAX
+            };
+
+            let base_min = thresholds
+                .get(&genre)
                 .copied()
                 .unwrap_or(self.min_documents_per_genre);
+            let effective_min = base_min.max(dynamic_min);
+            let adjusted_max = self.max_articles_per_genre.max(effective_min * 2);
 
-            // Adjust max_articles_per_genre to ensure we can meet min_documents_per_genre
-            let adjusted_max = self.max_articles_per_genre.max(min_docs * 2);
-
-            let count = per_genre_count
-                .entry(primary_genre.clone())
-                .or_insert(0usize);
-            if *count >= adjusted_max {
-                continue;
+            // Group by source for Round-Robin
+            let mut by_source: HashMap<String, std::collections::VecDeque<GenreAssignment>> =
+                HashMap::new();
+            for c in candidates {
+                // simple hostname extraction or just use source_url as is
+                let source = c
+                    .article
+                    .source_url
+                    .as_deref()
+                    .unwrap_or("unknown")
+                    .to_string();
+                by_source.entry(source).or_default().push_back(c);
             }
-            *count += 1;
-            selected.push(assignment);
+
+            // Round-robin selection
+            let mut genre_selected = Vec::new();
+            let mut sources: Vec<String> = by_source.keys().cloned().collect();
+            // Sort sources to be deterministic? Or random?
+            // Deterministic is better. Sort by best article score in that source?
+            // For now just sort by name for stability.
+            sources.sort();
+
+            while genre_selected.len() < adjusted_max && !by_source.is_empty() {
+                let mut articles_picked_this_round = 0;
+                let mut empty_sources = Vec::new();
+
+                for source in &sources {
+                    if let Some(deque) = by_source.get_mut(source) {
+                        if let Some(article) = deque.pop_front() {
+                            genre_selected.push(article);
+                            articles_picked_this_round += 1;
+                        }
+                        if deque.is_empty() {
+                            empty_sources.push(source.clone());
+                        }
+                    }
+                    if genre_selected.len() >= adjusted_max {
+                        break;
+                    }
+                }
+
+                // Cleanup empty sources
+                for s in empty_sources {
+                    by_source.remove(&s);
+                }
+
+                // Remove keys from sources list effectively?
+                // We just rebuild sources list or ignore missing ones?
+                // Efficiency: sources list is small (dozens).
+                sources.retain(|s| by_source.contains_key(s));
+
+                if articles_picked_this_round == 0 {
+                    break;
+                }
+            }
+            selected.append(&mut genre_selected);
         }
         selected
     }
 
-    fn confidence(assignment: &GenreAssignment) -> f32 {
-        if assignment.genres.is_empty() {
+    fn calculate_score(assignment: &GenreAssignment) -> f32 {
+        let Some(primary) = assignment.primary_genre() else {
             return 0.0;
-        }
-        let primary = &assignment.genres[0];
+        };
+
+        // 1. Classification Confidence
         let keyword_component =
             assignment.genre_scores.get(primary).copied().unwrap_or(0) as f32 / 100.0;
         let classifier_component = assignment
@@ -205,13 +269,28 @@ impl SummarySelectStage {
             .get(primary)
             .copied()
             .unwrap_or(keyword_component);
-        let base = classifier_component.max(keyword_component);
-        let diversity_penalty = if assignment.genre_scores.len() > 3 {
-            0.05 * (assignment.genre_scores.len() as f32 - 3.0)
+        let base_confidence = classifier_component.max(keyword_component);
+
+        // 2. Freshness (Exponential decay)
+        // age in hours. If unknown, assume 24h (neutral) or 0 (fresh). Let's assume 24h.
+        let age_hours = if let Some(published_at) = assignment.article.published_at {
+            (Utc::now() - published_at).num_hours().max(0) as f32
         } else {
-            0.0
+            24.0
         };
-        (base - diversity_penalty).max(0.0)
+        // Decay score: exp(-0.01 * hours) -> decreases slowly.
+        // 24h -> 0.78, 48h -> 0.61, 1 week -> 0.18
+        // Let's use a milder decay: exp(-0.005 * hours) => 24h -> 0.88, 1 week -> 0.43
+        let freshness_score = (-0.005 * age_hours).exp();
+
+        // 3. Tag Match Score
+        // Normalize overlap count. 5+ tags = 1.0
+        let tag_score = (assignment.feature_profile.tag_overlap_count as f32 / 5.0).min(1.0);
+
+        // Weighted Sum
+        // Weights: Confidence 0.5, Freshness 0.3, Tags 0.2
+
+        (base_confidence * 0.5) + (freshness_score * 0.3) + (tag_score * 0.2)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -220,7 +299,7 @@ impl SummarySelectStage {
         service: &EmbeddingService,
         assignments: Vec<GenreAssignment>,
         min_docs_thresholds: &HashMap<String, usize>,
-        cosine_thresholds: &HashMap<String, f32>,
+        _cosine_thresholds: &HashMap<String, f32>, // unused now
     ) -> Vec<GenreAssignment> {
         // Group by genre
         let mut by_genre: std::collections::HashMap<String, Vec<GenreAssignment>> =
@@ -273,65 +352,86 @@ impl SummarySelectStage {
                     *val /= count;
                 }
 
-                // Filter and Sort - store all with similarity scores
+                // Calculate distances and similarities
+                let mut distances: Vec<f32> = Vec::with_capacity(embeddings.len());
                 let mut all_with_similarity: Vec<(f32, GenreAssignment)> = Vec::new();
+
                 for (i, assignment) in genre_assignments.into_iter().enumerate() {
                     let similarity = cosine_similarity(&embeddings[i], &centroid);
+                    // Similarity is 1.0 for identical, -1.0 for opposite.
+                    // Distance can be 1 - similarity.
+                    // We want to filter out things that allow FAR from centroid (low similarity).
+                    distances.push(1.0 - similarity);
                     all_with_similarity.push((similarity, assignment));
                 }
 
-                // Sort by similarity descending (Representative Selection)
-                all_with_similarity
-                    .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+                // Calculate 80th percentile distance
+                // Sort distances first
+                let mut sorted_distances = distances.clone();
+                sorted_distances
+                    .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-                // Filter by threshold, but ensure we have at least min_documents_per_genre
-                let min_docs = min_docs_thresholds
-                    .get(&genre)
-                    .copied()
-                    .unwrap_or(self.min_documents_per_genre);
+                let computed_f64 = ((sorted_distances.len() as f64) * 0.8).max(0.0);
+                // computed_f64は既に非負（.max(0.0)で保証）かつusize::MAX以下であることを確認済み
+                let p80_idx = if computed_f64 <= usize::MAX as f64 && computed_f64 >= 0.0 {
+                    // f64をfloor()で整数に丸めてからi64に変換し、usizeに変換（符号損失を回避）
+                    let value_i64 = computed_f64.floor() as i64;
+                    usize::try_from(value_i64).unwrap_or(0)
+                } else {
+                    usize::MAX
+                };
+                let p80_distance = sorted_distances.get(p80_idx).copied().unwrap_or(2.0); // 2.0 is max distance
 
-                let threshold = cosine_thresholds
-                    .get(&genre)
-                    .copied()
-                    .unwrap_or(self.similarity_threshold);
-
+                // Filter
                 let mut valid_assignments: Vec<GenreAssignment> = Vec::new();
                 let mut filtered_out: Vec<(f32, GenreAssignment)> = Vec::new();
                 let mut filtered_out_count = 0;
 
+                // Determine min docs for this genre (dynamic fallback)
+                // Use consistent Dynamic Min logic: max(3, ceil(total * 0.1))
+                // Note: we calculated dynamic min in trim_assignments, but here we recalculate local based on input size.
+                // Or we should trust the passed `min_docs_thresholds` if they were updated.
+                // However, `trim_assignments` uses bundle stats. Here we only see survivor slice.
+                // Let's rely on `min_docs_thresholds` which comes from `trim_assignments`?
+                // No, `trim_assignments` logic was separate.
+                // Let's re-apply the dynamic logic: max(3, ceil(pre_filter_count * 0.1))
+                let computed_f64 = ((pre_filter_count as f64) * 0.1).ceil().max(0.0);
+                // computed_f64は既に非負（.max(0.0)で保証）かつusize::MAX以下であることを確認済み
+                let dynamic_min = if computed_f64 <= usize::MAX as f64 && computed_f64 >= 0.0 {
+                    // f64をfloor()で整数に丸めてからi64に変換し、usizeに変換（符号損失を回避）
+                    let value_i64 = computed_f64.floor() as i64;
+                    usize::try_from(value_i64).unwrap_or(0)
+                } else {
+                    usize::MAX
+                };
+                let effective_min = match min_docs_thresholds.get(&genre) {
+                    Some(&v) => v.max(dynamic_min).max(3),
+                    None => self.min_documents_per_genre.max(dynamic_min).max(3),
+                };
+
+                // Sort all by score (similarity) descending first to prioritize "central" items
+                all_with_similarity
+                    .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
                 for (similarity, assignment) in all_with_similarity {
-                    if similarity >= threshold {
+                    let distance = 1.0 - similarity;
+
+                    // Keep if distance is within percentile OR if we haven't met minimum
+                    if distance <= p80_distance {
                         valid_assignments.push(assignment);
                     } else {
-                        let article_id = assignment.article.id.clone();
+                        // Candidate for filtering
                         filtered_out_count += 1;
                         filtered_out.push((similarity, assignment));
-                        tracing::debug!(
-                            article_id = %article_id,
-                            genre = %genre,
-                            similarity = %similarity,
-                            threshold = %threshold,
-                            "filtered out outlier article"
-                        );
                     }
                 }
 
-                // Fallback: if we don't have enough after filtering, add back top-scoring articles
-                if valid_assignments.len() < min_docs {
-                    let needed = min_docs - valid_assignments.len();
-                    tracing::warn!(
-                        genre = %genre,
-                        pre_filter = pre_filter_count,
-                        post_filter = valid_assignments.len(),
-                        min_required = min_docs,
-                        adding_back = needed,
-                        "filtered too many articles, adding back top-scoring ones"
-                    );
-
-                    // Re-add filtered articles sorted by similarity (descending)
-                    // filtered_out is already sorted by similarity descending from all_with_similarity
+                // Ensure diversity/min count:
+                if valid_assignments.len() < effective_min {
+                    let needed = effective_min - valid_assignments.len();
                     for (_, assignment) in filtered_out.into_iter().take(needed) {
                         valid_assignments.push(assignment);
+                        filtered_out_count -= 1;
                     }
                 }
 
@@ -341,21 +441,15 @@ impl SummarySelectStage {
                     pre_filter = pre_filter_count,
                     post_filter = post_filter_count,
                     filtered_out = filtered_out_count,
+                    p80_distance = p80_distance,
                     "outlier filtering completed"
                 );
 
                 filtered_assignments.append(&mut valid_assignments);
             } else {
-                // If embedding fails, keep all
-                tracing::warn!(
-                    genre = %genre,
-                    count = genre_assignments.len(),
-                    "embedding failed, keeping all articles"
-                );
                 filtered_assignments.append(&mut genre_assignments);
             }
         }
-
         filtered_assignments
     }
 }

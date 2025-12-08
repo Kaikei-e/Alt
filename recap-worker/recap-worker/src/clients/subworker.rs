@@ -225,16 +225,18 @@ struct CoarseClassifyResponse {
     scores: HashMap<String, f32>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-struct SubClusterOtherRequest {
-    texts: Vec<String>,
+#[derive(Debug, serde::Serialize)]
+#[allow(dead_code)]
+pub(crate) struct SubClusterOtherRequest {
+    pub(crate) sentences: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct SubClusterOtherResponse {
-    labels: Vec<i32>,
-    probabilities: Vec<f32>,
-    diagnostics: Value,
+#[derive(Debug, serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct SubClusterOtherResponse {
+    pub(crate) cluster_ids: Vec<i32>,
+    pub(crate) labels: Option<Vec<i32>>,
+    pub(crate) centers: Option<Vec<Vec<f32>>>,
 }
 
 impl SubworkerClient {
@@ -668,21 +670,21 @@ impl SubworkerClient {
         Ok(body.scores)
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn cluster_other(
         &self,
-        texts: Vec<String>,
-    ) -> Result<(Vec<i32>, Vec<f32>, Value)> {
+        sentences: Vec<String>,
+    ) -> anyhow::Result<(Vec<i32>, Option<Vec<i32>>, Option<Vec<Vec<f32>>>)> {
         let url = self
             .base_url
             .join("v1/cluster/other")
             .context("failed to build cluster_other URL")?;
 
-        let request = SubClusterOtherRequest { texts };
-
+        let body = SubClusterOtherRequest { sentences };
         let response = self
             .client
             .post(url)
-            .json(&request)
+            .json(&body)
             .send()
             .await
             .context("cluster_other request failed")?;
@@ -697,7 +699,7 @@ impl SubworkerClient {
             .json()
             .await
             .context("failed to parse cluster_other response")?;
-        Ok((body.labels, body.probabilities, body.diagnostics))
+        Ok((body.cluster_ids, body.labels, body.centers))
     }
 
     /// フォールバック用の単一クラスタレスポンスを生成する。
