@@ -1,12 +1,18 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use rust_bert::pipelines::sentence_embeddings::{
     SentenceEmbeddingsBuilder, SentenceEmbeddingsModel, SentenceEmbeddingsModelType,
 };
 use tokio::sync::Mutex;
 use tracing::warn;
+
+#[async_trait]
+pub trait Embedder: Send + Sync + std::fmt::Debug {
+    async fn encode(&self, texts: &[String]) -> Result<Vec<Vec<f32>>>;
+}
 
 /// Embedding generation service using rust-bert.
 /// This runs on CPU.
@@ -38,6 +44,37 @@ impl EmbeddingService {
         Ok(Self {
             model: Arc::new(Mutex::new(model)),
         })
+    }
+
+
+    /// Generate a deterministic fallback embedding using MD5 hashing.
+    fn fallback_embedding(text: &str) -> Vec<f32> {
+        let digest = md5::compute(text);
+        // Use the MD5 hash as a seed for a random number generator
+        // MD5 produces 16 bytes, which is enough for a seed (u64 needs 8 bytes, StdRng::from_seed needs 32 bytes)
+        // We'll pad the seed.
+        let mut seed = [0u8; 32];
+        for (i, &byte) in digest.iter().enumerate() {
+            seed[i] = byte;
+            seed[i + 16] = byte; // Simple padding
+        }
+
+        let mut rng = StdRng::from_seed(seed);
+        // AllMiniLmL12V2 dimension is 384
+        let mut embedding = Vec::with_capacity(384);
+        for _ in 0..384 {
+            embedding.push(rng.gen_range(-1.0..1.0));
+        }
+
+        // Normalize
+        let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+        if norm > 0.0 {
+            for x in &mut embedding {
+                *x /= norm;
+            }
+        }
+
+        embedding
     }
 
     /// Generate embeddings for a batch of texts.
@@ -90,35 +127,12 @@ impl EmbeddingService {
             }
         }
     }
+}
 
-    /// Generate a deterministic fallback embedding using MD5 hashing.
-    fn fallback_embedding(text: &str) -> Vec<f32> {
-        let digest = md5::compute(text);
-        // Use the MD5 hash as a seed for a random number generator
-        // MD5 produces 16 bytes, which is enough for a seed (u64 needs 8 bytes, StdRng::from_seed needs 32 bytes)
-        // We'll pad the seed.
-        let mut seed = [0u8; 32];
-        for (i, &byte) in digest.iter().enumerate() {
-            seed[i] = byte;
-            seed[i + 16] = byte; // Simple padding
-        }
-
-        let mut rng = StdRng::from_seed(seed);
-        // AllMiniLmL12V2 dimension is 384
-        let mut embedding = Vec::with_capacity(384);
-        for _ in 0..384 {
-            embedding.push(rng.gen_range(-1.0..1.0));
-        }
-
-        // Normalize
-        let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm > 0.0 {
-            for x in &mut embedding {
-                *x /= norm;
-            }
-        }
-
-        embedding
+#[async_trait]
+impl Embedder for EmbeddingService {
+    async fn encode(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        self.encode(texts).await
     }
 }
 

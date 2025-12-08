@@ -107,7 +107,11 @@ impl PipelineOrchestrator {
         let max_concurrent = (cpu_count * 3) / 2;
         let window_days = config.recap_window_days();
 
-        let embedding_service = crate::pipeline::embedding::EmbeddingService::new().ok();
+        let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
+            crate::pipeline::embedding::EmbeddingService::new()
+                .ok()
+                .map(|s| Arc::new(s) as Arc<dyn crate::pipeline::embedding::Embedder>);
+
         if embedding_service.is_none() {
             tracing::warn!(
                 "Embedding service failed to initialize. Falling back to keyword-only filtering."
@@ -166,7 +170,7 @@ impl PipelineOrchestrator {
             .with_dedup_stage(Arc::new(HashDedupStage::new(cpu_count.max(2), 0.8, 100)))
             .with_genre_stage(genre_stage)
             .with_select_stage(Arc::new(SummarySelectStage::new(
-                embedding_service,
+                embedding_service.clone(),
                 min_documents_per_genre,
                 coherence_similarity_threshold,
                 Some(Arc::clone(&recap_dao)),
@@ -182,7 +186,7 @@ impl PipelineOrchestrator {
             .with_persist_stage(Arc::new(persist::FinalSectionPersistStage::new(
                 Arc::clone(&recap_dao),
             )))
-            .build(Arc::clone(&recap_dao), subworker_client))
+            .build(Arc::clone(&recap_dao), subworker_client, embedding_service))
     }
 
     #[cfg(test)]
@@ -314,6 +318,7 @@ impl PipelineBuilder {
         self,
         recap_dao: Arc<RecapDao>,
         subworker_client: Arc<SubworkerClient>,
+        embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>>,
     ) -> PipelineOrchestrator {
         let stages = PipelineStages {
             fetch: self
@@ -332,7 +337,7 @@ impl PipelineBuilder {
             }),
             select: self.select.unwrap_or_else(|| {
                 Arc::new(SummarySelectStage::new(
-                    None,
+                    embedding_service,
                     self.config.min_documents_per_genre(),
                     self.config.coherence_similarity_threshold(),
                     Some(recap_dao.clone()),
@@ -418,7 +423,7 @@ mod tests {
             .with_select_stage(Arc::new(RecordingSelect::new(Arc::clone(&order))))
             .with_dispatch_stage(Arc::new(RecordingDispatch::new(Arc::clone(&order))))
             .with_persist_stage(Arc::new(RecordingPersist::new(Arc::clone(&order))))
-            .build(recap_dao, subworker_client);
+            .build(recap_dao, subworker_client, None);
 
         let job = JobContext::new(Uuid::new_v4(), vec!["ai".to_string()]);
 

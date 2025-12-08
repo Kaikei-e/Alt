@@ -18,7 +18,7 @@ use super::preprocess::{PreprocessedArticle, PreprocessedCorpus};
 use super::tag_signal::TagSignal;
 
 /// 重複排除後の記事データ。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct DeduplicatedArticle {
     pub(crate) id: String,
     pub(crate) title: Option<String>,

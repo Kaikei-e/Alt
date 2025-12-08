@@ -3,9 +3,10 @@ use uuid::Uuid;
 
 use crate::scheduler::JobContext;
 
-use super::embedding::{EmbeddingService, cosine_similarity};
+use super::embedding::cosine_similarity;
 use super::genre::{GenreAssignment, GenreBundle};
 use crate::clients::SubworkerClient;
+use crate::pipeline::embedding::Embedder;
 use crate::store::dao::RecapDao;
 use crate::util::kmeans::KMeans;
 use chrono::Utc;
@@ -33,7 +34,7 @@ pub(crate) struct SummarySelectStage {
     min_documents_per_genre: usize,
     #[allow(dead_code)]
     similarity_threshold: f32, // now implicitly used only via config or unused if pure percentile
-    embedding_service: Option<EmbeddingService>,
+    embedding_service: Option<Arc<dyn Embedder>>,
     dao: Option<Arc<RecapDao>>,
     #[allow(dead_code)]
     subworker: Option<Arc<SubworkerClient>>,
@@ -41,7 +42,7 @@ pub(crate) struct SummarySelectStage {
 
 impl SummarySelectStage {
     pub(crate) fn new(
-        embedding_service: Option<EmbeddingService>,
+        embedding_service: Option<Arc<dyn Embedder>>,
         min_documents_per_genre: usize,
         similarity_threshold: f32,
         dao: Option<Arc<RecapDao>>,
@@ -296,7 +297,7 @@ impl SummarySelectStage {
     #[allow(clippy::too_many_lines)]
     async fn filter_outliers(
         &self,
-        service: &EmbeddingService,
+        service: &dyn Embedder,
         assignments: Vec<GenreAssignment>,
         min_docs_thresholds: &HashMap<String, usize>,
         _cosine_thresholds: &HashMap<String, f32>, // unused now
@@ -503,7 +504,7 @@ impl SelectStage for SummarySelectStage {
             let pre_outlier_count = assignments.len();
             assignments = self
                 .filter_outliers(
-                    service,
+                    &**service,
                     assignments,
                     &min_docs_thresholds,
                     &cosine_thresholds,
@@ -627,6 +628,71 @@ mod tests {
         // max_articles_per_genre should be adjusted to min_documents_per_genre * 2 = 20
         // So all 15 should be selected
         assert!(selected.assignments.len() >= 10);
+    }
+
+    #[derive(Debug, Clone)]
+    struct MockEmbedder;
+
+    #[async_trait]
+    impl crate::pipeline::embedding::Embedder for MockEmbedder {
+        async fn encode(&self, texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+            // Return dummy embeddings: vectors of 0.1 * index
+            let embeddings = texts
+                .iter()
+                .enumerate()
+                .map(|(i, _)| vec![(i as f32) * 0.1; 384])
+                .collect();
+            Ok(embeddings)
+        }
+    }
+
+    #[tokio::test]
+    async fn subcluster_others_splits_into_groups() {
+        use super::super::dedup::DeduplicatedArticle;
+        let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
+            Some(Arc::new(MockEmbedder));
+
+        let stage = SummarySelectStage::new(
+            embedding_service,
+            3,
+            0.8,
+            None,
+            None,
+        );
+
+        // Create 20 "other" assignments
+        let assignments: Vec<GenreAssignment> = (0..20)
+            .map(|i| {
+                GenreAssignment {
+                    genres: vec!["other".to_string()],
+                    candidates: vec![],
+                    genre_scores: std::collections::HashMap::from([("other".to_string(), 10)]),
+                    genre_confidence: std::collections::HashMap::from([("other".to_string(), 0.9)]),
+                    feature_profile: FeatureProfile::default(),
+                    article: DeduplicatedArticle {
+                        id: format!("art-{}", i),
+                        title: Some(format!("Title {}", i)),
+                        sentences: vec![format!("Sentence {}", i)],
+                        ..Default::default()
+                    },
+                    embedding: None,
+                }
+            })
+            .collect();
+
+        let result = stage.subcluster_others(assignments).await.expect("subcluster failed");
+
+        // Should have split into multiple clusters (other.0, other.1, etc.)
+        // 20 items -> k should be > 1. (20/3).clamp(1,5) = 6 clamp(1,5) = 5.
+        // So we expect multiple "other.X" genres.
+
+        let genres: std::collections::HashSet<String> = result
+            .iter()
+            .flat_map(|a| a.genres.clone())
+            .collect();
+
+        assert!(genres.len() > 1, "Should have split 'other' into multiple sub-genres");
+        assert!(genres.iter().any(|g| g.starts_with("other.")), "Should contain other.X genres");
     }
 
     #[test]
