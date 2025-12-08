@@ -586,6 +586,11 @@ impl RecapDao {
                 INSERT INTO recap_subworker_clusters
                     (run_id, cluster_id, size, label, top_terms, stats)
                 VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (run_id, cluster_id) DO UPDATE SET
+                    size = EXCLUDED.size,
+                    label = EXCLUDED.label,
+                    top_terms = EXCLUDED.top_terms,
+                    stats = EXCLUDED.stats
                 RETURNING id
                 ",
             )
