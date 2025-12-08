@@ -150,6 +150,7 @@ struct ClusterJobRequest<'a> {
 #[derive(Debug, Clone, Serialize)]
 struct ClusterJobParams {
     max_sentences_total: usize,
+    max_sentences_per_cluster: usize,
     umap_n_components: usize,
     hdbscan_min_cluster_size: usize,
     mmr_lambda: f32,
@@ -996,6 +997,7 @@ fn build_cluster_job_request(corpus: &EvidenceCorpus) -> ClusterJobRequest<'_> {
     ClusterJobRequest {
         params: ClusterJobParams {
             max_sentences_total,
+            max_sentences_per_cluster: 20, /* Strict limit from Plan 9 */
             umap_n_components: DEFAULT_UMAP_N_COMPONENTS,
             hdbscan_min_cluster_size: DEFAULT_HDBSCAN_MIN_CLUSTER_SIZE,
             mmr_lambda: DEFAULT_MMR_LAMBDA,

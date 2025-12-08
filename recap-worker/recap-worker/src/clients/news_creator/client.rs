@@ -213,6 +213,7 @@ impl NewsCreatorClient {
     }
 
     /// Mapフェーズ：単一クラスタの要約を生成する。
+    #[allow(dead_code)]
     pub(crate) async fn map_summarize(
         &self,
         job_id: Uuid,
@@ -233,6 +234,7 @@ impl NewsCreatorClient {
     }
 
     /// Reduceフェーズ：複数の中間要約から最終要約を生成する。
+    #[allow(dead_code)]
     pub(crate) async fn reduce_summarize(
         &self,
         job_id: Uuid,

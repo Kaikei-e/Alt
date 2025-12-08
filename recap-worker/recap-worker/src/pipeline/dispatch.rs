@@ -270,81 +270,35 @@ impl MlLlmDispatchStage {
 
         // Step 1: Build Summary Request (Budget Allocation & Sentence Selection)
         // This runs on a blocking thread because token counting is CPU-bound
-        let summary_request = tokio::task::spawn_blocking(move || {
+        let mut summary_request = tokio::task::spawn_blocking(move || {
             news_creator_client.build_summary_request(
                 job_id,
                 &clustering_response_clone,
-                5, // 最大5文/クラスター (Mapフェーズ用)
+                8, // Plan 9: "5-8 sentences" for actual summary input
                 &article_metadata,
             )
         })
         .await
         .context("failed to join build_summary_request task")?;
 
-        // Step 2: Map Phase (Parallel Intermediate Summarization)
-        let map_semaphore = Arc::new(Semaphore::new(5)); // Limit concurrency to 5
-        let mut map_tasks = Vec::new();
-
+        // Step 2: Direct Summarization (Single Shot)
+        // Skip Map phase (intermediate summarization) and directly generate final summary
+        // from the selected sentences.
         info!(
             job_id = %job_id,
             genre = %genre,
             cluster_count = summary_request.clusters.len(),
-            "starting Map phase (intermediate summarization)"
+            "starting single-shot summarization (skipping Map phase)"
         );
 
-        for cluster in summary_request.clusters {
-            let client = self.news_creator_client.clone();
-            let genre = genre.to_string();
-            let sem = map_semaphore.clone();
-
-            let task = tokio::spawn(async move {
-                let _permit = sem.acquire().await.expect("semaphore closed");
-                client.map_summarize(job_id, &genre, cluster).await
-            });
-            map_tasks.push(task);
-        }
-
-        let map_results = futures::future::join_all(map_tasks).await;
-        let mut intermediate_summaries = Vec::new();
-
-        for result in map_results {
-            match result {
-                Ok(Ok(response)) => intermediate_summaries.push(response.summary),
-                Ok(Err(e)) => warn!(
-                    job_id = %job_id,
-                    genre = %genre,
-                    error = ?e,
-                    "map phase failed for a cluster"
-                ),
-                Err(e) => warn!(
-                    job_id = %job_id,
-                    genre = %genre,
-                    error = ?e,
-                    "map phase task panicked"
-                ),
-            }
-        }
-
-        if intermediate_summaries.is_empty() {
-            return Err(anyhow::anyhow!("all map phase tasks failed"));
-        }
-
-        info!(
-            job_id = %job_id,
-            genre = %genre,
-            success_count = intermediate_summaries.len(),
-            "completed Map phase"
-        );
-
-        // Step 3: Reduce Phase (Final Summarization)
-        info!(
-            job_id = %job_id,
-            genre = %genre,
-            "starting Reduce phase (final summarization)"
-        );
+        // Enforce strict output format options
+        summary_request.options = Some(crate::clients::news_creator::models::SummaryOptions {
+            max_bullets: Some(15), // Plan 9: Max 15 bullets for output
+            temperature: Some(0.7),
+        });
 
         self.news_creator_client
-            .reduce_summarize(job_id, genre, intermediate_summaries)
+            .generate_summary(&summary_request)
             .await
     }
 }
