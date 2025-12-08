@@ -10,6 +10,7 @@ import structlog
 
 from recap_subworker.infra.config import get_settings
 from recap_subworker.services.learning_scheduler import LearningScheduler
+from recap_subworker.services.learning_scheduler import LearningScheduler
 
 _settings = get_settings()
 logger = structlog.get_logger(__name__)
@@ -22,6 +23,12 @@ _scheduler_thread: threading.Thread | None = None
 def _worker_count() -> int:
     if _settings.gunicorn_workers:
         return _settings.gunicorn_workers
+
+    # If using process pool, we manage concurrency internally
+    # So we should default to 1 gunicorn worker to avoid multiplicative process explosion
+    if _settings.pipeline_mode == "processpool":
+        return 1
+
     return max(2, multiprocessing.cpu_count() * 2 + 1)
 
 
@@ -100,6 +107,12 @@ def on_exit(server) -> None:
         # Stop the scheduler by setting _running to False
         # This will cause the monitor task to stop the event loop
         _scheduler._running = False
+
+    if _scheduler_thread is not None:
+        _scheduler_thread.join(timeout=5.0)
+        if _scheduler_thread.is_alive():
+            logger.warning("scheduler thread did not stop within timeout")
+
 
     if _scheduler_thread is not None:
         _scheduler_thread.join(timeout=5.0)

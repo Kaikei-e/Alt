@@ -68,7 +68,7 @@ class PipelineTaskRunner:
             # Clean up failed pool
             try:
                 self._pool.terminate()
-                self._pool.join(timeout=5.0)
+                self._pool.join()
             except Exception:
                 pass
             raise RuntimeError(
@@ -116,7 +116,7 @@ class PipelineTaskRunner:
             start_time = time.time()
 
             def wait_for_completion():
-                self._pool.join(timeout=shutdown_timeout)
+                self._pool.join()
 
             wait_thread = threading.Thread(target=wait_for_completion, daemon=True)
             wait_thread.start()
@@ -130,7 +130,7 @@ class PipelineTaskRunner:
                 )
                 # Force termination if timeout
                 self._pool.terminate()
-                self._pool.join(timeout=5.0)
+                self._pool.join()
             else:
                 logger.info(
                     "process pool shutdown complete",
@@ -146,7 +146,7 @@ class PipelineTaskRunner:
             # Force termination on error
             try:
                 self._pool.terminate()
-                self._pool.join(timeout=5.0)
+                self._pool.join()
             except Exception:
                 pass
         finally:

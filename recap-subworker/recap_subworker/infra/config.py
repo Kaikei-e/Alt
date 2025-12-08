@@ -173,7 +173,7 @@ class Settings(BaseSettings):
         description="Maximum number of tasks a pipeline worker process handles before being replaced (prevents memory leaks)",
     )
     pipeline_worker_init_timeout_seconds: int = Field(
-        60,
+        300,
         ge=10,
         description="Timeout in seconds for pipeline worker process initialization",
     )
@@ -198,7 +198,7 @@ class Settings(BaseSettings):
         description="Override for gunicorn worker processes; defaults to 2*CPU+1 when unset",
     )
     gunicorn_max_requests: int = Field(
-        400,
+        10000,
         ge=50,
         description="Number of requests a worker serves before recycling",
     )
