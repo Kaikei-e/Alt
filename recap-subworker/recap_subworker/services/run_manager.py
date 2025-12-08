@@ -542,7 +542,7 @@ class RunManager:
         self, record: RunRecord, payload: ClusterJobPayload
     ) -> EvidenceRequest:
         constraints = EvidenceConstraints(
-            max_sentences_per_cluster=self.settings.max_sentences_per_cluster,
+            max_sentences_per_cluster=payload.params.max_sentences_per_cluster,
             max_total_sentences=min(
                 payload.params.max_sentences_total, self.settings.max_total_sentences
             ),
