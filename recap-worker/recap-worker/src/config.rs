@@ -404,7 +404,7 @@ fn load_batch_config() -> Result<BatchConfig, ConfigError> {
     let window_days = parse_u32("RECAP_WINDOW_DAYS", 7)?;
     let genres = parse_csv(
         "RECAP_GENRES",
-        "ai,tech,business,politics,health,sports,science,entertainment,world,security,product,design,culture,environment,lifestyle,art_culture,developer_insights,pro_it_media,consumer_tech,global_politics,environment_policy,society_justice,travel_lifestyle,security_policy,business_finance,ai_research,ai_policy,games_puzzles,other",
+        "ai_data,climate_environment,consumer_products,consumer_tech,culture_arts,cybersecurity,diplomacy_security,economics_macro,education,energy_transition,film_tv,food_cuisine,games_esports,health_medicine,home_living,industry_logistics,internet_platforms,labor_workplace,law_crime,life_science,markets_finance,mobility_automotive,music_audio,politics_government,society_demographics,software_dev,space_astronomy,sports,startups_innovation,travel_places",
     );
     let classifier_weights_path = env_var_optional("RECAP_GENRE_MODEL_WEIGHTS");
     let classifier_threshold = parse_f64("RECAP_GENRE_MODEL_THRESHOLD", 0.5)? as f32;

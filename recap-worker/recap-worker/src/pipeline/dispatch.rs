@@ -374,12 +374,17 @@ impl DispatchStage for MlLlmDispatchStage {
             });
         }
 
+        // Wrap evidence in Arc once to share across tasks without deep cloning
+        let evidence_arc = Arc::new(evidence);
+
         // Phase 1: 全ジャンルを並列でクラスタリング
-        let clustering_results = self.cluster_all_genres(job, &genres, &evidence).await;
+        let clustering_results = self
+            .cluster_all_genres(job, &genres, evidence_arc.clone())
+            .await;
 
         // Phase 2: サマリー生成は完全直列（キュー方式）
         let mut genre_results = self
-            .generate_summaries_sequentially(job, clustering_results)
+            .generate_summaries_sequentially(job, clustering_results, evidence_arc)
             .await;
 
         // 証拠がないジャンル（設定されているが処理されていない）を追加
@@ -445,7 +450,7 @@ impl MlLlmDispatchStage {
         &self,
         job: &JobContext,
         genres: &[String],
-        evidence: &EvidenceBundle,
+        evidence: Arc<EvidenceBundle>,
     ) -> HashMap<String, Result<ClusteringResponse>> {
         info!(
             job_id = %job.job_id,
@@ -456,21 +461,29 @@ impl MlLlmDispatchStage {
         let mut tasks = Vec::new();
 
         for genre in genres {
-            if let Some(corpus_ref) = evidence.get_corpus(genre) {
-                let corpus = corpus_ref.clone();
+            // Check existence without cloning
+            if evidence.get_corpus(genre).is_some() {
+                // Capture Arc instead of cloning corpus data
+                let evidence_clone = evidence.clone();
                 let self_clone = self.clone();
                 let job_id = job.job_id;
                 let genre_clone = genre.clone();
                 let semaphore = Arc::clone(&self.concurrency_semaphore);
 
                 let task = tokio::spawn(async move {
+                    // Acquire permission to run (throttling)
                     let _permit = semaphore
                         .acquire_owned()
                         .await
                         .expect("dispatch semaphore should not be closed");
-                    let result = self_clone
-                        .cluster_genre(job_id, &genre_clone, &corpus)
-                        .await;
+
+                    // Lazy access: Get corpus reference only AFTER acquiring semaphore
+                    // This ensures we don't load memory until allowed to run
+                    let corpus = evidence_clone
+                        .get_corpus(&genre_clone)
+                        .expect("corpus must exist as checked before spawn");
+
+                    let result = self_clone.cluster_genre(job_id, &genre_clone, corpus).await;
                     (genre_clone, result)
                 });
 
@@ -535,6 +548,7 @@ impl MlLlmDispatchStage {
         &self,
         job: &JobContext,
         clustering_results: HashMap<String, Result<ClusteringResponse>>,
+        _evidence: Arc<EvidenceBundle>,
     ) -> HashMap<String, GenreResult> {
         info!(
             job_id = %job.job_id,
