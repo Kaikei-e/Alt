@@ -40,7 +40,7 @@ def fetch_metrics(metric_type, limit=100) -> pd.DataFrame:
 # --- Dashboard Layout ---
 st.title("Recap System Evaluation Dashboard")
 
-tabs = st.tabs(["Overview", "Classification", "Clustering", "Summarization"])
+tabs = st.tabs(["Overview", "Classification", "Clustering", "Summarization", "Log Analysis"])
 
 with tabs[0]:
     st.header("Recent Activity")
@@ -73,16 +73,9 @@ with tabs[1]:
 
         if 'per_genre' in df_cls.columns:
             st.subheader("Per-Genre F1 Scores (Latest)")
-            # Need to parse nested per_genre if it wasn't flattened by json_normalize properly
-            # json_normalize flattens one level. if per_genre is a dict, it becomes per_genre.genre_name.f1...
-            # But the structure is likely: per_genre = {"genreA": {"f1": ...}, ...}
-            # So columns would be per_genre.genreA.f1, per_genre.genreA.precision, etc.
-
-            # Extract F1 columns
             f1_cols = [c for c in df_cls.columns if "per_genre" in c and ".f1-score" in c]
             if f1_cols:
                 latest_f1 = df_cls.iloc[0][f1_cols]
-                # Clean column names for display
                 latest_f1.index = [c.split('.')[1] for c in latest_f1.index]
                 st.bar_chart(latest_f1)
             else:
@@ -94,7 +87,6 @@ with tabs[2]:
     st.header("Clustering Metrics")
     df_clu = fetch_metrics("clustering")
     if not df_clu.empty:
-        # Ensure expected columns exist
         for col in ['silhouette_score', 'dbcv_score']:
              if col not in df_clu.columns:
                  df_clu[col] = 0.0
@@ -117,24 +109,45 @@ with tabs[3]:
     df_sum = fetch_metrics("summarization")
     if not df_sum.empty:
         st.subheader("Performance Metrics")
-        # Columns: json_validation_errors, summary_length_bullets, processing_time_ms
-
-        # Ensure expected columns exist
-        expected_cols = ['json_validation_errors', 'summary_length_bullets', 'processing_time_ms']
+        expected_cols = ['json_validation_errors', 'summary_length_bullets', 'processing_time_ms', 'relevance', 'faithfulness']
         for col in expected_cols:
             if col not in df_sum.columns:
                 df_sum[col] = 0
 
-        # Line chart for processing time
         st.line_chart(df_sum, x="timestamp", y="processing_time_ms")
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         latest = df_sum.iloc[0]
-        col1.metric("JSON Errors (Latest)", int(latest['json_validation_errors']))
-        col2.metric("Summary Length (Bullets)", int(latest['summary_length_bullets']))
-        col3.metric("Processing Time (ms)", int(latest['processing_time_ms']))
+        col1.metric("JSON Errors", int(latest['json_validation_errors']))
+        col2.metric("Length", int(latest['summary_length_bullets']))
+        col3.metric("Time (ms)", int(latest['processing_time_ms']))
+        col4.metric("Faithfulness", f"{float(latest['faithfulness']):.2f}")
 
-        st.subheader("Error Rate Over Time")
+        st.subheader("Error Rate")
         st.bar_chart(df_sum, x="timestamp", y="json_validation_errors")
     else:
         st.info("No summarization metrics found.")
+
+with tabs[4]:
+    st.header("Log Analysis")
+    import sqlite3
+
+    LOG_DB_PATH = os.getenv("RECAP_LOG_DB", "recap_logs.db")
+    if os.path.exists(LOG_DB_PATH):
+        try:
+            conn_log = sqlite3.connect(LOG_DB_PATH)
+            df_log = pd.read_sql("SELECT * FROM log_errors ORDER BY timestamp DESC LIMIT 500", conn_log)
+            conn_log.close()
+
+            if not df_log.empty:
+                st.subheader("Error Distribution")
+                st.bar_chart(df_log['error_type'].value_counts())
+
+                st.subheader("Recent Errors")
+                st.dataframe(df_log)
+            else:
+                st.info("No errors recorded in log database.")
+        except Exception as e:
+            st.error(f"Error reading log database: {e}")
+    else:
+        st.warning(f"Log database not found at {LOG_DB_PATH}. Run 'analyze_logs.py' first.")
