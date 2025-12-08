@@ -454,6 +454,20 @@ http = [
 ]
 
 [[package]]
+name = "fugashi"
+version = "1.5.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/ec/b2e5aeba9438551ee4ae5275e95da506a279f53432e618daa1d4bd14c7d5/fugashi-1.5.2.tar.gz", hash = "sha256:a7959eab95bb37a6a934fc2314d3ff888664d11b88d0e1c596260a5785d5880e", size = 339768, upload-time = "2025-10-24T07:24:27.581Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f8/83/8674714722862cf7cbdc351ecacf0e0714daa1ae3afc48755d1349f92632/fugashi-1.5.2-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:4ed199a931c1d9f7d55c606d90a06323d1a60164ec222ea70af74c0c9d236faa", size = 513185, upload-time = "2025-10-24T07:27:08.134Z" },
+    { url = "https://files.pythonhosted.org/packages/65/e2/d8fbb71b3e04fe8e99bd7b2653ac638484d8ab46b22cab6ea64250a020ce/fugashi-1.5.2-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:3d2bb28cc6c6eec1c50729bb2dda44007a45599f0471b14c8fda57b0dde36d50", size = 457118, upload-time = "2025-10-24T07:27:09.185Z" },
+    { url = "https://files.pythonhosted.org/packages/42/63/e5e02d885d3ea3eeba7f3be371164eb35f618155faa473f0950cbba2d276/fugashi-1.5.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:8c1f64345a7a13b229fb755b567cbc993adb43b5b617ad4089521e5dd4d27b91", size = 455098, upload-time = "2025-10-24T07:27:10.139Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/5f/549fdaa359e1983927cf1febd8d6b4b31e2312475048a73138b53af8cb6c/fugashi-1.5.2-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:ffe760c93e21896cc74066bc5e7dbee6e41a26199807c850b486e2e29b8a3131", size = 677940, upload-time = "2025-10-24T07:48:53.995Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/30/436dd468ac8e08940f0414384a5808596c2ed8cbfd721dde09d5b78e8ec5/fugashi-1.5.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:83bc7bf08f81a3c3992bf10b8c681720898a826c6c3dffa80e1296e005f4bfb8", size = 694924, upload-time = "2025-10-24T07:25:39.112Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/ce/b18879c94c6267981a65792045321a1d71b849893b40d7e8356e0b55542c/fugashi-1.5.2-cp312-cp312-win_amd64.whl", hash = "sha256:936d710166c5b05064ec2ce0eb347fff7a0cf102c33989012fad205346943402", size = 508407, upload-time = "2025-10-24T07:24:25.409Z" },
+]
+
+[[package]]
 name = "greenlet"
 version = "3.2.4"
 source = { registry = "https://pypi.org/simple" }
@@ -622,6 +636,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6f/6d/0703ccc57f3a7233505399edb88de3cbd678da106337b9fcde432b65ed60/idna-3.11.tar.gz", hash = "sha256:795dafcc9c04ed0c1fb032c2aa73654d8e8c5023a7df64a53f39190ada629902", size = 194582, upload-time = "2025-10-12T14:55:20.501Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0e/61/66938bbb5fc52dbdf84594873d5b51fb1f7c7794e9c0f5bd885f30bc507b/idna-3.11-py3-none-any.whl", hash = "sha256:771a87f49d9defaf64091e6e6fe9c18d4833f140bd19464795bc32d966ca37ea", size = 71008, upload-time = "2025-10-12T14:55:18.883Z" },
+]
+
+[[package]]
+name = "imbalanced-learn"
+version = "0.14.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "joblib" },
+    { name = "numpy" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+    { name = "threadpoolctl" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7b/5a/ad42e366914abfea7434b9ab7a821778be52dae4a8cbeac165918e66e7b0/imbalanced_learn-0.14.0.tar.gz", hash = "sha256:22b9ba6dbd681a9ec613cd6e08c21d39639fb5ccbf2a3c991f9c36415b70522c", size = 534790, upload-time = "2025-08-14T14:15:31.923Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/65/60/103dc71019ec2fa987f42f9dbe88641a74edc57f8499fac8896955b66065/imbalanced_learn-0.14.0-py3-none-any.whl", hash = "sha256:8a8700c02ca185e113064815513f990fbf84eb4e7701f1d4e944ce67fb259a60", size = 239958, upload-time = "2025-08-14T14:15:30.174Z" },
 ]
 
 [[package]]
@@ -1549,9 +1579,11 @@ dependencies = [
     { name = "fast-hdbscan" },
     { name = "fastapi" },
     { name = "fastjsonschema" },
+    { name = "fugashi" },
     { name = "gunicorn" },
     { name = "hdbscan" },
     { name = "httpx" },
+    { name = "imbalanced-learn" },
     { name = "janome" },
     { name = "nltk" },
     { name = "numpy" },
@@ -1560,16 +1592,23 @@ dependencies = [
     { name = "prometheus-fastapi-instrumentator" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyyaml" },
     { name = "scikit-learn" },
     { name = "scikit-optimize" },
     { name = "scipy" },
     { name = "sentence-transformers" },
+    { name = "sentencepiece" },
     { name = "spacy" },
-    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "sqlalchemy" },
     { name = "statsmodels" },
     { name = "structlog" },
+    { name = "sudachidict-core" },
+    { name = "sudachipy" },
+    { name = "torch" },
     { name = "trafilatura" },
+    { name = "transformers" },
     { name = "umap-learn" },
+    { name = "unidic-lite" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "xxhash" },
 ]
@@ -1597,33 +1636,42 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "cleanlab", specifier = ">=2.6.6" },
     { name = "datasets", specifier = ">=3.0.0" },
-    { name = "fast-hdbscan", specifier = "==0.2.1" },
+    { name = "fast-hdbscan", specifier = ">=0.2.0" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastjsonschema", specifier = "==2.21.2" },
+    { name = "fugashi", specifier = ">=1.3.2" },
     { name = "gunicorn", specifier = ">=22.0.0" },
-    { name = "hdbscan", specifier = "==0.8.40" },
+    { name = "hdbscan", specifier = ">=0.8.37" },
     { name = "httpx", specifier = ">=0.27.0" },
+    { name = "imbalanced-learn", specifier = ">=0.12.3" },
     { name = "janome", specifier = ">=0.5.0" },
     { name = "nltk", specifier = ">=3.8.1" },
     { name = "numpy", specifier = "<2.0.0" },
     { name = "onnxruntime", marker = "extra == 'onnx'", specifier = ">=1.19.0" },
     { name = "onnxruntime-tools", marker = "extra == 'onnx'", specifier = ">=1.7.0" },
     { name = "orjson", specifier = "==3.11.4" },
-    { name = "pandas", specifier = ">=2.0.0" },
+    { name = "pandas", specifier = ">=2.2.2" },
     { name = "prometheus-fastapi-instrumentator", specifier = "==7.1.0" },
     { name = "pydantic", specifier = ">=2.9.0" },
     { name = "pydantic-settings", specifier = ">=2.3.0" },
+    { name = "pyyaml", specifier = ">=6.0.1" },
     { name = "scikit-learn", specifier = ">=1.5.0" },
-    { name = "scikit-optimize", specifier = ">=0.9.0" },
-    { name = "scipy", specifier = ">=1.13.0" },
+    { name = "scikit-optimize", specifier = ">=0.10.2" },
+    { name = "scipy", specifier = ">=1.13.1" },
     { name = "sentence-transformers", specifier = "==5.1.2" },
     { name = "sentence-transformers", marker = "extra == 'distill'", specifier = "==5.1.2" },
-    { name = "spacy", specifier = ">=3.7.0" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.34" },
-    { name = "statsmodels", specifier = ">=0.14.0" },
-    { name = "structlog", specifier = ">=24.1.0" },
-    { name = "trafilatura", specifier = ">=1.6.0" },
-    { name = "umap-learn", specifier = "==0.5.9.post2" },
+    { name = "sentencepiece", specifier = ">=0.2.0" },
+    { name = "spacy", specifier = ">=3.7.5" },
+    { name = "sqlalchemy", specifier = ">=2.0.30" },
+    { name = "statsmodels", specifier = ">=0.14.2" },
+    { name = "structlog", specifier = ">=24.2.0" },
+    { name = "sudachidict-core", specifier = ">=20240409" },
+    { name = "sudachipy", specifier = ">=0.6.8" },
+    { name = "torch", specifier = ">=2.3.0" },
+    { name = "trafilatura", specifier = ">=1.10.0" },
+    { name = "transformers", specifier = ">=4.41.0" },
+    { name = "umap-learn", specifier = ">=0.5.6" },
+    { name = "unidic-lite", specifier = ">=1.0.8" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
     { name = "xxhash", specifier = ">=3.4.1" },
 ]
@@ -1800,6 +1848,22 @@ wheels = [
 ]
 
 [[package]]
+name = "sentencepiece"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/15/2e7a025fc62d764b151ae6d0f2a92f8081755ebe8d4a64099accc6f77ba6/sentencepiece-0.2.1.tar.gz", hash = "sha256:8138cec27c2f2282f4a34d9a016e3374cd40e5c6e9cb335063db66a0a3b71fad", size = 3228515, upload-time = "2025-08-12T07:00:51.718Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/be/32ce495aa1d0e0c323dcb1ba87096037358edee539cac5baf8755a6bd396/sentencepiece-0.2.1-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:57cae326c8727de58c85977b175af132a7138d84c764635d7e71bbee7e774133", size = 1943152, upload-time = "2025-08-12T06:59:40.048Z" },
+    { url = "https://files.pythonhosted.org/packages/88/7e/ff23008899a58678e98c6ff592bf4d368eee5a71af96d0df6b38a039dd4f/sentencepiece-0.2.1-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:56dd39a3c4d6493db3cdca7e8cc68c6b633f0d4195495cbadfcf5af8a22d05a6", size = 1325651, upload-time = "2025-08-12T06:59:41.536Z" },
+    { url = "https://files.pythonhosted.org/packages/19/84/42eb3ce4796777a1b5d3699dfd4dca85113e68b637f194a6c8d786f16a04/sentencepiece-0.2.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:d9381351182ff9888cc80e41c632e7e274b106f450de33d67a9e8f6043da6f76", size = 1253645, upload-time = "2025-08-12T06:59:42.903Z" },
+    { url = "https://files.pythonhosted.org/packages/89/fa/d3d5ebcba3cb9e6d3775a096251860c41a6bc53a1b9461151df83fe93255/sentencepiece-0.2.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:99f955df238021bf11f0fc37cdb54fd5e5b5f7fd30ecc3d93fb48b6815437167", size = 1316273, upload-time = "2025-08-12T06:59:44.476Z" },
+    { url = "https://files.pythonhosted.org/packages/04/88/14f2f4a2b922d8b39be45bf63d79e6cd3a9b2f248b2fcb98a69b12af12f5/sentencepiece-0.2.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:0cdfecef430d985f1c2bcbfff3defd1d95dae876fbd0173376012d2d7d24044b", size = 1387881, upload-time = "2025-08-12T06:59:46.09Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/b8/903e5ccb77b4ef140605d5d71b4f9e0ad95d456d6184688073ed11712809/sentencepiece-0.2.1-cp312-cp312-win32.whl", hash = "sha256:a483fd29a34c3e34c39ac5556b0a90942bec253d260235729e50976f5dba1068", size = 999540, upload-time = "2025-08-12T06:59:48.023Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/81/92df5673c067148c2545b1bfe49adfd775bcc3a169a047f5a0e6575ddaca/sentencepiece-0.2.1-cp312-cp312-win_amd64.whl", hash = "sha256:4cdc7c36234fda305e85c32949c5211faaf8dd886096c7cea289ddc12a2d02de", size = 1054671, upload-time = "2025-08-12T06:59:49.895Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/02/c5e3bc518655d714622bec87d83db9cdba1cd0619a4a04e2109751c4f47f/sentencepiece-0.2.1-cp312-cp312-win_arm64.whl", hash = "sha256:daeb5e9e9fcad012324807856113708614d534f596d5008638eb9b40112cd9e4", size = 1033923, upload-time = "2025-08-12T06:59:51.952Z" },
+]
+
+[[package]]
 name = "setuptools"
 version = "80.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1912,11 +1976,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/9c/5e/6a29fa884d9fb7ddadf6b69490a9d45fded3b38541713010dad16b77d015/sqlalchemy-2.0.44-py3-none-any.whl", hash = "sha256:19de7ca1246fbef9f9d1bff8f1ab25641569df226364a0e40457dc5457c54b05", size = 1928718, upload-time = "2025-10-10T15:29:45.32Z" },
 ]
 
-[package.optional-dependencies]
-asyncio = [
-    { name = "greenlet" },
-]
-
 [[package]]
 name = "srsly"
 version = "2.5.1"
@@ -1976,6 +2035,29 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ef/52/9ba0f43b686e7f3ddfeaa78ac3af750292662284b3661e91ad5494f21dbc/structlog-25.5.0.tar.gz", hash = "sha256:098522a3bebed9153d4570c6d0288abf80a031dfdb2048d59a49e9dc2190fc98", size = 1460830, upload-time = "2025-10-27T08:28:23.028Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a8/45/a132b9074aa18e799b891b91ad72133c98d8042c70f6240e4c5f9dabee2f/structlog-25.5.0-py3-none-any.whl", hash = "sha256:a8453e9b9e636ec59bd9e79bbd4a72f025981b3ba0f5837aebf48f02f37a7f9f", size = 72510, upload-time = "2025-10-27T08:28:21.535Z" },
+]
+
+[[package]]
+name = "sudachidict-core"
+version = "20251022"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sudachipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b0/e3/65690070f1148d217dd754082195361884ac7350e3672244782b361311ac/sudachidict_core-20251022.tar.gz", hash = "sha256:2b25ffb00c7018c9d4af312f11d833fb710b680c4bfe8e3545da1e6fc18713fb", size = 9058, upload-time = "2025-11-04T02:56:20.097Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7c/d4/871635b678cc2cd624c3f0a26dedda4789e8a1dfaf10b7c0f517654c368d/sudachidict_core-20251022-py3-none-any.whl", hash = "sha256:ca67fe366c4cf3a35f4feef019fdb98a0c17129c66e5c0ececeae30dc318c016", size = 72164526, upload-time = "2025-11-04T03:11:26.25Z" },
+]
+
+[[package]]
+name = "sudachipy"
+version = "0.6.10"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/86/eb/ceadfb1e9178332839a75b91393765b135ab870fad9230d47c201c931607/sudachipy-0.6.10.tar.gz", hash = "sha256:b8910a4610de98b2c3cb6dc3362fea93e3ba5059f1eb445a68baa9585278f31b", size = 71518686, upload-time = "2025-01-10T07:15:22.811Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3d/82/3d330442ab967417440a3875654698b7091a24a2f0f50fe777461f168356/SudachiPy-0.6.10-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:efb43fb3b46696ca4510b7dd4c3e490de8dbb7950d7172140dc27a4e69cd5811", size = 3041078, upload-time = "2025-01-10T07:14:51.455Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/30/93bf06bec9db46bef29e57bebb94db10a4726a8563bdaba6c9e086f067cd/SudachiPy-0.6.10-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0f8fd0ce37961401c9bdd78c126b2119a0a1669d376feb0b2427c35894ef1428", size = 1731213, upload-time = "2025-01-10T07:14:54.146Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/6f/8155e6dd268a582fc3b8db3caa3e83589bdf68d9b0a9f67a78436055206d/SudachiPy-0.6.10-cp312-cp312-win_amd64.whl", hash = "sha256:4a79b92b0776613481481c1ed0d2e92994b233ed5d29aa365789a1ba521de0a4", size = 1379214, upload-time = "2025-01-10T07:14:55.776Z" },
 ]
 
 [[package]]
@@ -2237,6 +2319,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/5f/ee/6bc65bd375c812026
 wheels = [
     { url = "https://files.pythonhosted.org/packages/6b/b1/c24deeda9baf1fd491aaad941ed89e0fed6c583a117fd7b79e0a33a1e6c0/umap_learn-0.5.9.post2-py3-none-any.whl", hash = "sha256:fbe51166561e0e7fab00ef3d516ac2621243b8d15cf4bef9f656d701736b16a0", size = 90146, upload-time = "2025-07-03T00:18:01.042Z" },
 ]
+
+[[package]]
+name = "unidic-lite"
+version = "1.0.8"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/55/2b/8cf7514cb57d028abcef625afa847d60ff1ffbf0049c36b78faa7c35046f/unidic-lite-1.0.8.tar.gz", hash = "sha256:db9d4572d9fdd4d00a97949d4b0741ec480ee05a7e7e2e32f547500dae27b245", size = 47356746, upload-time = "2021-01-25T06:07:54.719Z" }
 
 [[package]]
 name = "urllib3"
