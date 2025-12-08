@@ -7,6 +7,11 @@ test-results/.last-run.json
 news-creator/cached_models/*
 news-creator/models/*
 
+recap-subworker/recap_subworker/learning_machine/data/
+recap_subworker/recap_subworker/learning_machine/artifacts/
+recap-subworker/recap_subworker/learning_machine/artifacts/
+
+
 *.tar
 
 # secrets
