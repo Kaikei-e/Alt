@@ -56,15 +56,20 @@ with tabs[1]:
     st.header("Classification Metrics")
     df_cls = fetch_metrics("classification")
     if not df_cls.empty:
+        # Ensure expected columns exist
+        for col in ['accuracy', 'macro_f1', 'hamming_loss']:
+            if col not in df_cls.columns:
+                df_cls[col] = 0.0
+
         st.subheader("Accuracy Over Time")
         st.line_chart(df_cls, x="timestamp", y="accuracy")
 
         st.subheader("Latest Metrics")
         latest = df_cls.iloc[0]
         col1, col2, col3 = st.columns(3)
-        col1.metric("Accuracy", f"{latest.get('accuracy', 0):.2%}")
-        col2.metric("Macro F1", f"{latest.get('macro_f1', 0):.2%}")
-        col3.metric("Micro F1", f"{latest.get('micro_f1', 0):.2%}")
+        col1.metric("Accuracy", f"{latest['accuracy']:.2%}")
+        col2.metric("Macro F1", f"{latest['macro_f1']:.2f}")
+        col3.metric("Hamming Loss", f"{latest['hamming_loss']:.4f}")
 
         if 'per_genre' in df_cls.columns:
             st.subheader("Per-Genre F1 Scores (Latest)")
@@ -89,9 +94,10 @@ with tabs[2]:
     st.header("Clustering Metrics")
     df_clu = fetch_metrics("clustering")
     if not df_clu.empty:
-        # Clustering metrics captured: silhouette_score, dbcv_score, etc. inside diagnostics
-        # NOTE: logic in subworker/services/run_manager.py puts them in the root of diagnostics JSON?
-        # Let's assume metrics are at the top level of the JSON stored.
+        # Ensure expected columns exist
+        for col in ['silhouette_score', 'dbcv_score']:
+             if col not in df_clu.columns:
+                 df_clu[col] = 0.0
 
         st.subheader("Clustering Quality")
         chart_data = df_clu[['timestamp', 'silhouette_score', 'dbcv_score']].copy()
@@ -100,8 +106,8 @@ with tabs[2]:
 
         col1, col2 = st.columns(2)
         latest = df_clu.iloc[0]
-        col1.metric("Silhouette Score", f"{latest.get('silhouette_score', 0):.3f}")
-        col2.metric("DBCV Score", f"{latest.get('dbcv_score', 0):.3f}")
+        col1.metric("Silhouette Score", f"{latest['silhouette_score']:.3f}")
+        col2.metric("DBCV Score", f"{latest['dbcv_score']:.3f}")
 
     else:
         st.info("No clustering metrics found.")
@@ -113,14 +119,20 @@ with tabs[3]:
         st.subheader("Performance Metrics")
         # Columns: json_validation_errors, summary_length_bullets, processing_time_ms
 
+        # Ensure expected columns exist
+        expected_cols = ['json_validation_errors', 'summary_length_bullets', 'processing_time_ms']
+        for col in expected_cols:
+            if col not in df_sum.columns:
+                df_sum[col] = 0
+
         # Line chart for processing time
         st.line_chart(df_sum, x="timestamp", y="processing_time_ms")
 
         col1, col2, col3 = st.columns(3)
         latest = df_sum.iloc[0]
-        col1.metric("JSON Errors (Latest)", int(latest.get('json_validation_errors', 0)))
-        col2.metric("Summary Length (Bullets)", int(latest.get('summary_length_bullets', 0)))
-        col3.metric("Processing Time (ms)", int(latest.get('processing_time_ms', 0)))
+        col1.metric("JSON Errors (Latest)", int(latest['json_validation_errors']))
+        col2.metric("Summary Length (Bullets)", int(latest['summary_length_bullets']))
+        col3.metric("Processing Time (ms)", int(latest['processing_time_ms']))
 
         st.subheader("Error Rate Over Time")
         st.bar_chart(df_sum, x="timestamp", y="json_validation_errors")
