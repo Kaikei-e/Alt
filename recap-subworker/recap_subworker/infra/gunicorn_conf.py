@@ -70,8 +70,21 @@ def _run_scheduler_loop(scheduler: LearningScheduler, loop: asyncio.AbstractEven
             loop.close()
 
 
+import logging
+
+class NoisyPathFilter(logging.Filter):
+    def filter(self, record):
+        return "/v1/extract" not in record.getMessage()
+
 def on_starting(server) -> None:
     """Called just before the master process is initialized."""
+    # Add filter to Gunicorn access logger
+    gunicorn_logger = logging.getLogger("gunicorn.access")
+    gunicorn_logger.addFilter(NoisyPathFilter())
+    # Add filter to Uvicorn access logger (used by UvicornWorker)
+    uvicorn_logger = logging.getLogger("uvicorn.access")
+    uvicorn_logger.addFilter(NoisyPathFilter())
+
     global _scheduler, _scheduler_thread
 
     if not _settings.learning_scheduler_enabled:

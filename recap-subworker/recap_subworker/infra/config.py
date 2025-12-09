@@ -304,9 +304,19 @@ class Settings(BaseSettings):
         description="Minimum article count for an edge",
     )
     graph_build_max_concurrency: int = Field(
-        1,
+        10,
         ge=1,
         description="Maximum concurrent admin jobs (graph/learning) using the shared semaphore",
+    )
+    classification_concurrency: int = Field(
+        8,
+        ge=1,
+        description="Maximum concurrent classification submissions (front-door throttle)",
+    )
+    extract_concurrency_max: int = Field(
+        20,
+        ge=1,
+        description="Maximum concurrent /v1/extract requests",
     )
     genre_classifier_model_path: str = Field(
         "data/genre_classifier.joblib",
