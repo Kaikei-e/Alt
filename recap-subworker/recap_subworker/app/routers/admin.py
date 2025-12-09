@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from ...domain.models import WarmupResponse
 from ..deps import (
+    get_admin_job_service_dep,
     get_learning_client,
     get_learning_service,
     get_pipeline_dep,
@@ -19,9 +22,20 @@ from ...services.learning_client import LearningClient
 from ...services.genre_learning import GenreLearningResult, GenreLearningService
 from ...services.tag_label_graph_builder import TagLabelGraphBuilder
 from ...infra.config import Settings
+from ...services.async_jobs import AdminJobService, ConcurrentAdminJobError
 
 
 router = APIRouter(tags=["admin"])
+
+
+class AdminJobResponse(BaseModel):
+    job_id: UUID
+    kind: str
+    status: str
+    started_at: datetime
+    finished_at: datetime | None = None
+    result: dict[str, object] | None = None
+    error: str | None = None
 
 
 @router.post("/warmup", response_model=WarmupResponse)
@@ -205,3 +219,69 @@ def _build_learning_payload(result: GenreLearningResult) -> dict[str, object]:
     if result.cluster_draft:
         payload["cluster_draft"] = result.cluster_draft
     return payload
+
+
+def _job_to_response(record) -> AdminJobResponse:
+    return AdminJobResponse(
+        job_id=record.job_id,
+        kind=record.kind,
+        status=record.status,
+        started_at=record.started_at,
+        finished_at=record.finished_at,
+        result=record.result,
+        error=record.error,
+    )
+
+
+@router.post("/graph-jobs", status_code=status.HTTP_202_ACCEPTED)
+async def create_graph_job(
+    service: AdminJobService = Depends(get_admin_job_service_dep),
+) -> dict[str, object]:
+    try:
+        job_id = await service.enqueue_graph_job()
+    except ConcurrentAdminJobError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="failed to enqueue graph job",
+        ) from exc
+    return {"job_id": job_id}
+
+
+@router.get("/graph-jobs/{job_id}", response_model=AdminJobResponse)
+async def get_graph_job(
+    job_id: UUID,
+    service: AdminJobService = Depends(get_admin_job_service_dep),
+) -> AdminJobResponse:
+    record = await service.get_job(job_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
+    return _job_to_response(record)
+
+
+@router.post("/learning-jobs", status_code=status.HTTP_202_ACCEPTED)
+async def create_learning_job(
+    service: AdminJobService = Depends(get_admin_job_service_dep),
+) -> dict[str, object]:
+    try:
+        job_id = await service.enqueue_learning_job()
+    except ConcurrentAdminJobError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="failed to enqueue learning job",
+        ) from exc
+    return {"job_id": job_id}
+
+
+@router.get("/learning-jobs/{job_id}", response_model=AdminJobResponse)
+async def get_learning_job(
+    job_id: UUID,
+    service: AdminJobService = Depends(get_admin_job_service_dep),
+) -> AdminJobResponse:
+    record = await service.get_job(job_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
+    return _job_to_response(record)

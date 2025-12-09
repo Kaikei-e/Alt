@@ -19,6 +19,7 @@ from ..services.run_manager import RunManager
 from ..services.classifier import GenreClassifierService
 from ..services.extraction import ContentExtractor
 from ..services.classification import CoarseClassifier
+from ..services.async_jobs import AdminJobService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Module-level singletons to avoid lru_cache issues with unhashable Settings
@@ -32,6 +33,7 @@ _learning_scheduler: LearningScheduler | None = None
 _classifier: GenreClassifierService | None = None
 _content_extractor: ContentExtractor | None = None
 _coarse_classifier: CoarseClassifier | None = None
+_admin_job_service: AdminJobService | None = None
 
 
 def _get_process_pool(settings: Settings) -> ProcessPoolExecutor:
@@ -196,6 +198,20 @@ def get_pipeline_runner_dep(
     settings: Settings = Depends(get_settings_dep),
 ) -> PipelineTaskRunner | None:
     return _get_pipeline_runner(settings)
+
+
+def get_admin_job_service_dep(
+    settings: Settings = Depends(get_settings_dep),
+) -> AdminJobService:
+    global _admin_job_service
+    if _admin_job_service is None:
+        session_factory = get_session_factory(settings)
+        _admin_job_service = AdminJobService(
+            settings=settings,
+            session_factory=session_factory,
+            learning_client=get_learning_client(settings),
+        )
+    return _admin_job_service
 
 
 def _get_learning_scheduler(settings: Settings) -> LearningScheduler | None:
@@ -370,6 +386,17 @@ def register_lifecycle(app) -> None:
             except Exception as exc:
                 logger.warning(
                     "error closing learning client",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+
+        # Shutdown admin job service background tasks
+        if _admin_job_service is not None:
+            try:
+                await _admin_job_service.shutdown()
+            except Exception as exc:
+                logger.warning(
+                    "error shutting down admin job service",
                     error=str(exc),
                     error_type=type(exc).__name__,
                 )

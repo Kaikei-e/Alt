@@ -77,3 +77,27 @@ LEARNING_TASK_FAILURE = Counter(
     "recap_subworker_learning_task_failure_total",
     "Total number of failed learning task executions",
 )
+
+# Admin job metrics (graph build / learning)
+ADMIN_JOB_STATUS_TOTAL = Counter(
+    "recap_subworker_admin_job_status_total",
+    "Total admin job status transitions",
+    labelnames=("kind", "status"),
+)
+
+ADMIN_JOB_DURATION_SECONDS = Histogram(
+    "recap_subworker_admin_job_duration_seconds",
+    "Duration of admin jobs in seconds",
+    labelnames=("kind",),
+    buckets=(
+        1.0,
+        5.0,
+        10.0,
+        30.0,
+        60.0,
+        120.0,
+        300.0,
+        600.0,
+        1200.0,
+    ),
+)

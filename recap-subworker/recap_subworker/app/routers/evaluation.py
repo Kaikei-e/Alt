@@ -252,6 +252,39 @@ async def evaluate_genres(
                 logger = structlog.get_logger(__name__)
                 logger.warning("Failed to save evaluation results to database", error=str(e))
 
+            # Additional logging to system_metrics for Dashboard
+            try:
+                system_metrics = {
+                    "accuracy": results["accuracy"],
+                    "macro_f1": results["macro_f1"],
+                    "micro_f1": results["micro_f1"],
+                    "per_genre": {
+                        genre: {
+                            "precision": m["precision"],
+                            "recall": m["recall"],
+                            "f1": m["f1"],
+                            "support": m.get("support", m["tp"] + m["fn"]),
+                            "threshold": m.get("threshold", 0.5) # Assuming threshold might be in metrics or default
+                        }
+                        for genre, m in results["per_genre_metrics"].items()
+                    }
+                }
+
+                # Provide a run_id or job_id if possible.
+                # run_id is a UUID here. system_metrics uses job_id (UUID).
+                # We can reuse run_id as job_id for system metrics context if job_id is not available,
+                # but better to interpret "job_id" column loosely or leave null.
+                # However, dao.insert_system_metrics expects job_id: UUID.
+                # Here we don't have a specific "job_id" in request, but we have the generated run_id.
+
+                await dao.insert_system_metrics(
+                    metric_type="classification",
+                    metrics=system_metrics,
+                    job_id=run_id, # reusing run_id as the ID for this record
+                )
+            except Exception as e:
+                logger.warning("Failed to save system metrics for dashboard", error=str(e))
+
         # レスポンスを構築
         macro_metrics_dict = results.get("macro_metrics", {})
         return EvaluateResponse(
@@ -330,4 +363,79 @@ async def evaluate_genres(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+
+
+class EvaluateSummaryRequest(BaseModel):
+    """要約評価リクエスト。"""
+
+    job_id: Optional[UUID] = Field(None, description="Job ID (for logging)")
+    source_text: str = Field(..., description="元のテキスト")
+    generated_summary: str = Field(..., description="生成された要約")
+    context: Optional[list[str]] = Field(None, description="コンテキスト（オプション）")
+    save_to_db: bool = Field(True, description="評価結果をデータベースに保存するか")
+
+
+class EvaluateSummaryResponse(BaseModel):
+    """要約評価レスポンス。"""
+
+    relevance: float
+    brevity: float
+    consistency: float
+    faithfulness: float
+
+
+@router.post("/summary", response_model=EvaluateSummaryResponse)
+async def evaluate_summary(
+    request: EvaluateSummaryRequest,
+    settings: Settings = Depends(get_settings_dep),
+    session=Depends(get_session),
+) -> EvaluateSummaryResponse:
+    """要約の品質を評価。
+
+    DeepEvalなどを使用して要約のFaithfulness, Relevanceなどを評価し、
+    結果をrecap_system_metricsに保存します。
+    """
+    service = EvaluationService()  # No args needed for summary?
+
+    results = await service.evaluate_summary(
+        source_text=request.source_text,
+        generated_summary=request.generated_summary,
+        context=request.context,
+    )
+
+    if request.save_to_db:
+        try:
+            dao = SubworkerDAO(session)
+            system_metrics = {
+                "faithfulness": results.faithfulness,
+                "alignment": results.faithfulness,  # Alias for dashboard
+                "relevance": results.relevance,
+                "brevity": results.brevity,
+                "consistency": results.consistency,
+                "coverage_score": 0.0,  # Placeholder or implement in service
+                "mmr_diversity": 0.0,  # Placeholder
+                "json_errors": 0,  # Placeholder, passed from caller?
+                "processing_time_ms": 0,  # Placeholder
+            }
+
+            # Use provided job_id or generate one/leave null
+            job_id = request.job_id
+
+            await dao.insert_system_metrics(
+                metric_type="summarization",
+                metrics=system_metrics,
+                job_id=job_id,
+            )
+        except Exception as e:
+            import structlog
+
+            logger = structlog.get_logger(__name__)
+            logger.warning("Failed to save summary metrics", error=str(e))
+
+    return EvaluateSummaryResponse(
+        relevance=results.relevance,
+        brevity=results.brevity,
+        consistency=results.consistency,
+        faithfulness=results.faithfulness,
+    )
 

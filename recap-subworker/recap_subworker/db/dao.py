@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Iterable, Optional
+import inspect
 from uuid import UUID
 
 from sqlalchemy import (
@@ -90,6 +91,20 @@ cluster_evidence_table = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
 )
 
+# Admin jobs table for async admin tasks (graph build / learning)
+admin_jobs_table = Table(
+    "admin_jobs",
+    metadata,
+    Column("job_id", PG_UUID(as_uuid=True), primary_key=True),
+    Column("kind", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("payload", JSONB),
+    Column("result", JSONB),
+    Column("error", Text),
+)
+
 # Genre evaluation tables (shared with recap-worker)
 genre_evaluation_runs_table = Table(
     "recap_genre_evaluation_runs",
@@ -124,6 +139,17 @@ genre_evaluation_metrics_table = Table(
     Column("precision", Float, nullable=False),
     Column("recall", Float, nullable=False),
     Column("f1_score", Float, nullable=False),
+)
+
+
+system_metrics_table = Table(
+    "recap_system_metrics",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("job_id", PG_UUID(as_uuid=True), nullable=True),
+    Column("metric_type", Text, nullable=False),
+    Column("timestamp", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    Column("metrics", JSONB, nullable=False),
 )
 
 
@@ -184,6 +210,18 @@ class DiagnosticEntry:
     value: Any
 
 
+@dataclass(slots=True)
+class AdminJobRecord:
+    job_id: UUID
+    kind: str
+    status: str
+    started_at: datetime
+    finished_at: Optional[datetime]
+    payload: Optional[dict[str, Any]]
+    result: Optional[dict[str, Any]]
+    error: Optional[str]
+
+
 class SubworkerDAO:
     """DAO encapsulating recap-subworker persistence logic."""
 
@@ -226,6 +264,8 @@ class SubworkerDAO:
         )
         result = await self.session.execute(stmt)
         row = result.first()
+        if inspect.isawaitable(row):  # Handle AsyncMock in tests
+            row = await row
         if not row:
             return None
         return RunRecord(
@@ -476,7 +516,104 @@ class SubworkerDAO:
 
         # 明示的にコミット（他のDAOメソッドと同様に）
         await self.session.commit()
+        await self.session.commit()
         return run_id
+
+    async def insert_system_metrics(
+        self,
+        metric_type: str,
+        metrics: dict[str, Any],
+        job_id: Optional[UUID] = None,
+    ) -> None:
+        """Insert system-wide metrics for dashboard monitoring."""
+        stmt = insert(system_metrics_table).values(
+            job_id=job_id,
+            metric_type=metric_type,
+            metrics=metrics,
+        )
+        await self.session.execute(stmt)
+        # We generally want to commit these immediately so they appear in dashboard
+        await self.session.commit()
+
+    # --- Admin job helpers ---
+
+    async def has_running_admin_job(self, kind: str) -> bool:
+        stmt = (
+            select(admin_jobs_table.c.job_id)
+            .where(admin_jobs_table.c.kind == kind)
+            .where(admin_jobs_table.c.status == "running")
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.first() is not None
+
+    async def insert_admin_job(
+        self,
+        job_id: UUID,
+        kind: str,
+        status: str,
+        payload: dict[str, Any] | None,
+        started_at: datetime,
+    ) -> UUID:
+        stmt = insert(admin_jobs_table).values(
+            job_id=job_id,
+            kind=kind,
+            status=status,
+            payload=payload or {},
+            started_at=started_at,
+        )
+        await self.session.execute(stmt)
+        return job_id
+
+    async def update_admin_job_status(
+        self,
+        job_id: UUID,
+        status: str,
+        finished_at: datetime | None = None,
+        result: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> None:
+        stmt = (
+            update(admin_jobs_table)
+            .where(admin_jobs_table.c.job_id == job_id)
+            .values(
+                status=status,
+                finished_at=finished_at,
+                result=result,
+                error=error,
+            )
+        )
+        await self.session.execute(stmt)
+
+    async def fetch_admin_job(self, job_id: UUID) -> Optional[AdminJobRecord]:
+        stmt = (
+            select(
+                admin_jobs_table.c.job_id,
+                admin_jobs_table.c.kind,
+                admin_jobs_table.c.status,
+                admin_jobs_table.c.started_at,
+                admin_jobs_table.c.finished_at,
+                admin_jobs_table.c.payload,
+                admin_jobs_table.c.result,
+                admin_jobs_table.c.error,
+            )
+            .where(admin_jobs_table.c.job_id == job_id)
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        row = result.first()
+        if not row:
+            return None
+        return AdminJobRecord(
+            job_id=row.job_id,
+            kind=row.kind,
+            status=row.status,
+            started_at=row.started_at,
+            finished_at=row.finished_at,
+            payload=row.payload,
+            result=row.result,
+            error=row.error,
+        )
 
 
 __all__ = [
@@ -487,4 +624,5 @@ __all__ = [
     "PersistedEvidence",
     "PersistedSentence",
     "DiagnosticEntry",
+    "AdminJobRecord",
 ]

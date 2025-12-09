@@ -303,6 +303,11 @@ class Settings(BaseSettings):
         ge=1,
         description="Minimum article count for an edge",
     )
+    graph_build_max_concurrency: int = Field(
+        1,
+        ge=1,
+        description="Maximum concurrent admin jobs (graph/learning) using the shared semaphore",
+    )
     genre_classifier_model_path: str = Field(
         "data/genre_classifier.joblib",
         description="Path to the trained genre classifier model",

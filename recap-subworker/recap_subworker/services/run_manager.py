@@ -251,6 +251,22 @@ class RunManager:
                 diagnostics = self._build_diagnostics_entries(response)
                 await dao.upsert_diagnostics(run_id, diagnostics)
 
+                # Log system metrics for dashboard
+                clustering_metrics = {
+                    "dbcv_score": response.diagnostics.dbcv_score,
+                    "silhouette_score": response.diagnostics.silhouette_score,
+                    "noise_ratio": response.diagnostics.noise_ratio,
+                    "num_clusters": len(response.clusters),
+                    "cluster_sizes": [c.size for c in response.clusters],
+                    "processing_time_ms": response.diagnostics.hdbscan_ms,  # Approximate
+                }
+                if hasattr(dao, "insert_system_metrics"):
+                    await dao.insert_system_metrics(
+                        metric_type="clustering",
+                        metrics=clustering_metrics,
+                        job_id=record.job_id,
+                    )
+
                 api_response = self._build_api_response(run_id, record, response)
                 status = "partial" if response.diagnostics.partial else "succeeded"
                 await dao.mark_run_success(

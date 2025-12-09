@@ -394,6 +394,7 @@ def run_bayes_optimization(
             func=lambda params: _objective_bayes(params, df),
             dimensions=space,
             n_calls=iterations,
+            n_initial_points=min(iterations, 10),
             random_state=seed,
             acq_func="EI",
         )
@@ -578,7 +579,11 @@ class GenreLearningService:
         total_tag_count = 0
         genre_tag_matches: dict[str, int] = {}
 
-        # Recompute graph_boost for each row
+        # If no graph edges, keep existing graph_boost values to avoid wiping signals
+        if not graph_edges:
+            return rows
+
+        # Recompute graph_boost for each row when edges are available
         for row in rows:
             candidates = _ensure_list(row.get("coarse_candidates"))
             tag_profile = _ensure_dict(row.get("tag_profile"))
