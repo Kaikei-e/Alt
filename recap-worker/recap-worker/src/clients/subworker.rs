@@ -2,14 +2,16 @@ use std::{
     cmp,
     collections::HashMap,
     fmt,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result, anyhow};
+use futures::stream::{self, StreamExt};
 use reqwest::{Client, Response, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::time::sleep;
+use tokio::{sync::Semaphore, time::sleep};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -40,6 +42,8 @@ const ADMIN_JOB_MAX_BACKOFF_MS: u64 = 20_000;
 const ADMIN_JOB_TIMEOUT_SECS: u64 = 600; // 10 minutes
 const CLASSIFY_POST_RETRIES: usize = 3;
 const CLASSIFY_POST_BACKOFF_MS: u64 = 5_000;
+const CLASSIFY_CHUNK_SIZE: usize = 200; // Number of texts per chunk for parallel processing
+const CLASSIFY_MAX_CONCURRENT: usize = 6; // Maximum concurrent requests (matches Gunicorn workers)
 
 /// エラーメッセージを要約して切り詰める。
 fn truncate_error_message(msg: &str) -> String {
@@ -288,19 +292,132 @@ impl SubworkerClient {
         job_id: Uuid,
         texts: Vec<String>,
     ) -> Result<Vec<ClassificationResult>> {
-        let request = ClassificationRequest { texts };
+        let total_texts = texts.len();
+
+        // If texts count is small, process in a single request
+        if total_texts <= CLASSIFY_CHUNK_SIZE {
+            return self.classify_chunk(job_id, texts, 0).await;
+        }
+
+        // Split into chunks for parallel processing
+        let chunks: Vec<(usize, Vec<String>)> = texts
+            .chunks(CLASSIFY_CHUNK_SIZE)
+            .enumerate()
+            .map(|(idx, chunk)| (idx, chunk.to_vec()))
+            .collect();
+
+        info!(
+            job_id = %job_id,
+            total_texts,
+            chunk_count = chunks.len(),
+            chunk_size = CLASSIFY_CHUNK_SIZE,
+            max_concurrent = CLASSIFY_MAX_CONCURRENT,
+            "splitting classification into parallel chunks"
+        );
+
+        // Use semaphore to limit concurrent requests
+        let semaphore = Arc::new(Semaphore::new(CLASSIFY_MAX_CONCURRENT));
+        let client = Arc::new(self.clone());
+
+        // Process chunks in parallel using futures::stream
+        // This allows completed chunks to immediately start the next waiting chunk
+        let mut results: Vec<(usize, Result<Vec<ClassificationResult>>)> = stream::iter(chunks)
+            .map(|(chunk_idx, chunk_texts)| {
+                let semaphore = semaphore.clone();
+                let client = client.clone();
+                let job_id_copy = job_id; // Uuid is Copy, but clippy wants explicit copy
+
+                async move {
+                    // Acquire permit before processing (limits concurrency)
+                    let _permit = semaphore.acquire().await;
+
+                    // Process chunk
+                    let result = client
+                        .classify_chunk(job_id_copy, chunk_texts, chunk_idx)
+                        .await;
+                    (chunk_idx, result)
+                }
+            })
+            .buffer_unordered(CLASSIFY_MAX_CONCURRENT) // Process up to 6 chunks concurrently
+            .collect()
+            .await;
+
+        // Sort by chunk index to maintain original order
+        results.sort_by_key(|(idx, _)| *idx);
+
+        // Combine results in order
+        let mut combined_results = Vec::with_capacity(total_texts);
+        for (chunk_idx, chunk_result) in results {
+            let chunk_results = chunk_result
+                .with_context(|| format!("classification chunk {} failed", chunk_idx))?;
+            combined_results.extend(chunk_results);
+        }
+
+        info!(
+            job_id = %job_id,
+            total_texts,
+            result_count = combined_results.len(),
+            "classification parallel processing completed"
+        );
+
+        Ok(combined_results)
+    }
+
+    async fn classify_chunk(
+        &self,
+        job_id: Uuid,
+        texts: Vec<String>,
+        chunk_idx: usize,
+    ) -> Result<Vec<ClassificationResult>> {
+        let request = ClassificationRequest {
+            texts: texts.clone(),
+        };
         let url = self.build_classify_url()?;
+
+        info!(
+            job_id = %job_id,
+            chunk_idx,
+            text_count = texts.len(),
+            "processing classification chunk"
+        );
+
         let response = self
             .send_classify_request(job_id, &request, &url)
             .await
-            .with_context(|| format!("classify-runs POST request failed for job {}", job_id))?;
+            .with_context(|| {
+                format!(
+                    "classify-runs POST request failed for job {} chunk {}",
+                    job_id, chunk_idx
+                )
+            })?;
         let body = self
             .parse_classify_response(job_id, response)
             .await
             .with_context(|| {
-                format!("failed to parse classify-runs response for job {}", job_id)
+                format!(
+                    "failed to parse classify-runs response for job {} chunk {}",
+                    job_id, chunk_idx
+                )
             })?;
-        self.process_classify_body(job_id, body).await
+
+        let results = self
+            .process_classify_body(job_id, body)
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to process classification chunk {} for job {}",
+                    chunk_idx, job_id
+                )
+            })?;
+
+        info!(
+            job_id = %job_id,
+            chunk_idx,
+            result_count = results.len(),
+            "classification chunk completed"
+        );
+
+        Ok(results)
     }
 
     fn build_classify_url(&self) -> Result<Url> {
