@@ -75,14 +75,20 @@ impl AltBackendFetchStage {
         let mut attempt = 0;
 
         loop {
+            info!(attempt, %from, %to, "fetching articles batch...");
+            let start = std::time::Instant::now();
             match self.client.fetch_articles(from, to).await {
                 Ok(articles) => {
+                    let elapsed = start.elapsed();
+                    info!(attempt, count = articles.len(), elapsed_ms = elapsed.as_millis(), "fetch call succeeded");
                     if attempt > 0 {
                         info!(attempt, "fetch succeeded after retry");
                     }
                     return Ok(articles);
                 }
                 Err(err) => {
+                    let elapsed = start.elapsed();
+                    warn!(attempt, elapsed_ms = elapsed.as_millis(), ?err, "fetch call failed");
                     attempt += 1;
 
                     if !self.retry_config.can_retry(attempt) {

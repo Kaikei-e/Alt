@@ -33,7 +33,7 @@ const MIN_PARAGRAPH_LEN: usize = 30;
 const MAX_POLL_ATTEMPTS: usize = 200; // Covers ~100 minutes with exponential backoff (2s -> 30s)
 const INITIAL_POLL_INTERVAL_MS: u64 = 2_000; // 2 seconds - start checking quickly
 const MAX_POLL_INTERVAL_MS: u64 = 30_000; // 30 seconds - cap at 30s for long-running jobs
-const SUBWORKER_TIMEOUT_SECS: u64 = 900; // 15 minutes to match server timeout and allow for large classification jobs
+const SUBWORKER_TIMEOUT_SECS: u64 = 3600; // 1 hour to match server timeout and allow for large classification jobs
 const MAX_ERROR_MESSAGE_LENGTH: usize = 500;
 const EXTRACTION_TIMEOUT_SECS: u64 = 30; // 30 seconds for content extraction
 const MIN_FALLBACK_DOCUMENTS: usize = 2;
@@ -43,7 +43,7 @@ const ADMIN_JOB_TIMEOUT_SECS: u64 = 600; // 10 minutes
 const CLASSIFY_POST_RETRIES: usize = 3;
 const CLASSIFY_POST_BACKOFF_MS: u64 = 5_000;
 const CLASSIFY_CHUNK_SIZE: usize = 200; // Number of texts per chunk for parallel processing
-const CLASSIFY_MAX_CONCURRENT: usize = 6; // Maximum concurrent requests (matches Gunicorn workers)
+const CLASSIFY_MAX_CONCURRENT: usize = 12; // Increased to 12 to match subworker's expanded 12-core capacity
 
 /// エラーメッセージを要約して切り詰める。
 fn truncate_error_message(msg: &str) -> String {
