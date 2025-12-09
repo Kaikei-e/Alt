@@ -337,10 +337,16 @@ class RunManager:
                     await session.rollback()
                     return existing
 
-            if await dao.has_running_run(submission.job_id, "classification"):
-                raise ConcurrentRunError(
-                    f"classification run already in progress for job {submission.job_id}"
-                )
+            # Allow concurrent runs if they have different idempotency keys
+            # This enables parallel processing of chunks from the same job
+            if not submission.idempotency_key:
+                # If no idempotency key provided, check for any running run (backward compatibility)
+                if await dao.has_running_run(submission.job_id, "classification"):
+                    raise ConcurrentRunError(
+                        f"classification run already in progress for job {submission.job_id}"
+                    )
+            # If idempotency_key is provided, only check for runs with the same key (idempotency check)
+            # Different keys are allowed to run concurrently
 
             new_run = NewRun(
                 job_id=submission.job_id,

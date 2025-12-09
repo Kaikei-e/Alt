@@ -46,6 +46,11 @@ class Settings(BaseSettings):
                 self.db_url = urlunparse((u.scheme, new_netloc, u.path, u.params, u.query, u.fragment))
         return self
 
+    @property
+    def db_url_sync(self) -> str:
+        """Return synchronous connection string (for logging)."""
+        return self.db_url.replace("postgresql+asyncpg://", "postgresql://")
+
     db_url: str = Field(
         "postgresql+asyncpg://recap_user:recap@recap-db:5432/recap",
         description="Async SQLAlchemy connection string",
