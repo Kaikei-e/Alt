@@ -75,10 +75,7 @@ async def test_fetch_snapshot_rows(mock_session, sample_rows):
     """Test fetching snapshot rows from database."""
     # Mock the database query result
     mock_result = MagicMock()
-    mock_result.mappings.return_value.all.return_value = [
-        MagicMock(**{k: v for k, v in row.items() if k != "coarse_candidates"})
-        for row in sample_rows
-    ]
+    mock_result.mappings.return_value.all.return_value = sample_rows
     mock_execute = AsyncMock(return_value=mock_result)
     mock_session.execute = mock_execute
 
@@ -94,10 +91,7 @@ async def test_generate_learning_result(mock_session, sample_rows):
     """Test generating a complete learning result."""
     # Mock database query
     mock_result = MagicMock()
-    mock_result.mappings.return_value.all.return_value = [
-        MagicMock(**{k: v for k, v in row.items() if k != "coarse_candidates"})
-        for row in sample_rows
-    ]
+    mock_result.mappings.return_value.all.return_value = sample_rows
     mock_execute = AsyncMock(return_value=mock_result)
     mock_session.execute = mock_execute
 
@@ -154,10 +148,7 @@ async def test_generate_learning_result_with_bayes_optimization(mock_session):
 
     # Mock database query
     mock_result = MagicMock()
-    mock_result.mappings.return_value.all.return_value = [
-        MagicMock(**{k: v for k, v in row.items() if k != "coarse_candidates"})
-        for row in sample_rows
-    ]
+    mock_result.mappings.return_value.all.return_value = sample_rows
     mock_execute = AsyncMock(return_value=mock_result)
     mock_session.execute = mock_execute
 

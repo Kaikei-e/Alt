@@ -22,6 +22,14 @@ def mock_settings():
     settings.learning_snapshot_days = 7
     settings.recap_worker_learning_url = "http://localhost:9005/admin/genre-learning"
     settings.learning_request_timeout_seconds = 5.0
+    settings.graph_build_enabled = False  # Skip graph rebuild in tests
+    settings.graph_build_windows = "7"
+    settings.learning_auto_detect_genres = True
+    settings.learning_cluster_genres = ""
+    settings.learning_bayes_enabled = False
+    settings.learning_bayes_iterations = 10
+    settings.learning_bayes_seed = 42
+    settings.learning_bayes_min_samples = 100
     return settings
 
 
@@ -64,9 +72,14 @@ async def test_scheduler_execute_learning_success(mock_settings):
 
     # Mock session factory
     mock_session = AsyncMock()
-    mock_session_factory = AsyncMock()
-    mock_session_factory.return_value.__aenter__.return_value = mock_session
-    mock_session_factory.return_value.__aexit__.return_value = False
+    class _Ctx:
+        async def __aenter__(self):
+            return mock_session
+
+        async def __aexit__(self, *args, **kwargs):
+            return False
+
+    mock_session_factory = lambda: _Ctx()
 
     # Mock database query result
     mock_result = MagicMock()

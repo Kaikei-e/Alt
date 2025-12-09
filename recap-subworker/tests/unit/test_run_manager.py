@@ -84,6 +84,10 @@ class FakeDAO:
     async def upsert_diagnostics(self, run_id, entries):
         self.diagnostic_entries = (run_id, list(entries))
 
+    async def insert_system_metrics(self, metric_type, metrics, job_id=None):
+        # No-op for tests; just store last call
+        self.system_metrics = (metric_type, metrics, job_id)
+
     async def mark_run_success(self, run_id, cluster_count, payload, status="succeeded"):
         self.success_status = (run_id, cluster_count, status)
 
@@ -165,7 +169,7 @@ async def test_create_run_reuses_existing_idempotent(payload):
         genre="ai",
         status="running",
         cluster_count=0,
-        request_payload={"request_hash": "abc"},
+        request_payload={"request_hash": None},
         response_payload=None,
         error_message=None,
     )
