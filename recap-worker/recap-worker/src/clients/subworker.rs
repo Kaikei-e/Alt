@@ -381,8 +381,11 @@ impl SubworkerClient {
             "processing classification chunk"
         );
 
+        // Generate unique idempotency key for this chunk
+        let idempotency_key = format!("{}-chunk-{}", job_id, chunk_idx);
+
         let response = self
-            .send_classify_request(job_id, &request, &url)
+            .send_classify_request(job_id, &request, &url, Some(&idempotency_key))
             .await
             .with_context(|| {
                 format!(
@@ -431,21 +434,29 @@ impl SubworkerClient {
         job_id: Uuid,
         request: &ClassificationRequest,
         url: &Url,
+        idempotency_key: Option<&str>,
     ) -> Result<Response> {
         info!(
             job_id = %job_id,
             text_count = request.texts.len(),
             url = %url,
+            idempotency_key = idempotency_key,
             "sending classification job request"
         );
 
         let mut response = None;
         for attempt in 0..CLASSIFY_POST_RETRIES {
-            let req = self
+            let mut req = self
                 .client
                 .post(url.clone())
-                .header("X-Alt-Job-Id", job_id.to_string())
-                .json(request);
+                .header("X-Alt-Job-Id", job_id.to_string());
+
+            // Add idempotency key header if provided
+            if let Some(key) = idempotency_key {
+                req = req.header("Idempotency-Key", key);
+            }
+
+            let req = req.json(request);
             match req.send().await {
                 Ok(res) => {
                     response = Some(res);
