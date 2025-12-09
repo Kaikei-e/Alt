@@ -149,11 +149,13 @@ def get_gpu_info() -> Dict[str, Any]:
             # 'total_gpus': len(gpus) # optional
         }
     except FileNotFoundError:
-        return {"available": False, "gpus": [], "error": "nvidia-smi not found"}
+        return {"available": False, "gpus": [], "error": "nvidia-smi not found", "message": "nvidia-smi command not found. GPU may not be available or NVIDIA drivers not installed."}
     except subprocess.TimeoutExpired:
-        return {"available": False, "gpus": [], "error": "timeout"}
+        return {"available": False, "gpus": [], "error": "timeout", "message": "nvidia-smi command timed out."}
+    except subprocess.CalledProcessError as e:
+        return {"available": False, "gpus": [], "error": f"nvidia-smi failed: {e}", "message": f"nvidia-smi command failed (exit code {e.returncode}). GPU may not be accessible."}
     except Exception as e:
-        return {"available": False, "gpus": [], "error": str(e)}
+        return {"available": False, "gpus": [], "error": str(e), "message": f"Error getting GPU info: {str(e)}"}
 
 def count_hanging_processes() -> int:
     """Count potential hanging processes"""
