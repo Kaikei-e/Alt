@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import statistics
+import asyncio
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import partial
 from typing import Any, Iterable, Sequence
 
 import numpy as np
@@ -535,10 +537,9 @@ class GenreLearningService:
         )
         return genres
 
-    async def _recompute_graph_boosts(self, rows: list[dict[str, Any]]) -> None:
-        """Recompute graph_boost values from tag_label_graph for all candidates."""
+    async def _fetch_graph_edges(self) -> dict[tuple[str, str], float]:
+        """Fetch graph edges from database (async)."""
         import structlog
-
         logger = structlog.get_logger(__name__)
 
         # Load tag_label_graph into memory
@@ -569,6 +570,16 @@ class GenreLearningService:
             unique_genres=len(genre_set),
             unique_tags=len(tag_set),
         )
+        return graph_edges
+
+    def _apply_graph_boosts(
+        self,
+        rows: list[dict[str, Any]],
+        graph_edges: dict[tuple[str, str], float]
+    ) -> None:
+        """Apply graph boosts to rows using graph_edges (CPU-bound)."""
+        import structlog
+        logger = structlog.get_logger(__name__)
 
         # Statistics for debugging
         total_candidates = 0
@@ -578,10 +589,11 @@ class GenreLearningService:
         matched_tag_count = 0
         total_tag_count = 0
         genre_tag_matches: dict[str, int] = {}
+        tag_set = {t for _, t in graph_edges.keys()}
 
         # If no graph edges, keep existing graph_boost values to avoid wiping signals
         if not graph_edges:
-            return rows
+            return
 
         # Recompute graph_boost for each row when edges are available
         for row in rows:
@@ -652,6 +664,16 @@ class GenreLearningService:
                 "sample graph_edges",
                 sample_edges=[f"({g}, {t}): {w:.6f}" for (g, t), w in sample_edges],
             )
+
+    async def _recompute_graph_boosts(self, rows: list[dict[str, Any]]) -> None:
+        """Recompute graph_boost values from tag_label_graph for all candidates."""
+        graph_edges = await self._fetch_graph_edges()
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,
+            partial(self._apply_graph_boosts, rows, graph_edges)
+        )
 
     async def fetch_snapshot_rows(
         self,
@@ -743,7 +765,12 @@ class GenreLearningService:
         )
         # Recompute graph_boost from tag_label_graph
         await self._recompute_graph_boosts(rows)
-        entries = build_graph_boost_snapshot_entries(rows, self.graph_margin)
+
+        loop = asyncio.get_running_loop()
+        entries = await loop.run_in_executor(
+            None,
+            partial(build_graph_boost_snapshot_entries, rows, self.graph_margin)
+        )
 
         # Debug: Check top_boost distribution before Bayes optimization
         top_boosts = [float(entry.get("top_boost") or 0.0) for entry in entries]
@@ -790,8 +817,14 @@ class GenreLearningService:
                         summary.boost_threshold_reference = 0.0
                         summary.tag_count_threshold_reference = 0
                     else:
-                        best_params, train_accuracy, test_accuracy = run_bayes_optimization(
-                            df, self.bayes_iterations, self.bayes_seed
+                        best_params, train_accuracy, test_accuracy = await loop.run_in_executor(
+                            None,
+                            partial(
+                                run_bayes_optimization,
+                                df,
+                                self.bayes_iterations,
+                                self.bayes_seed
+                            )
                         )
 
                         summary.boost_threshold_reference = best_params.boost_threshold
@@ -868,11 +901,18 @@ class GenreLearningService:
             "building cluster draft",
             cluster_genres=genres_to_cluster,
         )
-        cluster_draft = ClusterBuilder().build(
-            entries,
-            genres=genres_to_cluster,
-            min_samples=DEFAULT_CLUSTER_MIN_SAMPLES,
+
+        cluster_builder = ClusterBuilder()
+        cluster_draft = await loop.run_in_executor(
+            None,
+            partial(
+                cluster_builder.build,
+                entries,
+                genres=genres_to_cluster,
+                min_samples=DEFAULT_CLUSTER_MIN_SAMPLES,
+            )
         )
+
         if cluster_draft:
             logger.debug(
                 "cluster draft created",

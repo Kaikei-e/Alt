@@ -171,6 +171,7 @@ class RunManager:
             return
 
         async with self._background_slots:
+            LOGGER.info("run.process.started", run_id=run_id)
             try:
                 await asyncio.wait_for(self._process_run_inner(run_id), timeout=self._run_timeout)
             except asyncio.TimeoutError:
@@ -222,7 +223,9 @@ class RunManager:
 
         # Long-running operation: Run pipeline (embedding generation and clustering, no database connection needed)
         try:
+            LOGGER.info("run.pipeline.executing", run_id=run_id, stage="clustering")
             response = await self._execute_pipeline(pipeline_request)
+            LOGGER.info("run.pipeline.completed", run_id=run_id, stage="clustering")
         except Exception as exc:
             # If pipeline fails, mark as failed in a new session
             try:
@@ -413,6 +416,7 @@ class RunManager:
             return
 
         async with self._background_slots:
+            LOGGER.info("classification.run.process.started", run_id=run_id)
             try:
                 await asyncio.wait_for(
                     self._process_classification_run_inner(run_id), timeout=self._run_timeout
@@ -469,10 +473,16 @@ class RunManager:
 
         # Long-running operation: Run classification (no database connection needed)
         try:
+            LOGGER.info(
+                "classification.run.executing",
+                run_id=run_id,
+                text_count=len(classification_payload.texts)
+            )
             loop = asyncio.get_running_loop()
             results = await loop.run_in_executor(
                 None, self._classifier.predict_batch, classification_payload.texts
             )
+            LOGGER.info("classification.run.completed_inference", run_id=run_id)
 
             # Convert results to domain models
             classification_results = [

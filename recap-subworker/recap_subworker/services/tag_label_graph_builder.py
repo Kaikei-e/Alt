@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -80,7 +81,8 @@ class TagLabelGraphBuilder:
             return 0
 
         # Aggregate edges
-        edges = self._aggregate_edges(rows)
+        loop = asyncio.get_running_loop()
+        edges = await loop.run_in_executor(None, self._aggregate_edges, rows)
         logger.info("aggregated edges", edge_count=len(edges))
 
         if not edges:

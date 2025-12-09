@@ -113,6 +113,7 @@ class AdminJobService:
             LOGGER.exception("admin job execution failed", job_id=str(job_id))
 
     async def _execute_graph_job(self, job_id: UUID) -> None:
+        LOGGER.info("graph job execution started", job_id=str(job_id))
         started = time.monotonic()
         async with self._semaphore:
             try:
