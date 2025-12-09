@@ -62,7 +62,6 @@ async def create_classification_run(
         raise HTTPException(
             status_code=400, detail="X-Alt-Job-Id must be a valid UUID"
         ) from exc
-
     submission = ClassificationRunSubmission(
         job_id=job_id,
         payload=payload,

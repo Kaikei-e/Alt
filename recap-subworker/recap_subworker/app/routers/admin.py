@@ -237,11 +237,16 @@ def _job_to_response(record) -> AdminJobResponse:
 async def create_graph_job(
     service: AdminJobService = Depends(get_admin_job_service_dep),
 ) -> dict[str, object]:
+    import structlog
+    logger = structlog.get_logger(__name__)
     try:
         job_id = await service.enqueue_graph_job()
+        logger.info("graph job enqueued", job_id=str(job_id))
     except ConcurrentAdminJobError as exc:
+        logger.warning("graph job already running", error=str(exc))
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except Exception as exc:
+        logger.error("failed to enqueue graph job", error=str(exc), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="failed to enqueue graph job",

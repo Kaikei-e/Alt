@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor
 from typing import AsyncIterator
+import asyncio
 
 from fastapi import Depends
 
@@ -34,6 +35,7 @@ _classifier: GenreClassifierService | None = None
 _content_extractor: ContentExtractor | None = None
 _coarse_classifier: CoarseClassifier | None = None
 _admin_job_service: AdminJobService | None = None
+_extract_semaphore: asyncio.Semaphore | None = None
 
 
 def _get_process_pool(settings: Settings) -> ProcessPoolExecutor:
@@ -212,6 +214,15 @@ def get_admin_job_service_dep(
             learning_client=get_learning_client(settings),
         )
     return _admin_job_service
+
+
+def get_extract_semaphore_dep(
+    settings: Settings = Depends(get_settings_dep),
+) -> asyncio.Semaphore:
+    global _extract_semaphore
+    if _extract_semaphore is None:
+        _extract_semaphore = asyncio.Semaphore(settings.extract_concurrency_max)
+    return _extract_semaphore
 
 
 def _get_learning_scheduler(settings: Settings) -> LearningScheduler | None:

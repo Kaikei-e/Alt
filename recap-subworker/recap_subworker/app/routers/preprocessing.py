@@ -14,6 +14,7 @@ from ..deps import (
     get_settings_dep
 )
 from ...infra.config import Settings
+from ..deps import get_extract_semaphore_dep
 
 router = APIRouter()
 
@@ -41,11 +42,13 @@ class SubClusterOtherResponse(BaseModel):
 @router.post("/extract", response_model=ExtractResponse)
 async def extract_content(
     request: ExtractRequest,
-    extractor: ContentExtractor = Depends(get_content_extractor_dep)
+    extractor: ContentExtractor = Depends(get_content_extractor_dep),
+    semaphore=Depends(get_extract_semaphore_dep),
 ) -> ExtractResponse:
     """Extract main content from HTML."""
-    text = extractor.extract_content(request.html, request.include_comments)
-    return ExtractResponse(text=text)
+    async with semaphore:
+        text = extractor.extract_content(request.html, request.include_comments)
+        return ExtractResponse(text=text)
 
 @router.post("/classify/coarse", response_model=CoarseClassifyResponse)
 async def classify_coarse(
