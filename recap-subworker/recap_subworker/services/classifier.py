@@ -3,6 +3,7 @@ import json
 import numpy as np
 import time
 from pathlib import Path
+from threading import Lock
 from typing import List, Dict, Any
 
 import structlog
@@ -49,31 +50,45 @@ class GenreClassifierService:
         self.model = None
         self.tfidf = None
         self.thresholds = None
+        self._lock = Lock()
 
     def _ensure_model(self, threshold_overrides: Dict[str, float] = None):
+        # Double-checked locking pattern: check outside lock first for performance
         if self.model is None:
-            if not self.model_path.exists():
-                raise FileNotFoundError(f"Model not found at {self.model_path}")
+            with self._lock:
+                # Check again inside lock to avoid race condition
+                if self.model is None:
+                    if not self.model_path.exists():
+                        raise FileNotFoundError(f"Model not found at {self.model_path}")
 
-            logger.info("Loading classification artifacts", model_path=str(self.model_path))
-            self.model = joblib.load(self.model_path)
+                    logger.info("Loading classification artifacts", model_path=str(self.model_path))
+                    self.model = joblib.load(self.model_path)
 
-            if self.tfidf_path.exists():
-                self.tfidf = joblib.load(self.tfidf_path)
-                logger.info("TF-IDF vectorizer loaded")
-            else:
-                logger.warning("TF-IDF vectorizer not found, will use embeddings only if model allows")
+                    if self.tfidf_path.exists():
+                        self.tfidf = joblib.load(self.tfidf_path)
+                        logger.info("TF-IDF vectorizer loaded")
+                    else:
+                        logger.warning("TF-IDF vectorizer not found, will use embeddings only if model allows")
 
-            # Load base thresholds
-            if self.thresholds_path.exists():
-                with open(self.thresholds_path) as f:
-                    self.thresholds = json.load(f)
-                logger.info("Base thresholds loaded", count=len(self.thresholds))
-            else:
-                self.thresholds = {}
-                logger.warning("Thresholds not found, using default 0.5")
+                    # Load base thresholds
+                    if self.thresholds_path.exists():
+                        with open(self.thresholds_path) as f:
+                            self.thresholds = json.load(f)
+                        logger.info("Base thresholds loaded", count=len(self.thresholds))
+                    else:
+                        self.thresholds = {}
+                        logger.warning("Thresholds not found, using default 0.5")
 
         # Apply overrides if provided (can change at runtime even if model is loaded)
+        # This part is safe to run outside lock since model/thresholds are already initialized
+        # but we ensure thresholds is not None before copying
+        if self.thresholds is None:
+            # This should not happen if initialization completed, but add safety check
+            with self._lock:
+                if self.thresholds is None:
+                    # Fallback: ensure thresholds is at least an empty dict
+                    self.thresholds = {}
+
         if threshold_overrides:
              # Make sure we don't mutate the base thresholds permanently if we were to support dynamic updates better
              # But for now, simple update is fine or just used during lookup.

@@ -54,7 +54,15 @@ class Embedder:
                 recommended="intfloat/multilingual-e5-large"
             )
 
-        return SentenceTransformer(self.config.model_id, device=self.config.device)
+        return SentenceTransformer(
+            self.config.model_id,
+            device=self.config.device,
+            model_kwargs={
+                "device_map": None,
+                "low_cpu_mem_usage": False,
+                "trust_remote_code": True,
+            },
+        )
 
     def _ensure_model(self):
         if self._model is not None:
