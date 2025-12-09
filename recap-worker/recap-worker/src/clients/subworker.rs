@@ -30,10 +30,10 @@ const DEFAULT_UMAP_N_COMPONENTS: usize = 25;
 const DEFAULT_HDBSCAN_MIN_CLUSTER_SIZE: usize = 5;
 const DEFAULT_MMR_LAMBDA: f32 = 0.35;
 const MIN_PARAGRAPH_LEN: usize = 30;
-const MAX_POLL_ATTEMPTS: usize = 40; // 40 attempts × 60s = 40 minutes max wait time
-const INITIAL_POLL_INTERVAL_MS: u64 = 60_000; // 60 seconds
-const MAX_POLL_INTERVAL_MS: u64 = 60_000; // 60 seconds (fixed interval for classification)
-const SUBWORKER_TIMEOUT_SECS: u64 = 3600; // 60 minutes to match server timeout and allow for large classification jobs
+const MAX_POLL_ATTEMPTS: usize = 200; // Covers ~100 minutes with exponential backoff (2s -> 30s)
+const INITIAL_POLL_INTERVAL_MS: u64 = 2_000; // 2 seconds - start checking quickly
+const MAX_POLL_INTERVAL_MS: u64 = 30_000; // 30 seconds - cap at 30s for long-running jobs
+const SUBWORKER_TIMEOUT_SECS: u64 = 900; // 15 minutes to match server timeout and allow for large classification jobs
 const MAX_ERROR_MESSAGE_LENGTH: usize = 500;
 const EXTRACTION_TIMEOUT_SECS: u64 = 30; // 30 seconds for content extraction
 const MIN_FALLBACK_DOCUMENTS: usize = 2;
@@ -689,10 +689,14 @@ impl SubworkerClient {
         }
     }
 
-    async fn sleep_with_backoff(_attempt: usize) {
-        // Use fixed 60-second interval for classification polling
-        // (no exponential backoff needed since classification runs can take 20-30 minutes)
-        sleep(Duration::from_millis(MAX_POLL_INTERVAL_MS)).await;
+    async fn sleep_with_backoff(attempt: usize) {
+        // Exponential backoff: start at 2s, double until reaching 30s cap
+        // Sequence: 2s, 4s, 8s, 16s, 30s, 30s, ...
+        let mut interval_ms = INITIAL_POLL_INTERVAL_MS;
+        for _ in 0..attempt {
+            interval_ms = std::cmp::min(interval_ms * 2, MAX_POLL_INTERVAL_MS);
+        }
+        sleep(Duration::from_millis(interval_ms)).await;
     }
 
     pub(crate) async fn ping(&self) -> Result<()> {
