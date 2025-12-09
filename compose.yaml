@@ -516,6 +516,8 @@ services:
       - ./recap-worker/recap-worker/tests/data/golden_classification.json:/app/data/golden_classification.json:ro
       # Mount trained genre classifier
       - ./recap-subworker/data/genre_classifier.joblib:/app/data/genre_classifier.joblib:ro
+      - ./recap-subworker/data/tfidf_vectorizer.joblib:/app/data/tfidf_vectorizer.joblib:ro
+      - ./recap-subworker/data/genre_thresholds.json:/app/data/genre_thresholds.json:ro
     depends_on:
       recap-worker:
         condition: service_started
@@ -799,6 +801,13 @@ services:
       dockerfile: Dockerfile
     profiles:
       - recap
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     ports:
       - "8501:8501"
       - "8502:8000"
