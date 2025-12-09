@@ -13,6 +13,8 @@ import structlog
 
 from ..infra.cache import LRUCache
 
+from threading import Lock
+
 logger = structlog.get_logger(__name__)
 
 
@@ -37,6 +39,7 @@ class Embedder:
         self._model = None
         self._cache = LRUCache[str, np.ndarray](config.cache_size)
         self._hash_dimension = 256
+        self._lock = Lock()
 
     def _load_sentence_transformer(self):
         from sentence_transformers import SentenceTransformer  # lazy import
@@ -54,28 +57,36 @@ class Embedder:
                 recommended="intfloat/multilingual-e5-large"
             )
 
-        return SentenceTransformer(
+        # Explicitly force CPU and disable complex loading features to avoid meta tensor errors
+        logger.info("Initializing SentenceTransformer model (this may take time for large models)...")
+        model = SentenceTransformer(
             self.config.model_id,
-            device=self.config.device,
+            device="cpu",
             model_kwargs={
-                "device_map": None,
                 "low_cpu_mem_usage": False,
-                "trust_remote_code": True,
+                "trust_remote_code": False,
             },
         )
+        logger.info("SentenceTransformer model initialized")
+        return model
 
     def _ensure_model(self):
         if self._model is not None:
             return
-        if self.config.backend == "sentence-transformers":
-            self._model = self._load_sentence_transformer()
-        elif self.config.backend == "onnx":
-            # For now we re-use SentenceTransformer while keeping the backend flag so that
-            # configuration remains forward compatible with a true ONNX implementation.
-            self._model = self._load_sentence_transformer()
-        else:
-            # hash backend does not require lazy model initialization
-            self._model = None
+
+        with self._lock:
+            if self._model is not None:
+                return
+
+            if self.config.backend == "sentence-transformers":
+                self._model = self._load_sentence_transformer()
+            elif self.config.backend == "onnx":
+                # For now we re-use SentenceTransformer while keeping the backend flag so that
+                # configuration remains forward compatible with a true ONNX implementation.
+                self._model = self._load_sentence_transformer()
+            else:
+                # hash backend does not require lazy model initialization
+                self._model = None
 
     def encode(self, sentences: Sequence[str]) -> np.ndarray:
         """Generate embeddings for sentences."""

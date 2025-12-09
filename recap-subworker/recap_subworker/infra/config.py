@@ -159,7 +159,7 @@ class Settings(BaseSettings):
         description="Number of concurrent batches during warmup prime",
     )
     process_pool_size: int = Field(
-        2,
+        12,
         ge=1,
         description="Number of worker processes for CPU-heavy tasks",
     )
@@ -168,7 +168,7 @@ class Settings(BaseSettings):
         description="Execution strategy for recap pipeline workloads",
     )
     pipeline_worker_processes: int = Field(
-        2,
+        12,
         ge=1,
         description="Number of dedicated pipeline worker processes when process pools are enabled",
     )
@@ -183,7 +183,7 @@ class Settings(BaseSettings):
         description="Timeout in seconds for pipeline worker process initialization",
     )
     max_background_runs: int = Field(
-        2,
+        12,
         ge=1,
         description="Maximum concurrent pipeline runs handled inside this instance",
     )

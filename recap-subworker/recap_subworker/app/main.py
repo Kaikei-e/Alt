@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import warnings
+
+# Configure threading to avoid contention in container environments with high concurrency
+# We have 12 concurrent workers (50% of 24 cores), so each should use 1 thread to avoid thrashing
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 
 from fastapi import FastAPI
 
