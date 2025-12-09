@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use reqwest::{Client, Url};
+use reqwest::{Client, Response, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::time::sleep;
@@ -31,13 +31,15 @@ const MIN_PARAGRAPH_LEN: usize = 30;
 const MAX_POLL_ATTEMPTS: usize = 40; // 40 attempts × 60s = 40 minutes max wait time
 const INITIAL_POLL_INTERVAL_MS: u64 = 60_000; // 60 seconds
 const MAX_POLL_INTERVAL_MS: u64 = 60_000; // 60 seconds (fixed interval for classification)
-const SUBWORKER_TIMEOUT_SECS: u64 = 900; // 15 minutes (async job pattern returns immediately, polling handles long operations)
+const SUBWORKER_TIMEOUT_SECS: u64 = 3600; // 60 minutes to match server timeout and allow for large classification jobs
 const MAX_ERROR_MESSAGE_LENGTH: usize = 500;
 const EXTRACTION_TIMEOUT_SECS: u64 = 30; // 30 seconds for content extraction
 const MIN_FALLBACK_DOCUMENTS: usize = 2;
 const ADMIN_JOB_INITIAL_BACKOFF_MS: u64 = 5_000;
 const ADMIN_JOB_MAX_BACKOFF_MS: u64 = 20_000;
 const ADMIN_JOB_TIMEOUT_SECS: u64 = 600; // 10 minutes
+const CLASSIFY_POST_RETRIES: usize = 3;
+const CLASSIFY_POST_BACKOFF_MS: u64 = 5_000;
 
 /// エラーメッセージを要約して切り詰める。
 fn truncate_error_message(msg: &str) -> String {
@@ -286,29 +288,84 @@ impl SubworkerClient {
         job_id: Uuid,
         texts: Vec<String>,
     ) -> Result<Vec<ClassificationResult>> {
-        // Use async job pattern: POST /v1/classify-runs
-        let url = self
-            .base_url
-            .join("v1/classify-runs")
-            .context("failed to build classify-runs URL")?;
+        let request = ClassificationRequest { texts };
+        let url = self.build_classify_url()?;
+        let response = self
+            .send_classify_request(job_id, &request, &url)
+            .await
+            .with_context(|| format!("classify-runs POST request failed for job {}", job_id))?;
+        let body = self
+            .parse_classify_response(job_id, response)
+            .await
+            .with_context(|| {
+                format!("failed to parse classify-runs response for job {}", job_id)
+            })?;
+        self.process_classify_body(job_id, body).await
+    }
 
+    fn build_classify_url(&self) -> Result<Url> {
+        self.base_url
+            .join("v1/classify-runs")
+            .context("failed to build classify-runs URL")
+    }
+
+    async fn send_classify_request(
+        &self,
+        job_id: Uuid,
+        request: &ClassificationRequest,
+        url: &Url,
+    ) -> Result<Response> {
         info!(
             job_id = %job_id,
-            text_count = texts.len(),
+            text_count = request.texts.len(),
             url = %url,
             "sending classification job request"
         );
 
-        let request = ClassificationRequest { texts };
-        let response = self
-            .client
-            .post(url.clone())
-            .header("X-Alt-Job-Id", job_id.to_string())
-            .json(&request)
-            .send()
-            .await
-            .with_context(|| format!("classify-runs POST request failed for job {}", job_id))?;
+        let mut response = None;
+        for attempt in 0..CLASSIFY_POST_RETRIES {
+            let req = self
+                .client
+                .post(url.clone())
+                .header("X-Alt-Job-Id", job_id.to_string())
+                .json(request);
+            match req.send().await {
+                Ok(res) => {
+                    response = Some(res);
+                    break;
+                }
+                Err(err) => {
+                    let attempt_num = attempt + 1;
+                    let backoff_ms = CLASSIFY_POST_BACKOFF_MS * (attempt_num as u64);
+                    warn!(
+                        job_id = %job_id,
+                        attempt = attempt_num,
+                        max_attempts = CLASSIFY_POST_RETRIES,
+                        backoff_ms,
+                        error = %err,
+                        "classify-runs POST request failed, waiting before retry"
+                    );
+                    if attempt_num >= CLASSIFY_POST_RETRIES {
+                        return Err(anyhow!(
+                            "classify-runs POST request failed for job {} after {} attempts: {}",
+                            job_id,
+                            CLASSIFY_POST_RETRIES,
+                            err
+                        ));
+                    }
+                    sleep(Duration::from_millis(backoff_ms)).await;
+                }
+            }
+        }
 
+        response.with_context(|| format!("classify-runs POST request failed for job {}", job_id))
+    }
+
+    async fn parse_classify_response(
+        &self,
+        job_id: Uuid,
+        response: Response,
+    ) -> Result<ClassificationJobResponse> {
         let status = response.status();
         info!(
             job_id = %job_id,
@@ -332,10 +389,17 @@ impl SubworkerClient {
             ));
         }
 
-        let body: ClassificationJobResponse = response.json().await.with_context(|| {
-            format!("failed to parse classify-runs response for job {}", job_id)
-        })?;
+        response
+            .json()
+            .await
+            .context("failed to parse classify-runs response")
+    }
 
+    async fn process_classify_body(
+        &self,
+        job_id: Uuid,
+        body: ClassificationJobResponse,
+    ) -> Result<Vec<ClassificationResult>> {
         info!(
             job_id = %job_id,
             run_id = body.run_id,
@@ -343,7 +407,6 @@ impl SubworkerClient {
             "classification job created"
         );
 
-        // Poll for completion
         if body.status == "running" {
             info!(
                 job_id = %job_id,
@@ -665,6 +728,11 @@ impl SubworkerClient {
             .json()
             .await
             .with_context(|| format!("failed to parse admin job kick response for {}", endpoint))?;
+        tracing::info!(
+            job_id = %body.job_id,
+            endpoint,
+            "admin job started, beginning polling"
+        );
         Ok(body.job_id)
     }
 
@@ -682,6 +750,7 @@ impl SubworkerClient {
             "starting admin job polling"
         );
 
+        let mut poll_count = 0u32;
         loop {
             if Instant::now() > deadline {
                 return Err(anyhow!(
@@ -717,12 +786,16 @@ impl SubworkerClient {
                 )
             })?;
 
+            poll_count += 1;
+            let elapsed = deadline.saturating_duration_since(Instant::now());
+
             match body.status.as_str() {
                 "succeeded" | "partial" => {
                     tracing::info!(
                         job_id = %job_id,
                         endpoint,
                         status = %body.status,
+                        poll_count,
                         "admin job completed successfully"
                     );
                     return Ok(());
@@ -735,12 +808,26 @@ impl SubworkerClient {
                     ));
                 }
                 _ => {
-                    tracing::debug!(
-                        job_id = %job_id,
-                        status = %body.status,
-                        backoff_ms = backoff.as_millis(),
-                        "admin job still running"
-                    );
+                    // Log progress every 10 polls
+                    if poll_count.is_multiple_of(10) {
+                        tracing::info!(
+                            job_id = %job_id,
+                            endpoint,
+                            status = %body.status,
+                            poll_count,
+                            elapsed_seconds = elapsed.as_secs(),
+                            backoff_ms = backoff.as_millis(),
+                            "admin job still running"
+                        );
+                    } else {
+                        tracing::debug!(
+                            job_id = %job_id,
+                            status = %body.status,
+                            poll_count,
+                            backoff_ms = backoff.as_millis(),
+                            "admin job still running"
+                        );
+                    }
                     tokio::time::sleep(backoff).await;
                     backoff =
                         std::cmp::min(backoff * 2, Duration::from_millis(ADMIN_JOB_MAX_BACKOFF_MS));

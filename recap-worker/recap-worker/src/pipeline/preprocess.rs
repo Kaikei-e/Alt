@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ammonia::clean;
 use anyhow::{Context, Result};
@@ -124,8 +125,20 @@ impl PreprocessStage for TextPreprocessStage {
         let mut html_cleaned_count = 0;
         let mut total_characters = 0;
         let mut language_counts: HashMap<String, usize> = HashMap::new();
+        let progress_counter = Arc::new(AtomicUsize::new(0));
 
         for result in results {
+            let current_progress = progress_counter.fetch_add(1, Ordering::Relaxed) + 1;
+
+            // Log progress every 100 articles
+            if current_progress.is_multiple_of(100) || current_progress == total_articles {
+                info!(
+                    job_id = %job.job_id,
+                    processed = current_progress,
+                    total = total_articles,
+                    "preprocessing progress"
+                );
+            }
             match result {
                 Ok(Ok(Some(article))) => {
                     total_characters += article.char_count;
