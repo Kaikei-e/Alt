@@ -2,7 +2,8 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-def render_system_monitor():
+
+def render_system_monitor(window_seconds: int | None = None):
     st.header("System Monitor (Real-time)")
 
     # Client-side code to connect to SSE stream

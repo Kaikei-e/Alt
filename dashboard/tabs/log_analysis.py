@@ -3,8 +3,10 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import os
+from utils import filter_frame_by_window
 
-def render_log_analysis():
+
+def render_log_analysis(window_seconds: int):
     st.header("Log Analysis")
 
     # Use environment variable for DB path, default to relative
@@ -35,6 +37,8 @@ def render_log_analysis():
         # Fetch more logs to analyze trends
         df_log = pd.read_sql("SELECT * FROM log_errors ORDER BY timestamp DESC LIMIT 2000", conn_log)
         conn_log.close()
+
+        df_log = filter_frame_by_window(df_log, "timestamp", window_seconds)
 
         if df_log.empty:
             st.success("No errors recorded in log database!")

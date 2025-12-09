@@ -2,9 +2,10 @@
 import streamlit as st
 from utils import fetch_metrics
 
-def render_summarization():
+
+def render_summarization(window_seconds: int):
     st.header("Summarization Metrics")
-    df_sum = fetch_metrics("summarization")
+    df_sum = fetch_metrics("summarization", window_seconds)
 
     if df_sum.empty:
         st.info("No summarization metrics found.")

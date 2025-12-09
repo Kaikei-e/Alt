@@ -4,9 +4,10 @@ import pandas as pd
 import numpy as np
 from utils import fetch_metrics
 
-def render_clustering():
+
+def render_clustering(window_seconds: int):
     st.header("Clustering Metrics")
-    df_clu = fetch_metrics("clustering")
+    df_clu = fetch_metrics("clustering", window_seconds)
 
     if df_clu.empty:
         st.info("No clustering metrics found.")

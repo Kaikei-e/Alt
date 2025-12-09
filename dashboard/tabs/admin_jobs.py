@@ -2,10 +2,10 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import text
 
-from utils import get_engine
+from utils import get_engine, _interval_params
 
 
-def render_admin_jobs():
+def render_admin_jobs(window_seconds: int):
     st.header("Admin Jobs (Graph / Learning)")
     engine = get_engine()
     with engine.connect() as conn:
@@ -14,11 +14,13 @@ def render_admin_jobs():
                 """
                 SELECT job_id, kind, status, started_at, finished_at, error, result
                 FROM admin_jobs
+                WHERE started_at > NOW() - (:window_seconds || ' seconds')::interval
                 ORDER BY started_at DESC
-                LIMIT 50
+                LIMIT 200
                 """
             ),
             conn,
+            params=_interval_params(window_seconds),
         )
 
     if df.empty:

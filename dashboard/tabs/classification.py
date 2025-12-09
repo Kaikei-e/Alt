@@ -3,9 +3,10 @@ import streamlit as st
 import pandas as pd
 from utils import fetch_metrics
 
-def render_classification():
+
+def render_classification(window_seconds: int):
     st.header("Classification Metrics")
-    df_cls = fetch_metrics("classification")
+    df_cls = fetch_metrics("classification", window_seconds)
 
     if df_cls.empty:
         st.info("No classification metrics found.")
