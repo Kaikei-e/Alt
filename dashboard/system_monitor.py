@@ -176,10 +176,10 @@ def count_hanging_processes() -> int:
         return 0
 
 def get_top_processes(limit: int = 15) -> List[Dict[str, Any]]:
-    """Get top N processes by memory usage"""
+    """Get top N processes by CPU usage"""
     try:
         result = subprocess.run(
-            ["ps", "aux", "--sort=-%mem"],
+            ["ps", "aux", "--sort=-%cpu"],
             capture_output=True,
             text=True,
             check=True,
