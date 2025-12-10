@@ -60,14 +60,13 @@ func (g *DashboardGateway) GetMetrics(ctx context.Context, metricType string, wi
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	return body, nil
@@ -100,14 +99,13 @@ func (g *DashboardGateway) GetOverview(ctx context.Context, windowSeconds, limit
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	return body, nil
@@ -140,14 +138,13 @@ func (g *DashboardGateway) GetLogs(ctx context.Context, windowSeconds, limit int
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	return body, nil
@@ -180,14 +177,13 @@ func (g *DashboardGateway) GetJobs(ctx context.Context, windowSeconds, limit int
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	return body, nil
