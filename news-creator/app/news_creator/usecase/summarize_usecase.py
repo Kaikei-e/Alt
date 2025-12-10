@@ -101,7 +101,7 @@ class SummarizeUsecase:
             )
 
         logger.info(
-            "Generating summary",
+            f"Generating summary for article: {article_id}",
             extra={
                 "article_id": article_id,
                 "content_length": len(truncated_content),
@@ -333,7 +333,7 @@ class SummarizeUsecase:
             }
 
         logger.info(
-            "Summary generated successfully",
+            f"Summary generated successfully for article: {article_id}",
             extra={
                 "article_id": article_id,
                 "summary_length": len(truncated_summary),
