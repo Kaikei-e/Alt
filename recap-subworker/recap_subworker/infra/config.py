@@ -102,6 +102,12 @@ class Settings(BaseSettings):
         description="Timeout in seconds for classification worker process initialization",
         validation_alias=AliasChoices("RECAP_CLASSIFICATION_WORKER_INIT_TIMEOUT_SECONDS", "RECAP_SUBWORKER_CLASSIFICATION_WORKER_INIT_TIMEOUT_SECONDS"),
     )
+    classification_pool_idle_timeout_seconds: int = Field(
+        60,
+        ge=10,
+        description="Seconds of idle time before shutting down classification worker pool",
+        validation_alias=AliasChoices("RECAP_CLASSIFICATION_POOL_IDLE_TIMEOUT_SECONDS", "RECAP_SUBWORKER_CLASSIFICATION_POOL_IDLE_TIMEOUT_SECONDS"),
+    )
     max_background_runs: int = Field(
         2,  # Limit concurrent runs per worker to prevent overload
         ge=1,
