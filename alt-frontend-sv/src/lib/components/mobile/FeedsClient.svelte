@@ -11,7 +11,7 @@ import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
 import { canonicalize } from "$lib/utils/feed";
 import EmptyFeedState from "./EmptyFeedState.svelte";
-import VirtualFeedList from "./VirtualFeedList.svelte";
+import FeedCard from "./FeedCard.svelte";
 
 interface Props {
 	initialFeeds?: RenderFeed[];
@@ -20,18 +20,15 @@ interface Props {
 const { initialFeeds = [] }: Props = $props();
 
 const PAGE_SIZE = 20;
-const INITIAL_VISIBLE_CARDS = 3;
-const STEP = 5;
 
 // State
 let feeds = $state<SanitizedFeed[]>([]);
 let cursor = $state<string | null>(null);
 let hasMore = $state(true);
 let isLoading = $state(false);
-let isInitialLoading = $state(false);
+let isInitialLoading = $state(true);
 let error = $state<Error | null>(null);
 let readFeeds = $state<Set<string>>(new Set());
-let visibleCount = $state(INITIAL_VISIBLE_CARDS);
 let liveRegionMessage = $state("");
 let isRetrying = $state(false);
 
@@ -107,7 +104,18 @@ const loadInitial = async () => {
 
 	try {
 		const response = await getFeedsWithCursorClient(undefined, PAGE_SIZE);
-		feeds = response.data;
+
+		// If initialFeeds exist, filter out duplicates
+		if (initialFeeds.length > 0) {
+			const initialFeedUrls = new Set(initialFeeds.map((feed) => feed.normalizedUrl));
+			feeds = response.data.filter((feed: SanitizedFeed) => {
+				const renderFeed = toRenderFeed(feed);
+				return !initialFeedUrls.has(renderFeed.normalizedUrl);
+			});
+		} else {
+			feeds = response.data;
+		}
+
 		cursor = response.next_cursor;
 		hasMore = response.next_cursor !== null;
 	} catch (err) {
@@ -155,31 +163,6 @@ const loadMore = async () => {
 			feeds = [...feeds, ...response.data];
 			cursor = response.next_cursor;
 			hasMore = response.next_cursor !== null;
-
-			// Update visibleCount to show new feeds
-			const allFeeds: RenderFeed[] = [...initialFeeds];
-			const renderFeeds: RenderFeed[] = feeds.map((f: SanitizedFeed) =>
-				toRenderFeed(f),
-			);
-			allFeeds.push(...renderFeeds);
-			const filteredCount = allFeeds.filter(
-				(feed) => !readFeeds.has(feed.normalizedUrl),
-			).length;
-
-			// 新しいフィードが追加されたが、すべて既読の場合
-			// 無限ループを防ぐために hasMore を false にする
-			if (filteredCount === 0 && allFeeds.length > 0 && response.next_cursor === null) {
-				hasMore = false;
-				cursor = null;
-				console.log(
-					"[FeedsClient] All loaded feeds are read and no more cursor, setting hasMore=false",
-				);
-			}
-
-			visibleCount = Math.min(
-				visibleCount + response.data.length,
-				filteredCount,
-			);
 		}
 	} catch (err) {
 		if (err instanceof Error && err.message.includes("404")) {
@@ -216,51 +199,10 @@ const retryFetch = async () => {
 	}
 };
 
-// Initialize isInitialLoading based on initialFeeds
-onMount(() => {
-	isInitialLoading = initialFeeds.length === 0;
-});
-
 // Start loading feeds after initial render
 onMount(() => {
 	if (hasMore && !isLoading && feeds.length === 0) {
-		const shouldDefer = initialFeeds.length > 0;
-
-		if (shouldDefer && "requestIdleCallback" in window) {
-			const idleCallbackId = window.requestIdleCallback(
-				() => {
-					void loadInitial();
-				},
-				{ timeout: 2000 },
-			);
-			return () => {
-				window.cancelIdleCallback(idleCallbackId);
-			};
-		} else {
-			const timeoutId = setTimeout(
-				() => {
-					void loadInitial();
-				},
-				shouldDefer ? 500 : 100,
-			);
-			return () => clearTimeout(timeoutId);
-		}
-	}
-});
-
-// Progressive rendering: increase visibleCount when user scrolls near the end
-// This is handled by infiniteScroll action, but we still need to manage visibleCount
-// when new feeds are loaded
-$effect(() => {
-	if (!browser) return;
-
-	const allFeedsCount = initialFeeds.length + feeds.length;
-
-	// When new feeds are added, increase visibleCount progressively
-	if (visibleCount < allFeedsCount) {
-		// Gradually increase visibleCount, but don't exceed allFeedsCount
-		const targetCount = Math.min(visibleCount + STEP, allFeedsCount);
-		visibleCount = targetCount;
+		void loadInitial();
 	}
 });
 
@@ -289,30 +231,20 @@ const handleMarkAsRead = async (rawLink: string) => {
 };
 
 // Merge initialFeeds with fetched feeds and filter/memoize visible feeds
-const visibleFeeds = $derived.by(() => {
+const renderFeeds = $derived.by(() => {
 	// Start with initialFeeds (already RenderFeed[])
 	const allFeeds: RenderFeed[] = [...initialFeeds];
 
 	// Add fetched feeds (convert SanitizedFeed to RenderFeed)
 	if (feeds.length > 0) {
-		const renderFeeds: RenderFeed[] = feeds.map((feed: SanitizedFeed) =>
+		const fetchedRenderFeeds: RenderFeed[] = feeds.map((feed: SanitizedFeed) =>
 			toRenderFeed(feed),
 		);
-		allFeeds.push(...renderFeeds);
+		allFeeds.push(...fetchedRenderFeeds);
 	}
 
 	// Filter out read feeds using normalizedUrl
-	const filtered = allFeeds.filter(
-		(feed) => !readFeeds.has(feed.normalizedUrl),
-	);
-
-	// Limit to visibleCount items for progressive rendering
-	// Always show at least visibleCount items, but ensure sentinel is visible
-	const allFeedsCount = filtered.length;
-	// Show at least visibleCount items, but don't exceed allFeedsCount
-	// This ensures sentinel is always visible when there are more feeds to load
-	const countToShow = Math.min(visibleCount, allFeedsCount);
-	return filtered.slice(0, countToShow);
+	return allFeeds.filter((feed) => !readFeeds.has(feed.normalizedUrl));
 });
 
 const hasVisibleContent = $derived(initialFeeds.length > 0 || feeds.length > 0);
@@ -321,83 +253,6 @@ const isInitialLoadingState = $derived(
 	isInitialLoading && initialFeeds.length === 0 && feeds.length === 0,
 );
 
-// visibleFeeds が 0 だが hasMore/cursor があるときは、自動で次ページを読む
-// 無限ループ防止: 連続実行防止と既読フィードのみの場合の処理
-let lastAutoLoadTime = $state(0);
-let autoLoadAttempts = $state(0);
-let lastFeedsLength = $state(0);
-let lastVisibleFeedsLength = $state(-1); // Track previous visibleFeeds.length to avoid unnecessary re-runs
-const AUTO_LOAD_COOLDOWN = 1000; // 1秒のクールダウン
-const MAX_AUTO_LOAD_ATTEMPTS = 3; // 最大試行回数
-
-// Track visibleFeeds.length separately to optimize $effect dependencies
-const visibleFeedsLength = $derived(visibleFeeds.length);
-
-$effect(() => {
-	if (!browser) return;
-	if (isLoading) return;
-
-	const currentVisibleFeedsLength = visibleFeedsLength;
-	const hasAnyFetched = initialFeeds.length > 0 || feeds.length > 0;
-	const now = Date.now();
-	const currentFeedsLength = initialFeeds.length + feeds.length;
-
-	// Skip if visibleFeeds.length hasn't changed (optimization to reduce unnecessary re-runs)
-	if (currentVisibleFeedsLength === lastVisibleFeedsLength && lastVisibleFeedsLength !== -1) {
-		return;
-	}
-	lastVisibleFeedsLength = currentVisibleFeedsLength;
-
-	// 連続実行防止: クールダウン期間内は実行しない
-	if (now - lastAutoLoadTime < AUTO_LOAD_COOLDOWN) {
-		return;
-	}
-
-	// フィード数が増えた場合は試行回数をリセット
-	if (currentFeedsLength > lastFeedsLength) {
-		autoLoadAttempts = 0;
-		lastFeedsLength = currentFeedsLength;
-	}
-
-	// visibleFeedsが0で、hasMoreとcursorがある場合のみ自動読み込み
-	if (hasAnyFetched && currentVisibleFeedsLength === 0 && hasMore && cursor) {
-		// 最大試行回数を超えた場合は、すべて既読と判断して hasMore を false にする
-		if (autoLoadAttempts >= MAX_AUTO_LOAD_ATTEMPTS) {
-			console.log(
-				"[FeedsClient] Max auto-load attempts reached, setting hasMore=false to prevent infinite loop",
-			);
-			hasMore = false;
-			cursor = null;
-			return;
-		}
-
-		const allFeedsCount = initialFeeds.length + feeds.length;
-		if (allFeedsCount > 0 && currentVisibleFeedsLength === 0) {
-			// 既にフィードがあるのにvisibleFeedsが0 = すべて既読
-			// この場合、新しいフィードを読み込んでみる
-			console.log(
-				"[FeedsClient] visibleFeeds=0 & hasMore=true -> auto loadMore (all feeds read, attempt:",
-				autoLoadAttempts + 1,
-				")",
-			);
-			lastAutoLoadTime = now;
-			autoLoadAttempts++;
-			void loadMore();
-		} else if (allFeedsCount === 0) {
-			// まだフィードがない場合のみ自動読み込み
-			console.log(
-				"[FeedsClient] visibleFeeds=0 & hasMore=true -> auto loadMore (no feeds yet)",
-			);
-			lastAutoLoadTime = now;
-			autoLoadAttempts++;
-			void loadMore();
-		}
-	} else {
-		// 条件が満たされない場合は試行回数をリセット
-		autoLoadAttempts = 0;
-		lastFeedsLength = currentFeedsLength;
-	}
-});
 </script>
 
 <div class="h-full flex flex-col" style="background: var(--app-bg);">
@@ -418,7 +273,7 @@ $effect(() => {
 		{#if isInitialLoadingState && !hasVisibleContent}
 			<!-- Skeleton loading state -->
 			<div class="flex flex-col gap-4">
-				{#each Array(INITIAL_VISIBLE_CARDS) as _}
+				{#each Array(5) as _}
 					<div
 						class="p-4 rounded-2xl border-2 border-border animate-pulse"
 						style="background: var(--surface-bg);"
@@ -447,16 +302,24 @@ $effect(() => {
 					</button>
 				</div>
 			</div>
-		{:else if visibleFeeds.length > 0}
+		{:else if renderFeeds.length > 0}
 			<!-- Feed list rendering -->
-			<VirtualFeedList
-				feeds={visibleFeeds}
-				{readFeeds}
-				onMarkAsRead={handleMarkAsRead}
-			/>
+			<div
+				class="flex flex-col gap-4"
+				data-testid="virtual-feed-list"
+				style="content-visibility: auto; contain-intrinsic-size: 800px;"
+			>
+				{#each renderFeeds as feed (feed.link)}
+					<FeedCard
+						{feed}
+						isReadStatus={readFeeds.has(feed.normalizedUrl)}
+						setIsReadStatus={(feedLink: string) => handleMarkAsRead(feedLink)}
+					/>
+				{/each}
+			</div>
 
 			<!-- No more feeds indicator -->
-			{#if !hasMore && visibleFeeds.length > 0}
+			{#if !hasMore && renderFeeds.length > 0}
 				<p
 					class="text-center text-sm mt-8 mb-4"
 					style="color: var(--alt-text-secondary);"
@@ -467,7 +330,10 @@ $effect(() => {
 
 			<!-- Loading indicator -->
 			{#if isLoading}
-				<div class="py-4 text-center text-sm" style="color: var(--alt-text-secondary);">
+				<div
+					class="py-4 text-center text-sm"
+					style="color: var(--alt-text-secondary);"
+				>
 					Loading more...
 				</div>
 			{/if}
@@ -484,6 +350,7 @@ $effect(() => {
 					}}
 					aria-hidden="true"
 					style="height: 10px; min-height: 10px; width: 100%;"
+					data-testid="infinite-scroll-sentinel"
 				></div>
 			{/if}
 		{:else}

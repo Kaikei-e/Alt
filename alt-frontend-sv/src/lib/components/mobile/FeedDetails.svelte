@@ -20,10 +20,21 @@ interface Props {
 	feedURL?: string;
 	feedTitle?: string;
 	initialData?: FetchArticleSummaryResponse | FeedContentOnTheFlyResponse;
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
+	showButton?: boolean;
 }
 
-const { feedURL, feedTitle, initialData }: Props = $props();
+const {
+	feedURL,
+	feedTitle,
+	initialData,
+	open: openProp,
+	onOpenChange,
+	showButton = true,
+}: Props = $props();
 
+// Initialize with default, sync with prop in $effect
 let isOpen = $state(false);
 let isLoading = $state(false);
 let isFavoriting = $state(false);
@@ -55,6 +66,21 @@ let feedDetails = $state<FeedContentOnTheFlyResponse | null>(
 // Create unique test ID based on feedURL (capture initial value)
 const uniqueId = $derived(feedURL ? btoa(feedURL).slice(0, 8) : "default");
 
+// Sync with external open prop - use $effect to track prop changes
+$effect(() => {
+	// Access openProp inside $effect to track changes
+	if (openProp !== undefined && openProp !== isOpen) {
+		isOpen = openProp;
+	}
+});
+
+// Sync internal state to external
+$effect(() => {
+	if (onOpenChange && isOpen !== (openProp ?? false)) {
+		onOpenChange(isOpen);
+	}
+});
+
 // Handle escape key to close modal
 $effect(() => {
 	if (!browser || !isOpen) return;
@@ -75,6 +101,9 @@ $effect(() => {
 const handleHideDetails = () => {
 	isOpen = false;
 	isArchived = false;
+	if (onOpenChange) {
+		onOpenChange(false);
+	}
 };
 
 const handleShowDetails = async () => {
@@ -145,11 +174,14 @@ const handleShowDetails = async () => {
 	} finally {
 		isLoading = false;
 		isOpen = true;
+		if (onOpenChange) {
+			onOpenChange(true);
+		}
 	}
 };
 </script>
 
-{#if !isOpen}
+{#if showButton && !isOpen}
 	<Button
 		class="text-sm font-bold px-4 min-h-[44px] min-w-[120px] rounded-full border border-white/20 disabled:opacity-50 transition-all duration-200 hover:brightness-110 hover:-translate-y-[1px] active:scale-[0.98]"
 		style="background: var(--alt-secondary); color: var(--text-primary);"
