@@ -2,6 +2,8 @@ use std::{env, net::SocketAddr, num::NonZeroUsize, time::Duration};
 
 use thiserror::Error;
 
+use crate::clients::subworker::CLASSIFY_CHUNK_SIZE;
+
 #[cfg(test)]
 use once_cell::sync::Lazy;
 #[cfg(test)]
@@ -48,6 +50,10 @@ pub struct Config {
     recap_db_acquire_timeout: Duration,
     recap_db_idle_timeout: Duration,
     recap_db_max_lifetime: Duration,
+    classification_queue_concurrency: usize,
+    classification_queue_chunk_size: usize,
+    classification_queue_max_retries: i32,
+    classification_queue_retry_delay_ms: u64,
 }
 
 #[derive(Debug, Error)]
@@ -111,6 +117,12 @@ impl Config {
             recap_db_idle_timeout,
             recap_db_max_lifetime,
         ) = load_db_pool_config()?;
+        let (
+            classification_queue_concurrency,
+            classification_queue_chunk_size,
+            classification_queue_max_retries,
+            classification_queue_retry_delay_ms,
+        ) = load_classification_queue_config()?;
 
         Ok(Self {
             http_bind,
@@ -152,6 +164,10 @@ impl Config {
             recap_db_acquire_timeout,
             recap_db_idle_timeout,
             recap_db_max_lifetime,
+            classification_queue_concurrency,
+            classification_queue_chunk_size,
+            classification_queue_max_retries,
+            classification_queue_retry_delay_ms,
         })
     }
 
@@ -347,6 +363,26 @@ impl Config {
     pub fn recap_db_max_lifetime(&self) -> Duration {
         self.recap_db_max_lifetime
     }
+
+    #[must_use]
+    pub fn classification_queue_concurrency(&self) -> usize {
+        self.classification_queue_concurrency
+    }
+
+    #[must_use]
+    pub fn classification_queue_chunk_size(&self) -> usize {
+        self.classification_queue_chunk_size
+    }
+
+    #[must_use]
+    pub fn classification_queue_max_retries(&self) -> i32 {
+        self.classification_queue_max_retries
+    }
+
+    #[must_use]
+    pub fn classification_queue_retry_delay_ms(&self) -> u64 {
+        self.classification_queue_retry_delay_ms
+    }
 }
 
 fn load_database_dsn() -> Result<String, ConfigError> {
@@ -462,6 +498,14 @@ fn load_db_pool_config() -> Result<(u32, u32, Duration, Duration, Duration), Con
         idle_timeout,
         max_lifetime,
     ))
+}
+
+fn load_classification_queue_config() -> Result<(usize, usize, i32, u64), ConfigError> {
+    let concurrency = parse_usize("CLASSIFICATION_QUEUE_CONCURRENCY", 8)?;
+    let chunk_size = parse_usize("CLASSIFICATION_QUEUE_CHUNK_SIZE", CLASSIFY_CHUNK_SIZE)?;
+    let max_retries = parse_u64("CLASSIFICATION_QUEUE_MAX_RETRIES", 3)? as i32;
+    let retry_delay_ms = parse_u64("CLASSIFICATION_QUEUE_RETRY_DELAY_MS", 5000)?;
+    Ok((concurrency, chunk_size, max_retries, retry_delay_ms))
 }
 
 fn env_var(name: &'static str) -> Result<String, ConfigError> {

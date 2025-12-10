@@ -28,6 +28,7 @@ pub mod config;
 pub mod evaluation;
 pub mod observability;
 pub mod pipeline;
+pub(crate) mod queue;
 pub mod replay;
 pub mod scheduler;
 pub(crate) mod schema;

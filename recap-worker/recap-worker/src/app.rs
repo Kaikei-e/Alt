@@ -10,6 +10,7 @@ use crate::{
     config::Config,
     observability::Telemetry,
     pipeline::PipelineOrchestrator,
+    queue::{ClassificationJobQueue, QueueStore},
     scheduler::Scheduler,
     store::dao::RecapDao,
 };
@@ -85,7 +86,19 @@ impl ComponentRegistry {
             .test_before_acquire(true)
             .connect_lazy(config.recap_db_dsn())
             .context("failed to configure recap_db connection pool")?;
-        let recap_dao = Arc::new(RecapDao::new(recap_pool));
+        let recap_dao = Arc::new(RecapDao::new(recap_pool.clone()));
+
+        // Initialize classification job queue (use same pool)
+        let queue_store = QueueStore::new(recap_pool.clone());
+        let classification_queue = Arc::new(ClassificationJobQueue::new(
+            queue_store,
+            (*subworker_client).clone(),
+            config.classification_queue_concurrency(),
+            config.classification_queue_chunk_size(),
+            config.classification_queue_max_retries(),
+            config.classification_queue_retry_delay_ms(),
+        ));
+
         let metrics = telemetry.metrics_arc();
         let pipeline = Arc::new(
             PipelineOrchestrator::new(
@@ -93,6 +106,7 @@ impl ComponentRegistry {
                 (*subworker_client).clone(),
                 Arc::clone(&news_creator_client),
                 Arc::clone(&recap_dao),
+                Arc::clone(&classification_queue),
                 metrics,
             )
             .await?,

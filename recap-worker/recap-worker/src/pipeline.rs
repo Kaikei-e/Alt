@@ -8,6 +8,7 @@ use crate::{
     clients::{NewsCreatorClient, SubworkerClient, TagGeneratorClient},
     config::Config,
     observability::metrics::Metrics,
+    queue::ClassificationJobQueue,
     scheduler::JobContext,
     store::dao::RecapDao,
     util::retry::RetryConfig,
@@ -45,6 +46,8 @@ pub(crate) struct PipelineOrchestrator {
     stages: PipelineStages,
     recap_dao: Arc<RecapDao>,
     subworker_client: Arc<SubworkerClient>,
+    #[allow(dead_code)]
+    classification_queue: Arc<ClassificationJobQueue>,
 }
 
 struct PipelineStages {
@@ -75,6 +78,7 @@ impl PipelineOrchestrator {
         subworker: SubworkerClient,
         news_creator: Arc<NewsCreatorClient>,
         recap_dao: Arc<RecapDao>,
+        classification_queue: Arc<ClassificationJobQueue>,
         metrics: Arc<Metrics>,
     ) -> Result<Self> {
         let alt_backend_config = AltBackendConfig {
@@ -121,6 +125,7 @@ impl PipelineOrchestrator {
         use crate::pipeline::genre_remote::RemoteGenreStage;
         let coarse_stage = Arc::new(RemoteGenreStage::new(
             Arc::clone(&subworker_client),
+            Arc::clone(&classification_queue),
             config.genre_classifier_threshold(),
         ));
         let rollout = RefineRollout::new(config.genre_refine_rollout_pct());
@@ -186,7 +191,12 @@ impl PipelineOrchestrator {
             .with_persist_stage(Arc::new(persist::FinalSectionPersistStage::new(
                 Arc::clone(&recap_dao),
             )))
-            .build(Arc::clone(&recap_dao), subworker_client, embedding_service))
+            .build(
+                Arc::clone(&recap_dao),
+                subworker_client,
+                Arc::clone(&classification_queue),
+                embedding_service,
+            ))
     }
 
     #[cfg(test)]
@@ -318,6 +328,7 @@ impl PipelineBuilder {
         self,
         recap_dao: Arc<RecapDao>,
         subworker_client: Arc<SubworkerClient>,
+        classification_queue: Arc<ClassificationJobQueue>,
         embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>>,
     ) -> PipelineOrchestrator {
         let stages = PipelineStages {
@@ -357,6 +368,7 @@ impl PipelineBuilder {
             stages,
             recap_dao,
             subworker_client,
+            classification_queue,
         }
     }
 }
@@ -407,13 +419,25 @@ mod tests {
             .max_connections(1)
             .connect_lazy("postgres://recap:recap@localhost:5999/recap_db")
             .expect("failed to create test pool");
-        let recap_dao = Arc::new(crate::store::dao::RecapDao::new(pool));
+        let pool_clone = pool.clone();
+        let recap_dao = Arc::new(crate::store::dao::RecapDao::new(pool_clone));
 
         // テスト用のダミーSubworkerClientを作成
         let subworker_client = Arc::new(
             SubworkerClient::new("http://localhost:8002/", 10)
                 .expect("failed to create test subworker client"),
         );
+
+        // テスト用のキューを作成
+        let queue_store = crate::queue::QueueStore::new(pool);
+        let classification_queue = Arc::new(crate::queue::ClassificationJobQueue::new(
+            queue_store,
+            (*subworker_client).clone(),
+            8,
+            200,
+            3,
+            5000,
+        ));
 
         let pipeline = PipelineOrchestrator::builder(Arc::clone(&config))
             .with_fetch_stage(Arc::new(RecordingFetch::new(Arc::clone(&order))))
@@ -423,7 +447,7 @@ mod tests {
             .with_select_stage(Arc::new(RecordingSelect::new(Arc::clone(&order))))
             .with_dispatch_stage(Arc::new(RecordingDispatch::new(Arc::clone(&order))))
             .with_persist_stage(Arc::new(RecordingPersist::new(Arc::clone(&order))))
-            .build(recap_dao, subworker_client, None);
+            .build(recap_dao, subworker_client, classification_queue, None);
 
         let job = JobContext::new(Uuid::new_v4(), vec!["ai".to_string()]);
 
