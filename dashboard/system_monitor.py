@@ -212,6 +212,12 @@ def get_top_processes(limit: int = 15) -> List[Dict[str, Any]]:
                 except (ValueError, IndexError):
                     continue
         return processes
+    except subprocess.TimeoutExpired:
+        print(f"Error getting top processes: ps command timed out after 5 seconds")
+        return []
+    except subprocess.CalledProcessError as e:
+        print(f"Error getting top processes: ps command failed with exit code {e.returncode}")
+        return []
     except Exception as e:
         print(f"Error getting top processes: {e}")
         return []

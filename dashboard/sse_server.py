@@ -61,7 +61,7 @@ class SSEHandler(BaseHTTPRequestHandler):
                             "cpu": system_monitor.get_cpu_info(),
                             "gpu": system_monitor.get_gpu_info(),
                             "hanging_count": system_monitor.count_hanging_processes(),
-                            "top_processes": system_monitor.get_top_processes(15)
+                            "top_processes": system_monitor.get_top_processes(10)
                         }
 
                         # Format as SSE

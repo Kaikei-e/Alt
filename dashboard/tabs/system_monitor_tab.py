@@ -188,10 +188,12 @@ def render_system_monitor(window_seconds: int | None = None):
                         gpuContainer.innerHTML = '<div style="color: #aaa; padding: 10px;">' + message + '</div>';
                     }
 
-                    // Processes
+                    // Processes - Top 10 only
                     const tbody = document.getElementById('proc-body');
                     let rows = '';
-                    data.top_processes.forEach(p => {
+                    const top10Processes = data.top_processes.slice(0, 10);
+                    console.log('Updating processes:', top10Processes.length, 'processes at', new Date().toISOString());
+                    top10Processes.forEach(p => {
                         rows += `
                         <tr style="border-bottom: 1px solid #444;">
                             <td style="padding: 6px;">` + p.pid + `</td>
