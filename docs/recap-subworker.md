@@ -47,30 +47,30 @@ This process converts a raw corpus of articles into structured "clusters" of evi
 
 ```mermaid
 flowchart TB
-    Start([Request Received]) --> Validate[Validate & Idempotency Check]
-    Validate --> Queue[Background Queue]
-    Queue --> Spawn[Spawn Process]
+    Start([Request Received]) --> Validate["Validate & Idempotency Check"]
+    Validate --> Queue["Background Queue"]
+    Queue --> Spawn["Spawn Process"]
 
     subgraph "Pipeline Execution (Isolated Process)"
-        Spawn --> Extract[Extract Sentences<br/>Split paragraphs, estimate tokens]
-        Extract --> Embed[Generate Embeddings<br/>BGE-M3 / Distill]
-        Embed --> Dedup[Semantic Deduplication<br/>Cosine Sim > 0.92]
+        Spawn --> Extract["Extract Sentences<br/>Split paragraphs, estimate tokens"]
+        Extract --> Embed["Generate Embeddings<br/>BGE-M3 / Distill"]
+        Embed --> Dedup["Semantic Deduplication<br/>Cosine Sim > 0.92"]
 
-        Dedup --> ClusterStrategy{Genre Strategy}
-        ClusterStrategy -->|Other| SubCluster[Sub-cluster 'Other'<br/>Iterative splitting]
-        ClusterStrategy -->|Standard| Optimize[Optimize Clustering<br/>UMAP + HDBSCAN]
+        Dedup --> ClusterStrategy{"Genre Strategy"}
+        ClusterStrategy -->|Other| SubCluster["Sub-cluster 'Other'<br/>Iterative splitting"]
+        ClusterStrategy -->|Standard| Optimize["Optimize Clustering<br/>UMAP + HDBSCAN"]
 
-        Optimize --> Merge[Merge Excessive Clusters<br/>If > 10, merge nearest centroids]
+        Optimize --> Merge["Merge Excessive Clusters<br/>If > 10, merge nearest centroids"]
         SubCluster --> Merge
 
-        Merge --> Topics[Extract Topics<br/>c-TF-IDF / BM25]
+        Merge --> Topics["Extract Topics<br/>c-TF-IDF / BM25"]
 
-        Topics --> Select[Representative Selection<br/>MMR (Diversity vs Centrality)]
+        Topics --> Select["Representative Selection<br/>MMR (Diversity vs Centrality)"]
 
-        Select --> Highlights[Genre Highlights<br/>Hierarchical Summary Selection]
+        Select --> Highlights["Genre Highlights<br/>Hierarchical Summary Selection"]
     end
 
-    Highlights --> Persist[Persist Results<br/>DB: recap_cluster_evidence]
+    Highlights --> Persist["Persist Results<br/>DB: recap_cluster_evidence"]
     Persist --> Complete([Run Succeeded])
 
     style Start fill:#e1f5ff
@@ -83,17 +83,17 @@ Used by `recap-worker` (or other clients) to verify or refine genre assignments.
 
 ```mermaid
 flowchart LR
-    Input([Text Batch]) --> Embed[Generate Embeddings]
-    Input --> Tokenize[Sudachi Tokenize]
+    Input([Text Batch]) --> Embed["Generate Embeddings"]
+    Input --> Tokenize["Sudachi Tokenize"]
 
-    Tokenize --> TfIdf[TF-IDF Transform]
+    Tokenize --> TfIdf["TF-IDF Transform"]
 
-    Embed --> Concat[Feature Concatenation<br/>Embedding + TF-IDF]
+    Embed --> Concat["Feature Concatenation<br/>Embedding + TF-IDF"]
     TfIdf --> Concat
 
-    Concat --> Predict[Sklearn Predict Proba]
+    Concat --> Predict["Sklearn Predict Proba"]
 
-    Predict --> Thresholds[Apply Thresholds<br/>Dynamic per-genre]
+    Predict --> Thresholds["Apply Thresholds<br/>Dynamic per-genre"]
 
     Thresholds --> Result([Classification Result])
 
