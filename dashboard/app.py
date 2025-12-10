@@ -1,10 +1,9 @@
 
 import streamlit as st
-import threading
 import os
-# Put sse_server import inside a try-except block or ensure it's in path?
-# It's in the same dir and docker sets workdir to /app (where app.py is).
-from sse_server import run_background as start_sse_thread
+import sys
+import time
+import requests
 from tabs import overview, classification, clustering, summarization, log_analysis, system_monitor_tab, admin_jobs
 from utils import TIME_WINDOWS
 
@@ -12,25 +11,46 @@ from utils import TIME_WINDOWS
 st.set_page_config(layout="wide", page_title="Recap System Dashboard")
 
 # --- Background Services ---
+# Configure logging to ensure logs are visible
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True  # Force reconfiguration even if logging was already configured
+)
+
 @st.cache_resource
-def init_sse_server():
-    """Start the SSE server in a background thread once."""
-    import logging
+def check_sse_server_health():
+    """Check if the SSE server (running as separate process) is healthy."""
     logger = logging.getLogger(__name__)
+    sse_port = int(os.getenv('SSE_PORT', 8000))
+    health_url = f"http://localhost:{sse_port}/health"
+
     try:
-        logger.info("Initializing SSE server...")
-        start_sse_thread()
-        logger.info("SSE server initialization completed")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to initialize SSE server: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.info(f"Checking SSE server health at {health_url} (SSE_PORT={sse_port})")
+        response = requests.get(health_url, timeout=5)
+        if response.status_code == 200:
+            health_data = response.json()
+            logger.info(f"SSE server health check passed: {health_data}")
+            return True
+        else:
+            logger.warning(f"SSE server health check returned status {response.status_code} (expected 200)")
+            return False
+    except requests.exceptions.Timeout:
+        logger.warning(f"SSE server health check timed out. Server may still be starting.")
+        return False
+    except requests.exceptions.ConnectionError:
+        logger.warning(f"SSE server health check connection error. Server may still be starting.")
+        return False
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"SSE server health check failed: {e}")
         return False
 
-if init_sse_server():
-    # Server started successfully
-    pass
+# Check SSE server health at startup (non-blocking, just for logging)
+logger = logging.getLogger(__name__)
+sse_server_healthy = check_sse_server_health()
+if not sse_server_healthy:
+    logger.warning("⚠️ SSE server health check failed at startup. It may still be initializing.")
 
 # --- Dashboard Layout ---
 st.title("Recap System Evaluation Dashboard")
