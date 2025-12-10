@@ -57,17 +57,23 @@ class Embedder:
                 recommended="intfloat/multilingual-e5-large"
             )
 
-        # Explicitly force CPU and disable complex loading features to avoid meta tensor errors
+        model_kwargs = {
+            "low_cpu_mem_usage": False,
+            "trust_remote_code": False,
+        }
+
+        if self.config.device.startswith("cuda"):
+            import torch
+            logger.info("Enabling FP16 for CUDA device")
+            model_kwargs["torch_dtype"] = torch.float16
+
         logger.info("Initializing SentenceTransformer model (this may take time for large models)...")
         model = SentenceTransformer(
             self.config.model_id,
-            device="cpu",
-            model_kwargs={
-                "low_cpu_mem_usage": False,
-                "trust_remote_code": False,
-            },
+            device=self.config.device,
+            model_kwargs=model_kwargs,
         )
-        logger.info("SentenceTransformer model initialized")
+        logger.info("SentenceTransformer model initialized", device=self.config.device)
         return model
 
     def _ensure_model(self):

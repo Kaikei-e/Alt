@@ -72,6 +72,42 @@ class Settings(BaseSettings):
     # HDBSCAN Parameters
     hdbscan_min_cluster_size: int = Field(5, validation_alias=AliasChoices("RECAP_HDBSCAN_MIN_CLUSTER_SIZE", "RECAP_SUBWORKER_HDBSCAN_MIN_CLUSTER_SIZE"))
     hdbscan_min_samples: int = Field(5, validation_alias=AliasChoices("RECAP_HDBSCAN_MIN_SAMPLES", "RECAP_SUBWORKER_HDBSCAN_MIN_SAMPLES"))
+    process_pool_size: int = Field(
+        2,  # 2 * 6 workers = 12 total concurrent processes
+        ge=1,
+        description="Number of worker processes in the process pool",
+        validation_alias=AliasChoices("RECAP_PROCESS_POOL_SIZE", "RECAP_SUBWORKER_PROCESS_POOL_SIZE"),
+    )
+    pipeline_worker_processes: int = Field(
+        2,  # 2 * 6 workers = 12 total concurrent pipeline workers
+        ge=1,
+        description="Number of worker processes to use for pipeline execution",
+        validation_alias=AliasChoices("RECAP_PIPELINE_WORKER_PROCESSES", "RECAP_SUBWORKER_PIPELINE_WORKER_PROCESSES"),
+    )
+    classification_worker_processes: int = Field(
+        6,  # 6 parallel workers for classification
+        ge=1,
+        description="Number of worker processes to use for classification execution",
+        validation_alias=AliasChoices("RECAP_CLASSIFICATION_WORKER_PROCESSES", "RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES"),
+    )
+    classification_worker_max_tasks_per_child: int = Field(
+        50,
+        ge=1,
+        description="Maximum number of tasks a classification worker process handles before being replaced (prevents memory leaks)",
+        validation_alias=AliasChoices("RECAP_CLASSIFICATION_WORKER_MAX_TASKS_PER_CHILD", "RECAP_SUBWORKER_CLASSIFICATION_WORKER_MAX_TASKS_PER_CHILD"),
+    )
+    classification_worker_init_timeout_seconds: int = Field(
+        300,
+        ge=10,
+        description="Timeout in seconds for classification worker process initialization",
+        validation_alias=AliasChoices("RECAP_CLASSIFICATION_WORKER_INIT_TIMEOUT_SECONDS", "RECAP_SUBWORKER_CLASSIFICATION_WORKER_INIT_TIMEOUT_SECONDS"),
+    )
+    max_background_runs: int = Field(
+        2,  # Limit concurrent runs per worker to prevent overload
+        ge=1,
+        description="Maximum number of concurrent classification runs per worker",
+        validation_alias=AliasChoices("RECAP_MAX_BACKGROUND_RUNS", "RECAP_SUBWORKER_MAX_BACKGROUND_RUNS"),
+    )
     hdbscan_cluster_selection_method: Literal["eom", "leaf"] = Field("eom", validation_alias=AliasChoices("RECAP_HDBSCAN_SELECTION_METHOD", "RECAP_SUBWORKER_HDBSCAN_SELECTION_METHOD"))
     http_host: str = Field(
         "0.0.0.0",
@@ -158,19 +194,12 @@ class Settings(BaseSettings):
         ge=1,
         description="Number of concurrent batches during warmup prime",
     )
-    process_pool_size: int = Field(
-        12,
-        ge=1,
-        description="Number of worker processes for CPU-heavy tasks",
-    )
+    # Duplicate fields removed (process_pool_size, pipeline_worker_processes, max_background_runs)
+    # Using the values defined earlier in the file (defaults: 2)
+
     pipeline_mode: Literal["inprocess", "processpool"] = Field(
         "inprocess",
         description="Execution strategy for recap pipeline workloads",
-    )
-    pipeline_worker_processes: int = Field(
-        12,
-        ge=1,
-        description="Number of dedicated pipeline worker processes when process pools are enabled",
     )
     pipeline_worker_max_tasks_per_child: int = Field(
         50,
@@ -181,11 +210,6 @@ class Settings(BaseSettings):
         300,
         ge=10,
         description="Timeout in seconds for pipeline worker process initialization",
-    )
-    max_background_runs: int = Field(
-        12,
-        ge=1,
-        description="Maximum concurrent pipeline runs handled inside this instance",
     )
     run_execution_timeout_seconds: int = Field(
         2400,  # 40 minutes - matches recap-worker's MAX_POLL_ATTEMPTS (40 × 60s)

@@ -83,7 +83,8 @@ class RunManager:
         dao_factory: DaoFactory = SubworkerDAO,
         pipeline: EvidencePipeline | None = None,
         pipeline_runner: PipelineTaskRunner | None = None,
-        classifier: Any | None = None,  # GenreClassifierService
+        classifier: Any | None = None,  # GenreClassifierService (deprecated, use classification_runner)
+        classification_runner: Any | None = None,  # ClassificationRunner
     ) -> None:
         self.settings = settings
         self._session_factory = session_factory
@@ -91,7 +92,8 @@ class RunManager:
         self._tasks: set[asyncio.Task] = set()
         self._pipeline = pipeline
         self._pipeline_runner = pipeline_runner
-        self._classifier = classifier
+        self._classifier = classifier  # Kept for backward compatibility
+        self._classification_runner = classification_runner
         self._background_slots = asyncio.Semaphore(settings.max_background_runs)
         self._run_timeout = settings.run_execution_timeout_seconds
         self._queue_warning_threshold = settings.queue_warning_threshold
@@ -417,7 +419,7 @@ class RunManager:
             LOGGER.exception("classification.run.process.failed", run_id=run_id)
 
     async def _process_classification_run(self, run_id: int) -> None:
-        if self._classifier is None:
+        if self._classification_runner is None and self._classifier is None:
             LOGGER.warning("classifier unavailable; skipping run", run_id=run_id)
             return
 
@@ -441,7 +443,7 @@ class RunManager:
                 raise
 
     async def _process_classification_run_inner(self, run_id: int) -> None:
-        if self._classifier is None:
+        if self._classification_runner is None and self._classifier is None:
             LOGGER.warning("classifier unavailable; skipping run", run_id=run_id)
             return
 
@@ -484,10 +486,15 @@ class RunManager:
                 run_id=run_id,
                 text_count=len(classification_payload.texts)
             )
-            loop = asyncio.get_running_loop()
-            results = await loop.run_in_executor(
-                None, self._classifier.predict_batch, classification_payload.texts
-            )
+            # Use ClassificationRunner if available (spawn-based process pool), otherwise fall back to direct classifier
+            if self._classification_runner is not None:
+                results = await self._classification_runner.predict_batch(classification_payload.texts)
+            else:
+                # Fallback to direct classifier (for backward compatibility)
+                loop = asyncio.get_running_loop()
+                results = await loop.run_in_executor(
+                    None, self._classifier.predict_batch, classification_payload.texts
+                )
             LOGGER.info("classification.run.completed_inference", run_id=run_id)
 
             # Convert results to domain models

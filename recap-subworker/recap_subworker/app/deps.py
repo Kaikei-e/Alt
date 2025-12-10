@@ -18,6 +18,7 @@ from ..services.pipeline import EvidencePipeline
 from ..services.pipeline_runner import PipelineTaskRunner
 from ..services.run_manager import RunManager
 from ..services.classifier import GenreClassifierService
+from ..services.classification_runner import ClassificationRunner
 from ..services.extraction import ContentExtractor
 from ..services.classification import CoarseClassifier
 from ..services.async_jobs import AdminJobService
@@ -32,6 +33,7 @@ _run_manager: RunManager | None = None
 _learning_client: LearningClient | None = None
 _learning_scheduler: LearningScheduler | None = None
 _classifier: GenreClassifierService | None = None
+_classification_runner: ClassificationRunner | None = None
 _content_extractor: ContentExtractor | None = None
 _coarse_classifier: CoarseClassifier | None = None
 _admin_job_service: AdminJobService | None = None
@@ -69,7 +71,10 @@ def _get_process_pool(settings: Settings) -> ProcessPoolExecutor:
                 "creating process pool (Python < 3.13, max_tasks_per_child not available)",
                 max_workers=settings.process_pool_size,
             )
-        _process_pool = ProcessPoolExecutor(**pool_kwargs)
+        import multiprocessing  # Added for spawn context
+
+        mp_context = multiprocessing.get_context("spawn")
+        _process_pool = ProcessPoolExecutor(mp_context=mp_context, **pool_kwargs)
     return _process_pool
 
 
@@ -118,7 +123,8 @@ def _get_run_manager(settings: Settings) -> RunManager:
             session_factory,
             pipeline=pipeline,
             pipeline_runner=_get_pipeline_runner(settings),
-            classifier=_get_classifier(settings),
+            classifier=_get_classifier(settings),  # Kept for backward compatibility
+            classification_runner=_get_classification_runner(settings),
         )
     return _run_manager
 
@@ -278,8 +284,35 @@ def _get_classifier(settings: Settings) -> GenreClassifierService:
     return _classifier
 
 
+def _get_classification_runner(settings: Settings) -> ClassificationRunner:
+    import structlog
+
+    logger = structlog.get_logger(__name__)
+    global _classification_runner
+    if _classification_runner is None:
+        try:
+            _classification_runner = ClassificationRunner(settings)
+            logger.info(
+                "classification_runner.initialized",
+                message="Classification runner initialized successfully",
+            )
+        except Exception as exc:
+            logger.exception(
+                "classification_runner.initialization_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+                message="Failed to initialize classification runner",
+            )
+            raise
+    return _classification_runner
+
+
 def get_classifier_dep(settings: Settings = Depends(get_settings_dep)) -> GenreClassifierService:
     return _get_classifier(settings)
+
+
+def get_classification_runner_dep(settings: Settings = Depends(get_settings_dep)) -> ClassificationRunner:
+    return _get_classification_runner(settings)
 
 
 def get_content_extractor_dep() -> ContentExtractor:
@@ -333,6 +366,17 @@ def register_lifecycle(app) -> None:
             except Exception as exc:
                 logger.warning(
                     "error shutting down pipeline runner",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+
+        # Shutdown classification runner (this will properly clean up ProcessPoolExecutor)
+        if _classification_runner is not None:
+            try:
+                _classification_runner.shutdown()
+            except Exception as exc:
+                logger.warning(
+                    "error shutting down classification runner",
                     error=str(exc),
                     error_type=type(exc).__name__,
                 )
