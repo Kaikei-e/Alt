@@ -18,6 +18,8 @@ fi
 # --- Ollama server configuration --------------------------------------------
 # GPUメモリ最適化: 7GBギリギリまで使用（80K時は約7.0-7.5 GiB使用予定）
 # コンテキスト長を統一することでランナー再利用を改善し、メモリ使用を安定化
+# CUDAライブラリのパスを設定
+export LD_LIBRARY_PATH="/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:${LD_LIBRARY_PATH:-}"
 export OLLAMA_HOST="${OLLAMA_HOST:-127.0.0.1:11435}"   # 明示的にポート11435を指定
 export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-71000}" # 71Kコンテキスト（メモリ制約を考慮）
 export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-1}"         # 8GB では並列 1 が安定
