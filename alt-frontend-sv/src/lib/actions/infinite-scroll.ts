@@ -100,13 +100,17 @@ export function infiniteScroll(
   return {
     update(newOptions: InfiniteScrollOptions) {
       const wasDisabled = currentOptions.disabled;
+      // Normalize root: undefined and null both mean viewport
+      const currentRoot = currentOptions.root ?? null;
+      const newRoot = newOptions.root ?? null;
+
       // Improved root comparison: check if both are null or both are the same element
       const rootChanged =
-        (currentOptions.root === null && newOptions.root !== null) ||
-        (currentOptions.root !== null && newOptions.root === null) ||
-        (currentOptions.root !== null &&
-          newOptions.root !== null &&
-          currentOptions.root !== newOptions.root);
+        (currentRoot === null && newRoot !== null) ||
+        (currentRoot !== null && newRoot === null) ||
+        (currentRoot !== null &&
+          newRoot !== null &&
+          currentRoot !== newRoot);
       const rootMarginChanged =
         currentOptions.rootMargin !== newOptions.rootMargin;
       const thresholdChanged = currentOptions.threshold !== newOptions.threshold;
