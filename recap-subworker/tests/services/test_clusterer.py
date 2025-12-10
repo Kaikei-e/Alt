@@ -31,14 +31,15 @@ def test_optimize_clustering_defaults(clusterer):
         # Let's say we have 3 iterations.
 
         # Mock result factory
-        def create_result(score, mcs):
+        # Note: optimize_clustering now uses silhouette_score instead of dbcv_score
+        def create_result(silhouette_score_val, mcs):
             return ClusterResult(
                 labels=np.array([]),
                 probabilities=np.array([]),
                 used_umap=True,
                 params=HDBSCANSettings(min_cluster_size=mcs, min_samples=1),
-                dbcv_score=score,
-                silhouette_score=0.5
+                dbcv_score=0.0,  # sklearn.cluster.HDBSCAN doesn't provide DBCV
+                silhouette_score=silhouette_score_val
             )
 
         # Arrange mock to return results.
@@ -51,7 +52,7 @@ def test_optimize_clustering_defaults(clusterer):
 
         embeddings = np.random.rand(20, 384) # 20 points
 
-        # Mocking specific call to return higher score
+        # Mocking specific call to return higher silhouette score
         def side_effect(*args, **kwargs):
             mcs = kwargs.get('min_cluster_size')
             if mcs == 10:
@@ -62,7 +63,8 @@ def test_optimize_clustering_defaults(clusterer):
 
         result = clusterer.optimize_clustering(embeddings)
 
-        assert result.dbcv_score == 0.9
+        # Now using silhouette_score for optimization
+        assert result.silhouette_score == 0.9
         assert result.params.min_cluster_size == 10
         assert mock_cluster.call_count > 1
 

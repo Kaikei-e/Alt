@@ -4,14 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import hdbscan
 import numpy as np
+from sklearn.cluster import HDBSCAN
+from sklearn.metrics import silhouette_score
 
 from ..domain.models import HDBSCANSettings
 from ..infra.config import Settings
-
-
-from sklearn.metrics import silhouette_score
 
 @dataclass(slots=True)
 class ClusterParams:
@@ -102,15 +100,14 @@ class Clusterer:
                 )
                 reduced = reducer.fit_transform(embeddings)
 
-        # HDBSCAN
-        clusterer = hdbscan.HDBSCAN(
+        # HDBSCAN (using sklearn.cluster.HDBSCAN)
+        clusterer = HDBSCAN(
             min_cluster_size=min_cluster_size if min_cluster_size > 0 else self.settings.hdbscan_min_cluster_size,
             min_samples=min_samples if min_samples > 0 else self.settings.hdbscan_min_samples,
             metric="euclidean" if use_umap else "euclidean",
             cluster_selection_epsilon=hdbscan_cluster_selection_epsilon if hdbscan_cluster_selection_epsilon is not None else 0.0,
             allow_single_cluster=hdbscan_allow_single_cluster if hdbscan_allow_single_cluster is not None else False,
             cluster_selection_method=hdbscan_cluster_selection_method or self.settings.hdbscan_cluster_selection_method,
-            prediction_data=True,
         )
         clusterer.fit(reduced)
         labels = clusterer.labels_
@@ -120,10 +117,9 @@ class Clusterer:
             probs = np.ones_like(labels, dtype=float)
             use_umap = False
 
-        try:
-            dbcv = clusterer.relative_validity_
-        except Exception:
-            dbcv = 0.0
+        # sklearn.cluster.HDBSCAN does not provide relative_validity_ (DBCV score)
+        # Set to 0.0 as a placeholder
+        dbcv = 0.0
 
         return ClusterResult(
             labels=labels,
@@ -167,7 +163,7 @@ class Clusterer:
         hdbscan_cluster_selection_method: str | None = None,
         hdbscan_allow_single_cluster: bool | None = None,
     ) -> ClusterResult:
-        """Perform grid search to find best clustering parameters based on DBCV."""
+        """Perform grid search to find best clustering parameters based on silhouette score."""
         # Defaults from plan
         if min_cluster_size_range is None:
             # Plan: [4, 6, 8, 10, 12]. Adjusted slightly to include 3 for smaller datasets per docs/heuristics.
@@ -180,7 +176,7 @@ class Clusterer:
         if umap_n_components_range is None:
             umap_n_components_range = [8]
 
-        best_score = -2.0  # DBCV ranges from -1 to 1, start lower
+        best_score = -2.0  # Silhouette score ranges from -1 to 1, start lower
         best_result = None
 
         # Pre-validation
@@ -229,11 +225,13 @@ class Clusterer:
                             hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
                         )
 
-                        # Optimization metric: DBCV
-                        score = result.dbcv_score
+                        # Optimization metric: silhouette score
+                        # Note: sklearn.cluster.HDBSCAN does not provide DBCV (relative_validity_),
+                        # so we use silhouette score instead for parameter optimization
+                        score = result.silhouette_score
 
                         # Tie-breaking logic:
-                        # 1. Higher DBCV (validity)
+                        # 1. Higher silhouette score (better cluster separation)
                         # 2. If equal, prefer larger min_cluster_size (more stable, fewer micro-clusters)
                         if score > best_score:
                             best_score = score
