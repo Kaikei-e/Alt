@@ -1,4 +1,5 @@
 pub(crate) mod admin;
+pub(crate) mod dashboard;
 pub(crate) mod evaluation;
 pub(crate) mod fetch;
 pub(crate) mod generate;
@@ -35,5 +36,9 @@ pub(crate) fn router(state: AppState) -> Router {
             "/v1/evaluation/genres/{run_id}",
             get(evaluation::get_evaluation_result),
         )
+        .route("/v1/dashboard/metrics", get(dashboard::get_metrics))
+        .route("/v1/dashboard/overview", get(dashboard::get_overview))
+        .route("/v1/dashboard/logs", get(dashboard::get_logs))
+        .route("/v1/dashboard/jobs", get(dashboard::get_jobs))
         .with_state(state)
 }

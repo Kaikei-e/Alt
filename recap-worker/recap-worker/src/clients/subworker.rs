@@ -44,6 +44,8 @@ const CLASSIFY_POST_RETRIES: usize = 3;
 const CLASSIFY_POST_BACKOFF_MS: u64 = 5_000;
 const CLASSIFY_CHUNK_SIZE: usize = 200; // Number of texts per chunk for parallel processing
 const CLASSIFY_MAX_CONCURRENT: usize = 12; // Increased to 12 to match subworker's expanded 12-core capacity
+const POLL_REQUEST_RETRIES: usize = 3; // Number of retries for polling requests
+const POLL_REQUEST_RETRY_DELAY_MS: u64 = 1_000; // Retry delay between polling request retries (1 second)
 
 /// エラーメッセージを要約して切り詰める。
 fn truncate_error_message(msg: &str) -> String {
@@ -449,6 +451,7 @@ impl SubworkerClient {
             let mut req = self
                 .client
                 .post(url.clone())
+                .timeout(Duration::from_secs(30)) // Fail fast if connection hangs/drops
                 .header("X-Alt-Job-Id", job_id.to_string());
 
             // Add idempotency key header if provided
@@ -586,17 +589,8 @@ impl SubworkerClient {
             Self::log_polling_attempt(run_id, attempt, &run_url);
 
             let response = self
-                .client
-                .get(run_url.clone())
-                .send()
-                .await
-                .with_context(|| {
-                    format!(
-                        "classification run polling request failed for run_id {} (attempt {})",
-                        run_id,
-                        attempt + 1
-                    )
-                })?;
+                .send_poll_request_with_retry(run_id, &run_url, attempt)
+                .await?;
 
             let status = response.status();
             if !status.is_success() {
@@ -697,6 +691,61 @@ impl SubworkerClient {
                 status = %status,
                 "classification run still in progress"
             );
+        }
+    }
+
+    async fn send_poll_request_with_retry(
+        &self,
+        run_id: i64,
+        url: &Url,
+        poll_attempt: usize,
+    ) -> Result<Response> {
+        let mut last_error = None;
+
+        for retry in 0..POLL_REQUEST_RETRIES {
+            match self.client.get(url.clone()).send().await {
+                Ok(response) => return Ok(response),
+                Err(e) => {
+                    // Retry on transient errors (timeout, connection errors)
+                    if e.is_timeout() || e.is_connect() {
+                        warn!(
+                            run_id,
+                            poll_attempt = poll_attempt + 1,
+                            retry = retry + 1,
+                            max_retries = POLL_REQUEST_RETRIES,
+                            error = %e,
+                            "polling request failed, retrying"
+                        );
+                        sleep(Duration::from_millis(POLL_REQUEST_RETRY_DELAY_MS)).await;
+                        last_error = Some(e);
+                        continue;
+                    }
+                    // Return immediately for other errors
+                    return Err(anyhow::Error::from(e)).with_context(|| {
+                        format!(
+                            "classification run polling request failed for run_id {} (attempt {})",
+                            run_id,
+                            poll_attempt + 1
+                        )
+                    });
+                }
+            }
+        }
+
+        match last_error {
+            Some(e) => Err(anyhow!(
+                "classification run polling request failed after {} retries for run_id {} (attempt {}): {}",
+                POLL_REQUEST_RETRIES,
+                run_id,
+                poll_attempt + 1,
+                e
+            )),
+            None => Err(anyhow!(
+                "classification run polling request failed after {} retries for run_id {} (attempt {})",
+                POLL_REQUEST_RETRIES,
+                run_id,
+                poll_attempt + 1
+            )),
         }
     }
 

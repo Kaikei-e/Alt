@@ -53,7 +53,7 @@ pub(crate) async fn trigger_7days(
 
     tokio::spawn(async move {
         if let Err(error) = scheduler.run_job(job).await {
-            error!(%job_id, error = %error, provided, "manual 7days recap job failed");
+            error!(%job_id, error = ?error, provided, "manual 7days recap job failed");
         } else {
             info!(%job_id, provided, genres = scheduled_genre_count, "manual 7days recap job scheduled");
         }
