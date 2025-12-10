@@ -183,3 +183,191 @@ impl GenreStage for RemoteGenreStage {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pipeline::dedup::DeduplicatedArticle;
+
+    #[test]
+    fn test_prepare_texts_for_classification() {
+        let articles = vec![
+            DeduplicatedArticle {
+                id: "art-1".to_string(),
+                title: Some("Test Title".to_string()),
+                sentences: vec![
+                    "First sentence.".to_string(),
+                    "Second sentence.".to_string(),
+                    "Third sentence.".to_string(),
+                    "Fourth sentence.".to_string(),
+                    "Fifth sentence.".to_string(),
+                    "Sixth sentence.".to_string(),
+                ],
+                sentence_hashes: vec![],
+                language: "en".to_string(),
+                published_at: None,
+                source_url: None,
+                tags: vec![],
+                duplicates: vec![],
+            },
+            DeduplicatedArticle {
+                id: "art-2".to_string(),
+                title: None,
+                sentences: vec!["Only one sentence.".to_string()],
+                sentence_hashes: vec![],
+                language: "en".to_string(),
+                published_at: None,
+                source_url: None,
+                tags: vec![],
+                duplicates: vec![],
+            },
+        ];
+
+        let texts = RemoteGenreStage::prepare_texts_for_classification(&articles);
+
+        assert_eq!(texts.len(), 2);
+        assert!(texts[0].contains("Test Title"));
+        assert!(texts[0].contains("First sentence"));
+        assert!(texts[0].contains("Fifth sentence"));
+        assert!(!texts[0].contains("Sixth sentence")); // Only first 5 sentences
+        assert!(texts[1].contains("Only one sentence"));
+        assert!(!texts[1].contains("None")); // No title prefix when title is None
+    }
+
+    #[test]
+    fn test_convert_scores_to_genre_scores() {
+        let mut scores = HashMap::new();
+        scores.insert("tech".to_string(), 0.85);
+        scores.insert("science".to_string(), 0.42);
+        scores.insert("other".to_string(), 0.01);
+
+        let genre_scores = RemoteGenreStage::convert_scores_to_genre_scores(&scores);
+
+        assert_eq!(genre_scores.get("tech"), Some(&85));
+        assert_eq!(genre_scores.get("science"), Some(&42));
+        assert_eq!(genre_scores.get("other"), Some(&1));
+    }
+
+    #[test]
+    fn test_convert_scores_to_genre_scores_handles_negative() {
+        let mut scores = HashMap::new();
+        scores.insert("negative".to_string(), -0.5);
+
+        let genre_scores = RemoteGenreStage::convert_scores_to_genre_scores(&scores);
+
+        assert_eq!(genre_scores.get("negative"), Some(&0));
+    }
+
+    #[test]
+    fn test_create_genre_candidates() {
+        let mut scores = HashMap::new();
+        scores.insert("tech".to_string(), 0.9);
+        scores.insert("science".to_string(), 0.7);
+        scores.insert("other".to_string(), 0.1);
+
+        let candidates = RemoteGenreStage::create_genre_candidates(&scores);
+
+        assert_eq!(candidates.len(), 3);
+        // Should be sorted by score descending
+        assert_eq!(candidates[0].name, "tech");
+        assert!((candidates[0].score - 0.9).abs() < f32::EPSILON);
+        assert_eq!(candidates[1].name, "science");
+        assert!((candidates[1].score - 0.7).abs() < f32::EPSILON);
+        assert_eq!(candidates[2].name, "other");
+        assert!((candidates[2].score - 0.1).abs() < f32::EPSILON);
+        // All should have keyword_support = 0 (not available from remote)
+        assert_eq!(candidates[0].keyword_support, 0);
+        assert_eq!(candidates[1].keyword_support, 0);
+        assert_eq!(candidates[2].keyword_support, 0);
+    }
+
+    #[tokio::test]
+    async fn test_create_genre_assignment_above_threshold() {
+        // Use a dummy pool for testing (won't actually connect)
+        let pool = sqlx::PgPool::connect_lazy("postgres://test:test@localhost/test").unwrap();
+        let stage = RemoteGenreStage::new(
+            Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap()),
+            Arc::new(crate::queue::ClassificationJobQueue::new(
+                crate::queue::QueueStore::new(pool),
+                SubworkerClient::new("http://localhost:8002", 10).unwrap(),
+                1,
+                200,
+                3,
+                5000,
+            )),
+            0.5,
+        );
+
+        let article = DeduplicatedArticle {
+            id: "art-1".to_string(),
+            title: Some("Test Article".to_string()),
+            sentences: vec!["Content".to_string()],
+            sentence_hashes: vec![],
+            language: "en".to_string(),
+            published_at: None,
+            source_url: None,
+            tags: vec![],
+            duplicates: vec![],
+        };
+
+        let mut scores = HashMap::new();
+        scores.insert("tech".to_string(), 0.9);
+        scores.insert("science".to_string(), 0.3);
+
+        let result = crate::clients::subworker::ClassificationResult {
+            top_genre: "tech".to_string(),
+            confidence: 0.8,
+            scores,
+        };
+
+        let assignment = stage.create_genre_assignment(article, result);
+
+        assert_eq!(assignment.genres, vec!["tech"]);
+        assert_eq!(assignment.candidates.len(), 2);
+        assert_eq!(assignment.candidates[0].name, "tech");
+    }
+
+    #[tokio::test]
+    async fn test_create_genre_assignment_below_threshold() {
+        // Use a dummy pool for testing (won't actually connect)
+        let pool = sqlx::PgPool::connect_lazy("postgres://test:test@localhost/test").unwrap();
+        let stage = RemoteGenreStage::new(
+            Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap()),
+            Arc::new(crate::queue::ClassificationJobQueue::new(
+                crate::queue::QueueStore::new(pool),
+                SubworkerClient::new("http://localhost:8002", 10).unwrap(),
+                1,
+                200,
+                3,
+                5000,
+            )),
+            0.5,
+        );
+
+        let article = DeduplicatedArticle {
+            id: "art-1".to_string(),
+            title: Some("Test Article".to_string()),
+            sentences: vec!["Content".to_string()],
+            sentence_hashes: vec![],
+            language: "en".to_string(),
+            published_at: None,
+            source_url: None,
+            tags: vec![],
+            duplicates: vec![],
+        };
+
+        let mut scores = HashMap::new();
+        scores.insert("tech".to_string(), 0.3);
+        scores.insert("science".to_string(), 0.2);
+
+        let result = crate::clients::subworker::ClassificationResult {
+            top_genre: "tech".to_string(),
+            confidence: 0.3, // Below threshold
+            scores,
+        };
+
+        let assignment = stage.create_genre_assignment(article, result);
+
+        assert_eq!(assignment.genres, vec!["other"]);
+    }
+}
