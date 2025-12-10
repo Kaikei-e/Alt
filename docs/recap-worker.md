@@ -1,113 +1,231 @@
 # Recap Worker
 
-_Last reviewed: December 2024_
+_Last updated: December 2025_
 
 **Location:** `recap-worker/recap-worker`
 
 ## Role
-- Rust 2024 batch processor that turns the last seven days of articles into curated Japanese recaps.
-- Orchestrates the full pipeline—fetch, preprocess, deduplicate, genre-tag, select, evidence build, ML clustering (recap-subworker), LLM summarization (news-creator), and persistence into recap-db—while shipping metrics and admin APIs via Axum.
-- Runs two parallel pipelines: **7-day recap generation** (daily at 04:00 JST) and **morning update** (article deduplication grouping).
+`recap-worker` is the **orchestrator and pipeline runner** for the Alt 7-day recap system. Written in Rust (2024 edition), it manages the end-to-end flow of generating weekly Japanese news recaps.
+
+Unlike earlier versions, it **delegates heavy ML tasks** (embedding generation, coarse classification, clustering) to `recap-subworker`, keeping the worker itself focused on high-throughput data processing, pipeline coordination, and persistence.
+
+It runs two parallel pipelines:
+1.  **7-Day Recap Pipeline:** The main batch process (daily at 04:00 JST).
+2.  **Morning Update Pipeline:** A lighter pipeline for daily article deduplication and grouping.
 
 ## Service Snapshot
-| Layer | Highlights |
+
+| Layer | Responsibilities |
 | --- | --- |
-| Control Plane | Axum router exposing `/health/live`, `/health/ready`, `/metrics`, `/v1/generate/recaps/7days`, `/v1/recaps/7days`, `/v1/morning/updates`, `/v1/evaluation/genres`, `/admin/jobs/retry`, `/admin/genre-learning`. |
-| Pipeline (`src/pipeline/`) | Stages: fetch → preprocess → dedup → genre → select → evidence → dispatch → persist. Morning pipeline: fetch → preprocess → dedup → group persistence. |
-| Clients (`src/clients/`) | Typed HTTP clients for alt-backend, tag-generator, recap-subworker (`/v1/runs`), and news-creator (LLM summaries) with JSON Schema validation. |
-| Classifier (`src/classifier/`) | Hybrid classification: **Centroid-based (Rocchio)** with multi-centroid support and temperature scaling, plus **Graph Label Propagation** for rescue pass. Golden Dataset training. |
-| Store (`src/store/`) | SQLx DAO with advisory locks, recap job metadata, JSONB outputs, the `recap_cluster_evidence` table for pre-deduplicated links, `recap_genre_learning_results`, cached `tag_label_graph` priors, and `morning_article_groups` for deduplication tracking. |
-| Observability (`src/observability/`) | Tracing, Prometheus exporter, OTLP wiring plus counters for genre refine rollout gating (`recap_genre_refine_rollout_enabled_total` / `_skipped_total`), graph boosts, fallbacks, and LLM latency. |
+| **Control Plane** | Axum router exposing health checks, metrics (`/metrics`), manual triggers (`/v1/generate/recaps/7days`), and admin utilities (`/admin/genre-learning`, `/admin/jobs/retry`). |
+| **Pipeline Core** | `src/pipeline/`: Modular stages for Fetch, Preprocess, Dedup, Genre, Select, Evidence, Dispatch, Persist. |
+| **Clients** | `src/clients/`: Strongly-typed HTTP clients for: <br>- **`recap-subworker`**: Coarse classification, clustering, graph refresh. <br>- **`news-creator`**: LLM summarization. <br>- **`alt-backend`**: Article fetching. <br>- **`tag-generator`**: Optional tag enrichment. |
+| **Classification** | **Remote Coarse**: Calls `recap-subworker` (`/v1/classify`) for initial genre assignment. <br>**Local Refine**: Optional Graph Label Propagation stage (`src/pipeline/genre_refine.rs`) using cached graph data to rescue low-confidence articles. |
+| **Store** | `src/store/`: SQLx DAO managing `recap_jobs`, `recap_cluster_evidence`, `recap_genre_learning_results`, and `tag_label_graph` (cached from DB). |
+| **Observability** | Prometheus metrics (pipeline counters, latencies), OTLP tracing, and structured logging. |
 
-## Pipeline Flow Diagrams
+## Pipeline Flow
 
-詳細なパイプラインフロー図（実装ベース）は [`recap-worker/PIPELINE_FLOW.md`](../recap-worker/recap-worker/PIPELINE_FLOW.md) を参照してください。以下の図が含まれています：
+The 7-Day Recap Pipeline follows these stages:
 
-- **7-Day Recap Pipeline**: メインパイプラインの詳細フロー（初期化から永続化まで）
-- **Genre Classification Detail**: 2段階分類プロセス（Coarse + Refine）の詳細
-- **Dispatch Stage Detail**: ML/LLM処理の並列・直列フロー
-- **Morning Update Pipeline**: 朝の更新パイプライン
-- **Data Flow Overview**: データフローの全体像
+```mermaid
+flowchart TB
+    Start([Job Triggered<br/>Scheduler/Manual]) --> Init[Pipeline Initialization]
 
-## Code Status
-- `src/app.rs` assembles config, DAO, telemetry, scheduler, HTTP clients, and two pipeline orchestrators (7-day recap + morning update), then launches both the control plane and pipeline runners.
-- Scheduler defaults to a JST-tuned cron (04:00 UTC+9) for 7-day recaps and morning updates, but manual runs are supported via `POST /v1/generate/recaps/7days`.
-- Pipeline stages:
-  1. **Fetch:** Pulls articles from alt-backend for `RECAP_WINDOW_DAYS`, optionally enriches with tag-generator tags, backs up raw HTML to `recap_job_articles`, and records job metadata.
-  2. **Preprocess:** Cleans HTML (ammonia/html2text), normalizes Unicode, detects language (`whatlang`), tokenizes (Lindera IPADIC), and extracts tag signals. CPU-heavy work offloaded via `spawn_blocking` with semaphore-constrained concurrency.
-  3. **Dedup:** XXH3 hashing + sentence filters to drop near-duplicates. Per-article stats tracked.
-  4. **Genre:** Hybrid two-stage classifier:
-     - **Coarse Pass:** Centroid-based similarity (Rocchio) with multi-centroid support, temperature scaling, and adaptive thresholds. Uses Golden Dataset for training. Falls back to keyword-based classification if centroids unavailable.
-     - **Refine Pass (optional):** Graph label propagation for articles that failed coarse pass. Uses `tag_label_graph` from recap-db (cached with `TAG_LABEL_GRAPH_WINDOW` and `TAG_LABEL_GRAPH_TTL_SECONDS`). Graph override settings loaded from `recap_worker_config` table (latest by `created_at DESC`) with YAML fallback via `GRAPH_CONFIG` environment variable. Rollout controlled by `RECAP_GENRE_REFINE_ROLLOUT_PERCENT`.
-  5. **Select:** Trims articles per genre (max 20, adjusted for `min_documents_per_genre`), filters outliers using embedding-based coherence similarity (optional `EmbeddingService`), and ensures minimum document counts.
-  6. **Evidence:** Bundles articles per genre, capturing language mix + metadata; enforces per-genre article uniqueness before dispatch so the downstream evidence payload already reflects the final cap.
-  7. **Dispatch:** Sends corpora to recap-subworker (clustering) in parallel per genre, then generates summaries via news-creator sequentially (queue-based to respect LLM context limits). Only top 40 clusters (by size) sent to news-creator. Responses validated against JSON Schema before returning. Representatives persisted to `recap_cluster_evidence` once and later reused by the API.
-  8. **Persist:** Writes recap sections + evidence to `recap_outputs`/`recap_jobs` tables inside recap-db.
-- **Morning Pipeline:** Runs fetch → preprocess → dedup, then groups articles by deduplication relationships into `morning_article_groups` table (primary article + duplicates mapping).
-- JSON Schema contracts for recap-subworker/news-creator responses live alongside clients; failed validation short-circuits persistence and surfaces metrics.
+    Init --> GraphRefresh{Graph Pre-Refresh<br/>Enabled?}
+    GraphRefresh -->|Yes| RefreshGraph[Refresh Graph via<br/>recap-subworker]
+    GraphRefresh -->|No| LoadConfig
+    RefreshGraph --> LoadConfig[Load Graph Override Settings<br/>from recap_worker_config]
 
-## Classification Architecture
-The genre classification uses a **hybrid two-stage approach**:
+    LoadConfig --> Fetch[Fetch Stage<br/>AltBackendFetchStage]
 
-### Stage 1: Coarse Pass (Centroid Classifier)
-- **Multi-Centroid Rocchio:** Each genre can have multiple centroid vectors (trained from Golden Dataset).
-- **Temperature Scaling:** Calibrates confidence scores using temperature parameter (default 1.0, optimized via validation set).
-- **Adaptive Thresholds:** Genre-specific thresholds (default 0.6, 0.75 for `society_justice`).
-- **Feature Vector:** Combines TF-IDF, BM25, token counts, and tag overlap into a unified feature vector.
-- **Golden Dataset:** Located at `/app/data/golden_classification.json` (production) or `tests/data/golden_classification.json` (development).
+    Fetch --> FetchDetails[Fetch Articles<br/>- Paginated from alt-backend<br/>- Optional tag enrichment<br/>- Backup raw HTML to DB]
 
-### Stage 2: Refine Pass (Graph Label Propagation)
-- **Trigger:** Only for articles that failed coarse pass (below threshold).
-- **Graph Construction:** Builds undirected graph where edges connect articles with similarity ≥ 0.85 (cosine similarity on combined feature vectors).
-- **Label Propagation:** Uses sparse matrix operations (`sprs`) for efficient label spreading from labeled (Golden Dataset) to unlabeled articles.
-- **Tag Label Graph Integration:** Uses cached `tag_label_graph` from recap-db to boost confidence for articles with matching tag-genre associations.
-- **Fallback:** Unclassified articles default to "other".
+    FetchDetails --> Preprocess[Preprocess Stage<br/>TextPreprocessStage]
 
-### Configuration
-- **Rollout Control:** `RECAP_GENRE_REFINE_ENABLED` (master switch), `RECAP_GENRE_REFINE_ROLLOUT_PERCENT` (0-100% of articles).
-- **Graph Cache:** `TAG_LABEL_GRAPH_WINDOW` (default "7d"), `TAG_LABEL_GRAPH_TTL_SECONDS` (default 900).
-- **Graph Overrides:** Stored in `recap_worker_config` table, loaded on pipeline initialization with YAML fallback.
+    Preprocess --> PreprocessDetails["Preprocess Articles<br/>HTML cleaning (ammonia)<br/>Language detection (whatlang)<br/>Tokenization (Lindera)<br/>Tag signal extraction"]
 
-## Replay & Evaluation
-- `scripts/replay_genre_pipeline.rs` (and the `replay` module under `src/replay.rs`) replays the genre refinement stage using JSONL datasets, reloads `tag_label_graph` (honouring `TAG_LABEL_GRAPH_WINDOW` and `TAG_LABEL_GRAPH_TTL_SECONDS`), and persists tightened rows into `recap_genre_learning_results`. Use flags such as `--dataset`, `--dsn`, `--graph-window`, `--graph-ttl`, `--require-tags`, and `--dry-run` to validate revisions safely.
-- Summary quality is guarded by the golden dataset evaluation stack in `recap-worker/tests/golden_eval.rs` and `src/evaluation/golden.rs`, which loads `recap-worker/resources/golden_runs.json`, computes ROUGE, and fails the suite if precision dips below the acceptable threshold; run `cargo test -p recap-worker tests::golden_eval` (or rerun `scripts/replay_genre_pipeline.rs` after prompt/model tweaks) whenever you tweak summarization prompts or reference evidence.
-- Genre classification evaluation via `POST /v1/evaluation/genres` endpoint, which runs classification on Golden Dataset and stores metrics in `recap_genre_evaluation_runs` and `recap_genre_evaluation_metrics` tables.
+    PreprocessDetails --> Dedup[Dedup Stage<br/>HashDedupStage]
 
-## Integrations & Data
-- **recap-db (Postgres 18):** Source of truth for jobs, cached articles, `recap_cluster_evidence`, `recap_genre_learning_results`, `tag_label_graph`, `recap_worker_config` (insert-only config storage), `morning_article_groups`, and final recaps. Schema maintained via Atlas migrations in `recap-migration-atlas/` (see `20251112000100_add_cluster_evidence_table.sql`, `20251113000100_create_tag_label_graph.sql`, `20251113093000_add_genre_learning_results.sql`, `20251120000000_create_recap_worker_config.sql`). Refresh the graph using `scripts/replay_genre_pipeline.rs` or `tag-generator/app/scripts/build_label_graph.py` whenever you adjust `TAG_LABEL_GRAPH_WINDOW`/`TAG_LABEL_GRAPH_TTL_SECONDS`. Graph override settings are stored in `recap_worker_config` and loaded on pipeline initialization with YAML fallback.
-- **recap-subworker:** Receives evidence corpus, returns clustering JSON with trimmed, per-genre-unique representatives. Supports graph refresh via `/admin/refresh-graph` endpoint.
-- **news-creator:** Generates summaries per cluster/genre. Sequential processing to respect LLM context window limits (8k tokens).
-- **alt-backend:** Provides raw article feed via authenticated HTTP client (`/v1/recap/articles`).
-- **tag-generator:** Optional tag enrichment service. When enabled, fetches tags during fetch stage to improve classification accuracy.
+    Dedup --> DedupDetails["Deduplicate Articles<br/>XXH3 hashing<br/>Sentence-level similarity"]
 
-## Testing & Tooling
-- `cargo test -p recap-worker` for unit/integration suites (Axum handlers, pipeline stages, DAO, clients, classifier).
-- `cargo bench -p recap-worker --bench performance` to profile preprocessing + keyword scoring.
-- Health scripts:
-  - `curl http://localhost:9005/health/ready`
-  - `curl http://localhost:9005/metrics | egrep 'recap_api_(latest_fetch|cluster_query)_duration_seconds'`
-- DB inspection: `psql $RECAP_DB_DSN -c "SELECT * FROM recap_jobs ORDER BY kicked_at DESC LIMIT 5;"`.
-- Troubleshooting references:
-  - `recap-worker/TROUBLESHOOTING.md`
-  - `recap-worker/docs/dedup_analysis.md`
-  - `recap-worker/docs/subworker_404_investigation.md`
-- Golden dataset evaluation: `recap-worker/tests/golden_eval.rs` exercises `resources/golden_runs.json` and the ROUGE helpers in `src/evaluation/golden.rs`; run `cargo test -p recap-worker tests::golden_eval` and/or `scripts/replay_genre_pipeline.rs` anytime you change prompts, clustering, or tag priors.
+    DedupDetails --> Genre[Genre Stage<br/>RemoteGenreStage + Refine]
 
-## Operational Notes
-- Compose profile includes recap-db and recap-subworker; run `docker compose --profile logging --profile ollama up recap-worker recap-db recap-subworker`.
-- Manual trigger: `curl -X POST http://localhost:9005/v1/generate/recaps/7days -H "Content-Type: application/json" -d '{"genres":["tech","finance"]}'`.
-- Genre learning endpoint: `POST /admin/genre-learning` receives optimized thresholds from recap-subworker and stores them in `recap_worker_config` table. Settings are loaded on pipeline initialization with YAML fallback (via `GRAPH_CONFIG` env var).
-- Jobs acquire advisory locks per window to prevent overlaps; clear stuck locks via `SELECT pg_advisory_unlock_all();` when safe.
-- Run the Atlas migration that creates `recap_cluster_evidence` before deploying; verify population with `SELECT COUNT(*) FROM recap_cluster_evidence;` after the first recap completes.
-- Monitor GET `/v1/recaps/7days` latency via `recap_api_latest_fetch_duration_seconds` and the new duplicate counter `recap_api_evidence_duplicates_total` to confirm dedup is happening before DTO assembly.
-- Keep JSON Schema versions in sync with downstream services before deploying new payload fields.
-- Grafana: import `observability/grafana/recap-genre-dashboard.json` to surface `genre_tag_agreement_rate`, `recap_genre_tag_missing_ratio`, and `recap_genre_graph_hits_total`. Alertmanager rules live in `observability/alerts/recap-genre-rules.yaml`.
-- Rollout controls: use `RECAP_GENRE_REFINE_ENABLED` plus the new `RECAP_GENRE_REFINE_ROLLOUT_PERCENT` (10/50/100) to gate the corpus. The new counters `recap_genre_refine_rollout_enabled_total` and `_skipped_total` plus `recap_genre_refine_graph_hits_total`/`recap_genre_refine_fallback_total`/`recap_genre_refine_llm_latency_seconds` reflect deployment coverage, Graph boosts, fallback hits, and LLM latency respectively. See `docs/recap-genre-rollout-runbook.md` for the Phase 5 playbook.
-- Replay helper: run `cargo run --bin replay_genre_pipeline -- --dataset path/to/dataset.json --dsn $RECAP_DB_DSN --graph-window 7d --graph-ttl 900` (or use the script alias) to re-run the genre pipeline offline, refresh `recap_genre_learning_results`, and verify `tag_label_graph` outputs when you adjust TTLs or priors. Ensure `TAG_LABEL_GRAPH_WINDOW`/`TAG_LABEL_GRAPH_TTL_SECONDS` stay in sync across `.env`, `tag-generator`, and the running worker.
-- Graph pre-refresh: `RECAP_PRE_REFRESH_GRAPH_ENABLED` (default true) triggers graph refresh before pipeline execution via recap-subworker's `/admin/refresh-graph` endpoint. Timeout controlled by `RECAP_PRE_REFRESH_TIMEOUT_SECS` (default 300).
-- Morning update pipeline: Runs independently via `spawn_morning_update_daemon`, processes 1-day window, and persists article groups to `morning_article_groups` table. Accessible via `GET /v1/morning/updates` API.
+    Genre --> RemoteCoarse["Remote Coarse Pass<br/>(Call recap-subworker /v1/classify)"]
 
-## LLM Tips
-- Specify stage/module when asking for changes (e.g., "update `src/pipeline/dedup.rs` to tweak XXH3 threshold").
-- Mention corresponding schema files if altering recap outputs to ensure DAO + JSON validators are updated together.
-- Classification changes: update Golden Dataset at `tests/data/golden_classification.json` and retrain centroids if modifying feature extraction or thresholds.
+    RemoteCoarse --> RefineCheck{Refine<br/>Needed?}
+    RefineCheck -->|Yes| LocalRefine["Local Graph Refine<br/>(Label Propagation)"]
+    RefineCheck -->|No| Select
+    LocalRefine --> Select
+
+    Select --> SelectDetails["Select Stage<br/>Trim max 20 per genre<br/>Ensure min documents"]
+
+    SelectDetails --> Evidence[Evidence Stage<br/>EvidenceBundle]
+
+    Evidence --> Dispatch[Dispatch Stage<br/>MlLlmDispatchStage]
+
+    Dispatch --> Phase1["Phase 1: Parallel Clustering<br/>(Call recap-subworker /v1/cluster)"]
+
+    Phase1 --> Phase2["Phase 2: Sequential Summary<br/>(Call news-creator /v1/completions)"]
+
+    Phase2 --> Persist[Persist Stage<br/>FinalSectionPersistStage]
+
+    Persist --> End([Pipeline Complete])
+
+    style Start fill:#e1f5ff
+    style End fill:#d4edda
+    style Genre fill:#fff3cd
+    style RemoteCoarse fill:#fff3cd
+    style LocalRefine fill:#fff3cd
+    style Dispatch fill:#f8d7da
+    style Phase1 fill:#f8d7da
+    style Phase2 fill:#f8d7da
+```
+
+
+### 1. Fetch (`fetch.rs`)
+*   Pulls articles from `alt-backend` for the configured window (default 7 days).
+*   Optionally enriches with tags from `tag-generator`.
+*   Persists raw HTML/metadata to `recap_job_articles`.
+
+### 2. Preprocess (`preprocess.rs`)
+*   Cleans HTML (`ammonia`, `html2text`).
+*   Normalizes Unicode (`nfkc`).
+*   Tokenizes (Lindera IPADIC) and extracts tag signals.
+*   Executed in parallel using `rayon` or `spawn_blocking`.
+
+### 3. Dedup (`dedup.rs`)
+*   Filters near-duplicates using XXH3 hashing and sentence-level comparison.
+*   Identifies a representative article for each duplicate group.
+
+### 4. Genre Assignment (`genre.rs`, `genre_remote.rs`)
+The genre classification is a hybrid **Remote + Local** process:
+
+```mermaid
+flowchart TB
+    Article[Deduplicated Articles<br/>Batch] --> Prepare[Prepare Texts<br/>Title + Top Sentences]
+
+    Prepare --> RemoteCall["Call recap-subworker<br/>POST /v1/classify"]
+
+    RemoteCall --> SubworkerLogic[["Subworker Logic<br/>1. Generate Embeddings<br/>2. Logistic Regression<br/>3. Return Probabilities"]]
+
+    SubworkerLogic --> MapScores[Map Scores to Genres]
+
+    MapScores --> ThresholdCheck{Confidence >=<br/>Threshold?}
+
+    ThresholdCheck -->|Yes| CoarseSuccess[Coarse Assigned]
+    ThresholdCheck -->|No| RefineCheck{Refine<br/>Enabled?}
+
+    RefineCheck -->|No| CoarseFallback[Use Best Guess]
+    RefineCheck -->|Yes| LocalRefine[Local Graph Refine]
+
+    LocalRefine --> LoadGraph[Load tag_label_graph<br/>from Cache/DB]
+    LoadGraph --> LabelProp["Label Propagation<br/>(sprs matrix ops)"]
+    LabelProp --> FinalDecision[Final Genre Assignment]
+
+    CoarseSuccess --> FinalDecision
+    CoarseFallback --> FinalDecision
+
+    style Article fill:#e1f5ff
+    style RemoteCall fill:#f8d7da
+    style SubworkerLogic fill:#f8d7da
+    style LocalRefine fill:#fff3cd
+    style FinalDecision fill:#d4edda
+```
+
+*   **Step 1: Remote Coarse (`RemoteGenreStage`)**: Sends article text batches to `recap-subworker`. The subworker uses a GPU-accelerated embedding model and a Logistic Regression classifier to return genre probabilities.
+*   **Step 2: Local Refine (Optional)**: If the primary genre's confidence is below `GENRE_CLASSIFIER_THRESHOLD`, the worker runs a local Graph Label Propagation using the cached `tag_label_graph` to rescue the article based on its tags.
+
+### 5. Selection (`select.rs`)
+*   Trims articles per genre to meet the target count (default ~20).
+*   Ensures minimum document counts per genre.
+*   Can use `embedding.rs` (if enabled) for coherence filtering, though heavy clustering is deferred.
+
+### 6. Evidence Assembly (`evidence.rs`)
+*   Bundles selected articles into an `EvidenceBundle`.
+*   Constructs the payload for clustering, including sentences, titles, and metadata.
+
+### 7. Dispatch (`dispatch.rs`)
+*   **Clustering**: Sends the `EvidenceBundle` to `recap-subworker` (`/v1/cluster`). The subworker performs HDBSCAN/K-Means clustering and returns sorted clusters with representatives.
+*   **Summarization**: Iterates through top clusters and sends them to `news-creator` (`/v1/completions`) for LLM-based summarization. This is done sequentially per genre to manage LLM context windows.
+
+### 8. Persist (`persist.rs`)
+*   Saves the final `Recap` and `RecapGenre` results to `recap_db`.
+*   Stores cluster evidence in `recap_cluster_evidence` for transparency and frontend display.
+
+## Data Flow Overview
+
+```mermaid
+flowchart LR
+    AltBackend[alt-backend<br/>Articles] --> Fetch[Fetch]
+    TagGen[tag-generator<br/>Optional] --> Fetch
+
+    Fetch --> Preprocess[Preprocess]
+    Preprocess --> Dedup[Dedup]
+    Dedup --> Genre[Genre]
+
+    Genre --> Select[Select]
+    Select --> Evidence[Evidence]
+
+    Evidence --> Subworker[recap-subworker<br/>Clustering]
+
+    %% Added Classification Flow
+    Genre -- Classify --> Subworker[recap-subworker<br/>Classification]
+
+    Subworker -- Cluster Results --> Dispatch[Dispatch]
+    Dispatch --> NewsCreator[news-creator<br/>Summarization]
+
+    NewsCreator --> Persist[Persist]
+
+    Persist --> RecapDB[(recap-db<br/>PostgreSQL)]
+
+    GraphCache[tag_label_graph<br/>Cache] --> Genre
+    Config[recap_worker_config<br/>Overrides] --> Genre
+
+    style AltBackend fill:#e1f5ff
+    style TagGen fill:#e1f5ff
+    style Subworker fill:#f8d7da
+    style NewsCreator fill:#f8d7da
+    style RecapDB fill:#d4edda
+    style GraphCache fill:#fff3cd
+    style Config fill:#fff3cd
+```
+
+## Configuration & Tuning
+
+Configuration is handled via `src/config.rs` (env vars) and dynamic DB overrides.
+
+### Key Environment Variables
+*   `RECAP_WINDOW_DAYS`: Number of days to include in the recap (default 7).
+*   `GENRE_CLASSIFIER_THRESHOLD`: Confidence threshold for remote classification.
+*   `RECAP_GENRE_REFINE_ENABLED`: Enable/disable local graph refinement.
+*   `RECAP_GENRE_REFINE_ROLLOUT_PERCENT`: Gradual rollout control for refinement.
+*   `MIN_DOCUMENTS_PER_GENRE`: Minimum articles required to generate a recap for a genre.
+
+### Graph & Learning
+*   **Tag Label Graph**: Cached locally for `TAG_LABEL_GRAPH_TTL_SECONDS`. Loaded from `tag_label_graph` table.
+*   **Graph Overrides**: Dynamic thresholds and weights can be loaded from `recap_worker_config` table at runtime.
+*   **Refresh**: The pipeline can trigger a graph refresh on `recap-subworker` before execution (`RECAP_PRE_REFRESH_GRAPH_ENABLED`).
+
+## Development & Testing
+
+### Commands
+*   **Run Unit Tests**: `cargo test -p recap-worker`
+*   **Run Specific Test**: `cargo test -p recap-worker -- tests::pipeline_test`
+*   **Check Health**: `curl http://localhost:9005/health/ready`
+
+### Replay Tools
+*   **`replay_genre_pipeline`**: A binary (`src/bin/replay_genre_pipeline.rs`) allowed to re-run the genre assignment stage using local datasets or DB data. Useful for tuning refinement logic without running the full pipeline.
+    ```bash
+    cargo run --bin replay_genre_pipeline -- --dataset path/to/dataset.json --dsn $RECAP_DB_DSN
+    ```
+
+## Database Interaction
+`recap-worker` relies on `recap-db` (Postgres).
+*   **Migrations**: Managed in `recap-migration-atlas`.
+*   **Key Tables**:
+    *   `recap_jobs`: Job status and metadata.
+    *   `recap_job_articles`: Raw article backup.
+    *   `recap_outputs` / `recap_genres`: Final recap content.
+    *   `recap_cluster_evidence`: Articles used for each cluster.
+    *   `recap_worker_config`: Dynamic configuration store.
