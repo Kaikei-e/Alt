@@ -368,6 +368,52 @@ func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWit
 		}
 
 		logger.Logger.Info("Deleted low quality article summary", "articleID", articleWithSummary.ArticleID)
+
+		// Re-fetch article from web after deletion (same mechanism as alt-backend)
+		// First, get article from database to obtain URL
+		article, fetchErr := driver.GetArticleByID(ctx, dbPool, articleWithSummary.ArticleID)
+		if fetchErr != nil {
+			logger.Logger.Warn("Failed to get article for re-fetch after summary deletion",
+				"articleID", articleWithSummary.ArticleID,
+				"error", fetchErr)
+		} else if article == nil {
+			logger.Logger.Warn("Article not found for re-fetch after summary deletion",
+				"articleID", articleWithSummary.ArticleID)
+		} else if article.URL == "" {
+			logger.Logger.Warn("Article URL is empty, cannot re-fetch from web",
+				"articleID", articleWithSummary.ArticleID)
+		} else {
+			// Re-fetch article from web using HTTP request
+			client := &http.Client{
+				Timeout: 30 * time.Second,
+			}
+			req, err := http.NewRequestWithContext(ctx, "GET", article.URL, nil)
+			if err != nil {
+				logger.Logger.Warn("Failed to create HTTP request for article re-fetch",
+					"articleID", articleWithSummary.ArticleID,
+					"url", article.URL,
+					"error", err)
+			} else {
+				req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; AltBot/1.0; +https://alt.example.com/bot)")
+				resp, err := client.Do(req)
+				if err != nil {
+					logger.Logger.Warn("Failed to re-fetch article from web after summary deletion",
+						"articleID", articleWithSummary.ArticleID,
+						"url", article.URL,
+						"error", err)
+				} else {
+					defer func() {
+						if err := resp.Body.Close(); err != nil {
+							logger.Logger.Error("Failed to close response body", "error", err)
+						}
+					}()
+					logger.Logger.Info("Successfully re-fetched article from web after summary deletion",
+						"articleID", articleWithSummary.ArticleID,
+						"url", article.URL,
+						"status_code", resp.StatusCode)
+				}
+			}
+		}
 	} else {
 		logger.Logger.Info("Summary quality is acceptable", "articleID", articleWithSummary.ArticleID, "score", score.Overall)
 	}
