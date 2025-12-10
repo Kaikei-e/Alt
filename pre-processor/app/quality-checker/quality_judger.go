@@ -297,11 +297,6 @@ func attemptEmergencyParsing(response string) *Score {
 }
 
 func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWithSummary *driver.ArticleWithSummary) error {
-	// Validate dbPool is not nil
-	if dbPool == nil {
-		return errors.New("database pool is nil, cannot delete summary")
-	}
-
 	// Create the proper prompt for scoring
 	prompt := fmt.Sprintf(JudgeTemplate, articleWithSummary.Content, articleWithSummary.SummaryJapanese)
 
@@ -335,6 +330,10 @@ func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWit
 	// If score is too low, remove the summary (but keep the article)
 	// This only happens when we successfully got a score from the service
 	if score.Overall < lowScoreThreshold {
+		// Validate dbPool is not nil before attempting deletion
+		if dbPool == nil {
+			return errors.New("database pool is nil, cannot delete summary")
+		}
 		logger.Logger.Info("Removing low quality summary",
 			"articleID", articleWithSummary.ArticleID,
 			"score", score.Overall,

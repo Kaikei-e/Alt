@@ -55,7 +55,6 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 		article      *models.Article
 		validateResp func(t *testing.T, resp *models.SummarizedContent)
 		errContains  string
-		setupLogger  bool
 		wantErr      bool
 	}{
 		"should handle nil article": {
@@ -90,7 +89,7 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 			article: &models.Article{
 				ID:      "test-123",
 				Title:   "Test Article",
-				Content: "This is a test article content that needs to be summarized",
+				Content: "This is a test article content that needs to be summarized. It contains enough characters to pass the minimum length validation of 100 characters. The content should be long enough to trigger an actual API call error rather than a validation error.",
 				URL:     "http://example.com",
 			},
 
@@ -131,7 +130,6 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 		mockServer  func() *httptest.Server
 		serviceURL  string
 		errContains string
-		setupLogger bool
 		wantErr     bool
 	}{
 		"should handle empty service URL": {
@@ -355,11 +353,10 @@ func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 // Table-driven tests for comprehensive coverage using mock servers.
 func TestExternalAPIRepository_TableDriven(t *testing.T) {
 	type testCase struct {
-		setup       func() (ExternalAPIRepository, any, *httptest.Server)
-		validate    func(t *testing.T, result any, err error)
-		name        string
-		operation   string
-		setupLogger bool
+		setup     func() (ExternalAPIRepository, any, *httptest.Server)
+		validate  func(t *testing.T, result any, err error)
+		name      string
+		operation string
 	}
 
 	tests := []testCase{
@@ -371,7 +368,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 				article := &models.Article{
 					ID:        "article-456",
 					Title:     "Complete Article",
-					Content:   "This is a complete article with all fields",
+					Content:   "This is a complete article with all fields populated. It contains enough characters to pass the minimum length validation of 100 characters. The content should be long enough to trigger an actual API call error rather than a validation error.",
 					URL:       "http://example.com/article",
 					CreatedAt: time.Now(),
 				}
