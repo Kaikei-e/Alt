@@ -84,6 +84,22 @@ impl RecapDao {
         job::RecapDao::update_job_status(&self.pool, job_id, status, last_stage).await
     }
 
+    pub async fn get_recap_jobs(
+        &self,
+        window_seconds: i64,
+        limit: i64,
+    ) -> anyhow::Result<
+        Vec<(
+            uuid::Uuid,
+            String,
+            Option<String>,
+            chrono::DateTime<chrono::Utc>,
+            chrono::DateTime<chrono::Utc>,
+        )>,
+    > {
+        job::RecapDao::get_recap_jobs(&self.pool, window_seconds, limit).await
+    }
+
     // Stage management
     pub async fn insert_stage_log(
         &self,

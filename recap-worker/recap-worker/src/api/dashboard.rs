@@ -185,3 +185,36 @@ pub(crate) async fn get_jobs(
 
     Ok(Json(result))
 }
+
+/// Recapジョブを取得する
+pub(crate) async fn get_recap_jobs(
+    State(state): State<AppState>,
+    Query(params): Query<WindowQuery>,
+) -> Result<Json<Vec<RecapJob>>, (StatusCode, String)> {
+    let window_seconds = params.window.unwrap_or(14400); // デフォルト4時間
+    let limit = params.limit.unwrap_or(200);
+
+    let jobs = state
+        .dao()
+        .get_recap_jobs(window_seconds, limit)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to fetch recap jobs");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    let result: Vec<RecapJob> = jobs
+        .into_iter()
+        .map(
+            |(job_id, status, last_stage, kicked_at, updated_at)| RecapJob {
+                job_id,
+                status,
+                last_stage,
+                kicked_at,
+                updated_at,
+            },
+        )
+        .collect();
+
+    Ok(Json(result))
+}

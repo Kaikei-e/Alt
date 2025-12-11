@@ -120,8 +120,8 @@ impl RecapDao {
             r"
             UPDATE recap_jobs
             SET status = $2,
-                last_stage = COALESCE($3, last_stage),
-                updated_at = NOW()
+            last_stage = COALESCE($3, last_stage),
+            updated_at = NOW()
             WHERE job_id = $1
             ",
         )
@@ -133,5 +133,47 @@ impl RecapDao {
         .context("failed to update job status")?;
 
         Ok(())
+    }
+
+    /// ダッシュボード用に全ジョブを取得する。
+    pub async fn get_recap_jobs(
+        pool: &PgPool,
+        window_seconds: i64,
+        limit: i64,
+    ) -> Result<
+        Vec<(
+            Uuid,
+            String,
+            Option<String>,
+            chrono::DateTime<chrono::Utc>,
+            chrono::DateTime<chrono::Utc>,
+        )>,
+    > {
+        let rows = sqlx::query(
+            r"
+            SELECT job_id, status, last_stage, kicked_at, updated_at
+            FROM recap_jobs
+            WHERE kicked_at > NOW() - make_interval(secs => $1)
+            ORDER BY kicked_at DESC
+            LIMIT $2
+            ",
+        )
+        .bind(window_seconds as f64)
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+        .context("failed to fetch recap jobs")?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            let job_id: Uuid = row.try_get("job_id")?;
+            let status_str: String = row.try_get("status")?;
+            let last_stage: Option<String> = row.try_get("last_stage")?;
+            let kicked_at: chrono::DateTime<chrono::Utc> = row.try_get("kicked_at")?;
+            let updated_at: chrono::DateTime<chrono::Utc> = row.try_get("updated_at")?;
+            results.push((job_id, status_str, last_stage, kicked_at, updated_at));
+        }
+
+        Ok(results)
     }
 }
