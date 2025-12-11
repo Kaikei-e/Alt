@@ -39,6 +39,7 @@ type RecapConfig struct {
 	RateLimitBurst   int    `json:"rate_limit_burst" env:"RECAP_RATE_LIMIT_BURST" default:"8"`
 	MaxArticleBytes  int    `json:"max_article_bytes" env:"RECAP_MAX_ARTICLE_BYTES" default:"2097152"`
 	ClusterDraftPath string `json:"cluster_draft_path" env:"RECAP_CLUSTER_DRAFT_PATH" default:"docs/genre-reorg-draft.json"`
+	WorkerURL        string `json:"worker_url" env:"RECAP_WORKER_URL" default:"http://recap-worker:9005"`
 }
 
 type AuthConfig struct {

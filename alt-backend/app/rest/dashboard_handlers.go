@@ -3,7 +3,9 @@ package rest
 import (
 	"alt/config"
 	"alt/di"
+	"alt/driver/recap_job_driver"
 	"alt/gateway/dashboard_gateway"
+	dashboard_usecase "alt/usecase/dashboard"
 	"net/http"
 	"strconv"
 
@@ -17,6 +19,10 @@ func registerDashboardRoutes(v1 *echo.Group, container *di.ApplicationComponents
 	v1.GET("/dashboard/overview", handleGetOverview(dashboardGateway))
 	v1.GET("/dashboard/logs", handleGetLogs(dashboardGateway))
 	v1.GET("/dashboard/jobs", handleGetJobs(dashboardGateway))
+
+	recapDriver := recap_job_driver.NewRecapJobGateway(cfg.Recap.WorkerURL)
+	recapUsecase := dashboard_usecase.NewGetRecapJobsUsecase(recapDriver)
+	v1.GET("/dashboard/recap_jobs", handleGetRecapJobs(recapUsecase))
 }
 
 func handleGetMetrics(gateway *dashboard_gateway.DashboardGateway) echo.HandlerFunc {
@@ -109,5 +115,28 @@ func handleGetJobs(gateway *dashboard_gateway.DashboardGateway) echo.HandlerFunc
 
 		c.Response().Header().Set("Content-Type", "application/json")
 		return c.Blob(http.StatusOK, "application/json", data)
+	}
+}
+
+func handleGetRecapJobs(usecase dashboard_usecase.GetRecapJobsUsecase) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		windowSeconds, _ := strconv.ParseInt(c.QueryParam("window"), 10, 64)
+		if windowSeconds <= 0 {
+			windowSeconds = 14400 // Default 4 hours
+		}
+		limit, _ := strconv.ParseInt(c.QueryParam("limit"), 10, 64)
+		if limit <= 0 {
+			limit = 200
+		}
+
+		jobs, err := usecase.Execute(c.Request().Context(), windowSeconds, limit)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": err.Error(),
+			})
+		}
+
+		c.Response().Header().Set("Content-Type", "application/json")
+		return c.JSON(http.StatusOK, jobs)
 	}
 }
