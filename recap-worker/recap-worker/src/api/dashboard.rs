@@ -53,6 +53,15 @@ pub(crate) struct AdminJob {
     error: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub(crate) struct RecapJob {
+    job_id: Uuid,
+    status: String,
+    last_stage: Option<String>,
+    kicked_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct WindowQuery {
     window: Option<i64>,
