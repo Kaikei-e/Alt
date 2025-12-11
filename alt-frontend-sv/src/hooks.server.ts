@@ -58,5 +58,10 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 		throw redirect(303, `/sv/login?return_to=${returnTo}`);
 	}
 
-	return resolveEvent(event);
+	return resolveEvent(event, {
+		filterSerializedResponseHeaders: (name) => {
+			// Allow content-type header to be accessible in load functions
+			return name === "content-type";
+		},
+	});
 };

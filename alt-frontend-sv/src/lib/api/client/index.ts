@@ -22,6 +22,7 @@ export { callClientAPI } from "./core";
 export {
 	getFeedsWithCursorClient,
 	getReadFeedsWithCursorClient,
+	searchFeedsClient,
 	updateFeedReadStatusClient,
 } from "./feeds";
 // リキャップ関連のAPI
