@@ -4,7 +4,8 @@ import type {
   LogError,
   RecentActivity,
   SystemMetric,
-} from "$lib/schema/dashboard";
+  RecapJob,
+} from '$lib/schema/dashboard';
 
 export async function getMetrics(
   metricType?: string,
@@ -91,6 +92,8 @@ export async function getJobs(
 }
 
 
+import { base } from '$app/paths';
+
 export async function getRecapJobs(
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
   windowSeconds?: number,
@@ -100,7 +103,7 @@ export async function getRecapJobs(
   if (windowSeconds) params.set('window', windowSeconds.toString());
   if (limit) params.set('limit', limit.toString());
 
-  const res = await fetch(`/api/v1/dashboard/recap_jobs?${params.toString()}`);
+  const res = await fetch(`${base}/api/v1/dashboard/recap_jobs?${params.toString()}`);
   if (!res.ok) {
     throw new Error('Failed to fetch recap jobs');
   }

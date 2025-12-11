@@ -9,6 +9,8 @@
 	import SystemMonitorTab from "$lib/components/dashboard/SystemMonitorTab.svelte";
 	import type { TimeWindow } from "$lib/schema/dashboard";
 	import { TIME_WINDOWS } from "$lib/schema/dashboard";
+	import { buttonVariants } from "$lib/components/ui/button";
+	import { cn } from "$lib/utils.js";
 
 	let selectedTab = $state(0);
 	let timeWindow = $state<TimeWindow>("4h");
@@ -36,12 +38,12 @@
 
 	<!-- Time Range Selection -->
 	<div class="mb-6">
-		<label
+		<div
 			class="block text-sm font-medium mb-2"
 			style="color: var(--text-primary);"
 		>
 			Time Range
-		</label>
+		</div>
 		<div class="flex gap-4">
 			{#each timeWindowOptions as window}
 				<label
@@ -73,14 +75,16 @@
 					onclick={() => {
 						selectedTab = index;
 					}}
-					class="px-6 py-3 text-sm font-medium transition-colors"
-					style="
-						color: {selectedTab === index ? 'var(--text-primary)' : 'var(--text-muted)'};
-						border-bottom: 2px solid {selectedTab === index
-						? 'var(--alt-primary)'
-						: 'transparent'};
-						background: {selectedTab === index ? 'var(--surface-hover)' : 'transparent'};
-					"
+					class={cn(
+						buttonVariants({
+							variant: selectedTab === index ? "outline" : "ghost",
+							size: "sm",
+						}),
+						"rounded-none border-b-2 border-t-0 border-l-0 border-r-0",
+						selectedTab === index
+							? "border-b-[var(--text-primary)] bg-[var(--surface-hover)]"
+							: "border-b-transparent",
+					)}
 				>
 					{tab.name}
 				</button>

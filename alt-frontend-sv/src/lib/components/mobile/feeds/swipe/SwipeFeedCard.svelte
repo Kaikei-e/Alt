@@ -1,254 +1,256 @@
 <script lang="ts">
-import {
-	BookOpen,
-	Loader,
-	Sparkles,
-	SquareArrowOutUpRight,
-} from "@lucide/svelte";
-import { onMount } from "svelte";
-import { Spring } from "svelte/motion";
-import { fade } from "svelte/transition";
-import { type SwipeDirection, swipe } from "$lib/actions/swipe";
-import {
-	getFeedContentOnTheFlyClient,
-	summarizeArticleClient,
-} from "$lib/api/client";
-import { Button } from "$lib/components/ui/button";
-import type { RenderFeed } from "$lib/schema/feed";
+  import {
+    BookOpen,
+    Loader,
+    Sparkles,
+    SquareArrowOutUpRight,
+  } from "@lucide/svelte";
+  import { onMount } from "svelte";
+  import { Spring } from "svelte/motion";
+  import { fade } from "svelte/transition";
+  import { type SwipeDirection, swipe } from "$lib/actions/swipe";
+  import {
+    getFeedContentOnTheFlyClient,
+    summarizeArticleClient,
+  } from "$lib/api/client";
+  import { Button } from "$lib/components/ui/button";
+  import type { RenderFeed } from "$lib/schema/feed";
 
-interface Props {
-	feed: RenderFeed;
-	statusMessage: string | null;
-	onDismiss: (direction: number) => Promise<void> | void;
-	getCachedContent?: (feedUrl: string) => string | null;
-	isBusy?: boolean;
-	initialArticleContent?: string | null;
-}
+  interface Props {
+    feed: RenderFeed;
+    statusMessage: string | null;
+    onDismiss: (direction: number) => Promise<void> | void;
+    getCachedContent?: (feedUrl: string) => string | null;
+    isBusy?: boolean;
+    initialArticleContent?: string | null;
+  }
 
-const {
-	feed,
-	statusMessage,
-	onDismiss,
-	getCachedContent,
-	isBusy = false,
-	initialArticleContent,
-}: Props = $props();
+  const {
+    feed,
+    statusMessage,
+    onDismiss,
+    getCachedContent,
+    isBusy = false,
+    initialArticleContent,
+  }: Props = $props();
 
-// State
-let isAISummaryRequested = $state(false);
-let aiSummary = $state<string | null>(null);
-let summaryError = $state<string | null>(null);
-let isSummarizing = $state(false);
+  // State
+  let isAISummaryRequested = $state(false);
+  let aiSummary = $state<string | null>(null);
+  let summaryError = $state<string | null>(null);
+  let isSummarizing = $state(false);
 
-let isContentExpanded = $state(false);
-let fullContent = $state<string | null>(null);
-let isLoadingContent = $state(false);
-let contentError = $state<string | null>(null);
+  let isContentExpanded = $state(false);
+  let fullContent = $state<string | null>(null);
+  let isLoadingContent = $state(false);
+  let contentError = $state<string | null>(null);
 
-// Swipe state with Spring
-const SWIPE_THRESHOLD = 80;
-const HORIZONTAL_SWIPE_THRESHOLD = 15; // 横スワイプ検出の閾値（px）
-let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
-let isDragging = $state(false);
-let hasSwiped = $state(false);
-let swipeElement: HTMLDivElement | null = $state(null);
-let scrollAreaRef: HTMLDivElement | null = $state(null);
-let isHorizontalSwipeActive = $state(false);
+  // Swipe state with Spring
+  const SWIPE_THRESHOLD = 80;
+  const HORIZONTAL_SWIPE_THRESHOLD = 15; // 横スワイプ検出の閾値（px）
+  let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
+  let isDragging = $state(false);
+  let hasSwiped = $state(false);
+  let swipeElement: HTMLDivElement | null = $state(null);
+  let scrollAreaRef: HTMLDivElement | null = $state(null);
+  let isHorizontalSwipeActive = $state(false);
 
-// Derived styles
-const cardStyle = $derived.by(() => {
-	const translate = x.current;
-	const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
+  // Derived styles
+  const cardStyle = $derived.by(() => {
+    const translate = x.current;
+    const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
 
-	return [
-		"max-width: calc(100% - 1rem)",
-		`transform: translate3d(${translate}px, 0, 0)`,
-		`opacity: ${opacity}`,
-		"will-change: transform, opacity",
-	].join("; ");
-});
+    return [
+      "max-width: calc(100% - 1rem)",
+      `transform: translate3d(${translate}px, 0, 0)`,
+      `opacity: ${opacity}`,
+      "will-change: transform, opacity",
+    ].join("; ");
+  });
 
-// Derived
-const sanitizedFullContent = $derived(fullContent);
-const hasDescription = $derived(Boolean(feed.description));
-const publishedLabel = $derived.by(() => {
-	if (feed.created_at) {
-		try {
-			return new Date(feed.created_at).toLocaleString();
-		} catch {
-			// Fallback
-		}
-	}
-	if (!feed.published) return null;
-	try {
-		return new Date(feed.published).toLocaleString();
-	} catch {
-		return feed.published;
-	}
-});
+  // Derived
+  const sanitizedFullContent = $derived(fullContent);
+  const hasDescription = $derived(Boolean(feed.description));
+  const publishedLabel = $derived.by(() => {
+    if (feed.created_at) {
+      try {
+        return new Date(feed.created_at).toLocaleString();
+      } catch {
+        // Fallback
+      }
+    }
+    if (!feed.published) return null;
+    try {
+      return new Date(feed.published).toLocaleString();
+    } catch {
+      return feed.published;
+    }
+  });
 
-// Auto-fetch content
-onMount(() => {
-	// Initialize with prop value if available
-	if (initialArticleContent) {
-		fullContent = initialArticleContent;
-	}
+  // Auto-fetch content
+  onMount(() => {
+    // Initialize with prop value if available
+    if (initialArticleContent) {
+      fullContent = initialArticleContent;
+    }
 
-	const cached = getCachedContent?.(feed.link);
-	if (cached) {
-		fullContent = cached;
-	} else if (!fullContent) {
-		// Background fetch
-		getFeedContentOnTheFlyClient(feed.link)
-			.then((res) => {
-				if (res.content) {
-					fullContent = res.content;
-				}
-			})
-			.catch((err) => {
-				console.error("[SwipeFeedCard] Error auto-fetching content:", err);
-			});
-	}
-});
+    const cached = getCachedContent?.(feed.link);
+    if (cached) {
+      fullContent = cached;
+    } else if (!fullContent) {
+      // Background fetch
+      getFeedContentOnTheFlyClient(feed.link)
+        .then((res) => {
+          if (res.content) {
+            fullContent = res.content;
+          }
+        })
+        .catch((err) => {
+          console.error("[SwipeFeedCard] Error auto-fetching content:", err);
+        });
+    }
+  });
 
-// Set up swipe event listeners reactively
-$effect(() => {
-	if (!swipeElement) return;
+  // Set up swipe event listeners reactively
+  $effect(() => {
+    if (!swipeElement) return;
 
-	const swipeHandler = (event: Event) => {
-		handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
-	};
+    const swipeHandler = (event: Event) => {
+      handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
+    };
 
-	const swipeMoveHandler = (event: Event) => {
-		const moveEvent = event as CustomEvent<{
-			deltaX: number;
-			deltaY: number;
-		}>;
-		const { deltaX, deltaY } = moveEvent.detail;
+    const swipeMoveHandler = (event: Event) => {
+      const moveEvent = event as CustomEvent<{
+        deltaX: number;
+        deltaY: number;
+      }>;
+      const { deltaX, deltaY } = moveEvent.detail;
 
-		// 横方向の動きが優勢なときだけ追従させる
-		if (Math.abs(deltaX) > Math.abs(deltaY)) {
-			isDragging = true;
-			x.set(deltaX, { instant: true });
+      // 横方向の動きが優勢なときだけ追従させる
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        isDragging = true;
+        x.set(deltaX, { instant: true });
 
-			// 横方向の動きが閾値を超えたら、スクロールを無効化してカードのスワイプを優先
-			if (Math.abs(deltaX) >= HORIZONTAL_SWIPE_THRESHOLD && scrollAreaRef) {
-				if (!isHorizontalSwipeActive) {
-					isHorizontalSwipeActive = true;
-					scrollAreaRef.style.touchAction = "none";
-				}
-			}
-		}
-	};
+        // 横方向の動きが閾値を超えたら、スクロールを無効化してカードのスワイプを優先
+        if (Math.abs(deltaX) >= HORIZONTAL_SWIPE_THRESHOLD && scrollAreaRef) {
+          if (!isHorizontalSwipeActive) {
+            isHorizontalSwipeActive = true;
+            scrollAreaRef.style.touchAction = "none";
+          }
+        }
+      }
+    };
 
-	const swipeEndHandler = (event: Event) => {
-		// ドラッグが終わったので中央に戻す
-		// 実際にスワイプが成立した場合は、swipe イベント → handleSwipe → onDismiss が走るので、
-		// カード自体はすぐ差し替えられる
-		// 成立しなかった場合だけ「中央にスナップバック」という役割分担
-		x.target = 0;
-		isDragging = false;
+    const swipeEndHandler = (event: Event) => {
+      // ドラッグが終わったので中央に戻す
+      // 実際にスワイプが成立した場合は、swipe イベント → handleSwipe → onDismiss が走るので、
+      // カード自体はすぐ差し替えられる
+      // 成立しなかった場合だけ「中央にスナップバック」という役割分担
+      x.target = 0;
+      isDragging = false;
 
-		// スワイプが成立しなかった場合、touch-action をリセット
-		// スワイプが成立した場合は handleSwipe で処理されるため、そのまま維持
-		if (isHorizontalSwipeActive && scrollAreaRef && !hasSwiped) {
-			isHorizontalSwipeActive = false;
-			scrollAreaRef.style.touchAction = "pan-y";
-		}
-	};
+      // スワイプが成立しなかった場合、touch-action をリセット
+      // スワイプが成立した場合は handleSwipe で処理されるため、そのまま維持
+      if (isHorizontalSwipeActive && scrollAreaRef && !hasSwiped) {
+        isHorizontalSwipeActive = false;
+        scrollAreaRef.style.touchAction = "pan-y";
+      }
+    };
 
-	swipeElement.addEventListener("swipe", swipeHandler);
-	swipeElement.addEventListener("swipe:move", swipeMoveHandler);
-	swipeElement.addEventListener("swipe:end", swipeEndHandler);
+    swipeElement.addEventListener("swipe", swipeHandler);
+    swipeElement.addEventListener("swipe:move", swipeMoveHandler);
+    swipeElement.addEventListener("swipe:end", swipeEndHandler);
 
-	return () => {
-		swipeElement?.removeEventListener("swipe", swipeHandler);
-		swipeElement?.removeEventListener("swipe:move", swipeMoveHandler);
-		swipeElement?.removeEventListener("swipe:end", swipeEndHandler);
-	};
-});
+    return () => {
+      swipeElement?.removeEventListener("swipe", swipeHandler);
+      swipeElement?.removeEventListener("swipe:move", swipeMoveHandler);
+      swipeElement?.removeEventListener("swipe:end", swipeEndHandler);
+    };
+  });
 
-async function handleToggleContent() {
-	if (!isContentExpanded && !fullContent) {
-		const cached = getCachedContent?.(feed.link);
-		if (cached) {
-			fullContent = cached;
-			isContentExpanded = true;
-			return;
-		}
+  async function handleToggleContent() {
+    if (!isContentExpanded && !fullContent) {
+      const cached = getCachedContent?.(feed.link);
+      if (cached) {
+        fullContent = cached;
+        isContentExpanded = true;
+        return;
+      }
 
-		isLoadingContent = true;
-		contentError = null;
+      isLoadingContent = true;
+      contentError = null;
 
-		try {
-			const res = await getFeedContentOnTheFlyClient(feed.link);
-			if (res.content) {
-				fullContent = res.content;
-			} else {
-				contentError = "Could not fetch article content";
-			}
-		} catch (err) {
-			console.error("Error fetching content:", err);
-			contentError = "Could not fetch article content";
-		} finally {
-			isLoadingContent = false;
-		}
-	}
-	isContentExpanded = !isContentExpanded;
-}
+      try {
+        const res = await getFeedContentOnTheFlyClient(feed.link);
+        if (res.content) {
+          fullContent = res.content;
+        } else {
+          contentError = "Could not fetch article content";
+        }
+      } catch (err) {
+        console.error("Error fetching content:", err);
+        contentError = "Could not fetch article content";
+      } finally {
+        isLoadingContent = false;
+      }
+    }
+    isContentExpanded = !isContentExpanded;
+  }
 
-async function handleGenerateAISummary() {
-	// Hide existing SUMMARY section
-	isAISummaryRequested = true;
-	isSummarizing = true;
-	summaryError = null;
+  async function handleGenerateAISummary() {
+    // Hide existing SUMMARY section
+    isAISummaryRequested = true;
+    isSummarizing = true;
+    summaryError = null;
 
-	try {
-		const res = await summarizeArticleClient(feed.link);
-		if (res.success && res.summary) {
-			aiSummary = res.summary;
-		} else {
-			summaryError = "Failed to generate the summary";
-		}
-	} catch (err) {
-		console.error("Error summarizing article:", err);
-		summaryError = "Failed to generate the summary";
-	} finally {
-		isSummarizing = false;
-	}
-}
+    try {
+      const res = await summarizeArticleClient(feed.link);
+      if (res.success && res.summary) {
+        aiSummary = res.summary;
+      } else {
+        summaryError = "Failed to generate the summary";
+      }
+    } catch (err) {
+      console.error("Error summarizing article:", err);
+      summaryError = "Failed to generate the summary";
+    } finally {
+      isSummarizing = false;
+    }
+  }
 
-async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
-	const dir = event.detail.direction;
-	if (dir !== "left" && dir !== "right") return;
+  async function handleSwipe(
+    event: CustomEvent<{ direction: SwipeDirection }>,
+  ) {
+    const dir = event.detail.direction;
+    if (dir !== "left" && dir !== "right") return;
 
-	hasSwiped = true;
-	isDragging = false;
+    hasSwiped = true;
+    isDragging = false;
 
-	const width = swipeElement?.clientWidth ?? window.innerWidth;
-	const target = dir === "left" ? -width : width;
+    const width = swipeElement?.clientWidth ?? window.innerWidth;
+    const target = dir === "left" ? -width : width;
 
-	// 画面外までスプリングで飛ばす（慣性付きで気持ちよく）
-	await x.set(target, { preserveMomentum: 120 });
+    // 画面外までスプリングで飛ばす（慣性付きで気持ちよく）
+    await x.set(target, { preserveMomentum: 120 });
 
-	// ここで「次の記事へ」「前の記事へ」のロジックを呼ぶ
-	await onDismiss(dir === "left" ? -1 : 1);
+    // ここで「次の記事へ」「前の記事へ」のロジックを呼ぶ
+    await onDismiss(dir === "left" ? -1 : 1);
 
-	// 次のカードに備えてリセット
-	hasSwiped = false;
-	await x.set(0, { instant: true });
+    // 次のカードに備えてリセット
+    hasSwiped = false;
+    await x.set(0, { instant: true });
 
-	// touch-action もリセット
-	if (isHorizontalSwipeActive && scrollAreaRef) {
-		isHorizontalSwipeActive = false;
-		scrollAreaRef.style.touchAction = "pan-y";
-	}
-}
+    // touch-action もリセット
+    if (isHorizontalSwipeActive && scrollAreaRef) {
+      isHorizontalSwipeActive = false;
+      scrollAreaRef.style.touchAction = "pan-y";
+    }
+  }
 </script>
 
 <div
   bind:this={swipeElement}
-  class="absolute w-full h-[95dvh] bg-[var(--alt-glass)] text-[var(--alt-text-primary)] border-2 border-[var(--alt-glass-border)] shadow-[0_12px_40px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.1)] rounded-2xl p-4 backdrop-blur-[20px] touch-action-pan-y select-none"
+  class="absolute w-full h-[95dvh] bg-[var(--alt-glass)] text-[var(--alt-text-primary)] border-2 border-[var(--alt-glass-border)] shadow-[0_12px_40px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.1)] rounded-2xl p-4 backdrop-blur-[20px] touch-action-pan-x select-none"
   use:swipe={{ threshold: SWIPE_THRESHOLD, restraint: 120, allowedTime: 500 }}
   aria-busy={isBusy}
   data-testid="swipe-card"
@@ -296,7 +298,7 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
     <!-- Only Vertical Scroll Area -->
     <div
       bind:this={scrollAreaRef}
-      style="touch-action: pan-y; overflow-x: hidden;"
+      style="touch-action: pan-y pan-x; overflow-x: hidden;"
       class="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 bg-transparent scroll-smooth overscroll-contain scrollbar-thin"
       data-testid="unified-scroll-area"
     >
