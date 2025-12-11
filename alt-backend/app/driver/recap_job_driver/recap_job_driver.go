@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -26,6 +27,10 @@ func NewRecapJobGateway(baseURL string) recap_job_port.RecapJobRepository {
 }
 
 func (g *RecapJobGateway) GetRecapJobs(ctx context.Context, windowSeconds int64, limit int64) ([]domain.RecapJob, error) {
+	if g.baseURL == "" {
+		return nil, fmt.Errorf("recap worker URL is not configured")
+	}
+
 	url := fmt.Sprintf("%s/v1/dashboard/recap_jobs?window=%d&limit=%d", g.baseURL, windowSeconds, limit)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -35,12 +40,13 @@ func (g *RecapJobGateway) GetRecapJobs(ctx context.Context, windowSeconds int64,
 
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
+		return nil, fmt.Errorf("failed to execute request to %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var jobs []domain.RecapJob
