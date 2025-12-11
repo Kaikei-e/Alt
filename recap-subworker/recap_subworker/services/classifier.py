@@ -66,7 +66,9 @@ class GenreClassifierService:
 
                     if self.tfidf_path.exists():
                         self.tfidf = joblib.load(self.tfidf_path)
-                        logger.info("TF-IDF vectorizer loaded")
+                        # Fix: Re-attach tokenizer as it might be lost during pickling or require re-initialization
+                        self.tfidf.tokenizer = SudachiTokenizer()
+                        logger.info("TF-IDF vectorizer loaded with re-attached tokenizer")
                     else:
                         logger.warning("TF-IDF vectorizer not found, will use embeddings only if model allows")
 
