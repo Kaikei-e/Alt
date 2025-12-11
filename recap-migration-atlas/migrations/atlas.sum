@@ -1,4 +1,4 @@
-h1:KVfZYubdw2Pi3T1Sa9/gESvGjFSz9eg33Zbr73mCHDU=
+h1:Z4DOmMsyUoeIeNfdKvrFKckpA9RvlDtBPRpE4vdsbK0=
 20240101000000_create_recap_subworker_tables.sql h1:+6xgDONWHNmxnO9fpHkciX6pKuvzuwGYlp68GIO+rxw=
 20240101000100_create_recap_job_tables.sql h1:hGr/YECmSltZD0SmwSXcfoRJWQoUTIvpx7DygDCpZMA=
 20240101000200_create_recap_final_sections.sql h1:Rk51k37W+Txj8k5Ux8ZynZNOpPyNXFDhOiXMV+f52xQ=
@@ -15,3 +15,4 @@ h1:KVfZYubdw2Pi3T1Sa9/gESvGjFSz9eg33Zbr73mCHDU=
 20251209000000_create_admin_jobs_table.sql h1:ApW3Zc5/FRH9nYFxjgRiHJBjcaOryczfp90pPUiM5ro=
 20251209010000_create_log_errors.sql h1:X3wSVpdHSOgqbgZzQPz4cEm1Ywzb6GJsk4pP9B1gRiY=
 20251210000000_create_classification_queue.sql h1:bmegzOoZI5iznQd0NCHb0pReSXkwfyC/7bmuX8N9k/Q=
+20251212000000_add_job_state_tracking.sql h1:BBS0KOdaDgnzx6Z1m3unV2E3wGiJui+LH9t3Qqv2Cy8=
