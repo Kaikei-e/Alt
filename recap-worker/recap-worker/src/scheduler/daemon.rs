@@ -47,6 +47,27 @@ impl BatchDaemon {
 
     async fn run(self) {
         let state = self;
+
+        // 起動時に中断されたジョブがないか確認
+        if let Ok(Some((job_id, status, last_stage))) = state.scheduler.find_resumable_job().await {
+            info!(
+                %job_id,
+                ?status,
+                ?last_stage,
+                "found resumable job, resuming..."
+            );
+
+            let mut job = JobContext::new(job_id, state.genres.clone());
+            if let Some(stage) = last_stage {
+                job = job.with_stage(stage);
+            }
+
+            match state.scheduler.run_job(job).await {
+                Ok(()) => info!(%job_id, "resumed job completed"),
+                Err(err) => error!(%job_id, error = %err, "resumed job failed"),
+            }
+        }
+
         loop {
             let now = Utc::now();
             let next = state.cadence.next_run_from(now);
@@ -60,6 +81,7 @@ impl BatchDaemon {
             );
             sleep(wait).await;
 
+            // Start new job
             let job_id = Uuid::new_v4();
             let job = JobContext::new(job_id, state.genres.clone());
             match state.scheduler.run_job(job).await {

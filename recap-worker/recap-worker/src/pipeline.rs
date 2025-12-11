@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 
-use crate::pipeline::evidence::EvidenceBundle;
 use crate::{
     clients::alt_backend::{AltBackendClient, AltBackendConfig},
     clients::{NewsCreatorClient, SubworkerClient, TagGeneratorClient},
@@ -18,6 +17,7 @@ pub mod dedup;
 pub(crate) mod dispatch;
 pub(crate) mod embedding;
 pub(crate) mod evidence;
+pub(crate) mod executor;
 pub(crate) mod fetch;
 pub(crate) mod genre;
 pub(crate) mod genre_canonical;
@@ -50,7 +50,17 @@ pub(crate) struct PipelineOrchestrator {
     classification_queue: Arc<ClassificationJobQueue>,
 }
 
-struct PipelineStages {
+impl PipelineOrchestrator {
+    pub(crate) fn stages(&self) -> &PipelineStages {
+        &self.stages
+    }
+
+    pub(crate) fn recap_dao(&self) -> &RecapDao {
+        &self.recap_dao
+    }
+}
+
+pub(crate) struct PipelineStages {
     fetch: Arc<dyn FetchStage>,
     preprocess: Arc<dyn PreprocessStage>,
     dedup: Arc<dyn DedupStage>,
@@ -207,6 +217,50 @@ impl PipelineOrchestrator {
     pub(crate) async fn execute(&self, job: &JobContext) -> Result<persist::PersistResult> {
         tracing::debug!(job_id = %job.job_id, prompt_version = %self.config.llm_prompt_version(), "recap pipeline started");
 
+        self.prepare_pipeline().await;
+
+        let resume_stage_idx = Self::get_resume_stage_index(job);
+        tracing::info!(
+            job_id = %job.job_id,
+            current_stage = ?job.current_stage,
+            resume_idx = resume_stage_idx,
+            "pipeline execution context determined"
+        );
+
+        let executor = executor::StageExecutor::new(self);
+        let fetched = executor.execute_fetch_stage(job, resume_stage_idx).await?;
+        let preprocessed = executor
+            .execute_preprocess_stage(job, resume_stage_idx, fetched)
+            .await?;
+        let deduplicated = executor
+            .execute_dedup_stage(job, resume_stage_idx, preprocessed)
+            .await?;
+        let genre_bundle = executor
+            .execute_genre_stage(job, resume_stage_idx, deduplicated)
+            .await?;
+        let selected = executor
+            .execute_select_stage(job, resume_stage_idx, genre_bundle)
+            .await?;
+        let evidence_bundle =
+            executor::StageExecutor::build_evidence_bundle(job, resume_stage_idx, selected);
+        let dispatched = executor
+            .execute_dispatch_stage(job, resume_stage_idx, evidence_bundle)
+            .await?;
+        let persisted = executor
+            .execute_persist_stage(job, resume_stage_idx, dispatched)
+            .await?;
+
+        tracing::debug!(
+            job_id = %job.job_id,
+            total_genres = persisted.total_genres,
+            genres_stored = persisted.genres_stored,
+            "recap pipeline completed"
+        );
+        Ok(persisted)
+    }
+
+    /// パイプライン実行前の初期化処理（グラフ更新と設定読み込み）
+    async fn prepare_pipeline(&self) {
         // グラフ最新化（失敗してもパイプラインは続行）
         if self.config.recap_pre_refresh_graph_enabled() {
             if let Err(err) = self.refresh_graph_before_pipeline().await {
@@ -230,34 +284,6 @@ impl PipelineOrchestrator {
                 );
             }
         }
-
-        let fetched = self.stages.fetch.fetch(job).await?;
-        let preprocessed = self.stages.preprocess.preprocess(job, fetched).await?;
-        let deduplicated = self.stages.dedup.deduplicate(job, preprocessed).await?;
-        let genre_bundle = self.stages.genre.assign(job, deduplicated).await?;
-        let selected = self.stages.select.select(job, genre_bundle).await?;
-        // SelectedSummaryからEvidenceBundleに変換
-        use crate::pipeline::genre::GenreBundle;
-        let evidence_bundle = EvidenceBundle::from_genre_bundle(
-            job.job_id,
-            GenreBundle {
-                job_id: selected.job_id,
-                assignments: selected.assignments,
-                genre_distribution: std::collections::HashMap::new(),
-            },
-        );
-        let dispatched = self.stages.dispatch.dispatch(job, evidence_bundle).await?;
-        let persisted = self.stages.persist.persist(job, dispatched).await?;
-        tracing::debug!(
-            job_id = %job.job_id,
-            total_genres = persisted.total_genres,
-            genres_stored = persisted.genres_stored,
-            genres_failed = persisted.genres_failed,
-            genres_skipped = persisted.genres_skipped,
-            genres_no_evidence = persisted.genres_no_evidence,
-            "recap pipeline completed"
-        );
-        Ok(persisted)
     }
 
     /// パイプライン実行前にグラフを最新化する
@@ -272,6 +298,22 @@ impl PipelineOrchestrator {
 
         tracing::info!("graph refresh completed successfully");
         Ok(())
+    }
+
+    fn get_resume_stage_index(job: &JobContext) -> usize {
+        let stages = [
+            "fetch",
+            "preprocess",
+            "dedup",
+            "genre",
+            "select",
+            "dispatch",
+            "persist",
+        ];
+        match &job.current_stage {
+            Some(stage) => stages.iter().position(|&s| s == stage).map_or(0, |i| i + 1),
+            None => 0,
+        }
     }
 }
 
@@ -383,6 +425,7 @@ mod tests {
 
     use super::*;
     use crate::config::ENV_MUTEX;
+    use crate::pipeline::evidence::EvidenceBundle;
     use crate::pipeline::{
         dedup::{DedupStage, DeduplicatedCorpus},
         dispatch::{DispatchResult, DispatchStage},
