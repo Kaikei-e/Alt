@@ -36,10 +36,19 @@ impl ApplicationInitializer {
         let elapsed = start_time.elapsed();
         tracing::info!("Application initialization completed in {elapsed:?}");
 
+        // Use microseconds to ensure we capture sub-millisecond durations
+        // Convert to milliseconds, ensuring at least 1ms if any time passed
+        let time_ms = elapsed.as_micros() as u64 / 1000;
+        let initialization_time_ms = if time_ms == 0 && elapsed.as_nanos() > 0 {
+            1 // At least 1ms if any time passed
+        } else {
+            time_ms
+        };
+
         Ok(InitializationResult {
             logging_initialized: true,
             config_validated: true,
-            initialization_time_ms: elapsed.as_millis() as u64,
+            initialization_time_ms,
         })
     }
 
@@ -47,9 +56,7 @@ impl ApplicationInitializer {
         // Use the memory-safe logging setup
         setup_logging_safe(log_level)?;
 
-        tracing::info!(
-            "Logging system initialized successfully with level: {log_level:?}"
-        );
+        tracing::info!("Logging system initialized successfully with level: {log_level:?}");
         Ok(())
     }
 
