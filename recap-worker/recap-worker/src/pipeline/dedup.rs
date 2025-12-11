@@ -16,9 +16,10 @@ use crate::util::text::{hash_text, rolling_hash_windows, split_sentences};
 
 use super::preprocess::{PreprocessedArticle, PreprocessedCorpus};
 use super::tag_signal::TagSignal;
+use serde::{Deserialize, Serialize};
 
 /// 重複排除後の記事データ。
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub(crate) struct DeduplicatedArticle {
     pub(crate) id: String,
     pub(crate) title: Option<String>,
@@ -31,7 +32,7 @@ pub(crate) struct DeduplicatedArticle {
     pub(crate) duplicates: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct DeduplicatedCorpus {
     pub(crate) job_id: Uuid,
     pub(crate) articles: Vec<DeduplicatedArticle>,
@@ -39,7 +40,7 @@ pub(crate) struct DeduplicatedCorpus {
 }
 
 /// 重複排除統計。
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub(crate) struct DedupStats {
     pub(crate) total_articles: usize,
     pub(crate) unique_articles: usize,

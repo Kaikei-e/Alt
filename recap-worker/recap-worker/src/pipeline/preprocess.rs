@@ -22,9 +22,10 @@ use crate::store::{dao::RecapDao, models::PreprocessMetrics};
 use super::fetch::{FetchedArticle, FetchedCorpus};
 use super::tag_signal::TagSignal;
 use crate::clients::SubworkerClient;
+use serde::{Deserialize, Serialize};
 
 /// 前処理後の記事データ。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct PreprocessedArticle {
     pub(crate) id: String,
     pub(crate) title: Option<String>,
@@ -38,7 +39,7 @@ pub(crate) struct PreprocessedArticle {
     pub(crate) tags: Vec<TagSignal>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct PreprocessedCorpus {
     pub(crate) job_id: Uuid,
     pub(crate) articles: Vec<PreprocessedArticle>,

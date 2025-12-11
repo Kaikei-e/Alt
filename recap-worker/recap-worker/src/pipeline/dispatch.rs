@@ -17,9 +17,10 @@ use crate::{
 };
 
 use super::evidence::EvidenceBundle;
+use serde::{Deserialize, Serialize};
 
 /// ディスパッチ結果。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct DispatchResult {
     pub(crate) job_id: Uuid,
     pub(crate) genre_results: HashMap<String, GenreResult>,
@@ -30,7 +31,7 @@ pub(crate) struct DispatchResult {
 }
 
 /// ジャンル別の処理結果。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GenreResult {
     #[allow(dead_code)] // kept for debugging and future use
     pub(crate) genre: String,

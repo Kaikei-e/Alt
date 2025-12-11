@@ -75,7 +75,7 @@ pub(crate) struct ClassifierStats {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct EvidenceBundle {
-    job_id: Uuid,
+    pub(crate) job_id: Uuid,
     pub(crate) corpora: HashMap<String, EvidenceCorpus>,
 }
 

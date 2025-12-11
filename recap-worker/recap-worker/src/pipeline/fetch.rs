@@ -17,8 +17,9 @@ use crate::{
 };
 
 use super::tag_signal::TagSignal;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct FetchedArticle {
     pub(crate) id: String,
     pub(crate) title: Option<String>,
@@ -29,7 +30,7 @@ pub(crate) struct FetchedArticle {
     pub(crate) tags: Vec<TagSignal>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct FetchedCorpus {
     pub(crate) job_id: Uuid,
     pub(crate) articles: Vec<FetchedArticle>,

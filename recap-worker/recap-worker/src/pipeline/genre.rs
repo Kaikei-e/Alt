@@ -28,9 +28,10 @@ use super::genre_refine::{
 };
 use super::graph_override::GraphOverrideSettings;
 use super::tag_signal::TagSignal;
+use serde::{Deserialize, Serialize};
 
 /// Coarseステージで算出されたジャンル候補。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct GenreCandidate {
     pub(crate) name: String,
     pub(crate) score: f32,
@@ -49,7 +50,7 @@ type ProduceCandidatesResult = (
 );
 
 /// ジャンル付き記事。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct GenreAssignment {
     pub(crate) genres: Vec<String>, // 1〜3個のジャンル
     pub(crate) candidates: Vec<GenreCandidate>,
@@ -68,14 +69,14 @@ impl GenreAssignment {
 }
 
 /// ジャンル別の記事グループ。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct GenreBundle {
     pub(crate) job_id: Uuid,
     pub(crate) assignments: Vec<GenreAssignment>,
     pub(crate) genre_distribution: HashMap<String, usize>, // ジャンル別記事数
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub(crate) struct FeatureProfile {
     pub(crate) tfidf_sum: f32,
     pub(crate) bm25_peak: f32,

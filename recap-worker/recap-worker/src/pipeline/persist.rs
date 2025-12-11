@@ -10,6 +10,7 @@ use crate::store::models::RecapOutput;
 
 use super::dispatch::DispatchResult;
 use crate::store::models::PersistedGenre;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 /// Sanitize title and summary text by removing markdown code blocks
@@ -21,7 +22,7 @@ fn sanitize_title(text: &str) -> String {
 }
 
 /// 永続化結果。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PersistResult {
     pub(crate) job_id: uuid::Uuid,
     pub(crate) genres_stored: usize,

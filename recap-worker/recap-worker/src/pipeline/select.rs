@@ -10,10 +10,11 @@ use crate::pipeline::embedding::Embedder;
 use crate::store::dao::RecapDao;
 use crate::util::kmeans::KMeans;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct SelectedSummary {
     pub(crate) job_id: Uuid,
     pub(crate) assignments: Vec<GenreAssignment>,
@@ -652,47 +653,46 @@ mod tests {
         let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
             Some(Arc::new(MockEmbedder));
 
-        let stage = SummarySelectStage::new(
-            embedding_service,
-            3,
-            0.8,
-            None,
-            None,
-        );
+        let stage = SummarySelectStage::new(embedding_service, 3, 0.8, None, None);
 
         // Create 20 "other" assignments
         let assignments: Vec<GenreAssignment> = (0..20)
-            .map(|i| {
-                GenreAssignment {
-                    genres: vec!["other".to_string()],
-                    candidates: vec![],
-                    genre_scores: std::collections::HashMap::from([("other".to_string(), 10)]),
-                    genre_confidence: std::collections::HashMap::from([("other".to_string(), 0.9)]),
-                    feature_profile: FeatureProfile::default(),
-                    article: DeduplicatedArticle {
-                        id: format!("art-{}", i),
-                        title: Some(format!("Title {}", i)),
-                        sentences: vec![format!("Sentence {}", i)],
-                        ..Default::default()
-                    },
-                    embedding: None,
-                }
+            .map(|i| GenreAssignment {
+                genres: vec!["other".to_string()],
+                candidates: vec![],
+                genre_scores: std::collections::HashMap::from([("other".to_string(), 10)]),
+                genre_confidence: std::collections::HashMap::from([("other".to_string(), 0.9)]),
+                feature_profile: FeatureProfile::default(),
+                article: DeduplicatedArticle {
+                    id: format!("art-{}", i),
+                    title: Some(format!("Title {}", i)),
+                    sentences: vec![format!("Sentence {}", i)],
+                    ..Default::default()
+                },
+                embedding: None,
             })
             .collect();
 
-        let result = stage.subcluster_others(assignments).await.expect("subcluster failed");
+        let result = stage
+            .subcluster_others(assignments)
+            .await
+            .expect("subcluster failed");
 
         // Should have split into multiple clusters (other.0, other.1, etc.)
         // 20 items -> k should be > 1. (20/3).clamp(1,5) = 6 clamp(1,5) = 5.
         // So we expect multiple "other.X" genres.
 
-        let genres: std::collections::HashSet<String> = result
-            .iter()
-            .flat_map(|a| a.genres.clone())
-            .collect();
+        let genres: std::collections::HashSet<String> =
+            result.iter().flat_map(|a| a.genres.clone()).collect();
 
-        assert!(genres.len() > 1, "Should have split 'other' into multiple sub-genres");
-        assert!(genres.iter().any(|g| g.starts_with("other.")), "Should contain other.X genres");
+        assert!(
+            genres.len() > 1,
+            "Should have split 'other' into multiple sub-genres"
+        );
+        assert!(
+            genres.iter().any(|g| g.starts_with("other.")),
+            "Should contain other.X genres"
+        );
     }
 
     #[test]
