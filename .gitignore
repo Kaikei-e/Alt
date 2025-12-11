@@ -71,3 +71,4 @@ recap-worker/.vscode/settings.json
 recap-subworker/recap_subworker.egg-info
 tag-generator/models/
 recap-subworker/data
+recap-worker/recap-worker/tests/data/golden_classification.json

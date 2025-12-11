@@ -516,7 +516,7 @@ services:
       - recap_db_password
     volumes:
       # Share golden dataset from recap-worker
-      - ./recap-worker/recap-worker/tests/data/golden_classification.json:/app/data/golden_classification.json:ro
+      - ./recap-subworker/data/golden_classification.json:/app/data/golden_classification.json:ro
       # Mount trained genre classifier
       - ./recap-subworker/data/genre_classifier.joblib:/app/data/genre_classifier.joblib:ro
       - ./recap-subworker/data/tfidf_vectorizer.joblib:/app/data/tfidf_vectorizer.joblib:ro
