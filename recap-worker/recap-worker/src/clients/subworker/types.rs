@@ -29,7 +29,7 @@ pub(crate) const POLL_REQUEST_RETRY_DELAY_MS: u64 = 1_000;
 
 // Clustering types
 #[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ClusteringResponse {
     pub(crate) run_id: i64,
     pub(crate) job_id: Uuid,
@@ -51,7 +51,7 @@ impl ClusteringResponse {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum ClusterJobStatus {
     Running,
@@ -89,7 +89,7 @@ impl fmt::Display for ClusterJobStatus {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ClusterInfo {
     pub(crate) cluster_id: i32,
     pub(crate) size: usize,
@@ -104,7 +104,7 @@ pub(crate) struct ClusterInfo {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ClusterRepresentative {
     #[serde(default)]
     pub(crate) article_id: String,
