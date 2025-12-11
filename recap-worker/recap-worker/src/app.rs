@@ -115,8 +115,12 @@ impl ComponentRegistry {
             Arc::clone(&config),
             Arc::clone(&recap_dao),
         ));
-        let scheduler =
-            Scheduler::new(Arc::clone(&pipeline), morning_pipeline, Arc::clone(&config));
+        let scheduler = Scheduler::new(
+            Arc::clone(&pipeline),
+            morning_pipeline,
+            Arc::clone(&config),
+            Arc::clone(&recap_dao),
+        );
 
         Ok(Self {
             config,
