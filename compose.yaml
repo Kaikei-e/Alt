@@ -810,7 +810,7 @@ services:
           devices:
             - driver: nvidia
               count: all
-              capabilities: [gpu]
+              capabilities: [gpu, utility]
     ports:
       - "8501:8501"
       - "8502:8000"
