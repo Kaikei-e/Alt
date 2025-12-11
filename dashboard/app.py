@@ -4,7 +4,7 @@ import os
 import sys
 import time
 import requests
-from tabs import overview, classification, clustering, summarization, log_analysis, system_monitor_tab, admin_jobs
+from tabs import overview, classification, clustering, summarization, log_analysis, system_monitor_tab, admin_jobs, recap_jobs
 from utils import TIME_WINDOWS
 
 # --- Configuration ---
@@ -63,7 +63,7 @@ time_range = st.radio(
 )
 window_seconds = TIME_WINDOWS.get(time_range, TIME_WINDOWS["4h"])
 
-tabs_ui = st.tabs(["Overview", "Classification", "Clustering", "Summarization", "Log Analysis", "System Monitor", "Admin Jobs"])
+tabs_ui = st.tabs(["Overview", "Classification", "Clustering", "Summarization", "Log Analysis", "System Monitor", "Admin Jobs", "Recap Jobs"])
 
 with tabs_ui[0]:
     overview.render_overview(window_seconds)
@@ -85,3 +85,6 @@ with tabs_ui[5]:
 
 with tabs_ui[6]:
     admin_jobs.render_admin_jobs(window_seconds)
+
+with tabs_ui[7]:
+    recap_jobs.render_recap_jobs(window_seconds)
