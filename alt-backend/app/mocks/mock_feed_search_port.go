@@ -94,3 +94,19 @@ func (mr *MockSearchFeedPortMockRecorder) SearchFeeds(ctx, query any) *gomock.Ca
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchFeeds", reflect.TypeOf((*MockSearchFeedPort)(nil).SearchFeeds), ctx, query)
 }
+
+// SearchFeedsWithPagination mocks base method.
+func (m *MockSearchFeedPort) SearchFeedsWithPagination(ctx context.Context, query string, offset, limit int) ([]domain.SearchArticleHit, int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchFeedsWithPagination", ctx, query, offset, limit)
+	ret0, _ := ret[0].([]domain.SearchArticleHit)
+	ret1, _ := ret[1].(int)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// SearchFeedsWithPagination indicates an expected call of SearchFeedsWithPagination.
+func (mr *MockSearchFeedPortMockRecorder) SearchFeedsWithPagination(ctx, query, offset, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchFeedsWithPagination", reflect.TypeOf((*MockSearchFeedPort)(nil).SearchFeedsWithPagination), ctx, query, offset, limit)
+}

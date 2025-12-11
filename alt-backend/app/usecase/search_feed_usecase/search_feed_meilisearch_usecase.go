@@ -5,6 +5,7 @@ import (
 	"alt/port/feed_search_port"
 	"alt/port/feed_url_link_port"
 	"context"
+	"errors"
 	"log/slog"
 )
 
@@ -112,4 +113,81 @@ func (u *SearchFeedMeilisearchUsecase) Execute(ctx context.Context, query string
 		"results_count", len(feedItems))
 
 	return feedItems, nil
+}
+
+func (u *SearchFeedMeilisearchUsecase) ExecuteWithPagination(ctx context.Context, query string, offset int, limit int) ([]*domain.FeedItem, bool, error) {
+	// Validate limit
+	if limit <= 0 {
+		u.logger.Error("invalid limit: must be greater than 0", "limit", limit)
+		return nil, false, errors.New("limit must be greater than 0")
+	}
+	if limit > 100 {
+		u.logger.Error("invalid limit: cannot exceed 100", "limit", limit)
+		return nil, false, errors.New("limit cannot exceed 100")
+	}
+
+	// Validate offset
+	if offset < 0 {
+		u.logger.Error("invalid offset: must be non-negative", "offset", offset)
+		return nil, false, errors.New("offset must be non-negative")
+	}
+
+	u.logger.Info("executing feed search via meilisearch with pagination",
+		"query", query,
+		"offset", offset,
+		"limit", limit)
+
+	// Search for articles using Meilisearch with pagination
+	searchHits, totalCount, err := u.searchPort.SearchFeedsWithPagination(ctx, query, offset, limit)
+	if err != nil {
+		u.logger.Error("failed to search feeds via meilisearch", "error", err, "query", query)
+		return nil, false, err
+	}
+
+	if len(searchHits) == 0 {
+		u.logger.Info("no search results found", "query", query)
+		return []*domain.FeedItem{}, false, nil
+	}
+
+	// Extract article IDs for URL lookup
+	articleIDs := make([]string, len(searchHits))
+	for i, hit := range searchHits {
+		articleIDs[i] = hit.ID
+	}
+
+	// Get feed URLs for the articles
+	feedURLs, err := u.urlPort.GetFeedURLsByArticleIDs(ctx, articleIDs)
+	if err != nil {
+		u.logger.Error("failed to get feed URLs", "error", err, "article_ids", articleIDs)
+		return nil, false, err
+	}
+
+	// Create URL map for quick lookup
+	urlMap := make(map[string]string)
+	for _, feedURL := range feedURLs {
+		urlMap[feedURL.ArticleID] = feedURL.URL
+	}
+
+	// Convert search hits to feed items
+	feedItems := make([]*domain.FeedItem, len(searchHits))
+	for i, hit := range searchHits {
+		feedItems[i] = &domain.FeedItem{
+			Title:       hit.Title,
+			Description: hit.Content,
+			Link:        urlMap[hit.ID], // Will be empty string if not found
+		}
+	}
+
+	// Determine if there are more results
+	hasMore := offset+len(feedItems) < totalCount
+
+	u.logger.Info("feed search via meilisearch with pagination completed",
+		"query", query,
+		"offset", offset,
+		"limit", limit,
+		"results_count", len(feedItems),
+		"total_count", totalCount,
+		"has_more", hasMore)
+
+	return feedItems, hasMore, nil
 }

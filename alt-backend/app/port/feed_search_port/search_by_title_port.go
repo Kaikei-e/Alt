@@ -11,4 +11,5 @@ type SearchByTitlePort interface {
 
 type SearchFeedPort interface {
 	SearchFeeds(ctx context.Context, query string) ([]domain.SearchArticleHit, error)
+	SearchFeedsWithPagination(ctx context.Context, query string, offset int, limit int) ([]domain.SearchArticleHit, int, error)
 }

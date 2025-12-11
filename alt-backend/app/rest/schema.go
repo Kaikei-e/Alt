@@ -51,7 +51,9 @@ type articleAmount struct {
 }
 
 type FeedSearchPayload struct {
-	Query string `json:"query" validate:"required,min=1,max=1000"`
+	Query  string `json:"query" validate:"required,min=1,max=1000"`
+	Cursor *int   `json:"cursor,omitempty"` // Offset for pagination (0-based)
+	Limit  *int   `json:"limit,omitempty" validate:"omitempty,min=1,max=100"`
 }
 
 type FeedTagsPayload struct {
