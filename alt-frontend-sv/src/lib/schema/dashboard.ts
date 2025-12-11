@@ -37,3 +37,11 @@ export const TIME_WINDOWS: Record<TimeWindow, number> = {
   "3d": 72 * 3600,
 };
 
+
+export interface RecapJob {
+  job_id: string;
+  status: string;
+  last_stage: string | null;
+  kicked_at: string;
+  updated_at: string;
+}

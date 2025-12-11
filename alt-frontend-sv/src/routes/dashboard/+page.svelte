@@ -5,6 +5,7 @@
 	import SummarizationTab from "$lib/components/dashboard/SummarizationTab.svelte";
 	import LogAnalysisTab from "$lib/components/dashboard/LogAnalysisTab.svelte";
 	import AdminJobsTab from "$lib/components/dashboard/AdminJobsTab.svelte";
+	import RecapJobsTab from "$lib/components/dashboard/RecapJobsTab.svelte";
 	import SystemMonitorTab from "$lib/components/dashboard/SystemMonitorTab.svelte";
 	import type { TimeWindow } from "$lib/schema/dashboard";
 	import { TIME_WINDOWS } from "$lib/schema/dashboard";
@@ -24,6 +25,7 @@
 		{ name: "Log Analysis", component: LogAnalysisTab },
 		{ name: "System Monitor", component: SystemMonitorTab },
 		{ name: "Admin Jobs", component: AdminJobsTab },
+		{ name: "Recap Jobs", component: RecapJobsTab },
 	];
 </script>
 
@@ -73,15 +75,11 @@
 					}}
 					class="px-6 py-3 text-sm font-medium transition-colors"
 					style="
-						color: {selectedTab === index
-							? 'var(--text-primary)'
-							: 'var(--text-muted)'};
+						color: {selectedTab === index ? 'var(--text-primary)' : 'var(--text-muted)'};
 						border-bottom: 2px solid {selectedTab === index
-							? 'var(--alt-primary)'
-							: 'transparent'};
-						background: {selectedTab === index
-							? 'var(--surface-hover)'
-							: 'transparent'};
+						? 'var(--alt-primary)'
+						: 'transparent'};
+						background: {selectedTab === index ? 'var(--surface-hover)' : 'transparent'};
 					"
 				>
 					{tab.name}
@@ -113,6 +111,8 @@
 			<SystemMonitorTab />
 		{:else if selectedTab === 6}
 			<AdminJobsTab {windowSeconds} />
+		{:else if selectedTab === 7}
+			<RecapJobsTab {windowSeconds} />
 		{/if}
 	</div>
 </div>
