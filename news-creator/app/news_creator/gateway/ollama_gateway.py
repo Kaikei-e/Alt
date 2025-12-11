@@ -40,7 +40,7 @@ class OllamaGateway(LLMProviderPort):
         num_predict: Optional[int] = None,
         stream: bool = False,
         keep_alive: Optional[Union[int, str]] = None,
-        format: Optional[str] = None,
+        format: Optional[Union[str, Dict[str, Any]]] = None,
         options: Optional[Dict[str, Any]] = None,
     ) -> LLMGenerateResponse:
         """

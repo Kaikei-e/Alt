@@ -91,30 +91,26 @@ class RecapSummaryUsecase:
                     },
                 )
 
-            llm_options_retry: Optional[Dict[str, Any]] = None
-            if current_temp is not None:
-                # Merge temperature and repetition penalty into existing options
-                if llm_options is not None:
-                    llm_options_retry = {
-                        **llm_options,
-                        "temperature": float(current_temp),
-                        "repeat_penalty": float(current_repeat_penalty),
-                    }
-                else:
-                    llm_options_retry = {
-                        "temperature": float(current_temp),
-                        "repeat_penalty": float(current_repeat_penalty),
-                    }
-            elif llm_options is not None:
-                llm_options_retry = {**llm_options, "repeat_penalty": float(current_repeat_penalty)}
-            else:
-                llm_options_retry = {"repeat_penalty": float(current_repeat_penalty)}
+            # Prepare schema for Structured Outputs
+            json_schema = RecapSummary.model_json_schema()
 
-            # Use JSON format for structured output (Ollama structured output mode)
+            llm_options_retry = None
+            if current_temp is not None:
+                llm_options_retry = {
+                     **(llm_options or {}),
+                    "temperature": float(current_temp),
+                    "repeat_penalty": float(current_repeat_penalty),
+                }
+            elif llm_options is not None:
+                 llm_options_retry = {**llm_options, "repeat_penalty": float(current_repeat_penalty)}
+            else:
+                 llm_options_retry = {"repeat_penalty": float(current_repeat_penalty)}
+
+            # Use JSON schema for structured output (Ollama structured output mode)
             llm_response = await self.llm_provider.generate(
                 prompt,
                 num_predict=self.config.summary_num_predict,
-                format="json",
+                format=json_schema,
                 options=llm_options_retry,
             )
 
@@ -381,135 +377,34 @@ class RecapSummaryUsecase:
         if not content:
             raise RuntimeError("LLM returned empty response for recap summary")
 
-        errors = 0
-
-        # Step 1: Clean Markdown code blocks from the response
-        cleaned_content = self._clean_markdown_code_blocks(content)
-
-        candidate: Optional[str] = None
         try:
-            candidate = self._extract_json_object(cleaned_content)
-        except RuntimeError as exc:
-            logger.warning(
-                "Structured JSON not found in recap summary response; falling back to heuristic parsing",
-                extra={"content_preview": cleaned_content[:200]},
-            )
-            errors += 1
-            fallback = self._fallback_summary_from_text(cleaned_content, max_bullets)
-            return self._sanitize_summary_payload(fallback, max_bullets), errors
-
-        if candidate is None:
-            errors += 1
-            fallback = self._fallback_summary_from_text(cleaned_content, max_bullets)
-            return self._sanitize_summary_payload(fallback, max_bullets), errors
-
-        # Step 2: Try standard JSON parsing first
-        try:
-            parsed = json.loads(candidate)
+            # Structured Outputs should trigger clean JSON, but just in case, straightforward load.
+            parsed = json.loads(content)
         except json.JSONDecodeError as exc:
-            errors += 1
             logger.warning(
-                "Standard JSON parsing failed, attempting JSON repair",
-                extra={"error": str(exc), "content_preview": candidate[:200]},
+                "Structured Output parsing failed, attempting repair",
+                extra={"error": str(exc), "content_preview": content[:200]},
             )
-            # Step 3: Try JSON repair if available
-            if json_repair is not None:
+            # Minimal fallback if even structured output fails (rare)
+            if json_repair:
                 try:
-                    repaired_json = json_repair.repair_json(candidate)
+                    repaired_json = json_repair.repair_json(content)
                     parsed = json.loads(repaired_json)
-                    logger.info("Successfully repaired JSON using json_repair")
-                except Exception as repair_exc:
-                    logger.error(
-                        "JSON repair also failed, falling back to heuristic parsing",
-                        extra={"repair_error": str(repair_exc), "content_preview": candidate[:200]},
-                    )
-                    fallback = self._fallback_summary_from_text(cleaned_content, max_bullets)
-                    return self._sanitize_summary_payload(fallback, max_bullets), errors
+                except Exception:
+                     # If repair fails, we can't do much without heuristics,
+                     # but let's assume Structured Outputs generally work.
+                     # We could re-introduce heuristics if strictly necessary,
+                     # but usually this means the model completely refused or broke.
+                     raise RuntimeError(f"Failed to parse structured output: {exc}")
             else:
-                logger.error(
-                    "Failed to parse recap summary JSON and json_repair not available",
-                    extra={"content": candidate[:500]},
-                )
-                fallback = self._fallback_summary_from_text(cleaned_content, max_bullets)
-                return self._sanitize_summary_payload(fallback, max_bullets), errors
+                 raise RuntimeError(f"Failed to parse structured output: {exc}")
 
         if not isinstance(parsed, dict):
             raise RuntimeError("LLM response must be a JSON object")
 
-        return self._sanitize_summary_payload(parsed, max_bullets), errors
+        return self._sanitize_summary_payload(parsed, max_bullets), 0
 
-    def _clean_markdown_code_blocks(self, text: str) -> str:
-        """
-        Remove Markdown code block markers (```json, ```, etc.) from the text.
 
-        Args:
-            text: Raw LLM response that may contain Markdown code blocks
-
-        Returns:
-            Cleaned text with code block markers removed
-        """
-        # Step 1: 先頭・末尾のコードフェンスを除去
-        cleaned = re.sub(r'^```(?:json)?\s*\n?', '', text, flags=re.MULTILINE)
-        cleaned = re.sub(r'\n?```\s*$', '', cleaned, flags=re.MULTILINE)
-
-        # Step 2: 中間位置のコードフェンスも除去（LLMが途中で追加する場合）
-        cleaned = re.sub(r'```(?:json)?\s*\n', '', cleaned)
-        cleaned = re.sub(r'\n```', '', cleaned)
-
-        # Step 3: 先頭の非JSON文字を除去（"Here is the JSON:"等）
-        cleaned = re.sub(r'^[^{]*(?={)', '', cleaned, count=1)
-
-        # Step 4: 末尾の非JSON文字を除去
-        cleaned = re.sub(r'(?<=})[^}]*$', '', cleaned)
-
-        return cleaned.strip()
-
-    def _extract_json_object(self, text: str) -> str:
-        first_brace = text.find("{")
-        last_brace = text.rfind("}")
-        if first_brace == -1 or last_brace == -1 or first_brace >= last_brace:
-            raise RuntimeError("Could not locate JSON object in LLM response")
-        return text[first_brace : last_brace + 1]
-
-    def _fallback_summary_from_text(self, text: str, max_bullets: int) -> Dict[str, Any]:
-        lines = [line.strip() for line in text.splitlines()]
-        non_empty = [line for line in lines if line]
-
-        if not non_empty:
-            raise RuntimeError("LLM returned empty response for recap summary")
-
-        title = non_empty[0][:200]
-        bullet_candidates: List[str] = []
-
-        for line in non_empty[1:]:
-            cleaned = line.lstrip("-*•●・ 　")
-            if cleaned:
-                bullet_candidates.append(cleaned)
-
-        if not bullet_candidates:
-            # Use remaining lines if the first line was the only content
-            bullet_candidates = [
-                line.lstrip("-*•●・ 　") for line in non_empty[1:max_bullets + 1] if line
-            ]
-        if not bullet_candidates:
-            bullet_candidates = [title]
-
-        merged_bullets: List[str] = []
-        chunk_size = 2
-        for idx in range(0, len(bullet_candidates), chunk_size):
-            chunk = bullet_candidates[idx : idx + chunk_size]
-            merged_text = " ".join(chunk).strip()
-            if merged_text:
-                merged_bullets.append(merged_text)
-
-        if not merged_bullets:
-            merged_bullets = bullet_candidates
-
-        return {
-            "title": title,
-            "bullets": merged_bullets,
-            "language": "ja",
-        }
 
     def _sanitize_summary_payload(
         self,

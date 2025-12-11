@@ -18,11 +18,14 @@ async def test_generate_summary_success():
     config = Mock()
     config.summary_num_predict = 400
     config.llm_temperature = 0.25
+    config.max_repetition_retries = 2
+    config.llm_repeat_penalty = 1.1
+    config.repetition_threshold = 2.0
 
     llm_provider = AsyncMock()
+    # Structured outputs return raw JSON without code blocks usually, but we strip them anyway
     llm_provider.generate.return_value = LLMGenerateResponse(
         response="""
-        ```json
         {
           "title": "AI業界の大型買収",
           "bullets": [
@@ -32,7 +35,6 @@ async def test_generate_summary_success():
           ],
           "language": "ja"
         }
-        ```
         """,
         model="gemma3:4b",
         prompt_eval_count=512,
@@ -80,22 +82,28 @@ async def test_generate_summary_success():
     llm_provider.generate.assert_awaited_once()
     _, kwargs = llm_provider.generate.call_args
     assert kwargs["num_predict"] == config.summary_num_predict
-    assert kwargs["options"] == {"temperature": 0.6}
+    # Options should include temperature + repeat_penalty
+    assert kwargs["options"]["temperature"] == 0.6
+    assert kwargs["options"]["repeat_penalty"] == 1.1
+    # Check that format is a dict (JSON Schema)
+    assert isinstance(kwargs["format"], dict)
 
 
 @pytest.mark.asyncio
-async def test_generate_summary_falls_back_to_text_when_no_json():
+async def test_generate_summary_raises_error_when_invalid_json():
     config = Mock()
     config.summary_num_predict = 300
     config.llm_temperature = 0.2
+    config.max_repetition_retries = 2
+    config.llm_repeat_penalty = 1.1
+    config.repetition_threshold = 2.0
 
     llm_provider = AsyncMock()
+    # Return invalid JSON to trigger error
     llm_provider.generate.return_value = LLMGenerateResponse(
         response="""
         レポート：主要な出来事
         - 経済の回復が進展
-        - 政府は追加予算を承認
-        - 市場は先行き不透明と評価
         """,
         model="gemma3:4b",
     )
@@ -113,11 +121,8 @@ async def test_generate_summary_falls_back_to_text_when_no_json():
 
     usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
 
-    response = await usecase.generate_summary(request)
-
-    assert response.summary.title.startswith("レポート")
-    assert response.summary.language == "ja"
-    assert len(response.summary.bullets) >= 1
+    with pytest.raises(RuntimeError):
+        await usecase.generate_summary(request)
 
 
 @pytest.mark.asyncio
@@ -125,6 +130,9 @@ async def test_generate_summary_trims_excess_bullets():
     config = Mock()
     config.summary_num_predict = 400
     config.llm_temperature = 0.5
+    config.max_repetition_retries = 2
+    config.llm_repeat_penalty = 1.1
+    config.repetition_threshold = 0.7
 
     bullets = [f"要点{i}" for i in range(1, 13)]
 
