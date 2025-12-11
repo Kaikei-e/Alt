@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from sklearn.cluster import HDBSCAN
+from sklearn.cluster import HDBSCAN, BisectingKMeans
 from sklearn.metrics import silhouette_score
 
 from ..domain.models import HDBSCANSettings
@@ -157,14 +157,17 @@ class Clusterer:
         *,
         min_cluster_size_range: list[int] | None = None,
         min_samples_range: list[int | None] | None = None,
-        umap_n_neighbors_range: list[int] | None = None,
-
-        umap_n_components_range: list[int] | None = None,
-        hdbscan_cluster_selection_method: str | None = None,
-        hdbscan_allow_single_cluster: bool | None = None,
+        umap_n_neighbors_range: list[int | None] | None = None,
+        umap_n_components_range: list[int | None] | None = None,
+        hdbscan_cluster_selection_method: str = "eom",
+        hdbscan_allow_single_cluster: bool = False,
+        token_counts: np.ndarray | None = None,
     ) -> ClusterResult:
-        """Perform grid search to find best clustering parameters based on silhouette score."""
-        # Defaults from plan
+        """
+        Hyperparameter search for HDBSCAN (and UMAP).
+        Uses silhouette score to select the best configuration.
+        """
+        n_data_points = embeddings.shape[0]
         if min_cluster_size_range is None:
             # Plan: [4, 6, 8, 10, 12]. Adjusted slightly to include 3 for smaller datasets per docs/heuristics.
             min_cluster_size_range = [3, 4, 6, 8, 10, 12]
@@ -242,16 +245,121 @@ class Clusterer:
 
         if best_result is None:
             # Fallback for very small data or failed searches
-            return self.cluster(embeddings, min_cluster_size=max(3, n_data_points // 5), min_samples=1)
+            best_result = self.cluster(embeddings, min_cluster_size=max(3, n_data_points // 5), min_samples=1)
+
+        # Recursive step to break down large clusters
+        if token_counts is not None and best_result.labels.size > 0:
+            new_labels, new_probs = self.recursive_cluster(
+                embeddings, best_result.labels, best_result.probabilities, token_counts
+            )
+            best_result.labels = new_labels
+            best_result.probabilities = new_probs
 
         return best_result
 
-    def subcluster_other(self, embeddings: np.ndarray) -> ClusterResult:
+    def recursive_cluster(
+        self,
+        embeddings: np.ndarray,
+        labels: np.ndarray,
+        probabilities: np.ndarray,
+        token_counts: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Recursively split clusters that exceed the max token budget.
+
+        Args:
+            embeddings: (N, D) float array
+            labels: (N,) int array of cluster IDs
+            probabilities: (N,) float array
+            token_counts: (N,) int array of token estimates per sentence
+
+        Returns:
+            (new_labels, new_probabilities)
+        """
+        if not self.settings.clustering_recursive_enabled:
+            return labels, probabilities
+
+        max_tokens = self.settings.clustering_max_tokens_per_cluster
+        min_split_size = self.settings.clustering_min_split_size
+
+        # Working copies
+        current_labels = labels.copy()
+        current_probs = probabilities.copy()
+
+        # Queue of cluster IDs to check: only non-noise clusters
+        # We use a set to avoid re-checking just-split clusters immediately unless necessary,
+        # but a simple iterative approach over unique labels is safer to prevent infinite loops.
+        # However, for true recursion, we can use a stack or just loop until stable.
+        # To avoid infinite loops, we'll limit depth or passes.
+
+        # Multi-pass approach:
+        # Pass 1: Check all initial clusters.
+        # Pass 2: Check newly created clusters.
+        # ...
+        # Limit to max 3 passes to prevent excessive fragmentation.
+
+        for _pass in range(3):
+            unique_labels = set(np.unique(current_labels))
+            unique_labels.discard(-1)
+
+            splits_performed = 0
+
+            # Sort labels to process deterministic order
+            for cluster_id in sorted(unique_labels):
+                mask = current_labels == cluster_id
+                cluster_size = mask.sum()
+
+                if cluster_size < min_split_size:
+                    continue
+
+                cluster_tokens = token_counts[mask].sum()
+
+                if cluster_tokens > max_tokens:
+                    # Time to split!
+                    sub_embeddings = embeddings[mask]
+
+                    # Bisect into 2
+                    splitter = BisectingKMeans(
+                        n_clusters=2,
+                        random_state=42,
+                        bisecting_strategy="largest_cluster"
+                    )
+                    sub_labels = splitter.fit_predict(sub_embeddings)
+
+                    # New labels:
+                    # 0 -> stays as cluster_id
+                    # 1 -> gets a new ID (max_label + 1)
+                    # Note: We need to be careful not to reuse an existing ID.
+
+                    new_id = current_labels.max() + 1
+
+                    # Map sub_labels to real labels
+                    # sub_label 0 => cluster_id
+                    # sub_label 1 => new_id
+
+                    # Create the new label array fragment
+                    new_fragment = np.where(sub_labels == 1, new_id, cluster_id)
+
+                    # Update main arrays
+                    current_labels[mask] = new_fragment
+
+                    # K-Means is "hard" clustering, so probability is effectively 1.0 for these items
+                    # This overrides HDBSCAN's soft probability
+                    current_probs[mask] = 1.0
+
+                    splits_performed += 1
+
+            if splits_performed == 0:
+                break
+
+        return current_labels, current_probs
+
+    def subcluster_other(self, embeddings: np.ndarray, token_counts: np.ndarray | None = None) -> ClusterResult:
         """
         Specialized clustering for 'Other' genre.
         Deep search with smaller parameters to break down large blobs.
         """
-        return self.optimize_clustering(
+        result = self.optimize_clustering(
             embeddings,
             min_cluster_size_range=[3, 4, 5],
             min_samples_range=[1, 2],
@@ -260,3 +368,12 @@ class Clusterer:
             hdbscan_cluster_selection_method="leaf",
             hdbscan_allow_single_cluster=True,
         )
+
+        if token_counts is not None and result.labels.size > 0:
+            new_labels, new_probs = self.recursive_cluster(
+                embeddings, result.labels, result.probabilities, token_counts
+            )
+            result.labels = new_labels
+            result.probabilities = new_probs
+
+        return result

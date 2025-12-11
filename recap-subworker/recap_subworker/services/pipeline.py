@@ -145,7 +145,8 @@ class EvidencePipeline:
         ms_range = range(1, self.settings.clustering_search_range_ms_max)
 
         if request.genre == "other":
-            cluster_result = self.clusterer.subcluster_other(embeddings)
+            token_counts = np.array([s.tokens_estimate for s in sentences], dtype=int)
+            cluster_result = self.clusterer.subcluster_other(embeddings, token_counts=token_counts)
         else:
             # Plan-based parameter selection
             count = len(sentences)
@@ -171,6 +172,7 @@ class EvidencePipeline:
                 min_cluster_size_range=mcs_range,
                 min_samples_range=ms_range,
                 umap_n_neighbors_range=umap_range if self.settings.enable_umap_auto else None,
+                token_counts=np.array([s.tokens_estimate for s in sentences], dtype=int),
             )
 
         hdbscan_duration = time.perf_counter() - cluster_start

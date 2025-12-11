@@ -87,18 +87,30 @@ class EvaluationService:
              raise FileNotFoundError(f"Golden data not found: {golden_path}")
 
         # Load Golden Data
+        # Load Golden Data
         with open(golden_path, "r") as f:
             data = json.load(f)
+
+        # Handle wrapper structure
+        if isinstance(data, dict) and "items" in data:
+            data = data["items"]
 
         # Expecting data format: list of {"text": "...", "labels": ["genre1", "genre2"]}
         # Or {"text": ..., "genres": ...}
 
         df = pd.DataFrame(data)
+
+        # Map typical field names from our golden set
+        if "content_ja" in df.columns and "text" not in df.columns:
+            df.rename(columns={"content_ja": "text"}, inplace=True)
+        if "expected_genres" in df.columns and "labels" not in df.columns:
+            df.rename(columns={"expected_genres": "labels"}, inplace=True)
+
         if "genres" in df.columns:
             df.rename(columns={"genres": "labels"}, inplace=True)
 
         if "labels" not in df.columns or "text" not in df.columns:
-             raise ValueError("Golden data must contain 'text' and 'labels' fields")
+             raise ValueError(f"Golden data must contain 'text' and 'labels' fields. Available: {df.columns.tolist()}")
 
         # Prepare X and y_true
         X = df["text"].tolist()

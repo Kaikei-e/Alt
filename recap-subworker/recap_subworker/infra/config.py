@@ -180,8 +180,19 @@ class Settings(BaseSettings):
     )
     clustering_search_range_ms_max: int = Field(
         6,
-        ge=2,
-        description="Maximum value for min_samples grid search (range is 1 to max-1)",
+        description="Max value for min_samples search range",
+    )
+    clustering_max_tokens_per_cluster: int = Field(
+        1500,
+        description="Soft limit for tokens per cluster to trigger recursive splitting (1500 est ~= 5k real ja-tokens)",
+    )
+    clustering_recursive_enabled: bool = Field(
+        True,
+        description="Enable recursive sub-clustering for large clusters",
+    )
+    clustering_min_split_size: int = Field(
+        10,
+        description="Minimum number of items required to attempt a recursive split",
     )
     max_tokens_budget: int = Field(12_000, ge=512, description="Token budget per request")
     dedup_threshold: float = Field(0.92, ge=0.0, le=1.0)
