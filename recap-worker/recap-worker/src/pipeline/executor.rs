@@ -2,8 +2,13 @@ use anyhow::{Context, Result};
 use uuid::Uuid;
 
 use super::{
-    dedup::DeduplicatedCorpus, dispatch::DispatchResult, fetch::FetchedCorpus, genre::GenreBundle,
-    persist::PersistResult, preprocess::PreprocessedCorpus, select::SelectedSummary,
+    dedup::DeduplicatedCorpus,
+    dispatch::{DispatchResult, DispatchResultLightweight},
+    fetch::FetchedCorpus,
+    genre::GenreBundle,
+    persist::PersistResult,
+    preprocess::PreprocessedCorpus,
+    select::SelectedSummary,
 };
 use crate::pipeline::evidence::EvidenceBundle;
 use crate::scheduler::JobContext;
@@ -165,7 +170,13 @@ impl StageExecutor<'_> {
     ) -> Result<DispatchResult> {
         if resume_stage_idx > 5 {
             if resume_stage_idx == 6 {
-                self.load_state(job.job_id, "dispatch").await
+                // 軽量版を読み込んで、完全なDispatchResultに再構築
+                let lightweight: DispatchResultLightweight =
+                    self.load_state(job.job_id, "dispatch").await?;
+                Ok(StageExecutor::reconstruct_dispatch_result(
+                    job.job_id,
+                    lightweight,
+                ))
             } else {
                 Err(anyhow::anyhow!("Pipeline already completed"))
             }
@@ -176,7 +187,10 @@ impl StageExecutor<'_> {
                 .dispatch
                 .dispatch(job, evidence_bundle)
                 .await?;
-            self.save_state(job.job_id, "dispatch", &res).await?;
+            // 軽量版に変換して保存（大きなデータを除外）
+            let lightweight = res.to_lightweight();
+            self.save_state(job.job_id, "dispatch", &lightweight)
+                .await?;
             Ok(res)
         }
     }
@@ -275,6 +289,42 @@ impl StageExecutor<'_> {
                 job_id: job.job_id,
                 corpora: std::collections::HashMap::new(),
             }
+        }
+    }
+
+    /// 軽量版から完全なDispatchResultを再構築
+    /// 注: clustering_responseとsummary_responseはNoneに設定される
+    /// （persistステージでデータベースから再取得される）
+    fn reconstruct_dispatch_result(
+        job_id: Uuid,
+        lightweight: DispatchResultLightweight,
+    ) -> DispatchResult {
+        use super::dispatch::GenreResult;
+        use std::collections::HashMap;
+
+        let genre_results: HashMap<String, GenreResult> = lightweight
+            .genre_results
+            .into_iter()
+            .map(|(genre, light_result)| {
+                (
+                    genre.clone(),
+                    GenreResult {
+                        genre: light_result.genre,
+                        clustering_response: None, // データベースから再取得される
+                        summary_response_id: light_result.summary_response_id,
+                        summary_response: None, // データベースから再取得される
+                        error: light_result.error,
+                    },
+                )
+            })
+            .collect();
+
+        DispatchResult {
+            job_id,
+            genre_results,
+            success_count: lightweight.success_count,
+            failure_count: lightweight.failure_count,
+            all_genres: lightweight.all_genres,
         }
     }
 }

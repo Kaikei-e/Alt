@@ -296,6 +296,14 @@ impl RecapDao {
         output::RecapDao::upsert_recap_output(&self.pool, output).await
     }
 
+    pub(crate) async fn get_recap_output_body_json(
+        &self,
+        job_id: uuid::Uuid,
+        genre: &str,
+    ) -> anyhow::Result<Option<serde_json::Value>> {
+        output::RecapDao::get_recap_output_body_json(&self.pool, job_id, genre).await
+    }
+
     pub(crate) async fn get_latest_completed_job(
         &self,
         window_days: i32,

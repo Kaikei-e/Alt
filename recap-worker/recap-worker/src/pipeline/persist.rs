@@ -93,25 +93,67 @@ impl PersistStage for FinalSectionPersistStage {
                 continue;
             }
 
+            // summary_responseがNoneの場合、データベースから再取得を試みる
             let summary_response = match (
                 &genre_result.summary_response_id,
                 &genre_result.summary_response,
             ) {
-                (Some(_), Some(response)) => response,
+                (Some(_), Some(response)) => response.clone(),
+                (Some(summary_id), None) => {
+                    // リジューム時: データベースから再取得
+                    match self.dao.get_recap_output_body_json(job.job_id, genre).await {
+                        Ok(Some(body_json)) => {
+                            match serde_json::from_value::<
+                                crate::clients::news_creator::SummaryResponse,
+                            >(body_json)
+                            {
+                                Ok(response) => {
+                                    info!(
+                                        job_id = %job.job_id,
+                                        genre = %genre,
+                                        "recovered summary_response from database"
+                                    );
+                                    response
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        job_id = %job.job_id,
+                                        genre = %genre,
+                                        error = ?e,
+                                        "failed to deserialize summary_response from database"
+                                    );
+                                    genres_failed += 1;
+                                    continue;
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            warn!(
+                                job_id = %job.job_id,
+                                genre = %genre,
+                                summary_id = %summary_id,
+                                "summary_response not found in database"
+                            );
+                            genres_failed += 1;
+                            continue;
+                        }
+                        Err(e) => {
+                            warn!(
+                                job_id = %job.job_id,
+                                genre = %genre,
+                                error = ?e,
+                                "failed to fetch summary_response from database"
+                            );
+                            genres_failed += 1;
+                            continue;
+                        }
+                    }
+                }
                 (None, _) => {
                     warn!(
                         job_id = %job.job_id,
                         genre = %genre,
                         "genre missing summary response id"
-                    );
-                    genres_failed += 1;
-                    continue;
-                }
-                (_, None) => {
-                    warn!(
-                        job_id = %job.job_id,
-                        genre = %genre,
-                        "genre missing summary payload"
                     );
                     genres_failed += 1;
                     continue;
@@ -168,6 +210,59 @@ impl PersistStage for FinalSectionPersistStage {
                         );
                     }
                 }
+            } else {
+                // リジューム時: clustering_responseがNoneの場合
+                // body_jsonからクラスタ情報を取得するか、データベースから直接取得
+                // ここでは簡易的にbody_jsonから取得を試みる
+                if let Ok(Some(body_json)) =
+                    self.dao.get_recap_output_body_json(job.job_id, genre).await
+                {
+                    // body_jsonからクラスタ情報を抽出（構造に依存）
+                    if let Some(clusters) = body_json.get("clusters").and_then(|c| c.as_array()) {
+                        let article_ids: Vec<String> = clusters
+                            .iter()
+                            .flat_map(|cluster| {
+                                cluster
+                                    .get("representatives")
+                                    .and_then(|r| r.as_array())
+                                    .map_or(&[] as &[serde_json::Value], |arr| arr.as_slice())
+                                    .iter()
+                                    .filter_map(|rep| {
+                                        rep.get("article_id")
+                                            .and_then(|id| id.as_str())
+                                            .map(str::to_string)
+                                    })
+                            })
+                            .collect::<std::collections::HashSet<_>>()
+                            .into_iter()
+                            .collect();
+
+                        match self
+                            .dao
+                            .get_article_metadata(job.job_id, &article_ids)
+                            .await
+                        {
+                            Ok(metadata) => {
+                                for (article_id, (published_at, source_url)) in metadata {
+                                    sources_metadata.push(json!({
+                                        "title": "Source Article",
+                                        "url": source_url,
+                                        "published_at": published_at,
+                                        "article_id": article_id
+                                    }));
+                                }
+                            }
+                            Err(e) => {
+                                warn!(
+                                    job_id = %job.job_id,
+                                    genre = %genre,
+                                    error = ?e,
+                                    "failed to fetch article metadata for sources (resume)"
+                                );
+                            }
+                        }
+                    }
+                }
             }
 
             // Sort sources by published_at desc
@@ -201,12 +296,15 @@ impl PersistStage for FinalSectionPersistStage {
                 .collect::<Vec<_>>();
             let bullets_json = serde_json::Value::Array(bullet_values);
 
-            let summary_text = summary_response.summary.bullets.join("\n");
-            let body_json = serde_json::to_value(summary_response)
+            // 先に必要な値を取得してからsummary_responseを移動
+            let summary_title = summary_response.summary.title.clone();
+            let summary_bullets = summary_response.summary.bullets.clone();
+            let summary_text = summary_bullets.join("\n");
+            let body_json = serde_json::to_value(&summary_response)
                 .context("failed to convert summary response to JSON")?;
 
             // Sanitize title to remove markdown code blocks
-            let sanitized_title = sanitize_title(&summary_response.summary.title);
+            let sanitized_title = sanitize_title(&summary_title);
             let sanitized_summary = sanitize_title(&summary_text);
 
             let output = RecapOutput::new(

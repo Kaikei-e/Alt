@@ -79,6 +79,32 @@ impl RecapDao {
         Ok(())
     }
 
+    /// 指定されたjob_idとgenreのrecap_outputからbody_jsonを取得する。
+    pub(crate) async fn get_recap_output_body_json(
+        pool: &PgPool,
+        job_id: Uuid,
+        genre: &str,
+    ) -> Result<Option<Value>> {
+        let row = sqlx::query(
+            r"
+            SELECT body_json FROM recap_outputs
+            WHERE job_id = $1 AND genre = $2
+            ",
+        )
+        .bind(job_id)
+        .bind(genre)
+        .fetch_optional(pool)
+        .await
+        .context("failed to fetch recap output body_json")?;
+
+        if let Some(row) = row {
+            let body_json: Json<Value> = row.try_get("body_json")?;
+            Ok(Some(body_json.0))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Get the latest completed recap job for a given window
     pub(crate) async fn get_latest_completed_job(
         pool: &PgPool,
