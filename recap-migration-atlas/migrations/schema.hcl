@@ -268,6 +268,51 @@ table "recap_subworker_diagnostics" {
   }
 }
 
+table "recap_run_diagnostics" {
+  schema = schema.public
+  column "run_id" {
+    null = false
+    type = bigint
+  }
+  column "cluster_avg_similarity_mean" {
+    null = true
+    type = double_precision
+  }
+  column "cluster_avg_similarity_variance" {
+    null = true
+    type = double_precision
+  }
+  column "cluster_avg_similarity_p95" {
+    null = true
+    type = double_precision
+  }
+  column "cluster_avg_similarity_max" {
+    null = true
+    type = double_precision
+  }
+  column "cluster_count" {
+    null    = false
+    type    = integer
+    default = 0
+  }
+  column "created_at" {
+    null    = false
+    type    = timestamptz
+    default = sql("now()")
+  }
+  primary_key {
+    columns = [column.run_id]
+  }
+  foreign_key "recap_run_diagnostics_run_id_fkey" {
+    columns     = [column.run_id]
+    ref_columns = [table.recap_subworker_runs.column.id]
+    on_delete   = CASCADE
+  }
+  index "idx_recap_run_diagnostics_run_id" {
+    columns = [column.run_id]
+  }
+}
+
 table "recap_sections" {
   schema = schema.public
   column "job_id" {
