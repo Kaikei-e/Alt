@@ -2,7 +2,7 @@ use std::{collections::HashMap, fs, sync::Arc};
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use tokio::sync::Semaphore;
+use tokio::{sync::Semaphore, time::timeout};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -71,10 +71,7 @@ impl DispatchResult {
             .genre_results
             .iter()
             .map(|(genre, result)| {
-                let clustering_run_id = result
-                    .clustering_response
-                    .as_ref()
-                    .map(|cr| cr.run_id);
+                let clustering_run_id = result.clustering_response.as_ref().map(|cr| cr.run_id);
                 (
                     genre.clone(),
                     GenreResultLightweight {
@@ -147,11 +144,15 @@ impl MlLlmDispatchStage {
             "clustering genre"
         );
 
-        let mut clustering_response = self
-            .subworker_client
-            .cluster_corpus(job_id, evidence)
-            .await
-            .context("clustering failed")?;
+        let genre_timeout = self.config.clustering_genre_timeout();
+        let mut clustering_response = timeout(
+            genre_timeout,
+            self.subworker_client
+                .cluster_corpus_with_timeout(job_id, evidence, genre_timeout),
+        )
+        .await
+        .context("clustering timeout")?
+        .context("clustering failed")?;
 
         // Fallback: If clustering succeeded but returned NO clusters (e.g. all noise),
         // we force a fallback response using the evidence corpus.
@@ -480,6 +481,7 @@ impl MlLlmDispatchStage {
                 let genre_clone = genre.clone();
                 let semaphore = Arc::clone(&self.concurrency_semaphore);
 
+                let genre_timeout = self.config.clustering_genre_timeout();
                 let task = tokio::spawn(async move {
                     // Acquire permission to run (throttling)
                     let _permit = semaphore
@@ -493,7 +495,19 @@ impl MlLlmDispatchStage {
                         .get_corpus(&genre_clone)
                         .expect("corpus must exist as checked before spawn");
 
-                    let result = self_clone.cluster_genre(job_id, &genre_clone, corpus).await;
+                    // timeoutで包んで、stuckしても他のジャンルに影響しないようにする
+                    let result = timeout(
+                        genre_timeout,
+                        self_clone.cluster_genre(job_id, &genre_clone, corpus),
+                    )
+                    .await
+                    .unwrap_or_else(|_| {
+                        Err(anyhow::anyhow!(
+                            "clustering genre {} timed out after {}s",
+                            genre_clone,
+                            genre_timeout.as_secs()
+                        ))
+                    });
                     (genre_clone, result)
                 });
 

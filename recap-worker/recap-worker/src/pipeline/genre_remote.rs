@@ -16,20 +16,11 @@ use crate::scheduler::JobContext;
 pub(crate) struct RemoteGenreStage {
     client: Arc<SubworkerClient>,
     queue: Arc<ClassificationJobQueue>,
-    threshold: f32,
 }
 
 impl RemoteGenreStage {
-    pub(crate) fn new(
-        client: Arc<SubworkerClient>,
-        queue: Arc<ClassificationJobQueue>,
-        threshold: f32,
-    ) -> Self {
-        Self {
-            client,
-            queue,
-            threshold,
-        }
+    pub(crate) fn new(client: Arc<SubworkerClient>, queue: Arc<ClassificationJobQueue>) -> Self {
+        Self { client, queue }
     }
 
     /// Prepare texts for classification from articles
@@ -96,16 +87,15 @@ impl RemoteGenreStage {
     }
 
     /// Create a genre assignment from an article and classification result
+    #[allow(clippy::unused_self)] // Reserved for future use
     fn create_genre_assignment(
         &self,
         article: DeduplicatedArticle,
         result: crate::clients::subworker::ClassificationResult,
     ) -> GenreAssignment {
-        let top_genre = if result.confidence >= self.threshold {
-            result.top_genre
-        } else {
-            "other".to_string()
-        };
+        // Always use the top_genre returned by the subworker, as it has already
+        // applied its own genre-specific thresholds
+        let top_genre = result.top_genre;
 
         debug!(
             article_id = %article.id,
@@ -295,7 +285,6 @@ mod tests {
                 3,
                 5000,
             )),
-            0.5,
         );
 
         let article = DeduplicatedArticle {
@@ -341,7 +330,6 @@ mod tests {
                 3,
                 5000,
             )),
-            0.5,
         );
 
         let article = DeduplicatedArticle {
@@ -362,12 +350,13 @@ mod tests {
 
         let result = crate::clients::subworker::ClassificationResult {
             top_genre: "tech".to_string(),
-            confidence: 0.3, // Below threshold
+            confidence: 0.3, // Low confidence, but subworker already applied its thresholds
             scores,
         };
 
         let assignment = stage.create_genre_assignment(article, result);
 
-        assert_eq!(assignment.genres, vec!["other"]);
+        // After removing the threshold gate, we always use the subworker's top_genre
+        assert_eq!(assignment.genres, vec!["tech"]);
     }
 }

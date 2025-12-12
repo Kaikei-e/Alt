@@ -4,13 +4,14 @@ use uuid::Uuid;
 use super::{
     dedup::DeduplicatedCorpus,
     dispatch::{DispatchResult, DispatchResultLightweight},
-    fetch::FetchedCorpus,
+    fetch::{FetchedCorpus, FetchedCorpusLight},
     genre::GenreBundle,
     persist::PersistResult,
     preprocess::PreprocessedCorpus,
     select::SelectedSummary,
 };
 use crate::pipeline::evidence::EvidenceBundle;
+use crate::pipeline::fetch::FetchedArticle;
 use crate::scheduler::JobContext;
 
 /// パイプラインステージ実行のヘルパー
@@ -31,7 +32,10 @@ impl<'a> StageExecutor<'a> {
     ) -> Result<FetchedCorpus> {
         if resume_stage_idx > 0 {
             if resume_stage_idx == 1 {
-                self.load_state(job.job_id, "fetch").await
+                // 軽量版チェックポイントから再構築
+                let lightweight: FetchedCorpusLight = self.load_state(job.job_id, "fetch").await?;
+                self.reconstruct_fetched_corpus(job.job_id, &lightweight)
+                    .await
             } else {
                 Ok(FetchedCorpus {
                     job_id: Uuid::nil(),
@@ -40,9 +44,51 @@ impl<'a> StageExecutor<'a> {
             }
         } else {
             let res = self.orchestrator.stages().fetch.fetch(job).await?;
-            self.save_state(job.job_id, "fetch", &res).await?;
+            // 軽量版を保存（記事IDのみ）
+            let lightweight = res.to_lightweight();
+            if let Err(e) = self.save_state(job.job_id, "fetch", &lightweight).await {
+                // 詳細なエラーメッセージを記録
+                let error_msg = format!("{:#}", e);
+                let _ = self
+                    .orchestrator
+                    .recap_dao()
+                    .insert_failed_task(job.job_id, "fetch", None, Some(&error_msg))
+                    .await;
+                return Err(e).context("failed to save fetch stage state");
+            }
             Ok(res)
         }
+    }
+
+    /// 軽量版チェックポイントからFetchedCorpusを再構築
+    async fn reconstruct_fetched_corpus(
+        &self,
+        job_id: Uuid,
+        lightweight: &FetchedCorpusLight,
+    ) -> Result<FetchedCorpus> {
+        // recap_job_articlesから記事データを取得
+        let article_data: Vec<crate::store::dao::article::FetchedArticleData> = self
+            .orchestrator
+            .recap_dao()
+            .get_articles_by_ids(job_id, &lightweight.article_ids)
+            .await
+            .context("failed to reconstruct articles from recap_job_articles")?;
+
+        // FetchedArticleに変換（tagsは空）
+        let articles: Vec<FetchedArticle> = article_data
+            .into_iter()
+            .map(|data| FetchedArticle {
+                id: data.id,
+                title: data.title,
+                body: data.body,
+                language: data.language,
+                published_at: data.published_at,
+                source_url: data.source_url,
+                tags: vec![], // リジューム時はtagsは不要
+            })
+            .collect();
+
+        Ok(FetchedCorpus { job_id, articles })
     }
 
     /// Preprocessステージを実行（リジューム対応）

@@ -30,11 +30,33 @@ pub(crate) trait SelectStage: Send + Sync {
 }
 
 #[derive(Clone)]
+pub(crate) struct SubgenreConfig {
+    max_docs_per_genre: usize,
+    target_docs_per_subgenre: usize,
+    max_k: usize,
+}
+
+impl SubgenreConfig {
+    pub(crate) fn new(
+        max_docs_per_genre: usize,
+        target_docs_per_subgenre: usize,
+        max_k: usize,
+    ) -> Self {
+        Self {
+            max_docs_per_genre,
+            target_docs_per_subgenre,
+            max_k,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub(crate) struct SummarySelectStage {
     max_articles_per_genre: usize,
     min_documents_per_genre: usize,
     #[allow(dead_code)]
     similarity_threshold: f32, // now implicitly used only via config or unused if pure percentile
+    subgenre_config: SubgenreConfig,
     embedding_service: Option<Arc<dyn Embedder>>,
     dao: Option<Arc<RecapDao>>,
     #[allow(dead_code)]
@@ -48,11 +70,13 @@ impl SummarySelectStage {
         similarity_threshold: f32,
         dao: Option<Arc<RecapDao>>,
         subworker: Option<Arc<SubworkerClient>>,
+        subgenre_config: SubgenreConfig,
     ) -> Self {
         Self {
             max_articles_per_genre: 20,
             min_documents_per_genre,
             similarity_threshold,
+            subgenre_config,
             embedding_service,
             dao,
             subworker,
@@ -151,6 +175,105 @@ impl SummarySelectStage {
 
         rest.append(&mut others);
         Ok(rest)
+    }
+
+    /// Split large genres (e.g., software_dev) into subgenres (e.g., software_dev_001, software_dev_002)
+    /// when the article count exceeds the threshold.
+    async fn subcluster_large_genres(
+        &self,
+        assignments: Vec<GenreAssignment>,
+    ) -> anyhow::Result<Vec<GenreAssignment>> {
+        // Group assignments by primary genre
+        let mut by_genre: HashMap<String, Vec<GenreAssignment>> = HashMap::new();
+        for assignment in assignments {
+            let genre = assignment
+                .primary_genre()
+                .map_or("other".to_string(), ToString::to_string);
+            by_genre.entry(genre).or_default().push(assignment);
+        }
+
+        let mut result = Vec::new();
+
+        for (genre, mut genre_assignments) in by_genre {
+            let n = genre_assignments.len();
+
+            // Only split if the genre exceeds the threshold and is not "other" (which is handled separately)
+            if n <= self.subgenre_config.max_docs_per_genre || genre == "other" {
+                result.append(&mut genre_assignments);
+                continue;
+            }
+
+            // Calculate k: ceil(n / target_docs_per_subgenre), capped at max_k
+            let k = n
+                .div_ceil(self.subgenre_config.target_docs_per_subgenre)
+                .min(self.subgenre_config.max_k)
+                .max(2); // At least 2 clusters
+
+            // Use embedding-based clustering if available
+            if let Some(service) = &self.embedding_service {
+                let texts: Vec<String> = genre_assignments
+                    .iter()
+                    .map(|a| {
+                        let title = a.article.title.as_deref().unwrap_or("");
+                        let body = a
+                            .article
+                            .sentences
+                            .iter()
+                            .take(3)
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        format!("{title}\n{body}")
+                    })
+                    .collect();
+
+                if let Ok(embeddings) = service.encode(&texts).await {
+                    if embeddings.len() == genre_assignments.len() {
+                        let kmeans = KMeans::new(&embeddings, k, 20);
+
+                        for (i, &cluster_id) in kmeans.assignments.iter().enumerate() {
+                            if let Some(assignment) = genre_assignments.get_mut(i) {
+                                // Format: base_001, base_002, etc. (1-indexed)
+                                let subgenre = format!("{}_{:03}", genre, cluster_id + 1);
+                                // Insert at index 0 to make it primary
+                                assignment.genres.insert(0, subgenre.clone());
+                                assignment.genre_scores.insert(subgenre.clone(), 100);
+                                assignment.genre_confidence.insert(subgenre, 1.0);
+                            }
+                        }
+
+                        tracing::info!(
+                            genre = %genre,
+                            original_count = n,
+                            k,
+                            "split large genre into subgenres"
+                        );
+                    } else {
+                        tracing::warn!(
+                            genre = %genre,
+                            expected = genre_assignments.len(),
+                            got = embeddings.len(),
+                            "embedding count mismatch, skipping subgenre split"
+                        );
+                    }
+                } else {
+                    tracing::warn!(
+                        genre = %genre,
+                        "failed to embed articles for subgenre split, keeping original genre"
+                    );
+                }
+            } else {
+                tracing::warn!(
+                    genre = %genre,
+                    count = n,
+                    "embedding service unavailable, cannot split large genre into subgenres"
+                );
+            }
+
+            result.append(&mut genre_assignments);
+        }
+
+        Ok(result)
     }
 
     fn trim_assignments(
@@ -458,7 +581,7 @@ impl SummarySelectStage {
 
 impl Default for SummarySelectStage {
     fn default() -> Self {
-        Self::new(None, 5, 0.5, None, None)
+        Self::new(None, 5, 0.5, None, None, SubgenreConfig::new(200, 50, 10))
     }
 }
 
@@ -477,19 +600,18 @@ impl SelectStage for SummarySelectStage {
             .await
             .unwrap_or_else(|e| {
                 tracing::warn!("subclustering failed: {}", e);
-                // On fatal error (should not happen due to internal handling), we might lose assignments if we propagated error.
-                // But subcluster_others implementation above handles errors internally or returns original assignments on simple failure?
-                // Wait, I implemented it to return Result.
-                // If subworker call fails, I catch it inside? No, I catch it inside match, but if something else fails...
-                // Let's assume on error we probably lost the "other" separation but returned `rest` + unmodified `others`?
-                // Actually my implementation consumes `assignments`...
-                // I should make sure I don't drop data.
-                // In implementation above: `match subworker... Err(e) -> warn`. `rest.append(&mut others)`. `Ok(rest)`.
-                // So it's safe.
-                vec![] // Should be unreachable given implementation, but needs specific handling if I failed to execute subcluster_others at all before splitting?
-                // Actually if subcluster_others returns Err, it means catastrophic failure.
-                // But I made sure to handle subworker error.
+                vec![]
             });
+
+        // Sub-cluster large genres (e.g., software_dev -> software_dev_001, software_dev_002)
+        let assignments = match self.subcluster_large_genres(assignments).await {
+            Ok(result) => result,
+            Err(e) => {
+                tracing::warn!("large genre subclustering failed: {}", e);
+                // Return empty vec as fallback (should not happen in practice)
+                vec![]
+            }
+        };
 
         let pre_trim_count = assignments.len();
         let mut assignments = self.trim_assignments(
@@ -569,6 +691,7 @@ mod tests {
             max_articles_per_genre: 1,
             min_documents_per_genre: 10,
             similarity_threshold: 0.5,
+            subgenre_config: SubgenreConfig::new(200, 50, 10),
             embedding_service: None,
             dao: None,
             subworker: None,
@@ -602,6 +725,7 @@ mod tests {
             max_articles_per_genre: 5,
             min_documents_per_genre: 10,
             similarity_threshold: 0.5,
+            subgenre_config: SubgenreConfig::new(200, 50, 10),
             embedding_service: None,
             dao: None,
             subworker: None,
@@ -653,7 +777,14 @@ mod tests {
         let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
             Some(Arc::new(MockEmbedder));
 
-        let stage = SummarySelectStage::new(embedding_service, 3, 0.8, None, None);
+        let stage = SummarySelectStage::new(
+            embedding_service,
+            3,
+            0.8,
+            None,
+            None,
+            SubgenreConfig::new(200, 50, 10),
+        );
 
         // Create 20 "other" assignments
         let assignments: Vec<GenreAssignment> = (0..20)
@@ -701,6 +832,7 @@ mod tests {
             max_articles_per_genre: 5,
             min_documents_per_genre: 10,
             similarity_threshold: 0.5,
+            subgenre_config: SubgenreConfig::new(200, 50, 10),
             embedding_service: None,
             dao: None,
             subworker: None,
@@ -723,5 +855,183 @@ mod tests {
         // Should select at least min_documents_per_genre * 2 = 20, but we only have 15
         // So all 15 should be selected
         assert!(trimmed.len() >= 10);
+    }
+
+    #[tokio::test]
+    async fn subcluster_large_genres_splits_into_subgenres() {
+        use super::super::dedup::DeduplicatedArticle;
+        let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
+            Some(Arc::new(MockEmbedder));
+
+        // Set max_docs_per_genre to 50, so 250 articles should be split
+        let stage = SummarySelectStage::new(
+            embedding_service,
+            3,
+            0.8,
+            None,
+            None,
+            SubgenreConfig::new(50, 50, 10),
+        );
+
+        // Create 250 "software_dev" assignments (exceeds threshold of 50)
+        let assignments: Vec<GenreAssignment> = (0..250)
+            .map(|i| GenreAssignment {
+                genres: vec!["software_dev".to_string()],
+                candidates: vec![],
+                genre_scores: std::collections::HashMap::from([("software_dev".to_string(), 10)]),
+                genre_confidence: std::collections::HashMap::from([(
+                    "software_dev".to_string(),
+                    0.9,
+                )]),
+                feature_profile: FeatureProfile::default(),
+                article: DeduplicatedArticle {
+                    id: format!("art-{}", i),
+                    title: Some(format!("Title {}", i)),
+                    sentences: vec![format!("Sentence {}", i)],
+                    ..Default::default()
+                },
+                embedding: None,
+            })
+            .collect();
+
+        let result = stage
+            .subcluster_large_genres(assignments)
+            .await
+            .expect("subcluster_large_genres failed");
+
+        // Should have split into multiple subgenres (software_dev_001, software_dev_002, etc.)
+        // 250 items with target 50 -> k = ceil(250/50) = 5, capped at max_k=10, so k=5
+        let genres: std::collections::HashSet<String> =
+            result.iter().flat_map(|a| a.genres.clone()).collect();
+
+        assert!(
+            genres.iter().any(|g| g.starts_with("software_dev_")),
+            "Should contain software_dev_### subgenres"
+        );
+
+        // Check that subgenres are primary (first in genres vector)
+        let subgenre_assignments: Vec<_> = result
+            .iter()
+            .filter(|a| {
+                a.genres
+                    .first()
+                    .is_some_and(|g| g.starts_with("software_dev_"))
+            })
+            .collect();
+        assert!(
+            !subgenre_assignments.is_empty(),
+            "Should have at least some assignments with subgenre as primary"
+        );
+
+        // Verify subgenre format (e.g., software_dev_001, software_dev_002)
+        for assignment in &result {
+            if let Some(primary) = assignment.genres.first() {
+                if let Some(suffix) = primary.strip_prefix("software_dev_") {
+                    // Should match pattern software_dev_XXX where XXX is 3 digits
+                    assert!(
+                        primary.len() > "software_dev_".len(),
+                        "Subgenre should have numeric suffix"
+                    );
+                    assert!(
+                        suffix.parse::<u32>().is_ok(),
+                        "Subgenre suffix should be numeric: {}",
+                        primary
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn subcluster_large_genres_does_not_split_small_genres() {
+        use super::super::dedup::DeduplicatedArticle;
+        let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
+            Some(Arc::new(MockEmbedder));
+
+        // Set max_docs_per_genre to 50
+        let stage = SummarySelectStage::new(
+            embedding_service,
+            3,
+            0.8,
+            None,
+            None,
+            SubgenreConfig::new(50, 50, 10),
+        );
+
+        // Create 30 "tech" assignments (below threshold of 50)
+        let assignments: Vec<GenreAssignment> = (0..30)
+            .map(|i| GenreAssignment {
+                genres: vec!["tech".to_string()],
+                candidates: vec![],
+                genre_scores: std::collections::HashMap::from([("tech".to_string(), 10)]),
+                genre_confidence: std::collections::HashMap::from([("tech".to_string(), 0.9)]),
+                feature_profile: FeatureProfile::default(),
+                article: DeduplicatedArticle {
+                    id: format!("art-{}", i),
+                    title: Some(format!("Title {}", i)),
+                    sentences: vec![format!("Sentence {}", i)],
+                    ..Default::default()
+                },
+                embedding: None,
+            })
+            .collect();
+
+        let result = stage
+            .subcluster_large_genres(assignments.clone())
+            .await
+            .expect("subcluster_large_genres failed");
+
+        // Should not be split (below threshold)
+        assert_eq!(result.len(), assignments.len());
+        for assignment in &result {
+            assert_eq!(
+                assignment.genres.first(),
+                Some(&"tech".to_string()),
+                "Small genre should not be split"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn subcluster_large_genres_handles_no_embedding_service() {
+        use super::super::dedup::DeduplicatedArticle;
+        // No embedding service
+        let stage = SummarySelectStage::new(None, 3, 0.8, None, None, SubgenreConfig::new(50, 50, 10));
+
+        // Create 100 "software_dev" assignments (exceeds threshold)
+        let assignments: Vec<GenreAssignment> = (0..100)
+            .map(|i| GenreAssignment {
+                genres: vec!["software_dev".to_string()],
+                candidates: vec![],
+                genre_scores: std::collections::HashMap::from([("software_dev".to_string(), 10)]),
+                genre_confidence: std::collections::HashMap::from([(
+                    "software_dev".to_string(),
+                    0.9,
+                )]),
+                feature_profile: FeatureProfile::default(),
+                article: DeduplicatedArticle {
+                    id: format!("art-{}", i),
+                    title: Some(format!("Title {}", i)),
+                    sentences: vec![format!("Sentence {}", i)],
+                    ..Default::default()
+                },
+                embedding: None,
+            })
+            .collect();
+
+        let result = stage
+            .subcluster_large_genres(assignments.clone())
+            .await
+            .expect("subcluster_large_genres failed");
+
+        // Should return original assignments unchanged (no embedding service)
+        assert_eq!(result.len(), assignments.len());
+        for assignment in &result {
+            assert_eq!(
+                assignment.genres.first(),
+                Some(&"software_dev".to_string()),
+                "Without embedding service, genre should remain unchanged"
+            );
+        }
     }
 }

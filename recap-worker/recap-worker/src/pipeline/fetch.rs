@@ -36,6 +36,23 @@ pub(crate) struct FetchedCorpus {
     pub(crate) articles: Vec<FetchedArticle>,
 }
 
+/// チェックポイント用の軽量版FetchedCorpus（記事IDのみ保存）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct FetchedCorpusLight {
+    pub(crate) job_id: Uuid,
+    pub(crate) article_ids: Vec<String>,
+}
+
+impl FetchedCorpus {
+    /// 軽量版に変換（チェックポイント保存用）
+    pub(crate) fn to_lightweight(&self) -> FetchedCorpusLight {
+        FetchedCorpusLight {
+            job_id: self.job_id,
+            article_ids: self.articles.iter().map(|a| a.id.clone()).collect(),
+        }
+    }
+}
+
 #[async_trait]
 pub(crate) trait FetchStage: Send + Sync {
     async fn fetch(&self, job: &JobContext) -> anyhow::Result<FetchedCorpus>;
@@ -81,7 +98,12 @@ impl AltBackendFetchStage {
             match self.client.fetch_articles(from, to).await {
                 Ok(articles) => {
                     let elapsed = start.elapsed();
-                    info!(attempt, count = articles.len(), elapsed_ms = elapsed.as_millis(), "fetch call succeeded");
+                    info!(
+                        attempt,
+                        count = articles.len(),
+                        elapsed_ms = elapsed.as_millis(),
+                        "fetch call succeeded"
+                    );
                     if attempt > 0 {
                         info!(attempt, "fetch succeeded after retry");
                     }
@@ -89,7 +111,12 @@ impl AltBackendFetchStage {
                 }
                 Err(err) => {
                     let elapsed = start.elapsed();
-                    warn!(attempt, elapsed_ms = elapsed.as_millis(), ?err, "fetch call failed");
+                    warn!(
+                        attempt,
+                        elapsed_ms = elapsed.as_millis(),
+                        ?err,
+                        "fetch call failed"
+                    );
                     attempt += 1;
 
                     if !self.retry_config.can_retry(attempt) {
@@ -303,5 +330,38 @@ mod tests {
         assert_eq!(article.body, "Body");
         assert_eq!(article.language.as_deref(), Some("ja"));
         assert_eq!(article.source_url.as_deref(), Some("https://example.com"));
+    }
+
+    #[test]
+    fn fetched_corpus_to_lightweight_preserves_article_ids() {
+        let corpus = FetchedCorpus {
+            job_id: Uuid::new_v4(),
+            articles: vec![
+                FetchedArticle {
+                    id: "art-1".to_string(),
+                    title: Some("Title 1".to_string()),
+                    body: "Body 1".to_string(),
+                    language: Some("ja".to_string()),
+                    published_at: None,
+                    source_url: None,
+                    tags: Vec::new(),
+                },
+                FetchedArticle {
+                    id: "art-2".to_string(),
+                    title: Some("Title 2".to_string()),
+                    body: "Body 2".to_string(),
+                    language: Some("en".to_string()),
+                    published_at: None,
+                    source_url: None,
+                    tags: Vec::new(),
+                },
+            ],
+        };
+
+        let lightweight = corpus.to_lightweight();
+        assert_eq!(lightweight.job_id, corpus.job_id);
+        assert_eq!(lightweight.article_ids.len(), 2);
+        assert_eq!(lightweight.article_ids[0], "art-1");
+        assert_eq!(lightweight.article_ids[1], "art-2");
     }
 }
