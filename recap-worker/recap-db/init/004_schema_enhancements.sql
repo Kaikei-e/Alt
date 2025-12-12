@@ -67,4 +67,5 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 COMMENT ON TABLE recap_outputs IS 'Final recap outputs with full structured data for UI and search';
 COMMENT ON COLUMN recap_outputs.body_json IS 'Complete structured output including clusters, evidence, and metadata';
 COMMENT ON FUNCTION job_lock_key IS 'Converts UUID to bigint for use with pg_advisory_lock family';
+COMMENT ON TABLE recap_run_diagnostics IS 'Run-level aggregated cluster statistics for quality monitoring and reporting';
 
