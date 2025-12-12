@@ -63,7 +63,21 @@ time_range = st.radio(
 )
 window_seconds = TIME_WINDOWS.get(time_range, TIME_WINDOWS["4h"])
 
-tabs_ui = st.tabs(["Overview", "Classification", "Clustering", "Summarization", "Log Analysis", "System Monitor", "Admin Jobs", "Recap Jobs"])
+# Tab organization:
+# 1. Overview - Overall summary
+# 2-4. Pipeline - Processing stages (Classification, Clustering, Summarization)
+# 5-6. Monitoring - System monitoring and analysis (System Monitor, Log Analysis)
+# 7-8. Jobs - Job management (Admin Jobs, Recap Jobs)
+tabs_ui = st.tabs([
+    "Overview",  # Overview
+    "Classification",  # Pipeline
+    "Clustering",  # Pipeline
+    "Summarization",  # Pipeline
+    "System Monitor",  # Monitoring
+    "Log Analysis",  # Monitoring
+    "Admin Jobs",  # Jobs
+    "Recap Jobs",  # Jobs
+])
 
 with tabs_ui[0]:
     overview.render_overview(window_seconds)
@@ -78,10 +92,10 @@ with tabs_ui[3]:
     summarization.render_summarization(window_seconds)
 
 with tabs_ui[4]:
-    log_analysis.render_log_analysis(window_seconds)
+    system_monitor_tab.render_system_monitor(window_seconds)
 
 with tabs_ui[5]:
-    system_monitor_tab.render_system_monitor(window_seconds)
+    log_analysis.render_log_analysis(window_seconds)
 
 with tabs_ui[6]:
     admin_jobs.render_admin_jobs(window_seconds)
