@@ -501,11 +501,13 @@ mod tests_map_reduce {
                 title: "Summary 1".to_string(),
                 bullets: vec!["Bullet A".to_string()],
                 language: "ja".to_string(),
+                references: None,
             },
             crate::clients::news_creator::models::Summary {
                 title: "Summary 2".to_string(),
                 bullets: vec!["Bullet B".to_string()],
                 language: "ja".to_string(),
+                references: None,
             },
         ];
 

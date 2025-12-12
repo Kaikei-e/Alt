@@ -116,12 +116,24 @@ pub(crate) struct SummaryResponse {
     pub(crate) metadata: SummaryMetadata,
 }
 
+/// 参照情報。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct Reference {
+    pub(crate) id: i32,
+    pub(crate) url: String,
+    pub(crate) domain: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) article_id: Option<String>,
+}
+
 /// 要約内容。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Summary {
     pub(crate) title: String,
     pub(crate) bullets: Vec<String>,
     pub(crate) language: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) references: Option<Vec<Reference>>,
 }
 
 /// 要約メタデータ。

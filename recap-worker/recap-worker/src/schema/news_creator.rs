@@ -47,6 +47,36 @@ pub(crate) static SUMMARY_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
                         "type": "string",
                         "pattern": "^ja$",
                         "description": "Language code (must be 'ja' for Japanese)"
+                    },
+                    "references": {
+                        "type": "array",
+                        "description": "List of source references cited in bullets",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "description": "Reference ID (1-indexed, matches [n] in bullets)"
+                                },
+                                "url": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Source article URL"
+                                },
+                                "domain": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Source domain"
+                                },
+                                "article_id": {
+                                    "type": ["string", "null"],
+                                    "description": "Source article ID if available"
+                                }
+                            },
+                            "required": ["id", "url", "domain"]
+                        },
+                        "maxItems": 50
                     }
                 },
                 "required": ["title", "bullets", "language"]
@@ -183,11 +213,30 @@ mod tests {
             "summary": {
                 "title": "AIと機械学習の最新動向",
                 "bullets": [
-                    "機械学習技術が急速に進歩しています",
-                    "自然言語処理の新しい手法が開発されました",
-                    "画像認識の精度が向上しています"
+                    "機械学習技術が急速に進歩しています [1]",
+                    "自然言語処理の新しい手法が開発されました [2]",
+                    "画像認識の精度が向上しています [3]"
                 ],
-                "language": "ja"
+                "language": "ja",
+                "references": [
+                    {
+                        "id": 1,
+                        "url": "https://example.com/article1",
+                        "domain": "example.com",
+                        "article_id": "art1"
+                    },
+                    {
+                        "id": 2,
+                        "url": "https://example.com/article2",
+                        "domain": "example.com"
+                    },
+                    {
+                        "id": 3,
+                        "url": "https://example.com/article3",
+                        "domain": "example.com",
+                        "article_id": "art3"
+                    }
+                ]
             },
             "metadata": {
                 "model": "gemma-3:4b",

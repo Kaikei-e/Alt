@@ -29,6 +29,29 @@ fn evaluate_golden_runs_snapshot() {
         is_valid_rouge(summary.rouge),
         "invalid rouge scores detected"
     );
+
+    // ジャンル別ROUGEが計算されている場合、各値が0から1の範囲内であることを確認
+    for (genre, rouge) in &summary.rouge_by_genre {
+        assert!(
+            is_valid_rouge(*rouge),
+            "invalid rouge scores for genre: {}",
+            genre
+        );
+    }
+
+    // ジャンル別ROUGEのカウントとサマリーの整合性を確認
+    for (genre, count) in &summary.rouge_count_by_genre {
+        assert!(
+            *count > 0,
+            "genre {} should have at least one sample",
+            genre
+        );
+        assert!(
+            summary.rouge_by_genre.contains_key(genre),
+            "genre {} should have ROUGE scores",
+            genre
+        );
+    }
 }
 
 fn is_valid_rouge(scores: RougeScores) -> bool {
