@@ -68,6 +68,12 @@ class NewsCreatorConfig:
         self.max_repetition_retries = self._get_int("MAX_REPETITION_RETRIES", 3)
         self.repetition_threshold = self._get_float("REPETITION_THRESHOLD", 0.3)
 
+        # Hierarchical summarization settings
+        # Threshold for switching to hierarchical (map-reduce) summarization
+        self.hierarchical_threshold_chars = self._get_int("HIERARCHICAL_THRESHOLD_CHARS", 200_000)  # ~50K tokens
+        self.hierarchical_threshold_clusters = self._get_int("HIERARCHICAL_THRESHOLD_CLUSTERS", 15)
+        self.hierarchical_chunk_max_chars = self._get_int("HIERARCHICAL_CHUNK_MAX_CHARS", 100_000)  # ~25K tokens per chunk
+
         logger.info(
             "News creator configuration initialized",
             extra={

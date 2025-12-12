@@ -22,6 +22,7 @@ from news_creator.domain.models import (
     RecapSummaryResponse,
     RecapSummary,
     RecapSummaryMetadata,
+    IntermediateSummary,
 )
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
@@ -51,21 +52,184 @@ class RecapSummaryUsecase:
             request.options.temperature if request.options and request.options.temperature is not None else None
         )
 
+        # Check if hierarchical summarization is needed
+        cluster_section_length = self._estimate_cluster_section_length(request)
+        use_hierarchical = (
+            cluster_section_length > self.config.hierarchical_threshold_chars
+            or len(request.clusters) > self.config.hierarchical_threshold_clusters
+        )
+
+        if use_hierarchical:
+            logger.info(
+                "Using hierarchical summarization (map-reduce)",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "cluster_section_length": cluster_section_length,
+                    "cluster_count": len(request.clusters),
+                },
+            )
+            return await self._generate_hierarchical_summary(request, max_bullets, temperature_override)
+
+        # Single-shot summarization for smaller inputs
+        return await self._generate_single_shot_summary(request, max_bullets, temperature_override)
+
+    def _estimate_cluster_section_length(self, request: RecapSummaryRequest) -> int:
+        """Estimate the character length of cluster section for prompt."""
+        if request.genre_highlights:
+            # If highlights are provided, they will be used instead
+            return 0
+
+        estimated = 0
+        for cluster in request.clusters:
+            # Rough estimate: cluster header + sentences
+            estimated += 100  # Header overhead
+            for sentence in cluster.representative_sentences:
+                estimated += len(sentence.text) + 50  # Text + metadata overhead
+        return estimated
+
+    async def _generate_hierarchical_summary(
+        self,
+        request: RecapSummaryRequest,
+        max_bullets: int,
+        temperature_override: Optional[float],
+    ) -> RecapSummaryResponse:
+        """Generate summary using hierarchical (map-reduce) approach."""
+        # Map phase: Split clusters into chunks and summarize each
+        chunks = self._split_clusters_into_chunks(request.clusters)
+        intermediate_summaries: List[IntermediateSummary] = []
+
+        json_schema_intermediate = IntermediateSummary.model_json_schema()
+        llm_options = {}
+        if temperature_override is not None:
+            llm_options["temperature"] = float(temperature_override)
+        else:
+            llm_options["temperature"] = float(self.config.llm_temperature)
+
+        for chunk_idx, chunk_clusters in enumerate(chunks):
+            logger.info(
+                "Map phase: Summarizing chunk",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "chunk_index": chunk_idx + 1,
+                    "total_chunks": len(chunks),
+                    "clusters_in_chunk": len(chunk_clusters),
+                },
+            )
+
+            # Create a temporary request for this chunk
+            chunk_request = RecapSummaryRequest(
+                job_id=request.job_id,
+                genre=request.genre,
+                clusters=chunk_clusters,
+                genre_highlights=None,
+                options=None,
+            )
+            chunk_prompt = self._build_prompt(chunk_request, max_bullets=4, intermediate=True)  # Short bullets for intermediate
+
+            try:
+                llm_response = await self.llm_provider.generate(
+                    chunk_prompt,
+                    num_predict=self.config.summary_num_predict // 2,  # Shorter for intermediate
+                    format=json_schema_intermediate,
+                    options=llm_options,
+                )
+
+                # Parse intermediate summary
+                parsed = json.loads(llm_response.response)
+                intermediate = IntermediateSummary(**parsed)
+                intermediate_summaries.append(intermediate)
+            except Exception as e:
+                logger.warning(
+                    "Failed to generate intermediate summary for chunk, skipping",
+                    extra={
+                        "job_id": str(request.job_id),
+                        "genre": request.genre,
+                        "chunk_index": chunk_idx + 1,
+                        "error": str(e),
+                    },
+                )
+                # Continue with other chunks
+
+        if not intermediate_summaries:
+            # Fallback if all map phases failed
+            return self._create_fallback_from_clusters(request)
+
+        # Reduce phase: Combine intermediate summaries into final summary
+        logger.info(
+            "Reduce phase: Combining intermediate summaries",
+            extra={
+                "job_id": str(request.job_id),
+                "genre": request.genre,
+                "intermediate_count": len(intermediate_summaries),
+            },
+        )
+
+        # Convert intermediate summaries to highlights format
+        reduce_highlights = []
+        for inter_summary in intermediate_summaries:
+            for bullet in inter_summary.bullets:
+                from news_creator.domain.models import RepresentativeSentence
+                reduce_highlights.append(
+                    RepresentativeSentence(
+                        text=bullet,
+                        published_at=None,
+                        source_url=None,
+                        article_id=None,
+                        is_centroid=False,
+                    )
+                )
+
+        # Create reduce request with highlights
+        reduce_request = RecapSummaryRequest(
+            job_id=request.job_id,
+            genre=request.genre,
+            clusters=[],  # Empty clusters, use highlights only
+            genre_highlights=reduce_highlights,
+            options=request.options,
+        )
+
+        # Use single-shot path for reduce phase (it's smaller)
+        return await self._generate_single_shot_summary(reduce_request, max_bullets, temperature_override)
+
+    def _split_clusters_into_chunks(self, clusters: List) -> List[List]:
+        """Split clusters into chunks that fit within max_chunk_chars."""
+        if not clusters:
+            return []
+
+        chunks: List[List] = []
+        current_chunk: List = []
+        current_length = 0
+
+        for cluster in clusters:
+            cluster_length = sum(len(s.text) for s in cluster.representative_sentences) + 200  # Overhead
+
+            if current_length + cluster_length > self.config.hierarchical_chunk_max_chars and current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = [cluster]
+                current_length = cluster_length
+            else:
+                current_chunk.append(cluster)
+                current_length += cluster_length
+
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        return chunks if chunks else [[c] for c in clusters]  # At least one chunk per cluster if needed
+
+    async def _generate_single_shot_summary(
+        self,
+        request: RecapSummaryRequest,
+        max_bullets: int,
+        temperature_override: Optional[float],
+    ) -> RecapSummaryResponse:
+        """Generate summary using single-shot approach (original logic)."""
         prompt = self._build_prompt(request, max_bullets)
 
         llm_options: Optional[Dict[str, Any]] = None
         if temperature_override is not None:
             llm_options = {"temperature": float(temperature_override)}
-
-        logger.info(
-            "Generating recap summary",
-            extra={
-                "job_id": str(request.job_id),
-                "genre": request.genre,
-                "cluster_count": len(request.clusters),
-                "max_bullets": max_bullets,
-            },
-        )
 
         max_retries = max(2, self.config.max_repetition_retries)
         last_error = None
@@ -73,7 +237,6 @@ class RecapSummaryUsecase:
         json_validation_error_count = 0
 
         for attempt in range(max_retries + 1):
-            # リトライ時は温度を下げる、Repetition Penaltyを上げる
             current_temp = temperature_override
             current_repeat_penalty = self.config.llm_repeat_penalty
 
@@ -81,32 +244,21 @@ class RecapSummaryUsecase:
                 base_temp = temperature_override if temperature_override is not None else self.config.llm_temperature
                 current_temp = max(0.05, base_temp - (0.05 * attempt))
                 current_repeat_penalty = min(1.2, current_repeat_penalty + (0.05 * attempt))
-                logger.warning(
-                    "Retrying recap summary generation with adjusted parameters",
-                    extra={
-                        "job_id": str(request.job_id),
-                        "attempt": attempt + 1,
-                        "temperature": current_temp,
-                        "repeat_penalty": current_repeat_penalty,
-                    },
-                )
 
-            # Prepare schema for Structured Outputs
             json_schema = RecapSummary.model_json_schema()
 
             llm_options_retry = None
             if current_temp is not None:
                 llm_options_retry = {
-                     **(llm_options or {}),
+                    **(llm_options or {}),
                     "temperature": float(current_temp),
                     "repeat_penalty": float(current_repeat_penalty),
                 }
             elif llm_options is not None:
-                 llm_options_retry = {**llm_options, "repeat_penalty": float(current_repeat_penalty)}
+                llm_options_retry = {**llm_options, "repeat_penalty": float(current_repeat_penalty)}
             else:
-                 llm_options_retry = {"repeat_penalty": float(current_repeat_penalty)}
+                llm_options_retry = {"repeat_penalty": float(current_repeat_penalty)}
 
-            # Use JSON schema for structured output (Ollama structured output mode)
             llm_response = await self.llm_provider.generate(
                 prompt,
                 num_predict=self.config.summary_num_predict,
@@ -114,7 +266,6 @@ class RecapSummaryUsecase:
                 options=llm_options_retry,
             )
 
-            # Check for repetition in raw response (before JSON parsing)
             has_repetition, rep_score, rep_patterns = detect_repetition(
                 llm_response.response,
                 threshold=self.config.repetition_threshold
@@ -129,18 +280,16 @@ class RecapSummaryUsecase:
                         "attempt": attempt + 1,
                         "repetition_score": rep_score,
                         "patterns": rep_patterns,
-                        "response_preview": llm_response.response[:200],
                     }
                 )
                 last_error = RuntimeError(f"Repetition detected (score: {rep_score:.2f})")
                 last_response = llm_response
-                continue  # Retry
+                continue
 
             try:
                 summary_payload, parse_errors = self._parse_summary_json(llm_response.response, max_bullets)
                 json_validation_error_count += parse_errors
 
-                # Also check for repetition in parsed summary text
                 summary_text = summary_payload.get("title", "") + " " + " ".join(summary_payload.get("bullets", []))
                 has_repetition_in_summary, rep_score_summary, rep_patterns_summary = detect_repetition(
                     summary_text,
@@ -159,8 +308,8 @@ class RecapSummaryUsecase:
                         }
                     )
                     last_error = RuntimeError(f"Repetition in parsed summary (score: {rep_score_summary:.2f})")
-                    continue  # Retry
-                # 成功した場合は結果を返す
+                    continue
+
                 summary = RecapSummary(**summary_payload)
 
                 metadata = RecapSummaryMetadata(
@@ -173,27 +322,6 @@ class RecapSummaryUsecase:
                     summary_length_bullets=len(summary.bullets),
                 )
 
-                if attempt > 0:
-                    logger.info(
-                        "Recap summary generated successfully after retry",
-                        extra={
-                            "job_id": str(request.job_id),
-                            "genre": request.genre,
-                            "bullet_count": len(summary.bullets),
-                            "attempts": attempt + 1,
-                        },
-                    )
-                else:
-                    logger.info(
-                        "Recap summary generated",
-                        extra={
-                            "job_id": str(request.job_id),
-                            "genre": request.genre,
-                            "bullet_count": len(summary.bullets),
-                            "attempt": attempt + 1,
-                        },
-                    )
-
                 return RecapSummaryResponse(
                     job_id=request.job_id,
                     genre=request.genre,
@@ -205,27 +333,24 @@ class RecapSummaryUsecase:
                 last_response = llm_response
                 if attempt < max_retries:
                     continue
-                # 最後の試行でも失敗した場合はエラーを投げる
-                logger.error(
-                    "Failed to generate recap summary after all retries",
-                    extra={
-                        "job_id": str(request.job_id),
-                        "genre": request.genre,
-                        "attempts": attempt + 1,
-                        "error": str(e),
-                    },
-                )
                 raise
 
-        # Fail-safe: If all retries fail, return the extracted genre highlights as the summary
+        # Fail-safe: If all retries fail, return fallback
         if request.genre_highlights:
             logger.warning(
                 "Falling back to genre highlights due to LLM failure",
                 extra={"job_id": str(request.job_id), "genre": request.genre}
             )
-            return getattr(self, "_create_fallback_response")(request)
+            return self._create_fallback_response(request)
 
-        # ここに到達することはないはずだが、念のため
+        # Fallback: Use representative sentences from clusters
+        if request.clusters:
+            logger.warning(
+                "Falling back to cluster representatives due to LLM failure",
+                extra={"job_id": str(request.job_id), "genre": request.genre}
+            )
+            return self._create_fallback_from_clusters(request)
+
         if last_error:
             raise last_error
         raise RuntimeError("Failed to generate recap summary")
@@ -260,7 +385,46 @@ class RecapSummaryUsecase:
             metadata=metadata
         )
 
-    def _build_prompt(self, request: RecapSummaryRequest, max_bullets: int) -> str:
+    def _create_fallback_from_clusters(self, request: RecapSummaryRequest) -> RecapSummaryResponse:
+        """Create a response from cluster representatives when LLM generation fails."""
+        bullets: List[str] = []
+        max_fallback_bullets = 15
+
+        for cluster in request.clusters[:max_fallback_bullets]:
+            for sentence in cluster.representative_sentences[:1]:  # One sentence per cluster
+                if len(bullets) >= max_fallback_bullets:
+                    break
+                bullets.append(sentence.text)
+            if len(bullets) >= max_fallback_bullets:
+                break
+
+        if not bullets:
+            bullets = ["要約の生成に失敗しました。"]
+
+        summary = RecapSummary(
+            title=f"{request.genre}の主要トピック (自動抽出)",
+            bullets=bullets[:max_fallback_bullets],
+            language="ja"
+        )
+
+        metadata = RecapSummaryMetadata(
+            model="cluster-fallback",
+            temperature=0.0,
+            prompt_tokens=0,
+            completion_tokens=0,
+            processing_time_ms=0,
+            json_validation_errors=1,
+            summary_length_bullets=len(summary.bullets),
+        )
+
+        return RecapSummaryResponse(
+            job_id=request.job_id,
+            genre=request.genre,
+            summary=summary,
+            metadata=metadata
+        )
+
+    def _build_prompt(self, request: RecapSummaryRequest, max_bullets: int, intermediate: bool = False) -> str:
         # Truncate cluster section to fit within 80K context window
         # Context window is now 80K tokens (81920), configured in entrypoint.sh and config.py
         # 71K tokens ≈ 284K-568K chars, but we need to reserve space for prompt template
@@ -357,6 +521,7 @@ class RecapSummaryUsecase:
             "job_id": str(request.job_id),
             "genre": request.genre,
             "max_bullets": max_bullets,
+            "intermediate": intermediate,
         }
 
         if request.genre_highlights:
@@ -462,11 +627,49 @@ class RecapSummaryUsecase:
         if not bullets:
             bullets = [title]
 
+        # Validate and sanitize references
+        references = payload.get("references")
+        if references is not None:
+            if not isinstance(references, list):
+                references = None
+            else:
+                # Validate reference structure and IDs
+                validated_refs = []
+                seen_ids = set()
+                for ref in references:
+                    if not isinstance(ref, dict):
+                        continue
+                    ref_id = ref.get("id")
+                    if not isinstance(ref_id, int) or ref_id < 1 or ref_id in seen_ids:
+                        continue
+                    seen_ids.add(ref_id)
+                    url = ref.get("url", "")
+                    domain = ref.get("domain", "")
+                    if not url or not domain:
+                        # Try to extract domain from URL if missing
+                        if url and not domain:
+                            try:
+                                parsed = urlparse(url if "://" in url else f"https://{url}")
+                                domain = parsed.netloc or parsed.path.split("/")[0] or url
+                            except Exception:
+                                domain = url
+                        else:
+                            continue
+                    validated_refs.append({
+                        "id": ref_id,
+                        "url": url,
+                        "domain": domain,
+                        "article_id": ref.get("article_id"),
+                    })
+                references = validated_refs if validated_refs else None
+
         sanitized = {
             "title": title,
             "bullets": [bullet[:500] for bullet in bullets],
             "language": language,
         }
+        if references:
+            sanitized["references"] = references
 
         return sanitized
 

@@ -133,12 +133,45 @@ class RecapSummaryRequest(BaseModel):
     options: Optional[RecapSummaryOptions] = None
 
 
+class IntermediateSummary(BaseModel):
+    """Lightweight intermediate summary for map phase (hierarchical summarization)."""
+
+    bullets: List[str] = Field(min_length=1, max_length=10)
+    language: str = Field(pattern="^ja$", default="ja")
+
+    @field_validator("bullets", mode="after")
+    @classmethod
+    def validate_bullets(cls, bullets: List[str]) -> List[str]:
+        cleaned: List[str] = []
+        for bullet in bullets:
+            stripped = bullet.strip()
+            if stripped:
+                cleaned.append(stripped)
+        if not cleaned:
+            raise ValueError("bullets must contain at least one non-empty item")
+        return cleaned
+
+
+class Reference(BaseModel):
+    """Reference to a source article."""
+
+    id: int = Field(ge=1, description="Reference ID (1-indexed, matches [n] in bullets)")
+    url: str = Field(min_length=1, description="Source article URL")
+    domain: str = Field(min_length=1, description="Source domain")
+    article_id: Optional[str] = Field(default=None, description="Source article ID if available")
+
+
 class RecapSummary(BaseModel):
     """Structured summary expected by recap-worker."""
 
     title: str = Field(min_length=1, max_length=200)
     bullets: List[str] = Field(min_length=1, max_length=15)
     language: str = Field(pattern="^ja$")
+    references: Optional[List[Reference]] = Field(
+        default=None,
+        max_length=50,
+        description="List of references cited in bullets (e.g., [1], [2])"
+    )
 
     @field_validator("bullets", mode="after")
     @classmethod
