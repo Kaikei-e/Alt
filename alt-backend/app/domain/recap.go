@@ -13,6 +13,7 @@ type RecapGenre struct {
 	ClusterCount  int            `json:"cluster_count"`
 	EvidenceLinks []EvidenceLink `json:"evidence_links"`
 	Bullets       []string       `json:"bullets"`
+	References    []Reference    `json:"references,omitempty"`
 }
 
 type EvidenceLink struct {
@@ -21,6 +22,13 @@ type EvidenceLink struct {
 	SourceURL   string `json:"source_url"`
 	PublishedAt string `json:"published_at"`
 	Lang        string `json:"lang"`
+}
+
+type Reference struct {
+	ID        int     `json:"id"`
+	URL       string  `json:"url"`
+	Domain    string  `json:"domain"`
+	ArticleID *string `json:"article_id,omitempty"`
 }
 
 type RecapSummary struct {
