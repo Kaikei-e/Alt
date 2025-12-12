@@ -256,6 +256,30 @@ class RunManager:
                 diagnostics = self._build_diagnostics_entries(response)
                 await dao.upsert_diagnostics(run_id, diagnostics)
 
+                # Calculate and persist run-level cluster statistics
+                cluster_stats = self._compute_cluster_statistics(response)
+                if cluster_stats:
+                    try:
+                        await dao.upsert_run_diagnostics(
+                            run_id=run_id,
+                            cluster_avg_similarity_mean=cluster_stats.get("mean"),
+                            cluster_avg_similarity_variance=cluster_stats.get("variance"),
+                            cluster_avg_similarity_p95=cluster_stats.get("p95"),
+                            cluster_avg_similarity_max=cluster_stats.get("max"),
+                            cluster_count=cluster_stats.get("cluster_count", 0),
+                        )
+                    except Exception as diag_exc:
+                        # Log warning but continue processing - other data is saved successfully
+                        error_str = str(diag_exc)
+                        LOGGER.warning(
+                            "run.diagnostics.save_failed",
+                            run_id=run_id,
+                            error=error_str,
+                            error_type=type(diag_exc).__name__,
+                            message="Failed to save run diagnostics. Other data was saved successfully. "
+                            "If this is a missing table error, run: 'make recap-migrate'",
+                        )
+
                 # Log system metrics for dashboard
                 clustering_metrics = {
                     "dbcv_score": response.diagnostics.dbcv_score,
@@ -676,6 +700,10 @@ class RunManager:
 
         representatives = []
         for idx, sentence in enumerate(cluster.representatives):
+            # Defensive filter: skip sentences shorter than 20 characters to prevent ValidationError
+            # This should rarely trigger if upstream filters work correctly, but ensures fail-open behavior
+            if not sentence.text or len(sentence.text) < 20:
+                continue
             representatives.append(
                 ClusterSentencePayload(
                     article_id=sentence.source.source_id,
@@ -745,6 +773,55 @@ class RunManager:
                 DiagnosticEntry(metric="hdbscan_min_samples", value=diag.hdbscan.min_samples)
             )
         return entries
+
+    def _compute_cluster_statistics(
+        self, response: EvidenceResponse
+    ) -> Optional[dict[str, Any]]:
+        """Compute run-level statistics from cluster avg_sim values.
+
+        Collects avg_sim from all clusters, filters out None values, and computes:
+        - mean: average of all cluster avg_sim values
+        - variance: population variance of cluster avg_sim values
+        - p95: 95th percentile of cluster avg_sim values
+        - max: maximum cluster avg_sim value
+        - cluster_count: total number of clusters
+
+        Returns:
+            Dictionary with statistics, or None if no valid avg_sim values found.
+        """
+        sims: list[float] = []
+        for cluster in response.clusters:
+            if cluster.stats.avg_sim is not None:
+                sims.append(cluster.stats.avg_sim)
+
+        if not sims:
+            return None
+
+        cluster_count = len(sims)
+
+        # Mean
+        mean = sum(sims) / cluster_count
+
+        # Population variance: sum((x - mean)^2) / n
+        variance = sum((x - mean) ** 2 for x in sims) / cluster_count
+
+        # Percentile calculation (p95)
+        sorted_sims = sorted(sims)
+        p95_idx = int(0.95 * (cluster_count - 1))
+        if p95_idx >= cluster_count:
+            p95_idx = cluster_count - 1
+        p95 = sorted_sims[p95_idx]
+
+        # Max
+        max_sim = max(sims)
+
+        return {
+            "mean": mean,
+            "variance": variance,
+            "p95": p95,
+            "max": max_sim,
+            "cluster_count": cluster_count,
+        }
 
     async def _handle_failure(self, run_id: int, message: str) -> None:
         async with self._session_factory() as session:

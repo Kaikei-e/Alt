@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 import time
 from dataclasses import dataclass
-from typing import Iterable, Literal, Sequence
+from itertools import islice
+from typing import Iterable, Iterator, Literal, Sequence
 
 import numpy as np
 import structlog
@@ -16,6 +18,21 @@ from ..infra.cache import LRUCache
 from threading import Lock
 
 logger = structlog.get_logger(__name__)
+
+# Optional ONNX imports
+try:
+    import onnxruntime as ort
+    ONNX_AVAILABLE = True
+except ImportError:
+    ONNX_AVAILABLE = False
+    ort = None  # type: ignore[assignment, unused-ignore]
+
+try:
+    from transformers import AutoTokenizer
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+    AutoTokenizer = None  # type: ignore[assignment, unused-ignore]
 
 
 BackendLiteral = Literal["sentence-transformers", "onnx", "hash"]
@@ -29,6 +46,10 @@ class EmbedderConfig:
     device: str
     batch_size: int
     cache_size: int
+    onnx_model_path: str | None = None
+    onnx_tokenizer_name: str | None = None
+    onnx_pooling: Literal["cls", "mean"] = "mean"
+    onnx_max_length: int = 512
 
 
 class Embedder:
@@ -76,6 +97,156 @@ class Embedder:
         logger.info("SentenceTransformer model initialized", device=self.config.device)
         return model
 
+    def _load_onnx_model(self):
+        """Load ONNX model for inference."""
+        if not ONNX_AVAILABLE:
+            raise ImportError(
+                "onnxruntime is required for ONNX backend. "
+                "Install with: pip install onnxruntime"
+            )
+        if not TRANSFORMERS_AVAILABLE:
+            raise ImportError(
+                "transformers is required for ONNX backend. "
+                "Install with: pip install transformers"
+            )
+
+        if not self.config.onnx_model_path:
+            raise ValueError(
+                "onnx_model_path is required when backend='onnx'. "
+                "Set RECAP_SUBWORKER_ONNX_MODEL_PATH environment variable."
+            )
+
+        if not os.path.exists(self.config.onnx_model_path):
+            raise FileNotFoundError(
+                f"ONNX model not found: {self.config.onnx_model_path}"
+            )
+
+        tokenizer_name = self.config.onnx_tokenizer_name or self.config.model_id
+
+        logger.info(
+            "Loading ONNX model",
+            model_path=self.config.onnx_model_path,
+            tokenizer_name=tokenizer_name,
+            pooling=self.config.onnx_pooling,
+        )
+
+        # Build session options
+        sess_options = ort.SessionOptions()
+        sess_options.enable_mem_pattern = True
+        sess_options.enable_cpu_mem_arena = True
+
+        # Graph optimization level
+        graph_opt_level = os.getenv("RECAP_ONNX_GRAPH_OPT_LEVEL", "ORT_ENABLE_ALL")
+        try:
+            sess_options.graph_optimization_level = getattr(
+                ort.GraphOptimizationLevel, graph_opt_level
+            )
+        except AttributeError:
+            logger.warning(
+                "Invalid RECAP_ONNX_GRAPH_OPT_LEVEL, defaulting to ORT_ENABLE_ALL",
+                requested=graph_opt_level,
+            )
+            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+        # Thread configuration
+        intra_threads = os.getenv("RECAP_ONNX_INTRA_OP_THREADS")
+        inter_threads = os.getenv("RECAP_ONNX_INTER_OP_THREADS")
+        if intra_threads and intra_threads.isdigit():
+            sess_options.intra_op_num_threads = int(intra_threads)
+        if inter_threads and inter_threads.isdigit():
+            sess_options.inter_op_num_threads = int(inter_threads)
+
+        # Execution mode
+        execution_mode = os.getenv("RECAP_ONNX_EXECUTION_MODE", "ORT_SEQUENTIAL")
+        if execution_mode.upper() == "ORT_PARALLEL":
+            sess_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
+        else:
+            sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+
+        # Resolve providers
+        configured_providers = os.getenv("RECAP_ONNX_RUNTIME_PROVIDERS")
+        available = set(ort.get_available_providers())
+
+        if configured_providers:
+            requested = [
+                p.strip() for p in configured_providers.split(",") if p.strip()
+            ]
+            providers = [p for p in requested if p in available]
+            if not providers:
+                logger.warning(
+                    "Requested ONNX providers unavailable, falling back to CPUExecutionProvider",
+                    requested=requested,
+                    available=list(available),
+                )
+                providers = ["CPUExecutionProvider"]
+        else:
+            providers = ["CPUExecutionProvider"] if "CPUExecutionProvider" in available else list(available)
+
+        # Create inference session
+        session = ort.InferenceSession(
+            self.config.onnx_model_path,
+            sess_options=sess_options,
+            providers=providers,
+        )
+
+        # Load tokenizer
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
+
+        # Return a simple object that exposes .encode() method
+        class OnnxModelAdapter:
+            def __init__(self, session, tokenizer, pooling, max_length):
+                self.session = session
+                self.tokenizer = tokenizer
+                self.pooling = pooling
+                self.max_length = max_length
+
+            def encode(
+                self,
+                sentences: Sequence[str],
+                batch_size: int,
+                normalize_embeddings: bool = True,
+                show_progress_bar: bool = False,
+            ) -> np.ndarray:
+                embeddings_list: list[np.ndarray] = []
+
+                for i in range(0, len(sentences), batch_size):
+                    batch = sentences[i:i + batch_size]
+
+                    # Tokenize
+                    tokens = self.tokenizer(
+                        list(batch),
+                        padding=True,
+                        truncation=True,
+                        max_length=self.max_length,
+                        return_tensors="np",
+                    )
+
+                    # Run inference
+                    ort_inputs = {k: v for k, v in tokens.items()}
+                    hidden_states = self.session.run(None, ort_inputs)[0]
+
+                    # Pooling
+                    if self.pooling == "mean":
+                        emb = hidden_states.mean(axis=1)
+                    else:  # cls
+                        emb = hidden_states[:, 0, :]
+
+                    # Normalize
+                    if normalize_embeddings:
+                        norms = np.linalg.norm(emb, axis=1, keepdims=True)
+                        norms = np.where(norms == 0, 1.0, norms)
+                        emb = emb / norms
+
+                    embeddings_list.append(emb.astype(np.float32))
+
+                if not embeddings_list:
+                    embedding_dim = self.session.get_outputs()[0].shape[-1]
+                    return np.zeros((0, embedding_dim), dtype=np.float32)
+
+                return np.vstack(embeddings_list)
+
+        return OnnxModelAdapter(session, tokenizer, self.config.onnx_pooling, self.config.onnx_max_length)
+
     def _ensure_model(self):
         if self._model is not None:
             return
@@ -87,9 +258,7 @@ class Embedder:
             if self.config.backend == "sentence-transformers":
                 self._model = self._load_sentence_transformer()
             elif self.config.backend == "onnx":
-                # For now we re-use SentenceTransformer while keeping the backend flag so that
-                # configuration remains forward compatible with a true ONNX implementation.
-                self._model = self._load_sentence_transformer()
+                self._model = self._load_onnx_model()
             else:
                 # hash backend does not require lazy model initialization
                 self._model = None

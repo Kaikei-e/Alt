@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 import time
+import unicodedata
 from dataclasses import dataclass
 from typing import Optional, Sequence
 
@@ -43,6 +44,65 @@ from .embedder import Embedder
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?。！？])\s+")
 _LOGGER = structlog.get_logger(__name__)
 _MIN_DOCUMENTS_PER_GENRE = 3
+
+# URL and email regex patterns
+_URL_PATTERN = re.compile(
+    r"https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+)
+# Punctuation repetition pattern (3+ consecutive identical punctuation marks)
+_PUNCT_REPEAT_PATTERN = re.compile(r"([。！？!?])\1{2,}")
+
+
+def normalize_text(text: str, enable_sudachi: bool = False) -> str:
+    """
+    Normalize text for embedding generation to reduce noise and improve distance stability.
+
+    Applies:
+    - Whitespace normalization (removes excessive newlines/spaces)
+    - Unicode normalization (NFKC: full-width to half-width, etc.)
+    - URL/email placeholder replacement
+    - Punctuation repetition reduction
+
+    Args:
+        text: Input text to normalize
+        enable_sudachi: If True, apply Sudachi morphological normalization (experimental)
+
+    Returns:
+        Normalized text string
+    """
+    if not text:
+        return text
+
+    # Step 1: Unicode normalization (NFKC: full-width to half-width, etc.)
+    normalized = unicodedata.normalize("NFKC", text)
+
+    # Step 2: Replace URLs and emails with placeholders
+    normalized = _URL_PATTERN.sub(
+        lambda m: "<URL>" if "://" in m.group(0) or m.group(0).startswith("www.") else "<EMAIL>",
+        normalized
+    )
+
+    # Step 3: Reduce excessive punctuation repetition (e.g., "。。。" -> "。")
+    normalized = _PUNCT_REPEAT_PATTERN.sub(r"\1", normalized)
+
+    # Step 4: Whitespace normalization (collapse multiple spaces/newlines to single space)
+    # Preserve paragraph boundaries by keeping single newlines, but collapse multiple
+    normalized = re.sub(r"\s+", " ", normalized)
+
+    # Step 5: Optional Sudachi preprocessing (for dedup/internal representation only)
+    if enable_sudachi:
+        try:
+            from .classifier import SudachiTokenizer
+            tokenizer = SudachiTokenizer(mode="C")
+            # Tokenize and rejoin with spaces (surface form normalization)
+            tokens = tokenizer.tokenize(normalized)
+            normalized = " ".join(tokens)
+        except ImportError:
+            _LOGGER.warning("Sudachi not available, skipping morphological normalization")
+        except Exception as e:
+            _LOGGER.warning("Sudachi normalization failed", error=str(e))
+
+    return normalized.strip()
 
 
 @dataclass
@@ -107,7 +167,7 @@ class EvidencePipeline:
         classifier_stats = request.metadata.classifier if request.metadata else None
 
         dedup_threshold = self._adjust_dedup_threshold(
-            request.constraints.dedup_threshold, request.metadata
+            request.constraints.dedup_threshold, request.metadata, request.genre
         )
         keep_indices, removed = selectors.prune_duplicates(embeddings, threshold=dedup_threshold)
         DEDUP_REMOVED.inc(removed)
@@ -245,45 +305,51 @@ class EvidencePipeline:
     def _merge_excessive_clusters(
         self, labels: np.ndarray, embeddings: np.ndarray, max_clusters: int
     ) -> np.ndarray:
-        """Merge smallest clusters into nearest neighbors until count <= max_clusters."""
-        unique_labels = set(labels)
-        unique_labels.discard(-1) # Ignore noise
+        """
+        Merge excessive clusters using Ward hierarchical clustering.
+        Uses scipy.cluster.hierarchy to merge clusters until count <= max_clusters.
+        """
+        from scipy.cluster.hierarchy import linkage, fcluster
 
-        while len(unique_labels) > max_clusters:
-            # 1. Calculate centroids and sizes
-            centroids = {}
-            sizes = {}
-            for lbl in unique_labels:
-                mask = labels == lbl
-                centroids[lbl] = embeddings[mask].mean(axis=0)
-                sizes[lbl] = mask.sum()
+        unique_labels = sorted(set(labels))
+        unique_labels = [lbl for lbl in unique_labels if lbl != -1]  # Ignore noise
 
-            # 2. Find smallest cluster
-            smallest_lbl = min(sizes, key=sizes.get)
-            smallest_centroid = centroids[smallest_lbl]
+        # Early return if already within limit or too few clusters
+        if len(unique_labels) <= max_clusters or len(unique_labels) < 2:
+            return labels
 
-            # 3. Find nearest neighbor for smallest
-            best_target = None
-            max_sim = -1.0
+        # Calculate cluster centroids (Ward method uses Euclidean distance)
+        centroids = []
+        label_to_index = {}
+        for idx, lbl in enumerate(unique_labels):
+            mask = labels == lbl
+            centroids.append(embeddings[mask].mean(axis=0))
+            label_to_index[lbl] = idx
 
-            for target_lbl in unique_labels:
-                if target_lbl == smallest_lbl:
-                    continue
-                # Cosine similarity
-                sim = np.dot(smallest_centroid, centroids[target_lbl]) / (
-                    np.linalg.norm(smallest_centroid) * np.linalg.norm(centroids[target_lbl]) + 1e-9
-                )
-                if sim > max_sim:
-                    max_sim = sim
-                    best_target = target_lbl
+        # Convert to numpy array for linkage
+        centroid_matrix = np.stack(centroids)
 
-            if best_target is not None:
-                # Merge: relabel smallest -> target
-                labels[labels == smallest_lbl] = best_target
-                unique_labels.remove(smallest_lbl)
-            else:
-                # Should not happen if > 1 cluster, unless embeddings are weird
-                break
+        # Perform Ward hierarchical clustering
+        # Ward method minimizes within-cluster variance increase
+        Z = linkage(centroid_matrix, method='ward')
+
+        # Cut tree to get max_clusters clusters
+        # fcluster returns cluster assignments (1-indexed)
+        cluster_assignments = fcluster(Z, t=max_clusters, criterion='maxclust')
+
+        # Map cluster assignments back to original labels
+        # Create mapping: original_label -> new_label
+        # Use the first label in each new cluster as the representative
+        new_label_map = {}
+        for orig_idx, new_cluster_id in enumerate(cluster_assignments):
+            orig_label = unique_labels[orig_idx]
+            # Find the first label assigned to this cluster to use as representative
+            if new_cluster_id not in new_label_map:
+                new_label_map[new_cluster_id] = orig_label
+            # All labels in the same cluster get the same representative label
+            target_label = new_label_map[new_cluster_id]
+            if target_label != orig_label:
+                labels[labels == orig_label] = target_label
 
         return labels
 
@@ -351,7 +417,12 @@ class EvidencePipeline:
         return sentences
 
     def _split_paragraph(self, paragraph: str) -> list[str]:
-        stripped = paragraph.strip()
+        # Apply text normalization before sentence splitting
+        normalized = normalize_text(
+            paragraph,
+            enable_sudachi=self.settings.enable_sudachi_preprocessing
+        )
+        stripped = normalized.strip()
         if not stripped:
             return []
         if "\n" in stripped:
@@ -403,6 +474,98 @@ class EvidencePipeline:
             return future.result()
         return topics.extract_topics(corpora, bm25_weighting=True)
 
+    def _avg_pairwise_cosine_sim(self, cluster_embeddings: np.ndarray) -> Optional[float]:
+        """Calculate average pairwise cosine similarity for cluster embeddings.
+
+        Args:
+            cluster_embeddings: Normalized embedding vectors (N, D)
+
+        Returns:
+            Average pairwise cosine similarity, or None if < 2 vectors
+        """
+        if cluster_embeddings.shape[0] < 2:
+            return None
+
+        # Embeddings are normalized, so dot product is cosine similarity
+        sim_matrix = cluster_embeddings @ cluster_embeddings.T
+        numerator = float(sim_matrix.sum() - cluster_embeddings.shape[0])
+        denominator = cluster_embeddings.shape[0] * (cluster_embeddings.shape[0] - 1)
+
+        if denominator <= 0:
+            return None
+
+        avg_sim = numerator / denominator
+        # Clip to valid cosine similarity range [-1, 1]
+        return min(1.0, max(-1.0, avg_sim))
+
+    def _lambda_from_avg_sim(self, avg_sim: Optional[float], base_lambda: float) -> float:
+        """Calculate adaptive lambda parameter from average similarity.
+
+        Formula: lambda = 0.5 + 0.3 * (1 - avg_sim)
+        - High avg_sim (homogeneous cluster) -> lower lambda (more diversity)
+        - Low avg_sim (diverse cluster) -> higher lambda (more relevance)
+
+        Args:
+            avg_sim: Average pairwise cosine similarity, or None
+            base_lambda: Fallback lambda when avg_sim is None
+
+        Returns:
+            Lambda parameter in [0.0, 1.0]
+        """
+        if avg_sim is None:
+            return base_lambda
+
+        lambda_param = 0.5 + 0.3 * (1.0 - avg_sim)
+        # Clip to valid range
+        return min(1.0, max(0.0, lambda_param))
+
+    def _is_valid_representative_text(self, text: str) -> bool:
+        """
+        Check if text is valid for use as a representative sentence.
+
+        Filters out:
+        - Text shorter than 20 characters (API schema requirement)
+        - Stack traces and code fragments (heuristic detection)
+
+        Args:
+            text: Text to validate
+
+        Returns:
+            True if text is valid for representative sentence, False otherwise
+        """
+        if not text or len(text) < 20:
+            return False
+
+        text_lower = text.lower()
+
+        # Check for stack trace / code fragment indicators
+        stack_trace_keywords = [
+            "stacktrace",
+            "traceback",
+            "exception",
+            'file "',
+            "line ",
+            "at ",
+            "error:",
+            "error ",
+        ]
+        if any(keyword in text_lower for keyword in stack_trace_keywords):
+            return False
+
+        # Check for excessive code-like symbols (brackets, braces, semicolons, etc.)
+        code_symbols = set("{}[]();=<>")
+        symbol_count = sum(1 for char in text if char in code_symbols)
+        if len(text) > 0 and symbol_count / len(text) > 0.3:
+            return False
+
+        # Check for consecutive code-like patterns (e.g., "}){", "});", etc.)
+        code_patterns = [r"\)\s*\{", r"\}\s*\)", r"\}\s*;", r"\)\s*;", r"\{\s*\}"]
+        for pattern in code_patterns:
+            if re.search(pattern, text):
+                return False
+
+        return True
+
     def _build_clusters(
         self,
         sentences: Sequence[SentenceRecord],
@@ -419,8 +582,13 @@ class EvidencePipeline:
         all_rep_indices: list[int] = []
         for cluster_offset, (cluster_id, indices) in enumerate(zip(unique_labels, cluster_indices)):
             cluster_embeddings = embeddings[indices]
+
+            # Calculate avg_sim first, then derive adaptive lambda
+            avg_sim = self._avg_pairwise_cosine_sim(cluster_embeddings)
+            lambda_cluster = self._lambda_from_avg_sim(avg_sim, mmr_lambda)
+
             selected_local = selectors.mmr_select(
-                cluster_embeddings, k=max_sentences_per_cluster, lambda_param=mmr_lambda
+                cluster_embeddings, k=max_sentences_per_cluster, lambda_param=lambda_cluster
             )
             MMR_SELECTED.inc(len(selected_local))
             representatives: list[RepresentativeSentence] = []
@@ -429,6 +597,9 @@ class EvidencePipeline:
             def _push_sentence(sentence_idx: int, *, allow_reuse: bool = False) -> int:
                 sentence = sentences[sentence_idx]
                 if not allow_reuse and sentence.article_id in used_articles:
+                    return 0
+                # Filter out invalid representative text (too short, code fragments, stack traces)
+                if not self._is_valid_representative_text(sentence.text):
                     return 0
                 pos = len(representatives)
                 representatives.append(
@@ -467,19 +638,16 @@ class EvidencePipeline:
                             break
 
             if not representatives and indices:
-                tokens_added = _push_sentence(indices[0], allow_reuse=True)
-                if tokens_added:
-                    budget_tokens += tokens_added
-                    all_rep_indices.append(indices[0])
+                # Fallback: try to find any valid sentence from the cluster
+                for fallback_idx in indices:
+                    tokens_added = _push_sentence(fallback_idx, allow_reuse=True)
+                    if tokens_added:
+                        budget_tokens += tokens_added
+                        all_rep_indices.append(fallback_idx)
+                        break
 
-            avg_sim = None
-            if cluster_embeddings.shape[0] > 1:
-                sim_matrix = cluster_embeddings @ cluster_embeddings.T
-                numerator = float(sim_matrix.sum() - cluster_embeddings.shape[0])
-                denominator = cluster_embeddings.shape[0] * (cluster_embeddings.shape[0] - 1)
-                if denominator > 0:
-                    avg_sim = numerator / denominator
-
+            # avg_sim was already calculated above for lambda adjustment
+            # Reuse it here for ClusterStats
             label_terms = top_terms[cluster_offset] if cluster_offset < len(top_terms) else []
             clusters.append(
                 EvidenceCluster(
@@ -509,17 +677,24 @@ class EvidencePipeline:
 
         rep_embeddings = embeddings[rep_indices]
 
-        # Apply MMR on the pool of representatives
+        # Calculate avg_sim for representative pool and derive adaptive lambda
+        avg_sim = self._avg_pairwise_cosine_sim(rep_embeddings)
+        lambda_genre = self._lambda_from_avg_sim(avg_sim, mmr_lambda)
+
+        # Apply MMR on the pool of representatives with adaptive lambda
         selected_local_indices = selectors.mmr_select(
             rep_embeddings,
             k=self.settings.max_genre_sentences,
-            lambda_param=mmr_lambda
+            lambda_param=lambda_genre
         )
 
         highlights: list[RepresentativeSentence] = []
         for local_idx in selected_local_indices:
             original_idx = rep_indices[local_idx]
             sentence = sentences[original_idx]
+            # Filter out invalid representative text (too short, code fragments, stack traces)
+            if not self._is_valid_representative_text(sentence.text):
+                continue
             highlights.append(
                 RepresentativeSentence(
                     text=sentence.text,
@@ -550,12 +725,45 @@ class EvidencePipeline:
         self,
         base_threshold: float,
         metadata: Optional[CorpusMetadata],
+        genre: str,
     ) -> float:
+        """
+        Adjust deduplication threshold based on genre-specific settings and classifier statistics.
+
+        Priority order:
+        1. Request base_threshold (from EvidenceRequest.constraints.dedup_threshold)
+        2. Genre-specific override from Settings.genre_dedup_thresholds (if exists)
+        3. Classifier-based adjustment (existing logic)
+        4. Clamp to [0.0, 0.99]
+
+        Args:
+            base_threshold: Base threshold from request constraints
+            metadata: Optional corpus metadata with classifier statistics
+            genre: Genre name for lookup in genre_dedup_thresholds
+
+        Returns:
+            Adjusted threshold value in [0.0, 0.99]
+        """
         threshold = base_threshold
-        if metadata and metadata.classifier:
+
+        # Step 2: Apply genre-specific override if available
+        genre_thresholds = self.settings.genre_dedup_thresholds_dict
+        if genre in genre_thresholds:
+            threshold = genre_thresholds[genre]
+            _LOGGER.debug(
+                "Using genre-specific dedup threshold",
+                genre=genre,
+                threshold=threshold,
+                base_threshold=base_threshold,
+            )
+
+        # Step 3: Apply classifier-based adjustment (only if genre override didn't apply)
+        if metadata and metadata.classifier and genre not in genre_thresholds:
             stats = metadata.classifier
             if stats.avg_confidence < 0.35:
                 threshold = min(0.97, threshold + 0.03)
             elif stats.avg_confidence > 0.75 and stats.coverage_ratio > 0.6:
                 threshold = max(0.82, threshold - 0.04)
+
+        # Step 4: Clamp to valid range
         return float(min(max(threshold, 0.0), 0.99))
