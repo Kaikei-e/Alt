@@ -372,3 +372,102 @@ async def test_process_run_times_out(payload):
     assert dao.failure_status is not None
     assert dao.failure_status[0] == 11
     assert "timed out" in dao.failure_status[2]
+
+
+@pytest.mark.asyncio
+async def test_process_run_filters_short_sentences_in_response(payload):
+    """Test that run manager filters out short sentences from API response without failing."""
+    session = FakeSession()
+    dao = FakeDAO(session)
+    job_id = uuid4()
+    record = RunRecord(
+        run_id=12,
+        job_id=job_id,
+        genre="tech",
+        status="running",
+        cluster_count=0,
+        request_payload={"payload": payload.model_dump(mode="json")},
+        response_payload=None,
+        error_message=None,
+    )
+    dao.fetched_record = record
+
+    # Create response with a short sentence that would cause ValidationError
+    pipeline_response = EvidenceResponse(
+        job_id="job",
+        genre="tech",
+        clusters=[
+            EvidenceCluster(
+                cluster_id=1,
+                size=2,
+                label=ClusterLabel(top_terms=["test"]),
+                representatives=[
+                    RepresentativeSentence(
+                        text="This is a valid sentence with sufficient length.",
+                        lang="en",
+                        source=RepresentativeSource(source_id="art1"),
+                    ),
+                    RepresentativeSentence(
+                        text="short",  # This should be filtered out
+                        lang="en",
+                        source=RepresentativeSource(source_id="art2"),
+                    ),
+                ],
+                supporting_ids=["art1", "art2"],
+                stats=ClusterStats(),
+            ),
+        ],
+        evidence_budget=EvidenceBudget(sentences=2, tokens_estimated=100),
+        diagnostics=Diagnostics(),
+    )
+    runner = PipelineRunnerStub(pipeline_response)
+    settings = Settings(max_background_runs=1, pipeline_mode="processpool")
+    manager = make_manager(dao, session, settings=settings, pipeline_runner=runner)
+
+    # Should not raise ValidationError
+    await manager._process_run(12)
+
+    # Should succeed and filter out the short sentence
+    assert dao.success_status == (12, 1, "succeeded")
+    # Verify that the response payload was created (would fail if ValidationError occurred)
+    assert dao.success_status is not None
+
+
+@pytest.mark.asyncio
+async def test_convert_cluster_to_api_filters_short_sentences():
+    """Test that _convert_cluster_to_api filters out short sentences."""
+    session = FakeSession()
+    dao = FakeDAO(session)
+    manager = make_manager(dao, session)
+
+    cluster = EvidenceCluster(
+        cluster_id=1,
+        size=3,
+        label=ClusterLabel(top_terms=["test"]),
+        representatives=[
+            RepresentativeSentence(
+                text="This is a valid sentence with sufficient length.",
+                lang="en",
+                source=RepresentativeSource(source_id="art1"),
+            ),
+            RepresentativeSentence(
+                text="short",  # Should be filtered out
+                lang="en",
+                source=RepresentativeSource(source_id="art2"),
+            ),
+            RepresentativeSentence(
+                text="Another valid sentence that exceeds minimum length.",
+                lang="en",
+                source=RepresentativeSource(source_id="art3"),
+            ),
+        ],
+        supporting_ids=["art1", "art2", "art3"],
+        stats=ClusterStats(),
+    )
+
+    result = manager._convert_cluster_to_api(cluster)
+
+    # Should only include sentences with length >= 20
+    assert len(result.representatives) == 2
+    for rep in result.representatives:
+        assert len(rep.sentence_text) >= 20

@@ -96,3 +96,23 @@ async def test_upsert_diagnostics_uses_conflict_update():
     session.execute.assert_awaited()
     stmt = session.execute.await_args_list[0].args[0]
     assert "ON CONFLICT" in str(stmt)
+
+
+@pytest.mark.asyncio
+async def test_upsert_run_diagnostics_uses_conflict_update():
+    session = AsyncMock()
+    dao = SubworkerDAO(session)
+
+    await dao.upsert_run_diagnostics(
+        run_id=42,
+        cluster_avg_similarity_mean=0.85,
+        cluster_avg_similarity_variance=0.01,
+        cluster_avg_similarity_p95=0.92,
+        cluster_avg_similarity_max=0.95,
+        cluster_count=5,
+    )
+
+    session.execute.assert_awaited()
+    stmt = session.execute.await_args_list[0].args[0]
+    assert "ON CONFLICT" in str(stmt)
+    assert "recap_run_diagnostics" in str(stmt)
