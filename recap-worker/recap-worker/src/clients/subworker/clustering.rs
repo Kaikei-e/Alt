@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use reqwest::Url;
-use std::{cmp, time::Duration};
+use std::time::{Duration, Instant};
 use tokio::time::sleep;
 use tracing::{debug, warn};
 use uuid::Uuid;
@@ -10,12 +10,13 @@ use super::types::{
     ClusterRepresentative, ClusteringResponse, DEFAULT_HDBSCAN_MIN_CLUSTER_SIZE,
     DEFAULT_MAX_SENTENCES_TOTAL, DEFAULT_MMR_LAMBDA, DEFAULT_UMAP_N_COMPONENTS,
     INITIAL_POLL_INTERVAL_MS, MAX_POLL_ATTEMPTS, MAX_POLL_INTERVAL_MS, MIN_FALLBACK_DOCUMENTS,
-    MIN_PARAGRAPH_LEN,
+    MIN_PARAGRAPH_LEN, POLL_REQUEST_RETRIES, POLL_REQUEST_RETRY_DELAY_MS,
 };
 use super::utils::{summarize_validation_errors, truncate_error_message};
 use crate::clients::subworker::SubworkerClient;
 use crate::pipeline::evidence::EvidenceCorpus;
 use crate::schema::{subworker::CLUSTERING_RESPONSE_SCHEMA, validate_json};
+use crate::util::retry::{RetryConfig, is_retryable_error};
 use serde_json::Value;
 
 impl SubworkerClient {
@@ -63,10 +64,26 @@ impl SubworkerClient {
     }
 
     /// 証拠コーパスを送信してクラスタリング結果を取得する。
+    ///
+    /// timeoutを指定する場合は`cluster_corpus_with_timeout`を使用してください。
+    #[allow(dead_code)] // 他の場所で使用される可能性がある
     pub(crate) async fn cluster_corpus(
         &self,
         job_id: Uuid,
         corpus: &EvidenceCorpus,
+    ) -> Result<ClusteringResponse> {
+        // デフォルトのtimeoutを使用
+        let default_timeout = Duration::from_secs(300);
+        self.cluster_corpus_with_timeout(job_id, corpus, default_timeout)
+            .await
+    }
+
+    /// 証拠コーパスを送信してクラスタリング結果を取得する（timeout指定付き）。
+    pub(crate) async fn cluster_corpus_with_timeout(
+        &self,
+        job_id: Uuid,
+        corpus: &EvidenceCorpus,
+        genre_timeout: Duration,
     ) -> Result<ClusteringResponse> {
         let runs_url = build_runs_url(&self.base_url)?;
 
@@ -78,7 +95,9 @@ impl SubworkerClient {
         );
 
         let request_payload = build_cluster_job_request(corpus);
-        let idempotency_key = format!("{}::{}::{}", job_id, corpus.genre, Uuid::new_v4());
+        // 決定的なIdempotency-Keyを生成（corpusのハッシュを使用）
+        let corpus_digest = compute_corpus_digest(&request_payload);
+        let idempotency_key = format!("{}::{}::{}", job_id, corpus.genre, corpus_digest);
         let document_count = request_payload.documents.len();
 
         if document_count < self.min_documents_per_genre {
@@ -160,7 +179,9 @@ impl SubworkerClient {
             .context("failed to deserialize validated clustering response")?;
 
         if run.status.is_running() {
-            run = self.poll_run(run.run_id).await?;
+            run = self
+                .poll_run_with_timeout(run.run_id, genre_timeout)
+                .await?;
         }
 
         if !run.is_success() {
@@ -174,57 +195,44 @@ impl SubworkerClient {
         Ok(run)
     }
 
-    async fn poll_run(&self, run_id: i64) -> Result<ClusteringResponse> {
+    /// 経過時間ベースのdeadline付きでpollingを実行する。
+    async fn poll_run_with_timeout(
+        &self,
+        run_id: i64,
+        deadline: Duration,
+    ) -> Result<ClusteringResponse> {
+        let start_time = Instant::now();
         let run_url = build_run_url(&self.base_url, run_id)?;
 
-        for attempt in 0..MAX_POLL_ATTEMPTS {
-            let response = self
-                .client
-                .get(run_url.clone())
-                .send()
-                .await
-                .context("clustering run polling request failed")?;
+        // ジッター付きバックオフ設定
+        let backoff_config = RetryConfig {
+            max_attempts: MAX_POLL_ATTEMPTS,
+            base_delay_ms: INITIAL_POLL_INTERVAL_MS,
+            max_delay_ms: MAX_POLL_INTERVAL_MS,
+        };
 
-            if !response.status().is_success() {
-                let status = response.status();
-                let body = response.text().await.unwrap_or_default();
-                let truncated_body = truncate_error_message(&body);
-                return Err(anyhow!(
-                    "run polling endpoint returned error status {}: {}",
-                    status,
-                    truncated_body
-                ));
-            }
+        let mut attempt = 0;
+        let mut progress_tracker = ProgressTracker::new(start_time);
 
-            let response_json: Value = response
-                .json()
-                .await
-                .context("failed to deserialize polling response as JSON")?;
+        loop {
+            // deadline/stuck検知
+            self.check_polling_constraints(run_id, start_time, deadline, &progress_tracker)?;
 
-            let validation = validate_json(&CLUSTERING_RESPONSE_SCHEMA, &response_json);
-            if !validation.valid {
-                let summarized_errors = summarize_validation_errors(&validation.errors);
-                warn!(
-                    run_id,
-                    error_count = validation.errors.len(),
-                    first_error = %summarized_errors.first().map_or("unknown", String::as_str),
-                    "polling response failed JSON Schema validation"
-                );
-                return Err(anyhow!(
-                    "run polling response validation failed: {} errors (first: {})",
-                    validation.errors.len(),
-                    summarized_errors.first().map_or("unknown", String::as_str)
-                ));
-            }
+            // 1回のpoll実行（リクエスト送信、検証、デシリアライズ）
+            let run = self
+                .poll_run_once(run_id, &run_url, attempt, start_time, deadline)
+                .await?;
 
-            let run: ClusteringResponse = serde_json::from_value(response_json)
-                .context("failed to deserialize validated polling response")?;
+            // 進捗追跡の更新
+            progress_tracker.update_if_progressed(&run);
 
+            // 終了判定
             if run.status.is_terminal() {
                 if !run.is_success() {
                     warn!(
                         run_id,
                         status = %run.status,
+                        elapsed_secs = start_time.elapsed().as_secs(),
                         "clustering run completed with non-success status"
                     );
                 }
@@ -235,20 +243,185 @@ impl SubworkerClient {
                 run_id,
                 attempt,
                 status = %run.status,
+                elapsed_secs = start_time.elapsed().as_secs(),
+                deadline_secs = deadline.as_secs(),
                 "clustering run still in progress"
             );
 
-            let backoff = cmp::min(
-                INITIAL_POLL_INTERVAL_MS * (1_u64 << attempt.min(10)),
-                MAX_POLL_INTERVAL_MS,
-            );
-            sleep(Duration::from_millis(backoff)).await;
+            // ジッター付きバックオフで待機
+            let backoff = backoff_config.delay_for_attempt(attempt);
+            sleep(backoff).await;
+
+            attempt += 1;
+            if attempt >= MAX_POLL_ATTEMPTS {
+                return Err(anyhow!(
+                    "clustering run {} did not complete within {} attempts",
+                    run_id,
+                    MAX_POLL_ATTEMPTS
+                ));
+            }
+        }
+    }
+
+    /// deadlineとstuck検知をチェックする。
+    #[allow(clippy::unused_self)] // 将来の拡張性のため（ログ等でselfを使う可能性）
+    fn check_polling_constraints(
+        &self,
+        run_id: i64,
+        start_time: Instant,
+        deadline: Duration,
+        progress_tracker: &ProgressTracker,
+    ) -> Result<()> {
+        // 経過時間ベースのdeadlineチェック
+        let elapsed = start_time.elapsed();
+        if elapsed >= deadline {
+            return Err(anyhow!(
+                "clustering run {} did not complete within timeout ({}s elapsed, deadline: {}s)",
+                run_id,
+                elapsed.as_secs(),
+                deadline.as_secs()
+            ));
         }
 
-        Err(anyhow!(
-            "clustering run {} did not complete within timeout",
-            run_id
-        ))
+        // Stuck検知: 進捗が無い場合（statusやcluster_countが変化しない）
+        let time_since_progress = progress_tracker.time_since_progress();
+        if time_since_progress > Duration::from_secs(300) {
+            // 5分間進捗が無い場合はstuckと判定
+            warn!(
+                run_id,
+                elapsed_secs = elapsed.as_secs(),
+                time_since_progress_secs = time_since_progress.as_secs(),
+                "clustering run appears stuck (no progress for {}s)",
+                time_since_progress.as_secs()
+            );
+            return Err(anyhow!(
+                "clustering run {} appears stuck (no progress for {}s)",
+                run_id,
+                time_since_progress.as_secs()
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// 1回のpollリクエストを実行し、検証・デシリアライズまで行う。
+    async fn poll_run_once(
+        &self,
+        run_id: i64,
+        run_url: &Url,
+        attempt: usize,
+        start_time: Instant,
+        deadline: Duration,
+    ) -> Result<ClusteringResponse> {
+        // pollリクエストをリトライ付きで実行
+        let response = match self
+            .send_clustering_poll_request_with_retry(run_id, run_url, attempt)
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                // リトライ可能なエラーでも、deadlineを超えそうなら即失敗
+                if start_time.elapsed() + Duration::from_secs(10) >= deadline {
+                    return Err(e).with_context(|| {
+                        format!("clustering run {} polling failed near deadline", run_id)
+                    });
+                }
+                return Err(e);
+            }
+        };
+
+        // HTTPステータスチェック
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            let truncated_body = truncate_error_message(&body);
+            return Err(anyhow!(
+                "run polling endpoint returned error status {}: {}",
+                status,
+                truncated_body
+            ));
+        }
+
+        // JSONデシリアライズ
+        let response_json: Value = response
+            .json()
+            .await
+            .context("failed to deserialize polling response as JSON")?;
+
+        // JSON Schema検証
+        let validation = validate_json(&CLUSTERING_RESPONSE_SCHEMA, &response_json);
+        if !validation.valid {
+            let summarized_errors = summarize_validation_errors(&validation.errors);
+            warn!(
+                run_id,
+                error_count = validation.errors.len(),
+                first_error = %summarized_errors.first().map_or("unknown", String::as_str),
+                "polling response failed JSON Schema validation"
+            );
+            return Err(anyhow!(
+                "run polling response validation failed: {} errors (first: {})",
+                validation.errors.len(),
+                summarized_errors.first().map_or("unknown", String::as_str)
+            ));
+        }
+
+        // 検証済みJSONからClusteringResponseへデシリアライズ
+        serde_json::from_value(response_json)
+            .context("failed to deserialize validated polling response")
+    }
+
+    /// pollリクエストをリトライ付きで送信する（classification側と同様）。
+    async fn send_clustering_poll_request_with_retry(
+        &self,
+        run_id: i64,
+        url: &Url,
+        poll_attempt: usize,
+    ) -> Result<reqwest::Response> {
+        let mut last_error = None;
+
+        for retry in 0..POLL_REQUEST_RETRIES {
+            match self.client.get(url.clone()).send().await {
+                Ok(response) => return Ok(response),
+                Err(e) => {
+                    if is_retryable_error(&e) {
+                        warn!(
+                            run_id,
+                            poll_attempt = poll_attempt + 1,
+                            retry = retry + 1,
+                            max_retries = POLL_REQUEST_RETRIES,
+                            error = %e,
+                            "polling request failed, retrying"
+                        );
+                        sleep(Duration::from_millis(POLL_REQUEST_RETRY_DELAY_MS)).await;
+                        last_error = Some(e);
+                        continue;
+                    }
+                    return Err(anyhow::Error::from(e)).with_context(|| {
+                        format!(
+                            "clustering run polling request failed for run_id {} (attempt {})",
+                            run_id,
+                            poll_attempt + 1
+                        )
+                    });
+                }
+            }
+        }
+
+        match last_error {
+            Some(e) => Err(anyhow!(
+                "clustering run polling request failed after {} retries for run_id {} (attempt {}): {}",
+                POLL_REQUEST_RETRIES,
+                run_id,
+                poll_attempt + 1,
+                e
+            )),
+            None => Err(anyhow!(
+                "clustering run polling request failed after {} retries for run_id {} (attempt {})",
+                POLL_REQUEST_RETRIES,
+                run_id,
+                poll_attempt + 1
+            )),
+        }
     }
 
     #[allow(dead_code)]
@@ -394,6 +567,61 @@ fn build_paragraph(sentences: &[String]) -> String {
     }
 
     lines.join("\n")
+}
+
+/// 進捗追跡用のヘルパー構造体。
+#[allow(clippy::struct_field_names)] // `last_` プレフィックスは「前回の値」を表す意味で適切
+struct ProgressTracker {
+    last_progress_at: Instant,
+    last_status: Option<ClusterJobStatus>,
+    last_cluster_count: usize,
+}
+
+impl ProgressTracker {
+    fn new(start_time: Instant) -> Self {
+        Self {
+            last_progress_at: start_time,
+            last_status: None,
+            last_cluster_count: 0,
+        }
+    }
+
+    /// 進捗があった場合（statusが変わった、またはcluster_countが増えた）に更新する。
+    fn update_if_progressed(&mut self, run: &ClusteringResponse) {
+        let status_changed = self.last_status.as_ref().is_none_or(|s| *s != run.status);
+        let cluster_count_increased = run.cluster_count > self.last_cluster_count;
+        if status_changed || cluster_count_increased {
+            self.last_progress_at = Instant::now();
+            self.last_status = Some(run.status.clone());
+            self.last_cluster_count = run.cluster_count;
+        }
+    }
+
+    /// 最後の進捗から経過した時間を返す。
+    fn time_since_progress(&self) -> Duration {
+        Instant::now().saturating_duration_since(self.last_progress_at)
+    }
+}
+
+/// コーパスのハッシュを計算してIdempotency-Keyに使用する。
+fn compute_corpus_digest(request: &ClusterJobRequest<'_>) -> String {
+    // リクエストの主要部分をシリアライズしてハッシュ化
+    // ドキュメントIDとパラグラフの最初の数文字を使用（完全な内容は大きすぎる可能性がある）
+    let mut digest_input = String::new();
+    for doc in &request.documents {
+        digest_input.push_str(doc.article_id);
+        if let Some(first_para) = doc.paragraphs.first() {
+            // 最初の100文字のみ使用（パフォーマンスと一意性のバランス）
+            let truncated: String = first_para.chars().take(100).collect();
+            digest_input.push_str(&truncated);
+        }
+    }
+    // パラメータも含める
+    if let Ok(params_json) = serde_json::to_string(&request.params) {
+        digest_input.push_str(&params_json);
+    }
+
+    format!("{:x}", md5::compute(digest_input))
 }
 
 #[cfg(test)]

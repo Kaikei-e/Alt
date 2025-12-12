@@ -5,6 +5,7 @@ use std::time::Duration;
 mod admin;
 mod classification;
 mod clustering;
+pub(crate) mod evaluation;
 mod types;
 mod utils;
 
