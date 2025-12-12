@@ -92,6 +92,11 @@ impl BatchDaemon {
                 ),
                 Err(err) => error!(%job_id, error = %err, "automatic recap batch failed"),
             }
+
+            // Clean up old jobs after batch execution
+            if let Err(err) = state.scheduler.cleanup_old_jobs().await {
+                error!(error = %err, "failed to cleanup old jobs");
+            }
         }
     }
 }
