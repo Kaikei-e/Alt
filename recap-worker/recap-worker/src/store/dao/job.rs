@@ -176,4 +176,29 @@ impl RecapDao {
 
         Ok(results)
     }
+
+    /// 指定された保持期間より古いジョブを削除する。
+    ///
+    /// CASCADEにより、関連するrecap_job_articles、recap_stage_state等も自動削除される。
+    ///
+    /// # Arguments
+    /// * `pool` - データベース接続プール
+    /// * `retention_days` - 保持期間（日数）。この日数より古いジョブが削除対象となる
+    ///
+    /// # Returns
+    /// 削除されたジョブの件数
+    pub async fn delete_old_jobs(pool: &PgPool, retention_days: i64) -> Result<u64> {
+        let result = sqlx::query(
+            r"
+            DELETE FROM recap_jobs
+            WHERE kicked_at < NOW() - make_interval(days => $1)
+            ",
+        )
+        .bind(retention_days as f64)
+        .execute(pool)
+        .await
+        .context("failed to delete old jobs")?;
+
+        Ok(result.rows_affected())
+    }
 }

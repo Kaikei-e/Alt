@@ -11,6 +11,9 @@ pub mod output;
 pub mod stage;
 pub mod subworker;
 
+#[cfg(test)]
+pub mod mock;
+
 use super::models::{
     ClusterWithEvidence, DiagnosticEntry, GenreEvaluationMetric, GenreEvaluationRun,
     GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, NewSubworkerRun, PersistedCluster,
@@ -100,6 +103,10 @@ impl RecapDao {
         job::RecapDao::get_recap_jobs(&self.pool, window_seconds, limit).await
     }
 
+    pub async fn delete_old_jobs(&self, retention_days: i64) -> anyhow::Result<u64> {
+        job::RecapDao::delete_old_jobs(&self.pool, retention_days).await
+    }
+
     // Stage management
     pub async fn insert_stage_log(
         &self,
@@ -155,6 +162,14 @@ impl RecapDao {
         std::collections::HashMap<String, (Option<chrono::DateTime<chrono::Utc>>, Option<String>)>,
     > {
         article::RecapDao::get_article_metadata(&self.pool, job_id, article_ids).await
+    }
+
+    pub async fn get_articles_by_ids(
+        &self,
+        job_id: uuid::Uuid,
+        article_ids: &[String],
+    ) -> anyhow::Result<Vec<article::FetchedArticleData>> {
+        article::RecapDao::get_articles_by_ids(&self.pool, job_id, article_ids).await
     }
 
     // Genre learning
