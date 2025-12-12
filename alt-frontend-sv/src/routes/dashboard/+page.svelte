@@ -17,15 +17,24 @@
 
 	const windowSeconds = $derived(TIME_WINDOWS[timeWindow]);
 
-	const timeWindowOptions: TimeWindow[] = ["4h", "24h", "3d"];
+	const timeWindowOptions: TimeWindow[] = ["4h", "24h", "3d", "7d"];
 
+	// Tab organization:
+	// 1. Overview - Overall summary
+	// 2-4. Pipeline - Processing stages
+	// 5-6. Monitoring - System monitoring and analysis
+	// 7-8. Jobs - Job management
 	const tabs = [
+		// Overview
 		{ name: "Overview", component: OverviewTab },
+		// Pipeline
 		{ name: "Classification", component: ClassificationTab },
 		{ name: "Clustering", component: ClusteringTab },
 		{ name: "Summarization", component: SummarizationTab },
-		{ name: "Log Analysis", component: LogAnalysisTab },
+		// Monitoring
 		{ name: "System Monitor", component: SystemMonitorTab },
+		{ name: "Log Analysis", component: LogAnalysisTab },
+		// Jobs
 		{ name: "Admin Jobs", component: AdminJobsTab },
 		{ name: "Recap Jobs", component: RecapJobsTab },
 	];
@@ -110,9 +119,9 @@
 		{:else if selectedTab === 3}
 			<SummarizationTab {windowSeconds} />
 		{:else if selectedTab === 4}
-			<LogAnalysisTab {windowSeconds} />
-		{:else if selectedTab === 5}
 			<SystemMonitorTab />
+		{:else if selectedTab === 5}
+			<LogAnalysisTab {windowSeconds} />
 		{:else if selectedTab === 6}
 			<AdminJobsTab {windowSeconds} />
 		{:else if selectedTab === 7}

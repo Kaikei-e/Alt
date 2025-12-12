@@ -266,7 +266,7 @@ const isInitialLoadingState = $derived(
 
 	<div
 		bind:this={scrollContainerRef}
-		class="p-5 max-w-2xl mx-auto overflow-y-auto overflow-x-hidden flex-1 min-h-0"
+		class="px-5 py-5 max-w-2xl mx-auto overflow-y-auto overflow-x-clip flex-1 min-h-0"
 		data-testid="feeds-scroll-container"
 		style="background: var(--app-bg);"
 	>

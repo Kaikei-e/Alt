@@ -29,12 +29,13 @@ export interface AdminJob {
   error: string | null;
 }
 
-export type TimeWindow = "4h" | "24h" | "3d";
+export type TimeWindow = "4h" | "24h" | "3d" | "7d";
 
 export const TIME_WINDOWS: Record<TimeWindow, number> = {
   "4h": 4 * 3600,
   "24h": 24 * 3600,
   "3d": 72 * 3600,
+  "7d": 7 * 24 * 3600,
 };
 
 
