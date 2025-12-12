@@ -120,6 +120,7 @@ impl ComponentRegistry {
             morning_pipeline,
             Arc::clone(&config),
             Arc::clone(&recap_dao),
+            Arc::clone(&subworker_client),
         );
 
         Ok(Self {

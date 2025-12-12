@@ -22,6 +22,10 @@ pub struct Metrics {
     pub genre_refine_fallback_total: Counter,
     pub genre_refine_rollout_enabled: Counter,
     pub genre_refine_rollout_skipped: Counter,
+    pub clustering_timeouts: Counter,
+    pub clustering_stuck_detected: Counter,
+    pub clustering_poll_attempts: Counter,
+    pub clustering_partial_success: Counter,
 
     // ヒストグラム
     pub fetch_duration: Histogram,
@@ -30,6 +34,8 @@ pub struct Metrics {
     pub genre_candidate_latency: Histogram,
     pub genre_refine_llm_latency: Histogram,
     pub clustering_duration: Histogram,
+    pub clustering_poll_duration: Histogram,
+    pub clustering_run_age: Histogram,
     pub summary_duration: Histogram,
     pub job_duration: Histogram,
     pub api_latest_fetch_duration: Histogram,
@@ -110,6 +116,26 @@ impl Metrics {
                 "Jobs where the genre refine gate was closed by rollout policy",
                 registry
             )?,
+            clustering_timeouts: register_counter_with_registry!(
+                "recap_clustering_timeouts_total",
+                "Number of clustering operations that timed out",
+                registry
+            )?,
+            clustering_stuck_detected: register_counter_with_registry!(
+                "recap_clustering_stuck_detected_total",
+                "Number of clustering runs detected as stuck",
+                registry
+            )?,
+            clustering_poll_attempts: register_counter_with_registry!(
+                "recap_clustering_poll_attempts_total",
+                "Total number of polling attempts for clustering runs",
+                registry
+            )?,
+            clustering_partial_success: register_counter_with_registry!(
+                "recap_clustering_partial_success_total",
+                "Number of jobs completed with partial success (some genres failed)",
+                registry
+            )?,
             fetch_duration: register_histogram_with_registry!(
                 "recap_fetch_duration_seconds",
                 "Duration of fetch operations",
@@ -138,6 +164,16 @@ impl Metrics {
             clustering_duration: register_histogram_with_registry!(
                 "recap_clustering_duration_seconds",
                 "Duration of clustering operations",
+                registry
+            )?,
+            clustering_poll_duration: register_histogram_with_registry!(
+                "recap_clustering_poll_duration_seconds",
+                "Duration spent polling for clustering run completion",
+                registry
+            )?,
+            clustering_run_age: register_histogram_with_registry!(
+                "recap_clustering_run_age_seconds",
+                "Age of clustering runs in running state",
                 registry
             )?,
             summary_duration: register_histogram_with_registry!(

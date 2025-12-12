@@ -16,6 +16,8 @@ pub(crate) struct RecapGenreResponse {
     cluster_count: i32,
     evidence_links: Vec<EvidenceLinkResponse>,
     bullets: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    references: Option<Vec<ReferenceResponse>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -25,6 +27,15 @@ pub(crate) struct EvidenceLinkResponse {
     source_url: String,
     published_at: String,
     lang: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ReferenceResponse {
+    id: i32,
+    url: String,
+    domain: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    article_id: Option<String>,
 }
 
 fn dedupe_evidence_links(links: Vec<EvidenceLinkResponse>) -> Vec<EvidenceLinkResponse> {
@@ -146,6 +157,38 @@ fn extract_bullets_from_payload(raw: &str) -> Vec<String> {
         extract_bullets(summary_object)
     } else {
         Vec::new()
+    }
+}
+
+/// Extract references from body_json.
+/// Returns None if references are not found or invalid.
+fn extract_references_from_body_json(body_json: &Value) -> Option<Vec<ReferenceResponse>> {
+    let summary = body_json.get("summary")?.as_object()?;
+    let references_array = summary.get("references")?.as_array()?;
+
+    let mut references = Vec::new();
+    for ref_value in references_array {
+        let ref_obj = ref_value.as_object()?;
+        let id = ref_obj.get("id")?.as_i64()? as i32;
+        let url = ref_obj.get("url")?.as_str()?.to_string();
+        let domain = ref_obj.get("domain")?.as_str()?.to_string();
+        let article_id = ref_obj
+            .get("article_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+
+        references.push(ReferenceResponse {
+            id,
+            url,
+            domain,
+            article_id,
+        });
+    }
+
+    if references.is_empty() {
+        None
+    } else {
+        Some(references)
     }
 }
 
@@ -289,6 +332,24 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
             deduped
         };
 
+        // Extract references from body_json
+        let references = match dao
+            .get_recap_output_body_json(job.job_id, &genre.genre_name)
+            .await
+        {
+            Ok(Some(body_json)) => extract_references_from_body_json(&body_json),
+            Ok(None) => None,
+            Err(e) => {
+                // Log warning but don't fail the request
+                tracing::warn!(
+                    "Failed to fetch body_json for genre {}: {}",
+                    genre.genre_name,
+                    e
+                );
+                None
+            }
+        };
+
         genre_responses.push(RecapGenreResponse {
             genre: genre.genre_name.clone(),
             summary: normalize_summary_text(genre.summary_ja.as_deref().unwrap_or_default()),
@@ -298,6 +359,7 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
             cluster_count: clusters.len() as i32,
             evidence_links: deduped_links,
             bullets: extract_bullets_from_payload(genre.summary_ja.as_deref().unwrap_or_default()),
+            references,
         });
     }
 

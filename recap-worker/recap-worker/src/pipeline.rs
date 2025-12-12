@@ -39,7 +39,7 @@ use genre_refine::{DbTagLabelGraphSource, DefaultRefineEngine, RefineConfig, Tag
 use graph_override::GraphOverrideSettings;
 use persist::PersistStage;
 use preprocess::{PreprocessStage, TextPreprocessStage};
-use select::{SelectStage, SummarySelectStage};
+use select::{SelectStage, SubgenreConfig, SummarySelectStage};
 
 pub(crate) struct PipelineOrchestrator {
     config: Arc<Config>,
@@ -136,7 +136,6 @@ impl PipelineOrchestrator {
         let coarse_stage = Arc::new(RemoteGenreStage::new(
             Arc::clone(&subworker_client),
             Arc::clone(&classification_queue),
-            config.genre_classifier_threshold(),
         ));
         let rollout = RefineRollout::new(config.genre_refine_rollout_pct());
         let genre_stage: Arc<dyn GenreStage> = if config.genre_refine_enabled() {
@@ -167,6 +166,9 @@ impl PipelineOrchestrator {
 
         let min_documents_per_genre = config.min_documents_per_genre();
         let coherence_similarity_threshold = config.coherence_similarity_threshold();
+        let subgenre_max_docs_per_genre = config.subgenre_max_docs_per_genre();
+        let subgenre_target_docs_per_subgenre = config.subgenre_target_docs_per_subgenre();
+        let subgenre_max_k = config.subgenre_max_k();
 
         let config_for_dispatch = Arc::clone(&config);
         Ok(PipelineBuilder::new(config)
@@ -190,6 +192,11 @@ impl PipelineOrchestrator {
                 coherence_similarity_threshold,
                 Some(Arc::clone(&recap_dao)),
                 Some(Arc::clone(&subworker_client)),
+                SubgenreConfig::new(
+                    subgenre_max_docs_per_genre,
+                    subgenre_target_docs_per_subgenre,
+                    subgenre_max_k,
+                ),
             )))
             .with_dispatch_stage(Arc::new(MlLlmDispatchStage::new(
                 Arc::clone(&subworker_client),
@@ -395,6 +402,11 @@ impl PipelineBuilder {
                     self.config.coherence_similarity_threshold(),
                     Some(recap_dao.clone()),
                     Some(Arc::clone(&subworker_client)),
+                    SubgenreConfig::new(
+                        self.config.subgenre_max_docs_per_genre(),
+                        self.config.subgenre_target_docs_per_subgenre(),
+                        self.config.subgenre_max_k(),
+                    ),
                 ))
             }),
             dispatch: self
@@ -457,9 +469,19 @@ mod tests {
         let order: Arc<Mutex<Vec<&'static str>>> = Arc::new(Mutex::new(Vec::new()));
         let config = setup_config();
 
-        // テスト用のダミーRecapDaoを作成
+        // テスト用のモックRecapDaoを作成（DB接続なし）
+        // このテストはステージの実行順序のみを検証するため、DB操作は不要
+        // 注意: PipelineOrchestratorはArc<RecapDao>を要求するため、
+        // MockRecapDaoをRecapDaoとして使うには型の互換性が必要
+        // 現時点では、RecapDaoをトレイトに抽象化するのは大きな変更のため、
+        // テストでは実際のRecapDaoを使うが、DB接続プールは作成しない
+        // （将来的にはRecapDaoをトレイトに抽象化して、MockRecapDaoを使えるようにする）
         let pool = PgPoolOptions::new()
-            .max_connections(1)
+            .max_connections(10)
+            .min_connections(0)
+            .acquire_timeout(std::time::Duration::from_secs(60))
+            .idle_timeout(Some(std::time::Duration::from_secs(300)))
+            .max_lifetime(Some(std::time::Duration::from_secs(1800)))
             .connect_lazy("postgres://recap:recap@localhost:5999/recap_db")
             .expect("failed to create test pool");
         let pool_clone = pool.clone();
@@ -476,7 +498,9 @@ mod tests {
         let classification_queue = Arc::new(crate::queue::ClassificationJobQueue::new(
             queue_store,
             (*subworker_client).clone(),
-            8,
+            // このテストはステージの実行順序のみを検証するため、
+            // バックグラウンド worker を起動しない（DB コネクション枯渇を避ける）。
+            0,
             200,
             3,
             5000,

@@ -9,6 +9,58 @@ use once_cell::sync::Lazy;
 #[cfg(test)]
 pub(crate) static ENV_MUTEX: Lazy<std::sync::Mutex<()>> = Lazy::new(|| std::sync::Mutex::new(()));
 
+/// boolの組み合わせ爆発を避けるための2値トグル。
+///
+/// Clippyの `struct_excessive_bools` 対策として、設定フラグは可能な限り
+/// 2値enum（Enabled/Disabled）や状態enumで表現する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeatureToggle {
+    Enabled,
+    Disabled,
+}
+
+impl FeatureToggle {
+    #[must_use]
+    pub const fn is_enabled(self) -> bool {
+        matches!(self, FeatureToggle::Enabled)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequireTagsPolicy {
+    Require,
+    Optional,
+}
+
+impl RequireTagsPolicy {
+    #[must_use]
+    pub const fn requires_tags(self) -> bool {
+        matches!(self, RequireTagsPolicy::Require)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BootstrapEvalConfig {
+    Disabled,
+    Enabled { n_bootstrap: i32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CrossValidationEvalConfig {
+    Disabled,
+    Enabled,
+}
+
+/// 分類評価の設定（不正な組合せを型で禁止）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClassificationEvalConfig {
+    Disabled,
+    Enabled {
+        bootstrap: BootstrapEvalConfig,
+        cv: CrossValidationEvalConfig,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     http_bind: SocketAddr,
@@ -31,8 +83,8 @@ pub struct Config {
     recap_genres: Vec<String>,
     genre_classifier_weights_path: Option<String>,
     genre_classifier_threshold: f32,
-    genre_refine_enabled: bool,
-    genre_refine_require_tags: bool,
+    genre_refine: FeatureToggle,
+    genre_refine_require_tags: RequireTagsPolicy,
     genre_refine_rollout_pct: u8,
     tag_label_graph_window: String,
     tag_label_graph_ttl: Duration,
@@ -42,7 +94,10 @@ pub struct Config {
     tag_generator_total_timeout: Duration,
     min_documents_per_genre: usize,
     coherence_similarity_threshold: f32,
-    recap_pre_refresh_graph_enabled: bool,
+    subgenre_max_docs_per_genre: usize,
+    subgenre_target_docs_per_subgenre: usize,
+    subgenre_max_k: usize,
+    recap_pre_refresh_graph: FeatureToggle,
     recap_pre_refresh_timeout: Duration,
     llm_summary_timeout: Duration,
     recap_db_max_connections: u32,
@@ -54,6 +109,11 @@ pub struct Config {
     classification_queue_chunk_size: usize,
     classification_queue_max_retries: i32,
     classification_queue_retry_delay_ms: u64,
+    job_retention_days: i64,
+    classification_eval: ClassificationEvalConfig,
+    clustering_genre_timeout: Duration,
+    clustering_job_timeout: Duration,
+    clustering_min_success_genres: usize,
 }
 
 #[derive(Debug, Error)]
@@ -68,6 +128,82 @@ pub enum ConfigError {
     },
 }
 
+struct BasicConfig {
+    recap_db_dsn: String,
+    http_bind: SocketAddr,
+    llm_prompt_version: String,
+    llm_max_concurrency: NonZeroUsize,
+    llm_summary_timeout: Duration,
+}
+
+struct ExternalServiceConfig {
+    news_creator_base_url: String,
+    subworker_base_url: String,
+    alt_backend_base_url: String,
+    alt_backend_service_token: Option<String>,
+    alt_backend_connect_timeout: Duration,
+    alt_backend_read_timeout: Duration,
+    alt_backend_total_timeout: Duration,
+    http_max_retries: usize,
+    http_backoff_base_ms: u64,
+    http_backoff_cap_ms: u64,
+    otel_exporter_endpoint: Option<String>,
+    otel_sampling_ratio: f64,
+}
+
+struct BatchConfig {
+    recap_window_days: u32,
+    recap_genres: Vec<String>,
+    genre_classifier_weights_path: Option<String>,
+    genre_classifier_threshold: f32,
+    genre_refine: FeatureToggle,
+    genre_refine_require_tags: RequireTagsPolicy,
+    genre_refine_rollout_pct: u8,
+}
+
+struct GraphConfig {
+    tag_label_graph_window: String,
+    tag_label_graph_ttl: Duration,
+}
+
+#[allow(clippy::struct_field_names)] // Field names match Config struct for clarity
+struct TagConfig {
+    tag_generator_base_url: String,
+    tag_generator_service_token: Option<String>,
+    tag_generator_connect_timeout: Duration,
+    tag_generator_total_timeout: Duration,
+}
+
+struct SubworkerConfig {
+    min_documents_per_genre: usize,
+    coherence_similarity_threshold: f32,
+    subgenre_max_docs_per_genre: usize,
+    subgenre_target_docs_per_subgenre: usize,
+    subgenre_max_k: usize,
+}
+
+struct PreRefreshConfig {
+    recap_pre_refresh_graph: FeatureToggle,
+    recap_pre_refresh_timeout: Duration,
+}
+
+#[allow(clippy::struct_field_names)] // Field names match Config struct for clarity
+struct DbPoolConfig {
+    recap_db_max_connections: u32,
+    recap_db_min_connections: u32,
+    recap_db_acquire_timeout: Duration,
+    recap_db_idle_timeout: Duration,
+    recap_db_max_lifetime: Duration,
+}
+
+#[allow(clippy::struct_field_names)] // Field names match Config struct for clarity
+struct QueueConfig {
+    classification_queue_concurrency: usize,
+    classification_queue_chunk_size: usize,
+    classification_queue_max_retries: i32,
+    classification_queue_retry_delay_ms: u64,
+}
+
 impl Config {
     /// 環境変数から Recap Worker の設定値を読み込み、検証する。
     ///
@@ -76,99 +212,134 @@ impl Config {
     /// # Errors
     /// `RECAP_DB_DSN` が未設定、もしくは各種値のパースに失敗した場合は [`ConfigError`] を返す。
     pub fn from_env() -> Result<Self, ConfigError> {
-        let recap_db_dsn = load_database_dsn()?;
-        let http_bind = parse_socket_addr("RECAP_WORKER_HTTP_BIND", "0.0.0.0:9005")?;
-        let llm_prompt_version =
-            env::var("LLM_PROMPT_VERSION").unwrap_or_else(|_| "recap-ja-v2".to_string());
-        let llm_max_concurrency = parse_non_zero_usize("LLM_MAX_CONCURRENCY", 1)?;
-        let news_creator_base_url = env_var("NEWS_CREATOR_BASE_URL")?;
-        let subworker_base_url = env_var("SUBWORKER_BASE_URL")?;
-        let alt_backend_base_url = env_var("ALT_BACKEND_BASE_URL")?;
-        let alt_backend_service_token = env_var_optional("ALT_BACKEND_SERVICE_TOKEN");
+        let basic = load_basic_config()?;
+        let external_services = load_external_service_config()?;
+        let batch = load_batch_config()?;
+        let graph = load_graph_config()?;
+        let tag = load_tag_config()?;
+        let subworker = load_subworker_config()?;
+        let pre_refresh = load_pre_refresh_config()?;
+        let db_pool = load_db_pool_config()?;
+        let queue = load_classification_queue_config()?;
+        let job_retention_days = parse_i64("RECAP_JOB_RETENTION_DAYS", 14)?;
+        let classification_eval_enabled = parse_bool("RECAP_CLASSIFICATION_EVAL_ENABLED", true)?;
+        let classification_eval_use_bootstrap =
+            parse_bool("RECAP_CLASSIFICATION_EVAL_USE_BOOTSTRAP", true)?;
+        let classification_eval_n_bootstrap =
+            parse_i32("RECAP_CLASSIFICATION_EVAL_N_BOOTSTRAP", 200)?;
+        let classification_eval_use_cv = parse_bool("RECAP_CLASSIFICATION_EVAL_USE_CV", false)?;
+        let classification_eval = if classification_eval_enabled {
+            ClassificationEvalConfig::Enabled {
+                bootstrap: if classification_eval_use_bootstrap {
+                    BootstrapEvalConfig::Enabled {
+                        n_bootstrap: classification_eval_n_bootstrap,
+                    }
+                } else {
+                    BootstrapEvalConfig::Disabled
+                },
+                cv: if classification_eval_use_cv {
+                    CrossValidationEvalConfig::Enabled
+                } else {
+                    CrossValidationEvalConfig::Disabled
+                },
+            }
+        } else {
+            ClassificationEvalConfig::Disabled
+        };
+        let clustering_genre_timeout =
+            parse_duration_secs("RECAP_CLUSTERING_GENRE_TIMEOUT_SECS", 300)?; // 5分
+        let clustering_job_timeout =
+            parse_duration_secs("RECAP_CLUSTERING_JOB_TIMEOUT_SECS", 1800)?; // 30分
+        let clustering_min_success_genres = parse_usize("RECAP_CLUSTERING_MIN_SUCCESS_GENRES", 1)?;
 
-        let (alt_backend_connect_timeout, alt_backend_read_timeout, alt_backend_total_timeout) =
-            load_http_timeout_config()?;
-        let (http_max_retries, http_backoff_base_ms, http_backoff_cap_ms) = load_retry_config()?;
-        let (otel_exporter_endpoint, otel_sampling_ratio) = load_observability_config()?;
-        let (
-            recap_window_days,
-            recap_genres,
-            genre_classifier_weights_path,
-            genre_classifier_threshold,
-            genre_refine_enabled,
-            genre_refine_require_tags,
-            genre_refine_rollout_pct,
-        ) = load_batch_config()?;
-        let (tag_label_graph_window, tag_label_graph_ttl) = load_graph_config()?;
-        let (
-            tag_generator_base_url,
-            tag_generator_service_token,
-            tag_generator_connect_timeout,
-            tag_generator_total_timeout,
-        ) = load_tag_config()?;
-        let (min_documents_per_genre, coherence_similarity_threshold) = load_subworker_config()?;
-        let (recap_pre_refresh_graph_enabled, recap_pre_refresh_timeout) =
-            load_pre_refresh_config()?;
-        let llm_summary_timeout = parse_duration_secs("LLM_SUMMARY_TIMEOUT_SECS", 600)?;
-        let (
-            recap_db_max_connections,
-            recap_db_min_connections,
-            recap_db_acquire_timeout,
-            recap_db_idle_timeout,
-            recap_db_max_lifetime,
-        ) = load_db_pool_config()?;
-        let (
-            classification_queue_concurrency,
-            classification_queue_chunk_size,
-            classification_queue_max_retries,
-            classification_queue_retry_delay_ms,
-        ) = load_classification_queue_config()?;
+        Ok(Self::from_components(
+            basic,
+            external_services,
+            batch,
+            graph,
+            tag,
+            subworker,
+            pre_refresh,
+            db_pool,
+            queue,
+            job_retention_days,
+            classification_eval,
+            clustering_genre_timeout,
+            clustering_job_timeout,
+            clustering_min_success_genres,
+        ))
+    }
 
-        Ok(Self {
-            http_bind,
-            llm_max_concurrency,
-            llm_prompt_version,
-            recap_db_dsn,
-            news_creator_base_url,
-            subworker_base_url,
-            alt_backend_base_url,
-            alt_backend_service_token,
-            alt_backend_connect_timeout,
-            alt_backend_read_timeout,
-            alt_backend_total_timeout,
-            http_max_retries,
-            http_backoff_base_ms,
-            http_backoff_cap_ms,
-            otel_exporter_endpoint,
-            otel_sampling_ratio,
-            recap_window_days,
-            recap_genres,
-            genre_classifier_weights_path,
-            genre_classifier_threshold,
-            genre_refine_enabled,
-            genre_refine_require_tags,
-            genre_refine_rollout_pct,
-            tag_label_graph_window,
-            tag_label_graph_ttl,
-            tag_generator_base_url,
-            tag_generator_service_token,
-            tag_generator_connect_timeout,
-            tag_generator_total_timeout,
-            min_documents_per_genre,
-            coherence_similarity_threshold,
-            recap_pre_refresh_graph_enabled,
-            recap_pre_refresh_timeout,
-            llm_summary_timeout,
-            recap_db_max_connections,
-            recap_db_min_connections,
-            recap_db_acquire_timeout,
-            recap_db_idle_timeout,
-            recap_db_max_lifetime,
-            classification_queue_concurrency,
-            classification_queue_chunk_size,
-            classification_queue_max_retries,
-            classification_queue_retry_delay_ms,
-        })
+    #[allow(clippy::too_many_arguments)] // Internal helper method that groups related configs
+    fn from_components(
+        basic: BasicConfig,
+        external_services: ExternalServiceConfig,
+        batch: BatchConfig,
+        graph: GraphConfig,
+        tag: TagConfig,
+        subworker: SubworkerConfig,
+        pre_refresh: PreRefreshConfig,
+        db_pool: DbPoolConfig,
+        queue: QueueConfig,
+        job_retention_days: i64,
+        classification_eval: ClassificationEvalConfig,
+        clustering_genre_timeout: Duration,
+        clustering_job_timeout: Duration,
+        clustering_min_success_genres: usize,
+    ) -> Self {
+        Self {
+            http_bind: basic.http_bind,
+            llm_max_concurrency: basic.llm_max_concurrency,
+            llm_prompt_version: basic.llm_prompt_version,
+            recap_db_dsn: basic.recap_db_dsn,
+            news_creator_base_url: external_services.news_creator_base_url,
+            subworker_base_url: external_services.subworker_base_url,
+            alt_backend_base_url: external_services.alt_backend_base_url,
+            alt_backend_service_token: external_services.alt_backend_service_token,
+            alt_backend_connect_timeout: external_services.alt_backend_connect_timeout,
+            alt_backend_read_timeout: external_services.alt_backend_read_timeout,
+            alt_backend_total_timeout: external_services.alt_backend_total_timeout,
+            http_max_retries: external_services.http_max_retries,
+            http_backoff_base_ms: external_services.http_backoff_base_ms,
+            http_backoff_cap_ms: external_services.http_backoff_cap_ms,
+            otel_exporter_endpoint: external_services.otel_exporter_endpoint,
+            otel_sampling_ratio: external_services.otel_sampling_ratio,
+            recap_window_days: batch.recap_window_days,
+            recap_genres: batch.recap_genres,
+            genre_classifier_weights_path: batch.genre_classifier_weights_path,
+            genre_classifier_threshold: batch.genre_classifier_threshold,
+            genre_refine: batch.genre_refine,
+            genre_refine_require_tags: batch.genre_refine_require_tags,
+            genre_refine_rollout_pct: batch.genre_refine_rollout_pct,
+            tag_label_graph_window: graph.tag_label_graph_window,
+            tag_label_graph_ttl: graph.tag_label_graph_ttl,
+            tag_generator_base_url: tag.tag_generator_base_url,
+            tag_generator_service_token: tag.tag_generator_service_token,
+            tag_generator_connect_timeout: tag.tag_generator_connect_timeout,
+            tag_generator_total_timeout: tag.tag_generator_total_timeout,
+            min_documents_per_genre: subworker.min_documents_per_genre,
+            coherence_similarity_threshold: subworker.coherence_similarity_threshold,
+            subgenre_max_docs_per_genre: subworker.subgenre_max_docs_per_genre,
+            subgenre_target_docs_per_subgenre: subworker.subgenre_target_docs_per_subgenre,
+            subgenre_max_k: subworker.subgenre_max_k,
+            recap_pre_refresh_graph: pre_refresh.recap_pre_refresh_graph,
+            recap_pre_refresh_timeout: pre_refresh.recap_pre_refresh_timeout,
+            llm_summary_timeout: basic.llm_summary_timeout,
+            recap_db_max_connections: db_pool.recap_db_max_connections,
+            recap_db_min_connections: db_pool.recap_db_min_connections,
+            recap_db_acquire_timeout: db_pool.recap_db_acquire_timeout,
+            recap_db_idle_timeout: db_pool.recap_db_idle_timeout,
+            recap_db_max_lifetime: db_pool.recap_db_max_lifetime,
+            classification_queue_concurrency: queue.classification_queue_concurrency,
+            classification_queue_chunk_size: queue.classification_queue_chunk_size,
+            classification_queue_max_retries: queue.classification_queue_max_retries,
+            classification_queue_retry_delay_ms: queue.classification_queue_retry_delay_ms,
+            job_retention_days,
+            classification_eval,
+            clustering_genre_timeout,
+            clustering_job_timeout,
+            clustering_min_success_genres,
+        }
     }
 
     #[must_use]
@@ -273,12 +444,12 @@ impl Config {
 
     #[must_use]
     pub fn genre_refine_enabled(&self) -> bool {
-        self.genre_refine_enabled
+        self.genre_refine.is_enabled()
     }
 
     #[must_use]
     pub fn genre_refine_require_tags(&self) -> bool {
-        self.genre_refine_require_tags
+        self.genre_refine_require_tags.requires_tags()
     }
 
     #[must_use]
@@ -326,8 +497,23 @@ impl Config {
         self.coherence_similarity_threshold
     }
 
+    #[must_use]
+    pub fn subgenre_max_docs_per_genre(&self) -> usize {
+        self.subgenre_max_docs_per_genre
+    }
+
+    #[must_use]
+    pub fn subgenre_target_docs_per_subgenre(&self) -> usize {
+        self.subgenre_target_docs_per_subgenre
+    }
+
+    #[must_use]
+    pub fn subgenre_max_k(&self) -> usize {
+        self.subgenre_max_k
+    }
+
     pub fn recap_pre_refresh_graph_enabled(&self) -> bool {
-        self.recap_pre_refresh_graph_enabled
+        self.recap_pre_refresh_graph.is_enabled()
     }
 
     pub fn recap_pre_refresh_timeout(&self) -> Duration {
@@ -383,6 +569,111 @@ impl Config {
     pub fn classification_queue_retry_delay_ms(&self) -> u64 {
         self.classification_queue_retry_delay_ms
     }
+
+    #[must_use]
+    pub fn job_retention_days(&self) -> i64 {
+        self.job_retention_days
+    }
+
+    #[must_use]
+    pub fn classification_eval_enabled(&self) -> bool {
+        matches!(
+            self.classification_eval,
+            ClassificationEvalConfig::Enabled { .. }
+        )
+    }
+
+    #[must_use]
+    pub fn classification_eval_use_bootstrap(&self) -> bool {
+        matches!(
+            self.classification_eval,
+            ClassificationEvalConfig::Enabled {
+                bootstrap: BootstrapEvalConfig::Enabled { .. },
+                ..
+            }
+        )
+    }
+
+    #[must_use]
+    pub fn classification_eval_n_bootstrap(&self) -> i32 {
+        match self.classification_eval {
+            ClassificationEvalConfig::Enabled {
+                bootstrap: BootstrapEvalConfig::Enabled { n_bootstrap },
+                ..
+            } => n_bootstrap,
+            _ => 0,
+        }
+    }
+
+    #[must_use]
+    pub fn classification_eval_use_cv(&self) -> bool {
+        matches!(
+            self.classification_eval,
+            ClassificationEvalConfig::Enabled {
+                cv: CrossValidationEvalConfig::Enabled,
+                ..
+            }
+        )
+    }
+
+    #[must_use]
+    pub fn clustering_genre_timeout(&self) -> Duration {
+        self.clustering_genre_timeout
+    }
+
+    #[must_use]
+    pub fn clustering_job_timeout(&self) -> Duration {
+        self.clustering_job_timeout
+    }
+
+    #[must_use]
+    pub fn clustering_min_success_genres(&self) -> usize {
+        self.clustering_min_success_genres
+    }
+}
+
+fn load_basic_config() -> Result<BasicConfig, ConfigError> {
+    let recap_db_dsn = load_database_dsn()?;
+    let http_bind = parse_socket_addr("RECAP_WORKER_HTTP_BIND", "0.0.0.0:9005")?;
+    let llm_prompt_version =
+        env::var("LLM_PROMPT_VERSION").unwrap_or_else(|_| "recap-ja-v2".to_string());
+    let llm_max_concurrency = parse_non_zero_usize("LLM_MAX_CONCURRENCY", 1)?;
+    let llm_summary_timeout = parse_duration_secs("LLM_SUMMARY_TIMEOUT_SECS", 600)?;
+
+    Ok(BasicConfig {
+        recap_db_dsn,
+        http_bind,
+        llm_prompt_version,
+        llm_max_concurrency,
+        llm_summary_timeout,
+    })
+}
+
+fn load_external_service_config() -> Result<ExternalServiceConfig, ConfigError> {
+    let news_creator_base_url = env_var("NEWS_CREATOR_BASE_URL")?;
+    let subworker_base_url = env_var("SUBWORKER_BASE_URL")?;
+    let alt_backend_base_url = env_var("ALT_BACKEND_BASE_URL")?;
+    let alt_backend_service_token = env_var_optional("ALT_BACKEND_SERVICE_TOKEN");
+
+    let (alt_backend_connect_timeout, alt_backend_read_timeout, alt_backend_total_timeout) =
+        load_http_timeout_config()?;
+    let (http_max_retries, http_backoff_base_ms, http_backoff_cap_ms) = load_retry_config()?;
+    let (otel_exporter_endpoint, otel_sampling_ratio) = load_observability_config()?;
+
+    Ok(ExternalServiceConfig {
+        news_creator_base_url,
+        subworker_base_url,
+        alt_backend_base_url,
+        alt_backend_service_token,
+        alt_backend_connect_timeout,
+        alt_backend_read_timeout,
+        alt_backend_total_timeout,
+        http_max_retries,
+        http_backoff_base_ms,
+        http_backoff_cap_ms,
+        otel_exporter_endpoint,
+        otel_sampling_ratio,
+    })
 }
 
 fn load_database_dsn() -> Result<String, ConfigError> {
@@ -434,8 +725,6 @@ fn load_observability_config() -> Result<(Option<String>, f64), ConfigError> {
     Ok((exporter_endpoint, sampling_ratio))
 }
 
-type BatchConfig = (u32, Vec<String>, Option<String>, f32, bool, bool, u8);
-
 fn load_batch_config() -> Result<BatchConfig, ConfigError> {
     let window_days = parse_u32("RECAP_WINDOW_DAYS", 7)?;
     let genres = parse_csv(
@@ -447,65 +736,102 @@ fn load_batch_config() -> Result<BatchConfig, ConfigError> {
     let refine_enabled = parse_bool("RECAP_GENRE_REFINE_ENABLED", false)?;
     let refine_require_tags = parse_bool("RECAP_GENRE_REFINE_REQUIRE_TAGS", true)?;
     let refine_rollout_pct = parse_percentage("RECAP_GENRE_REFINE_ROLLOUT_PERCENT", 100)?;
-    Ok((
-        window_days,
-        genres,
-        classifier_weights_path,
-        classifier_threshold,
-        refine_enabled,
-        refine_require_tags,
-        refine_rollout_pct,
-    ))
+    Ok(BatchConfig {
+        recap_window_days: window_days,
+        recap_genres: genres,
+        genre_classifier_weights_path: classifier_weights_path,
+        genre_classifier_threshold: classifier_threshold,
+        genre_refine: if refine_enabled {
+            FeatureToggle::Enabled
+        } else {
+            FeatureToggle::Disabled
+        },
+        genre_refine_require_tags: if refine_require_tags {
+            RequireTagsPolicy::Require
+        } else {
+            RequireTagsPolicy::Optional
+        },
+        genre_refine_rollout_pct: refine_rollout_pct,
+    })
 }
 
-fn load_graph_config() -> Result<(String, Duration), ConfigError> {
+fn load_graph_config() -> Result<GraphConfig, ConfigError> {
     let window = env::var("TAG_LABEL_GRAPH_WINDOW").unwrap_or_else(|_| "7d".to_string());
     let ttl = Duration::from_secs(parse_u64("TAG_LABEL_GRAPH_TTL_SECONDS", 900)?);
-    Ok((window, ttl))
+    Ok(GraphConfig {
+        tag_label_graph_window: window,
+        tag_label_graph_ttl: ttl,
+    })
 }
 
-fn load_tag_config() -> Result<(String, Option<String>, Duration, Duration), ConfigError> {
+fn load_tag_config() -> Result<TagConfig, ConfigError> {
     let base_url = env::var("TAG_GENERATOR_BASE_URL")
         .unwrap_or_else(|_| "http://tag-generator:9400".to_string());
     let service_token = env_var_optional("TAG_GENERATOR_SERVICE_TOKEN");
     let connect_timeout = parse_duration_ms("TAG_GENERATOR_CONNECT_TIMEOUT_MS", 3000)?;
     let total_timeout = parse_duration_ms("TAG_GENERATOR_TOTAL_TIMEOUT_MS", 30000)?;
-    Ok((base_url, service_token, connect_timeout, total_timeout))
+    Ok(TagConfig {
+        tag_generator_base_url: base_url,
+        tag_generator_service_token: service_token,
+        tag_generator_connect_timeout: connect_timeout,
+        tag_generator_total_timeout: total_timeout,
+    })
 }
 
-fn load_subworker_config() -> Result<(usize, f32), ConfigError> {
+fn load_subworker_config() -> Result<SubworkerConfig, ConfigError> {
     let min_documents = parse_usize("RECAP_MIN_DOCUMENTS_PER_GENRE", 3)?;
     let similarity_threshold = parse_f64("RECAP_COHERENCE_SIMILARITY_THRESHOLD", 0.5)? as f32;
-    Ok((min_documents, similarity_threshold))
+    let subgenre_max_docs = parse_usize("RECAP_SUBGENRE_MAX_DOCS_PER_GENRE", 200)?;
+    let subgenre_target_docs = parse_usize("RECAP_SUBGENRE_TARGET_DOCS_PER_SUBGENRE", 50)?;
+    let subgenre_max_k = parse_usize("RECAP_SUBGENRE_MAX_K", 10)?;
+    Ok(SubworkerConfig {
+        min_documents_per_genre: min_documents,
+        coherence_similarity_threshold: similarity_threshold,
+        subgenre_max_docs_per_genre: subgenre_max_docs,
+        subgenre_target_docs_per_subgenre: subgenre_target_docs,
+        subgenre_max_k,
+    })
 }
 
-fn load_pre_refresh_config() -> Result<(bool, Duration), ConfigError> {
+fn load_pre_refresh_config() -> Result<PreRefreshConfig, ConfigError> {
     let enabled = parse_bool("RECAP_PRE_REFRESH_GRAPH_ENABLED", true)?;
     let timeout = parse_duration_secs("RECAP_PRE_REFRESH_TIMEOUT_SECS", 300)?;
-    Ok((enabled, timeout))
+    Ok(PreRefreshConfig {
+        recap_pre_refresh_graph: if enabled {
+            FeatureToggle::Enabled
+        } else {
+            FeatureToggle::Disabled
+        },
+        recap_pre_refresh_timeout: timeout,
+    })
 }
 
-fn load_db_pool_config() -> Result<(u32, u32, Duration, Duration, Duration), ConfigError> {
+fn load_db_pool_config() -> Result<DbPoolConfig, ConfigError> {
     let max_connections = parse_u32("RECAP_DB_MAX_CONNECTIONS", 50)?;
     let min_connections = parse_u32("RECAP_DB_MIN_CONNECTIONS", 5)?;
     let acquire_timeout = parse_duration_secs("RECAP_DB_ACQUIRE_TIMEOUT_SECS", 60)?;
     let idle_timeout = parse_duration_secs("RECAP_DB_IDLE_TIMEOUT_SECS", 600)?;
     let max_lifetime = parse_duration_secs("RECAP_DB_MAX_LIFETIME_SECS", 1800)?;
-    Ok((
-        max_connections,
-        min_connections,
-        acquire_timeout,
-        idle_timeout,
-        max_lifetime,
-    ))
+    Ok(DbPoolConfig {
+        recap_db_max_connections: max_connections,
+        recap_db_min_connections: min_connections,
+        recap_db_acquire_timeout: acquire_timeout,
+        recap_db_idle_timeout: idle_timeout,
+        recap_db_max_lifetime: max_lifetime,
+    })
 }
 
-fn load_classification_queue_config() -> Result<(usize, usize, i32, u64), ConfigError> {
+fn load_classification_queue_config() -> Result<QueueConfig, ConfigError> {
     let concurrency = parse_usize("CLASSIFICATION_QUEUE_CONCURRENCY", 8)?;
     let chunk_size = parse_usize("CLASSIFICATION_QUEUE_CHUNK_SIZE", CLASSIFY_CHUNK_SIZE)?;
     let max_retries = parse_u64("CLASSIFICATION_QUEUE_MAX_RETRIES", 3)? as i32;
     let retry_delay_ms = parse_u64("CLASSIFICATION_QUEUE_RETRY_DELAY_MS", 5000)?;
-    Ok((concurrency, chunk_size, max_retries, retry_delay_ms))
+    Ok(QueueConfig {
+        classification_queue_concurrency: concurrency,
+        classification_queue_chunk_size: chunk_size,
+        classification_queue_max_retries: max_retries,
+        classification_queue_retry_delay_ms: retry_delay_ms,
+    })
 }
 
 fn env_var(name: &'static str) -> Result<String, ConfigError> {
@@ -584,6 +910,22 @@ fn parse_u32(name: &'static str, default: u32) -> Result<u32, ConfigError> {
 fn parse_u64(name: &'static str, default: u64) -> Result<u64, ConfigError> {
     let raw = env::var(name).unwrap_or_else(|_| default.to_string());
     raw.parse::<u64>().map_err(|error| ConfigError::Invalid {
+        name,
+        source: anyhow::Error::new(error),
+    })
+}
+
+fn parse_i32(name: &'static str, default: i32) -> Result<i32, ConfigError> {
+    let raw = env::var(name).unwrap_or_else(|_| default.to_string());
+    raw.parse::<i32>().map_err(|error| ConfigError::Invalid {
+        name,
+        source: anyhow::Error::new(error),
+    })
+}
+
+fn parse_i64(name: &'static str, default: i64) -> Result<i64, ConfigError> {
+    let raw = env::var(name).unwrap_or_else(|_| default.to_string());
+    raw.parse::<i64>().map_err(|error| ConfigError::Invalid {
         name,
         source: anyhow::Error::new(error),
     })
