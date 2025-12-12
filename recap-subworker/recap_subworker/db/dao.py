@@ -25,6 +25,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID, insert as pg_insert
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import uuid4
 
@@ -75,6 +76,18 @@ diagnostics_table = Table(
     Column("run_id", BigInteger, primary_key=True),
     Column("metric", Text, primary_key=True),
     Column("value", JSONB, nullable=False),
+)
+
+run_diagnostics_table = Table(
+    "recap_run_diagnostics",
+    metadata,
+    Column("run_id", BigInteger, primary_key=True),
+    Column("cluster_avg_similarity_mean", Float),
+    Column("cluster_avg_similarity_variance", Float),
+    Column("cluster_avg_similarity_p95", Float),
+    Column("cluster_avg_similarity_max", Float),
+    Column("cluster_count", Integer, nullable=False, default=0),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
 )
 
 cluster_evidence_table = Table(
@@ -403,6 +416,50 @@ class SubworkerDAO:
                 set_={"value": entry.value},
             )
             await self.session.execute(on_conflict)
+
+    async def upsert_run_diagnostics(
+        self,
+        run_id: int,
+        *,
+        cluster_avg_similarity_mean: Optional[float] = None,
+        cluster_avg_similarity_variance: Optional[float] = None,
+        cluster_avg_similarity_p95: Optional[float] = None,
+        cluster_avg_similarity_max: Optional[float] = None,
+        cluster_count: int = 0,
+    ) -> None:
+        """Upsert run-level cluster statistics into recap_run_diagnostics table."""
+        stmt = pg_insert(run_diagnostics_table).values(
+            run_id=run_id,
+            cluster_avg_similarity_mean=cluster_avg_similarity_mean,
+            cluster_avg_similarity_variance=cluster_avg_similarity_variance,
+            cluster_avg_similarity_p95=cluster_avg_similarity_p95,
+            cluster_avg_similarity_max=cluster_avg_similarity_max,
+            cluster_count=cluster_count,
+        )
+        on_conflict = stmt.on_conflict_do_update(
+            index_elements=[run_diagnostics_table.c.run_id],
+            set_={
+                "cluster_avg_similarity_mean": stmt.excluded.cluster_avg_similarity_mean,
+                "cluster_avg_similarity_variance": stmt.excluded.cluster_avg_similarity_variance,
+                "cluster_avg_similarity_p95": stmt.excluded.cluster_avg_similarity_p95,
+                "cluster_avg_similarity_max": stmt.excluded.cluster_avg_similarity_max,
+                "cluster_count": stmt.excluded.cluster_count,
+            },
+        )
+        try:
+            await self.session.execute(on_conflict)
+        except ProgrammingError as e:
+            # Check if the error is due to missing table
+            error_str = str(e.orig) if hasattr(e, "orig") else str(e)
+            if "recap_run_diagnostics" in error_str and ("does not exist" in error_str or "relation" in error_str.lower()):
+                raise ProgrammingError(
+                    f"Table 'recap_run_diagnostics' does not exist. "
+                    f"Please run database migrations: 'make recap-migrate' or "
+                    f"'docker compose --profile recap run --rm recap-db-migrator'",
+                    e.params,
+                    e.orig,
+                ) from e
+            raise
 
     async def fetch_run(self, run_id: int) -> Optional[RunRecord]:
         stmt = select(

@@ -1,5 +1,6 @@
 """Configuration loading for recap-subworker."""
 
+import json
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlparse, urlunparse
@@ -139,6 +140,28 @@ class Settings(BaseSettings):
         description="Embedding backend selection",
     )
     device: str = Field("cpu", description="Primary device for embedding inference")
+    onnx_model_path: str | None = Field(
+        None,
+        description="Path to ONNX model file (.onnx). Required when model_backend='onnx'",
+        validation_alias=AliasChoices("RECAP_ONNX_MODEL_PATH", "RECAP_SUBWORKER_ONNX_MODEL_PATH"),
+    )
+    onnx_tokenizer_name: str | None = Field(
+        None,
+        description="HuggingFace tokenizer name for ONNX model. Defaults to model_id if not set",
+        validation_alias=AliasChoices("RECAP_ONNX_TOKENIZER_NAME", "RECAP_SUBWORKER_ONNX_TOKENIZER_NAME"),
+    )
+    onnx_pooling: Literal["cls", "mean"] = Field(
+        "mean",
+        description="Pooling strategy for ONNX embeddings: 'cls' uses first token, 'mean' averages all tokens",
+        validation_alias=AliasChoices("RECAP_ONNX_POOLING", "RECAP_SUBWORKER_ONNX_POOLING"),
+    )
+    onnx_max_length: int = Field(
+        512,
+        ge=32,
+        le=1024,
+        description="Maximum sequence length for ONNX tokenizer",
+        validation_alias=AliasChoices("RECAP_ONNX_MAX_LENGTH", "RECAP_SUBWORKER_ONNX_MAX_LENGTH"),
+    )
     batch_size: int = Field(64, ge=1, description="Maximum sentences per embedding batch")
     max_total_sentences: int = Field(
         6000,
@@ -193,6 +216,48 @@ class Settings(BaseSettings):
     clustering_min_split_size: int = Field(
         10,
         description="Minimum number of items required to attempt a recursive split",
+    )
+    use_bayes_opt: bool = Field(
+        False,
+        description="Use Optuna for Bayesian hyperparameter optimization instead of grid search",
+    )
+    bayes_opt_trials: int = Field(
+        50,
+        ge=1,
+        description="Number of trials for Optuna Bayesian optimization",
+    )
+    bayes_opt_timeout_seconds: int | None = Field(
+        None,
+        ge=1,
+        description="Optional timeout in seconds for Optuna optimization (None = no timeout)",
+    )
+    noise_recluster_enabled: bool = Field(
+        True,
+        description="Enable KMeans reclustering of HDBSCAN noise points (-1)",
+    )
+    noise_recluster_min_points: int = Field(
+        30,
+        ge=2,
+        description="Minimum number of noise points required to attempt reclustering",
+    )
+    noise_recluster_max_clusters: int = Field(
+        8,
+        ge=2,
+        description="Maximum number of clusters to create from noise points",
+    )
+    recursive_dynamic_thresholds: bool = Field(
+        True,
+        description="Use dynamic thresholds for recursive clustering based on data distribution",
+    )
+    recursive_max_tokens_floor: int = Field(
+        400,
+        ge=100,
+        description="Minimum value for dynamic max_tokens calculation in recursive clustering",
+    )
+    recursive_max_tokens_ceil: int = Field(
+        4000,
+        ge=1000,
+        description="Maximum value for dynamic max_tokens calculation in recursive clustering",
     )
     max_tokens_budget: int = Field(12_000, ge=512, description="Token budget per request")
     dedup_threshold: float = Field(0.92, ge=0.0, le=1.0)
@@ -373,6 +438,34 @@ class Settings(BaseSettings):
         description="JSON string mapping genres to custom threshold values (overrides defaults and model-specific thresholds)",
         validation_alias=AliasChoices("RECAP_GENRE_THRESHOLDS", "RECAP_SUBWORKER_GENRE_THRESHOLDS"),
     )
+    enable_sudachi_preprocessing: bool = Field(
+        False,
+        description="Enable Sudachi morphological normalization for text preprocessing (experimental, may reduce readability)",
+        validation_alias=AliasChoices("RECAP_ENABLE_SUDACHI_PREPROCESSING", "RECAP_SUBWORKER_ENABLE_SUDACHI_PREPROCESSING"),
+    )
+    genre_dedup_thresholds: str = Field(
+        "{}",
+        description="JSON string mapping genres to custom deduplication threshold values (overrides base threshold and classifier-based adjustments)",
+        validation_alias=AliasChoices("RECAP_GENRE_DEDUP_THRESHOLDS", "RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS"),
+    )
+
+    @property
+    def genre_dedup_thresholds_dict(self) -> dict[str, float]:
+        """Parse genre_dedup_thresholds JSON string into a dictionary."""
+        if not self.genre_dedup_thresholds or self.genre_dedup_thresholds == "{}":
+            return {}
+        try:
+            parsed = json.loads(self.genre_dedup_thresholds)
+            if not isinstance(parsed, dict):
+                return {}
+            # Validate that all values are floats in valid range [0.0, 1.0]
+            result: dict[str, float] = {}
+            for genre, value in parsed.items():
+                if isinstance(value, (int, float)) and 0.0 <= float(value) <= 1.0:
+                    result[str(genre)] = float(value)
+            return result
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return {}
 
 
 @lru_cache(maxsize=1)

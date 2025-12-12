@@ -88,6 +88,10 @@ def _get_embedder(settings: Settings) -> Embedder:
             device=settings.device,
             batch_size=settings.batch_size,
             cache_size=settings.embed_cache_size,
+            onnx_model_path=settings.onnx_model_path,
+            onnx_tokenizer_name=settings.onnx_tokenizer_name,
+            onnx_pooling=settings.onnx_pooling,
+            onnx_max_length=settings.onnx_max_length,
         )
         _embedder = Embedder(config)
     return _embedder
