@@ -26,6 +26,7 @@ pub mod classifier;
 pub(crate) mod clients;
 pub mod config;
 pub mod evaluation;
+pub mod language_detection;
 pub mod observability;
 pub mod pipeline;
 pub(crate) mod queue;

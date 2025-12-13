@@ -43,7 +43,7 @@ pub struct Scheduler {
     pipeline: Arc<PipelineOrchestrator>,
     morning_pipeline: Arc<MorningPipeline>,
     config: Arc<Config>,
-    recap_dao: Arc<RecapDao>,
+    recap_dao: Arc<dyn RecapDao>,
     subworker_client: Arc<SubworkerClient>,
 }
 
@@ -52,7 +52,7 @@ impl Scheduler {
         pipeline: Arc<PipelineOrchestrator>,
         morning_pipeline: Arc<MorningPipeline>,
         config: Arc<Config>,
-        recap_dao: Arc<RecapDao>,
+        recap_dao: Arc<dyn RecapDao>,
         subworker_client: Arc<SubworkerClient>,
     ) -> Self {
         Self {

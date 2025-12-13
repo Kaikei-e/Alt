@@ -213,7 +213,7 @@ impl GoldenItem {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Serialize)]
 struct ConfusionMatrix {
     /// True Positives per genre
     tp: HashMap<String, usize>,
@@ -483,121 +483,290 @@ fn determine_dataset_path(request: &EvaluateRequest) -> PathBuf {
     PathBuf::from(data_path)
 }
 
+/// 言語別評価結果
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct LanguageSpecificMetrics {
+    language: String,
+    confusion_matrix: ConfusionMatrix,
+    macro_f1: f64,
+    macro_precision: f64,
+    macro_recall: f64,
+    sample_count: usize,
+}
+
+/// 評価処理に必要なコンテキスト
+struct EvaluationContext {
+    classifier: GenreClassifier,
+    refine_engine: Arc<dyn RefineEngine>,
+    job_context: JobContext,
+}
+
+impl EvaluationContext {
+    fn new(state: &AppState) -> Self {
+        let classifier = GenreClassifier::new_default();
+        let refine_config = RefineConfig::new(false); // require_tags = false for evaluation
+        let graph_source: Arc<dyn crate::pipeline::genre_refine::TagLabelGraphSource> =
+            Arc::new(DbTagLabelGraphSource::new(
+                state.dao(),
+                "7d",                      // Use 7-day window
+                Duration::from_secs(3600), // 1 hour TTL
+            ));
+        let refine_engine: Arc<dyn RefineEngine> =
+            Arc::new(DefaultRefineEngine::new(refine_config, graph_source));
+        let job_id = Uuid::new_v4();
+        let job_context = JobContext::new(job_id, vec![]);
+
+        Self {
+            classifier,
+            refine_engine,
+            job_context,
+        }
+    }
+}
+
+/// アイテムから言語を決定
+fn determine_item_language(item: &GoldenItem) -> ClassificationLanguage {
+    match item {
+        GoldenItem::Bilingual {
+            content_ja,
+            content_en,
+            ..
+        } => {
+            if content_ja.is_some() && !content_ja.as_ref().unwrap().trim().is_empty() {
+                ClassificationLanguage::Japanese
+            } else if content_en.is_some() && !content_en.as_ref().unwrap().trim().is_empty() {
+                ClassificationLanguage::English
+            } else {
+                ClassificationLanguage::Unknown
+            }
+        }
+        _ => ClassificationLanguage::Unknown,
+    }
+}
+
+/// コンテンツをタイトルと本文に分割
+fn parse_content_into_title_body(content: &str) -> (&str, &str) {
+    content
+        .char_indices()
+        .find(|(_, ch)| matches!(ch, '。' | '.'))
+        .map_or_else(
+            || ("", content),
+            |(pos, ch)| {
+                let delimiter_len = ch.len_utf8();
+                let (title_part, body_part) = content.split_at(pos + delimiter_len);
+                (title_part.trim(), body_part.trim())
+            },
+        )
+}
+
+/// アイテムからDeduplicatedArticleを作成
+fn create_article_from_item(item: &GoldenItem, title: &str, body: &str) -> DeduplicatedArticle {
+    let sentences: Vec<String> = body
+        .split_terminator(&['。', '.'][..])
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.trim().to_string())
+        .collect();
+
+    let sentence_hashes: Vec<u64> = sentences
+        .iter()
+        .map(|s| {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            s.hash(&mut hasher);
+            hasher.finish()
+        })
+        .collect();
+
+    DeduplicatedArticle {
+        id: item.id().to_string(),
+        title: Some(title.to_string()),
+        sentences,
+        sentence_hashes,
+        language: "unknown".to_string(),
+        published_at: None,
+        source_url: None,
+        tags: vec![],       // No tags in evaluation dataset
+        duplicates: vec![], // No duplicates in evaluation
+    }
+}
+
+/// 分類結果からGenreCandidateを作成
+fn create_candidates_from_classification(
+    classification: &crate::classification::ClassificationResult,
+) -> Vec<GenreCandidate> {
+    classification
+        .top_genres
+        .iter()
+        .take(3)
+        .map(|genre| {
+            let score: f32 = classification.scores.get(genre).copied().unwrap_or(0.0);
+            let keyword_support = classification.keyword_hits.get(genre).copied().unwrap_or(0);
+            let classifier_confidence: f32 =
+                classification.scores.get(genre).copied().unwrap_or(0.0);
+            GenreCandidate {
+                name: genre.clone(),
+                score,
+                keyword_support,
+                classifier_confidence,
+            }
+        })
+        .collect()
+}
+
+/// RefineEngineを適用して予測ジャンルを取得
+async fn apply_refine_engine(
+    ctx: &EvaluationContext,
+    article: &DeduplicatedArticle,
+    candidates: &[GenreCandidate],
+) -> anyhow::Result<String> {
+    let tag_profile = TagProfile::default();
+    let refine_input = crate::pipeline::genre_refine::RefineInput {
+        job: &ctx.job_context,
+        article,
+        candidates,
+        tag_profile: &tag_profile,
+        fallback: TagFallbackMode::CoarseOnly,
+    };
+
+    let refine_outcome = ctx.refine_engine.refine(refine_input).await?;
+    Ok(refine_outcome.final_genre)
+}
+
+/// 混同行列に予測結果を追加
+fn add_to_confusion_matrices(
+    expected_genres: &[String],
+    predicted_genre: &str,
+    language: ClassificationLanguage,
+    confusion_matrix: &mut ConfusionMatrix,
+    confusion_matrix_ja: &mut ConfusionMatrix,
+    confusion_matrix_en: &mut ConfusionMatrix,
+) {
+    let predicted_genres = vec![predicted_genre.to_string()];
+    confusion_matrix.add(expected_genres, &predicted_genres);
+
+    match language {
+        ClassificationLanguage::Japanese => {
+            confusion_matrix_ja.add(expected_genres, &predicted_genres);
+        }
+        ClassificationLanguage::English => {
+            confusion_matrix_en.add(expected_genres, &predicted_genres);
+        }
+        ClassificationLanguage::Unknown => {
+            // Unknownの場合は全体のみに追加（既に追加済み）
+        }
+    }
+}
+
+/// 1つのアイテムを評価して混同行列に追加
+async fn evaluate_single_item(
+    ctx: &EvaluationContext,
+    item: &GoldenItem,
+    confusion_matrix: &mut ConfusionMatrix,
+    confusion_matrix_ja: &mut ConfusionMatrix,
+    confusion_matrix_en: &mut ConfusionMatrix,
+) -> anyhow::Result<()> {
+    let item_language = determine_item_language(item);
+    let content = item.content();
+    let (title, body) = parse_content_into_title_body(&content);
+    let language =
+        crate::classification::tokenizer::TokenPipeline::resolve_language(item_language, &content);
+
+    let classification = match ctx.classifier.predict(title, body, language) {
+        Ok(result) => result,
+        Err(e) => {
+            error!(error = %e, item_id = %item.id(), "Failed to classify item");
+            return Ok(());
+        }
+    };
+
+    let article = create_article_from_item(item, title, body);
+    let candidates = create_candidates_from_classification(&classification);
+    let predicted_genre = apply_refine_engine(ctx, &article, &candidates).await?;
+
+    add_to_confusion_matrices(
+        item.expected_genres(),
+        &predicted_genre,
+        language,
+        confusion_matrix,
+        confusion_matrix_ja,
+        confusion_matrix_en,
+    );
+
+    Ok(())
+}
+
+/// 言語別メトリクスを構築
+fn build_language_metrics(
+    confusion_matrix_ja: &ConfusionMatrix,
+    confusion_matrix_en: &ConfusionMatrix,
+) -> Vec<LanguageSpecificMetrics> {
+    let mut metrics_by_lang = Vec::new();
+
+    // 日本語メトリクス
+    if confusion_matrix_ja.total_tp()
+        + confusion_matrix_ja.total_fp()
+        + confusion_matrix_ja.total_fn()
+        > 0
+    {
+        let sample_count_ja = confusion_matrix_ja.total_tp()
+            + confusion_matrix_ja.total_fp()
+            + confusion_matrix_ja.total_fn();
+        metrics_by_lang.push(LanguageSpecificMetrics {
+            language: "ja".to_string(),
+            confusion_matrix: confusion_matrix_ja.clone(),
+            macro_f1: confusion_matrix_ja.macro_f1(),
+            macro_precision: confusion_matrix_ja.macro_precision(),
+            macro_recall: confusion_matrix_ja.macro_recall(),
+            sample_count: sample_count_ja,
+        });
+    }
+
+    // 英語メトリクス
+    if confusion_matrix_en.total_tp()
+        + confusion_matrix_en.total_fp()
+        + confusion_matrix_en.total_fn()
+        > 0
+    {
+        let sample_count_en = confusion_matrix_en.total_tp()
+            + confusion_matrix_en.total_fp()
+            + confusion_matrix_en.total_fn();
+        metrics_by_lang.push(LanguageSpecificMetrics {
+            language: "en".to_string(),
+            confusion_matrix: confusion_matrix_en.clone(),
+            macro_f1: confusion_matrix_en.macro_f1(),
+            macro_precision: confusion_matrix_en.macro_precision(),
+            macro_recall: confusion_matrix_en.macro_recall(),
+            sample_count: sample_count_en,
+        });
+    }
+
+    metrics_by_lang
+}
+
 async fn run_evaluation(
     state: &AppState,
     golden_data: &[GoldenItem],
-) -> anyhow::Result<ConfusionMatrix> {
-    let classifier = GenreClassifier::new_default();
+) -> anyhow::Result<(ConfusionMatrix, Vec<LanguageSpecificMetrics>)> {
+    let ctx = EvaluationContext::new(state);
     let mut confusion_matrix = ConfusionMatrix::new();
-
-    // Create a RefineEngine for evaluation (uses actual pipeline logic)
-    let refine_config = RefineConfig::new(false); // require_tags = false for evaluation
-    let graph_source: Arc<dyn crate::pipeline::genre_refine::TagLabelGraphSource> =
-        Arc::new(DbTagLabelGraphSource::new(
-            state.dao(),
-            "7d",                      // Use 7-day window
-            Duration::from_secs(3600), // 1 hour TTL
-        ));
-    let refine_engine: Arc<dyn RefineEngine> =
-        Arc::new(DefaultRefineEngine::new(refine_config, graph_source));
-
-    let job_id = Uuid::new_v4();
-    let job_context = JobContext::new(job_id, vec![]);
+    let mut confusion_matrix_ja = ConfusionMatrix::new();
+    let mut confusion_matrix_en = ConfusionMatrix::new();
 
     for item in golden_data {
-        let content = item.content();
-        // Split content into title and body (first sentence as title, rest as body)
-        let content_str: &str = &content;
-        let (title, body) = content_str
-            .char_indices()
-            .find(|(_, ch)| matches!(ch, '。' | '.'))
-            .map_or_else(
-                || ("", content_str),
-                |(pos, ch)| {
-                    // Calculate the byte position after the delimiter character
-                    let delimiter_len = ch.len_utf8();
-                    let (title_part, body_part) = content_str.split_at(pos + delimiter_len);
-                    (title_part.trim(), body_part.trim())
-                },
-            );
-        let language = ClassificationLanguage::Unknown; // Auto-detect
-
-        // Use classifier to get initial candidates
-        let classification = match classifier.predict(title, body, language) {
-            Ok(result) => result,
-            Err(e) => {
-                error!(error = %e, item_id = %item.id(), "Failed to classify item");
-                continue;
-            }
-        };
-
-        // Create a DeduplicatedArticle for the evaluation item
-        let sentences: Vec<String> = body
-            .split_terminator(&['。', '.'][..])
-            .filter(|s| !s.trim().is_empty())
-            .map(|s| s.trim().to_string())
-            .collect();
-
-        // Generate sentence hashes (simplified for evaluation)
-        let sentence_hashes: Vec<u64> = sentences
-            .iter()
-            .map(|s| {
-                use std::collections::hash_map::DefaultHasher;
-                use std::hash::{Hash, Hasher};
-                let mut hasher = DefaultHasher::new();
-                s.hash(&mut hasher);
-                hasher.finish()
-            })
-            .collect();
-
-        let article = DeduplicatedArticle {
-            id: item.id().to_string(),
-            title: Some(title.to_string()),
-            sentences,
-            sentence_hashes,
-            language: "unknown".to_string(),
-            published_at: None,
-            source_url: None,
-            tags: vec![],       // No tags in evaluation dataset
-            duplicates: vec![], // No duplicates in evaluation
-        };
-
-        // Create GenreCandidates from classification result
-        let candidates: Vec<GenreCandidate> = classification
-            .top_genres
-            .iter()
-            .take(3)
-            .map(|genre| {
-                let score = classification.scores.get(genre).copied().unwrap_or(0.0);
-                let keyword_support = classification.keyword_hits.get(genre).copied().unwrap_or(0);
-                let classifier_confidence =
-                    classification.scores.get(genre).copied().unwrap_or(0.0);
-                GenreCandidate {
-                    name: genre.clone(),
-                    score: score as f32,
-                    keyword_support,
-                    classifier_confidence: classifier_confidence as f32,
-                }
-            })
-            .collect();
-
-        // Apply RefineEngine (same as actual pipeline)
-        let tag_profile = TagProfile::default(); // No tags in evaluation
-        let refine_input = crate::pipeline::genre_refine::RefineInput {
-            job: &job_context,
-            article: &article,
-            candidates: &candidates,
-            tag_profile: &tag_profile,
-            fallback: TagFallbackMode::CoarseOnly, // No tags, so use CoarseOnly
-        };
-
-        let refine_outcome = refine_engine.refine(refine_input).await?;
-        let predicted_genres = vec![refine_outcome.final_genre];
-
-        confusion_matrix.add(item.expected_genres(), &predicted_genres);
+        evaluate_single_item(
+            &ctx,
+            item,
+            &mut confusion_matrix,
+            &mut confusion_matrix_ja,
+            &mut confusion_matrix_en,
+        )
+        .await?;
     }
 
-    Ok(confusion_matrix)
+    let metrics_by_lang = build_language_metrics(&confusion_matrix_ja, &confusion_matrix_en);
+
+    Ok((confusion_matrix, metrics_by_lang))
 }
 
 #[allow(dead_code)]
@@ -781,8 +950,8 @@ pub(crate) async fn evaluate_genres(
         Err(err) => return err.into_response(),
     };
 
-    let confusion_matrix = match run_evaluation(&state, &golden_data).await {
-        Ok(matrix) => matrix,
+    let (confusion_matrix, metrics_by_lang) = match run_evaluation(&state, &golden_data).await {
+        Ok((matrix, lang_metrics)) => (matrix, lang_metrics),
         Err(e) => {
             error!(error = %e, "Failed to run evaluation");
             return (
@@ -806,6 +975,18 @@ pub(crate) async fn evaluate_genres(
     );
 
     log_evaluation_results(&evaluation_run, &confusion_matrix, extended_metrics);
+
+    // 言語別メトリクスをログに出力
+    for lang_metrics in &metrics_by_lang {
+        info!(
+            language = %lang_metrics.language,
+            macro_f1 = lang_metrics.macro_f1,
+            macro_precision = lang_metrics.macro_precision,
+            macro_recall = lang_metrics.macro_recall,
+            sample_count = lang_metrics.sample_count,
+            "Language-specific evaluation metrics"
+        );
+    }
 
     match state
         .dao()
@@ -844,6 +1025,8 @@ pub(crate) async fn evaluate_genres(
 pub(crate) struct EvaluationResultResponse {
     run: GenreEvaluationRun,
     metrics: Vec<GenreEvaluationMetric>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    metrics_by_lang: Vec<LanguageSpecificMetrics>,
     #[serde(skip_serializing_if = "Option::is_none")]
     quality_report: Option<DatasetQualityReport>,
 }
@@ -859,6 +1042,7 @@ pub(crate) async fn get_evaluation_result(
             let response = EvaluationResultResponse {
                 run,
                 metrics,
+                metrics_by_lang: Vec::new(), // DBから取得する場合は言語別メトリクスは保存されていない
                 quality_report: None,
             };
             (StatusCode::OK, Json(response)).into_response()
@@ -899,6 +1083,7 @@ pub(crate) async fn get_latest_evaluation_result(
             let response = EvaluationResultResponse {
                 run,
                 metrics,
+                metrics_by_lang: Vec::new(), // DBから取得する場合は言語別メトリクスは保存されていない
                 quality_report: None,
             };
             (StatusCode::OK, Json(response)).into_response()
