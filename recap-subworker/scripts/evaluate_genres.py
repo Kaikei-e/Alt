@@ -161,6 +161,29 @@ def format_report(results: dict) -> str:
     return "\n".join(lines)
 
 
+def format_report_by_language(results: dict) -> str:
+    lines = []
+    lines.append("# Genre Classification Evaluation Report (By Language)\n")
+
+    for lang in ["ja", "en"]:
+        if lang in results:
+            lines.append(f"## Language: {lang.upper()}\n")
+            lang_res = results[lang]
+            if "error" in lang_res:
+                lines.append(f"Error: {lang_res['error']}\n")
+                continue
+
+            # Re-use existing formatter logic by "stripping" headers or just calling it
+            # But existing formatter adds headers. Let's just append the body.
+            # Simplified version of calling format_report on sub-result
+            sub_report = format_report(lang_res)
+            # Remove title if present
+            sub_report = sub_report.replace("# Genre Classification Evaluation Report\n", "")
+            lines.append(sub_report)
+            lines.append("\n---\n")
+
+    return "\n".join(lines)
+
 def main():
     """メイン関数。"""
     parser = argparse.ArgumentParser(
@@ -176,8 +199,16 @@ def main():
         "--weights",
         type=str,
         default=None,
-        help="Path to genre classifier weights JSON file",
+        help="Path to default genre classifier weights JSON file",
     )
+    # JA/EN Specific Args
+    parser.add_argument("--weights-ja", type=str, default="/app/data/genre_classifier_ja.joblib", help="JA weights")
+    parser.add_argument("--weights-en", type=str, default="/app/data/genre_classifier_en.joblib", help="EN weights")
+    parser.add_argument("--vectorizer-ja", type=str, default="/app/data/dataset/ja/tfidf_vectorizer.joblib", help="JA vectorizer")
+    parser.add_argument("--vectorizer-en", type=str, default="/app/data/dataset/en/tfidf_vectorizer.joblib", help="EN vectorizer")
+    parser.add_argument("--thresholds-ja", type=str, default="/app/data/genre_thresholds_ja.json", help="JA thresholds")
+    parser.add_argument("--thresholds-en", type=str, default="/app/data/genre_thresholds_en.json", help="EN thresholds")
+
     parser.add_argument(
         "--output",
         type=str,
@@ -220,15 +251,23 @@ def main():
     try:
         service = EvaluationService(
             weights_path=args.weights,
+            weights_ja_path=args.weights_ja,
+            weights_en_path=args.weights_en,
+            vectorizer_ja_path=args.vectorizer_ja,
+            vectorizer_en_path=args.vectorizer_en,
+            thresholds_ja_path=args.thresholds_ja,
+            thresholds_en_path=args.thresholds_en,
             use_bootstrap=args.bootstrap,
             n_bootstrap=args.n_bootstrap,
             use_cross_validation=args.cross_validation,
             n_folds=args.n_folds,
         )
-        results = service.evaluate(args.golden_data)
+
+        # Evaluate by language (Dual Model)
+        results = service.evaluate_by_language(args.golden_data)
 
         # レポートを生成
-        report = format_report(results)
+        report = format_report_by_language(results)
 
         # 出力
         if args.output:
@@ -253,7 +292,6 @@ def main():
 
         traceback.print_exc()
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()

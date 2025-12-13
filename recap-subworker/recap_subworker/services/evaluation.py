@@ -262,16 +262,51 @@ class EvaluationService:
                      "threshold": 0.5 # Default
                  }
 
-        # Bootstrap for CI (Simplistic version)
-        if self.use_bootstrap:
-             # Calculate CI for accuracy/macro_f1 etc.
-             # For now, put dummy CI to satisfy valid Pydantic model response
-             results["accuracy_ci"] = {"point": metrics.accuracy, "lower": metrics.accuracy, "upper": metrics.accuracy, "width": 0.0}
+        # Bootstrap for CI (Simplistic version) -> SWITCHING to Wilson Score Interval for Accuracy
+        if self.use_bootstrap and proportion_confint:
+             # Calculate CI for accuracy using Wilson score interval
+             count_correct = int(metrics.accuracy * len(X))
+             n_obs = len(X)
+             lower, upper = proportion_confint(count_correct, n_obs, alpha=0.05, method='wilson')
+             width = upper - lower
+
+             results["accuracy_ci"] = {
+                 "point": metrics.accuracy,
+                 "lower": lower,
+                 "upper": upper,
+                 "width": width
+             }
+
+             # For Macro F1, analytic CI is complex. We stick to point estimate or simple bootstrap if really needed.
+             # User specifically asked for Accuracy CI to not be width 0.
              results["macro_metrics"] = {
                   "precision": 0.0, "precision_ci": {"point":0,"lower":0,"upper":0},
                   "recall": 0.0, "recall_ci": {"point":0,"lower":0,"upper":0},
                   "f1": metrics.macro_f1, "f1_ci": {"point":metrics.macro_f1,"lower":metrics.macro_f1,"upper":metrics.macro_f1}
              }
+        else:
+             results["accuracy_ci"] = {"point": metrics.accuracy, "lower": metrics.accuracy, "upper": metrics.accuracy, "width": 0.0}
+
+        # Confusion Matrix (Top-1 approximation)
+        try:
+            # Ground Truth: Take first label or 'other'
+            y_true_single = [labels[0] if labels else 'other' for labels in y_true_labels]
+
+            # Prediction: Use 'top_genre' from predictions
+            y_pred_single = [p.get("top_genre", "other") for p in predictions]
+
+            # Compute Matrix
+            # Use sorted unique labels from both true and pred to cover all cases
+            unique_labels = sorted(list(set(y_true_single) | set(y_pred_single)))
+            cm = confusion_matrix(y_true_single, y_pred_single, labels=unique_labels)
+
+            results["confusion_matrix"] = {
+                "labels": unique_labels,
+                "matrix": cm.tolist()
+            }
+        except Exception as e:
+            logger.warning("Failed to generate confusion matrix", error=str(e))
+            results["confusion_matrix"] = {}
 
         # Add language metadata if filtered
         if language:
