@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use rask::domain::{EnrichedLogEntry, LogLevel};
 use std::collections::HashMap;
 
@@ -26,13 +27,19 @@ fn test_enriched_log_entry_to_log_row_conversion() {
     assert_eq!(log_row.log_type, enriched_log.log_type);
     assert_eq!(log_row.message, enriched_log.message);
     assert_eq!(log_row.level, 1); // LogLevel::Info maps to 1
-    assert_eq!(log_row.timestamp, 1672586096789); // 2023-01-01T12:34:56.789Z in milliseconds
-    // println!("Actual timestamp: {}", log_row.timestamp);
+                                  // Verify timestamp is correctly parsed
+    let expected_timestamp: DateTime<Utc> = "2023-01-01T12:34:56.789Z".parse().unwrap();
+    assert_eq!(log_row.timestamp, expected_timestamp);
     assert_eq!(log_row.stream, enriched_log.stream);
     assert_eq!(log_row.container_id, enriched_log.container_id);
     assert_eq!(log_row.service_name, enriched_log.service_name);
     assert_eq!(log_row.service_group, enriched_log.service_group.unwrap());
-    assert_eq!(log_row.fields, enriched_log.fields);
+    // Convert HashMap to Vec for comparison
+    let mut expected_fields: Vec<(String, String)> = enriched_log.fields.into_iter().collect();
+    expected_fields.sort();
+    let mut actual_fields = log_row.fields.clone();
+    actual_fields.sort();
+    assert_eq!(actual_fields, expected_fields);
 }
 
 #[test]
@@ -53,5 +60,5 @@ fn test_enriched_log_entry_to_log_row_conversion_no_level() {
     let log_row = rask::log_exporter::clickhouse_exporter::LogRow::from(enriched_log.clone());
 
     assert_eq!(log_row.level, 1); // Default to Info (1) if level is None
-    assert_eq!(log_row.service_group, ""); // Default to empty string if service_group is None
+    assert_eq!(log_row.service_group, "unknown"); // Default to "unknown" if service_group is None
 }

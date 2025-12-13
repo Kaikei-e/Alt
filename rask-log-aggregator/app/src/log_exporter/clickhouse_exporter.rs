@@ -10,17 +10,17 @@ use tracing::error;
 
 #[derive(clickhouse::Row, Serialize, Deserialize, Clone, Debug)]
 pub struct LogRow {
-    service_type: String, // LowCardinality(String)
-    log_type: String,     // LowCardinality(String)
-    message: String,      // String
-    level: i8,            // Enum8 -> underlying UInt8
+    pub service_type: String, // LowCardinality(String)
+    pub log_type: String,     // LowCardinality(String)
+    pub message: String,      // String
+    pub level: i8,            // Enum8 -> underlying UInt8
     #[serde(with = "millis")]
-    timestamp: DateTime<Utc>, // DateTime64(3,'UTC')
-    stream: String,       // LowCardinality(String)
-    container_id: String, // String
-    service_name: String, // LowCardinality(String)
-    service_group: String, // LowCardinality(String)
-    fields: Vec<(String, String)>, // Map(String,String)
+    pub timestamp: DateTime<Utc>, // DateTime64(3,'UTC')
+    pub stream: String,       // LowCardinality(String)
+    pub container_id: String, // String
+    pub service_name: String, // LowCardinality(String)
+    pub service_group: String, // LowCardinality(String)
+    pub fields: Vec<(String, String)>, // Map(String,String)
 }
 
 impl From<EnrichedLogEntry> for LogRow {
