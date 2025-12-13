@@ -34,7 +34,10 @@ tokio = { version = "1.48", features = [
   "sync",
   "time",
 ] }
-tokenizers = { version = "0.20", default-features = false, features = ["onig", "http"] }
+tokenizers = { version = "0.20", default-features = false, features = [
+  "onig",
+  "http",
+] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace"] }
 tracing = "0.1"
@@ -55,7 +58,10 @@ chrono = { version = "0.4", features = ["clock", "std", "serde"] }
 futures = "0.3"
 unicode-normalization = "0.1"
 unicode-segmentation = "1.12"
-whatlang = { version = "0.16", default-features = false }
+lingua = { version = "1.4", default-features = false, features = [
+  "english",
+  "japanese",
+] }
 lindera = { version = "0.21", features = ["ipadic"] }
 # sudachi = { version = "0.7", optional = true }  # Not available on crates.io
 ammonia = "4.1"
