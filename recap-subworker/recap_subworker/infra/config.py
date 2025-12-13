@@ -448,6 +448,26 @@ class Settings(BaseSettings):
         description="JSON string mapping genres to custom deduplication threshold values (overrides base threshold and classifier-based adjustments)",
         validation_alias=AliasChoices("RECAP_GENRE_DEDUP_THRESHOLDS", "RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS"),
     )
+    classification_backend: Literal["joblib", "learning_machine"] = Field(
+        "learning_machine",
+        description="Classification backend: 'joblib' for traditional classifier, 'learning_machine' for student models",
+        validation_alias=AliasChoices("RECAP_CLASSIFICATION_BACKEND", "RECAP_SUBWORKER_CLASSIFICATION_BACKEND"),
+    )
+    learning_machine_student_ja_dir: str | None = Field(
+        "recap_subworker/learning_machine/artifacts/student/v0_ja",
+        description="Path to Japanese student model directory (required when classification_backend='learning_machine')",
+        validation_alias=AliasChoices("RECAP_LEARNING_MACHINE_STUDENT_JA_DIR", "RECAP_SUBWORKER_LEARNING_MACHINE_STUDENT_JA_DIR"),
+    )
+    learning_machine_student_en_dir: str | None = Field(
+        "recap_subworker/learning_machine/artifacts/student/v0_en",
+        description="Path to English student model directory (optional, fallback to JA if not set)",
+        validation_alias=AliasChoices("RECAP_LEARNING_MACHINE_STUDENT_EN_DIR", "RECAP_SUBWORKER_LEARNING_MACHINE_STUDENT_EN_DIR"),
+    )
+    learning_machine_taxonomy_path: str | None = Field(
+        "recap_subworker/learning_machine/taxonomy/genres.yaml",
+        description="Path to genres.yaml taxonomy file (default: recap_subworker/learning_machine/taxonomy/genres.yaml)",
+        validation_alias=AliasChoices("RECAP_LEARNING_MACHINE_TAXONOMY_PATH", "RECAP_SUBWORKER_LEARNING_MACHINE_TAXONOMY_PATH"),
+    )
 
     @property
     def genre_dedup_thresholds_dict(self) -> dict[str, float]:

@@ -55,6 +55,7 @@ def main():
         if text_ja:
             valid_items.append({
                 "source": "golden_v1_ja",
+                "lang": "ja",
                 "title": item.get("title", ""),
                 "content": text_ja,
                 "labels": item.get("expected_genres", [])
@@ -65,6 +66,7 @@ def main():
         if text_en:
             valid_items.append({
                 "source": "golden_v1_en",
+                "lang": "en",
                 "title": item.get("title", "") + " (EN)",
                 "content": text_en,
                 "labels": item.get("expected_genres", [])

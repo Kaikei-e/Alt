@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 from pathlib import Path
@@ -109,6 +110,7 @@ def import_livedoor(output_path: Path):
 
                             articles.append({
                                 "source": "livedoor",
+                                "lang": "ja",
                                 "original_category": cat_name,
                                 "label": my_genre,
                                 "title": title_line,
@@ -131,7 +133,48 @@ def import_livedoor(output_path: Path):
         for a in articles:
             f.write(json.dumps(a, ensure_ascii=False) + "\n")
 
+def import_ag_news(output_path: Path):
+    """Import AG News dataset (English news classification)."""
+    logger.info("Loading AG News dataset from HuggingFace...")
+    try:
+        dataset = load_dataset("ag_news", split="train")
+
+        # AG News has 4 classes: World, Sports, Business, Sci/Tech
+        # Map to our genres (approximate mapping)
+        AG_NEWS_MAP = {
+            0: "society_demographics",  # World
+            1: "sports",  # Sports
+            2: "economics_macro",  # Business
+            3: "consumer_tech",  # Sci/Tech
+        }
+
+        articles = []
+        for item in dataset:
+            label_id = item["label"]
+            mapped_genre = AG_NEWS_MAP.get(label_id, "society_demographics")
+            articles.append({
+                "source": "ag_news",
+                "lang": "en",
+                "original_label": label_id,
+                "label": mapped_genre,
+                "title": item.get("text", "").split("\n")[0] if "\n" in item.get("text", "") else "",
+                "content": item.get("text", ""),
+            })
+
+        logger.info(f"AG News: Mapped {len(articles)} articles")
+
+        # Append to file
+        with open(output_path, "a", encoding="utf-8") as f:
+            for a in articles:
+                f.write(json.dumps(a, ensure_ascii=False) + "\n")
+    except Exception as e:
+        logger.error(f"Failed to import AG News: {e}")
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--include_ag_news", action="store_true", help="Include AG News English dataset")
+    args = parser.parse_args()
+
     output_path = Path("recap_subworker/learning_machine/data/silver_external.jsonl")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -140,6 +183,10 @@ def main():
         pass
 
     import_livedoor(output_path)
+
+    if args.include_ag_news:
+        import_ag_news(output_path)
+
     logger.info(f"Saved external data to {output_path}")
 
 if __name__ == "__main__":
