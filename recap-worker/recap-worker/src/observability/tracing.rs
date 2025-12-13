@@ -4,7 +4,7 @@ use opentelemetry::{KeyValue, global, trace::TracerProvider};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
     Resource,
-    trace::{RandomIdGenerator, Sampler, Tracer},
+    trace::{RandomIdGenerator, Sampler, SdkTracer, SdkTracerProvider},
 };
 use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -46,7 +46,7 @@ pub fn init() -> Result<()> {
 /// # Errors
 /// トレーサーの初期化に失敗した場合はエラーを返す。
 #[allow(dead_code)]
-fn init_tracer(endpoint: &str) -> Result<Tracer> {
+fn init_tracer(endpoint: &str) -> Result<SdkTracer> {
     let sampling_ratio = std::env::var("OTEL_SAMPLING_RATIO")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
@@ -58,16 +58,24 @@ fn init_tracer(endpoint: &str) -> Result<Tracer> {
         .build()
         .context("failed to build OTLP span exporter")?;
 
-    let tracer = opentelemetry_sdk::trace::TracerProvider::builder()
-        .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
-        .with_sampler(Sampler::TraceIdRatioBased(sampling_ratio))
-        .with_id_generator(RandomIdGenerator::default())
-        .with_resource(Resource::new(vec![
+    let resource = Resource::builder()
+        .with_attributes([
             KeyValue::new("service.name", "recap-worker"),
             KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
-        ]))
-        .build()
-        .tracer("recap-worker");
+        ])
+        .build();
+
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_sampler(Sampler::TraceIdRatioBased(sampling_ratio))
+        .with_id_generator(RandomIdGenerator::default())
+        .with_resource(resource)
+        .build();
+
+    let tracer = tracer_provider.tracer("recap-worker");
+
+    // グローバルトレーサープロバイダーを設定
+    global::set_tracer_provider(tracer_provider);
 
     Ok(tracer)
 }
@@ -77,5 +85,8 @@ fn init_tracer(endpoint: &str) -> Result<Tracer> {
 /// アプリケーション終了時に呼び出してください。
 #[allow(dead_code)]
 pub fn shutdown() {
-    global::shutdown_tracer_provider();
+    // OpenTelemetry 0.31.0では、グローバルトレーサープロバイダーから直接
+    // SdkTracerProviderを取得できないため、shutdownは個別に管理する必要があります。
+    // 実際の使用時は、init_tracerで返されたSdkTracerProviderを保持し、
+    // アプリケーション終了時に直接shutdown()を呼び出してください。
 }
