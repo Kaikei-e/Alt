@@ -82,10 +82,14 @@ pub struct Config {
     recap_window_days: u32,
     recap_genres: Vec<String>,
     genre_classifier_weights_path: Option<String>,
+    genre_classifier_weights_path_ja: Option<String>,
+    genre_classifier_weights_path_en: Option<String>,
     genre_classifier_threshold: f32,
     genre_refine: FeatureToggle,
     genre_refine_require_tags: RequireTagsPolicy,
     genre_refine_rollout_pct: u8,
+    lang_detect_min_chars: usize,
+    lang_detect_min_confidence: f64,
     tag_label_graph_window: String,
     tag_label_graph_ttl: Duration,
     tag_generator_base_url: String,
@@ -155,10 +159,14 @@ struct BatchConfig {
     recap_window_days: u32,
     recap_genres: Vec<String>,
     genre_classifier_weights_path: Option<String>,
+    genre_classifier_weights_path_ja: Option<String>,
+    genre_classifier_weights_path_en: Option<String>,
     genre_classifier_threshold: f32,
     genre_refine: FeatureToggle,
     genre_refine_require_tags: RequireTagsPolicy,
     genre_refine_rollout_pct: u8,
+    lang_detect_min_chars: usize,
+    lang_detect_min_confidence: f64,
 }
 
 struct GraphConfig {
@@ -307,8 +315,12 @@ impl Config {
             recap_window_days: batch.recap_window_days,
             recap_genres: batch.recap_genres,
             genre_classifier_weights_path: batch.genre_classifier_weights_path,
+            genre_classifier_weights_path_ja: batch.genre_classifier_weights_path_ja,
+            genre_classifier_weights_path_en: batch.genre_classifier_weights_path_en,
             genre_classifier_threshold: batch.genre_classifier_threshold,
             genre_refine: batch.genre_refine,
+            lang_detect_min_chars: batch.lang_detect_min_chars,
+            lang_detect_min_confidence: batch.lang_detect_min_confidence,
             genre_refine_require_tags: batch.genre_refine_require_tags,
             genre_refine_rollout_pct: batch.genre_refine_rollout_pct,
             tag_label_graph_window: graph.tag_label_graph_window,
@@ -438,8 +450,28 @@ impl Config {
     }
 
     #[must_use]
+    pub fn genre_classifier_weights_path_ja(&self) -> Option<&str> {
+        self.genre_classifier_weights_path_ja.as_deref()
+    }
+
+    #[must_use]
+    pub fn genre_classifier_weights_path_en(&self) -> Option<&str> {
+        self.genre_classifier_weights_path_en.as_deref()
+    }
+
+    #[must_use]
     pub fn genre_classifier_threshold(&self) -> f32 {
         self.genre_classifier_threshold
+    }
+
+    #[must_use]
+    pub fn lang_detect_min_chars(&self) -> usize {
+        self.lang_detect_min_chars
+    }
+
+    #[must_use]
+    pub fn lang_detect_min_confidence(&self) -> f64 {
+        self.lang_detect_min_confidence
     }
 
     #[must_use]
@@ -731,15 +763,24 @@ fn load_batch_config() -> Result<BatchConfig, ConfigError> {
         "RECAP_GENRES",
         "ai_data,climate_environment,consumer_products,consumer_tech,culture_arts,cybersecurity,diplomacy_security,economics_macro,education,energy_transition,film_tv,food_cuisine,games_esports,health_medicine,home_living,industry_logistics,internet_platforms,labor_workplace,law_crime,life_science,markets_finance,mobility_automotive,music_audio,politics_government,society_demographics,software_dev,space_astronomy,sports,startups_innovation,travel_places",
     );
+    // レガシー: RECAP_GENRE_MODEL_WEIGHTSはJAのデフォルトとして扱う
     let classifier_weights_path = env_var_optional("RECAP_GENRE_MODEL_WEIGHTS");
+    // 新規: 言語別の重みファイルパス
+    let classifier_weights_path_ja =
+        env_var_optional("RECAP_GENRE_MODEL_WEIGHTS_JA").or(classifier_weights_path.clone());
+    let classifier_weights_path_en = env_var_optional("RECAP_GENRE_MODEL_WEIGHTS_EN");
     let classifier_threshold = parse_f64("RECAP_GENRE_MODEL_THRESHOLD", 0.5)? as f32;
     let refine_enabled = parse_bool("RECAP_GENRE_REFINE_ENABLED", false)?;
     let refine_require_tags = parse_bool("RECAP_GENRE_REFINE_REQUIRE_TAGS", true)?;
     let refine_rollout_pct = parse_percentage("RECAP_GENRE_REFINE_ROLLOUT_PERCENT", 100)?;
+    let lang_detect_min_chars = parse_usize("RECAP_LANG_DETECT_MIN_CHARS", 50)?;
+    let lang_detect_min_confidence = parse_f64("RECAP_LANG_DETECT_MIN_CONFIDENCE", 0.65)?;
     Ok(BatchConfig {
         recap_window_days: window_days,
         recap_genres: genres,
         genre_classifier_weights_path: classifier_weights_path,
+        genre_classifier_weights_path_ja: classifier_weights_path_ja,
+        genre_classifier_weights_path_en: classifier_weights_path_en,
         genre_classifier_threshold: classifier_threshold,
         genre_refine: if refine_enabled {
             FeatureToggle::Enabled
@@ -752,6 +793,8 @@ fn load_batch_config() -> Result<BatchConfig, ConfigError> {
             RequireTagsPolicy::Optional
         },
         genre_refine_rollout_pct: refine_rollout_pct,
+        lang_detect_min_chars,
+        lang_detect_min_confidence,
     })
 }
 

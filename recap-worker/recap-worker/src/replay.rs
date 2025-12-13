@@ -22,7 +22,7 @@ use crate::pipeline::genre_refine::{
 };
 use crate::pipeline::tag_signal::TagSignal;
 use crate::scheduler::JobContext;
-use crate::store::dao::RecapDao;
+use crate::store::dao::{RecapDao, RecapDaoImpl};
 use crate::store::models::{
     CoarseCandidateRecord, GenreLearningRecord, GraphEdgeRecord, LearningTimestamps,
     RefineDecisionRecord, TagProfileRecord, TagSignalRecord, TelemetryRecord,
@@ -71,7 +71,7 @@ pub async fn replay_genre_pipeline(config: ReplayConfig) -> Result<()> {
         .test_before_acquire(true)
         .connect_lazy(&config.dsn)
         .context("failed to configure postgres pool")?;
-    let dao = Arc::new(RecapDao::new(pool));
+    let dao: Arc<dyn RecapDao> = Arc::new(RecapDaoImpl::new(pool));
 
     let graph_loader = Arc::new(DbTagLabelGraphSource::new(
         Arc::clone(&dao),
@@ -121,7 +121,7 @@ pub async fn replay_genre_pipeline(config: ReplayConfig) -> Result<()> {
 async fn process_record(
     record: &ReplayRecord,
     engine: &Arc<DefaultRefineEngine>,
-    dao: &Arc<RecapDao>,
+    dao: &Arc<dyn RecapDao>,
     dry_run: bool,
 ) -> Result<bool> {
     let candidates: Vec<GenreCandidate> = record

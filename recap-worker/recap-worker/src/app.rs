@@ -12,7 +12,7 @@ use crate::{
     pipeline::PipelineOrchestrator,
     queue::{ClassificationJobQueue, QueueStore},
     scheduler::Scheduler,
-    store::dao::RecapDao,
+    store::dao::{RecapDao, RecapDaoImpl},
 };
 
 #[derive(Clone)]
@@ -26,7 +26,7 @@ pub struct ComponentRegistry {
     scheduler: Scheduler,
     news_creator_client: Arc<NewsCreatorClient>,
     subworker_client: Arc<SubworkerClient>,
-    recap_dao: Arc<RecapDao>,
+    recap_dao: Arc<dyn RecapDao>,
 }
 
 impl AppState {
@@ -56,7 +56,7 @@ impl AppState {
         Arc::clone(&self.registry.subworker_client)
     }
 
-    pub(crate) fn dao(&self) -> Arc<RecapDao> {
+    pub(crate) fn dao(&self) -> Arc<dyn RecapDao> {
         Arc::clone(&self.registry.recap_dao)
     }
 }
@@ -86,7 +86,7 @@ impl ComponentRegistry {
             .test_before_acquire(true)
             .connect_lazy(config.recap_db_dsn())
             .context("failed to configure recap_db connection pool")?;
-        let recap_dao = Arc::new(RecapDao::new(recap_pool.clone()));
+        let recap_dao: Arc<dyn RecapDao> = Arc::new(RecapDaoImpl::new(recap_pool.clone()));
 
         // Initialize classification job queue (use same pool)
         let queue_store = QueueStore::new(recap_pool.clone());
