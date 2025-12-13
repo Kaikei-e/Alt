@@ -41,11 +41,19 @@ class SudachiTokenizer:
         self._init_tokenizer()
 
 class GenreClassifierService:
-    def __init__(self, model_path: str, embedder: Embedder):
+    def __init__(self, model_path: str, embedder: Embedder, vectorizer_path: str = None, thresholds_path: str = None):
         self.embedder = embedder
         self.model_path = Path(model_path)
-        self.tfidf_path = self.model_path.parent / "tfidf_vectorizer.joblib"
-        self.thresholds_path = self.model_path.parent / "genre_thresholds.json"
+
+        if vectorizer_path:
+            self.tfidf_path = Path(vectorizer_path)
+        else:
+            self.tfidf_path = self.model_path.parent / "tfidf_vectorizer.joblib"
+
+        if thresholds_path:
+            self.thresholds_path = Path(thresholds_path)
+        else:
+            self.thresholds_path = self.model_path.parent / "genre_thresholds.json"
 
         self.model = None
         self.tfidf = None

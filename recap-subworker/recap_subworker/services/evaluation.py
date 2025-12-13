@@ -5,8 +5,12 @@ from typing import Dict, List, Any, Optional
 import pandas as pd
 import structlog
 from pydantic import BaseModel
-from sklearn.metrics import classification_report, accuracy_score, hamming_loss
+from sklearn.metrics import classification_report, accuracy_score, hamming_loss, precision_recall_fscore_support, confusion_matrix
 from sklearn.preprocessing import MultiLabelBinarizer
+try:
+    from statsmodels.stats.proportion import proportion_confint
+except ImportError:
+    proportion_confint = None
 
 from ..infra.config import get_settings
 from .classifier import GenreClassifierService, SudachiTokenizer
@@ -41,22 +45,42 @@ class EvaluationService:
     def __init__(
         self,
         weights_path: Optional[str] = None,
+        weights_ja_path: Optional[str] = None,
+        weights_en_path: Optional[str] = None,
+        vectorizer_ja_path: Optional[str] = None,
+        vectorizer_en_path: Optional[str] = None,
+        thresholds_ja_path: Optional[str] = None,
+        thresholds_en_path: Optional[str] = None,
         use_bootstrap: bool = True,
         n_bootstrap: int = 1000,
         use_cross_validation: bool = False,
         n_folds: int = 5,
     ):
         self.settings = get_settings()
+        # Fallback to default from settings if generic pointer is used,
+        # but favor explicit JA/EN paths if provided
         self.weights_path = weights_path or self.settings.genre_classifier_model_path
+
+        self.weights_ja = weights_ja_path
+        self.weights_en = weights_en_path
+        self.vectorizer_ja = vectorizer_ja_path
+        self.vectorizer_en = vectorizer_en_path
+        self.thresholds_ja = thresholds_ja_path
+        self.thresholds_en = thresholds_en_path
+
         self.use_bootstrap = use_bootstrap
         self.n_bootstrap = n_bootstrap
         self.use_cross_validation = use_cross_validation
         self.n_folds = n_folds
 
-        # Initialize components for evaluation
-        self._init_classifier()
+        self.classifier_ja = None
+        self.classifier_en = None
+        self.classifier_default = None
 
-    def _init_classifier(self):
+        # Initialize components for evaluation
+        self._init_classifiers()
+
+    def _init_classifiers(self):
         # Configure Embedder
         config = EmbedderConfig(
             model_id=self.settings.model_id,
@@ -68,15 +92,39 @@ class EvaluationService:
         )
         self.embedder = Embedder(config)
 
-        # Initialize Classifier
-        # Note: Model path might be relative to app root or absolute
-        model_path = Path(self.weights_path)
-        if not model_path.is_absolute():
-             # Assuming purely relative to CWD if not absolute, or adapt as needed.
-             # In docker, CWD is /app.
-             pass
+        # Initialize JA Classifier if config provided
+        if self.weights_ja:
+            logger.info("Initializing JA classifier", path=self.weights_ja)
+            self.classifier_ja = GenreClassifierService(
+                self.weights_ja,
+                self.embedder,
+                vectorizer_path=self.vectorizer_ja,
+                thresholds_path=self.thresholds_ja
+            )
 
-        self.classifier = GenreClassifierService(str(model_path), self.embedder)
+        # Initialize EN Classifier if config provided
+        if self.weights_en:
+            logger.info("Initializing EN classifier", path=self.weights_en)
+            self.classifier_en = GenreClassifierService(
+                self.weights_en,
+                self.embedder,
+                vectorizer_path=self.vectorizer_en,
+                thresholds_path=self.thresholds_en
+            )
+
+        # Initialize Default Classifier (fallback)
+        if self.weights_path:
+             # Note: Model path might be relative to app root or absolute
+             model_path = Path(self.weights_path)
+             if not model_path.is_absolute():
+                  # Assuming purely relative to CWD if not absolute, or adapt as needed.
+                  # In docker, CWD is /app.
+                  pass
+             self.classifier_default = GenreClassifierService(str(model_path), self.embedder)
+             if not self.classifier_ja:
+                 self.classifier_ja = self.classifier_default
+             if not self.classifier_en:
+                 self.classifier_en = self.classifier_default
 
     def evaluate(self, golden_data_path: str, language: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -149,11 +197,21 @@ class EvaluationService:
         y_true_bin = mlb.fit_transform(y_true_labels)
         classes = mlb.classes_
 
+        if language == "ja":
+            classifier = self.classifier_ja
+        elif language == "en":
+            classifier = self.classifier_en
+        else:
+            classifier = self.classifier_default or self.classifier_ja
+
+        if not classifier:
+            raise ValueError("No classifier available for language: " + str(language))
+
         # Predict
         # Use predict_batch from GenreClassifierService
         # It accepts threshold_overrides, etc. We use defaults for now.
-        logger.info("Starting evaluation prediction", count=len(X))
-        predictions = self.classifier.predict_batch(X, multi_label=True)
+        logger.info("Starting evaluation prediction", count=len(X), language=language)
+        predictions = classifier.predict_batch(X, multi_label=True)
 
         # Extract predicted labels
         # predictions[i]["candidates"] contains list of {"genre": str, "score": float, ...} for all pass-threshold genres
@@ -262,12 +320,20 @@ class EvaluationService:
             zero_division=0
         )
 
+        # Calculate macro/micro using precision_recall_fscore_support for reliability
+        macro_p, macro_r, macro_f, _ = precision_recall_fscore_support(y_true, y_pred, average='macro', zero_division=0)
+        micro_p, micro_r, micro_f, _ = precision_recall_fscore_support(y_true, y_pred, average='micro', zero_division=0)
+
+        # Update report structure implicitly or explicit return
+        # Per genre metrics
+        per_genre = {k: v for k, v in report.items() if k not in ['macro avg', 'micro avg', 'weighted avg', 'samples']}
+
         return ClassificationMetrics(
             accuracy=acc,
             hamming_loss=hl,
-            macro_f1=report['macro avg']['f1-score'],
-            micro_f1=report['micro avg']['f1-score'],
-            per_genre={k: v for k, v in report.items() if k not in ['macro avg', 'micro avg', 'weighted avg', 'samples']}
+            macro_f1=macro_f,
+            micro_f1=micro_f,
+            per_genre=per_genre
         )
 
     async def evaluate_summary(
