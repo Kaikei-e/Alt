@@ -31,9 +31,14 @@ logger = structlog.get_logger()
 class ClassificationMetrics(BaseModel):
     accuracy: float
     hamming_loss: float
+    macro_precision: float
+    macro_recall: float
     macro_f1: float
+    micro_precision: float
+    micro_recall: float
     micro_f1: float
     per_genre: Dict[str, Dict[str, float]]
+
 
 class SummarizationMetrics(BaseModel):
     relevance: float = 0.0
@@ -234,11 +239,11 @@ class EvaluationService:
 
         results = {
             "accuracy": metrics.accuracy,
-            "macro_precision": 0.0, # Placeholder/TODO from report if needed
-            "macro_recall": 0.0,
+            "macro_precision": metrics.macro_precision,
+            "macro_recall": metrics.macro_recall,
             "macro_f1": metrics.macro_f1,
-            "micro_precision": 0.0,
-            "micro_recall": 0.0,
+            "micro_precision": metrics.micro_precision,
+            "micro_recall": metrics.micro_recall,
             "micro_f1": metrics.micro_f1,
             "per_genre_metrics": {},
             "confusion_matrix": {}, # TODO if needed
@@ -366,7 +371,11 @@ class EvaluationService:
         return ClassificationMetrics(
             accuracy=acc,
             hamming_loss=hl,
+            macro_precision=macro_p,
+            macro_recall=macro_r,
             macro_f1=macro_f,
+            micro_precision=micro_p,
+            micro_recall=micro_r,
             micro_f1=micro_f,
             per_genre=per_genre
         )
