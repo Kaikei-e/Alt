@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn test_detect_japanese() {
-        let text = "これは日本語のテキストです。機械学習と自然言語処理について説明します。";
+        let text = "これは日本語のテキストです。機械学習と自然言語処理について説明します。この文章は言語検出のテスト用に作成されました。";
         let (lang, confidence) = detect_lang(text);
         assert_eq!(lang, ClassificationLanguage::Japanese);
         assert!(confidence >= min_confidence());
