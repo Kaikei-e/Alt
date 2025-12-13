@@ -250,11 +250,11 @@
 
 <div
   bind:this={swipeElement}
-  class="absolute w-full h-[95dvh] bg-[var(--alt-glass)] text-[var(--alt-text-primary)] border-2 border-[var(--alt-glass-border)] shadow-[0_12px_40px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.1)] rounded-2xl p-4 backdrop-blur-[20px] touch-action-pan-x select-none"
+  class="absolute w-full h-[95dvh] bg-[var(--alt-glass)] text-[var(--alt-text-primary)] border-2 border-[var(--alt-glass-border)] shadow-[0_12px_40px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.1)] rounded-2xl p-4 backdrop-blur-[20px] select-none"
   use:swipe={{ threshold: SWIPE_THRESHOLD, restraint: 120, allowedTime: 500 }}
   aria-busy={isBusy}
   data-testid="swipe-card"
-  style={cardStyle}
+  style={`${cardStyle}; touch-action: none;`}
 >
   <div class="flex flex-col gap-0 h-full">
     <!-- Header -->
@@ -298,7 +298,7 @@
     <!-- Only Vertical Scroll Area -->
     <div
       bind:this={scrollAreaRef}
-      style="touch-action: pan-y pan-x; overflow-x: hidden;"
+      style="touch-action: pan-y; overflow-x: hidden;"
       class="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 bg-transparent scroll-smooth overscroll-contain scrollbar-thin"
       data-testid="unified-scroll-area"
     >
