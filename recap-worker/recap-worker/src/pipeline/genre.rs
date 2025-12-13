@@ -98,7 +98,7 @@ pub(crate) trait GenreStage: Send + Sync {
 pub(crate) struct TwoStageGenreStage {
     coarse: Arc<dyn GenreStage>,
     refine_engine: Arc<dyn RefineEngine>,
-    dao: Arc<RecapDao>,
+    dao: Arc<dyn RecapDao>,
     require_tags: bool,
     rollout: RefineRollout,
     metrics: Arc<Metrics>,
@@ -132,7 +132,7 @@ impl TwoStageGenreStage {
     pub(crate) fn new(
         coarse: Arc<dyn GenreStage>,
         refine_engine: Arc<dyn RefineEngine>,
-        dao: Arc<RecapDao>,
+        dao: Arc<dyn RecapDao>,
         require_tags: bool,
         rollout: RefineRollout,
         metrics: Arc<Metrics>,

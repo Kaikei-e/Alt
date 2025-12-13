@@ -58,7 +58,7 @@ pub(crate) struct SummarySelectStage {
     similarity_threshold: f32, // now implicitly used only via config or unused if pure percentile
     subgenre_config: SubgenreConfig,
     embedding_service: Option<Arc<dyn Embedder>>,
-    dao: Option<Arc<RecapDao>>,
+    dao: Option<Arc<dyn RecapDao>>,
     #[allow(dead_code)]
     subworker: Option<Arc<SubworkerClient>>,
 }
@@ -68,7 +68,7 @@ impl SummarySelectStage {
         embedding_service: Option<Arc<dyn Embedder>>,
         min_documents_per_genre: usize,
         similarity_threshold: f32,
-        dao: Option<Arc<RecapDao>>,
+        dao: Option<Arc<dyn RecapDao>>,
         subworker: Option<Arc<SubworkerClient>>,
         subgenre_config: SubgenreConfig,
     ) -> Self {
@@ -996,7 +996,8 @@ mod tests {
     async fn subcluster_large_genres_handles_no_embedding_service() {
         use super::super::dedup::DeduplicatedArticle;
         // No embedding service
-        let stage = SummarySelectStage::new(None, 3, 0.8, None, None, SubgenreConfig::new(50, 50, 10));
+        let stage =
+            SummarySelectStage::new(None, 3, 0.8, None, None, SubgenreConfig::new(50, 50, 10));
 
         // Create 100 "software_dev" assignments (exceeds threshold)
         let assignments: Vec<GenreAssignment> = (0..100)

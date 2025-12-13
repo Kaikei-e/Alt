@@ -16,11 +16,11 @@ pub struct MorningPipeline {
     fetch: Arc<dyn FetchStage>,
     preprocess: Arc<dyn PreprocessStage>,
     dedup: Arc<dyn DedupStage>,
-    recap_dao: Arc<RecapDao>,
+    recap_dao: Arc<dyn RecapDao>,
 }
 
 impl MorningPipeline {
-    pub(crate) fn new(config: Arc<Config>, recap_dao: Arc<RecapDao>) -> Self {
+    pub(crate) fn new(config: Arc<Config>, recap_dao: Arc<dyn RecapDao>) -> Self {
         let alt_backend_config = AltBackendConfig {
             base_url: config.alt_backend_base_url().to_string(),
             connect_timeout: config.alt_backend_connect_timeout(),

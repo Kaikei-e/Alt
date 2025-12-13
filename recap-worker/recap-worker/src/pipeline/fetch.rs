@@ -62,7 +62,7 @@ pub(crate) trait FetchStage: Send + Sync {
 pub(crate) struct AltBackendFetchStage {
     client: Arc<AltBackendClient>,
     tag_generator_client: Option<Arc<TagGeneratorClient>>,
-    dao: Arc<RecapDao>,
+    dao: Arc<dyn RecapDao>,
     retry_config: RetryConfig,
     window_days: u32,
 }
@@ -71,7 +71,7 @@ impl AltBackendFetchStage {
     pub(crate) fn new(
         client: Arc<AltBackendClient>,
         tag_generator_client: Option<Arc<TagGeneratorClient>>,
-        dao: Arc<RecapDao>,
+        dao: Arc<dyn RecapDao>,
         retry_config: RetryConfig,
         window_days: u32,
     ) -> Self {

@@ -43,11 +43,11 @@ pub(crate) trait PersistStage: Send + Sync {
 /// 最終確定物をJSONBフィールドに保存するPersistStage。
 #[allow(dead_code)]
 pub(crate) struct FinalSectionPersistStage {
-    dao: Arc<RecapDao>,
+    dao: Arc<dyn RecapDao>,
 }
 
 impl FinalSectionPersistStage {
-    pub(crate) fn new(dao: Arc<RecapDao>) -> Self {
+    pub(crate) fn new(dao: Arc<dyn RecapDao>) -> Self {
         Self { dao }
     }
 }

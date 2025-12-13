@@ -44,7 +44,7 @@ use select::{SelectStage, SubgenreConfig, SummarySelectStage};
 pub(crate) struct PipelineOrchestrator {
     config: Arc<Config>,
     stages: PipelineStages,
-    recap_dao: Arc<RecapDao>,
+    recap_dao: Arc<dyn RecapDao>,
     subworker_client: Arc<SubworkerClient>,
     #[allow(dead_code)]
     classification_queue: Arc<ClassificationJobQueue>,
@@ -55,7 +55,7 @@ impl PipelineOrchestrator {
         &self.stages
     }
 
-    pub(crate) fn recap_dao(&self) -> &RecapDao {
+    pub(crate) fn recap_dao(&self) -> &Arc<dyn RecapDao> {
         &self.recap_dao
     }
 }
@@ -87,7 +87,7 @@ impl PipelineOrchestrator {
         config: Arc<Config>,
         subworker: SubworkerClient,
         news_creator: Arc<NewsCreatorClient>,
-        recap_dao: Arc<RecapDao>,
+        recap_dao: Arc<dyn RecapDao>,
         classification_queue: Arc<ClassificationJobQueue>,
         metrics: Arc<Metrics>,
     ) -> Result<Self> {
@@ -279,7 +279,13 @@ impl PipelineOrchestrator {
         }
 
         // 設定を再読み込みしてGenreStageを更新
-        match GraphOverrideSettings::load_with_fallback(self.recap_dao.pool()).await {
+        let overrides_result = if let Some(pool) = self.recap_dao.pool() {
+            GraphOverrideSettings::load_with_fallback(pool).await
+        } else {
+            // モックの場合、環境変数から読み込む
+            GraphOverrideSettings::load_from_env()
+        };
+        match overrides_result {
             Ok(overrides) => {
                 self.stages.genre.update_config(&overrides).await;
                 tracing::debug!("updated graph override settings from database");
@@ -375,7 +381,7 @@ impl PipelineBuilder {
 
     pub(crate) fn build(
         self,
-        recap_dao: Arc<RecapDao>,
+        recap_dao: Arc<dyn RecapDao>,
         subworker_client: Arc<SubworkerClient>,
         classification_queue: Arc<ClassificationJobQueue>,
         embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>>,
@@ -471,21 +477,8 @@ mod tests {
 
         // テスト用のモックRecapDaoを作成（DB接続なし）
         // このテストはステージの実行順序のみを検証するため、DB操作は不要
-        // 注意: PipelineOrchestratorはArc<RecapDao>を要求するため、
-        // MockRecapDaoをRecapDaoとして使うには型の互換性が必要
-        // 現時点では、RecapDaoをトレイトに抽象化するのは大きな変更のため、
-        // テストでは実際のRecapDaoを使うが、DB接続プールは作成しない
-        // （将来的にはRecapDaoをトレイトに抽象化して、MockRecapDaoを使えるようにする）
-        let pool = PgPoolOptions::new()
-            .max_connections(10)
-            .min_connections(0)
-            .acquire_timeout(std::time::Duration::from_secs(60))
-            .idle_timeout(Some(std::time::Duration::from_secs(300)))
-            .max_lifetime(Some(std::time::Duration::from_secs(1800)))
-            .connect_lazy("postgres://recap:recap@localhost:5999/recap_db")
-            .expect("failed to create test pool");
-        let pool_clone = pool.clone();
-        let recap_dao = Arc::new(crate::store::dao::RecapDao::new(pool_clone));
+        let recap_dao: Arc<dyn crate::store::dao::RecapDao> =
+            Arc::new(crate::store::dao::mock::MockRecapDao::new());
 
         // テスト用のダミーSubworkerClientを作成
         let subworker_client = Arc::new(
@@ -493,7 +486,14 @@ mod tests {
                 .expect("failed to create test subworker client"),
         );
 
-        // テスト用のキューを作成
+        // テスト用のキューを作成（モックDAOを使用するため、実際のDB接続は不要）
+        // ただし、ClassificationJobQueueはQueueStoreを要求するため、ダミーのプールが必要
+        // このテストではキューは使用されないため、ダミーで問題ない
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .min_connections(0)
+            .connect_lazy("postgres://recap:recap@localhost:5999/recap_db")
+            .expect("failed to create test pool");
         let queue_store = crate::queue::QueueStore::new(pool);
         let classification_queue = Arc::new(crate::queue::ClassificationJobQueue::new(
             queue_store,

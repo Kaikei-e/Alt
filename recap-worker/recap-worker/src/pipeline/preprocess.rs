@@ -14,7 +14,7 @@ use tracing::{debug, info};
 use unicode_normalization::UnicodeNormalization;
 use unicode_segmentation::UnicodeSegmentation;
 use uuid::Uuid;
-use whatlang::detect;
+// whatlang is replaced with lingua in language_detection module
 
 use crate::scheduler::JobContext;
 use crate::store::{dao::RecapDao, models::PreprocessMetrics};
@@ -57,10 +57,10 @@ pub(crate) trait PreprocessStage: Send + Sync {
 /// CPU heavy前処理を行うステージ。
 ///
 /// `spawn_blockingでCPUバインド処理をオフロードし、セマフォで同時実行数を制限します`。
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TextPreprocessStage {
     semaphore: Arc<Semaphore>,
-    dao: Arc<RecapDao>,
+    dao: Arc<dyn RecapDao>,
     subworker: Arc<SubworkerClient>,
 }
 
@@ -72,7 +72,7 @@ impl TextPreprocessStage {
     /// * `dao` - データベースアクセスオブジェクト
     pub(crate) fn new(
         max_concurrent: usize,
-        dao: Arc<RecapDao>,
+        dao: Arc<dyn RecapDao>,
         subworker: Arc<SubworkerClient>,
     ) -> Self {
         Self {
@@ -229,11 +229,20 @@ pub(crate) async fn preprocess_article(
         return Ok(None);
     }
 
-    // 3. 言語検出
+    // 3. 言語検出（linguaベース）
     let language = article
         .language
         .clone()
-        .or_else(|| detect(trimmed).map(|info| info.lang().code().to_string()))
+        .or_else(|| {
+            use crate::classification::ClassificationLanguage;
+            use crate::classification::tokenizer::TokenPipeline;
+            let lang = TokenPipeline::resolve_language(ClassificationLanguage::Unknown, trimmed);
+            Some(match lang {
+                ClassificationLanguage::Japanese => "ja".to_string(),
+                ClassificationLanguage::English => "en".to_string(),
+                ClassificationLanguage::Unknown => "und".to_string(),
+            })
+        })
         .unwrap_or_else(|| "und".to_string());
 
     // 4. タイトル処理

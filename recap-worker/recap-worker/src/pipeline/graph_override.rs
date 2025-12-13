@@ -5,6 +5,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::store::dao::RecapDao;
+
 /// Graph-related tuning overrides loaded from database (latest) or YAML fallback.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -21,7 +23,7 @@ impl GraphOverrideSettings {
     pub(crate) async fn load_with_fallback(pool: &PgPool) -> Result<Self, GraphOverrideError> {
         // Try database first
         tracing::debug!("attempting to load graph override settings from database");
-        match crate::store::dao::RecapDao::new(pool.clone())
+        match crate::store::dao::RecapDaoImpl::new(pool.clone())
             .get_latest_worker_config("graph_override")
             .await
         {

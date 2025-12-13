@@ -108,7 +108,7 @@ pub(crate) trait DispatchStage: Send + Sync {
 pub(crate) struct MlLlmDispatchStage {
     subworker_client: Arc<SubworkerClient>,
     news_creator_client: Arc<NewsCreatorClient>,
-    dao: Arc<RecapDao>,
+    dao: Arc<dyn RecapDao>,
     concurrency_semaphore: Arc<Semaphore>,
     config: Arc<Config>,
 }
@@ -117,7 +117,7 @@ impl MlLlmDispatchStage {
     pub(crate) fn new(
         subworker_client: Arc<SubworkerClient>,
         news_creator_client: Arc<NewsCreatorClient>,
-        dao: Arc<RecapDao>,
+        dao: Arc<dyn RecapDao>,
         max_concurrency: usize,
         config: Arc<Config>,
     ) -> Self {

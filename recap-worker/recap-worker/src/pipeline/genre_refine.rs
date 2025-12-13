@@ -323,7 +323,7 @@ pub(crate) trait TagLabelGraphSource: Send + Sync {
 }
 
 pub(crate) struct DbTagLabelGraphSource {
-    dao: Arc<RecapDao>,
+    dao: Arc<dyn RecapDao>,
     window_label: String,
     ttl: Duration,
     state: RwLock<TagLabelGraphState>,
@@ -343,7 +343,11 @@ impl TagLabelGraphState {
 }
 
 impl DbTagLabelGraphSource {
-    pub(crate) fn new(dao: Arc<RecapDao>, window_label: impl Into<String>, ttl: Duration) -> Self {
+    pub(crate) fn new(
+        dao: Arc<dyn RecapDao>,
+        window_label: impl Into<String>,
+        ttl: Duration,
+    ) -> Self {
         Self {
             dao,
             window_label: window_label.into(),
