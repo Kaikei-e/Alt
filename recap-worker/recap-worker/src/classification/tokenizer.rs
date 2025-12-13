@@ -3,9 +3,9 @@ use lindera::tokenizer::{Tokenizer as LinderaTokenizer, TokenizerConfig as Linde
 use regex::Regex;
 use unicode_normalization::UnicodeNormalization;
 use unicode_segmentation::UnicodeSegmentation;
-use whatlang::{Lang, detect};
 
 use super::ClassificationLanguage;
+use crate::language_detection::detect_lang;
 
 fn normalize_text(input: &str) -> String {
     input.nfc().collect::<String>()
@@ -41,10 +41,10 @@ impl TokenPipeline {
         text: &str,
     ) -> ClassificationLanguage {
         match provided {
-            ClassificationLanguage::Unknown => detect(text)
-                .map_or(ClassificationLanguage::Unknown, |info| {
-                    ClassificationLanguage::from(info.lang())
-                }),
+            ClassificationLanguage::Unknown => {
+                let (detected_lang, _confidence) = detect_lang(text);
+                detected_lang
+            }
             other => other,
         }
     }
@@ -296,14 +296,4 @@ fn normalize_english_token(token: &str) -> String {
         return lower.trim_end_matches('s').to_string();
     }
     lower
-}
-
-impl From<Lang> for ClassificationLanguage {
-    fn from(lang: Lang) -> Self {
-        match lang {
-            Lang::Jpn => ClassificationLanguage::Japanese,
-            Lang::Eng => ClassificationLanguage::English,
-            _ => ClassificationLanguage::Unknown,
-        }
-    }
 }

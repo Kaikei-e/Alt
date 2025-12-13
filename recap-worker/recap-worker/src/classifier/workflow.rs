@@ -337,8 +337,8 @@ impl ClassificationPipeline {
             std::sync::atomic::AtomicUsize::new(0);
         let sample_count = SAMPLE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        // 特徴ベクトルを抽出
-        let language = ClassificationLanguage::Unknown;
+        // 言語を判定（Unknownの場合は自動検出）
+        let language = TokenPipeline::resolve_language(ClassificationLanguage::Unknown, content);
         let normalized = self.token_pipeline.preprocess(content, "", language);
         let feature_vector = self.feature_extractor.extract(&normalized.tokens);
 

@@ -10,6 +10,7 @@ use keywords::{DEFAULT_KEYWORDS, KeywordMatcher, accumulate_scores, default_matc
 
 pub mod features;
 mod model;
+pub mod multilang;
 pub mod tokenizer;
 
 pub use features::{FeatureExtractor, FeatureVector};
@@ -112,6 +113,44 @@ impl GenreClassifier {
     #[must_use]
     pub fn known_genres(&self) -> Vec<String> {
         self.genre_thresholds.keys().cloned().collect()
+    }
+
+    /// 指定されたパスから重みファイルを読み込んで分類器を構築する。
+    ///
+    /// # Arguments
+    /// * `weights_path` - 重みファイルのパス（`None`の場合はデフォルトの埋め込み重みを使用）
+    /// * `threshold` - スコア閾値
+    ///
+    /// # Errors
+    /// 重みファイルの読み込みやパースに失敗した場合にエラーを返す。
+    pub fn new_from_path(weights_path: Option<&Path>, threshold: f32) -> Result<Self> {
+        let model = if let Some(path) = weights_path {
+            HybridModel::from_path(Some(path))?
+        } else {
+            HybridModel::new()?
+        };
+        let feature_extractor = if model.feature_vocab().is_empty() {
+            FeatureExtractor::fallback()
+        } else {
+            FeatureExtractor::from_metadata(
+                model.feature_vocab(),
+                model.feature_idf(),
+                model.bm25_k1(),
+                model.bm25_b(),
+                model.average_doc_len(),
+            )
+        };
+
+        Ok(Self {
+            keywords: GenreKeywords::default_keywords(),
+            top_k: 3,
+            pipeline: TokenPipeline::new(),
+            feature_extractor,
+            model,
+            score_threshold: threshold,
+            keyword_matcher: default_matcher(),
+            genre_thresholds: default_thresholds(),
+        })
     }
 
     /// テスト用ヘルパー。
