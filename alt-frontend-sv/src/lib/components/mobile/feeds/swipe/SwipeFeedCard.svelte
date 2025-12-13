@@ -46,14 +46,13 @@
   let contentError = $state<string | null>(null);
 
   // Swipe state with Spring
-  const SWIPE_THRESHOLD = 80;
-  const HORIZONTAL_SWIPE_THRESHOLD = 15; // 横スワイプ検出の閾値（px）
+  const SWIPE_THRESHOLD = 60;
+  const HORIZONTAL_SWIPE_THRESHOLD = 10; // 横スワイプ検出の閾値（px）
   let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
   let isDragging = $state(false);
   let hasSwiped = $state(false);
   let swipeElement: HTMLDivElement | null = $state(null);
   let scrollAreaRef: HTMLDivElement | null = $state(null);
-  let isHorizontalSwipeActive = $state(false);
 
   // Derived styles
   const cardStyle = $derived.by(() => {
@@ -116,6 +115,8 @@
     if (!swipeElement) return;
 
     const swipeHandler = (event: Event) => {
+      // 重複処理を防ぐ（scrollAreaRefとswipeElementの両方から発火する可能性がある）
+      if (hasSwiped) return;
       handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
     };
 
@@ -130,14 +131,6 @@
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         isDragging = true;
         x.set(deltaX, { instant: true });
-
-        // 横方向の動きが閾値を超えたら、スクロールを無効化してカードのスワイプを優先
-        if (Math.abs(deltaX) >= HORIZONTAL_SWIPE_THRESHOLD && scrollAreaRef) {
-          if (!isHorizontalSwipeActive) {
-            isHorizontalSwipeActive = true;
-            scrollAreaRef.style.touchAction = "none";
-          }
-        }
       }
     };
 
@@ -148,15 +141,9 @@
       // 成立しなかった場合だけ「中央にスナップバック」という役割分担
       x.target = 0;
       isDragging = false;
-
-      // スワイプが成立しなかった場合、touch-action をリセット
-      // スワイプが成立した場合は handleSwipe で処理されるため、そのまま維持
-      if (isHorizontalSwipeActive && scrollAreaRef && !hasSwiped) {
-        isHorizontalSwipeActive = false;
-        scrollAreaRef.style.touchAction = "pan-y";
-      }
     };
 
+    // swipeElementにリスナーを追加
     swipeElement.addEventListener("swipe", swipeHandler);
     swipeElement.addEventListener("swipe:move", swipeMoveHandler);
     swipeElement.addEventListener("swipe:end", swipeEndHandler);
@@ -167,6 +154,7 @@
       swipeElement?.removeEventListener("swipe:end", swipeEndHandler);
     };
   });
+
 
   async function handleToggleContent() {
     if (!isContentExpanded && !fullContent) {
@@ -239,12 +227,6 @@
     // 次のカードに備えてリセット
     hasSwiped = false;
     await x.set(0, { instant: true });
-
-    // touch-action もリセット
-    if (isHorizontalSwipeActive && scrollAreaRef) {
-      isHorizontalSwipeActive = false;
-      scrollAreaRef.style.touchAction = "pan-y";
-    }
   }
 </script>
 
@@ -299,7 +281,7 @@
     <div
       bind:this={scrollAreaRef}
       style="touch-action: pan-y; overflow-x: hidden;"
-      class="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 bg-transparent scroll-smooth overscroll-contain scrollbar-thin"
+      class="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 bg-transparent scroll-smooth overscroll-contain scrollbar-thin select-none"
       data-testid="unified-scroll-area"
     >
       {#if hasDescription && !isAISummaryRequested}
@@ -445,5 +427,14 @@
   }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.3);
+  }
+
+  /* Androidでテキスト選択がスワイプを妨げないように、親要素とすべての子要素でテキスト選択を無効化 */
+  [data-testid="unified-scroll-area"],
+  [data-testid="unified-scroll-area"] * {
+    -webkit-user-select: none; /* Safari, Chrome */
+    -moz-user-select: none;     /* Firefox */
+    -ms-user-select: none;      /* Internet Explorer, Edge */
+    user-select: none;          /* 標準 */
   }
 </style>

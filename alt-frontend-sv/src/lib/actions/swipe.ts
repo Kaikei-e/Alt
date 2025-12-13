@@ -33,6 +33,10 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 	let pointerId: number | null = null;
 	let pointerType = "mouse";
 	let active = false;
+	let touchStartX = 0;
+	let touchStartY = 0;
+	let touchActive = false;
+	let touchAxis: "undecided" | "x" | "y" = "undecided";
 
 	let lastDx = 0;
 	let lastDy = 0;
@@ -50,6 +54,7 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 
 	function onPointerDown(ev: PointerEvent) {
 		if (active) return;
+
 		active = true;
 
 		pointerId = ev.pointerId;
@@ -62,11 +67,64 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 		lastDx = 0;
 		lastDy = 0;
 
+		// Androidでも確実にイベントを受け取るため、windowレベルでキャッチ
+		// setPointerCaptureはAndroidで不安定なことがあるため、フォールバックとして使用
 		try {
 			node.setPointerCapture(ev.pointerId);
 		} catch {
 			// ignore
 		}
+
+		// windowレベルでpointermove/pointerupをキャッチ（Android対策）
+		window.addEventListener("pointermove", onPointerMove);
+		window.addEventListener("pointerup", onPointerUp);
+		window.addEventListener("pointercancel", onPointerCancel);
+	}
+
+	function onTouchStart(ev: TouchEvent) {
+		// Pointer Events が先に active になっていても、Android では touchmove 側で
+		// preventDefault() しないとスクロール判定→pointercancel でスワイプが途切れることがある。
+		// そのため active の有無では弾かない。
+		if (touchActive) return;
+
+		const touch = ev.touches[0];
+		if (!touch) return;
+
+		touchActive = true;
+		touchStartX = touch.clientX;
+		touchStartY = touch.clientY;
+		touchAxis = "undecided";
+	}
+
+	function onTouchMove(ev: TouchEvent) {
+		if (!touchActive) return;
+
+		const touch = ev.touches[0];
+		if (!touch) return;
+
+		const dx = touch.clientX - touchStartX;
+		const dy = touch.clientY - touchStartY;
+
+		const adx = Math.abs(dx);
+		const ady = Math.abs(dy);
+
+		// 軸ロック（早めに決める）。決まったらその軸に従う。
+		// ※小さな揺れで毎フレーム切り替わるとUXが悪いので、最初に決めたら固定する。
+		if (touchAxis === "undecided") {
+			const LOCK_THRESHOLD_PX = 8;
+			if (adx < LOCK_THRESHOLD_PX && ady < LOCK_THRESHOLD_PX) return;
+			touchAxis = adx > ady ? "x" : "y";
+		}
+
+		// 横スワイプと判定した場合のみスクロールを阻止（Androidでpointercancelを防ぐ）
+		if (touchAxis === "x") {
+			ev.preventDefault();
+		}
+	}
+
+	function onTouchEnd(ev: TouchEvent) {
+		touchActive = false;
+		touchAxis = "undecided";
 	}
 
 	function onPointerMove(ev: PointerEvent) {
@@ -80,10 +138,26 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 		}
 	}
 
+	function cleanupWindowListeners() {
+		window.removeEventListener("pointermove", onPointerMove);
+		window.removeEventListener("pointerup", onPointerUp);
+		window.removeEventListener("pointercancel", onPointerCancel);
+	}
+
+	function cleanupTouchListeners() {
+		node.removeEventListener("touchstart", onTouchStart);
+		node.removeEventListener("touchmove", onTouchMove);
+		node.removeEventListener("touchend", onTouchEnd);
+		node.removeEventListener("touchcancel", onTouchEnd);
+	}
+
 	function endPointer(ev: PointerEvent) {
 		if (!active || ev.pointerId !== pointerId) return;
 
 		active = false;
+
+		// windowレベルのリスナーをクリーンアップ
+		cleanupWindowListeners();
 
 		if (rafId) {
 			cancelAnimationFrame(rafId);
@@ -143,11 +217,16 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 		endPointer(ev);
 	}
 
+	// pointerdownのみnodeに登録（pointermove/upはpointerdown時にwindowに登録）
 	node.addEventListener("pointerdown", onPointerDown);
-	node.addEventListener("pointermove", onPointerMove);
-	node.addEventListener("pointerup", onPointerUp);
-	node.addEventListener("pointercancel", onPointerCancel);
-	node.addEventListener("pointerleave", onPointerCancel);
+
+	// touchイベントを追加（Androidでpointercancelを防ぐため）
+	// passive: false で登録（preventDefaultを呼ぶため必須）
+	// capture: true で早めに拾い、スクロール開始より前に preventDefault できる確率を上げる
+	node.addEventListener("touchstart", onTouchStart, { passive: true, capture: true });
+	node.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
+	node.addEventListener("touchend", onTouchEnd, { passive: true, capture: true });
+	node.addEventListener("touchcancel", onTouchEnd, { passive: true, capture: true });
 
 	return {
 		update(newOptions: SwipeOptions) {
@@ -157,10 +236,8 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 		},
 		destroy() {
 			node.removeEventListener("pointerdown", onPointerDown);
-			node.removeEventListener("pointermove", onPointerMove);
-			node.removeEventListener("pointerup", onPointerUp);
-			node.removeEventListener("pointercancel", onPointerCancel);
-			node.removeEventListener("pointerleave", onPointerCancel);
+			cleanupWindowListeners();
+			cleanupTouchListeners();
 			if (rafId) cancelAnimationFrame(rafId);
 		},
 	};
