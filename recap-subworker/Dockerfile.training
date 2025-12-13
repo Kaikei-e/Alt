@@ -26,8 +26,9 @@ RUN apt-get update \
 # Install uv
 RUN pip install --no-cache-dir uv==0.9.7 --break-system-packages
 
-# Copy dependency files
+# Copy dependency files and source code (needed for building the package)
 COPY pyproject.toml uv.lock README.md ./
+COPY recap_subworker ./recap_subworker
 
 # Install dependencies
 RUN uv sync --no-dev \
