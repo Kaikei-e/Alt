@@ -78,31 +78,59 @@ class EvaluationService:
 
         self.classifier = GenreClassifierService(str(model_path), self.embedder)
 
-    def evaluate(self, golden_data_path: str) -> Dict[str, Any]:
+    def evaluate(self, golden_data_path: str, language: Optional[str] = None) -> Dict[str, Any]:
         """
         Evaluate classifier against golden dataset.
+
+        Args:
+            golden_data_path: Path to golden classification JSON file
+            language: Optional language filter ("ja" or "en"). If None, evaluates all languages.
         """
         golden_path = Path(golden_data_path)
         if not golden_path.exists():
              raise FileNotFoundError(f"Golden data not found: {golden_path}")
 
         # Load Golden Data
-        # Load Golden Data
         with open(golden_path, "r") as f:
             data = json.load(f)
 
         # Handle wrapper structure
         if isinstance(data, dict) and "items" in data:
-            data = data["items"]
+            items = data["items"]
+        else:
+            items = data
+
+        # Filter by language if specified
+        if language:
+            filtered_items = []
+            for item in items:
+                # Check content_ja/content_en or lang field
+                if language == "ja" and (item.get("content_ja") or item.get("lang") == "ja"):
+                    filtered_items.append(item)
+                elif language == "en" and (item.get("content_en") or item.get("lang") == "en"):
+                    filtered_items.append(item)
+            items = filtered_items
+            logger.info(f"Filtered to {len(items)} items for language: {language}")
 
         # Expecting data format: list of {"text": "...", "labels": ["genre1", "genre2"]}
         # Or {"text": ..., "genres": ...}
 
-        df = pd.DataFrame(data)
+        df = pd.DataFrame(items)
 
         # Map typical field names from our golden set
-        if "content_ja" in df.columns and "text" not in df.columns:
+        # Handle language-specific content fields
+        if language == "ja" and "content_ja" in df.columns:
+            if "text" not in df.columns:
+                df.rename(columns={"content_ja": "text"}, inplace=True)
+        elif language == "en" and "content_en" in df.columns:
+            if "text" not in df.columns:
+                df.rename(columns={"content_en": "text"}, inplace=True)
+        elif "content_ja" in df.columns and "text" not in df.columns:
+            # Default to Japanese if both exist
             df.rename(columns={"content_ja": "text"}, inplace=True)
+        elif "content" in df.columns and "text" not in df.columns:
+            df.rename(columns={"content": "text"}, inplace=True)
+
         if "expected_genres" in df.columns and "labels" not in df.columns:
             df.rename(columns={"expected_genres": "labels"}, inplace=True)
 
@@ -186,6 +214,28 @@ class EvaluationService:
                   "recall": 0.0, "recall_ci": {"point":0,"lower":0,"upper":0},
                   "f1": metrics.macro_f1, "f1_ci": {"point":metrics.macro_f1,"lower":metrics.macro_f1,"upper":metrics.macro_f1}
              }
+
+        # Add language metadata if filtered
+        if language:
+            results["language"] = language
+
+        return results
+
+    def evaluate_by_language(self, golden_data_path: str) -> Dict[str, Any]:
+        """Evaluate classifier separately for each language (ja, en).
+
+        Returns:
+            Dictionary with "ja" and "en" keys containing evaluation results for each language.
+        """
+        results = {}
+
+        for lang in ["ja", "en"]:
+            try:
+                lang_results = self.evaluate(golden_data_path, language=lang)
+                results[lang] = lang_results
+            except Exception as e:
+                logger.warning(f"Failed to evaluate for language {lang}: {e}")
+                results[lang] = {"error": str(e)}
 
         return results
 
