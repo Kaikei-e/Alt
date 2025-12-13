@@ -26,6 +26,8 @@ def main():
     parser.add_argument("--input", type=str, required=True, help="Path to golden_classification.json")
     parser.add_argument("--output_dir", type=str, default="data/dataset", help="Output directory for pickle files")
     parser.add_argument("--model_name", type=str, default="intfloat/multilingual-e5-large", help="Embedding model name")
+    parser.add_argument("--language", type=str, choices=["ja", "en", "both"], default="both",
+                        help="Language filter: 'ja' for Japanese only, 'en' for English only, 'both' for both (ja priority)")
     args = parser.parse_args()
 
     # Load Golden Dataset
@@ -47,22 +49,36 @@ def main():
     records = []
     for item in items:
         text = None
-        # Order: content_ja -> content -> content_en (Plan emphasizes Japanese processing)
-        # Actually plan says: "Japanese tokenization... TF-IDF... E5".
-        # Let's prioritize JA content for tokenization if we want to capture JA specific nuance.
-        if "content_ja" in item and item.get("content_ja"):
-            text = item["content_ja"].strip()
-        elif "content" in item:
-            text = item["content"].strip()
-        elif "content_en" in item and item.get("content_en"):
-            # Fallback to English if no Japanese
-            text = item["content_en"].strip()
-        else:
-            text = ""
-
         genres = item.get("expected_genres", [])
 
-        if not text or not genres:
+        if not genres:
+            continue
+
+        # Language filtering based on --language argument
+        if args.language == "ja":
+            # Japanese only: require content_ja
+            if "content_ja" in item and item.get("content_ja"):
+                text = item["content_ja"].strip()
+            else:
+                continue
+        elif args.language == "en":
+            # English only: require content_en
+            if "content_en" in item and item.get("content_en"):
+                text = item["content_en"].strip()
+            else:
+                continue
+        else:  # args.language == "both"
+            # Both: ja priority, fallback to content, then content_en
+            if "content_ja" in item and item.get("content_ja"):
+                text = item["content_ja"].strip()
+            elif "content" in item:
+                text = item["content"].strip()
+            elif "content_en" in item and item.get("content_en"):
+                text = item["content_en"].strip()
+            else:
+                text = ""
+
+        if not text:
             continue
 
         primary_label = genres[0]
@@ -101,10 +117,19 @@ def main():
 
     print(f"Train: {len(train_df)}, Valid: {len(valid_df)}, Test: {len(test_df)}")
 
-    # 1. Sudachi Tokenization + TF-IDF
+    # 1. Tokenization + TF-IDF (language-specific)
     print("Computing TF-IDF features...")
-    sudachi_tokenizer = SudachiTokenizer(mode="C")
-    vectorizer = TfidfVectorizer(tokenizer=sudachi_tokenizer, max_features=5000) # Limit features to avoid explosion
+    # Japanese: use SudachiTokenizer, English: use default tokenizer (word tokenization)
+    if args.language == "ja":
+        tokenizer = SudachiTokenizer(mode="C")
+        vectorizer = TfidfVectorizer(tokenizer=tokenizer, max_features=5000)
+    elif args.language == "en":
+        # English: use default TfidfVectorizer tokenizer (word tokenization)
+        vectorizer = TfidfVectorizer(max_features=5000)
+    else:  # both
+        # For "both", use SudachiTokenizer (ja priority fallback)
+        tokenizer = SudachiTokenizer(mode="C")
+        vectorizer = TfidfVectorizer(tokenizer=tokenizer, max_features=5000)
 
     X_train_tfidf = vectorizer.fit_transform(train_df["text"])
     X_valid_tfidf = vectorizer.transform(valid_df["text"])
