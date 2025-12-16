@@ -63,6 +63,7 @@ func main() {
 	feedRepo := repository.NewFeedRepository(dbPool, logger.Logger)
 	summaryRepo := repository.NewSummaryRepository(dbPool, logger.Logger)
 	apiRepo := repository.NewExternalAPIRepository(cfg, logger.Logger)
+	jobRepo := repository.NewSummarizeJobRepository(dbPool, logger.Logger)
 
 	// Initialize services
 	feedProcessorService := service.NewFeedProcessorService(
@@ -91,6 +92,16 @@ func main() {
 		logger.Logger,
 	)
 
+	// Initialize summarize queue worker
+	summarizeQueueWorker := service.NewSummarizeQueueWorker(
+		jobRepo,
+		articleRepo,
+		apiRepo,
+		summaryRepo,
+		logger.Logger,
+		BATCH_SIZE,
+	)
+
 	// Initialize health metrics collector
 	metricsCollector := service.NewHealthMetricsCollector(contextLogger)
 
@@ -100,6 +111,7 @@ func main() {
 		articleSummarizerService,
 		qualityCheckerService,
 		healthCheckerService,
+		summarizeQueueWorker,
 		BATCH_SIZE,
 		logger.Logger,
 	)
@@ -115,6 +127,7 @@ func main() {
 		apiRepo,
 		summaryRepo,
 		articleRepo,
+		jobRepo,
 		logger.Logger,
 	)
 
@@ -131,7 +144,9 @@ func main() {
 
 	// API routes
 	api := e.Group("/api/v1")
-	api.POST("/summarize", summarizeHandler.HandleSummarize)
+	api.POST("/summarize", summarizeHandler.HandleSummarize)                     // Legacy synchronous endpoint
+	api.POST("/summarize/queue", summarizeHandler.HandleSummarizeQueue)          // New async queue endpoint
+	api.GET("/summarize/status/:job_id", summarizeHandler.HandleSummarizeStatus) // Job status endpoint
 	api.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
 	})
@@ -171,6 +186,12 @@ func main() {
 	// Start quality check job
 	if err := jobHandler.StartQualityCheckJob(ctx); err != nil {
 		logger.Logger.Error("Failed to start quality check job", "error", err)
+		panic(err)
+	}
+
+	// Start summarize queue worker
+	if err := jobHandler.StartSummarizeQueueWorker(ctx); err != nil {
+		logger.Logger.Error("Failed to start summarize queue worker", "error", err)
 		panic(err)
 	}
 

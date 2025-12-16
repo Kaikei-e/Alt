@@ -14,13 +14,14 @@ import (
 )
 
 type Config struct {
-	Server      ServerConfig      `json:"server"`
-	HTTP        HTTPConfig        `json:"http"`
-	Retry       RetryConfig       `json:"retry"`
-	RateLimit   RateLimitConfig   `json:"rate_limit"`
-	DLQ         DLQConfig         `json:"dlq"`
-	Metrics     MetricsConfig     `json:"metrics"`
-	NewsCreator NewsCreatorConfig `json:"news_creator"`
+	Server         ServerConfig         `json:"server"`
+	HTTP           HTTPConfig           `json:"http"`
+	Retry          RetryConfig          `json:"retry"`
+	RateLimit      RateLimitConfig      `json:"rate_limit"`
+	DLQ            DLQConfig            `json:"dlq"`
+	Metrics        MetricsConfig        `json:"metrics"`
+	NewsCreator    NewsCreatorConfig    `json:"news_creator"`
+	SummarizeQueue SummarizeQueueConfig `json:"summarize_queue"`
 }
 
 type ServerConfig struct {
@@ -93,6 +94,12 @@ type NewsCreatorConfig struct {
 	APIPath string        `json:"api_path" env:"NEWS_CREATOR_API_PATH" default:"/api/v1/summarize"`
 	Model   string        `json:"model" env:"NEWS_CREATOR_MODEL" default:"gemma3:4b"`
 	Timeout time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"240s"` // Extended for LLM processing (16-19s typical, 240s for safety)
+}
+
+type SummarizeQueueConfig struct {
+	WorkerInterval  time.Duration `json:"worker_interval" env:"SUMMARIZE_QUEUE_WORKER_INTERVAL" default:"10s"`
+	MaxRetries      int           `json:"max_retries" env:"SUMMARIZE_QUEUE_MAX_RETRIES" default:"3"`
+	PollingInterval time.Duration `json:"polling_interval" env:"SUMMARIZE_QUEUE_POLLING_INTERVAL" default:"5s"`
 }
 
 func LoadConfig() (*Config, error) {
@@ -511,6 +518,37 @@ func loadFromEnv(config *Config) error {
 		config.NewsCreator.Timeout = 300 * time.Second // Extended for LLM processing with 1000 tokens (num_predict) and continuation generation
 	}
 
+	// SummarizeQueue config
+	if workerInterval := os.Getenv("SUMMARIZE_QUEUE_WORKER_INTERVAL"); workerInterval != "" {
+		if t, err := time.ParseDuration(workerInterval); err == nil {
+			config.SummarizeQueue.WorkerInterval = t
+		} else {
+			return fmt.Errorf("invalid SUMMARIZE_QUEUE_WORKER_INTERVAL: %s", workerInterval)
+		}
+	} else {
+		config.SummarizeQueue.WorkerInterval = 10 * time.Second
+	}
+
+	if maxRetries := os.Getenv("SUMMARIZE_QUEUE_MAX_RETRIES"); maxRetries != "" {
+		if r, err := strconv.Atoi(maxRetries); err == nil {
+			config.SummarizeQueue.MaxRetries = r
+		} else {
+			return fmt.Errorf("invalid SUMMARIZE_QUEUE_MAX_RETRIES: %s", maxRetries)
+		}
+	} else {
+		config.SummarizeQueue.MaxRetries = 3
+	}
+
+	if pollingInterval := os.Getenv("SUMMARIZE_QUEUE_POLLING_INTERVAL"); pollingInterval != "" {
+		if t, err := time.ParseDuration(pollingInterval); err == nil {
+			config.SummarizeQueue.PollingInterval = t
+		} else {
+			return fmt.Errorf("invalid SUMMARIZE_QUEUE_POLLING_INTERVAL: %s", pollingInterval)
+		}
+	} else {
+		config.SummarizeQueue.PollingInterval = 5 * time.Second
+	}
+
 	return nil
 }
 
@@ -545,6 +583,18 @@ func validateConfig(config *Config) error {
 
 	if config.NewsCreator.Timeout <= 0 {
 		return fmt.Errorf("news creator timeout must be positive: %v", config.NewsCreator.Timeout)
+	}
+
+	if config.SummarizeQueue.WorkerInterval <= 0 {
+		return fmt.Errorf("summarize queue worker interval must be positive: %v", config.SummarizeQueue.WorkerInterval)
+	}
+
+	if config.SummarizeQueue.MaxRetries < 0 {
+		return fmt.Errorf("summarize queue max retries must be non-negative: %d", config.SummarizeQueue.MaxRetries)
+	}
+
+	if config.SummarizeQueue.PollingInterval <= 0 {
+		return fmt.Errorf("summarize queue polling interval must be positive: %v", config.SummarizeQueue.PollingInterval)
 	}
 
 	// HTTP configuration validation
