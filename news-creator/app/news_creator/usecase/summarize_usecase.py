@@ -247,6 +247,59 @@ class SummarizeUsecase:
             }
         )
 
+        # Check if output is truncated and attempt continuation generation
+        # Only generate continuation if:
+        # 1. Summary is less than 1000 characters, OR
+        # 2. Clearly truncated (mid-sentence)
+        # Skip continuation if summary is close to 1500 characters (1200+) to prioritize quality
+        is_truncated, truncation_reason = self._detect_truncation(cleaned_summary)
+        summary_length = len(cleaned_summary) if cleaned_summary else 0
+        should_generate_continuation = (
+            is_truncated
+            and cleaned_summary
+            and summary_length < 1200  # Skip if already close to target (quality priority)
+            and (summary_length < 1000 or "does not end with a proper sentence ending" in truncation_reason or "incomplete pattern" in truncation_reason)
+        )
+
+        if should_generate_continuation:
+            logger.warning(
+                "Output appears to be truncated, attempting continuation generation",
+                extra={
+                    "article_id": article_id,
+                    "summary_length": summary_length,
+                    "reason": truncation_reason,
+                }
+            )
+            # Attempt to generate continuation (only once to prevent infinite loops)
+            continuation = await self._generate_continuation(
+                article_id, truncated_content, cleaned_summary, prompt
+            )
+            if continuation:
+                cleaned_summary = cleaned_summary + continuation
+                logger.info(
+                    "Continuation generated successfully",
+                    extra={
+                        "article_id": article_id,
+                        "original_length": summary_length,
+                        "continuation_length": len(continuation),
+                        "final_length": len(cleaned_summary),
+                    }
+                )
+            else:
+                logger.warning(
+                    "Failed to generate continuation, using truncated output",
+                    extra={"article_id": article_id}
+                )
+        elif is_truncated and summary_length >= 1200:
+            logger.info(
+                "Skipping continuation generation - summary is close to target length",
+                extra={
+                    "article_id": article_id,
+                    "summary_length": summary_length,
+                    "reason": truncation_reason,
+                }
+            )
+
         if not cleaned_summary:
             # Fallback: try to extract from raw_summary with minimal cleaning
             logger.warning(
@@ -310,8 +363,8 @@ class SummarizeUsecase:
                 }
             )
 
-        # Enforce 500 character max as per prompt guidance
-        truncated_summary = cleaned_summary[:600]
+        # Enforce 2000 character max (quality priority - allow slight exceed of 1500 target)
+        truncated_summary = cleaned_summary[:2000]
 
         # Build metadata
         if llm_response:
@@ -448,6 +501,154 @@ class SummarizeUsecase:
             )
 
         return result
+
+    @staticmethod
+    def _detect_truncation(summary: str) -> Tuple[bool, str]:
+        """
+        Detect if the summary output is truncated.
+
+        Args:
+            summary: The cleaned summary text
+
+        Returns:
+            Tuple of (is_truncated: bool, reason: str)
+        """
+        if not summary or len(summary.strip()) == 0:
+            return False, ""
+
+        # Check 1: Minimum length check (less than 1000 characters suggests truncation)
+        min_expected_length = 1000
+        if len(summary) < min_expected_length:
+            return True, f"Summary length ({len(summary)}) is below minimum expected ({min_expected_length})"
+
+        # Check 2: Sentence completeness check
+        # Japanese sentence endings: 。、！、？
+        import re
+        # Remove trailing whitespace
+        trimmed = summary.rstrip()
+        if not trimmed:
+            return False, ""
+
+        # Check if ends with proper sentence ending
+        sentence_endings = ['。', '！', '？', '.', '!', '?']
+        last_char = trimmed[-1] if trimmed else ''
+
+        # If doesn't end with sentence ending, might be truncated
+        if last_char not in sentence_endings:
+            # Check if it's a valid ending (like quote mark or parenthesis)
+            valid_endings = sentence_endings + ['」', '）', ')', ']', '】']
+            if last_char not in valid_endings:
+                return True, f"Summary does not end with a proper sentence ending (ends with: '{last_char}')"
+
+        # Check 3: Check if last sentence appears incomplete
+        # Look for incomplete patterns at the end
+        incomplete_patterns = [
+            r'[、，]$',  # Ends with comma
+            r'[（(]$',  # Ends with opening parenthesis
+            r'[「\[]$',  # Ends with opening quote/bracket
+        ]
+        for pattern in incomplete_patterns:
+            if re.search(pattern, trimmed):
+                return True, f"Summary ends with incomplete pattern: {pattern}"
+
+        return False, ""
+
+    async def _generate_continuation(
+        self,
+        article_id: str,
+        content: str,
+        existing_summary: str,
+        original_prompt: str
+    ) -> Optional[str]:
+        """
+        Generate continuation for a truncated summary.
+
+        Args:
+            article_id: Article identifier
+            content: Original article content
+            existing_summary: The truncated summary that needs continuation
+            original_prompt: The original prompt used
+
+        Returns:
+            Continuation text, or None if generation fails
+        """
+        continuation_prompt = f"""<start_of_turn>user
+You are continuing a Japanese news summary that was cut off mid-sentence.
+
+The original article summary you started writing is:
+---
+{existing_summary}
+---
+
+TASK:
+- Continue from where the summary was cut off
+- Complete the current sentence if it's incomplete
+- Add the remaining paragraphs to reach 1000-1500 characters total
+- Maintain the same style: 常体（〜だ／である）、見出しなし、箇条書き禁止、本文のみ
+- Include specific facts, numbers, dates, and proper nouns from the original article
+- End with a complete sentence (ending with 。、！、or ？)
+
+CRITICAL:
+- Do NOT repeat what was already written
+- Continue naturally from the last sentence
+- Complete the summary to reach 1000-1500 characters total (including what was already written)
+- Always end with a complete sentence
+
+Original article content (for reference):
+---
+{content[:50000]}
+---
+
+Continue the summary from where it was cut off. Write only the continuation, not the entire summary.
+<end_of_turn>
+<start_of_turn>model
+"""
+
+        try:
+            llm_options = {
+                "temperature": self.config.summary_temperature,
+                "repeat_penalty": self.config.llm_repeat_penalty,
+            }
+
+            # Use smaller num_predict for continuation (remaining tokens needed)
+            # Optimize: calculate based on remaining chars, max 300 tokens
+            remaining_chars = max(0, 1500 - len(existing_summary))
+            continuation_tokens = min(remaining_chars + 200, 300)  # Safety margin, max 300 tokens
+
+            llm_response = await self.llm_provider.generate(
+                continuation_prompt,
+                num_predict=continuation_tokens,
+                options=llm_options,
+            )
+
+            continuation = self._clean_summary_text(llm_response.response, article_id)
+
+            # Remove any repetition from the beginning (in case model repeated existing text)
+            if continuation and existing_summary:
+                # Check if continuation starts with text from existing summary
+                existing_words = existing_summary[-50:].split()  # Last 50 chars as words
+                continuation_words = continuation[:100].split()  # First 100 chars as words
+
+                # Simple check: if first few words match, skip them
+                if len(existing_words) > 0 and len(continuation_words) > 0:
+                    if existing_words[-1] in continuation_words[:3]:
+                        # Find where new content starts
+                        for i, word in enumerate(continuation_words):
+                            if word not in existing_words[-3:]:
+                                continuation = ' '.join(continuation_words[i:])
+                                break
+
+            return continuation if continuation else None
+
+        except Exception as e:
+            logger.error(
+                "Failed to generate continuation",
+                extra={
+                    "article_id": article_id,
+                    "error": str(e),
+                }
+            )
+            return None
 
     @staticmethod
     def _nanoseconds_to_milliseconds(value: Optional[int]) -> Optional[float]:

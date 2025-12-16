@@ -36,13 +36,14 @@ class NewsCreatorConfig:
         # LLM service settings
         self.llm_service_url = os.getenv("LLM_SERVICE_URL", "http://localhost:11435")
         self.model_name = os.getenv("LLM_MODEL", "gemma3:4b")
-        self.llm_timeout_seconds = self._get_int("LLM_TIMEOUT_SECONDS", 180)  # 3分に増加
+        self.llm_timeout_seconds = self._get_int("LLM_TIMEOUT_SECONDS", 300)  # 5分に増加（1000トークン生成 + 続き生成に対応）
         self.llm_keep_alive = self._get_int("LLM_KEEP_ALIVE_SECONDS", -1)
         self.ollama_request_concurrency = self._get_int("OLLAMA_REQUEST_CONCURRENCY", 2)
 
         # ---- Generation parameters (Gemma3 + Ollama options) ----
-        # メモリ制約を考慮して71Kに設定（entrypoint.shのOLLAMA_CONTEXT_LENGTHと一致させる）
-        self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 71000)
+        # 8GB最適化: 80Kコンテキスト（entrypoint.shのOLLAMA_CONTEXT_LENGTHと一致させる）
+        self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 80000)
+        self.llm_num_batch = self._get_int("LLM_NUM_BATCH", 1024)
         self.llm_num_predict = self._get_int("LLM_NUM_PREDICT", 1200)  # 復活
         # 調査に基づく推奨値に更新: 繰り返し問題対策
         self.llm_temperature = self._get_float("LLM_TEMPERATURE", 0.15)  # 0.2 → 0.15
@@ -61,7 +62,9 @@ class NewsCreatorConfig:
             self.llm_stop_tokens = ["<end_of_turn>"]
 
         # Summary-specific settings
-        self.summary_num_predict = self._get_int("SUMMARY_NUM_PREDICT", 300)
+        # Increased from 500 to 1000 tokens to support 1000-1500 character summaries with safety margin
+        # Japanese text: 1 character ≈ 1 token, so 1500 chars needs ~1500 tokens + safety margin
+        self.summary_num_predict = self._get_int("SUMMARY_NUM_PREDICT", 1000)
         self.summary_temperature = self._get_float("SUMMARY_TEMPERATURE", 0.1)  # サマリー生成専用の低い温度
 
         # Repetition detection and retry settings
@@ -106,6 +109,7 @@ class NewsCreatorConfig:
         return {
             "num_ctx": self.llm_num_ctx,
             "num_predict": self.llm_num_predict,
+            "num_batch": self.llm_num_batch,  # バッチサイズ追加
             "temperature": self.llm_temperature,
             "top_p": self.llm_top_p,
             "top_k": self.llm_top_k,

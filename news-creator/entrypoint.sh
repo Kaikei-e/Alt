@@ -16,22 +16,25 @@ if [ "$(id -u)" -eq 0 ] && [ "${OLLAMA_ENTRYPOINT_RERUN:-0}" != "1" ]; then
 fi
 
 # --- Ollama server configuration --------------------------------------------
-# GPUメモリ最適化: 7GBギリギリまで使用（80K時は約7.0-7.5 GiB使用予定）
+# GPUメモリ最適化: 7GBギリギリまで使用（75K時は約6.5-7.0 GiB使用予定）
 # コンテキスト長を統一することでランナー再利用を改善し、メモリ使用を安定化
 # CUDAライブラリのパスを設定
 export LD_LIBRARY_PATH="/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:${LD_LIBRARY_PATH:-}"
 export OLLAMA_HOST="${OLLAMA_HOST:-127.0.0.1:11435}"   # 明示的にポート11435を指定
-export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-71000}" # 71Kコンテキスト（メモリ制約を考慮）
-export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-1}"         # 8GB では並列 1 が安定
+export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-80000}" # 80Kコンテキスト（RTX 4060 8GB最適化）
+export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-2}"         # 8GB では並列 1 が安定
 export OLLAMA_MAX_LOADED_MODELS="${OLLAMA_MAX_LOADED_MODELS:-1}" # 同じコンテキスト長なら再利用される
 export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-24h}"   # 24時間保持してランナー再利用を促進
 export OLLAMA_ORIGINS="${OLLAMA_ORIGINS:-*}"
 export OLLAMA_LOAD_TIMEOUT="${OLLAMA_LOAD_TIMEOUT:-10m}"       # モデル読み込みタイムアウト
-export OLLAMA_NUM_THREAD="${OLLAMA_NUM_THREAD:-8}"              # CPUスレッド数
+export OLLAMA_NUM_THREAD="${OLLAMA_NUM_THREAD:-12}"              # CPUスレッド数
 
 # 速度とメモリ効率：Flash Attention + KV キャッシュ量子化
 export OLLAMA_FLASH_ATTENTION="${OLLAMA_FLASH_ATTENTION:-1}"   # 有効化                  :contentReference[oaicite:3]{index=3}
 export OLLAMA_KV_CACHE_TYPE="${OLLAMA_KV_CACHE_TYPE:-q8_0}"    # q8_0（必要なら q4_0）   :contentReference[oaicite:4]{index=4}
+
+# バッチサイズ: 8GB最適化（80Kコンテキスト + num_batch増加）
+export OLLAMA_NUM_BATCH="${OLLAMA_NUM_BATCH:-1024}"
 
 # ログ抑制（Ollama は OLLAMA_DEBUG を使う）
 export OLLAMA_DEBUG="${OLLAMA_DEBUG:-ERROR}"                    # 例: DEBUG/INFO/WARN/ERROR  :contentReference[oaicite:5]{index=5}

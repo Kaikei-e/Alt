@@ -9,28 +9,49 @@ TASK:
 
 RULES AND CONSTRAINTS:
 - Style: 常体（〜だ／である）、見出しなし、箇条書き禁止、本文のみ
-- Length: EXACTLY 400-500字. Do NOT exceed 500 characters. Count characters carefully.
-- Must include: 5W1H／数値≥2（日時・金額・件数・比率など）／固有名詞（初出は英語併記）／経緯／影響／見通し
-- If info missing: 「未提示」と明記。重要発言は20字以内で1引用まで
+- Length: 1000-1500字. Target 1000-1500 characters. Count characters carefully.
+- Must include: 5W1H／数値≥3（日時・金額・件数・比率など）／固有名詞（初出は英語併記）／経緯／影響／見通し
+- If info missing: 「未提示」と明記。重要発言は50字以内で最大2引用まで
 - 数字は半角。日付は「YYYY年M月D日」
+
+CRITICAL: AVOID GENERIC STATEMENTS
+- 一般論や推測を避け、原文に記載された具体的な事実のみを使用する
+- 「〜と考えられる」「〜の可能性がある」「〜とみられる」などの推測表現は使用しない
+- 原文に記載されていない情報は推測せず、記載されている事実のみを使用する
+- 不確実な情報は「未提示」と明記する
+- 抽象的な表現（「多くの」「一部の」など）を避け、具体的な数値や固有名詞を使用する
+- 例: 「多くの企業」ではなく「50社」、「一部の専門家」ではなく「東京大学の田中教授」のように記載する
+
+FACT ACCURACY REQUIREMENTS:
+- 数値、日付、固有名詞、引用は原文から正確に保持する
+- 数値（金額、件数、比率、パーセンテージ）は必ず含める。数値が複数ある場合は、最も重要な数値（金額、件数、パーセンテージ）を優先的に含める
+- 日付・時刻は可能な限り具体的に記載する
+- 固有名詞（人名、企業名、地名）は初出時に英語併記する
+- 重要発言は原文から正確に引用し、引用符で囲む。引用は50字以内で、1要約あたり最大2引用まで
+- 数値は半角で記載し、単位も正確に保持する
 
 OUTPUT STRUCTURE:
 - 段落1=リード（最重要事実＋5W1H）
-- 段落2=背景・経緯（簡潔に）
-- 段落3=影響・見通し（簡潔に）
+- 段落2=背景・経緯（具体的な時系列と数値を含む）
+- 段落3=詳細・具体例（数値、固有名詞、引用を含む）
+- 段落4=影響・反応（具体的な数値や発言を含む）
+- 段落5=見通し・今後の展開（可能な限り具体的に）
 
-CONSTRAINTS:
+CRITICAL OUTPUT REQUIREMENTS:
 - DO NOT use any guesstimation or evaluation words. Do not include any preamble.
-- CRITICAL: Stop generating when you reach 500 characters. Do not continue beyond this limit.
-- Be extremely concise. Avoid unnecessary elaboration or repetition.
-- Count characters as you write. Stop immediately at 500 characters.
+- Generate between 1000-1500 characters. You may slightly exceed 1500 characters if needed for quality, but aim for 1000-1500.
+- CRITICAL: Complete your output. Do NOT truncate mid-sentence. Always end with a complete sentence (ending with 。、！、or ？).
+- If you cannot reach 1000 characters, generate as close to 1000 as possible while maintaining quality.
+- Include specific facts, numbers, dates, and proper nouns from the original article.
+- Avoid generic statements and speculation. Use only facts stated in the article.
+- Count characters as you write. Ensure the output is complete and ends properly.
 
 ARTICLE TO SUMMARIZE:
 ---
 {content}
 ---
 
-Write exactly 3 short paragraphs in Japanese. Count characters as you write. Stop at 500 characters maximum.
+Write 4-5 paragraphs in Japanese with specific facts, numbers, dates, and proper nouns. Count characters as you write. Target 1000-1500 characters. CRITICAL: Complete your output - do not truncate mid-sentence. Always end with a complete sentence.
 <end_of_turn>
 <start_of_turn>model
 """
