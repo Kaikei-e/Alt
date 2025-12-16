@@ -127,19 +127,30 @@ async function pollSummarizeJobStatus(
 	const maxAttempts = 60;
 	const pollInterval = 2000; // 2 seconds
 	const maxPollTime = 300000; // 5 minutes
+	const immediateRetryDelay = 100; // 100ms for immediate retry after detecting completion
 
 	const startTime = Date.now();
+	let lastStatus: string | null = null;
+	let completedDetectedAt: number | null = null;
 
 	for (let attempt = 0; attempt < maxAttempts; attempt++) {
 		if (Date.now() - startTime > maxPollTime) {
 			throw new Error("Summarization timeout");
 		}
 
+		// Wait before polling (except for first attempt and immediate retry after completion detection)
 		if (attempt > 0) {
-			await new Promise((resolve) => setTimeout(resolve, pollInterval));
+			// If we detected completion in previous attempt but didn't get summary, retry immediately
+			if (completedDetectedAt !== null && Date.now() - completedDetectedAt < pollInterval) {
+				await new Promise((resolve) => setTimeout(resolve, immediateRetryDelay));
+			} else {
+				await new Promise((resolve) => setTimeout(resolve, pollInterval));
+			}
 		}
 
 		try {
+			const pollStartTime = Date.now();
+
 			// Handle both absolute and relative URLs
 			let statusResponse: {
 				status: string;
@@ -183,13 +194,47 @@ async function pollSummarizeJobStatus(
 				});
 			}
 
+			const pollDuration = Date.now() - pollStartTime;
+
+			// Log timing information for debugging
+			if (statusResponse.status !== lastStatus) {
+				console.log(`[SummarizeJob] Status changed: ${lastStatus} -> ${statusResponse.status}`, {
+					jobId,
+					attempt,
+					pollDuration,
+					elapsed: Date.now() - startTime,
+				});
+				lastStatus = statusResponse.status;
+			}
+
 			if (statusResponse.status === "completed") {
-				return {
-					success: true,
-					summary: statusResponse.summary || "",
-					article_id: statusResponse.article_id || "",
-					feed_url: feedUrl,
-				};
+				// Check if we have the summary
+				if (statusResponse.summary && statusResponse.summary.length > 0) {
+					const totalDuration = Date.now() - startTime;
+					console.log(`[SummarizeJob] Completed with summary`, {
+						jobId,
+						attempt,
+						totalDuration,
+						summaryLength: statusResponse.summary.length,
+					});
+					return {
+						success: true,
+						summary: statusResponse.summary,
+						article_id: statusResponse.article_id || "",
+						feed_url: feedUrl,
+					};
+				} else {
+					// Status is completed but summary is not yet available
+					// This might indicate a race condition - retry immediately
+					if (completedDetectedAt === null) {
+						completedDetectedAt = Date.now();
+						console.log(`[SummarizeJob] Completed status detected but summary not available, retrying immediately`, {
+							jobId,
+							attempt,
+						});
+					}
+					// Continue polling to get the summary
+				}
 			} else if (statusResponse.status === "failed") {
 				throw new Error(
 					statusResponse.error_message || "Summarization failed",
@@ -201,6 +246,11 @@ async function pollSummarizeJobStatus(
 				throw error;
 			}
 			// Continue polling on errors (except on last attempt)
+			console.warn(`[SummarizeJob] Poll error (will retry)`, {
+				jobId,
+				attempt,
+				error: error instanceof Error ? error.message : String(error),
+			});
 		}
 	}
 
