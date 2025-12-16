@@ -114,7 +114,7 @@ async function handleRequest(
       },
       body,
       cache: "no-store",
-      signal: AbortSignal.timeout(120000), // 2 minutes timeout
+      signal: AbortSignal.timeout(180000), // 3 minutes timeout (extended for async operations)
     });
 
     // Forward response status and headers

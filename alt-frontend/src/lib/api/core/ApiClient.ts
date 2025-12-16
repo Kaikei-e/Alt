@@ -249,6 +249,96 @@ export class ApiClient {
         },
       );
 
+      // Check for 202 Accepted (async job)
+      if (interceptedResponse.status === 202) {
+        const asyncResult = await interceptedResponse.json();
+
+        // Check if this is an async job with status_url
+        if (asyncResult.job_id && asyncResult.status_url) {
+          // Poll for job completion
+          const statusUrl = asyncResult.status_url.startsWith('http')
+            ? asyncResult.status_url
+            : this.resolveRequestUrl(asyncResult.status_url);
+
+          const maxAttempts = 60; // Maximum 60 attempts
+          const pollInterval = 2000; // 2 seconds between polls
+          const maxPollTime = 300000; // 5 minutes total
+
+          const startTime = Date.now();
+
+          for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            // Check if we've exceeded max poll time
+            if (Date.now() - startTime > maxPollTime) {
+              throw new ApiError("Request timeout", 504);
+            }
+
+            // Wait before polling (except first attempt)
+            if (attempt > 0) {
+              await new Promise((resolve) => setTimeout(resolve, pollInterval));
+            }
+
+            // Poll status endpoint
+            try {
+              const statusResponse = await this.makeRequest(statusUrl, {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Accept-Encoding": "gzip, deflate, br",
+                },
+                keepalive: true,
+              }, 10000); // 10 second timeout per poll
+
+              const statusIntercepted = await this.authInterceptor.intercept(
+                statusResponse,
+                statusUrl,
+                {
+                  method: "GET",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Accept-Encoding": "gzip, deflate, br",
+                  },
+                  keepalive: true,
+                },
+              );
+
+              if (!statusIntercepted.ok) {
+                if (statusIntercepted.status === 404) {
+                  throw new ApiError("Job not found", 404);
+                }
+                // Continue polling on other errors
+                continue;
+              }
+
+              const statusData = await statusIntercepted.json();
+
+              if (statusData.status === "completed") {
+                // Job completed - return result
+                return statusData as T;
+              } else if (statusData.status === "failed") {
+                // Job failed - throw error
+                throw new ApiError(
+                  statusData.error_message || "Request failed",
+                  statusIntercepted.status,
+                );
+              }
+              // Status is "pending" or "running" - continue polling
+            } catch (statusError) {
+              if (statusError instanceof ApiError) {
+                throw statusError;
+              }
+              // Other errors - continue polling
+              continue;
+            }
+          }
+
+          // Max attempts reached
+          throw new ApiError("Request timeout", 504);
+        }
+
+        // If no status_url, return the async result as-is
+        return asyncResult as T;
+      }
+
       const result = await interceptedResponse.json();
 
       // Invalidate related cache entries after POST
