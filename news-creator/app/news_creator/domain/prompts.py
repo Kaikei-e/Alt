@@ -9,7 +9,7 @@ TASK:
 
 RULES AND CONSTRAINTS:
 - Style: 常体（〜だ／である）、見出しなし、箇条書き禁止、本文のみ
-- Length: 1000-1500字. Target 1000-1500 characters. Count characters carefully.
+- Length: 800-1000字. Target 800-1000 characters. Count characters carefully.
 - Must include: 5W1H／数値≥3（日時・金額・件数・比率など）／固有名詞（初出は英語併記）／経緯／影響／見通し
 - If info missing: 「未提示」と明記。重要発言は50字以内で最大2引用まで
 - 数字は半角。日付は「YYYY年M月D日」
@@ -39,7 +39,7 @@ OUTPUT STRUCTURE:
 
 CRITICAL OUTPUT REQUIREMENTS:
 - DO NOT use any guesstimation or evaluation words. Do not include any preamble.
-- Generate between 1000-1500 characters. You may slightly exceed 1500 characters if needed for quality, but aim for 1000-1500.
+- Generate between 800-1000 characters. You may slightly exceed 1000 characters if needed for quality, but aim for 800-1000.
 - CRITICAL: Complete your output. Do NOT truncate mid-sentence. Always end with a complete sentence (ending with 。、！、or ？).
 - If you cannot reach 1000 characters, generate as close to 1000 as possible while maintaining quality.
 - Include specific facts, numbers, dates, and proper nouns from the original article.
@@ -51,7 +51,7 @@ ARTICLE TO SUMMARIZE:
 {content}
 ---
 
-Write 4-5 paragraphs in Japanese with specific facts, numbers, dates, and proper nouns. Count characters as you write. Target 1000-1500 characters. CRITICAL: Complete your output - do not truncate mid-sentence. Always end with a complete sentence.
+Write 3-5 paragraphs in Japanese with specific facts, numbers, dates, and proper nouns. Count characters as you write. Target 800-1000 characters. CRITICAL: Complete your output - do not truncate mid-sentence. Always end with a complete sentence.
 <end_of_turn>
 <start_of_turn>model
 """
