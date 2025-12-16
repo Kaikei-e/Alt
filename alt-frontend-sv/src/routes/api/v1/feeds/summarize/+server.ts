@@ -53,15 +53,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 		// Fetch from alt-backend
 		const backendUrl = env.BACKEND_BASE_URL || "http://alt-backend:9000";
-		const backendEndpoint = `${backendUrl}/v1/feeds/summarize`;
+		const backendEndpoint = `${backendUrl}/v1/feeds/summarize/queue`;
 
 		// Forward cookies and headers
 		const forwardedFor = request.headers.get("x-forwarded-for") || "";
 		const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
 
 		const controller = new AbortController();
-		// Extended timeout for LLM-based summarization (can take 60-120 seconds)
-		const timeoutId = setTimeout(() => controller.abort(), 180000); // 180 second timeout
+		// Short timeout for queue endpoint (should return quickly)
+		const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
 		try {
 			const backendResponse = await fetch(backendEndpoint, {
@@ -87,10 +87,33 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				);
 			}
 
-			const backendData: SummarizeArticleResponse =
-				await backendResponse.json();
+			const backendData = await backendResponse.json();
 
-			return json(backendData);
+			// Check if we got a 202 Accepted (async job) or 200 OK (immediate result)
+			if (backendResponse.status === 202) {
+				// Async job - return job info for client-side polling
+				// Remove /api prefix from status_url if present (callClientAPI adds /sv/api)
+				const statusUrl = backendData.status_url || `/v1/feeds/summarize/status/${backendData.job_id}`;
+				const normalizedStatusUrl = statusUrl.startsWith("/api/")
+					? statusUrl.replace(/^\/api/, "")
+					: statusUrl;
+
+				return json(
+					{
+						success: true,
+						job_id: backendData.job_id,
+						status_url: normalizedStatusUrl,
+						article_id: backendData.article_id,
+						feed_url: body.feed_url,
+						message: "Summarization job queued",
+					},
+					{ status: 202 },
+				);
+			} else {
+				// Immediate result (200 OK) - return as-is
+				const backendDataTyped: SummarizeArticleResponse = backendData;
+				return json(backendDataTyped);
+			}
 		} catch (fetchError) {
 			clearTimeout(timeoutId);
 			if (fetchError instanceof Error && fetchError.name === "AbortError") {

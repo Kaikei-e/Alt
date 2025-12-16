@@ -26,7 +26,8 @@ export async function callClientAPI<T>(
 		const contentType = response.headers.get("content-type") || "";
 		const isJson = contentType.includes("application/json");
 
-		if (!response.ok) {
+		// 202 Accepted is a valid response for async operations
+		if (!response.ok && response.status !== 202) {
 			const errorText = await response.text().catch(() => "");
 			console.error(
 				`API call failed: ${response.status} ${response.statusText}`,
