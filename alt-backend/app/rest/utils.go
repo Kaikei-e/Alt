@@ -195,8 +195,8 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 	}
 
 	// Read body
-	// Limit body size to 1MB to prevent memory issues
-	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	// Limit body size to 500KB to prevent memory issues
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to read body: %w", err)
 	}
@@ -205,10 +205,32 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 	htmlContent := string(bodyBytes)
 	title := html_parser.ExtractTitle(htmlContent)
 
+	// Extract text content from HTML (save only text, not full HTML)
+	extractedText := html_parser.ExtractArticleText(htmlContent)
+	if extractedText == "" {
+		// Log warning but try to use HTML content as fallback
+		logger.Logger.Warn("failed to extract article text from HTML, content may be empty or invalid",
+			"url", urlStr,
+			"html_size_bytes", len(htmlContent))
+		return "", "", "", fmt.Errorf("failed to extract article text from HTML")
+	}
+
+	// Log extraction statistics for monitoring
+	originalSize := len(htmlContent)
+	extractedSize := len(extractedText)
+	if originalSize > 0 {
+		reductionRatio := float64(extractedSize) / float64(originalSize) * 100
+		logger.Logger.Info("text extraction completed",
+			"url", urlStr,
+			"original_size_bytes", originalSize,
+			"extracted_size_bytes", extractedSize,
+			"reduction_ratio_percent", reductionRatio)
+	}
+
 	// Generate ID
 	articleID := generateArticleID(urlStr)
 
-	return htmlContent, articleID, title, nil
+	return extractedText, articleID, title, nil
 }
 
 // Generates a simple article ID from URL

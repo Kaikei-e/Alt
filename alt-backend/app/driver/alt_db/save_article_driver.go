@@ -33,8 +33,18 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 		return "", errors.New("article url cannot be empty")
 	}
 
-	if strings.TrimSpace(content) == "" {
+	cleanContent := strings.TrimSpace(content)
+	if cleanContent == "" {
 		return "", errors.New("article content cannot be empty")
+	}
+
+	// Validate minimum content length (already extracted text, should be meaningful)
+	const minContentLength = 100
+	if len(cleanContent) < minContentLength {
+		logger.SafeWarn("article content is very short, may indicate extraction issue",
+			"url", cleanURL,
+			"content_length", len(cleanContent))
+		// Still allow saving, but log warning
 	}
 
 	cleanTitle := strings.TrimSpace(title)
@@ -74,7 +84,7 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 		feedIDValue = nil
 	}
 
-	if err := r.pool.QueryRow(ctx, upsertArticleQuery, cleanTitle, content, cleanURL, userContext.UserID, feedIDValue).Scan(&articleID); err != nil {
+	if err := r.pool.QueryRow(ctx, upsertArticleQuery, cleanTitle, cleanContent, cleanURL, userContext.UserID, feedIDValue).Scan(&articleID); err != nil {
 		err = fmt.Errorf("upsert article content: %w", err)
 		logger.SafeError("failed to save article", "url", cleanURL, "error", err)
 		return "", err
