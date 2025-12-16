@@ -29,8 +29,7 @@ export OLLAMA_ORIGINS="${OLLAMA_ORIGINS:-*}"
 export OLLAMA_LOAD_TIMEOUT="${OLLAMA_LOAD_TIMEOUT:-10m}"       # モデル読み込みタイムアウト
 export OLLAMA_NUM_THREAD="${OLLAMA_NUM_THREAD:-12}"              # CPUスレッド数
 
-# 速度とメモリ効率：Flash Attention + KV キャッシュ量子化
-export OLLAMA_FLASH_ATTENTION="${OLLAMA_FLASH_ATTENTION:-1}"   # 有効化                  :contentReference[oaicite:3]{index=3}
+# 速度とメモリ効率：KV キャッシュ量子化
 export OLLAMA_KV_CACHE_TYPE="${OLLAMA_KV_CACHE_TYPE:-q8_0}"    # q8_0（必要なら q4_0）   :contentReference[oaicite:4]{index=4}
 
 # バッチサイズ: 8GB最適化（80Kコンテキスト + num_batch増加）
@@ -53,7 +52,6 @@ echo "  OLLAMA_HOST: $OLLAMA_HOST (internal)"
 echo "  OLLAMA_HOME: $OLLAMA_HOME"
 echo "  OLLAMA_CONTEXT_LENGTH: $OLLAMA_CONTEXT_LENGTH"
 echo "  OLLAMA_NUM_PARALLEL: $OLLAMA_NUM_PARALLEL"
-echo "  OLLAMA_FLASH_ATTENTION: $OLLAMA_FLASH_ATTENTION"
 echo "  OLLAMA_KV_CACHE_TYPE: $OLLAMA_KV_CACHE_TYPE"
 echo "  FastAPI will be exposed on port 11434"
 
