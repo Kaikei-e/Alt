@@ -14,6 +14,7 @@ import (
 	"pre-processor/config"
 	"pre-processor/models"
 	"pre-processor/utils"
+	"pre-processor/utils/html_parser"
 )
 
 type SummarizedContent struct {
@@ -56,14 +57,38 @@ func estimateContentLength(content string) int {
 }
 
 func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cfg *config.Config, logger *slog.Logger) (*SummarizedContent, error) {
-	// Check content length before sending request (after HTML tag removal estimation)
-	const minContentLength = 100
-	estimatedLength := estimateContentLength(article.Content)
-	if estimatedLength < minContentLength {
-		logger.Info("Skipping summarization: content too short",
+	// Zero Trust: Always extract text from content before sending to news-creator
+	// This ensures we never send raw HTML, even if it was already extracted upstream
+	originalLength := len(article.Content)
+	logger.Info("extracting text from content before sending to news-creator (Zero Trust validation)",
+		"article_id", article.ID,
+		"original_length", originalLength)
+
+	extractedContent := html_parser.ExtractArticleText(article.Content)
+	extractedLength := len(extractedContent)
+
+	if extractedContent == "" {
+		logger.Warn("text extraction returned empty, using original content",
 			"article_id", article.ID,
-			"original_length", len(article.Content),
-			"estimated_length", estimatedLength,
+			"original_length", originalLength)
+		extractedContent = article.Content
+		extractedLength = originalLength
+	} else {
+		reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
+		logger.Info("text extraction completed before API call",
+			"article_id", article.ID,
+			"original_length", originalLength,
+			"extracted_length", extractedLength,
+			"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
+	}
+
+	// Check content length after extraction
+	const minContentLength = 100
+	if extractedLength < minContentLength {
+		logger.Info("Skipping summarization: content too short after extraction",
+			"article_id", article.ID,
+			"original_length", originalLength,
+			"extracted_length", extractedLength,
 			"min_required", minContentLength)
 		return nil, ErrContentTooShort
 	}
@@ -72,9 +97,10 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 	apiURL := cfg.NewsCreator.Host + cfg.NewsCreator.APIPath
 
 	// Prepare request payload for /api/v1/summarize endpoint
+	// Use extracted content, not original
 	payload := SummarizeRequest{
 		ArticleID: article.ID,
-		Content:   article.Content,
+		Content:   extractedContent,
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -97,9 +123,10 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 		return nil, err
 	}
 
-	logger.Debug("Making request to news-creator API",
+	logger.Info("Making request to news-creator API",
 		"api_url", apiURL,
 		"article_id", article.ID,
+		"content_length", extractedLength,
 		"timeout", cfg.NewsCreator.Timeout)
 
 	req.Header.Set("Content-Type", "application/json")

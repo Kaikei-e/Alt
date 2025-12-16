@@ -93,7 +93,7 @@ type NewsCreatorConfig struct {
 	Host    string        `json:"host" env:"NEWS_CREATOR_HOST" default:"http://news-creator:11434"`
 	APIPath string        `json:"api_path" env:"NEWS_CREATOR_API_PATH" default:"/api/v1/summarize"`
 	Model   string        `json:"model" env:"NEWS_CREATOR_MODEL" default:"gemma3:4b"`
-	Timeout time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"240s"` // Extended for LLM processing (16-19s typical, 240s for safety)
+	Timeout time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"120s"` // Reduced to fail fast when news-creator/Ollama is unresponsive (16-19s typical, 120s for safety)
 }
 
 type SummarizeQueueConfig struct {
@@ -515,7 +515,9 @@ func loadFromEnv(config *Config) error {
 			return fmt.Errorf("invalid NEWS_CREATOR_TIMEOUT: %s", timeout)
 		}
 	} else {
-		config.NewsCreator.Timeout = 300 * time.Second // Extended for LLM processing with 1000 tokens (num_predict) and continuation generation
+		// Reduced timeout to 120s (2 minutes) to fail fast when news-creator/Ollama is unresponsive
+		// Typical processing time is 16-19s, so 120s provides sufficient buffer while preventing long hangs
+		config.NewsCreator.Timeout = 120 * time.Second
 	}
 
 	// SummarizeQueue config

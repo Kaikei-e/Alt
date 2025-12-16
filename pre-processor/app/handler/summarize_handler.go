@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -79,18 +80,25 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 			h.logger.Warn("article found but content is empty", "article_id", req.ArticleID)
 			return echo.NewHTTPError(http.StatusBadRequest, "Article content is empty in database")
 		}
-		// Check if content is HTML and extract text if needed
+		// Zero Trust: Always extract text from content (HTML or not)
+		// This ensures we never send raw HTML to downstream services
 		content := fetchedArticle.Content
-		if strings.Contains(content, "<") && strings.Contains(content, ">") {
-			// Content appears to be HTML, extract text
-			h.logger.Info("detected HTML content, extracting text", "article_id", req.ArticleID)
-			extractedText := html_parser.ExtractArticleText(content)
-			if extractedText != "" {
-				content = extractedText
-				h.logger.Info("HTML content extracted successfully", "article_id", req.ArticleID, "original_length", len(fetchedArticle.Content), "extracted_length", len(extractedText))
-			} else {
-				h.logger.Warn("HTML extraction returned empty, using original content", "article_id", req.ArticleID)
-			}
+		originalLength := len(content)
+		h.logger.Info("extracting text from content (Zero Trust validation)", "article_id", req.ArticleID, "original_length", originalLength)
+
+		extractedText := html_parser.ExtractArticleText(content)
+		extractedLength := len(extractedText)
+
+		if extractedText != "" {
+			content = extractedText
+			reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
+			h.logger.Info("text extraction completed",
+				"article_id", req.ArticleID,
+				"original_length", originalLength,
+				"extracted_length", extractedLength,
+				"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
+		} else {
+			h.logger.Warn("text extraction returned empty, using original content", "article_id", req.ArticleID, "original_length", originalLength)
 		}
 		req.Content = content
 		// Also update title if missing
@@ -105,7 +113,15 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "Content cannot be empty")
 	}
 
-	h.logger.Info("processing summarization request", "article_id", req.ArticleID)
+	// Zero Trust: Ensure content is extracted text before processing
+	// If content still contains HTML-like patterns, extract again
+	if strings.Contains(req.Content, "<") && strings.Contains(req.Content, ">") {
+		h.logger.Warn("content still contains HTML after extraction, re-extracting", "article_id", req.ArticleID, "content_length", len(req.Content))
+		req.Content = html_parser.ExtractArticleText(req.Content)
+		h.logger.Info("re-extraction completed", "article_id", req.ArticleID, "final_length", len(req.Content))
+	}
+
+	h.logger.Info("processing summarization request", "article_id", req.ArticleID, "content_length", len(req.Content))
 
 	// Create article model for summarization
 	article := &models.Article{

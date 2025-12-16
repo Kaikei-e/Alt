@@ -38,7 +38,9 @@ func NewHTTPClientManager() *HTTPClientManager {
 
 func (m *HTTPClientManager) init() {
 	m.defaultClient = m.createOptimizedClient(30 * time.Second)
-	m.summaryClient = m.createOptimizedClient(300 * time.Second) // Extended for LLM processing
+	// Summary client timeout is set to 120s (2 minutes) to fail fast when news-creator/Ollama is unresponsive
+	// The actual timeout is controlled by context timeout in driver/summarizer_api.go
+	m.summaryClient = m.createOptimizedClient(120 * time.Second)
 	m.feedClient = m.createOptimizedClient(15 * time.Second)
 }
 
