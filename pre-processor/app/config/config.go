@@ -508,7 +508,7 @@ func loadFromEnv(config *Config) error {
 			return fmt.Errorf("invalid NEWS_CREATOR_TIMEOUT: %s", timeout)
 		}
 	} else {
-		config.NewsCreator.Timeout = 240 * time.Second // Extended for LLM processing (16-19s typical, 240s for safety)
+		config.NewsCreator.Timeout = 300 * time.Second // Extended for LLM processing with 1000 tokens (num_predict) and continuation generation
 	}
 
 	return nil
