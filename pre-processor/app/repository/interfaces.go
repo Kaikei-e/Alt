@@ -39,6 +39,14 @@ type ExternalAPIRepository interface {
 	CheckHealth(ctx context.Context, serviceURL string) error
 }
 
+// SummarizeJobRepository handles summarization job queue persistence.
+type SummarizeJobRepository interface {
+	CreateJob(ctx context.Context, articleID string) (string, error)
+	GetJob(ctx context.Context, jobID string) (*models.SummarizeJob, error)
+	UpdateJobStatus(ctx context.Context, jobID string, status models.SummarizeJobStatus, summary string, errorMessage string) error
+	GetPendingJobs(ctx context.Context, limit int) ([]*models.SummarizeJob, error)
+}
+
 // Cursor represents pagination cursor for efficient pagination.
 type Cursor struct {
 	LastCreatedAt *time.Time
