@@ -31,15 +31,17 @@ type SummarizeHandler struct {
 	apiRepo     repository.ExternalAPIRepository
 	summaryRepo repository.SummaryRepository
 	articleRepo repository.ArticleRepository
+	jobRepo     repository.SummarizeJobRepository
 	logger      *slog.Logger
 }
 
 // NewSummarizeHandler creates a new summarize handler
-func NewSummarizeHandler(apiRepo repository.ExternalAPIRepository, summaryRepo repository.SummaryRepository, articleRepo repository.ArticleRepository, logger *slog.Logger) *SummarizeHandler {
+func NewSummarizeHandler(apiRepo repository.ExternalAPIRepository, summaryRepo repository.SummaryRepository, articleRepo repository.ArticleRepository, jobRepo repository.SummarizeJobRepository, logger *slog.Logger) *SummarizeHandler {
 	return &SummarizeHandler{
 		apiRepo:     apiRepo,
 		summaryRepo: summaryRepo,
 		articleRepo: articleRepo,
+		jobRepo:     jobRepo,
 		logger:      logger,
 	}
 }
@@ -148,5 +150,106 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 		ArticleID: req.ArticleID,
 	}
 
+	return c.JSON(http.StatusOK, response)
+}
+
+// SummarizeQueueRequest represents the request body for queueing a summarization job
+type SummarizeQueueRequest struct {
+	ArticleID string `json:"article_id" validate:"required"`
+	Title     string `json:"title"`
+}
+
+// SummarizeQueueResponse represents the response for queueing a summarization job
+type SummarizeQueueResponse struct {
+	JobID   string `json:"job_id"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+// HandleSummarizeQueue handles POST /api/v1/summarize/queue requests
+// This endpoint queues a summarization job and returns immediately with a job ID
+func (h *SummarizeHandler) HandleSummarizeQueue(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	// Parse request body
+	var req SummarizeQueueRequest
+	if err := c.Bind(&req); err != nil {
+		h.logger.Error("failed to bind request", "error", err)
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request format")
+	}
+
+	// Validate required fields
+	if req.ArticleID == "" {
+		h.logger.Warn("empty article_id provided")
+		return echo.NewHTTPError(http.StatusBadRequest, "Article ID cannot be empty")
+	}
+
+	h.logger.Info("queueing summarization job", "article_id", req.ArticleID)
+
+	// Create job in queue
+	jobID, err := h.jobRepo.CreateJob(ctx, req.ArticleID)
+	if err != nil {
+		h.logger.Error("failed to create summarization job", "error", err, "article_id", req.ArticleID)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to queue summarization job")
+	}
+
+	h.logger.Info("summarization job queued successfully", "job_id", jobID, "article_id", req.ArticleID)
+
+	// Return 202 Accepted with job ID
+	response := SummarizeQueueResponse{
+		JobID:   jobID,
+		Status:  "pending",
+		Message: "Summarization job queued successfully",
+	}
+
+	return c.JSON(http.StatusAccepted, response)
+}
+
+// SummarizeStatusResponse represents the response for job status check
+type SummarizeStatusResponse struct {
+	JobID        string `json:"job_id"`
+	Status       string `json:"status"`
+	Summary      string `json:"summary,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+	ArticleID    string `json:"article_id"`
+}
+
+// HandleSummarizeStatus handles GET /api/v1/summarize/status/{job_id} requests
+// This endpoint returns the current status of a summarization job
+func (h *SummarizeHandler) HandleSummarizeStatus(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	jobID := c.Param("job_id")
+	if jobID == "" {
+		h.logger.Warn("empty job_id provided")
+		return echo.NewHTTPError(http.StatusBadRequest, "Job ID cannot be empty")
+	}
+
+	h.logger.Debug("checking summarization job status", "job_id", jobID)
+
+	// Get job from queue
+	job, err := h.jobRepo.GetJob(ctx, jobID)
+	if err != nil {
+		h.logger.Warn("summarization job not found", "job_id", jobID, "error", err)
+		return echo.NewHTTPError(http.StatusNotFound, "Job not found")
+	}
+
+	response := SummarizeStatusResponse{
+		JobID:     job.JobID.String(),
+		Status:    string(job.Status),
+		ArticleID: job.ArticleID,
+	}
+
+	// Include summary if completed
+	if job.Status == models.SummarizeJobStatusCompleted && job.Summary != nil {
+		response.Summary = *job.Summary
+	}
+
+	// Include error message if failed
+	if job.Status == models.SummarizeJobStatusFailed && job.ErrorMessage != nil {
+		response.ErrorMessage = *job.ErrorMessage
+	}
+
+	h.logger.Debug("summarization job status retrieved", "job_id", jobID, "status", job.Status)
 	return c.JSON(http.StatusOK, response)
 }

@@ -16,6 +16,7 @@ type jobHandler struct {
 	articleSummarizer service.ArticleSummarizerService
 	qualityChecker    service.QualityCheckerService
 	healthChecker     service.HealthCheckerService
+	queueWorker       *service.SummarizeQueueWorker
 	logger            *slog.Logger
 
 	// Job control
@@ -31,6 +32,7 @@ func NewJobHandler(
 	articleSummarizer service.ArticleSummarizerService,
 	qualityChecker service.QualityCheckerService,
 	healthChecker service.HealthCheckerService,
+	queueWorker *service.SummarizeQueueWorker,
 	batchSize int,
 	logger *slog.Logger,
 ) JobHandler {
@@ -41,6 +43,7 @@ func NewJobHandler(
 		articleSummarizer: articleSummarizer,
 		qualityChecker:    qualityChecker,
 		healthChecker:     healthChecker,
+		queueWorker:       queueWorker,
 		logger:            logger,
 		ctx:               ctx,
 		cancel:            cancel,
@@ -100,6 +103,49 @@ func (h *jobHandler) StartQualityCheckJob(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+// StartSummarizeQueueWorker starts the summarize queue worker job.
+func (h *jobHandler) StartSummarizeQueueWorker(ctx context.Context) error {
+	if h.queueWorker == nil {
+		h.logger.Warn("queue worker is nil, skipping start")
+		return nil
+	}
+
+	h.logger.Info("starting summarize queue worker")
+
+	// Wait for news creator to be healthy
+	if err := h.healthChecker.WaitForHealthy(ctx); err != nil {
+		h.logger.Error("failed to wait for news creator health", "error", err)
+		return fmt.Errorf("failed to wait for news creator health: %w", err)
+	}
+
+	h.wg.Add(1)
+
+	go func() {
+		defer h.wg.Done()
+		h.runSummarizeQueueLoop()
+	}()
+
+	return nil
+}
+
+// runSummarizeQueueLoop runs the summarize queue processing loop.
+func (h *jobHandler) runSummarizeQueueLoop() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-h.ctx.Done():
+			h.logger.Info("summarize queue worker stopped")
+			return
+		case <-ticker.C:
+			if err := h.queueWorker.ProcessQueue(h.ctx); err != nil {
+				h.logger.Error("summarize queue processing failed", "error", err)
+			}
+		}
+	}
 }
 
 // Stop stops all jobs.

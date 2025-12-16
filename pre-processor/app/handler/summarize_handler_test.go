@@ -34,9 +34,12 @@ func TestNewSummarizeHandler_Constructor(t *testing.T) {
 	mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
 	mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
 	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+	// TODO: Generate mock for SummarizeJobRepository
+	// mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
 	logger := testLoggerSummarize()
 
-	h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, logger)
+	// For now, pass nil - this test only checks constructor, not functionality
+	h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, nil, logger)
 
 	assert.NotNil(t, h)
 }
@@ -153,7 +156,8 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 			mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
 			tc.setupMock(mockAPIRepo, mockSummaryRepo, mockArticleRepo)
 
-			h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, testLoggerSummarize())
+			// TODO: Generate mock for SummarizeJobRepository
+			h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, nil, testLoggerSummarize())
 
 			// Create Echo instance and request
 			e := echo.New()
@@ -195,7 +199,8 @@ func TestSummarizeHandler_InvalidJSON(t *testing.T) {
 	mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
 	mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
 	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
-	h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, testLoggerSummarize())
+	// TODO: Generate mock for SummarizeJobRepository
+	h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, nil, testLoggerSummarize())
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/summarize", bytes.NewReader([]byte("invalid json")))
