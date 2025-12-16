@@ -2,6 +2,7 @@ package batch_article_fetcher
 
 import (
 	"alt/gateway/fetch_article_gateway"
+	"alt/utils/html_parser"
 	"alt/utils/rate_limiter"
 	"context"
 	"fmt"
@@ -104,30 +105,35 @@ func (b *BatchArticleFetcher) processDomainGroup(ctx context.Context, domain str
 	gateway := b.gatewayFactory()
 
 	for _, urlStr := range urls {
-		// Fetch article content
-		content, err := gateway.FetchArticleContents(ctx, urlStr)
+		// Fetch article content (HTML)
+		htmlContent, err := gateway.FetchArticleContents(ctx, urlStr)
 
-		// Extract title and generate ID (simplified version matching fetchArticleContent behavior)
+		// Extract title and text from HTML (matching fetchArticleContent behavior)
 		var title string
+		var extractedText string
 		var articleID string
-		if err == nil && content != nil {
+		if err == nil && htmlContent != nil {
+			htmlContentStr := *htmlContent
+			// Extract title from HTML using html_parser
+			title = html_parser.ExtractTitle(htmlContentStr)
+
+			// Extract text content from HTML (save only text, not full HTML)
+			extractedText = html_parser.ExtractArticleText(htmlContentStr)
+			if extractedText == "" {
+				// If extraction fails, set error
+				err = fmt.Errorf("failed to extract article text from HTML")
+			}
+
 			articleID = b.generateArticleID(urlStr)
-			// Title extraction would go here if needed
-			// For now, we'll leave it empty as in the original fetchArticleContent
 		}
 
 		// Store result
 		mu.Lock()
 		results[urlStr] = &FetchResult{
-			Content: func() string {
-				if content != nil {
-					return *content
-				}
-				return ""
-			}(),
-			Title: title,
-			ID:    articleID,
-			Error: err,
+			Content: extractedText,
+			Title:   title,
+			ID:      articleID,
+			Error:   err,
 		}
 		mu.Unlock()
 	}

@@ -87,9 +87,22 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 		}
 
 		if existingArticle != nil {
-			// Article exists in DB - extract text from stored HTML
-			logger.Logger.Info("Article content retrieved from database", "article_id", existingArticle.ID, "url", articleURL.String())
+			// Article exists in DB - Zero Trust: Always extract text from stored content
+			originalLength := len(existingArticle.Content)
+			logger.Logger.Info("Article content retrieved from database, extracting text (Zero Trust validation)",
+				"article_id", existingArticle.ID,
+				"url", articleURL.String(),
+				"original_length", originalLength)
+
 			contentStr = html_parser.ExtractArticleText(existingArticle.Content)
+			extractedLength := len(contentStr)
+			reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
+
+			logger.Logger.Info("Text extraction completed",
+				"article_id", existingArticle.ID,
+				"original_length", originalLength,
+				"extracted_length", extractedLength,
+				"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
 		} else {
 			// Article does not exist, fetch from Web
 			logger.Logger.Info("Article not found in database, fetching from Web", "url", articleURL.String())
@@ -108,8 +121,21 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 				logger.Logger.Info("Article content fetched from Web and saved to database", "url", articleURL.String())
 			}
 
-			// Extract text from HTML
+			// Zero Trust: Always extract text from HTML
+			originalLength := len(fetchedContent)
+			logger.Logger.Info("Extracting text from fetched content (Zero Trust validation)",
+				"url", articleURL.String(),
+				"original_length", originalLength)
+
 			contentStr = html_parser.ExtractArticleText(fetchedContent)
+			extractedLength := len(contentStr)
+			reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
+
+			logger.Logger.Info("Text extraction completed from fetched content",
+				"url", articleURL.String(),
+				"original_length", originalLength,
+				"extracted_length", extractedLength,
+				"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
 		}
 
 		// Ensure UTF-8 JSON and disallow MIME sniffing

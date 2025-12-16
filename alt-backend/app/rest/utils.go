@@ -201,12 +201,23 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 		return "", "", "", fmt.Errorf("failed to read body: %w", err)
 	}
 
-	// Extract title from HTML using html_parser
+	// Zero Trust: Always extract text content from HTML
 	htmlContent := string(bodyBytes)
+	htmlLength := len(htmlContent)
+
+	// Extract title from HTML using html_parser
 	title := html_parser.ExtractTitle(htmlContent)
 
 	// Extract text content from HTML (save only text, not full HTML)
 	extractedText := html_parser.ExtractArticleText(htmlContent)
+	extractedLength := len(extractedText)
+	reductionRatio := (1.0 - float64(extractedLength)/float64(htmlLength)) * 100.0
+
+	logger.Logger.Info("Text extraction completed in fetchArticleContent",
+		"url", urlStr,
+		"html_length", htmlLength,
+		"extracted_length", extractedLength,
+		"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
 	if extractedText == "" {
 		// Log warning but try to use HTML content as fallback
 		logger.Logger.Warn("failed to extract article text from HTML, content may be empty or invalid",
