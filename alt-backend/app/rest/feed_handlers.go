@@ -50,8 +50,10 @@ func registerFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	feeds.POST("/fetch/summary/provided", handleFetchInoreaderSummary(container))
 	feeds.POST("/fetch/summary", handleFetchArticleSummary(container, cfg))
 
-	// Article summarization endpoint
-	feeds.POST("/summarize", handleSummarizeFeed(container, cfg))
+	// Article summarization endpoints
+	feeds.POST("/summarize", handleSummarizeFeed(container, cfg))                     // Legacy synchronous endpoint
+	feeds.POST("/summarize/queue", handleSummarizeFeedQueue(container, cfg))          // New async queue endpoint
+	feeds.GET("/summarize/status/:job_id", handleSummarizeFeedStatus(container, cfg)) // Job status endpoint
 
 	// RSS feed registration (require auth) - 認証ミドルウェア付きでグループ作成
 	rss := v1.Group("/rss-feed-link", authMiddleware.RequireAuth())
@@ -1063,6 +1065,151 @@ func handleSummarizeFeed(container *di.ApplicationComponents, cfg *config.Config
 			"summary":    summary,
 			"article_id": articleID,
 			"feed_url":   req.FeedURL,
+		}
+
+		return c.JSON(http.StatusOK, response)
+	}
+}
+
+// handleSummarizeFeedQueue handles async article summarization requests by queueing to pre-processor
+func handleSummarizeFeedQueue(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		// Parse request
+		var req struct {
+			FeedURL string `json:"feed_url" validate:"required"`
+		}
+
+		if err := c.Bind(&req); err != nil {
+			logger.Logger.Error("Failed to bind summarize queue request", "error", err)
+			return echo.NewHTTPError(http.StatusBadRequest, "Invalid request format")
+		}
+
+		// Validate feed URL
+		if req.FeedURL == "" {
+			logger.Logger.Warn("Empty feed_url provided for summarization")
+			return echo.NewHTTPError(http.StatusBadRequest, "feed_url is required")
+		}
+
+		// Validate URL format
+		if _, err := url.Parse(req.FeedURL); err != nil {
+			logger.Logger.Error("Invalid feed_url format", "error", err, "url", req.FeedURL)
+			return echo.NewHTTPError(http.StatusBadRequest, "Invalid feed_url format")
+		}
+
+		logger.Logger.Info("Queueing summarization request", "feed_url", req.FeedURL)
+
+		// Step 1: Check if article exists in DB
+		var articleID string
+		var articleTitle string
+
+		existingArticle, err := container.AltDBRepository.FetchArticleByURL(c.Request().Context(), req.FeedURL)
+		if err != nil {
+			logger.Logger.Error("Failed to check for existing article", "error", err, "url", req.FeedURL)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to check article existence")
+		}
+
+		if existingArticle != nil {
+			// Article exists in DB
+			logger.Logger.Info("Article found in database", "article_id", existingArticle.ID, "url", req.FeedURL)
+			articleID = existingArticle.ID
+			articleTitle = existingArticle.Title
+		} else {
+			// Article does not exist, fetch from Web
+			logger.Logger.Info("Article not found in database, fetching from Web", "url", req.FeedURL)
+			fetchedContent, _, fetchedTitle, fetchErr := fetchArticleContent(c.Request().Context(), req.FeedURL, container)
+			if fetchErr != nil {
+				logger.Logger.Error("Failed to fetch article content", "error", fetchErr, "url", req.FeedURL)
+				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch article content")
+			}
+
+			var saveErr error
+			articleID, saveErr = container.AltDBRepository.SaveArticle(c.Request().Context(), req.FeedURL, fetchedTitle, fetchedContent)
+			if saveErr != nil {
+				logger.Logger.Error("Failed to save article to database", "error", saveErr, "url", req.FeedURL)
+				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to save article")
+			}
+			articleTitle = fetchedTitle
+		}
+
+		// Step 2: Check if summary already exists
+		existingSummary, err := container.AltDBRepository.FetchArticleSummaryByArticleID(c.Request().Context(), articleID)
+		if err == nil && existingSummary != nil && existingSummary.Summary != "" {
+			logger.Logger.Info("Found existing summary in database", "article_id", articleID, "feed_url", req.FeedURL)
+			// Return existing summary immediately
+			response := map[string]interface{}{
+				"success":    true,
+				"summary":    existingSummary.Summary,
+				"article_id": articleID,
+				"feed_url":   req.FeedURL,
+			}
+			return c.JSON(http.StatusOK, response)
+		}
+
+		// Step 3: Queue summarization job
+		logger.Logger.Info("No existing summary found, queueing summarization job", "article_id", articleID, "feed_url", req.FeedURL)
+
+		// Small delay to ensure DB transaction is committed before pre-processor reads
+		time.Sleep(100 * time.Millisecond)
+
+		// Call pre-processor queue endpoint
+		jobID, err := callPreProcessorSummarizeQueue(c.Request().Context(), articleID, articleTitle, cfg.PreProcessor.URL)
+		if err != nil {
+			logger.Logger.Error("Failed to queue summarization job", "error", err, "url", req.FeedURL, "article_id", articleID)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to queue summarization job")
+		}
+
+		logger.Logger.Info("Summarization job queued successfully", "job_id", jobID, "article_id", articleID, "feed_url", req.FeedURL)
+
+		// Return 202 Accepted with job ID and status URL
+		response := map[string]interface{}{
+			"job_id":     jobID,
+			"status":     "pending",
+			"status_url": fmt.Sprintf("/v1/feeds/summarize/status/%s", jobID),
+			"article_id": articleID,
+			"feed_url":   req.FeedURL,
+		}
+
+		return c.JSON(http.StatusAccepted, response)
+	}
+}
+
+// handleSummarizeFeedStatus handles status check for summarization jobs
+func handleSummarizeFeedStatus(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		jobID := c.Param("job_id")
+		if jobID == "" {
+			logger.Logger.Warn("Empty job_id provided")
+			return echo.NewHTTPError(http.StatusBadRequest, "job_id is required")
+		}
+
+		logger.Logger.Debug("Checking summarization job status", "job_id", jobID)
+
+		// Call pre-processor status endpoint
+		status, err := callPreProcessorSummarizeStatus(c.Request().Context(), jobID, cfg.PreProcessor.URL)
+		if err != nil {
+			logger.Logger.Error("Failed to get summarization job status", "error", err, "job_id", jobID)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to get job status")
+		}
+
+		// If job not found, return 404
+		if status == nil {
+			return echo.NewHTTPError(http.StatusNotFound, "Job not found")
+		}
+
+		response := map[string]interface{}{
+			"job_id":     status.JobID,
+			"status":     status.Status,
+			"article_id": status.ArticleID,
+		}
+
+		// Include summary if completed
+		if status.Status == "completed" && status.Summary != "" {
+			response["summary"] = status.Summary
+		}
+
+		// Include error message if failed
+		if status.Status == "failed" && status.ErrorMessage != "" {
+			response["error_message"] = status.ErrorMessage
 		}
 
 		return c.JSON(http.StatusOK, response)

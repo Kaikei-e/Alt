@@ -285,6 +285,138 @@ func callPreProcessorSummarize(ctx context.Context, content string, articleID st
 	return response.Summary, nil
 }
 
+// SummarizeStatus represents the status of a summarization job
+type SummarizeStatus struct {
+	JobID        string
+	Status       string
+	Summary      string
+	ErrorMessage string
+	ArticleID    string
+}
+
+// callPreProcessorSummarizeQueue calls the pre-processor queue endpoint
+func callPreProcessorSummarizeQueue(ctx context.Context, articleID string, title string, preProcessorURL string) (string, error) {
+	// Validate inputs
+	if articleID == "" {
+		return "", fmt.Errorf("article_id is required")
+	}
+
+	// Prepare request
+	requestBody := map[string]string{
+		"article_id": articleID,
+		"title":      title,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 30 * time.Second, // Short timeout for queue endpoint
+	}
+
+	// Build API URL
+	apiURL := fmt.Sprintf("%s/api/v1/summarize/queue", preProcessorURL)
+
+	// Create request with context
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Execute request
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to call pre-processor: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check status code
+	if resp.StatusCode != http.StatusAccepted {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("pre-processor returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	// Parse response
+	var response struct {
+		JobID   string `json:"job_id"`
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return response.JobID, nil
+}
+
+// callPreProcessorSummarizeStatus calls the pre-processor status endpoint
+func callPreProcessorSummarizeStatus(ctx context.Context, jobID string, preProcessorURL string) (*SummarizeStatus, error) {
+	// Validate inputs
+	if jobID == "" {
+		return nil, fmt.Errorf("job_id is required")
+	}
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 10 * time.Second, // Short timeout for status check
+	}
+
+	// Build API URL
+	apiURL := fmt.Sprintf("%s/api/v1/summarize/status/%s", preProcessorURL, jobID)
+
+	// Create request with context
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Execute request
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call pre-processor: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check status code
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil // Job not found
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("pre-processor returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	// Parse response
+	var response struct {
+		JobID        string `json:"job_id"`
+		Status       string `json:"status"`
+		Summary      string `json:"summary,omitempty"`
+		ErrorMessage string `json:"error_message,omitempty"`
+		ArticleID    string `json:"article_id"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &SummarizeStatus{
+		JobID:        response.JobID,
+		Status:       response.Status,
+		Summary:      response.Summary,
+		ErrorMessage: response.ErrorMessage,
+		ArticleID:    response.ArticleID,
+	}, nil
+}
+
 // cleanSummaryContent removes markdown code blocks, repetitive patterns, and other anomalies from summary content
 func cleanSummaryContent(summary string) string {
 	if summary == "" {
