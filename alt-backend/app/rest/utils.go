@@ -238,9 +238,9 @@ func callPreProcessorSummarize(ctx context.Context, content string, articleID st
 	}
 
 	// Create HTTP client with timeout
-	// Extended timeout for LLM-based summarization (news-creator processing time)
+	// Extended timeout for LLM-based summarization (1000 tokens + continuation generation)
 	client := &http.Client{
-		Timeout: 180 * time.Second, // LLM processing can take 60-120 seconds
+		Timeout: 300 * time.Second, // LLM processing with 1000 tokens can take longer
 	}
 
 	// Build API URL
