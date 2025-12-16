@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"pre-processor/models"
 	"pre-processor/repository"
@@ -127,10 +128,16 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 	}
 
 	// Call summarization service
+	summarizeStartTime := time.Now()
 	summarized, err := w.apiRepo.SummarizeArticle(ctx, articleModel)
+	summarizeDuration := time.Since(summarizeStartTime)
+
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to generate summary: %v", err)
-		w.logger.Error("failed to summarize article", "error", err, "article_id", job.ArticleID)
+		w.logger.Error("failed to summarize article",
+			"error", err,
+			"article_id", job.ArticleID,
+			"duration_ms", summarizeDuration.Milliseconds())
 
 		// Check if job can be retried
 		if job.CanRetry() {
@@ -145,7 +152,10 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 		return fmt.Errorf("failed to summarize article: %w", err)
 	}
 
-	w.logger.Info("article summarized successfully", "job_id", job.JobID, "article_id", job.ArticleID)
+	w.logger.Info("article summarized successfully",
+		"job_id", job.JobID,
+		"article_id", job.ArticleID,
+		"summarize_duration_ms", summarizeDuration.Milliseconds())
 
 	// Save summary to database
 	articleTitle := article.Title
@@ -159,20 +169,32 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 		SummaryJapanese: summarized.SummaryJapanese,
 	}
 
+	saveSummaryStartTime := time.Now()
 	if err := w.summaryRepo.Create(ctx, articleSummary); err != nil {
 		w.logger.Error("failed to save summary to database", "error", err, "article_id", job.ArticleID)
 		// Continue even if save fails - we still have the summary to return
 		w.logger.Warn("continuing despite DB save failure", "article_id", job.ArticleID)
 	} else {
-		w.logger.Info("summary saved to database successfully", "article_id", job.ArticleID)
+		saveSummaryDuration := time.Since(saveSummaryStartTime)
+		w.logger.Info("summary saved to database successfully",
+			"article_id", job.ArticleID,
+			"save_duration_ms", saveSummaryDuration.Milliseconds())
 	}
 
 	// Update job status to completed
+	updateStatusStartTime := time.Now()
 	if err := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), models.SummarizeJobStatusCompleted, summarized.SummaryJapanese, ""); err != nil {
 		w.logger.Error("failed to update job status to completed", "error", err, "job_id", job.JobID)
 		return fmt.Errorf("failed to update job status: %w", err)
 	}
+	updateStatusDuration := time.Since(updateStatusStartTime)
 
-	w.logger.Info("summarization job completed successfully", "job_id", job.JobID, "article_id", job.ArticleID)
+	totalDuration := time.Since(summarizeStartTime)
+	w.logger.Info("summarization job completed successfully",
+		"job_id", job.JobID,
+		"article_id", job.ArticleID,
+		"update_status_duration_ms", updateStatusDuration.Milliseconds(),
+		"total_duration_ms", totalDuration.Milliseconds(),
+		"completed_at", time.Now().UnixNano())
 	return nil
 }

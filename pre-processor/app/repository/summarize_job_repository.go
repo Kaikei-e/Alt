@@ -71,8 +71,11 @@ func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*mod
 		return nil, fmt.Errorf("database connection is nil")
 	}
 
+	startTime := time.Now()
 	r.logger.Debug("getting summarization job", "job_id", jobID)
 
+	// Read with Read Committed isolation level to ensure we see latest committed data
+	// This helps prevent stale reads when checking job status immediately after updates
 	query := `
 		SELECT id, job_id, article_id, status, summary, error_message,
 		       retry_count, max_retries, created_at, started_at, completed_at
@@ -113,7 +116,14 @@ func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*mod
 	if errorMessage.Valid {
 		job.ErrorMessage = &errorMessage.String
 	}
-	r.logger.Debug("summarization job retrieved successfully", "job_id", jobID, "status", job.Status)
+
+	// Log timing information for debugging latency issues
+	queryDuration := time.Since(startTime)
+	r.logger.Debug("summarization job retrieved successfully",
+		"job_id", jobID,
+		"status", job.Status,
+		"query_duration_ms", queryDuration.Milliseconds(),
+		"completed_at", job.CompletedAt)
 	return &job, nil
 }
 
@@ -166,7 +176,11 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 		args = []interface{}{string(status), jobID}
 	}
 
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	// Use Read Committed isolation level to ensure we see committed changes immediately
+	// This helps prevent stale reads when checking job status after updates
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel: pgx.ReadCommitted,
+	})
 	if err != nil {
 		r.logger.Error("failed to begin transaction", "error", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -195,7 +209,12 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	r.logger.Info("summarization job status updated successfully", "job_id", jobID, "status", status)
+	// Log timing information for debugging latency issues
+	r.logger.Info("summarization job status updated successfully",
+		"job_id", jobID,
+		"status", status,
+		"timestamp", now.UnixNano(),
+		"committed_at", time.Now().UnixNano())
 	return nil
 }
 
