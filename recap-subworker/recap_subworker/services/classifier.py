@@ -72,6 +72,11 @@ class GenreClassifierService:
                     logger.info("Loading classification artifacts", model_path=str(self.model_path))
                     self.model = joblib.load(self.model_path)
 
+                    # Patch for sklearn version incompatibility (1.8.0 vs 1.7.x)
+                    if not hasattr(self.model, 'multi_class'):
+                        logger.warning("Patching missing 'multi_class' attribute on LogisticRegression")
+                        self.model.multi_class = 'ovr'  # Assuming OVR based on training script
+
                     if self.tfidf_path.exists():
                         self.tfidf = joblib.load(self.tfidf_path)
                         # Fix: Re-attach tokenizer as it might be lost during pickling or require re-initialization

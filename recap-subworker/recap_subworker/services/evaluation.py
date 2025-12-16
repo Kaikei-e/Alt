@@ -12,6 +12,10 @@ try:
 except ImportError:
     proportion_confint = None
 
+import numpy as np
+from sklearn.model_selection import StratifiedKFold
+from sklearn.base import clone
+
 from ..infra.config import get_settings
 from .classifier import GenreClassifierService, SudachiTokenizer
 from .embedder import Embedder, EmbedderConfig
@@ -313,6 +317,17 @@ class EvaluationService:
             logger.warning("Failed to generate confusion matrix", error=str(e))
             results["confusion_matrix"] = {}
 
+        # Cross-Validation
+        if self.use_cross_validation and self.n_folds > 1:
+            try:
+                logger.info("Starting Cross-Validation", n_folds=self.n_folds)
+                cv_metrics = self._run_cross_validation(X, y_true_labels, classifier)
+                results.update(cv_metrics)
+            except Exception as e:
+                logger.warning("Cross-validation failed", error=str(e))
+                import traceback
+                traceback.print_exc()
+
         # Add language metadata if filtered
         if language:
             results["language"] = language
@@ -413,3 +428,94 @@ class EvaluationService:
             logger.error("Error during summary evaluation", error=str(e))
 
         return metrics
+
+    def _run_cross_validation(self, texts: List[str], y_true_labels: List[List[str]], classifier: GenreClassifierService) -> Dict[str, Any]:
+        """
+        Run Stratified K-Fold CV by retraining the model on folds.
+        Approximates the training pipeline: Embed + TF-IDF -> LogisticRegression.
+        """
+        # 1. Prepare Features (Once)
+        logger.info("Generating features for CV...")
+        input_texts = [f"passage: {t}" for t in texts]
+        embeddings = classifier.embedder.encode(input_texts)
+
+        features = embeddings
+        if classifier.tfidf:
+            tfidf_features = classifier.tfidf.transform(texts)
+            features = np.hstack((embeddings, tfidf_features.toarray()))
+
+        # 2. Prepare Labels (Single Label for Stratification/Training)
+        # Use first label as primary
+        y_single = [labels[0] if labels else 'other' for labels in y_true_labels]
+        y_single = np.array(y_single)
+
+        # 3. Stratified K-Fold
+        skf = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=42)
+
+        accuracies = []
+        macro_f1s = []
+        micro_f1s = []
+
+        mlb = MultiLabelBinarizer()
+        # Ensure MLB uses all classes from the FULL dataset (or classifier classes)
+        # Using classifier.model.classes_ is safest to match production schema,
+        # but here we check against ground truth labels.
+        # Let's fit MLB on all y_true_labels
+        mlb.fit(y_true_labels)
+        all_classes = mlb.classes_
+
+        fold = 0
+        for train_index, test_index in skf.split(features, y_single):
+            fold += 1
+            X_train, X_test = features[train_index], features[test_index]
+            y_train_single = y_single[train_index]
+
+            # True labels for this fold (Test) - Multi-label
+            y_test_true_labels = [y_true_labels[i] for i in test_index]
+            y_test_bin = mlb.transform(y_test_true_labels)
+
+            # Clone and Train Model
+            # We assume classifier.model is a LogisticRegression (or compatible)
+            model = clone(classifier.model)
+            model.fit(X_train, y_train_single)
+
+            # Predict Probas
+            probs_batch = model.predict_proba(X_test)
+            classes = model.classes_
+
+            # Apply Thresholds (Reuse current thresholds)
+            y_pred_labels = []
+            for probs in probs_batch:
+                scores = {cls: float(prob) for cls, prob in zip(classes, probs)}
+
+                candidates = []
+                for cls, score in scores.items():
+                    threshold = classifier.current_thresholds.get(cls, 0.5)
+                    if score >= threshold:
+                        candidates.append((cls, score))
+
+                candidates.sort(key=lambda x: x[1], reverse=True)
+                # If using top_k logic from predict_batch?
+                # Let's keep all > threshold
+                preds = [c[0] for c in candidates]
+                y_pred_labels.append(preds)
+
+            y_pred_bin = mlb.transform(y_pred_labels)
+
+            # Calculate Metrics for this fold
+            acc = accuracy_score(y_test_bin, y_pred_bin)
+            _, _, macro_f, _ = precision_recall_fscore_support(y_test_bin, y_pred_bin, average='macro', zero_division=0)
+            _, _, micro_f, _ = precision_recall_fscore_support(y_test_bin, y_pred_bin, average='micro', zero_division=0)
+
+            accuracies.append(acc)
+            macro_f1s.append(macro_f)
+            micro_f1s.append(micro_f)
+
+            logger.info(f"Fold {fold} finished", accuracy=acc, macro_f1=macro_f)
+
+        return {
+            "cv_accuracy": {"mean": float(np.mean(accuracies)), "std": float(np.std(accuracies))},
+            "cv_macro_f1": {"mean": float(np.mean(macro_f1s)), "std": float(np.std(macro_f1s))},
+            "cv_micro_f1": {"mean": float(np.mean(micro_f1s)), "std": float(np.std(micro_f1s))},
+            "n_folds": self.n_folds
+        }
