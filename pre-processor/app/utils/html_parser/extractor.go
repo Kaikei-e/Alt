@@ -60,7 +60,36 @@ func ExtractArticleText(raw string) string {
 		}
 
 		// 2. Pre-process HTML: Remove non-content elements before go-readability
+		// Remove navigation, header, footer, aside
 		doc.Find("head, script, style, noscript, title, aside, nav, header, footer").Remove()
+
+		// Remove media and embedded content (ads, tracking, etc.)
+		doc.Find("iframe, embed, object, video, audio, canvas").Remove()
+
+		// Remove social media elements
+		doc.Find("[class*='social'], [class*='share'], [class*='twitter'], [class*='facebook'], [class*='instagram'], [class*='linkedin']").Remove()
+		doc.Find("[id*='social'], [id*='share'], [id*='twitter'], [id*='facebook']").Remove()
+
+		// Remove comment sections
+		doc.Find("[class*='comment'], [id*='comment'], [class*='discussion'], [id*='discussion']").Remove()
+
+		// Remove metadata and resource links
+		doc.Find("meta, link[rel='stylesheet'], link[rel='preload'], link[rel='prefetch'], link[rel='dns-prefetch']").Remove()
+
+		// Remove inline styles and event handlers from all elements
+		doc.Find("*").Each(func(i int, s *goquery.Selection) {
+			s.RemoveAttr("style")
+			s.RemoveAttr("onclick")
+			s.RemoveAttr("onload")
+			s.RemoveAttr("onerror")
+			s.RemoveAttr("onmouseover")
+			s.RemoveAttr("onmouseout")
+			s.RemoveAttr("onfocus")
+			s.RemoveAttr("onblur")
+			s.RemoveAttr("onchange")
+			s.RemoveAttr("onsubmit")
+		})
+
 		cleanedHTML, _ := doc.Html()
 		if cleanedHTML != "" {
 			trimmed = cleanedHTML

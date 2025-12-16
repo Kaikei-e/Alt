@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"pre-processor/models"
@@ -59,6 +60,15 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 			url = EXCLUDED.url,
 			feed_id = EXCLUDED.feed_id
 	`
+
+	// Validate content (already extracted text, should be meaningful)
+	const minContentLength = 100
+	if len(strings.TrimSpace(article.Content)) < minContentLength {
+		logger.Logger.Warn("article content is very short, may indicate extraction issue",
+			"url", article.URL,
+			"content_length", len(article.Content))
+		// Still allow saving, but log warning
+	}
 
 	logger.Logger.Info("Creating article", "article link", article.URL)
 

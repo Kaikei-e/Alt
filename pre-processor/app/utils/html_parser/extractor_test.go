@@ -146,3 +146,55 @@ func TestExtractTitle_NoTitle(t *testing.T) {
 		t.Errorf("Expected empty string, got '%s'", result)
 	}
 }
+
+func TestExtractArticleText_RemovesIframeAndEmbed(t *testing.T) {
+	input := `<html><body><p>Article content</p><iframe src="http://example.com"></iframe><embed src="video.swf"></embed><p>More content</p></body></html>`
+	result := ExtractArticleText(input)
+	if strings.Contains(result, "iframe") || strings.Contains(result, "embed") {
+		t.Errorf("Iframe and embed tags should be removed, got: %s", result)
+	}
+	if !strings.Contains(result, "Article content") {
+		t.Errorf("Expected to keep article content, got: %s", result)
+	}
+	if !strings.Contains(result, "More content") {
+		t.Errorf("Expected to keep more content, got: %s", result)
+	}
+}
+
+func TestExtractArticleText_RemovesSocialMediaElements(t *testing.T) {
+	input := `<html><body><p>Article content</p><div class="social-share">Share buttons</div><div id="twitter-widget">Twitter</div><p>More content</p></body></html>`
+	result := ExtractArticleText(input)
+	if strings.Contains(result, "Share buttons") || strings.Contains(result, "Twitter") {
+		t.Errorf("Social media elements should be removed, got: %s", result)
+	}
+	if !strings.Contains(result, "Article content") {
+		t.Errorf("Expected to keep article content, got: %s", result)
+	}
+}
+
+func TestExtractArticleText_RemovesCommentSections(t *testing.T) {
+	input := `<html><body><p>Article content</p><div class="comments">Comment section</div><div id="comment-form">Comment form</div><p>More content</p></body></html>`
+	result := ExtractArticleText(input)
+	if strings.Contains(result, "Comment section") || strings.Contains(result, "Comment form") {
+		t.Errorf("Comment sections should be removed, got: %s", result)
+	}
+	if !strings.Contains(result, "Article content") {
+		t.Errorf("Expected to keep article content, got: %s", result)
+	}
+}
+
+func TestExtractArticleText_RemovesInlineStylesAndEventHandlers(t *testing.T) {
+	input := `<html><body><p style="color: red;">Article content</p><button onclick="alert('test')">Click me</button><p>More content</p></body></html>`
+	result := ExtractArticleText(input)
+	// Styles and event handlers should be removed, but content should remain
+	if !strings.Contains(result, "Article content") {
+		t.Errorf("Expected to keep article content, got: %s", result)
+	}
+	if !strings.Contains(result, "More content") {
+		t.Errorf("Expected to keep more content, got: %s", result)
+	}
+	// Event handler code should not appear in text
+	if strings.Contains(result, "alert") {
+		t.Errorf("Event handler code should be removed, got: %s", result)
+	}
+}

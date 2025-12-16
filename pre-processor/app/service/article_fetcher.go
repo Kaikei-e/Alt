@@ -411,7 +411,7 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 
 	// レスポンス読み取り時間測定
 	readStart := time.Now()
-	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // Limit to 10MB
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024)) // Limit to 2MB
 	readDuration := time.Since(readStart)
 
 	if err != nil {
@@ -468,21 +468,34 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 	contentSize := len(cleanedContent)
 	totalDuration := time.Since(start)
 
+	// Log extraction statistics
+	originalSize := len(htmlContent)
+	extractedSize := len(extractedText)
+	reductionRatio := float64(extractedSize) / float64(originalSize) * 100
+	if originalSize > 0 {
+		s.logger.Info("text extraction completed",
+			"url", url.String(),
+			"original_size_bytes", originalSize,
+			"extracted_size_bytes", extractedSize,
+			"reduction_ratio_percent", reductionRatio)
+	}
+
 	// 成功時のパフォーマンスログ
 	s.logger.Info("article fetch completed successfully",
 		"url", url.String(),
 		"domain", domain,
-		"title", article.Title,
+		"title", title,
 		"content_size_bytes", contentSize,
 		"rate_limit_wait_ms", rateLimitDuration.Milliseconds(),
 		"http_duration_ms", httpDuration.Milliseconds(),
 		"read_duration_ms", readDuration.Milliseconds(),
+		"extract_duration_ms", extractDuration.Milliseconds(),
 		"total_duration_ms", totalDuration.Milliseconds(),
 		"throughput_bytes_per_second", float64(contentSize)/totalDuration.Seconds())
 
 	return &models.Article{
 		Title:   title,
-		Content: cleanedContent,
+		Content: cleanedContent, // Already extracted text, not HTML
 		URL:     url.String(),
 	}, nil
 }
