@@ -1,6 +1,8 @@
 """Generate handler - REST endpoint for generic LLM generation."""
 
+import asyncio
 import logging
+import aiohttp
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 
@@ -86,12 +88,42 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
             logger.warning("Invalid /api/generate payload", extra={"error": str(exc)})
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            # Convert network/timeout errors to RuntimeError for consistent handling
+            error_msg = f"Network error during LLM request: {type(exc).__name__} - {str(exc)}"
+            logger.error(
+                "Network error in /api/generate",
+                extra={
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                    "is_timeout": isinstance(exc, (asyncio.TimeoutError, aiohttp.ServerTimeoutError)),
+                },
+                exc_info=True,
+            )
+            # Convert to RuntimeError so it's handled as a 502 (Bad Gateway)
+            raise RuntimeError(error_msg) from exc
+
         except RuntimeError as exc:
-            logger.error("LLM generate request failed", extra={"error": str(exc)})
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            error_detail = str(exc)
+            logger.error(
+                "LLM generate request failed",
+                extra={
+                    "error": error_detail,
+                    "error_type": type(exc).__name__,
+                    "model": request.model if hasattr(request, "model") else None,
+                },
+                exc_info=True,  # Include full traceback for debugging
+            )
+            raise HTTPException(status_code=502, detail=error_detail) from exc
 
         except Exception as exc:
-            logger.exception("Unhandled error in /api/generate")
+            logger.exception(
+                "Unhandled error in /api/generate",
+                extra={
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+            )
             raise HTTPException(status_code=500, detail="Internal server error") from exc
 
     return router

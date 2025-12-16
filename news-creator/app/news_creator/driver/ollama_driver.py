@@ -22,13 +22,21 @@ class OllamaDriver:
     async def initialize(self) -> None:
         """Initialize HTTP client session."""
         # より詳細なタイムアウト設定
+        # sock_readはtotalと同じ値に設定して、設定値に従ったタイムアウトを確保
+        # totalより長く設定することはできないため、同じ値を使用
         timeout = aiohttp.ClientTimeout(
             total=self.config.llm_timeout_seconds,
             connect=30,  # 接続タイムアウト
-            sock_read=120,  # ソケット読み取りタイムアウト（LLM生成時間を考慮）
+            sock_read=self.config.llm_timeout_seconds,  # ソケット読み取りタイムアウト（設定値に基づく）
         )
         self.session = aiohttp.ClientSession(timeout=timeout)
-        logger.info("Ollama driver initialized", extra={"url": self.config.llm_service_url})
+        logger.info(
+            "Ollama driver initialized",
+            extra={
+                "url": self.config.llm_service_url,
+                "timeout_seconds": self.config.llm_timeout_seconds,
+            },
+        )
 
     async def cleanup(self) -> None:
         """Cleanup HTTP client session."""
@@ -58,6 +66,9 @@ class OllamaDriver:
 
         url = f"{self.config.llm_service_url.rstrip('/')}/api/generate"
         model = payload.get("model", "unknown")
+        prompt_length = len(payload.get("prompt", ""))
+        # Estimate payload size (rough approximation)
+        payload_size_estimate = len(json.dumps(payload))
 
         # Retry configuration
         max_retries = 3
@@ -124,33 +135,87 @@ class OllamaDriver:
                         raise RuntimeError(error_msg) from err
 
             except aiohttp.ClientError as err:
+                # タイムアウトエラーの詳細な情報を取得
+                error_type = type(err).__name__
+                is_timeout = isinstance(err, (aiohttp.ServerTimeoutError, aiohttp.ClientTimeout))
                 error_msg = f"Ollama API request failed: {err}"
+
                 logger.error(
                     error_msg,
                     extra={
                         "error": str(err),
+                        "error_type": error_type,
+                        "is_timeout": is_timeout,
                         "url": url,
                         "model": model,
+                        "prompt_length": prompt_length,
+                        "payload_size_estimate_bytes": payload_size_estimate,
                         "attempt": attempt + 1,
+                        "max_retries": max_retries + 1,
+                        "timeout_seconds": self.config.llm_timeout_seconds,
+                        "total_timeout_seconds": self.config.llm_timeout_seconds * (max_retries + 1),
                     },
+                    exc_info=True,  # Include full traceback for debugging
                 )
 
-                # Retry on connection errors
+                # Retry on connection errors (including timeouts)
                 if attempt < max_retries:
+                    # Exponential backoff with jitter
+                    delay = base_delay * (2 ** attempt)
+                    jitter = delay * 0.1
+                    wait_time = delay + jitter
+
                     logger.warning(
                         f"Connection error, will retry",
                         extra={
                             "error": str(err),
+                            "error_type": error_type,
+                            "is_timeout": is_timeout,
+                            "url": url,
+                            "model": model,
+                            "prompt_length": prompt_length,
+                            "payload_size_estimate_bytes": payload_size_estimate,
                             "attempt": attempt + 1,
                             "max_retries": max_retries + 1,
+                            "wait_time_seconds": wait_time,
+                            "timeout_seconds": self.config.llm_timeout_seconds,
+                            "next_attempt_timeout_seconds": self.config.llm_timeout_seconds,
                         },
                     )
                     continue
 
-                raise RuntimeError(error_msg) from err
+                # 最終的なエラーメッセージを詳細化
+                final_error_msg = (
+                    f"Ollama API failed after {max_retries + 1} attempts. "
+                    f"Last error: {error_type} - {str(err)}. "
+                    f"Timeout setting: {self.config.llm_timeout_seconds}s per attempt, "
+                    f"Total time spent: ~{self.config.llm_timeout_seconds * (max_retries + 1)}s. "
+                    f"Model: {model}, Prompt length: {prompt_length} chars, "
+                    f"Payload size: ~{payload_size_estimate} bytes"
+                )
+                logger.error(
+                    "Ollama API failed after all retries",
+                    extra={
+                        "error": str(err),
+                        "error_type": error_type,
+                        "is_timeout": is_timeout,
+                        "url": url,
+                        "model": model,
+                        "prompt_length": prompt_length,
+                        "payload_size_estimate_bytes": payload_size_estimate,
+                        "total_attempts": max_retries + 1,
+                        "timeout_seconds": self.config.llm_timeout_seconds,
+                        "total_timeout_seconds": self.config.llm_timeout_seconds * (max_retries + 1),
+                    },
+                    exc_info=True,
+                )
+                raise RuntimeError(final_error_msg) from err
 
         # Should not reach here, but just in case
-        raise RuntimeError(f"Ollama API failed after {max_retries + 1} attempts")
+        raise RuntimeError(
+            f"Ollama API failed after {max_retries + 1} attempts. "
+            f"Timeout setting: {self.config.llm_timeout_seconds}s"
+        )
 
     async def list_tags(self) -> Dict[str, Any]:
         """

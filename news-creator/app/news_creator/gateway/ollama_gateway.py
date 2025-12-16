@@ -91,12 +91,15 @@ class OllamaGateway(LLMProviderPort):
             payload["format"] = format
             logger.debug("Using structured output format", extra={"format": format})
 
-        logger.debug(
+        prompt_length = len(prompt)
+        logger.info(
             "Generating with Ollama",
             extra={
                 "model": payload["model"],
-                "prompt_length": len(prompt),
+                "prompt_length": prompt_length,
+                "estimated_tokens": prompt_length // 4,  # Rough estimate: 1 token ≈ 4 chars
                 "num_predict": llm_options.get("num_predict"),
+                "context_window": llm_options.get("num_ctx"),
             }
         )
 

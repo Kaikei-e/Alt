@@ -40,19 +40,40 @@ class SummarizeUsecase:
         if not content or not content.strip():
             raise ValueError("content cannot be empty")
 
-        # Clean HTML from content if present
+        # Zero Trust: Always clean HTML from content, even if it appears to be plain text
+        # This ensures we never process raw HTML, even if upstream services already extracted it
         original_content_length = len(content)
+        logger.info(
+            "Cleaning content (Zero Trust validation)",
+            extra={
+                "article_id": article_id,
+                "original_length": original_content_length,
+            }
+        )
+
         cleaned_content, was_html = clean_html_content(content, article_id)
+        cleaned_length = len(cleaned_content)
+
         if was_html:
+            reduction_ratio = (1.0 - (cleaned_length / original_content_length)) * 100.0 if original_content_length > 0 else 0.0
             logger.warning(
                 "HTML detected and removed from article content",
                 extra={
                     "article_id": article_id,
                     "original_length": original_content_length,
-                    "cleaned_length": len(cleaned_content),
+                    "cleaned_length": cleaned_length,
+                    "reduction_ratio": round(reduction_ratio, 2),
                 }
             )
-            content = cleaned_content
+        else:
+            logger.info(
+                "Content appears to be plain text (no HTML detected)",
+                extra={
+                    "article_id": article_id,
+                    "content_length": cleaned_length,
+                }
+            )
+        content = cleaned_content
 
         # Validate that we have meaningful content after cleaning
         min_content_length = 100
@@ -111,9 +132,20 @@ class SummarizeUsecase:
 
         # Build prompt from template
         prompt = SUMMARY_PROMPT_TEMPLATE.format(content=truncated_content)
+        prompt_length = len(prompt)
+
+        logger.info(
+            "Prompt generated",
+            extra={
+                "article_id": article_id,
+                "prompt_length": prompt_length,
+                "content_length": len(truncated_content),
+                "template_length": prompt_length - len(truncated_content),
+            }
+        )
 
         # Estimate prompt tokens (rough estimate: 1 token ≈ 4 characters for Japanese/English mixed)
-        estimated_prompt_tokens = len(prompt) // 4
+        estimated_prompt_tokens = prompt_length // 4
         context_window = self.config.llm_num_ctx
 
         if estimated_prompt_tokens > context_window * 0.9:  # Warn if using >90% of context window

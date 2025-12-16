@@ -35,6 +35,16 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
         Raises:
             HTTPException: 400 for invalid request, 502 for LLM errors, 500 for unexpected errors
         """
+        # Zero Trust: Log incoming request details
+        incoming_content_length = len(request.content) if request.content else 0
+        logger.info(
+            "Received summarize request",
+            extra={
+                "article_id": request.article_id,
+                "incoming_content_length": incoming_content_length,
+            }
+        )
+
         # Early check: reject requests with content shorter than 100 characters
         # This prevents unnecessary LLM calls for short content
         min_content_length = 100
