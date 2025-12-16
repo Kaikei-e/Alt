@@ -287,7 +287,7 @@ services:
       - OLLAMA_MODELS=/home/ollama-user/.ollama
       - LLM_SERVICE_URL=${LLM_SERVICE_URL:-http://127.0.0.1:11435}
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
-      - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-500}
+      - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
     secrets:
       - service_secret
