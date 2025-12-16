@@ -288,6 +288,7 @@ services:
       - LLM_SERVICE_URL=${LLM_SERVICE_URL:-http://127.0.0.1:11435}
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
+      - OLLAMA_REQUEST_CONCURRENCY=${OLLAMA_REQUEST_CONCURRENCY:-2}
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
     secrets:
       - service_secret
