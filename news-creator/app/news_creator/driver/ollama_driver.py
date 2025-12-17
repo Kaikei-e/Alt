@@ -66,9 +66,39 @@ class OllamaDriver:
 
         url = f"{self.config.llm_service_url.rstrip('/')}/api/generate"
         model = payload.get("model", "unknown")
-        prompt_length = len(payload.get("prompt", ""))
+        prompt = payload.get("prompt", "")
+        prompt_length = len(prompt)
         # Estimate payload size (rough approximation)
         payload_size_estimate = len(json.dumps(payload))
+
+        # Debug logging: Log actual prompt size and content preview
+        # This helps identify why prompts are larger than expected
+        estimated_tokens = prompt_length // 4  # Rough estimate: 1 token ≈ 4 chars
+        prompt_preview_start = prompt[:200] if prompt_length > 200 else prompt
+        prompt_preview_end = prompt[-200:] if prompt_length > 200 else ""
+
+        # Check for abnormal prompt size (>100K chars = >25K tokens)
+        ABNORMAL_PROMPT_THRESHOLD = 100_000  # characters
+        is_abnormal = prompt_length > ABNORMAL_PROMPT_THRESHOLD
+
+        if is_abnormal:
+            logger.error(
+                "ABNORMAL PROMPT SIZE DETECTED - Investigating cause",
+                extra={
+                    "prompt_length": prompt_length,
+                    "estimated_tokens": estimated_tokens,
+                    "prompt_preview_start": prompt_preview_start,
+                    "prompt_preview_end": prompt_preview_end,
+                    "prompt_middle_sample": prompt[prompt_length//2-100:prompt_length//2+100] if prompt_length > 200 else "",
+                    "payload_size_bytes": payload_size_estimate,
+                    "model": model,
+                }
+            )
+        else:
+            logger.info(
+                f"Sending prompt to Ollama: prompt_length={prompt_length} chars, estimated_tokens={estimated_tokens}, "
+                f"model={model}, payload_size={payload_size_estimate} bytes"
+            )
 
         # Retry configuration
         max_retries = 3

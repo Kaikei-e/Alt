@@ -531,7 +531,59 @@ class RecapSummaryUsecase:
              render_kwargs["cluster_section"] = cluster_section
              render_kwargs["highlights"] = None
 
-        return self.template.render(**render_kwargs)
+        prompt = self.template.render(**render_kwargs)
+        prompt_length = len(prompt)
+        estimated_tokens = prompt_length // 4  # Rough estimate: 1 token ≈ 4 chars
+
+        # Validate prompt size - detect abnormal amplification
+        ABNORMAL_PROMPT_THRESHOLD = 100_000  # characters (>25K tokens)
+        if prompt_length > ABNORMAL_PROMPT_THRESHOLD:
+            # Check for repetition in the prompt
+            has_repetition, repetition_score, repetition_patterns = detect_repetition(prompt, threshold=0.3)
+
+            logger.error(
+                "ABNORMAL PROMPT SIZE DETECTED in recap_summary_usecase._build_prompt",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "prompt_length": prompt_length,
+                    "estimated_tokens": estimated_tokens,
+                    "cluster_section_length": len(cluster_section) if cluster_section else 0,
+                    "highlights_length": len(str(request.genre_highlights)) if request.genre_highlights else 0,
+                    "prompt_preview_start": prompt[:500],
+                    "prompt_preview_end": prompt[-500:] if prompt_length > 1000 else "",
+                    "has_repetition": has_repetition,
+                    "repetition_score": repetition_score,
+                    "repetition_patterns": repetition_patterns,
+                }
+            )
+            # Check if prompt contains repeated content
+            if cluster_section and len(cluster_section) * 10 < prompt_length:
+                logger.error(
+                    "Prompt size is much larger than cluster_section - possible repetition or amplification",
+                    extra={
+                        "job_id": str(request.job_id),
+                        "cluster_section_length": len(cluster_section),
+                        "prompt_length": prompt_length,
+                        "ratio": prompt_length / len(cluster_section) if cluster_section else 0,
+                        "has_repetition": has_repetition,
+                        "repetition_score": repetition_score,
+                    }
+                )
+        else:
+            logger.info(
+                "Recap summary prompt built",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "prompt_length": prompt_length,
+                    "estimated_tokens": estimated_tokens,
+                    "cluster_section_length": len(cluster_section) if cluster_section else 0,
+                    "highlights_length": len(str(request.genre_highlights)) if request.genre_highlights else 0,
+                }
+            )
+
+        return prompt
 
     def _resolve_max_bullets(self, request: RecapSummaryRequest) -> int:
         if request.options and request.options.max_bullets is not None:

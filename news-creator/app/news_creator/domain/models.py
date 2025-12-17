@@ -70,6 +70,9 @@ class LLMGenerateResponse:
     prompt_eval_count: Optional[int] = None
     eval_count: Optional[int] = None
     total_duration: Optional[int] = None  # in nanoseconds
+    load_duration: Optional[int] = None  # in nanoseconds (model reload time)
+    prompt_eval_duration: Optional[int] = None  # in nanoseconds (prefill time)
+    eval_duration: Optional[int] = None  # in nanoseconds (decode time)
 
 
 class RepresentativeSentence(BaseModel):

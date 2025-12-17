@@ -2,7 +2,7 @@
 
 import os
 import logging
-from typing import List
+from typing import List, Union
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +38,18 @@ class NewsCreatorConfig:
         self.model_name = os.getenv("LLM_MODEL", "gemma3:4b")
         self.llm_timeout_seconds = self._get_int("LLM_TIMEOUT_SECONDS", 300)  # 5分に増加（1000トークン生成 + 続き生成に対応）
         self.llm_keep_alive = self._get_int("LLM_KEEP_ALIVE_SECONDS", -1)
-        self.ollama_request_concurrency = self._get_int("OLLAMA_REQUEST_CONCURRENCY", 2)
+        # Model-specific keep_alive settings (best practice: 16K/80K on-demand)
+        # 16K model: 24h to allow unloading after use to save VRAM
+        # 80K model: 15m to allow quick unloading after use to save VRAM
+        # self.llm_keep_alive_8k = os.getenv("LLM_KEEP_ALIVE_8K", "0")  # 8kモデルは使用しない
+        self.llm_keep_alive_16k = os.getenv("LLM_KEEP_ALIVE_16K", "24h")
+        self.llm_keep_alive_80k = os.getenv("LLM_KEEP_ALIVE_80K", "15m")
+        self.ollama_request_concurrency = self._get_int("OLLAMA_REQUEST_CONCURRENCY", 1)
 
         # ---- Generation parameters (Gemma3 + Ollama options) ----
-        # 8GB最適化: 80Kコンテキスト（entrypoint.shのOLLAMA_CONTEXT_LENGTHと一致させる）
-        self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 80000)
+        # Default: 16K context for normal AI Summary (80K is used only for Recap)
+        self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 16384)
+        # RTX 4060最適化: バッチサイズ1024（entrypoint.shのOLLAMA_NUM_BATCHと統一）
         self.llm_num_batch = self._get_int("LLM_NUM_BATCH", 1024)
         self.llm_num_predict = self._get_int("LLM_NUM_PREDICT", 1200)  # 復活
         # 調査に基づく推奨値に更新: 繰り返し問題対策
@@ -77,6 +84,26 @@ class NewsCreatorConfig:
         self.hierarchical_threshold_clusters = self._get_int("HIERARCHICAL_THRESHOLD_CLUSTERS", 15)
         self.hierarchical_chunk_max_chars = self._get_int("HIERARCHICAL_CHUNK_MAX_CHARS", 100_000)  # ~25K tokens per chunk
 
+        # Model routing settings (2-model bucket system: 16K, 80K)
+        self.model_routing_enabled = os.getenv("MODEL_ROUTING_ENABLED", "true").lower() == "true"
+        # Base model name (e.g., "gemma3:4b") - will be auto-mapped to bucket models
+        self.model_base_name = os.getenv("MODEL_BASE_NAME", "gemma3:4b")
+        # self.model_8k_name = os.getenv("MODEL_8K_NAME", "gemma3-4b-8k")  # 8kモデルは使用しない
+        self.model_16k_name = os.getenv("MODEL_16K_NAME", "gemma3-4b-16k")
+        self.model_80k_name = os.getenv("MODEL_80K_NAME", "gemma3-4b-80k")
+        self.token_safety_margin_percent = self._get_int("TOKEN_SAFETY_MARGIN_PERCENT", 10)
+        self.token_safety_margin_fixed = self._get_int("TOKEN_SAFETY_MARGIN_FIXED", 512)
+        self.oom_detection_enabled = os.getenv("OOM_DETECTION_ENABLED", "true").lower() == "true"
+        self.warmup_enabled = os.getenv("WARMUP_ENABLED", "true").lower() == "true"
+        self.warmup_keep_alive_minutes = self._get_int("WARMUP_KEEP_ALIVE_MINUTES", 30)
+
+        # Build bucket model names set for quick lookup
+        self._bucket_model_names = {
+            # self.model_8k_name,  # 8kモデルは使用しない
+            self.model_16k_name,
+            self.model_80k_name,
+        }
+
         logger.info(
             "News creator configuration initialized",
             extra={
@@ -87,6 +114,53 @@ class NewsCreatorConfig:
                 "ollama_request_concurrency": self.ollama_request_concurrency,
             },
         )
+
+    def is_base_model_name(self, model_name: str) -> bool:
+        """
+        Check if the given model name is the base model name.
+
+        Args:
+            model_name: Model name to check
+
+        Returns:
+            True if the model name is the base model name
+        """
+        return model_name == self.model_base_name
+
+    def is_bucket_model_name(self, model_name: str) -> bool:
+        """
+        Check if the given model name is a bucket model name.
+
+        Args:
+            model_name: Model name to check
+
+        Returns:
+            True if the model name is a bucket model name
+        """
+        return model_name in self._bucket_model_names
+
+    def get_keep_alive_for_model(self, model_name: str) -> Union[int, str]:
+        """
+        Get keep_alive value for a specific model based on best practices.
+
+        Args:
+            model_name: Model name to get keep_alive for
+
+        Returns:
+            keep_alive value (int for seconds, str for duration like "24h", "30m")
+        """
+        # if model_name == self.model_8k_name:  # 8kモデルは使用しない
+        #     # 8K model: always loaded, use 24h or -1 (forever)
+        #     return self.llm_keep_alive_8k
+        if model_name == self.model_16k_name:
+            # 16K model: on-demand, use 30m to allow unloading after use
+            return self.llm_keep_alive_16k
+        elif model_name == self.model_80k_name:
+            # 80K model: on-demand, use 15m to allow quick unloading after use
+            return self.llm_keep_alive_80k
+        else:
+            # Unknown model: use default keep_alive (backward compatibility)
+            return self.llm_keep_alive
 
     def _get_int(self, name: str, default: int) -> int:
         """Get integer value from environment variable with fallback."""

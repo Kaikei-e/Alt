@@ -12,12 +12,14 @@ This is the main entry point that wires together all layers:
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.gateway.ollama_gateway import OllamaGateway
+from news_creator.services.model_warmup import ModelWarmupService
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
 from news_creator.handler import (
@@ -27,8 +29,10 @@ from news_creator.handler import (
     create_health_router,
 )
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging from environment variable
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+log_level = getattr(logging, LOG_LEVEL, logging.INFO)
+logging.basicConfig(level=log_level)
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +47,11 @@ class DependencyContainer:
         # Gateway layer (ACL)
         self.ollama_gateway = OllamaGateway(self.config)
 
+        # Service layer
+        self.model_warmup_service = ModelWarmupService(
+            self.config, self.ollama_gateway.driver
+        )
+
         # Usecase layer
         self.summarize_usecase = SummarizeUsecase(
             config=self.config,
@@ -56,6 +65,8 @@ class DependencyContainer:
     async def initialize(self) -> None:
         """Initialize all async resources."""
         await self.ollama_gateway.initialize()
+        # Warm up models if enabled
+        await self.model_warmup_service.warmup_models()
         logger.info("All dependencies initialized")
 
     async def cleanup(self) -> None:

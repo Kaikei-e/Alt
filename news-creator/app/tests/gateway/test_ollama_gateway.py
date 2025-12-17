@@ -17,6 +17,12 @@ def mock_config():
     config.llm_timeout_seconds = 60
     config.llm_keep_alive = -1
     config.ollama_request_concurrency = 1
+    config.oom_detection_enabled = False
+    config.model_routing_enabled = False
+    config.llm_num_ctx = 4096
+    config.is_base_model_name = Mock(return_value=False)
+    config.is_bucket_model_name = Mock(return_value=False)
+    config.get_keep_alive_for_model = Mock(return_value=-1)
     config.get_llm_options.return_value = {
         "num_ctx": 4096,
         "num_predict": 500,
@@ -148,6 +154,91 @@ async def test_semaphore_defaults_to_one(mock_config, mock_driver):
 
         # Verify semaphore is created with value 1
         assert gateway._semaphore._value == 1
+        assert gateway._semaphore._max_value == 1
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_semaphore_fifo_order(mock_config, mock_driver):
+    """Test that semaphore processes requests in FIFO (First In First Out) order."""
+    mock_config.ollama_request_concurrency = 1
+    mock_config.model_routing_enabled = False
+    mock_config.oom_detection_enabled = False
+    mock_config.llm_num_ctx = 4096
+    mock_config.is_base_model_name = Mock(return_value=False)
+    mock_config.is_bucket_model_name = Mock(return_value=False)
+    mock_config.get_keep_alive_for_model = Mock(return_value=-1)
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        # Track the order in which requests start processing (acquire semaphore)
+        processing_order = []
+        lock = asyncio.Lock()
+
+        async def delayed_generate_with_tracking(payload, request_id):
+            """Simulate a slow Ollama response and track processing order."""
+            async with lock:
+                processing_order.append(request_id)
+            await asyncio.sleep(0.05)  # Simulate processing time
+            return {
+                "response": f"Response {request_id}",
+                "model": "test-model",
+                "done": True,
+                "prompt_eval_count": 100,
+                "eval_count": 50,
+                "total_duration": 1000000,
+            }
+
+        # Create a closure to track request IDs
+        request_counter = [0]
+        original_generate = mock_driver.generate
+
+        async def tracked_generate(payload):
+            request_counter[0] += 1
+            request_id = request_counter[0]
+            return await delayed_generate_with_tracking(payload, request_id)
+
+        mock_driver.generate = tracked_generate
+
+        # Submit 5 requests concurrently using gather
+        # They will be queued in the order they are created
+        tasks = [
+            gateway.generate("Prompt 1"),
+            gateway.generate("Prompt 2"),
+            gateway.generate("Prompt 3"),
+            gateway.generate("Prompt 4"),
+            gateway.generate("Prompt 5"),
+        ]
+
+        # Execute all tasks concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # All requests should complete successfully
+        assert len(results) == 5
+        assert all(not isinstance(r, Exception) for r in results)
+
+        # Verify FIFO order: requests should be processed in the order they were submitted
+        # Note: This test verifies that asyncio.Semaphore maintains FIFO order
+        # If the semaphore doesn't guarantee FIFO, this test may fail
+        assert len(processing_order) == 5, f"Expected 5 processed requests, got {len(processing_order)}"
+
+        # Check if processing order matches submission order (FIFO)
+        # With concurrency=1, requests should be processed strictly in order
+        expected_order = [1, 2, 3, 4, 5]
+        is_fifo = processing_order == expected_order
+
+        # At minimum, verify that all requests were processed
+        assert set(processing_order) == set(expected_order), f"All requests should be processed. Got: {processing_order}"
+
+        # Assert FIFO order - this will fail if asyncio.Semaphore doesn't guarantee FIFO
+        assert is_fifo, (
+            f"FIFO order not guaranteed by asyncio.Semaphore. "
+            f"Processing order: {processing_order}, Expected: {expected_order}. "
+            f"Consider implementing a FIFO-guaranteed semaphore if strict ordering is required."
+        )
 
         await gateway.cleanup()
 

@@ -101,12 +101,12 @@ class SummarizeUsecase:
             raise ValueError(error_msg)
 
         # Truncate content to fit within context window
-        # Context window is now 71K tokens (71000), configured in entrypoint.sh and config.py
+        # Context window is 16K tokens (16384) for normal AI Summary
         # We need to account for prompt template (~500 chars ≈ ~200 tokens)
         # Conservative estimate: 1 char ≈ 0.25-0.5 tokens (Japanese text)
-        # Reserve ~1K tokens for prompt template and safety margin, leaving ~70K tokens for content
-        # Using ~280K chars (≈70K tokens) for content to avoid truncation and stay within 71K limit
-        MAX_CONTENT_LENGTH = 280_000  # characters (conservative estimate for ~70K tokens in 71K context)
+        # Reserve ~1K tokens for prompt template and safety margin, leaving ~15K tokens for content
+        # Using ~60K chars (≈15K tokens) for content to avoid truncation and stay within 16K limit
+        MAX_CONTENT_LENGTH = 60_000  # characters (conservative estimate for ~15K tokens in 16K context)
         original_length = len(content)
         truncated_content = content.strip()[:MAX_CONTENT_LENGTH]
 
@@ -133,6 +133,48 @@ class SummarizeUsecase:
         # Build prompt from template
         prompt = SUMMARY_PROMPT_TEMPLATE.format(content=truncated_content)
         prompt_length = len(prompt)
+        template_length = prompt_length - len(truncated_content)
+
+        # Validate prompt size - detect abnormal amplification
+        ABNORMAL_PROMPT_THRESHOLD = 100_000  # characters (>25K tokens)
+        estimated_prompt_tokens = prompt_length // 4
+        context_window = self.config.llm_num_ctx
+
+        if prompt_length > ABNORMAL_PROMPT_THRESHOLD:
+            # Abnormal prompt size detected - log detailed information for investigation
+            # Check for repetition in the prompt
+            has_repetition, repetition_score, repetition_patterns = detect_repetition(prompt, threshold=0.3)
+
+            logger.error(
+                "ABNORMAL PROMPT SIZE DETECTED in summarize_usecase",
+                extra={
+                    "article_id": article_id,
+                    "prompt_length": prompt_length,
+                    "content_length": len(truncated_content),
+                    "template_length": template_length,
+                    "estimated_prompt_tokens": estimated_prompt_tokens,
+                    "context_window": context_window,
+                    "prompt_preview_start": prompt[:500],
+                    "prompt_preview_end": prompt[-500:] if prompt_length > 1000 else "",
+                    "content_preview": truncated_content[:500] if len(truncated_content) > 500 else truncated_content,
+                    "has_repetition": has_repetition,
+                    "repetition_score": repetition_score,
+                    "repetition_patterns": repetition_patterns,
+                }
+            )
+            # Check if prompt contains repeated content
+            if len(truncated_content) * 10 < prompt_length:
+                logger.error(
+                    "Prompt size is much larger than content - possible repetition or amplification",
+                    extra={
+                        "article_id": article_id,
+                        "content_length": len(truncated_content),
+                        "prompt_length": prompt_length,
+                        "ratio": prompt_length / len(truncated_content) if truncated_content else 0,
+                        "has_repetition": has_repetition,
+                        "repetition_score": repetition_score,
+                    }
+                )
 
         logger.info(
             "Prompt generated",
@@ -140,13 +182,12 @@ class SummarizeUsecase:
                 "article_id": article_id,
                 "prompt_length": prompt_length,
                 "content_length": len(truncated_content),
-                "template_length": prompt_length - len(truncated_content),
+                "template_length": template_length,
+                "estimated_prompt_tokens": estimated_prompt_tokens,
+                "context_window": context_window,
+                "usage_percent": round((estimated_prompt_tokens / context_window) * 100, 1) if context_window > 0 else 0,
             }
         )
-
-        # Estimate prompt tokens (rough estimate: 1 token ≈ 4 characters for Japanese/English mixed)
-        estimated_prompt_tokens = prompt_length // 4
-        context_window = self.config.llm_num_ctx
 
         if estimated_prompt_tokens > context_window * 0.9:  # Warn if using >90% of context window
             logger.warning(
@@ -197,10 +238,24 @@ class SummarizeUsecase:
                 "repeat_penalty": current_repeat_penalty,
             }
 
+            import time
+            start_time = time.time()
+
             llm_response = await self.llm_provider.generate(
                 prompt,
                 num_predict=self.config.summary_num_predict,
                 options=llm_options,
+            )
+
+            elapsed_time = time.time() - start_time
+
+            # Log generation performance
+            tokens_per_second = round(llm_response.eval_count / elapsed_time, 2) if llm_response.eval_count and elapsed_time > 0 else None
+            logger.info(
+                f"LLM generation completed: article_id={article_id}, elapsed={round(elapsed_time, 2)}s, "
+                f"prompt_eval_count={llm_response.prompt_eval_count}, eval_count={llm_response.eval_count}, "
+                f"prompt_length={prompt_length} chars, estimated_tokens={estimated_prompt_tokens}, "
+                f"num_predict={self.config.summary_num_predict}, tokens_per_second={tokens_per_second}"
             )
 
             # Clean and validate summary
