@@ -1,6 +1,6 @@
 # Recap Subworker
 
-_Last reviewed: 2025-12-11_
+_Last updated: December 18, 2025_
 
 **Location:** `recap-subworker/`
 
@@ -9,16 +9,16 @@ Recap Subworker is a specialized ML/ETL microservice responsible for heavy text 
 1.  **Evidence Gathering**: Embeds, deduplicates, and clusters article sentences to form "Evidence Bundles" for summarization.
 2.  **Genre Classification**: Provides an inference endpoint for genre verification using hybrid features (Embeddings + TF-IDF) and scikit-learn models.
 
-It runs as a **FastAPI** application on Gunicorn, optimized for high-concurrency CPU-bound operations via process pooling.
+It runs as a **FastAPI** application on Gunicorn, optimized for high-concurrency CPU-bound operations.
 
 ## Architecture
 
 | Layer | Details |
 | --- | --- |
-| **HTTP Edge** | `gunicorn` + `uvicorn.workers.UvicornWorker`. Configured for high concurrency with request timeouts. |
-| **Orchestration** | `RunManager` handles async job submission, idempotency checks (via `XXH3`), and background task scheduling using `asyncio`. |
-| **Pipeline Execution** | `PipelineTaskRunner` spawns dedicated processes (via `ProcessPoolExecutor`) for CPU-intensive tasks (clustering, topic dispatch) to prevent blocking the async event loop. |
-| **ML Engine** | **Embeddings**: `sentence-transformers` (BGE-M3/Distill) with LRU caching.<br>**Clustering**: `umap-learn` + `hdbscan` for density-based clustering.<br>**Features**: `scikit-learn` + `sudachipy` for classification features. |
+| **HTTP Edge** | `gunicorn` + `uvicorn.workers.UvicornWorker`. Configured for high concurrency. |
+| **Orchestration** | `RunManager` handles async job submission (`/v1/runs`), idempotency checks (via `XXH3`), and background task scheduling. |
+| **Pipeline Execution** | `PipelineTaskRunner` spawns dedicated processes (via `ProcessPoolExecutor`) for CPU-intensive tasks to prevent blocking the async event loop. |
+| **ML Engine** | **Embeddings**: `sentence-transformers` (BGE-M3/Distill) with LRU caching.<br>**Clustering**: `umap-learn` + `hdbscan` (density-based) + Recursive `BisectingKMeans` (for splitting large clusters).<br>**Features**: `scikit-learn` + `sudachipy` for classification features. |
 | **Persistence** | Async `SQLAlchemy` (PostgreSQL) for run state, clusters, diagnostics (`recap_run_diagnostics`), and evidence (`recap_cluster_evidence`). |
 
 ## API & Endpoints
@@ -31,14 +31,17 @@ Handles the core "reduce" phase of the recap pipeline.
 -   **GET `/v1/runs/{run_id}`**: Poll for status (`running` -> `succeeded` | `partial` | `failed`). Returns clusters and representatives.
 
 ### 2. Classification Inference (`/v1/classify`)
-Provides synchronous (or async wrapper) inference for genre detection.
+Provides synchronous inference for genre detection.
 -   **POST `/v1/classify/classify`**: Classify a batch of texts.
     -   **Payload**: List of strings, optional `multi_label`, `top_k`.
-    -   **Logic**: Embeds text -> Concatenates TF-IDF (optional) -> Predicts Probabilities -> Applies Dynamic Thresholds.
+    -   **Logic**: Embeds text -> Concatenates TF-IDF (optional) -> Predicts Probabilities (LogisticRegression) -> Applies Dynamic Thresholds.
 
-### 3. Administration
--   **POST `/admin/warmup`**: Pre-loads models (Embedder, Tokenizers) into memory to prevent cold-start latency.
--   **POST `/admin/learning`**: Triggers Bayesian optimization for genre thresholds (if enabled).
+### 3. Administration (`/admin`)
+-   **POST `/admin/warmup`**: Pre-loads models (Embedder, Tokenizers) into memory.
+-   **POST `/admin/learning-jobs`**: Enqueues an async job to retrain genre thresholds via Bayesian optimization (Optuna).
+-   **GET `/admin/learning-jobs/{job_id}`**: Poll status of learning job.
+-   **POST `/admin/graph-jobs`**: Enqueues an async job to rebuild the `tag_label_graph` for genre refinement.
+-   **GET `/admin/graph-jobs/{job_id}`**: Poll status of graph build job.
 
 ## Workflows
 
@@ -58,10 +61,16 @@ flowchart TB
 
         Dedup --> ClusterStrategy{"Genre Strategy"}
         ClusterStrategy -->|Other| SubCluster["Sub-cluster 'Other'<br/>Iterative splitting"]
-        ClusterStrategy -->|Standard| Optimize["Optimize Clustering<br/>UMAP + HDBSCAN"]
+        ClusterStrategy -->|Standard| Optimize["Optimize Clustering<br/>(Optuna/Grid Search)"]
 
-        Optimize --> Merge["Merge Excessive Clusters<br/>If > 10, merge nearest centroids"]
-        SubCluster --> Merge
+        Optimize --> HDBSCAN["HDBSCAN + UMAP (Optional)"]
+        SubCluster --> HDBSCAN
+
+        HDBSCAN --> RecursiveCheck{Cluster > MaxToken?}
+        RecursiveCheck -->|Yes| Bisect["Recursive Split<br/>BisectingKMeans"]
+        RecursiveCheck -->|No| Merge
+
+        Bisect --> Merge["Merge Excessive Clusters"]
 
         Merge --> Topics["Extract Topics<br/>c-TF-IDF / BM25"]
 
@@ -91,7 +100,7 @@ flowchart LR
     Embed --> Concat["Feature Concatenation<br/>Embedding + TF-IDF"]
     TfIdf --> Concat
 
-    Concat --> Predict["Sklearn Predict Proba"]
+    Concat --> Predict["LogisticRegression Predict Proba"]
 
     Predict --> Thresholds["Apply Thresholds<br/>Dynamic per-genre"]
 
@@ -108,8 +117,8 @@ flowchart LR
 | `RECAP_SUBWORKER_PIPELINE_MODE` | `processpool` | Use `processpool` to isolate heavy ML tasks from the API server. |
 | `RECAP_SUBWORKER_WORKER_PROCESSES` | `2` | Number of concurrent ML processes allowed (memory intensive). |
 | `RECAP_SUBWORKER_MODEL_BACKEND` | `sentence-transformers` | Can be set to `onnx` for faster CPU inference if compatible models exist. |
-| `RECAP_SUBWORKER_MAX_TOTAL_SENTENCES` | `3000` | Hard cap on sentences per genre to prevent OOM. |
-| `RECAP_SUBWORKER_LEARNING_SCHEDULER_ENABLED` | `true` | Enables background learning optimization tasks. |
+| `RECAP_SUBWORKER_CLUSTERING_RECURSIVE_ENABLED` | `true` | Enable recursive splitting of large clusters using BisectingKMeans. |
+| `RECAP_SUBWORKER_USE_BAYES_OPT` | `false` | Enable Optuna-based hyperparameter tuning for clustering. |
 
 ## Observability
 -   **Metrics**: Prometheus at `/metrics`. Tracks `embed_seconds`, `hdbscan_seconds`, `dedup_removed`.
@@ -119,11 +128,15 @@ flowchart LR
     -   `dedup_pairs`: Number of sentences removed as duplicates.
 
 ## Development & Testing
--   **Unit Tests**: `uv run pytest tests/unit`
--   **Integration**: `uv run pytest tests/integration` (Requires DB)
--   **Linting**: `uv run ruff check`
 
-### Common Issues
-1.  **"Pipeline Timed Out"**: The job took longer than `RECAP_SUBWORKER_RUN_EXECUTION_TIMEOUT_SECONDS`. Increase timeout or reduce `MAX_TOTAL_SENTENCES`.
-2.  **"Connection Refused" (Worker)**: Subworker isn't ready. Check `/health/ready`.
-3.  **High Memory Usage**: Reduce `RECAP_SUBWORKER_WORKER_PROCESSES` or switch to a distilled embedding model.
+### Commands
+```bash
+# Run Unit Tests
+uv run pytest tests/unit
+
+# Run Integration Tests
+uv run pytest tests/integration
+
+# Check Code Quality
+uv run ruff check
+```
