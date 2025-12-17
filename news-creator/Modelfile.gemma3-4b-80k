@@ -1,0 +1,3 @@
+FROM gemma3:4b
+PARAMETER num_ctx 81920
+
