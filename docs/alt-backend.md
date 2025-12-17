@@ -23,7 +23,7 @@ _Last reviewed: December 18, 2025_
 ```mermaid
 flowchart LR
     Browser -->|"X-Alt-* headers"| AltBackend
-    AltBackend -->|Persistent SSE| SSE[/v1/sse/feeds/stats]
+    AltBackend -->|Persistent SSE| SSEEndpoint["/v1/sse/feeds/stats"]
     AltBackend -->|Queries & writes| Postgres[(PostgreSQL)]
     AltBackend -->|HTTP Search API| SearchIndexer[search-indexer]
     SearchIndexer -->|Index & Search| Meili[(Meilisearch)]
