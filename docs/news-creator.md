@@ -1,6 +1,6 @@
 # News Creator
 
-_Last reviewed: November 17, 2025_
+_Last reviewed: December 18, 2025_
 
 **Location:** `news-creator/app`
 
@@ -8,6 +8,7 @@ _Last reviewed: November 17, 2025_
 - FastAPI service (Python 3.11+) that synthesizes article summaries and recap blurbs via an Ollama LLM while preserving Clean Architecture boundaries.
 - Keeps handlers thin and testable; orchestrates summarization, recap summary generation, and a generic `/api/generate` passthrough for experimentation.
 - Addresses the `ollama` Compose profile, wired into the recap-worker pipeline and callable by ad-hoc clients via authenticated service tokens.
+- **Key Capability**: Automatically handles large inputs via **Map-Reduce** summarization and optimizes VRAM usage via **Model Bucket Routing** (16K/80K).
 
 ## Architecture & Flow
 | Layer | Components |
@@ -15,9 +16,9 @@ _Last reviewed: November 17, 2025_
 | Handler | `create_summarize_router`, `create_generate_router`, `create_recap_summary_router`, `create_health_router` (FastAPI routers with Pydantic schemas). |
 | Usecase | `SummarizeUsecase`, `RecapSummaryUsecase` (business logic, orchestrates prompts + metadata). |
 | Port | `LLMProviderPort`, `AuthPort`, `UserPreferencesPort` (ABCs for external dependencies). |
-| Gateway | `OllamaGateway` adapts ports to `driver` calls, serializes prompts/options. |
-| Driver | `ollama_driver.py` (aiohttp client, handles streaming, retries, metadata). |
-| Config | `NewsCreatorConfig` (env-driven values for service secret, LLM endpoint, prompt params). |
+| Gateway | `OllamaGateway` adapts ports to `driver` calls. Includes `ModelRouter` (selects 16K/80K model), `OOMDetector` (handles VRAM errors), and `FIFOSemaphore` (concurrency control). |
+| Driver | `ollama_driver.py` (aiohttp client, handles streaming, retries, precision timeouts, metadata). |
+| Config | `NewsCreatorConfig` (env-driven values for service secret, LLM endpoint, prompt params, thresholds). |
 
 ```mermaid
 flowchart TD
@@ -26,54 +27,65 @@ flowchart TD
     Recap[Recap Summary Handler]
     Usecase[Summarize/Recap Usecases]
     Gate[Ollama Gateway]
+    Router[Model Router]
     Driver[Ollama Driver]
     Ollama((Ollama Runtime))
 
     Summarize --> Usecase
     Recap --> Usecase
     Usecase --> Gate
+    Gate --> Router
     Gate --> Driver --> Ollama
     Generate --> Gate
 ```
 
+## Key Features
+
+### 1. Model Bucket Routing & Optimization
+To balance performance and VRAM usage on consumer GPUs (e.g., RTX 4060 Ti 16GB), the service uses a **Bucket System**:
+- **Standard (16K Context)**: Used for normal summaries and small inputs. Loaded into VRAM by default (warmup) or on-demand with 30m keep-alive.
+- **Large (80K Context)**: Used for massive recap tasks. Loaded on-demand with 15m keep-alive to free up resources quickly.
+- **Auto-Routing**: `ModelRouter` analyzes input size + options to select the most efficient model automatically.
+
+### 2. Map-Reduce Hierarchical Summarization
+For extremely large inputs (multiple article clusters) that exceed even the 80K context window:
+1.  **Map Phase**: Splits clusters into chunks (config: `HIERARCHICAL_CHUNK_MAX_CHARS`) and generates intermediate summaries in parallel.
+2.  **Reduce Phase**: Combines intermediate summaries into a final structured recap.
+3.  **Thresholds**: Triggered if input > `HIERARCHICAL_THRESHOLD_CHARS` (default ~50K tokens) or > `HIERARCHICAL_THRESHOLD_CLUSTERS`.
+
+### 3. Resilience & Zero-Trust
+- **OOM Recovery**: `OOMDetector` catches "Out of Memory" errors or timeouts and automatically retries with a smaller model or fallback strategy.
+- **Repetition Detection**: `repetition_detector` scans outputs for loops. If detected, retries with higher `repeat_penalty` and lower `temperature`.
+- **Zero-Trust Cleaning**: `html_cleaner` strips HTML tags before processing to prevent token waste and injection, even if input claims to be text.
+
 ## Handlers & Contracts
-- `POST /api/v1/summarize` (request `article_id`, `content`): `SummarizeUsecase` returns `summary`, `model`, token counts; errors map to 400/502/500 accordingly.
-- `POST /api/generate` forwards arbitrary prompts to `Gateway.generate` with optional `num_predict` overrides; response mimics Ollama schema (`model`, `response`, `done`, `total_duration`).
-- `POST /v1/summary/generate` accepts `RecapSummaryRequest`, uses the same Ollama gateway but reshapes evidence clusters, metadata, and ensures 502 on runtime failures.
-- `GET /v1/health` pings `OllamaGateway` readiness; router comes from `create_health_router`.
-- Lifespan (`asynccontextmanager`) initializes/cleans `OllamaGateway` session so `aiohttp` sessions reuse connections.
+- `POST /api/v1/summarize` (request `article_id`, `content`): `SummarizeUsecase` returns `summary`, `model`, token counts. Supports automatic fallback for short content.
+- `POST /api/generate` forwards arbitrary prompts to `Gateway.generate`.
+- `POST /v1/summary/generate`: accepts `RecapSummaryRequest`.
+    - Inputs: `clusters` (list of representative sentences) OR `genre_highlights`.
+    - Output: `RecapSummaryResponse` (Structured JSON with title, bullets, refs).
+    - Fallback: If LLM fails, constructs a fallback summary from top sentences.
+- `GET /v1/health`: Checks `OllamaGateway` readiness.
 
 ## Configuration & Environment
-- `SERVICE_SECRET` (required) guards recap/summarize endpoints; `AUTH_SERVICE_URL` points auth-hub for future extensions.
-- LLM settings: `LLM_SERVICE_URL`, `LLM_MODEL`, `LLM_TIMEOUT_SECONDS`, `LLM_KEEP_ALIVE_SECONDS`, `LLM_NUM_CTX`, `LLM_NUM_PREDICT`, `LLM_TOP_P`, `LLM_TOP_K`, `LLM_REPEAT_PENALTY`, `LLM_NUM_KEEP`, `LLM_STOP_TOKENS`.
-- Summary-specific knob: `SUMMARY_NUM_PREDICT`.
-- Config logs sanitized values to `logging` during startup.
+- **Core**: `SERVICE_SECRET`, `LLM_SERVICE_URL`.
+- **LLM Parameters**: `LLM_MODEL` (default base), `LLM_NUM_CTX` (default 16K), `LLM_TIMEOUT_SECONDS` (default 300s).
+- **Routing**:
+    - `MODEL_ROUTING_ENABLED` (true/false)
+    - `MODEL_16K_NAME`, `MODEL_80K_NAME` (actual Ollama model tags)
+    - `WARMUP_ENABLED` (preloads 16K model)
+- **Map-Reduce**:
+    - `HIERARCHICAL_THRESHOLD_CHARS`, `HIERARCHICAL_CHUNK_MAX_CHARS`.
+- **Sanitization**: `SUMMARY_NUM_PREDICT` (output limit), `REPETITION_THRESHOLD`.
 
 ## Integration & Data Flow
-- `DependencyContainer` in `main.py` wires `NewsCreatorConfig`, `OllamaGateway`, `SummarizeUsecase`, and `RecapSummaryUsecase`.
-- `OllamaGateway` uses `driver/ollama_driver.py` (aiohttp client) to send typed JSON to Ollama; the driver handles timeouts, status checks, and JSON decoding.
-- Recap worker depends on `/v1/summary/generate`; `news-creator` returns structured `RecapSummaryResponse` with `genre`, `evidence`, and `metadata`.
-- Generation endpoint can be used directly by developers for prototype prompts without touching recap payload shapes.
-- Sanitization helpers (`news_creator/domain/prompts.py`) centralize template text + safety filters.
-
-## Testing & Tooling
-- `uv run pytest` covers `tests/handler`, `tests/usecase`, `tests/gateway`, `tests/driver`, `tests/domain` (golden prompt datasets). Use `pytest-asyncio` + `AsyncMock`.
-- Golden datasets live under `tests/domain` and must be updated whenever prompt templates change.
-- `uv run ruff check`, `uv run mypy` ensure lint/type coverage; `uv run ruff format` standardizes style.
-- For new prompts, add deterministic tests that assert key metadata fields `model`, `prompt_tokens`, and `total_duration_ms`.
+- `DependencyContainer` in `main.py` wires all components.
+- `OllamaGateway` enforces concurrency via `OLLAMA_REQUEST_CONCURRENCY` (default 1) to prevent VRAM thrashing.
+- **Observability**: Structured logs track `token_per_second`, `load_duration`, and `prompt_eval_duration` (prefill speed).
 
 ## Operational Notes
-1. Start with `docker compose --profile ollama up news-creator` (Ollama runtime must be healthy).
-2. Fire a summarization request manually: `curl -X POST http://localhost:8001/api/v1/summarize -d '{"article_id":"t","content":"..."}'`.
-3. Monitor `ollama_gateway` latency logs; GPU contention manifests as slow `total_duration_ms`.
-4. Changing `NEWS_CREATOR_MODEL` requires redeploy + re-run golden tests.
-5. Recap worker expects `summary` + `genre` metadata from `/v1/summary/generate`; keep service secret in sync with the worker’s `service-token`.
-
-## Observability
-- Logging uses Python `logging` with fields `operation`, `model`, `prompt_tokens`, `response`, `total_duration_ms`.
-- Add new histograms (e.g., `ollama_inference_duration`) by extending `news_creator/handler` to emit instrumentation or hooking into `Prometheus` when ready.
-- The `generate` handler logs overrides so experiments can be traced.
-
-## LLM Notes
-- When asking for code changes, specify which layer to touch (handler/usecase/gateway/driver). Provide request/response schemas (Pydantic models in `news_creator/domain/models.py`).
-- Emphasize `OllamaGateway` for all LLM requests so authentication and retry policies stay centralized.
+1. **Startup**: `docker compose --profile ollama up news-creator`.
+2. **Warmup**: Service attempts to ping the 16K model on boot to load weights into VRAM.
+3. **Monitoring**: Watch logs for `ABNORMAL PROMPT SIZE` warnings or `Slow LLM generation` alerts.
+4. **VRAM Management**: The service aggressively manages `keep_alive` to ensure the 80K model unloads after use, preventing OOMs during subsequent standard tasks.
+5. **Testing**: `tests/domain` contains golden prompts. Use `pytest` to verify routing logic.
