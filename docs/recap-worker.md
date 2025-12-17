@@ -1,32 +1,31 @@
 # Recap Worker
 
-_Last updated: December 2025_
+_Last updated: December 18, 2025_
 
-**Location:** `recap-worker/recap-worker`
+**Location:** `recap-worker` (Crate: `recap-worker/recap-worker`)
 
 ## Role
 `recap-worker` is the **orchestrator and pipeline runner** for the Alt 7-day recap system. Written in Rust (2024 edition), it manages the end-to-end flow of generating weekly Japanese news recaps.
 
-Unlike earlier versions, it **delegates heavy ML tasks** (embedding generation, coarse classification, clustering) to `recap-subworker`, keeping the worker itself focused on high-throughput data processing, pipeline coordination, and persistence.
+It delegates **heavy ML tasks** (embedding generation, coarse classification, clustering) to `recap-subworker`, keeping the worker itself focused on high-throughput data processing, pipeline coordination, and persistence.
 
-It runs two parallel pipelines:
-1.  **7-Day Recap Pipeline:** The main batch process (daily at 04:00 JST).
-2.  **Morning Update Pipeline:** A lighter pipeline for daily article deduplication and grouping.
+**Pipelines:**
+1.  **7-Day Recap Pipeline:** The main batch process (runs daily at 04:00 JST).
+2.  **Morning Update Pipeline:** A lighter pipeline for daily article deduplication and grouping (Daemon currently **disabled** in `main.rs`, but logic exists).
 
 ## Service Snapshot
 
 | Layer | Responsibilities |
 | --- | --- |
-| **Control Plane** | Axum router exposing health checks, metrics (`/metrics`), manual triggers (`/v1/generate/recaps/7days`), and admin utilities (`/admin/genre-learning`, `/admin/jobs/retry`). |
+| **Control Plane** | Axum router exposing: <br>- **Ops**: `/health/ready`, `/metrics` (Prometheus) <br>- **Triggers**: `/v1/generate/recaps/7days` <br>- **Admin**: `/admin/jobs/retry`, `/admin/genre-learning` <br>- **Dashboard**: `/v1/dashboard/*` (Metrics, Overview, Logs, Jobs) <br>- **Eval**: `/v1/evaluation/*` (Genre classification stats) |
 | **Pipeline Core** | `src/pipeline/`: Modular stages for Fetch, Preprocess, Dedup, Genre, Select, Evidence, Dispatch, Persist. |
 | **Clients** | `src/clients/`: Strongly-typed HTTP clients for: <br>- **`recap-subworker`**: Coarse classification, clustering, graph refresh. <br>- **`news-creator`**: LLM summarization. <br>- **`alt-backend`**: Article fetching. <br>- **`tag-generator`**: Optional tag enrichment. |
-| **Classification** | **Remote Coarse**: Calls `recap-subworker` (`/v1/classify`) for initial genre assignment. <br>**Local Refine**: Optional Graph Label Propagation stage (`src/pipeline/genre_refine.rs`) using cached graph data to rescue low-confidence articles. |
+| **Classification** | **Remote Coarse**: Calls `recap-subworker` (`/v1/classify`) for initial genre assignment. <br>**Local Refine**: Optional Graph Label Propagation stage (`src/pipeline/genre_refine.rs`) using cached graph data. |
 | **Store** | `src/store/`: SQLx DAO managing `recap_jobs`, `recap_cluster_evidence`, `recap_genre_learning_results`, and `tag_label_graph` (cached from DB). |
-| **Observability** | Prometheus metrics (pipeline counters, latencies), OTLP tracing, and structured logging. |
 
 ## Pipeline Flow
 
-The 7-Day Recap Pipeline follows these stages:
+The 7-Day Recap Pipeline (`src/pipeline.rs`) follows these stages:
 
 ```mermaid
 flowchart TB
@@ -49,7 +48,7 @@ flowchart TB
 
     Dedup --> DedupDetails["Deduplicate Articles<br/>XXH3 hashing<br/>Sentence-level similarity"]
 
-    DedupDetails --> Genre[Genre Stage<br/>RemoteGenreStage + Refine]
+    DedupDetails --> Genre[Genre Stage<br/>TwoStageGenreStage]
 
     Genre --> RemoteCoarse["Remote Coarse Pass<br/>(Call recap-subworker /v1/classify)"]
 
@@ -82,7 +81,6 @@ flowchart TB
     style Phase2 fill:#f8d7da
 ```
 
-
 ### 1. Fetch (`fetch.rs`)
 *   Pulls articles from `alt-backend` for the configured window (default 7 days).
 *   Optionally enriches with tags from `tag-generator`.
@@ -92,7 +90,7 @@ flowchart TB
 *   Cleans HTML (`ammonia`, `html2text`).
 *   Normalizes Unicode (`nfkc`).
 *   Tokenizes (Lindera IPADIC) and extracts tag signals.
-*   Executed in parallel using `rayon` or `spawn_blocking`.
+*   Executed in parallel using `rayon`.
 
 ### 3. Dedup (`dedup.rs`)
 *   Filters near-duplicates using XXH3 hashing and sentence-level comparison.
@@ -101,49 +99,17 @@ flowchart TB
 ### 4. Genre Assignment (`genre.rs`, `genre_remote.rs`)
 The genre classification is a hybrid **Remote + Local** process:
 
-```mermaid
-flowchart TB
-    Article[Deduplicated Articles<br/>Batch] --> Prepare[Prepare Texts<br/>Title + Top Sentences]
-
-    Prepare --> RemoteCall["Call recap-subworker<br/>POST /v1/classify"]
-
-    RemoteCall --> SubworkerLogic[["Subworker Logic<br/>1. Generate Embeddings<br/>2. Logistic Regression<br/>3. Return Probabilities"]]
-
-    SubworkerLogic --> MapScores[Map Scores to Genres]
-
-    MapScores --> ThresholdCheck{Confidence >=<br/>Threshold?}
-
-    ThresholdCheck -->|Yes| CoarseSuccess[Coarse Assigned]
-    ThresholdCheck -->|No| RefineCheck{Refine<br/>Enabled?}
-
-    RefineCheck -->|No| CoarseFallback[Use Best Guess]
-    RefineCheck -->|Yes| LocalRefine[Local Graph Refine]
-
-    LocalRefine --> LoadGraph[Load tag_label_graph<br/>from Cache/DB]
-    LoadGraph --> LabelProp["Label Propagation<br/>(sprs matrix ops)"]
-    LabelProp --> FinalDecision[Final Genre Assignment]
-
-    CoarseSuccess --> FinalDecision
-    CoarseFallback --> FinalDecision
-
-    style Article fill:#e1f5ff
-    style RemoteCall fill:#f8d7da
-    style SubworkerLogic fill:#f8d7da
-    style LocalRefine fill:#fff3cd
-    style FinalDecision fill:#d4edda
-```
-
-*   **Step 1: Remote Coarse (`RemoteGenreStage`)**: Sends article text batches to `recap-subworker`. The subworker uses a GPU-accelerated embedding model and a Logistic Regression classifier to return genre probabilities.
-*   **Step 2: Local Refine (Optional)**: If the primary genre's confidence is below `GENRE_CLASSIFIER_THRESHOLD`, the worker runs a local Graph Label Propagation using the cached `tag_label_graph` to rescue the article based on its tags.
+1.  **Remote Coarse (`RemoteGenreStage`)**: Sends article text batches to `recap-subworker`. The subworker uses a GPU-accelerated embedding model and a Logistic Regression classifier to return genre probabilities.
+2.  **Local Refine (Optional)**: If the primary genre's confidence is below `GENRE_CLASSIFIER_THRESHOLD`, the worker runs a local Graph Label Propagation using the cached `tag_label_graph` to rescue the article based on its tags.
 
 ### 5. Selection (`select.rs`)
 *   Trims articles per genre to meet the target count (default ~20).
 *   Ensures minimum document counts per genre.
-*   Can use `embedding.rs` (if enabled) for coherence filtering, though heavy clustering is deferred.
+*   Can use `embedding.rs` (if enabled) for coherence filtering.
 
 ### 6. Evidence Assembly (`evidence.rs`)
 *   Bundles selected articles into an `EvidenceBundle`.
-*   Constructs the payload for clustering, including sentences, titles, and metadata.
+*   Constructs the payload for clustering.
 
 ### 7. Dispatch (`dispatch.rs`)
 *   **Clustering**: Sends the `EvidenceBundle` to `recap-subworker` (`/v1/cluster`). The subworker performs HDBSCAN/K-Means clustering and returns sorted clusters with representatives.
@@ -151,7 +117,7 @@ flowchart TB
 
 ### 8. Persist (`persist.rs`)
 *   Saves the final `Recap` and `RecapGenre` results to `recap_db`.
-*   Stores cluster evidence in `recap_cluster_evidence` for transparency and frontend display.
+*   Stores cluster evidence in `recap_cluster_evidence` for transparency.
 
 ## Data Flow Overview
 
@@ -210,12 +176,16 @@ Configuration is handled via `src/config.rs` (env vars) and dynamic DB overrides
 ## Development & Testing
 
 ### Commands
-*   **Run Unit Tests**: `cargo test -p recap-worker`
-*   **Run Specific Test**: `cargo test -p recap-worker -- tests::pipeline_test`
-*   **Check Health**: `curl http://localhost:9005/health/ready`
+```bash
+# Run Unit Tests
+cargo -C recap-worker test
+
+# Check Health
+curl http://localhost:9005/health/ready
+```
 
 ### Replay Tools
-*   **`replay_genre_pipeline`**: A binary (`src/bin/replay_genre_pipeline.rs`) allowed to re-run the genre assignment stage using local datasets or DB data. Useful for tuning refinement logic without running the full pipeline.
+*   **`replay_genre_pipeline`**: A binary (`src/bin/replay_genre_pipeline.rs`) allowed to re-run the genre assignment stage using local datasets or DB data.
     ```bash
     cargo run --bin replay_genre_pipeline -- --dataset path/to/dataset.json --dsn $RECAP_DB_DSN
     ```
