@@ -278,7 +278,15 @@ services:
     build:
       context: ./news-creator
       dockerfile: Dockerfile.creator
-    runtime: nvidia
+    # GPU access: use both 'gpus: all' (Compose 2.30+) and deploy.resources for compatibility
+    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
@@ -288,7 +296,7 @@ services:
       - LLM_SERVICE_URL=${LLM_SERVICE_URL:-http://127.0.0.1:11435}
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
-      - OLLAMA_REQUEST_CONCURRENCY=${OLLAMA_REQUEST_CONCURRENCY:-2}
+      - OLLAMA_REQUEST_CONCURRENCY=${OLLAMA_REQUEST_CONCURRENCY:-1}
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
     secrets:
       - service_secret
