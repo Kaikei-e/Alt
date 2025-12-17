@@ -1,81 +1,113 @@
 # Alt Backend
 
-_Last reviewed: November 17, 2025_
+_Last reviewed: December 18, 2025_
 
 **Location:** `alt-backend/app`
 
 ## Role
-- Primary Go 1.24+ HTTP API that exposes feeds/articles/recaps/SSE, orchestrates background recap jobs, and keeps Clean Architecture boundaries between REST → Usecase → Port → Gateway → Driver.
-- Gatekeeper for rich features such as SSE fan-out, service-to-service recap ingestion, search synchronization, and configurable DOS protection.
-- Outbound requests go through `sidecar-proxy`, which enforces TLS, allowlists, and shared timeouts.
+- **Core API**: Primary Go 1.24+ HTTP API that exposes endpoints for feeds, articles, recaps, SSE, and system dashboards.
+- **Orchestrator**: Manages background feed collection, service-to-service communication (e.g., with `recap-worker`), and search operations via `search-indexer`.
+- **Gatekeeper**: Handles authentication, customizable DOS protection, SSE fan-out, and content fetching security (SSRF protection).
+- **Architecture**: Follows Clean Architecture principles (`REST` → `Usecase` → `Port` → `Gateway` → `Driver`) to maintain specific boundaries and testability.
 
 ## Architecture Snapshot
+
 | Layer | Notes |
 | --- | --- |
-| REST handlers (`rest/routes.go`, `rest/*`) | Ten ordered middlewares: request ID → recovery → secure headers → CORS → DOS guard → timeout (skips `/sse/`) → validation → logging → gzip. Routes split into feeds, articles, SSE, images, recap, security. |
-| Usecases / Jobs (`usecase/*`, `job/hourly_job.go`, `job/daily_scraping_policy_job.go`) | Each usecase exposes constructors that accept port interfaces; `job.HourlyJobRunner` triggers hourly recap refresh + search sync; `job.DailyScrapingPolicyJobRunner` refreshes robots.txt and scraping policies every 24 hours. |
-| Ports → Gateways | Contracts live under `port/*`; gateways translate domain entities to Postgres/Meilisearch DTOs before hitting drivers. |
-| Drivers | `driver/alt_db` connects to Postgres, `driver/search_indexer` calls Meilisearch, `utils/secure_http_client.go` wraps outbound requests via `sidecar-proxy`. |
-| DI | `di/container.go` wires repositories, services, schedulers, and middleware helpers; reuse the same container in jobs to keep lifecycle consistent. |
+| **REST Handlers** (`rest/*.go`) | **Middlewares**: Request ID → Recovery → Secure Headers (CSP, HSTS) → CORS → DOS Guard → Timeout (skips `/sse/`) → Validation → Logging → Gzip.<br>**Route Groups**: `/v1` (Public/Protected), `/v1/admin` (Internal/Admin), `/v1/dashboard` (System State). |
+| **Usecases** (`usecase/*`) | Business logic layer. <br>- **Feed Logic**: `FetchSingleFeed`, `FetchFeedsList`, `RegisterFeeds`.<br>- **Recap Logic**: `RecapUsecase` (7-day summaries), `RecapArticlesUsecase`.<br>- **Jobs**: `job.HourlyJobRunner` (RSS Collection), `job.DailyScrapingPolicyJobRunner` (Robots.txt refresh). |
+| **Ports & Gateways** (`port/*`, `gateway/*`) | Interface adapters. Gateways convert domain entities to/from specific driver implementations (Postgres DTOs, external API formats). |
+| **Drivers** (`driver/*`) | - `alt_db`: Connects to PostgreSQL 17 via `pgx/v5` pool.<br>- `search_indexer`: Connects to `search-indexer` service via HTTP.<br>- `recap_job_driver`: Connects to `recap-worker`.<br>- `utils/secure_http_client.go`: Wraps outbound requests (SSRF protection). |
+| **Dependency Injection** (`di/container.go`) | centralized dependency wiring (`ApplicationComponents`). Connects repositories, services, and middlewares. |
 
 ```mermaid
 flowchart LR
     Browser -->|"X-Alt-* headers"| AltBackend
-    AltBackend -->|Persistent SSE| SSE[/v1/sse/feeds/stats/keepalive/]
+    AltBackend -->|Persistent SSE| SSE[/v1/sse/feeds/stats]
     AltBackend -->|Queries & writes| Postgres[(PostgreSQL)]
-    AltBackend -->|200-doc batches| Meili[(Meilisearch `articles` index)]
+    AltBackend -->|HTTP Search API| SearchIndexer[search-indexer]
+    SearchIndexer -->|Index & Search| Meili[(Meilisearch)]
     AltBackend -->|Recap worker sync| RecapWorker[recap-worker]
-    AltBackend -->|Outbound feeds/API| SidecarProxy[(sidecar-proxy)]
+    AltBackend -->|Outbound feeds/API| External[External Web]
     RecapWorker -->|LLM summaries| NewsCreator[news-creator]
     RecapWorker --> Postgres
-    NewsCreator --> RecapWorker
 ```
 
-## Routes, Streaming, and Recap Contracts
-- **Public APIs**:
-  - `GET /v1/articles/*`, `POST /v1/feeds/*`, `GET /v1/search`, `GET /v1/health`, `/security/csp-report`.
-  - `/v1/sse/feeds/stats` keeps a long-lived SSE connection: heartbeat every 10s, tickers every `SERVER_SSE_INTERVAL`, and flushes `feedAmount`, `unsummarizedFeedAmount`, and `articleAmount` metrics via `UnsummarizedFeedStatsSummary`.
-- **Recap endpoints**:
-  - `POST /v1/recap/articles` (service auth via `middleware_custom.NewServiceAuthMiddleware`, `X-Service-Token` + env `ALT_BACKEND_SERVICE_TOKEN`). Validates `from`/`to` (RFC3339), optional `page`, `page_size`, `fields`, `lang`. Shared `recapRateLimiter` emits `X-RateLimit-*` headers and rejects bursts with `Retry-After`.
-  - `GET /v1/recap/7days` (public) uses `RecapUsecase` to return `RecapSummary` + `EvidenceLinks` shaped by domain models.
-- **Middleware**: DOS protection whitelists `/v1/health`, `/v1/sse/*`, `/security/csp-report`; `middleware_custom.ValidationMiddleware` ensures request payloads stay tidy.
+## Routes & API Surface
+
+**Location**: `rest/routes.go` delegates to specific handlers.
+
+### Public & User-Facing APIs (`/v1`)
+- **Feeds** (`/v1/feeds`):
+  - `GET /fetch/single`, `/fetch/list`, `/fetch/limit/:limit`, `/fetch/page/:page`: Retrieve news feeds.
+  - `GET /count/unreads`, `/fetch/cursor`: Unread counts and cursor-based pagination.
+  - `POST /read`, `/register/favorite`: Mark read, manage favorites.
+  - `POST /search`, `/tags`: Search feeds and tags.
+  - `GET /stats`: Feed processing statistics.
+- **Recap** (`/v1/recap`):
+  - `GET /7days`: Weekly recap summary (public).
+  - `GET /articles`: Internal use for fetching articles by date range (Service Protected).
+- **Articles** (`/v1/articles`):
+  - `GET /fetch/content`: Fetch regular article content (cache/DB check first).
+  - `GET /fetch/cursor`: List articles with pagination.
+  - `POST /archive`: Archive articles.
+  - `GET /search`: Search indexed articles (via `search-indexer`).
+- **Images** (`/v1/images`):
+  - `POST /fetch`: Proxy for fetching images to avoid CORS/Mixed Content issues.
+- **Security**:
+  - `GET /health`, `/csrf-token`.
+  - `POST /security/csp-report`.
+- **RSS Feed Links** (`/v1/rss-feed-link`):
+  - `POST /register`, `GET /list`, `DELETE /:id`.
+
+### Dashboard & System APIs (`/v1/dashboard`)
+Provide visibility into system internal state.
+- `GET /metrics`: Prometheus-style or internal metrics.
+- `GET /overview`: High-level system health.
+- `GET /logs`: Access recent application logs.
+- `GET /jobs`: Status of background jobs (RSS scraping).
+- `GET /recap_jobs`: Status of heavy recap generation jobs.
+
+### Admin/Operations (`/v1/admin`)
+- **Scraping Domains**:
+  - `GET /scraping-domains`: List configured domains.
+  - `POST /scraping-domains/:id/refresh-robots`: Force refresh of robots.txt policy.
+
+### SSE (Server-Sent Events)
+- `/v1/sse/feeds/stats`: Long-lived connection sending real-time updates on feed processing counts (`feedAmount`, `unsummarizedFeedAmount`, `articleAmount`).
+
+## Background Jobs
+Defined in `job/` package and started in `main.go`.
+
+1.  **Hourly RSS Collection** (`job.HourlyJobRunner`)
+    - Interval: 1 hour.
+    - Logic: Fetches registered RSS feed URLs from DB -> `CollectMultipleFeeds` (concurrent fetch with rate limiting) -> Register new items.
+2.  **Daily Policy Refresh** (`job.DailyScrapingPolicyJobRunner`)
+    - Interval: 24 hours.
+    - Logic: Refreshes `robots.txt` rules and scraping policies for all tracked domains to ensure compliance.
 
 ## Integrations & Data Flow
-- **Postgres driver** (`driver/alt_db`) wraps `pgx/v5` pools with prepared statements; domain invariants guard duplicates (e.g., `domain/feed_reading_status.go`).
-- **Meilisearch sync**: Gateways notify `driver/search_indexer` after article mutations; `JobRunner` triggers search-indexer refreshes during the hourly job.
-- **Recap orchestration**: `RecapGateway` (`RECAP_WORKER_URL`) talks to `/v1/recap/7days`, converts responses into domain structs, and surfaces them through `RecapHandler` + `recap_articles_usecase`.
-- **SSE**: `/v1/sse/feeds/stats` uses `container.FeedAmountUsecase`, `UnsummarizedArticlesCountUsecase`, `TotalArticlesCountUsecase`; ticker/heartbeat ensures watchers stay connected while `flusher.Flush()` keeps SSE live.
-- **Security**: Service tokens, rate limit headers, and fallback to `handleValidationError` keep responses consistent.
 
-## Configuration / Environment
-- `ServerConfig`: `SERVER_PORT`, timeouts, `SERVER_SSE_INTERVAL`.
-- `RecapConfig`: `RECAP_DEFAULT_PAGE_SIZE`, `RECAP_RATE_LIMIT_{RPS,BURST}`, `RECAP_MAX_RANGE_DAYS`, `RECAP_MAX_ARTICLE_BYTES`.
-- `RateLimitConfig`: `RATE_LIMIT_EXTERNAL_API_INTERVAL` (≥5s between host hits), `DOS_PROTECTION_*`.
-- `PreProcessor`: `PRE_PROCESSOR_URL` used for health checks.
-- `Database`: `DB_*` connection pool settings plus compatibility fields (`ALT_DB_DSN`, `SEARCH_INDEXER_HOST`).
-- `ScrapingPolicyJob`: `job.DailyScrapingPolicyJobRunner` uses a fixed 24-hour interval (`ScrapingPolicyRefreshInterval`). Future: consider `SCRAPING_POLICY_REFRESH_INTERVAL` environment variable for customization.
-- Logging/middleware uses `LOG_LEVEL`, `LOG_FORMAT`, while `sidecar-proxy` settings (`SIDECAR_PROXY_BASE_URL`) govern outbound fetches.
+1.  **PostgreSQL**:
+    - Primary persistence for Articles, Feeds, Users, and operational state.
+    - Used by `alt-backend`, `recap-worker`, `tag-generator`.
+2.  **Search Indexer**:
+    - `alt-backend` does **not** connect to Meilisearch directly.
+    - It delegates search and indexing requests to the `search-indexer` service (Port 9300) via `driver/search_indexer/api.go`.
+3.  **Recap System**:
+    - `alt-backend` exposes `POST /v1/recap/articles` (used by `recap-worker` to ingest data).
+    - `alt-backend` fetches recap summaries via `recap-db` or triggers jobs via `recap-worker`.
+    - **Service Tokens**: Service-to-service communication is secured via Shared Secret tokens (`X-Service-Token`).
 
-## Testing & Tooling
-- `go test ./...` (table-driven + `pgxmock`/`gomock` fakes).
-- SSE handler tests cover tickers and heartbeats via `httptest` helpers.
-- Run `make generate-mocks` after altering interfaces.
-- Optional `golangci-lint run` for linting and `go test ./job -run TestHourlyJob` to cover orchestration.
+## Configuration
+Managed via `config` package and environment variables.
+- **Server**: `SERVER_PORT` (default 9000), `SERVER_ReadTimeout`, `SERVER_WriteTimeout`.
+- **Database**: `DB_HOST`, `DB_PORT`, `DB_USER` (Postgres).
+- **Recap**: `RECAP_RATE_LIMIT_RPS`, `RECAP_WORKER_URL`.
+- **Auth**: `AUTH_SHARED_SECRET` for service communication.
+- **Cache**: `CACHE_FEED_EXPIRY`, `CACHE_SEARCH_EXPIRY`.
 
 ## Operational Notes
-1. Health check: `curl http://localhost:9000/v1/health`.
-2. Jobs:
-   - `job/hourly_job.go` reruns recap refresh; if Recap data stalls, restart `go run ./cmd/job_runner`.
-   - `job/daily_scraping_policy_job.go` refreshes robots.txt and scraping policies for all domains every 24 hours. On startup, it first calls `EnsureDomainsFromFeedLinks` to extract unique domains from `feed_links` table (grouped by domain) and create missing entries in `scraping_domains`, then calls `RefreshAllRobotsTxt` to refresh robots.txt for all domains in batches of 50. Subsequent runs (every 24h) only refresh robots.txt.
-3. Schema drift: `make db-migrate` plus driver tests to ensure new columns propagate.
-4. SSE load: watch `sse` logs for throttle reasons; large fan-outs go through rate-limiter and `SetRateLimitHeaders`.
-
-## Observability & Logs
-- Structured `log/slog` events include `route`, `tenant_id`, `request_id`, `operation` fields.
-- Emit histograms via `utils/logger/metrics.go` for endpoints like `feeds.register.success`, `articles.fetch.duration_ms`, `recap_articles`.
-- Feature flags guard SSE and recap pushes (`SSE_RECAP_ENABLED=false` to quiet streaming).
-
-## LLM Notes
-- Mention middleware order (RequestID → Recovery → Secure → CORS → DOS → Timeout → Validation → Log → Gzip) when generating new handlers.
-- Provide DTO names (`domain/recap.go`, `rest/recap_handlers.go`) so schemas stay stable.
-- Clarify if work occurs inside REST handler path or job (`job/hourly_job.go` uses the same DI container).
+1.  **Health Check**: `curl http://localhost:9000/v1/health`
+2.  **Development**: Run `make build` within `alt-backend`. Dockerfile uses standard Go build.
+3.  **Logs**: Structured text/JSON logs via `slog` (Go 1.21+).
