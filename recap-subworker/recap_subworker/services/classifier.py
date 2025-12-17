@@ -73,9 +73,11 @@ class GenreClassifierService:
                     self.model = joblib.load(self.model_path)
 
                     # Patch for sklearn version incompatibility (1.8.0 vs 1.7.x)
-                    if not hasattr(self.model, 'multi_class'):
-                        logger.warning("Patching missing 'multi_class' attribute on LogisticRegression")
-                        self.model.multi_class = 'ovr'  # Assuming OVR based on training script
+                    # Patch for sklearn version incompatibility (1.8.0 vs 1.7.x)
+                    # Force patch because hasattr check seemed unreliable in previous run??
+                    print("DEBUG: Force patching multi_class attribute")
+                    self.model.multi_class = 'ovr'
+                    logger.warning("Patched 'multi_class' attribute on LogisticRegression")
 
                     if self.tfidf_path.exists():
                         self.tfidf = joblib.load(self.tfidf_path)
