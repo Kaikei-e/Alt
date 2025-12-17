@@ -23,8 +23,8 @@ _Last reviewed: December 18, 2025_
 
 ```mermaid
 flowchart TD
-    Browser -->|/sv/*| Frontend[alt-frontend-sv<br/>SvelteKit /sv]
-    Frontend -- "Cookie" --> AuthHub[auth-hub<br/>(Token Exchange)]
+    Browser -->|/sv/*| Frontend["alt-frontend-sv\nSvelteKit /sv"]
+    Frontend -- "Cookie" --> AuthHub["auth-hub\n(Token Exchange)"]
     AuthHub -- "X-Alt-Backend-Token" --> Frontend
     Frontend -- "Bearer JWT" --> Backend[alt-backend REST]
     Backend -- "SSE Stream" --> Frontend
