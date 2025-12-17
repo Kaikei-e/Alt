@@ -118,8 +118,11 @@ All configuration is done via environment variables:
 |----------|-------------|---------|
 | `LLM_SERVICE_URL` | Ollama service URL | `http://localhost:11434` |
 | `LLM_MODEL` | Model name | `gemma3:4b` |
-| `LLM_TIMEOUT_SECONDS` | Request timeout | `60` |
-| `LLM_KEEP_ALIVE_SECONDS` | Model keep-alive | `-1` (forever) |
+| `LLM_TIMEOUT_SECONDS` | Request timeout | `300` (5 minutes) |
+| `LLM_KEEP_ALIVE_SECONDS` | Model keep-alive (fallback for unknown models) | `-1` (forever) |
+| `LLM_KEEP_ALIVE_8K` | Keep-alive for 8K model (always loaded) | `24h` |
+| `LLM_KEEP_ALIVE_16K` | Keep-alive for 16K model (on-demand) | `30m` |
+| `LLM_KEEP_ALIVE_80K` | Keep-alive for 80K model (on-demand) | `15m` |
 
 ### LLM Parameters
 
@@ -257,7 +260,7 @@ cat > .env << EOF
 SERVICE_SECRET=$(openssl rand -hex 32)
 LLM_SERVICE_URL=http://ollama-service:11434
 LLM_MODEL=gemma3:4b
-LLM_TIMEOUT_SECONDS=120
+LLM_TIMEOUT_SECONDS=300
 AUTH_SERVICE_URL=http://auth-service:8080
 EOF
 

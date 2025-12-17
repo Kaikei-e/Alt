@@ -268,7 +268,7 @@ AUTH_SERVICE_URL=http://auth-service:8080
 
 ### Global Request Queue
 
-The `OllamaGateway` implements a global request queue using `asyncio.Semaphore` to prevent Ollama from being overloaded by concurrent requests from multiple services (e.g., `recap-worker`, `pre-processor`).
+The `OllamaGateway` implements a global request queue using `FIFOSemaphore` (a FIFO-guaranteed semaphore) to prevent Ollama from being overloaded by concurrent requests from multiple services (e.g., `recap-worker`, `pre-processor`).
 
 **Configuration**:
 - `OLLAMA_REQUEST_CONCURRENCY`: Maximum number of concurrent requests to Ollama (default: `1`)
@@ -276,15 +276,21 @@ The `OllamaGateway` implements a global request queue using `asyncio.Semaphore` 
 - When set to a higher value, that many requests can be processed in parallel
 
 **How it works**:
-1. All requests to `OllamaGateway.generate()` acquire the semaphore before calling the Ollama driver
-2. If the semaphore is at capacity, requests wait in the queue
-3. Once a request completes, the next queued request is processed
-4. This ensures that regardless of which service sends requests, they are all queued at the gateway level
+1. All requests to `OllamaGateway.generate()` acquire the FIFO semaphore before calling the Ollama driver
+2. If the semaphore is at capacity, requests wait in a FIFO (First In First Out) queue
+3. Once a request completes, the next queued request is processed in strict FIFO order
+4. This ensures that regardless of which service sends requests, they are all queued at the gateway level and processed in the order they arrive
+
+**FIFO Guarantee**:
+- The implementation uses a custom `FIFOSemaphore` class that guarantees requests are processed in the order they arrive
+- This ensures fairness and predictability in request processing
+- Unlike Python's standard `asyncio.Semaphore`, which doesn't guarantee FIFO order, our implementation uses an `asyncio.Queue` to maintain strict ordering
 
 **Benefits**:
 - Prevents 503 errors (Service Unavailable) from Ollama
 - Works across all services that use `news-creator`
 - Configurable concurrency allows tuning based on Ollama's capacity
+- FIFO ordering ensures fair and predictable request processing
 
 ## Development Workflow
 
