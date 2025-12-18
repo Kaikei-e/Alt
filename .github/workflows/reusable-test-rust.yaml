@@ -76,6 +76,12 @@ jobs:
           ACTIONS_STEP_DEBUG: false
         continue-on-error: true
 
+      - name: Ensure target directory exists
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # rustc が dep-info (.d) を書き込むディレクトリが存在しない場合に備えて事前作成しておく
+          mkdir -p target/release/deps
+
       - name: Build (release)
         working-directory: ${{ inputs.working-directory }}
         run: |
@@ -109,7 +115,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           cargo tarpaulin --out Xml --verbose
-        continue-on-error: true  # カバレッジが失敗してもビルドは成功とする
+        continue-on-error: true # カバレッジが失敗してもビルドは成功とする
 
       - name: Upload coverage to Codecov
         if: inputs.upload-coverage && success()
