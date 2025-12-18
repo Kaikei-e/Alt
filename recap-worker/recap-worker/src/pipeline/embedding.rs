@@ -46,7 +46,6 @@ impl EmbeddingService {
         })
     }
 
-
     /// Generate a deterministic fallback embedding using MD5 hashing.
     fn fallback_embedding(text: &str) -> Vec<f32> {
         let digest = md5::compute(text);
