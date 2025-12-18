@@ -344,7 +344,8 @@ class TagInserter:
                 )
 
                 # Step 1: Get feed_id for each article and group tags by feed_id
-                feed_tag_groups = {}
+                feed_tag_groups: dict[Any, set[str]] = {}
+                article_feed_map: dict[str, Any] = {}
                 skipped_articles = []
                 for article_data in valid_article_tags:
                     article_id = article_data["article_id"]
@@ -383,6 +384,8 @@ class TagInserter:
                             )
 
                     if feed_id:
+                        # Remember mapping for later relationship insertion
+                        article_feed_map[article_id] = feed_id
                         if feed_id not in feed_tag_groups:
                             feed_tag_groups[feed_id] = set()
                         feed_tag_groups[feed_id].update(article_data["tags"])
@@ -404,19 +407,11 @@ class TagInserter:
 
                 # Step 2: Insert tags for each feed_id with confidences
                 for feed_id, tags in feed_tag_groups.items():
-                    # Collect confidences for tags in this feed
+                    # Collect confidences for tags in this feed using the precomputed map
                     feed_tag_confidences: dict[str, float] = {}
                     for article_data in valid_article_tags:
                         article_id = article_data["article_id"]
-                        # Get feed_id for this article
-                        cursor.execute(
-                            "SELECT feed_id FROM articles WHERE id = %s::uuid",
-                            (article_id,),
-                        )
-                        result = cursor.fetchone()
-                        article_feed_id = result[0] if result else None
-
-                        if article_feed_id == feed_id:
+                        if article_feed_map.get(article_id) == feed_id:
                             article_tag_confidences = article_data.get("tag_confidences", {})
                             if article_tag_confidences:
                                 feed_tag_confidences.update(article_tag_confidences)
@@ -440,35 +435,8 @@ class TagInserter:
                     article_id = article_data["article_id"]
                     article_tags_list = article_data["tags"]
 
-                    # Get feed_id for this article to find the correct tag_id_map
-                    cursor.execute(
-                        "SELECT feed_id, url FROM articles WHERE id = %s::uuid",
-                        (article_id,),
-                    )
-                    result = cursor.fetchone()
-                    feed_id = None
-                    article_url = None
-
-                    if result:
-                        feed_id = result[0]
-                        article_url = result[1]
-
-                    # If feed_id is NULL, try to get it from article URL
-                    if not feed_id and article_url:
-                        cursor.execute(
-                            """
-                            SELECT id
-                            FROM feeds
-                            WHERE link = %s
-                            ORDER BY created_at DESC, id DESC
-                            LIMIT 1
-                            """,
-                            (article_url,),
-                        )
-                        feed_result = cursor.fetchone()
-                        if feed_result:
-                            feed_id = feed_result[0]
-
+                    # Lookup feed_id from previously computed mapping
+                    feed_id = article_feed_map.get(article_id)
                     if feed_id:
                         tag_id_map = all_tag_id_maps.get(feed_id, {})
                         for tag in article_tags_list:

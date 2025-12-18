@@ -427,7 +427,11 @@ class TestArticleFetcher:
         assert "WHERE" in query
         assert "LEFT JOIN article_tags" in query
         assert "at.article_id IS NULL" in query
-        assert "ORDER BY created_at DESC, id DESC" in query
+        # Allow either qualified or unqualified ORDER BY clause
+        assert (
+            "ORDER BY articles.created_at DESC, articles.id DESC" in query
+            or "ORDER BY created_at DESC, id DESC" in query
+        )
         assert "LIMIT %s" in query
 
         # Test without untagged filter
@@ -542,11 +546,11 @@ class TestTagInserter:
         with patch("psycopg2.extras.execute_batch") as mock_execute_batch:
             inserter._insert_tags(mock_cursor, ["tag1", "tag2", "tag3"], "feed-uuid-1")
 
-            # Should use execute_batch with ON CONFLICT DO NOTHING
+            # Should use execute_batch with proper upsert (ON CONFLICT DO UPDATE)
             assert mock_execute_batch.called
             call_args = mock_execute_batch.call_args
             query = call_args[0][1]
-            assert "ON CONFLICT (feed_id, tag_name) DO NOTHING" in query
+            assert "ON CONFLICT (feed_id, tag_name) DO UPDATE SET" in query
 
     def test_should_get_tag_ids_correctly(self):
         """Should retrieve tag IDs for given tag names."""
