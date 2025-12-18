@@ -141,14 +141,14 @@ func TestOAuth2Client_HTTPTransportConfiguration(t *testing.T) {
 
 	// Verify transport configuration
 	assert.Nil(t, transport.Proxy, "Proxy should be explicitly disabled")
-	assert.Equal(t, 10*time.Second, transport.TLSHandshakeTimeout)
-	assert.Equal(t, 30*time.Second, transport.ResponseHeaderTimeout)
+	assert.Equal(t, 15*time.Second, transport.TLSHandshakeTimeout)
+	assert.Equal(t, 60*time.Second, transport.ResponseHeaderTimeout)
 	assert.Equal(t, 90*time.Second, transport.IdleConnTimeout)
 	assert.Equal(t, 10, transport.MaxIdleConns)
 	assert.Equal(t, 2, transport.MaxIdleConnsPerHost)
 
 	// Verify client timeout
-	assert.Equal(t, 60*time.Second, client.httpClient.Timeout)
+	assert.Equal(t, 120*time.Second, client.httpClient.Timeout)
 }
 
 // TestOAuth2Client_WithProxyConfiguration tests proxy configuration with mock environment
@@ -171,7 +171,7 @@ func TestOAuth2Client_WithProxyConfiguration(t *testing.T) {
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"access_token":  "direct_token",
-			"token_type":    "Bearer", 
+			"token_type":    "Bearer",
 			"expires_in":    3600,
 			"refresh_token": "new_refresh",
 			"scope":         "read",
@@ -183,7 +183,7 @@ func TestOAuth2Client_WithProxyConfiguration(t *testing.T) {
 
 	// Test with proxy environment variable set
 	t.Setenv("HTTPS_PROXY", proxyServer.URL)
-	
+
 	var logOutput strings.Builder
 	logger := slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
@@ -214,13 +214,13 @@ func TestOAuth2Client_WithProxyConfiguration(t *testing.T) {
 
 // TestOAuth2Client_ProxyFallbackToDirect tests fallback to direct connection when proxy fails
 func TestOAuth2Client_ProxyFallbackToDirect(t *testing.T) {
-	// Create target server that works directly  
+	// Create target server that works directly
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"access_token":  "direct_token",
 			"token_type":    "Bearer",
 			"expires_in":    3600,
-			"refresh_token": "new_refresh", 
+			"refresh_token": "new_refresh",
 			"scope":         "read",
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -234,7 +234,7 @@ func TestOAuth2Client_ProxyFallbackToDirect(t *testing.T) {
 	// Create client with fallback capability but point to wrong URL for primary
 	// This will cause a "connection refused" error on primary client
 	client := NewOAuth2ClientWithFallback("test_id", "test_secret", "http://127.0.0.1:1", logger)
-	
+
 	// Override fallback client to use the working server
 	fallbackTransport := &http.Transport{
 		Proxy:                 nil,
@@ -271,11 +271,11 @@ func TestOAuth2Client_ProxyFallbackToDirect(t *testing.T) {
 // TestOAuth2Client_TimeoutConfiguration tests different timeout scenarios with mocks
 func TestOAuth2Client_TimeoutConfiguration(t *testing.T) {
 	tests := []struct {
-		name           string
-		clientTimeout  time.Duration
-		serverDelay    time.Duration
-		expectSuccess  bool
-		expectError    string
+		name          string
+		clientTimeout time.Duration
+		serverDelay   time.Duration
+		expectSuccess bool
+		expectError   string
 	}{
 		{
 			name:          "Fast_Response_Success",
@@ -345,47 +345,47 @@ func TestOAuth2Client_TimeoutConfiguration(t *testing.T) {
 func TestOAuth2Client_EnvironmentTimeoutConfiguration(t *testing.T) {
 	tests := []struct {
 		name                    string
-		httpClientTimeout      string
-		tlsHandshakeTimeout    string
-		responseHeaderTimeout  string
-		expectedClientTimeout  time.Duration
-		expectedTLSTimeout     time.Duration
+		httpClientTimeout       string
+		tlsHandshakeTimeout     string
+		responseHeaderTimeout   string
+		expectedClientTimeout   time.Duration
+		expectedTLSTimeout      time.Duration
 		expectedResponseTimeout time.Duration
 	}{
 		{
 			name:                    "Default_Timeouts",
-			httpClientTimeout:      "",
-			tlsHandshakeTimeout:    "",
-			responseHeaderTimeout:  "",
-			expectedClientTimeout:  120 * time.Second,
-			expectedTLSTimeout:     15 * time.Second,
+			httpClientTimeout:       "",
+			tlsHandshakeTimeout:     "",
+			responseHeaderTimeout:   "",
+			expectedClientTimeout:   120 * time.Second,
+			expectedTLSTimeout:      15 * time.Second,
 			expectedResponseTimeout: 60 * time.Second,
 		},
 		{
 			name:                    "Custom_Duration_Strings",
-			httpClientTimeout:      "180s",
-			tlsHandshakeTimeout:    "30s",
-			responseHeaderTimeout:  "90s",
-			expectedClientTimeout:  180 * time.Second,
-			expectedTLSTimeout:     30 * time.Second,
+			httpClientTimeout:       "180s",
+			tlsHandshakeTimeout:     "30s",
+			responseHeaderTimeout:   "90s",
+			expectedClientTimeout:   180 * time.Second,
+			expectedTLSTimeout:      30 * time.Second,
 			expectedResponseTimeout: 90 * time.Second,
 		},
 		{
 			name:                    "Custom_Seconds_Numbers",
-			httpClientTimeout:      "240",
-			tlsHandshakeTimeout:    "20",
-			responseHeaderTimeout:  "45",
-			expectedClientTimeout:  240 * time.Second,
-			expectedTLSTimeout:     20 * time.Second,
+			httpClientTimeout:       "240",
+			tlsHandshakeTimeout:     "20",
+			responseHeaderTimeout:   "45",
+			expectedClientTimeout:   240 * time.Second,
+			expectedTLSTimeout:      20 * time.Second,
 			expectedResponseTimeout: 45 * time.Second,
 		},
 		{
 			name:                    "Invalid_Values_Use_Defaults",
-			httpClientTimeout:      "invalid",
-			tlsHandshakeTimeout:    "999999",
-			responseHeaderTimeout:  "-10s",
-			expectedClientTimeout:  120 * time.Second,
-			expectedTLSTimeout:     15 * time.Second,
+			httpClientTimeout:       "invalid",
+			tlsHandshakeTimeout:     "999999",
+			responseHeaderTimeout:   "-10s",
+			expectedClientTimeout:   120 * time.Second,
+			expectedTLSTimeout:      15 * time.Second,
 			expectedResponseTimeout: 60 * time.Second,
 		},
 	}
@@ -463,7 +463,7 @@ func TestGetTimeoutFromEnv(t *testing.T) {
 			expected:       60 * time.Second,
 		},
 		{
-			name:           "Negative_Duration_Uses_Default", 
+			name:           "Negative_Duration_Uses_Default",
 			envValue:       "-30s",
 			defaultTimeout: 60 * time.Second,
 			expected:       60 * time.Second,

@@ -46,14 +46,15 @@ type OAuth2ErrorResponse struct {
 
 // OAuth2Client handles OAuth2 authentication with Inoreader API
 type OAuth2Client struct {
-	clientID      string
-	clientSecret  string
-	baseURL       string      // OAuth2 base URL
-	apiBaseURL    string      // API base URL
-	httpClient    *http.Client
+	clientID       string
+	clientSecret   string
+	baseURL        string // Fallback OAuth2 base URL (can be overridden for tests)
+	primaryBaseURL string // Primary OAuth2 base URL
+	apiBaseURL     string // API base URL
+	httpClient     *http.Client
 	fallbackClient *http.Client // Client for fallback direct connection
-	logger        *slog.Logger
-	useFallback   bool        // Whether to use fallback on failure
+	logger         *slog.Logger
+	useFallback    bool // Whether to use fallback on failure
 }
 
 // NewOAuth2Client creates a new OAuth2 client for Inoreader API without proxy
@@ -85,8 +86,8 @@ func newOAuth2ClientWithConfig(clientID, clientSecret, baseURL string, logger *s
 	}
 
 	// Configure timeouts from environment variables with reasonable defaults
-	clientTimeout := getTimeoutFromEnv("HTTP_CLIENT_TIMEOUT", 120*time.Second) // Extended to 120 seconds
-	tlsTimeout := getTimeoutFromEnv("TLS_HANDSHAKE_TIMEOUT", 15*time.Second)   // Extended to 15 seconds
+	clientTimeout := getTimeoutFromEnv("HTTP_CLIENT_TIMEOUT", 120*time.Second)      // Extended to 120 seconds
+	tlsTimeout := getTimeoutFromEnv("TLS_HANDSHAKE_TIMEOUT", 15*time.Second)        // Extended to 15 seconds
 	responseTimeout := getTimeoutFromEnv("RESPONSE_HEADER_TIMEOUT", 60*time.Second) // Extended to 60 seconds
 
 	logger.Info("OAuth2 client timeout configuration",
@@ -121,12 +122,13 @@ func newOAuth2ClientWithConfig(clientID, clientSecret, baseURL string, logger *s
 	}
 
 	client := &OAuth2Client{
-		clientID:     clientID,
-		clientSecret: clientSecret,
-		baseURL:      baseURL,      // OAuth2 base URL
-		apiBaseURL:   apiBaseURL,   // API base URL
-		logger:       logger,
-		useFallback:  fallback,
+		clientID:       clientID,
+		clientSecret:   clientSecret,
+		baseURL:        baseURL,    // Fallback base URL (can be overridden)
+		primaryBaseURL: baseURL,    // Primary base URL for initial attempts
+		apiBaseURL:     apiBaseURL, // API base URL
+		logger:         logger,
+		useFallback:    fallback,
 		httpClient: &http.Client{
 			Timeout:   clientTimeout, // Configurable timeout from environment
 			Transport: transport,
@@ -158,12 +160,12 @@ func newOAuth2ClientWithConfig(clientID, clientSecret, baseURL string, logger *s
 func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*models.InoreaderTokenResponse, error) {
 	// Try with primary client first
 	result, err := c.attemptRefreshToken(ctx, refreshToken, c.httpClient, "primary")
-	
+
 	// If fallback is enabled and primary failed with network error, try fallback
 	if err != nil && c.useFallback && c.fallbackClient != nil && isNetworkError(err) {
 		c.logger.Info("Primary connection failed, attempting fallback to direct connection",
 			"primary_error", err.Error())
-		
+
 		result, fallbackErr := c.attemptRefreshToken(ctx, refreshToken, c.fallbackClient, "fallback")
 		if fallbackErr != nil {
 			// Both failed, return the original error
@@ -172,12 +174,12 @@ func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*
 				"fallback_error", fallbackErr.Error())
 			return nil, err
 		}
-		
+
 		c.logger.Info("Falling back to direct connection",
 			"fallback_success", true)
 		return result, nil
 	}
-	
+
 	return result, err
 }
 
@@ -192,7 +194,12 @@ func (c *OAuth2Client) attemptRefreshToken(ctx context.Context, refreshToken str
 	}
 
 	// Create HTTP request
-	tokenURL := c.baseURL + "/oauth2/token"
+	tokenBaseURL := c.primaryBaseURL
+	if clientType == "fallback" && c.baseURL != "" {
+		// Allow tests (and potential callers) to override the fallback base URL
+		tokenBaseURL = c.baseURL
+	}
+	tokenURL := tokenBaseURL + "/oauth2/token"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create refresh token request: %w", err)
@@ -230,13 +237,13 @@ func (c *OAuth2Client) attemptRefreshToken(ctx context.Context, refreshToken str
 		// Read error response for debugging and specific error handling
 		body, _ := io.ReadAll(resp.Body)
 		bodyStr := string(body)
-		
+
 		// Log detailed error information
-		c.logger.Error("OAuth2 refresh token failed", 
+		c.logger.Error("OAuth2 refresh token failed",
 			"status_code", resp.StatusCode,
 			"response_body", bodyStr,
 			"content_type", resp.Header.Get("Content-Type"))
-		
+
 		// Handle specific error cases
 		switch resp.StatusCode {
 		case http.StatusUnauthorized:
@@ -249,18 +256,18 @@ func (c *OAuth2Client) attemptRefreshToken(ctx context.Context, refreshToken str
 				}
 			}
 			return nil, fmt.Errorf("%w: %s", ErrInvalidRefreshToken, bodyStr)
-			
+
 		case http.StatusForbidden:
 			// 403 - Token may have been revoked
 			c.logger.Error("Refresh token may have been revoked")
 			return nil, fmt.Errorf("%w: %s", ErrTokenRevoked, bodyStr)
-			
+
 		case http.StatusTooManyRequests:
 			// 429 - Rate limited
 			retryAfter := resp.Header.Get("Retry-After")
 			c.logger.Warn("OAuth2 API rate limited", "retry_after", retryAfter)
 			return nil, fmt.Errorf("%w: retry after %s", ErrRateLimited, retryAfter)
-			
+
 		case http.StatusBadRequest:
 			// 400 - Invalid request parameters
 			var oauthErr OAuth2ErrorResponse
@@ -269,12 +276,12 @@ func (c *OAuth2Client) attemptRefreshToken(ctx context.Context, refreshToken str
 				return nil, fmt.Errorf("%w: %s", ErrInvalidGrant, oauthErr.ErrorDescription)
 			}
 			return nil, fmt.Errorf("%w: %s", ErrInvalidGrant, bodyStr)
-			
+
 		case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 			// 5xx - Temporary server failures
 			c.logger.Warn("OAuth2 server temporary failure", "status_code", resp.StatusCode)
 			return nil, fmt.Errorf("%w: HTTP %d", ErrTemporaryFailure, resp.StatusCode)
-			
+
 		default:
 			// Other errors
 			return nil, fmt.Errorf("OAuth2 refresh token failed with status %d: %s", resp.StatusCode, bodyStr)
@@ -289,14 +296,14 @@ func (c *OAuth2Client) attemptRefreshToken(ctx context.Context, refreshToken str
 
 	// Log refresh token information for debugging rotation
 	hasNewRefreshToken := tokenResponse.RefreshToken != ""
-	
+
 	// Convert to models.InoreaderTokenResponse
 	inoreaderResponse := &models.InoreaderTokenResponse{
 		AccessToken:  tokenResponse.AccessToken,
 		TokenType:    tokenResponse.TokenType,
 		ExpiresIn:    tokenResponse.ExpiresIn,
 		RefreshToken: tokenResponse.RefreshToken, // May be empty if not rotated
-		Scope:        "", // Will be populated if available in response
+		Scope:        "",                         // Will be populated if available in response
 	}
 
 	// Log the refresh response details for debugging
@@ -373,7 +380,7 @@ func (c *OAuth2Client) MakeAuthenticatedRequest(ctx context.Context, accessToken
 
 	// Check for rate limit or authentication errors
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, fmt.Errorf("API rate limit exceeded (Zone 1: %s/%s)", 
+		return nil, fmt.Errorf("API rate limit exceeded (Zone 1: %s/%s)",
 			resp.Header.Get("X-Reader-Zone1-Usage"), resp.Header.Get("X-Reader-Zone1-Limit"))
 	}
 
@@ -470,7 +477,7 @@ func (c *OAuth2Client) MakeAuthenticatedRequestWithHeaders(ctx context.Context, 
 
 	// Check for rate limit or authentication errors
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, headers, fmt.Errorf("API rate limit exceeded (Zone 1: %s/%s)", 
+		return nil, headers, fmt.Errorf("API rate limit exceeded (Zone 1: %s/%s)",
 			resp.Header.Get("X-Reader-Zone1-Usage"), resp.Header.Get("X-Reader-Zone1-Limit"))
 	}
 
@@ -496,8 +503,8 @@ func (c *OAuth2Client) GetRateLimitInfo() map[string]interface{} {
 	// This would typically be populated from response headers in a real implementation
 	// For now, return basic structure for testing
 	return map[string]interface{}{
-		"zone1_usage":   0,
-		"zone1_limit":   100,
+		"zone1_usage":     0,
+		"zone1_limit":     100,
 		"zone1_remaining": 100,
 	}
 }
@@ -541,7 +548,7 @@ func (c *OAuth2Client) DebugDirectRequest(ctx context.Context, accessToken, endp
 	if resp.StatusCode == http.StatusOK {
 		return nil // Success
 	}
-	
+
 	return fmt.Errorf("direct debug request failed with status %d", resp.StatusCode)
 }
 
@@ -553,27 +560,27 @@ func isNetworkError(err error) bool {
 
 	// Check for common network errors that indicate connectivity issues
 	errorStr := err.Error()
-	
+
 	// Context deadline exceeded (timeout)
 	if strings.Contains(errorStr, "context deadline exceeded") {
 		return true
 	}
-	
+
 	// Connection refused
 	if strings.Contains(errorStr, "connection refused") {
 		return true
 	}
-	
+
 	// No route to host
 	if strings.Contains(errorStr, "no route to host") {
 		return true
 	}
-	
+
 	// Network unreachable
 	if strings.Contains(errorStr, "network is unreachable") {
 		return true
 	}
-	
+
 	// Check for specific network error types
 	var netErr net.Error
 	if errors.As(err, &netErr) {
@@ -582,14 +589,14 @@ func isNetworkError(err error) bool {
 			return true
 		}
 	}
-	
+
 	// Check for syscall errors
 	var syscallErr *net.OpError
 	if errors.As(err, &syscallErr) {
 		if syscallErr.Op == "dial" || syscallErr.Op == "read" || syscallErr.Op == "write" {
 			return true
 		}
-		
+
 		// Check underlying syscall error
 		if errno, ok := syscallErr.Err.(syscall.Errno); ok {
 			switch errno {
@@ -598,13 +605,13 @@ func isNetworkError(err error) bool {
 			}
 		}
 	}
-	
+
 	// DNS resolution errors
 	var dnsErr *net.DNSError
 	if errors.As(err, &dnsErr) {
 		return true
 	}
-	
+
 	return false
 }
 
