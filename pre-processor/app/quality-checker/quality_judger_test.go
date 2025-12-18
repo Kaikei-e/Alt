@@ -233,7 +233,9 @@ func TestScoreSummary(t *testing.T) {
 					Done:     true,
 				}
 				w.WriteHeader(http.StatusOK)
-				_ = json.NewEncoder(w).Encode(response)
+				if err := json.NewEncoder(w).Encode(response); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
 			},
 			expectedScore: intPtr(18),
 			expectedError: false,
@@ -246,7 +248,9 @@ func TestScoreSummary(t *testing.T) {
 					Done:     true,
 				}
 				w.WriteHeader(http.StatusOK)
-				_ = json.NewEncoder(w).Encode(response)
+				if err := json.NewEncoder(w).Encode(response); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
 			},
 			expectedScore: intPtr(1),
 			expectedError: false,
@@ -316,7 +320,9 @@ func TestScoreSummaryWithRetry(t *testing.T) {
 				func(w http.ResponseWriter, r *http.Request) {
 					response := ollamaResponse{Response: "<score>20</score>", Done: true}
 					w.WriteHeader(http.StatusOK)
-					json.NewEncoder(w).Encode(response)
+					if err := json.NewEncoder(w).Encode(response); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+					}
 				},
 			},
 			maxRetries:    3,
@@ -332,7 +338,9 @@ func TestScoreSummaryWithRetry(t *testing.T) {
 				func(w http.ResponseWriter, r *http.Request) {
 					response := ollamaResponse{Response: "<score>15</score>", Done: true}
 					w.WriteHeader(http.StatusOK)
-					json.NewEncoder(w).Encode(response)
+					if err := json.NewEncoder(w).Encode(response); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+					}
 				},
 			},
 			maxRetries:    3,
@@ -439,7 +447,9 @@ func TestJudgeArticleQualityScoring(t *testing.T) {
 			Done:     true,
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -467,7 +477,9 @@ func TestRemoveLowScoreSummary(t *testing.T) {
 			Done:     true,
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 

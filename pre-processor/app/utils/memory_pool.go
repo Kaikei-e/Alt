@@ -140,7 +140,8 @@ func (s *SlicePool) GetSlice(size int) []byte {
 		if pool, exists = s.pools[poolSize]; !exists {
 			pool = &sync.Pool{
 				New: func() interface{} {
-					return make([]byte, poolSize)
+					b := make([]byte, poolSize)
+					return &b
 				},
 			}
 			s.pools[poolSize] = pool
@@ -148,7 +149,8 @@ func (s *SlicePool) GetSlice(size int) []byte {
 		s.mu.Unlock()
 	}
 
-	slice := pool.Get().([]byte)
+	slicePtr := pool.Get().(*[]byte)
+	slice := *slicePtr
 	return slice[:size] // Return slice with requested length
 }
 
@@ -167,7 +169,7 @@ func (s *SlicePool) PutSlice(slice []byte) {
 	if exists {
 		// Reset slice to full capacity before returning to pool
 		slice = slice[:cap(slice)]
-		pool.Put(slice)
+		pool.Put(&slice)
 	}
 	// If pool doesn't exist, just let the slice be garbage collected
 }

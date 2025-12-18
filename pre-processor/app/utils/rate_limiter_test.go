@@ -36,7 +36,7 @@ func TestRateLimitedHTTPClient_BasicRateLimit(t *testing.T) {
 			// RED PHASE: Test fails because RateLimitedHTTPClient doesn't exist yet
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("OK"))
+				_, _ = w.Write([]byte("OK"))
 			}))
 			defer server.Close()
 
@@ -48,7 +48,7 @@ func TestRateLimitedHTTPClient_BasicRateLimit(t *testing.T) {
 				resp, err := client.Get(server.URL)
 				require.NoError(t, err)
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 
 			elapsed := time.Since(start)
@@ -92,7 +92,7 @@ func TestRateLimitedHTTPClient_ExponentialBackoff(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			if tc.expectBackoff {
 				// Should take longer due to exponential backoff
@@ -171,7 +171,7 @@ func TestRateLimitedHTTPClient_Jitter(t *testing.T) {
 
 			resp, err := client.Get(server.URL)
 			require.NoError(t, err)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 
 		// Intervals should have some variance due to jitter
@@ -215,7 +215,7 @@ func TestRateLimitedHTTPClient_UserAgent(t *testing.T) {
 
 		resp, err := client.Get(server.URL)
 		require.NoError(t, err)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		assert.Contains(t, userAgent, "pre-processor")
 		assert.Contains(t, userAgent, "alt.example.com")
@@ -256,7 +256,7 @@ func TestRateLimitedHTTPClient_Metrics(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			resp, err := client.Get(server.URL)
 			require.NoError(t, err)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 
 		metrics := client.Metrics()
@@ -278,7 +278,7 @@ func BenchmarkRateLimitedHTTPClient_Get(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		resp, err := client.Get(server.URL)
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"pre-processor/config"
@@ -39,22 +38,8 @@ type SummarizeResponse struct {
 	TotalDurationMs  *float64 `json:"total_duration_ms,omitempty"`
 }
 
-var (
-	htmlTagRegex = regexp.MustCompile(`<[^>]+>`)
-	// ErrContentTooShort is returned when article content is too short for summarization
-	ErrContentTooShort = errors.New("article content too short for summarization (less than 100 characters)")
-)
-
-// estimateContentLength estimates the content length after HTML tag removal
-func estimateContentLength(content string) int {
-	if content == "" {
-		return 0
-	}
-	// Remove HTML tags for estimation
-	cleaned := htmlTagRegex.ReplaceAllString(content, "")
-	cleaned = strings.TrimSpace(cleaned)
-	return len(cleaned)
-}
+// ErrContentTooShort is returned when article content is too short for summarization
+var ErrContentTooShort = errors.New("article content too short for summarization (less than 100 characters)")
 
 func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cfg *config.Config, logger *slog.Logger) (*SummarizedContent, error) {
 	// Zero Trust: Always extract text from content before sending to news-creator

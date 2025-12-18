@@ -107,11 +107,15 @@ func TestBackwardsCompatibility(t *testing.T) {
 	logger.Info("Feed processing started", "feed_id", "feed-123", "source", "rss")
 
 	// Restore stdout and read captured output
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close writer: %v", err)
+	}
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("failed to read from buffer: %v", err)
+	}
 	logOutput := buf.String()
 
 	var logEntry map[string]interface{}
@@ -137,11 +141,15 @@ func TestServiceLayerIntegration(t *testing.T) {
 	logger.Error("validation failed", "feed_url", "https://example.com/feed.xml", "error_type", "malformed_xml")
 
 	// Restore stdout and read captured output
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close writer: %v", err)
+	}
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("failed to read from buffer: %v", err)
+	}
 	logOutput := buf.String()
 
 	var logEntry map[string]interface{}

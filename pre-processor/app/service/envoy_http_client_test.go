@@ -280,7 +280,7 @@ func TestEnvoyHTTPClient_TimeoutHandling(t *testing.T) {
 				if err == nil {
 					t.Errorf("%s: expected timeout error but got success", tc.description)
 					if resp != nil {
-						resp.Body.Close()
+						_ = resp.Body.Close()
 					}
 					return
 				}
@@ -349,7 +349,7 @@ func TestEnvoyHTTPClient_ErrorHandling(t *testing.T) {
 				if err == nil {
 					t.Errorf("%s: expected error but got none", tc.description)
 					if resp != nil {
-						resp.Body.Close()
+						_ = resp.Body.Close()
 					}
 				}
 			} else {

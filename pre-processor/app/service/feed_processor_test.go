@@ -2,10 +2,8 @@ package service
 
 import (
 	"log/slog"
-	"net/url"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -61,18 +59,4 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelError, // Only errors in tests to keep output clean
 	}))
-}
-
-// Helper functions for tests.
-func mustParseURL(rawURL string) *url.URL {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		panic(err)
-	}
-
-	return u
-}
-
-func timePtr(t time.Time) *time.Time {
-	return &t
 }

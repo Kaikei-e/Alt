@@ -130,7 +130,9 @@ func TestHealthCheckerService_WaitForHealthy(t *testing.T) {
 			if r.URL.Path == "/health" {
 				w.WriteHeader(http.StatusOK)
 				// Implementation expects models array
-				w.Write([]byte(`{"models":[{"name":"gemma3:4b"}]}`))
+				if _, err := w.Write([]byte(`{"models":[{"name":"gemma3:4b"}]}`)); err != nil {
+					t.Fatalf("failed to write mock response: %v", err)
+				}
 			}
 		}))
 		defer server.Close()

@@ -707,64 +707,64 @@ func (s *articleFetcherService) isPrivateIPAddress(ip net.IP) bool {
 	return false
 }
 
-// validateContent validates article content for quality and error patterns
-func (s *articleFetcherService) validateContent(content, url string) error {
-	// Check minimum content length (default: 500 characters)
-	minLength := 500
-	if len(content) < minLength {
-		return fmt.Errorf("content too short: %d characters (minimum: %d)", len(content), minLength)
-	}
-
-	// Check for known error patterns
-	errorPatterns := []string{
-		"RSS Outbound Proxy - HTTPS Only",
-		"Access Denied",
-		"403 Forbidden",
-		"404 Not Found",
-		"500 Internal Server Error",
-		"502 Bad Gateway",
-		"503 Service Unavailable",
-		"504 Gateway Timeout",
-		"Error 404",
-		"Page not found",
-		"Access to this resource on the server is denied",
-		"The requested URL was not found on this server",
-	}
-
-	contentLower := strings.ToLower(content)
-	for _, pattern := range errorPatterns {
-		if strings.Contains(contentLower, strings.ToLower(pattern)) {
-			return fmt.Errorf("error pattern detected in content: %s", pattern)
-		}
-	}
-
-	// Check if content is mostly whitespace or repeated characters
-	trimmedContent := strings.TrimSpace(content)
-	if len(trimmedContent) < len(content)/2 {
-		return fmt.Errorf("content appears to be mostly whitespace")
-	}
-
-	// Check for suspicious short repeated patterns
-	patternLen := 10
-	if len(trimmedContent) < patternLen {
-		patternLen = len(trimmedContent)
-	}
-	if len(trimmedContent) < 100 && strings.Count(trimmedContent, trimmedContent[:patternLen]) > 3 {
-		return fmt.Errorf("content appears to contain repeated patterns")
-	}
-
-	// Validate HTML structure - content should contain some textual elements
-	hasText := false
-	for _, word := range strings.Fields(trimmedContent) {
-		if len(word) > 3 && !strings.HasPrefix(word, "<") {
-			hasText = true
-			break
-		}
-	}
-
-	if !hasText {
-		return fmt.Errorf("content appears to be mostly HTML tags without meaningful text")
-	}
-
-	return nil
-}
+// validateContent is currently unused; keeping implementation for future re-enable of article fetching.
+// func (s *articleFetcherService) validateContent(content, url string) error {
+// 	// Check minimum content length (default: 500 characters)
+// 	minLength := 500
+// 	if len(content) < minLength {
+// 		return fmt.Errorf("content too short: %d characters (minimum: %d)", len(content), minLength)
+// 	}
+//
+// 	// Check for known error patterns
+// 	errorPatterns := []string{
+// 		"RSS Outbound Proxy - HTTPS Only",
+// 		"Access Denied",
+// 		"403 Forbidden",
+// 		"404 Not Found",
+// 		"500 Internal Server Error",
+// 		"502 Bad Gateway",
+// 		"503 Service Unavailable",
+// 		"504 Gateway Timeout",
+// 		"Error 404",
+// 		"Page not found",
+// 		"Access to this resource on the server is denied",
+// 		"The requested URL was not found on this server",
+// 	}
+//
+// 	contentLower := strings.ToLower(content)
+// 	for _, pattern := range errorPatterns {
+// 		if strings.Contains(contentLower, strings.ToLower(pattern)) {
+// 			return fmt.Errorf("error pattern detected in content: %s", pattern)
+// 		}
+// 	}
+//
+// 	// Check if content is mostly whitespace or repeated characters
+// 	trimmedContent := strings.TrimSpace(content)
+// 	if len(trimmedContent) < len(content)/2 {
+// 		return fmt.Errorf("content appears to be mostly whitespace")
+// 	}
+//
+// 	// Check for suspicious short repeated patterns
+// 	patternLen := 10
+// 	if len(trimmedContent) < patternLen {
+// 		patternLen = len(trimmedContent)
+// 	}
+// 	if len(trimmedContent) < 100 && strings.Count(trimmedContent, trimmedContent[:patternLen]) > 3 {
+// 		return fmt.Errorf("content appears to contain repeated patterns")
+// 	}
+//
+// 	// Validate HTML structure - content should contain some textual elements
+// 	hasText := false
+// 	for _, word := range strings.Fields(trimmedContent) {
+// 		if len(word) > 3 && !strings.HasPrefix(word, "<") {
+// 			hasText = true
+// 			break
+// 		}
+// 	}
+//
+// 	if !hasText {
+// 		return fmt.Errorf("content appears to be mostly HTML tags without meaningful text")
+// 	}
+//
+// 	return nil
+// }

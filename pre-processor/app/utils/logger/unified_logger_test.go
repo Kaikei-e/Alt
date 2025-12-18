@@ -111,11 +111,15 @@ func TestAltBackendCompatibility(t *testing.T) {
 		"cache_hit", true)
 
 	// Restore stdout and read captured output
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close writer: %v", err)
+	}
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("failed to read from buffer: %v", err)
+	}
 	logOutput := buf.String()
 
 	var logEntry map[string]interface{}
@@ -162,11 +166,15 @@ func TestContextIntegrationWithSlog(t *testing.T) {
 	contextLogger.Warn("potential issue detected", "threshold", 0.95, "current", 0.97)
 
 	// Restore stdout and read captured output
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close writer: %v", err)
+	}
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("failed to read from buffer: %v", err)
+	}
 	logOutput := buf.String()
 
 	var logEntry map[string]interface{}

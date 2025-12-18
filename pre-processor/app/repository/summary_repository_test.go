@@ -38,7 +38,6 @@ func TestSummaryRepository_Create(t *testing.T) {
 	tests := map[string]struct {
 		summary     *models.ArticleSummary
 		errContains string
-		setupLogger bool
 		wantErr     bool
 	}{
 		"should handle nil database gracefully": {
@@ -95,7 +94,6 @@ func TestSummaryRepository_FindArticlesWithSummaries(t *testing.T) {
 		cursor      *Cursor
 		errContains string
 		limit       int
-		setupLogger bool
 		wantErr     bool
 	}{
 		"should handle nil database gracefully": {
@@ -160,7 +158,6 @@ func TestSummaryRepository_Delete(t *testing.T) {
 	tests := map[string]struct {
 		summaryID   string
 		errContains string
-		setupLogger bool
 		wantErr     bool
 	}{
 		"should handle nil database gracefully": {
@@ -202,7 +199,6 @@ func TestSummaryRepository_Exists(t *testing.T) {
 	tests := map[string]struct {
 		summaryID   string
 		errContains string
-		setupLogger bool
 		wantErr     bool
 		wantExists  bool
 	}{
