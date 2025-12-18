@@ -61,7 +61,7 @@ async fn cleanup_test_container(container_id: String) -> Result<(), Box<dyn std:
 async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::error::Error>> {
     // Test zero-copy functionality with graceful Docker handling
     let collector_result = DockerCollector::new().await;
-    
+
     match collector_result {
         Ok(collector) => {
             let (tx, mut rx) = tokio::sync::broadcast::channel::<Bytes>(1000);
@@ -105,8 +105,8 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
                             while start.elapsed() < timeout_duration {
                                 if let Ok(bytes) = rx.try_recv() {
                                     if !bytes.is_empty() {
-                                        let log_str = std::str::from_utf8(&bytes)
-                                            .unwrap_or("Invalid UTF-8");
+                                        let log_str =
+                                            std::str::from_utf8(&bytes).unwrap_or("Invalid UTF-8");
                                         println!("Received log data: {log_str}");
                                         found_logs = true;
                                         break;
@@ -143,7 +143,7 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
 async fn test_zero_copy_performance() -> Result<(), Box<dyn std::error::Error>> {
     // Simplified performance test that validates the throughput architecture
     let collector_result = DockerCollector::new().await;
-    
+
     match collector_result {
         Ok(_collector) => {
             let (tx, mut rx) = tokio::sync::broadcast::channel::<Bytes>(10000);
@@ -183,7 +183,9 @@ async fn test_zero_copy_performance() -> Result<(), Box<dyn std::error::Error>> 
                 "Should process substantial number of messages, got: {received_count}"
             );
 
-            println!("Queue performance: {throughput} msgs/sec, {received_count} messages processed");
+            println!(
+                "Queue performance: {throughput} msgs/sec, {received_count} messages processed"
+            );
         }
         Err(e) => {
             println!("Docker not available: {e}");

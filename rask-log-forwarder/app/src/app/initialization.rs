@@ -236,10 +236,7 @@ mod tests {
 
         for (input, description) in invalid_cases {
             let result = LogDirective::parse(input);
-            assert!(
-                result.is_err(),
-                "Should fail for {description}: {input}"
-            );
+            assert!(result.is_err(), "Should fail for {description}: {input}");
         }
     }
 

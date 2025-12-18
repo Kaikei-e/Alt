@@ -67,9 +67,7 @@ async fn start_test_nginx_container_safe() -> Result<String, Box<dyn std::error:
         return Err("Failed to start test container".into());
     }
 
-    let container_id = String::from_utf8(output.stdout)?
-        .trim()
-        .to_string();
+    let container_id = String::from_utf8(output.stdout)?.trim().to_string();
 
     // Wait for container to be ready
     sleep(Duration::from_secs(2)).await;
@@ -87,9 +85,7 @@ async fn start_test_container_without_label_safe() -> Result<String, Box<dyn std
         return Err("Failed to start test container".into());
     }
 
-    let container_id = String::from_utf8(output.stdout)?
-        .trim()
-        .to_string();
+    let container_id = String::from_utf8(output.stdout)?.trim().to_string();
 
     // Wait for container to be ready
     sleep(Duration::from_secs(2)).await;
@@ -107,7 +103,7 @@ async fn cleanup_test_container(container_id: String) {
 async fn test_find_nginx_containers_with_label() {
     // Test container discovery with graceful handling of Docker unavailability
     let collector_result = DockerCollector::new().await;
-    
+
     match collector_result {
         Ok(collector) => {
             // Try to start test container if Docker is available
@@ -116,7 +112,7 @@ async fn test_find_nginx_containers_with_label() {
                     let containers = collector
                         .find_labeled_containers("com.alt.log-forward=true")
                         .await;
-                    
+
                     match containers {
                         Ok(containers) => {
                             if !containers.is_empty() {
@@ -133,7 +129,7 @@ async fn test_find_nginx_containers_with_label() {
                             println!("Container discovery failed: {e}");
                         }
                     }
-                    
+
                     cleanup_test_container(test_container).await;
                 }
                 Err(_) => {
@@ -151,7 +147,7 @@ async fn test_find_nginx_containers_with_label() {
 async fn test_filter_containers_without_label() {
     // Test filtering containers without required labels
     let collector_result = DockerCollector::new().await;
-    
+
     match collector_result {
         Ok(collector) => {
             // Try to start test container without label if Docker is available
@@ -160,22 +156,19 @@ async fn test_filter_containers_without_label() {
                     let containers = collector
                         .find_labeled_containers("com.alt.log-forward=true")
                         .await;
-                    
+
                     match containers {
                         Ok(containers) => {
                             // Container without label should not be included
                             let found = containers.iter().any(|c| c.id == test_container);
-                            assert!(
-                                !found,
-                                "Should not include containers without label"
-                            );
+                            assert!(!found, "Should not include containers without label");
                             println!("Container filtering test passed");
                         }
                         Err(e) => {
                             println!("Container discovery failed: {e}");
                         }
                     }
-                    
+
                     cleanup_test_container(test_container).await;
                 }
                 Err(_) => {

@@ -157,9 +157,7 @@ async fn test_concurrent_regex_pattern_access() {
         match result {
             Ok((thread_id, access_count)) => {
                 total_accesses += access_count;
-                println!(
-                    "✓ Thread {thread_id} completed: {access_count} pattern accesses"
-                );
+                println!("✓ Thread {thread_id} completed: {access_count} pattern accesses");
             }
             Err(e) => {
                 panic!("Thread failed: {e:?}");

@@ -212,9 +212,7 @@ async fn test_task5_concurrent_buffer_safety() {
                     received += 1;
                 }
                 Ok(Err(BufferError::BufferClosed)) => {
-                    println!(
-                        "Buffer closed, received {received} of {total_expected} messages"
-                    );
+                    println!("Buffer closed, received {received} of {total_expected} messages");
                     break;
                 }
                 Err(_timeout) => {

@@ -617,7 +617,7 @@ mod tests {
         let error = ServiceError::ComponentNotInitialized {
             component: "test_component".to_string(),
         };
-        
+
         assert_eq!(
             error.to_string(),
             "Service component not initialized: test_component"
@@ -652,6 +652,9 @@ mod tests {
 
         // Test health report for uninitialized service
         let health_report = service.get_health_report().await;
-        assert_eq!(health_report.overall_status, crate::reliability::HealthStatus::Unhealthy);
+        assert_eq!(
+            health_report.overall_status,
+            crate::reliability::HealthStatus::Unhealthy
+        );
     }
 }

@@ -17,7 +17,9 @@ async fn test_integration_config_creation() {
 #[tokio::test]
 async fn test_integration_with_env_var() {
     // Test environment variable configuration
-    unsafe { std::env::set_var("TARGET_SERVICE", "nginx"); }
+    unsafe {
+        std::env::set_var("TARGET_SERVICE", "nginx");
+    }
 
     let config = CollectorConfig::default();
     let result = LogCollector::new(config).await;
@@ -36,7 +38,9 @@ async fn test_integration_with_env_var() {
         }
     }
 
-    unsafe { std::env::remove_var("TARGET_SERVICE"); }
+    unsafe {
+        std::env::remove_var("TARGET_SERVICE");
+    }
 }
 
 #[tokio::test]

@@ -49,9 +49,7 @@ async fn start_test_nginx_container_safe() -> Result<String, Box<dyn std::error:
         return Err("Failed to start test container".into());
     }
 
-    let container_id = String::from_utf8(output.stdout)?
-        .trim()
-        .to_string();
+    let container_id = String::from_utf8(output.stdout)?.trim().to_string();
 
     // Wait for container to be ready
     sleep(Duration::from_secs(2)).await;
@@ -69,7 +67,7 @@ async fn cleanup_test_container(container_id: String) {
 async fn test_nginx_log_stream_initialization() {
     // Test log stream initialization with graceful Docker handling
     let collector_result = DockerCollector::new().await;
-    
+
     match collector_result {
         Ok(collector) => {
             let (tx, _rx) = tokio::sync::broadcast::channel::<Bytes>(1000);
@@ -80,7 +78,7 @@ async fn test_nginx_log_stream_initialization() {
                     let result = collector
                         .start_tailing_logs(tx, "com.alt.log-forward=true")
                         .await;
-                    
+
                     match result {
                         Ok(_) => {
                             println!("Log streaming started successfully");
@@ -107,7 +105,7 @@ async fn test_nginx_log_stream_initialization() {
 async fn test_log_stream_with_options() {
     // Test log streaming with custom options
     let collector_result = DockerCollector::new().await;
-    
+
     match collector_result {
         Ok(collector) => {
             let (tx, _rx) = tokio::sync::broadcast::channel::<Bytes>(1000);
@@ -126,7 +124,7 @@ async fn test_log_stream_with_options() {
                     let result = collector
                         .start_tailing_logs_with_options(tx, "com.alt.log-forward=true", options)
                         .await;
-                    
+
                     match result {
                         Ok(_) => {
                             println!("Log streaming with options started successfully");
