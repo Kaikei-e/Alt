@@ -1,22 +1,23 @@
 name: CodeQL (Python)
 
 on:
+  workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
     paths:
-      - 'tag-generator/**'
-      - 'recap-subworker/**'
-      - 'monitors/utilizer/**'
-      - 'news-creator/**'
-      - 'dashboard/**'
+      - "tag-generator/**"
+      - "recap-subworker/**"
+      - "monitors/utilizer/**"
+      - "news-creator/**"
+      - "dashboard/**"
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
     paths:
-      - 'tag-generator/**'
-      - 'recap-subworker/**'
-      - 'monitors/utilizer/**'
-      - 'news-creator/**'
-      - 'dashboard/**'
+      - "tag-generator/**"
+      - "recap-subworker/**"
+      - "monitors/utilizer/**"
+      - "news-creator/**"
+      - "dashboard/**"
 
 permissions:
   actions: read
@@ -71,5 +72,3 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:python"
-
-

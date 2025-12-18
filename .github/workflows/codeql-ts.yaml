@@ -1,16 +1,17 @@
 name: CodeQL (TypeScript)
 
 on:
+  workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
     paths:
-      - 'alt-frontend/**'
-      - 'alt-frontend-sv/**'
+      - "alt-frontend/**"
+      - "alt-frontend-sv/**"
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
     paths:
-      - 'alt-frontend/**'
-      - 'alt-frontend-sv/**'
+      - "alt-frontend/**"
+      - "alt-frontend-sv/**"
 
 permissions:
   actions: read
@@ -66,5 +67,3 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:javascript"
-
-
