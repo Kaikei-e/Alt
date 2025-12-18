@@ -33,11 +33,13 @@ export NVIDIA_DRIVER_CAPABILITIES="${NVIDIA_DRIVER_CAPABILITIES:-compute,utility
 export LD_LIBRARY_PATH="/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH:-}"
 export OLLAMA_HOST="${OLLAMA_HOST:-127.0.0.1:11435}"   # 明示的にポート11435を指定
 export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-16384}" # デフォルトは16K（通常のAI Summary用、80KはRecap時のみ）
-export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-1}"         # 8GB では並列 1 が安定
+# モデルごとの同時実行上限（Ollama サーバ側）。news-creator 側では:
+# - OLLAMA_REQUEST_CONCURRENCY が設定されていない場合、この OLLAMA_NUM_PARALLEL の値に自動追従
+# - OLLAMA_REQUEST_CONCURRENCY が明示設定されている場合はそちらを優先
+# 8GB VRAM では並列 1 がより安定だが、検証目的で 2 並列にする場合は OLLAMA_NUM_PARALLEL=2 を指定する
+export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-2}"
 # 最適化: 16Kモデルのみを常時GPU上にロード（80Kはオンデマンド）
-# セマフォのロジック（OllamaGateway）により同時に1つのリクエストのみが処理されるため、
-# 16Kと80Kモデルが同時に使用されることはない。OLLAMA_MAX_LOADED_MODELS=1により、
-# 同時に1つのモデルのみがGPUメモリにロードされる。
+# OLLAMA_MAX_LOADED_MODELS=1 により、同時に1つのモデルのみがGPUメモリにロードされる。
 export OLLAMA_MAX_LOADED_MODELS_FORCE="${OLLAMA_MAX_LOADED_MODELS_FORCE:-1}"
 export OLLAMA_MAX_LOADED_MODELS="$OLLAMA_MAX_LOADED_MODELS_FORCE"
 export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-24h}"   # 24時間保持して16KモデルをGPU上に確実に保持

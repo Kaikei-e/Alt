@@ -44,7 +44,21 @@ class NewsCreatorConfig:
         # self.llm_keep_alive_8k = os.getenv("LLM_KEEP_ALIVE_8K", "0")  # 8kモデルは使用しない
         self.llm_keep_alive_16k = os.getenv("LLM_KEEP_ALIVE_16K", "24h")
         self.llm_keep_alive_80k = os.getenv("LLM_KEEP_ALIVE_80K", "15m")
-        self.ollama_request_concurrency = self._get_int("OLLAMA_REQUEST_CONCURRENCY", 1)
+
+        # Concurrency settings:
+        # - OLLAMA_REQUEST_CONCURRENCY が明示的に設定されている場合はそれを優先
+        # - 未設定の場合は OLLAMA_NUM_PARALLEL に自動追従（なければ最終的に 1 にフォールバック）
+        env_concurrency = os.getenv("OLLAMA_REQUEST_CONCURRENCY")
+        if env_concurrency is not None:
+            self.ollama_request_concurrency = self._get_int(
+                "OLLAMA_REQUEST_CONCURRENCY", 1
+            )
+            self._ollama_concurrency_source = "OLLAMA_REQUEST_CONCURRENCY"
+        else:
+            # NOTE: entrypoint.sh で OLLAMA_NUM_PARALLEL のデフォルトを設定しているため、
+            # ここでは OLLAMA_NUM_PARALLEL が優先される（未設定時のみ 1 にフォールバック）
+            self.ollama_request_concurrency = self._get_int("OLLAMA_NUM_PARALLEL", 1)
+            self._ollama_concurrency_source = "OLLAMA_NUM_PARALLEL"
 
         # ---- Generation parameters (Gemma3 + Ollama options) ----
         # Default: 16K context for normal AI Summary (80K is used only for Recap)
@@ -112,6 +126,8 @@ class NewsCreatorConfig:
                 "llm_service_url": self.llm_service_url,
                 "model": self.model_name,
                 "ollama_request_concurrency": self.ollama_request_concurrency,
+                "ollama_concurrency_source": self._ollama_concurrency_source,
+                "ollama_num_parallel": os.getenv("OLLAMA_NUM_PARALLEL"),
             },
         )
 

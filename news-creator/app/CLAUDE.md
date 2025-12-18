@@ -254,7 +254,7 @@ SERVICE_SECRET=your-secret-key
 LLM_SERVICE_URL=http://localhost:11434
 LLM_MODEL=gemma3:4b
 LLM_TIMEOUT_SECONDS=60
-OLLAMA_REQUEST_CONCURRENCY=1  # Global queue: max concurrent requests to Ollama
+OLLAMA_REQUEST_CONCURRENCY=1  # Optional: global queue limit. If omitted, defaults to OLLAMA_NUM_PARALLEL (1 is recommended on 8GB VRAM).
 
 # LLM Parameters
 LLM_TEMPERATURE=0.0
@@ -271,7 +271,7 @@ AUTH_SERVICE_URL=http://auth-service:8080
 The `OllamaGateway` implements a global request queue using `FIFOSemaphore` (a FIFO-guaranteed semaphore) to prevent Ollama from being overloaded by concurrent requests from multiple services (e.g., `recap-worker`, `pre-processor`).
 
 **Configuration**:
-- `OLLAMA_REQUEST_CONCURRENCY`: Maximum number of concurrent requests to Ollama (default: `1`)
+- `OLLAMA_REQUEST_CONCURRENCY`: Maximum number of concurrent requests to Ollama (default: value of `OLLAMA_NUM_PARALLEL`; `1` is recommended on 8GB VRAM)
 - When set to `1`, all requests are processed sequentially, ensuring Ollama (which typically has `OLLAMA_NUM_PARALLEL=1`) is not overwhelmed
 - When set to a higher value, that many requests can be processed in parallel
 
