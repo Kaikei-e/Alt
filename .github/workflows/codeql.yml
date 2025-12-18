@@ -1,0 +1,15 @@
+name: CodeQL (Meta)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  info:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show CodeQL workflows
+        run: |
+          echo "CodeQL workflows are split by language:"
+          echo "  - .github/workflows/codeql-go.yaml      # Go"
+          echo "  - .github/workflows/codeql-ts.yaml      # TypeScript/JavaScript"
+          echo "  - .github/workflows/codeql-python.yaml  # Python"

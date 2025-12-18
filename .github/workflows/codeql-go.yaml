@@ -1,0 +1,85 @@
+name: CodeQL (Go)
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'alt-backend/**'
+      - 'pre-processor/**'
+      - 'pre-processor-sidecar/**'
+      - 'search-indexer/**'
+      - 'auth-hub/**'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'alt-backend/**'
+      - 'pre-processor/**'
+      - 'pre-processor-sidecar/**'
+      - 'search-indexer/**'
+      - 'auth-hub/**'
+  schedule:
+    - cron: "0 18 * * 5"
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze-go:
+    name: Analyze (Go)
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ "go" ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # CodeQL 実行前にディスクの空きを増やす
+      - name: Free disk space before CodeQL
+        run: |
+          echo "Before cleanup:"
+          df -h
+
+          # 重いツール類があれば削除（存在チェック付き）
+          if [ -d "/usr/share/dotnet" ]; then
+            sudo rm -rf /usr/share/dotnet
+          fi
+
+          if [ -d "/usr/local/lib/android" ]; then
+            sudo rm -rf /usr/local/lib/android
+          fi
+
+          if [ -d "/usr/local/share/boost" ]; then
+            sudo rm -rf /usr/local/share/boost
+          fi
+
+          # Docker を使っている環境の場合、未使用リソースを削除
+          if command -v docker >/dev/null 2>&1; then
+            docker system prune -af || true
+          fi
+
+          echo "After cleanup:"
+          df -h
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          # 解析対象をさらに絞りたい場合は、以下を調整してください
+          # paths: alt-backend,pre-processor,pre-processor-sidecar,search-indexer,auth-hub
+          # paths-ignore: tmp,dist,vendor
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
+
+

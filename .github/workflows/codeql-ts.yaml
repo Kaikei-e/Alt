@@ -1,0 +1,70 @@
+name: CodeQL (TypeScript)
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'alt-frontend/**'
+      - 'alt-frontend-sv/**'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'alt-frontend/**'
+      - 'alt-frontend-sv/**'
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze-ts:
+    name: Analyze (TypeScript)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # 必要に応じてディスククリーンアップを実行
+      - name: Free disk space before CodeQL
+        run: |
+          echo "Before cleanup:"
+          df -h
+
+          if [ -d "/usr/share/dotnet" ]; then
+            sudo rm -rf /usr/share/dotnet
+          fi
+
+          if [ -d "/usr/local/lib/android" ]; then
+            sudo rm -rf /usr/local/lib/android
+          fi
+
+          if [ -d "/usr/local/share/boost" ]; then
+            sudo rm -rf /usr/local/share/boost
+          fi
+
+          if command -v docker >/dev/null 2>&1; then
+            docker system prune -af || true
+          fi
+
+          echo "After cleanup:"
+          df -h
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript
+          # 解析対象をさらに絞りたい場合は、以下を調整してください
+          # paths: alt-frontend,alt-frontend-sv
+          # paths-ignore: tmp,dist
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:javascript"
+
+

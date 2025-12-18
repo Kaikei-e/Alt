@@ -1,0 +1,75 @@
+name: CodeQL (Python)
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'tag-generator/**'
+      - 'recap-subworker/**'
+      - 'monitors/utilizer/**'
+      - 'news-creator/**'
+      - 'dashboard/**'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'tag-generator/**'
+      - 'recap-subworker/**'
+      - 'monitors/utilizer/**'
+      - 'news-creator/**'
+      - 'dashboard/**'
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze-python:
+    name: Analyze (Python)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Free disk space before CodeQL
+        run: |
+          echo "Before cleanup:"
+          df -h
+
+          if [ -d "/usr/share/dotnet" ]; then
+            sudo rm -rf /usr/share/dotnet
+          fi
+
+          if [ -d "/usr/local/lib/android" ]; then
+            sudo rm -rf /usr/local/lib/android
+          fi
+
+          if [ -d "/usr/local/share/boost" ]; then
+            sudo rm -rf /usr/local/share/boost
+          fi
+
+          if command -v docker >/dev/null 2>&1; then
+            docker system prune -af || true
+          fi
+
+          echo "After cleanup:"
+          df -h
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: python
+          # 解析対象をさらに絞りたい場合は、paths/paths-ignore を調整してください
+          # paths: tag-generator,recap-subworker,monitors/utilizer,news-creator,dashboard
+          # paths-ignore: tmp,dist,.venv
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:python"
+
+
