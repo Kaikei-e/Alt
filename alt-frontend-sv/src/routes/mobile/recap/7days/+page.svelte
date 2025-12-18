@@ -4,7 +4,7 @@
 	import { get7DaysRecapClient } from "$lib/api/client";
 	import type { RecapSummary } from "$lib/schema/recap";
 	import EmptyFeedState from "$lib/components/mobile/EmptyFeedState.svelte";
-	import RecapTimeline from "$lib/components/mobile/recap/RecapTimeline.svelte";
+	import SwipeRecapScreen from "$lib/components/mobile/recap/SwipeRecapScreen.svelte";
 	import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
 	import { Button } from "$lib/components/ui/button";
 
@@ -98,40 +98,8 @@
 		<!-- Empty state -->
 		<EmptyFeedState />
 	{:else}
-		<!-- Content -->
-		<div
-			class="p-5 max-w-2xl mx-auto overflow-y-auto overflow-x-hidden h-screen"
-			data-testid="recap-scroll-container"
-			style="background: var(--app-bg);"
-		>
-			<!-- ヘッダー -->
-			<div class="mb-6">
-				<h1
-					class="text-2xl font-bold mb-2"
-					style="color: var(--accent-primary); background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;"
-				>
-					7 Days Recap
-				</h1>
-				<p
-					class="text-xs mb-1"
-					style="color: var(--text-secondary);"
-				>
-					Executed: {new Date(data.executedAt).toLocaleString("en-US")}
-				</p>
-				<p
-					class="text-xs"
-					style="color: var(--text-secondary);"
-				>
-					{data.totalArticles.toLocaleString()} articles analyzed
-				</p>
-			</div>
-
-			<!-- タイムライン -->
-			<RecapTimeline genres={data.genres} />
-
-			<!-- フッター余白 -->
-			<div class="h-20"></div>
-		</div>
+		<!-- Content with Swipe UI -->
+		<SwipeRecapScreen genres={data.genres} summaryData={data} />
 	{/if}
 
 	<FloatingMenu />
