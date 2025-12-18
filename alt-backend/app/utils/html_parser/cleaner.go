@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 
+	"codeberg.org/readeck/go-readability/v2"
 	"github.com/PuerkitoBio/goquery"
-	"github.com/go-shiori/go-readability"
 )
 
 // ExtractArticleText converts raw article HTML into plain text paragraphs.
@@ -99,15 +99,24 @@ func ExtractArticleText(raw string) string {
 
 	// 3. Try go-readability on the cleaned document
 	article, err := readability.FromReader(strings.NewReader(trimmed), nil)
-	if err == nil && len(strings.TrimSpace(article.TextContent)) > 0 {
-		// Use go-readability result, but preserve paragraph structure
-		// article.Content is the HTML content, article.TextContent is the plain text
-		// We'll extract paragraphs from the HTML content to preserve structure
-		if article.Content != "" {
-			return extractParagraphs(article.Content)
+	if err == nil {
+		// First, render plain text and ensure it's non-empty.
+		var textBuf strings.Builder
+		if err := article.RenderText(&textBuf); err == nil {
+			text := strings.TrimSpace(textBuf.String())
+			if len(text) > 0 {
+				// Prefer the cleaned-up HTML from go-readability to preserve structure,
+				// then fall back to plain text if needed.
+				var htmlBuf strings.Builder
+				if err := article.RenderHTML(&htmlBuf); err == nil {
+					html := strings.TrimSpace(htmlBuf.String())
+					if html != "" {
+						return extractParagraphs(html)
+					}
+				}
+				return normalizeWhitespace(text)
+			}
 		}
-		// Fallback to TextContent if Content is empty
-		return normalizeWhitespace(article.TextContent)
 	}
 
 	// 4. Final fallback: Strip tags from the original HTML
