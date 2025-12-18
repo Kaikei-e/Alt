@@ -127,6 +127,10 @@ class TagExtractor:
         self._input_sanitizer = InputSanitizer(sanitizer_config)
         self._embedding_backend: str = "unknown"
         self._embedding_metadata: dict[str, Any] = {}
+        # Lazily populated model handles (set by _lazy_load_models via ModelManager)
+        self._embedder: Any | None = None
+        self._keybert: Any | None = None
+        self._ja_tagger: Any | None = None
 
     def _compute_confidence(self, tags: list[str], sanitized_length: int) -> float:
         """Derive a lightweight confidence score from tag coverage and article size."""
@@ -604,6 +608,14 @@ class TagExtractor:
 
         return result
 
+    def _get_candidate_tokens(self, text: str) -> list[str]:
+        """Get candidate tokens for fallback extraction (primarily English text).
+
+        This helper exists mainly for clarity and testability and currently
+        delegates to the English tokenizer.
+        """
+        return self._tokenize_english(text)
+
     def _fallback_extraction(self, text: str, lang: str) -> list[str]:
         """Fallback extraction method when primary method fails."""
         if lang == "ja":
@@ -612,7 +624,7 @@ class TagExtractor:
             return keywords
         else:
             # For English, try tokenization and frequency
-            tokens = self._tokenize_english(text)
+            tokens = self._get_candidate_tokens(text)
             if tokens:
                 token_freq = Counter(tokens)
                 return [term for term, _ in token_freq.most_common(self.config.top_keywords)]

@@ -32,19 +32,19 @@ class DatabaseManager:
 
     def get_database_dsn(self) -> str:
         """Build database connection string from environment variables."""
-        # Check password (env var or file)
-        password = os.getenv("DB_TAG_GENERATOR_PASSWORD")
-        if not password:
-            password_file = os.getenv("DB_TAG_GENERATOR_PASSWORD_FILE")
-            if password_file:
-                try:
-                    with open(password_file) as f:
-                        password = f.read().strip()
-                except Exception as e:
-                    logger.error(f"Failed to read password file: {e}")
+        # Resolve password (env var or file)
+        password: str | None = None
+        env_password = os.getenv("DB_TAG_GENERATOR_PASSWORD")
+        password_file = os.getenv("DB_TAG_GENERATOR_PASSWORD_FILE")
 
-        if not password:
-            raise ValueError("Missing DB_TAG_GENERATOR_PASSWORD or DB_TAG_GENERATOR_PASSWORD_FILE")
+        if env_password:
+            password = env_password
+        elif password_file:
+            try:
+                with open(password_file) as f:
+                    password = f.read().strip()
+            except Exception as e:
+                logger.error(f"Failed to read password file: {e}")
 
         required_vars = [
             "DB_TAG_GENERATOR_USER",
@@ -53,8 +53,16 @@ class DatabaseManager:
             "DB_NAME",
         ]
 
-        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        missing_vars: list[str] = []
+        if not password:
+            missing_vars.append("DB_TAG_GENERATOR_PASSWORD or DB_TAG_GENERATOR_PASSWORD_FILE")
+
+        for var in required_vars:
+            if not os.getenv(var):
+                missing_vars.append(var)
+
         if missing_vars:
+            # Keep message compatible with tests that look for this substring.
             raise ValueError(f"Missing required environment variables: {missing_vars}")
 
         dsn = (

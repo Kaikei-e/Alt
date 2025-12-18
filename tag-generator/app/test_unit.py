@@ -195,10 +195,11 @@ class TestTagExtractor:
             mock_ja_tagger.return_value = [mock_word1, mock_word2]
             mock_get_models.return_value = (mock_embedder, mock_keybert, mock_ja_tagger)
 
-            result = extractor._extract_keywords_japanese("東京は日本の首都です")
+            keywords, confidences = extractor._extract_keywords_japanese("東京は日本の首都です")
 
-            assert isinstance(result, list)
-            assert len(result) >= 0
+            assert isinstance(keywords, list)
+            assert isinstance(confidences, dict)
+            assert len(keywords) >= 0
 
     @patch("nltk.word_tokenize")
     def test_should_tokenize_english_text(self, mock_tokenize):
@@ -231,7 +232,11 @@ class TestTagExtractor:
         """Should use fallback extraction for Japanese text."""
         extractor = TagExtractor()
 
-        with patch.object(extractor, "_extract_keywords_japanese", return_value=["東京", "日本"]):
+        with patch.object(
+            extractor,
+            "_extract_keywords_japanese",
+            return_value=(["東京", "日本"], {"東京": 1.0, "日本": 1.0}),
+        ):
             result = extractor._fallback_extraction("東京は日本の首都です", "ja")
 
             assert result == ["東京", "日本"]
@@ -261,7 +266,7 @@ class TestTagExtractor:
         with patch.object(
             extractor,
             "_extract_keywords_english",
-            return_value=["machine", "learning", "ai"],
+            return_value=(["machine", "learning", "ai"], {"machine": 1.0, "learning": 0.9, "ai": 0.8}),
         ):
             result = extractor.extract_tags("Machine Learning", "Artificial intelligence and machine learning")
 
@@ -274,7 +279,11 @@ class TestTagExtractor:
 
         extractor = TagExtractor()
 
-        with patch.object(extractor, "_extract_keywords_japanese", return_value=["東京", "日本"]):
+        with patch.object(
+            extractor,
+            "_extract_keywords_japanese",
+            return_value=(["東京", "日本"], {"東京": 1.0, "日本": 0.9}),
+        ):
             result = extractor.extract_tags("東京について", "東京は日本の首都です")
 
             assert result == ["東京", "日本"]
@@ -351,7 +360,11 @@ class TestTagExtractor:
         with (
             patch.object(extractor._input_sanitizer, "sanitize", return_value=sanitization_result),
             patch.object(extractor, "_detect_language", return_value="en"),
-            patch.object(extractor, "_run_extraction", return_value=["tag1", "tag2"]),
+            patch.object(
+                extractor,
+                "_run_extraction",
+                return_value=(["tag1", "tag2"], {"tag1": 0.9, "tag2": 0.8}),
+            ),
         ):
             outcome = extractor.extract_tags_with_metrics("Title", "Content")
 
@@ -720,7 +733,8 @@ class TestTagGeneratorService:
         """TagGeneratorService should initialize with default configuration."""
         service = TagGeneratorService()
         assert service.config.batch_limit == 75
-        assert service.config.processing_interval == 1800
+        # Default processing interval should match TagGeneratorConfig
+        assert service.config.processing_interval == 300
         assert isinstance(service.article_fetcher, ArticleFetcher)
         assert isinstance(service.tag_extractor, TagExtractor)
         assert isinstance(service.tag_inserter, TagInserter)
@@ -753,7 +767,7 @@ class TestTagGeneratorService:
             with pytest.raises(ValueError, match="Missing required environment variables"):
                 service._get_database_dsn()
 
-    @patch("main.psycopg2.connect")
+    @patch("tag_generator.service.psycopg2.connect")
     def test_should_create_database_connection_with_retry(self, mock_connect):
         """Should create database connection with retry logic."""
         mock_conn = Mock()
@@ -767,7 +781,7 @@ class TestTagGeneratorService:
             assert conn == mock_conn
             mock_connect.assert_called_once_with("test-dsn")
 
-    @patch("main.psycopg2.connect")
+    @patch("tag_generator.service.psycopg2.connect")
     def test_should_retry_failed_connections(self, mock_connect):
         """Should retry failed database connections."""
         # First two attempts fail, third succeeds
