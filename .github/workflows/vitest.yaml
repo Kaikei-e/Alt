@@ -67,18 +67,18 @@ jobs:
           echo "::add-mask::$WORKSPACE_PATH"
           echo "::add-mask::$(echo $HOME | cut -d'/' -f1-3)"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+          cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
+
       - name: Enable pnpm via Corepack
         run: |
           mkdir -p "$HOME/.local/bin"
           corepack enable --install-directory "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           corepack prepare pnpm@${{ inputs.pnpm-version }} --activate
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ inputs.node-version }}
-          cache: pnpm
-          cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
 
       - name: Clean pnpm store (if corrupted)
         run: |
