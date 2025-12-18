@@ -25,5 +25,11 @@ export {
 	searchFeedsClient,
 	updateFeedReadStatusClient,
 } from "./feeds";
+// フィードリンク管理関連のAPI
+export {
+	deleteFeedLinkClient,
+	listFeedLinksClient,
+	registerRssFeedClient,
+} from "./feedLinks";
 // リキャップ関連のAPI
 export { get7DaysRecapClient } from "./recap";

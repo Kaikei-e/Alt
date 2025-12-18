@@ -1,4 +1,5 @@
 import { env } from "$env/dynamic/private";
+import type { FeedLink } from "$lib/schema/feedLink";
 
 // バックエンドAPIのベースURL（サーバーサイドからは内部URLを使用）
 const BACKEND_BASE_URL = env.BACKEND_BASE_URL || "http://alt-backend:9000";
@@ -282,3 +283,126 @@ export async function getReadFeedsWithCursor(
 		cookie,
 	);
 }
+
+/**
+ * RSSフィードリンク一覧を取得
+ */
+export async function getFeedLinks(
+	cookie: string | null,
+): Promise<FeedLink[]> {
+	return callBackendAPI<FeedLink[]>("/v1/rss-feed-link/list", cookie);
+}
+
+/**
+ * RSSフィードリンクを登録
+ */
+export async function registerRssFeed(
+	cookie: string | null,
+	url: string,
+): Promise<void> {
+	const token = await getBackendToken(cookie);
+
+	const headers: HeadersInit = {
+		"Content-Type": "application/json",
+	};
+
+	if (token) {
+		headers["X-Alt-Backend-Token"] = token;
+	}
+
+	const endpoint = "/v1/rss-feed-link/register";
+	const fullUrl = `${BACKEND_BASE_URL}${endpoint}`;
+
+	try {
+		const response = await fetch(fullUrl, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ url }),
+			cache: "no-store",
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => "");
+			console.error(
+				`API call failed: ${response.status} ${response.statusText}`,
+				{
+					url: fullUrl,
+					status: response.status,
+					statusText: response.statusText,
+					errorBody: errorText.substring(0, 200),
+				},
+			);
+			throw new Error(
+				`API call failed: ${response.status} ${response.statusText}`,
+			);
+		}
+	} catch (error) {
+		if (error instanceof Error && error.message.includes("API call failed")) {
+			throw error;
+		}
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		console.error("Network error calling backend API:", {
+			url: fullUrl,
+			message: errorMessage,
+			backendBaseUrl: BACKEND_BASE_URL,
+		});
+		throw new Error(`Failed to connect to backend: ${errorMessage}`);
+	}
+}
+
+/**
+ * RSSフィードリンクを削除
+ */
+export async function deleteFeedLink(
+	cookie: string | null,
+	id: string,
+): Promise<void> {
+	const token = await getBackendToken(cookie);
+
+	const headers: HeadersInit = {
+		"Content-Type": "application/json",
+	};
+
+	if (token) {
+		headers["X-Alt-Backend-Token"] = token;
+	}
+
+	const endpoint = `/v1/rss-feed-link/${encodeURIComponent(id)}`;
+	const fullUrl = `${BACKEND_BASE_URL}${endpoint}`;
+
+	try {
+		const response = await fetch(fullUrl, {
+			method: "DELETE",
+			headers,
+			cache: "no-store",
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => "");
+			console.error(
+				`API call failed: ${response.status} ${response.statusText}`,
+				{
+					url: fullUrl,
+					status: response.status,
+					statusText: response.statusText,
+					errorBody: errorText.substring(0, 200),
+				},
+			);
+			throw new Error(
+				`API call failed: ${response.status} ${response.statusText}`,
+			);
+		}
+	} catch (error) {
+		if (error instanceof Error && error.message.includes("API call failed")) {
+			throw error;
+		}
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		console.error("Network error calling backend API:", {
+			url: fullUrl,
+			message: errorMessage,
+			backendBaseUrl: BACKEND_BASE_URL,
+		});
+		throw new Error(`Failed to connect to backend: ${errorMessage}`);
+	}
+}
+
