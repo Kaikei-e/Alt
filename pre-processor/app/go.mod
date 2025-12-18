@@ -3,13 +3,13 @@ module pre-processor
 go 1.24.3
 
 require (
+	codeberg.org/readeck/go-readability/v2 v2.1.0
 	github.com/PuerkitoBio/goquery v1.11.0
-	github.com/go-shiori/go-readability v0.0.0-20251205110129-5db1dc9836f0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
-	github.com/labstack/echo/v4 v4.13.4
-	github.com/stretchr/testify v1.10.0
+	github.com/labstack/echo/v4 v4.14.0
+	github.com/stretchr/testify v1.11.1
 	go.uber.org/mock v0.6.0
 	golang.org/x/net v0.48.0
 )

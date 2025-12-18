@@ -120,6 +120,11 @@ func TestValidateConfig(t *testing.T) {
 					Model:   "gemma3:4b",
 					Timeout: 60 * time.Second,
 				},
+				SummarizeQueue: SummarizeQueueConfig{
+					WorkerInterval:  10 * time.Second,
+					MaxRetries:      3,
+					PollingInterval: 5 * time.Second,
+				},
 			},
 			expectError: false,
 		},
@@ -213,6 +218,11 @@ func TestConfigManager(t *testing.T) {
 				Model:   "gemma3:4b",
 				Timeout: 60 * time.Second,
 			},
+			SummarizeQueue: SummarizeQueueConfig{
+				WorkerInterval:  10 * time.Second,
+				MaxRetries:      3,
+				PollingInterval: 5 * time.Second,
+			},
 		}
 
 		manager := NewConfigManager(originalConfig, nil)
@@ -228,6 +238,11 @@ func TestConfigManager(t *testing.T) {
 				APIPath: "/api/generate",
 				Model:   "gemma3:4b",
 				Timeout: 60 * time.Second,
+			},
+			SummarizeQueue: SummarizeQueueConfig{
+				WorkerInterval:  10 * time.Second,
+				MaxRetries:      3,
+				PollingInterval: 5 * time.Second,
 			},
 		}
 
