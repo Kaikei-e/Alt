@@ -46,7 +46,7 @@ permissions:
 
 jobs:
   vitest:
-    runs-on: [self-hosted, linux, X64]
+    runs-on: self-hosted
     timeout-minutes: 30
 
     env:

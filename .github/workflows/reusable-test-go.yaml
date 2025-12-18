@@ -29,7 +29,7 @@ on:
       sparse-checkout:
         required: false
         type: string
-        default: 'alt-backend'  # 呼び出し側で 'search-indexer' 等に上書き推奨
+        default: "alt-backend" # 呼び出し側で 'search-indexer' 等に上書き推奨
 
   workflow_dispatch:
 
@@ -39,7 +39,7 @@ permissions:
 
 jobs:
   test-go:
-    runs-on: [self-hosted, linux, X64]
+    runs-on: self-hosted
     timeout-minutes: 30
 
     defaults:
@@ -80,7 +80,7 @@ jobs:
           go-version: ${{ inputs.go-version }}
           go-version-file: ${{ inputs.go-version == '' && format('{0}/go.mod', inputs.working-directory) || '' }}
           check-latest: true
-          cache: true   # go modules とビルド出力を標準機能でキャッシュ
+          cache: true # go modules とビルド出力を標準機能でキャッシュ
 
       # ===== キャッシュ戦略 =====
       # 1) ローカル永続キャッシュ（sudo不要でHOME配下に固定）

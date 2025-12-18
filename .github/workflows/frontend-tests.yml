@@ -6,6 +6,6 @@ on:
 jobs:
   info:
     permissions: {}
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - run: echo "This workflow is deprecated. Use .github/workflows/alt-frontend-unit-test.yaml which calls reusable vitest.yaml."

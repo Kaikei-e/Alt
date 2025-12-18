@@ -27,7 +27,7 @@ permissions:
 jobs:
   analyze-python:
     name: Analyze (Python)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout repository

@@ -29,7 +29,7 @@ permissions:
 jobs:
   analyze-go:
     name: Analyze (Go)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     strategy:
       fail-fast: false
