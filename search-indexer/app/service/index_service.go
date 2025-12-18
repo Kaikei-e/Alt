@@ -34,10 +34,10 @@ type SearchQuery struct {
 }
 
 type SearchResult struct {
-	Hits       []Article `json:"hits"`
-	TotalHits  int       `json:"total_hits"`
-	Query      string    `json:"query"`
-	TimeTaken  int       `json:"time_taken_ms"`
+	Hits      []Article `json:"hits"`
+	TotalHits int       `json:"total_hits"`
+	Query     string    `json:"query"`
+	TimeTaken int       `json:"time_taken_ms"`
 }
 
 func NewIndexService(meilisearchClient MeilisearchClient, logger *slog.Logger) *IndexService {

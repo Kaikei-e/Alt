@@ -85,7 +85,7 @@ func SearchArticles(
 	r *http.Request,
 	idx meilisearch.IndexManager,
 ) {
-	query := r.URL.Query().Get("q") // クエリキーを 'q' に統一
+	query := r.URL.Query().Get("q")        // クエリキーを 'q' に統一
 	userID := r.URL.Query().Get("user_id") // user_idパラメータ
 
 	if query == "" {
