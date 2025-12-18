@@ -296,7 +296,11 @@ services:
       - LLM_SERVICE_URL=${LLM_SERVICE_URL:-http://127.0.0.1:11435}
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
-      - OLLAMA_REQUEST_CONCURRENCY=${OLLAMA_REQUEST_CONCURRENCY:-1}
+      # news-creator の Ollama への同時リクエスト数は、アプリ側で次のように決定される:
+      # - OLLAMA_REQUEST_CONCURRENCY が明示設定されている場合: その値を使用
+      # - 未設定の場合: OLLAMA_NUM_PARALLEL に自動追従（entrypoint.sh での設定値）
+      # ここではデフォルト値を強制せず、必要な環境のみ .env やデプロイ設定で OLLAMA_REQUEST_CONCURRENCY を指定する
+      # - OLLAMA_REQUEST_CONCURRENCY=${OLLAMA_REQUEST_CONCURRENCY:-1}
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
     secrets:
       - service_secret
