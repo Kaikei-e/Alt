@@ -10,7 +10,7 @@ class TestProcessingScheduler:
         scheduler = ProcessingScheduler(service, sleep_fn=Mock())
         stats = {"total_processed": 3, "successful": 3, "failed": 0, "has_more_pending": False}
 
-        assert scheduler.calculate_next_sleep(stats) == 0
+        assert scheduler.calculate_next_sleep(stats) == service.config.active_processing_interval
 
     def test_calculate_next_sleep_respects_interval_when_idle(self):
         service = TagGeneratorService()
@@ -24,7 +24,7 @@ class TestProcessingScheduler:
         scheduler = ProcessingScheduler(service, sleep_fn=Mock())
         stats = {"total_processed": 0, "successful": 0, "failed": 0, "has_more_pending": True}
 
-        assert scheduler.calculate_next_sleep(stats) == 0
+        assert scheduler.calculate_next_sleep(stats) == service.config.active_processing_interval
 
     def test_run_cycle_updates_health_and_returns_interval(self):
         service = TagGeneratorService()
@@ -36,21 +36,21 @@ class TestProcessingScheduler:
 
         mock_cycle.assert_called_once()
         assert sleep_interval == service.config.processing_interval
-        assert service.total_cycles == 1
-        assert service.consecutive_empty_cycles == 1
+        assert service.health_monitor.total_cycles == 1
+        assert service.health_monitor.consecutive_empty_cycles == 1
 
     def test_run_cycle_resets_empty_counter_on_work(self):
         service = TagGeneratorService()
-        service.consecutive_empty_cycles = 3
+        service.health_monitor.consecutive_empty_cycles = 3
         scheduler = ProcessingScheduler(service, sleep_fn=Mock())
         stats = {"success": True, "successful": 2, "total_processed": 2, "failed": 0}
 
         with patch.object(service, "_run_processing_cycle_with_monitoring", return_value=stats):
             sleep_interval = scheduler.run_cycle()
 
-        assert sleep_interval == 0
-        assert service.consecutive_empty_cycles == 0
-        assert service.total_articles_processed == 2
+        assert sleep_interval == service.config.active_processing_interval
+        assert service.health_monitor.consecutive_empty_cycles == 0
+        assert service.health_monitor.total_articles_processed == 2
 
     def test_run_cycle_handles_failures_with_retry_delay(self):
         service = TagGeneratorService()
@@ -61,4 +61,4 @@ class TestProcessingScheduler:
             sleep_interval = scheduler.run_cycle()
 
         assert sleep_interval == service.config.error_retry_interval
-        assert service.consecutive_empty_cycles == 1
+        assert service.health_monitor.consecutive_empty_cycles == 1

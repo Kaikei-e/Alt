@@ -18,14 +18,21 @@ class ProcessingScheduler:
         self._sleep = sleep_fn or time.sleep
 
     def calculate_next_sleep(self, processing_stats: dict[str, Any]) -> int:
-        """Derive the delay before the next cycle based on recent work."""
+        """Derive the delay before the next cycle based on recent work.
+
+        ドメイン仕様:
+        - 直前のサイクルで記事が処理された、もしくはまだ未処理記事が残っている場合は
+          アクティブ間隔 ``active_processing_interval`` を使う。
+        - 何も処理されておらず、未処理記事も無い場合は待機間隔 ``processing_interval`` を使う。
+        """
         assert self.service.config is not None
 
-        # If there's more work pending or articles were processed, use active interval (3 minutes)
+        # まだ処理すべき記事がある、または今回のサイクルで1件以上処理していれば
+        # アクティブ運転用の短いインターバルで次のサイクルを実行
         if processing_stats.get("has_more_pending") or processing_stats.get("total_processed", 0) > 0:
             return self.service.config.active_processing_interval
 
-        # If nothing was processed, use longer interval (5 minutes)
+        # 何も処理されておらず未処理記事も無い場合はアイドル間隔で待機
         return self.service.config.processing_interval
 
     def run_cycle(self) -> int:
