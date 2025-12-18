@@ -80,7 +80,7 @@ For extremely large inputs (multiple article clusters) that exceed even the 80K 
 
 ## Integration & Data Flow
 - `DependencyContainer` in `main.py` wires all components.
-- `OllamaGateway` enforces concurrency via `OLLAMA_REQUEST_CONCURRENCY` (default 1) to prevent VRAM thrashing.
+- `OllamaGateway` enforces concurrency via `OLLAMA_REQUEST_CONCURRENCY` (if unset, falls back to `OLLAMA_NUM_PARALLEL`) to prevent VRAM thrashing.
 - **Observability**: Structured logs track `token_per_second`, `load_duration`, and `prompt_eval_duration` (prefill speed).
 
 ## Operational Notes
