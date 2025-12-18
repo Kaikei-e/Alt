@@ -63,6 +63,7 @@ dev = [
 
     # Additional test dependencies for CI
     "langdetect>=1.0.9",
+    "psutil>=5.9.0",
 ]
 
 # ML dependencies for production and testing
