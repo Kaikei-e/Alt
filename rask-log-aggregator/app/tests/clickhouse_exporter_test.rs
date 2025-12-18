@@ -27,7 +27,7 @@ fn test_enriched_log_entry_to_log_row_conversion() {
     assert_eq!(log_row.log_type, enriched_log.log_type);
     assert_eq!(log_row.message, enriched_log.message);
     assert_eq!(log_row.level, 1); // LogLevel::Info maps to 1
-                                  // Verify timestamp is correctly parsed
+    // Verify timestamp is correctly parsed
     let expected_timestamp: DateTime<Utc> = "2023-01-01T12:34:56.789Z".parse().unwrap();
     assert_eq!(log_row.timestamp, expected_timestamp);
     assert_eq!(log_row.stream, enriched_log.stream);
