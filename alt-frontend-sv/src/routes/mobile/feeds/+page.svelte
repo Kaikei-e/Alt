@@ -1,15 +1,15 @@
 <script lang="ts">
-import FeedsClient from "$lib/components/mobile/FeedsClient.svelte";
-import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
-import MobileFeedsHero from "$lib/components/mobile/MobileFeedsHero.svelte";
-import type { RenderFeed } from "$lib/schema/feed";
+	import FeedsClient from "$lib/components/mobile/FeedsClient.svelte";
+	import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
+	import MobileFeedsHero from "$lib/components/mobile/MobileFeedsHero.svelte";
+	import type { RenderFeed } from "$lib/schema/feed";
 
-interface PageData {
-	initialFeeds?: RenderFeed[];
-	error?: string;
-}
+	interface PageData {
+		initialFeeds?: RenderFeed[];
+		error?: string;
+	}
 
-const { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 </script>
 
 <div

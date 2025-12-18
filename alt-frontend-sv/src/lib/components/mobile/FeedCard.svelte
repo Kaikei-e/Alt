@@ -1,28 +1,28 @@
 <script lang="ts">
-import { SquareArrowOutUpRight } from "@lucide/svelte";
-import { Button } from "$lib/components/ui/button";
-import type { RenderFeed } from "$lib/schema/feed";
-import FeedDetails from "./FeedDetails.svelte";
+	import { SquareArrowOutUpRight } from "@lucide/svelte";
+	import { Button } from "$lib/components/ui/button";
+	import type { RenderFeed } from "$lib/schema/feed";
+	import FeedDetails from "./FeedDetails.svelte";
 
-interface Props {
-	feed: RenderFeed;
-	isReadStatus: boolean;
-	setIsReadStatus: (feedLink: string) => void;
-}
+	interface Props {
+		feed: RenderFeed;
+		isReadStatus: boolean;
+		setIsReadStatus: (feedLink: string) => void;
+	}
 
-const { feed, isReadStatus, setIsReadStatus }: Props = $props();
+	const { feed, isReadStatus, setIsReadStatus }: Props = $props();
 
-const handleReadStatus = () => {
-	// API呼び出しは親コンポーネントで行うため、コールバックのみ実行
-	// normalizedUrlを使用して一貫性を保つ
-	setIsReadStatus(feed.normalizedUrl);
-};
+	const handleReadStatus = () => {
+		// API呼び出しは親コンポーネントで行うため、コールバックのみ実行
+		// normalizedUrlを使用して一貫性を保つ
+		setIsReadStatus(feed.normalizedUrl);
+	};
 </script>
 
 {#if !isReadStatus}
 	<!-- Gradient border container with hover effects -->
 	<div
-		class="p-[2px] rounded-[18px] border-2 transition-transform duration-300 ease-in-out cursor-pointer hover:scale-[1.02] hover:shadow-lg"
+		class="w-full max-w-[calc(100vw-2.5rem)] p-[2px] rounded-[18px] border-2 transition-transform duration-300 ease-in-out cursor-pointer hover:-translate-y-[2px] hover:shadow-lg"
 		style="border-color: var(--surface-border);"
 		data-testid="feed-card-container"
 	>
@@ -50,7 +50,7 @@ const handleReadStatus = () => {
 						target="_blank"
 						rel="noopener noreferrer"
 						aria-label="Open {feed.title} in external link"
-						class="text-sm font-semibold hover:underline leading-tight break-words"
+						class="text-sm font-semibold hover:underline leading-tight break-words flex-1 min-w-0"
 						style="color: var(--accent-primary);"
 					>
 						{feed.title}
@@ -73,9 +73,9 @@ const handleReadStatus = () => {
 				{/if}
 
 				<!-- Bottom section with button and details -->
-				<div class="flex justify-between items-center mt-3 gap-3">
+				<div class="flex flex-wrap justify-between items-center mt-3 gap-3">
 					<Button
-						class="flex-1 text-sm font-bold px-4 min-h-[44px] border border-white/20 rounded-full transition-all duration-200 hover:scale-105 active:scale-95"
+						class="flex-1 text-sm font-bold px-3 min-w-0 min-h-[44px] border border-white/20 rounded-full transition-all duration-200 hover:scale-105 active:scale-95"
 						style="
 							background: var(--alt-primary);
 							color: var(--text-primary);
@@ -92,4 +92,3 @@ const handleReadStatus = () => {
 		</div>
 	</div>
 {/if}
-
