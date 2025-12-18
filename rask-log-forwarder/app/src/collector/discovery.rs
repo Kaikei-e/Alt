@@ -157,20 +157,17 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
                 }
             }
 
-            if best_match.is_some() {
-                // If we found any match, check if it's an exact service name match
-                if let Some(ref matched_container) = best_match {
-                    if let Some(names) = &matched_container.names {
-                        if names.iter().any(|n| {
-                            let clean = n.trim_start_matches('/');
-                            clean == service_name
-                                || clean.ends_with(&format!("-{service_name}-1"))
-                                || clean.ends_with(&format!("-{service_name}"))
-                        }) {
-                            break; // Found a good match, stop searching
-                        }
-                    }
-                }
+            // If we found any match, check if it's an exact service name match
+            if let Some(ref matched_container) = best_match
+                && let Some(names) = &matched_container.names
+                && names.iter().any(|n| {
+                    let clean = n.trim_start_matches('/');
+                    clean == service_name
+                        || clean.ends_with(&format!("-{service_name}-1"))
+                        || clean.ends_with(&format!("-{service_name}"))
+                })
+            {
+                break; // Found a good match, stop searching
             }
         }
 

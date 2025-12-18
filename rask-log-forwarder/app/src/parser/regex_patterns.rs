@@ -132,32 +132,32 @@ impl SimplePatternParser {
             let ip = parts[0];
 
             // Find quoted method and path
-            if let Some(quote_start) = line.find('"') {
-                if let Some(quote_end) = line[quote_start + 1..].find('"') {
-                    let request_line = &line[quote_start + 1..quote_start + 1 + quote_end];
-                    let request_parts: Vec<&str> = request_line.split_whitespace().collect();
+            if let Some(quote_start) = line.find('"')
+                && let Some(quote_end) = line[quote_start + 1..].find('"')
+            {
+                let request_line = &line[quote_start + 1..quote_start + 1 + quote_end];
+                let request_parts: Vec<&str> = request_line.split_whitespace().collect();
 
-                    if request_parts.len() >= 2 {
-                        let method = request_parts[0];
-                        let path = request_parts[1];
+                if request_parts.len() >= 2 {
+                    let method = request_parts[0];
+                    let path = request_parts[1];
 
-                        // Try to find status and size after the quote
-                        let after_quote = &line[quote_start + 1 + quote_end + 1..];
-                        let status_size_parts: Vec<&str> = after_quote.split_whitespace().collect();
+                    // Try to find status and size after the quote
+                    let after_quote = &line[quote_start + 1 + quote_end + 1..];
+                    let status_size_parts: Vec<&str> = after_quote.split_whitespace().collect();
 
-                        if status_size_parts.len() >= 2 {
-                            let status = status_size_parts[0].parse().unwrap_or(0);
-                            let size = status_size_parts[1].parse().unwrap_or(0);
+                    if status_size_parts.len() >= 2 {
+                        let status = status_size_parts[0].parse().unwrap_or(0);
+                        let size = status_size_parts[1].parse().unwrap_or(0);
 
-                            return Ok(NginxAccessMatch {
-                                ip,
-                                method,
-                                path,
-                                status,
-                                size,
-                                full_line: line,
-                            });
-                        }
+                        return Ok(NginxAccessMatch {
+                            ip,
+                            method,
+                            path,
+                            status,
+                            size,
+                            full_line: line,
+                        });
                     }
                 }
             }

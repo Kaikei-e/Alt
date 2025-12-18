@@ -179,10 +179,10 @@ impl BatchFormer {
     pub async fn next_batch(&mut self) -> Option<Batch> {
         // Check for ready batches first
         {
-            if let Ok(mut inner) = self.inner.write_safe().await {
-                if let Some(batch) = inner.ready_batches.pop_front() {
-                    return Some(batch);
-                }
+            if let Ok(mut inner) = self.inner.write_safe().await
+                && let Some(batch) = inner.ready_batches.pop_front()
+            {
+                return Some(batch);
             }
         }
 

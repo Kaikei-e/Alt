@@ -79,26 +79,26 @@ impl SimdParser {
 
     fn is_nginx_access_log(&self, message: &str) -> bool {
         // Try SIMD nginx access patterns
-        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ACCESS) {
-            if regex.is_match(message) {
-                return true;
-            }
+        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ACCESS)
+            && regex.is_match(message)
+        {
+            return true;
         }
-        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_COMBINED) {
-            if regex.is_match(message) {
-                return true;
-            }
+        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_COMBINED)
+            && regex.is_match(message)
+        {
+            return true;
         }
         // Try fallback patterns
-        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ACCESS_FALLBACK) {
-            if regex.is_match(message) {
-                return true;
-            }
+        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ACCESS_FALLBACK)
+            && regex.is_match(message)
+        {
+            return true;
         }
-        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_COMBINED_FALLBACK) {
-            if regex.is_match(message) {
-                return true;
-            }
+        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_COMBINED_FALLBACK)
+            && regex.is_match(message)
+        {
+            return true;
         }
 
         // Simple heuristic as final fallback
@@ -107,15 +107,15 @@ impl SimdParser {
 
     fn is_nginx_error_log(&self, message: &str) -> bool {
         // Try SIMD nginx error patterns
-        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ERROR) {
-            if regex.is_match(message) {
-                return true;
-            }
+        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ERROR)
+            && regex.is_match(message)
+        {
+            return true;
         }
-        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ERROR_FALLBACK) {
-            if regex.is_match(message) {
-                return true;
-            }
+        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ERROR_FALLBACK)
+            && regex.is_match(message)
+        {
+            return true;
         }
 
         // Simple heuristic as final fallback
@@ -126,134 +126,134 @@ impl SimdParser {
         let message_clone = log_entry.message.clone();
 
         // Try combined format first (more fields)
-        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_COMBINED) {
-            if let Some(captures) = regex.captures(&message_clone) {
-                return Ok(NginxLogEntry {
-                    service_type: "nginx".to_string(),
-                    log_type: "access".to_string(),
-                    message: log_entry.message,
-                    stream: log_entry.stream,
-                    timestamp: log_entry.timestamp,
-                    container_id: log_entry.container_id,
-                    ip_address: captures.get(1).map(|m| m.as_str().to_string()),
-                    method: captures.get(3).map(|m| m.as_str().to_string()),
-                    path: captures.get(4).map(|m| m.as_str().to_string()),
-                    status_code: {
-                        let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
-                            captures.get(5).map(|m| m.as_str()),
-                            None,
-                        );
-                        status
-                    },
-                    response_size: {
-                        let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
-                            None,
-                            captures.get(6).map(|m| m.as_str()),
-                        );
-                        size
-                    },
-                    user_agent: captures.get(8).map(|m| m.as_str().to_string()),
-                    level: None,
-                });
-            }
+        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_COMBINED)
+            && let Some(captures) = regex.captures(&message_clone)
+        {
+            return Ok(NginxLogEntry {
+                service_type: "nginx".to_string(),
+                log_type: "access".to_string(),
+                message: log_entry.message,
+                stream: log_entry.stream,
+                timestamp: log_entry.timestamp,
+                container_id: log_entry.container_id,
+                ip_address: captures.get(1).map(|m| m.as_str().to_string()),
+                method: captures.get(3).map(|m| m.as_str().to_string()),
+                path: captures.get(4).map(|m| m.as_str().to_string()),
+                status_code: {
+                    let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
+                        captures.get(5).map(|m| m.as_str()),
+                        None,
+                    );
+                    status
+                },
+                response_size: {
+                    let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
+                        None,
+                        captures.get(6).map(|m| m.as_str()),
+                    );
+                    size
+                },
+                user_agent: captures.get(8).map(|m| m.as_str().to_string()),
+                level: None,
+            });
         }
 
         // Try regular access format
-        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ACCESS) {
-            if let Some(captures) = regex.captures(&message_clone) {
-                return Ok(NginxLogEntry {
-                    service_type: "nginx".to_string(),
-                    log_type: "access".to_string(),
-                    message: log_entry.message,
-                    stream: log_entry.stream,
-                    timestamp: log_entry.timestamp,
-                    container_id: log_entry.container_id,
-                    ip_address: captures.get(1).map(|m| m.as_str().to_string()),
-                    method: captures.get(3).map(|m| m.as_str().to_string()),
-                    path: captures.get(4).map(|m| m.as_str().to_string()),
-                    status_code: {
-                        let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
-                            captures.get(5).map(|m| m.as_str()),
-                            None,
-                        );
-                        status
-                    },
-                    response_size: {
-                        let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
-                            None,
-                            captures.get(6).map(|m| m.as_str()),
-                        );
-                        size
-                    },
-                    user_agent: None,
-                    level: None,
-                });
-            }
+        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ACCESS)
+            && let Some(captures) = regex.captures(&message_clone)
+        {
+            return Ok(NginxLogEntry {
+                service_type: "nginx".to_string(),
+                log_type: "access".to_string(),
+                message: log_entry.message,
+                stream: log_entry.stream,
+                timestamp: log_entry.timestamp,
+                container_id: log_entry.container_id,
+                ip_address: captures.get(1).map(|m| m.as_str().to_string()),
+                method: captures.get(3).map(|m| m.as_str().to_string()),
+                path: captures.get(4).map(|m| m.as_str().to_string()),
+                status_code: {
+                    let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
+                        captures.get(5).map(|m| m.as_str()),
+                        None,
+                    );
+                    status
+                },
+                response_size: {
+                    let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
+                        None,
+                        captures.get(6).map(|m| m.as_str()),
+                    );
+                    size
+                },
+                user_agent: None,
+                level: None,
+            });
         }
 
         // Try fallback patterns
-        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_COMBINED_FALLBACK) {
-            if let Some(captures) = regex.captures(&message_clone) {
-                return Ok(NginxLogEntry {
-                    service_type: "nginx".to_string(),
-                    log_type: "access".to_string(),
-                    message: log_entry.message,
-                    stream: log_entry.stream,
-                    timestamp: log_entry.timestamp,
-                    container_id: log_entry.container_id,
-                    ip_address: captures.get(1).map(|m| m.as_str().to_string()),
-                    method: captures.get(2).map(|m| m.as_str().to_string()),
-                    path: captures.get(3).map(|m| m.as_str().to_string()),
-                    status_code: {
-                        let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
-                            captures.get(4).map(|m| m.as_str()),
-                            None,
-                        );
-                        status
-                    },
-                    response_size: {
-                        let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
-                            None,
-                            captures.get(5).map(|m| m.as_str()),
-                        );
-                        size
-                    },
-                    user_agent: captures.get(7).map(|m| m.as_str().to_string()),
-                    level: None,
-                });
-            }
+        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_COMBINED_FALLBACK)
+            && let Some(captures) = regex.captures(&message_clone)
+        {
+            return Ok(NginxLogEntry {
+                service_type: "nginx".to_string(),
+                log_type: "access".to_string(),
+                message: log_entry.message,
+                stream: log_entry.stream,
+                timestamp: log_entry.timestamp,
+                container_id: log_entry.container_id,
+                ip_address: captures.get(1).map(|m| m.as_str().to_string()),
+                method: captures.get(2).map(|m| m.as_str().to_string()),
+                path: captures.get(3).map(|m| m.as_str().to_string()),
+                status_code: {
+                    let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
+                        captures.get(4).map(|m| m.as_str()),
+                        None,
+                    );
+                    status
+                },
+                response_size: {
+                    let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
+                        None,
+                        captures.get(5).map(|m| m.as_str()),
+                    );
+                    size
+                },
+                user_agent: captures.get(7).map(|m| m.as_str().to_string()),
+                level: None,
+            });
         }
 
-        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ACCESS_FALLBACK) {
-            if let Some(captures) = regex.captures(&message_clone) {
-                return Ok(NginxLogEntry {
-                    service_type: "nginx".to_string(),
-                    log_type: "access".to_string(),
-                    message: log_entry.message,
-                    stream: log_entry.stream,
-                    timestamp: log_entry.timestamp,
-                    container_id: log_entry.container_id,
-                    ip_address: captures.get(1).map(|m| m.as_str().to_string()),
-                    method: captures.get(2).map(|m| m.as_str().to_string()),
-                    path: captures.get(3).map(|m| m.as_str().to_string()),
-                    status_code: {
-                        let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
-                            captures.get(4).map(|m| m.as_str()),
-                            None,
-                        );
-                        status
-                    },
-                    response_size: {
-                        let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
-                            None,
-                            captures.get(5).map(|m| m.as_str()),
-                        );
-                        size
-                    },
-                    user_agent: None,
-                    level: None,
-                });
-            }
+        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ACCESS_FALLBACK)
+            && let Some(captures) = regex.captures(&message_clone)
+        {
+            return Ok(NginxLogEntry {
+                service_type: "nginx".to_string(),
+                log_type: "access".to_string(),
+                message: log_entry.message,
+                stream: log_entry.stream,
+                timestamp: log_entry.timestamp,
+                container_id: log_entry.container_id,
+                ip_address: captures.get(1).map(|m| m.as_str().to_string()),
+                method: captures.get(2).map(|m| m.as_str().to_string()),
+                path: captures.get(3).map(|m| m.as_str().to_string()),
+                status_code: {
+                    let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
+                        captures.get(4).map(|m| m.as_str()),
+                        None,
+                    );
+                    status
+                },
+                response_size: {
+                    let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
+                        None,
+                        captures.get(5).map(|m| m.as_str()),
+                    );
+                    size
+                },
+                user_agent: None,
+                level: None,
+            });
         }
 
         // Use simple parser as final fallback
@@ -285,45 +285,45 @@ impl SimdParser {
         let message_clone = log_entry.message.clone();
 
         // Try SIMD nginx error pattern
-        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ERROR) {
-            if let Some(captures) = regex.captures(&message_clone) {
-                return Ok(NginxLogEntry {
-                    service_type: "nginx".to_string(),
-                    log_type: "error".to_string(),
-                    message: log_entry.message,
-                    stream: log_entry.stream,
-                    timestamp: log_entry.timestamp,
-                    container_id: log_entry.container_id,
-                    ip_address: None,
-                    method: None,
-                    path: None,
-                    status_code: None,
-                    response_size: None,
-                    user_agent: None,
-                    level: captures.get(2).map(|m| m.as_str().to_string()),
-                });
-            }
+        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ERROR)
+            && let Some(captures) = regex.captures(&message_clone)
+        {
+            return Ok(NginxLogEntry {
+                service_type: "nginx".to_string(),
+                log_type: "error".to_string(),
+                message: log_entry.message,
+                stream: log_entry.stream,
+                timestamp: log_entry.timestamp,
+                container_id: log_entry.container_id,
+                ip_address: None,
+                method: None,
+                path: None,
+                status_code: None,
+                response_size: None,
+                user_agent: None,
+                level: captures.get(2).map(|m| m.as_str().to_string()),
+            });
         }
 
         // Try fallback error pattern
-        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ERROR_FALLBACK) {
-            if let Some(captures) = regex.captures(&message_clone) {
-                return Ok(NginxLogEntry {
-                    service_type: "nginx".to_string(),
-                    log_type: "error".to_string(),
-                    message: log_entry.message,
-                    stream: log_entry.stream,
-                    timestamp: log_entry.timestamp,
-                    container_id: log_entry.container_id,
-                    ip_address: None,
-                    method: None,
-                    path: None,
-                    status_code: None,
-                    response_size: None,
-                    user_agent: None,
-                    level: captures.get(2).map(|m| m.as_str().to_string()),
-                });
-            }
+        if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ERROR_FALLBACK)
+            && let Some(captures) = regex.captures(&message_clone)
+        {
+            return Ok(NginxLogEntry {
+                service_type: "nginx".to_string(),
+                log_type: "error".to_string(),
+                message: log_entry.message,
+                stream: log_entry.stream,
+                timestamp: log_entry.timestamp,
+                container_id: log_entry.container_id,
+                ip_address: None,
+                method: None,
+                path: None,
+                status_code: None,
+                response_size: None,
+                user_agent: None,
+                level: captures.get(2).map(|m| m.as_str().to_string()),
+            });
         }
 
         // Simple heuristic fallback

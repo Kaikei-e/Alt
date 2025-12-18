@@ -423,14 +423,13 @@ impl Config {
         }
 
         // Try hostname detection
-        if let Ok(hostname) = hostname::get() {
-            if let Some(hostname_str) = hostname.to_str() {
-                if hostname_str.ends_with("-logs") {
-                    let service_name = hostname_str.trim_end_matches("-logs");
-                    self.target_service = Some(service_name.to_string());
-                    return Ok(());
-                }
-            }
+        if let Ok(hostname) = hostname::get()
+            && let Some(hostname_str) = hostname.to_str()
+            && hostname_str.ends_with("-logs")
+        {
+            let service_name = hostname_str.trim_end_matches("-logs");
+            self.target_service = Some(service_name.to_string());
+            return Ok(());
         }
 
         Err(ConfigError::InvalidConfig(
@@ -476,15 +475,14 @@ impl Config {
         }
 
         // Validate disk fallback path if enabled
-        if self.enable_disk_fallback {
-            if let Some(parent) = self.disk_fallback_path.parent() {
-                if !parent.exists() {
-                    return Err(ConfigError::InvalidConfig(format!(
-                        "Disk fallback parent directory does not exist: {}",
-                        parent.display()
-                    )));
-                }
-            }
+        if self.enable_disk_fallback
+            && let Some(parent) = self.disk_fallback_path.parent()
+            && !parent.exists()
+        {
+            return Err(ConfigError::InvalidConfig(format!(
+                "Disk fallback parent directory does not exist: {}",
+                parent.display()
+            )));
         }
 
         // Validate timeouts

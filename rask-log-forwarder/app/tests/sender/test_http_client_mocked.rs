@@ -44,20 +44,18 @@ impl MockHttpClient {
     }
 
     pub async fn health_check(&self) -> Result<(), ClientError> {
-        if self.should_fail {
-            if let Some(ref error) = self.error_type {
-                match error {
-                    ClientError::HttpError { status, message } => {
-                        return Err(ClientError::HttpError {
-                            status: *status,
-                            message: message.clone(),
-                        });
-                    }
-                    ClientError::RequestTimeout(msg) => {
-                        return Err(ClientError::RequestTimeout(msg.clone()));
-                    }
-                    _ => return Err(ClientError::ConnectionFailed("Mock error".to_string())),
+        if self.should_fail && let Some(ref error) = self.error_type {
+            match error {
+                ClientError::HttpError { status, message } => {
+                    return Err(ClientError::HttpError {
+                        status: *status,
+                        message: message.clone(),
+                    });
                 }
+                ClientError::RequestTimeout(msg) => {
+                    return Err(ClientError::RequestTimeout(msg.clone()));
+                }
+                _ => return Err(ClientError::ConnectionFailed("Mock error".to_string())),
             }
         }
         Ok(())

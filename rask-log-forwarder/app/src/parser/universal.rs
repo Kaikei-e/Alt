@@ -275,24 +275,24 @@ impl UniversalParser {
         service_name: &str,
     ) -> Result<ParsedLogEntry, ParseError> {
         // Try JSON first (common for Go services)
-        if log_content.trim_start().starts_with('{') {
-            if let Ok(entry) = self.go_parser.parse_log(log_content) {
-                return Ok(entry);
-            }
+        if log_content.trim_start().starts_with('{')
+            && let Ok(entry) = self.go_parser.parse_log(log_content)
+        {
+            return Ok(entry);
         }
 
         // Try nginx format
-        if log_content.contains("HTTP/") && log_content.contains("\"") {
-            if let Ok(entry) = self.nginx_parser.parse_log(log_content) {
-                return Ok(entry);
-            }
+        if log_content.contains("HTTP/") && log_content.contains("\"")
+            && let Ok(entry) = self.nginx_parser.parse_log(log_content)
+        {
+            return Ok(entry);
         }
 
         // Try postgres format
-        if log_content.contains("LOG:") || log_content.contains("ERROR:") {
-            if let Ok(entry) = self.postgres_parser.parse_log(log_content) {
-                return Ok(entry);
-            }
+        if (log_content.contains("LOG:") || log_content.contains("ERROR:"))
+            && let Ok(entry) = self.postgres_parser.parse_log(log_content)
+        {
+            return Ok(entry);
         }
 
         Ok(ParsedLogEntry {

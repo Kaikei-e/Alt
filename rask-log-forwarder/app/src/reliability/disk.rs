@@ -189,11 +189,11 @@ impl DiskFallback {
         let mut entries = fs::read_dir(&self.config.storage_path).await?;
 
         while let Some(entry) = entries.next_entry().await? {
-            if let Some(file_name) = entry.file_name().to_str() {
-                if file_name.ends_with(".batch") {
-                    let batch_id = file_name.trim_end_matches(".batch");
-                    batch_ids.push(batch_id.to_string());
-                }
+            if let Some(file_name) = entry.file_name().to_str()
+                && file_name.ends_with(".batch")
+            {
+                let batch_id = file_name.trim_end_matches(".batch");
+                batch_ids.push(batch_id.to_string());
             }
         }
 
@@ -213,10 +213,10 @@ impl DiskFallback {
             if let Ok(stored_batch) = self.load_stored_batch(&batch_id).await {
                 let age = now.saturating_sub(stored_batch.stored_at);
 
-                if age > self.config.retention_period.as_secs() {
-                    if let Ok(()) = self.delete_batch(&batch_id).await {
-                        deleted_count += 1;
-                    }
+                if age > self.config.retention_period.as_secs()
+                    && let Ok(()) = self.delete_batch(&batch_id).await
+                {
+                    deleted_count += 1;
                 }
             }
         }

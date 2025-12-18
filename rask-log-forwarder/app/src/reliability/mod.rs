@@ -224,10 +224,10 @@ impl ReliabilityManager {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600)); // Every hour
             loop {
                 interval.tick().await;
-                if let Ok(mut disk) = disk_fallback.try_lock() {
-                    if let Err(e) = disk.cleanup_old_batches().await {
-                        tracing::error!("Disk cleanup failed: {}", e);
-                    }
+                if let Ok(mut disk) = disk_fallback.try_lock()
+                    && let Err(e) = disk.cleanup_old_batches().await
+                {
+                    tracing::error!("Disk cleanup failed: {}", e);
                 }
             }
         });
