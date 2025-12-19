@@ -322,11 +322,10 @@ func TestSummaryRepository_EdgeCases(t *testing.T) {
 // Table-driven tests for comprehensive coverage.
 func TestSummaryRepository_TableDriven(t *testing.T) {
 	type testCase struct {
-		setup       func() (SummaryRepository, interface{})
-		validate    func(t *testing.T, result interface{}, err error)
-		name        string
-		operation   string
-		setupLogger bool
+		setup     func() (SummaryRepository, interface{})
+		validate  func(t *testing.T, result interface{}, err error)
+		name      string
+		operation string
 	}
 
 	tests := []testCase{

@@ -714,7 +714,7 @@ func TestJudgeArticleQualityLowScoreStillDeletes(t *testing.T) {
 			Done:     true,
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
