@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 import psycopg2
@@ -121,7 +122,7 @@ class TagGeneratorService:
         raise psycopg2.Error("Failed to establish database connection")
 
     @contextmanager
-    def _get_database_connection(self) -> Connection:
+    def _get_database_connection(self) -> Iterator[Connection]:
         """Context manager wrapper for DatabaseManager.get_connection (for tests)."""
         with self.database_manager.get_connection() as conn:
             yield conn
@@ -186,6 +187,9 @@ class TagGeneratorService:
         title = article.get("title", "")
         content = article.get("content", "")
         feed_id = article.get("feed_id")
+        if feed_id is None:
+            logger.warning("Article missing feed_id", article_id=article_id)
+            feed_id = ""
 
         try:
             outcome: TagExtractionOutcome = self.tag_extractor.extract_tags_with_metrics(title, content)

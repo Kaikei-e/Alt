@@ -394,6 +394,8 @@ class TagExtractor:
             compound_words.extend(matches)
 
         # Use fugashi for more intelligent noun phrase extraction
+        if self._ja_tagger is None:
+            raise RuntimeError("Japanese tagger not initialized")
         parsed = list(self._ja_tagger(text))
         i = 0
         while i < len(parsed):
@@ -460,6 +462,8 @@ class TagExtractor:
         term_freq = Counter(compounds)
 
         # Also extract single important nouns
+        if self._ja_tagger is None:
+            raise RuntimeError("Japanese tagger not initialized")
         single_nouns = []
         for word in self._ja_tagger(text):
             if (
@@ -507,6 +511,9 @@ class TagExtractor:
             Tuple of (tag_list, tag_confidences_dict)
         """
         self._lazy_load_models()
+
+        if self._keybert is None:
+            raise RuntimeError("KeyBERT not initialized")
 
         try:
             # First extract both single words and phrases

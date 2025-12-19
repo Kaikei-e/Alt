@@ -44,7 +44,10 @@ class JsonFormatter(logging.Formatter):
         # Get timestamp - prefer structlog's timestamp if available, otherwise format it
         timestamp = None
         if hasattr(record, "timestamp"):
-            timestamp = record.timestamp
+            # Use getattr with type ignore since timestamp is a dynamic attribute added by structlog
+            timestamp_value = getattr(record, "timestamp", None)  # type: ignore[attr-defined]  # noqa: B009
+            if isinstance(timestamp_value, str):
+                timestamp = timestamp_value
         elif self.datefmt == "iso":
             # Generate ISO format timestamp
             timestamp = datetime.fromtimestamp(record.created, tz=UTC).isoformat()

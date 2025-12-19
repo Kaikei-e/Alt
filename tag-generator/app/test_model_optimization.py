@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from tag_extractor.extract import TagExtractionConfig, TagExtractor
-from tag_extractor.model_manager import get_model_manager
+from tag_extractor.model_manager import ModelConfig, get_model_manager
 
 
 class TestModelSharingOptimization:
@@ -44,8 +44,6 @@ class TestModelSharingOptimization:
     def test_should_support_gpu_acceleration_when_available(self):
         """Test that GPU acceleration is used when available."""
         # Arrange
-        from tag_extractor.model_manager import get_model_manager, ModelConfig
-
         config = TagExtractionConfig(device="cuda")
         model_manager = get_model_manager()
 
@@ -85,8 +83,6 @@ class TestModelSharingOptimization:
         # Arrange
         extractor = TagExtractor()
 
-        from tag_extractor.model_manager import get_model_manager
-
         model_manager = get_model_manager()
         model_manager.clear_models()
 
@@ -108,15 +104,12 @@ class TestModelSharingOptimization:
         # Arrange
         extractor = TagExtractor()
 
-        from tag_extractor.model_manager import get_model_manager, ModelConfig
-
         model_manager = get_model_manager()
         model_manager.clear_models()
 
         with patch.object(model_manager, "_load_models", side_effect=Exception("Model loading failed")):
             # Act & Assert: underlying ModelManager error should be propagated
             with pytest.raises(Exception, match="Model loading failed"):
-                config = ModelConfig()
                 # This will be triggered indirectly via _lazy_load_models
                 extractor._lazy_load_models()
 
