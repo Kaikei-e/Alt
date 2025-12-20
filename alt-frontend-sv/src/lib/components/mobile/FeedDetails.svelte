@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { Archive, Star, X } from "@lucide/svelte";
-	import { onMount } from "svelte";
-	import { fade, fly } from "svelte/transition";
+	import { Archive, Star } from "@lucide/svelte";
+	import { tick } from "svelte";
 	import { browser } from "$app/environment";
 	import {
 		archiveContentClient,
@@ -11,7 +10,9 @@
 		getFeedContentOnTheFlyClient,
 		registerFavoriteFeedClient,
 		summarizeArticleClient,
+		streamSummarizeArticleClient,
 	} from "$lib/api/client";
+	import { processStreamingText } from "$lib/utils/streamingRenderer";
 	import { Button, buttonVariants } from "$lib/components/ui/button";
 	import * as Sheet from "$lib/components/ui/sheet";
 	import RenderFeedDetails from "./RenderFeedDetails.svelte";
@@ -45,6 +46,7 @@
 	let summary = $state<string | null>(null);
 	let summaryError = $state<string | null>(null);
 	let isSummarizing = $state(false);
+	let abortController = $state<AbortController | null>(null);
 	// Initialize state from props (props are immutable, so this is safe)
 	let articleSummary = $state<FetchArticleSummaryResponse | null>(
 		(() => {
@@ -98,11 +100,24 @@
 		};
 	});
 
+	// Cleanup abort controller on destroy
+	$effect(() => {
+		return () => {
+			if (abortController) {
+				abortController.abort();
+			}
+		};
+	});
+
 	const handleHideDetails = () => {
 		isOpen = false;
 		isArchived = false;
 		if (onOpenChange) {
 			onOpenChange(false);
+		}
+		if (abortController) {
+			abortController.abort();
+			abortController = null;
 		}
 	};
 
@@ -318,23 +333,123 @@
 				class="rounded-full font-bold min-w-[80px] text-black hover:bg-black/10 hover:text-black"
 				onclick={async () => {
 					if (!feedURL) return;
+
+					if (abortController) {
+						abortController.abort();
+					}
+					abortController = new AbortController();
+
 					isSummarizing = true;
 					summaryError = null;
+					summary = ""; // Reset summary
 					try {
-						const result = await summarizeArticleClient(feedURL);
-						const trimmedSummary = result.summary?.trim();
+						// Try streaming first
+						const reader = await streamSummarizeArticleClient(
+							feedURL,
+							articleSummary?.matched_articles?.[0]?.source_id ?? "", // source_id might be article_id?
+							feedDetails?.content,
+							feedTitle,
+							abortController.signal,
+						);
 
-						if (trimmedSummary) {
-							summary = trimmedSummary;
-							summaryError = null;
-						} else {
-							summaryError = "Failed to get summary. Please try again.";
+						// Use streaming renderer utility for incremental rendering
+						try {
+							const result = await processStreamingText(
+								reader,
+								(chunk) => {
+									summary = (summary || "") + chunk;
+								},
+								{
+									tick,
+									onChunk: (chunkCount) => {
+										// Hide "Summarizing..." when first chunk arrives
+										if (chunkCount === 1) {
+											isSummarizing = false;
+										}
+									},
+								},
+							);
+
+							const hasReceivedData = result.hasReceivedData;
+						} catch (streamErr) {
+							// Error during streaming (after initial connection)
+							console.error(
+								"[StreamSummarize] Error during stream reading:",
+								streamErr,
+							);
+							// If we received some data, keep it and show error
+							if (summary && summary.length > 0) {
+								console.warn(
+									"[StreamSummarize] Stream interrupted but partial data received",
+									{
+										receivedLength: summary.length,
+									},
+								);
+								summaryError =
+									"Stream interrupted. Partial summary may be incomplete.";
+							} else {
+								// No data received, re-throw to trigger fallback
+								throw streamErr;
+							}
 						}
 					} catch (e) {
-						console.error("Failed to summarize article", e);
-						summaryError = "Failed to summarize article. Please try again.";
+						// Ignore abort errors
+						if (e instanceof Error && e.name === "AbortError") {
+							console.log("[StreamSummarize] Stream aborted by user");
+							return;
+						}
+
+						const errorMessage = e instanceof Error ? e.message : String(e);
+						const isAuthError =
+							errorMessage.includes("403") ||
+							errorMessage.includes("401") ||
+							errorMessage.includes("Forbidden") ||
+							errorMessage.includes("Authentication");
+
+						console.error("[StreamSummarize] Error streaming summary:", {
+							error: errorMessage,
+							isAuthError,
+							hasPartialData: !!summary && summary.length > 0,
+						});
+
+						// Don't retry on authentication errors - user needs to re-authenticate
+						if (isAuthError) {
+							summaryError =
+								"Authentication failed. Please refresh the page and try again.";
+							return;
+						}
+
+						// If we have partial data, don't fallback - show what we have
+						if (summary && summary.length > 0) {
+							console.warn(
+								"[StreamSummarize] Using partial summary due to stream error",
+							);
+							summaryError = "Stream interrupted. Summary may be incomplete.";
+							return;
+						}
+
+						// Fallback to legacy endpoint only if no data was received
+						console.log("[StreamSummarize] Falling back to legacy endpoint");
+						try {
+							const result = await summarizeArticleClient(feedURL);
+							const trimmedSummary = result.summary?.trim();
+
+							if (trimmedSummary) {
+								summary = trimmedSummary;
+								summaryError = null;
+							} else {
+								summaryError = "Failed to get summary. Please try again.";
+							}
+						} catch (fallbackErr) {
+							console.error(
+								"[StreamSummarize] Legacy endpoint also failed:",
+								fallbackErr,
+							);
+							summaryError = "Failed to summarize article. Please try again.";
+						}
 					} finally {
 						isSummarizing = false;
+						abortController = null;
 					}
 				}}
 				disabled={isSummarizing}

@@ -302,3 +302,54 @@ export async function registerFavoriteFeedClient(
 		body: JSON.stringify({ url }),
 	});
 }
+
+/**
+ * Stream article summary (Client-side)
+ * Returns a readable stream reader.
+ */
+export async function streamSummarizeArticleClient(
+	feedUrl: string,
+	articleId?: string,
+	content?: string,
+	title?: string,
+	signal?: AbortSignal
+): Promise<ReadableStreamDefaultReader<Uint8Array>> {
+	const payload = {
+		feed_url: feedUrl,
+		article_id: articleId,
+		content,
+		title,
+	};
+
+	const response = await fetch("/sv/api/v1/feeds/summarize/stream", {
+		method: "POST",
+		signal,
+		headers: {
+			"Content-Type": "application/json",
+		},
+		credentials: "include", // 認証クッキーを送信
+		body: JSON.stringify(payload),
+	});
+
+	if (!response.ok) {
+		const errorText = await response.text().catch(() => "");
+		const isAuthError = response.status === 401 || response.status === 403;
+		console.error("Streaming request failed", {
+			status: response.status,
+			statusText: response.statusText,
+			isAuthError,
+			errorBody: errorText.substring(0, 200),
+		});
+		// Include status code in error message for better error handling
+		const errorMsg = isAuthError
+			? `Authentication failed: ${response.status} ${response.statusText}`
+			: `Streaming failed: ${response.status} ${response.statusText}`;
+		throw new Error(errorMsg);
+	}
+
+	if (!response.body) {
+		throw new Error("Response body is empty");
+	}
+
+	return response.body.getReader();
+}

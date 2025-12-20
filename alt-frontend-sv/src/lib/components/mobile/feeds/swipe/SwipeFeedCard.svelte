@@ -5,16 +5,18 @@
     Sparkles,
     SquareArrowOutUpRight,
   } from "@lucide/svelte";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { Spring } from "svelte/motion";
   import { fade } from "svelte/transition";
   import { type SwipeDirection, swipe } from "$lib/actions/swipe";
   import {
     getFeedContentOnTheFlyClient,
     summarizeArticleClient,
+    streamSummarizeArticleClient,
   } from "$lib/api/client";
   import { Button } from "$lib/components/ui/button";
   import type { RenderFeed } from "$lib/schema/feed";
+  import { processStreamingText } from "$lib/utils/streamingRenderer";
 
   interface Props {
     feed: RenderFeed;
@@ -155,7 +157,6 @@
     };
   });
 
-
   async function handleToggleContent() {
     if (!isContentExpanded && !fullContent) {
       const cached = getCachedContent?.(feed.link);
@@ -190,17 +191,125 @@
     isAISummaryRequested = true;
     isSummarizing = true;
     summaryError = null;
+    aiSummary = "";
 
     try {
-      const res = await summarizeArticleClient(feed.link);
-      if (res.success && res.summary) {
-        aiSummary = res.summary;
-      } else {
-        summaryError = "Failed to generate the summary";
+      // Try streaming first
+      // We pass fullContent if we have it (e.g. from auto-fetch or expand)
+      const reader = await streamSummarizeArticleClient(
+        feed.link,
+        undefined, // Let backend resolve article_id from URL
+        fullContent || undefined,
+        feed.title,
+      );
+
+      // Use streaming renderer utility for incremental rendering
+      try {
+        const result = await processStreamingText(
+          reader,
+          (chunk) => {
+            aiSummary = (aiSummary || "") + chunk;
+          },
+          {
+            tick,
+            onChunk: (
+              chunkCount,
+              chunkSize,
+              decodedLength,
+              totalLength,
+              preview,
+            ) => {
+              // Hide "Now summarizing..." when first chunk arrives
+              if (chunkCount === 1) {
+                isSummarizing = false;
+              }
+              if (chunkCount <= 5) {
+                console.log("[StreamSummarize] Chunk received and rendered", {
+                  chunkCount,
+                  chunkSize,
+                  decodedLength,
+                  totalLength,
+                  preview,
+                });
+              }
+            },
+            onComplete: (totalLength, chunkCount) => {
+              console.log("[StreamSummarize] Final chunk decoded", {
+                chunkCount: chunkCount + 1,
+                totalLength,
+              });
+            },
+          },
+        );
+
+        const hasReceivedData = result.hasReceivedData;
+      } catch (streamErr) {
+        // Error during streaming (after initial connection)
+        console.error(
+          "[StreamSummarize] Error during stream reading:",
+          streamErr,
+        );
+        // If we received some data, keep it and show error
+        if (aiSummary && aiSummary.length > 0) {
+          console.warn(
+            "[StreamSummarize] Stream interrupted but partial data received",
+            {
+              receivedLength: aiSummary.length,
+            },
+          );
+          summaryError =
+            "Stream interrupted. Partial summary may be incomplete.";
+        } else {
+          // No data received, re-throw to trigger fallback
+          throw streamErr;
+        }
       }
     } catch (err) {
-      console.error("Error summarizing article:", err);
-      summaryError = "Failed to generate the summary";
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const isAuthError =
+        errorMessage.includes("403") ||
+        errorMessage.includes("401") ||
+        errorMessage.includes("Forbidden") ||
+        errorMessage.includes("Authentication");
+
+      console.error("[StreamSummarize] Error streaming summary:", {
+        error: errorMessage,
+        isAuthError,
+        hasPartialData: !!aiSummary && aiSummary.length > 0,
+      });
+
+      // Don't retry on authentication errors - user needs to re-authenticate
+      if (isAuthError) {
+        summaryError =
+          "Authentication failed. Please refresh the page and try again.";
+        return;
+      }
+
+      // If we have partial data, don't fallback - show what we have
+      if (aiSummary && aiSummary.length > 0) {
+        console.warn(
+          "[StreamSummarize] Using partial summary due to stream error",
+        );
+        summaryError = "Stream interrupted. Summary may be incomplete.";
+        return;
+      }
+
+      // Fallback to legacy endpoint only if no data was received
+      console.log("[StreamSummarize] Falling back to legacy endpoint");
+      try {
+        const res = await summarizeArticleClient(feed.link);
+        if (res.success && res.summary) {
+          aiSummary = res.summary;
+        } else {
+          summaryError = "Failed to generate the summary";
+        }
+      } catch (legacyErr) {
+        console.error(
+          "[StreamSummarize] Legacy endpoint also failed:",
+          legacyErr,
+        );
+        summaryError = "Failed to generate the summary. Please try again.";
+      }
     } finally {
       isSummarizing = false;
     }
@@ -433,8 +542,8 @@
   [data-testid="unified-scroll-area"],
   [data-testid="unified-scroll-area"] * {
     -webkit-user-select: none; /* Safari, Chrome */
-    -moz-user-select: none;     /* Firefox */
-    -ms-user-select: none;      /* Internet Explorer, Edge */
-    user-select: none;          /* 標準 */
+    -moz-user-select: none; /* Firefox */
+    -ms-user-select: none; /* Internet Explorer, Edge */
+    user-select: none; /* 標準 */
   }
 </style>
