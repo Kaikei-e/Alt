@@ -53,7 +53,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Clean workspace and clear caches
         if: runner.environment == 'self-hosted'
