@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"alt/config"
+	"alt/utils/logger"
 	"fmt"
 	"net"
 	"net/http"
@@ -111,7 +112,12 @@ func DOSProtectionMiddleware(config DOSProtectionConfig) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			// Skip whitelisted paths
-			if isWhitelistedPath(c.Request().URL.Path, config.WhitelistedPaths) {
+			path := c.Request().URL.Path
+			if isWhitelistedPath(path, config.WhitelistedPaths) {
+				// Log whitelist hits for SSE endpoints for debugging
+				if strings.Contains(path, "/stream") || strings.Contains(path, "/sse") {
+					logger.Logger.Debug("DoS protection: SSE endpoint whitelisted", "path", path)
+				}
 				return next(c)
 			}
 
@@ -180,6 +186,11 @@ func getClientIP(c echo.Context) string {
 
 // isWhitelistedPath checks if the path is whitelisted
 func isWhitelistedPath(path string, whitelistedPaths []string) bool {
+	// Check if path contains /stream or /sse for SSE endpoints (should not be rate limited)
+	if strings.Contains(path, "/stream") || strings.Contains(path, "/sse") {
+		return true
+	}
+
 	for _, whitelistedPath := range whitelistedPaths {
 		if path == whitelistedPath || strings.HasPrefix(path, whitelistedPath) {
 			return true

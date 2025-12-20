@@ -571,8 +571,21 @@ func (v *SSRFValidator) CreateSecureHTTPClient(timeout time.Duration) *http.Clie
 		Transport: transport,
 		Timeout:   timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// Block all redirects to prevent redirect-based SSRF
-			return fmt.Errorf("redirects not allowed for security reasons")
+			// Limit redirects to 10
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+
+			// Validate the new URL (redirect target)
+			// We access 'v' (the SSRFValidator instance) to use its validation logic
+			if err := v.ValidateURL(req.Context(), req.URL); err != nil {
+				return fmt.Errorf("redirect blocked by SSRF policy: %w", err)
+			}
+
+			// Also re-validate the Authorization header if present, to be safe?
+			// Standard Go client behavior is to strip Authorization on domain change, which is good.
+
+			return nil
 		},
 	}
 }

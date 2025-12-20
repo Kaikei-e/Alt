@@ -268,11 +268,11 @@ func SecureHTTPClientWithConfig(cfg *config.HTTPConfig) *http.Client {
 func validateTarget(host, port string) error {
 	// Block common internal ports
 	blockedPorts := map[string]bool{
-		"22":    true, // SSH
-		"23":    true, // Telnet
-		"25":    true, // SMTP
-		"53":    true, // DNS
-		"80":    true, // HTTP (if we want to force HTTPS only)
+		"22": true, // SSH
+		"23": true, // Telnet
+		"25": true, // SMTP
+		"53": true, // DNS
+		// "80":    true, // HTTP (allowed for robots.txt and general scraping)
 		"110":   true, // POP3
 		"143":   true, // IMAP
 		"993":   true, // IMAPS
