@@ -30,20 +30,20 @@ func handleArchiveArticle(container *di.ApplicationComponents) echo.HandlerFunc 
 	return func(c echo.Context) error {
 		var payload ArchiveArticleRequest
 		if err := c.Bind(&payload); err != nil {
-			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
+			return HandleValidationError(c, "Invalid request format", "body", "malformed JSON")
 		}
 
 		if strings.TrimSpace(payload.FeedURL) == "" {
-			return handleValidationError(c, "Article URL is required", "feed_url", payload.FeedURL)
+			return HandleValidationError(c, "Article URL is required", "feed_url", payload.FeedURL)
 		}
 
 		articleURL, err := url.Parse(payload.FeedURL)
 		if err != nil {
-			return handleValidationError(c, "Invalid article URL", "feed_url", payload.FeedURL)
+			return HandleValidationError(c, "Invalid article URL", "feed_url", payload.FeedURL)
 		}
 
-		if err := isAllowedURL(articleURL); err != nil {
-			return handleValidationError(c, "Article URL not allowed", "feed_url", payload.FeedURL)
+		if err := IsAllowedURL(articleURL); err != nil {
+			return HandleValidationError(c, "Article URL not allowed", "feed_url", payload.FeedURL)
 		}
 
 		input := archive_article_usecase.ArchiveArticleInput{
@@ -52,7 +52,7 @@ func handleArchiveArticle(container *di.ApplicationComponents) echo.HandlerFunc 
 		}
 
 		if err := container.ArchiveArticleUsecase.Execute(c.Request().Context(), input); err != nil {
-			return handleError(c, fmt.Errorf("archive article failed for %q: %w", articleURL.String(), err), "archive_article")
+			return HandleError(c, fmt.Errorf("archive article failed for %q: %w", articleURL.String(), err), "archive_article")
 		}
 
 		c.Response().Header().Set("Cache-Control", "no-cache")
@@ -64,17 +64,17 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		articleURLStr := c.QueryParam("url")
 		if articleURLStr == "" {
-			return handleValidationError(c, "Article URL is required", "url", "missing parameter")
+			return HandleValidationError(c, "Article URL is required", "url", "missing parameter")
 		}
 
 		articleURL, err := url.Parse(articleURLStr)
 		if err != nil {
-			return handleValidationError(c, "Invalid article URL", "url", "invalid format")
+			return HandleValidationError(c, "Invalid article URL", "url", "invalid format")
 		}
 
-		err = isAllowedURL(articleURL)
+		err = IsAllowedURL(articleURL)
 		if err != nil {
-			return handleValidationError(c, "Article URL not allowed", "url", "not allowed")
+			return HandleValidationError(c, "Article URL not allowed", "url", "not allowed")
 		}
 
 		var contentStr string
@@ -83,7 +83,7 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 		existingArticle, err := container.AltDBRepository.FetchArticleByURL(c.Request().Context(), articleURL.String())
 		if err != nil {
 			logger.Logger.Error("Failed to check for existing article", "error", err, "url", articleURL.String())
-			return handleError(c, fmt.Errorf("failed to check article existence: %w", err), "fetch_article")
+			return HandleError(c, fmt.Errorf("failed to check article existence: %w", err), "fetch_article")
 		}
 
 		if existingArticle != nil {
@@ -106,10 +106,10 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 		} else {
 			// Article does not exist, fetch from Web
 			logger.Logger.Info("Article not found in database, fetching from Web", "url", articleURL.String())
-			fetchedContent, _, fetchedTitle, fetchErr := fetchArticleContent(c.Request().Context(), articleURL.String(), container)
+			fetchedContent, _, fetchedTitle, fetchErr := FetchArticleContent(c.Request().Context(), articleURL.String(), container)
 			if fetchErr != nil {
 				logger.Logger.Error("Failed to fetch article content", "error", fetchErr, "url", articleURL.String())
-				return handleError(c, fmt.Errorf("fetch article content failed for %q: %w", articleURL.String(), fetchErr), "fetch_article")
+				return HandleError(c, fmt.Errorf("fetch article content failed for %q: %w", articleURL.String(), fetchErr), "fetch_article")
 			}
 
 			// Save to database
@@ -180,7 +180,7 @@ func handleSearchArticles(container *di.ApplicationComponents) echo.HandlerFunc 
 		// Use ArticleSearchUsecase which searches via Meilisearch with user_id filtering
 		results, err := container.ArticleSearchUsecase.Execute(c.Request().Context(), query)
 		if err != nil {
-			return handleError(c, err, "search_articles")
+			return HandleError(c, err, "search_articles")
 		}
 
 		return c.JSON(http.StatusOK, results)
@@ -203,7 +203,7 @@ func handleFetchArticlesCursor(container *di.ApplicationComponents) echo.Handler
 		if limitStr := c.QueryParam("limit"); limitStr != "" {
 			parsedLimit, err := strconv.Atoi(limitStr)
 			if err != nil || parsedLimit <= 0 {
-				return handleValidationError(c, "Invalid limit parameter", "limit", limitStr)
+				return HandleValidationError(c, "Invalid limit parameter", "limit", limitStr)
 			}
 			limit = parsedLimit
 			if limit > 100 {
@@ -216,7 +216,7 @@ func handleFetchArticlesCursor(container *di.ApplicationComponents) echo.Handler
 		if cursorStr := c.QueryParam("cursor"); cursorStr != "" {
 			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
 			if err != nil {
-				return handleValidationError(c, "Invalid cursor format (expected RFC3339)", "cursor", cursorStr)
+				return HandleValidationError(c, "Invalid cursor format (expected RFC3339)", "cursor", cursorStr)
 			}
 			cursor = &parsedCursor
 		}
@@ -224,7 +224,7 @@ func handleFetchArticlesCursor(container *di.ApplicationComponents) echo.Handler
 		// Fetch limit+1 to determine if there are more items
 		articles, err := container.FetchArticlesCursorUsecase.Execute(c.Request().Context(), cursor, limit+1)
 		if err != nil {
-			return handleError(c, err, "fetch_articles_cursor")
+			return HandleError(c, err, "fetch_articles_cursor")
 		}
 
 		// Prepare response

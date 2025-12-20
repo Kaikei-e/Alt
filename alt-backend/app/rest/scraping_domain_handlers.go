@@ -65,7 +65,7 @@ func handleListScrapingDomains(container *di.ApplicationComponents) echo.Handler
 
 		domains, err := container.ScrapingDomainUsecase.ListScrapingDomains(ctx, offset, limit)
 		if err != nil {
-			return handleError(c, fmt.Errorf("failed to list scraping domains: %w", err), "list_scraping_domains")
+			return HandleError(c, fmt.Errorf("failed to list scraping domains: %w", err), "list_scraping_domains")
 		}
 
 		// Convert to response format
@@ -86,12 +86,12 @@ func handleGetScrapingDomain(container *di.ApplicationComponents) echo.HandlerFu
 		idStr := c.Param("id")
 		id, err := uuid.Parse(idStr)
 		if err != nil {
-			return handleValidationError(c, "Invalid domain ID", "id", idStr)
+			return HandleValidationError(c, "Invalid domain ID", "id", idStr)
 		}
 
 		domain, err := container.ScrapingDomainUsecase.GetScrapingDomain(ctx, id)
 		if err != nil {
-			return handleError(c, fmt.Errorf("failed to get scraping domain: %w", err), "get_scraping_domain")
+			return HandleError(c, fmt.Errorf("failed to get scraping domain: %w", err), "get_scraping_domain")
 		}
 
 		if domain == nil {
@@ -110,12 +110,12 @@ func handleUpdateScrapingDomainPolicy(container *di.ApplicationComponents) echo.
 		idStr := c.Param("id")
 		id, err := uuid.Parse(idStr)
 		if err != nil {
-			return handleValidationError(c, "Invalid domain ID", "id", idStr)
+			return HandleValidationError(c, "Invalid domain ID", "id", idStr)
 		}
 
 		var req UpdateScrapingDomainRequest
 		if err := c.Bind(&req); err != nil {
-			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
+			return HandleValidationError(c, "Invalid request format", "body", "malformed JSON")
 		}
 
 		update := &domain.ScrapingPolicyUpdate{
@@ -126,7 +126,7 @@ func handleUpdateScrapingDomainPolicy(container *di.ApplicationComponents) echo.
 		}
 
 		if err := container.ScrapingDomainUsecase.UpdateScrapingDomainPolicy(ctx, id, update); err != nil {
-			return handleError(c, fmt.Errorf("failed to update scraping domain policy: %w", err), "update_scraping_domain_policy")
+			return HandleError(c, fmt.Errorf("failed to update scraping domain policy: %w", err), "update_scraping_domain_policy")
 		}
 
 		return c.JSON(http.StatusOK, map[string]string{"message": "scraping domain policy updated"})
@@ -141,11 +141,11 @@ func handleRefreshRobotsTxt(container *di.ApplicationComponents) echo.HandlerFun
 		idStr := c.Param("id")
 		id, err := uuid.Parse(idStr)
 		if err != nil {
-			return handleValidationError(c, "Invalid domain ID", "id", idStr)
+			return HandleValidationError(c, "Invalid domain ID", "id", idStr)
 		}
 
 		if err := container.ScrapingDomainUsecase.RefreshRobotsTxt(ctx, id); err != nil {
-			return handleError(c, fmt.Errorf("failed to refresh robots.txt: %w", err), "refresh_robots_txt")
+			return HandleError(c, fmt.Errorf("failed to refresh robots.txt: %w", err), "refresh_robots_txt")
 		}
 
 		return c.JSON(http.StatusOK, map[string]string{"message": "robots.txt refreshed"})

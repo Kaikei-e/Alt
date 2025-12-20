@@ -10,8 +10,8 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 )
 
-// optimizeFeedsResponse transforms domain feeds into a client-optimized structure
-func optimizeFeedsResponse(feeds []*domain.FeedItem) []map[string]interface{} {
+// OptimizeFeedsResponse transforms domain feeds into a client-optimized structure
+func OptimizeFeedsResponse(feeds []*domain.FeedItem) []map[string]interface{} {
 	optimized := make([]map[string]interface{}, 0, len(feeds))
 	for _, feed := range feeds {
 		optimized = append(optimized, map[string]interface{}{
@@ -107,8 +107,8 @@ func formatAuthor(author domain.Author, authors []domain.Author) string {
 	return ""
 }
 
-// deriveNextCursorFromFeeds extracts the next cursor from the feed list
-func deriveNextCursorFromFeeds(feeds []*domain.FeedItem) (string, bool) {
+// DeriveNextCursorFromFeeds extracts the next cursor from the feed list
+func DeriveNextCursorFromFeeds(feeds []*domain.FeedItem) (string, bool) {
 	if len(feeds) == 0 {
 		return "", false
 	}

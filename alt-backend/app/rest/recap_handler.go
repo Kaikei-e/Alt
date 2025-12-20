@@ -44,7 +44,7 @@ func (h *RecapHandler) GetSevenDayRecap(c echo.Context) error {
 				"error": "No 7-day recap available yet",
 			})
 		}
-		return handleError(c, fmt.Errorf("failed to fetch 7-day recap: %w", err), "recap_summary")
+		return HandleError(c, fmt.Errorf("failed to fetch 7-day recap: %w", err), "recap_summary")
 	}
 
 	h.attachClusterDraft(c, recap)

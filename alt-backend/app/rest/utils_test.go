@@ -8,14 +8,14 @@ import (
 
 func TestDeriveNextCursorFromFeeds(t *testing.T) {
 	t.Run("returns false when feeds slice is empty", func(t *testing.T) {
-		if cursor, ok := deriveNextCursorFromFeeds(nil); ok || cursor != "" {
+		if cursor, ok := DeriveNextCursorFromFeeds(nil); ok || cursor != "" {
 			t.Fatalf("expected no cursor, got %v (ok=%v)", cursor, ok)
 		}
 	})
 
 	t.Run("uses PublishedParsed when available", func(t *testing.T) {
 		ts := time.Date(2024, time.January, 1, 12, 0, 0, 0, time.UTC)
-		cursor, ok := deriveNextCursorFromFeeds([]*domain.FeedItem{
+		cursor, ok := DeriveNextCursorFromFeeds([]*domain.FeedItem{
 			{
 				Title:           "foo",
 				PublishedParsed: ts,
@@ -31,7 +31,7 @@ func TestDeriveNextCursorFromFeeds(t *testing.T) {
 
 	t.Run("falls back to parsing Published string", func(t *testing.T) {
 		published := "2024-02-01T00:00:00Z"
-		cursor, ok := deriveNextCursorFromFeeds([]*domain.FeedItem{
+		cursor, ok := DeriveNextCursorFromFeeds([]*domain.FeedItem{
 			{
 				Title:     "bar",
 				Published: published,
@@ -46,7 +46,7 @@ func TestDeriveNextCursorFromFeeds(t *testing.T) {
 	})
 
 	t.Run("returns false when published string is invalid", func(t *testing.T) {
-		cursor, ok := deriveNextCursorFromFeeds([]*domain.FeedItem{
+		cursor, ok := DeriveNextCursorFromFeeds([]*domain.FeedItem{
 			{
 				Published: "invalid",
 			},

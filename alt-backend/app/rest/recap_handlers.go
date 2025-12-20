@@ -51,29 +51,29 @@ func handleRecapArticles(container *di.ApplicationComponents, cfg *config.Config
 
 		fromStr := c.QueryParam("from")
 		if strings.TrimSpace(fromStr) == "" {
-			return handleValidationError(c, "from is required", "from", fromStr)
+			return HandleValidationError(c, "from is required", "from", fromStr)
 		}
 		toStr := c.QueryParam("to")
 		if strings.TrimSpace(toStr) == "" {
-			return handleValidationError(c, "to is required", "to", toStr)
+			return HandleValidationError(c, "to is required", "to", toStr)
 		}
 
 		from, err := time.Parse(time.RFC3339, fromStr)
 		if err != nil {
-			return handleValidationError(c, "from must be RFC3339", "from", fromStr)
+			return HandleValidationError(c, "from must be RFC3339", "from", fromStr)
 		}
 		to, err := time.Parse(time.RFC3339, toStr)
 		if err != nil {
-			return handleValidationError(c, "to must be RFC3339", "to", toStr)
+			return HandleValidationError(c, "to must be RFC3339", "to", toStr)
 		}
 
 		page, err := parsePositiveIntWithDefault(c.QueryParam("page"), 1)
 		if err != nil {
-			return handleValidationError(c, "page must be a positive integer", "page", c.QueryParam("page"))
+			return HandleValidationError(c, "page must be a positive integer", "page", c.QueryParam("page"))
 		}
 		pageSize, err := parsePositiveIntWithDefault(c.QueryParam("page_size"), cfg.Recap.DefaultPageSize)
 		if err != nil {
-			return handleValidationError(c, "page_size must be a positive integer", "page_size", c.QueryParam("page_size"))
+			return HandleValidationError(c, "page_size must be a positive integer", "page_size", c.QueryParam("page_size"))
 		}
 
 		fields := parseFields(c.QueryParam("fields"))
@@ -95,7 +95,7 @@ func handleRecapArticles(container *di.ApplicationComponents, cfg *config.Config
 
 		result, err := container.RecapArticlesUsecase.Execute(c.Request().Context(), input)
 		if err != nil {
-			return handleError(c, err, "recap_articles")
+			return HandleError(c, err, "recap_articles")
 		}
 		if result == nil {
 			result = &domain.RecapArticlesPage{

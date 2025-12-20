@@ -1,4 +1,4 @@
-package rest
+package rest_feeds
 
 import (
 	"alt/di"
@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/microcosm-cc/bluemonday"
 )
 
 // HandleError converts errors to appropriate HTTP responses using enhanced error handling
@@ -31,7 +32,7 @@ func HandleError(c echo.Context, err error, operation string) error {
 	if appContextErr, ok := err.(*errors.AppContextError); ok {
 		enrichedErr = errors.EnrichWithContext(
 			appContextErr,
-			"rest",
+			"rest_feeds",
 			"RESTHandler",
 			operation,
 			map[string]interface{}{
@@ -47,7 +48,7 @@ func HandleError(c echo.Context, err error, operation string) error {
 		enrichedErr = errors.NewAppContextError(
 			string(appErr.Code),
 			appErr.Message,
-			"rest",
+			"rest_feeds",
 			"RESTHandler",
 			operation,
 			appErr.Cause,
@@ -64,7 +65,7 @@ func HandleError(c echo.Context, err error, operation string) error {
 		// Handle unknown errors
 		enrichedErr = errors.NewUnknownContextError(
 			"internal server error",
-			"rest",
+			"rest_feeds",
 			"RESTHandler",
 			operation,
 			err,
@@ -96,7 +97,7 @@ func HandleError(c echo.Context, err error, operation string) error {
 	})
 }
 
-// handleValidationError handles validation errors
+// HandleValidationError handles validation errors
 func HandleValidationError(c echo.Context, message string, field string, value interface{}) error {
 	logger.Logger.Warn("Validation error", "message", message, "field", field, "value", value)
 	return c.JSON(http.StatusBadRequest, map[string]interface{}{
@@ -107,7 +108,7 @@ func HandleValidationError(c echo.Context, message string, field string, value i
 	})
 }
 
-// isAllowedURL checks if the URL is allowed (not private IP)
+// IsAllowedURL checks if the URL is allowed (not private IP)
 func IsAllowedURL(u *url.URL) error {
 	// Allow http and https
 	if u.Scheme != "http" && u.Scheme != "https" {
@@ -129,8 +130,115 @@ func IsAllowedURL(u *url.URL) error {
 	return nil
 }
 
-// Optimize feeds response specifically for search results
-// Note: Description is NOT truncated here to allow full text display in Search Feeds page
+// OptimizeFeedsResponse transforms domain feeds into a client-optimized structure
+func OptimizeFeedsResponse(feeds []*domain.FeedItem) []map[string]interface{} {
+	optimized := make([]map[string]interface{}, 0, len(feeds))
+	for _, feed := range feeds {
+		optimized = append(optimized, map[string]interface{}{
+			"id":          feed.Link, // Use Link as ID for consistency with frontend
+			"title":       feed.Title,
+			"description": sanitizeDescription(feed.Description),
+			"link":        feed.Link,
+			"published":   formatTimeAgo(feed.PublishedParsed),
+			"created_at":  feed.PublishedParsed.Format(time.RFC3339),
+			"author":      formatAuthor(feed.Author, feed.Authors),
+		})
+	}
+	return optimized
+}
+
+// sanitizeDescription removes HTML tags, specifically ensuring <img> tags are removed.
+// It returns plain text.
+func sanitizeDescription(html string) string {
+	if html == "" {
+		return ""
+	}
+
+	p := bluemonday.StrictPolicy()
+	text := p.Sanitize(html)
+
+	// Trimming whitespace
+	text = strings.TrimSpace(text)
+
+	// Collapse multiple spaces
+	spaceRe := regexp.MustCompile(`\s+`)
+	text = spaceRe.ReplaceAllString(text, " ")
+
+	return text
+}
+
+// formatTimeAgo formats the time as a relative string (e.g., "2 hours ago")
+// or a date string if it's older.
+func formatTimeAgo(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+
+	now := time.Now()
+	diff := now.Sub(t)
+
+	// If future (clock skew), treat as just now
+	if diff < 0 {
+		return "Just now"
+	}
+
+	if diff < time.Minute {
+		return "Just now"
+	}
+	if diff < time.Hour {
+		minutes := int(diff.Minutes())
+		return fmt.Sprintf("%dm ago", minutes)
+	}
+	if diff < 24*time.Hour {
+		hours := int(diff.Hours())
+		return fmt.Sprintf("%dh ago", hours)
+	}
+	if diff < 48*time.Hour {
+		return "Yesterday"
+	}
+	if diff < 7*24*time.Hour {
+		days := int(diff.Hours() / 24)
+		return fmt.Sprintf("%dd ago", days)
+	}
+
+	// Older than a week, return YYYY/MM/DD
+	return t.Format("2006/01/02")
+}
+
+func formatAuthor(author domain.Author, authors []domain.Author) string {
+	if author.Name != "" {
+		return author.Name
+	}
+	if len(authors) > 0 && authors[0].Name != "" {
+		return authors[0].Name
+	}
+	return ""
+}
+
+// DeriveNextCursorFromFeeds extracts the next cursor from the feed list
+func DeriveNextCursorFromFeeds(feeds []*domain.FeedItem) (string, bool) {
+	if len(feeds) == 0 {
+		return "", false
+	}
+	lastFeed := feeds[len(feeds)-1]
+	if !lastFeed.PublishedParsed.IsZero() {
+		return lastFeed.PublishedParsed.Format(time.RFC3339), true
+	}
+
+	published := strings.TrimSpace(lastFeed.Published)
+	if published == "" {
+		return "", false
+	}
+
+	parsed, err := time.Parse(time.RFC3339, published)
+	if err != nil {
+		return "", false
+	}
+
+	return parsed.Format(time.RFC3339), true
+}
+
+// OptimizeFeedsResponseForSearch optimizes feeds response specifically for search results
 func OptimizeFeedsResponseForSearch(feeds []*domain.FeedItem) []*domain.FeedItem {
 	for _, feed := range feeds {
 		feed.Title = strings.TrimSpace(feed.Title)
@@ -141,7 +249,7 @@ func OptimizeFeedsResponseForSearch(feeds []*domain.FeedItem) []*domain.FeedItem
 	return feeds
 }
 
-// Determine cache age based on limit to optimize caching strategy
+// GetCacheAgeForLimit determines cache age based on limit to optimize caching strategy
 func GetCacheAgeForLimit(limit int) int {
 	switch {
 	case limit <= 10:
@@ -153,7 +261,7 @@ func GetCacheAgeForLimit(limit int) int {
 	}
 }
 
-// fetchArticleContent fetches the content of an article from the given URL
+// FetchArticleContent fetches the content of an article from the given URL
 func FetchArticleContent(ctx context.Context, urlStr string, container *di.ApplicationComponents) (string, string, string, error) {
 	// Validate URL
 	parsedURL, err := url.Parse(urlStr)
@@ -252,7 +360,16 @@ func generateArticleID(feedURL string) string {
 	return fmt.Sprintf("article_%s", strings.ReplaceAll(feedURL, "/", "_"))
 }
 
-// callPreProcessorSummarize calls the pre-processor summarization API
+// SummarizeStatus represents the status of a summarization job
+type SummarizeStatus struct {
+	JobID        string
+	Status       string
+	Summary      string
+	ErrorMessage string
+	ArticleID    string
+}
+
+// CallPreProcessorSummarize calls the pre-processor summarization API
 func CallPreProcessorSummarize(ctx context.Context, content string, articleID string, title string, preProcessorURL string) (string, error) {
 	// Validate inputs
 	if articleID == "" {
@@ -320,7 +437,7 @@ func CallPreProcessorSummarize(ctx context.Context, content string, articleID st
 	return response.Summary, nil
 }
 
-// streamPreProcessorSummarize streams the pre-processor summarization API
+// StreamPreProcessorSummarize streams the pre-processor summarization API
 func StreamPreProcessorSummarize(ctx context.Context, content string, articleID string, title string, preProcessorURL string) (io.ReadCloser, error) {
 	// Validate inputs
 	if articleID == "" {
@@ -390,16 +507,7 @@ func StreamPreProcessorSummarize(ctx context.Context, content string, articleID 
 	return resp.Body, nil
 }
 
-// SummarizeStatus represents the status of a summarization job
-type SummarizeStatus struct {
-	JobID        string
-	Status       string
-	Summary      string
-	ErrorMessage string
-	ArticleID    string
-}
-
-// callPreProcessorSummarizeQueue calls the pre-processor queue endpoint
+// CallPreProcessorSummarizeQueue calls the pre-processor queue endpoint
 func CallPreProcessorSummarizeQueue(ctx context.Context, articleID string, title string, preProcessorURL string) (string, error) {
 	// Validate inputs
 	if articleID == "" {
@@ -460,7 +568,7 @@ func CallPreProcessorSummarizeQueue(ctx context.Context, articleID string, title
 	return response.JobID, nil
 }
 
-// callPreProcessorSummarizeStatus calls the pre-processor status endpoint
+// CallPreProcessorSummarizeStatus calls the pre-processor status endpoint
 func CallPreProcessorSummarizeStatus(ctx context.Context, jobID string, preProcessorURL string) (*SummarizeStatus, error) {
 	// Validate inputs
 	if jobID == "" {
@@ -522,7 +630,7 @@ func CallPreProcessorSummarizeStatus(ctx context.Context, jobID string, preProce
 	}, nil
 }
 
-// cleanSummaryContent removes markdown code blocks, repetitive patterns, and other anomalies from summary content
+// CleanSummaryContent removes markdown code blocks, repetitive patterns, and other anomalies from summary content
 func CleanSummaryContent(summary string) string {
 	if summary == "" {
 		return ""

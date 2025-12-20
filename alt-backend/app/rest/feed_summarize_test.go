@@ -3,6 +3,7 @@ package rest
 import (
 	"alt/config"
 	"alt/di"
+	"alt/rest/rest_feeds"
 	"alt/utils/logger"
 	"bytes"
 	"encoding/json"
@@ -81,7 +82,7 @@ func TestHandleSummarizeFeed(t *testing.T) {
 			c := e.NewContext(req, rec)
 
 			// Execute handler
-			handler := handleSummarizeFeed(container, cfg)
+			handler := rest_feeds.RestHandleSummarizeFeed(container, cfg)
 			err = handler(c)
 
 			if tc.wantErr {

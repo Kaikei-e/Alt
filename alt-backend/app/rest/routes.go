@@ -4,6 +4,7 @@ import (
 	"alt/config"
 	"alt/di"
 	middleware_custom "alt/middleware"
+	"alt/rest/rest_feeds"
 	"alt/utils/logger"
 	"strings"
 
@@ -37,7 +38,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 	// 5. DOS protection - 悪意のあるリクエストを早期にブロック
 	dosConfig := cfg.RateLimit.DOSProtection
-	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/sse/", "/security/csp-report"}
+	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/sse/", "/v1/feeds/summarize/stream", "/security/csp-report"}
 	e.Use(middleware_custom.DOSProtectionMiddleware(middleware_custom.ConvertConfigDOSProtection(dosConfig)))
 
 	// 6. CSRF protection - 認証が必要な場合 Temporarily disabled for development
@@ -47,7 +48,8 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
 		Timeout: cfg.Server.ReadTimeout,
 		Skipper: func(c echo.Context) bool {
-			return strings.Contains(c.Path(), "/sse/")
+			// Skip timeout for SSE and streaming endpoints
+			return strings.Contains(c.Path(), "/sse/") || strings.Contains(c.Path(), "/stream")
 		},
 	}))
 
@@ -73,7 +75,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 	// Register handlers by category
 	registerSecurityRoutes(e, container)
-	registerFeedRoutes(v1, container, cfg)
+	rest_feeds.RegisterFeedRoutes(v1, container, cfg)
 	// Register morning updates route
 	registerMorningRoutes(v1, container, cfg)
 	registerArticleRoutes(v1, container, cfg)

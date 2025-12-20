@@ -34,7 +34,7 @@ func handleMorningUpdates(container *di.ApplicationComponents) echo.HandlerFunc 
 		// Call usecase
 		updates, err := container.MorningUsecase.GetOvernightUpdates(ctx, user.UserID.String())
 		if err != nil {
-			return handleError(c, err, "morning_updates")
+			return HandleError(c, err, "morning_updates")
 		}
 		return c.JSON(http.StatusOK, updates)
 	}
