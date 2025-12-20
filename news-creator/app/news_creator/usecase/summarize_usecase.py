@@ -1,7 +1,8 @@
 """Summarize usecase - business logic for article summarization."""
 
 import logging
-from typing import Tuple, Dict, Any, List, Optional
+from typing import Tuple, Dict, Any, List, Optional, AsyncIterator
+import aiohttp
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.prompts import SUMMARY_PROMPT_TEMPLATE
@@ -429,6 +430,222 @@ class SummarizeUsecase:
         )
 
         return truncated_summary, metadata
+
+    async def generate_summary_stream(self, article_id: str, content: str) -> AsyncIterator[str]:
+        """
+        Generate a Japanese summary for an article as a stream of tokens.
+
+        Args:
+            article_id: Article identifier
+            content: Article content to summarize
+
+        Yields:
+            Summary tokens
+        """
+        logger.info(
+            "Starting stream summary generation",
+            extra={
+                "article_id": article_id,
+                "content_length": len(content) if content else 0,
+            }
+        )
+
+        if not article_id or not article_id.strip():
+            raise ValueError("article_id cannot be empty")
+        if not content or not content.strip():
+            raise ValueError("content cannot be empty")
+
+        # Zero Trust: Clean HTML
+        cleaned_content, _ = clean_html_content(content, article_id)
+        content = cleaned_content
+
+        # Basic validation (same as sync method)
+        min_content_length = 100
+        if not content or not content.strip() or len(content.strip()) < min_content_length:
+            error_msg = (
+                f"Content is too short for summarization. "
+                f"Content length: {len(content) if content else 0}, "
+                f"Minimum required: {min_content_length} characters."
+            )
+            logger.warning(
+                "Article content too short for summarization",
+                extra={
+                    "article_id": article_id,
+                    "content_length": len(content) if content else 0,
+                    "min_required": min_content_length,
+                }
+            )
+            # Don't yield empty string - raise error instead to prevent empty streams
+            raise ValueError(error_msg)
+
+        # Truncate content
+        MAX_CONTENT_LENGTH = 60_000
+        truncated_content = content.strip()[:MAX_CONTENT_LENGTH]
+        if len(content) > MAX_CONTENT_LENGTH:
+            logger.warning(
+                "Content truncated for streaming",
+                extra={
+                    "article_id": article_id,
+                    "original_length": len(content),
+                    "truncated_length": len(truncated_content),
+                }
+            )
+
+        # Build prompt
+        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=truncated_content)
+        prompt_length = len(prompt)
+        logger.info(
+            "Prompt generated for streaming",
+            extra={
+                "article_id": article_id,
+                "prompt_length": prompt_length,
+                "content_length": len(truncated_content),
+            }
+        )
+
+        # Call LLM provider with streaming
+        llm_options = {
+            "temperature": self.config.summary_temperature,
+            "repeat_penalty": self.config.llm_repeat_penalty,
+        }
+
+        try:
+            logger.info(
+                "Calling LLM provider with streaming",
+                extra={
+                    "article_id": article_id,
+                    "stream": True,
+                    "num_predict": self.config.summary_num_predict,
+                }
+            )
+
+            stream_gen = await self.llm_provider.generate(
+                prompt,
+                num_predict=self.config.summary_num_predict,
+                stream=True,
+                options=llm_options,
+            )
+
+            logger.info(
+                "Stream generator obtained from LLM provider",
+                extra={
+                    "article_id": article_id,
+                }
+            )
+
+            # Control tokens to filter
+            # Note: A real robust filter would buffer to handle split tokens,
+            # but for now we assume tokens come in reasonable chunks or at least not split control tokens often.
+            # We'll just filter valid exact matches or basic substring checks if it's a single token.
+            ignored_tokens = {
+                "<start_of_turn>", "<end_of_turn>",
+                "<|system|>", "<|user|>", "<|assistant|>"
+            }
+
+            tokens_yielded = 0
+            bytes_yielded = 0
+            chunks_received = 0
+            has_data = False
+
+            async for chunk in stream_gen:
+                chunks_received += 1
+                token = chunk.response
+                if token and token not in ignored_tokens:
+                    has_data = True
+                    tokens_yielded += 1
+                    bytes_yielded += len(token.encode('utf-8'))
+
+                    # Log first few tokens and periodically
+                    if tokens_yielded <= 3 or tokens_yielded % 50 == 0:
+                        logger.info(
+                            "Yielding token from stream",
+                            extra={
+                                "article_id": article_id,
+                                "token_number": tokens_yielded,
+                                "token_preview": token[:50] if len(token) > 50 else token,
+                                "bytes_yielded": bytes_yielded,
+                                "chunks_received": chunks_received,
+                            }
+                        )
+
+                    # Very basic filtering of partial control tokens could be added here if needed
+                    # For now, yield as is
+                    yield token
+                elif token:
+                    # Log ignored tokens for debugging
+                    if chunks_received <= 5:
+                        logger.debug(
+                            "Ignored control token",
+                            extra={
+                                "article_id": article_id,
+                                "token": token,
+                                "chunks_received": chunks_received,
+                            }
+                        )
+
+            if not has_data:
+                logger.warning(
+                    "Stream completed but no data was yielded",
+                    extra={
+                        "article_id": article_id,
+                        "chunks_received": chunks_received,
+                        "tokens_yielded": tokens_yielded,
+                    }
+                )
+            else:
+                logger.info(
+                    "Stream completed successfully",
+                    extra={
+                        "article_id": article_id,
+                        "tokens_yielded": tokens_yielded,
+                        "bytes_yielded": bytes_yielded,
+                        "chunks_received": chunks_received,
+                    }
+                )
+
+        except aiohttp.ClientConnectionError as conn_err:
+            # Connection error during streaming - check if we have partial data
+            if tokens_yielded > 0:
+                logger.warning(
+                    "Connection error during streaming, but partial summary was generated",
+                    extra={
+                        "article_id": article_id,
+                        "error": str(conn_err),
+                        "error_type": type(conn_err).__name__,
+                        "tokens_yielded": tokens_yielded,
+                        "bytes_yielded": bytes_yielded,
+                        "chunks_received": chunks_received,
+                    }
+                )
+                # Don't raise - the partial data has already been yielded
+                return
+            else:
+                logger.error(
+                    "Connection error during streaming with no data received",
+                    extra={
+                        "article_id": article_id,
+                        "error": str(conn_err),
+                        "error_type": type(conn_err).__name__,
+                        "chunks_received": chunks_received,
+                    },
+                    exc_info=True
+                )
+                raise RuntimeError(f"Streaming summary generation failed: connection closed before any data was received") from conn_err
+        except Exception as e:
+            logger.error(
+                "Streaming summary generation failed",
+                extra={
+                    "article_id": article_id,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "tokens_yielded": tokens_yielded,
+                    "bytes_yielded": bytes_yielded,
+                    "chunks_received": chunks_received,
+                },
+                exc_info=True
+            )
+            raise RuntimeError(f"Streaming summary generation failed: {e}") from e
+
 
     @staticmethod
     def _clean_summary_text(content: str, article_id: str = "") -> str:

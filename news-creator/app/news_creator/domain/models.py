@@ -11,6 +11,7 @@ class SummarizeRequest(BaseModel):
 
     article_id: str = Field(min_length=1)
     content: str = Field(min_length=1)
+    stream: bool = False
 
 
 class SummarizeResponse(BaseModel):

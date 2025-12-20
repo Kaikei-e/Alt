@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class OllamaDriver:
-    """HTTP client for Ollama API."""
+    """HTTP client for Ollama API (non-streaming requests only)."""
 
     def __init__(self, config: NewsCreatorConfig):
         """Initialize Ollama driver with configuration."""
@@ -20,18 +20,15 @@ class OllamaDriver:
         self.session: Optional[aiohttp.ClientSession] = None
 
     async def initialize(self) -> None:
-        """Initialize HTTP client session."""
-        # より詳細なタイムアウト設定
-        # sock_readはtotalと同じ値に設定して、設定値に従ったタイムアウトを確保
-        # totalより長く設定することはできないため、同じ値を使用
+        """Initialize HTTP client session for non-streaming requests."""
         timeout = aiohttp.ClientTimeout(
-            total=self.config.llm_timeout_seconds,
-            connect=30,  # 接続タイムアウト
-            sock_read=self.config.llm_timeout_seconds,  # ソケット読み取りタイムアウト（設定値に基づく）
+            total=None,
+            connect=60,  # Connection timeout only
+            sock_read=None,  # No read timeout for generation
         )
         self.session = aiohttp.ClientSession(timeout=timeout)
         logger.info(
-            "Ollama driver initialized",
+            "Ollama driver initialized (non-streaming)",
             extra={
                 "url": self.config.llm_service_url,
                 "timeout_seconds": self.config.llm_timeout_seconds,
@@ -121,12 +118,16 @@ class OllamaDriver:
                     )
                     await asyncio.sleep(wait_time)
                 else:
-                    logger.debug("Calling Ollama API", extra={"url": url, "model": model})
+                    logger.debug("Calling Ollama API (non-streaming)", extra={"url": url, "model": model})
+
+                # Ensure stream is False for non-streaming driver
+                if payload.get("stream", False):
+                    raise ValueError("OllamaDriver does not support streaming. Use OllamaStreamDriver instead.")
 
                 async with self.session.post(url, json=payload) as response:
-                    text_body = await response.text()
 
                     if response.status != 200:
+                        text_body = await response.text()
                         error_msg = (
                             f"Ollama API returned error: HTTP {response.status}. "
                             f"Response body: {text_body[:500]}"
@@ -141,22 +142,14 @@ class OllamaDriver:
                                 "attempt": attempt + 1,
                             },
                         )
-
-                        # Retry on 5xx errors (server errors) or 502/503 (bad gateway/service unavailable)
+                        # Retry logic for non-200 responses
                         if response.status >= 500 or response.status in (502, 503):
                             if attempt < max_retries:
-                                logger.warning(
-                                    f"Retryable error {response.status}, will retry",
-                                    extra={
-                                        "status": response.status,
-                                        "attempt": attempt + 1,
-                                        "max_retries": max_retries + 1,
-                                    },
-                                )
+                                logger.warning(f"Retryable error {response.status}, will retry")
                                 continue
-
                         raise RuntimeError(f"Ollama API error: HTTP {response.status} - {text_body[:200]}")
 
+                    text_body = await response.text()
                     try:
                         return json.loads(text_body)
                     except json.JSONDecodeError as err:

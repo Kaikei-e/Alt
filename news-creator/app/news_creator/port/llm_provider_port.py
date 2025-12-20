@@ -1,7 +1,7 @@
 """Port interface for LLM provider."""
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, AsyncIterator
 from news_creator.domain.models import LLMGenerateResponse
 
 
@@ -19,7 +19,7 @@ class LLMProviderPort(ABC):
         keep_alive: Optional[Union[int, str]] = None,
         format: Optional[Union[str, Dict[str, Any]]] = None,
         options: Optional[Dict[str, Any]] = None,
-    ) -> LLMGenerateResponse:
+    ) -> Union[LLMGenerateResponse, AsyncIterator[LLMGenerateResponse]]:
         """
         Generate text using the LLM.
 

@@ -2,11 +2,12 @@
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, AsyncIterator
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.driver.ollama_driver import OllamaDriver
+from news_creator.driver.ollama_stream_driver import OllamaStreamDriver
 from news_creator.gateway.fifo_semaphore import FIFOSemaphore
 from news_creator.gateway.model_router import ModelRouter
 from news_creator.gateway.oom_detector import OOMDetector
@@ -22,6 +23,7 @@ class OllamaGateway(LLMProviderPort):
         """Initialize Ollama gateway."""
         self.config = config
         self.driver = OllamaDriver(config)
+        self.stream_driver = OllamaStreamDriver(config)
         # FIFO semaphore for controlling concurrent requests to Ollama
         # FIFO ordering ensures requests are processed in the order they arrive
         self._semaphore = FIFOSemaphore(config.ollama_request_concurrency)
@@ -30,13 +32,15 @@ class OllamaGateway(LLMProviderPort):
         self.model_router = ModelRouter(config, self.oom_detector)
 
     async def initialize(self) -> None:
-        """Initialize the Ollama driver."""
+        """Initialize the Ollama drivers."""
         await self.driver.initialize()
+        await self.stream_driver.initialize()
         logger.info("Ollama gateway initialized")
 
     async def cleanup(self) -> None:
         """Cleanup Ollama driver resources."""
         await self.driver.cleanup()
+        await self.stream_driver.cleanup()
         logger.info("Ollama gateway cleaned up")
 
     async def generate(
@@ -49,7 +53,7 @@ class OllamaGateway(LLMProviderPort):
         keep_alive: Optional[Union[int, str]] = None,
         format: Optional[Union[str, Dict[str, Any]]] = None,
         options: Optional[Dict[str, Any]] = None,
-    ) -> LLMGenerateResponse:
+    ) -> Union[LLMGenerateResponse, AsyncIterator[LLMGenerateResponse]]:
         """
         Generate text using Ollama.
 
@@ -222,11 +226,36 @@ class OllamaGateway(LLMProviderPort):
                 extra={
                     "model": payload["model"],
                     "prompt_length": len(prompt),
+                    "stream": stream,
                 }
             )
-            # Call driver with OOM detection
+            # Call appropriate driver based on stream flag
             try:
+                if stream:
+                    # Use stream driver for streaming requests
+                    stream_iterator = self.stream_driver.generate_stream(payload)
+                    # Handle streaming response
+                    async def response_generator():
+                        async for chunk in stream_iterator:
+                            # Map chunk to LLMGenerateResponse
+                            yield LLMGenerateResponse(
+                                response=chunk.get("response", ""),
+                                model=chunk.get("model", payload["model"]),
+                                done=chunk.get("done", False),
+                                done_reason=chunk.get("done_reason"),
+                                prompt_eval_count=chunk.get("prompt_eval_count"),
+                                eval_count=chunk.get("eval_count"),
+                                total_duration=chunk.get("total_duration"),
+                                load_duration=chunk.get("load_duration"),
+                                prompt_eval_duration=chunk.get("prompt_eval_duration"),
+                                eval_duration=chunk.get("eval_duration"),
+                            )
+                    return response_generator()
+
+                # Use regular driver for non-streaming requests
                 response_data = await self.driver.generate(payload)
+
+                # Non-streaming response handling (existing logic)
                 # Check for OOM in response
                 if self.oom_detector.detect_oom_from_response(response_data):
                     # OOM detected - retry with 2-model mode
@@ -262,6 +291,8 @@ class OllamaGateway(LLMProviderPort):
                             f"Retrying with model {selected_model} (2-model mode)",
                             extra={"original_model": model, "new_model": selected_model},
                         )
+                        # Ensure stream is False for retry to avoid complexity
+                        payload["stream"] = False
                         response_data = await self.driver.generate(payload)
                     else:
                         # Same model selected, re-raise original exception
@@ -269,7 +300,7 @@ class OllamaGateway(LLMProviderPort):
                 else:
                     raise
 
-        # Validate response
+        # Validate response (Non-streaming only)
         if "response" not in response_data:
             logger.error("Ollama response missing 'response' field", extra={"keys": list(response_data.keys())})
             raise RuntimeError("Invalid Ollama response format")
