@@ -98,7 +98,7 @@ class FIFOSemaphore:
         If there are waiting tasks, wake up the first one (FIFO order).
         """
         # Try to wake up a waiter (FIFO order)
-        if not self._waiters.empty():
+        while not self._waiters.empty():
             try:
                 future = self._waiters.get_nowait()
                 if not future.done() and not future.cancelled():
@@ -111,7 +111,7 @@ class FIFOSemaphore:
                         future.set_result(True)
                     return
             except asyncio.QueueEmpty:
-                pass
+                break
 
         # No waiters or all waiters were cancelled, increment value
         if self._value < self._max_value:

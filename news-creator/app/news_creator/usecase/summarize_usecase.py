@@ -481,6 +481,17 @@ class SummarizeUsecase:
         # Truncate content
         MAX_CONTENT_LENGTH = 60_000
         truncated_content = content.strip()[:MAX_CONTENT_LENGTH]
+
+        # DEBUG: Log exact lengths to diagnose 1M char prompt issue
+        logger.warning(
+            f"DEBUG: Truncation check - Original: {len(content)}, Truncated: {len(truncated_content)}, Limit: {MAX_CONTENT_LENGTH}",
+            extra={
+                "article_id": article_id,
+                "original_type": str(type(content)),
+                "truncated_type": str(type(truncated_content)),
+            }
+        )
+
         if len(content) > MAX_CONTENT_LENGTH:
             logger.warning(
                 "Content truncated for streaming",
@@ -491,11 +502,13 @@ class SummarizeUsecase:
                 }
             )
 
-        # Build prompt
-        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=truncated_content)
+        # Build prompt: Ensure we use truncated_content and enforce limit again just in case
+        safe_content = truncated_content[:MAX_CONTENT_LENGTH]
+        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=safe_content)
         prompt_length = len(prompt)
+
         logger.info(
-            "Prompt generated for streaming",
+            f"Prompt generated for streaming (len={prompt_length})",
             extra={
                 "article_id": article_id,
                 "prompt_length": prompt_length,

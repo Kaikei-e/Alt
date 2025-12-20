@@ -95,3 +95,48 @@ async def test_fifo_semaphore_concurrent_access(fifo_semaphore_module):
     # First two should be 1 and 2 (in some order)
     assert set(processing_order[:2]) == {1, 2}
 
+
+@pytest.mark.asyncio
+async def test_fifo_semaphore_cancellation(fifo_semaphore_module):
+    """Test that cancellation of a waiting task doesn't break FIFO order for others."""
+    FIFOSemaphore = fifo_semaphore_module
+    semaphore = FIFOSemaphore(1)
+
+    processing_order = []
+
+    # 1. Acquire the semaphore initially
+    await semaphore.acquire()
+    processing_order.append(1)
+
+    # 2. Start two tasks that will wait
+    async def worker(task_id: int):
+        try:
+            await semaphore.acquire()
+            processing_order.append(task_id)
+            semaphore.release()
+        except asyncio.CancelledError:
+            processing_order.append(f"{task_id}_cancelled")
+            raise
+
+    task2 = asyncio.create_task(worker(2))
+    task3 = asyncio.create_task(worker(3))
+
+    # Wait a bit to ensure they are in the queue (FIFO: 2, then 3)
+    await asyncio.sleep(0.01)
+
+    # 3. Cancel the first waiter (Task 2)
+    task2.cancel()
+    try:
+        await task2
+    except asyncio.CancelledError:
+        pass
+
+    # 4. Release semaphore - should wake Task 3 (since 2 is cancelled)
+    semaphore.release()
+
+    # Wait for Task 3 to complete
+    await task3
+
+    # Verify: 1 ran, 2 cancelled, 3 ran (skipped 2)
+    assert processing_order == [1, "2_cancelled", 3]
+

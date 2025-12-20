@@ -219,39 +219,53 @@ class OllamaGateway(LLMProviderPort):
             f"usage_percent={round((estimated_tokens / context_window) * 100, 1) if context_window > 0 else 0}%"
         )
 
+        # Handle streaming requests
+        if stream:
+            async def response_generator():
+                # Acquire semaphore during the actual streaming process
+                async with self._semaphore:
+                    logger.info(
+                        "Acquired semaphore, processing Ollama request (streaming)",
+                        extra={
+                            "model": payload["model"],
+                            "prompt_length": len(prompt),
+                            "stream": True,
+                        }
+                    )
+                    # Use stream driver for streaming requests
+                    stream_iterator = self.stream_driver.generate_stream(payload)
+                    # Handle streaming response
+                    async for chunk in stream_iterator:
+                        # Map chunk to LLMGenerateResponse
+                        yield LLMGenerateResponse(
+                            response=chunk.get("response", ""),
+                            model=chunk.get("model", payload["model"]),
+                            done=chunk.get("done", False),
+                            done_reason=chunk.get("done_reason"),
+                            prompt_eval_count=chunk.get("prompt_eval_count"),
+                            eval_count=chunk.get("eval_count"),
+                            total_duration=chunk.get("total_duration"),
+                            load_duration=chunk.get("load_duration"),
+                            prompt_eval_duration=chunk.get("prompt_eval_duration"),
+                            eval_duration=chunk.get("eval_duration"),
+                        )
+
+            # Return the generator (not awaited yet)
+            return response_generator()
+
+        # Handle non-streaming requests
         # Acquire semaphore to queue requests (global queue for all services)
         async with self._semaphore:
             logger.info(
-                "Acquired semaphore, processing Ollama request",
+                "Acquired semaphore, processing Ollama request (non-streaming)",
                 extra={
                     "model": payload["model"],
                     "prompt_length": len(prompt),
-                    "stream": stream,
+                    "stream": False,
                 }
             )
             # Call appropriate driver based on stream flag
             try:
-                if stream:
-                    # Use stream driver for streaming requests
-                    stream_iterator = self.stream_driver.generate_stream(payload)
-                    # Handle streaming response
-                    async def response_generator():
-                        async for chunk in stream_iterator:
-                            # Map chunk to LLMGenerateResponse
-                            yield LLMGenerateResponse(
-                                response=chunk.get("response", ""),
-                                model=chunk.get("model", payload["model"]),
-                                done=chunk.get("done", False),
-                                done_reason=chunk.get("done_reason"),
-                                prompt_eval_count=chunk.get("prompt_eval_count"),
-                                eval_count=chunk.get("eval_count"),
-                                total_duration=chunk.get("total_duration"),
-                                load_duration=chunk.get("load_duration"),
-                                prompt_eval_duration=chunk.get("prompt_eval_duration"),
-                                eval_duration=chunk.get("eval_duration"),
-                            )
-                    return response_generator()
-
                 # Use regular driver for non-streaming requests
                 response_data = await self.driver.generate(payload)
 

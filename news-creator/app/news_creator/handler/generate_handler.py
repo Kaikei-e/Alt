@@ -56,6 +56,20 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
                         extra={"value": raw_num_predict},
                     )
 
+            # Protection: Validate prompt length
+            # 80k tokens ~ 320,000 chars. Reject anything larger to prevent queue clogging.
+            MAX_PROMPT_LENGTH_CHARS = 320_000
+            if request.prompt and len(request.prompt) > MAX_PROMPT_LENGTH_CHARS:
+                 logger.warning(
+                     "Rejecting request with excessive prompt length",
+                     extra={
+                         "prompt_length": len(request.prompt),
+                         "limit": MAX_PROMPT_LENGTH_CHARS,
+                         "model": request.model
+                     }
+                 )
+                 raise ValueError(f"Prompt too long ({len(request.prompt)} chars). Max {MAX_PROMPT_LENGTH_CHARS} chars.")
+
             # Call LLM provider
             llm_response = await llm_provider.generate(
                 prompt=request.prompt.strip(),
