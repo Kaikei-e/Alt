@@ -92,20 +92,24 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 			};
 
 			// Safely extract response status if available (without full response body)
-			if (errorObj.response && typeof errorObj.response === "object") {
-				const response = errorObj.response as Record<string, unknown>;
-				safeErrorInfo.responseStatus = response.status;
-				safeErrorInfo.responseStatusText = response.statusText;
-				// Do NOT log response.data, response.body, or response.headers as they may contain sensitive info
+			const errorResponse = errorObj.response as Record<string, unknown> | undefined;
+			if (errorResponse) {
+				safeErrorInfo.responseStatus = errorResponse.status;
+				safeErrorInfo.responseStatusText = errorResponse.statusText;
+				// Log the error data if it exists, it might contain the Kratos reason
+				if (errorResponse.data) {
+					safeErrorInfo.responseData = JSON.stringify(errorResponse.data).substring(0, 500);
+				}
 			}
 
 			console.warn("[hooks.server] Session validation error details", {
 				pathname,
 				errorType: error instanceof Error ? error.constructor.name : typeof error,
-				errorMessage: errorMessage.substring(0, 200), // Limit message length
+				errorMessage: errorMessage.substring(0, 200),
 				errorStatus,
-				errorInfo: safeErrorInfo, // Only safe, non-sensitive properties
+				errorInfo: safeErrorInfo,
 				hasCookie: !!event.request.headers.get("cookie"),
+				cookieLength: event.request.headers.get("cookie")?.length || 0,
 				isStreamEndpoint,
 			});
 		} else {
@@ -115,10 +119,11 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 			}
 			console.warn("[hooks.server] Session validation failed", {
 				pathname,
-				error: errorMessage.substring(0, 200), // Limit message length
+				error: errorMessage.substring(0, 200),
 				errorType: typeof error,
 				status: errorStatus,
 				hasCookie: !!event.request.headers.get("cookie"),
+				cookieLength: event.request.headers.get("cookie")?.length || 0,
 				isStreamEndpoint,
 			});
 		}

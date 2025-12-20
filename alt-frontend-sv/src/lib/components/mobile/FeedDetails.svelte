@@ -109,6 +109,31 @@
 		};
 	});
 
+	// Reset state when feedURL changes (handling swipes)
+	let previousFeedUrl = $state(feedURL);
+	$effect(() => {
+		if (feedURL !== previousFeedUrl) {
+			// Abort any ongoing summarization
+			if (abortController) {
+				abortController.abort();
+				abortController = null;
+			}
+
+			// Reset all article-specific state
+			summary = null;
+			summaryError = null;
+			isSummarizing = false;
+			articleSummary = null;
+			feedDetails = null;
+			isFavoriting = false;
+			isArchiving = false;
+			isArchived = false;
+
+			// Update tracker
+			previousFeedUrl = feedURL;
+		}
+	});
+
 	const handleHideDetails = () => {
 		isOpen = false;
 		isArchived = false;
@@ -338,18 +363,24 @@
 						abortController.abort();
 					}
 					abortController = new AbortController();
+					const currentSignal = abortController.signal;
 
 					isSummarizing = true;
 					summaryError = null;
 					summary = ""; // Reset summary
+
+					// Cloudflare WAF workaround: Debounce request to prevent 403 blocked by bot detection causes by rapid request cancellation and creation
+					await new Promise((resolve) => setTimeout(resolve, 500));
+					if (currentSignal.aborted) return;
+
 					try {
 						// Try streaming first
 						const reader = await streamSummarizeArticleClient(
 							feedURL,
 							articleSummary?.matched_articles?.[0]?.source_id ?? "", // source_id might be article_id?
-							feedDetails?.content,
+							undefined, // feedDetails?.content
 							feedTitle,
-							abortController.signal,
+							currentSignal,
 						);
 
 						// Use streaming renderer utility for incremental rendering
@@ -361,6 +392,8 @@
 								},
 								{
 									tick,
+									typewriter: true,
+									typewriterDelay: 10, // 10ms delay ~100 chars/sec for responsive reading
 									onChunk: (chunkCount) => {
 										// Hide "Summarizing..." when first chunk arrives
 										if (chunkCount === 1) {
