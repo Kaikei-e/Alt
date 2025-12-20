@@ -32,17 +32,24 @@ jobs:
         if: runner.environment == 'self-hosted'
         run: |
           echo "::group::Masking Configuration"
-          # Mask HOME path parts
-          for part in $(echo "$HOME" | tr '/' ' '); do
-            [ -n "$part" ] && echo "::add-mask::$part"
-          done
-          # Mask user and hostname
-          echo "::add-mask::$(whoami)"
+
+          # Mask Runner Identity
           echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(hostname -s || true)"
-          # Mask runner paths
-          echo "::add-mask::${{ runner.temp }}"
-          echo "::add-mask::${{ github.workspace }}"
+          echo "::add-mask::$(whoami)"
+
+          # Mask Absolute Paths
+          [ -n "$HOME" ] && echo "::add-mask::$HOME"
+          [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
+          [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
+
+          # Mask Git PII
+          if command -v git >/dev/null 2>&1; then
+            echo "::add-mask::$(git log -1 --pretty=format:'%an')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ae')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%cn')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ce')"
+          fi
+
           echo "::endgroup::"
 
       - name: Checkout code

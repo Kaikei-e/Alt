@@ -40,21 +40,30 @@ jobs:
       # --- Mask sensitive information ---
       - name: Mask sensitive paths and user info
         run: |
-          echo "::add-mask::${{ inputs.working-directory }}"
-          echo "::add-mask::${{ runner.temp }}"
-          echo "::add-mask::${{ github.workspace }}"
-          echo "::add-mask::${{ github.workspace }}/${{ inputs.working-directory }}"
-          # Mask user and home directory
-          echo "::add-mask::$USER"
-          echo "::add-mask::$HOME"
+          echo "::group::Masking Configuration"
+
+          # Mask Runner Identity
+          echo "::add-mask::$(hostname)"
           echo "::add-mask::$(whoami)"
-          # Mask common CI paths
-          echo "::add-mask::/home/runner"
-          echo "::add-mask::/home/runner/work"
-          echo "::add-mask::/home/runner/work/${{ github.repository }}"
-          # Store paths in environment for later use
+
+          # Mask Absolute Paths
+          [ -n "$HOME" ] && echo "::add-mask::$HOME"
+          [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
+          [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
+
+          # Mask Git PII
+          if command -v git >/dev/null 2>&1; then
+            echo "::add-mask::$(git log -1 --pretty=format:'%an')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ae')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%cn')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ce')"
+          fi
+
+          # Store paths in environment for later use (preserving original logic)
           echo "GITHUB_WORKSPACE=${{ github.workspace }}" >> $GITHUB_ENV
           echo "RUNNER_TEMP=${{ runner.temp }}" >> $GITHUB_ENV
+
+          echo "::endgroup::"
 
       # --- Checkout & Go setup ---
       - name: Checkout (sparse)

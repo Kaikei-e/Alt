@@ -57,15 +57,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Mask sensitive paths
+      - name: Mask sensitive paths and git information
         run: |
-          echo "::add-mask::$HOME"
+          echo "::group::Masking Configuration"
+
+          # Mask Runner Identity
+          echo "::add-mask::$(hostname)"
           echo "::add-mask::$(whoami)"
-          RUNNER_BASE=$(pwd | cut -d'/' -f1-5)
-          echo "::add-mask::$RUNNER_BASE"
-          WORKSPACE_PATH=$(pwd | sed 's|/alt-frontend||')
-          echo "::add-mask::$WORKSPACE_PATH"
-          echo "::add-mask::$(echo $HOME | cut -d'/' -f1-3)"
+
+          # Mask Absolute Paths
+          # Best Practice: Mask full paths instead of components to avoid masking common words like 'home' or 'opt'
+          [ -n "$HOME" ] && echo "::add-mask::$HOME"
+          [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
+          [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
+
+          # Mask Git PII (Personal Identifiable Information)
+          if command -v git >/dev/null 2>&1; then
+            echo "::add-mask::$(git log -1 --pretty=format:'%an')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ae')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%cn')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ce')"
+          fi
+
+          echo "::endgroup::"
 
       - name: Enable pnpm via Corepack
         run: |
