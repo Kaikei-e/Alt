@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 
+	"pre-processor/driver"
 	"pre-processor/models"
 	"pre-processor/repository"
 	"pre-processor/utils/html_parser"
@@ -180,6 +183,142 @@ type SummarizeQueueResponse struct {
 	JobID   string `json:"job_id"`
 	Status  string `json:"status"`
 	Message string `json:"message"`
+}
+
+// HandleStreamSummarize handles POST /api/v1/summarize/stream requests
+func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	// Parse request body
+	var req SummarizeRequest
+	if err := c.Bind(&req); err != nil {
+		h.logger.Error("failed to bind request", "error", err)
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request format")
+	}
+
+	// Validate required fields
+	if req.ArticleID == "" {
+		h.logger.Warn("empty article_id provided")
+		return echo.NewHTTPError(http.StatusBadRequest, "Article ID cannot be empty")
+	}
+
+	// If content is empty, try to fetch from DB
+	if req.Content == "" {
+		h.logger.Info("content is empty, fetching from DB for stream", "article_id", req.ArticleID)
+		fetchedArticle, err := h.articleRepo.FindByID(ctx, req.ArticleID)
+		if err != nil {
+			h.logger.Error("failed to fetch article from DB", "error", err, "article_id", req.ArticleID)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch article content")
+		}
+		if fetchedArticle == nil {
+			h.logger.Warn("article not found in DB", "article_id", req.ArticleID)
+			return echo.NewHTTPError(http.StatusNotFound, "Article not found")
+		}
+
+		// Zero Trust extraction logic
+		content := fetchedArticle.Content
+		if fetchedArticle.Content != "" {
+			extractedText := html_parser.ExtractArticleText(fetchedArticle.Content)
+			if extractedText != "" {
+				content = extractedText
+			}
+		}
+		req.Content = content
+		if req.Title == "" {
+			req.Title = fetchedArticle.Title
+		}
+	}
+
+	if req.Content == "" {
+		h.logger.Warn("empty content provided and not found in DB", "article_id", req.ArticleID)
+		return echo.NewHTTPError(http.StatusBadRequest, "Content cannot be empty")
+	}
+
+	// Zero Trust re-extraction
+	if strings.Contains(req.Content, "<") && strings.Contains(req.Content, ">") {
+		req.Content = html_parser.ExtractArticleText(req.Content)
+	}
+
+	h.logger.Info("processing streaming summarization request", "article_id", req.ArticleID, "content_length", len(req.Content))
+
+	article := &models.Article{
+		ID:      req.ArticleID,
+		Content: req.Content,
+	}
+
+	// Call streaming service
+	stream, err := h.apiRepo.StreamSummarizeArticle(ctx, article)
+	if err != nil {
+		// Check if it's a content too short error
+		if errors.Is(err, driver.ErrContentTooShort) {
+			h.logger.Warn("content too short for streaming summarization", "article_id", req.ArticleID, "content_length", len(req.Content))
+			return echo.NewHTTPError(http.StatusBadRequest, "Content is too short for summarization (minimum 100 characters required)")
+		}
+		h.logger.Error("failed to start streaming summary", "error", err, "article_id", req.ArticleID, "error_type", fmt.Sprintf("%T", err))
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to generate summary stream: %v", err))
+	}
+	defer stream.Close()
+
+	h.logger.Info("stream obtained from news-creator", "article_id", req.ArticleID)
+
+	// Set headers for SSE streaming
+	c.Response().Header().Set(echo.HeaderContentType, "text/event-stream; charset=utf-8")
+	c.Response().Header().Set(echo.HeaderCacheControl, "no-cache")
+	c.Response().Header().Set(echo.HeaderConnection, "keep-alive")
+	c.Response().Header().Set("X-Accel-Buffering", "no") // Disable Nginx buffering for SSE
+	c.Response().WriteHeader(http.StatusOK)
+
+	h.logger.Info("response headers set, starting to read stream", "article_id", req.ArticleID)
+
+	// Stream response with smaller buffer for incremental rendering
+	buf := make([]byte, 128) // Reduced to 128 bytes for faster incremental rendering
+	bytesWritten := 0
+	hasData := false
+	readAttempts := 0
+	for {
+		readAttempts++
+		n, err := stream.Read(buf)
+		if n > 0 {
+			hasData = true
+			bytesWritten += n
+			// Log first few chunks and periodically for debugging incremental rendering
+			if readAttempts <= 3 || bytesWritten%5120 == 0 {
+				h.logger.Info("stream data received and flushed", "article_id", req.ArticleID, "bytes_written", bytesWritten, "chunk_size", n, "read_attempts", readAttempts)
+			} else if readAttempts <= 10 {
+				// Log more frequently for first 10 chunks to verify incremental rendering
+				h.logger.Debug("stream chunk flushed", "article_id", req.ArticleID, "chunk_size", n, "read_attempts", readAttempts)
+			}
+			// Write immediately and flush for incremental rendering
+			if _, wErr := c.Response().Write(buf[:n]); wErr != nil {
+				h.logger.Error("error writing to response stream", "error", wErr, "article_id", req.ArticleID, "bytes_written", bytesWritten)
+				return wErr
+			}
+			// Flush immediately after each chunk for incremental rendering
+			c.Response().Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				h.logger.Info("stream reached EOF", "article_id", req.ArticleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
+				break
+			}
+			h.logger.Error("error reading from stream", "error", err, "article_id", req.ArticleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
+			return err
+		}
+		if n == 0 && readAttempts > 1 {
+			// No data read but no error - might be a timeout or empty stream
+			h.logger.Warn("no data read from stream", "article_id", req.ArticleID, "read_attempts", readAttempts)
+		}
+	}
+
+	// Check if any data was actually streamed
+	if !hasData {
+		h.logger.Warn("stream completed but no data was sent", "article_id", req.ArticleID)
+		// Still return success, but log the warning
+	} else {
+		h.logger.Info("stream completed successfully", "article_id", req.ArticleID, "bytes_written", bytesWritten)
+	}
+
+	return nil
 }
 
 // HandleSummarizeQueue handles POST /api/v1/summarize/queue requests

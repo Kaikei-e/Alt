@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"io"
 	"net/url"
 	"time"
 
@@ -36,6 +37,7 @@ type SummaryRepository interface {
 // ExternalAPIRepository handles external API calls.
 type ExternalAPIRepository interface {
 	SummarizeArticle(ctx context.Context, article *models.Article) (*models.SummarizedContent, error)
+	StreamSummarizeArticle(ctx context.Context, article *models.Article) (io.ReadCloser, error)
 	CheckHealth(ctx context.Context, serviceURL string) error
 }
 

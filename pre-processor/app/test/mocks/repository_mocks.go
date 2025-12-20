@@ -11,6 +11,7 @@ package mocks
 
 import (
 	context "context"
+	io "io"
 	url "net/url"
 	models "pre-processor/models"
 	repository "pre-processor/repository"
@@ -72,6 +73,21 @@ func (mr *MockArticleRepositoryMockRecorder) Create(ctx, article any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockArticleRepository)(nil).Create), ctx, article)
 }
 
+// FindByID mocks base method.
+func (m *MockArticleRepository) FindByID(ctx context.Context, articleID string) (*models.Article, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindByID", ctx, articleID)
+	ret0, _ := ret[0].(*models.Article)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindByID indicates an expected call of FindByID.
+func (mr *MockArticleRepositoryMockRecorder) FindByID(ctx, articleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockArticleRepository)(nil).FindByID), ctx, articleID)
+}
+
 // FindForSummarization mocks base method.
 func (m *MockArticleRepository) FindForSummarization(ctx context.Context, cursor *repository.Cursor, limit int) ([]*models.Article, *repository.Cursor, error) {
 	m.ctrl.T.Helper()
@@ -101,21 +117,6 @@ func (m *MockArticleRepository) HasUnsummarizedArticles(ctx context.Context) (bo
 func (mr *MockArticleRepositoryMockRecorder) HasUnsummarizedArticles(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasUnsummarizedArticles", reflect.TypeOf((*MockArticleRepository)(nil).HasUnsummarizedArticles), ctx)
-}
-
-// FindByID mocks base method.
-func (m *MockArticleRepository) FindByID(ctx context.Context, articleID string) (*models.Article, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindByID", ctx, articleID)
-	ret0, _ := ret[0].(*models.Article)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// FindByID indicates an expected call of FindByID.
-func (mr *MockArticleRepositoryMockRecorder) FindByID(ctx, articleID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockArticleRepository)(nil).FindByID), ctx, articleID)
 }
 
 // MockFeedRepository is a mock of FeedRepository interface.
@@ -294,6 +295,21 @@ func (mr *MockExternalAPIRepositoryMockRecorder) CheckHealth(ctx, serviceURL any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckHealth", reflect.TypeOf((*MockExternalAPIRepository)(nil).CheckHealth), ctx, serviceURL)
 }
 
+// StreamSummarizeArticle mocks base method.
+func (m *MockExternalAPIRepository) StreamSummarizeArticle(ctx context.Context, article *models.Article) (io.ReadCloser, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StreamSummarizeArticle", ctx, article)
+	ret0, _ := ret[0].(io.ReadCloser)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// StreamSummarizeArticle indicates an expected call of StreamSummarizeArticle.
+func (mr *MockExternalAPIRepositoryMockRecorder) StreamSummarizeArticle(ctx, article any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StreamSummarizeArticle", reflect.TypeOf((*MockExternalAPIRepository)(nil).StreamSummarizeArticle), ctx, article)
+}
+
 // SummarizeArticle mocks base method.
 func (m *MockExternalAPIRepository) SummarizeArticle(ctx context.Context, article *models.Article) (*models.SummarizedContent, error) {
 	m.ctrl.T.Helper()
@@ -307,4 +323,87 @@ func (m *MockExternalAPIRepository) SummarizeArticle(ctx context.Context, articl
 func (mr *MockExternalAPIRepositoryMockRecorder) SummarizeArticle(ctx, article any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SummarizeArticle", reflect.TypeOf((*MockExternalAPIRepository)(nil).SummarizeArticle), ctx, article)
+}
+
+// MockSummarizeJobRepository is a mock of SummarizeJobRepository interface.
+type MockSummarizeJobRepository struct {
+	ctrl     *gomock.Controller
+	recorder *MockSummarizeJobRepositoryMockRecorder
+	isgomock struct{}
+}
+
+// MockSummarizeJobRepositoryMockRecorder is the mock recorder for MockSummarizeJobRepository.
+type MockSummarizeJobRepositoryMockRecorder struct {
+	mock *MockSummarizeJobRepository
+}
+
+// NewMockSummarizeJobRepository creates a new mock instance.
+func NewMockSummarizeJobRepository(ctrl *gomock.Controller) *MockSummarizeJobRepository {
+	mock := &MockSummarizeJobRepository{ctrl: ctrl}
+	mock.recorder = &MockSummarizeJobRepositoryMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSummarizeJobRepository) EXPECT() *MockSummarizeJobRepositoryMockRecorder {
+	return m.recorder
+}
+
+// CreateJob mocks base method.
+func (m *MockSummarizeJobRepository) CreateJob(ctx context.Context, articleID string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateJob", ctx, articleID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateJob indicates an expected call of CreateJob.
+func (mr *MockSummarizeJobRepositoryMockRecorder) CreateJob(ctx, articleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).CreateJob), ctx, articleID)
+}
+
+// GetJob mocks base method.
+func (m *MockSummarizeJobRepository) GetJob(ctx context.Context, jobID string) (*models.SummarizeJob, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetJob", ctx, jobID)
+	ret0, _ := ret[0].(*models.SummarizeJob)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetJob indicates an expected call of GetJob.
+func (mr *MockSummarizeJobRepositoryMockRecorder) GetJob(ctx, jobID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).GetJob), ctx, jobID)
+}
+
+// GetPendingJobs mocks base method.
+func (m *MockSummarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) ([]*models.SummarizeJob, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPendingJobs", ctx, limit)
+	ret0, _ := ret[0].([]*models.SummarizeJob)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPendingJobs indicates an expected call of GetPendingJobs.
+func (mr *MockSummarizeJobRepositoryMockRecorder) GetPendingJobs(ctx, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPendingJobs", reflect.TypeOf((*MockSummarizeJobRepository)(nil).GetPendingJobs), ctx, limit)
+}
+
+// UpdateJobStatus mocks base method.
+func (m *MockSummarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID string, status models.SummarizeJobStatus, summary, errorMessage string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateJobStatus", ctx, jobID, status, summary, errorMessage)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateJobStatus indicates an expected call of UpdateJobStatus.
+func (mr *MockSummarizeJobRepositoryMockRecorder) UpdateJobStatus(ctx, jobID, status, summary, errorMessage any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateJobStatus", reflect.TypeOf((*MockSummarizeJobRepository)(nil).UpdateJobStatus), ctx, jobID, status, summary, errorMessage)
 }

@@ -160,6 +160,7 @@ func main() {
 	// API routes
 	api := e.Group("/api/v1")
 	api.POST("/summarize", summarizeHandler.HandleSummarize)                     // Legacy synchronous endpoint
+	api.POST("/summarize/stream", summarizeHandler.HandleStreamSummarize)        // Streaming endpoint
 	api.POST("/summarize/queue", summarizeHandler.HandleSummarizeQueue)          // New async queue endpoint
 	api.GET("/summarize/status/:job_id", summarizeHandler.HandleSummarizeStatus) // Job status endpoint
 	api.GET("/health", func(c echo.Context) error {

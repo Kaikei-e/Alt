@@ -83,6 +83,20 @@ func (mr *MockJobHandlerMockRecorder) StartSummarizationJob(ctx any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartSummarizationJob", reflect.TypeOf((*MockJobHandler)(nil).StartSummarizationJob), ctx)
 }
 
+// StartSummarizeQueueWorker mocks base method.
+func (m *MockJobHandler) StartSummarizeQueueWorker(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartSummarizeQueueWorker", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StartSummarizeQueueWorker indicates an expected call of StartSummarizeQueueWorker.
+func (mr *MockJobHandlerMockRecorder) StartSummarizeQueueWorker(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartSummarizeQueueWorker", reflect.TypeOf((*MockJobHandler)(nil).StartSummarizeQueueWorker), ctx)
+}
+
 // Stop mocks base method.
 func (m *MockJobHandler) Stop() error {
 	m.ctrl.T.Helper()
@@ -147,6 +161,66 @@ func (m *MockHealthHandler) CheckHealth(ctx context.Context) error {
 func (mr *MockHealthHandlerMockRecorder) CheckHealth(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckHealth", reflect.TypeOf((*MockHealthHandler)(nil).CheckHealth), ctx)
+}
+
+// CheckSLACompliance mocks base method.
+func (m *MockHealthHandler) CheckSLACompliance(ctx context.Context) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckSLACompliance", ctx)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CheckSLACompliance indicates an expected call of CheckSLACompliance.
+func (mr *MockHealthHandlerMockRecorder) CheckSLACompliance(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckSLACompliance", reflect.TypeOf((*MockHealthHandler)(nil).CheckSLACompliance), ctx)
+}
+
+// GetExtendedHealthMetrics mocks base method.
+func (m *MockHealthHandler) GetExtendedHealthMetrics(ctx context.Context) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetExtendedHealthMetrics", ctx)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetExtendedHealthMetrics indicates an expected call of GetExtendedHealthMetrics.
+func (mr *MockHealthHandlerMockRecorder) GetExtendedHealthMetrics(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExtendedHealthMetrics", reflect.TypeOf((*MockHealthHandler)(nil).GetExtendedHealthMetrics), ctx)
+}
+
+// GetHealthAlerts mocks base method.
+func (m *MockHealthHandler) GetHealthAlerts(ctx context.Context) ([]map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHealthAlerts", ctx)
+	ret0, _ := ret[0].([]map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHealthAlerts indicates an expected call of GetHealthAlerts.
+func (mr *MockHealthHandlerMockRecorder) GetHealthAlerts(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHealthAlerts", reflect.TypeOf((*MockHealthHandler)(nil).GetHealthAlerts), ctx)
+}
+
+// GetHealthMetrics mocks base method.
+func (m *MockHealthHandler) GetHealthMetrics(ctx context.Context) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHealthMetrics", ctx)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHealthMetrics indicates an expected call of GetHealthMetrics.
+func (mr *MockHealthHandlerMockRecorder) GetHealthMetrics(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHealthMetrics", reflect.TypeOf((*MockHealthHandler)(nil).GetHealthMetrics), ctx)
 }
 
 // MockJobScheduler is a mock of JobScheduler interface.

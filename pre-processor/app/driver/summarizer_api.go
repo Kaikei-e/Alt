@@ -25,6 +25,7 @@ type SummarizedContent struct {
 type SummarizeRequest struct {
 	ArticleID string `json:"article_id"`
 	Content   string `json:"content"`
+	Stream    bool   `json:"stream"`
 }
 
 // SummarizeResponse represents the response from news-creator /api/v1/summarize endpoint
@@ -170,4 +171,107 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 		"model", apiResponse.Model)
 
 	return summarizedContent, nil
+}
+
+// StreamArticleSummarizerAPIClient streams the summary generation from news-creator
+func StreamArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cfg *config.Config, logger *slog.Logger) (io.ReadCloser, error) {
+	// Zero Trust: Always extract text from content before sending to news-creator
+	originalLength := len(article.Content)
+	logger.Info("extracting text from content before streaming summary (Zero Trust validation)",
+		"article_id", article.ID,
+		"original_length", originalLength)
+
+	extractedContent := html_parser.ExtractArticleText(article.Content)
+	extractedLength := len(extractedContent)
+
+	if extractedContent == "" {
+		logger.Warn("text extraction returned empty, using original content",
+			"article_id", article.ID)
+		extractedContent = article.Content
+		extractedLength = originalLength
+	} else {
+		reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
+		logger.Info("text extraction completed before streaming API call",
+			"article_id", article.ID,
+			"original_length", originalLength,
+			"extracted_length", extractedLength,
+			"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
+	}
+
+	const minContentLength = 100
+	if extractedLength < minContentLength {
+		logger.Info("Skipping summarization: content too short after extraction",
+			"article_id", article.ID,
+			"original_length", originalLength,
+			"extracted_length", extractedLength,
+			"min_required", minContentLength)
+		return nil, ErrContentTooShort
+	}
+
+	apiURL := cfg.NewsCreator.Host + cfg.NewsCreator.APIPath
+	payload := SummarizeRequest{
+		ArticleID: article.ID,
+		Content:   extractedContent,
+		Stream:    true,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		logger.Error("Failed to marshal payload for streaming", "error", err, "article_id", article.ID)
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	clientManager := utils.NewHTTPClientManager()
+	// For streaming, we need a client without timeout or with a very long timeout
+	// Create a custom client for streaming that doesn't timeout
+	streamClient := &http.Client{
+		Timeout:   0, // No timeout for streaming
+		Transport: clientManager.GetSummaryClient().Transport,
+	}
+
+	logger.Info("Making streaming request to news-creator API",
+		"api_url", apiURL,
+		"article_id", article.ID,
+		"content_length", extractedLength,
+		"payload_size", len(jsonData))
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, strings.NewReader(string(jsonData)))
+	if err != nil {
+		logger.Error("Failed to create streaming request", "error", err, "api_url", apiURL, "article_id", article.ID)
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := streamClient.Do(req)
+	if err != nil {
+		logger.Error("Failed to send streaming request", "error", err, "api_url", apiURL, "article_id", article.ID)
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		// Read error response body for better error reporting
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		errorBody := string(bodyBytes)
+		if readErr != nil {
+			errorBody = fmt.Sprintf("(failed to read error body: %v)", readErr)
+		}
+
+		logger.Error("API returned non-200 status for streaming request",
+			"status", resp.Status,
+			"code", resp.StatusCode,
+			"body", errorBody,
+			"article_id", article.ID,
+			"api_url", apiURL)
+		return nil, fmt.Errorf("API request failed with status: %s, body: %s", resp.Status, errorBody)
+	}
+
+	logger.Info("Streaming response received successfully",
+		"article_id", article.ID,
+		"status", resp.Status,
+		"content_type", resp.Header.Get("Content-Type"))
+
+	return resp.Body, nil
 }

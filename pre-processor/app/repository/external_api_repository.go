@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -74,6 +75,41 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 	r.logger.Info("article summarized successfully", "article_id", article.ID)
 
 	return summarizedContent, nil
+}
+
+// StreamSummarizeArticle streams the summary for an article using external API.
+func (r *externalAPIRepository) StreamSummarizeArticle(ctx context.Context, article *models.Article) (io.ReadCloser, error) {
+	// Input validation
+	if article == nil {
+		r.logger.Error("article cannot be nil")
+		return nil, fmt.Errorf("article cannot be nil")
+	}
+
+	if article.ID == "" {
+		r.logger.Error("article ID cannot be empty")
+		return nil, fmt.Errorf("article ID cannot be empty")
+	}
+
+	if article.Content == "" {
+		r.logger.Error("article content cannot be empty", "article_id", article.ID)
+		return nil, fmt.Errorf("article content cannot be empty")
+	}
+
+	r.logger.Info("streaming summary for article", "article_id", article.ID)
+
+	// Use driver function for streaming
+	streamBody, err := driver.StreamArticleSummarizerAPIClient(ctx, article, r.config, r.logger)
+	if err != nil {
+		if errors.Is(err, driver.ErrContentTooShort) {
+			r.logger.Info("skipping summarization: content too short", "article_id", article.ID)
+			return nil, driver.ErrContentTooShort
+		}
+		r.logger.Error("failed to start streaming summary", "error", err, "article_id", article.ID)
+		return nil, fmt.Errorf("failed to start streaming summary: %w", err)
+	}
+
+	r.logger.Info("streaming started successfully", "article_id", article.ID)
+	return streamBody, nil
 }
 
 // CheckHealth checks the health of an external service.
