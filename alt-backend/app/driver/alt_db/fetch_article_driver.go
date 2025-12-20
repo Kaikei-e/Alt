@@ -56,3 +56,42 @@ func (r *AltDBRepository) FetchArticleByURL(ctx context.Context, articleURL stri
 	logger.SafeInfo("article retrieved from database", "url", cleanURL, "article_id", article.ID)
 	return &article, nil
 }
+
+const fetchArticleByIDQuery = `
+	SELECT id, title, content, url
+	FROM articles
+	WHERE id = $1
+`
+
+// FetchArticleByID retrieves article content from database by ID
+func (r *AltDBRepository) FetchArticleByID(ctx context.Context, articleID string) (*ArticleContent, error) {
+	if r == nil || r.pool == nil {
+		return nil, errors.New("database connection not available")
+	}
+
+	cleanID := strings.TrimSpace(articleID)
+	if cleanID == "" {
+		return nil, errors.New("article id cannot be empty")
+	}
+
+	var article ArticleContent
+	err := r.pool.QueryRow(ctx, fetchArticleByIDQuery, cleanID).Scan(
+		&article.ID,
+		&article.Title,
+		&article.Content,
+		&article.URL,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			logger.SafeInfo("article not found in database", "id", cleanID)
+			return nil, nil // Return nil without error to indicate not found
+		}
+		err = fmt.Errorf("fetch article by id: %w", err)
+		logger.SafeError("failed to fetch article", "id", cleanID, "error", err)
+		return nil, err
+	}
+
+	logger.SafeInfo("article retrieved from database", "id", cleanID)
+	return &article, nil
+}

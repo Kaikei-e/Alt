@@ -243,6 +243,23 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 		ctx := c.Request().Context()
 		logger.Logger.Info("Stream summarization request received", "article_id", req.ArticleID, "feed_url", req.FeedURL, "has_content", req.Content != "", "content_length", len(req.Content))
 
+		// If ArticleID is provided but Content is empty, try to fetch content from DB
+		if req.ArticleID != "" && req.Content == "" {
+			article, err := container.AltDBRepository.FetchArticleByID(ctx, req.ArticleID)
+			if err != nil {
+				return HandleError(c, err, "fetch_article_by_id")
+			}
+			if article != nil {
+				logger.Logger.Info("Fetched article content from DB", "article_id", req.ArticleID, "content_length", len(article.Content))
+				req.Content = article.Content
+				if req.Title == "" {
+					req.Title = article.Title
+				}
+			} else {
+				logger.Logger.Warn("Article ID provided but not found in DB", "article_id", req.ArticleID)
+			}
+		}
+
 		// Validate article_id or ensure article exists
 		if req.ArticleID == "" {
 			if req.FeedURL == "" {
