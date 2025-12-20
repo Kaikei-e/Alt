@@ -578,11 +578,16 @@ func TestSSRFValidator_CreateSecureHTTPClient(t *testing.T) {
 	assert.NotNil(t, client)
 	assert.Equal(t, 30*time.Second, client.Timeout)
 
-	// Test that redirects are blocked
+	// Test a valid redirect (should be allowed)
 	req := httptest.NewRequest("GET", "http://example.com", nil)
 	err := client.CheckRedirect(req, nil)
+	assert.NoError(t, err)
+
+	// Test an invalid redirect (should be blocked)
+	reqBlocked := httptest.NewRequest("GET", "http://169.254.169.254/latest/meta-data/", nil)
+	err = client.CheckRedirect(reqBlocked, nil)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "redirects not allowed")
+	assert.Contains(t, err.Error(), "redirect blocked by SSRF policy")
 }
 
 func TestSSRFValidator_ComprehensiveAttackScenarios(t *testing.T) {

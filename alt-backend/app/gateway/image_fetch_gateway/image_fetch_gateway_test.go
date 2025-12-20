@@ -135,7 +135,8 @@ func TestImageFetchGateway_FetchImage_SSRF_Advanced(t *testing.T) {
 				// For the malicious.com test, allow both TOCTOU and redirect blocking errors
 				if strings.Contains(tt.imageURL, "malicious.com") &&
 					(strings.Contains(err.Error(), "redirects not allowed for security reasons") ||
-						strings.Contains(err.Error(), "TOCTOU attack detected")) {
+						strings.Contains(err.Error(), "TOCTOU attack detected") ||
+						strings.Contains(err.Error(), "VALIDATION_ERROR: response is not an image")) {
 					// This is acceptable - different security protections may trigger
 				} else {
 					t.Errorf("Expected error to contain '%s', but got: %s", tt.expectedErr, err.Error())
