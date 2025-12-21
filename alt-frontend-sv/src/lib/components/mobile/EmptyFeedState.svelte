@@ -1,6 +1,6 @@
 <script lang="ts">
-import { Plus, Rss } from "@lucide/svelte";
-import { Button } from "$lib/components/ui/button";
+	import { Plus, Rss } from "@lucide/svelte";
+	import { Button } from "$lib/components/ui/button";
 </script>
 
 <div
@@ -15,7 +15,11 @@ import { Button } from "$lib/components/ui/button";
 			class="w-[120px] h-[120px] flex items-center justify-center rounded-full border-2"
 			style="background: var(--alt-glass); border-color: var(--alt-glass-border);"
 		>
-			<Rss size={56} style="color: var(--alt-text-secondary);" stroke-width="1.5" />
+			<Rss
+				size={56}
+				style="color: var(--alt-text-secondary);"
+				stroke-width="1.5"
+			/>
 		</div>
 
 		<!-- Heading -->
@@ -31,13 +35,13 @@ import { Button } from "$lib/components/ui/button";
 				class="text-base leading-relaxed px-4"
 				style="color: var(--alt-text-secondary);"
 			>
-				Start by adding your first RSS feed to begin reading articles from your
-				favorite sources.
+				Start by adding your first RSS feed to begin reading articles
+				from your favorite sources.
 			</p>
 		</div>
 
 		<!-- Call to Action Button -->
-		<a href="/mobile/feeds/register">
+		<a href="/sv/mobile/feeds/manage">
 			<Button
 				size="lg"
 				class="rounded-2xl font-bold px-8"
@@ -51,4 +55,3 @@ import { Button } from "$lib/components/ui/button";
 		</a>
 	</div>
 </div>
-
