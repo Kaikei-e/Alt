@@ -6,14 +6,15 @@
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
-		"preview": "vite preview",
+		"preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "biome check",
 		"format": "biome format --write",
-		"test:e2e": "playwright test",
-		"test:e2e:ui": "playwright test --ui"
+		"test": "echo 'No unit tests defined'",
+		"test:e2e": "bun run build && npx playwright test --reporter=list",
+		"test:e2e:ui": "npx playwright test --ui"
 	},
 	"dependencies": {
 		"@ory/client": "^1.22.15",

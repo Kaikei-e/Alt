@@ -9,7 +9,7 @@ export default defineConfig({
   reporter: 'html',
   use: {
     trace: 'on-first-retry',
-    baseURL: 'http://localhost:4173/sv',
+    baseURL: 'http://127.0.0.1:4173/sv/',
   },
   projects: [
     {
@@ -34,8 +34,17 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'bun run build && bun run preview',
-    url: 'http://localhost:4173/sv',
+    command: 'node build',
+    url: 'http://127.0.0.1:4173/sv/',
     reuseExistingServer: !process.env.CI,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: 120 * 1000,
+    env: {
+      ...process.env,
+      HOST: '127.0.0.1',
+      PORT: '4173',
+      ORIGIN: 'http://127.0.0.1:4173',
+    },
   },
 });
