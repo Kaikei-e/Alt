@@ -31,7 +31,7 @@ for secret in "${SECRETS[@]}"; do
     if [ ! -f "$FILE" ]; then
         # Generate a random string or default value
         if [[ "$secret" == *"password"* || "$secret" == *"secret"* || "$secret" == *"key"* || "$secret" == *"token"* ]]; then
-             openssl rand -base64 32 > "$FILE"
+             openssl rand -hex 16 > "$FILE"
              # Remove trailing newline for cleaner usage in some contexts (though usually fine)
              truncate -s -1 "$FILE"
              echo "Generated $secret"
