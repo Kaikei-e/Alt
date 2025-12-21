@@ -4,6 +4,10 @@
 # Email: test-user@example.com
 # Password: password123
 
+
+# Generate a random password
+PASSWORD=$(uuidgen | base64)
+
 echo "Creating test user..."
 
 curl -X POST http://localhost:4434/admin/identities \
@@ -20,7 +24,7 @@ curl -X POST http://localhost:4434/admin/identities \
     "credentials": {
       "password": {
         "config": {
-          "password": "password123"
+          "password": "'"$PASSWORD"'"
         }
       }
     }
@@ -31,5 +35,5 @@ echo "---------------------------------------------------"
 echo "Test user creation attempt finished."
 echo "Credentials:"
 echo "  Email:    test-user@example.com"
-echo "  Password: password123"
+echo "  Password: $PASSWORD"
 echo "---------------------------------------------------"
