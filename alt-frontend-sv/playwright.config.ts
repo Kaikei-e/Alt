@@ -35,7 +35,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'node build',
-    url: 'http://127.0.0.1:4173/sv/',
+    url: 'http://127.0.0.1:4173/sv/health',
     reuseExistingServer: !process.env.CI,
     stdout: 'pipe',
     stderr: 'pipe',

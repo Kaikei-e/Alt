@@ -4,6 +4,7 @@ import { ory } from "$lib/ory";
 
 const PUBLIC_ROUTES = [
 	/\/auth(\/|$)/,
+	/\/health(\/|$)/,
 	// Note: /sv/api/ and /api/ are NOT public - they require authentication
 	// Each API endpoint checks authentication individually, but hooks.server.ts
 	// also validates session and returns 401 for unauthenticated API requests
