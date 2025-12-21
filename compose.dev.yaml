@@ -1,0 +1,20 @@
+services:
+  alt-frontend-sv:
+    build:
+      context: ./alt-frontend-sv
+      dockerfile: Dockerfile.alt-frontend-sv.dev
+    volumes:
+      - ./alt-frontend-sv:/app
+      - /app/node_modules
+    ports:
+      - "4173:4173"
+      - "24678:24678" # Vite HMR port (default)
+    environment:
+      - NODE_ENV=development
+      - PORT=4173
+      # Ensure Vite uses polling if file events aren't propagating (optional, but good for some setups)
+      # - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - alt-backend
+      - db
+

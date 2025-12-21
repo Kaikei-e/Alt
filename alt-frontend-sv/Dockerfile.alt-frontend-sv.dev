@@ -1,0 +1,18 @@
+FROM oven/bun:1 AS base
+WORKDIR /app
+
+# Install dependencies
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
+# Set environment to development
+ENV NODE_ENV=development
+ENV PORT=4173
+ENV HOST=0.0.0.0
+
+# Expose the port
+EXPOSE 4173
+
+# Command to run dev server
+# We use --host to bind to 0.0.0.0 so it's accessible outside the container
+CMD ["bun", "run", "dev", "--host", "0.0.0.0", "--port", "4173"]
