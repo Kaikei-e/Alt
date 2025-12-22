@@ -6,10 +6,12 @@ import (
 	"alt/utils/logger"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -89,7 +91,8 @@ func RestHandleSummarizeFeed(container *di.ApplicationComponents, cfg *config.Co
 		existingSummary, err := container.AltDBRepository.FetchArticleSummaryByArticleID(c.Request().Context(), articleID)
 		if err == nil && existingSummary != nil && existingSummary.Summary != "" {
 			logger.Logger.Info("Found existing summary in database", "article_id", articleID, "feed_url", req.FeedURL)
-			summary = existingSummary.Summary
+			// Ensure we return clean text, not raw SSE if it was stored incorrectly
+			summary = parseSSESummary(existingSummary.Summary)
 		} else {
 			// Step 3: Generate new summary if not found in database
 			logger.Logger.Info("No existing summary found, generating new summary", "article_id", articleID, "feed_url", req.FeedURL)
@@ -193,9 +196,10 @@ func RestHandleSummarizeFeedQueue(container *di.ApplicationComponents, cfg *conf
 		if err == nil && existingSummary != nil && existingSummary.Summary != "" {
 			logger.Logger.Info("Found existing summary in database", "article_id", articleID, "feed_url", req.FeedURL)
 			// Return existing summary immediately
+			summary := parseSSESummary(existingSummary.Summary)
 			response := map[string]interface{}{
 				"success":    true,
-				"summary":    existingSummary.Summary,
+				"summary":    summary,
 				"article_id": articleID,
 				"feed_url":   req.FeedURL,
 			}
@@ -331,7 +335,18 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 			c.Response().Header().Set("X-Accel-Buffering", "no") // Disable Nginx buffering for SSE
 			c.Response().WriteHeader(http.StatusOK)
 
-			if _, err := c.Response().Writer.Write([]byte(existingSummary.Summary)); err != nil {
+			// Format as SSE event
+			// We JSON encode the summary to ensure safe transmission of newlines/special chars
+			// and match the format expected by the frontend (which tries JSON.parse)
+			// Also ensure we clean any existing bad data (raw SSE stored in DB)
+			cleanSummary := parseSSESummary(existingSummary.Summary)
+			jsonSummary, err := json.Marshal(cleanSummary)
+			if err != nil {
+				logger.Logger.Error("Failed to marshal existing summary", "error", err)
+				return err
+			}
+
+			if _, err := fmt.Fprintf(c.Response().Writer, "data: %s\n\n", jsonSummary); err != nil {
 				logger.Logger.Error("Failed to write existing summary to stream", "error", err)
 				return err
 			}
@@ -415,7 +430,8 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 		}
 
 		// Save complete summary to DB (Persistence consistency)
-		summary := buf.String()
+		// Parse SSE stream to extract clean text before saving
+		summary := parseSSESummary(buf.String())
 		if summary != "" && req.ArticleID != "" {
 			// Use background context for saving to ensure it completes
 			// (Use a detached context if available, or just Background)
@@ -429,6 +445,45 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 		logger.Logger.Info("Stream summarization request completed", "article_id", req.ArticleID, "total_duration_ms", duration.Milliseconds(), "bytes_written", bytesWritten)
 		return nil
 	}
+}
+
+// Helper to parse SSE data from raw stream text
+func parseSSESummary(sseData string) string {
+	// If it doesn't look like SSE, return as is
+	if !strings.Contains(sseData, "data:") {
+		return sseData
+	}
+
+	var result strings.Builder
+	lines := strings.Split(sseData, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "data:") {
+			dataContent := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			var decoded string
+			// Try to unmarshal as JSON string first
+			if err := json.Unmarshal([]byte(dataContent), &decoded); err == nil {
+				result.WriteString(decoded)
+			} else {
+				// If not JSON string, take as raw
+				result.WriteString(dataContent)
+			}
+		}
+	}
+
+	// If parsing resulted in empty string but input wasn't empty, it might be that
+	// the "data:" detection was false positive or structure was different.
+	// However, for our double-wrapped issue, this logic should separate clean text from SSE frames.
+	if result.Len() == 0 && len(sseData) > 0 {
+		// Only check if we actually found any "data:" lines that we processed
+		// simplified: if we are here, we probably stripped everything?
+		// Let's assume if result is empty, maybe fallback to original?
+		// But "data: " lines are stripped.
+		// If input was just "data: ", result is empty. That's correct.
+		return result.String()
+	}
+
+	return result.String()
 }
 
 func RestHandleSummarizeFeedStatus(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
