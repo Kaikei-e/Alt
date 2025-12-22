@@ -151,7 +151,9 @@ func (r *externalAPIRepository) CheckHealth(ctx context.Context, serviceURL stri
 		return fmt.Errorf("health check request failed: %w", err)
 	}
 	defer func() {
-		_ = resp.Body.Close()
+		if cerr := resp.Body.Close(); cerr != nil {
+			r.logger.Warn("failed to close health check response body", "error", cerr, "url", healthEndpoint)
+		}
 	}()
 
 	if resp.StatusCode != http.StatusOK {
@@ -182,7 +184,11 @@ func (r *externalAPIRepository) GetSystemUserID(ctx context.Context) (string, er
 	if err != nil {
 		return "", fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			r.logger.Warn("failed to close system user response body", "error", cerr, "url", parsedURL.String())
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)

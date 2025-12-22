@@ -50,7 +50,11 @@ func performHealthCheck() {
 	if err != nil {
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			logger.Logger.Warn("health check: failed to close response body", "error", cerr, "url", rawURL)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		os.Exit(1)

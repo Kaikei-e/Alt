@@ -257,7 +257,11 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 		h.logger.Error("failed to start streaming summary", "error", err, "article_id", req.ArticleID, "error_type", fmt.Sprintf("%T", err))
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to generate summary stream: %v", err))
 	}
-	defer stream.Close()
+	defer func() {
+		if cerr := stream.Close(); cerr != nil {
+			h.logger.Warn("failed to close summary stream", "error", cerr, "article_id", req.ArticleID)
+		}
+	}()
 
 	h.logger.Info("stream obtained from news-creator", "article_id", req.ArticleID)
 

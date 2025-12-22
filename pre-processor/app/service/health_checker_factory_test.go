@@ -24,7 +24,7 @@ func setHealthCheckerTransport(t *testing.T, service HealthCheckerService, handl
 	transport := newHandlerTransport(handler, delay)
 	switch client := healthService.client.(type) {
 	case *HTTPClientWrapper:
-		client.Client.Transport = transport
+		client.Transport = transport
 	case *OptimizedHTTPClientWrapper:
 		client.Client.Transport = transport
 	case *EnvoyHTTPClient:

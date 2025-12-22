@@ -262,7 +262,9 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *models.Artic
 	if resp.StatusCode != http.StatusOK {
 		// Read error response body for better error reporting
 		bodyBytes, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			logger.Warn("failed to close streaming response body", "error", closeErr, "article_id", article.ID)
+		}
 
 		errorBody := string(bodyBytes)
 		if readErr != nil {

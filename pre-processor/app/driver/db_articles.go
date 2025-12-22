@@ -312,7 +312,7 @@ func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time
 }
 
 // UpsertArticlesBatch batches upsert articles
-func UpsertArticlesBatch(ctx context.Context, db *pgxpool.Pool, articles []*models.Article) error {
+func UpsertArticlesBatch(ctx context.Context, db *pgxpool.Pool, articles []*models.Article) (err error) {
 	if db == nil {
 		return fmt.Errorf("database connection is nil")
 	}
@@ -340,14 +340,22 @@ func UpsertArticlesBatch(ctx context.Context, db *pgxpool.Pool, articles []*mode
 	}
 
 	br := db.SendBatch(ctx, batch)
-	defer br.Close()
+	defer func() {
+		if cerr := br.Close(); cerr != nil {
+			if err != nil {
+				err = fmt.Errorf("%w; batch close failed: %v", err, cerr)
+			} else {
+				err = fmt.Errorf("failed to close batch: %w", cerr)
+			}
+		}
+	}()
 
 	for i := 0; i < batch.Len(); i++ {
-		_, err := br.Exec()
-		if err != nil {
+		_, execErr := br.Exec()
+		if execErr != nil {
 			// Log error but continue? Or fail batch?
 			// Typically fail batch.
-			return fmt.Errorf("failed to execute batch upsert: %w", err)
+			return fmt.Errorf("failed to execute batch upsert: %w", execErr)
 		}
 	}
 
