@@ -199,7 +199,7 @@
       const reader = await streamSummarizeArticleClient(
         feed.link,
         undefined, // Let backend resolve article_id from URL
-        fullContent || undefined,
+        undefined, // Content is fetched from DB by backend
         feed.title,
       );
 
