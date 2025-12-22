@@ -45,7 +45,7 @@ func TestRateLimitAwareScheduler_NextInterval(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			scheduler := NewRateLimitAwareScheduler(tc.baseInterval)
-			
+
 			// Simulate errors
 			for i := 0; i < tc.errorCount; i++ {
 				scheduler.RecordError()
@@ -65,22 +65,22 @@ func TestRateLimitAwareScheduler_NextInterval(t *testing.T) {
 
 func TestRateLimitAwareScheduler_RecordSuccess(t *testing.T) {
 	scheduler := NewRateLimitAwareScheduler(1 * time.Minute)
-	
+
 	// Add some errors
 	scheduler.RecordError()
 	scheduler.RecordError()
-	
+
 	// Verify error count is recorded
 	errorCount, _, _ := scheduler.GetStatus()
 	assert.Equal(t, 2, errorCount)
-	
+
 	// NextInterval should be greater than base interval with errors
 	interval := scheduler.NextInterval()
 	assert.Greater(t, interval, 1*time.Minute)
-	
+
 	// Record success
 	scheduler.RecordSuccess()
-	
+
 	// Verify reset
 	errorCount, interval, lastSuccess := scheduler.GetStatus()
 	assert.Equal(t, 0, errorCount)
@@ -90,21 +90,21 @@ func TestRateLimitAwareScheduler_RecordSuccess(t *testing.T) {
 
 func TestRateLimitAwareScheduler_RecordError(t *testing.T) {
 	scheduler := NewRateLimitAwareScheduler(1 * time.Minute)
-	
+
 	// Initial state
 	errorCount, _, _ := scheduler.GetStatus()
 	assert.Equal(t, 0, errorCount)
-	
+
 	// Record error
 	scheduler.RecordError()
-	
+
 	// Check error count increased
 	errorCount, _, _ = scheduler.GetStatus()
 	assert.Equal(t, 1, errorCount)
-	
+
 	// Record another error
 	scheduler.RecordError()
-	
+
 	// Check error count increased again
 	errorCount, _, _ = scheduler.GetStatus()
 	assert.Equal(t, 2, errorCount)
@@ -175,7 +175,7 @@ func TestScheduleHandler_UpdateConfig(t *testing.T) {
 				assert.Contains(t, err.Error(), tc.errorMsg)
 			} else {
 				assert.NoError(t, err)
-				
+
 				// Verify configuration was updated
 				updatedConfig := handler.GetConfig()
 				assert.Equal(t, tc.config.SubscriptionSyncInterval, updatedConfig.SubscriptionSyncInterval)
@@ -205,34 +205,56 @@ func TestScheduleHandler_IsRunning(t *testing.T) {
 
 	// Initially not running
 	assert.False(t, handler.IsRunning())
-	
+
 	// Note: We skip the Start/Stop test as it requires service integration
 }
 
 func TestScheduleHandler_TriggerSubscriptionSync_NotRunning(t *testing.T) {
-	handler := NewScheduleHandler(nil, nil, nil)
+	handler := newScheduleHandlerForTriggerTests(t)
+	done := make(chan struct{})
+	var once sync.Once
+
+	handler.AddJobResultCallback(func(result *JobResult) {
+		if result.JobType == "subscription_sync" {
+			once.Do(func() {
+				close(done)
+			})
+		}
+	})
 
 	// Test that triggering succeeds at method level
 	err := handler.TriggerSubscriptionSync()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	// Give a moment for goroutine to start and potentially panic
-	time.Sleep(1 * time.Millisecond)
-	
-	// If we reach here, the trigger method worked (goroutine execution is separate)
+	select {
+	case <-done:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("subscription sync did not complete within timeout")
+	}
 }
 
 func TestScheduleHandler_TriggerArticleFetch_NotRunning(t *testing.T) {
-	handler := NewScheduleHandler(nil, nil, nil)
+	handler := newScheduleHandlerForTriggerTests(t)
+	done := make(chan struct{})
+	var once sync.Once
+
+	handler.AddJobResultCallback(func(result *JobResult) {
+		if result.JobType == "article_fetch" {
+			once.Do(func() {
+				close(done)
+			})
+		}
+	})
 
 	// Test that triggering succeeds at method level
 	err := handler.TriggerArticleFetch()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	// Give a moment for goroutine to start and potentially panic
-	time.Sleep(1 * time.Millisecond)
-	
-	// If we reach here, the trigger method worked (goroutine execution is separate)
+	select {
+	case <-done:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("article fetch did not complete within timeout")
+	}
 }
 
 func TestScheduleHandler_AddJobResultCallback(t *testing.T) {
@@ -321,18 +343,18 @@ func TestJobResult_Structure(t *testing.T) {
 func TestScheduleStatus_Structure(t *testing.T) {
 	// Test ScheduleStatus structure
 	status := &ScheduleStatus{
-		SubscriptionSyncEnabled:  true,
-		ArticleFetchEnabled:      true,
-		LastSubscriptionSync:     time.Now(),
-		NextSubscriptionSync:     time.Now().Add(1 * time.Hour),
-		LastArticleFetch:         time.Now(),
-		NextArticleFetch:         time.Now().Add(30 * time.Minute),
-		SubscriptionSyncRunning:  false,
-		ArticleFetchRunning:      false,
-		TotalSubscriptionSyncs:   10,
-		TotalArticleFetches:      50,
-		FailedSubscriptionSyncs:  1,
-		FailedArticleFetches:     2,
+		SubscriptionSyncEnabled: true,
+		ArticleFetchEnabled:     true,
+		LastSubscriptionSync:    time.Now(),
+		NextSubscriptionSync:    time.Now().Add(1 * time.Hour),
+		LastArticleFetch:        time.Now(),
+		NextArticleFetch:        time.Now().Add(30 * time.Minute),
+		SubscriptionSyncRunning: false,
+		ArticleFetchRunning:     false,
+		TotalSubscriptionSyncs:  10,
+		TotalArticleFetches:     50,
+		FailedSubscriptionSyncs: 1,
+		FailedArticleFetches:    2,
 		LastError:               "",
 	}
 
@@ -351,7 +373,7 @@ func TestScheduleHandler_ArticleFetchErrorHandling(t *testing.T) {
 		JobType:   "article_fetch",
 		StartTime: time.Now(),
 	}
-	
+
 	// Test the case where all subscriptions are already processed for today
 	// This should be considered a successful completion, not an error
 	result.Details = map[string]interface{}{
@@ -361,28 +383,28 @@ func TestScheduleHandler_ArticleFetchErrorHandling(t *testing.T) {
 		"batch_size":          3,
 		"processed_count":     0,
 	}
-	
+
 	// Verify result indicates completion without errors
 	assert.NotNil(t, result.Details)
 	details, ok := result.Details.(map[string]interface{})
 	require.True(t, ok)
-	
+
 	// Should indicate that no processing occurred but for valid reason
 	assert.Equal(t, "all_subscriptions_completed_today", details["status"])
 	assert.Equal(t, 0, details["processed_count"])
-	
+
 	// Test the case where no subscriptions are available at all
 	result2 := &JobResult{
 		JobType:   "article_fetch",
 		StartTime: time.Now(),
 	}
-	
+
 	result2.Details = map[string]interface{}{
-		"status":         "no_subscriptions_available",
-		"batch_size":     3,
+		"status":          "no_subscriptions_available",
+		"batch_size":      3,
 		"processed_count": 0,
 	}
-	
+
 	details2, ok := result2.Details.(map[string]interface{})
 	require.True(t, ok)
 	assert.Equal(t, "no_subscriptions_available", details2["status"])
@@ -408,7 +430,7 @@ func TestScheduleHandler_ProcessingStatusDifferentiation(t *testing.T) {
 		},
 		{
 			name:            "No_Subscriptions_Available",
-			status:          "no_subscriptions_available", 
+			status:          "no_subscriptions_available",
 			processedCount:  0,
 			expectedSuccess: true,
 			expectedReason:  "no_work_available",
@@ -428,7 +450,7 @@ func TestScheduleHandler_ProcessingStatusDifferentiation(t *testing.T) {
 			expectedReason:  "some_api_calls_failed",
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			result := &JobResult{
@@ -436,15 +458,15 @@ func TestScheduleHandler_ProcessingStatusDifferentiation(t *testing.T) {
 				StartTime: time.Now(),
 				Success:   tc.expectedSuccess,
 				Details: map[string]interface{}{
-					"status":         tc.status,
+					"status":          tc.status,
 					"processed_count": tc.processedCount,
-					"reason":         tc.expectedReason,
+					"reason":          tc.expectedReason,
 				},
 			}
-			
+
 			details, ok := result.Details.(map[string]interface{})
 			require.True(t, ok)
-			
+
 			assert.Equal(t, tc.status, details["status"])
 			assert.Equal(t, tc.processedCount, details["processed_count"])
 			assert.Equal(t, tc.expectedReason, details["reason"])
@@ -471,7 +493,7 @@ func TestScheduleHandler_APICallVerification(t *testing.T) {
 			expectedLogMessage: "All subscriptions processed for today",
 		},
 		{
-			name:               "Has_Remaining_Should_Make_API_Calls", 
+			name:               "Has_Remaining_Should_Make_API_Calls",
 			remainingToday:     5,
 			batchSize:          3,
 			expectedAPICalls:   true,
@@ -485,7 +507,7 @@ func TestScheduleHandler_APICallVerification(t *testing.T) {
 			expectedLogMessage: "Executing batch subscription rotation processing",
 		},
 	}
-	
+
 	for _, scenario := range scenarios {
 		t.Run(scenario.name, func(t *testing.T) {
 			// Create a mock result that would be populated by the actual processing
@@ -493,31 +515,31 @@ func TestScheduleHandler_APICallVerification(t *testing.T) {
 				JobType:   "article_fetch",
 				StartTime: time.Now(),
 			}
-			
+
 			// Simulate what the processing logic would set
 			if scenario.expectedAPICalls {
 				result.Details = map[string]interface{}{
-					"status":         "processed",
-					"batch_size":     scenario.batchSize,
+					"status":          "processed",
+					"batch_size":      scenario.batchSize,
 					"processed_count": min(scenario.remainingToday, scenario.batchSize),
-					"api_calls_made": true,
+					"api_calls_made":  true,
 				}
 				result.Success = true
 			} else {
 				result.Details = map[string]interface{}{
-					"status":         "all_subscriptions_completed_today",
-					"batch_size":     scenario.batchSize, 
+					"status":          "all_subscriptions_completed_today",
+					"batch_size":      scenario.batchSize,
 					"processed_count": 0,
-					"api_calls_made": false,
+					"api_calls_made":  false,
 				}
 				result.Success = true // Still successful, just no work to do
 			}
-			
+
 			details, ok := result.Details.(map[string]interface{})
 			require.True(t, ok)
-			
+
 			assert.Equal(t, scenario.expectedAPICalls, details["api_calls_made"])
-			
+
 			if scenario.expectedAPICalls {
 				assert.Greater(t, details["processed_count"], 0)
 			} else {
