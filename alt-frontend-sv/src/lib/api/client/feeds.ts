@@ -6,6 +6,11 @@ import type {
 	FeedSearchResult,
 	SearchFeedItem,
 } from "$lib/schema/search";
+import type {
+	DetailedFeedStatsSummary,
+	FeedStatsSummary,
+	UnreadCountResponse,
+} from "$lib/schema/stats";
 import { callClientAPI } from "./core";
 
 /**
@@ -153,4 +158,25 @@ export async function searchFeedsClient(
 			has_more: false,
 		};
 	}
+}
+
+/**
+ * フィードの統計情報を取得（クライアントサイド）
+ */
+export async function getFeedStatsClient(): Promise<FeedStatsSummary> {
+	return callClientAPI<FeedStatsSummary>("/v1/feeds/stats");
+}
+
+/**
+ * フィードの詳細統計情報を取得（クライアントサイド）
+ */
+export async function getDetailedFeedStatsClient(): Promise<DetailedFeedStatsSummary> {
+	return callClientAPI<DetailedFeedStatsSummary>("/v1/feeds/stats/detailed");
+}
+
+/**
+ * 未読記事数を取得（クライアントサイド）
+ */
+export async function getUnreadCountClient(): Promise<UnreadCountResponse> {
+	return callClientAPI<UnreadCountResponse>("/v1/feeds/count/unreads");
 }

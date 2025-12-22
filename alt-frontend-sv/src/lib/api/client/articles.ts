@@ -314,12 +314,15 @@ export async function streamSummarizeArticleClient(
 	title?: string,
 	signal?: AbortSignal
 ): Promise<ReadableStreamDefaultReader<Uint8Array>> {
-	const payload = {
+	const payload: Record<string, unknown> = {
 		feed_url: feedUrl,
 		article_id: articleId,
-		content,
 		title,
 	};
+
+	if (content) {
+		payload.content = content;
+	}
 
 	const response = await fetch("/sv/api/v1/feeds/summarize/stream", {
 		method: "POST",
