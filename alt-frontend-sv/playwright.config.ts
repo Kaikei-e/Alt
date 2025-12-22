@@ -9,7 +9,8 @@ export default defineConfig({
   reporter: 'html',
   use: {
     trace: 'on-first-retry',
-    baseURL: 'http://127.0.0.1:4173/sv/',
+    baseURL: 'http://127.0.0.1:4174/sv/',
+    storageState: 'tests/e2e/.auth/storage.json',
   },
   projects: [
     {
@@ -33,18 +34,22 @@ export default defineConfig({
       use: { ...devices['iPhone 12'] },
     },
   ],
-  webServer: {
-    command: 'node build',
-    url: 'http://127.0.0.1:4173/sv/health',
-    reuseExistingServer: !process.env.CI,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    timeout: 120 * 1000,
-    env: {
-      ...process.env,
-      HOST: '127.0.0.1',
-      PORT: '4173',
-      ORIGIN: 'http://127.0.0.1:4173',
+  webServer: [
+    {
+      command: 'bun run build && node build',
+      url: 'http://127.0.0.1:4174/sv/health',
+      reuseExistingServer: !process.env.CI,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: 120 * 1000,
+      env: {
+        ...process.env,
+        HOST: '127.0.0.1',
+        PORT: '4174',
+        ORIGIN: 'http://127.0.0.1:4174',
+        KRATOS_INTERNAL_URL: 'http://kratos-mock',
+        NODE_OPTIONS: '--require ./tests/mock-kratos-fetch.cjs',
+      },
     },
-  },
+  ],
 });
