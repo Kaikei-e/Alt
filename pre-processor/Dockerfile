@@ -30,4 +30,7 @@ RUN chmod +x pre-processor
 
 EXPOSE 9200
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD ./pre-processor --health-check || exit 1
+
 CMD ["./pre-processor"]
