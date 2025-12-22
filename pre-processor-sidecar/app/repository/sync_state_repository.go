@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"pre-processor-sidecar/models"
+
 	"github.com/google/uuid"
 )
 
@@ -126,6 +127,32 @@ func (r *PostgreSQLSyncStateRepository) GetStaleStates(ctx context.Context, olde
 		ORDER BY last_sync ASC`
 
 	return r.querySyncStates(ctx, query, olderThan)
+}
+
+// GetOldestOne retrieves the single most outdated sync state
+func (r *PostgreSQLSyncStateRepository) GetOldestOne(ctx context.Context) (*models.SyncState, error) {
+	query := `
+		SELECT id, stream_id, continuation_token, last_sync
+		FROM sync_state
+		ORDER BY last_sync ASC
+		LIMIT 1`
+
+	var syncState models.SyncState
+	err := r.db.QueryRowContext(ctx, query).Scan(
+		&syncState.ID,
+		&syncState.StreamID,
+		&syncState.ContinuationToken,
+		&syncState.LastSync,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // Return nil if no records found
+		}
+		return nil, fmt.Errorf("failed to get oldest sync state: %w", err)
+	}
+
+	return &syncState, nil
 }
 
 // Update updates an existing sync state

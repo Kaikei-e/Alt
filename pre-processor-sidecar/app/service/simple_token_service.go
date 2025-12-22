@@ -11,19 +11,22 @@ import (
 
 	"pre-processor-sidecar/driver"
 	"pre-processor-sidecar/models"
+	"pre-processor-sidecar/repository"
 )
 
 // SimpleTokenService は簡易版統合トークンサービス
 type SimpleTokenService struct {
-	inMemoryManager  *InMemoryTokenManager
-	recoveryManager  *RecoveryManager
-	oauth2Client     *driver.OAuth2Client
-	oauth2SecretSvc  *OAuth2SecretService
-	logger           *slog.Logger
-	isStarted        bool
-	
+	inMemoryManager *InMemoryTokenManager
+	recoveryManager *RecoveryManager
+	oauth2Client    *driver.OAuth2Client
+	oauth2SecretSvc *OAuth2SecretService
+	tokenRepo       repository.OAuth2TokenRepository // Added token repository
+	logger          *slog.Logger
+	isStarted       bool
+
 	// 自律的Secret再読み込み機能 (恒久対応)
 	secretWatchEnabled bool
+	repoWatchEnabled   bool // Watch via repository polling
 }
 
 // SimpleTokenConfig は簡易版設定
@@ -35,54 +38,74 @@ type SimpleTokenConfig struct {
 	BaseURL             string
 	RefreshBuffer       time.Duration
 	CheckInterval       time.Duration
-	
+
 	// OAuth2 Secret設定
-	OAuth2SecretName string
+	OAuth2SecretName    string
 	KubernetesNamespace string
-	
+
 	// 自律的Secret再読み込み設定 (恒久対応)
 	EnableSecretWatch bool
 }
 
 // NewSimpleTokenService は新しい簡易統合サービスを作成
-func NewSimpleTokenService(config SimpleTokenConfig, logger *slog.Logger) (*SimpleTokenService, error) {
+func NewSimpleTokenService(config SimpleTokenConfig, tokenRepo repository.OAuth2TokenRepository, logger *slog.Logger) (*SimpleTokenService, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	// デフォルト値設定（API使用量削減のため頻度を下げる）
 	if config.RefreshBuffer == 0 {
-		config.RefreshBuffer = 30 * time.Minute  // API optimized buffer
+		config.RefreshBuffer = 30 * time.Minute // API optimized buffer
 	}
 	if config.CheckInterval == 0 {
-		config.CheckInterval = 30 * time.Minute  // API optimized check interval
+		config.CheckInterval = 30 * time.Minute // API optimized check interval
 	}
 
 	// OAuth2クライアントの作成（プロキシ無効化済み）
 	oauth2Client := driver.NewOAuth2Client(config.ClientID, config.ClientSecret, config.BaseURL, logger)
-	
+
 	// Note: OAuth2 token refresh uses direct connection without proxy for reliability
 	// The OAuth2Client already has proxy disabled in its HTTP transport
 	logger.Info("OAuth2 client created with proxy disabled for token refresh reliability")
-	
-	// OAuth2 Secretサービスの初期化
-	oauth2SecretSvc, err := NewOAuth2SecretService(OAuth2SecretConfig{
-		Namespace:  config.KubernetesNamespace,
-		SecretName: config.OAuth2SecretName,
-		Logger:     logger,
-	})
-	if err != nil {
-		logger.Warn("Failed to initialize OAuth2SecretService, using environment variables only", "error", err)
-		oauth2SecretSvc = nil
+
+	// OAuth2 Secretサービスの初期化 (K8s mode only)
+	var oauth2SecretSvc *OAuth2SecretService
+	var err error
+
+	// Only initialize K8s secret service if strict K8s mode or no repo provided
+	if tokenRepo == nil {
+		oauth2SecretSvc, err = NewOAuth2SecretService(OAuth2SecretConfig{
+			Namespace:  config.KubernetesNamespace,
+			SecretName: config.OAuth2SecretName,
+			Logger:     logger,
+		})
+		if err != nil {
+			logger.Warn("Failed to initialize OAuth2SecretService, using environment variables only", "error", err)
+			oauth2SecretSvc = nil
+		}
 	}
 
-	// トークンの読み込み - OAuth2 Secretを優先
+	// トークンの読み込み - Repository > OAuth2 Secret > Env Vars
 	initialAccessToken := config.InitialAccessToken
 	initialRefreshToken := config.InitialRefreshToken
 	var initialExpiresAt time.Time
-	
-	// OAuth2 Secretからトークンを読み込み（利用可能であれば）
-	if oauth2SecretSvc != nil {
+
+	// Repositoryからトークンを読み込み（最優先）
+	if tokenRepo != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		repoToken, err := tokenRepo.GetCurrentToken(ctx)
+		cancel()
+		if err == nil && repoToken != nil && repoToken.AccessToken != "" {
+			logger.Info("Successfully loaded tokens from Repository - auth-token-manager integration active")
+			initialAccessToken = repoToken.AccessToken
+			initialRefreshToken = repoToken.RefreshToken
+			initialExpiresAt = repoToken.ExpiresAt
+			logger.Info("Using actual token expiry from Repository", "expires_at", initialExpiresAt)
+		} else {
+			logger.Info("Repository empty or unavailable, falling back", "error", err)
+		}
+	} else if oauth2SecretSvc != nil {
+		// OAuth2 Secretからトークンを読み込み
 		ctx := context.Background()
 		secretToken, err := oauth2SecretSvc.LoadOAuth2Token(ctx)
 		if err != nil {
@@ -91,8 +114,8 @@ func NewSimpleTokenService(config SimpleTokenConfig, logger *slog.Logger) (*Simp
 			logger.Info("Successfully loaded tokens from OAuth2 Secret - auth-token-manager integration active")
 			initialAccessToken = secretToken.AccessToken
 			initialRefreshToken = secretToken.RefreshToken
-			initialExpiresAt = secretToken.ExpiresAt // 重要: 実際の有効期限を取得
-			logger.Info("Using actual token expiry from Secret", "expires_at", initialExpiresAt, "expires_in_hours", time.Until(initialExpiresAt).Hours())
+			initialExpiresAt = secretToken.ExpiresAt
+			logger.Info("Using actual token expiry from Secret", "expires_at", initialExpiresAt)
 		}
 	}
 
@@ -129,14 +152,17 @@ func NewSimpleTokenService(config SimpleTokenConfig, logger *slog.Logger) (*Simp
 		recoveryManager:    recoveryManager,
 		oauth2Client:       oauth2Client,
 		oauth2SecretSvc:    oauth2SecretSvc,
+		tokenRepo:          tokenRepo,
 		logger:             logger,
 		secretWatchEnabled: config.EnableSecretWatch && oauth2SecretSvc != nil,
+		repoWatchEnabled:   config.EnableSecretWatch && tokenRepo != nil,
 	}
 
 	logger.Info("SimpleTokenService created successfully",
 		"refresh_buffer_minutes", config.RefreshBuffer.Minutes(),
 		"check_interval_minutes", config.CheckInterval.Minutes(),
-		"secret_watch_enabled", service.secretWatchEnabled)
+		"secret_watch_enabled", service.secretWatchEnabled,
+		"repo_watch_enabled", service.repoWatchEnabled)
 
 	return service, nil
 }
@@ -199,24 +225,24 @@ func (sts *SimpleTokenService) GetValidToken(ctx context.Context) (*models.OAuth
 		// 認証エラーの場合、段階的回復を試行 (恒久対応: 自律的Secret再読み込み)
 		if isSimpleAuthenticationError(err) {
 			sts.logger.Warn("Authentication error detected, starting recovery process", "error", err)
-			
+
 			// 段階1: 既存のRecoveryManagerで内部リフレッシュを試行
 			if recoveryErr := sts.recoveryManager.RequestRecovery(
 				"authentication_failed",
 				"token_invalid",
 				err,
 			); recoveryErr != nil {
-				sts.logger.Warn("Internal recovery failed, trying secret reload", 
+				sts.logger.Warn("Internal recovery failed, trying secret reload",
 					"original_error", err, "recovery_error", recoveryErr)
-				
+
 				// 段階2: Secret再読み込みを試行 (恒久対応)
 				if sts.oauth2SecretSvc != nil {
 					if reloadErr := sts.ReloadFromSecret(ctx); reloadErr != nil {
-						sts.logger.Error("Secret reload also failed", 
-							"original_error", err, 
+						sts.logger.Error("Secret reload also failed",
+							"original_error", err,
 							"recovery_error", recoveryErr,
 							"reload_error", reloadErr)
-						return nil, fmt.Errorf("all recovery attempts failed: original=%v, recovery=%v, reload=%v", 
+						return nil, fmt.Errorf("all recovery attempts failed: original=%v, recovery=%v, reload=%v",
 							err, recoveryErr, reloadErr)
 					}
 					sts.logger.Info("Secret reload successful, retrying token retrieval")
@@ -285,7 +311,7 @@ func (sts *SimpleTokenService) GetValidTokenForAPI(ctx context.Context) (*TokenI
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// models.OAuth2Token から TokenInfo に変換
 	return &TokenInfo{
 		AccessToken:  token.AccessToken,

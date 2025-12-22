@@ -11,6 +11,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"pre-processor-sidecar/mocks"
+	"pre-processor-sidecar/utils"
 )
 
 // TEST: リトライロジックテスト - 適切なモック実装でHTTPコールを防止
@@ -42,17 +43,17 @@ func TestInoreaderClient_RetryOnTransientFailures(t *testing.T) {
 			shouldSucceed: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
 			mockOAuth2 := mocks.NewMockOAuth2Driver(ctrl)
-			
+
 			// Track call count within the mock
 			callCount := 0
-			
+
 			// Mock MakeAuthenticatedRequest with proper state tracking
 			mockOAuth2.EXPECT().
 				MakeAuthenticatedRequest(gomock.Any(), "test_token", "/subscription/list", gomock.Any()).
@@ -67,11 +68,12 @@ func TestInoreaderClient_RetryOnTransientFailures(t *testing.T) {
 				}).
 				AnyTimes() // Allow multiple calls for retry logic
 
-			client := NewInoreaderClient(mockOAuth2, slog.Default())
-			
+			sanitizer := utils.NewSanitizer()
+			client := NewInoreaderClient(mockOAuth2, slog.Default(), sanitizer)
+
 			// FetchSubscriptionListWithRetryメソッドをテスト
 			result, err := client.FetchSubscriptionListWithRetry(context.Background(), "test_token")
-			
+
 			if tt.shouldSucceed {
 				assert.NoError(t, err)
 				assert.NotNil(t, result)
@@ -88,11 +90,12 @@ func TestInoreaderClient_RetryConfiguration(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockOAuth2 := mocks.NewMockOAuth2Driver(ctrl)
-	client := NewInoreaderClient(mockOAuth2, slog.Default())
-	
+	sanitizer := utils.NewSanitizer()
+	client := NewInoreaderClient(mockOAuth2, slog.Default(), sanitizer)
+
 	// InoreaderClientのデフォルト設定を検証
 	assert.NotNil(t, client)
-	
+
 	// Test default retry configuration
 	retryConfig := client.GetRetryConfig()
 	assert.NotNil(t, retryConfig)
@@ -100,7 +103,7 @@ func TestInoreaderClient_RetryConfiguration(t *testing.T) {
 	assert.Equal(t, 5*time.Second, retryConfig.InitialDelay)
 	assert.Equal(t, 30*time.Second, retryConfig.MaxDelay)
 	assert.Equal(t, 2.0, retryConfig.Multiplier)
-	
+
 	// Test custom retry configuration
 	customConfig := RetryConfig{
 		MaxRetries:   5,
@@ -109,7 +112,7 @@ func TestInoreaderClient_RetryConfiguration(t *testing.T) {
 		Multiplier:   1.5,
 	}
 	client.SetRetryConfig(customConfig)
-	
+
 	updatedConfig := client.GetRetryConfig()
 	assert.Equal(t, customConfig.MaxRetries, updatedConfig.MaxRetries)
 	assert.Equal(t, customConfig.InitialDelay, updatedConfig.InitialDelay)
@@ -130,7 +133,7 @@ func TestInoreaderClient_ErrorClassification(t *testing.T) {
 			expectRetryable: true,
 		},
 		{
-			name:            "タイムアウトエラー - リトライ可能", 
+			name:            "タイムアウトエラー - リトライ可能",
 			err:             fmt.Errorf("request timeout occurred"),
 			expectRetryable: true,
 		},

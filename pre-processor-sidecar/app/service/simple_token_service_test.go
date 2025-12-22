@@ -32,7 +32,7 @@ func TestSimpleTokenService_onSecretUpdate(t *testing.T) {
 	}
 
 	// Create SimpleTokenService
-	service, err := NewSimpleTokenService(config, logger)
+	service, err := NewSimpleTokenService(config, nil, logger)
 	if err != nil {
 		t.Fatalf("Failed to create SimpleTokenService: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestSimpleTokenService_ConflictAvoidanceScenario(t *testing.T) {
 		EnableSecretWatch:   false,
 	}
 
-	service, err := NewSimpleTokenService(config, logger)
+	service, err := NewSimpleTokenService(config, nil, logger)
 	if err != nil {
 		t.Fatalf("Failed to create service for conflict test: %v", err)
 	}
@@ -228,14 +228,14 @@ func TestSimpleTokenService_ScopeHandling(t *testing.T) {
 
 	config := SimpleTokenConfig{
 		ClientID:            "scope-test-client",
-		ClientSecret:        "scope-test-secret", 
+		ClientSecret:        "scope-test-secret",
 		InitialAccessToken:  "scope-initial-access",
 		InitialRefreshToken: "scope-initial-refresh",
 		BaseURL:             "https://scope-test.example.com",
 		EnableSecretWatch:   false,
 	}
 
-	service, err := NewSimpleTokenService(config, logger)
+	service, err := NewSimpleTokenService(config, nil, logger)
 	if err != nil {
 		t.Fatalf("Failed to create service for scope test: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestSimpleTokenService_WithMockSecretService(t *testing.T) {
 		EnableSecretWatch:   false,
 	}
 
-	service, err := NewSimpleTokenService(config, logger)
+	service, err := NewSimpleTokenService(config, nil, logger)
 	if err != nil {
 		t.Fatalf("Failed to create service with mock: %v", err)
 	}

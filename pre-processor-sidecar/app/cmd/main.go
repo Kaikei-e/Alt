@@ -19,7 +19,10 @@ import (
 	"pre-processor-sidecar/repository"
 	"pre-processor-sidecar/security"
 	"pre-processor-sidecar/service"
+	"pre-processor-sidecar/service/scheduler"
+	"pre-processor-sidecar/utils"
 
+	// Import new scheduler package
 	"encoding/json"
 
 	_ "github.com/lib/pq"
@@ -31,12 +34,12 @@ func getNamespace() string {
 	if data, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace"); err == nil {
 		return strings.TrimSpace(string(data))
 	}
-	
+
 	// Fallback to environment variable
 	if ns := os.Getenv("KUBERNETES_NAMESPACE"); ns != "" {
 		return strings.TrimSpace(ns)
 	}
-	
+
 	// Default namespace
 	return "alt-processing"
 }
@@ -117,9 +120,38 @@ func main() {
 
 	// Simple Token System初期化
 	// Debug: Log OAuth2 base URL configuration
-	logger.Info("OAuth2 configuration loaded", 
+	logger.Info("OAuth2 configuration loaded",
 		"oauth2_base_url", cfg.OAuth2.BaseURL,
 		"inoreader_base_url", cfg.Inoreader.BaseURL)
+
+	// Initialize token repository based on configuration
+	var tokenRepo repository.OAuth2TokenRepository
+	switch cfg.TokenStorageType {
+	case "kubernetes_secret":
+		k8sRepo, err := repository.NewKubernetesSecretRepository(
+			getNamespace(),
+			cfg.OAuth2SecretName,
+			logger,
+		)
+		if err != nil {
+			logger.Warn("Failed to initialize Kubernetes Secret repository, falling back to environment variables", "error", err)
+			tokenRepo = repository.NewEnvVarTokenRepository(logger)
+		} else {
+			logger.Info("Using Kubernetes Secret token repository")
+			tokenRepo = k8sRepo
+		}
+	case "file":
+		logger.Info("Using file-based token repository", "path", cfg.TokenStoragePath)
+		tokenRepo = repository.NewEnvFileTokenRepository(cfg.TokenStoragePath, logger)
+	case "env_var":
+		logger.Info("Using environment variable token repository")
+		tokenRepo = repository.NewEnvVarTokenRepository(logger)
+	default:
+		// Default behavior if not specified
+		// If using SimpleTokenService, it might fallback to its own logic, but better to be explicit
+		logger.Info("No specific token storage type, defaulting to EnvVar for repo init")
+		tokenRepo = repository.NewEnvVarTokenRepository(logger)
+	}
 
 	simpleTokenConfig := service.SimpleTokenConfig{
 		ClientID:            os.Getenv("INOREADER_CLIENT_ID"),
@@ -127,18 +159,18 @@ func main() {
 		InitialAccessToken:  os.Getenv("INOREADER_ACCESS_TOKEN"),
 		InitialRefreshToken: os.Getenv("INOREADER_REFRESH_TOKEN"),
 		BaseURL:             cfg.OAuth2.BaseURL, // Use OAuth2-specific base URL
-		RefreshBuffer:       30 * time.Minute, // API optimized buffer
-		CheckInterval:       3 * time.Hour,   // 3時間間隔（8回/日、API制限対応）
-		
+		RefreshBuffer:       30 * time.Minute,   // API optimized buffer
+		CheckInterval:       3 * time.Hour,      // 3時間間隔（8回/日、API制限対応）
+
 		// OAuth2 Secret設定 - auth-token-manager連携
 		OAuth2SecretName:    cfg.OAuth2SecretName,
 		KubernetesNamespace: os.Getenv("KUBERNETES_NAMESPACE"),
-		
+
 		// 恒久対応: 自律的Secret再読み込み機能
-		EnableSecretWatch:   os.Getenv("ENABLE_SECRET_WATCH") == "true",
+		EnableSecretWatch: os.Getenv("ENABLE_SECRET_WATCH") == "true",
 	}
 
-	simpleTokenService, err := service.NewSimpleTokenService(simpleTokenConfig, logger)
+	simpleTokenService, err := service.NewSimpleTokenService(simpleTokenConfig, tokenRepo, logger)
 	if err != nil {
 		logger.Error("Failed to create simple token service", "error", err)
 		os.Exit(1)
@@ -160,7 +192,7 @@ func main() {
 	if *scheduleMode {
 		logger.Info("Starting in schedule mode as requested by flag")
 	}
-	if err := runScheduleMode(ctx, cfg, logger, simpleTokenService); err != nil {
+	if err := runScheduleMode(ctx, cfg, logger, simpleTokenService, tokenRepo); err != nil {
 		logger.Error("Scheduler failed", "error", err)
 		os.Exit(1)
 	}
@@ -222,7 +254,7 @@ func performOAuth2Initialization(cfg *config.Config, logger *slog.Logger) {
 }
 
 // runScheduleMode は新しい統合トークンシステムでスケジュールモードを実行
-func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logger, simpleTokenService *service.SimpleTokenService) error {
+func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logger, simpleTokenService *service.SimpleTokenService, tokenRepo repository.OAuth2TokenRepository) error {
 	logger.Info("Initializing dual schedule processing system")
 
 	// Wait for Linkerd proxy initialization
@@ -246,6 +278,10 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	if err != nil {
 		return fmt.Errorf("failed to open database connection: %w", err)
 	}
+	// Configure connection pool to prevent exhaustion
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
 	defer db.Close()
 
 	// Test database connection with retry
@@ -276,36 +312,12 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	oauth2Client := driver.NewOAuth2Client(clientID, clientSecret, cfg.OAuth2.BaseURL, logger)
 	// Note: Do NOT call SetHTTPClient here - OAuth2Client already has proxy disabled for token refresh
 
-	// Initialize token repository based on configuration
-	var tokenRepo repository.OAuth2TokenRepository
-	switch cfg.TokenStorageType {
-	case "kubernetes_secret":
-		k8sRepo, err := repository.NewKubernetesSecretRepository(
-			getNamespace(), 
-			cfg.OAuth2SecretName, 
-			logger,
-		)
-		if err != nil {
-			logger.Warn("Failed to initialize Kubernetes Secret repository, falling back to environment variables", "error", err)
-			tokenRepo = repository.NewEnvVarTokenRepository(logger)
-		} else {
-			logger.Info("Using Kubernetes Secret token repository")
-			tokenRepo = k8sRepo
-		}
-	case "env_var":
-		logger.Info("Using environment variable token repository")
-		tokenRepo = repository.NewEnvVarTokenRepository(logger)
-	default:
-		logger.Warn("Unknown token storage type, defaulting to environment variables", "type", cfg.TokenStorageType)
-		tokenRepo = repository.NewEnvVarTokenRepository(logger)
-	}
-
 	// Initialize enhanced token management service
 	tokenManagementService := service.NewTokenManagementService(tokenRepo, oauth2Client, logger)
 
 	// Initialize token rotation manager
 	tokenRotationManager := service.NewTokenRotationManager(tokenRepo, tokenManagementService, logger)
-	
+
 	// Start token rotation monitoring
 	if err := tokenRotationManager.StartMonitoring(ctx); err != nil {
 		logger.Error("Failed to start token rotation monitoring", "error", err)
@@ -315,14 +327,17 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 
 	defer tokenRotationManager.StopMonitoring()
 
+	// Utils initialization
+	sanitizer := utils.NewSanitizer()
+
 	// Enhanced Token Serviceを使用したInoreaderサービス
-	inoreaderClient := service.NewInoreaderClient(oauth2Client, logger)
+	inoreaderClient := service.NewInoreaderClient(oauth2Client, logger, sanitizer)
 
 	// Create a mock APIUsageRepository since it's not needed
 	mockAPIUsageRepo := &mocks.MockAPIUsageRepository{}
 	inoreaderService := service.NewInoreaderService(inoreaderClient, mockAPIUsageRepo, simpleTokenService, logger)
 
-	subscriptionSyncService := service.NewSubscriptionSyncService(inoreaderService, subscriptionRepo, logger)
+	subscriptionSyncService := service.NewSubscriptionSyncService(inoreaderService, subscriptionRepo, syncStateRepo, logger)
 	rateLimitManager := service.NewRateLimitManager(nil, logger)
 
 	// Initialize service layer with rotation support
@@ -461,9 +476,29 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 		"article_fetch_interval", "30m",
 		"admin_api_address", ":8080")
 
-	if err := scheduleHandler.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start schedule handler: %w", err)
-	}
+	// START NEW SCHEDULER IMPLEMENTATION
+	// Replacing legacy ScheduleHandler with strict 100 req/day Scheduler
+	inoreaderScheduler := scheduler.NewScheduler(
+		syncStateRepo,
+		subscriptionSyncService,
+		articleFetchService,
+		logger,
+	)
+
+	// Use Default Config (16m fetch, 24h refresh)
+	schedulerConfig := scheduler.DefaultConfig()
+	inoreaderScheduler.Start(schedulerConfig)
+
+	// Register shutdown hook for scheduler
+	defer inoreaderScheduler.Stop()
+
+	// Legacy handler kept for Admin API references but not started automatically
+	/*
+		if err := scheduleHandler.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start schedule handler: %w", err)
+		}
+	*/
+	// END NEW SCHEDULER IMPLEMENTATION
 
 	// サービス状態の定期ログ（頻度を30分に削減してAPI呼び出しを減らす）
 	statusTicker := time.NewTicker(30 * time.Minute)

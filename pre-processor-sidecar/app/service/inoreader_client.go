@@ -16,26 +16,29 @@ import (
 
 	"pre-processor-sidecar/driver"
 	"pre-processor-sidecar/models"
+	"pre-processor-sidecar/utils"
 )
 
 // RetryConfig defines retry behavior for API requests
 type RetryConfig struct {
-	MaxRetries    int
-	InitialDelay  time.Duration
-	MaxDelay      time.Duration
-	Multiplier    float64
+	MaxRetries   int
+	InitialDelay time.Duration
+	MaxDelay     time.Duration
+	Multiplier   float64
 }
 
+// InoreaderClient handles low-level HTTP communication with Inoreader API
 // InoreaderClient handles low-level HTTP communication with Inoreader API
 type InoreaderClient struct {
 	oauth2Driver OAuth2Driver
 	logger       *slog.Logger
 	baseURL      string
 	retryConfig  *RetryConfig
+	sanitizer    *utils.Sanitizer
 }
 
 // NewInoreaderClient creates a new Inoreader API client
-func NewInoreaderClient(oauth2Driver OAuth2Driver, logger *slog.Logger) *InoreaderClient {
+func NewInoreaderClient(oauth2Driver OAuth2Driver, logger *slog.Logger, sanitizer *utils.Sanitizer) *InoreaderClient {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -53,12 +56,13 @@ func NewInoreaderClient(oauth2Driver OAuth2Driver, logger *slog.Logger) *Inoread
 		logger:       logger,
 		baseURL:      "", // Empty - OAuth2Client already has full base URL
 		retryConfig:  defaultRetryConfig,
+		sanitizer:    sanitizer,
 	}
 }
 
 // FetchSubscriptionList fetches subscription list from Inoreader API
 func (c *InoreaderClient) FetchSubscriptionList(ctx context.Context, accessToken string) (map[string]interface{}, error) {
-	endpoint := "/subscription/list"  // OAuth2Client already has full base URL
+	endpoint := "/subscription/list" // OAuth2Client already has full base URL
 	params := map[string]string{
 		"output": "json",
 	}
@@ -85,7 +89,7 @@ func (c *InoreaderClient) FetchSubscriptionList(ctx context.Context, accessToken
 func (c *InoreaderClient) FetchStreamContents(ctx context.Context, accessToken, streamID, continuationToken string, maxArticles int) (map[string]interface{}, error) {
 	// URL encode the streamID for safe API call
 	encodedStreamID := url.QueryEscape(streamID)
-	endpoint := "/stream/contents/" + encodedStreamID  // OAuth2Client already has full base URL
+	endpoint := "/stream/contents/" + encodedStreamID // OAuth2Client already has full base URL
 
 	params := map[string]string{
 		"output": "json",
@@ -124,7 +128,7 @@ func (c *InoreaderClient) FetchStreamContents(ctx context.Context, accessToken, 
 func (c *InoreaderClient) FetchUnreadStreamContents(ctx context.Context, accessToken, streamID, continuationToken string, maxArticles int) (map[string]interface{}, error) {
 	// URL encode the streamID for safe API call
 	encodedStreamID := url.QueryEscape(streamID)
-	endpoint := "/stream/contents/" + encodedStreamID  // OAuth2Client already has full base URL
+	endpoint := "/stream/contents/" + encodedStreamID // OAuth2Client already has full base URL
 
 	params := map[string]string{
 		"output": "json",
@@ -193,7 +197,7 @@ func (c *InoreaderClient) ValidateToken(ctx context.Context, accessToken string)
 
 // MakeAuthenticatedRequest makes a generic authenticated request to Inoreader API
 func (c *InoreaderClient) MakeAuthenticatedRequest(ctx context.Context, accessToken, endpoint string, params map[string]string) (map[string]interface{}, error) {
-	fullEndpoint := endpoint  // OAuth2Client already has full base URL
+	fullEndpoint := endpoint // OAuth2Client already has full base URL
 
 	c.logger.Debug("Making authenticated request to Inoreader API",
 		"endpoint", fullEndpoint,
@@ -216,7 +220,7 @@ func (c *InoreaderClient) MakeAuthenticatedRequest(ctx context.Context, accessTo
 
 // MakeAuthenticatedRequestWithHeaders makes an authenticated request and returns response headers
 func (c *InoreaderClient) MakeAuthenticatedRequestWithHeaders(ctx context.Context, accessToken, endpoint string, params map[string]string) (map[string]interface{}, map[string]string, error) {
-	fullEndpoint := endpoint  // OAuth2Client already has full base URL
+	fullEndpoint := endpoint // OAuth2Client already has full base URL
 
 	c.logger.Debug("Making authenticated request with headers to Inoreader API",
 		"endpoint", fullEndpoint,
@@ -307,12 +311,12 @@ func (c *InoreaderClient) ParseStreamContentsResponse(response map[string]interf
 
 	// Phase 2: Initialize content statistics tracking
 	contentStats := struct {
-		totalArticles    int
+		totalArticles       int
 		articlesWithContent int
-		articlesEmpty    int
-		totalContentChars int
-		rtlArticles      int
-		truncatedArticles int
+		articlesEmpty       int
+		totalContentChars   int
+		rtlArticles         int
+		truncatedArticles   int
 	}{}
 
 	var articles []*models.Article
@@ -332,16 +336,16 @@ func (c *InoreaderClient) ParseStreamContentsResponse(response map[string]interf
 		// Phase 2: Update content statistics
 		contentStats.totalArticles++
 		contentStatus := "empty"
-		
+
 		if item.Summary.HasContent() {
 			contentStatus = "present"
 			contentStats.articlesWithContent++
 			contentStats.totalContentChars += len(item.Summary.Content)
-			
+
 			if item.Summary.IsRTL() {
 				contentStats.rtlArticles++
 			}
-			
+
 			// Check if content was truncated
 			if len(item.Summary.Content) >= 50000 {
 				contentStats.truncatedArticles++
@@ -349,7 +353,7 @@ func (c *InoreaderClient) ParseStreamContentsResponse(response map[string]interf
 		} else {
 			contentStats.articlesEmpty++
 		}
-		
+
 		c.logger.Debug("Article processed with statistics",
 			"index", i,
 			"article_id", item.ID,
@@ -453,7 +457,7 @@ func (c *InoreaderClient) parseArticleData(itemMap map[string]interface{}) (*mod
 	var content string
 	var contentLength int
 	var contentType string = "html"
-	
+
 	if summary, ok := itemMap["summary"].(map[string]interface{}); ok {
 		if summaryContent, ok := summary["content"].(string); ok {
 			// Apply content length limit (50KB for storage optimization)
@@ -462,11 +466,11 @@ func (c *InoreaderClient) parseArticleData(itemMap map[string]interface{}) (*mod
 				content = summaryContent[:maxContentLength] + "\n<!-- Content truncated for storage optimization -->"
 				contentLength = maxContentLength
 			} else {
-				content = summaryContent
-				contentLength = len(summaryContent)
+				content = c.sanitizer.SanitizeHTML(summaryContent)
+				contentLength = len(content)
 			}
 		}
-		
+
 		// Set content type based on direction for RTL languages
 		if direction, ok := summary["direction"].(string); ok && direction == "rtl" {
 			contentType = "html_rtl"
@@ -484,9 +488,9 @@ func (c *InoreaderClient) parseArticleData(itemMap map[string]interface{}) (*mod
 		Processed:      false,
 		OriginStreamID: originStreamID, // Temporary field for UUID resolution
 		// Phase 4: Store extracted content fields
-		Content:        content,
-		ContentLength:  contentLength,
-		ContentType:    contentType,
+		Content:       content,
+		ContentLength: contentLength,
+		ContentType:   contentType,
 	}
 
 	// Extract and parse published timestamp
@@ -537,8 +541,8 @@ func (c *InoreaderClient) parseArticleDataFromStruct(item driver.InoreaderArticl
 				"original_length", len(item.Summary.Content),
 				"truncated_length", maxContentLength)
 		} else {
-			content = item.Summary.Content
-			contentLength = len(item.Summary.Content)
+			content = c.sanitizer.SanitizeHTML(item.Summary.Content)
+			contentLength = len(content)
 		}
 
 		// Set content type based on direction for RTL languages
@@ -570,9 +574,9 @@ func (c *InoreaderClient) parseArticleDataFromStruct(item driver.InoreaderArticl
 		Processed:      false,
 		OriginStreamID: originStreamID, // Temporary field for UUID resolution
 		// Phase 1: Store extracted content fields using structured access
-		Content:        content,
-		ContentLength:  contentLength,
-		ContentType:    contentType,
+		Content:       content,
+		ContentLength: contentLength,
+		ContentType:   contentType,
 	}
 
 	// Extract and parse published timestamp using structured access
@@ -604,35 +608,35 @@ func (c *InoreaderClient) minInt(a, b int) int {
 // FetchSubscriptionListWithRetry fetches subscription list with retry logic
 func (c *InoreaderClient) FetchSubscriptionListWithRetry(ctx context.Context, accessToken string) (map[string]interface{}, error) {
 	var lastErr error
-	
+
 	for attempt := 0; attempt <= c.retryConfig.MaxRetries; attempt++ {
 		if attempt > 0 {
 			delay := time.Duration(float64(c.retryConfig.InitialDelay) * math.Pow(c.retryConfig.Multiplier, float64(attempt-1)))
 			if delay > c.retryConfig.MaxDelay {
 				delay = c.retryConfig.MaxDelay
 			}
-			
-			c.logger.Info("リトライ実行", 
+
+			c.logger.Info("リトライ実行",
 				"attempt", attempt,
 				"delay_seconds", delay.Seconds())
-			
+
 			time.Sleep(delay)
 		}
-		
+
 		result, err := c.FetchSubscriptionList(ctx, accessToken)
 		if err == nil {
 			return result, nil
 		}
-		
+
 		// リトライ可能なエラーかチェック
 		if isRetryableError(err) {
 			lastErr = err
 			continue
 		}
-		
+
 		return nil, err
 	}
-	
+
 	return nil, fmt.Errorf("最大リトライ回数超過 (%d回): %w", c.retryConfig.MaxRetries, lastErr)
 }
 
@@ -651,10 +655,10 @@ func isRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	
+
 	errStr := err.Error()
 	return strings.Contains(errStr, "403") ||
-		   strings.Contains(errStr, "408") ||
-		   strings.Contains(errStr, "timeout") ||
-		   strings.Contains(errStr, "connection refused")
+		strings.Contains(errStr, "408") ||
+		strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "connection refused")
 }

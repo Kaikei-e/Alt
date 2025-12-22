@@ -86,7 +86,7 @@ func TestSubscriptionSyncService_IsSubscriptionChanged(t *testing.T) {
 }
 
 func TestSubscriptionSyncService_GetSyncStats(t *testing.T) {
-	syncService := NewSubscriptionSyncService(nil, nil, nil)
+	syncService := NewSubscriptionSyncService(nil, nil, nil, nil)
 
 	// Check initial state
 	stats := syncService.GetSyncStats()

@@ -16,7 +16,7 @@ RUN go mod download
 COPY app/ ./
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o pre-processor-sidecar ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o pre-processor-sidecar ./cmd
 
 # Final stage
 FROM alpine:3.21
@@ -28,14 +28,14 @@ WORKDIR /app
 
 # Create non-root user
 RUN addgroup -g 1000 -S appgroup && \
-    adduser -u 1000 -S appuser -G appgroup
+  adduser -u 1000 -S appuser -G appgroup
 
 # Copy binary from builder stage
 COPY --from=builder /app/pre-processor-sidecar ./pre-processor-sidecar
 
 # Change ownership to appuser
 RUN chown appuser:appgroup pre-processor-sidecar && \
-    chmod +x pre-processor-sidecar
+  chmod +x pre-processor-sidecar
 
 # Switch to non-root user
 USER appuser

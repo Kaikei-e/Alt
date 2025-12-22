@@ -23,7 +23,7 @@ type ScheduleConfig struct {
 	EnableSubscriptionSync   bool          `json:"enable_subscription_sync"`
 	EnableArticleFetch       bool          `json:"enable_article_fetch"`
 	MaxConcurrentJobs        int           `json:"max_concurrent_jobs"`
-	EnableRandomStart        bool          `json:"enable_random_start"`        // Enable random starting position for rotation
+	EnableRandomStart        bool          `json:"enable_random_start"` // Enable random starting position for rotation
 }
 
 // RateLimitAwareScheduler implements intelligent scheduling with exponential backoff
@@ -170,11 +170,11 @@ func NewScheduleHandler(
 
 	// Default configuration - API optimized with configurable intervals
 	config := &ScheduleConfig{
-		SubscriptionSyncInterval: 12 * time.Hour,   // 12 hours for subscription sync (API optimized)
+		SubscriptionSyncInterval: 12 * time.Hour,       // 12 hours for subscription sync (API optimized)
 		ArticleFetchInterval:     articleFetchInterval, // Configurable interval for article fetch
 		EnableSubscriptionSync:   true,
 		EnableArticleFetch:       true,
-		MaxConcurrentJobs:        2, // Allow subscription sync and article fetch to run concurrently
+		MaxConcurrentJobs:        2,    // Allow subscription sync and article fetch to run concurrently
 		EnableRandomStart:        true, // Enable random starting position for fair load distribution
 	}
 
@@ -237,7 +237,7 @@ func (h *ScheduleHandler) Start(ctx context.Context) error {
 			err = h.articleFetchService.EnableRotationMode(ctx)
 			h.logger.Info("Article fetch rotation mode enabled")
 		}
-		
+
 		if err != nil {
 			h.logger.Error("Failed to enable rotation mode", "error", err)
 			return fmt.Errorf("failed to enable rotation mode: %w", err)
@@ -367,21 +367,14 @@ func (h *ScheduleHandler) executeSubscriptionSync() {
 
 	h.logger.Info("Starting scheduled subscription synchronization")
 
-	// Check if context is available
-	if h.ctx == nil {
-		h.logger.Warn("Handler context not initialized, skipping subscription sync")
-		result.Success = false
-		result.Error = "handler context not initialized"
-		result.EndTime = time.Now()
-		result.Duration = result.EndTime.Sub(startTime)
-		h.mu.Lock()
-		h.status.SubscriptionSyncRunning = false
-		h.mu.Unlock()
-		h.notifyJobResult(result)
-		return
+	// Check if context is available, allow manual trigger without Start()
+	baseCtx := h.ctx
+	if baseCtx == nil {
+		h.logger.Info("Handler context not initialized, using background context for manual trigger")
+		baseCtx = context.Background()
 	}
 
-	ctx, cancel := context.WithTimeout(h.ctx, 10*time.Minute) // 10-minute timeout
+	ctx, cancel := context.WithTimeout(baseCtx, 10*time.Minute) // 10-minute timeout
 	defer cancel()
 
 	err := h.articleFetchHandler.ExecuteSubscriptionSync(ctx)
@@ -434,24 +427,17 @@ func (h *ScheduleHandler) executeArticleFetch() {
 
 	// Log token status before API calls
 	h.LogTokenHealthCheck()
-	
+
 	h.logger.Info("Starting scheduled article fetching with rotation processing")
 
-	// Check if context is available
-	if h.ctx == nil {
-		h.logger.Warn("Handler context not initialized, skipping article fetch")
-		result.Success = false
-		result.Error = "handler context not initialized"
-		result.EndTime = time.Now()
-		result.Duration = result.EndTime.Sub(startTime)
-		h.notifyJobResult(result)
-		h.mu.Lock()
-		h.status.ArticleFetchRunning = false
-		h.mu.Unlock()
-		return
+	// Check if context is available, allow manual trigger without Start()
+	baseCtx := h.ctx
+	if baseCtx == nil {
+		h.logger.Info("Handler context not initialized, using background context for manual trigger")
+		baseCtx = context.Background()
 	}
 
-	ctx, cancel := context.WithTimeout(h.ctx, 10*time.Minute) // 10-minute timeout for single subscription
+	ctx, cancel := context.WithTimeout(baseCtx, 10*time.Minute) // 10-minute timeout for single subscription
 	defer cancel()
 
 	// Use rotation processing instead of batch processing
@@ -484,7 +470,7 @@ func (h *ScheduleHandler) executeArticleFetch() {
 			"consecutive_errors", errorCount,
 			"next_interval", nextInterval,
 			"last_success", lastSuccess)
-		
+
 		// Log token health check after failure
 		h.LogTokenHealthCheck()
 	} else {
@@ -517,7 +503,7 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 	// Check if rotation processing is ready
 	if !h.articleFetchService.IsRotationEnabled() {
 		h.logger.Warn("Rotation mode not enabled, attempting to enable")
-		
+
 		var err error
 		if h.config.EnableRandomStart {
 			err = h.articleFetchService.EnableRotationModeWithRandomStart(ctx)
@@ -525,7 +511,7 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 		} else {
 			err = h.articleFetchService.EnableRotationMode(ctx)
 		}
-		
+
 		if err != nil {
 			return fmt.Errorf("failed to enable rotation mode: %w", err)
 		}
@@ -533,16 +519,16 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 
 	// Get rotation statistics before processing
 	statsBefore := h.articleFetchService.GetRotationStats()
-	
+
 	// デバッグ情報をログに出力
 	timezoneInfo := h.articleFetchService.GetRotatorTimezoneInfo()
-	
+
 	// Calculate daily capacity for monitoring (using actual configured interval)
 	intervalMinutes := int(h.config.ArticleFetchInterval.Minutes())
 	dailyIntervals := (24 * 60) / intervalMinutes
 	dailyCapacity := dailyIntervals * BATCH_SIZE
 	requiredProcessing := statsBefore.TotalSubscriptions * 2 // MAX_DAILY_ROTATIONS=2
-	
+
 	h.logger.Info("Batch rotation stats before processing",
 		"processed_today", statsBefore.ProcessedToday,
 		"remaining_today", statsBefore.RemainingToday,
@@ -574,22 +560,22 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 			"batch_size":          BATCH_SIZE,
 			"processed_count":     0,
 			"api_calls_made":      false,
-			"reason":             "daily_limit_reached",
+			"reason":              "daily_limit_reached",
 		}
 		return nil
 	}
 
 	// Get next batch of subscriptions to process
 	batch := h.articleFetchService.GetNextSubscriptionBatch(BATCH_SIZE)
-	
+
 	if len(batch) == 0 {
 		h.logger.Warn("No subscriptions available in batch")
 		result.Details = map[string]interface{}{
-			"status":         "no_subscriptions_available",
-			"batch_size":     BATCH_SIZE,
+			"status":          "no_subscriptions_available",
+			"batch_size":      BATCH_SIZE,
 			"processed_count": 0,
-			"api_calls_made": false,
-			"reason":        "no_work_available",
+			"api_calls_made":  false,
+			"reason":          "no_work_available",
 		}
 		return nil
 	}
@@ -597,7 +583,7 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 	h.logger.Info("Executing batch subscription rotation processing",
 		"batch_size", len(batch),
 		"requested_batch_size", BATCH_SIZE)
-	
+
 	// Process each subscription in the batch
 	successCount := 0
 	var processingErrors []string
@@ -609,7 +595,7 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 			"batch_size", len(batch))
 
 		// Process single subscription (use existing rotation logic)
-		if err := h.articleFetchService.ProcessNextSubscriptionRotation(ctx); err != nil {
+		if _, err := h.articleFetchService.FetchSingleSubscriptionArticles(ctx, subscriptionID); err != nil {
 			errorMsg := fmt.Sprintf("Failed to process subscription %s: %v", subscriptionID, err)
 			h.logger.Error("Batch subscription processing failed",
 				"subscription_id", subscriptionID,
@@ -636,7 +622,7 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 	apiCallsMade := len(batch) > 0
 	status := "processed"
 	reason := "api_calls_made"
-	
+
 	if successCount == 0 && len(processingErrors) > 0 {
 		status = "all_failed"
 		reason = "all_api_calls_failed"
@@ -644,7 +630,7 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 		status = "partial_failure"
 		reason = "some_api_calls_failed"
 	}
-	
+
 	result.Details = map[string]interface{}{
 		"status":               status,
 		"batch_size":           BATCH_SIZE,
@@ -659,7 +645,7 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 		"current_index":        statsAfter.CurrentIndex,
 		"processing_errors":    processingErrors,
 		"api_calls_made":       apiCallsMade,
-		"reason":              reason,
+		"reason":               reason,
 	}
 
 	h.logger.Info("Batch rotation processing completed",

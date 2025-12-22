@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -36,7 +37,7 @@ type Config struct {
 
 	// OAuth2 configuration
 	OAuth2 OAuth2Config
-	
+
 	// OAuth2 Secret configuration (for auth-token-manager integration)
 	OAuth2SecretName string
 
@@ -61,11 +62,11 @@ type Config struct {
 	EnableScheduleMode bool
 	EnableDebugMode    bool
 	EnableHealthCheck  bool
-	
+
 	// Phase 5: Rotation processing configuration
 	Rotation RotationConfig
-	
-	// Phase 5: Content processing configuration 
+
+	// Phase 5: Content processing configuration
 	Content ContentConfig
 }
 
@@ -148,21 +149,21 @@ type MonitoringConfig struct {
 
 // Phase 5: RotationConfig holds rotation processing configuration
 type RotationConfig struct {
-	Enabled                bool          // Enable rotation mode
-	IntervalMinutes        int           // Processing interval in minutes (default: 20)
-	MaxSubscriptionsPerDay int           // Maximum subscriptions to process daily (default: 40)
-	APIBudget              int           // API requests budget for rotation (default: 40)
-	ShuffleDailyOrder      bool          // Shuffle subscription order daily (default: true)
-	RetryFailedSubscriptions bool        // Retry failed subscriptions (default: true)
+	Enabled                  bool // Enable rotation mode
+	IntervalMinutes          int  // Processing interval in minutes (default: 20)
+	MaxSubscriptionsPerDay   int  // Maximum subscriptions to process daily (default: 40)
+	APIBudget                int  // API requests budget for rotation (default: 40)
+	ShuffleDailyOrder        bool // Shuffle subscription order daily (default: true)
+	RetryFailedSubscriptions bool // Retry failed subscriptions (default: true)
 }
 
 // Phase 5: ContentConfig holds article content processing configuration
 type ContentConfig struct {
-	ExtractionEnabled    bool          // Enable content extraction from summary.content
-	MaxContentLength     int           // Maximum content length in bytes (default: 50KB)
-	ContentTypeDetection bool          // Enable content type detection (HTML/RTL)
-	TruncationEnabled    bool          // Enable content truncation for large articles
-	CompressionEnabled   bool          // Enable content compression (future feature)
+	ExtractionEnabled    bool // Enable content extraction from summary.content
+	MaxContentLength     int  // Maximum content length in bytes (default: 50KB)
+	ContentTypeDetection bool // Enable content type detection (HTML/RTL)
+	TruncationEnabled    bool // Enable content truncation for large articles
+	CompressionEnabled   bool // Enable content compression (future feature)
 }
 
 // LoadConfig loads configuration from environment variables
@@ -181,16 +182,16 @@ func LoadConfig() (*Config, error) {
 			Host:     getEnvOrDefault("DB_HOST", "postgres.alt-database.svc.cluster.local"),
 			Port:     getEnvOrDefault("DB_PORT", "5432"),
 			Name:     getEnvOrDefault("DB_NAME", "alt"),
-			User:     getEnvOrDefault("PRE_PROCESSOR_SIDECAR_DB_USER", "pre_processor_sidecar_user"), // FIXED: Correct default user
-			Password: os.Getenv("PRE_PROCESSOR_SIDECAR_DB_PASSWORD"),                                 // Required from secret
-			SSLMode:  getEnvOrDefault("DB_SSL_MODE", "disable"),                                      // FIXED: Default to disable for Linkerd mTLS
+			User:     getEnvOrDefault("PRE_PROCESSOR_SIDECAR_DB_USER", "pre_processor_sidecar_user"),
+			Password: getSecretOrEnv("PRE_PROCESSOR_DB_PASSWORD_FILE", "PRE_PROCESSOR_SIDECAR_DB_PASSWORD"),
+			SSLMode:  getEnvOrDefault("DB_SSL_MODE", "disable"),
 		},
 
 		Inoreader: InoreaderConfig{
 			BaseURL:      getEnvOrDefault("INOREADER_BASE_URL", "https://www.inoreader.com/reader/api/0"),
-			ClientID:     os.Getenv("INOREADER_CLIENT_ID"),     // Required from secret
-			ClientSecret: os.Getenv("INOREADER_CLIENT_SECRET"), // Required from secret
-			RefreshToken: os.Getenv("INOREADER_REFRESH_TOKEN"), // Required from secret
+			ClientID:     getSecretOrEnv("INOREADER_CLIENT_ID_FILE", "INOREADER_CLIENT_ID"),         // Required from secret
+			ClientSecret: getSecretOrEnv("INOREADER_CLIENT_SECRET_FILE", "INOREADER_CLIENT_SECRET"), // Required from secret
+			RefreshToken: getSecretOrEnv("INOREADER_REFRESH_TOKEN_FILE", "INOREADER_REFRESH_TOKEN"), // Required from secret
 		},
 
 		Proxy: ProxyConfig{
@@ -203,9 +204,9 @@ func LoadConfig() (*Config, error) {
 		},
 
 		OAuth2: OAuth2Config{
-			ClientID:     os.Getenv("INOREADER_CLIENT_ID"),     // Required from secret
-			ClientSecret: os.Getenv("INOREADER_CLIENT_SECRET"), // Required from secret
-			RefreshToken: os.Getenv("INOREADER_REFRESH_TOKEN"), // Optional - managed by auth-token-manager
+			ClientID:     getSecretOrEnv("INOREADER_CLIENT_ID_FILE", "INOREADER_CLIENT_ID"),         // Required from secret
+			ClientSecret: getSecretOrEnv("INOREADER_CLIENT_SECRET_FILE", "INOREADER_CLIENT_SECRET"), // Required from secret
+			RefreshToken: getSecretOrEnv("INOREADER_REFRESH_TOKEN_FILE", "INOREADER_REFRESH_TOKEN"), // Optional - managed by auth-token-manager
 			BaseURL:      getEnvOrDefault("INOREADER_OAUTH2_BASE_URL", "https://www.inoreader.com"), // OAuth2 specific base URL
 		},
 
@@ -290,11 +291,11 @@ func LoadConfig() (*Config, error) {
 
 	// Phase 5: Load rotation processing configuration
 	cfg.Rotation = RotationConfig{
-		Enabled:                getEnvOrDefaultBool("ROTATION_ENABLED", false),
-		IntervalMinutes:        getEnvOrDefaultInt("ROTATION_INTERVAL_MINUTES", 20),
-		MaxSubscriptionsPerDay: getEnvOrDefaultInt("SUBSCRIPTIONS_PER_DAY", 40),
-		APIBudget:              getEnvOrDefaultInt("ROTATION_API_BUDGET", 40),
-		ShuffleDailyOrder:      getEnvOrDefaultBool("ROTATION_SHUFFLE_DAILY", true),
+		Enabled:                  getEnvOrDefaultBool("ROTATION_ENABLED", false),
+		IntervalMinutes:          getEnvOrDefaultInt("ROTATION_INTERVAL_MINUTES", 20),
+		MaxSubscriptionsPerDay:   getEnvOrDefaultInt("SUBSCRIPTIONS_PER_DAY", 40),
+		APIBudget:                getEnvOrDefaultInt("ROTATION_API_BUDGET", 40),
+		ShuffleDailyOrder:        getEnvOrDefaultBool("ROTATION_SHUFFLE_DAILY", true),
 		RetryFailedSubscriptions: getEnvOrDefaultBool("RETRY_FAILED_SUBSCRIPTIONS", true),
 	}
 
@@ -434,6 +435,16 @@ func getEnvOrDefaultFloat(key string, defaultValue float64) float64 {
 		}
 	}
 	return defaultValue
+}
+
+// getSecretOrEnv reads secret from file defined in fileEnv or falls back to env variable
+func getSecretOrEnv(fileEnv, env string) string {
+	if filePath := os.Getenv(fileEnv); filePath != "" {
+		if content, err := os.ReadFile(filePath); err == nil {
+			return strings.TrimSpace(string(content))
+		}
+	}
+	return os.Getenv(env)
 }
 
 // IsProduction returns true if the environment is production

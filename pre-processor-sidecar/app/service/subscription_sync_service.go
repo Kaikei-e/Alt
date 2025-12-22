@@ -46,6 +46,7 @@ type SubscriptionSyncStats struct {
 type SubscriptionSyncService struct {
 	inoreaderService     *InoreaderService
 	subscriptionRepo     repository.SubscriptionRepository
+	syncRepo             repository.SyncStateRepository // Added SyncStateRepository
 	logger               *slog.Logger
 	subscriptionCache    map[string]uuid.UUID // InoreaderID -> UUID mapping
 	cacheLastUpdated     time.Time
@@ -61,6 +62,7 @@ type SubscriptionSyncService struct {
 func NewSubscriptionSyncService(
 	inoreaderService *InoreaderService,
 	subscriptionRepo repository.SubscriptionRepository,
+	syncRepo repository.SyncStateRepository, // Copied SyncStateRepository parameter
 	logger *slog.Logger,
 ) *SubscriptionSyncService {
 	// Use default logger if none provided
@@ -71,6 +73,7 @@ func NewSubscriptionSyncService(
 	return &SubscriptionSyncService{
 		inoreaderService:     inoreaderService,
 		subscriptionRepo:     subscriptionRepo,
+		syncRepo:             syncRepo, // Initialized SyncStateRepository
 		logger:               logger,
 		syncInterval:         4 * time.Hour, // 4-hour sync interval as requested
 		subscriptionCache:    make(map[string]uuid.UUID),
@@ -412,9 +415,43 @@ func (s *SubscriptionSyncService) SyncSubscriptionsNew(ctx context.Context) erro
 		return fmt.Errorf("subscription save failed: %w", err)
 	}
 
+	// Ensure sync states exist for all subscriptions
+	createdSyncStates := 0
+	for _, sub := range subscriptions {
+		// Check if sync state already exists
+		existingSyncState, err := s.syncRepo.FindByStreamID(ctx, sub.InoreaderID)
+		if err != nil {
+			// FindByStreamID returns error if not found? No, it returns error if query fails
+			// Check implementation of FindByStreamID in repo
+			// It returns nil, fmt.Errorf("sync state not found... ") usually if it's strict
+			// Let's assume standard repo pattern check
+			// Actually looked at implementation:
+			// if err == sql.ErrNoRows { return nil, fmt.Errorf(...) }
+			// So it returns error if not found.
+			// We need to check if error string contains "not found" or specific error type if available.
+			// But simpler approach: if Create fails on duplicate key, it's fine too if we handle it.
+			// However better to try find first.
+			// Wait, the repo implementation returns error on not found.
+			// "sync state not found for stream_id: %s"
+			// So err != nil means either not found or DB error.
+			s.logger.Debug("Sync state check", "stream_id", sub.InoreaderID, "error_checking", err)
+		}
+
+		if existingSyncState == nil {
+			// Create new sync state
+			newSyncState := models.NewSyncState(sub.InoreaderID, "")
+			if err := s.syncRepo.Create(ctx, newSyncState); err != nil {
+				s.logger.Error("Failed to create sync state", "stream_id", sub.InoreaderID, "error", err)
+			} else {
+				createdSyncStates++
+			}
+		}
+	}
+
 	s.logger.Info("Successfully synchronized subscriptions",
 		"count", len(subscriptions),
-		"sync_interval", s.syncInterval)
+		"sync_interval", s.syncInterval,
+		"new_sycn_states", createdSyncStates)
 
 	// Update subscription cache
 	if err := s.RefreshSubscriptionCache(ctx); err != nil {
