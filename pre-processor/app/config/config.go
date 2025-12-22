@@ -22,6 +22,12 @@ type Config struct {
 	Metrics        MetricsConfig        `json:"metrics"`
 	NewsCreator    NewsCreatorConfig    `json:"news_creator"`
 	SummarizeQueue SummarizeQueueConfig `json:"summarize_queue"`
+	AltService     AltServiceConfig     `json:"alt_service"`
+}
+
+type AltServiceConfig struct {
+	Host    string        `json:"host" env:"ALT_BACKEND_HOST" default:"http://alt-backend:8080"`
+	Timeout time.Duration `json:"timeout" env:"ALT_BACKEND_TIMEOUT" default:"10s"`
 }
 
 type ServerConfig struct {
@@ -502,6 +508,23 @@ func loadFromEnv(config *Config) error {
 		config.NewsCreator.APIPath = "/api/v1/summarize"
 	}
 
+	// AltService config
+	if host := os.Getenv("ALT_BACKEND_HOST"); host != "" {
+		config.AltService.Host = host
+	} else {
+		config.AltService.Host = "http://alt-backend:8080"
+	}
+
+	if timeout := os.Getenv("ALT_BACKEND_TIMEOUT"); timeout != "" {
+		if t, err := time.ParseDuration(timeout); err == nil {
+			config.AltService.Timeout = t
+		} else {
+			return fmt.Errorf("invalid ALT_BACKEND_TIMEOUT: %s", timeout)
+		}
+	} else {
+		config.AltService.Timeout = 10 * time.Second
+	}
+
 	if model := os.Getenv("NEWS_CREATOR_MODEL"); model != "" {
 		config.NewsCreator.Model = model
 	} else {
@@ -515,9 +538,8 @@ func loadFromEnv(config *Config) error {
 			return fmt.Errorf("invalid NEWS_CREATOR_TIMEOUT: %s", timeout)
 		}
 	} else {
-		// Reduced timeout to 120s (2 minutes) to fail fast when news-creator/Ollama is unresponsive
-		// Typical processing time is 16-19s, so 120s provides sufficient buffer while preventing long hangs
-		config.NewsCreator.Timeout = 120 * time.Second
+		// Increased timeout to 300s (5 minutes) to allow for hierarchical processing of large articles
+		config.NewsCreator.Timeout = 300 * time.Second
 	}
 
 	// SummarizeQueue config
