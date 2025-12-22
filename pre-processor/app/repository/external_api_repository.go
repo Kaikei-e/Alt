@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -161,4 +162,43 @@ func (r *externalAPIRepository) CheckHealth(ctx context.Context, serviceURL stri
 	r.logger.Info("service is healthy")
 
 	return nil
+}
+
+// GetSystemUserID retrieves the system user ID from alt-backend.
+func (r *externalAPIRepository) GetSystemUserID(ctx context.Context) (string, error) {
+	targetURL := fmt.Sprintf("%s/v1/internal/system-user", r.config.AltService.Host)
+
+	parsedURL, err := url.Parse(targetURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedURL.String(), nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		UserID string `json:"user_id"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if result.UserID == "" {
+		return "", fmt.Errorf("received empty user_id")
+	}
+
+	return result.UserID, nil
 }

@@ -11,6 +11,7 @@ type JobHandler interface {
 	StartFeedProcessingJob(ctx context.Context) error
 	StartSummarizationJob(ctx context.Context) error
 	StartQualityCheckJob(ctx context.Context) error
+	StartArticleSyncJob(ctx context.Context) error
 	StartSummarizeQueueWorker(ctx context.Context) error
 	Stop() error
 }

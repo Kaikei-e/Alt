@@ -173,3 +173,45 @@ func (r *articleRepository) FindByID(ctx context.Context, articleID string) (*mo
 	r.logger.Info("found article by ID", "article_id", articleID)
 	return article, nil
 }
+
+// FetchInoreaderArticles fetches articles from Inoreader source.
+func (r *articleRepository) FetchInoreaderArticles(ctx context.Context, since time.Time) ([]*models.Article, error) {
+	r.logger.Info("fetching inoreader articles", "since", since)
+
+	if r.db == nil {
+		r.logger.Error("database connection is nil")
+		return nil, fmt.Errorf("failed to fetch inoreader articles: database connection is nil")
+	}
+
+	articles, err := driver.GetInoreaderArticles(ctx, r.db, since)
+	if err != nil {
+		r.logger.Error("failed to fetch inoreader articles", "error", err)
+		return nil, fmt.Errorf("failed to fetch inoreader articles: %w", err)
+	}
+
+	r.logger.Info("fetched inoreader articles", "count", len(articles))
+	return articles, nil
+}
+
+// UpsertArticles batch upserts articles into the database.
+func (r *articleRepository) UpsertArticles(ctx context.Context, articles []*models.Article) error {
+	r.logger.Info("upserting articles", "count", len(articles))
+
+	if r.db == nil {
+		r.logger.Error("database connection is nil")
+		return fmt.Errorf("failed to upsert articles: database connection is nil")
+	}
+
+	if len(articles) == 0 {
+		return nil
+	}
+
+	err := driver.UpsertArticlesBatch(ctx, r.db, articles)
+	if err != nil {
+		r.logger.Error("failed to upsert articles", "error", err)
+		return fmt.Errorf("failed to upsert articles: %w", err)
+	}
+
+	r.logger.Info("articles upserted successfully", "count", len(articles))
+	return nil
+}

@@ -41,6 +41,20 @@ func (m *MockJobHandler) EXPECT() *MockJobHandlerMockRecorder {
 	return m.recorder
 }
 
+// StartArticleSyncJob mocks base method.
+func (m *MockJobHandler) StartArticleSyncJob(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartArticleSyncJob", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StartArticleSyncJob indicates an expected call of StartArticleSyncJob.
+func (mr *MockJobHandlerMockRecorder) StartArticleSyncJob(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartArticleSyncJob", reflect.TypeOf((*MockJobHandler)(nil).StartArticleSyncJob), ctx)
+}
+
 // StartFeedProcessingJob mocks base method.
 func (m *MockJobHandler) StartFeedProcessingJob(ctx context.Context) error {
 	m.ctrl.T.Helper()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -26,7 +27,42 @@ const (
 	HTTP_PORT        = "9200" // Default HTTP port for API
 )
 
+func performHealthCheck() {
+	port := os.Getenv("HTTP_PORT")
+	if port == "" {
+		port = HTTP_PORT
+	}
+	rawURL := fmt.Sprintf("http://localhost:%s/api/v1/health", port)
+
+	logger.Logger.Info("Performing health check", "url", rawURL)
+
+	urlParsed, err := url.Parse(rawURL)
+	if err != nil {
+		logger.Logger.Error("Failed to parse URL", "error", err)
+		panic(err)
+	}
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	resp, err := client.Get(urlParsed.String())
+	if err != nil {
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--health-check" {
+		performHealthCheck()
+		return
+	}
 	// Load logger configuration from environment
 	loggerConfig := logger.LoadLoggerConfigFromEnv()
 
@@ -92,6 +128,13 @@ func main() {
 		logger.Logger,
 	)
 
+	// Initialize article sync service
+	articleSyncService := service.NewArticleSyncService(
+		articleRepo,
+		apiRepo,
+		logger.Logger,
+	)
+
 	// Initialize summarize queue worker
 	summarizeQueueWorker := service.NewSummarizeQueueWorker(
 		jobRepo,
@@ -110,6 +153,7 @@ func main() {
 		feedProcessorService,
 		articleSummarizerService,
 		qualityCheckerService,
+		articleSyncService,
 		healthCheckerService,
 		summarizeQueueWorker,
 		BATCH_SIZE,
@@ -192,6 +236,12 @@ func main() {
 			panic(err)
 		}
 	*/
+
+	// Start article sync job
+	if err := jobHandler.StartArticleSyncJob(ctx); err != nil {
+		logger.Logger.Error("Failed to start article sync job", "error", err)
+		panic(err)
+	}
 
 	// Start summarization job
 	if err := jobHandler.StartSummarizationJob(ctx); err != nil {

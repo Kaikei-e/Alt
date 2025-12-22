@@ -41,6 +41,11 @@ type HealthCheckerService interface {
 	WaitForHealthy(ctx context.Context) error
 }
 
+// ArticleSyncService handles article synchronization business logic.
+type ArticleSyncService interface {
+	SyncArticles(ctx context.Context) error
+}
+
 // ProcessingResult represents the result of feed processing.
 type ProcessingResult struct {
 	Errors         []error

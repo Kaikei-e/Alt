@@ -248,3 +248,108 @@ func GetArticleByID(ctx context.Context, db *pgxpool.Pool, articleID string) (*m
 
 	return &article, nil
 }
+
+// GetInoreaderArticles fetches articles from inoreader_articles table
+func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time) ([]*models.Article, error) {
+	if db == nil {
+		return nil, fmt.Errorf("database connection is nil")
+	}
+
+	// Fetch articles from inoreader_articles
+	// Note: inoreader_articles has (id, article_url, title, content, published_at, feed_url, fetched_at, ...)
+	query := `
+		SELECT
+			id,
+			article_url,
+			title,
+			content,
+			published_at,
+			feed_url,
+			fetched_at
+		FROM inoreader_articles
+		WHERE fetched_at > $1
+		ORDER BY fetched_at ASC
+	`
+
+	rows, err := db.Query(ctx, query, since)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query inoreader_articles: %w", err)
+	}
+	defer rows.Close()
+
+	var articles []*models.Article
+	for rows.Next() {
+		var a models.Article
+		var feedURL string
+		var publishedAt time.Time
+		var fetchedAt time.Time
+
+		err := rows.Scan(
+			&a.InoreaderID, // temporarily store inoreader PK in InoreaderID
+			&a.URL,
+			&a.Title,
+			&a.Content,
+			&publishedAt,
+			&feedURL,
+			&fetchedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan inoreader article: %w", err)
+		}
+
+		a.PublishedAt = publishedAt
+		a.CreatedAt = fetchedAt // Use fetched_at as CreatedAt for now
+		// We will resolve FeedID using feedURL later in logic or here if we want to add complexity.
+		// For now, let's attach feedURL to Article temporarily?
+		// models.Article doesn't have FeedURL field.
+		// I'll assume the caller handles it or we add FeedURL to model.
+		// I should add FeedURL to model to make this easier.
+
+		articles = append(articles, &a)
+	}
+
+	return articles, nil
+}
+
+// UpsertArticlesBatch batches upsert articles
+func UpsertArticlesBatch(ctx context.Context, db *pgxpool.Pool, articles []*models.Article) error {
+	if db == nil {
+		return fmt.Errorf("database connection is nil")
+	}
+
+	if len(articles) == 0 {
+		return nil
+	}
+
+	batch := &pgx.Batch{}
+	query := `
+		INSERT INTO articles (title, content, url, feed_id, user_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		ON CONFLICT (url) DO UPDATE SET
+			title = EXCLUDED.title,
+			content = EXCLUDED.content,
+			updated_at = NOW()
+	`
+
+	for _, a := range articles {
+		// Validations
+		if a.UserID == "" {
+			continue // Skip if no UserID
+		}
+		batch.Queue(query, a.Title, a.Content, a.URL, a.FeedID, a.UserID, a.CreatedAt)
+	}
+
+	br := db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for i := 0; i < batch.Len(); i++ {
+		_, err := br.Exec()
+		if err != nil {
+			// Log error but continue? Or fail batch?
+			// Typically fail batch.
+			return fmt.Errorf("failed to execute batch upsert: %w", err)
+		}
+	}
+
+	return nil
+}

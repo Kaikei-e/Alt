@@ -326,6 +326,44 @@ func (mr *MockHealthCheckerServiceMockRecorder) WaitForHealthy(ctx any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitForHealthy", reflect.TypeOf((*MockHealthCheckerService)(nil).WaitForHealthy), ctx)
 }
 
+// MockArticleSyncService is a mock of ArticleSyncService interface.
+type MockArticleSyncService struct {
+	ctrl     *gomock.Controller
+	recorder *MockArticleSyncServiceMockRecorder
+	isgomock struct{}
+}
+
+// MockArticleSyncServiceMockRecorder is the mock recorder for MockArticleSyncService.
+type MockArticleSyncServiceMockRecorder struct {
+	mock *MockArticleSyncService
+}
+
+// NewMockArticleSyncService creates a new mock instance.
+func NewMockArticleSyncService(ctrl *gomock.Controller) *MockArticleSyncService {
+	mock := &MockArticleSyncService{ctrl: ctrl}
+	mock.recorder = &MockArticleSyncServiceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockArticleSyncService) EXPECT() *MockArticleSyncServiceMockRecorder {
+	return m.recorder
+}
+
+// SyncArticles mocks base method.
+func (m *MockArticleSyncService) SyncArticles(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncArticles", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SyncArticles indicates an expected call of SyncArticles.
+func (mr *MockArticleSyncServiceMockRecorder) SyncArticles(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncArticles", reflect.TypeOf((*MockArticleSyncService)(nil).SyncArticles), ctx)
+}
+
 // MockUserSyncService is a mock of UserSyncService interface.
 type MockUserSyncService struct {
 	ctrl     *gomock.Controller

@@ -16,6 +16,7 @@ import (
 	models "pre-processor/models"
 	repository "pre-processor/repository"
 	reflect "reflect"
+	time "time"
 
 	gomock "go.uber.org/mock/gomock"
 )
@@ -73,6 +74,21 @@ func (mr *MockArticleRepositoryMockRecorder) Create(ctx, article any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockArticleRepository)(nil).Create), ctx, article)
 }
 
+// FetchInoreaderArticles mocks base method.
+func (m *MockArticleRepository) FetchInoreaderArticles(ctx context.Context, since time.Time) ([]*models.Article, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchInoreaderArticles", ctx, since)
+	ret0, _ := ret[0].([]*models.Article)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchInoreaderArticles indicates an expected call of FetchInoreaderArticles.
+func (mr *MockArticleRepositoryMockRecorder) FetchInoreaderArticles(ctx, since any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchInoreaderArticles", reflect.TypeOf((*MockArticleRepository)(nil).FetchInoreaderArticles), ctx, since)
+}
+
 // FindByID mocks base method.
 func (m *MockArticleRepository) FindByID(ctx context.Context, articleID string) (*models.Article, error) {
 	m.ctrl.T.Helper()
@@ -117,6 +133,20 @@ func (m *MockArticleRepository) HasUnsummarizedArticles(ctx context.Context) (bo
 func (mr *MockArticleRepositoryMockRecorder) HasUnsummarizedArticles(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasUnsummarizedArticles", reflect.TypeOf((*MockArticleRepository)(nil).HasUnsummarizedArticles), ctx)
+}
+
+// UpsertArticles mocks base method.
+func (m *MockArticleRepository) UpsertArticles(ctx context.Context, articles []*models.Article) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertArticles", ctx, articles)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertArticles indicates an expected call of UpsertArticles.
+func (mr *MockArticleRepositoryMockRecorder) UpsertArticles(ctx, articles any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertArticles", reflect.TypeOf((*MockArticleRepository)(nil).UpsertArticles), ctx, articles)
 }
 
 // MockFeedRepository is a mock of FeedRepository interface.
@@ -293,6 +323,21 @@ func (m *MockExternalAPIRepository) CheckHealth(ctx context.Context, serviceURL 
 func (mr *MockExternalAPIRepositoryMockRecorder) CheckHealth(ctx, serviceURL any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckHealth", reflect.TypeOf((*MockExternalAPIRepository)(nil).CheckHealth), ctx, serviceURL)
+}
+
+// GetSystemUserID mocks base method.
+func (m *MockExternalAPIRepository) GetSystemUserID(ctx context.Context) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSystemUserID", ctx)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSystemUserID indicates an expected call of GetSystemUserID.
+func (mr *MockExternalAPIRepositoryMockRecorder) GetSystemUserID(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSystemUserID", reflect.TypeOf((*MockExternalAPIRepository)(nil).GetSystemUserID), ctx)
 }
 
 // StreamSummarizeArticle mocks base method.

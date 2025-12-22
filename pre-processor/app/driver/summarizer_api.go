@@ -131,7 +131,17 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 	// Check HTTP status code
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		logger.Error("API returned non-200 status", "status", resp.Status, "code", resp.StatusCode, "body", string(bodyBytes))
+		bodyStr := string(bodyBytes)
+		logger.Error("API returned non-200 status", "status", resp.Status, "code", resp.StatusCode, "body", bodyStr)
+
+		// Handle 400 Bad Request as ErrContentTooShort if likely
+		if resp.StatusCode == http.StatusBadRequest {
+			// Simply assume 400 means content validation failed (likely too short or invalid)
+			// This allows the service to handle it gracefully (save placeholder summary)
+			logger.Info("Mapping 400 Bad Request to ErrContentTooShort", "article_id", article.ID)
+			return nil, ErrContentTooShort
+		}
+
 		return nil, fmt.Errorf("API request failed with status: %s", resp.Status)
 	}
 

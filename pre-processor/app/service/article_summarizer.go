@@ -74,12 +74,30 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 		// Generate summary using external API
 		summarizedContent, err := s.apiRepo.SummarizeArticle(ctx, article)
 		if err != nil {
-			// Handle content too short as a normal case, not an error
+			// Handle content too short: Save a placeholder summary to mark as processed
 			if errors.Is(err, driver.ErrContentTooShort) {
-				s.logger.Info("skipping article: content too short for summarization",
+				s.logger.Info("article content too short, saving placeholder summary",
 					"article_id", article.ID,
 					"content_length", len(article.Content))
-				// Don't count as error, just skip
+
+				// Create placeholder summary
+				placeholderSummary := &models.ArticleSummary{
+					ArticleID:       article.ID,
+					ArticleTitle:    article.Title,
+					SummaryJapanese: "本文が短すぎるため要約できませんでした。",
+					CreatedAt:       time.Now(),
+				}
+
+				// Save the placeholder summary
+				if createErr := s.summaryRepo.Create(ctx, placeholderSummary); createErr != nil {
+					s.logger.Error("failed to save placeholder summary", "article_id", article.ID, "error", createErr)
+					result.ErrorCount++
+					result.Errors = append(result.Errors, createErr)
+				} else {
+					result.SuccessCount++ // Count as success since we processed it
+				}
+
+				// Continue to next article
 				continue
 			}
 

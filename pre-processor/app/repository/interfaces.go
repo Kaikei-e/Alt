@@ -18,6 +18,8 @@ type ArticleRepository interface {
 	FindForSummarization(ctx context.Context, cursor *Cursor, limit int) ([]*models.Article, *Cursor, error)
 	HasUnsummarizedArticles(ctx context.Context) (bool, error)
 	FindByID(ctx context.Context, articleID string) (*models.Article, error)
+	FetchInoreaderArticles(ctx context.Context, since time.Time) ([]*models.Article, error)
+	UpsertArticles(ctx context.Context, articles []*models.Article) error
 }
 
 // FeedRepository handles feed data persistence.
@@ -39,6 +41,7 @@ type ExternalAPIRepository interface {
 	SummarizeArticle(ctx context.Context, article *models.Article) (*models.SummarizedContent, error)
 	StreamSummarizeArticle(ctx context.Context, article *models.Article) (io.ReadCloser, error)
 	CheckHealth(ctx context.Context, serviceURL string) error
+	GetSystemUserID(ctx context.Context) (string, error)
 }
 
 // SummarizeJobRepository handles summarization job queue persistence.

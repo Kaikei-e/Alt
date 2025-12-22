@@ -15,6 +15,7 @@ type jobHandler struct {
 	feedProcessor     service.FeedProcessorService
 	articleSummarizer service.ArticleSummarizerService
 	qualityChecker    service.QualityCheckerService
+	articleSync       service.ArticleSyncService
 	healthChecker     service.HealthCheckerService
 	queueWorker       *service.SummarizeQueueWorker
 	logger            *slog.Logger
@@ -31,6 +32,7 @@ func NewJobHandler(
 	feedProcessor service.FeedProcessorService,
 	articleSummarizer service.ArticleSummarizerService,
 	qualityChecker service.QualityCheckerService,
+	articleSync service.ArticleSyncService,
 	healthChecker service.HealthCheckerService,
 	queueWorker *service.SummarizeQueueWorker,
 	batchSize int,
@@ -42,6 +44,7 @@ func NewJobHandler(
 		feedProcessor:     feedProcessor,
 		articleSummarizer: articleSummarizer,
 		qualityChecker:    qualityChecker,
+		articleSync:       articleSync,
 		healthChecker:     healthChecker,
 		queueWorker:       queueWorker,
 		logger:            logger,
@@ -103,6 +106,49 @@ func (h *jobHandler) StartQualityCheckJob(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+// StartArticleSyncJob starts the article synchronization job.
+func (h *jobHandler) StartArticleSyncJob(ctx context.Context) error {
+	h.logger.Info("starting article sync job")
+
+	h.wg.Add(1)
+
+	go func() {
+		defer h.wg.Done()
+		h.runArticleSyncLoop()
+	}()
+
+	return nil
+}
+
+// runArticleSyncLoop runs the article sync loop.
+func (h *jobHandler) runArticleSyncLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logger.Error("panic in runArticleSyncLoop", "panic", r)
+		}
+	}()
+
+	// Run initially
+	if err := h.articleSync.SyncArticles(h.ctx); err != nil {
+		h.logger.Error("initial article sync failed", "error", err)
+	}
+
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-h.ctx.Done():
+			h.logger.Info("article sync job stopped")
+			return
+		case <-ticker.C:
+			if err := h.articleSync.SyncArticles(h.ctx); err != nil {
+				h.logger.Error("article sync failed", "error", err)
+			}
+		}
+	}
 }
 
 // StartSummarizeQueueWorker starts the summarize queue worker job.
