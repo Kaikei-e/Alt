@@ -5,6 +5,7 @@ import (
 	"alt/di"
 	middleware_custom "alt/middleware"
 	"alt/utils/logger"
+	summarizationpkg "alt/rest/rest_feeds/summarization"
 
 	"github.com/labstack/echo/v4"
 )
@@ -41,10 +42,10 @@ func RegisterFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	feedsGroup.POST("/fetch/summary", RestHandleFetchArticleSummary(container, cfg))
 
 	// Article summarization endpoints
-	feedsGroup.POST("/summarize", RestHandleSummarizeFeed(container, cfg))                     // Legacy synchronous endpoint
-	feedsGroup.POST("/summarize/stream", RestHandleSummarizeFeedStream(container, cfg))        // Streaming endpoint (using fetch stream)
-	feedsGroup.POST("/summarize/queue", RestHandleSummarizeFeedQueue(container, cfg))          // New async queue endpoint
-	feedsGroup.GET("/summarize/status/:job_id", RestHandleSummarizeFeedStatus(container, cfg)) // Job status endpoint
+	feedsGroup.POST("/summarize", summarizationpkg.RestHandleSummarizeFeed(container, cfg))                     // Legacy synchronous endpoint
+	feedsGroup.POST("/summarize/stream", summarizationpkg.RestHandleSummarizeFeedStream(container, cfg))        // Streaming endpoint (using fetch stream)
+	feedsGroup.POST("/summarize/queue", summarizationpkg.RestHandleSummarizeFeedQueue(container, cfg))          // New async queue endpoint
+	feedsGroup.GET("/summarize/status/:job_id", summarizationpkg.RestHandleSummarizeFeedStatus(container, cfg)) // Job status endpoint
 
 	// RSS feed registration (require auth) - 認証ミドルウェア付きでグループ作成
 	rss := v1.Group("/rss-feed-link", authMiddleware.RequireAuth())
