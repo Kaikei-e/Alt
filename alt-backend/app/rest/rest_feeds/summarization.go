@@ -280,6 +280,10 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 				if req.Title == "" {
 					req.Title = existingArticle.Title
 				}
+				// Populate content from DB if not provided
+				if req.Content == "" {
+					req.Content = existingArticle.Content
+				}
 			} else {
 				// Article not in DB, save it.
 				if req.Content != "" {
@@ -313,6 +317,27 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 		if req.Content == "" {
 			logger.Logger.Warn("Empty content provided for streaming", "article_id", req.ArticleID, "feed_url", req.FeedURL)
 			return HandleValidationError(c, "Content cannot be empty for streaming", "content", "empty")
+		}
+
+		// Check if summary already exists in DB
+		existingSummary, err := container.AltDBRepository.FetchArticleSummaryByArticleID(ctx, req.ArticleID)
+		if err == nil && existingSummary != nil && existingSummary.Summary != "" {
+			logger.Logger.Info("Found existing summary in database for streaming", "article_id", req.ArticleID)
+
+			// Set headers for SSE streaming
+			c.Response().Header().Set(echo.HeaderContentType, "text/event-stream; charset=utf-8")
+			c.Response().Header().Set(echo.HeaderCacheControl, "no-cache")
+			c.Response().Header().Set(echo.HeaderConnection, "keep-alive")
+			c.Response().Header().Set("X-Accel-Buffering", "no") // Disable Nginx buffering for SSE
+			c.Response().WriteHeader(http.StatusOK)
+
+			if _, err := c.Response().Writer.Write([]byte(existingSummary.Summary)); err != nil {
+				logger.Logger.Error("Failed to write existing summary to stream", "error", err)
+				return err
+			}
+			c.Response().Flush()
+
+			return nil
 		}
 
 		logger.Logger.Info("Starting stream summarization", "article_id", req.ArticleID, "content_length", len(req.Content))

@@ -40,3 +40,8 @@ func NewAltDBRepositoryWithPool(pool *pgxpool.Pool) *AltDBRepository {
 	}
 	return &AltDBRepository{pool: pool}
 }
+
+// GetPool returns the underlying PgxIface
+func (r *AltDBRepository) GetPool() PgxIface {
+	return r.pool
+}
