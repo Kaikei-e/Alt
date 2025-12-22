@@ -20,6 +20,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func withMockTransport(t *testing.T, handler http.Handler) {
+	t.Helper()
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if err := req.Context().Err(); err != nil {
+			return nil, err
+		}
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		return recorder.Result(), nil
+	})
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+}
+
 // TestParseScore tests the parseScore function with various response formats
 func TestParseScore(t *testing.T) {
 	tests := map[string]struct {
@@ -278,14 +300,11 @@ func TestScoreSummary(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Create mock server
-			server := httptest.NewServer(http.HandlerFunc(tc.serverResponse))
-			defer server.Close()
+			withMockTransport(t, http.HandlerFunc(tc.serverResponse))
 
-			// Temporarily override the API URL
 			originalURL := qualityCheckerAPIURL
-			qualityCheckerAPIURL = server.URL
-			defer func() { qualityCheckerAPIURL = originalURL }()
+			qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+			t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 			// Execute test
 			ctx := context.Background()
@@ -370,7 +389,7 @@ func TestScoreSummaryWithRetry(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			callCount := 0
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if callCount < len(tc.serverBehavior) {
 					tc.serverBehavior[callCount](w, r)
 					callCount++
@@ -378,12 +397,11 @@ func TestScoreSummaryWithRetry(t *testing.T) {
 					w.WriteHeader(http.StatusInternalServerError)
 				}
 			}))
-			defer server.Close()
 
 			// Override API URL
 			originalURL := qualityCheckerAPIURL
-			qualityCheckerAPIURL = server.URL
-			defer func() { qualityCheckerAPIURL = originalURL }()
+			qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+			t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 			// Execute test
 			ctx := context.Background()
@@ -441,7 +459,7 @@ func TestJudgeArticleQuality(t *testing.T) {
 // TestJudgeArticleQualityScoring tests the scoring logic without database
 func TestJudgeArticleQualityScoring(t *testing.T) {
 	// Test that scoring logic works correctly by mocking HTTP server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := ollamaResponse{
 			Response: "<score>25</score>", // High score
 			Done:     true,
@@ -451,11 +469,10 @@ func TestJudgeArticleQualityScoring(t *testing.T) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}))
-	defer server.Close()
 
 	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = server.URL
-	defer func() { qualityCheckerAPIURL = originalURL }()
+	qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 	article := &driver.ArticleWithSummary{
 		ArticleID:       "test-article",
@@ -471,7 +488,7 @@ func TestJudgeArticleQualityScoring(t *testing.T) {
 // TestRemoveLowScoreSummary tests the summary removal logic
 func TestRemoveLowScoreSummary(t *testing.T) {
 	// Test only high score case that doesn't need database
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := ollamaResponse{
 			Response: "<score>25</score>", // High score
 			Done:     true,
@@ -481,11 +498,10 @@ func TestRemoveLowScoreSummary(t *testing.T) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}))
-	defer server.Close()
 
 	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = server.URL
-	defer func() { qualityCheckerAPIURL = originalURL }()
+	qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 	article := &driver.ArticleWithSummary{
 		ArticleID:       "test-article",
@@ -525,16 +541,13 @@ func intPtr(i int) *int {
 
 // TestScoreSummaryContextCancellation tests context cancellation handling
 func TestScoreSummaryContextCancellation(t *testing.T) {
-	// Create a server that delays response
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// This will never complete
-		select {}
+	withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("handler should not be called for canceled context")
 	}))
-	defer server.Close()
 
 	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = server.URL
-	defer func() { qualityCheckerAPIURL = originalURL }()
+	qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 	// Create a context that's already cancelled
 	ctx, cancel := context.WithCancel(context.Background())
@@ -655,10 +668,15 @@ func TestIsConnectionError(t *testing.T) {
 // TestJudgeArticleQualityConnectionError tests that JudgeArticleQuality does not delete data on connection errors
 func TestJudgeArticleQualityConnectionError(t *testing.T) {
 	// Test with connection refused error (simulating news-creator being down)
-	// Use an invalid URL to trigger connection error
 	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = "http://localhost:99999/api/generate" // Invalid port to trigger connection error
-	defer func() { qualityCheckerAPIURL = originalURL }()
+	qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
+
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, errors.New("dial tcp: connection refused")
+	})
+	t.Cleanup(func() { http.DefaultTransport = originalTransport })
 
 	article := &driver.ArticleWithSummary{
 		ArticleID:       "test-article-connection-error",
@@ -678,16 +696,22 @@ func TestJudgeArticleQualityConnectionError(t *testing.T) {
 
 // TestJudgeArticleQualityTimeoutError tests that JudgeArticleQuality handles timeout errors correctly
 func TestJudgeArticleQualityTimeoutError(t *testing.T) {
-	// Create a server that never responds (to simulate timeout)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Sleep longer than context timeout
-		time.Sleep(2 * time.Second)
-	}))
-	defer server.Close()
-
 	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = server.URL
-	defer func() { qualityCheckerAPIURL = originalURL }()
+	qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
+
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		select {
+		case <-time.After(2 * time.Second):
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		}
+		recorder := httptest.NewRecorder()
+		recorder.WriteHeader(http.StatusOK)
+		return recorder.Result(), nil
+	})
+	t.Cleanup(func() { http.DefaultTransport = originalTransport })
 
 	article := &driver.ArticleWithSummary{
 		ArticleID:       "test-article-timeout",
@@ -708,7 +732,7 @@ func TestJudgeArticleQualityTimeoutError(t *testing.T) {
 // TestJudgeArticleQualityLowScoreStillDeletes tests that low scores from successful responses still trigger deletion
 func TestJudgeArticleQualityLowScoreStillDeletes(t *testing.T) {
 	// Create a server that returns a low score (below threshold)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := ollamaResponse{
 			Response: "<score>5</score>", // Low score (below threshold of 7)
 			Done:     true,
@@ -716,11 +740,10 @@ func TestJudgeArticleQualityLowScoreStillDeletes(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(response)
 	}))
-	defer server.Close()
 
 	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = server.URL
-	defer func() { qualityCheckerAPIURL = originalURL }()
+	qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 	article := &driver.ArticleWithSummary{
 		ArticleID:       "test-article-low-score",

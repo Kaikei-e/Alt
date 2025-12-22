@@ -6,6 +6,7 @@ package service
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,6 +17,20 @@ import (
 
 	"pre-processor/config"
 )
+
+func requireIntegrationNetwork(t *testing.T) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("skipping integration test: local listener unavailable: %v", err)
+		return
+	}
+	_ = listener.Close()
+
+	if _, err := net.LookupIP("example.com"); err != nil {
+		t.Skipf("skipping integration test: DNS unavailable: %v", err)
+	}
+}
 
 // TestEnvoyIntegration_EndToEnd tests complete Envoy integration workflow
 func TestEnvoyIntegration_EndToEnd(t *testing.T) {
@@ -161,6 +176,7 @@ func TestEnvoyIntegration_HealthCheck(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	requireIntegrationNetwork(t)
 
 	// Mock Envoy proxy for health checks
 	envoyMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -249,6 +265,7 @@ func TestEnvoyIntegration_ConfigurationSwitching(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	requireIntegrationNetwork(t)
 
 	logger := slog.Default()
 
@@ -316,6 +333,7 @@ func TestEnvoyIntegration_DNSResolution(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	requireIntegrationNetwork(t)
 
 	// Create mock Envoy that validates DNS resolution
 	requestCount := 0

@@ -17,6 +17,9 @@ import (
 	"pre-processor/config"
 )
 
+// resolveIP is overridden in tests to avoid real DNS lookups.
+var resolveIP = net.LookupIP
+
 // EnvoyHTTPClient implements HTTPClient interface for Envoy proxy routing
 type EnvoyHTTPClient struct {
 	config           *config.HTTPConfig
@@ -259,7 +262,7 @@ func (c *EnvoyHTTPClient) ResolveDomain(hostname string) (string, error) {
 	c.logger.Debug("EnvoyHTTPClient: resolving domain", "hostname", hostname)
 
 	// Use Go's default DNS resolver
-	ips, err := net.LookupIP(hostname)
+	ips, err := resolveIP(hostname)
 	if err != nil {
 		c.logger.Error("EnvoyHTTPClient: DNS lookup failed",
 			"hostname", hostname,

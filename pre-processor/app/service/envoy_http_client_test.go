@@ -5,8 +5,9 @@
 package service
 
 import (
+	"fmt"
+	"net"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -16,6 +17,24 @@ import (
 
 	"pre-processor/config"
 )
+
+func withStubResolver(t *testing.T, resolver func(string) ([]net.IP, error)) {
+	t.Helper()
+	original := resolveIP
+	resolveIP = resolver
+	t.Cleanup(func() {
+		resolveIP = original
+	})
+}
+
+func setEnvoyTransport(t *testing.T, client HTTPClient, handler http.HandlerFunc, delay time.Duration) {
+	t.Helper()
+	envoyClient, ok := client.(*EnvoyHTTPClient)
+	if !ok {
+		t.Fatalf("expected EnvoyHTTPClient but got %T", client)
+	}
+	envoyClient.httpClient.Transport = newHandlerTransport(handler, delay)
+}
 
 // TestEnvoyHTTPClient_Get tests HTTP GET through Envoy proxy
 func TestEnvoyHTTPClient_Get(t *testing.T) {
@@ -76,8 +95,8 @@ func TestEnvoyHTTPClient_Get(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Create mock Envoy server
-			mockEnvoy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Create mock Envoy handler
+			mockEnvoyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// Verify Envoy proxy request format
 				if !strings.HasPrefix(r.URL.Path, "/proxy/https://") {
 					t.Errorf("Expected proxy path prefix, got: %s", r.URL.Path)
@@ -112,18 +131,25 @@ func TestEnvoyHTTPClient_Get(t *testing.T) {
     </item>
   </channel>
 </rss>`))
-			}))
-			defer mockEnvoy.Close()
+			})
 
 			// Update config with mock server URL
 			testConfig := *tc.envoyConfig
 			if testConfig.EnvoyProxyURL != "" {
-				testConfig.EnvoyProxyURL = mockEnvoy.URL
+				testConfig.EnvoyProxyURL = "http://envoy.test"
 			}
 
 			// Create EnvoyHTTPClient
 			logger := slog.Default()
 			client := NewEnvoyHTTPClient(&testConfig, logger)
+
+			withStubResolver(t, func(host string) ([]net.IP, error) {
+				return []net.IP{net.ParseIP("203.0.113.10")}, nil
+			})
+
+			if !tc.expectError {
+				setEnvoyTransport(t, client, mockEnvoyHandler, 0)
+			}
 
 			// Execute test
 			resp, err := client.Get(tc.targetURL)
@@ -204,6 +230,13 @@ func TestEnvoyHTTPClient_DNSResolution(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
+			withStubResolver(t, func(host string) ([]net.IP, error) {
+				if host == "non-existent-domain-12345.com" {
+					return nil, fmt.Errorf("no such host")
+				}
+				return []net.IP{net.ParseIP("203.0.113.10")}, nil
+			})
+
 			// Parse URL to extract hostname
 			parsedURL, err := url.Parse(tc.targetURL)
 			if err != nil {
@@ -234,14 +267,6 @@ func TestEnvoyHTTPClient_DNSResolution(t *testing.T) {
 
 // TestEnvoyHTTPClient_TimeoutHandling tests timeout scenarios
 func TestEnvoyHTTPClient_TimeoutHandling(t *testing.T) {
-	// Create slow mock server
-	slowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(2 * time.Second) // Simulate slow response
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("slow response"))
-	}))
-	defer slowServer.Close()
-
 	tests := map[string]struct {
 		timeout       time.Duration
 		expectTimeout bool
@@ -263,13 +288,21 @@ func TestEnvoyHTTPClient_TimeoutHandling(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			config := &config.HTTPConfig{
 				UseEnvoyProxy:  true,
-				EnvoyProxyURL:  slowServer.URL,
+				EnvoyProxyURL:  "http://envoy.test",
 				EnvoyProxyPath: "/proxy/https://",
 				EnvoyTimeout:   tc.timeout,
 			}
 
 			logger := slog.Default()
 			client := NewEnvoyHTTPClient(config, logger)
+
+			withStubResolver(t, func(host string) ([]net.IP, error) {
+				return []net.IP{net.ParseIP("203.0.113.10")}, nil
+			})
+			setEnvoyTransport(t, client, func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("slow response"))
+			}, 2*time.Second)
 
 			start := time.Now()
 			resp, err := client.Get("https://example.com")

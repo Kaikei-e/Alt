@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,27 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type stubHTTPClient struct {
+	handler http.HandlerFunc
+	err     error
+}
+
+func (s *stubHTTPClient) Get(url string) (*http.Response, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.handler == nil {
+		return nil, errors.New("handler not set")
+	}
+	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+	recorder := httptest.NewRecorder()
+	s.handler(recorder, req)
+	return recorder.Result(), nil
+}
 
 func testLoggerHealth() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
@@ -73,11 +95,10 @@ func TestHealthCheckerService_CheckNewsCreatorHealth(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// Create mock server
-			server := httptest.NewServer(http.HandlerFunc(tc.mockResponse))
-			defer server.Close()
-
-			service := NewHealthCheckerService(server.URL, testLoggerHealth())
+			service := NewHealthCheckerService("http://news-creator.test", testLoggerHealth())
+			if concrete, ok := service.(*healthCheckerService); ok {
+				concrete.client = &stubHTTPClient{handler: tc.mockResponse}
+			}
 
 			err := service.CheckNewsCreatorHealth(context.Background())
 
@@ -94,8 +115,10 @@ func TestHealthCheckerService_CheckNewsCreatorHealth(t *testing.T) {
 	}
 
 	t.Run("should handle connection errors without external calls", func(t *testing.T) {
-		// Use invalid port that will definitely fail
-		service := NewHealthCheckerService("http://127.0.0.1:99999", testLoggerHealth())
+		service := NewHealthCheckerService("http://news-creator.test", testLoggerHealth())
+		if concrete, ok := service.(*healthCheckerService); ok {
+			concrete.client = &stubHTTPClient{err: errors.New("dial error")}
+		}
 
 		err := service.CheckNewsCreatorHealth(context.Background())
 
@@ -106,13 +129,12 @@ func TestHealthCheckerService_CheckNewsCreatorHealth(t *testing.T) {
 
 func TestHealthCheckerService_WaitForHealthy(t *testing.T) {
 	t.Run("should handle canceled context", func(t *testing.T) {
-		// Create mock server that never responds healthy
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusServiceUnavailable)
-		}))
-		defer server.Close()
-
-		service := NewHealthCheckerService(server.URL, testLoggerHealth())
+		service := NewHealthCheckerService("http://news-creator.test", testLoggerHealth())
+		if concrete, ok := service.(*healthCheckerService); ok {
+			concrete.client = &stubHTTPClient{handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+			}}
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
@@ -124,20 +146,19 @@ func TestHealthCheckerService_WaitForHealthy(t *testing.T) {
 	})
 
 	t.Run("should return when service becomes healthy", func(t *testing.T) {
-		// Create mock server that responds healthy
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Health checker calls /health endpoint
-			if r.URL.Path == "/health" {
-				w.WriteHeader(http.StatusOK)
-				// Implementation expects models array
-				if _, err := w.Write([]byte(`{"models":[{"name":"gemma3:4b"}]}`)); err != nil {
-					t.Fatalf("failed to write mock response: %v", err)
+		service := NewHealthCheckerService("http://news-creator.test", testLoggerHealth())
+		if concrete, ok := service.(*healthCheckerService); ok {
+			concrete.client = &stubHTTPClient{handler: func(w http.ResponseWriter, r *http.Request) {
+				// Health checker calls /health endpoint
+				if r.URL.Path == "/health" {
+					w.WriteHeader(http.StatusOK)
+					// Implementation expects models array
+					if _, err := w.Write([]byte(`{"models":[{"name":"gemma3:4b"}]}`)); err != nil {
+						t.Fatalf("failed to write mock response: %v", err)
+					}
 				}
-			}
-		}))
-		defer server.Close()
-
-		service := NewHealthCheckerService(server.URL, testLoggerHealth())
+			}}
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -148,13 +169,12 @@ func TestHealthCheckerService_WaitForHealthy(t *testing.T) {
 	})
 
 	t.Run("should handle timeout waiting for health", func(t *testing.T) {
-		// Create mock server that never responds healthy
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusServiceUnavailable)
-		}))
-		defer server.Close()
-
-		service := NewHealthCheckerService(server.URL, testLoggerHealth())
+		service := NewHealthCheckerService("http://news-creator.test", testLoggerHealth())
+		if concrete, ok := service.(*healthCheckerService); ok {
+			concrete.client = &stubHTTPClient{handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+			}}
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()

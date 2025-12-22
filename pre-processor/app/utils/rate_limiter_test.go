@@ -13,6 +13,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testRateLimiterURL = "http://rate-limiter.test"
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func newHandlerTransport(handler http.HandlerFunc, delay time.Duration) http.RoundTripper {
+	return roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if err := req.Context().Err(); err != nil {
+			return nil, err
+		}
+		if delay > 0 {
+			select {
+			case <-time.After(delay):
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
+			}
+		}
+		recorder := httptest.NewRecorder()
+		handler(recorder, req)
+		return recorder.Result(), nil
+	})
+}
+
 func TestRateLimitedHTTPClient_BasicRateLimit(t *testing.T) {
 	tests := map[string]struct {
 		interval        time.Duration
@@ -33,19 +59,16 @@ func TestRateLimitedHTTPClient_BasicRateLimit(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			// RED PHASE: Test fails because RateLimitedHTTPClient doesn't exist yet
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			client := NewRateLimitedHTTPClient(tc.interval, 3, 10*time.Second)
+			client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte("OK"))
-			}))
-			defer server.Close()
-
-			client := NewRateLimitedHTTPClient(tc.interval, 3, 10*time.Second)
+			}, 0)
 
 			start := time.Now()
 
 			for i := 0; i < tc.requestCount; i++ {
-				resp, err := client.Get(server.URL)
+				resp, err := client.Get(testRateLimiterURL)
 				require.NoError(t, err)
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
 				_ = resp.Body.Close()
@@ -72,22 +95,19 @@ func TestRateLimitedHTTPClient_ExponentialBackoff(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			// RED PHASE: Test fails because RateLimitedHTTPClient doesn't exist yet
 			errorCount := 0
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			client := NewRateLimitedHTTPClient(100*time.Millisecond, tc.maxRetries, 5*time.Second)
+			client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 				if errorCount < tc.serverErrors {
 					errorCount++
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
 				w.WriteHeader(http.StatusOK)
-			}))
-			defer server.Close()
-
-			client := NewRateLimitedHTTPClient(100*time.Millisecond, tc.maxRetries, 5*time.Second)
+			}, 0)
 
 			start := time.Now()
-			resp, err := client.GetWithRetry(context.Background(), server.URL)
+			resp, err := client.GetWithRetry(context.Background(), testRateLimiterURL)
 			elapsed := time.Since(start)
 
 			require.NoError(t, err)
@@ -117,12 +137,6 @@ func TestRateLimitedHTTPClient_CircuitBreakerIntegration(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			// RED PHASE: Test fails because RateLimitedHTTPClient doesn't exist yet
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusInternalServerError)
-			}))
-			defer server.Close()
-
 			client := NewRateLimitedHTTPClientWithCircuitBreaker(
 				100*time.Millisecond,
 				tc.failureThreshold,
@@ -130,14 +144,17 @@ func TestRateLimitedHTTPClient_CircuitBreakerIntegration(t *testing.T) {
 				tc.failureThreshold,
 				time.Second,
 			)
+			client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			}, 0)
 
 			// Make requests to trigger circuit breaker
 			for i := 0; i < tc.consecutiveErrors; i++ {
-				_, _ = client.Get(server.URL)
+				_, _ = client.Get(testRateLimiterURL)
 			}
 
 			// Next request should fail due to open circuit
-			_, err := client.Get(server.URL)
+			_, err := client.Get(testRateLimiterURL)
 
 			if tc.expectCircuitOpen {
 				require.Error(t, err)
@@ -149,13 +166,10 @@ func TestRateLimitedHTTPClient_CircuitBreakerIntegration(t *testing.T) {
 
 func TestRateLimitedHTTPClient_Jitter(t *testing.T) {
 	t.Run("should apply jitter to reduce thundering herd", func(t *testing.T) {
-		// RED PHASE: Test fails because RateLimitedHTTPClient doesn't exist yet
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
-
 		client := NewRateLimitedHTTPClient(100*time.Millisecond, 3, 5*time.Second)
+		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}, 0)
 
 		// Make multiple requests and measure intervals
 		var intervals []time.Duration
@@ -169,7 +183,7 @@ func TestRateLimitedHTTPClient_Jitter(t *testing.T) {
 				lastTime = current
 			}
 
-			resp, err := client.Get(server.URL)
+			resp, err := client.Get(testRateLimiterURL)
 			require.NoError(t, err)
 			_ = resp.Body.Close()
 		}
@@ -183,19 +197,15 @@ func TestRateLimitedHTTPClient_Jitter(t *testing.T) {
 
 func TestRateLimitedHTTPClient_ContextCancellation(t *testing.T) {
 	t.Run("should respect context cancellation", func(t *testing.T) {
-		// RED PHASE: Test fails because RateLimitedHTTPClient doesn't exist yet
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(100 * time.Millisecond)
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
-
 		client := NewRateLimitedHTTPClient(100*time.Millisecond, 3, 5*time.Second)
+		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}, 100*time.Millisecond)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 		defer cancel()
 
-		_, err := client.GetWithContext(ctx, server.URL)
+		_, err := client.GetWithContext(ctx, testRateLimiterURL)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "context deadline exceeded")
 	})
@@ -203,17 +213,14 @@ func TestRateLimitedHTTPClient_ContextCancellation(t *testing.T) {
 
 func TestRateLimitedHTTPClient_UserAgent(t *testing.T) {
 	t.Run("should set proper User-Agent header", func(t *testing.T) {
-		// RED PHASE: Test fails because RateLimitedHTTPClient doesn't exist yet
 		var userAgent string
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := NewRateLimitedHTTPClient(100*time.Millisecond, 3, 5*time.Second)
+		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 			userAgent = r.Header.Get("User-Agent")
 			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
+		}, 0)
 
-		client := NewRateLimitedHTTPClient(100*time.Millisecond, 3, 5*time.Second)
-
-		resp, err := client.Get(server.URL)
+		resp, err := client.Get(testRateLimiterURL)
 		require.NoError(t, err)
 		_ = resp.Body.Close()
 
@@ -224,17 +231,13 @@ func TestRateLimitedHTTPClient_UserAgent(t *testing.T) {
 
 func TestRateLimitedHTTPClient_Timeout(t *testing.T) {
 	t.Run("should enforce request timeout", func(t *testing.T) {
-		// RED PHASE: Test fails because RateLimitedHTTPClient doesn't exist yet
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(2 * time.Second) // Longer than timeout
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
-
 		client := NewRateLimitedHTTPClient(100*time.Millisecond, 3, 1*time.Second)
+		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}, 2*time.Second)
 
 		start := time.Now()
-		_, err := client.Get(server.URL)
+		_, err := client.Get(testRateLimiterURL)
 		elapsed := time.Since(start)
 
 		require.Error(t, err)
@@ -244,17 +247,14 @@ func TestRateLimitedHTTPClient_Timeout(t *testing.T) {
 
 func TestRateLimitedHTTPClient_Metrics(t *testing.T) {
 	t.Run("should track request metrics", func(t *testing.T) {
-		// RED PHASE: Test fails because RateLimitedHTTPClient doesn't exist yet
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
-
 		client := NewRateLimitedHTTPClient(100*time.Millisecond, 3, 5*time.Second)
+		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}, 0)
 
 		// Make some requests
 		for i := 0; i < 3; i++ {
-			resp, err := client.Get(server.URL)
+			resp, err := client.Get(testRateLimiterURL)
 			require.NoError(t, err)
 			_ = resp.Body.Close()
 		}
@@ -267,16 +267,14 @@ func TestRateLimitedHTTPClient_Metrics(t *testing.T) {
 }
 
 func BenchmarkRateLimitedHTTPClient_Get(b *testing.B) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
 	client := NewRateLimitedHTTPClient(1*time.Millisecond, 3, 5*time.Second)
+	client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}, 0)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		resp, err := client.Get(server.URL)
+		resp, err := client.Get(testRateLimiterURL)
 		if err == nil {
 			_ = resp.Body.Close()
 		}

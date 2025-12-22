@@ -7,7 +7,6 @@ package service
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -15,6 +14,23 @@ import (
 
 	"pre-processor/config"
 )
+
+func setHealthCheckerTransport(t *testing.T, service HealthCheckerService, handler http.HandlerFunc, delay time.Duration) {
+	t.Helper()
+	healthService, ok := service.(*healthCheckerService)
+	if !ok {
+		t.Fatalf("expected *healthCheckerService but got %T", service)
+	}
+	transport := newHandlerTransport(handler, delay)
+	switch client := healthService.client.(type) {
+	case *HTTPClientWrapper:
+		client.Client.Transport = transport
+	case *OptimizedHTTPClientWrapper:
+		client.Client.Transport = transport
+	case *EnvoyHTTPClient:
+		client.httpClient.Transport = transport
+	}
+}
 
 // TestNewHealthCheckerServiceWithFactory tests factory-based constructor
 func TestNewHealthCheckerServiceWithFactory(t *testing.T) {
@@ -99,8 +115,7 @@ func TestNewHealthCheckerServiceWithFactory(t *testing.T) {
 
 // TestHealthCheckerFactory_Integration tests end-to-end health check functionality
 func TestHealthCheckerFactory_Integration(t *testing.T) {
-	// Create mock news creator service
-	mockNewsCreator := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mockNewsCreatorHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Health checker calls /health endpoint
 		if r.URL.Path == "/health" {
 			// Mock healthy response with models
@@ -115,8 +130,7 @@ func TestHealthCheckerFactory_Integration(t *testing.T) {
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
-	}))
-	defer mockNewsCreator.Close()
+	})
 
 	tests := map[string]struct {
 		config         *config.Config
@@ -133,7 +147,7 @@ func TestHealthCheckerFactory_Integration(t *testing.T) {
 					UserAgent:     "test-health-integration",
 				},
 			},
-			newsCreatorURL: mockNewsCreator.URL,
+			newsCreatorURL: "http://news-creator.test",
 			expectHealthy:  true,
 			expectError:    false,
 			description:    "Direct HTTP health check should succeed with mock server",
@@ -160,7 +174,7 @@ func TestHealthCheckerFactory_Integration(t *testing.T) {
 					UserAgent:     "test-health-integration",
 				},
 			},
-			newsCreatorURL: mockNewsCreator.URL, // This will be 127.0.0.1, allowed for internal service communication
+			newsCreatorURL: "http://news-creator.test",
 			expectHealthy:  true,
 			expectError:    false,
 			description:    "Internal service communication should be allowed for health checks",
@@ -173,6 +187,9 @@ func TestHealthCheckerFactory_Integration(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// Create service using factory
 			service := NewHealthCheckerServiceWithFactory(tc.config, tc.newsCreatorURL, logger)
+			if !tc.expectError {
+				setHealthCheckerTransport(t, service, mockNewsCreatorHandler, 0)
+			}
 
 			// Test health check
 			ctx := context.Background()
@@ -206,9 +223,8 @@ func TestHealthCheckerFactory_Integration(t *testing.T) {
 
 // TestHealthCheckerFactory_WaitForHealthy tests wait functionality
 func TestHealthCheckerFactory_WaitForHealthy(t *testing.T) {
-	// Create mock server that becomes healthy after a delay
 	callCount := 0
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mockHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		// Health checker calls /health endpoint
 		if r.URL.Path == "/health" {
@@ -222,8 +238,7 @@ func TestHealthCheckerFactory_WaitForHealthy(t *testing.T) {
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
-	}))
-	defer mockServer.Close()
+	})
 
 	tests := map[string]struct {
 		config         *config.Config
@@ -239,7 +254,7 @@ func TestHealthCheckerFactory_WaitForHealthy(t *testing.T) {
 					UserAgent:     "test-wait-health",
 				},
 			},
-			newsCreatorURL: mockServer.URL, // Internal service communication allowed
+			newsCreatorURL: "http://news-creator.test",
 			expectSuccess:  true,
 			description:    "Wait should succeed for internal service communication",
 		},
@@ -251,6 +266,7 @@ func TestHealthCheckerFactory_WaitForHealthy(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// Create service using factory
 			service := NewHealthCheckerServiceWithFactory(tc.config, tc.newsCreatorURL, logger)
+			setHealthCheckerTransport(t, service, mockHandler, 0)
 
 			// Test wait for healthy with timeout longer than polling interval (10s)
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

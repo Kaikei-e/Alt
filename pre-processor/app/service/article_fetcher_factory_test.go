@@ -6,8 +6,6 @@ package service
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -182,26 +180,6 @@ func TestNewArticleFetcherServiceWithFactoryAndDLQ(t *testing.T) {
 
 // TestArticleFetcherFactory_Integration tests end-to-end factory integration
 func TestArticleFetcherFactory_Integration(t *testing.T) {
-	// Create mock server for testing
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Mock response content
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`
-			<!DOCTYPE html>
-			<html>
-			<head><title>Test Article</title></head>
-			<body>
-				<article>
-					<h1>Test Article Title</h1>
-					<p>This is test article content for factory integration testing.</p>
-				</article>
-			</body>
-			</html>
-		`))
-	}))
-	defer mockServer.Close()
-
 	tests := map[string]struct {
 		config      *config.Config
 		targetURL   string
@@ -216,8 +194,8 @@ func TestArticleFetcherFactory_Integration(t *testing.T) {
 					UserAgent:     "test-integration",
 				},
 			},
-			targetURL:   mockServer.URL, // This will be 127.0.0.1
-			expectError: false,          // Article fetching is disabled, returns nil,nil
+			targetURL:   "http://example.com",
+			expectError: false, // Article fetching is disabled, returns nil,nil
 			description: "Article fetching is disabled for ethical compliance",
 		},
 		"envoy_config_error": {
