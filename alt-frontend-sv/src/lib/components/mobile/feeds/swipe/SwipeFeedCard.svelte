@@ -16,7 +16,10 @@
   } from "$lib/api/client";
   import { Button } from "$lib/components/ui/button";
   import type { RenderFeed } from "$lib/schema/feed";
-  import { processStreamingText } from "$lib/utils/streamingRenderer";
+  import {
+    processStreamingText,
+    simulateTypewriterEffect,
+  } from "$lib/utils/streamingRenderer";
 
   interface Props {
     feed: RenderFeed;
@@ -212,6 +215,8 @@
           },
           {
             tick,
+            typewriter: true, // Enable typewriter effect
+            typewriterDelay: 10, // 10ms delay per char
             onChunk: (
               chunkCount,
               chunkSize,
@@ -299,8 +304,17 @@
       try {
         const res = await summarizeArticleClient(feed.link);
         if (res.success && res.summary) {
-          aiSummary = res.summary;
+          // Use typewriter effect for fallback legacy summary too
+          isSummarizing = false; // Stop spinner immediately as we have data
+          const typewriter = simulateTypewriterEffect(
+            (char) => {
+              aiSummary = (aiSummary || "") + char;
+            },
+            { tick, delay: 10 },
+          );
+          await typewriter.add(res.summary);
         } else {
+          isSummarizing = false;
           summaryError = "Failed to generate the summary";
         }
       } catch (legacyErr) {
@@ -308,10 +322,21 @@
           "[StreamSummarize] Legacy endpoint also failed:",
           legacyErr,
         );
+        isSummarizing = false;
         summaryError = "Failed to generate the summary. Please try again.";
       }
     } finally {
-      isSummarizing = false;
+      // If NOT using typewriter effect for fallback, we would set isSummarizing = false here.
+      // But for fallback with typewriter, we set it false BEFORE starting typewriter.
+      // For streaming with typewriter, processStreamingText handles setting it false on first chunk?
+      // Wait, processStreamingText's onChunk callback sets isSummarizing = false.
+      // If streaming completes successfully, isSummarizing is already false.
+      // If streaming fails and we fallback, we set isSummarizing = false inside fallback block.
+      // So we can safely set it false here if it's still true (e.g. total failure).
+      if (isSummarizing && aiSummary === "") {
+        isSummarizing = false;
+      }
+      // Note: for successful streaming or fallback-typewriter, isSummarizing becomes false earlier to show text.
     }
   }
 

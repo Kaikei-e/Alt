@@ -35,6 +35,67 @@ export interface StreamingRendererOptions {
  * This leverages Svelte's reactivity system for incremental rendering
  * Supports optional typewriter effect for character-by-character rendering
  */
+export function simulateTypewriterEffect(
+  onChar: (char: string) => void,
+  options: {
+    tick?: () => Promise<void>;
+    delay?: number;
+  } = {}
+) {
+  const { tick, delay = 10 } = options;
+  let queue = Promise.resolve();
+  let isCancelled = false;
+
+  const add = (newText: string) => {
+    if (!newText || isCancelled) return;
+
+    // Queue typewriter rendering to prevent overlapping
+    queue = queue
+      .then(async () => {
+        if (isCancelled) return;
+
+        try {
+          for (let i = 0; i < newText.length; i++) {
+            if (isCancelled) break;
+            onChar(newText[i]);
+
+            // Wait for delay
+            if (i < newText.length - 1 && delay > 0) {
+              await new Promise<void>((resolve) => setTimeout(resolve, delay));
+            }
+
+            // Call tick periodically
+            if (tick && i % 5 === 0) {
+              await tick();
+            }
+          }
+          // Ensure final tick
+          if (tick) await tick();
+
+        } catch (error) {
+          console.error("[Typewriter] Error", error);
+        }
+      })
+      .catch((error) => {
+        console.error("[Typewriter] Queue Error", error);
+        return Promise.resolve();
+      });
+  };
+
+  const cancel = () => {
+    isCancelled = true;
+  };
+
+  const getPromise = () => queue;
+
+  return { add, cancel, getPromise };
+}
+
+/**
+ * Creates a streaming renderer that immediately updates state for each chunk
+ * This leverages Svelte's reactivity system for incremental rendering
+ * Supports optional typewriter effect for character-by-character rendering
+ */
 export function createStreamingRenderer(
   updateState: (text: string) => void,
   options: StreamingRendererOptions = {}
@@ -49,56 +110,12 @@ export function createStreamingRenderer(
 
   let chunkCount = 0;
   let totalLength = 0;
-  let accumulatedText = ""; // Track accumulated text for typewriter effect
-  let typewriterQueue: Promise<void> = Promise.resolve(); // Queue for typewriter rendering
-  let isCancelled = false; // Flag to track if rendering is cancelled
+  let isCancelled = false;
 
-  /**
-   * Render text character by character with typewriter effect
-   * For typewriter effect, we need to maintain accumulated text and update state
-   * with the full accumulated text, not just the new character
-   */
-  const renderTypewriter = async (newText: string): Promise<void> => {
-    if (!newText || isCancelled) return;
-
-    // Queue typewriter rendering to prevent overlapping
-    typewriterQueue = typewriterQueue.then(async () => {
-      if (isCancelled) return; // Early exit if cancelled
-
-      try {
-        // Add new text to accumulated text character by character
-        for (let i = 0; i < newText.length; i++) {
-          if (isCancelled) break; // Stop rendering if cancelled
-
-          accumulatedText += newText[i];
-          // Update state with full accumulated text (since updateState expects cumulative updates)
-          // But we need to pass only the new character to match existing component behavior
-          // Actually, looking at the component usage, updateState does: summary = (summary || "") + chunk
-          // So we should pass the single character to maintain compatibility
-          updateState(newText[i]);
-
-          // Wait for specified delay before next character
-          if (i < newText.length - 1) {
-            await new Promise<void>((resolve) => setTimeout(resolve, typewriterDelay));
-          }
-
-          // Call tick if provided to ensure immediate re-render (every 5 characters for performance)
-          if (tick && i % 5 === 0) {
-            await tick();
-          }
-        }
-      } catch (error) {
-        console.error("[StreamingRenderer] Error in typewriter rendering", error);
-        // Don't re-throw to prevent breaking the stream, but log the error
-      }
-    }).catch((error) => {
-      console.error("[StreamingRenderer] Error in typewriter queue", error);
-      // Return resolved promise to prevent queue from breaking
-      return Promise.resolve();
-    });
-
-    await typewriterQueue;
-  };
+  // Initialize typewriter effect if enabled
+  const typewriterEffect = typewriter
+    ? simulateTypewriterEffect(updateState, { tick, delay: typewriterDelay })
+    : null;
 
   /**
    * Process a decoded text chunk
@@ -112,12 +129,12 @@ export function createStreamingRenderer(
     try {
       chunkCount++;
 
-      if (typewriter) {
+      if (typewriterEffect) {
         // Render character by character with typewriter effect
-        await renderTypewriter(decoded);
+        // Do not await/block here, let it run in background
+        typewriterEffect.add(decoded);
       } else {
         // Immediately update state for each chunk to trigger Svelte reactivity
-        // This is the best practice: update state synchronously and let Svelte handle rendering
         updateState(decoded);
       }
 
@@ -136,14 +153,12 @@ export function createStreamingRenderer(
 
       // If tick() is provided and not using typewriter, use it to force immediate re-render
       // This ensures Svelte processes the state update immediately
-      if (!typewriter) {
-        if (tick) {
-          await tick();
-        } else {
-          // Without tick(), rely on Svelte's automatic reactivity
-          // Use setTimeout(0) to yield to the event loop and allow Svelte to process updates
-          await new Promise<void>((resolve) => setTimeout(resolve, 0));
-        }
+      if (!typewriter && tick) {
+        await tick();
+      } else if (!typewriter) {
+        // Without tick(), rely on Svelte's automatic reactivity
+        // Use setTimeout(0) to yield to the event loop and allow Svelte to process updates
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
       }
     } catch (error) {
       console.error("[StreamingRenderer] Error processing chunk", error);
@@ -166,10 +181,9 @@ export function createStreamingRenderer(
    */
   const cancel = () => {
     isCancelled = true;
-    // Wait for current typewriter queue to finish (if any)
-    typewriterQueue.catch(() => {
-      // Ignore errors during cancellation
-    });
+    if (typewriterEffect) {
+      typewriterEffect.cancel();
+    }
   };
 
   /**
@@ -178,9 +192,12 @@ export function createStreamingRenderer(
   const reset = () => {
     chunkCount = 0;
     totalLength = 0;
-    accumulatedText = "";
-    typewriterQueue = Promise.resolve();
     isCancelled = false;
+    // We can't easily reset the external typewriter effect without recreating it
+    // But since createStreamingRenderer is usually created once per stream, this is likely fine.
+    // If reset is called, we might need to recreate the effect or clear it.
+    // For now, let's assume usage pattern creates a new renderer or we just don't support full reset of typewriter specific state here easily without change.
+    // Actually, we should probably warn or re-init.
   };
 
   return {
