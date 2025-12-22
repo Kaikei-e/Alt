@@ -44,6 +44,10 @@ secrets:
     file: ./secrets/service_secret.txt
   hugging_face_token:
     file: ./secrets/hugging_face_token.txt
+  inoreader_client_id:
+    file: ./secrets/inoreader_client_id.txt
+  inoreader_client_secret:
+    file: ./secrets/inoreader_client_secret.txt
 
 networks:
   alt-network:
@@ -59,6 +63,7 @@ volumes:
   clickhouse_data:            # ClickHouse database data
   news_creator_models:        # Ollama models for news-creator
   recap_db_data:              # Recap Worker PostgreSQL database data
+  oauth_token_data:           # Shared volume for OAuth2 tokens
 x-rask-env: &rask-env
   environment:
     RASK_CONFIG: |
@@ -345,6 +350,37 @@ services:
     labels:
       - rask.group=news-creator-init
 
+  auth-token-manager:
+    image: denoland/deno:2.6.3
+    working_dir: /app
+    volumes:
+      - ./auth-token-manager:/app
+      - oauth_token_data:/app/secrets
+      - ./secrets/inoreader_client_id.txt:/run/secrets/inoreader_client_id
+      - ./secrets/inoreader_client_secret.txt:/run/secrets/inoreader_client_secret
+    environment:
+      - INOREADER_CLIENT_ID_FILE=/run/secrets/inoreader_client_id
+      - INOREADER_CLIENT_SECRET_FILE=/run/secrets/inoreader_client_secret
+      - INOREADER_REDIRECT_URI=http://127.0.0.1:9201/callback
+      - TOKEN_STORAGE_TYPE=file
+      - TOKEN_STORAGE_PATH=/app/secrets/oauth2_token.env
+      - LOG_LEVEL=info
+    command: ["run", "--allow-all", "main.ts", "daemon"]
+    restart: always
+    ports:
+      - "9201:9201"
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   pre-processor:
     profiles:
       - ollama
@@ -382,6 +418,48 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  pre-processor-sidecar:
+    <<: *shared-env-file
+    build:
+      context: ./pre-processor-sidecar
+      dockerfile: Dockerfile
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - PRE_PROCESSOR_DB_USER=${PRE_PROCESSOR_DB_USER}
+      - PRE_PROCESSOR_DB_PASSWORD_FILE=/run/secrets/pre_processor_db_password
+      - INOREADER_CLIENT_ID_FILE=/run/secrets/inoreader_client_id
+      - INOREADER_CLIENT_SECRET_FILE=/run/secrets/inoreader_client_secret
+      - LOG_LEVEL=info
+      - SERVICE_NAME=pre-processor-sidecar
+      - TOKEN_STORAGE_TYPE=file
+      - TOKEN_STORAGE_PATH=/app/secrets/oauth2_token.env
+      - INOREADER_REFRESH_TOKEN_FILE=/app/secrets/oauth2_token.env
+    secrets:
+      - pre_processor_db_password
+      - inoreader_client_id
+      - inoreader_client_secret
+    volumes:
+      - oauth_token_data:/app/secrets
+    depends_on:
+      db:
+        condition: service_healthy
+      auth-token-manager:
+        condition: service_started
+    restart: always
+    networks:
+      - alt-network
+    tty: true
+    labels:
+      - rask.group=pre-processor-sidecar
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   search-indexer:
     <<: *shared-env-file
     build:
