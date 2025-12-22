@@ -58,6 +58,32 @@ Write 3-5 paragraphs in Japanese with specific facts, numbers, dates, and proper
 """
 
 
+CHUNK_SUMMARY_PROMPT_TEMPLATE = """<start_of_turn>user
+You are an expert editor extracting key information for a later summarization task.
+
+TASK:
+- Read the text chunk below (part of a larger article).
+- Extract and list the key facts, numbers, dates, and proper nouns.
+- Maintain the flow of events if present.
+- Output as a bulleted list in Japanese.
+
+CONSTRAINTS:
+- Language: Japanese
+- Format: Bullet points
+- Focus: Factual accuracy. Do not summarize abstractly; capture specifics.
+- Content: If the text is just boilerplates or irrelevant, output "なし".
+
+TEXT CHUNK:
+---
+{content}
+---
+
+Extract key facts:
+<end_of_turn>
+<start_of_turn>model
+"""
+
+
 RECAP_CLUSTER_SUMMARY_PROMPT = r"""<start_of_turn>system
 You are an expert Japanese news editor. Generate structured Japanese recap bullets strictly following the contract below.
 Return a single JSON object and nothing else.

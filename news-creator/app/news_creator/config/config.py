@@ -98,6 +98,10 @@ class NewsCreatorConfig:
         self.hierarchical_threshold_clusters = self._get_int("HIERARCHICAL_THRESHOLD_CLUSTERS", 15)
         self.hierarchical_chunk_max_chars = self._get_int("HIERARCHICAL_CHUNK_MAX_CHARS", 100_000)  # ~25K tokens per chunk
 
+        # Hierarchical summarization settings for single large articles
+        self.hierarchical_single_article_threshold = self._get_int("HIERARCHICAL_SINGLE_ARTICLE_THRESHOLD", 25_000)
+        self.hierarchical_single_article_chunk_size = self._get_int("HIERARCHICAL_SINGLE_ARTICLE_CHUNK_SIZE", 10_000)
+
         # Model routing settings (2-model bucket system: 16K, 80K)
         self.model_routing_enabled = os.getenv("MODEL_ROUTING_ENABLED", "true").lower() == "true"
         # Base model name (e.g., "gemma3:4b") - will be auto-mapped to bucket models

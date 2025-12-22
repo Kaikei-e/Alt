@@ -5,7 +5,10 @@ from typing import Tuple, Dict, Any, List, Optional, AsyncIterator
 import aiohttp
 
 from news_creator.config.config import NewsCreatorConfig
-from news_creator.domain.prompts import SUMMARY_PROMPT_TEMPLATE
+from news_creator.domain.prompts import (
+    SUMMARY_PROMPT_TEMPLATE,
+    CHUNK_SUMMARY_PROMPT_TEMPLATE
+)
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
 from news_creator.utils.html_cleaner import clean_html_content
@@ -109,6 +112,19 @@ class SummarizeUsecase:
         # Using ~60K chars (≈15K tokens) for content to avoid truncation and stay within 16K limit
         MAX_CONTENT_LENGTH = 60_000  # characters (conservative estimate for ~15K tokens in 16K context)
         original_length = len(content)
+
+        # Check for Hierarchical Summarization needed
+        if original_length > self.config.hierarchical_single_article_threshold:
+            logger.info(
+                "Content exceeds threshold, switching to hierarchical summarization",
+                extra={
+                    "article_id": article_id,
+                    "length": original_length,
+                    "threshold": self.config.hierarchical_single_article_threshold
+                }
+            )
+            return await self._generate_hierarchical_summary(article_id, content)
+
         truncated_content = content.strip()[:MAX_CONTENT_LENGTH]
 
         if original_length > MAX_CONTENT_LENGTH:
@@ -428,6 +444,135 @@ class SummarizeUsecase:
                 "model": metadata["model"],
             }
         )
+
+        return truncated_summary, metadata
+
+    async def _generate_hierarchical_summary(self, article_id: str, content: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Generate a summary for a large article using Hierarchical (Map-Reduce) strategy.
+
+        Args:
+            article_id: Article identifier
+            content: Full article content
+
+        Returns:
+            Tuple of (summary text, metadata dict)
+        """
+        import time
+        start_time = time.time()
+
+        chunk_size = self.config.hierarchical_single_article_chunk_size
+        chunks = []
+        for i in range(0, len(content), chunk_size):
+            chunks.append(content[i:i + chunk_size])
+
+        logger.info(
+            "Starting hierarchical summarization (Map-Reduce)",
+            extra={
+                "article_id": article_id,
+                "content_length": len(content),
+                "chunk_count": len(chunks),
+                "chunk_size": chunk_size
+            }
+        )
+
+        # Map Phase: Summarize each chunk
+        chunk_summaries = []
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+
+        for i, chunk in enumerate(chunks):
+            logger.info(
+                f"Map phase: Processing chunk {i+1}/{len(chunks)}",
+                extra={"article_id": article_id, "chunk_index": i}
+            )
+
+            prompt = CHUNK_SUMMARY_PROMPT_TEMPLATE.format(content=chunk)
+
+            # Use somewhat higher temperature for extraction to avoid rigid repetition
+            llm_options = {
+                "temperature": 0.2,
+                "repeat_penalty": self.config.llm_repeat_penalty
+            }
+
+            try:
+                # Use a smaller num_predict for chunks to save time
+                chunk_resp = await self.llm_provider.generate(
+                    prompt,
+                    num_predict=500,
+                    options=llm_options
+                )
+                chunk_text = chunk_resp.response
+
+                # Cleanup chunk summary
+                chunk_text = self._clean_summary_text(chunk_text, f"{article_id}-chunk-{i}")
+
+                if chunk_text and chunk_text != "なし":
+                    chunk_summaries.append(chunk_text)
+
+                if chunk_resp.prompt_eval_count:
+                    total_prompt_tokens += chunk_resp.prompt_eval_count
+                if chunk_resp.eval_count:
+                    total_completion_tokens += chunk_resp.eval_count
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to summarize chunk {i}",
+                    extra={"article_id": article_id, "error": str(e)}
+                )
+                # Continue best effort
+
+        if not chunk_summaries:
+            raise RuntimeError("Hierarchical summarization failed: no valid chunk summaries generated")
+
+        # Reduce Phase: Summarize the combined chunk summaries
+        combined_text = "\n\n".join(chunk_summaries)
+
+        logger.info(
+            "Reduce phase: Summarizing combined content",
+            extra={
+                "article_id": article_id,
+                "combined_length": len(combined_text),
+                "reduction_ratio": f"{(1 - len(combined_text)/len(content))*100:.1f}%"
+            }
+        )
+
+        # We can reuse the standard generate_summary logic for the reduce phase,
+        # but we need to bypass the length check to avoid recursion if combined text is huge
+        # (unlikely given 500 char limit per chunk, but possible).
+        # Instead, just call LLM directly with standard summary prompt.
+
+        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=combined_text)
+
+        # Use standard summary configuration
+        llm_options = {
+            "temperature": self.config.summary_temperature,
+            "repeat_penalty": self.config.llm_repeat_penalty
+        }
+
+        final_resp = await self.llm_provider.generate(
+            prompt,
+            num_predict=self.config.summary_num_predict,
+            options=llm_options
+        )
+
+        raw_summary = final_resp.response
+        cleaned_summary = self._clean_summary_text(raw_summary, article_id)
+
+        # Enforce character limit
+        truncated_summary = cleaned_summary[:2000]
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        total_prompt_tokens += final_resp.prompt_eval_count or 0
+        total_completion_tokens += final_resp.eval_count or 0
+
+        metadata = {
+            "model": final_resp.model,
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_completion_tokens,
+            "total_duration_ms": elapsed_ms,
+            "strategy": "hierarchical"
+        }
 
         return truncated_summary, metadata
 
