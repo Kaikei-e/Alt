@@ -4,9 +4,8 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -160,8 +159,22 @@ func TestSecureHTTPClient_BackwardCompatibility(t *testing.T) {
 
 // RED: Test for Envoy proxy request transformation - this should fail initially
 func TestHTTPClientFactory_EnvoyProxyRequestTransformation(t *testing.T) {
-	// Mock Envoy proxy server that expects transformed requests
-	envoyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Setup environment for Envoy proxy strategy
+	os.Setenv("PROXY_STRATEGY", "ENVOY")
+	os.Setenv("ENVOY_PROXY_BASE_URL", "http://envoy.test:8080")
+	defer func() {
+		os.Unsetenv("PROXY_STRATEGY")
+		os.Unsetenv("ENVOY_PROXY_BASE_URL")
+	}()
+
+	// Create HTTP client factory
+	factory := NewHTTPClientFactory()
+	client := factory.CreateHTTPClient()
+
+	// Replace the underlying transport to avoid network access
+	envoyTransport, ok := client.Transport.(*EnvoyProxyTransport)
+	require.True(t, ok, "Expected EnvoyProxyTransport")
+	envoyTransport.Transport = roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		// Verify the request follows Envoy Dynamic Forward Proxy format
 		expectedPath := "/proxy/https://example.com/rss.xml"
 		if r.URL.Path != expectedPath {
@@ -175,27 +188,13 @@ func TestHTTPClientFactory_EnvoyProxyRequestTransformation(t *testing.T) {
 			t.Errorf("Expected X-Target-Domain header %s, got %s", expectedDomain, actualDomain)
 		}
 
-		// Return success response
-		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "RSS feed content")
-	}))
-	defer envoyServer.Close()
-
-	// Parse the test server URL to get host and port
-	serverURL, err := url.Parse(envoyServer.URL)
-	require.NoError(t, err)
-
-	// Setup environment for Envoy proxy strategy
-	os.Setenv("PROXY_STRATEGY", "ENVOY")
-	os.Setenv("ENVOY_PROXY_BASE_URL", envoyServer.URL)
-	defer func() {
-		os.Unsetenv("PROXY_STRATEGY")
-		os.Unsetenv("ENVOY_PROXY_BASE_URL")
-	}()
-
-	// Create HTTP client factory
-	factory := NewHTTPClientFactory()
-	client := factory.CreateHTTPClient()
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("RSS feed content")),
+			Header:     make(http.Header),
+		}
+		return resp, nil
+	})
 
 	// RED: This request should be transformed to go through Envoy proxy
 	// Target URL: https://example.com/rss.xml
@@ -222,7 +221,13 @@ func TestHTTPClientFactory_EnvoyProxyRequestTransformation(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, "RSS feed content", string(body))
 	} else {
-		t.Log("Host was:", serverURL.Host)
 		t.Fatal("Failed to get response - Envoy proxy transformation not working")
 	}
+}
+
+// roundTripperFunc is a helper to stub http.RoundTripper in tests.
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
 }

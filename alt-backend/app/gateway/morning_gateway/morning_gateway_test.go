@@ -3,10 +3,11 @@ package morning_gateway
 import (
 	"alt/driver/alt_db"
 	"alt/utils/logger"
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -16,6 +17,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 func TestGetArticleGroups(t *testing.T) {
 	// Initialize logger for testing to prevent nil pointer dereference
 	logger.InitLogger()
@@ -24,7 +31,7 @@ func TestGetArticleGroups(t *testing.T) {
 	require.NoError(t, err)
 	defer mockPool.Close()
 
-	// Mock API
+	// Mock API response payload
 	groupID := uuid.New()
 	articleID := uuid.New()
 	createdAt := time.Now().UTC()
@@ -38,17 +45,27 @@ func TestGetArticleGroups(t *testing.T) {
 		},
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mockTransport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		assert.Equal(t, "/v1/morning/updates", r.URL.Path)
-		json.NewEncoder(w).Encode(apiResponse)
-	}))
-	defer server.Close()
+		bodyBytes, err := json.Marshal(apiResponse)
+		require.NoError(t, err)
+
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+		}
+		resp.Header.Set("Content-Type", "application/json")
+		return resp, nil
+	})
 
 	// Gateway
 	gateway := &MorningGateway{
 		altDBRepository: alt_db.NewAltDBRepository(mockPool),
-		httpClient:      server.Client(),
-		recapWorkerURL:  server.URL,
+		httpClient: &http.Client{
+			Transport: mockTransport,
+		},
+		recapWorkerURL: "http://recap-worker.test",
 	}
 
 	// Expect DB Query

@@ -6,7 +6,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -31,12 +30,6 @@ func TestFetchArticleGateway_SSRF_Blocked(t *testing.T) {
 }
 
 func TestFetchArticleGateway_Fetch_Success_WithTestingOverride(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte("<html><body><h1>Hello</h1><p>World</p></body></html>"))
-	}))
-	defer server.Close()
-
 	rl := rate_limiter.NewHostRateLimiter(1 * time.Millisecond)
 
 	// Fake RoundTripper to avoid real network
@@ -53,7 +46,7 @@ func TestFetchArticleGateway_Fetch_Success_WithTestingOverride(t *testing.T) {
 	validator := security.NewSSRFValidator()
 	gw := NewFetchArticleGatewayWithDeps(rl, httpClient, validator)
 
-	content, err := gw.FetchArticleContents(context.Background(), "https://example.com/article")
+	content, err := gw.FetchArticleContents(context.Background(), "https://93.184.216.34/article")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

@@ -5,8 +5,9 @@ import (
 	"alt/utils/rate_limiter"
 	"alt/utils/security"
 	"context"
+	"io"
 	"net/http"
-	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -39,42 +40,38 @@ func TestBatchArticleFetcher_GroupByDomain(t *testing.T) {
 }
 
 func TestBatchArticleFetcher_FetchMultiple_10Domains13URLs(t *testing.T) {
-	// Create test servers for 10 different domains
-	servers := make([]*httptest.Server, 10)
+	// Use public IPs to avoid DNS dependency in tests
 	domains := []string{
-		"example1.com",
-		"example2.com",
-		"example3.com",
-		"example4.com",
-		"example5.com",
-		"example6.com",
-		"example7.com",
-		"example8.com",
-		"example9.com",
-		"example10.com",
+		"93.184.216.34",
+		"93.184.216.35",
+		"93.184.216.36",
+		"93.184.216.37",
+		"93.184.216.38",
+		"93.184.216.39",
+		"93.184.216.40",
+		"93.184.216.41",
+		"93.184.216.42",
+		"93.184.216.43",
 	}
 
 	// Track request counts per domain
 	requestCounts := make(map[string]int)
 	var mu sync.Mutex
 
-	// Create servers
-	for i, domain := range domains {
-		domain := domain // capture loop variable
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			mu.Lock()
-			requestCounts[domain]++
-			mu.Unlock()
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("<html><body>Test content for " + domain + "</body></html>"))
-		}))
-		servers[i] = server
-	}
-	defer func() {
-		for _, server := range servers {
-			server.Close()
+	// Create stub transport that counts requests per host and returns HTML content
+	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		host := req.URL.Hostname()
+		mu.Lock()
+		requestCounts[host]++
+		mu.Unlock()
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("<html><body>Test content for " + host + "</body></html>")),
+			Header:     make(http.Header),
 		}
-	}()
+		resp.Header.Set("Content-Type", "text/html")
+		return resp, nil
+	})
 
 	// Create 13 URLs with some duplicates across domains
 	// Domain distribution:
@@ -89,19 +86,19 @@ func TestBatchArticleFetcher_FetchMultiple_10Domains13URLs(t *testing.T) {
 	// example9.com: 1 URL
 	// example10.com: 2 URLs
 	urls := []string{
-		servers[0].URL + "/article1", // example1.com
-		servers[0].URL + "/article2", // example1.com
-		servers[1].URL + "/article1", // example2.com
-		servers[1].URL + "/article2", // example2.com
-		servers[2].URL + "/article1", // example3.com
-		servers[3].URL + "/article1", // example4.com
-		servers[4].URL + "/article1", // example5.com
-		servers[5].URL + "/article1", // example6.com
-		servers[6].URL + "/article1", // example7.com
-		servers[7].URL + "/article1", // example8.com
-		servers[8].URL + "/article1", // example9.com
-		servers[9].URL + "/article1", // example10.com
-		servers[9].URL + "/article2", // example10.com
+		"http://" + domains[0] + "/article1",
+		"http://" + domains[0] + "/article2",
+		"http://" + domains[1] + "/article1",
+		"http://" + domains[1] + "/article2",
+		"http://" + domains[2] + "/article1",
+		"http://" + domains[3] + "/article1",
+		"http://" + domains[4] + "/article1",
+		"http://" + domains[5] + "/article1",
+		"http://" + domains[6] + "/article1",
+		"http://" + domains[7] + "/article1",
+		"http://" + domains[8] + "/article1",
+		"http://" + domains[9] + "/article1",
+		"http://" + domains[9] + "/article2",
 	}
 
 	// Create rate limiter with 5 second interval
@@ -109,7 +106,8 @@ func TestBatchArticleFetcher_FetchMultiple_10Domains13URLs(t *testing.T) {
 
 	// Create HTTP client
 	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout:   30 * time.Second,
+		Transport: rt,
 	}
 
 	// Create fetcher with test SSRF validator that allows localhost
@@ -162,16 +160,16 @@ func TestBatchArticleFetcher_FetchMultiple_10Domains13URLs(t *testing.T) {
 
 	// Verify domain grouping: each domain should have the expected number of requests
 	expectedCounts := map[string]int{
-		"example1.com":  2,
-		"example2.com":  2,
-		"example3.com":  1,
-		"example4.com":  1,
-		"example5.com":  1,
-		"example6.com":  1,
-		"example7.com":  1,
-		"example8.com":  1,
-		"example9.com":  1,
-		"example10.com": 2,
+		domains[0]: 2,
+		domains[1]: 2,
+		domains[2]: 1,
+		domains[3]: 1,
+		domains[4]: 1,
+		domains[5]: 1,
+		domains[6]: 1,
+		domains[7]: 1,
+		domains[8]: 1,
+		domains[9]: 2,
 	}
 
 	for domain, expected := range expectedCounts {
@@ -255,4 +253,11 @@ func TestBatchArticleFetcher_GenerateArticleID(t *testing.T) {
 			}
 		})
 	}
+}
+
+// roundTripperFunc is a helper to stub http.RoundTripper in tests.
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
 }

@@ -29,10 +29,10 @@ func TestFetchInoreaderSummaryUsecase_Execute_Success(t *testing.T) {
 	}{
 		{
 			name: "successful fetch with multiple articles",
-			urls: []string{"https://example.com/article1", "https://example.com/article2"},
+			urls: []string{"https://93.184.216.34/article1", "https://93.184.216.34/article2"},
 			mockResult: []*domain.InoreaderSummary{
 				{
-					ArticleURL:  "https://example.com/article1",
+					ArticleURL:  "https://93.184.216.34/article1",
 					Title:       "Test Article 1",
 					Author:      stringPtr("Test Author 1"),
 					Content:     "This is test content 1",
@@ -44,7 +44,7 @@ func TestFetchInoreaderSummaryUsecase_Execute_Success(t *testing.T) {
 			},
 			want: []*domain.InoreaderSummary{
 				{
-					ArticleURL:  "https://example.com/article1",
+					ArticleURL:  "https://93.184.216.34/article1",
 					Title:       "Test Article 1",
 					Author:      stringPtr("Test Author 1"),
 					Content:     "This is test content 1",
@@ -123,12 +123,12 @@ func TestFetchInoreaderSummaryUsecase_Execute_URLValidation(t *testing.T) {
 	}{
 		{
 			name:    "valid HTTPS URLs should pass",
-			urls:    []string{"https://example.com/article1"},
+			urls:    []string{"https://93.184.216.34/article1"},
 			wantErr: false,
 		},
 		{
 			name:    "valid HTTP URLs should pass",
-			urls:    []string{"http://example.com/article1"},
+			urls:    []string{"http://93.184.216.34/article1"},
 			wantErr: false,
 		},
 		{
@@ -143,7 +143,7 @@ func TestFetchInoreaderSummaryUsecase_Execute_URLValidation(t *testing.T) {
 		},
 		{
 			name:    "invalid scheme should be rejected",
-			urls:    []string{"ftp://example.com/article1"},
+			urls:    []string{"ftp://93.184.216.34/article1"},
 			wantErr: true,
 		},
 	}
@@ -179,7 +179,7 @@ func TestFetchInoreaderSummaryUsecase_Execute_PortError(t *testing.T) {
 	mockPort := mocks.NewMockFetchInoreaderSummaryPort(ctrl)
 
 	// Setup mock to return error
-	urls := []string{"https://example.com/article1"}
+	urls := []string{"https://93.184.216.34/article1"}
 	mockPort.EXPECT().
 		FetchSummariesByURLs(gomock.Any(), urls).
 		Return(nil, assert.AnError).

@@ -34,12 +34,12 @@ func TestSSRFValidator_BasicValidation(t *testing.T) {
 	}{
 		{
 			name:    "valid https URL",
-			url:     "https://example.com/image.jpg",
+			url:     "https://93.184.216.34/image.jpg",
 			wantErr: false,
 		},
 		{
 			name:    "valid http URL",
-			url:     "http://example.com/image.jpg",
+			url:     "http://93.184.216.34/image.jpg",
 			wantErr: false,
 		},
 		{
@@ -98,7 +98,7 @@ func TestSSRFValidator_MetadataEndpoints(t *testing.T) {
 		},
 		{
 			name:    "safe external domain",
-			url:     "https://example.com/image.jpg",
+			url:     "https://93.184.216.34/image.jpg",
 			wantErr: false,
 		},
 	}
@@ -145,7 +145,7 @@ func TestSSRFValidator_InternalDomains(t *testing.T) {
 		},
 		{
 			name:    "safe external domain",
-			url:     "https://example.com/image.jpg",
+			url:     "https://93.184.216.34/image.jpg",
 			wantErr: false,
 		},
 	}
@@ -202,7 +202,7 @@ func TestSSRFValidator_PathTraversal(t *testing.T) {
 		},
 		{
 			name:    "safe path",
-			url:     "https://example.com/safe/path/image.jpg",
+			url:     "https://93.184.216.34/safe/path/image.jpg",
 			wantErr: false,
 		},
 	}
@@ -234,27 +234,27 @@ func TestSSRFValidator_PortValidation(t *testing.T) {
 	}{
 		{
 			name:    "allowed port 443",
-			url:     "https://example.com:443/image.jpg",
+			url:     "https://93.184.216.34:443/image.jpg",
 			wantErr: false,
 		},
 		{
 			name:    "allowed port 80",
-			url:     "http://example.com:80/image.jpg",
+			url:     "http://93.184.216.34:80/image.jpg",
 			wantErr: false,
 		},
 		{
 			name:    "allowed port 8080",
-			url:     "https://example.com:8080/image.jpg",
+			url:     "https://93.184.216.34:8080/image.jpg",
 			wantErr: false,
 		},
 		{
 			name:    "disallowed port 3000",
-			url:     "https://example.com:3000/image.jpg",
+			url:     "https://93.184.216.34:3000/image.jpg",
 			wantErr: true,
 		},
 		{
 			name:    "disallowed port 22",
-			url:     "https://example.com:22/image.jpg",
+			url:     "https://93.184.216.34:22/image.jpg",
 			wantErr: true,
 		},
 	}
@@ -299,7 +299,7 @@ func TestSSRFValidator_UnicodeValidation(t *testing.T) {
 		},
 		{
 			name:    "normal ASCII domain",
-			url:     "https://example.com/image.jpg",
+			url:     "https://93.184.216.34/image.jpg",
 			wantErr: false,
 		},
 	}
@@ -325,7 +325,7 @@ func TestSSRFValidator_TestingMode(t *testing.T) {
 	validator := NewSSRFValidator()
 
 	// Test that localhost is blocked by default
-	u, err := url.Parse("http://localhost:8080/test")
+	u, err := url.Parse("http://127.0.0.1:8080/test")
 	require.NoError(t, err)
 
 	err = validator.ValidateURL(context.Background(), u)
@@ -579,7 +579,7 @@ func TestSSRFValidator_CreateSecureHTTPClient(t *testing.T) {
 	assert.Equal(t, 30*time.Second, client.Timeout)
 
 	// Test a valid redirect (should be allowed)
-	req := httptest.NewRequest("GET", "http://example.com", nil)
+	req := httptest.NewRequest("GET", "http://93.184.216.34", nil)
 	err := client.CheckRedirect(req, nil)
 	assert.NoError(t, err)
 
@@ -690,7 +690,7 @@ func TestSSRFValidator_ComprehensiveAttackScenarios(t *testing.T) {
 // Benchmarks
 func BenchmarkSSRFValidator_ValidateURL(b *testing.B) {
 	validator := NewSSRFValidator()
-	u, _ := url.Parse("https://example.com/image.jpg")
+	u, _ := url.Parse("https://93.184.216.34/image.jpg")
 	ctx := context.Background()
 
 	b.ResetTimer()

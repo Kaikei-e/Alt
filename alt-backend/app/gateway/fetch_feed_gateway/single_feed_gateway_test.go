@@ -4,8 +4,6 @@ import (
 	"alt/utils/errors"
 	"alt/utils/logger"
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -101,28 +99,6 @@ func TestSingleFeedGateway_FetchSingleFeed_NoFeedUrls(t *testing.T) {
 
 // RED: Test for proxy-aware HTTP client usage (TDD)
 func TestSingleFeedGateway_FetchSingleFeed_ProxyIntegration(t *testing.T) {
-	// Test server to simulate RSS feed
-	rssContent := `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-	<channel>
-		<title>Test Feed</title>
-		<description>Test RSS Feed</description>
-		<item>
-			<title>Test Item</title>
-			<description>Test Description</description>
-		</item>
-	</channel>
-</rss>`
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify that the request comes through custom HTTP client
-		// (proxy-aware client would have specific headers/behavior)
-		w.Header().Set("Content-Type", "application/rss+xml")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(rssContent))
-	}))
-	defer server.Close()
-
 	// Initialize logger for test
 	logger.InitLogger()
 

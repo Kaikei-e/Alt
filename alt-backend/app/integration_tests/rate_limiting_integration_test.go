@@ -3,8 +3,6 @@ package integration_tests
 import (
 	"alt/utils/rate_limiter"
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -38,18 +36,7 @@ func TestRateLimitingIntegration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create test server
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`<?xml version="1.0"?>
-<rss version="2.0">
-    <channel>
-        <title>Test Feed</title>
-        <item><title>Test Item</title></item>
-    </channel>
-</rss>`))
-			}))
-			defer server.Close()
+			testURL := "http://rate-limit.test/rss.xml"
 
 			// Create rate limiter
 			rateLimiter := rate_limiter.NewHostRateLimiter(tt.interval)
@@ -59,15 +46,10 @@ func TestRateLimitingIntegration(t *testing.T) {
 
 			for i := 0; i < tt.requests; i++ {
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				err := rateLimiter.WaitForHost(ctx, server.URL)
+				err := rateLimiter.WaitForHost(ctx, testURL)
 				cancel()
 
 				require.NoError(t, err, "Rate limiter should not error")
-
-				// Make actual HTTP request to verify it works
-				resp, err := http.Get(server.URL)
-				require.NoError(t, err, "HTTP request should succeed")
-				resp.Body.Close()
 			}
 
 			actualDuration := time.Since(start)
@@ -87,15 +69,8 @@ func TestRateLimitingIntegration(t *testing.T) {
 
 func TestRateLimitingDifferentHosts(t *testing.T) {
 	// Test that different hosts don't interfere with each other's rate limits
-	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server1.Close()
-
-	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server2.Close()
+	server1 := "http://rate-limit-1.test"
+	server2 := "http://rate-limit-2.test"
 
 	rateLimiter := rate_limiter.NewHostRateLimiter(5 * time.Second)
 
@@ -103,11 +78,11 @@ func TestRateLimitingDifferentHosts(t *testing.T) {
 
 	// These should execute immediately since they're different hosts
 	ctx1, cancel1 := context.WithTimeout(context.Background(), 1*time.Second)
-	err1 := rateLimiter.WaitForHost(ctx1, server1.URL)
+	err1 := rateLimiter.WaitForHost(ctx1, server1)
 	cancel1()
 
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 1*time.Second)
-	err2 := rateLimiter.WaitForHost(ctx2, server2.URL)
+	err2 := rateLimiter.WaitForHost(ctx2, server2)
 	cancel2()
 
 	duration := time.Since(start)

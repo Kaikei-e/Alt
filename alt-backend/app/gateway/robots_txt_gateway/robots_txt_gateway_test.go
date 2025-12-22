@@ -14,8 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TDD RED PHASE: Write failing tests first
-
 func TestRobotsTxtGateway_FetchRobotsTxt_Success(t *testing.T) {
 	// Use RoundTripper to mock HTTP responses and avoid SSRF validation issues
 	robotsTxtContent := `User-agent: *
@@ -45,9 +43,9 @@ Crawl-delay: 10`
 	ssrfValidator := security.NewSSRFValidator()
 	gateway := NewRobotsTxtGatewayWithDeps(httpClient, ssrfValidator)
 
-	// Execute with a valid public domain (SSRF validation will pass for example.com)
+	// Execute with a valid public IP (SSRF validation will pass without DNS)
 	ctx := context.Background()
-	result, err := gateway.FetchRobotsTxt(ctx, "example.com", "https")
+	result, err := gateway.FetchRobotsTxt(ctx, "93.184.216.34", "https")
 
 	// Assert
 	require.NoError(t, err)
@@ -75,7 +73,7 @@ func TestRobotsTxtGateway_FetchRobotsTxt_NotFound(t *testing.T) {
 	gateway := NewRobotsTxtGateway(httpClient)
 
 	ctx := context.Background()
-	result, err := gateway.FetchRobotsTxt(ctx, "example.com", "https")
+	result, err := gateway.FetchRobotsTxt(ctx, "93.184.216.34", "https")
 
 	// Should not error, but return robots.txt with 404 status
 	require.NoError(t, err)
@@ -99,7 +97,7 @@ func TestRobotsTxtGateway_FetchRobotsTxt_EmptyRobotsTxt(t *testing.T) {
 	gateway := NewRobotsTxtGateway(httpClient)
 
 	ctx := context.Background()
-	result, err := gateway.FetchRobotsTxt(ctx, "example.com", "https")
+	result, err := gateway.FetchRobotsTxt(ctx, "93.184.216.34", "https")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
