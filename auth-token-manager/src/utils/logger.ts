@@ -1,6 +1,6 @@
 import { format as formatDate } from "@std/datetime";
 import { encodeBase64 } from "@std/encoding/base64";
-import { 
+import {
   ConsoleHandler,
   FileHandler,
   setup as setupLogger,
@@ -16,10 +16,10 @@ const OAUTH_TOKEN_PATTERNS = [
   // OAuth tokens - Google/Inoreader format
   /ya29\.[A-Za-z0-9\-_]+/g,
   /1\/\/[A-Za-z0-9\-_]+/g,
-  
+
   // Bearer tokens
   /bearer\s+[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+/gi,
-  
+
   // Generic API keys (30+ chars)
   /[A-Za-z0-9\-_]{30,}/g,
 ];
@@ -91,7 +91,7 @@ export class DataSanitizer {
 
     for (const [key, value] of Object.entries(obj)) {
       const lowerKey = key.toLowerCase();
-      
+
       if (SENSITIVE_FIELDS.has(lowerKey)) {
         sanitized[key] = "[REDACTED]";
       } else {
@@ -117,7 +117,7 @@ interface EnhancedLogRecord extends LogRecord {
  */
 class JsonFormatter {
   format(logRecord: EnhancedLogRecord): string {
-    const sanitizedArgs = logRecord.args.map((arg) => 
+    const sanitizedArgs = logRecord.args.map((arg) =>
       DataSanitizer.sanitize(arg)
     );
 
@@ -161,7 +161,7 @@ export class StructuredLogger {
 
   constructor(component: string) {
     this.component = component;
-    
+
     // Create log directory if it doesn't exist
     try {
       Deno.mkdirSync("./logs", { recursive: true });
@@ -171,11 +171,11 @@ export class StructuredLogger {
         console.error("Failed to create log directory:", error);
       }
     }
-    
+
     // Setup logger configuration - Use only console handler in Kubernetes
     const config: LoggerConfig = {
       handlers: ["console"],
-      level: (Deno.env.get("LOG_LEVEL") as LevelName) || "INFO",
+      level: ((Deno.env.get("LOG_LEVEL")?.toUpperCase()) as LevelName) || "INFO",
     };
 
     // Initialize logger
