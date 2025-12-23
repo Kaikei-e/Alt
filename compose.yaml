@@ -351,10 +351,10 @@ services:
       - rask.group=news-creator-init
 
   auth-token-manager:
-    image: denoland/deno:2.6.3
-    working_dir: /app
+    build:
+      context: ./auth-token-manager
+      dockerfile: Dockerfile
     volumes:
-      - ./auth-token-manager:/app
       - oauth_token_data:/app/secrets
       - ./secrets/inoreader_client_id.txt:/run/secrets/inoreader_client_id
       - ./secrets/inoreader_client_secret.txt:/run/secrets/inoreader_client_secret
@@ -362,10 +362,8 @@ services:
       - INOREADER_CLIENT_ID_FILE=/run/secrets/inoreader_client_id
       - INOREADER_CLIENT_SECRET_FILE=/run/secrets/inoreader_client_secret
       - INOREADER_REDIRECT_URI=http://127.0.0.1:9201/callback
-      - TOKEN_STORAGE_TYPE=file
       - TOKEN_STORAGE_PATH=/app/secrets/oauth2_token.env
       - LOG_LEVEL=info
-    command: ["run", "--allow-all", "main.ts", "daemon"]
     restart: always
     ports:
       - "9201:9201"
