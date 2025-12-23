@@ -74,3 +74,4 @@ recap-subworker/data
 recap-worker/recap-worker/tests/data/golden_classification.json
 alt-frontend-sv/playwright-report/*
 alt-frontend-sv/test-results/*
+failed.log
