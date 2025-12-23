@@ -430,7 +430,7 @@ class RecapSummaryUsecase:
         # 71K tokens ≈ 284K-568K chars, but we need to reserve space for prompt template
         # Reserve ~1K tokens for prompt template and safety margin, leaving ~70K tokens for content
         # Using ~280K chars (≈70K tokens) for cluster_section to leave room for prompt template
-        MAX_CLUSTER_SECTION_LENGTH = 280_000  # characters (conservative estimate for ~70K tokens in 71K context)
+        MAX_CLUSTER_SECTION_LENGTH = 50_000  # characters (conservative estimate for ~12K tokens in 16K context)
 
         max_clusters = max(3, min(len(request.clusters), max_bullets + 2))
         cluster_lines: List[str] = []
