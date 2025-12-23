@@ -42,32 +42,19 @@ export interface NetworkConfig {
   connectivity_timeout: number;
 }
 
-export interface K8sSecretData {
+export interface SecretData {
   access_token: string;
   refresh_token: string;
   expires_at: string;
   updated_at: string;
+  token_type?: string;
+  scope?: string;
 }
 
-export class AuthError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string,
-    public readonly context?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = 'AuthError';
-  }
+export interface SecretManager {
+  updateTokenSecret(tokens: TokenResponse): Promise<void>;
+  getTokenSecret(): Promise<SecretData | null>;
+  checkSecretExists(): Promise<boolean>;
 }
 
-// BrowserError removed - browser automation disabled
-
-export class K8sError extends Error {
-  constructor(
-    message: string,
-    public readonly context?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = 'K8sError';
-  }
-}
+export type K8sSecretData = SecretData;

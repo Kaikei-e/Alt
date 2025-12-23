@@ -1,63 +1,21 @@
-# Lightweight build using Ubuntu (Playwright removed)
-FROM ubuntu:24.04
+FROM denoland/deno:2.6.3
 
-LABEL maintainer="Alt RSS Reader Team"
-LABEL description="OAuth token refresh using refresh tokens only - Deno 2.5.4"
-LABEL version="2.5.4"
-
-# Install required dependencies, Deno 2.5.4, and kubectl
-RUN apt-get update && apt-get install -y unzip curl ca-certificates && \
-    curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/root/.deno sh -s v2.5.4 && \
-    mv /root/.deno/bin/deno /usr/local/bin/deno && \
-    chmod +x /usr/local/bin/deno && \
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
-    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
-    rm kubectl && \
-    rm -rf /var/lib/apt/lists/* && \
-    apt-get clean
-
-# Create non-root user for security
-RUN useradd -m -u 1001 -s /bin/bash authmanager
-
-# Set up working directory
+# Set working directory
 WORKDIR /app
 
-# Copy source code and configuration
-COPY --chown=authmanager:authmanager deno.json main.ts ./
-COPY --chown=authmanager:authmanager src/ ./src/
+# Cache dependencies
+# Copy only the main file first to cache dependencies if possible,
+# or if using deno.json/import_map, copy those first.
+# Since we only have main.ts and src, we copy everything but ideally we'd cache first.
+# For now, simplistic approach is fine as Deno caches based on import URLs.
 
-# Create required directories with proper permissions
-RUN mkdir -p /app/.cache /app/logs /tmp/deno-cache \
-    && chown -R authmanager:authmanager /app /home/authmanager /tmp/deno-cache \
-    && chmod 755 /app/.cache /app/logs /tmp/deno-cache
+COPY . .
 
-# Cache Deno dependencies as root first
-RUN DENO_DIR=/tmp/deno-cache deno cache main.ts \
-    && chown -R authmanager:authmanager /tmp/deno-cache
+# Cache dependencies by compiling/caching main entry point
+RUN deno cache main.ts
 
-# Switch to non-root user
-USER authmanager
+# Set environment variables
+ENV TOKEN_STORAGE_PATH=/app/secrets/oauth2_token.env
 
-# Set environment variables for optimal Deno operation
-ENV DENO_DIR=/tmp/deno-cache
-ENV DENO_DEPLOYMENT_ID=auth-token-manager
-ENV NO_COLOR=1
-ENV DENO_NO_UPDATE_CHECK=1
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD deno run --allow-all main.ts health || exit 1
-
-# Default command
-CMD ["deno", "run", "--allow-all", "main.ts", "health"]
-
-# Expose port for health checks (optional)
-EXPOSE 8080
-
-# Volume for temporary files
-VOLUME ["/tmp"]
-
-# Metadata
-LABEL org.opencontainers.image.source="https://github.com/Kaikei-e/Alt"
-LABEL org.opencontainers.image.description="Automated OAuth token refresh system for Alt RSS Reader"
-LABEL org.opencontainers.image.licenses="MIT"
+# Default command to run the daemon
+CMD ["run", "--allow-all", "main.ts", "daemon"]

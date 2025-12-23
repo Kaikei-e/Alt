@@ -2,9 +2,9 @@
  * File-based Secret management for OAuth tokens (.env format)
  */
 
-import type { TokenResponse } from '../auth/types.ts';
+import type { TokenResponse, SecretManager, SecretData } from '../auth/types.ts';
 
-export class EnvFileSecretManager {
+export class EnvFileSecretManager implements SecretManager {
   constructor(
     private filePath: string
   ) { }
@@ -76,12 +76,7 @@ export class EnvFileSecretManager {
     }
   }
 
-  async getTokenSecret(): Promise<{
-    access_token?: string;
-    refresh_token?: string;
-    expires_at?: string;
-    updated_at?: string;
-  } | null> {
+  async getTokenSecret(): Promise<SecretData | null> {
     try {
       console.log(`💫 Reading token file: ${this.filePath}`);
 
@@ -107,8 +102,10 @@ export class EnvFileSecretManager {
       return {
         access_token: data['OAUTH2_ACCESS_TOKEN'],
         refresh_token: data['OAUTH2_REFRESH_TOKEN'],
-        expires_at: data['OAUTH2_EXPIRES_AT'],
-        updated_at: new Date().toISOString() // Approximate since we don't store update time in .env
+        expires_at: data['OAUTH2_EXPIRES_AT'] || '',
+        updated_at: new Date().toISOString(), // Approximate since we don't store update time in .env
+        token_type: data['OAUTH2_TOKEN_TYPE'] || 'Bearer',
+        scope: 'read write'
       };
 
     } catch (error) {

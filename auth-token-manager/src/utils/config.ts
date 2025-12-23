@@ -11,18 +11,10 @@ export interface LoggerConfig {
 }
 
 export interface ConfigOptions {
-  token_storage_type: 'kubernetes_secret' | 'file';
   token_storage_path: string;
-  kubernetes_namespace: string;
-  secret_name: string;
   retry: RetryConfig;
   network: NetworkConfig;
   logger: LoggerConfig;
-}
-
-export interface KubernetesConfig {
-  namespace: string;
-  secretName: string;
 }
 
 class ConfigManager {
@@ -37,10 +29,7 @@ class ConfigManager {
 
   async loadConfig(): Promise<ConfigOptions> {
     const configOptions: ConfigOptions = {
-      token_storage_type: (Deno.env.get('TOKEN_STORAGE_TYPE') as 'kubernetes_secret' | 'file') || 'kubernetes_secret',
       token_storage_path: Deno.env.get('TOKEN_STORAGE_PATH') || '/app/secrets/oauth2_token.env',
-      kubernetes_namespace: Deno.env.get('KUBERNETES_NAMESPACE') || 'alt-processing',
-      secret_name: Deno.env.get('SECRET_NAME') || 'pre-processor-sidecar-oauth2-token',
       retry: {
         max_attempts: parseInt(Deno.env.get('RETRY_MAX_ATTEMPTS') || '3'),
         base_delay: parseInt(Deno.env.get('RETRY_BASE_DELAY') || '1000'),
@@ -91,22 +80,10 @@ class ConfigManager {
       }
     }
 
-    // Check storage configuration
-    const type = Deno.env.get('TOKEN_STORAGE_TYPE');
-    if (type && type !== 'kubernetes_secret' && type !== 'file') {
-      console.error(`Invalid TOKEN_STORAGE_TYPE: ${type}. Must be 'kubernetes_secret' or 'file'`);
-      return false;
-    }
-
-    if (type === 'file' && !Deno.env.get('TOKEN_STORAGE_PATH')) {
-      console.error('TOKEN_STORAGE_PATH is required when TOKEN_STORAGE_TYPE is "file"');
-      // We have a default, but explicit check is good practice if default fails
-    }
-
     // Enhanced logging with configuration status
     console.log('✅ Configuration validation successful');
     console.log('ℹ️ Using refresh token flow only (browser automation disabled)');
-    console.log(`ℹ️ Storage mode: ${type || 'kubernetes_secret'}`);
+    console.log('ℹ️ Storage mode: file');
 
     // Log configuration summary (without sensitive data)
     const clientId = this.getEnvOrFile('INOREADER_CLIENT_ID');
@@ -120,13 +97,6 @@ class ConfigManager {
       client_id: this.getEnvOrFile('INOREADER_CLIENT_ID')!,
       client_secret: this.getEnvOrFile('INOREADER_CLIENT_SECRET')!,
       redirect_uri: Deno.env.get('INOREADER_REDIRECT_URI') || 'http://localhost:8080/callback',
-    };
-  }
-
-  getKubernetesConfig(): KubernetesConfig {
-    return {
-      namespace: Deno.env.get('KUBERNETES_NAMESPACE') || 'alt-processing',
-      secretName: Deno.env.get('SECRET_NAME') || 'pre-processor-sidecar-oauth2-token',
     };
   }
 

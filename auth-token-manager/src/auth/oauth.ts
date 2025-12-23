@@ -9,6 +9,7 @@ import type {
   AuthenticationResult,
   NetworkConfig,
   RetryConfig,
+  SecretManager,
 } from "./types.ts";
 
 import { logger } from "../utils/logger.ts";
@@ -16,6 +17,7 @@ import { logger } from "../utils/logger.ts";
 export class InoreaderTokenManager {
   constructor(
     private credentials: InoreaderCredentials,
+    private secretManager: SecretManager,
     private networkConfig: NetworkConfig = {
       http_timeout: 30000,
       connectivity_check: true,
@@ -27,21 +29,19 @@ export class InoreaderTokenManager {
       max_delay: 30000,
       backoff_factor: 2,
     },
-    private kubernetesNamespace: string = "alt-processing",
-    private secretName: string = "inoreader-tokens",
-  ) {}
+  ) { }
 
   /**
    * Initialize token manager - no browser required
    */
   async initialize(): Promise<void> {
     logger.info("Initializing token manager (refresh-token-only mode)");
-    
+
     // Network connectivity check if enabled
     if (this.networkConfig.connectivity_check) {
       await this.checkNetworkConnectivity();
     }
-    
+
     logger.info("Token manager initialized successfully");
   }
 
@@ -65,7 +65,7 @@ export class InoreaderTokenManager {
       // Execute refresh token flow with retry logic
       return await this.retryOperation(async () => {
         const refreshResult = await this.executeRefreshTokenFlow();
-        
+
         const duration = Date.now() - startTime;
         logger.info("Token refresh completed successfully", {
           duration_ms: duration,
@@ -86,7 +86,7 @@ export class InoreaderTokenManager {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      logger.error("Token refresh failed", { 
+      logger.error("Token refresh failed", {
         duration_ms: duration,
         error: errorMessage,
       });
@@ -107,17 +107,8 @@ export class InoreaderTokenManager {
    * Execute refresh token flow to get new access token
    */
   private async executeRefreshTokenFlow(): Promise<TokenResponse> {
-    // Import K8s secret manager to get existing refresh token
-    const { K8sSecretManager } = await import(
-      "../k8s/secret-manager-simple.ts"
-    );
-    const secretManager = new K8sSecretManager(
-      this.kubernetesNamespace,
-      this.secretName,
-    );
-
     // Get existing token data
-    const existingTokenData = await secretManager.getTokenSecret();
+    const existingTokenData = await this.secretManager.getTokenSecret();
     if (!existingTokenData || !existingTokenData.refresh_token) {
       throw new Error("No existing refresh token found. Manual OAuth setup required.");
     }
@@ -133,7 +124,7 @@ export class InoreaderTokenManager {
       const now = new Date();
       const timeUntilExpiry = expiresAt.getTime() - now.getTime();
       const fiveMinutes = 5 * 60 * 1000;
-      
+
       if (timeUntilExpiry > fiveMinutes) {
         logger.info("Current access token is still valid", {
           expires_at: expiresAt.toISOString(),
@@ -175,16 +166,16 @@ export class InoreaderTokenManager {
     if (!response.ok) {
       const errorText = await response.text();
       let errorData: any = {};
-      
+
       try {
         errorData = JSON.parse(errorText);
       } catch {
         // Keep errorText if not valid JSON
       }
-      
+
       const errorCode = errorData.error || 'unknown_error';
       const errorDescription = errorData.error_description || errorText;
-      
+
       logger.error("Refresh token API call failed", {
         status: response.status,
         error_code: errorCode,
@@ -208,7 +199,7 @@ export class InoreaderTokenManager {
     }
 
     const data = await response.json();
-    
+
     // Validate response data
     if (!data.access_token) {
       throw new Error("OAuth response missing access_token");
@@ -268,7 +259,7 @@ export class InoreaderTokenManager {
     try {
       const proxyUrl = Deno.env.get("HTTPS_PROXY") || Deno.env.get("HTTP_PROXY");
       const fallbackToDirect = Deno.env.get("NETWORK_FALLBACK_TO_DIRECT") === "true";
-      
+
       let fetchOptions: RequestInit = {
         ...options,
         signal: controller.signal,
@@ -298,12 +289,12 @@ export class InoreaderTokenManager {
               signal: proxyTestController.signal,
             });
             clearTimeout(proxyTestTimeout);
-            
+
             // Proxy works, use normal timeout for actual request
             const response = await fetch(url, fetchOptions);
             logger.info("Proxy connection successful");
             return response;
-            
+
           } catch (proxyError) {
             clearTimeout(proxyTestTimeout);
             logger.warn("Proxy connection failed", {
@@ -311,7 +302,7 @@ export class InoreaderTokenManager {
               proxy_url: proxyUrl,
               target_url: url,
             });
-            
+
             if (!fallbackToDirect) {
               logger.error("Proxy connection failed and direct fallback disabled", {
                 proxy_url: proxyUrl,
@@ -320,14 +311,14 @@ export class InoreaderTokenManager {
               });
               throw new Error(`Proxy connection required but failed: ${proxyError instanceof Error ? proxyError.message : String(proxyError)}`);
             }
-            
+
             logger.info("Attempting direct connection fallback");
           }
         } catch (proxySetupError) {
           logger.warn("Proxy setup failed", {
             error: proxySetupError instanceof Error ? proxySetupError.message : String(proxySetupError),
           });
-          
+
           if (!fallbackToDirect) {
             logger.error("Proxy setup failed and direct fallback disabled", {
               proxy_url: proxyUrl,
@@ -341,11 +332,11 @@ export class InoreaderTokenManager {
 
       // Second attempt: Direct connection (either no proxy configured or fallback enabled)
       logger.info("Using direct connection", { target_url: url });
-      
+
       // Remove proxy-related environment variables temporarily for direct connection
       const originalHttpProxy = Deno.env.get("HTTP_PROXY");
       const originalHttpsProxy = Deno.env.get("HTTPS_PROXY");
-      
+
       if (fallbackToDirect && (originalHttpProxy || originalHttpsProxy)) {
         logger.info("Temporarily disabling proxy for direct connection");
         if (originalHttpProxy) Deno.env.delete("HTTP_PROXY");
@@ -357,7 +348,7 @@ export class InoreaderTokenManager {
           ...options,
           signal: controller.signal,
         };
-        
+
         const response = await fetch(url, directFetchOptions);
         logger.info("Direct connection successful");
         return response;
@@ -442,7 +433,7 @@ export class InoreaderTokenManager {
 
         const delay = Math.min(
           this.retryConfig.base_delay *
-            Math.pow(this.retryConfig.backoff_factor, attempt - 1),
+          Math.pow(this.retryConfig.backoff_factor, attempt - 1),
           this.retryConfig.max_delay,
         );
 

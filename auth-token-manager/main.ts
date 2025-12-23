@@ -5,15 +5,15 @@
 
 import { config } from "./src/utils/config.ts";
 import { InoreaderTokenManager } from "./src/auth/oauth.ts";
-import { K8sSecretManager } from "./src/k8s/secret-manager-simple.ts";
 import { EnvFileSecretManager } from "./src/file/secret-manager-env-file.ts";
+import type { SecretManager } from "./src/auth/types.ts";
 import {
   StructuredLogger,
 } from "./src/utils/logger.ts";
 
 // Initialize structured logging with sanitization
 const logger = new StructuredLogger("auth-token-manager");
-logger.info("Starting auth-token-manager v2.0.0 (refresh-token-only mode)");
+logger.info("Starting auth-token-manager v2.1.0 (daemon mode)");
 
 async function main() {
   try {
@@ -28,7 +28,7 @@ async function main() {
     logger.info("Configuration validation successful");
 
     // Get command from arguments
-    const command = Deno.args[0] || "health";
+    const command = Deno.args[0] || "daemon";
 
     switch (command) {
       case "authorize":
@@ -64,15 +64,10 @@ async function main() {
 }
 
 // Helper to get the appropriate secret manager
-async function getSecretManager() {
+async function getSecretManager(): Promise<SecretManager> {
   const configOptions = await config.loadConfig();
-  if (configOptions.token_storage_type === 'file') {
-    return new EnvFileSecretManager(configOptions.token_storage_path);
-  }
-  return new K8sSecretManager(
-    configOptions.kubernetes_namespace,
-    configOptions.secret_name,
-  );
+  // Always use generic file secret manager
+  return new EnvFileSecretManager(configOptions.token_storage_path);
 }
 
 async function runTokenRefresh() {
@@ -81,13 +76,13 @@ async function runTokenRefresh() {
   try {
     const configOptions = await config.loadConfig();
     const credentials = config.getInoreaderCredentials();
+    const secretManager = await getSecretManager();
 
     const tokenManager = new InoreaderTokenManager(
       credentials,
+      secretManager,
       configOptions.network,
       configOptions.retry,
-      configOptions.kubernetes_namespace,
-      configOptions.secret_name,
     );
 
     logger.info("Initializing token manager");
@@ -101,7 +96,7 @@ async function runTokenRefresh() {
     }
 
     logger.info("Storing tokens to secret storage");
-    const secretManager = await getSecretManager();
+    // secretManager already instantiated
 
     await secretManager.updateTokenSecret(result.tokens);
 
@@ -135,7 +130,7 @@ async function runHealthCheck() {
       Deno.env.get('INOREADER_CLIENT_SECRET')
     );
 
-    // Check Storage (Kubernetes or File) accessibility
+    // Check Storage accessibility
     try {
       const secretManager = await getSecretManager();
 
@@ -164,8 +159,7 @@ async function runHealthCheck() {
         }
       }
     } catch (error) {
-      const configOptions = await config.loadConfig();
-      logger.warn(`Storage check failed (${configOptions.token_storage_type})`, {
+      logger.warn(`Storage check failed`, {
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -431,7 +425,6 @@ async function runTokenMonitoring() {
         needs_refresh_soon: timeUntilExpiry < thirtyMinutes,
       },
       system_status: {
-        kubernetes_accessible: (await config.loadConfig()).token_storage_type === 'kubernetes_secret',
         secret_exists: true,
         configuration_valid: config.validateConfig(),
       },
