@@ -57,10 +57,12 @@ jobs:
     timeout-minutes: 60
     runs-on: self-hosted
 
+    container:
+      image: mcr.microsoft.com/playwright:v1.57.0-jammy
+
     env:
       CI: true
       FORCE_COLOR: "1"
-      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/playwright-browsers
       PLAYWRIGHT_SKIP_GIT_INFO: "1"
 
     steps:
@@ -102,9 +104,6 @@ jobs:
           bun-version: latest
       - name: Install dependencies
         run: bun install
-        working-directory: ${{ inputs.working-directory || 'alt-frontend-sv' }}
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
         working-directory: ${{ inputs.working-directory || 'alt-frontend-sv' }}
       - name: Run Playwright tests
         run: npx playwright test --project=chromium --reporter=list

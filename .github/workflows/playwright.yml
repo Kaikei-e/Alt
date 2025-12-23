@@ -47,12 +47,14 @@ permissions:
 jobs:
   e2e:
     runs-on: self-hosted
+    container:
+      image: mcr.microsoft.com/playwright:v1.57.0-jammy
     timeout-minutes: 60
 
     env:
       CI: true
       FORCE_COLOR: "1"
-      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/playwright-browsers
+      FORCE_COLOR: "1"
       # Disable git information collection in Playwright reporters
       PLAYWRIGHT_SKIP_GIT_INFO: "1"
 
@@ -124,37 +126,7 @@ jobs:
             fi
           done
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v3
-        with:
-          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: ${{ runner.os }}-pw-browsers-${{ hashFiles(format('{0}/pnpm-lock.yaml', inputs.working-directory)) }}
-          restore-keys: |
-            ${{ runner.os }}-pw-browsers-
 
-      - name: Install Playwright browsers
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          echo "Waiting for package manager locks to be released..."
-          while sudo lsof /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || sudo lsof /var/lib/apt/lists/lock >/dev/null 2>&1; do
-            echo "Lock detected, waiting 10 seconds..."
-            sleep 10
-          done
-
-          for attempt in 1 2 3; do
-            echo "Attempt $attempt to install Playwright browsers..."
-            if pnpm exec playwright install --with-deps; then
-              echo "Successfully installed Playwright browsers"
-              break
-            else
-              if [ $attempt -eq 3 ]; then
-                echo "Failed to install after 3 attempts"
-                exit 1
-              fi
-              echo "Installation failed, waiting 30 seconds before retry..."
-              sleep 30
-            fi
-          done
 
       - name: Run Playwright tests
         working-directory: ${{ inputs.working-directory }}
