@@ -60,22 +60,38 @@ function log(msg: string) {
 const FEEDS_RESPONSE = {
   data: [
     {
+      id: "feed-1",
+      url: "https://example.com/ai-trends",
       title: "AI Trends",
       description: "Deep dive into the ecosystem.",
       link: "https://example.com/ai-trends",
-      published: "2025-12-20T10:00:00Z",
+      published_at: "2025-12-20T10:00:00Z",
+      tags: ["AI", "Tech"],
       author: { name: "Alice" },
+      thumbnail: "https://example.com/thumb.jpg",
+      feed_domain: "example.com",
+      read_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     },
     {
+      id: "feed-2",
+      url: "https://example.com/svelte-5",
       title: "Svelte 5 Tips",
       description: "Runes-first patterns for fast interfaces.",
       link: "https://example.com/svelte-5",
-      published: "2025-12-19T09:00:00Z",
+      published_at: "2025-12-19T09:00:00Z",
+      tags: ["Svelte", "Web"],
       author: { name: "Bob" },
+      thumbnail: null,
+      feed_domain: "svelte.dev",
+      read_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     },
   ],
-  next_cursor: null,
-  has_more: false,
+  next_cursor: "next-cursor-123",
+  has_more: true,
 };
 
 const VIEWED_FEEDS_EMPTY = {
@@ -169,6 +185,13 @@ const backendServer = http.createServer((req, res) => {
     return;
   }
 
+  // RSS Feed Link List mock
+  if (path === '/api/v1/rss-feed-link/list' || path === '/v1/rss-feed-link/list') {
+    res.writeHead(200);
+    res.end(JSON.stringify([]));
+    return;
+  }
+
   // Stats mock
   if (path === '/api/v1/feeds/stats' || path === '/v1/feeds/stats') {
     res.writeHead(200);
@@ -177,6 +200,31 @@ const backendServer = http.createServer((req, res) => {
       total_reads: 345,
       unread_count: 7
     }));
+    return;
+  }
+
+  // Stats detailed mock
+  if (path === '/api/v1/feeds/stats/detailed' || path === '/v1/feeds/stats/detailed') {
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      feed_amount: { amount: 10 },
+      total_articles: { amount: 50 },
+      unsummarized_articles: { amount: 5 },
+    }));
+    return;
+  }
+
+  // Unread count mock
+  if (path === '/api/v1/feeds/count/unreads' || path === '/v1/feeds/count/unreads') {
+    res.writeHead(200);
+    res.end(JSON.stringify({ count: 5 }));
+    return;
+  }
+
+  // Mark as read mock
+  if (path === '/api/v1/feeds/read' || path === '/v1/feeds/read') {
+    res.writeHead(200);
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 

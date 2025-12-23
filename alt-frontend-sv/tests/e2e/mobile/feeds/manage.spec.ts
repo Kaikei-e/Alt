@@ -13,6 +13,6 @@ test.describe("mobile feeds routes - manage", () => {
     ).toBeVisible();
 
     await page.getByRole("button", { name: "Add feed" }).click();
-    await expect(page.getByText("Please enter the RSS URL.")).toBeVisible();
+    await expect(page.getByText("Please enter the RSS URL.", { exact: true })).toBeVisible();
   });
 });
