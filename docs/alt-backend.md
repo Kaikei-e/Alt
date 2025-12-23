@@ -98,18 +98,18 @@ _Last reviewed: December 23, 2025_
 
 ```mermaid
 flowchart LR
-    Browser -->|"X-Alt headers / JWT" | AltBackend["Alt Backend (Echo + clean layers)"]
-    Browser -->|"SSE stats stream" | SSE["/v1/sse/feeds/stats"]
+    Browser -->|"X-Alt headers / JWT"| AltBackend["Alt Backend (Echo + clean layers)"]
+    Browser -->|"SSE stats stream"| SSE["/v1/sse/feeds/stats"]
     AltBackend -->|Reads/Writes| Postgres[(PostgreSQL via alt_db)]
-    AltBackend -->|Search requests| SearchIndexer["search-indexer (HTTP 9300)"]
+    AltBackend -->|"Search requests"| SearchIndexer["search-indexer (HTTP 9300)"]
     SearchIndexer -->|Indexes| Meili[(Meilisearch)]
-    AltBackend -->|Summarization (sync/stream/queue)| PreProcessor["pre-processor (api/v1/summarize*)"]
-    AltBackend -->|Recap bindings| RecapWorker["recap-worker (metrics, grp, recaps)"]
-    RecapWorker -->|LLM summaries| NewsCreator["news-creator"]
-    AltBackend -->|Morning updates| RecapWorker
-    AltBackend -->|Scraping policies| Postgres
-    HourlyJob["Hourly RSS job"] -->|CollectMultiple + RegisterMultiple| Postgres
-    DailyJob["Daily scraping-policy job"] -->|Refresh robots.txt| Postgres
-    AltBackend -->|Batch fetch| BatchFetcher["BatchArticleFetcher (rate-limited)"]
-    BatchFetcher -->|Fetch & store| Postgres
+    AltBackend -->|"Summarization (sync/stream/queue)"| PreProcessor["pre-processor (api/v1/summarize*)"]
+    AltBackend -->|"Recap bindings"| RecapWorker["recap-worker (metrics, grp, recaps)"]
+    RecapWorker -->|"LLM summaries"| NewsCreator["news-creator"]
+    AltBackend -->|"Morning updates"| RecapWorker
+    AltBackend -->|"Scraping policies"| Postgres
+    HourlyJob["Hourly RSS job"] -->|"CollectMultiple + RegisterMultiple"| Postgres
+    DailyJob["Daily scraping-policy job"] -->|"Refresh robots.txt"| Postgres
+    AltBackend -->|"Batch fetch"| BatchFetcher["BatchArticleFetcher (rate-limited)"]
+    BatchFetcher -->|"Fetch & store"| Postgres
 ```
