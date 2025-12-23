@@ -1,6 +1,7 @@
 package alt_db
 
 import (
+	"alt/domain"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -10,14 +11,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// ArticleContent represents article data retrieved from database
-type ArticleContent struct {
-	ID      string
-	Title   string
-	Content string
-	URL     string
-}
-
 const fetchArticleByURLQuery = `
 	SELECT id, title, content, url
 	FROM articles
@@ -25,7 +18,7 @@ const fetchArticleByURLQuery = `
 `
 
 // FetchArticleByURL retrieves article content from database by URL
-func (r *AltDBRepository) FetchArticleByURL(ctx context.Context, articleURL string) (*ArticleContent, error) {
+func (r *AltDBRepository) FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -35,7 +28,7 @@ func (r *AltDBRepository) FetchArticleByURL(ctx context.Context, articleURL stri
 		return nil, errors.New("article url cannot be empty")
 	}
 
-	var article ArticleContent
+	var article domain.ArticleContent
 	err := r.pool.QueryRow(ctx, fetchArticleByURLQuery, cleanURL).Scan(
 		&article.ID,
 		&article.Title,
@@ -64,7 +57,7 @@ const fetchArticleByIDQuery = `
 `
 
 // FetchArticleByID retrieves article content from database by ID
-func (r *AltDBRepository) FetchArticleByID(ctx context.Context, articleID string) (*ArticleContent, error) {
+func (r *AltDBRepository) FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -74,7 +67,7 @@ func (r *AltDBRepository) FetchArticleByID(ctx context.Context, articleID string
 		return nil, errors.New("article id cannot be empty")
 	}
 
-	var article ArticleContent
+	var article domain.ArticleContent
 	err := r.pool.QueryRow(ctx, fetchArticleByIDQuery, cleanID).Scan(
 		&article.ID,
 		&article.Title,

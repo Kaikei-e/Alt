@@ -73,6 +73,10 @@ type ApplicationComponents struct {
 	// Repository
 	AltDBRepository *alt_db.AltDBRepository
 
+	// Gateways
+	RobotsTxtGateway    *robots_txt_gateway.RobotsTxtGateway
+	FetchArticleGateway *fetch_article_gateway.FetchArticleGateway
+
 	// Usecases
 	FetchSingleFeedUsecase              *fetch_feed_usecase.FetchSingleFeedUsecase
 	FetchFeedsListUsecase               *fetch_feed_usecase.FetchFeedsListUsecase
@@ -180,8 +184,11 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	fetchFeedTagsGatewayImpl := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(altDBRepository)
 	fetchFeedTagsUsecase := fetch_feed_tags_usecase.NewFetchFeedTagsUsecase(feedURLToIDGatewayImpl, fetchFeedTagsGatewayImpl)
 
+	// Robots.txt gateway (used by multiple components)
+	robotsTxtGatewayImpl := robots_txt_gateway.NewRobotsTxtGateway(httpClient)
+
 	fetchArticleGatewayImpl := fetch_article_gateway.NewFetchArticleGateway(rateLimiter, httpClient)
-	fetchArticleUsecase := fetch_article_usecase.NewArticleUsecase(fetchArticleGatewayImpl)
+	fetchArticleUsecase := fetch_article_usecase.NewArticleUsecase(fetchArticleGatewayImpl, robotsTxtGatewayImpl, altDBRepository)
 	archiveArticleGatewayImpl := archive_article_gateway.NewArchiveArticleGateway(altDBRepository)
 	archiveArticleUsecase := archive_article_usecase.NewArchiveArticleUsecase(fetchArticleGatewayImpl, archiveArticleGatewayImpl)
 
@@ -226,7 +233,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	// Scraping domain components
 	scrapingDomainGatewayImpl := scraping_domain_gateway.NewScrapingDomainGateway(altDBRepository)
-	robotsTxtGatewayImpl := robots_txt_gateway.NewRobotsTxtGateway(httpClient)
 	scrapingDomainUsecase := scraping_domain_usecase.NewScrapingDomainUsecaseWithRepository(scrapingDomainGatewayImpl, robotsTxtGatewayImpl, altDBRepository)
 
 	return &ApplicationComponents{
@@ -237,6 +243,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 		// Repository
 		AltDBRepository: altDBRepository,
+
+		// Gateways
+		RobotsTxtGateway:    robotsTxtGatewayImpl,
+		FetchArticleGateway: fetchArticleGatewayImpl,
 
 		// Usecases
 		FetchSingleFeedUsecase:              fetchSingleFeedUsecase,

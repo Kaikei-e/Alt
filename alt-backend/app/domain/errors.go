@@ -29,3 +29,12 @@ var (
 	ErrArticleNotFound      = errors.New("article not found")
 	ErrArticleAlreadyExists = errors.New("article already exists")
 )
+
+type ComplianceError struct {
+	Code    int
+	Message string
+}
+
+func (e *ComplianceError) Error() string {
+	return e.Message
+}

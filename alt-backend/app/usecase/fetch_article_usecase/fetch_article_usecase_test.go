@@ -15,7 +15,10 @@ func TestFetchArticleUsecase_Execute_Success(t *testing.T) {
 
 	// モックの準備
 	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
-	usecase := NewArticleUsecase(mockArticleFetcher)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo)
 
 	// テストデータ
 	articleURL := "https://example.com/article"
@@ -48,7 +51,10 @@ func TestFetchArticleUsecase_Execute_Error(t *testing.T) {
 
 	// モックの準備
 	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
-	usecase := NewArticleUsecase(mockArticleFetcher)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo)
 
 	// テストデータ
 	articleURL := "https://example.com/article"
@@ -81,7 +87,10 @@ func TestFetchArticleUsecase_Execute_ExtractsTextFromHTML(t *testing.T) {
 
 	// モックの準備
 	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
-	usecase := NewArticleUsecase(mockArticleFetcher)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo)
 
 	// テストデータ: 画像、スクリプト、スタイルを含むHTML
 	articleURL := "https://example.com/article"
@@ -141,7 +150,10 @@ func TestFetchArticleUsecase_Execute_HandlesPlainText(t *testing.T) {
 
 	// モックの準備
 	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
-	usecase := NewArticleUsecase(mockArticleFetcher)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo)
 
 	// テストデータ: プレーンテキスト
 	articleURL := "https://example.com/article"
@@ -174,7 +186,10 @@ func TestFetchArticleUsecase_Execute_ReturnsErrorForEmptyContent(t *testing.T) {
 
 	// モックの準備
 	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
-	usecase := NewArticleUsecase(mockArticleFetcher)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo)
 
 	// テストデータ: 空のコンテンツ
 	articleURL := "https://example.com/article"

@@ -12,6 +12,7 @@ package mocks
 import (
 	domain "alt/domain"
 	context "context"
+	url "net/url"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -54,4 +55,19 @@ func (m *MockRobotsTxtPort) FetchRobotsTxt(ctx context.Context, domainName, sche
 func (mr *MockRobotsTxtPortMockRecorder) FetchRobotsTxt(ctx, domainName, scheme any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchRobotsTxt", reflect.TypeOf((*MockRobotsTxtPort)(nil).FetchRobotsTxt), ctx, domainName, scheme)
+}
+
+// IsPathAllowed mocks base method.
+func (m *MockRobotsTxtPort) IsPathAllowed(ctx context.Context, targetURL *url.URL, userAgent string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsPathAllowed", ctx, targetURL, userAgent)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsPathAllowed indicates an expected call of IsPathAllowed.
+func (mr *MockRobotsTxtPortMockRecorder) IsPathAllowed(ctx, targetURL, userAgent any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPathAllowed", reflect.TypeOf((*MockRobotsTxtPort)(nil).IsPathAllowed), ctx, targetURL, userAgent)
 }
