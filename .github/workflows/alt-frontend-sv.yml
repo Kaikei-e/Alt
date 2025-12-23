@@ -98,6 +98,9 @@ jobs:
         with:
           node-version: ${{ inputs.node-version || '24' }}
 
+      - name: Install unzip
+        run: apt-get update && apt-get install -y unzip
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
