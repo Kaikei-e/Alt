@@ -56,6 +56,14 @@ export OLLAMA_NUM_THREAD="${OLLAMA_NUM_THREAD:-12}"              # CPUスレッ�
 # バッチサイズ: RTX 4060最適化（1024に統一、config.pyと一致）
 export OLLAMA_NUM_BATCH="${OLLAMA_NUM_BATCH:-1024}"
 
+# --- News Creator Application Configuration --------------------------------
+# Hierarchical Summarization Tuning
+# 16K context window allows for larger articles without splitting.
+# Increasing threshold to 40,000 chars (approx. 10-13k tokens) to use full context.
+export HIERARCHICAL_SINGLE_ARTICLE_THRESHOLD="${HIERARCHICAL_SINGLE_ARTICLE_THRESHOLD:-40000}"
+# If splitting is needed, use larger chunks (20,000 chars) to reduce overhead / number of chunks.
+export HIERARCHICAL_SINGLE_ARTICLE_CHUNK_SIZE="${HIERARCHICAL_SINGLE_ARTICLE_CHUNK_SIZE:-20000}"
+
 ## 公式：OLLAMA_DEBUG=1 のように指定（レベル文字列ではない）
 export OLLAMA_DEBUG="${OLLAMA_DEBUG:-0}"
 
