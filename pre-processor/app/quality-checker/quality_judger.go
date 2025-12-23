@@ -24,7 +24,7 @@ import (
 var (
 	// qualityCheckerAPIURL can be overridden in tests
 	qualityCheckerAPIURL = "http://news-creator:11434/api/generate"
-	modelName            = "gemma3:4b"
+	modelName            = "gemma3-4b-16k"
 	lowScoreThreshold    = 7 // 7 is the lowest score that is acceptable
 )
 
