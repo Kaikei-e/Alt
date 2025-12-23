@@ -1,5 +1,6 @@
 import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
+import { env } from "$env/dynamic/private";
 import { ory } from "$lib/ory";
 
 const PUBLIC_ROUTES = [
@@ -22,6 +23,11 @@ const PUBLIC_ROUTES = [
 ];
 
 export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
+	console.log("[hooks] Incoming request:", event.url.pathname);
+	console.log("[hooks] KRATOS_INTERNAL_URL:", env.KRATOS_INTERNAL_URL);
+	console.log("[hooks] AUTH_HUB_INTERNAL_URL:", env.AUTH_HUB_INTERNAL_URL);
+	console.log("[hooks] BACKEND_BASE_URL:", env.BACKEND_BASE_URL);
+	const start = performance.now();
 	const { url } = event;
 	const pathname = url.pathname;
 
@@ -42,7 +48,8 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	}
 
 	// Check if this is an SSE/streaming endpoint
-	const isStreamEndpoint = pathname.includes("/stream") || pathname.includes("/sse");
+	const isStreamEndpoint =
+		pathname.includes("/stream") || pathname.includes("/sse");
 
 	// Validate session
 	try {
@@ -80,7 +87,10 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 				}
 			}
 			// Check error message for status codes
-			else if (errorMessage.includes("403") || errorMessage.includes("Forbidden")) {
+			else if (
+				errorMessage.includes("403") ||
+				errorMessage.includes("Forbidden")
+			) {
 				errorStatus = 403;
 			}
 
@@ -93,13 +103,17 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 			};
 
 			// Safely extract response status if available (without full response body)
-			const errorResponse = errorObj.response as Record<string, unknown> | undefined;
+			const errorResponse =
+				(errorObj.response as Record<string, unknown> | undefined);
 			if (errorResponse) {
 				safeErrorInfo.responseStatus = errorResponse.status;
 				safeErrorInfo.responseStatusText = errorResponse.statusText;
 				// Log the error data if it exists, it might contain the Kratos reason
 				if (errorResponse.data) {
-					safeErrorInfo.responseData = JSON.stringify(errorResponse.data).substring(0, 500);
+					safeErrorInfo.responseData = JSON.stringify(errorResponse.data).substring(
+						0,
+						500,
+					);
 				}
 			}
 
@@ -140,7 +154,7 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 				return new Response(
 					JSON.stringify({
 						error: errorStatus === 403 ? "Forbidden" : "Authentication required",
-						message: "Session validation failed"
+						message: "Session validation failed",
 					}),
 					{
 						status: errorStatus,
@@ -150,57 +164,113 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 							// For SSE endpoints, add headers to prevent buffering
 							...(isStreamEndpoint && {
 								"X-Accel-Buffering": "no",
-								"Connection": "close",
+								Connection: "close",
 							}),
 						},
-					}
+					},
 				);
 			}
 		}
-	}
 
-	// Protect routes
-	if (!isPublic && !event.locals.session) {
-		// API endpoints should return 401 instead of redirecting
-		if (pathname.startsWith("/sv/api/") || pathname.startsWith("/api/")) {
-			const isStreamEndpoint = pathname.includes("/stream") || pathname.includes("/sse");
-			console.log("[hooks.server] Returning 401 for unauthenticated API request", {
-				pathname,
-				isStreamEndpoint,
-			});
-			return new Response(
-				JSON.stringify({ error: "Authentication required" }),
-				{
-					status: 401,
-					headers: {
-						"Content-Type": "application/json",
-						"Cache-Control": "no-cache",
-						// For SSE endpoints, add headers to prevent buffering
-						...(isStreamEndpoint && {
-							"X-Accel-Buffering": "no",
-							"Connection": "close",
-						}),
-					},
-				}
-			);
-		}
-
-		// /sv/ へのアクセスの場合は、/sv/home を return_to として設定（ループを防ぐ）
 		let returnTo: string;
 		if (pathname === "/sv" || pathname === "/sv/") {
 			returnTo = encodeURIComponent(`${url.origin}/sv/home`);
 		} else {
 			returnTo = encodeURIComponent(`${pathname}${url.search}`);
 		}
-		// Redirect to login page - explicitly include basePath to ensure correct routing
-		// SvelteKit's redirect() should add basePath automatically, but we include it explicitly to be safe
 		throw redirect(303, `/sv/login?return_to=${returnTo}`);
 	}
 
 	return resolveEvent(event, {
 		filterSerializedResponseHeaders: (name) => {
-			// Allow content-type header to be accessible in load functions
 			return name === "content-type";
 		},
 	});
+};
+
+/**
+ * Handle server-side fetches (SSR)
+ * Used to mock backend responses during E2E tests
+ */
+export const handleFetch: HandleFetch = async ({ request, fetch, event }) => {
+	if (env.E2E_TEST_MODE === "true") {
+		const url = new URL(request.url);
+
+		// Mock Auth Hub
+		if (url.href.includes("auth-hub")) {
+			if (url.pathname === "/session") {
+				return new Response(
+					JSON.stringify({ status: "ok" }),
+					{
+						headers: {
+							"Content-Type": "application/json",
+							"X-Alt-Backend-Token": "mock-backend-token",
+						},
+					}
+				);
+			}
+		}
+
+		// Mock Backend
+		if (url.href.includes("e2e-mock-backend")) {
+			// /v1/feeds/fetch/cursor
+			if (url.pathname === "/v1/feeds/fetch/cursor") {
+				const mockFeeds = {
+					data: [
+						{
+							id: "feed-1",
+							url: "https://example.com/feed1",
+							title: "AI Trends",
+							description: "Latest news on AI",
+							published_at: new Date().toISOString(),
+							tags: ["AI", "Tech"],
+							thumbnail: "https://example.com/thumb.jpg",
+							feed_domain: "example.com",
+							read_at: null,
+							created_at: new Date().toISOString(),
+							updated_at: new Date().toISOString(),
+						},
+						{
+							id: "feed-2",
+							url: "https://example.com/feed2",
+							title: "SvelteKit Updates",
+							description: "New features in SvelteKit",
+							published_at: new Date().toISOString(),
+							tags: ["Svelte", "Web"],
+							thumbnail: null,
+							feed_domain: "svelte.dev",
+							read_at: null,
+							created_at: new Date().toISOString(),
+							updated_at: new Date().toISOString(),
+						},
+					],
+					next_cursor: "next-cursor-123",
+					has_more: true,
+				};
+				return new Response(JSON.stringify(mockFeeds), {
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+
+			// /v1/feeds/stats/detailed
+			if (url.pathname === "/v1/feeds/stats/detailed") {
+				return new Response(JSON.stringify({
+					feed_amount: { amount: 10 },
+					total_articles: { amount: 50 },
+					unsummarized_articles: { amount: 5 },
+				}), {
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+
+			// /v1/feeds/count/unreads
+			if (url.pathname === "/v1/feeds/count/unreads") {
+				return new Response(JSON.stringify({ count: 5 }), {
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+		}
+	}
+
+	return fetch(request);
 };
