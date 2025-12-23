@@ -460,13 +460,16 @@ func (c *InoreaderClient) parseArticleData(itemMap map[string]interface{}) (*mod
 
 	if summary, ok := itemMap["summary"].(map[string]interface{}); ok {
 		if summaryContent, ok := summary["content"].(string); ok {
+			// Sanitize first to avoid truncating due to HTML overhead
+			sanitizedContent := c.sanitizer.SanitizeHTML(summaryContent)
+
 			// Apply content length limit (50KB for storage optimization)
 			const maxContentLength = 50000
-			if len(summaryContent) > maxContentLength {
-				content = summaryContent[:maxContentLength] + "\n<!-- Content truncated for storage optimization -->"
-				contentLength = maxContentLength
+			if len(sanitizedContent) > maxContentLength {
+				content = sanitizedContent[:maxContentLength] + "\n<!-- Content truncated for storage optimization -->"
+				contentLength = len(content)
 			} else {
-				content = c.sanitizer.SanitizeHTML(summaryContent)
+				content = sanitizedContent
 				contentLength = len(content)
 			}
 		}
@@ -531,17 +534,21 @@ func (c *InoreaderClient) parseArticleDataFromStruct(item driver.InoreaderArticl
 		"summary_direction", item.Summary.Direction)
 
 	if item.Summary.HasContent() {
+		// Sanitize first to avoid truncating due to HTML overhead
+		sanitizedContent := c.sanitizer.SanitizeHTML(item.Summary.Content)
+
 		// Apply content length limit (50KB for storage optimization)
 		const maxContentLength = 50000
-		if len(item.Summary.Content) > maxContentLength {
-			content = item.Summary.Content[:maxContentLength] + "\n<!-- Content truncated for storage optimization -->"
-			contentLength = maxContentLength
+		if len(sanitizedContent) > maxContentLength {
+			content = sanitizedContent[:maxContentLength] + "\n<!-- Content truncated for storage optimization -->"
+			contentLength = len(content)
 			c.logger.Info("Content truncated due to size limit",
 				"article_id", item.ID,
 				"original_length", len(item.Summary.Content),
+				"sanitized_length", len(sanitizedContent),
 				"truncated_length", maxContentLength)
 		} else {
-			content = c.sanitizer.SanitizeHTML(item.Summary.Content)
+			content = sanitizedContent
 			contentLength = len(content)
 		}
 
