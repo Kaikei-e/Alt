@@ -51,7 +51,7 @@ flowchart LR
     ArticleSummarizer -->|pull unsummarized| Postgres
     ArticleSummarizer -->|LLM calls| NewsCreator
     QualityChecker -->|fetch summaries| Postgres
-    QualityChecker -->|score & (maybe) delete| NewsCreator
+    QualityChecker -->|score / optional delete| NewsCreator
     QualityChecker -->|re-fetch| NewsCreator
 
     ArticleSync -->|Inoreader + sanitize| Postgres

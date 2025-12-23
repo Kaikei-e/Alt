@@ -20,44 +20,44 @@ _Last reviewed: December 23, 2025_
 
 ```mermaid
 flowchart LR
-    CLI[CLI flags<br>(--health-check, --oauth2-init, --schedule-mode)]
-    CLI --> Health[`performHealthCheckWithOutput`]
-    CLI --> OAuthInit[`performOAuth2Initialization`]
-    CLI --> ScheduleMode[`runScheduleMode` (CronJob/Debug)]
+    CLI["CLI flags - health-check, oauth2-init, schedule-mode"]
+    CLI --> Health["performHealthCheckWithOutput"]
+    CLI --> OAuthInit["performOAuth2Initialization"]
+    CLI --> ScheduleMode["runScheduleMode cronjob/debug"]
 
-    ScheduleMode --> Config[config.LoadConfig()]
-    Config --> TokenRepo[(Token repo: kubernetes_secret | file | env_var)]
-    TokenRepo --> SimpleTokenService
-    Secrets[OAuth2 Secret Service<br>(`OAUTH2_TOKEN_SECRET_NAME`)] --> SecretWatch[Secret watch<br>(`ENABLE_SECRET_WATCH`)]
+    ScheduleMode --> Config["config.LoadConfig"]
+    Config --> TokenRepo["Token repo (kubernetes_secret | file | env_var)"]
+    TokenRepo --> SimpleTokenService["SimpleTokenService"]
+    Secrets["OAuth2 Secret Service (OAUTH2_TOKEN_SECRET_NAME)"] --> SecretWatch["Secret watch (ENABLE_SECRET_WATCH)"]
     SecretWatch --> SimpleTokenService
     TokenRepo --> SecretWatch
-    SimpleTokenService --> TokenManagementService
-    TokenManagementService --> TokenRotationManager
-    TokenManagementService --> OAuth2Client[OAuth2 client<br>(`driver.NewOAuth2Client`)]
-    OAuth2Client --> InoreaderAPI[Inoreader token & reader APIs]
-    SimpleTokenService --> StatusTicker[Status ticker ⭢ logging `SimpleServiceStatus`]
+    SimpleTokenService --> TokenManagementService["TokenManagementService"]
+    TokenManagementService --> TokenRotationManager["TokenRotationManager"]
+    TokenManagementService --> OAuth2Client["OAuth2 client"]
+    OAuth2Client --> InoreaderAPI["Inoreader token and reader APIs"]
+    SimpleTokenService --> StatusTicker["Status ticker logging SimpleServiceStatus"]
 
-    InoreaderAPI --> InoreaderService
+    InoreaderAPI --> InoreaderService["InoreaderService"]
     RateLimitManager --> InoreaderService
-    InoreaderService --> ArticleFetchService
-    InoreaderService --> SubscriptionSyncService
-    ArticleFetchService --> SubscriptionRotator
-    SubscriptionRotator --> SchedulerNode[Scheduler<br>(`service/scheduler`)]
-    SchedulerNode --> SyncStateRepo[(SyncState repo)]
+    InoreaderService --> ArticleFetchService["ArticleFetchService"]
+    InoreaderService --> SubscriptionSyncService["SubscriptionSyncService"]
+    ArticleFetchService --> SubscriptionRotator["SubscriptionRotator"]
+    SubscriptionRotator --> SchedulerNode["Scheduler (service/scheduler)"]
+    SchedulerNode --> SyncStateRepo["SyncState repo"]
 
-    ScheduleMode --> DB[(Postgres)]
-    DB --> ArticleRepo[(Article repo)]
-    DB --> SubRepo[(Subscription repo)]
+    ScheduleMode --> DB["Postgres"]
+    DB --> ArticleRepo["Article repo"]
+    DB --> SubRepo["Subscription repo"]
     DB --> SyncStateRepo
 
-    ScheduleMode --> AdminAPI[Admin API server :8080]
-    AdminAPI --> ScheduleHandler[ScheduleHandler]
+    ScheduleMode --> AdminAPI["Admin API server 8080"]
+    AdminAPI --> ScheduleHandler["ScheduleHandler"]
     ScheduleHandler --> ArticleFetchService
     ScheduleHandler --> SubscriptionSyncService
-    Security[Authenticator + Memory rate limiter + OWASP validator] --> AdminAPI
-    AdminAPI --> ManualTriggers[Manual fetch/sync endpoints]
+    Security["Authenticator + Memory rate limiter + OWASP validator"] --> AdminAPI
+    AdminAPI --> ManualTriggers["Manual fetch and sync endpoints"]
 
-    ArticleFetchService --> RateLimitManager
+    ArticleFetchService --> RateLimitManager["RateLimitManager"]
 ```
 
 ## Configuration & Secrets
