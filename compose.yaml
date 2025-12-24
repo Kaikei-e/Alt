@@ -62,6 +62,7 @@ volumes:
   rask_log_aggregator_data:   # Rask log aggregator data
   clickhouse_data:            # ClickHouse database data
   news_creator_models:        # Ollama models for news-creator
+  summarizer_c_models:        # Ollama models for summarizer-c
   recap_db_data:              # Recap Worker PostgreSQL database data
   oauth_token_data:           # Shared volume for OAuth2 tokens
 x-rask-env: &rask-env
@@ -352,6 +353,53 @@ services:
     restart: "no"
     labels:
       - rask.group=news-creator-init
+
+  summarizer-c:
+    build:
+      context: ./summarizer-c
+      dockerfile: Dockerfile
+    profiles:
+      - ollama
+    ports:
+      - "11435:11434"
+    volumes:
+      - summarizer_c_models:/home/ollama-user/.ollama
+    # environment variables moved to Dockerfile
+    depends_on:
+      summarizer-c-volume-init:
+        condition: service_completed_successfully
+    networks:
+      - alt-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    labels:
+      - rask.group=summarizer-c
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+
+  summarizer-c-volume-init:
+    profiles:
+      - ollama
+    image: ollama/ollama:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mkdir -p /home/ollama-user/.ollama && chown -R 2000:2000 /home/ollama-user/.ollama"]
+    user: "0:0"
+    volumes:
+      - summarizer_c_models:/home/ollama-user/.ollama
+    networks:
+      - alt-network
+    restart: "no"
+    labels:
+      - rask.group=summarizer-c-init
 
   auth-token-manager:
     build:
