@@ -255,7 +255,7 @@ impl Config {
             ClassificationEvalConfig::Disabled
         };
         let clustering_genre_timeout =
-            parse_duration_secs("RECAP_CLUSTERING_GENRE_TIMEOUT_SECS", 300)?; // 5分
+            parse_duration_secs("RECAP_CLUSTERING_GENRE_TIMEOUT_SECS", 1500)?; // 25分
         let clustering_job_timeout =
             parse_duration_secs("RECAP_CLUSTERING_JOB_TIMEOUT_SECS", 1800)?; // 30分
         let clustering_min_success_genres = parse_usize("RECAP_CLUSTERING_MIN_SUCCESS_GENRES", 1)?;
