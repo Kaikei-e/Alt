@@ -577,6 +577,31 @@ async function startOAuthServer() {
       }
     }
 
+    if (reqUrl.pathname === "/api/token") {
+      try {
+        const secretManager = await getSecretManager();
+        const tokenData = await secretManager.getTokenSecret();
+
+        if (!tokenData) {
+          return new Response(JSON.stringify({ error: "No token data found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        return new Response(JSON.stringify(tokenData), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (err) {
+        logger.error("Failed to serve token API", { error: err });
+        return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
+
     return new Response("Not Found", { status: 404 });
   });
 }
