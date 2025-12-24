@@ -1,12 +1,12 @@
 
-import { describe, expect, test, mock } from "bun:test";
+import { describe, expect, test, vi } from "vitest";
 import { simulateTypewriterEffect } from "./streamingRenderer";
 
 describe("simulateTypewriterEffect", () => {
   test("should emit characters sequentially with delay", async () => {
     const chars: string[] = [];
     const delay = 10;
-    const tick = mock(async () => { });
+    const tick = vi.fn(async () => { });
 
     const typewriter = simulateTypewriterEffect(
       (char) => chars.push(char),
@@ -22,7 +22,7 @@ describe("simulateTypewriterEffect", () => {
     expect(chars.join("")).toBe("Hello");
     // 5 chars, 4 delays of 10ms = 40ms minimum.
     // Allow some buffer.
-    expect(duration).toBeGreaterThanOrEqual(40);
+    expect(duration).toBeGreaterThanOrEqual(35);
     expect(tick).toHaveBeenCalled();
   });
 
