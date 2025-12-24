@@ -54,7 +54,6 @@ jobs:
     env:
       CI: true
       FORCE_COLOR: "1"
-      FORCE_COLOR: "1"
       # Disable git information collection in Playwright reporters
       PLAYWRIGHT_SKIP_GIT_INFO: "1"
 
