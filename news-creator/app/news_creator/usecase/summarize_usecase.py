@@ -1,6 +1,7 @@
 """Summarize usecase - business logic for article summarization."""
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Tuple, Dict, Any, List, Optional, AsyncIterator
 import aiohttp
 
@@ -148,7 +149,9 @@ class SummarizeUsecase:
         )
 
         # Build prompt from template
-        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=truncated_content)
+        jst = timezone(timedelta(hours=9))
+        current_date_str = datetime.now(jst).strftime("%Y-%m-%d")
+        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=truncated_content, current_date=current_date_str)
         prompt_length = len(prompt)
         template_length = prompt_length - len(truncated_content)
 
@@ -542,7 +545,7 @@ class SummarizeUsecase:
         # (unlikely given 500 char limit per chunk, but possible).
         # Instead, just call LLM directly with standard summary prompt.
 
-        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=combined_text)
+        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=combined_text, current_date=datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d"))
 
         # Use standard summary configuration
         llm_options = {
@@ -649,7 +652,9 @@ class SummarizeUsecase:
 
         # Build prompt: Ensure we use truncated_content and enforce limit again just in case
         safe_content = truncated_content[:MAX_CONTENT_LENGTH]
-        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=safe_content)
+        jst = timezone(timedelta(hours=9))
+        current_date_str = datetime.now(jst).strftime("%Y-%m-%d")
+        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=safe_content, current_date=current_date_str)
         prompt_length = len(prompt)
 
         logger.info(

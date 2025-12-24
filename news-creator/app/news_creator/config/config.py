@@ -37,7 +37,7 @@ class NewsCreatorConfig:
         self.llm_service_url = os.getenv("LLM_SERVICE_URL", "http://localhost:11435")
         self.model_name = os.getenv("LLM_MODEL", "gemma3:4b")
         self.llm_timeout_seconds = self._get_int("LLM_TIMEOUT_SECONDS", 300)  # 5分に増加（1000トークン生成 + 続き生成に対応）
-        self.llm_keep_alive = self._get_int("LLM_KEEP_ALIVE_SECONDS", -1)
+        self.llm_keep_alive = self._get_int("LLM_KEEP_ALIVE_SECONDS", "24h")
         # Model-specific keep_alive settings (best practice: 16K/80K on-demand)
         # 16K model: 24h to allow unloading after use to save VRAM
         # 80K model: 15m to allow quick unloading after use to save VRAM

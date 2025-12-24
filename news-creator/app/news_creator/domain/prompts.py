@@ -4,6 +4,7 @@ SUMMARY_PROMPT_TEMPLATE = """<start_of_turn>user
 You are an expert multilingual journalist specializing in Japanese news summarization.
 
 TASK:
+- Current Date: {current_date}
 - Read the English article and produce a Japanese newspaper-style summary.
 - Work in two silent steps: (1) extract facts; (2) write the article. Do NOT show notes.
 
