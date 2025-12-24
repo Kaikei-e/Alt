@@ -43,20 +43,26 @@ type InoreaderClientInterface interface {
 
 // InoreaderService handles business logic for Inoreader API interactions
 type InoreaderService struct {
-	inoreaderClient        InoreaderClientInterface
-	apiUsageRepo           APIUsageRepository
-	tokenService           *SimpleTokenService
-	logger                 *slog.Logger
-	apiDailyLimit          int
-	maxArticlesPerRequest  int
+	inoreaderClient       InoreaderClientInterface
+	apiUsageRepo          APIUsageRepository
+	tokenService          TokenProvider
+	logger                *slog.Logger
+	apiDailyLimit         int
+	maxArticlesPerRequest int
 	safetyBuffer          int
 	rateLimitInfo         *models.APIRateLimitInfo
 	circuitBreaker        *utils.CircuitBreaker // TDD Phase 3 - REFACTOR: Circuit Breaker
 	monitor               *utils.Monitor        // TDD Phase 3 - REFACTOR: Structured Logging & Monitoring
 }
 
+// TokenProvider interface for token operations
+type TokenProvider interface {
+	GetValidToken(ctx context.Context) (*models.OAuth2Token, error)
+	EnsureValidToken(ctx context.Context) (*models.OAuth2Token, error)
+}
+
 // NewInoreaderService creates a new Inoreader API service
-func NewInoreaderService(inoreaderClient InoreaderClientInterface, apiUsageRepo APIUsageRepository, tokenService *SimpleTokenService, logger *slog.Logger) *InoreaderService {
+func NewInoreaderService(inoreaderClient InoreaderClientInterface, apiUsageRepo APIUsageRepository, tokenService TokenProvider, logger *slog.Logger) *InoreaderService {
 	// Use default logger if none provided
 	if logger == nil {
 		logger = slog.Default()
@@ -64,10 +70,10 @@ func NewInoreaderService(inoreaderClient InoreaderClientInterface, apiUsageRepo 
 
 	// TDD Phase 3 - REFACTOR: Initialize Circuit Breaker
 	circuitBreakerConfig := &utils.CircuitBreakerConfig{
-		FailureThreshold: 3,              // 3回連続失敗でOPEN
-		SuccessThreshold: 2,              // HALF_OPENで2回成功すればCLOSED  
+		FailureThreshold: 3,                // 3回連続失敗でOPEN
+		SuccessThreshold: 2,                // HALF_OPENで2回成功すればCLOSED
 		Timeout:          60 * time.Second, // 1分でHALF_OPENに移行
-		MaxRequests:      1,              // HALF_OPENで1つのリクエストを許可
+		MaxRequests:      1,                // HALF_OPENで1つのリクエストを許可
 	}
 
 	// TDD Phase 3 - REFACTOR: Initialize Monitoring
@@ -78,16 +84,16 @@ func NewInoreaderService(inoreaderClient InoreaderClientInterface, apiUsageRepo 
 		inoreaderClient:       inoreaderClient,
 		apiUsageRepo:          apiUsageRepo,
 		tokenService:          tokenService,
-		logger:               logger,
-		apiDailyLimit:        100,             // Zone 1 API limit
-		maxArticlesPerRequest: 100,            // Inoreader max per request
-		safetyBuffer:         10,              // Safety buffer to avoid hitting exact limit
+		logger:                logger,
+		apiDailyLimit:         100, // Zone 1 API limit
+		maxArticlesPerRequest: 100, // Inoreader max per request
+		safetyBuffer:          10,  // Safety buffer to avoid hitting exact limit
 		rateLimitInfo: &models.APIRateLimitInfo{
 			Zone1Limit: 100,
 			Zone2Limit: 100,
 		},
 		circuitBreaker: utils.NewCircuitBreaker(circuitBreakerConfig, logger), // TDD Phase 3
-		monitor:        monitor, // TDD Phase 3 - REFACTOR: Structured Logging & Monitoring
+		monitor:        monitor,                                               // TDD Phase 3 - REFACTOR: Structured Logging & Monitoring
 	}
 }
 
@@ -96,13 +102,13 @@ func (s *InoreaderService) GetValidToken(ctx context.Context) (*models.OAuth2Tok
 	if s.tokenService == nil {
 		return nil, fmt.Errorf("no token service configured")
 	}
-	
+
 	token, err := s.tokenService.GetValidToken(ctx)
 	if err != nil {
 		s.logger.Error("Failed to get valid token from token service", "error", err)
 		return nil, fmt.Errorf("token retrieval failed: %w", err)
 	}
-	
+
 	return token, nil
 }
 
@@ -111,23 +117,23 @@ func (s *InoreaderService) EnsureValidToken(ctx context.Context) (*models.OAuth2
 	if s.tokenService == nil {
 		return nil, fmt.Errorf("no token service configured")
 	}
-	
+
 	token, err := s.tokenService.EnsureValidToken(ctx)
 	if err != nil {
 		s.logger.Error("Failed to ensure valid token", "error", err)
 		return nil, fmt.Errorf("token validation failed: %w", err)
 	}
-	
+
 	return token, nil
 }
 
 // FetchSubscriptions retrieves user's subscription list from Inoreader API
 func (s *InoreaderService) FetchSubscriptions(ctx context.Context) ([]*models.Subscription, error) {
 	var subscriptions []*models.Subscription
-	
+
 	// TDD Phase 3 - REFACTOR: Monitor operation start time
 	startTime := time.Now()
-	
+
 	// TDD Phase 3 - REFACTOR: Wrap API call with Circuit Breaker
 	err := s.circuitBreaker.Execute(ctx, func(ctx context.Context) error {
 		// Ensure we have a valid token
@@ -200,7 +206,7 @@ func (s *InoreaderService) FetchSubscriptions(ctx context.Context) ([]*models.Su
 func (s *InoreaderService) FetchStreamContents(ctx context.Context, streamID, continuationToken string) ([]*models.Article, string, error) {
 	var articles []*models.Article
 	var nextContinuation string
-	
+
 	// TDD Phase 3 - REFACTOR: Wrap API call with Circuit Breaker
 	err := s.circuitBreaker.Execute(ctx, func(ctx context.Context) error {
 		// Ensure we have a valid token
@@ -225,10 +231,10 @@ func (s *InoreaderService) FetchStreamContents(ctx context.Context, streamID, co
 
 		// Make API call using client layer
 		response, err := s.inoreaderClient.FetchStreamContents(
-			ctx, 
-			token.AccessToken, 
-			streamID, 
-			continuationToken, 
+			ctx,
+			token.AccessToken,
+			streamID,
+			continuationToken,
 			s.maxArticlesPerRequest,
 		)
 		if err != nil {
@@ -303,10 +309,10 @@ func (s *InoreaderService) FetchUnreadStreamContents(ctx context.Context, stream
 
 	// Make API call using client layer for unread items
 	response, err := s.inoreaderClient.FetchUnreadStreamContents(
-		ctx, 
-		token.AccessToken, 
-		streamID, 
-		continuationToken, 
+		ctx,
+		token.AccessToken,
+		streamID,
+		continuationToken,
 		s.maxArticlesPerRequest,
 	)
 	if err != nil {
@@ -352,7 +358,7 @@ func (s *InoreaderService) CheckAPIRateLimit() (allowed bool, remaining int) {
 	}
 
 	allowed = s.rateLimitInfo.Zone1Usage < (s.rateLimitInfo.Zone1Limit - s.safetyBuffer)
-	
+
 	return allowed, remainingWithBuffer
 }
 
@@ -379,7 +385,7 @@ func (s *InoreaderService) resolveSubscriptionUUIDs(articles []*models.Article) 
 func (s *InoreaderService) UpdateAPIUsageFromHeaders(ctx context.Context, endpoint string) error {
 	s.logger.Warn("UpdateAPIUsageFromHeaders called - this should be replaced with header capture during API calls",
 		"endpoint", endpoint)
-	
+
 	// Return success to avoid breaking existing code, but log the issue
 	s.logger.Debug("API usage repository not configured or headers not available, skipping usage tracking")
 	return nil
@@ -454,7 +460,7 @@ func (s *InoreaderService) updateRateLimitInfoFromHeaders(headers map[string]str
 			s.rateLimitInfo.Zone1Usage = int(parsed)
 		}
 	}
-	
+
 	if zone1Limit, ok := headers["X-Reader-Zone1-Limit"]; ok {
 		if parsed, err := strconv.ParseInt(zone1Limit, 10, 32); err == nil {
 			s.rateLimitInfo.Zone1Limit = int(parsed)

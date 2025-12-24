@@ -126,76 +126,66 @@ func main() {
 
 	// Initialize token repository based on configuration
 	var tokenRepo repository.OAuth2TokenRepository
-	switch cfg.TokenStorageType {
-	case "kubernetes_secret":
-		k8sRepo, err := repository.NewKubernetesSecretRepository(
-			getNamespace(),
-			cfg.OAuth2SecretName,
-			logger,
-		)
-		if err != nil {
-			logger.Warn("Failed to initialize Kubernetes Secret repository, falling back to environment variables", "error", err)
-			tokenRepo = repository.NewEnvVarTokenRepository(logger)
-		} else {
-			logger.Info("Using Kubernetes Secret token repository")
-			tokenRepo = k8sRepo
-		}
-	case "file":
-		logger.Info("Using file-based token repository", "path", cfg.TokenStoragePath)
-		tokenRepo = repository.NewEnvFileTokenRepository(cfg.TokenStoragePath, logger)
-	case "env_var":
-		logger.Info("Using environment variable token repository")
-		tokenRepo = repository.NewEnvVarTokenRepository(logger)
-	default:
-		// Default behavior if not specified
-		// If using SimpleTokenService, it might fallback to its own logic, but better to be explicit
-		logger.Info("No specific token storage type, defaulting to EnvVar for repo init")
-		tokenRepo = repository.NewEnvVarTokenRepository(logger)
+
+	// Use RemoteTokenRepository - Centralized Token Management
+	authTokenManagerURL := os.Getenv("AUTH_TOKEN_MANAGER_URL")
+	if authTokenManagerURL == "" {
+		authTokenManagerURL = "http://auth-token-manager:9201"
 	}
+	logger.Info("Using remote token repository", "url", authTokenManagerURL)
+	tokenRepo = repository.NewRemoteTokenRepository(authTokenManagerURL, logger)
 
-	simpleTokenConfig := service.SimpleTokenConfig{
-		ClientID:            os.Getenv("INOREADER_CLIENT_ID"),
-		ClientSecret:        os.Getenv("INOREADER_CLIENT_SECRET"),
-		InitialAccessToken:  os.Getenv("INOREADER_ACCESS_TOKEN"),
-		InitialRefreshToken: os.Getenv("INOREADER_REFRESH_TOKEN"),
-		BaseURL:             cfg.OAuth2.BaseURL, // Use OAuth2-specific base URL
-		RefreshBuffer:       30 * time.Minute,   // API optimized buffer
-		CheckInterval:       3 * time.Hour,      // 3時間間隔（8回/日、API制限対応）
-
-		// OAuth2 Secret設定 - auth-token-manager連携
-		OAuth2SecretName:    cfg.OAuth2SecretName,
-		KubernetesNamespace: os.Getenv("KUBERNETES_NAMESPACE"),
-
-		// 恒久対応: 自律的Secret再読み込み機能
-		EnableSecretWatch: os.Getenv("ENABLE_SECRET_WATCH") == "true",
-	}
-
-	simpleTokenService, err := service.NewSimpleTokenService(simpleTokenConfig, tokenRepo, logger)
-	if err != nil {
-		logger.Error("Failed to create simple token service", "error", err)
+	// Initialize RemoteTokenService
+	remoteRepo, ok := tokenRepo.(*repository.RemoteTokenRepository)
+	if !ok {
+		logger.Error("Token repository is not RemoteTokenRepository, but it is required for RemoteTokenService")
 		os.Exit(1)
 	}
+	remoteTokenService := service.NewRemoteTokenService(remoteRepo, logger)
 
-	// Simple Token Serviceを開始
-	if err := simpleTokenService.Start(); err != nil {
-		logger.Error("Failed to start simple token service", "error", err)
-		os.Exit(1)
+	// Admin API用のトークンマネージャーアダプター作成 (Remote implementation)
+	tokenManagerAdapter := &RemoteAdminTokenManager{
+		service: remoteTokenService,
 	}
-
-	// Graceful shutdown設定
-	defer func() {
-		logger.Info("Shutting down simple token service...")
-		simpleTokenService.Stop()
-	}()
 
 	// Run in continuous scheduling mode with new token system
 	if *scheduleMode {
 		logger.Info("Starting in schedule mode as requested by flag")
 	}
-	if err := runScheduleMode(ctx, cfg, logger, simpleTokenService, tokenRepo); err != nil {
+	if err := runScheduleMode(ctx, cfg, logger, remoteTokenService, tokenManagerAdapter, remoteRepo); err != nil {
 		logger.Error("Scheduler failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+// RemoteAdminTokenManager implements handler.TokenManager for Admin API using RemoteTokenService
+type RemoteAdminTokenManager struct {
+	service *service.RemoteTokenService
+}
+
+func (m *RemoteAdminTokenManager) UpdateRefreshToken(ctx context.Context, refreshToken string, clientID, clientSecret string) error {
+	return fmt.Errorf("manual refresh token update not supported in remote mode - use auth-token-manager directly")
+}
+
+func (m *RemoteAdminTokenManager) GetTokenStatus() service.TokenStatus {
+	// Basic status for remote service
+	return service.TokenStatus{
+		IsAutoRefreshing: true, // Managed remotely
+		NeedsRefresh:     false,
+	}
+}
+
+func (m *RemoteAdminTokenManager) GetValidToken(ctx context.Context) (*service.TokenInfo, error) {
+	token, err := m.service.GetValidToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &service.TokenInfo{
+		AccessToken:  token.AccessToken,
+		RefreshToken: token.RefreshToken,
+		ExpiresAt:    token.ExpiresAt,
+		TokenType:    token.TokenType,
+	}, nil
 }
 
 func performHealthCheck() {
@@ -254,7 +244,7 @@ func performOAuth2Initialization(cfg *config.Config, logger *slog.Logger) {
 }
 
 // runScheduleMode は新しい統合トークンシステムでスケジュールモードを実行
-func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logger, simpleTokenService *service.SimpleTokenService, tokenRepo repository.OAuth2TokenRepository) error {
+func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logger, tokenProvider service.TokenProvider, tokenManagerAdapter handler.TokenManager, tokenRepo repository.OAuth2TokenRepository) error {
 	logger.Info("Initializing dual schedule processing system")
 
 	// Wait for Linkerd proxy initialization
@@ -307,8 +297,8 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	subscriptionRepo := repository.NewPostgreSQLSubscriptionRepository(db, logger)
 
 	// OAuth2クライアントの作成（Enhanced Token Serviceと同じ設定）
-	clientID := os.Getenv("INOREADER_CLIENT_ID")
-	clientSecret := os.Getenv("INOREADER_CLIENT_SECRET")
+	clientID := cfg.OAuth2.ClientID
+	clientSecret := cfg.OAuth2.ClientSecret
 	oauth2Client := driver.NewOAuth2Client(clientID, clientSecret, cfg.OAuth2.BaseURL, logger)
 	// Note: Do NOT call SetHTTPClient here - OAuth2Client already has proxy disabled for token refresh
 
@@ -335,7 +325,8 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 
 	// Create a mock APIUsageRepository since it's not needed
 	mockAPIUsageRepo := &mocks.MockAPIUsageRepository{}
-	inoreaderService := service.NewInoreaderService(inoreaderClient, mockAPIUsageRepo, simpleTokenService, logger)
+	// Connect InoreaderService to RemoteTokenService (via TokenProvider interface)
+	inoreaderService := service.NewInoreaderService(inoreaderClient, mockAPIUsageRepo, tokenProvider, logger)
 
 	subscriptionSyncService := service.NewSubscriptionSyncService(inoreaderService, subscriptionRepo, syncStateRepo, logger)
 	rateLimitManager := service.NewRateLimitManager(nil, logger)
@@ -376,8 +367,8 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	inputValidator := security.NewOWASPInputValidator()
 	metricsCollector := &SimpleAdminAPIMetricsCollector{logger: logger}
 
-	// Admin API用のトークンマネージャーアダプター作成
-	tokenManagerAdapter := service.NewSimpleTokenServiceAdapter(simpleTokenService)
+	// Admin API用のトークンマネージャーアダプター (passed from main)
+	// tokenManagerAdapter is already initialized in main
 
 	// Admin APIハンドラー作成
 	adminAPIHandler := handler.NewAdminAPIHandler(
@@ -498,6 +489,12 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 			return fmt.Errorf("failed to start schedule handler: %w", err)
 		}
 	*/
+	// Legacy handler kept for Admin API references but not started automatically
+	/*
+		if err := scheduleHandler.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start schedule handler: %w", err)
+		}
+	*/
 	// END NEW SCHEDULER IMPLEMENTATION
 
 	// サービス状態の定期ログ（頻度を30分に削減してAPI呼び出しを減らす）
@@ -507,12 +504,12 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 		for {
 			select {
 			case <-statusTicker.C:
-				status := simpleTokenService.GetServiceStatus()
+				// Only log connection status to auth-token-manager
+				_, err := tokenRepo.GetCurrentToken(ctx)
+				isHealthy := err == nil
 				logger.Info("Token service status",
-					"is_healthy", status.IsHealthy,
-					"token_expires_in_seconds", status.TokenStatus.ExpiresInSeconds,
-					"consecutive_failures", status.RecoveryStats.ConsecutiveFailures,
-					"is_in_recovery_mode", status.RecoveryStats.IsInRecoveryMode)
+					"is_healthy", isHealthy,
+					"source", "remote-auth-token-manager")
 			case <-ctx.Done():
 				return
 			}
