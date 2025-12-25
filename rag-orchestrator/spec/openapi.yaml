@@ -1,0 +1,198 @@
+openapi: 3.0.3
+info:
+  title: RAG Orchestrator API
+  version: 1.0.0
+  description: API for RAG Orchestrator (Indexing and Retrieval)
+servers:
+  - url: http://localhost:8080
+    description: Local server
+paths:
+  /internal/rag/index/upsert:
+    post:
+      summary: Upsert an article to the RAG index
+      description: |
+        Receive article data, calculate differences, and update the index without overwriting existing data.
+        Idempotent operation (based on content hash).
+      operationId: UpsertIndex
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertIndexRequest"
+      responses:
+        "200":
+          description: Successfully accepted/queued
+        "400":
+          description: Invalid request payload
+        "500":
+          description: Internal server error
+
+  /internal/rag/index/delete:
+    post:
+      summary: Delete or tombstone an article from the index
+      operationId: DeleteIndex
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteIndexRequest"
+      responses:
+        "200":
+          description: Successfully processed
+        "400":
+          description: Invalid request
+        "500":
+          description: Internal server error
+
+  /v1/rag/retrieve:
+    post:
+      summary: Retrieve context for a query (Retrieve-Only)
+      description: |
+        Retrieves relevant chunks for a query using vector search, possibly filtering by candidate article IDs.
+      operationId: RetrieveContext
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetrieveRequest"
+      responses:
+        "200":
+          description: Successful retrieval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetrieveResponse"
+        "500":
+          description: Internal server error
+
+  /v1/rag/answer:
+    post:
+      summary: Answer a query using RAG (with LLM generation)
+      description: |
+        Retrieves context and generating an answer using an LLM.
+      operationId: AnswerWithRAG
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerRequest"
+      responses:
+        "200":
+          description: Successful answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnswerResponse"
+        "500":
+          description: Internal server error
+
+components:
+  schemas:
+    UpsertIndexRequest:
+      type: object
+      required:
+        - article_id
+        - user_id
+        - title
+        - url
+        - published_at
+        - body
+      properties:
+        article_id:
+          type: string
+          description: "Unique identifier of the article (UUID or string)"
+        user_id:
+          type: string
+          description: "User ID owning the article"
+        title:
+          type: string
+        url:
+          type: string
+        published_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        body:
+          type: string
+          description: "Full text content of the article"
+
+    DeleteIndexRequest:
+      type: object
+      required:
+        - article_id
+        - user_id
+      properties:
+        article_id:
+          type: string
+        user_id:
+          type: string
+
+    RetrieveRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+        candidate_article_ids:
+          type: array
+          items:
+            type: string
+          description: "Optional list of article IDs to restrict search to"
+
+    RetrieveResponse:
+      type: object
+      properties:
+        contexts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Context"
+
+    Context:
+      type: object
+      properties:
+        chunk_text:
+          type: string
+        url:
+          type: string
+        title:
+          type: string
+        published_at:
+          type: string
+          format: date-time
+        score:
+          type: number
+          format: float
+          description: "Similarity score"
+        document_version:
+          type: integer
+          format: int64
+          description: "Version of the document this chunk belongs to"
+
+    AnswerRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+        candidate_article_ids:
+          type: array
+          items:
+            type: string
+
+    AnswerResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+        contexts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Context"
