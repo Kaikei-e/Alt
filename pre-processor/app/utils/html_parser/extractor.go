@@ -6,7 +6,7 @@ import (
 
 	"codeberg.org/readeck/go-readability/v2"
 	"github.com/PuerkitoBio/goquery"
-	"golang.org/x/net/html"
+	"github.com/microcosm-cc/bluemonday"
 )
 
 // ExtractArticleText converts raw article HTML into plain text paragraphs.
@@ -103,7 +103,12 @@ func ExtractArticleText(raw string) string {
 		var textBuf strings.Builder
 		if err := article.RenderText(&textBuf); err == nil {
 			text := strings.TrimSpace(textBuf.String())
-			if len(text) > 0 {
+
+			// Validate extracted text length.
+			// Sometimes readability extracts only the title or metadata (e.g. < 200 chars)
+			// while the actual content is much larger.
+			// If text is too short, we fallback to simple extraction.
+			if len(text) >= 200 {
 				// Prefer the cleaned-up HTML from go-readability to preserve structure,
 				// then fall back to plain text if needed.
 				var htmlBuf strings.Builder
@@ -115,6 +120,7 @@ func ExtractArticleText(raw string) string {
 				}
 				return normalizeWhitespace(text)
 			}
+			// Fall through to fallback if text is too short
 		}
 	}
 
@@ -178,8 +184,10 @@ func extractParagraphs(html string) string {
 	}
 
 	// If still no content, fallback to simple tag stripping
+	// If still no content, fallback to simple tag stripping
 	if len(paragraphs) == 0 {
-		return normalizeWhitespace(StripTags(html))
+		p := bluemonday.StrictPolicy()
+		return normalizeWhitespace(p.Sanitize(html))
 	}
 
 	// Join paragraphs with double newlines
@@ -187,51 +195,10 @@ func extractParagraphs(html string) string {
 }
 
 // StripTags removes HTML tags from a string and returns plain text.
-// It skips script and style tags automatically.
+// It uses bluemonday's strict policy which strips all tags.
 func StripTags(raw string) string {
-	return stripCore(strings.NewReader(raw))
-}
-
-// stripCore is the internal implementation of tag stripping.
-func stripCore(r *strings.Reader) string {
-	var b strings.Builder
-	z := html.NewTokenizer(r)
-
-	depthSkip := 0 // <script> や <style> ブロックを無視するための深さカウンタ
-
-	for {
-		switch tt := z.Next(); tt {
-		case html.ErrorToken:
-			return normalizeWhitespace(b.String())
-
-		case html.StartTagToken:
-			name, _ := z.TagName()
-			if skipTag(name) {
-				depthSkip++
-			}
-
-		case html.EndTagToken:
-			name, _ := z.TagName()
-			if skipTag(name) && depthSkip > 0 {
-				depthSkip--
-			}
-
-		case html.TextToken:
-			if depthSkip == 0 { // script/style 内はスキップ
-				b.Write(z.Text())
-			}
-		}
-	}
-}
-
-// skipTag checks if a tag should be skipped (script, style, noscript).
-func skipTag(name []byte) bool {
-	switch string(name) {
-	case "script", "style", "noscript":
-		return true
-	default:
-		return false
-	}
+	p := bluemonday.StrictPolicy()
+	return normalizeWhitespace(p.Sanitize(raw))
 }
 
 // normalizeWhitespace normalizes whitespace by replacing multiple spaces with single space.

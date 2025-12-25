@@ -198,3 +198,37 @@ func TestExtractArticleText_RemovesInlineStylesAndEventHandlers(t *testing.T) {
 		t.Errorf("Event handler code should be removed, got: %s", result)
 	}
 }
+
+func TestExtractArticleText_ReadabilityFallback(t *testing.T) {
+	bodyContent := strings.Repeat("Important content that must be extracted. ", 20)
+	input := `<html>
+		<head><title>Short Title</title></head>
+		<body>
+			<h1>Short Title</h1>
+			<div class="content" style="font-size: 10px;">
+				<p>` + bodyContent + `</p>
+			</div>
+		</body>
+	</html>`
+
+	result := ExtractArticleText(input)
+
+	// We expect the result to contain the body content.
+	// If the current implementation (readability) returns just the title (which is likely if it penalizes the div or thinks it's boilerplate),
+	// this test will fail. If it passes, then `readability` is smarter than I thought, but I'll still implement the safety check.
+	if !strings.Contains(result, "Important content") {
+		t.Errorf("Expected result to contain body content, but it was missing. Result start: %s...", result[:min(len(result), 50)])
+	}
+
+	// Also ensure we didn't just get the title
+	if len(result) < 100 {
+		t.Errorf("Result too short: %d chars. Expected > 100.", len(result))
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
