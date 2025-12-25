@@ -28,6 +28,8 @@ secrets:
     file: ./secrets/search_indexer_db_password.txt
   recap_db_password:
     file: ./secrets/recap_db_password.txt
+  rag_db_password:
+    file: ./secrets/rag_db_password.txt
   kratos_db_password:
     file: ./secrets/kratos_db_password.txt
   kratos_cookie_secret:
@@ -64,6 +66,7 @@ volumes:
   news_creator_models:        # Ollama models for news-creator
   summarizer_c_models:        # Ollama models for summarizer-c
   recap_db_data:              # Recap Worker PostgreSQL database data
+  rag_db_data:                # RAG Database data (PostgreSQL 18)
   oauth_token_data:           # Shared volume for OAuth2 tokens
 x-rask-env: &rask-env
   environment:
@@ -359,7 +362,7 @@ services:
       context: ./summarizer-c
       dockerfile: Dockerfile
     profiles:
-      - ollama
+      - summarizer
     ports:
       - "11435:11434"
     volumes:
@@ -388,7 +391,7 @@ services:
 
   summarizer-c-volume-init:
     profiles:
-      - ollama
+      - summarizer
     image: ollama/ollama:latest
     entrypoint: ["/bin/sh", "-c"]
     command: ["mkdir -p /home/ollama-user/.ollama && chown -R 2000:2000 /home/ollama-user/.ollama"]
@@ -1211,6 +1214,107 @@ services:
           memory: 64M
     labels:
       - rask.group=alt-auth
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  rag-db:
+    build:
+      context: ./rag-db
+      dockerfile: Dockerfile
+    container_name: rag-db
+    profiles:
+      - rag-extension
+    restart: always
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    environment:
+      POSTGRES_DB: ${RAG_DB_NAME:-rag_db}
+      POSTGRES_USER: ${RAG_DB_USER:-rag_user}
+      POSTGRES_PASSWORD_FILE: /run/secrets/rag_db_password
+    secrets:
+      - rag_db_password
+    volumes:
+      - rag_db_data:/var/lib/postgresql/data
+      # Using recap config as a base/safe default for now
+      - ./docker/postgres/postgresql-recap.conf:/etc/postgresql/postgresql.conf:ro
+      - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    ports:
+      - "5436:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${RAG_DB_USER:-rag_user} -d ${RAG_DB_NAME:-rag_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - alt-network
+    labels:
+      - rask.group=rag-db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  rag-db-migrator:
+    build:
+      context: ./rag-migration-atlas
+      dockerfile: docker/Dockerfile
+    container_name: rag_db_migrator
+    command: ["apply"]
+    environment:
+      # DATABASE_URL constructed from components
+      DB_HOST: rag-db
+      DB_PORT: 5432
+      DB_USER: ${RAG_DB_USER:-rag_user}
+      DB_NAME: ${RAG_DB_NAME:-rag_db}
+      DB_PASSWORD_FILE: /run/secrets/rag_db_password
+      ATLAS_ENV: ${ATLAS_ENV:-kubernetes}
+      ATLAS_REVISIONS_SCHEMA: "public"
+      MIGRATE_BASELINE_VERSION: ${RAG_MIGRATE_BASELINE_VERSION:-}
+    secrets:
+      - rag_db_password
+    volumes:
+      - ./rag-migration-atlas/migrations:/migrations:ro
+    depends_on:
+      rag-db:
+        condition: service_healthy
+    networks:
+      - alt-network
+    profiles:
+      - rag-extension
+
+  rag-orchestrator:
+    build:
+      context: ./rag-orchestrator
+      dockerfile: Dockerfile
+    profiles:
+      - rag-extension
+    environment:
+      - ENV=production
+      - PORT=9010
+      - DB_HOST=rag-db
+      - DB_PORT=5432
+      - DB_USER=${RAG_DB_USER:-rag_user}
+      - DB_PASSWORD_FILE=/run/secrets/rag_db_password
+      - DB_NAME=${RAG_DB_NAME:-rag_db}
+    secrets:
+      - rag_db_password
+    ports:
+      - "9010:9010"
+    depends_on:
+      rag-db:
+        condition: service_healthy
+    networks:
+      - alt-network
+    restart: unless-stopped
+    labels:
+      - rask.group=rag-orchestrator
     logging:
       driver: "json-file"
       options:
