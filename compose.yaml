@@ -1255,6 +1255,8 @@ services:
       - DB_USER=${RAG_DB_USER:-rag_user}
       - DB_PASSWORD_FILE=/run/secrets/rag_db_password
       - DB_NAME=${RAG_DB_NAME:-rag_db}
+      - AUGUR_EXTERNAL=${AUGUR_EXTERNAL}
+      - AUGUR_KNOWLEDGE_URL=${AUGUR_KNOWLEDGE_URL}
     secrets:
       - rag_db_password
     ports:
@@ -1267,6 +1269,8 @@ services:
     restart: unless-stopped
     labels:
       - rask.group=rag-orchestrator
+    extra_hosts:
+      - "augur-external:${AUGUR_EXTERNAL_HOST}"
     logging:
       driver: "json-file"
       options:
