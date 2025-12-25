@@ -1,7 +1,7 @@
 package di
 
 import (
-	"alt/adapter/rag_adapter"
+	"alt/adapter/augur_adapter"
 	"alt/config"
 	"alt/driver/alt_db"
 	"alt/driver/csrf_token_driver"
@@ -55,6 +55,7 @@ import (
 	"alt/usecase/recap_usecase"
 	"alt/usecase/register_favorite_feed_usecase"
 	"alt/usecase/register_feed_usecase"
+	"alt/usecase/retrieve_context_usecase"
 	"alt/usecase/scraping_domain_usecase"
 	"alt/usecase/search_article_usecase"
 	"alt/usecase/search_feed_usecase"
@@ -113,6 +114,7 @@ type ApplicationComponents struct {
 	MorningUsecase                      morning_letter_port.MorningUsecase
 	ScrapingDomainUsecase               *scraping_domain_usecase.ScrapingDomainUsecase
 	BatchArticleFetcher                 *batch_article_fetcher.BatchArticleFetcher
+	RetrieveContextUsecase              retrieve_context_usecase.RetrieveContextUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -197,7 +199,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		// Log error but proceed (fail-open or panic depending on strictness - here we panic as it is config error likely)
 		panic("Failed to create RAG client: " + err.Error())
 	}
-	ragAdapterImpl := rag_adapter.NewRagAdapter(ragClient)
+	ragAdapterImpl := augur_adapter.NewAugurAdapter(ragClient)
+
+	ragRetrieveContextUsecase := retrieve_context_usecase.NewRetrieveContextUsecase(searchFeedMeilisearchGatewayImpl, ragAdapterImpl)
 
 	fetchArticleGatewayImpl := fetch_article_gateway.NewFetchArticleGateway(rateLimiter, httpClient)
 	fetchArticleUsecase := fetch_article_usecase.NewArticleUsecase(fetchArticleGatewayImpl, robotsTxtGatewayImpl, altDBRepository, ragAdapterImpl)
@@ -293,5 +297,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		MorningUsecase:                      morningUsecase,
 		ScrapingDomainUsecase:               scrapingDomainUsecase,
 		BatchArticleFetcher:                 batchArticleFetcher,
+		RetrieveContextUsecase:              ragRetrieveContextUsecase,
 	}
 }
