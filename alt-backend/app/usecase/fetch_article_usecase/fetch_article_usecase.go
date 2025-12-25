@@ -143,12 +143,14 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 
 		// 7. Upsert to RAG (Step A: Direct Call)
 		// Using time.Now() for PublishedAt as a temporary measure until HTML parser supports date extraction
+
+		t := time.Now()
 		upsertInput := rag_integration_port.UpsertArticleInput{
 			ArticleID:   newID,
 			Title:       fetchedTitle,
 			Body:        contentStr,
 			URL:         urlStr,
-			PublishedAt: time.Now(),
+			PublishedAt: &t,
 			UserID:      userContext.UserID.String(),
 		}
 		if err := u.ragIntegration.UpsertArticle(ctx, upsertInput); err != nil {
