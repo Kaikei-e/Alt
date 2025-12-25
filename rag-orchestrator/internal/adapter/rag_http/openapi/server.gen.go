@@ -21,16 +21,41 @@ import (
 type AnswerRequest struct {
 	CandidateArticleIds *[]string `json:"candidate_article_ids,omitempty"`
 	Query               string    `json:"query"`
+	UserId              *string   `json:"user_id,omitempty"`
+	Locale              *string   `json:"locale,omitempty"`
+	MaxChunks           *int32    `json:"max_chunks,omitempty"`
+	MaxTokens           *int32    `json:"max_tokens,omitempty"`
 }
 
 // AnswerResponse defines model for AnswerResponse.
 type AnswerResponse struct {
-	Answer   *string    `json:"answer,omitempty"`
-	Contexts *[]Context `json:"contexts,omitempty"`
+	Answer    *string           `json:"answer,omitempty"`
+	Contexts  *[]Context        `json:"contexts,omitempty"`
+	Citations *[]AnswerCitation `json:"citations,omitempty"`
+	Fallback  *bool             `json:"fallback,omitempty"`
+	Reason    *string           `json:"reason,omitempty"`
+	Debug     *AnswerDebug      `json:"debug,omitempty"`
+}
+
+// AnswerCitation defines model for AnswerCitation.
+type AnswerCitation struct {
+	ChunkId         *string  `json:"chunk_id,omitempty"`
+	ChunkText       *string  `json:"chunk_text,omitempty"`
+	Url             *string  `json:"url,omitempty"`
+	Title           *string  `json:"title,omitempty"`
+	Score           *float32 `json:"score,omitempty"`
+	DocumentVersion *int64   `json:"document_version,omitempty"`
+}
+
+// AnswerDebug defines model for AnswerDebug.
+type AnswerDebug struct {
+	RetrievalSetId *string `json:"retrieval_set_id,omitempty"`
+	PromptVersion  *string `json:"prompt_version,omitempty"`
 }
 
 // Context defines model for Context.
 type Context struct {
+	ChunkId   *string `json:"chunk_id,omitempty"`
 	ChunkText *string `json:"chunk_text,omitempty"`
 
 	// DocumentVersion Version of the document this chunk belongs to

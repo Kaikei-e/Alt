@@ -1,0 +1,100 @@
+package rag_http_test
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"rag-orchestrator/internal/adapter/rag_http"
+	"rag-orchestrator/internal/adapter/rag_http/openapi"
+	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/usecase"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+)
+
+type dummyRetrieveUsecase struct {
+	response *usecase.RetrieveContextOutput
+}
+
+func (d *dummyRetrieveUsecase) Execute(ctx context.Context, input usecase.RetrieveContextInput) (*usecase.RetrieveContextOutput, error) {
+	return d.response, nil
+}
+
+type stubLLMClient struct {
+	response *domain.LLMResponse
+}
+
+func (s *stubLLMClient) Generate(ctx context.Context, prompt string, maxTokens int) (*domain.LLMResponse, error) {
+	return s.response, nil
+}
+
+func (s *stubLLMClient) Version() string { return "stub" }
+
+func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
+	e := echo.New()
+
+	chunkID := uuid.New()
+	retrieve := &dummyRetrieveUsecase{
+		response: &usecase.RetrieveContextOutput{
+			Contexts: []usecase.ContextItem{
+				{
+					ChunkID:         chunkID,
+					ChunkText:       "TPU provides high throughput for matrix multiplies.",
+					URL:             "https://example.com/tpu",
+					Title:           "TPU overview",
+					PublishedAt:     "2025-12-25T00:00:00Z",
+					Score:           0.9,
+					DocumentVersion: 1,
+				},
+			},
+		},
+	}
+
+	llmResponse := &domain.LLMResponse{
+		Text: `{
+  "quotes": [{"chunk_id":"` + chunkID.String() + `","quote":"TPU excels at GPUM-style matrix lods."}],
+  "answer": "TPUはGoogleの専用加速装置で、浮動小数点行列を低コストで並列処理します。[` + chunkID.String() + `]",
+  "citations": [{"chunk_id":"` + chunkID.String() + `","url":"https://example.com/tpu","title":"TPU overview","score":0.9,"document_version":1}],
+  "fallback": false,
+  "reason": ""
+}`,
+		Done: true,
+	}
+
+	answerUC := usecase.NewAnswerWithRAGUsecase(
+		retrieve,
+		usecase.NewXMLPromptBuilder("Answer in Japanese."),
+		&stubLLMClient{response: llmResponse},
+		usecase.NewOutputValidator(),
+		5,
+		256,
+		"alpha-v1",
+		"ja",
+	)
+
+	handler := rag_http.NewHandler(retrieve, answerUC)
+
+	body := bytes.NewBufferString(`{"query":"TPU"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if assert.NoError(t, handler.AnswerWithRAG(c)) {
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var resp openapi.AnswerResponse
+		assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		assert.NotNil(t, resp.Answer)
+		assert.False(t, *resp.Fallback)
+		assert.NotNil(t, resp.Citations)
+		assert.Equal(t, 1, len(*resp.Citations))
+		assert.Equal(t, chunkID.String(), *(*resp.Citations)[0].ChunkId)
+	}
+}

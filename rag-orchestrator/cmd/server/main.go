@@ -16,10 +16,12 @@ import (
 	rag_http "rag-orchestrator/internal/adapter/rag_http"
 	"rag-orchestrator/internal/adapter/rag_http/openapi"
 	"rag-orchestrator/internal/adapter/repository"
+	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/infra"
 	"rag-orchestrator/internal/infra/config"
 	"rag-orchestrator/internal/infra/logger"
 	"rag-orchestrator/internal/usecase"
+	"rag-orchestrator/internal/worker"
 )
 
 func main() {
@@ -42,24 +44,61 @@ func main() {
 	// 4. Initialize Adapters
 	chunkRepo := repository.NewRagChunkRepository(dbPool)
 	docRepo := repository.NewRagDocumentRepository(dbPool)
+	jobRepo := repository.NewRagJobRepository(dbPool)
+	txManager := repository.NewPostgresTransactionManager(dbPool)
 	embedder := rag_augur.NewOllamaEmbedder(cfg.OllamaURL, cfg.EmbeddingModel)
 
 	// 5. Initialize Usecases
-	// indexUsecase := ... (Phase 4)
-	retrieveUsecase := usecase.NewRetrieveContextUsecase(chunkRepo, docRepo, embedder)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker()
 
-	// 6. Initialize Echo
+	indexUsecase := usecase.NewIndexArticleUsecase(
+		docRepo,
+		chunkRepo,
+		txManager,
+		hasher,
+		chunker,
+		embedder,
+	)
+
+	retrieveUsecase := usecase.NewRetrieveContextUsecase(chunkRepo, docRepo, embedder)
+	generator := rag_augur.NewOllamaGenerator(cfg.KnowledgeAugurURL, cfg.KnowledgeAugurModel)
+	promptBuilder := usecase.NewXMLPromptBuilder("Answer in Japanese.")
+	answerUsecase := usecase.NewAnswerWithRAGUsecase(
+		retrieveUsecase,
+		promptBuilder,
+		generator,
+		usecase.NewOutputValidator(),
+		cfg.AnswerMaxChunks,
+		cfg.AnswerMaxTokens,
+		cfg.PromptVersion,
+		cfg.DefaultLocale,
+	)
+
+	// 6. Initialize & Start Worker
+	jobWorker := worker.NewJobWorker(jobRepo, indexUsecase, log)
+	jobWorker.Start()
+	// Ensure worker stops on shutdown
+	defer func() {
+		log.Info("Stopping worker...")
+		jobWorker.Stop()
+	}()
+
+	// 7. Initialize Echo
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	// 7. Initialize Handlers
-	handler := rag_http.NewHandler(retrieveUsecase)
+	// 8. Initialize Handlers
+	handler := rag_http.NewHandler(retrieveUsecase, answerUsecase, jobRepo)
 
-	// 8. Register OpenAPI Handlers
+	// 9. Register OpenAPI Handlers
 	openapi.RegisterHandlers(e, handler)
 
-	// 9. Health Checks
+	// 10. Manual Registration for Backfill
+	e.POST("/internal/rag/backfill", handler.Backfill)
+
+	// 11. Health Checks
 	e.GET("/healthz", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -70,7 +109,7 @@ func main() {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
 	})
 
-	// 7. Start Server
+	// 12. Start Server
 	go func() {
 		addr := fmt.Sprintf(":%s", cfg.Port)
 		log.Info("Starting server", "addr", addr)
@@ -79,7 +118,7 @@ func main() {
 		}
 	}()
 
-	// 8. Graceful Shutdown
+	// 13. Graceful Shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

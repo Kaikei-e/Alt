@@ -17,20 +17,45 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// AnswerCitation defines model for AnswerCitation.
+type AnswerCitation struct {
+	ChunkId         *string  `json:"chunk_id,omitempty"`
+	ChunkText       *string  `json:"chunk_text,omitempty"`
+	DocumentVersion *int64   `json:"document_version,omitempty"`
+	Score           *float32 `json:"score,omitempty"`
+	Title           *string  `json:"title,omitempty"`
+	Url             *string  `json:"url,omitempty"`
+}
+
+// AnswerDebug defines model for AnswerDebug.
+type AnswerDebug struct {
+	PromptVersion  *string `json:"prompt_version,omitempty"`
+	RetrievalSetId *string `json:"retrieval_set_id,omitempty"`
+}
+
 // AnswerRequest defines model for AnswerRequest.
 type AnswerRequest struct {
 	CandidateArticleIds *[]string `json:"candidate_article_ids,omitempty"`
+	Locale              *string   `json:"locale,omitempty"`
+	MaxChunks           *int32    `json:"max_chunks,omitempty"`
+	MaxTokens           *int32    `json:"max_tokens,omitempty"`
 	Query               string    `json:"query"`
+	UserId              *string   `json:"user_id,omitempty"`
 }
 
 // AnswerResponse defines model for AnswerResponse.
 type AnswerResponse struct {
-	Answer   *string    `json:"answer,omitempty"`
-	Contexts *[]Context `json:"contexts,omitempty"`
+	Answer    *string           `json:"answer,omitempty"`
+	Citations *[]AnswerCitation `json:"citations,omitempty"`
+	Contexts  *[]Context        `json:"contexts,omitempty"`
+	Debug     *AnswerDebug      `json:"debug,omitempty"`
+	Fallback  *bool             `json:"fallback,omitempty"`
+	Reason    *string           `json:"reason,omitempty"`
 }
 
 // Context defines model for Context.
 type Context struct {
+	ChunkId   *string `json:"chunk_id,omitempty"`
 	ChunkText *string `json:"chunk_text,omitempty"`
 
 	// DocumentVersion Version of the document this chunk belongs to
@@ -184,25 +209,27 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/7xWX2/bNhD/KgduDwng2u7aDYXeshUrDHRIkSHbQ1sENHWy2FGkcjw5MQp/94GkJP+R",
-	"kiVL0zfLJO+Ovz/H+yqUq2pn0bIX2VfhVYmVjD/PrL9BusDrBj2HP2pyNRJrjMtK2lznkvFKEmtl8Ern",
-	"cUEzVvEHb2oUmfBM2q7EdtL9IYnkJnxfN0ibkZ3biSC8bjRhLrKP7bbP/Xm3/IKKQ4CuRF8763FYo4zr",
-	"o7UoZxlv+bDiHwkLkYkfZjtQZi0is9/SgeE9tiOFdZuHqJWN/eeqWxtUlTvVVGj5ao3ktbNhU45eka45",
-	"foq/0gK4ArhE6A4Al9pDjA5LNM6uPLATE1E4qiSLTGjLv7wWfa3aMq6QQtK6WRrtS8yvZKyqPxLYfcG6",
-	"wt2xXaleOcJhfX/qShtJmjeQduyVUBgneRfLNtUyVcCaDY4C0pAZF8gA8rdokHFhc7y9U7M7pY4n80jj",
-	"a0eK3IuzOzUm0Atk0rjGx7voENXz+EMaMNpz4L7dDYu3gWcgDJUqBo+SVJmo/45G3N3zLis+r98ua4/E",
-	"jyH/EN9Lq68bBJ2jZV1opM5fHc4nl5eLt+AIEjSnY45YunwzDP17YwyEm0CEwPJR6LFI/8+R97ioDgcf",
-	"F23ceQcmOcLQI0EA6cZqu7r/ig/xU3ehVMoRKC3aQy2G0NoWbljf2YcFFI7g4uwdnJMqg2UkO4KTqJtQ",
-	"s7Q5tFKW5rSvIBODM2cfFmIi+i4tXk7n03mAx9VoZa1FJl5N59NXoW7JZRTgLPRcstLMSK5mOiSd5bFr",
-	"RbG6JNogWRlKXuQi2+9qImGGnn9thdYKKoq7ro1W8dzsi08PR3LSf/lspG9uD/lhajD+kbwd7/LTfD7S",
-	"+xul0PuiMWYDNbnwgXlA5fXY9oVdS6NzoC7tRPw8vi/BBh5pjQRI5ChqyDdVJUPnanEKBmVXLT07iyBt",
-	"b9+CXBUVGVGPZ8fYaGIb2WfjsJILVKjXu66QS5YTUNKoxkhGyHVRIKFV6CdRTMl4u8xwo7l0DYNbI92Q",
-	"5qA6vNU+/gjhpp/sIseqdqlVdGKAk6X0mIOzfRsppS9Pp5+smBxpZq8ZPpNmRtrtN9GMVAprxnx23WDz",
-	"cOVALTfGyfxJCkp32hcNu0hc8P6ebNYvo2B2o+VdUkkvoof25Yt6WKGNTMVeAykGNL79fv/+jzE+05T7",
-	"t+by4uzdMzF6OOw/nMxvmrydHWL2u1TSgvYkqlM+kBAHmhb/QPNJsGegoSfK2dMD2qml9SHEExpcS8tp",
-	"LPfx8TnMuUYVHpM0tE2gdt7rpdlAoQ1jeClhuYF+RNwf+sZ00mXuJqfnUcrxSPudtTKYNO9XC3Wv+ZME",
-	"0yXtvbxP5Um3+uLcms1pKigF8yL7eJzvvVN9sna2yUTJXGezmQlrpfOcvZm/mYvt5+2/AQAA///7jp7v",
-	"oA8AAA==",
+	"H4sIAAAAAAAC/7xY32/bNhD+VwhuDwngxu6PDYXesgYrDHRo4SHbQ1sYFHWy2FKkcjw5MQr/7wNJybZs",
+	"OnWXpG+SSN6R333fx7O/cWnrxhow5Hj2jTtZQS3C46Vxt4BvFAlS1vgvDdoGkBSEcVm15utcFf6ZVg3w",
+	"jDtCZRZ8PeoGCe4oOVxY2dZgaL4EdF300mItiGdcGfr9FR/1q5QhWAD6ZU5ahMHcUltB27mmrfM4lRRp",
+	"SOZuUSe+rzcxbP4FJPmZEYEryNvF4fEbtHUzOMBBJgRCBUuh5w4ojdTxtDO4acFRAndhClUIgrlAUlLD",
+	"XBVhQBHULrmR7oNAFCv/rq0UR9Cpxd08FM/t1+Tli2RN/AKyX8GcuuCmBVylK+MAj8KEcNMqhIJnH7sQ",
+	"n+/BzjXWODgET4TxNGU7pg+x/BWh5Bn/ZbzVybgTyXhPIQmgpTVeA6eHfBMXpGIVPQ+/v6VI2fWIl0Lr",
+	"XMivOwfOrdUgTOSncEnqpljZ7+zJfaAAJ1E10XT4P3GA2ZJRBaxfwKhSjoXoLAdtzcIxsnx0ios0ba6V",
+	"q6CYCxpw1ovqGakatsu2W914z3B/f6taaYGKVizOGP0kc7oCDQRTU8DdUavYGsTD9LYTZ7sqJb9ZdDz4",
+	"cfMaovo+PAjNtHLka9/NZtMrX2eG4HcqiTkQKKtY+tP975gFnWwz23MeM5rHU36q+NeNA6QfKf4Q32uj",
+	"blpgqgBDqlSAvb56nM+ur6dXzCKL0JynFJHbYnUY+s9Wa+ZPwgIEhvZCpyL9P0Xeo6LGL/yxaGnlDUSy",
+	"h6EDZB6kW6PM4v4jnqKn/kBxK3ugdGgfctGHVqa0h/u7/DBlpUU2u3zL3qOsvGQEWWRngTd+z8IUbNY3",
+	"KeebHWT8YM3lhykf8Y1L8+cXk4uJh8c2YESjeMZfXkwuXvp9C6oCAcfec9EIPUaxGCufdFwE1wpktZG0",
+	"nrLh/pwWPNt1NR4xA0d/dETrCBXI3TRaybBu/KW7xKKSvqezhG+uh/UhbCF8iNoOZ3kxmSS8v5USnCtb",
+	"rVesQetfoPCovEpNn5ql0Kpg2Kcd8d/S8yJszAEuARkgWgwccm1dC+9cHU5eoGTr3JE1wITZyLdEWwdG",
+	"BtTD2lQ12mAju9UY7mQGEtRy6wqFIDFiUmjZakHAClWWgGAkuFEgUxTeNjO7VVTZlphdAt6iIs86uFMu",
+	"PPhwF5/MtIC6sdEqejKws1w4KJg1GxuphKvOLz4ZPtrjzI4ZPhFnEnb7KJwRUkJDUIxvWmhPZw5rxEpb",
+	"UTyIQfFMu6QhGwrntb9Dm+XzQJht43yMKvFGdKy7+QIfFmBCpYLXsBiDta57f/fur1Q9Yw/7r6Jqdvn2",
+	"iSo6/I11ejEfNXnXO4Tsx1jSgfagUsd8TLDQ0HT4+zKfeXn6MmwKZc35oOzdT1g4pfAIGpbCUGzLXbh8",
+	"hjmXIP1lEpu2EWuscyrXK1YqTeBvSpav2KZF3G36UjzpM/ed09MwZb+l/clcOeg072fL5i+HBxGmT7rR",
+	"8m4pz/rRZ++NXp3HDcVgjmcf9/O9s3KTrOttMl4RNdl4HP6HqKyj7PXk9YSvP6//CwAA//9BVKGSkBIA",
+	"AA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
