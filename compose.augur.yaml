@@ -38,7 +38,9 @@ services:
     restart: "no"
 
   knowledge-embedder:
-    image: ollama/ollama:latest
+    build:
+      context: ./knowledge-embedder
+      dockerfile: Dockerfile
     ports:
       - "11436:11434"
     volumes:
@@ -54,7 +56,7 @@ services:
       - augur-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
       interval: 30s
       timeout: 5s
       retries: 3
