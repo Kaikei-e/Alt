@@ -1,0 +1,84 @@
+services:
+  knowledge-augur:
+    build:
+      context: ./knowledge-augur # TODO: change to knowledge-augur
+      dockerfile: Dockerfile
+    ports:
+      - "11435:11434"
+    volumes:
+      - knowledge_augur_models:/home/ollama-user/.ollama
+    # environment variables moved to Dockerfile
+    depends_on:
+      knowledge-augur-volume-init:
+        condition: service_completed_successfully
+    networks:
+      - augur-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  knowledge-augur-volume-init:
+    image: ollama/ollama:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mkdir -p /home/ollama-user/.ollama && chown -R 2000:2000 /home/ollama-user/.ollama"]
+    user: "0:0"
+    volumes:
+      - knowledge_augur_models:/home/ollama-user/.ollama
+    networks:
+      - augur-network
+    restart: "no"
+
+  knowledge-embedder:
+    image: ollama/ollama:latest
+    ports:
+      - "11436:11434"
+    volumes:
+      - knowledge_embedder_models:/home/ollama-user/.ollama
+    environment:
+      - OLLAMA_MODELS=/home/ollama-user/.ollama
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_HOST=0.0.0.0
+    depends_on:
+      knowledge-embedder-volume-init:
+        condition: service_completed_successfully
+    networks:
+      - augur-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  knowledge-embedder-volume-init:
+    image: ollama/ollama:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mkdir -p /home/ollama-user/.ollama && chown -R 2000:2000 /home/ollama-user/.ollama"]
+    user: "0:0"
+    volumes:
+      - knowledge_embedder_models:/home/ollama-user/.ollama
+    networks:
+      - augur-network
+    restart: "no"
+
+networks:
+  augur-network:
+
+volumes:
+  knowledge_augur_models:
+  knowledge_embedder_models:
