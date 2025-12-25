@@ -4,9 +4,11 @@ import (
 	"alt/domain"
 	"alt/utils/logger"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -76,20 +78,46 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 		}
 	}
 
-	var articleID uuid.UUID
-	var feedIDValue interface{}
-	if feedID != nil {
-		feedIDValue = *feedID
-	} else {
-		feedIDValue = nil
+	// Begin transaction
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
+	defer func() {
+		if err != nil {
+			tx.Rollback(ctx)
+		}
+	}()
 
-	if err := r.pool.QueryRow(ctx, upsertArticleQuery, cleanTitle, cleanContent, cleanURL, userContext.UserID, feedIDValue).Scan(&articleID); err != nil {
-		err = fmt.Errorf("upsert article content: %w", err)
-		logger.SafeError("failed to save article", "url", cleanURL, "error", err)
+	// 1. Upsert Article
+	articleID, err := r.UpsertArticleWithTx(ctx, tx, cleanTitle, cleanContent, cleanURL, userContext.UserID, feedID)
+	if err != nil {
 		return "", err
 	}
 
-	logger.SafeInfo("article content saved", "url", cleanURL, "article_id", articleID.String(), "user_id", userContext.UserID)
+	// 2. Insert Outbox Event
+	eventPayload := map[string]interface{}{
+		"article_id": articleID.String(),
+		"url":        cleanURL,
+		"title":      cleanTitle,
+		"body":       cleanContent,
+		"user_id":    userContext.UserID.String(),
+		"updated_at": time.Now().Format(time.RFC3339),
+	}
+	payloadBytes, err := json.Marshal(eventPayload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal outbox payload: %w", err)
+	}
+
+	if err := r.SaveOutboxEventWithTx(ctx, tx, "ARTICLE_UPSERT", payloadBytes); err != nil {
+		return "", err
+	}
+
+	// Commit transaction
+	if err = tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	logger.SafeInfo("article content saved and outbox event created", "url", cleanURL, "article_id", articleID.String(), "user_id", userContext.UserID)
 	return articleID.String(), nil
 }

@@ -37,9 +37,13 @@ func TestAltDBRepository_SaveArticle_Success(t *testing.T) {
 		WithArgs("https://example.com/article").
 		WillReturnError(errors.New("no rows"))
 
+	mock.ExpectBegin()
+
 	mock.ExpectQuery(regexp.QuoteMeta(upsertArticleQuery)).
 		WithArgs("Example Title", "<p>content</p>", "https://example.com/article", userID, nil).
 		WillReturnError(errors.New("db failed"))
+
+	mock.ExpectRollback()
 
 	_, err = repo.SaveArticle(ctx, "https://example.com/article", "Example Title", "<p>content</p>")
 	require.Error(t, err)

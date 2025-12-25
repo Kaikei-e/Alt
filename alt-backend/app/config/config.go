@@ -16,6 +16,7 @@ type Config struct {
 	PreProcessor PreProcessorConfig `json:"pre_processor"`
 	Recap        RecapConfig        `json:"recap"`
 	Auth         AuthConfig         `json:"auth"`
+	Rag          RAGConfig          `json:"rag"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -40,6 +41,10 @@ type RecapConfig struct {
 	MaxArticleBytes  int    `json:"max_article_bytes" env:"RECAP_MAX_ARTICLE_BYTES" default:"2097152"`
 	ClusterDraftPath string `json:"cluster_draft_path" env:"RECAP_CLUSTER_DRAFT_PATH" default:"docs/genre-reorg-draft.json"`
 	WorkerURL        string `json:"worker_url" env:"RECAP_WORKER_URL" default:"http://recap-worker:9005"`
+}
+
+type RAGConfig struct {
+	OrchestratorURL string `json:"orchestrator_url" env:"RAG_ORCHESTRATOR_URL" default:"http://rag-orchestrator:8080"`
 }
 
 type AuthConfig struct {
