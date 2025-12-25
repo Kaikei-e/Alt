@@ -86,7 +86,7 @@ func main() {
 
 	// 7. Initialize Echo
 	e := echo.New()
-	e.Use(middleware.Logger())
+	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
 
 	// 8. Initialize Handlers

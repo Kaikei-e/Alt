@@ -16,6 +16,7 @@ type Article struct {
 	ID    string
 	Title string
 	Body  string
+	URL   string
 }
 
 func main() {
@@ -37,7 +38,7 @@ func main() {
 	}
 	defer db.Close()
 
-	rows, err := db.Query("SELECT id, title, content FROM articles WHERE content IS NOT NULL AND content != ''")
+	rows, err := db.Query("SELECT id, title, content, url FROM articles WHERE content IS NOT NULL AND content != ''")
 	if err != nil {
 		fmt.Printf("Failed to query articles: %v\n", err)
 		os.Exit(1)
@@ -53,7 +54,7 @@ func main() {
 	for rows.Next() {
 		time.Sleep(500 * time.Millisecond)
 		var a Article
-		if err := rows.Scan(&a.ID, &a.Title, &a.Body); err != nil {
+		if err := rows.Scan(&a.ID, &a.Title, &a.Body, &a.URL); err != nil {
 			fmt.Printf("Failed to scan article: %v\n", err)
 			continue
 		}
@@ -62,6 +63,7 @@ func main() {
 			"article_id": a.ID,
 			"title":      a.Title,
 			"body":       a.Body,
+			"url":        a.URL,
 		}
 		data, _ := json.Marshal(payload)
 
