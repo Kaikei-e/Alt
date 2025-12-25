@@ -12,13 +12,18 @@ _Last reviewed on November 13, 2025._
 
 - [Platform Snapshot](#platform-snapshot)
 - [Architecture](#architecture)
+  - [Data Flow Overview](#data-flow-overview)
+  - [Compose Topology](#compose-topology)
+  - [Data Intelligence Flow](#data-intelligence-flow)
+  - [Microservice Communication Map](#microservice-communication-map)
+  - [Identity & Edge Access](#identity--edge-access)
 - [Technology & Version Matrix](#technology--version-matrix)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [First-Time Setup](#first-time-setup)
   - [Compose Profiles](#compose-profiles)
   - [Developer Setup Checklist](#developer-setup-checklist)
-- [Service Catalog](#service-catalog)
+- [Service Catalog & Documentation](#service-catalog--documentation)
 - [Service Deep Dives](#service-deep-dives)
 - [Recap Experience & Pipeline](#recap-experience--pipeline)
   - [Mobile & API Surfaces](#mobile--api-surfaces)
@@ -391,53 +396,67 @@ Enable combinations as needed with `docker compose --profile ollama --profile lo
 5. **Align practices** – Read root/service `CLAUDE.md`, enable editor format-on-save, install optional pre-commit hooks, and keep credentials out of git.
 6. **Recap-specific prep** – Run `make recap-migrate` (Atlas-backed) once before bringing up the `recap` profile, and confirm `http://localhost:9005/health/ready` plus `http://localhost:8002/health/ready` respond when testing the new mobile Recap surfaces.
 
-## Service Catalog
+## Service Catalog & Documentation
 
-The list below summarises each microservice's responsibilities. Consult the directory-specific `CLAUDE.md` before implementing changes.
+Each microservice maintains a `CLAUDE.md` for process guardrails plus a snapshot under `docs/<service>.md` that captures the latest architecture, configuration, and testing guidance. The table below links the primary doc per service so you can jump straight to the most concrete contract before coding.
 
-- **`alt-frontend/`** – Next.js 15 + React 19 + TS 5.9; Chakra UI themes; Vitest & Playwright POM; env guard script.
-- **`alt-backend/app/`** – Go 1.25 Clean Architecture (handler → usecase → port → gateway → driver); GoMock & `testing/synctest`; outbound via sidecar; Atlas migrations; now publishes `/v1/recap/7days` and service-auth `/v1/recap/articles` backed by `RecapUsecase` + `RecapGateway`.
-- **`alt-backend/sidecar-proxy/`** – Go 1.25 proxy; HTTPS allowlists; shared timeouts; structured slog; `httptest` triad.
-- **`pre-processor/app/`** – Go 1.25 ingestion; `mercari/go-circuitbreaker`; ≥5 s host pacing; structured logging.
-- **`pre-processor-sidecar/app/`** – Go 1.25 scheduler; `singleflight` token refresh; injectable `Clock`; Cron/admin endpoints.
-- **`news-creator/app/`** – Python 3.11 FastAPI; 5-layer Clean Architecture; Ollama Gemma 3 4B; golden prompts; `pytest-asyncio`.
-- **`tag-generator/app/`** – Python 3.14 FastAPI ML pipeline running ONNX Runtime by default (SentenceTransformer fallback), hosting a background tag-generation thread, exposing a service-token gated `/api/v1/tags/batch`, and producing the rolling `tag_label_graph` priors consumed by Recap; still enforces bias/robustness tests plus Ruff/mypy gates.
-- **`search-indexer/app/`** – Go 1.25 + Meilisearch 1.15.2; 200-doc batches; checkpointed upserts; index settings on boot.
-- **`auth-hub/`** – Go 1.25 IAP; 5-minute TTL cache; emits `X-Alt-*`; table-driven tests.
-- **`auth-token-manager/`** – Deno 2.5.4 service; Inoreader OAuth2 refresh; `@std/testing/bdd`; sanitized logging.
-- **`rask-log-forwarder/app/`** – Rust 1.90; SIMD JSON parsing; lock-free buffers; disk fallback resilience.
-- **`rask-log-aggregator/app/`** – Rust 1.90 Axum; zero-copy ingestion; `axum-test`; `criterion` benchmarks; ClickHouse sink.
-- **`recap-worker/`** – Rust 2024 Axum service scheduling the 7-day recap job (04:00 JST), deduplicating evidence, storing `recap_cluster_evidence`, loading `tag_label_graph`, emitting `recap_genre_learning_results`, running golden dataset checks, and persisting outputs into recap-db via sqlx (with offline `scripts/replay_genre_pipeline` for investigations).
-- **`recap-subworker/`** – FastAPI + Gunicorn clustering worker that receives per-genre evidence corpora, runs CPU-bound clustering inside a process pool, deduplicates supporting IDs, persists `recap_cluster_evidence`, and streams representative evidence + diagnostics back to recap-worker.
-- **`recap-migration-atlas/`** – Atlas migrations + hash tooling for recap-db, including the latest scripts for `recap_cluster_evidence`, `tag_label_graph`, and `recap_genre_learning_results`; invoke via `docker compose --profile recap run recap-db-migrator ...` or `make recap-migrate`.
+| Service | Primary Doc | Focus |
+| --- | --- | --- |
+| `alt-frontend/` | [docs/alt-frontend.md](docs/alt-frontend.md) | Next.js 15 + React 19 App Router UI with Chakra themes and the `/mobile/recap/7days` experience. |
+| `alt-frontend-sv/` | [docs/alt-frontend-sv.md](docs/alt-frontend-sv.md) | SvelteKit `/sv` experience with Runes, Tailwind v4, and authenticated dashboards. |
+| `alt-backend/app/` | [docs/alt-backend.md](docs/alt-backend.md) | Go 1.25 Clean Architecture REST API, SSE + recap endpoints, and background job runners. |
+| `alt-backend/sidecar-proxy/` | [docs/sidecar-proxy.md](docs/sidecar-proxy.md) | Go egress proxy that enforces HTTPS allowlists, bypasses internal DNS, and exposes health/metrics/debug hooks. |
+| `pre-processor/app/` | [docs/pre-processor.md](docs/pre-processor.md) | Go ingestion service with dedupe/sanitization, circuit breakers, and async summarization queue. |
+| `pre-processor-sidecar/app/` | [docs/pre-processor-sidecar.md](docs/pre-processor-sidecar.md) | Scheduler handling Inoreader token refresh, Cron-mode toggles, and secret-watchers. |
+| `news-creator/app/` | [docs/news-creator.md](docs/news-creator.md) | FastAPI Ollama orchestrator with Model Bucket Routing, Map-Reduce summarisation, and golden prompts. |
+| `tag-generator/app/` | [docs/tag-generator.md](docs/tag-generator.md) | Python 3.14 ML pipeline batching tag extractions, cascade controls, and rolling `tag_label_graph` priors. |
+| `search-indexer/app/` | [docs/search-indexer.md](docs/search-indexer.md) | Go batch indexer (200 docs) into Meilisearch with tokenizer + schema bootstrapping plus `/v1/search`. |
+| `auth-hub/` | [docs/auth-hub.md](docs/auth-hub.md) | Kratos-aware IAP that validates sessions, caches 5m, and emits authoritative `X-Alt-*` headers. |
+| `auth-token-manager/` | [docs/auth-token-manager.md](docs/auth-token-manager.md) | Deno OAuth2 CLI refreshing Inoreader tokens, writing Kubernetes secrets, and monitoring horizons. |
+| `rask-log-forwarder/app/` | [docs/rask-log-forwarder.md](docs/rask-log-forwarder.md) | Rust SIMD log tailer with buffering, disk fallback, and ClickHouse-ready batching. |
+| `rask-log-aggregator/app/` | [docs/rask-log-aggregator.md](docs/rask-log-aggregator.md) | Axum API ingesting JSON logs and persisting to ClickHouse via exporter traits. |
+| `recap-worker/` | [docs/recap-worker.md](docs/recap-worker.md) | Rust pipeline orchestrating fetch → preprocess → dedup → genre → evidence → news-creator → persist. |
+| `recap-subworker/` | [docs/recap-subworker.md](docs/recap-subworker.md) | FastAPI worker running clustering, classification, diagnostics, and admin learning jobs. |
+| `recap-db` | [docs/recap-db.md](docs/recap-db.md) | PostgreSQL schema contract for recap jobs, sections, evidence, tag graphs, and learning results. |
 
-- Every service enforces Red → Green → Refactor and propagates structured logs or request IDs.
-- Use the appendix command cheat sheet for the most common workflows.
+Additional reference docs include `docs/Alt-Architecture-07.md` for historical Kubernetes/Compose topology, the `docs/recap-*` retrospectives (runbooks, investigations, and pipeline notes), and the `docs/recap-7days-pipeline.md` overview for mobile/genre sequencing. Keep `CLAUDE.md` plus the linked snapshot fresh as you edit.
 
 ## Service Deep Dives
 
-Every `docs/<service>.md` snapshot now pairs prose with an architecture diagram + configuration, testing, and operational notes derived from the live source tree.
+Every `docs/<service>.md` snapshot pairs prose with architecture diagrams, configuration, testing commands, and operational notes derived from the current tree. Consult the linked doc before touching the service and refresh it whenever contracts or lint/test surface changes.
 
-- **alt-frontend** – Next.js 15 App Router UI with Chakra theming, SWR/react-query caching, middleware-protected routes, and the mobile `/mobile/recap/7days` experience (Recap/Genres/Articles/Jobs tabs) backed by SWR skeletons, trace propagation, and refreshed `RecapCard`/summary styling that handles the new evidence-link + genre payloads.
-- **alt-backend/app** – Go 1.25 Clean Architecture API (handler → usecase → port → gateway → driver) with GoMock tests, Atlas migrations, and slog logging, now hosting `/v1/recap/7days` (public) and service-auth `/v1/recap/articles` endpoints backed by `RecapUsecase`, `RecapGateway`, and domain DTOs (`RecapSummary`, `RecapGenre`, `EvidenceLink`).
-- **alt-backend/sidecar-proxy** – Go HTTP proxy centralising allowlists, timeouts, and header normalisation; exercised with three-part `httptest`.
-- **pre-processor/app** – Go ingestion service fetching RSS feeds, deduping entries, and firing summarisation/tagging with circuit breakers and 5-second pacing.
-- **pre-processor-sidecar/app** – Go scheduler managing Inoreader OAuth refresh with `singleflight`, deterministic clocks, and Cron-friendly endpoints.
-- **news-creator/app** – FastAPI LLM orchestrator (Gemma 3 4B via Ollama) with Clean Architecture, golden prompts, and async pytest.
-- **tag-generator/app** – Python 3.14 ML pipeline batching tag extraction, running ONNX Runtime by default with SentenceTransformer fallback, exposing a `SERVICE_SECRET`-driven `/api/v1/tags/batch` endpoint backed by `tag_fetcher`, powering the rolling `tag_label_graph`, and still shipping bias checks + Ruff/mypy gates alongside the background worker thread.
-- **search-indexer/app** – Go service merging article, tag, and summary data into Meilisearch in 200-doc batches with checkpoints and index settings.
-- **auth-hub** – Go Identity-Aware Proxy validating Kratos sessions, caching five-minute identities, and emitting canonical `X-Alt-*` headers.
-- **auth-token-manager** – Deno 2.5.4 OAuth refresh worker stubbing `fetch` via `@std/testing/bdd` to keep rotations safe.
-- **rask-log-forwarder/app** – Rust sidecar tailing Docker logs with SIMD parsing, lock-free queues, and disk fallback before ClickHouse handoff.
-- **rask-log-aggregator/app** – Rust Axum ingestion API performing zero-copy parsing and persisting structured logs into ClickHouse with `criterion`.
-- **recap-worker** – Rust 2024 Axum runner that acquires a cron window (default 04:00 JST), fetches articles via alt-backend `/v1/recap/articles`, preprocesses/dedupes content, batches evidence to recap-subworker/news-creator, persists deduplicated `recap_cluster_evidence`, loads `tag_label_graph`, emits `recap_genre_learning_results`, validates golden datasets (ROUGE scoring helpers), and provides `scripts/replay_genre_pipeline` for offline investigations before persisting to recap-db for `/v1/recap/7days`.
-- **recap-subworker** – FastAPI service that clusters per-genre evidence in a `ProcessPoolExecutor`, enforces queue backpressure, deduplicates supporting IDs before persisting `recap_cluster_evidence`, validates JSON Schemas, and returns representative sentences + diagnostics for persistence.
+- **alt-frontend** – Next.js 15 App Router UI with Chakra palettes, SWR/react-query caching, middleware-protected flows, and the `/mobile/recap/7days` experience that now renders evidence links + genre payloads. [docs/alt-frontend.md](docs/alt-frontend.md)
+- **alt-frontend-sv** – SvelteKit `/sv` gateway with Runes, Tailwind v4, SSE hooks, and Kratos-aware middleware powering the modern dashboard while exchanging tokens via auth-hub. [docs/alt-frontend-sv.md](docs/alt-frontend-sv.md)
+- **alt-backend/app** – Go 1.25 Clean Architecture API (handler → usecase → port → gateway → driver) with GoMock suites, Atlas migrations, structured slog, and the recap endpoints `/v1/recap/7days` + service-auth `/v1/recap/articles`. [docs/alt-backend.md](docs/alt-backend.md)
+- **alt-backend/sidecar-proxy** – Go egress proxy enforcing HTTPS allowlists, external DNS resolution, CONNECT tunnels, health/metrics/debug endpoints, and structured logging while remaining light enough to attach to Compose/Kubernetes. [docs/sidecar-proxy.md](docs/sidecar-proxy.md)
+- **pre-processor/app** – Go ingestion worker that deduplicates feeds, sanitizes content, queues summarisation jobs, and obeys 5-second host pacing with circuit breakers. [docs/pre-processor.md](docs/pre-processor.md)
+- **pre-processor-sidecar/app** – Scheduler rotating Inoreader tokens, syncing subscriptions, and exposing health/admin endpoints; uses `singleflight`, pluggable clocks, and secret watching. [docs/pre-processor-sidecar.md](docs/pre-processor-sidecar.md)
+- **news-creator/app** – FastAPI Ollama orchestrator featuring Model Bucket Routing, hierarchical Map-Reduce summarization, golden prompts, and fallback strategies for OOM or repetition. [docs/news-creator.md](docs/news-creator.md)
+- **tag-generator/app** – Python 3.14 ML pipeline batching tag extraction, running ONNX Runtime (with SentenceTransformer fallback), exposing `/api/v1/tags/batch`, and refreshing the rolling `tag_label_graph`. [docs/tag-generator.md](docs/tag-generator.md)
+- **search-indexer/app** – Go Meilisearch indexer that batches 200 documents, ensures schema settings, and exposes a `/v1/search` handler. [docs/search-indexer.md](docs/search-indexer.md)
+- **auth-hub** – Kratos-aware IAP that validates sessions, caches identities for five minutes, and emits authoritative `X-Alt-*` headers for downstream services. [docs/auth-hub.md](docs/auth-hub.md)
+- **auth-token-manager** – Deno OAuth2 CLI refreshing Inoreader tokens, writing Kubernetes secrets, and monitoring token horizon alerts. [docs/auth-token-manager.md](docs/auth-token-manager.md)
+- **rask-log-forwarder/app** – Rust SIMD JSON log forwarder with lock-free buffers, disk fallback, and ClickHouse-friendly batching. [docs/rask-log-forwarder.md](docs/rask-log-forwarder.md)
+- **rask-log-aggregator/app** – Rust Axum API ingesting newline-delimited JSON logs and persisting them into ClickHouse via exporter traits. [docs/rask-log-aggregator.md](docs/rask-log-aggregator.md)
+- **recap-worker** – Rust 2024 Axum orchestrator that fetches articles, preprocesses/deduplicates, assigns genres, assembles evidence, clusters via recap-subworker, summarizes via news-creator, and persists outputs for `/v1/recap/7days`. [docs/recap-worker.md](docs/recap-worker.md)
+- **recap-subworker** – FastAPI/Gunicorn clustering and classification worker using process pools, embeddings, and diagnostics; supports admin warmups and graph builds. [docs/recap-subworker.md](docs/recap-subworker.md)
+- **recap-db** – PostgreSQL schema contract for recap jobs, sections, evidence, tag graphs, and learning results plus migration helpers. [docs/recap-db.md](docs/recap-db.md)
 
-- **Cross-cutting note** – Structured logging, context propagation, deterministic tests, and environment-driven configuration are mandatory across all services. Consult each service’s `CLAUDE.md` for precise commands, env vars, and gotchas before committing changes.
+- **Cross-cutting note** – Structured logging, context propagation, deterministic tests, and environment-driven configuration apply to every service. Refresh the relevant `docs/<service>.md` snapshot whenever contracts, env guards, or test commands change, and read the `CLAUDE.md` file for process guardrails before committing.
 
 ## Recap Experience & Pipeline
 
-recap-worker (Rust 2024) and recap-subworker (FastAPI) now power a dedicated seven-day “Recap” surface that highlights top genres, evidence links, and batch health for mobile users. The pipeline runs under its own Compose profile, persists outputs into recap-db, and exposes lightweight APIs that the frontend can poll or hydrate via SWR.
+`recap-worker` (Rust 2024) orchestrates the 7-day recap job described in `docs/recap-worker.md` via `PipelineOrchestrator` (`recap-worker/recap-worker/src/pipeline.rs`). A scheduler or manual `POST /v1/generate/recaps/7days` trigger creates a `JobContext` that drives seven stages:
+
+1.  **Fetch** (`AltBackendFetchStage`) pulls the current 7‑day window from `alt-backend` `/v1/recap/articles`, optionally enriches articles with `tag-generator` tags, and writes raw HTML/metadata copies to `recap_job_articles`.
+2.  **Preprocess** (`TextPreprocessStage`) strips HTML, normalises Unicode, runs language detection, tokenises via Lindera, and extracts tag signals with `recap_job_articles` data before handing the batch to the deduper.
+3.  **Dedup** (`HashDedupStage`) removes near-duplicates with XXH3 + sentence similarity so each article appears once.
+4.  **Genre** (`RemoteGenreStage` + `TwoStageGenreStage`) sends batches to `recap-subworker` for remote coarse classification, then, when `genre_refine_enabled` is configured, reloads the cached `tag_label_graph` (preloaded from `recap-db`) and refines genres using `DefaultRefineEngine` + rollout settings.
+5.  **Select** (`SummarySelectStage`) trims per-genre documents (min counts, subgenre limits), optionally reruns coherence filtering with the embedding service, and builds the evidence bundle.
+6.  **Dispatch** (`MlLlmDispatchStage`) fans out the bundle: `recap-subworker` clusters evidence via `/v1/runs`, `news-creator` summarises per-cluster content through Ollama, and the orchestrator collects the summaries plus diagnostics.
+7.  **Persist** (`FinalSectionPersistStage`) stores the curated recap (`recap_outputs`, `recap_genres`), `recap_cluster_evidence`, `recap_genre_learning_results`, and related diagnostics in `recap-db`, updating metrics and structured logs consumed by ClickHouse/rust observability services.
+
+Before each run the builder optionally refreshes the graph cache (`recap_pre_refresh_graph_enabled`) and reloads `GraphOverrideSettings` so genre thresholds can be tuned live; resumable jobs look up the last completed stage when the orchestrator replays the handler. The same workflow emits the `/v1/recap/7days` DTO, `recap_cluster_evidence` links, and `recap_genre_learning_results` telemetry that drive the `/mobile/recap/7days` surface plus downstream dashboards.
 
 ### Mobile & API Surfaces
 
