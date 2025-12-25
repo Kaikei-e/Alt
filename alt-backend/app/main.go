@@ -42,6 +42,7 @@ func main() {
 	// Start background jobs
 	go job.HourlyJobRunner(ctx, container.AltDBRepository)
 	go job.DailyScrapingPolicyJobRunner(ctx, container.ScrapingDomainUsecase)
+	go job.OutboxWorkerRunner(ctx, container.AltDBRepository, container.RagIntegration)
 
 	e := echo.New()
 

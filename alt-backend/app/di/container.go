@@ -1,6 +1,7 @@
 package di
 
 import (
+	"alt/adapter/rag_adapter"
 	"alt/config"
 	"alt/driver/alt_db"
 	"alt/driver/csrf_token_driver"
@@ -22,6 +23,7 @@ import (
 	"alt/gateway/fetch_inoreader_summary_gateway"
 	"alt/gateway/image_fetch_gateway"
 	"alt/gateway/morning_gateway"
+	"alt/gateway/rag_gateway"
 	"alt/gateway/rate_limiter_gateway"
 	"alt/gateway/recap_articles_gateway"
 	"alt/gateway/recap_gateway"
@@ -34,6 +36,7 @@ import (
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
 	"alt/port/morning_letter_port"
+	"alt/port/rag_integration_port"
 	"alt/port/rate_limiter_port"
 	"alt/usecase/archive_article_usecase"
 	"alt/usecase/csrf_token_usecase"
@@ -76,6 +79,7 @@ type ApplicationComponents struct {
 	// Gateways
 	RobotsTxtGateway    *robots_txt_gateway.RobotsTxtGateway
 	FetchArticleGateway *fetch_article_gateway.FetchArticleGateway
+	RagIntegration      rag_integration_port.RagIntegrationPort
 
 	// Usecases
 	FetchSingleFeedUsecase              *fetch_feed_usecase.FetchSingleFeedUsecase
@@ -187,8 +191,16 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	// Robots.txt gateway (used by multiple components)
 	robotsTxtGatewayImpl := robots_txt_gateway.NewRobotsTxtGateway(httpClient)
 
+	// RAG Integration
+	ragClient, err := rag_gateway.NewClientWithResponses(cfg.Rag.OrchestratorURL)
+	if err != nil {
+		// Log error but proceed (fail-open or panic depending on strictness - here we panic as it is config error likely)
+		panic("Failed to create RAG client: " + err.Error())
+	}
+	ragAdapterImpl := rag_adapter.NewRagAdapter(ragClient)
+
 	fetchArticleGatewayImpl := fetch_article_gateway.NewFetchArticleGateway(rateLimiter, httpClient)
-	fetchArticleUsecase := fetch_article_usecase.NewArticleUsecase(fetchArticleGatewayImpl, robotsTxtGatewayImpl, altDBRepository)
+	fetchArticleUsecase := fetch_article_usecase.NewArticleUsecase(fetchArticleGatewayImpl, robotsTxtGatewayImpl, altDBRepository, ragAdapterImpl)
 	archiveArticleGatewayImpl := archive_article_gateway.NewArchiveArticleGateway(altDBRepository)
 	archiveArticleUsecase := archive_article_usecase.NewArchiveArticleUsecase(fetchArticleGatewayImpl, archiveArticleGatewayImpl)
 
@@ -247,6 +259,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		// Gateways
 		RobotsTxtGateway:    robotsTxtGatewayImpl,
 		FetchArticleGateway: fetchArticleGatewayImpl,
+		RagIntegration:      ragAdapterImpl,
 
 		// Usecases
 		FetchSingleFeedUsecase:              fetchSingleFeedUsecase,

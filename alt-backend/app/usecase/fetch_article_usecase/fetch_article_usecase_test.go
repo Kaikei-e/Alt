@@ -1,13 +1,24 @@
 package fetch_article_usecase
 
 import (
+	"alt/domain"
 	"alt/mocks"
+	"alt/port/rag_integration_port"
+	"alt/utils/logger"
 	"context"
 	"errors"
+	"net/url"
+	"os"
 	"testing"
 
+	"github.com/google/uuid"
 	"go.uber.org/mock/gomock"
 )
+
+func TestMain(m *testing.M) {
+	logger.InitLogger()
+	os.Exit(m.Run())
+}
 
 func TestFetchArticleUsecase_Execute_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -17,8 +28,9 @@ func TestFetchArticleUsecase_Execute_Success(t *testing.T) {
 	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
 	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
 	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
 
-	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo)
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
 
 	// テストデータ
 	articleURL := "https://example.com/article"
@@ -53,8 +65,9 @@ func TestFetchArticleUsecase_Execute_Error(t *testing.T) {
 	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
 	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
 	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
 
-	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo)
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
 
 	// テストデータ
 	articleURL := "https://example.com/article"
@@ -89,8 +102,9 @@ func TestFetchArticleUsecase_Execute_ExtractsTextFromHTML(t *testing.T) {
 	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
 	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
 	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
 
-	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo)
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
 
 	// テストデータ: 画像、スクリプト、スタイルを含むHTML
 	articleURL := "https://example.com/article"
@@ -152,8 +166,9 @@ func TestFetchArticleUsecase_Execute_HandlesPlainText(t *testing.T) {
 	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
 	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
 	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
 
-	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo)
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
 
 	// テストデータ: プレーンテキスト
 	articleURL := "https://example.com/article"
@@ -188,8 +203,9 @@ func TestFetchArticleUsecase_Execute_ReturnsErrorForEmptyContent(t *testing.T) {
 	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
 	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
 	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
 
-	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo)
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
 
 	// テストデータ: 空のコンテンツ
 	articleURL := "https://example.com/article"
@@ -226,4 +242,65 @@ func hasSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+type upsertMatcher struct {
+	check func(rag_integration_port.UpsertArticleInput) bool
+}
+
+func (m upsertMatcher) Matches(x interface{}) bool {
+	input, ok := x.(rag_integration_port.UpsertArticleInput)
+	if !ok {
+		return false
+	}
+	return m.check(input)
+}
+
+func (m upsertMatcher) String() string {
+	return "matches upsert input"
+}
+
+func TestFetchArticleUsecase_FetchCompliantArticle_UpsertsToRAG(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
+
+	articleURLStr := "https://example.com/article"
+	articleURL, _ := url.Parse(articleURLStr)
+	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	userContext := domain.UserContext{UserID: userID}
+	rawHTML := "<html><body><p>Article content</p></body></html>"
+	contentStr := "Article content"
+	articleID := "article-123"
+
+	// Mock expectations
+	mockRepo.EXPECT().FetchArticleByURL(gomock.Any(), articleURLStr).Return(nil, nil)
+	mockRepo.EXPECT().IsDomainDeclined(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
+	mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).Return(&rawHTML, nil)
+	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), contentStr).Return(articleID, nil)
+
+	// Expect UpsertArticle to be called
+	mockRag.EXPECT().UpsertArticle(gomock.Any(), upsertMatcher{
+		check: func(input rag_integration_port.UpsertArticleInput) bool {
+			return input.ArticleID == articleID && input.Body == contentStr && input.URL == articleURLStr
+		},
+	}).Return(nil)
+
+	// Execute
+	result, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
+
+	// Verify
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if result != contentStr {
+		t.Errorf("Expected content %s, got %s", contentStr, result)
+	}
 }

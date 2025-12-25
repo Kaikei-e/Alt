@@ -6,6 +6,7 @@ import (
 	"alt/driver/alt_db"
 	"alt/gateway/fetch_article_gateway"
 	"alt/gateway/robots_txt_gateway"
+	"alt/mocks"
 	"alt/usecase/fetch_article_usecase"
 	"alt/utils/logger"
 	"alt/utils/security"
@@ -24,6 +25,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
 
 // MockRoundTripper for intercepting HTTP requests
@@ -56,10 +58,15 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 	// Inject Gateway with deps (injecting mockHttpClient allows intercepting fetch article request)
 	fetchGw := fetch_article_gateway.NewFetchArticleGatewayWithDeps(nil, mockHttpClient, ssrfValidator)
 
+	// Mock RAG Integration
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
+
 	// Create real Usecase composed of mocks/stubs
-	// Note: NewArticleUsecase expects (FetchArticlePort, RobotsTxtPort, ArticleRepository)
+	// Note: NewArticleUsecase expects (FetchArticlePort, RobotsTxtPort, ArticleRepository, RagIntegrationPort)
 	// repo is *AltDBRepository which uses mockPool, so it satisfies ArticleRepository interface.
-	articleUsecase := fetch_article_usecase.NewArticleUsecase(fetchGw, gw, repo)
+	articleUsecase := fetch_article_usecase.NewArticleUsecase(fetchGw, gw, repo, mockRag)
 
 	// Partial container with only needed components
 	container := &di.ApplicationComponents{
@@ -204,11 +211,24 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 			WithArgs(targetURLStr).
 			WillReturnRows(pgxmock.NewRows([]string{"id"})) // Returns empty, so Scan returns ErrNoRows
 
-		// Mock: SaveArticle -> Success
-		// Arguments order in SQL: title ($1), content ($2), url ($3), user_id ($4), feed_id ($5)
+		// Expect Transaction
+		mockPool.ExpectBegin()
+
+		// Expect Upsert Article
 		mockPool.ExpectQuery("(?is)INSERT INTO articles").
 			WithArgs("Title", pgxmock.AnyArg(), targetURLStr, userID, nil).
 			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(uuid.New()))
+
+		// Expect Outbox Event Insert
+		mockPool.ExpectExec("(?is)INSERT INTO outbox_events").
+			WithArgs("ARTICLE_UPSERT", pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		// Expect Commit
+		mockPool.ExpectCommit()
+
+		// Expect UpsertArticle to be called (best effort, so ignore error return)
+		mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 
 		handler := handleFetchArticle(container)
 		err := handler(c)

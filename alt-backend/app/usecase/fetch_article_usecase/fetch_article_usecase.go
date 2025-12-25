@@ -3,6 +3,7 @@ package fetch_article_usecase
 import (
 	"alt/domain"
 	"alt/port/fetch_article_port"
+	"alt/port/rag_integration_port"
 	"alt/port/robots_txt_port"
 	"alt/utils/html_parser"
 	"alt/utils/logger"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // ArticleUsecase defines the business logic for fetching articles
@@ -21,7 +23,6 @@ type ArticleUsecase interface {
 }
 
 // ArticleRepository defines the data access interface needed by this usecase
-//
 type ArticleRepository interface {
 	FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error)
 	IsDomainDeclined(ctx context.Context, userID, domain string) (bool, error)
@@ -33,17 +34,20 @@ type ArticleUsecaseImpl struct {
 	articleFetcher fetch_article_port.FetchArticlePort
 	robotsTxt      robots_txt_port.RobotsTxtPort
 	repo           ArticleRepository
+	ragIntegration rag_integration_port.RagIntegrationPort
 }
 
 func NewArticleUsecase(
 	articleFetcher fetch_article_port.FetchArticlePort,
 	robotsTxt robots_txt_port.RobotsTxtPort,
 	repo ArticleRepository,
+	ragIntegration rag_integration_port.RagIntegrationPort,
 ) ArticleUsecase {
 	return &ArticleUsecaseImpl{
 		articleFetcher: articleFetcher,
 		robotsTxt:      robotsTxt,
 		repo:           repo,
+		ragIntegration: ragIntegration,
 	}
 }
 
@@ -136,6 +140,23 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 		logger.Logger.Error("Failed to save article to database", "error", saveErr, "url", urlStr)
 	} else {
 		logger.Logger.Info("Article content saved", "url", urlStr, "new_id", newID)
+
+		// 7. Upsert to RAG (Step A: Direct Call)
+		// Using time.Now() for PublishedAt as a temporary measure until HTML parser supports date extraction
+		upsertInput := rag_integration_port.UpsertArticleInput{
+			ArticleID:   newID,
+			Title:       fetchedTitle,
+			Body:        contentStr,
+			URL:         urlStr,
+			PublishedAt: time.Now(),
+			UserID:      userContext.UserID.String(),
+		}
+		if err := u.ragIntegration.UpsertArticle(ctx, upsertInput); err != nil {
+			// Log error but do not fail the request, as Article is already saved
+			logger.Logger.Error("Failed to upsert article to RAG", "error", err, "article_id", newID)
+		} else {
+			logger.Logger.Info("Article upserted to RAG", "article_id", newID)
+		}
 	}
 
 	return contentStr, nil
