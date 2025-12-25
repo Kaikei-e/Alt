@@ -22,6 +22,8 @@ type RagDocumentVersion struct {
 	ID              uuid.UUID
 	DocumentID      uuid.UUID
 	VersionNumber   int
+	Title           string
+	URL             string
 	SourceHash      string
 	ChunkerVersion  string
 	EmbedderVersion string
@@ -90,6 +92,8 @@ type SearchResult struct {
 	Chunk           RagChunk
 	Score           float32
 	ArticleID       string
+	Title           string
+	URL             string
 	DocumentVersion int
 }
 

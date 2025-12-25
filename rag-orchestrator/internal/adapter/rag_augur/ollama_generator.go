@@ -64,12 +64,13 @@ type chatMessage struct {
 }
 
 type chatRequest struct {
-	Model       string                 `json:"model"`
-	Messages    []chatMessage          `json:"messages"`
-	Temperature float64                `json:"temperature"`
-	KeepAlive   int                    `json:"keep_alive"`
-	Format      map[string]interface{} `json:"format"`
-	MaxTokens   *int                   `json:"max_tokens,omitempty"`
+	Model     string                 `json:"model"`
+	Messages  []chatMessage          `json:"messages"`
+	KeepAlive int                    `json:"keep_alive"`
+	Format    map[string]interface{} `json:"format"`
+	Options   map[string]interface{} `json:"options,omitempty"`
+	MaxTokens *int                   `json:"max_tokens,omitempty"`
+	Think     string                 `json:"think,omitempty"`
 }
 
 type chatResponse struct {
@@ -99,18 +100,22 @@ func NewOllamaGenerator(baseURL, model string) *OllamaGenerator {
 
 // Generate sends the prompt to Ollama and returns the assistant message.
 func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens int) (*domain.LLMResponse, error) {
-	var maxTokensPtr *int
-	if maxTokens > 0 {
-		maxTokensPtr = &maxTokens
-	}
+	var maxTokensPtr *int = nil
+	// Unused now as we use Options["num_predict"]
+	_ = maxTokensPtr
 
 	reqBody := chatRequest{
-		Model:       g.Model,
-		Messages:    []chatMessage{{Role: "system", Content: prompt}},
-		Temperature: generationTemperature,
-		KeepAlive:   keepAliveSeconds,
-		Format:      generationFormat,
-		MaxTokens:   maxTokensPtr,
+		Model:     g.Model,
+		Messages:  []chatMessage{{Role: "user", Content: prompt}},
+		KeepAlive: -1,
+		Format:    generationFormat,
+		Think:     "low",
+		Options: map[string]interface{}{
+			"temperature": 0.2,
+		},
+	}
+	if maxTokens > 0 {
+		reqBody.Options["num_predict"] = maxTokens
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)

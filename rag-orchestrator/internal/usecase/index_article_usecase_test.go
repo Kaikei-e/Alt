@@ -127,7 +127,7 @@ func TestIndexArticle_Upsert_Idempotency(t *testing.T) {
 	}, nil)
 
 	// Execute
-	err := uc.Upsert(ctx, articleID, title, body)
+	err := uc.Upsert(ctx, articleID, title, "", body)
 
 	// Assert
 	assert.NoError(t, err)
@@ -177,7 +177,7 @@ func TestIndexArticle_Upsert_NewArticle(t *testing.T) {
 	// Update Current Version
 	mockDocRepo.On("UpdateCurrentVersion", ctx, mock.Anything, mock.Anything).Return(nil)
 
-	err := uc.Upsert(ctx, articleID, title, body)
+	err := uc.Upsert(ctx, articleID, title, "", body)
 	assert.NoError(t, err)
 	mockDocRepo.AssertExpectations(t)
 	mockChunkRepo.AssertExpectations(t)
@@ -259,7 +259,7 @@ func TestIndexArticle_Upsert_Update(t *testing.T) {
 	// 7. Update Current Version
 	mockDocRepo.On("UpdateCurrentVersion", ctx, docID, mock.Anything).Return(nil)
 
-	err := uc.Upsert(ctx, articleID, title, body)
+	err := uc.Upsert(ctx, articleID, title, "", body)
 	assert.NoError(t, err)
 	mockDocRepo.AssertExpectations(t)
 	mockChunkRepo.AssertExpectations(t)

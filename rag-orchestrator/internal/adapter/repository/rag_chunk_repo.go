@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"rag-orchestrator/internal/domain"
 
@@ -131,7 +132,9 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 			c.id, c.version_id, c.ordinal, c.content, c.embedding, c.created_at,
 			(c.embedding <=> $1) as distance,
 			d.article_id,
-			v.version_number
+			v.version_number,
+			v.title,
+			v.url
 		FROM rag_chunks c
 		JOIN rag_document_versions v ON c.version_id = v.id
 		JOIN rag_documents d ON v.document_id = d.id
@@ -161,7 +164,8 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		var distance float32
 		var articleID string
 		var versionNumber int
-		if err := rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.Embedding, &c.CreatedAt, &distance, &articleID, &versionNumber); err != nil {
+		var title, url sql.NullString // Handle potential nulls if older records exist
+		if err := rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.Embedding, &c.CreatedAt, &distance, &articleID, &versionNumber, &title, &url); err != nil {
 			return nil, fmt.Errorf("failed to scan search result: %w", err)
 		}
 		// Convert distance to similarity score (Approximate)
@@ -169,6 +173,8 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 			Chunk:           c,
 			Score:           1.0 - distance,
 			ArticleID:       articleID,
+			Title:           title.String,
+			URL:             url.String,
 			DocumentVersion: versionNumber,
 		})
 	}

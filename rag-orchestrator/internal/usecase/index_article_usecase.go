@@ -14,7 +14,7 @@ import (
 
 type IndexArticleUsecase interface {
 	// Upsert indexes an article. It is idempotent.
-	Upsert(ctx context.Context, articleID, title, body string) error
+	Upsert(ctx context.Context, articleID, title, url, body string) error
 	// Delete removes an article (soft delete logic).
 	Delete(ctx context.Context, articleID string) error
 }
@@ -46,7 +46,7 @@ func NewIndexArticleUsecase(
 	}
 }
 
-func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, body string) error {
+func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url, body string) error {
 	// 1. Source Hash Calculation
 	sourceHash := u.hasher.Compute(title, body)
 
@@ -66,7 +66,7 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, body
 		}
 
 		// 3. Idempotency Check
-		if latestVer != nil && latestVer.SourceHash == sourceHash {
+		if latestVer != nil && latestVer.SourceHash == sourceHash && latestVer.URL == url && latestVer.Title == title {
 			return nil
 		}
 
@@ -131,6 +131,8 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, body
 			ID:              newVersionID,
 			DocumentID:      doc.ID,
 			VersionNumber:   1,
+			Title:           title,
+			URL:             url,
 			SourceHash:      sourceHash,
 			ChunkerVersion:  string(u.chunker.Version()),
 			EmbedderVersion: "v1", // Placeholder

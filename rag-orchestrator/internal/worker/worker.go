@@ -107,9 +107,13 @@ func (w *JobWorker) processBackfillArticle(ctx context.Context, job *domain.RagJ
 	if !ok {
 		return fmt.Errorf("missing or invalid body")
 	}
+	url, ok := payload["url"].(string) // Optional for existing jobs, but encouraged
+	if !ok {
+		url = "" // Default if missing
+	}
 
 	// Throttling could be implemented here (e.g., token bucket or simple sleep)
 	// For now, let's keep it simple as relying on the poll interval acts as a basic rate limiter (1 job/sec/worker)
 
-	return w.indexUsecase.Upsert(ctx, articleID, title, body)
+	return w.indexUsecase.Upsert(ctx, articleID, title, url, body)
 }

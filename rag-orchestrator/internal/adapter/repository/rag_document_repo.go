@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -78,7 +79,7 @@ func (r *ragDocumentRepository) UpdateCurrentVersion(ctx context.Context, docID 
 
 func (r *ragDocumentRepository) GetLatestVersion(ctx context.Context, docID uuid.UUID) (*domain.RagDocumentVersion, error) {
 	query := `
-		SELECT id, document_id, version_number, source_hash, chunker_version, embedder_version, created_at
+		SELECT id, document_id, version_number, title, url, source_hash, chunker_version, embedder_version, created_at
 		FROM rag_document_versions
 		WHERE document_id = $1
 		ORDER BY version_number DESC
@@ -87,22 +88,27 @@ func (r *ragDocumentRepository) GetLatestVersion(ctx context.Context, docID uuid
 	row := r.getExecutor(ctx).QueryRow(ctx, query, docID)
 
 	var ver domain.RagDocumentVersion
-	err := row.Scan(&ver.ID, &ver.DocumentID, &ver.VersionNumber, &ver.SourceHash, &ver.ChunkerVersion, &ver.EmbedderVersion, &ver.CreatedAt)
+	var title, url pgtype.Text
+	err := row.Scan(&ver.ID, &ver.DocumentID, &ver.VersionNumber, &title, &url, &ver.SourceHash, &ver.ChunkerVersion, &ver.EmbedderVersion, &ver.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan version: %w", err)
 	}
+
+	ver.Title = title.String
+	ver.URL = url.String
+
 	return &ver, nil
 }
 
 func (r *ragDocumentRepository) CreateVersion(ctx context.Context, version *domain.RagDocumentVersion) error {
 	query := `
-		INSERT INTO rag_document_versions (id, document_id, version_number, source_hash, chunker_version, embedder_version, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO rag_document_versions (id, document_id, version_number, title, url, source_hash, chunker_version, embedder_version, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
-	_, err := r.getExecutor(ctx).Exec(ctx, query, version.ID, version.DocumentID, version.VersionNumber, version.SourceHash, version.ChunkerVersion, version.EmbedderVersion, version.CreatedAt)
+	_, err := r.getExecutor(ctx).Exec(ctx, query, version.ID, version.DocumentID, version.VersionNumber, version.Title, version.URL, version.SourceHash, version.ChunkerVersion, version.EmbedderVersion, version.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to insert version: %w", err)
 	}
