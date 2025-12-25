@@ -157,6 +157,8 @@ components:
     Context:
       type: object
       properties:
+        chunk_id:
+          type: string
         chunk_text:
           type: string
         url:
@@ -186,6 +188,16 @@ components:
           type: array
           items:
             type: string
+        user_id:
+          type: string
+        locale:
+          type: string
+        max_chunks:
+          type: integer
+          format: int32
+        max_tokens:
+          type: integer
+          format: int32
 
     AnswerResponse:
       type: object
@@ -196,3 +208,39 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Context"
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnswerCitation"
+        fallback:
+          type: boolean
+        reason:
+          type: string
+        debug:
+          $ref: "#/components/schemas/AnswerDebug"
+
+    AnswerCitation:
+      type: object
+      properties:
+        chunk_id:
+          type: string
+        chunk_text:
+          type: string
+        url:
+          type: string
+        title:
+          type: string
+        score:
+          type: number
+          format: float
+        document_version:
+          type: integer
+          format: int64
+
+    AnswerDebug:
+      type: object
+      properties:
+        retrieval_set_id:
+          type: string
+        prompt_version:
+          type: string
