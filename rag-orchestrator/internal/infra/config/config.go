@@ -26,7 +26,7 @@ func Load() *Config {
 		DBPassword:     getEnv("DB_PASSWORD", "rag_password"), // Should be loaded from file in prod usually, but simplified for now adapting to provided secrets in compose
 		DBName:         getEnv("DB_NAME", "rag_db"),
 		OllamaURL:      getEnv("AUGUR_EXTERNAL", "http://augur-external:11434"),
-		EmbeddingModel: getEnv("EMBEDDING_MODEL", "gemma3:4b"), // Default to gemma3:4b if not specified, assuming it supports embedding
+		EmbeddingModel: getEnv("EMBEDDING_MODEL", "embeddinggemma"), // Default to gemma3:4b if not specified, assuming it supports embedding
 	}
 }
 
