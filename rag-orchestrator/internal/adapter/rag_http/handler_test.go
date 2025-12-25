@@ -78,7 +78,7 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 		"ja",
 	)
 
-	handler := rag_http.NewHandler(retrieve, answerUC)
+	handler := rag_http.NewHandler(retrieve, answerUC, nil)
 
 	body := bytes.NewBufferString(`{"query":"TPU"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", body)

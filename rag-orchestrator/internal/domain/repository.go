@@ -98,3 +98,27 @@ type TransactionManager interface {
 	// RunInTx executes the given function within a transaction.
 	RunInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
+
+// RagJob represents a background job.
+type RagJob struct {
+	ID           uuid.UUID
+	JobType      string
+	Payload      map[string]interface{} // JSONB
+	Status       string                 // "new", "processing", "completed", "failed"
+	ErrorMessage *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// RagJobRepository defines the operations for managing background jobs.
+type RagJobRepository interface {
+	// Enqueue adds a new job to the queue.
+	Enqueue(ctx context.Context, job *RagJob) error
+
+	// AcquireNextJob retrieves the next available 'new' job and locks it (SKIP LOCKED).
+	// Returns nil, nil if no job is available.
+	AcquireNextJob(ctx context.Context) (*RagJob, error)
+
+	// UpdateStatus updates the status and error message of a job.
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string, errorMessage *string) error
+}

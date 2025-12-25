@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"rag-orchestrator/internal/domain"
+
+	"github.com/google/uuid"
 )
 
 // RetrieveContextInput defines the input parameters for RetrieveContext.
@@ -25,6 +27,7 @@ type ContextItem struct {
 	PublishedAt     string // ISO8601 string
 	Score           float32
 	DocumentVersion int
+	ChunkID         uuid.UUID
 }
 
 // RetrieveContextUsecase defines the interface for retrieving context.
@@ -158,6 +161,7 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 			PublishedAt:     "", // Placeholder: Not stored in rag-db yet
 			Score:           res.Score,
 			DocumentVersion: res.DocumentVersion,
+			ChunkID:         res.Chunk.ID,
 		})
 	}
 
