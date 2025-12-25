@@ -79,6 +79,18 @@ type RagChunkRepository interface {
 
 	// InsertEvents inserts multiple chunk events.
 	InsertEvents(ctx context.Context, events []RagChunkEvent) error
+
+	// Search performs a vector search for chunks.
+	// candidateArticleIDs: if not empty, filter chunks to these articles.
+	Search(ctx context.Context, queryVector []float32, candidateArticleIDs []string, limit int) ([]SearchResult, error)
+}
+
+// SearchResult represents a chunk found via vector search, including its similarity score.
+type SearchResult struct {
+	Chunk           RagChunk
+	Score           float32
+	ArticleID       string
+	DocumentVersion int
 }
 
 // TransactionManager defines the interface for handling database transactions.

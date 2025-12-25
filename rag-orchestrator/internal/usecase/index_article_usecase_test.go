@@ -71,6 +71,14 @@ func (m *MockRagChunkRepository) InsertEvents(ctx context.Context, events []doma
 	return args.Error(0)
 }
 
+func (m *MockRagChunkRepository) Search(ctx context.Context, queryVector []float32, candidateArticleIDs []string, limit int) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, candidateArticleIDs, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.SearchResult), args.Error(1)
+}
+
 type MockTransactionManager struct {
 	mock.Mock
 }
