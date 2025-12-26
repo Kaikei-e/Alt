@@ -14,6 +14,10 @@ export interface StreamingRendererOptions {
    */
   onComplete?: (totalLength: number, chunkCount: number) => void;
   /**
+   * Callback for metadata events (e.g. citations, context)
+   */
+  onMetadata?: (metadata: any) => void;
+  /**
    * Optional tick function from Svelte to force re-render
    * If provided, will be called after each chunk to ensure immediate rendering
    */
@@ -193,11 +197,6 @@ export function createStreamingRenderer(
     chunkCount = 0;
     totalLength = 0;
     isCancelled = false;
-    // We can't easily reset the external typewriter effect without recreating it
-    // But since createStreamingRenderer is usually created once per stream, this is likely fine.
-    // If reset is called, we might need to recreate the effect or clear it.
-    // For now, let's assume usage pattern creates a new renderer or we just don't support full reset of typewriter specific state here easily without change.
-    // Actually, we should probably warn or re-init.
   };
 
   return {
@@ -211,137 +210,212 @@ export function createStreamingRenderer(
 }
 
 /**
- * Process a ReadableStreamDefaultReader for text streaming with incremental rendering
- * Best practice: Update state immediately for each chunk and let Svelte handle rendering
- * Filters out SSE heartbeat comments (lines starting with ':')
+ * Generic SSE Event
  */
-export async function processStreamingText(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  updateState: (text: string) => void,
-  options: StreamingRendererOptions = {}
-): Promise<{ chunkCount: number; totalLength: number; hasReceivedData: boolean }> {
+export interface SSEEvent {
+  id?: string;
+  event: string;
+  data: string;
+  retry?: number;
+}
+
+/**
+ * Parses a readable stream into SSE events
+ */
+export async function* parseSSEStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>
+): AsyncGenerator<SSEEvent> {
   const decoder = new TextDecoder("utf-8");
-  const renderer = createStreamingRenderer(updateState, options);
-  let hasReceivedData = false;
-  let buffer = ""; // Buffer for accumulating partial lines
-
-  /**
-   * Filter out SSE heartbeat comments and process only actual content
-   * SSE format: ': comment\n\n' (heartbeat) or raw text content
-   * We filter out lines that start with ':' (SSE comment lines)
-   */
-  /**
-   * Parse SSE events from the stream
-   * SSE format: 'data: <json>\n\n' or ': comment\n\n'
-   */
-  const parseSSEEvents = (text: string): string[] => {
-    if (!text) return [];
-
-    // Add to buffer
-    buffer += text;
-
-    // Split by newlines to process complete lines
-    const lines = buffer.split("\n");
-    // Keep the last potentially incomplete line in buffer
-    buffer = lines[lines.length - 1] || "";
-
-    // Process all lines except the last one
-    const completeLines = lines.slice(0, -1);
-    const validChunks: string[] = [];
-
-    for (const line of completeLines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      // Skip SSE comments
-      if (trimmed.startsWith(":")) {
-        continue;
-      }
-
-      // Handle data-only lines (standard SSE)
-      if (trimmed.startsWith("data:")) {
-        const dataContent = trimmed.slice(5).trim();
-        try {
-          // Parse JSON content if possible (backend sends JSON string)
-          // Backend sends: data: "token"
-          // So JSON.parse('"token"') -> "token"
-          // If backend sends: data: {"text": "token"} -> parse -> obj.text
-          // Our backend sends `json.dumps(content)` where content is string.
-          // So typical payload: data: "Hello"
-          const parsed = JSON.parse(dataContent);
-          if (typeof parsed === 'string') {
-            validChunks.push(parsed);
-          } else if (typeof parsed === 'object' && parsed !== null) {
-            // Fallback for object payloads if we ever send structured data
-            validChunks.push(JSON.stringify(parsed));
-          } else {
-            validChunks.push(String(parsed));
-          }
-        } catch (e) {
-          // If not JSON, treat as raw text (fallback)
-          validChunks.push(dataContent);
-        }
-      }
-    }
-
-    return validChunks;
-  };
+  let buffer = "";
+  let currentEvent: SSEEvent = { event: "message", data: "" };
+  let hasData = false;
 
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
-        // Flush any remaining bytes in the decoder
-        const remaining = decoder.decode();
-        if (remaining) {
-          buffer += remaining;
-        }
-        // Process final buffer content (filtering SSE comments)
-        // Force process remaining buffer by adding a newline to complete any partial line
-        if (buffer) {
-          const finalValues = parseSSEEvents(buffer + "\n");
-          for (const val of finalValues) {
-            await renderer.processChunk(val);
-            hasReceivedData = true;
+        // Process last bits if any
+        if (buffer.trim()) {
+          const lines = buffer.split("\n");
+          for (const line of lines) {
+            const trimmed = line.trim();
+            // Simple logical check for data lines in leftover buffer
+            if (trimmed.startsWith("data:")) {
+              let content = line.substring(line.indexOf(':') + 1);
+              if (content.startsWith(' ')) content = content.substring(1);
+              currentEvent.data += content + "\n";
+              hasData = true;
+            }
+          }
+          if (hasData) {
+            const data = currentEvent.data.endsWith('\n') ? currentEvent.data.slice(0, -1) : currentEvent.data;
+            yield { ...currentEvent, data };
           }
         }
-        // Flush final buffer
-        renderer.flush();
         break;
       }
+
       if (value) {
-        // Decode chunk and filter SSE comments
-        const decoded = decoder.decode(value, { stream: true });
-        if (decoded) {
-          // Filter and parse SSE events
-          const chunks = parseSSEEvents(decoded);
-          for (const chunk of chunks) {
-            hasReceivedData = true;
-            // Process chunk immediately
-            await renderer.processChunk(chunk);
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+
+        let boundary = buffer.indexOf('\n');
+        while (boundary !== -1) {
+          const line = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 1);
+
+          const trimmed = line.trim();
+          if (!trimmed) {
+            // End of event
+            if (hasData) {
+              const data = currentEvent.data.endsWith('\n') ? currentEvent.data.slice(0, -1) : currentEvent.data;
+              yield { ...currentEvent, data };
+            }
+            currentEvent = { event: "message", data: "" };
+            hasData = false;
+          } else if (trimmed.startsWith("event:")) {
+            currentEvent.event = trimmed.slice(6).trim();
+          } else if (trimmed.startsWith("data:")) {
+            let content = line.substring(line.indexOf(':') + 1);
+            if (content.startsWith(' ')) content = content.substring(1);
+            currentEvent.data += content + "\n";
+            hasData = true;
+          } else if (trimmed.startsWith("id:")) {
+            currentEvent.id = trimmed.slice(3).trim();
+          } else if (trimmed.startsWith(":")) {
+            // Comment
           }
+
+          boundary = buffer.indexOf('\n');
         }
       }
     }
-  } catch (error) {
-    // Cancel rendering on error to prevent further processing
-    renderer.cancel();
-    // Flush any buffered data before re-throwing
-    renderer.flush();
-    throw error;
   } finally {
-    // Ensure reader is released even if there's an error
-    try {
-      reader.releaseLock();
-    } catch (releaseError) {
-      // Ignore errors when releasing lock (reader might already be released)
-      console.warn("[StreamingRenderer] Error releasing reader lock", releaseError);
+    try { reader.releaseLock(); } catch (e) { }
+  }
+}
+
+/**
+ * Augur-specific streaming processor
+ * Handles 'delta', 'meta', 'fallback' events
+ */
+export async function processAugurStreamingText(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  updateState: (text: string) => void,
+  options: StreamingRendererOptions = {}
+): Promise<{ chunkCount: number; totalLength: number; hasReceivedData: boolean }> {
+  const renderer = createStreamingRenderer(updateState, options);
+  let hasReceivedData = false;
+
+  try {
+    for await (const event of parseSSEStream(reader)) {
+      if (event.event === "delta") {
+        if (event.data) {
+          await renderer.processChunk(event.data);
+          hasReceivedData = true;
+        }
+      } else if (event.event === "meta" || event.event === "done") {
+        if (options.onMetadata && event.data) {
+          try {
+            const parsed = JSON.parse(event.data);
+            options.onMetadata(parsed);
+          } catch (e) {
+            console.warn("[AugurStream] Failed to parse metadata", e);
+          }
+        }
+      } else if (event.event === "fallback") {
+        if (options.onMetadata) {
+          options.onMetadata({ fallback: true, code: event.data });
+        }
+      } else if (event.event === "error") {
+        console.error("[AugurStream] Error Event:", event.data);
+      }
     }
+    renderer.flush();
+  } catch (error) {
+    renderer.cancel();
+    throw error;
   }
 
   return {
     chunkCount: renderer.getChunkCount(),
     totalLength: renderer.getTotalLength(),
-    hasReceivedData,
+    hasReceivedData
   };
 }
+
+/**
+ * Generic Streaming Text Processor
+ * Treats everything as text content unless specific event handling is added.
+ * Useful for standard text-only streams.
+ */
+export async function processGenericStreamingText(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  updateState: (text: string) => void,
+  options: StreamingRendererOptions = {}
+): Promise<void> {
+  const renderer = createStreamingRenderer(updateState, options);
+  try {
+    for await (const event of parseSSEStream(reader)) {
+      // Treat all events data as content for now, or just 'message'/'delta'
+      if (event.data) {
+        await renderer.processChunk(event.data);
+      }
+    }
+    renderer.flush();
+  } catch (e) {
+    renderer.cancel();
+    throw e;
+  }
+}
+
+/**
+ * Summarize-specific streaming processor (News Creator)
+ * Handles standard SSE 'message' events where data is a JSON string of the text chunk.
+ */
+export async function processSummarizeStreamingText(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  updateState: (text: string) => void,
+  options: StreamingRendererOptions = {}
+): Promise<{ chunkCount: number; totalLength: number; hasReceivedData: boolean }> {
+  const renderer = createStreamingRenderer(updateState, options);
+
+  try {
+    for await (const event of parseSSEStream(reader)) {
+      if (event.data) {
+        // Handling "message" (default) or "delta".
+        if (event.event === "message" || event.event === "delta") {
+          try {
+            // Parse JSON string (e.g. '"Hello"') -> 'Hello'
+            const text = JSON.parse(event.data);
+            if (typeof text === 'string') {
+              await renderer.processChunk(text);
+            } else if (text && typeof text === 'object') {
+              // If it's a complex object (rare for this usecase), stringify it
+              await renderer.processChunk(JSON.stringify(text));
+            } else {
+              // Numbers, booleans, etc
+              await renderer.processChunk(String(text));
+            }
+          } catch (e) {
+            // Not valid JSON, treat as raw text (fallback)
+            await renderer.processChunk(event.data);
+          }
+        }
+      }
+    }
+    renderer.flush();
+  } catch (error) {
+    renderer.cancel();
+    throw error;
+  }
+
+  return {
+    chunkCount: renderer.getChunkCount(),
+    totalLength: renderer.getTotalLength(),
+    hasReceivedData: renderer.getChunkCount() > 0
+  };
+}
+
+// @deprecated Use processAugurStreamingText or processSummarizeStreamingText
+export const processStreamingText = processAugurStreamingText;
