@@ -46,7 +46,7 @@ func main() {
 	docRepo := repository.NewRagDocumentRepository(dbPool)
 	jobRepo := repository.NewRagJobRepository(dbPool)
 	txManager := repository.NewPostgresTransactionManager(dbPool)
-	embedder := rag_augur.NewOllamaEmbedder(cfg.OllamaURL, cfg.EmbeddingModel)
+	embedder := rag_augur.NewOllamaEmbedder(cfg.OllamaURL, cfg.EmbeddingModel, cfg.OllamaTimeout)
 
 	// 5. Initialize Usecases
 	hasher := domain.NewSourceHashPolicy()
@@ -61,8 +61,8 @@ func main() {
 		embedder,
 	)
 
-	retrieveUsecase := usecase.NewRetrieveContextUsecase(chunkRepo, docRepo, embedder)
-	generator := rag_augur.NewOllamaGenerator(cfg.KnowledgeAugurURL, cfg.KnowledgeAugurModel)
+	generator := rag_augur.NewOllamaGenerator(cfg.KnowledgeAugurURL, cfg.KnowledgeAugurModel, cfg.OllamaTimeout)
+	retrieveUsecase := usecase.NewRetrieveContextUsecase(chunkRepo, docRepo, embedder, generator)
 	promptBuilder := usecase.NewXMLPromptBuilder("Answer in Japanese.")
 	answerUsecase := usecase.NewAnswerWithRAGUsecase(
 		retrieveUsecase,
@@ -90,7 +90,7 @@ func main() {
 	e.Use(middleware.Recover())
 
 	// 8. Initialize Handlers
-	handler := rag_http.NewHandler(retrieveUsecase, answerUsecase, jobRepo)
+	handler := rag_http.NewHandler(retrieveUsecase, answerUsecase, indexUsecase, jobRepo)
 
 	// 9. Register OpenAPI Handlers
 	openapi.RegisterHandlers(e, handler)
