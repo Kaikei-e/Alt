@@ -90,6 +90,29 @@ paths:
         "500":
           description: Internal server error
 
+  /v1/rag/answer/stream:
+    post:
+      summary: Stream a RAG answer using Server-Sent Events
+      description: >
+        Streams the same grounded answer response via SSE so clients can render
+        partial results before the full JSON is validated.
+      operationId: AnswerWithRAGStream
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerRequest"
+      responses:
+        "200":
+          description: SSE stream of RAG answer events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "500":
+          description: Internal server error
+
 components:
   schemas:
     UpsertIndexRequest:
