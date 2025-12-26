@@ -109,6 +109,9 @@ type UpsertIndexJSONRequestBody = UpsertIndexRequest
 // AnswerWithRAGJSONRequestBody defines body for AnswerWithRAG for application/json ContentType.
 type AnswerWithRAGJSONRequestBody = AnswerRequest
 
+// AnswerWithRAGStreamJSONRequestBody defines body for AnswerWithRAGStream for application/json ContentType.
+type AnswerWithRAGStreamJSONRequestBody = AnswerRequest
+
 // RetrieveContextJSONRequestBody defines body for RetrieveContext for application/json ContentType.
 type RetrieveContextJSONRequestBody = RetrieveRequest
 
@@ -200,6 +203,11 @@ type ClientInterface interface {
 
 	AnswerWithRAG(ctx context.Context, body AnswerWithRAGJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// AnswerWithRAGStreamWithBody request with any body
+	AnswerWithRAGStreamWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AnswerWithRAGStream(ctx context.Context, body AnswerWithRAGStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// RetrieveContextWithBody request with any body
 	RetrieveContextWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -268,6 +276,30 @@ func (c *Client) AnswerWithRAGWithBody(ctx context.Context, contentType string, 
 
 func (c *Client) AnswerWithRAG(ctx context.Context, body AnswerWithRAGJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAnswerWithRAGRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AnswerWithRAGStreamWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAnswerWithRAGStreamRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AnswerWithRAGStream(ctx context.Context, body AnswerWithRAGStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAnswerWithRAGStreamRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -422,6 +454,46 @@ func NewAnswerWithRAGRequestWithBody(server string, contentType string, body io.
 	return req, nil
 }
 
+// NewAnswerWithRAGStreamRequest calls the generic AnswerWithRAGStream builder with application/json body
+func NewAnswerWithRAGStreamRequest(server string, body AnswerWithRAGStreamJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAnswerWithRAGStreamRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAnswerWithRAGStreamRequestWithBody generates requests for AnswerWithRAGStream with any type of body
+func NewAnswerWithRAGStreamRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/rag/answer/stream")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewRetrieveContextRequest calls the generic RetrieveContext builder with application/json body
 func NewRetrieveContextRequest(server string, body RetrieveContextJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -520,6 +592,11 @@ type ClientWithResponsesInterface interface {
 
 	AnswerWithRAGWithResponse(ctx context.Context, body AnswerWithRAGJSONRequestBody, reqEditors ...RequestEditorFn) (*AnswerWithRAGResponse, error)
 
+	// AnswerWithRAGStreamWithBodyWithResponse request with any body
+	AnswerWithRAGStreamWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AnswerWithRAGStreamResponse, error)
+
+	AnswerWithRAGStreamWithResponse(ctx context.Context, body AnswerWithRAGStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*AnswerWithRAGStreamResponse, error)
+
 	// RetrieveContextWithBodyWithResponse request with any body
 	RetrieveContextWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RetrieveContextResponse, error)
 
@@ -584,6 +661,27 @@ func (r AnswerWithRAGResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r AnswerWithRAGResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AnswerWithRAGStreamResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r AnswerWithRAGStreamResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AnswerWithRAGStreamResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -663,6 +761,23 @@ func (c *ClientWithResponses) AnswerWithRAGWithResponse(ctx context.Context, bod
 	return ParseAnswerWithRAGResponse(rsp)
 }
 
+// AnswerWithRAGStreamWithBodyWithResponse request with arbitrary body returning *AnswerWithRAGStreamResponse
+func (c *ClientWithResponses) AnswerWithRAGStreamWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AnswerWithRAGStreamResponse, error) {
+	rsp, err := c.AnswerWithRAGStreamWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAnswerWithRAGStreamResponse(rsp)
+}
+
+func (c *ClientWithResponses) AnswerWithRAGStreamWithResponse(ctx context.Context, body AnswerWithRAGStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*AnswerWithRAGStreamResponse, error) {
+	rsp, err := c.AnswerWithRAGStream(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAnswerWithRAGStreamResponse(rsp)
+}
+
 // RetrieveContextWithBodyWithResponse request with arbitrary body returning *RetrieveContextResponse
 func (c *ClientWithResponses) RetrieveContextWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RetrieveContextResponse, error) {
 	rsp, err := c.RetrieveContextWithBody(ctx, contentType, body, reqEditors...)
@@ -733,6 +848,22 @@ func ParseAnswerWithRAGResponse(rsp *http.Response) (*AnswerWithRAGResponse, err
 		}
 		response.JSON200 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseAnswerWithRAGStreamResponse parses an HTTP response from a AnswerWithRAGStreamWithResponse call
+func ParseAnswerWithRAGStreamResponse(rsp *http.Response) (*AnswerWithRAGStreamResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AnswerWithRAGStreamResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
 	}
 
 	return response, nil

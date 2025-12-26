@@ -7,7 +7,21 @@ import (
 
 	"codeberg.org/readeck/go-readability/v2"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/microcosm-cc/bluemonday"
 )
+
+const MinArticleLength = 100
+
+// SanitizeHTML strips unsafe tags and scripts but preserves structural HTML using bluemonday.
+func SanitizeHTML(raw string) string {
+	p := bluemonday.UGCPolicy()
+	// Allow common structural elements that might contain content
+	p.AllowElements("article", "section", "div", "p", "span", "br", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "code", "b", "strong", "i", "em", "u", "a", "img")
+	p.AllowAttrs("href").OnElements("a")
+	p.AllowAttrs("src", "alt", "title").OnElements("img")
+
+	return p.Sanitize(raw)
+}
 
 // ExtractArticleText converts raw article HTML into plain text paragraphs.
 // It removes non-content elements (script/style/navigation) and normalizes
@@ -22,7 +36,7 @@ func ExtractArticleText(raw string) string {
 
 	// Short-circuit if the payload is already plain text.
 	if !strings.Contains(trimmed, "<") {
-		return normalizeWhitespace(trimmed)
+		return checkLength(normalizeWhitespace(trimmed))
 	}
 
 	// Prepare goquery document for further inspection
@@ -49,9 +63,9 @@ func ExtractArticleText(raw string) string {
 								text := extractParagraphs(bodyHtml)
 								if len(text) > 0 {
 									if title != "" {
-										return title + "\n\n" + text
+										return checkLength(title + "\n\n" + text)
 									}
-									return text
+									return checkLength(text)
 								}
 							}
 						}
@@ -73,6 +87,10 @@ func ExtractArticleText(raw string) string {
 
 		// Remove comment sections
 		doc.Find("[class*='comment'], [id*='comment'], [class*='discussion'], [id*='discussion']").Remove()
+
+		// Remove common non-content containers (menus, sidebars)
+		doc.Find("[class*='menu'], [id*='menu'], [class*='sidebar'], [id*='sidebar'], [class*='widget'], [id*='widget']").Remove()
+		doc.Find("[role='navigation'], [role='banner'], [role='contentinfo']").Remove()
 
 		// Remove metadata and resource links
 		doc.Find("meta, link[rel='stylesheet'], link[rel='preload'], link[rel='prefetch'], link[rel='dns-prefetch']").Remove()
@@ -111,16 +129,23 @@ func ExtractArticleText(raw string) string {
 				if err := article.RenderHTML(&htmlBuf); err == nil {
 					html := strings.TrimSpace(htmlBuf.String())
 					if html != "" {
-						return extractParagraphs(html)
+						return checkLength(extractParagraphs(html))
 					}
 				}
-				return normalizeWhitespace(text)
+				return checkLength(normalizeWhitespace(text))
 			}
 		}
 	}
 
 	// 4. Final fallback: Strip tags from the original HTML
-	return extractParagraphs(trimmed)
+	return checkLength(extractParagraphs(trimmed))
+}
+
+func checkLength(text string) string {
+	if len(text) < MinArticleLength {
+		return ""
+	}
+	return text
 }
 
 // extractParagraphs extracts text from HTML while preserving paragraph structure.

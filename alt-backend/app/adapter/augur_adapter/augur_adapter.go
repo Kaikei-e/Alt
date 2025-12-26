@@ -10,11 +10,16 @@ import (
 	"time"
 )
 
-type AugurAdapter struct {
-	client rag_gateway.ClientWithResponsesInterface
+type RagClientInterface interface {
+	rag_gateway.ClientWithResponsesInterface
+	AnswerWithRAGStream(ctx context.Context, body rag_gateway.AnswerWithRAGStreamJSONRequestBody, reqEditors ...rag_gateway.RequestEditorFn) (*http.Response, error)
 }
 
-func NewAugurAdapter(client rag_gateway.ClientWithResponsesInterface) rag_integration_port.RagIntegrationPort {
+type AugurAdapter struct {
+	client RagClientInterface
+}
+
+func NewAugurAdapter(client RagClientInterface) rag_integration_port.RagIntegrationPort {
 	return &AugurAdapter{
 		client: client,
 	}
@@ -93,4 +98,67 @@ func (a *AugurAdapter) RetrieveContext(ctx context.Context, query string, candid
 	}
 
 	return contexts, nil
+}
+
+func (a *AugurAdapter) Answer(ctx context.Context, input rag_integration_port.AnswerInput) (<-chan string, error) {
+	reqBody := rag_gateway.AnswerRequest{
+		Query: input.Query,
+	}
+	if input.SessionID != "" {
+		// sessionId := input.SessionID // If mapped in future
+	}
+	if len(input.Contexts) > 0 {
+		reqBody.CandidateArticleIds = &input.Contexts // Reusing this field if appropriate, or check mapping
+	}
+
+	resultChan := make(chan string)
+
+	if input.Stream {
+		resp, err := a.client.AnswerWithRAGStream(ctx, reqBody)
+		if err != nil {
+			return nil, fmt.Errorf("failed to call AnswerWithRAGStream: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("rag-orchestrator returned status %d", resp.StatusCode)
+		}
+
+		go func() {
+			defer close(resultChan)
+			defer resp.Body.Close()
+
+			// Simple scanner for SSE-like or JSON stream
+			// Assuming the backend returns raw chunks or SSE.
+			// If it matches the frontend expectation, it might be SSE.
+			// Let's assume standard byte stream for now and refine if it's SSE format.
+			// Actually the rag-orchestrator client returns the raw response.
+			buf := make([]byte, 1024)
+			for {
+				n, err := resp.Body.Read(buf)
+				if n > 0 {
+					resultChan <- string(buf[:n])
+				}
+				if err != nil {
+					break
+				}
+			}
+		}()
+	} else {
+		resp, err := a.client.AnswerWithRAGWithResponse(ctx, reqBody)
+		if err != nil {
+			return nil, fmt.Errorf("failed to call AnswerWithRAG: %w", err)
+		}
+		if resp.StatusCode() != http.StatusOK {
+			return nil, fmt.Errorf("rag-orchestrator returned status %d", resp.StatusCode())
+		}
+		if resp.JSON200 != nil && resp.JSON200.Answer != nil {
+			go func() {
+				defer close(resultChan)
+				resultChan <- *resp.JSON200.Answer
+			}()
+		} else {
+			close(resultChan)
+		}
+	}
+
+	return resultChan, nil
 }
