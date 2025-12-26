@@ -52,7 +52,7 @@ func main() {
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	for rows.Next() {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 		var a Article
 		if err := rows.Scan(&a.ID, &a.Title, &a.Body, &a.URL); err != nil {
 			fmt.Printf("Failed to scan article: %v\n", err)
