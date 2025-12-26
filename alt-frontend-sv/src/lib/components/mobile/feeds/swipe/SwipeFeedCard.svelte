@@ -17,7 +17,7 @@
   import { Button } from "$lib/components/ui/button";
   import type { RenderFeed } from "$lib/schema/feed";
   import {
-    processStreamingText,
+    processSummarizeStreamingText,
     simulateTypewriterEffect,
   } from "$lib/utils/streamingRenderer";
 
@@ -208,7 +208,7 @@
 
       // Use streaming renderer utility for incremental rendering
       try {
-        const result = await processStreamingText(
+        const result = await processSummarizeStreamingText(
           reader,
           (chunk) => {
             aiSummary = (aiSummary || "") + chunk;

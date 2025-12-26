@@ -21,9 +21,11 @@ import { page } from "$app/state";
 import * as Accordion from "$lib/components/ui/accordion";
 import { Button } from "$lib/components/ui/button";
 import * as Sheet from "$lib/components/ui/sheet";
+import { cn } from "$lib/utils";
 
 let isOpen = $state(false);
 let isPrefetched = $state(false);
+let { class: className = "" } = $props();
 
 // Prevent body scroll lock when dialog is closed (following React version pattern)
 // This effect runs whenever isOpen changes and ensures body scroll is properly controlled
@@ -109,6 +111,13 @@ const menuItems = [
 		description: "Find specific feeds",
 	},
 	{
+		label: "Ask Augur",
+		href: `${svBasePath}/mobile/retrieve/ask-augur`,
+		category: "augur",
+		icon: Search,
+		description: "Chat with your knowledge base",
+	},
+	{
 		label: "7-Day Recap",
 		href: `${svBasePath}/mobile/recap/7days`,
 		category: "recap",
@@ -176,6 +185,12 @@ const categories = [
 		icon: Newspaper,
 	},
 	{
+		title: "Augur",
+		items: menuItems.filter((i) => i.category === "augur"),
+		icon: Search,
+		description: "Chat with your knowledge base",
+	},
+	{
 		title: "Other",
 		items: menuItems.filter((i) => i.category === "other"),
 		icon: Star,
@@ -208,7 +223,10 @@ onMount(() => {
 <Sheet.Root bind:open={isOpen}>
 	{#if !isOpen}
 		<Sheet.Trigger
-			class="fixed bottom-6 right-6 z-[1000] h-12 w-12 rounded-full border-2 border-[var(--text-primary)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-[var(--shadow-glass)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:rotate-90 hover:bg-[var(--bg-surface-hover)] hover:border-[var(--accent-primary)] active:scale-95 active:rotate-90 inline-flex shrink-0 items-center justify-center focus-visible:outline-none outline-none disabled:pointer-events-none disabled:opacity-60"
+			class={cn(
+				"fixed bottom-6 right-6 z-[1000] h-12 w-12 rounded-full border-2 border-[var(--text-primary)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-[var(--shadow-glass)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:rotate-90 hover:bg-[var(--bg-surface-hover)] hover:border-[var(--accent-primary)] active:scale-95 active:rotate-90 inline-flex shrink-0 items-center justify-center focus-visible:outline-none outline-none disabled:pointer-events-none disabled:opacity-60",
+				className
+			)}
 			aria-label="Open floating menu"
 		>
 			<Menu class="h-5 w-5 relative z-[1]" />
