@@ -353,66 +353,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     const stream = new ReadableStream({
       async start(controller) {
         const reader = backendResponse.body!.getReader();
-        const decoder = new TextDecoder();
 
-        // Buffer for accumulating chunks before sending
-        const buffer: Uint8Array[] = [];
-        let bufferSize = 0;
         let isStreamDone = false;
-        let pendingFlush: Promise<void> | null = null;
-
-        // Function to flush buffered chunks to client
-        const flushBuffer = async () => {
-          if (buffer.length === 0) {
-            return; // Nothing to flush
-          }
-
-          try {
-            // Combine all buffered chunks into a single Uint8Array
-            const totalLength = bufferSize;
-            const combined = new Uint8Array(totalLength);
-            let offset = 0;
-            for (const chunk of buffer) {
-              combined.set(chunk, offset);
-              offset += chunk.length;
-            }
-
-            // Clear buffer
-            buffer.length = 0;
-            bufferSize = 0;
-
-            // Enqueue combined chunk
-            controller.enqueue(combined);
-            bytesForwarded += totalLength;
-            chunksForwarded++;
-
-            if (chunksForwarded <= 3 || chunksForwarded % 50 === 0) {
-              console.log("[StreamSummarize] Buffered chunk sent", {
-                chunksForwarded,
-                bytesForwarded,
-                chunkSize: totalLength,
-                elapsed: `${Date.now() - startTime}ms`,
-              });
-            }
-          } catch (error) {
-            console.error("[StreamSummarize] Error flushing buffer", {
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        };
-
-        // Set up interval to flush buffer every 250ms
-        // Use shared flushInterval variable for cleanup in cancel()
-        flushInterval = setInterval(() => {
-          if (!pendingFlush) {
-            pendingFlush = flushBuffer().finally(() => {
-              pendingFlush = null;
-            });
-          }
-        }, 250);
 
         try {
-          console.log("[StreamSummarize] Stream reader started with 250ms buffering", {
+          console.log("[StreamSummarize] Stream reader started (direct streaming)", {
             hasBody: !!backendResponse.body,
             contentType: backendResponse.headers.get("Content-Type"),
           });
@@ -424,32 +369,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
               break;
             }
             if (value) {
-              // Add chunk to buffer instead of sending immediately
-              buffer.push(value);
-              bufferSize += value.length;
-            } else if (!done) {
-              // No value but not done - might indicate a problem
-              console.warn("[StreamSummarize] Stream read returned no value but not done", {
-                chunksForwarded,
-                bytesForwarded,
-                elapsed: `${Date.now() - startTime}ms`,
-              });
+              // Direct streaming: Send immediately without buffering
+              controller.enqueue(value);
+              bytesForwarded += value.length;
+              chunksForwarded++;
+
+              // Log occasionally to avoid spam
+              if (chunksForwarded <= 3 || chunksForwarded % 50 === 0) {
+                // console.log("[StreamSummarize] Chunk forwarded", { chunksForwarded, bytesForwarded });
+              }
             }
           }
-
-          // Stream is done - flush remaining buffer and clean up
-          if (flushInterval) {
-            clearInterval(flushInterval);
-            flushInterval = null;
-          }
-
-          // Wait for any pending flush to complete
-          if (pendingFlush) {
-            await pendingFlush;
-          }
-
-          // Flush any remaining buffered data
-          await flushBuffer();
 
           const totalTime = Date.now() - startTime;
           console.log("[StreamSummarize] Stream completed", {
@@ -460,12 +390,6 @@ export const POST: RequestHandler = async ({ request, locals }) => {
           });
           controller.close();
         } catch (error) {
-          // Clean up interval on error
-          if (flushInterval) {
-            clearInterval(flushInterval);
-            flushInterval = null;
-          }
-
           const totalTime = Date.now() - startTime;
           console.error("[StreamSummarize] Error reading from backend stream", {
             error: error instanceof Error ? error.message : String(error),
@@ -475,31 +399,19 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             totalTime: `${totalTime}ms`,
           });
 
-          // Try to flush any remaining buffer before sending error
-          try {
-            if (pendingFlush) {
-              await pendingFlush;
-            }
-            await flushBuffer();
-          } catch (flushError) {
-            console.error("[StreamSummarize] Error flushing buffer on error", { flushError });
-          }
-
           // Send error as JSON before closing the stream
           try {
             const errorMessage = error instanceof Error ? error.message : String(error);
             const errorJson = JSON.stringify({ error: errorMessage, type: "stream_error" });
-            controller.enqueue(new TextEncoder().encode(errorJson));
+            // If the stream is still open, try to send the error
+            // Note: If we already sent data, this might be appended to the stream content
+            // The client needs to handle this gracefully
+            controller.enqueue(new TextEncoder().encode("\n" + errorJson));
           } catch (encodeError) {
             console.error("[StreamSummarize] Failed to encode error message", { encodeError });
           }
           controller.close();
         } finally {
-          // Ensure interval is cleared
-          if (flushInterval) {
-            clearInterval(flushInterval);
-            flushInterval = null;
-          }
           reader.releaseLock();
           console.log("[StreamSummarize] Stream reader released");
         }
@@ -510,11 +422,6 @@ export const POST: RequestHandler = async ({ request, locals }) => {
           chunksForwarded,
           elapsed: `${Date.now() - startTime}ms`,
         });
-        // Cleanup interval timer if it exists
-        if (flushInterval) {
-          clearInterval(flushInterval);
-          flushInterval = null;
-        }
         // Cleanup if stream is cancelled
         backendResponse.body?.cancel();
       },
