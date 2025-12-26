@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -35,6 +36,22 @@ func (s *stubLLMClient) Generate(ctx context.Context, prompt string, maxTokens i
 }
 
 func (s *stubLLMClient) Version() string { return "stub" }
+
+func (s *stubLLMClient) GenerateStream(ctx context.Context, prompt string, maxTokens int) (<-chan domain.LLMStreamChunk, <-chan error, error) {
+	return nil, nil, errors.New("streaming not implemented")
+}
+
+type stubStreamUsecase struct {
+	events <-chan usecase.StreamEvent
+}
+
+func (s *stubStreamUsecase) Execute(ctx context.Context, input usecase.AnswerWithRAGInput) (*usecase.AnswerWithRAGOutput, error) {
+	return nil, nil
+}
+
+func (s *stubStreamUsecase) Stream(ctx context.Context, input usecase.AnswerWithRAGInput) <-chan usecase.StreamEvent {
+	return s.events
+}
 
 func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 	e := echo.New()
@@ -78,7 +95,7 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 		"ja",
 	)
 
-	handler := rag_http.NewHandler(retrieve, answerUC, nil)
+	handler := rag_http.NewHandler(retrieve, answerUC, nil, nil)
 
 	body := bytes.NewBufferString(`{"query":"TPU"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", body)
@@ -96,5 +113,55 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 		assert.NotNil(t, resp.Citations)
 		assert.Equal(t, 1, len(*resp.Citations))
 		assert.Equal(t, chunkID.String(), *(*resp.Citations)[0].ChunkId)
+	}
+}
+
+func TestHandler_AnswerWithRAGStream(t *testing.T) {
+	e := echo.New()
+
+	events := make(chan usecase.StreamEvent, 3)
+	finalOutput := &usecase.AnswerWithRAGOutput{
+		Answer:    "streamed answer",
+		Citations: nil,
+		Contexts:  nil,
+		Fallback:  false,
+		Reason:    "",
+		Debug: usecase.AnswerDebug{
+			RetrievalSetID: "stream-1",
+			PromptVersion:  "alpha-v1",
+		},
+	}
+	events <- usecase.StreamEvent{
+		Kind: usecase.StreamEventKindMeta,
+		Payload: usecase.StreamMeta{
+			Contexts: []usecase.ContextItem{},
+			Debug:    finalOutput.Debug,
+		},
+	}
+	events <- usecase.StreamEvent{
+		Kind:    usecase.StreamEventKindDelta,
+		Payload: "chunked",
+	}
+	events <- usecase.StreamEvent{
+		Kind:    usecase.StreamEventKindDone,
+		Payload: finalOutput,
+	}
+	close(events)
+
+	handler := rag_http.NewHandler(nil, &stubStreamUsecase{events: events}, nil, nil)
+
+	body := bytes.NewBufferString(`{"query":"streaming"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer/stream", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if assert.NoError(t, handler.AnswerWithRAGStream(c)) {
+		assert.Equal(t, http.StatusOK, rec.Code)
+		response := rec.Body.String()
+		assert.Contains(t, response, "event: meta")
+		assert.Contains(t, response, "event: delta")
+		assert.Contains(t, response, "event: done")
+		assert.Contains(t, response, `"Answer":"streamed answer"`)
 	}
 }

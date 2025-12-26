@@ -1,10 +1,14 @@
 package rag_http
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"rag-orchestrator/internal/adapter/rag_http/openapi"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,17 +18,42 @@ import (
 type Handler struct {
 	retrieveUsecase usecase.RetrieveContextUsecase
 	answerUsecase   usecase.AnswerWithRAGUsecase
+	indexUsecase    usecase.IndexArticleUsecase
 	jobRepo         domain.RagJobRepository
+}
+
+func mapAnswerRequestToInput(req openapi.AnswerRequest) usecase.AnswerWithRAGInput {
+	input := usecase.AnswerWithRAGInput{
+		Query: req.Query,
+	}
+	if req.CandidateArticleIds != nil {
+		input.CandidateArticleIDs = *req.CandidateArticleIds
+	}
+	if req.Locale != nil {
+		input.Locale = *req.Locale
+	}
+	if req.UserId != nil {
+		input.UserID = *req.UserId
+	}
+	if req.MaxChunks != nil {
+		input.MaxChunks = int(*req.MaxChunks)
+	}
+	if req.MaxTokens != nil {
+		input.MaxTokens = int(*req.MaxTokens)
+	}
+	return input
 }
 
 func NewHandler(
 	retrieveUsecase usecase.RetrieveContextUsecase,
 	answerUsecase usecase.AnswerWithRAGUsecase,
+	indexUsecase usecase.IndexArticleUsecase,
 	jobRepo domain.RagJobRepository,
 ) *Handler {
 	return &Handler{
 		retrieveUsecase: retrieveUsecase,
 		answerUsecase:   answerUsecase,
+		indexUsecase:    indexUsecase,
 		jobRepo:         jobRepo,
 	}
 }
@@ -41,7 +70,28 @@ func (h *Handler) DeleteIndex(ctx echo.Context) error {
 // Upsert an article to the RAG index
 // (POST /internal/rag/index/upsert)
 func (h *Handler) UpsertIndex(ctx echo.Context) error {
-	return ctx.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
+	var req openapi.UpsertIndexRequest
+	if err := ctx.Bind(&req); err != nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	// Extract fields from request (assuming request body has url, or we generate it/ignore it)
+	// The openapi spec might not have URL in UpsertIndexRequest, let's check.
+	// If URL is missing, we might pass empty string or handle it.
+	// Checking the previous handler code, the request struct was `openapi.UpsertIndexRequest`.
+	// We need to see if it has URL. If not, we pass empty string.
+
+	if err := h.indexUsecase.Upsert(
+		ctx.Request().Context(),
+		req.ArticleId,
+		req.Title,
+		"", // URL is not in the request body based on previous view
+		req.Body,
+	); err != nil {
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return ctx.JSON(http.StatusOK, map[string]string{"status": "indexed"})
 }
 
 // Answer a query using RAG (with LLM generation)
@@ -152,6 +202,55 @@ func (h *Handler) AnswerWithRAG(ctx echo.Context) error {
 	})
 }
 
+// AnswerWithRAGStream streams a RAG answer using Server-Sent Events.
+// (POST /v1/rag/answer/stream)
+func (h *Handler) AnswerWithRAGStream(ctx echo.Context) error {
+	var req openapi.AnswerRequest
+	if err := ctx.Bind(&req); err != nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	input := mapAnswerRequestToInput(req)
+	events := h.answerUsecase.Stream(ctx.Request().Context(), input)
+
+	res := ctx.Response()
+	res.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	res.Header().Set("Cache-Control", "no-cache, no-transform")
+	res.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := res.Writer.(http.Flusher)
+	if !ok {
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
+	}
+	flusher.Flush()
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Request().Context().Done():
+			return nil
+		case event, ok := <-events:
+			if !ok {
+				return nil
+			}
+			if err := writeSSE(res.Writer, event.Kind, event.Payload); err != nil {
+				return err
+			}
+			flusher.Flush()
+			if event.Kind == usecase.StreamEventKindDone || event.Kind == usecase.StreamEventKindFallback {
+				return nil
+			}
+		case <-ticker.C:
+			if _, err := io.WriteString(res.Writer, ":\n\n"); err != nil {
+				return err
+			}
+			flusher.Flush()
+		}
+	}
+}
+
 // Backfill enqueues an article for indexing
 // (POST /internal/rag/backfill)
 func (h *Handler) Backfill(ctx echo.Context) error {
@@ -233,4 +332,38 @@ func (h *Handler) RetrieveContext(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, openapi.RetrieveResponse{
 		Contexts: &contexts,
 	})
+}
+
+func writeSSE(w io.Writer, kind usecase.StreamEventKind, payload interface{}) error {
+	if _, err := fmt.Fprintf(w, "event: %s\n", kind); err != nil {
+		return err
+	}
+
+	var data string
+	switch v := payload.(type) {
+	case nil:
+		data = ""
+	case string:
+		data = v
+	case []byte:
+		data = string(v)
+	default:
+		bytes, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		data = string(bytes)
+	}
+
+	for _, line := range strings.Split(data, "\n") {
+		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
+			return err
+		}
+	}
+
+	if _, err := io.WriteString(w, "\n"); err != nil {
+		return err
+	}
+
+	return nil
 }

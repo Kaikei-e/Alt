@@ -111,6 +111,9 @@ type UpsertIndexJSONRequestBody = UpsertIndexRequest
 // AnswerWithRAGJSONRequestBody defines body for AnswerWithRAG for application/json ContentType.
 type AnswerWithRAGJSONRequestBody = AnswerRequest
 
+// AnswerWithRAGStreamJSONRequestBody defines body for AnswerWithRAGStream for application/json ContentType.
+type AnswerWithRAGStreamJSONRequestBody = AnswerRequest
+
 // RetrieveContextJSONRequestBody defines body for RetrieveContext for application/json ContentType.
 type RetrieveContextJSONRequestBody = RetrieveRequest
 
@@ -125,6 +128,9 @@ type ServerInterface interface {
 	// Answer a query using RAG (with LLM generation)
 	// (POST /v1/rag/answer)
 	AnswerWithRAG(ctx echo.Context) error
+	// Stream a RAG answer using Server-Sent Events
+	// (POST /v1/rag/answer/stream)
+	AnswerWithRAGStream(ctx echo.Context) error
 	// Retrieve context for a query (Retrieve-Only)
 	// (POST /v1/rag/retrieve)
 	RetrieveContext(ctx echo.Context) error
@@ -159,6 +165,15 @@ func (w *ServerInterfaceWrapper) AnswerWithRAG(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.AnswerWithRAG(ctx)
+	return err
+}
+
+// AnswerWithRAGStream converts echo context to params.
+func (w *ServerInterfaceWrapper) AnswerWithRAGStream(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.AnswerWithRAGStream(ctx)
 	return err
 }
 
@@ -202,6 +217,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.POST(baseURL+"/internal/rag/index/delete", wrapper.DeleteIndex)
 	router.POST(baseURL+"/internal/rag/index/upsert", wrapper.UpsertIndex)
 	router.POST(baseURL+"/v1/rag/answer", wrapper.AnswerWithRAG)
+	router.POST(baseURL+"/v1/rag/answer/stream", wrapper.AnswerWithRAGStream)
 	router.POST(baseURL+"/v1/rag/retrieve", wrapper.RetrieveContext)
 
 }
@@ -209,27 +225,29 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/7xY32/bNhD+VwhuDwngxu6PDYXesgYrDHRo4SHbQ1sYFHWy2FKkcjw5MQr/7wNJybZs",
-	"OnWXpG+SSN6R333fx7O/cWnrxhow5Hj2jTtZQS3C46Vxt4BvFAlS1vgvDdoGkBSEcVm15utcFf6ZVg3w",
-	"jDtCZRZ8PeoGCe4oOVxY2dZgaL4EdF300mItiGdcGfr9FR/1q5QhWAD6ZU5ahMHcUltB27mmrfM4lRRp",
-	"SOZuUSe+rzcxbP4FJPmZEYEryNvF4fEbtHUzOMBBJgRCBUuh5w4ojdTxtDO4acFRAndhClUIgrlAUlLD",
-	"XBVhQBHULrmR7oNAFCv/rq0UR9Cpxd08FM/t1+Tli2RN/AKyX8GcuuCmBVylK+MAj8KEcNMqhIJnH7sQ",
-	"n+/BzjXWODgET4TxNGU7pg+x/BWh5Bn/ZbzVybgTyXhPIQmgpTVeA6eHfBMXpGIVPQ+/v6VI2fWIl0Lr",
-	"XMivOwfOrdUgTOSncEnqpljZ7+zJfaAAJ1E10XT4P3GA2ZJRBaxfwKhSjoXoLAdtzcIxsnx0ios0ba6V",
-	"q6CYCxpw1ovqGakatsu2W914z3B/f6taaYGKVizOGP0kc7oCDQRTU8DdUavYGsTD9LYTZ7sqJb9ZdDz4",
-	"cfMaovo+PAjNtHLka9/NZtMrX2eG4HcqiTkQKKtY+tP975gFnWwz23MeM5rHU36q+NeNA6QfKf4Q32uj",
-	"blpgqgBDqlSAvb56nM+ur6dXzCKL0JynFJHbYnUY+s9Wa+ZPwgIEhvZCpyL9P0Xeo6LGL/yxaGnlDUSy",
-	"h6EDZB6kW6PM4v4jnqKn/kBxK3ugdGgfctGHVqa0h/u7/DBlpUU2u3zL3qOsvGQEWWRngTd+z8IUbNY3",
-	"KeebHWT8YM3lhykf8Y1L8+cXk4uJh8c2YESjeMZfXkwuXvp9C6oCAcfec9EIPUaxGCufdFwE1wpktZG0",
-	"nrLh/pwWPNt1NR4xA0d/dETrCBXI3TRaybBu/KW7xKKSvqezhG+uh/UhbCF8iNoOZ3kxmSS8v5USnCtb",
-	"rVesQetfoPCovEpNn5ql0Kpg2Kcd8d/S8yJszAEuARkgWgwccm1dC+9cHU5eoGTr3JE1wITZyLdEWwdG",
-	"BtTD2lQ12mAju9UY7mQGEtRy6wqFIDFiUmjZakHAClWWgGAkuFEgUxTeNjO7VVTZlphdAt6iIs86uFMu",
-	"PPhwF5/MtIC6sdEqejKws1w4KJg1GxuphKvOLz4ZPtrjzI4ZPhFnEnb7KJwRUkJDUIxvWmhPZw5rxEpb",
-	"UTyIQfFMu6QhGwrntb9Dm+XzQJht43yMKvFGdKy7+QIfFmBCpYLXsBiDta57f/fur1Q9Yw/7r6Jqdvn2",
-	"iSo6/I11ejEfNXnXO4Tsx1jSgfagUsd8TLDQ0HT4+zKfeXn6MmwKZc35oOzdT1g4pfAIGpbCUGzLXbh8",
-	"hjmXIP1lEpu2EWuscyrXK1YqTeBvSpav2KZF3G36UjzpM/ed09MwZb+l/clcOeg072fL5i+HBxGmT7rR",
-	"8m4pz/rRZ++NXp3HDcVgjmcf9/O9s3KTrOttMl4RNdl4HP6HqKyj7PXk9YSvP6//CwAA//9BVKGSkBIA",
-	"AA==",
+	"H4sIAAAAAAAC/8xY224bNxD9lQHbBxuQLeXSItCbG6eBirQOLLh9SAKBIme1TLjkmpyVLQT+94Lkrq6U",
+	"o9R20DdJ5Fx45pyzXH1lwla1NWjIs+FX5kWJFY8fz4y/QfdaESdlTfildrZGRwrjuigb82WiZPhMixrZ",
+	"kHlyyszYXa9dJLyl7LK0oqnQ0GSOzrfZC+sqTmzIlKFfX7JeF6UM4QxdCPPCOtzYW2jLabXXNNU0bSVF",
+	"GrO1G6czv98tc9jpZxQUdiYEznHazHaPXztb1RsH2KnkkJzCOdcTj5RHan/ZS7xu0FMGd26kkpxwwh0p",
+	"oXGiZFxQhJXPNtL+wJ3ji/BdW8H3oFPx20kcnt+eyYvn2ZmEALJf0BwacN2gW+Qn49HthcnhdaMcSjb8",
+	"0Kb4dA92vrbG4y54PK7nKdsyfRPLnx0WbMh+6q900m9F0t9SSAZoYU3QwOEpX6eAXC7Z8fDbLSXK3vVY",
+	"wbWecvFl7cBTazVyk/jJfZa6OVZ2nT25D0j0wqk6mQ77Oy2ALYBKhC4AqFQeYnaYorZm5oEs6x3iInUz",
+	"1cqXKCecNjgbRHVCqsJV2KrVpfds9jdWldLcKVpA2tH7QeZ0jhoJR0bi7V6rWBnEw/S2lmcVlZPfZXI8",
+	"/H7z2kT1In7gGrTyFGbf7obReZgzOAydCgKP3Ikyjf5w/9tnQQfbzOqc+4zm8ZSfG/5V7dHR9wx/E98r",
+	"o64bBCXRkCoUuk5fHc5HV1ejc7AOEjTHOUVMrVzspv690RrCSSBCYGgrdS7Tf1PkPSqqQ+D3Zcsrb0Mk",
+	"Wxh6dBBAujHKzO4/4iF66g6UWtkCpUV7l4shtTKF3e3v7P0ICuvg8uwtXDhRBslwsg6OIm9Cz9xIuOwu",
+	"KcfLDoZsJ+bs/Yj12NKl2bPTwekgwGNrNLxWbMhenA5OX4S+OZWRgP3guc5w3Xd81lehaF9G14pktYm0",
+	"gbLx+TmSbLjuaixhhp5+a4nWEiqSu661EjGu/7l9iCUlfUtnGd+825wPuQbjD0nb8SzPB4OM9zdCoPdF",
+	"o/UCamfDF5QBlZe57SMz51pJcF3ZHvslvy/BBh7dHB2gc9ZFDvmmqnhwrhanIFCy1dSTNQjcLOVbOFtF",
+	"RkbUY2xuGk20kfVpbHZyiQLVfOUKkhPvgeBaNJoTglRFgQ6NQN+LZErCW1WGG0WlbQjsHN2NUxRYh7fK",
+	"xw8h3elHM5JY1TZZRUcGOJpyjxKsWdpIyX15fPrRsN4WZ9bM8Ik4k7HbR+EMFwJrQtm/brA5nDlQ84W2",
+	"XD6IQelM66QhGwcXtL9Gm/mzSJjVxXkfVdIT0UP75It8mKGJk4peAykHNL79/u7dn7l5pjvsP4rKy7O3",
+	"TzTRzXesw4f5qMXbu0Osvo8lLWgPGnWqBxzihabFP4z5KMgzjGE5KGuOM2Pve3LIq/3TH8d1H/njeYUw",
+	"c7YxEmU38w5LmCsO4/Eb8BaEVgEWENyAQyPRQR24yHXY3mjyMMXCuuQnQTHwx/jiL1AeohzCI/6b/Emd",
+	"/X9ZFKTSxzkaOlmBvKq+fY/YZUrAMgaGe1YYaot4zOkfxJuEHfD1tIk84xh0Mg6+/KYttMaa9o8PPMQu",
+	"HGqcc0PpZc7HK8smU+cowhUkXfV7UFvv1VQvoFCaMOAC0wUsXyzWXxVy7Ogqd/ftp2HG9ovQD3aYnfeT",
+	"+z1m+UfVg+jSFV0+AdZHedStnlwYvThODaVkng0/bNd7Z8WyWHsjHrKSqB72+/Hfq9J6Gr4avBqwu093",
+	"/wYAAP//q4UTlsYUAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

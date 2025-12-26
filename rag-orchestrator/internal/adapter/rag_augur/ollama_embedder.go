@@ -16,11 +16,15 @@ type OllamaEmbedder struct {
 	Client  *http.Client
 }
 
-func NewOllamaEmbedder(baseURL, model string) *OllamaEmbedder {
+func NewOllamaEmbedder(baseURL, model string, timeoutSeconds int) *OllamaEmbedder {
+	timeout := 30 * time.Second
+	if timeoutSeconds > 0 {
+		timeout = time.Duration(timeoutSeconds) * time.Second
+	}
 	return &OllamaEmbedder{
 		BaseURL: baseURL,
 		Model:   model,
-		Client:  &http.Client{Timeout: 30 * time.Second},
+		Client:  &http.Client{Timeout: timeout},
 	}
 }
 

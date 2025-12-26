@@ -111,6 +111,9 @@ type UpsertIndexJSONRequestBody = UpsertIndexRequest
 // AnswerWithRAGJSONRequestBody defines body for AnswerWithRAG for application/json ContentType.
 type AnswerWithRAGJSONRequestBody = AnswerRequest
 
+// AnswerWithRAGStreamJSONRequestBody defines body for AnswerWithRAGStream for application/json ContentType.
+type AnswerWithRAGStreamJSONRequestBody = AnswerRequest
+
 // RetrieveContextJSONRequestBody defines body for RetrieveContext for application/json ContentType.
 type RetrieveContextJSONRequestBody = RetrieveRequest
 
@@ -125,6 +128,9 @@ type ServerInterface interface {
 	// Answer a query using RAG (with LLM generation)
 	// (POST /v1/rag/answer)
 	AnswerWithRAG(ctx echo.Context) error
+	// Stream a RAG answer via SSE
+	// (POST /v1/rag/answer/stream)
+	AnswerWithRAGStream(ctx echo.Context) error
 	// Retrieve context for a query (Retrieve-Only)
 	// (POST /v1/rag/retrieve)
 	RetrieveContext(ctx echo.Context) error
@@ -159,6 +165,15 @@ func (w *ServerInterfaceWrapper) AnswerWithRAG(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.AnswerWithRAG(ctx)
+	return err
+}
+
+// AnswerWithRAGStream converts echo context to params.
+func (w *ServerInterfaceWrapper) AnswerWithRAGStream(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.AnswerWithRAGStream(ctx)
 	return err
 }
 
@@ -202,6 +217,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.POST(baseURL+"/internal/rag/index/delete", wrapper.DeleteIndex)
 	router.POST(baseURL+"/internal/rag/index/upsert", wrapper.UpsertIndex)
 	router.POST(baseURL+"/v1/rag/answer", wrapper.AnswerWithRAG)
+	router.POST(baseURL+"/v1/rag/answer/stream", wrapper.AnswerWithRAGStream)
 	router.POST(baseURL+"/v1/rag/retrieve", wrapper.RetrieveContext)
 
 }
