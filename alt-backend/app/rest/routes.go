@@ -85,6 +85,6 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	registerRecapRoutes(v1, container, cfg)
 	registerScrapingDomainRoutes(v1, container, cfg)
 	registerDashboardRoutes(v1, container, cfg)
-	RegisterAugurRoutes(v1, container)
+	RegisterAugurRoutes(e, v1, container)
 	registerInternalRoutes(e, container)
 }

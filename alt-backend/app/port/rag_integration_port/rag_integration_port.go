@@ -27,4 +27,12 @@ type UpsertArticleInput struct {
 type RagIntegrationPort interface {
 	RetrieveContext(ctx context.Context, query string, candidateIDs []string) ([]RagContext, error)
 	UpsertArticle(ctx context.Context, input UpsertArticleInput) error
+	Answer(ctx context.Context, input AnswerInput) (<-chan string, error)
+}
+
+type AnswerInput struct {
+	Query     string
+	Contexts  []string // Optional: specific context IDs if needed, though usually RAG handles retrieval
+	Stream    bool
+	SessionID string
 }

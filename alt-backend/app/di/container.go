@@ -38,6 +38,7 @@ import (
 	"alt/port/morning_letter_port"
 	"alt/port/rag_integration_port"
 	"alt/port/rate_limiter_port"
+	"alt/usecase/answer_chat_usecase"
 	"alt/usecase/archive_article_usecase"
 	"alt/usecase/csrf_token_usecase"
 	"alt/usecase/feed_link_usecase"
@@ -115,6 +116,7 @@ type ApplicationComponents struct {
 	ScrapingDomainUsecase               *scraping_domain_usecase.ScrapingDomainUsecase
 	BatchArticleFetcher                 *batch_article_fetcher.BatchArticleFetcher
 	RetrieveContextUsecase              retrieve_context_usecase.RetrieveContextUsecase
+	AnswerChatUsecase                   answer_chat_usecase.AnswerChatUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -202,6 +204,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	ragAdapterImpl := augur_adapter.NewAugurAdapter(ragClient)
 
 	ragRetrieveContextUsecase := retrieve_context_usecase.NewRetrieveContextUsecase(searchFeedMeilisearchGatewayImpl, ragAdapterImpl)
+	answerChatUsecase := answer_chat_usecase.NewAnswerChatUsecase(ragAdapterImpl)
 
 	fetchArticleGatewayImpl := fetch_article_gateway.NewFetchArticleGateway(rateLimiter, httpClient)
 	fetchArticleUsecase := fetch_article_usecase.NewArticleUsecase(fetchArticleGatewayImpl, robotsTxtGatewayImpl, altDBRepository, ragAdapterImpl)
@@ -298,5 +301,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ScrapingDomainUsecase:               scrapingDomainUsecase,
 		BatchArticleFetcher:                 batchArticleFetcher,
 		RetrieveContextUsecase:              ragRetrieveContextUsecase,
+		AnswerChatUsecase:                   answerChatUsecase,
 	}
 }

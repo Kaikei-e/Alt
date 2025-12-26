@@ -41,6 +41,21 @@ func (m *MockRagIntegrationPort) EXPECT() *MockRagIntegrationPortMockRecorder {
 	return m.recorder
 }
 
+// Answer mocks base method.
+func (m *MockRagIntegrationPort) Answer(ctx context.Context, input rag_integration_port.AnswerInput) (<-chan string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Answer", ctx, input)
+	ret0, _ := ret[0].(<-chan string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Answer indicates an expected call of Answer.
+func (mr *MockRagIntegrationPortMockRecorder) Answer(ctx, input any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Answer", reflect.TypeOf((*MockRagIntegrationPort)(nil).Answer), ctx, input)
+}
+
 // RetrieveContext mocks base method.
 func (m *MockRagIntegrationPort) RetrieveContext(ctx context.Context, query string, candidateIDs []string) ([]rag_integration_port.RagContext, error) {
 	m.ctrl.T.Helper()

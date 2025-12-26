@@ -129,9 +129,9 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 	contentStr := html_parser.ExtractArticleText(htmlContent)
 
 	if contentStr == "" {
-		logger.Logger.Warn("failed to extract article text from HTML, falling back to raw HTML",
+		logger.Logger.Warn("failed to extract article text from HTML, falling back to sanitized HTML",
 			"url", urlStr, "html_size_bytes", len(htmlContent))
-		contentStr = htmlContent
+		contentStr = html_parser.SanitizeHTML(htmlContent)
 	}
 
 	// 6. Save to Database
