@@ -36,6 +36,14 @@ func (m *mockLLMClient) Generate(ctx context.Context, prompt string, maxTokens i
 	return args.Get(0).(*domain.LLMResponse), args.Error(1)
 }
 
+func (m *mockLLMClient) GenerateStream(ctx context.Context, prompt string, maxTokens int) (<-chan domain.LLMStreamChunk, <-chan error, error) {
+	args := m.Called(ctx, prompt, maxTokens)
+	if args.Get(0) == nil {
+		return nil, nil, args.Error(2)
+	}
+	return args.Get(0).(<-chan domain.LLMStreamChunk), args.Get(1).(<-chan error), args.Error(2)
+}
+
 func (m *mockLLMClient) Version() string {
 	return "mock"
 }

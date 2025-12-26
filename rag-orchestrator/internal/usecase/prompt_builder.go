@@ -82,8 +82,23 @@ func (b *XMLPromptBuilder) Build(input PromptInput) (string, error) {
 	sb.WriteString("</locale>\n")
 
 	defaultInstructions := []string{
-		"Answer ONLY using the facts in <context> above.",
+		"Answer using the facts in <context> above.",
+		"Your \"answer\" field MUST be a Markdown string following the strict template below.",
+		"Template:",
+		"  ## Introduction",
+		"  [Brief overview of the topic]",
+		"",
+		"  ## Details",
+		"  - **Point 1**: [Description with citations]",
+		"  - **Point 2**: [Description with citations]",
+		"",
+		"  ## Conclusion",
+		"  [Summary of key findings]",
+		"",
+		"Include background context and future outlook/implications if available.",
+		"Target a length of at least 300-500 words relative to the language.",
 		"Cite each sentence with [chunk_id] referenced in the context.",
+		"Translate English context facts into natural Japanese if the query is in Japanese.",
 		"If you cannot answer with the available evidence, return {\"answer\":null,\"fallback\":true,\"reason\":\"insufficient_evidence\"}.",
 		"Do not invent facts or assume information that is not in the context.",
 	}

@@ -41,7 +41,7 @@ func (w *JobWorker) Stop() {
 }
 
 func (w *JobWorker) run() {
-	ticker := time.NewTicker(1 * time.Second) // Poll interval
+	ticker := time.NewTicker(100 * time.Millisecond) // Poll interval
 	defer ticker.Stop()
 
 	for {

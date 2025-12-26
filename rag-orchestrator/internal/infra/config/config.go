@@ -22,6 +22,7 @@ type Config struct {
 	DefaultLocale       string
 	KnowledgeAugurURL   string
 	KnowledgeAugurModel string
+	OllamaTimeout       int // Seconds
 }
 
 func Load() *Config {
@@ -37,10 +38,11 @@ func Load() *Config {
 		EmbeddingModel:      getEnv("EMBEDDING_MODEL", "embeddinggemma"), // Default to gemma3:4b if not specified, assuming it supports embedding
 		PromptVersion:       getEnv("RAG_PROMPT_VERSION", "alpha-v1"),
 		AnswerMaxChunks:     getEnvInt("RAG_DEFAULT_MAX_CHUNKS", 5),
-		AnswerMaxTokens:     getEnvInt("RAG_DEFAULT_MAX_TOKENS", 768),
+		AnswerMaxTokens:     getEnvInt("RAG_DEFAULT_MAX_TOKENS", 2560),
 		DefaultLocale:       getEnv("RAG_DEFAULT_LOCALE", "ja"),
 		KnowledgeAugurURL:   getEnvWithAlt("AUGUR_KNOWLEDGE_URL", "AUGUR_EXTERNAL_URL", "http://augur-external:11435"),
 		KnowledgeAugurModel: getEnv("AUGUR_KNOWLEDGE_MODEL", "gpt-oss20b-cpu"),
+		OllamaTimeout:       getEnvInt("OLLAMA_TIMEOUT", 300),
 	}
 }
 

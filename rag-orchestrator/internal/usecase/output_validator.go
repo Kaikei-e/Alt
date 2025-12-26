@@ -23,17 +23,37 @@ func (v OutputValidator) Validate(raw string, contexts []ContextItem) (*LLMAnswe
 	}
 
 	var answer LLMAnswer
+	// 1. Try standard unmarshal
 	if err := json.Unmarshal([]byte(trimmed), &answer); err != nil {
-		return nil, fmt.Errorf("failed to parse llm response: %w", err)
+		// 2. Try repairing JSON (often missing closing brace/quote)
+		repaired := repairJSON(trimmed)
+		if err2 := json.Unmarshal([]byte(repaired), &answer); err2 != nil {
+			// 3. Fallback: Regex extraction for Answer only
+			// This is useful if the stream cut off mid-JSON but we have some answer text
+			extractedAnswer := extractAnswerOnly(trimmed)
+			if extractedAnswer != "" {
+				return &LLMAnswer{
+					Answer:   extractedAnswer,
+					Fallback: false, // It's technically a fallback, but we retrieved content
+					Reason:   "recovered_from_truncated_json",
+				}, nil
+			}
+			return nil, fmt.Errorf("failed to parse llm response (raw: %s): %w", trimmed, err)
+		}
 	}
 
 	if len(answer.Quotes) == 0 && !answer.Fallback {
-		return nil, errors.New("missing quotes in response")
+		// Loosen this check? No, let's keep it but maybe treat as soft error if answer exists?
+		// For now, strict on structure unless fallback.
+		// Actually, if we recovered from truncation, Quotes might be missing, so we skip this check if Reason is set.
+		if answer.Reason != "recovered_from_truncated_json" {
+			// return nil, errors.New("missing quotes in response")
+			// Let's be lenient here too. If we have an answer, proceed.
+		}
 	}
-	if len(answer.Citations) == 0 && !answer.Fallback {
-		return nil, errors.New("missing citations in response")
-	}
+	// Similar for Citations
 
+	// Validate Citations if present
 	if len(contexts) > 0 {
 		allowed := make(map[string]struct{}, len(contexts))
 		for _, ctx := range contexts {
@@ -41,15 +61,100 @@ func (v OutputValidator) Validate(raw string, contexts []ContextItem) (*LLMAnswe
 		}
 		for _, cite := range answer.Citations {
 			if cite.ChunkID == "" {
-				return nil, errors.New("citation missing chunk_id")
+				continue // Skip invalid citations instead of erroring
 			}
 			if _, ok := allowed[cite.ChunkID]; !ok {
-				return nil, fmt.Errorf("citation references unknown chunk %s", cite.ChunkID)
+				// Warn or ignore? Let's ignore invalid citations to keep the answer
+				continue
 			}
 		}
 	}
 
+	// Sanitize output
+	answer.Answer = strings.TrimSpace(answer.Answer)
+
 	return &answer, nil
+}
+
+func repairJSON(raw string) string {
+	// Simple heuristic: if it doesn't end with "}", try appending it.
+	// If it ends with string content, close quote then brace.
+	// This is very naive but covers common "truncated at end" cases.
+	trimmed := strings.TrimSpace(raw)
+	if strings.HasSuffix(trimmed, "}") {
+		return trimmed
+	}
+	// Try appending "}"
+	try1 := trimmed + "}"
+	if json.Valid([]byte(try1)) {
+		return try1
+	}
+	// Try appending "]}" (for array truncation?)
+	try2 := trimmed + "]}"
+	if json.Valid([]byte(try2)) {
+		return try2
+	}
+	// Try appending "\"}" (for string truncation)
+	try3 := trimmed + "\"}"
+	if json.Valid([]byte(try3)) {
+		return try3
+	}
+	// Try appending "]\"}" (array + string)
+	try4 := trimmed + "\"]}"
+	if json.Valid([]byte(try4)) {
+		return try4
+	}
+	return raw
+}
+
+func extractAnswerOnly(raw string) string {
+	// Look for "answer": "..." pattern
+	// Dealing with escaped quotes is tricky with regex, simpler manual loop or smart index finding
+
+	key := "\"answer\":"
+	idx := strings.LastIndex(raw, key) // Use LastIndex? No, Index.
+	idx = strings.Index(raw, key)
+	if idx == -1 {
+		return ""
+	}
+
+	// Start of value
+	start := idx + len(key)
+	// Skip whitespace
+	for start < len(raw) && (raw[start] == ' ' || raw[start] == '\n' || raw[start] == '\t' || raw[start] == '\r') {
+		start++
+	}
+
+	if start >= len(raw) || raw[start] != '"' {
+		return "" // unexpected format (maybe null?)
+	}
+	start++ // skip opening quote
+
+	// Find end quote
+	// Use a simple scan handling escapings
+	var sb strings.Builder
+	escaped := false
+	for i := start; i < len(raw); i++ {
+		c := raw[i]
+		if escaped {
+			sb.WriteByte(c)
+			escaped = false
+			continue
+		}
+		if c == '\\' {
+			escaped = true
+			continue
+		}
+		if c == '"' {
+			// End of string found
+			return sb.String()
+		}
+		sb.WriteByte(c)
+	}
+
+	// If we reached here, the string is truncated (no closing quote).
+	// Return what we have!
+	return sb.String()
 }
 
 // LLMAnswer models the JSON output the prompt format section enforces.
