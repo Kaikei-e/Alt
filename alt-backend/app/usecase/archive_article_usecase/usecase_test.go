@@ -38,8 +38,8 @@ func TestArchiveArticleUsecase_Execute_Success(t *testing.T) {
 		URL:   "https://example.com/article",
 		Title: "Example Article",
 	}
-	content := "<p>article body</p>"
-	expected := "article body"
+	content := "<p>article body needs to be long enough to pass the validation check. We are adding more text here to ensure we cross the 100 character threshold required by the cleaner utility.</p>"
+	expected := "article body needs to be long enough to pass the validation check. We are adding more text here to ensure we cross the 100 character threshold required by the cleaner utility."
 
 	fetcher.EXPECT().FetchArticleContents(gomock.Any(), input.URL).Return(&content, nil)
 
@@ -71,7 +71,7 @@ func TestArchiveArticleUsecase_Execute_StripsNonTextContent(t *testing.T) {
 	usecase := NewArchiveArticleUsecase(fetcher, saver)
 
 	input := ArchiveArticleInput{URL: "https://example.com/article"}
-	raw := `<html><head><title>Ignored</title><script>alert('x')</script></head><body><p>Hello</p><p>World</p></body></html>`
+	raw := `<html><head><title>Ignored</title><script>alert('x')</script></head><body><p>Hello</p><p>World. This text is extended to meet the minimum length requirement of 100 characters. We need to ensure that the sanitization process preserves this content while stripping out the unwanted tags.</p></body></html>`
 
 	fetcher.EXPECT().FetchArticleContents(gomock.Any(), input.URL).Return(&raw, nil)
 
@@ -80,8 +80,8 @@ func TestArchiveArticleUsecase_Execute_StripsNonTextContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if saver.lastRecord.Content != "Hello\n\nWorld" {
-		t.Fatalf("expected sanitized paragraphs, got %q", saver.lastRecord.Content)
+	if saver.lastRecord.Content != "Hello\n\nWorld. This text is extended to meet the minimum length requirement of 100 characters. We need to ensure that the sanitization process preserves this content while stripping out the unwanted tags." {
+		t.Fatalf("expected sanitized paragraphs, for %q", saver.lastRecord.Content)
 	}
 }
 

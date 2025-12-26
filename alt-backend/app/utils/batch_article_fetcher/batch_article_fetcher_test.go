@@ -66,7 +66,7 @@ func TestBatchArticleFetcher_FetchMultiple_10Domains13URLs(t *testing.T) {
 		mu.Unlock()
 		resp := &http.Response{
 			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(strings.NewReader("<html><body>Test content for " + host + "</body></html>")),
+			Body:       io.NopCloser(strings.NewReader("<html><body>Test content for " + host + ". This content must be long enough to satisfy the minimum length requirement of 100 characters for article extraction to succeed. We are padding this with extra text to ensure it passes the check.</body></html>")),
 			Header:     make(http.Header),
 		}
 		resp.Header.Set("Content-Type", "text/html")

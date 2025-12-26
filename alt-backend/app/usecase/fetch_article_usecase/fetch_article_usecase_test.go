@@ -34,7 +34,8 @@ func TestFetchArticleUsecase_Execute_Success(t *testing.T) {
 
 	// テストデータ
 	articleURL := "https://example.com/article"
-	expectedContent := "test article content"
+	// MinArticleLength (100) を満たす長いテキスト
+	expectedContent := "test article content needs to be long enough to pass the minimum length check in the cleaner utility. This text is intentionally made longer to ensure it exceeds the 100 character limit required by the ExtractArticleText function."
 
 	// モックの期待値設定
 	mockArticleFetcher.EXPECT().
@@ -51,9 +52,10 @@ func TestFetchArticleUsecase_Execute_Success(t *testing.T) {
 	}
 	if result == nil {
 		t.Error("Expected result to not be nil")
+		return // Stop execution if result is nil
 	}
 	if *result != expectedContent {
-		t.Errorf("Expected %s, got %s", expectedContent, *result)
+		t.Errorf("Expected content length %d, got %d", len(expectedContent), len(*result))
 	}
 }
 
@@ -113,8 +115,8 @@ func TestFetchArticleUsecase_Execute_ExtractsTextFromHTML(t *testing.T) {
 		<body>
 			<script>alert('xss')</script>
 			<img src="https://example.com/image.jpg" alt="test"/>
-			<p>This is the article content.</p>
-			<p>Second paragraph with text.</p>
+			<p>This is the article content which needs to be long enough to pass validation.</p>
+			<p>Second paragraph with text. We need to add more text here to ensure the total length exceeds 100 characters. Repeating some words just to be sure we have enough content for the extractor to accept it as a valid article.</p>
 		</body>
 	</html>`
 
@@ -172,7 +174,7 @@ func TestFetchArticleUsecase_Execute_HandlesPlainText(t *testing.T) {
 
 	// テストデータ: プレーンテキスト
 	articleURL := "https://example.com/article"
-	plainText := "This is plain text without any HTML tags."
+	plainText := "This is plain text without any HTML tags. It also needs to be long enough to pass the minimum length check. We represent a simple text file or a response that has no HTML structure but contains valuable information that we want to preserve."
 
 	// モックの期待値設定
 	mockArticleFetcher.EXPECT().
@@ -275,8 +277,8 @@ func TestFetchArticleUsecase_FetchCompliantArticle_UpsertsToRAG(t *testing.T) {
 	articleURL, _ := url.Parse(articleURLStr)
 	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 	userContext := domain.UserContext{UserID: userID}
-	rawHTML := "<html><body><p>Article content</p></body></html>"
-	contentStr := "Article content"
+	rawHTML := "<html><body><p>Article content needs to be very long. We are adding more text to satisfy the 100 char limit. This is a very interesting article about testing Go code with mocks and sanitization logic.</p></body></html>"
+	contentStr := "Article content needs to be very long. We are adding more text to satisfy the 100 char limit. This is a very interesting article about testing Go code with mocks and sanitization logic."
 	articleID := "article-123"
 
 	// Mock expectations
