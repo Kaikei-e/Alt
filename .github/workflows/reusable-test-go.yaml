@@ -125,25 +125,25 @@ jobs:
           go test ./... -coverprofile=coverage.out
 
       # === Codecov: OIDC か token を選択 ===
-      - name: Upload coverage to Codecov (OIDC)
-        if: ${{ always() && inputs.upload-coverage && inputs.use-oidc }}
-        uses: codecov/codecov-action@v5
-        with:
-          use_oidc: true
-          files: ${{ github.workspace }}/${{ inputs.working-directory }}/coverage.out
-          flags: ${{ inputs.coverage-flags }}
-          name: ${{ inputs.coverage-flags }}-coverage
-          verbose: false
+      # - name: Upload coverage to Codecov (OIDC)
+      #   if: ${{ always() && inputs.upload-coverage && inputs.use-oidc }}
+      #   uses: codecov/codecov-action@v5
+      #   with:
+      #     use_oidc: true
+      #     files: ${{ github.workspace }}/${{ inputs.working-directory }}/coverage.out
+      #     flags: ${{ inputs.coverage-flags }}
+      #     name: ${{ inputs.coverage-flags }}-coverage
+      #     verbose: false
 
-      - name: Upload coverage to Codecov (token)
-        if: ${{ always() && inputs.upload-coverage && !inputs.use-oidc }}
-        uses: codecov/codecov-action@v5
-        with:
-          files: ${{ github.workspace }}/${{ inputs.working-directory }}/coverage.out
-          flags: ${{ inputs.coverage-flags }}
-          name: ${{ inputs.coverage-flags }}-coverage
-          token: ${{ secrets.CODECOV_TOKEN }}
-          verbose: false
+      # - name: Upload coverage to Codecov (token)
+      #   if: ${{ always() && inputs.upload-coverage && !inputs.use-oidc }}
+      #   uses: codecov/codecov-action@v5
+      #   with:
+      #     files: ${{ github.workspace }}/${{ inputs.working-directory }}/coverage.out
+      #     flags: ${{ inputs.coverage-flags }}
+      #     name: ${{ inputs.coverage-flags }}-coverage
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     verbose: false
 
       - name: Cleanup (self-hosted)
         if: always() && runner.environment == 'self-hosted'
