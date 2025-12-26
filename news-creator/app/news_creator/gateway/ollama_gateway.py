@@ -148,11 +148,12 @@ class OllamaGateway(LLMProviderPort):
             options_filtered = {k: v for k, v in options.items() if k != "num_ctx"}
             llm_options.update(options_filtered)
 
-        # CRITICAL: Remove num_ctx from llm_options (it's fixed in Modelfile)
-        # This prevents Ollama from reloading models when num_ctx changes
-        if "num_ctx" in llm_options:
-            del llm_options["num_ctx"]
-            logger.debug("Removed num_ctx from options (fixed in Modelfile)")
+        # CRITICAL: We previously removed num_ctx, but now we allow it to be passed
+        # if explicitly set in config, to override Modelfile defaults when necessary.
+        # This is important for performance tuning (e.g. reducing context to 16k).
+        # if "num_ctx" in llm_options:
+        #     del llm_options["num_ctx"]
+        #     logger.debug("Removed num_ctx from options (fixed in Modelfile)")
 
         # Apply num_predict override if provided
         if num_predict is not None:
