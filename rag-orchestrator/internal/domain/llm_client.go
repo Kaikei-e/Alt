@@ -6,7 +6,15 @@ import "context"
 type LLMClient interface {
 	Generate(ctx context.Context, prompt string, maxTokens int) (*LLMResponse, error)
 	GenerateStream(ctx context.Context, prompt string, maxTokens int) (<-chan LLMStreamChunk, <-chan error, error)
+	Chat(ctx context.Context, messages []Message, maxTokens int) (*LLMResponse, error)
+	ChatStream(ctx context.Context, messages []Message, maxTokens int) (<-chan LLMStreamChunk, <-chan error, error)
 	Version() string
+}
+
+// Message represents a single message in a chat conversation.
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 // LLMResponse carries the LLM output and whether the generation finished.

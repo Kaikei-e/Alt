@@ -368,4 +368,184 @@ func toInt64(value interface{}) (*int64, bool) {
 	}
 }
 
+// Chat sends a conversation history to Ollama and returns the assistant message.
+func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, maxTokens int) (*domain.LLMResponse, error) {
+	chatMsgs := toChatMessages(messages)
+	reqBody := chatRequest{
+		Model:     g.Model,
+		Messages:  chatMsgs,
+		KeepAlive: -1,
+		Stream:    false,
+		Format:    map[string]interface{}{"type": "json"}, // Force JSON mode generic
+		Think:     "low",
+		Options: map[string]interface{}{
+			"temperature": 0.2,
+		},
+	}
+	if maxTokens > 0 {
+		reqBody.Options["num_predict"] = maxTokens
+	}
+
+	jsonPayload, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal chat request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/chat", g.BaseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonPayload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chat request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := g.Client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call chat endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("chat endpoint returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var chatResp chatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return nil, fmt.Errorf("failed to decode chat response: %w", err)
+	}
+
+	return &domain.LLMResponse{
+		Text: chatResp.Message.Content,
+		Done: chatResp.Done,
+	}, nil
+}
+
+// ChatStream streams conversation history to Ollama.
+func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Message, maxTokens int) (<-chan domain.LLMStreamChunk, <-chan error, error) {
+	if len(messages) == 0 {
+		return nil, nil, fmt.Errorf("messages are required for streaming chat")
+	}
+
+	chatMsgs := toChatMessages(messages)
+	reqBody := chatRequest{
+		Model:     g.Model,
+		Messages:  chatMsgs,
+		KeepAlive: -1,
+		Stream:    true,
+		Format:    map[string]interface{}{"type": "json"},
+		Think:     "low",
+		Options: map[string]interface{}{
+			"temperature": 0.2,
+		},
+	}
+	if maxTokens > 0 {
+		reqBody.Options["num_predict"] = maxTokens
+	}
+
+	jsonPayload, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal stream request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/chat", g.BaseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonPayload))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create stream request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := g.Client.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to call stream endpoint: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("stream endpoint returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	chunkCh := make(chan domain.LLMStreamChunk)
+	errCh := make(chan error, 1)
+
+	go func() {
+		defer resp.Body.Close()
+		defer close(chunkCh)
+		defer close(errCh)
+
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+		for scanner.Scan() {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+
+			var raw map[string]interface{}
+			if err := json.Unmarshal([]byte(line), &raw); err != nil {
+				errCh <- fmt.Errorf("failed to decode stream chunk: %w", err)
+				return
+			}
+
+			var content string
+			if msg, ok := raw["message"].(map[string]interface{}); ok {
+				content = toString(msg["content"])
+			} else if response, ok := raw["response"]; ok {
+				content = toString(response)
+			}
+
+			chunk := domain.LLMStreamChunk{
+				Response:   content,
+				Model:      toString(raw["model"]),
+				Done:       toBool(raw["done"]),
+				DoneReason: toString(raw["done_reason"]),
+			}
+			if val, ok := toInt(raw["prompt_eval_count"]); ok {
+				chunk.PromptEvalCount = val
+			}
+			if val, ok := toInt(raw["eval_count"]); ok {
+				chunk.EvalCount = val
+			}
+			if val, ok := toInt64(raw["total_duration"]); ok {
+				chunk.TotalDuration = val
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case chunkCh <- chunk:
+			}
+
+			if chunk.Done {
+				return
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			errCh <- fmt.Errorf("failed to read stream: %w", err)
+			return
+		}
+	}()
+
+	return chunkCh, errCh, nil
+}
+
+func toChatMessages(msgs []domain.Message) []chatMessage {
+	out := make([]chatMessage, len(msgs))
+	for i, m := range msgs {
+		out[i] = chatMessage{
+			Role:    m.Role,
+			Content: m.Content,
+		}
+	}
+	return out
+}
+
 var _ domain.LLMClient = (*OllamaGenerator)(nil)

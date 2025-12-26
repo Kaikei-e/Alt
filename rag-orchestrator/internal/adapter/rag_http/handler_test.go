@@ -41,6 +41,14 @@ func (s *stubLLMClient) GenerateStream(ctx context.Context, prompt string, maxTo
 	return nil, nil, errors.New("streaming not implemented")
 }
 
+func (s *stubLLMClient) Chat(ctx context.Context, messages []domain.Message, maxTokens int) (*domain.LLMResponse, error) {
+	return s.response, nil
+}
+
+func (s *stubLLMClient) ChatStream(ctx context.Context, messages []domain.Message, maxTokens int) (<-chan domain.LLMStreamChunk, <-chan error, error) {
+	return nil, nil, errors.New("streaming not implemented")
+}
+
 type stubStreamUsecase struct {
 	events <-chan usecase.StreamEvent
 }

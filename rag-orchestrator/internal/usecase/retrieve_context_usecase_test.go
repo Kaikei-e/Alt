@@ -33,7 +33,7 @@ func TestRetrieveContext_Execute_Success(t *testing.T) {
 	mockDocRepo := new(MockRagDocumentRepository)
 	mockEncoder := new(MockVectorEncoder)
 
-	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, nil)
+	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, nil, nil)
 
 	ctx := context.Background()
 	input := usecase.RetrieveContextInput{

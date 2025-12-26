@@ -62,7 +62,8 @@ func main() {
 	)
 
 	generator := rag_augur.NewOllamaGenerator(cfg.KnowledgeAugurURL, cfg.KnowledgeAugurModel, cfg.OllamaTimeout)
-	retrieveUsecase := usecase.NewRetrieveContextUsecase(chunkRepo, docRepo, embedder, generator)
+	searchClient := rag_http.NewSearchIndexerClient(cfg.SearchIndexerURL, cfg.SearchIndexerTimeout)
+	retrieveUsecase := usecase.NewRetrieveContextUsecase(chunkRepo, docRepo, embedder, generator, searchClient)
 	promptBuilder := usecase.NewXMLPromptBuilder("Answer in Japanese.")
 	answerUsecase := usecase.NewAnswerWithRAGUsecase(
 		retrieveUsecase,

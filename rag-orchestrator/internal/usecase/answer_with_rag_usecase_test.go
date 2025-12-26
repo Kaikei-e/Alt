@@ -6,6 +6,7 @@ import (
 
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -48,6 +49,22 @@ func (m *mockLLMClient) Version() string {
 	return "mock"
 }
 
+func (m *mockLLMClient) Chat(ctx context.Context, messages []domain.Message, maxTokens int) (*domain.LLMResponse, error) {
+	args := m.Called(ctx, messages, maxTokens)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.LLMResponse), args.Error(1)
+}
+
+func (m *mockLLMClient) ChatStream(ctx context.Context, messages []domain.Message, maxTokens int) (<-chan domain.LLMStreamChunk, <-chan error, error) {
+	args := m.Called(ctx, messages, maxTokens)
+	if args.Get(0) == nil {
+		return nil, nil, args.Error(2)
+	}
+	return args.Get(0).(<-chan domain.LLMStreamChunk), args.Get(1).(<-chan error), args.Error(2)
+}
+
 func TestAnswerWithRAG_Success(t *testing.T) {
 	ctx := context.Background()
 	mockRetrieve := new(mockRetrieveContextUsecase)
@@ -71,15 +88,31 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 		},
 	}, nil)
 
-	llmResponse := `{
+	// Stage 1: Citations Response
+	citationsResponse := `{
   "quotes": [{"chunk_id":"` + chunkID.String() + `","quote":"quote text"}],
-  "answer": "Hello world",
   "citations": [{"chunk_id":"` + chunkID.String() + `","url":"http://example.com","title":"Example","score":0.9}],
+  "answer": "",
+  "fallback": false
+}`
+	// Stage 2: Answer Response
+	answerResponse := `{
+  "answer": "Hello world",
   "fallback": false,
   "reason": ""
 }`
 
-	mockLLM.On("Generate", mock.Anything, mock.Anything, 512).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
+	// Expect Stage 1 Call (we can use MatchedBy to distinguish, or just order)
+	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
+		// Check for Stage 1 characteristic (e.g. system prompt instruction)
+		return len(msgs) > 0 && msgs[0].Role == "system" && contains(msgs[0].Content, "Extract exact quotes")
+	}), mock.Anything).Return(&domain.LLMResponse{Text: citationsResponse, Done: true}, nil)
+
+	// Expect Stage 2 Call
+	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
+		// Check for Stage 2 characteristic
+		return len(msgs) > 0 && msgs[0].Role == "system" && contains(msgs[0].Content, "Answer the query")
+	}), mock.Anything).Return(&domain.LLMResponse{Text: answerResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})
 	assert.NoError(t, err)
@@ -109,19 +142,38 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 		},
 	}, nil)
 
+	// Test Fallback
+	// Stage 1 might succeed or fail?
+	// Case 1: Stage 1 returns insufficient evidence?
+	// The prompt says "return ... fallback:true".
+
+	// Stage 1 response
+	stage1Resp := `{
+		"quotes": [],
+		"citations": [],
+		"fallback": false
+	}`
+	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
+		return len(msgs) > 0 && msgs[0].Role == "system" && contains(msgs[0].Content, "Extract exact quotes")
+	}), mock.Anything).Return(&domain.LLMResponse{Text: stage1Resp, Done: true}, nil)
+
+	// Stage 2 response (Fallback)
 	fallbackResponse := `{
-  "quotes": [],
   "answer": "",
-  "citations": [],
   "fallback": true,
   "reason": "insufficient evidence"
 }`
-
-	mockLLM.On("Generate", mock.Anything, mock.Anything, 512).Return(&domain.LLMResponse{Text: fallbackResponse, Done: true}, nil)
+	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
+		return len(msgs) > 0 && msgs[0].Role == "system" && contains(msgs[0].Content, "Answer the query")
+	}), mock.Anything).Return(&domain.LLMResponse{Text: fallbackResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})
 	assert.NoError(t, err)
 	assert.True(t, output.Fallback)
 	assert.Equal(t, "insufficient evidence", output.Reason)
 	assert.Len(t, output.Citations, 0)
+}
+
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
 }

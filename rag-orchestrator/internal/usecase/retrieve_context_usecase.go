@@ -38,10 +38,11 @@ type RetrieveContextUsecase interface {
 }
 
 type retrieveContextUsecase struct {
-	chunkRepo domain.RagChunkRepository
-	docRepo   domain.RagDocumentRepository
-	encoder   domain.VectorEncoder
-	llmClient domain.LLMClient
+	chunkRepo    domain.RagChunkRepository
+	docRepo      domain.RagDocumentRepository
+	encoder      domain.VectorEncoder
+	llmClient    domain.LLMClient
+	searchClient domain.SearchClient
 }
 
 // NewRetrieveContextUsecase creates a new RetrieveContextUsecase.
@@ -50,12 +51,14 @@ func NewRetrieveContextUsecase(
 	docRepo domain.RagDocumentRepository,
 	encoder domain.VectorEncoder,
 	llmClient domain.LLMClient,
+	searchClient domain.SearchClient,
 ) RetrieveContextUsecase {
 	return &retrieveContextUsecase{
-		chunkRepo: chunkRepo,
-		docRepo:   docRepo,
-		encoder:   encoder,
-		llmClient: llmClient,
+		chunkRepo:    chunkRepo,
+		docRepo:      docRepo,
+		encoder:      encoder,
+		llmClient:    llmClient,
+		searchClient: searchClient,
 	}
 }
 
@@ -72,9 +75,36 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		if err == nil && translated != "" {
 			queries = append(queries, translated)
 		} else if err != nil {
-			// Log error but proceed with original query?
-			// For now just ignore error to keep robust
 			fmt.Printf("Translation failed: %v\n", err)
+		}
+	}
+
+	// 1b. Search for related tags/terms using SearchClient (Meilisearch)
+	if u.searchClient != nil {
+		hits, err := u.searchClient.Search(ctx, input.Query)
+		if err == nil {
+			// Extract tags from top hits (limit to top 3 hits to avoid noise)
+			limit := 3
+			if len(hits) < limit {
+				limit = len(hits)
+			}
+			tagSet := make(map[string]bool)
+			for i := 0; i < limit; i++ {
+				for _, tag := range hits[i].Tags {
+					if tag != "" {
+						tagSet[tag] = true
+					}
+				}
+			}
+			// Append unique tags as additional queries
+			// Only append if it's not already in queries (simple check)
+			for tag := range tagSet {
+				if tag != input.Query {
+					queries = append(queries, tag)
+				}
+			}
+		} else {
+			fmt.Printf("Search client failed: %v\n", err)
 		}
 	}
 
