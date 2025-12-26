@@ -303,7 +303,7 @@ services:
       - OLLAMA_MODELS=/home/ollama-user/.ollama
       - LLM_SERVICE_URL=${LLM_SERVICE_URL:-http://127.0.0.1:11435}
       - LLM_MODEL=${LLM_MODEL:-gemma3-4b-16k}
-      - MODEL_ROUTING_ENABLED=false
+      - MODEL_ROUTING_ENABLED=true
       - LLM_KEEP_ALIVE_16K=24h
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
