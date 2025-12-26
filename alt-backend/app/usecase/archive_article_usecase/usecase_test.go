@@ -140,7 +140,7 @@ func TestArchiveArticleUsecase_Execute_SaveError(t *testing.T) {
 	usecase := NewArchiveArticleUsecase(fetcher, saver)
 
 	input := ArchiveArticleInput{URL: "https://example.com/article"}
-	content := "<html>body</html>"
+	content := "<html><body><p>This article content is specifically made longer to pass the minimum length check of 100 characters. We need to ensure that even when simulating a save error, the extraction logic proceeds far enough to attempt the save.</p></body></html>"
 
 	fetcher.EXPECT().FetchArticleContents(gomock.Any(), input.URL).Return(&content, nil)
 
@@ -188,7 +188,7 @@ func TestArchiveArticleUsecase_Execute_EmptyTitleUsesURL(t *testing.T) {
 	usecase := NewArchiveArticleUsecase(fetcher, saver)
 
 	input := ArchiveArticleInput{URL: "https://example.com/article", Title: ""}
-	content := "body"
+	content := "This body content must also be long enough to pass the validation check. We are testing the empty title fallback mechanism, but the content extraction must succeed first for the usecase to proceed to saving."
 
 	fetcher.EXPECT().FetchArticleContents(gomock.Any(), input.URL).Return(&content, nil)
 
