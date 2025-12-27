@@ -1191,7 +1191,7 @@ services:
     secrets:
       - rag_db_password
     volumes:
-      - rag_db_data:/var/lib/postgresql/data
+      - rag_db_data:/var/lib/postgresql
       # Using recap config as a base/safe default for now
       - ./docker/postgres/postgresql-recap.conf:/etc/postgresql/postgresql.conf:ro
       - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
@@ -1257,6 +1257,7 @@ services:
       - DB_NAME=${RAG_DB_NAME:-rag_db}
       - AUGUR_EXTERNAL=${AUGUR_EXTERNAL}
       - AUGUR_KNOWLEDGE_URL=${AUGUR_KNOWLEDGE_URL}
+      - SEARCH_INDEXER_URL=http://search-indexer:9300
     secrets:
       - rag_db_password
     ports:
