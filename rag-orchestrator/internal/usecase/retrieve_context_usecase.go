@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"rag-orchestrator/internal/domain"
 	"strings"
 	"time"
@@ -43,6 +44,7 @@ type retrieveContextUsecase struct {
 	encoder      domain.VectorEncoder
 	llmClient    domain.LLMClient
 	searchClient domain.SearchClient
+	logger       *slog.Logger
 }
 
 // NewRetrieveContextUsecase creates a new RetrieveContextUsecase.
@@ -52,6 +54,7 @@ func NewRetrieveContextUsecase(
 	encoder domain.VectorEncoder,
 	llmClient domain.LLMClient,
 	searchClient domain.SearchClient,
+	logger *slog.Logger,
 ) RetrieveContextUsecase {
 	return &retrieveContextUsecase{
 		chunkRepo:    chunkRepo,
@@ -59,6 +62,7 @@ func NewRetrieveContextUsecase(
 		encoder:      encoder,
 		llmClient:    llmClient,
 		searchClient: searchClient,
+		logger:       logger,
 	}
 }
 
@@ -67,6 +71,13 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		return nil, fmt.Errorf("query is empty")
 	}
 
+	retrievalStart := time.Now()
+	retrievalID := uuid.NewString()
+	u.logger.Info("retrieval_started",
+		slog.String("retrieval_id", retrievalID),
+		slog.String("query", input.Query),
+		slog.Int("candidate_articles", len(input.CandidateArticleIDs)))
+
 	queries := []string{input.Query}
 
 	// 1a. Check if query is Japanese and translate if so
@@ -74,14 +85,24 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		translated, err := u.translateQuery(ctx, input.Query)
 		if err == nil && translated != "" {
 			queries = append(queries, translated)
+			u.logger.Info("query_translated",
+				slog.String("retrieval_id", retrievalID),
+				slog.String("original", input.Query),
+				slog.String("translated", translated))
 		} else if err != nil {
-			fmt.Printf("Translation failed: %v\n", err)
+			u.logger.Warn("translation_failed",
+				slog.String("retrieval_id", retrievalID),
+				slog.String("query", input.Query),
+				slog.String("error", err.Error()))
 		}
 	}
 
 	// 1b. Search for related tags/terms using SearchClient (Meilisearch)
 	if u.searchClient != nil {
+		tagSearchStart := time.Now()
 		hits, err := u.searchClient.Search(ctx, input.Query)
+		tagSearchDuration := time.Since(tagSearchStart)
+
 		if err == nil {
 			// Extract tags from top hits (limit to top 3 hits to avoid noise)
 			limit := 3
@@ -98,13 +119,23 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 			}
 			// Append unique tags as additional queries
 			// Only append if it's not already in queries (simple check)
+			tagCount := 0
 			for tag := range tagSet {
 				if tag != input.Query {
 					queries = append(queries, tag)
+					tagCount++
 				}
 			}
+
+			u.logger.Info("tag_search_completed",
+				slog.String("retrieval_id", retrievalID),
+				slog.Int("hits_found", len(hits)),
+				slog.Int("tags_extracted", tagCount),
+				slog.Int64("duration_ms", tagSearchDuration.Milliseconds()))
 		} else {
-			fmt.Printf("Search client failed: %v\n", err)
+			u.logger.Warn("tag_search_failed",
+				slog.String("retrieval_id", retrievalID),
+				slog.String("error", err.Error()))
 		}
 	}
 
@@ -117,8 +148,13 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		return nil, fmt.Errorf("expected %d embeddings, got %d", len(queries), len(embeddings))
 	}
 
+	u.logger.Info("queries_encoded",
+		slog.String("retrieval_id", retrievalID),
+		slog.Int("query_count", len(queries)),
+		slog.Any("queries", queries))
+
 	// 2. Search & Merge
-	const searchLimit = 5
+	const searchLimit = 10
 	seen := make(map[uuid.UUID]bool)
 	var finalResults []domain.SearchResult
 
@@ -136,6 +172,11 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		}
 	}
 
+	u.logger.Info("vector_search_completed",
+		slog.String("retrieval_id", retrievalID),
+		slog.Int("total_results", len(finalResults)),
+		slog.Int("unique_chunks", len(seen)))
+
 	// 3. Resolve Metadata
 	contexts := make([]ContextItem, 0, len(finalResults))
 
@@ -150,6 +191,12 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 			ChunkID:         res.Chunk.ID,
 		})
 	}
+
+	retrievalDuration := time.Since(retrievalStart)
+	u.logger.Info("retrieval_completed",
+		slog.String("retrieval_id", retrievalID),
+		slog.Int("contexts_returned", len(contexts)),
+		slog.Int64("duration_ms", retrievalDuration.Milliseconds()))
 
 	return &RetrieveContextOutput{Contexts: contexts}, nil
 }

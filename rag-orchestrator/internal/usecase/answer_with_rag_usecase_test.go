@@ -2,6 +2,8 @@ package usecase_test
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"testing"
 
 	"rag-orchestrator/internal/domain"
@@ -70,8 +72,9 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 5, 512, "alpha-v1", "ja")
+	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 10, 512, "alpha-v1", "ja", testLogger)
 
 	chunkID := uuid.New()
 	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
@@ -88,36 +91,24 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 		},
 	}, nil)
 
-	// Stage 1: Citations Response
-	citationsResponse := `{
-  "quotes": [{"chunk_id":"` + chunkID.String() + `","quote":"quote text"}],
-  "citations": [{"chunk_id":"` + chunkID.String() + `","url":"http://example.com","title":"Example","score":0.9}],
-  "answer": "",
-  "fallback": false
-}`
-	// Stage 2: Answer Response
-	answerResponse := `{
-  "answer": "Hello world",
+	// Single Phase Response
+	llmResponse := `{
+  "answer": "Hello world [chunk_1]",
+  "citations": [{"chunk_id":"` + chunkID.String() + `","reason":"relevant"}],
   "fallback": false,
   "reason": ""
 }`
 
-	// Expect Stage 1 Call (we can use MatchedBy to distinguish, or just order)
+	// Expect Single Call
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		// Check for Stage 1 characteristic (e.g. system prompt instruction)
-		return len(msgs) > 0 && msgs[0].Role == "system" && contains(msgs[0].Content, "Extract exact quotes")
-	}), mock.Anything).Return(&domain.LLMResponse{Text: citationsResponse, Done: true}, nil)
-
-	// Expect Stage 2 Call
-	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		// Check for Stage 2 characteristic
-		return len(msgs) > 0 && msgs[0].Role == "system" && contains(msgs[0].Content, "Answer the query")
-	}), mock.Anything).Return(&domain.LLMResponse{Text: answerResponse, Done: true}, nil)
+		// Check for Single Phase characteristic (escaped)
+		return len(msgs) > 0 && msgs[0].Role == "system" && contains(msgs[0].Content, "answers questions based ONLY on the provided &lt;context&gt;")
+	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
-	assert.Equal(t, "Hello world", output.Answer)
+	assert.Equal(t, "Hello world [chunk_1]", output.Answer)
 	assert.Len(t, output.Citations, 1)
 	assert.Equal(t, chunkID.String(), output.Citations[0].ChunkID)
 }
@@ -127,8 +118,9 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 5, 512, "alpha-v1", "ja")
+	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 10, 512, "alpha-v1", "ja", testLogger)
 
 	chunkID := uuid.New()
 	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
@@ -142,29 +134,15 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 		},
 	}, nil)
 
-	// Test Fallback
-	// Stage 1 might succeed or fail?
-	// Case 1: Stage 1 returns insufficient evidence?
-	// The prompt says "return ... fallback:true".
-
-	// Stage 1 response
-	stage1Resp := `{
-		"quotes": [],
-		"citations": [],
-		"fallback": false
-	}`
-	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		return len(msgs) > 0 && msgs[0].Role == "system" && contains(msgs[0].Content, "Extract exact quotes")
-	}), mock.Anything).Return(&domain.LLMResponse{Text: stage1Resp, Done: true}, nil)
-
-	// Stage 2 response (Fallback)
+	// Fallback Response
 	fallbackResponse := `{
   "answer": "",
+  "citations": [],
   "fallback": true,
   "reason": "insufficient evidence"
 }`
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		return len(msgs) > 0 && msgs[0].Role == "system" && contains(msgs[0].Content, "Answer the query")
+		return len(msgs) > 0 && msgs[0].Role == "system" && contains(msgs[0].Content, "answers questions based ONLY on the provided &lt;context&gt;")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: fallbackResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})

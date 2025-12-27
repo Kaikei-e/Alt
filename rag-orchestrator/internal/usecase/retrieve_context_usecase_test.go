@@ -2,6 +2,8 @@ package usecase_test
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
 	"testing"
@@ -32,8 +34,9 @@ func TestRetrieveContext_Execute_Success(t *testing.T) {
 	mockChunkRepo := new(MockRagChunkRepository)
 	mockDocRepo := new(MockRagDocumentRepository)
 	mockEncoder := new(MockVectorEncoder)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, nil, nil)
+	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, nil, nil, testLogger)
 
 	ctx := context.Background()
 	input := usecase.RetrieveContextInput{
@@ -46,7 +49,7 @@ func TestRetrieveContext_Execute_Success(t *testing.T) {
 	mockEncoder.On("Encode", ctx, []string{"search query"}).Return([][]float32{queryVec}, nil)
 
 	// 2. Search
-	mockChunkRepo.On("Search", ctx, queryVec, []string(nil), 5).Return([]domain.SearchResult{
+	mockChunkRepo.On("Search", ctx, queryVec, []string(nil), 10).Return([]domain.SearchResult{
 		{
 			Chunk: domain.RagChunk{
 				ID:      uuid.New(),

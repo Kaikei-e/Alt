@@ -124,6 +124,7 @@ func TestIndexArticle_Upsert_Idempotency(t *testing.T) {
 		ID:         verID,
 		DocumentID: docID,
 		SourceHash: sourceHash, // Same hash
+		Title:      title,
 	}, nil)
 
 	// Execute

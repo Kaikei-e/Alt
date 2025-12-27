@@ -42,17 +42,6 @@ func (v OutputValidator) Validate(raw string, contexts []ContextItem) (*LLMAnswe
 		}
 	}
 
-	if len(answer.Quotes) == 0 && !answer.Fallback {
-		// Loosen this check? No, let's keep it but maybe treat as soft error if answer exists?
-		// For now, strict on structure unless fallback.
-		// Actually, if we recovered from truncation, Quotes might be missing, so we skip this check if Reason is set.
-		if answer.Reason != "recovered_from_truncated_json" {
-			// return nil, errors.New("missing quotes in response")
-			// Let's be lenient here too. If we have an answer, proceed.
-		}
-	}
-	// Similar for Citations
-
 	// Validate Citations if present
 	if len(contexts) > 0 {
 		allowed := make(map[string]struct{}, len(contexts))
@@ -159,23 +148,14 @@ func extractAnswerOnly(raw string) string {
 
 // LLMAnswer models the JSON output the prompt format section enforces.
 type LLMAnswer struct {
-	Quotes    []LLMQuote    `json:"quotes"`
 	Answer    string        `json:"answer"`
 	Citations []LLMCitation `json:"citations"`
 	Fallback  bool          `json:"fallback"`
 	Reason    string        `json:"reason"`
 }
 
-// LLMQuote describes a quoted chunk the LLM must produce before answering.
-type LLMQuote struct {
-	ChunkID string `json:"chunk_id"`
-	Quote   string `json:"quote"`
-}
-
 // LLMCitation declares the chunks referenced in the final answer.
 type LLMCitation struct {
-	ChunkID string   `json:"chunk_id"`
-	URL     string   `json:"url"`
-	Title   string   `json:"title"`
-	Score   *float32 `json:"score"`
+	ChunkID string `json:"chunk_id"`
+	Reason  string `json:"reason,omitempty"`
 }

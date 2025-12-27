@@ -57,48 +57,30 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 	sysSb.WriteString(escape(input.Locale))
 	sysSb.WriteString("</locale>\n")
 
-	var selectedInstructions []string
-	if input.Stage == "citations" {
-		selectedInstructions = []string{
-			"Analyze the <context> and identify key facts relevant to the user query.",
-			"Extract exact quotes and build citations.",
-			"Return ONLY the 'quotes' and 'citations' fields in JSON.",
-			"Leave 'answer' empty or null.",
-			"Ensure citations point to specific <chunk_id>.",
-		}
-	} else if input.Stage == "answer" {
-		selectedInstructions = []string{
-			"Answer the query using the facts in <context>.",
-			"You may also refer to the provided <citations> from previous step (if any) but prioritize <context>.",
-			"Your 'answer' field MUST be a Markdown string.",
-			"Target length: 300-500 words.",
-			"Cite each sentence with [chunk_id].",
-			"Return 'answer', 'fallback', and 'reason'.",
-			"Do not return 'quotes' or 'citations' arrays again (keep them empty) as they are already known.",
-		}
-	} else {
-		// Combined / Default
-		selectedInstructions = []string{
-			"Answer using the facts in <context> provided in the user message.",
-			"Your \"answer\" field MUST be a Markdown string following the strict template below.",
-			"Template:",
-			"  ## Introduction",
-			"  [Brief overview of the topic]",
-			"",
-			"  ## Details",
-			"  - **Point 1**: [Description with citations]",
-			"  - **Point 2**: [Description with citations]",
-			"",
-			"  ## Conclusion",
-			"  [Summary of key findings]",
-			"",
-			"Include background context and future outlook/implications if available.",
-			"Target a length of at least 300-500 words relative to the language.",
-			"Cite each sentence with [chunk_id] referenced in the context.",
-			"Translate English context facts into natural Japanese if the query is in Japanese.",
-			"If you cannot answer with the available evidence, return {\"answer\":null,\"fallback\":true,\"reason\":\"insufficient_evidence\"}.",
-			"Do not invent facts or assume information that is not in the context.",
-		}
+	// Single Phase Instructions
+	selectedInstructions := []string{
+		"You are an AI assistant that answers questions based ONLY on the provided <context>.",
+		"1. Analyze the <context> documents carefully.",
+		"2. Answer the <query> using strictly the facts from the <context>.",
+		"3. IMPORTANT: Only set \"fallback\": true if there is absolutely NO relevant information in the context. If there is ANY relevant information, you MUST provide an answer, even if partial.",
+		"4. Your \"answer\" field MUST be a Markdown string with the following structure:",
+		"   ## Overview",
+		"   [Brief introduction to the topic]",
+		"",
+		"   ## Key Points",
+		"   - **Point 1**: [Description with citation] [chunk_id]",
+		"   - **Point 2**: [Description with citation] [chunk_id]",
+		"",
+		"   ## Summary",
+		"   [Conclusion with key takeaways]",
+		"",
+		"5. Target length: 200-500 words depending on available context.",
+		"6. You MUST include citations for your statements using the metadata from the context.",
+		"   - The \"citations\" array in your JSON output must list every chunk_id used in your answer.",
+		"   - In the text of your answer, refer to the source by appending [chunk_id] at the end of sentences.",
+		"7. Do not include external knowledge or hallucinate facts.",
+		"8. If the query is in Japanese, translate English facts from the context into natural Japanese.",
+		"9. Follow the JSON format specified below EXACTLY.",
 	}
 
 	for _, inst := range append(selectedInstructions, b.additionalInstructions...) {
@@ -110,11 +92,10 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 
 	sysSb.WriteString("<format>\n")
 	sysSb.WriteString("JSON: {\n")
-	sysSb.WriteString("  \"quotes\": [{\"chunk_id\":\"...\",\"quote\":\"...\"}],\n")
-	sysSb.WriteString("  \"answer\":\"...\",\n")
-	sysSb.WriteString("  \"citations\":[{\"chunk_id\":\"...\",\"url\":\"...\",\"title\":\"...\",\"score\":...}],\n")
-	sysSb.WriteString("  \"fallback\":false,\n")
-	sysSb.WriteString("  \"reason\":\"\"\n")
+	sysSb.WriteString("  \"answer\": \"Markdown text value... [chunk_id]\",\n")
+	sysSb.WriteString("  \"citations\": [{\"chunk_id\":\"...\", \"reason\":\"optional reason\"}],\n")
+	sysSb.WriteString("  \"fallback\": false,  // Set true ONLY if no relevant context exists\n")
+	sysSb.WriteString("  \"reason\": \"\"  // Explain why fallback is true, if applicable\n")
 	sysSb.WriteString("}\n")
 	sysSb.WriteString("</format>\n")
 
@@ -147,16 +128,6 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 		userSb.WriteString("  </document>\n")
 	}
 	userSb.WriteString("</context>\n\n")
-
-	if len(input.Citations) > 0 {
-		userSb.WriteString("<citations>\n")
-		for _, c := range input.Citations {
-			userSb.WriteString("  <item>")
-			userSb.WriteString(escape(c))
-			userSb.WriteString("</item>\n")
-		}
-		userSb.WriteString("</citations>\n\n")
-	}
 
 	userSb.WriteString("<query>\n")
 	userSb.WriteString(escape(input.Query))

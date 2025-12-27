@@ -92,6 +92,7 @@ type answerWithRAGUsecase struct {
 	promptVersion string
 	defaultLocale string
 	cache         sync.Map // key: string hash, value: cacheItem
+	logger        *slog.Logger
 }
 
 // NewAnswerWithRAGUsecase wires together the components needed to generate a RAG answer.
@@ -102,6 +103,7 @@ func NewAnswerWithRAGUsecase(
 	validator OutputValidator,
 	maxChunks, maxTokens int,
 	promptVersion, defaultLocale string,
+	logger *slog.Logger,
 ) AnswerWithRAGUsecase {
 	return &answerWithRAGUsecase{
 		retrieve:      retrieve,
@@ -112,21 +114,34 @@ func NewAnswerWithRAGUsecase(
 		maxTokens:     maxTokens,
 		promptVersion: promptVersion,
 		defaultLocale: defaultLocale,
+		logger:        logger,
 	}
 }
 
-// Execute performs the 2-stage RAG generation with caching.
+// Execute performs the Single-Phase RAG generation with caching.
 func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGInput) (*AnswerWithRAGOutput, error) {
 	if strings.TrimSpace(input.Query) == "" {
 		return nil, fmt.Errorf("query is required")
 	}
+
+	executionStart := time.Now()
+	requestID := uuid.NewString()
+
+	u.logger.Info("answer_request_started",
+		slog.String("request_id", requestID),
+		slog.String("query", input.Query),
+		slog.Int("max_chunks", input.MaxChunks),
+		slog.String("locale", input.Locale))
 
 	// 1. Check Cache
 	cacheKey := u.generateCacheKey(input)
 	if val, ok := u.cache.Load(cacheKey); ok {
 		item := val.(cacheItem)
 		if time.Now().Before(item.expiresAt) {
-			slog.Info("returning cached answer", slog.String("key", cacheKey))
+			u.logger.Info("cache_hit",
+				slog.String("request_id", requestID),
+				slog.String("cache_key", cacheKey),
+				slog.String("query", input.Query))
 			return item.output, nil
 		} else {
 			u.cache.Delete(cacheKey)
@@ -137,86 +152,101 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 	// We need to retrieve contexts first to know what to prompt with.
 	promptData, err := u.buildPrompt(ctx, input) // Note: buildPrompt calls retrieval
 	if err != nil {
-		slog.Warn("failed to prepare prompt/context", slog.String("retrieval_set_id", promptData.retrievalSetID), slog.String("reason", err.Error()))
+		u.logger.Warn("answer_fallback_triggered",
+			slog.String("request_id", requestID),
+			slog.String("retrieval_set_id", promptData.retrievalSetID),
+			slog.String("reason", err.Error()),
+			slog.Int("contexts_available", len(promptData.contexts)))
 		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, err.Error())
 	}
 
-	// 3. Stage 1: Citations
-	// Rebuild prompt for "citations" stage
+	u.logger.Info("context_retrieved",
+		slog.String("request_id", requestID),
+		slog.Int("contexts_count", len(promptData.contexts)),
+		slog.String("retrieval_set_id", promptData.retrievalSetID))
+
+	// 3. Single Stage Generation
 	promptInput := PromptInput{
 		Query:         input.Query,
-		Locale:        u.defaultLocale, // simplified, real usage should respect input
+		Locale:        u.defaultLocale,
 		PromptVersion: u.promptVersion,
 		Contexts:      u.toPromptContexts(promptData.contexts),
-		Stage:         "citations",
+		// Stage and Citations inputs are no longer needed for single phase
 	}
 	if input.Locale != "" {
 		promptInput.Locale = input.Locale
 	}
 
-	citationMessages, err := u.promptBuilder.Build(promptInput)
+	messages, err := u.promptBuilder.Build(promptInput)
 	if err != nil {
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, "failed to build citation prompt")
+		u.logger.Warn("answer_fallback_triggered",
+			slog.String("request_id", requestID),
+			slog.String("retrieval_set_id", promptData.retrievalSetID),
+			slog.String("reason", "failed to build prompt"),
+			slog.Int("contexts_available", len(promptData.contexts)))
+		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, "failed to build prompt")
 	}
 
-	citationResp, err := u.llmClient.Chat(ctx, citationMessages, promptData.maxTokens)
-	if err != nil {
-		// If stage 1 fails, we could fallback or try stage 2 directly?
-		// Let's fallback for now as per robust design.
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, fmt.Sprintf("stage 1 (citations) failed: %v", err))
+	// Calculate approximate prompt size
+	promptSize := 0
+	for _, msg := range messages {
+		promptSize += len(msg.Content)
 	}
 
-	// Validate/Parse Citations
-	parsedCitations, err := u.validator.Validate(citationResp.Text, promptData.contexts)
+	u.logger.Info("prompt_built",
+		slog.String("request_id", requestID),
+		slog.Int("chunks_used", len(promptData.contexts)),
+		slog.Int("prompt_size_chars", promptSize),
+		slog.Int("max_tokens", promptData.maxTokens))
+
+	generationStart := time.Now()
+	u.logger.Info("llm_generation_started",
+		slog.String("request_id", requestID),
+		slog.String("retrieval_set_id", promptData.retrievalSetID))
+
+	resp, err := u.llmClient.Chat(ctx, messages, promptData.maxTokens)
 	if err != nil {
-		// Proceed with empty citations if parsing fails? Or fallback?
-		slog.Warn("stage 1 validation failed", slog.String("error", err.Error()))
-		// We continue to stage 2 but with no citations.
+		u.logger.Warn("answer_fallback_triggered",
+			slog.String("request_id", requestID),
+			slog.String("retrieval_set_id", promptData.retrievalSetID),
+			slog.String("reason", fmt.Sprintf("generation failed: %v", err)),
+			slog.Int("contexts_available", len(promptData.contexts)))
+		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, fmt.Sprintf("generation failed: %v", err))
 	}
 
-	extractCitations := []string{}
-	// Convert parsed citations to string representation for Stage 2 prompt.
-	// We use the "quotes" array from validation result which captures the text.
-	for _, q := range parsedCitations.Quotes {
-		extractCitations = append(extractCitations, fmt.Sprintf("Chunk [%s]: %s", q.ChunkID, q.Quote))
-	}
-	// Fallback/Enhancement: If no quotes, maybe use citations refs?
-	if len(extractCitations) == 0 {
-		for _, c := range parsedCitations.Citations {
-			extractCitations = append(extractCitations, fmt.Sprintf("Chunk [%s] referenced", c.ChunkID))
-		}
+	generationDuration := time.Since(generationStart)
+	u.logger.Info("llm_generation_completed",
+		slog.String("request_id", requestID),
+		slog.Int("response_length", len(resp.Text)),
+		slog.Int64("generation_ms", generationDuration.Milliseconds()))
+
+	// Validate/Parse Answer
+	parsedAnswer, err := u.validator.Validate(resp.Text, promptData.contexts)
+	if err != nil {
+		u.logger.Warn("answer_fallback_triggered",
+			slog.String("request_id", requestID),
+			slog.String("retrieval_set_id", promptData.retrievalSetID),
+			slog.String("reason", fmt.Sprintf("validation failed: %v", err)),
+			slog.Int("contexts_available", len(promptData.contexts)))
+		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, fmt.Sprintf("validation failed: %v", err))
 	}
 
-	// 4. Stage 2: Answer
-	promptInput.Stage = "answer"
-	promptInput.Citations = extractCitations
-	answerMessages, err := u.promptBuilder.Build(promptInput)
-	if err != nil {
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, "failed to build answer prompt")
-	}
-
-	answerResp, err := u.llmClient.Chat(ctx, answerMessages, promptData.maxTokens)
-	if err != nil {
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, fmt.Sprintf("stage 2 (answer) failed: %v", err))
-	}
-
-	// Validate Answer
-	parsedAnswer, err := u.validator.Validate(answerResp.Text, promptData.contexts)
-	if err != nil {
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, fmt.Sprintf("stage 2 validation failed: %v", err))
-	}
+	u.logger.Info("validation_completed",
+		slog.String("request_id", requestID),
+		slog.Bool("is_fallback", parsedAnswer.Fallback),
+		slog.Int("citations_count", len(parsedAnswer.Citations)))
 
 	if parsedAnswer.Fallback {
+		u.logger.Warn("answer_fallback_triggered",
+			slog.String("request_id", requestID),
+			slog.String("retrieval_set_id", promptData.retrievalSetID),
+			slog.String("reason", parsedAnswer.Reason),
+			slog.Int("contexts_available", len(promptData.contexts)))
 		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, parsedAnswer.Reason)
 	}
 
-	// Combine results
-	// We use Stage 2 Answer.
-	// For Citations, we should use Stage 1 Citations?
-	// Or Stage 2 logic if it returns citations?
-	// Prompt for Stage 2 says "Do not return quotes or citations arrays again".
-	// So we must use Stage 1 Citations.
-	finalCitations := u.buildCitations(promptData.contexts, parsedCitations.Citations)
+	// Build Citations (Hydration)
+	finalCitations := u.buildCitations(promptData.contexts, parsedAnswer.Citations)
 
 	output := &AnswerWithRAGOutput{
 		Answer:    strings.TrimSpace(parsedAnswer.Answer),
@@ -235,6 +265,13 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		output:    output,
 		expiresAt: time.Now().Add(1 * time.Hour),
 	})
+
+	executionDuration := time.Since(executionStart)
+	u.logger.Info("answer_request_completed",
+		slog.String("request_id", requestID),
+		slog.Int("answer_length", len(output.Answer)),
+		slog.Int("citations", len(output.Citations)),
+		slog.Int64("total_duration_ms", executionDuration.Milliseconds()))
 
 	return output, nil
 }
@@ -265,16 +302,12 @@ func (u *answerWithRAGUsecase) buildCitations(contexts []ContextItem, raw []LLMC
 		if !ok {
 			continue
 		}
-		var score float32
-		if cite.Score != nil {
-			score = *cite.Score
-		}
 		citations = append(citations, Citation{
 			ChunkID:         cite.ChunkID,
 			ChunkText:       meta.ChunkText,
 			URL:             meta.URL,
 			Title:           meta.Title,
-			Score:           score,
+			Score:           meta.Score, // Use retrieval score
 			DocumentVersion: meta.DocumentVersion,
 		})
 	}
@@ -446,64 +479,27 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			return
 		}
 
-		// 3. Stage 1: Citations (blocking for simplicity)
+		// 3. Single Stage Generation (Streaming)
 		promptInput := PromptInput{
 			Query:         input.Query,
 			Locale:        u.defaultLocale,
 			PromptVersion: u.promptVersion,
 			Contexts:      u.toPromptContexts(promptData.contexts),
-			Stage:         "citations",
 		}
 		if input.Locale != "" {
 			promptInput.Locale = input.Locale
 		}
 
-		citationMessages, err := u.promptBuilder.Build(promptInput)
+		messages, err := u.promptBuilder.Build(promptInput)
 		if err != nil {
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
-				Payload: "failed to build citation prompt",
+				Payload: "failed to build prompt",
 			})
 			return
 		}
 
-		citationResp, err := u.llmClient.Chat(ctx, citationMessages, promptData.maxTokens)
-		if err != nil {
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindFallback,
-				Payload: fmt.Sprintf("stage 1 failed: %v", err),
-			})
-			return
-		}
-
-		parsedCitations, err := u.validator.Validate(citationResp.Text, promptData.contexts)
-		if err != nil {
-			slog.Warn("stage 1 validation failed", slog.String("error", err.Error()))
-		}
-
-		extractCitations := []string{}
-		for _, q := range parsedCitations.Quotes {
-			extractCitations = append(extractCitations, fmt.Sprintf("Chunk [%s]: %s", q.ChunkID, q.Quote))
-		}
-		if len(extractCitations) == 0 {
-			for _, c := range parsedCitations.Citations {
-				extractCitations = append(extractCitations, fmt.Sprintf("Chunk [%s] referenced", c.ChunkID))
-			}
-		}
-
-		// 4. Stage 2: Answer (Streaming)
-		promptInput.Stage = "answer"
-		promptInput.Citations = extractCitations
-		answerMessages, err := u.promptBuilder.Build(promptInput)
-		if err != nil {
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindFallback,
-				Payload: "failed to build answer prompt",
-			})
-			return
-		}
-
-		chunkCh, errCh, err := u.llmClient.ChatStream(ctx, answerMessages, promptData.maxTokens)
+		chunkCh, errCh, err := u.llmClient.ChatStream(ctx, messages, promptData.maxTokens)
 		if err != nil {
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
@@ -518,13 +514,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		errStream := errCh
 		done := false
 
-		// Simple streaming of Markdown content (assuming we asked for JSON but LLM might just return Markdown string inside JSON)
-		// Wait, prompt asks for JSON: {"answer": "...", ...}
-		// So we STILL need the partial parsing logic if LLM returns JSON.
-		// Ollama Chat with Format: json WILL return JSON.
-		// So I must keep the parsing logic.
-
-		// Parsing state (copied from existing logic)
+		// Parsing state
 		scanOffset := 0
 		inAnswer := false
 		isEscaped := false
@@ -550,7 +540,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 					hasData = true
 					builder.WriteString(chunk.Response)
 
-					// Re-use Partial Parsing Logic (simplified copy for brevity, ideal to refactor to helper)
+					// Partial Parsing Logic
 					if !answerCompletelyStreamed {
 						fullStr := builder.String()
 						if !inAnswer {
@@ -686,8 +676,8 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			return
 		}
 
-		// Build Final Output (using Citations from Stage 1)
-		finalCitations := u.buildCitations(promptData.contexts, parsedCitations.Citations)
+		// Build Final Output (Hydration)
+		finalCitations := u.buildCitations(promptData.contexts, parsedAnswer.Citations)
 
 		output := &AnswerWithRAGOutput{
 			Answer:    strings.TrimSpace(parsedAnswer.Answer),
