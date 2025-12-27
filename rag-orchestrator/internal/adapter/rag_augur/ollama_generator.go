@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"rag-orchestrator/internal/domain"
 )
 
@@ -22,17 +24,6 @@ const (
 var generationFormat = map[string]interface{}{
 	"type": "object",
 	"properties": map[string]interface{}{
-		"quotes": map[string]interface{}{
-			"type": "array",
-			"items": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"chunk_id": map[string]interface{}{"type": "string"},
-					"quote":    map[string]interface{}{"type": "string"},
-				},
-				"required": []string{"chunk_id", "quote"},
-			},
-		},
 		"answer": map[string]interface{}{
 			"type": "string",
 		},
@@ -42,9 +33,7 @@ var generationFormat = map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"chunk_id": map[string]interface{}{"type": "string"},
-					"url":      map[string]interface{}{"type": "string"},
-					"title":    map[string]interface{}{"type": "string"},
-					"score":    map[string]interface{}{"type": "number"},
+					"reason":   map[string]interface{}{"type": "string"},
 				},
 				"required": []string{"chunk_id"},
 			},
@@ -56,7 +45,7 @@ var generationFormat = map[string]interface{}{
 			"type": "string",
 		},
 	},
-	"required": []string{"quotes", "answer", "citations", "fallback", "reason"},
+	"required": []string{"answer", "citations", "fallback", "reason"},
 }
 
 type chatMessage struct {
@@ -97,21 +86,30 @@ type OllamaGenerator struct {
 	BaseURL string
 	Model   string
 	Client  *http.Client
+	logger  *slog.Logger
 }
 
 // NewOllamaGenerator constructs a generator using the provided endpoint and model name.
-func NewOllamaGenerator(baseURL, model string, timeout int) *OllamaGenerator {
+func NewOllamaGenerator(baseURL, model string, timeout int, logger *slog.Logger) *OllamaGenerator {
 	return &OllamaGenerator{
 		BaseURL: strings.TrimRight(baseURL, "/"),
 		Model:   model,
 		Client: &http.Client{
 			Timeout: time.Duration(timeout) * time.Second,
 		},
+		logger: logger,
 	}
 }
 
 // Generate sends the prompt to Ollama and returns the assistant message.
 func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens int) (*domain.LLMResponse, error) {
+	requestID := uuid.NewString()
+	g.logger.Info("ollama_generate_started",
+		slog.String("request_id", requestID),
+		slog.String("model", g.Model),
+		slog.Int("max_tokens", maxTokens),
+		slog.Int("prompt_length", len(prompt)))
+
 	var maxTokensPtr *int = nil
 	// Unused now as we use Options["num_predict"]
 	_ = maxTokensPtr
@@ -133,24 +131,40 @@ func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens
 
 	jsonPayload, err := json.Marshal(reqBody)
 	if err != nil {
+		g.logger.Warn("ollama_generate_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to marshal chat request: %w", err)
 	}
 
 	url := fmt.Sprintf("%s/api/chat", g.BaseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonPayload))
 	if err != nil {
+		g.logger.Warn("ollama_generate_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to create chat request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	g.logger.Info("ollama_request_sent",
+		slog.String("request_id", requestID),
+		slog.String("url", url))
+
 	resp, err := g.Client.Do(req)
 	if err != nil {
+		g.logger.Warn("ollama_generate_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to call generation endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		g.logger.Warn("ollama_generate_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", fmt.Sprintf("status %d: %s", resp.StatusCode, string(body))))
 		return nil, fmt.Errorf("generation endpoint returned %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -168,6 +182,9 @@ func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens
 
 		var chatResp chatResponse
 		if err := json.Unmarshal([]byte(line), &chatResp); err != nil {
+			g.logger.Warn("ollama_generate_failed",
+				slog.String("request_id", requestID),
+				slog.String("error", err.Error()))
 			return nil, fmt.Errorf("failed to decode generation response: %w", err)
 		}
 
@@ -180,10 +197,18 @@ func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens
 		}
 	}
 	if err := scanner.Err(); err != nil {
+		g.logger.Warn("ollama_generate_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to read generation stream: %w", err)
 	}
 
 	content := strings.TrimSpace(builder.String())
+
+	g.logger.Info("ollama_generate_completed",
+		slog.String("request_id", requestID),
+		slog.Int("response_length", len(content)),
+		slog.Bool("done", done))
 
 	return &domain.LLMResponse{
 		Text: content,
@@ -370,13 +395,20 @@ func toInt64(value interface{}) (*int64, bool) {
 
 // Chat sends a conversation history to Ollama and returns the assistant message.
 func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, maxTokens int) (*domain.LLMResponse, error) {
+	requestID := uuid.NewString()
+	g.logger.Info("ollama_chat_started",
+		slog.String("request_id", requestID),
+		slog.String("model", g.Model),
+		slog.Int("message_count", len(messages)),
+		slog.Int("max_tokens", maxTokens))
+
 	chatMsgs := toChatMessages(messages)
 	reqBody := chatRequest{
 		Model:     g.Model,
 		Messages:  chatMsgs,
 		KeepAlive: -1,
 		Stream:    false,
-		Format:    map[string]interface{}{"type": "json"}, // Force JSON mode generic
+		Format:    generationFormat,
 		Think:     "low",
 		Options: map[string]interface{}{
 			"temperature": 0.2,
@@ -388,31 +420,55 @@ func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, m
 
 	jsonPayload, err := json.Marshal(reqBody)
 	if err != nil {
+		g.logger.Warn("ollama_chat_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to marshal chat request: %w", err)
 	}
 
 	url := fmt.Sprintf("%s/api/chat", g.BaseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonPayload))
 	if err != nil {
+		g.logger.Warn("ollama_chat_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to create chat request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	g.logger.Info("ollama_request_sent",
+		slog.String("request_id", requestID),
+		slog.String("url", url))
+
 	resp, err := g.Client.Do(req)
 	if err != nil {
+		g.logger.Warn("ollama_chat_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to call chat endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		g.logger.Warn("ollama_chat_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", fmt.Sprintf("status %d: %s", resp.StatusCode, string(body))))
 		return nil, fmt.Errorf("chat endpoint returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp chatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		g.logger.Warn("ollama_chat_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to decode chat response: %w", err)
 	}
+
+	g.logger.Info("ollama_chat_completed",
+		slog.String("request_id", requestID),
+		slog.Int("response_length", len(chatResp.Message.Content)),
+		slog.Bool("done", chatResp.Done))
 
 	return &domain.LLMResponse{
 		Text: chatResp.Message.Content,
@@ -432,7 +488,7 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 		Messages:  chatMsgs,
 		KeepAlive: -1,
 		Stream:    true,
-		Format:    map[string]interface{}{"type": "json"},
+		Format:    generationFormat,
 		Think:     "low",
 		Options: map[string]interface{}{
 			"temperature": 0.2,

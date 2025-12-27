@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -35,7 +37,8 @@ func TestOllamaGeneratorGenerate_StreamAggregatesContent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	gen := NewOllamaGenerator(server.URL, "test-model", 100)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	gen := NewOllamaGenerator(server.URL, "test-model", 100, testLogger)
 	resp, err := gen.Generate(context.Background(), "prompt", 1000)
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)

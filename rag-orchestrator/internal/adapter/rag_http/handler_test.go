@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -92,6 +94,7 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 		Done: true,
 	}
 
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	answerUC := usecase.NewAnswerWithRAGUsecase(
 		retrieve,
 		usecase.NewXMLPromptBuilder("Answer in Japanese."),
@@ -101,6 +104,7 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 		256,
 		"alpha-v1",
 		"ja",
+		testLogger,
 	)
 
 	handler := rag_http.NewHandler(retrieve, answerUC, nil, nil)

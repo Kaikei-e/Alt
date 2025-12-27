@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -30,6 +31,7 @@ func main() {
 
 	// 2. Initialize Logger
 	log := logger.New()
+	slog.SetDefault(log)
 
 	// 3. Initialize DB
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
@@ -61,9 +63,9 @@ func main() {
 		embedder,
 	)
 
-	generator := rag_augur.NewOllamaGenerator(cfg.KnowledgeAugurURL, cfg.KnowledgeAugurModel, cfg.OllamaTimeout)
+	generator := rag_augur.NewOllamaGenerator(cfg.KnowledgeAugurURL, cfg.KnowledgeAugurModel, cfg.OllamaTimeout, log)
 	searchClient := rag_http.NewSearchIndexerClient(cfg.SearchIndexerURL, cfg.SearchIndexerTimeout)
-	retrieveUsecase := usecase.NewRetrieveContextUsecase(chunkRepo, docRepo, embedder, generator, searchClient)
+	retrieveUsecase := usecase.NewRetrieveContextUsecase(chunkRepo, docRepo, embedder, generator, searchClient, log)
 	promptBuilder := usecase.NewXMLPromptBuilder("Answer in Japanese.")
 	answerUsecase := usecase.NewAnswerWithRAGUsecase(
 		retrieveUsecase,
@@ -74,6 +76,7 @@ func main() {
 		cfg.AnswerMaxTokens,
 		cfg.PromptVersion,
 		cfg.DefaultLocale,
+		log,
 	)
 
 	// 6. Initialize & Start Worker
