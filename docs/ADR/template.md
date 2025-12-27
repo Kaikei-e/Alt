@@ -12,5 +12,5 @@
 
 ### CONS, TRADEOFF
 
-## APPENDOIX
+## APPENDIX
 
