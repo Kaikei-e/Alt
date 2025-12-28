@@ -172,13 +172,25 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 			}
 		}
 
-		let returnTo: string;
-		if (pathname === "/sv" || pathname === "/sv/") {
-			returnTo = encodeURIComponent(`${url.origin}/sv/home`);
-		} else {
-			returnTo = encodeURIComponent(`${pathname}${url.search}`);
-		}
-		throw redirect(303, `/sv/login?return_to=${returnTo}`);
+	// パブリックルートはリダイレクトせずにそのまま処理
+	// これにより、/sv/loginなどのパブリックページへの無限リダイレクトループを防ぐ
+	if (isPublic) {
+		return resolveEvent(event, {
+			filterSerializedResponseHeaders: (name) => {
+				return name === "content-type";
+			},
+		});
+	}
+
+	let returnTo: string;
+	if (pathname === "/sv" || pathname === "/sv/") {
+		returnTo = encodeURIComponent(`${url.origin}/sv/home`);
+	} else {
+		// パス名のみエンコード（クエリパラメータは含めない）
+		// これにより、すでにエンコード済みのreturn_toパラメータの二重エンコードを防ぐ
+		returnTo = encodeURIComponent(pathname);
+	}
+	throw redirect(303, `/sv/login?return_to=${returnTo}`);
 	}
 
 	return resolveEvent(event, {
