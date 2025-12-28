@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { Archive, Star } from "@lucide/svelte";
+	import { Archive, Star, Loader2, Sparkles } from "@lucide/svelte";
 	import { tick } from "svelte";
+	import { fade } from "svelte/transition";
 	import { browser } from "$app/environment";
 	import {
 		archiveContentClient,
@@ -12,7 +13,7 @@
 		summarizeArticleClient,
 		streamSummarizeArticleClient,
 	} from "$lib/api/client";
-	import { processStreamingText } from "$lib/utils/streamingRenderer";
+	import { processSummarizeStreamingText } from "$lib/utils/streamingRenderer";
 	import { Button, buttonVariants } from "$lib/components/ui/button";
 	import * as Sheet from "$lib/components/ui/sheet";
 	import RenderFeedDetails from "./RenderFeedDetails.svelte";
@@ -73,6 +74,26 @@
 		// Access openProp inside $effect to track changes
 		if (openProp !== undefined && openProp !== isOpen) {
 			isOpen = openProp;
+		}
+	});
+
+	// Auto-fetch data when opened externally (e.g., from ViewedFeedCard)
+	$effect(() => {
+		// Only trigger when:
+		// 1. Modal is opening (isOpen becomes true)
+		// 2. No initial data provided
+		// 3. Data not already loaded
+		// 4. Not currently loading
+		if (
+			isOpen &&
+			!initialData &&
+			!articleSummary &&
+			!feedDetails &&
+			!isLoading &&
+			feedURL
+		) {
+			// Fetch data when opened externally
+			fetchData();
 		}
 	});
 
@@ -146,18 +167,10 @@
 		}
 	};
 
-	const handleShowDetails = async () => {
-		isArchived = false;
-
-		// If we already have initial data, just open the modal
-		if (initialData) {
-			isOpen = true;
-			return;
-		}
-
+	// Reusable function to fetch article data
+	const fetchData = async () => {
 		if (!feedURL) {
 			error = "No feed URL available";
-			isOpen = true;
 			return;
 		}
 
@@ -215,10 +228,22 @@
 			error = "Unexpected error occurred";
 		} finally {
 			isLoading = false;
+		}
+	};
+
+	const handleShowDetails = async () => {
+		isArchived = false;
+
+		// If we already have initial data, just open the modal
+		if (initialData) {
 			isOpen = true;
-			if (onOpenChange) {
-				onOpenChange(true);
-			}
+			return;
+		}
+
+		await fetchData();
+		isOpen = true;
+		if (onOpenChange) {
+			onOpenChange(true);
 		}
 	};
 </script>
@@ -278,19 +303,22 @@
 			<!-- Display Japanese Summary -->
 			{#if summary}
 				<div
-					class="mt-6 p-4 rounded-xl border"
+					id="summary-section"
+					class="mt-6 p-4 rounded-xl border-2 glass transition-all duration-300"
 					style="
-							background: var(--alt-secondary);
-							border-color: var(--alt-secondary);
+							border-color: var(--surface-border);
+							background: var(--surface-bg);
 						"
+					transition:fade={{ duration: 200 }}
 				>
 					<h3
 						class="text-lg font-bold mb-3 flex items-center gap-2"
 						style="color: var(--text-primary);"
 					>
+						<Sparkles size={20} class="text-purple-500" />
 						Article Summary
 					</h3>
-					<p class="leading-relaxed" style="color: var(--text-secondary);">
+					<p class="leading-relaxed text-base" style="color: var(--text-primary);">
 						{summary}
 					</p>
 				</div>
@@ -312,7 +340,7 @@
 			<Button
 				variant="outline"
 				size="sm"
-				class="rounded-full border-white/20 text-black hover:bg-black/10 hover:text-black"
+				class="rounded-full border-white/20 text-black hover:bg-black/10 hover:text-black min-w-[100px] transition-all duration-200"
 				onclick={async () => {
 					if (!feedURL) return;
 					isFavoriting = true;
@@ -334,7 +362,7 @@
 			<Button
 				variant="outline"
 				size="sm"
-				class="rounded-full border-white/20 text-black hover:bg-black/10 hover:text-black"
+				class="rounded-full border-white/20 text-black hover:bg-black/10 hover:text-black min-w-[100px] transition-all duration-200"
 				onclick={async () => {
 					if (!feedURL) return;
 					isArchiving = true;
@@ -355,7 +383,7 @@
 
 			<Button
 				size="sm"
-				class="rounded-full font-bold min-w-[80px] text-black hover:bg-black/10 hover:text-black"
+				class="rounded-full font-bold min-w-[120px] text-black hover:bg-black/10 hover:text-black transition-all duration-200"
 				onclick={async () => {
 					if (!feedURL) return;
 
@@ -385,7 +413,7 @@
 
 						// Use streaming renderer utility for incremental rendering
 						try {
-							const result = await processStreamingText(
+							const result = await processSummarizeStreamingText(
 								reader,
 								(chunk) => {
 									summary = (summary || "") + chunk;
@@ -398,6 +426,11 @@
 										// Hide "Summarizing..." when first chunk arrives
 										if (chunkCount === 1) {
 											isSummarizing = false;
+											// Scroll to summary section after first chunk
+											setTimeout(() => {
+												const summaryEl = document.getElementById('summary-section');
+												summaryEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+											}, 100);
 										}
 									},
 								},
@@ -487,7 +520,13 @@
 				}}
 				disabled={isSummarizing}
 			>
-				{isSummarizing ? "Summarizing..." : "Summarize"}
+				{#if isSummarizing}
+					<Loader2 size={14} class="mr-1.5 animate-spin" />
+					Summarizing
+				{:else}
+					<Sparkles size={14} class="mr-1.5" />
+					Summary
+				{/if}
 			</Button>
 		</Sheet.Footer>
 	</Sheet.Content>

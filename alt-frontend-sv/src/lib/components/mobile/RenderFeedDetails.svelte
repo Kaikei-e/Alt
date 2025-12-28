@@ -26,7 +26,7 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 	</p>
 {:else if !feedDetails}
 	<p class="text-center py-8 italic" style="color: var(--text-secondary);">
-		No summary available for this article
+		Unable to load article content
 	</p>
 {:else if "matched_articles" in feedDetails && feedDetails.matched_articles?.length > 0}
 	<!-- FetchArticleSummaryResponse - Rich article display -->
@@ -101,7 +101,7 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 	</div>
 {:else}
 	<p class="text-center py-8 italic" style="color: var(--text-secondary);">
-		No summary available for this article
+		Article content is not available
 	</p>
 {/if}
 
