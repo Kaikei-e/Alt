@@ -8,6 +8,7 @@ export type FeedUrlInput = {
 export const feedUrlSchema = v.object({
   feed_url: v.pipe(
     v.string("Invalid or unsafe URL"),
+    v.transform((url) => url.trim()),
     v.transform((url) => url.replace(/^@/, "")), // Remove @ prefix if present
     safeUrlSchema,
     v.check(

@@ -67,7 +67,7 @@ function isValidAndSafeUrl(url: string): boolean {
 
     // Check for proper domain format
     const domainPattern =
-      /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
+      /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
     if (!domainPattern.test(parsedUrl.hostname)) {
       return false;
     }
