@@ -101,8 +101,10 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 
 	// Expect Single Call
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		// Check for Single Phase characteristic (escaped)
-		return len(msgs) > 0 && msgs[0].Role == "system" && contains(msgs[0].Content, "answers questions based ONLY on the provided &lt;context&gt;")
+		// Check for specific instruction
+		return len(msgs) > 0 && msgs[0].Role == "system" &&
+			contains(msgs[0].Content, "Answer the User Query based ONLY on the Request Context") &&
+			contains(msgs[0].Content, "Value the information in the documents regardless of their language")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})
@@ -142,7 +144,9 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
   "reason": "insufficient evidence"
 }`
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		return len(msgs) > 0 && msgs[0].Role == "system" && contains(msgs[0].Content, "answers questions based ONLY on the provided &lt;context&gt;")
+		return len(msgs) > 0 && msgs[0].Role == "system" &&
+			contains(msgs[0].Content, "Answer the User Query based ONLY on the Request Context") &&
+			contains(msgs[0].Content, "Value the information in the documents regardless of their language")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: fallbackResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})

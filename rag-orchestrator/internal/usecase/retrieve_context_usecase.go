@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"rag-orchestrator/internal/domain"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,7 +20,8 @@ type RetrieveContextInput struct {
 
 // RetrieveContextOutput defines the output for RetrieveContext.
 type RetrieveContextOutput struct {
-	Contexts []ContextItem
+	Contexts        []ContextItem
+	ExpandedQueries []string
 }
 
 // ContextItem represents a single retrieved chunk with metadata.
@@ -80,21 +82,19 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 
 	queries := []string{input.Query}
 
-	// 1a. Check if query is Japanese and translate if so
-	if isJapanese(input.Query) {
-		translated, err := u.translateQuery(ctx, input.Query)
-		if err == nil && translated != "" {
-			queries = append(queries, translated)
-			u.logger.Info("query_translated",
-				slog.String("retrieval_id", retrievalID),
-				slog.String("original", input.Query),
-				slog.String("translated", translated))
-		} else if err != nil {
-			u.logger.Warn("translation_failed",
-				slog.String("retrieval_id", retrievalID),
-				slog.String("query", input.Query),
-				slog.String("error", err.Error()))
-		}
+	// 1a. Expand query (translate & variations) using LLM
+	expandedQueries, err := u.expandQuery(ctx, input.Query)
+	if err == nil && len(expandedQueries) > 0 {
+		queries = append(queries, expandedQueries...)
+		u.logger.Info("query_expanded",
+			slog.String("retrieval_id", retrievalID),
+			slog.String("original", input.Query),
+			slog.Any("expanded", expandedQueries))
+	} else if err != nil {
+		u.logger.Warn("expansion_failed",
+			slog.String("retrieval_id", retrievalID),
+			slog.String("query", input.Query),
+			slog.String("error", err.Error()))
 	}
 
 	// 1b. Search for related tags/terms using SearchClient (Meilisearch)
@@ -121,7 +121,14 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 			// Only append if it's not already in queries (simple check)
 			tagCount := 0
 			for tag := range tagSet {
-				if tag != input.Query {
+				exists := false
+				for _, existing := range queries {
+					if existing == tag {
+						exists = true
+						break
+					}
+				}
+				if !exists {
 					queries = append(queries, tag)
 					tagCount++
 				}
@@ -153,44 +160,149 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		slog.Int("query_count", len(queries)),
 		slog.Any("queries", queries))
 
-	// 2. Search & Merge
-	const searchLimit = 10
-	seen := make(map[uuid.UUID]bool)
-	var finalResults []domain.SearchResult
+	// 2. Search & Merge using Quota Strategy
+	const (
+		searchLimit   = 50
+		rrfK          = 60.0
+		quotaOriginal = 5
+		quotaExpanded = 5
+	)
 
-	for _, queryVector := range embeddings {
+	var hitsOriginal []domain.SearchResult
+
+	// Map to track unique chunks and their accumulated RRF score for EXPANDED queries
+	type chunkData struct {
+		Item     ContextItem
+		RRFScore float64
+	}
+	chunksMapExpanded := make(map[uuid.UUID]*chunkData)
+
+	for i, queryVector := range embeddings {
 		results, err := u.chunkRepo.Search(ctx, queryVector, input.CandidateArticleIDs, searchLimit)
 		if err != nil {
 			return nil, fmt.Errorf("failed to search chunks: %w", err)
 		}
 
-		for _, res := range results {
-			if !seen[res.Chunk.ID] {
-				finalResults = append(finalResults, res)
-				seen[res.Chunk.ID] = true
+		if i == 0 {
+			// Original Query (Index 0)
+			hitsOriginal = results
+		} else {
+			// Expanded Queries (Index 1+) - Accumulate using RRF
+			for rank, res := range results {
+				if _, exists := chunksMapExpanded[res.Chunk.ID]; !exists {
+					chunksMapExpanded[res.Chunk.ID] = &chunkData{
+						Item: ContextItem{
+							ChunkText:       res.Chunk.Content,
+							URL:             res.URL,
+							Title:           res.Title,
+							PublishedAt:     res.Chunk.CreatedAt.Format(time.RFC3339),
+							DocumentVersion: res.DocumentVersion,
+							ChunkID:         res.Chunk.ID,
+							Score:           res.Score,
+						},
+						RRFScore: 0,
+					}
+				}
+				chunksMapExpanded[res.Chunk.ID].RRFScore += 1.0 / (rrfK + float64(rank+1))
 			}
 		}
 	}
 
+	// Prepare Expanded list sorted by RRF
+	hitsExpanded := make([]ContextItem, 0, len(chunksMapExpanded))
+	for _, data := range chunksMapExpanded {
+		hitsExpanded = append(hitsExpanded, data.Item)
+	}
+	sort.Slice(hitsExpanded, func(i, j int) bool {
+		return chunksMapExpanded[hitsExpanded[i].ChunkID].RRFScore > chunksMapExpanded[hitsExpanded[j].ChunkID].RRFScore
+	})
+
+	// Log top expanded hits for debugging
+	debugLimit := 5
+	if len(hitsExpanded) < debugLimit {
+		debugLimit = len(hitsExpanded)
+	}
+	if debugLimit > 0 {
+		var debugLog []map[string]interface{}
+		for i := 0; i < debugLimit; i++ {
+			debugLog = append(debugLog, map[string]interface{}{
+				"title": hitsExpanded[i].Title,
+				"url":   hitsExpanded[i].URL,
+				"score": hitsExpanded[i].Score,
+				"rrf":   chunksMapExpanded[hitsExpanded[i].ChunkID].RRFScore,
+			})
+		}
+		u.logger.Info("expanded_query_hits_debug",
+			slog.String("retrieval_id", retrievalID),
+			slog.Any("top_hits", debugLog))
+	} else {
+		u.logger.Info("expanded_query_hits_debug",
+			slog.String("retrieval_id", retrievalID),
+			slog.String("msg", "no hits for expanded queries"))
+	}
+
+	// 3. Resolve Metadata & Merge with Quota
+	contexts := make([]ContextItem, 0, quotaOriginal+quotaExpanded)
+	seen := make(map[uuid.UUID]bool)
+
+	// Add Top N from Original
+	countOriginal := 0
+	for _, res := range hitsOriginal {
+		if countOriginal >= quotaOriginal {
+			break
+		}
+		if !seen[res.Chunk.ID] {
+			contexts = append(contexts, ContextItem{
+				ChunkText:       res.Chunk.Content,
+				URL:             res.URL,
+				Title:           res.Title,
+				PublishedAt:     res.Chunk.CreatedAt.Format(time.RFC3339),
+				Score:           res.Score,
+				DocumentVersion: res.DocumentVersion,
+				ChunkID:         res.Chunk.ID,
+			})
+			seen[res.Chunk.ID] = true
+			countOriginal++
+		}
+	}
+
+	// Add Top M from Expanded
+	countExpanded := 0
+
+	// Pass 1: Prioritize English/Non-Japanese documents
+	for _, item := range hitsExpanded {
+		if countExpanded >= quotaExpanded {
+			break
+		}
+		if seen[item.ChunkID] {
+			continue
+		}
+		// If title is NOT Japanese (contains no CJK), prioritize it
+		if !isJapanese(item.Title) {
+			contexts = append(contexts, item)
+			seen[item.ChunkID] = true
+			countExpanded++
+		}
+	}
+
+	// Pass 2: Fill remaining quota with other documents (e.g. Japanese)
+	for _, item := range hitsExpanded {
+		if countExpanded >= quotaExpanded {
+			break
+		}
+		if seen[item.ChunkID] {
+			continue
+		}
+		contexts = append(contexts, item)
+		seen[item.ChunkID] = true
+		countExpanded++
+	}
+
 	u.logger.Info("vector_search_completed",
 		slog.String("retrieval_id", retrievalID),
-		slog.Int("total_results", len(finalResults)),
-		slog.Int("unique_chunks", len(seen)))
-
-	// 3. Resolve Metadata
-	contexts := make([]ContextItem, 0, len(finalResults))
-
-	for _, res := range finalResults {
-		contexts = append(contexts, ContextItem{
-			ChunkText:       res.Chunk.Content,
-			URL:             res.URL,
-			Title:           res.Title,
-			PublishedAt:     res.Chunk.CreatedAt.Format(time.RFC3339),
-			Score:           res.Score,
-			DocumentVersion: res.DocumentVersion,
-			ChunkID:         res.Chunk.ID,
-		})
-	}
+		slog.Int("original_hits", len(hitsOriginal)),
+		slog.Int("expanded_hits_unique", len(hitsExpanded)),
+		slog.Int("final_contexts", len(contexts)))
 
 	retrievalDuration := time.Since(retrievalStart)
 	u.logger.Info("retrieval_completed",
@@ -198,21 +310,45 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		slog.Int("contexts_returned", len(contexts)),
 		slog.Int64("duration_ms", retrievalDuration.Milliseconds()))
 
-	return &RetrieveContextOutput{Contexts: contexts}, nil
+	var expandedQueriesRet []string
+	if len(expandedQueries) > 0 {
+		expandedQueriesRet = expandedQueries
+	}
+
+	return &RetrieveContextOutput{
+		Contexts:        contexts,
+		ExpandedQueries: expandedQueriesRet,
+	}, nil
 }
 
-func (u *retrieveContextUsecase) translateQuery(ctx context.Context, query string) (string, error) {
-	prompt := fmt.Sprintf(`Translate the following Japanese search query into English for cross-lingual information retrieval.
-Output ONLY the translated English text. Do not add explanations.
+func (u *retrieveContextUsecase) expandQuery(ctx context.Context, query string) ([]string, error) {
+	currentDate := time.Now().Format("2006-01-02")
+	prompt := fmt.Sprintf(`You are an expert search query generator.
+Current Date: %s
 
-Query: %s`, query)
+Generate 3 to 5 diverse English search queries to find information related to the user's input.
+If the input is Japanese, translate it and also generate variations.
+If the user specifies a time (e.g., "December" or "this month"), interpret it based on the Current Date.
+Focus on different aspects like main keywords, synonyms, and specific events.
+Output ONLY the generated queries, one per line. Do not add numbering or bullets or explanations.
 
-	// Use a small maxTokens for translation
-	resp, err := u.llmClient.Generate(ctx, prompt, 100)
+User Input: %s`, currentDate, query)
+
+	// Use a small maxTokens for expansion
+	resp, err := u.llmClient.Generate(ctx, prompt, 200)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return strings.TrimSpace(resp.Text), nil
+
+	rawLines := strings.Split(resp.Text, "\n")
+	var expansions []string
+	for _, line := range rawLines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			expansions = append(expansions, trimmed)
+		}
+	}
+	return expansions, nil
 }
 
 func isJapanese(s string) bool {

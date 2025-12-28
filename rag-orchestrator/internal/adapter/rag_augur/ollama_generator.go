@@ -12,8 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"rag-orchestrator/internal/domain"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -119,8 +120,8 @@ func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens
 		Messages:  []chatMessage{{Role: "user", Content: prompt}},
 		KeepAlive: -1,
 		Stream:    true,
-		Format:    generationFormat,
-		Think:     "low",
+		// Format:    nil, // Force generic
+		Think: "low",
 		Options: map[string]interface{}{
 			"temperature": 0.2,
 		},
@@ -227,7 +228,6 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 		Messages:  []chatMessage{{Role: "user", Content: prompt}},
 		KeepAlive: -1,
 		Stream:    true,
-		Format:    generationFormat,
 		Think:     "low",
 		Options: map[string]interface{}{
 			"temperature": 0.2,
