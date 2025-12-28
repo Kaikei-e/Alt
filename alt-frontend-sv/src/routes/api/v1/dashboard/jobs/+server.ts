@@ -58,4 +58,3 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		return json({ error: "Internal server error" }, { status: 500 });
 	}
 };
-

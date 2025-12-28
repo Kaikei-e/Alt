@@ -1,72 +1,72 @@
 <script lang="ts">
-	import { Cpu, HardDrive, Activity, Server, BarChart3 } from "@lucide/svelte";
-	import { onMount } from "svelte";
+import { Cpu, HardDrive, Activity, Server, BarChart3 } from "@lucide/svelte";
+import { onMount } from "svelte";
 
-	interface SystemStats {
-		memory: {
-			used: number;
-			total: number;
-			percent: number;
-		};
-		cpu: {
-			percent: number;
-		};
-		gpu?: {
-			available: boolean;
-			gpus?: Array<{
-				name: string;
-				utilization: number;
-				memory_percent: number;
-				temperature: number;
-			}>;
-		};
-		hanging_count: number;
-		top_processes: Array<{
-			pid: number;
+interface SystemStats {
+	memory: {
+		used: number;
+		total: number;
+		percent: number;
+	};
+	cpu: {
+		percent: number;
+	};
+	gpu?: {
+		available: boolean;
+		gpus?: Array<{
 			name: string;
-			cpu_percent: number;
-			memory_mb: number;
+			utilization: number;
+			memory_percent: number;
+			temperature: number;
 		}>;
-	}
+	};
+	hanging_count: number;
+	top_processes: Array<{
+		pid: number;
+		name: string;
+		cpu_percent: number;
+		memory_mb: number;
+	}>;
+}
 
-	let stats = $state<SystemStats | null>(null);
-	let isConnected = $state(false);
-	let retryCount = $state(0);
-	let error = $state<string | null>(null);
-	let evtSource: EventSource | null = null;
+let stats = $state<SystemStats | null>(null);
+let isConnected = $state(false);
+let retryCount = $state(0);
+let error = $state<string | null>(null);
+let evtSource: EventSource | null = null;
 
-	onMount(() => {
-		// Connect to SSE endpoint
-		const sseUrl = "/sse/dashboard/stream";
-		evtSource = new EventSource(sseUrl);
+onMount(() => {
+	// Connect to SSE endpoint
+	const sseUrl = "/sse/dashboard/stream";
+	evtSource = new EventSource(sseUrl);
 
-		evtSource.onopen = () => {
-			isConnected = true;
-			error = null;
-			retryCount = 0;
-		};
+	evtSource.onopen = () => {
+		isConnected = true;
+		error = null;
+		retryCount = 0;
+	};
 
-		evtSource.onmessage = (event) => {
-			try {
-				const data = JSON.parse(event.data);
-				stats = data;
-			} catch (e) {
-				console.error("Failed to parse SSE data:", e);
-			}
-		};
+	evtSource.onmessage = (event) => {
+		try {
+			const data = JSON.parse(event.data);
+			stats = data;
+		} catch (e) {
+			console.error("Failed to parse SSE data:", e);
+		}
+	};
 
-		evtSource.onerror = () => {
-			isConnected = false;
-			retryCount++;
-			error = "Connection error";
-		};
+	evtSource.onerror = () => {
+		isConnected = false;
+		retryCount++;
+		error = "Connection error";
+	};
 
-		return () => {
-			if (evtSource) {
-				evtSource.close();
-			}
-		};
-	});
+	return () => {
+		if (evtSource) {
+			evtSource.close();
+		}
+	};
+});
 </script>
 
 <div>

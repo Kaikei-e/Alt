@@ -1,33 +1,31 @@
 <script lang="ts">
-	import { ChevronDown, ChevronUp, Link as LinkIcon } from "@lucide/svelte";
-	import { Button } from "$lib/components/ui/button";
-	import type { RecapGenre } from "$lib/schema/recap";
+import { ChevronDown, ChevronUp, Link as LinkIcon } from "@lucide/svelte";
+import { Button } from "$lib/components/ui/button";
+import type { RecapGenre } from "$lib/schema/recap";
 
-	interface Props {
-		genre: RecapGenre;
+interface Props {
+	genre: RecapGenre;
+}
+
+const { genre }: Props = $props();
+
+let isExpanded = $state(false);
+
+const handleToggle = () => {
+	isExpanded = !isExpanded;
+};
+
+// 箇条書きまたはサマリーから表示用のリストを生成
+const displayItems = $derived.by(() => {
+	if (genre.bullets && genre.bullets.length > 0) {
+		return genre.bullets;
 	}
+	return genre.summary.split("\n").filter((line) => line.trim().length > 0);
+});
 
-	const { genre }: Props = $props();
-
-	let isExpanded = $state(false);
-
-	const handleToggle = () => {
-		isExpanded = !isExpanded;
-	};
-
-	// 箇条書きまたはサマリーから表示用のリストを生成
-	const displayItems = $derived.by(() => {
-		if (genre.bullets && genre.bullets.length > 0) {
-			return genre.bullets;
-		}
-		return genre.summary
-			.split("\n")
-			.filter((line) => line.trim().length > 0);
-	});
-
-	const visibleItems = $derived(
-		isExpanded ? displayItems : displayItems.slice(0, 3),
-	);
+const visibleItems = $derived(
+	isExpanded ? displayItems : displayItems.slice(0, 3),
+);
 </script>
 
 <div

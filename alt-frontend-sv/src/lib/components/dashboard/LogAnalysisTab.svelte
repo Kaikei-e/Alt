@@ -1,52 +1,53 @@
 <script lang="ts">
-	import { getLogs } from "$lib/api/client/dashboard";
-	import type { LogError } from "$lib/schema/dashboard";
+import { getLogs } from "$lib/api/client/dashboard";
+import type { LogError } from "$lib/schema/dashboard";
 
-	interface Props {
-		windowSeconds: number;
+interface Props {
+	windowSeconds: number;
+}
+
+let { windowSeconds }: Props = $props();
+
+let logs = $state<LogError[]>([]);
+let loading = $state(true);
+let error = $state<string | null>(null);
+let selectedErrorType = $state<string>("All");
+
+$effect(() => {
+	loadData();
+});
+
+async function loadData() {
+	loading = true;
+	error = null;
+	try {
+		logs = await getLogs(windowSeconds, 2000);
+	} catch (e) {
+		error = e instanceof Error ? e.message : String(e);
+		console.error("Failed to load logs:", e);
+	} finally {
+		loading = false;
 	}
+}
 
-	let { windowSeconds }: Props = $props();
+const errorTypes = $derived([
+	"All",
+	...Array.from(new Set(logs.map((log) => log.error_type))),
+]);
 
-	let logs = $state<LogError[]>([]);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
-	let selectedErrorType = $state<string>("All");
+const filteredLogs = $derived(
+	selectedErrorType === "All"
+		? logs
+		: logs.filter((log) => log.error_type === selectedErrorType),
+);
 
-	$effect(() => {
-		loadData();
-	});
-
-	async function loadData() {
-		loading = true;
-		error = null;
-		try {
-			logs = await getLogs(windowSeconds, 2000);
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-			console.error("Failed to load logs:", e);
-		} finally {
-			loading = false;
-		}
+const errorTypeCounts = $derived(() => {
+	const counts: Record<string, number> = {};
+	for (const log of logs) {
+		counts[log.error_type] = (counts[log.error_type] || 0) + 1;
 	}
-
-	const errorTypes = $derived(
-		["All", ...Array.from(new Set(logs.map((log) => log.error_type)))],
-	);
-
-	const filteredLogs = $derived(
-		selectedErrorType === "All"
-			? logs
-			: logs.filter((log) => log.error_type === selectedErrorType),
-	);
-
-	const errorTypeCounts = $derived(() => {
-		const counts: Record<string, number> = {};
-		for (const log of logs) {
-			counts[log.error_type] = (counts[log.error_type] || 0) + 1;
-		}
-		return counts;
-	});
+	return counts;
+});
 </script>
 
 <div>

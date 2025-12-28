@@ -1,43 +1,43 @@
 <script lang="ts">
-	import { onMount } from "svelte";
-	import { getRecapJobs } from "$lib/api/client/dashboard";
-	import type { RecapJob } from "$lib/schema/dashboard";
-	import { Button } from "$lib/components/ui/button";
+import { onMount } from "svelte";
+import { getRecapJobs } from "$lib/api/client/dashboard";
+import type { RecapJob } from "$lib/schema/dashboard";
+import { Button } from "$lib/components/ui/button";
 
-	interface Props {
-		windowSeconds: number;
+interface Props {
+	windowSeconds: number;
+}
+
+let { windowSeconds } = $props();
+
+let jobs = $state<RecapJob[]>([]);
+let loading = $state(true);
+let error = $state<string | null>(null);
+
+async function load() {
+	loading = true;
+	error = null;
+	try {
+		// Pass windowSeconds and limit (default 200)
+		jobs = await getRecapJobs(fetch, windowSeconds, 200);
+	} catch (e: any) {
+		error = e.message;
+		console.error("Failed to load recap jobs", e);
+	} finally {
+		loading = false;
 	}
+}
 
-	let { windowSeconds } = $props();
-
-	let jobs = $state<RecapJob[]>([]);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
-
-	async function load() {
-		loading = true;
-		error = null;
-		try {
-			// Pass windowSeconds and limit (default 200)
-			jobs = await getRecapJobs(fetch, windowSeconds, 200);
-		} catch (e: any) {
-			error = e.message;
-			console.error("Failed to load recap jobs", e);
-		} finally {
-			loading = false;
-		}
-	}
-
-	$effect(() => {
-		// Reload when windowSeconds changes
-		if (windowSeconds) {
-			load();
-		}
-	});
-
-	onMount(() => {
+$effect(() => {
+	// Reload when windowSeconds changes
+	if (windowSeconds) {
 		load();
-	});
+	}
+});
+
+onMount(() => {
+	load();
+});
 </script>
 
 <div class="overflow-x-auto">

@@ -1,6 +1,4 @@
 export interface FeedLink {
-  id: string;
-  url: string;
+	id: string;
+	url: string;
 }
-
-

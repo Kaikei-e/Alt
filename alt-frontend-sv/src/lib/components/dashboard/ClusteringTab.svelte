@@ -1,39 +1,39 @@
 <script lang="ts">
-	import { getMetrics } from "$lib/api/client/dashboard";
-	import type { SystemMetric } from "$lib/schema/dashboard";
+import { getMetrics } from "$lib/api/client/dashboard";
+import type { SystemMetric } from "$lib/schema/dashboard";
 
-	interface Props {
-		windowSeconds: number;
+interface Props {
+	windowSeconds: number;
+}
+
+let { windowSeconds }: Props = $props();
+
+let metrics = $state<SystemMetric[]>([]);
+let loading = $state(true);
+let error = $state<string | null>(null);
+
+$effect(() => {
+	loadData();
+});
+
+async function loadData() {
+	loading = true;
+	error = null;
+	try {
+		metrics = await getMetrics("clustering", windowSeconds, 500);
+	} catch (e) {
+		error = e instanceof Error ? e.message : String(e);
+		console.error("Failed to load clustering metrics:", e);
+	} finally {
+		loading = false;
 	}
+}
 
-	let { windowSeconds }: Props = $props();
-
-	let metrics = $state<SystemMetric[]>([]);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
-
-	$effect(() => {
-		loadData();
-	});
-
-	async function loadData() {
-		loading = true;
-		error = null;
-		try {
-			metrics = await getMetrics("clustering", windowSeconds, 500);
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-			console.error("Failed to load clustering metrics:", e);
-		} finally {
-			loading = false;
-		}
-	}
-
-	function getMetricValue(metric: SystemMetric, key: string): number {
-		const value = metric.metrics[key];
-		if (typeof value === "number") return value;
-		return 0;
-	}
+function getMetricValue(metric: SystemMetric, key: string): number {
+	const value = metric.metrics[key];
+	if (typeof value === "number") return value;
+	return 0;
+}
 </script>
 
 <div>

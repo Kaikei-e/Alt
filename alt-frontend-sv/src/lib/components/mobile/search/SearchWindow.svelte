@@ -118,7 +118,8 @@ const handleSearch = async () => {
 		setFeedResults(transformedResults);
 		// Convert cursor to string for state management (offset as string)
 		setCursor(
-			searchResult.next_cursor !== null && searchResult.next_cursor !== undefined
+			searchResult.next_cursor !== null &&
+				searchResult.next_cursor !== undefined
 				? String(searchResult.next_cursor)
 				: null,
 		);

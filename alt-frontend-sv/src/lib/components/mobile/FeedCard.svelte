@@ -1,22 +1,22 @@
 <script lang="ts">
-	import { SquareArrowOutUpRight } from "@lucide/svelte";
-	import { Button } from "$lib/components/ui/button";
-	import type { RenderFeed } from "$lib/schema/feed";
-	import FeedDetails from "./FeedDetails.svelte";
+import { SquareArrowOutUpRight } from "@lucide/svelte";
+import { Button } from "$lib/components/ui/button";
+import type { RenderFeed } from "$lib/schema/feed";
+import FeedDetails from "./FeedDetails.svelte";
 
-	interface Props {
-		feed: RenderFeed;
-		isReadStatus: boolean;
-		setIsReadStatus: (feedLink: string) => void;
-	}
+interface Props {
+	feed: RenderFeed;
+	isReadStatus: boolean;
+	setIsReadStatus: (feedLink: string) => void;
+}
 
-	const { feed, isReadStatus, setIsReadStatus }: Props = $props();
+const { feed, isReadStatus, setIsReadStatus }: Props = $props();
 
-	const handleReadStatus = () => {
-		// API呼び出しは親コンポーネントで行うため、コールバックのみ実行
-		// normalizedUrlを使用して一貫性を保つ
-		setIsReadStatus(feed.normalizedUrl);
-	};
+const handleReadStatus = () => {
+	// API呼び出しは親コンポーネントで行うため、コールバックのみ実行
+	// normalizedUrlを使用して一貫性を保つ
+	setIsReadStatus(feed.normalizedUrl);
+};
 </script>
 
 {#if !isReadStatus}

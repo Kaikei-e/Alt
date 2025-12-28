@@ -50,7 +50,9 @@ try {
 		Axios.prototype.request = function patchedRequest(config) {
 			const baseURL = config?.baseURL || "";
 			const url = config?.url || "";
-			const target = isKratosRequest(new URL(url, baseURL || mockBaseUrl).toString());
+			const target = isKratosRequest(
+				new URL(url, baseURL || mockBaseUrl).toString(),
+			);
 
 			if (target) {
 				return Promise.resolve({

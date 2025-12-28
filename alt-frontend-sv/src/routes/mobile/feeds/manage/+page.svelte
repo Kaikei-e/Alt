@@ -1,160 +1,160 @@
 <script lang="ts">
-  import { ArrowLeft, Home, RefreshCw, Trash2, Plus } from "@lucide/svelte";
-  import { goto } from "$app/navigation";
-  import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
-  import { feedUrlSchema } from "$lib/schema/validation/feedUrlSchema";
-  import type { FeedLink } from "$lib/schema/feedLink";
-  import {
-    deleteFeedLinkClient,
-    listFeedLinksClient,
-    registerRssFeedClient,
-  } from "$lib/api/client";
-  import * as v from "valibot";
+import { ArrowLeft, Home, RefreshCw, Trash2, Plus } from "@lucide/svelte";
+import { goto } from "$app/navigation";
+import { Button } from "$lib/components/ui/button";
+import { Input } from "$lib/components/ui/input";
+import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
+import { feedUrlSchema } from "$lib/schema/validation/feedUrlSchema";
+import type { FeedLink } from "$lib/schema/feedLink";
+import {
+	deleteFeedLinkClient,
+	listFeedLinksClient,
+	registerRssFeedClient,
+} from "$lib/api/client";
+import * as v from "valibot";
 
-  interface PageData {
-    feedLinks: FeedLink[];
-    error?: string;
-  }
+interface PageData {
+	feedLinks: FeedLink[];
+	error?: string;
+}
 
-  const { data }: { data: PageData } = $props();
+const { data }: { data: PageData } = $props();
 
-  type ActionMessage = {
-    type: "success" | "error";
-    text: string;
-  };
+type ActionMessage = {
+	type: "success" | "error";
+	text: string;
+};
 
-  let feedLinks = $state<FeedLink[]>([]);
-  let isLoadingLinks = $state(false);
-  let loadingError = $state<string | null>(null);
-  let feedUrl = $state("");
-  let validationError = $state<string | null>(null);
-  let isSubmitting = $state(false);
-  let selectedLink = $state<FeedLink | null>(null);
-  let isDeleting = $state(false);
-  let actionMessage = $state<ActionMessage | null>(null);
-  let showAddForm = $state(false);
-  let isDeleteDialogOpen = $state(false);
+let feedLinks = $state<FeedLink[]>([]);
+let isLoadingLinks = $state(false);
+let loadingError = $state<string | null>(null);
+let feedUrl = $state("");
+let validationError = $state<string | null>(null);
+let isSubmitting = $state(false);
+let selectedLink = $state<FeedLink | null>(null);
+let isDeleting = $state(false);
+let actionMessage = $state<ActionMessage | null>(null);
+let showAddForm = $state(false);
+let isDeleteDialogOpen = $state(false);
 
-  // SSRから渡された初期データを一度だけ state に反映
-  $effect(() => {
-    feedLinks = data.feedLinks ?? [];
-    loadingError = data.error ?? null;
-  });
+// SSRから渡された初期データを一度だけ state に反映
+$effect(() => {
+	feedLinks = data.feedLinks ?? [];
+	loadingError = data.error ?? null;
+});
 
-  const sortedLinks = $derived(
-    [...feedLinks].sort((a, b) => a.url.localeCompare(b.url)),
-  );
+const sortedLinks = $derived(
+	[...feedLinks].sort((a, b) => a.url.localeCompare(b.url)),
+);
 
-  function validateUrl(url: string): string | null {
-    const trimmed = url.trim();
-    if (!trimmed) return "Please enter the RSS URL.";
+function validateUrl(url: string): string | null {
+	const trimmed = url.trim();
+	if (!trimmed) return "Please enter the RSS URL.";
 
-    const result = v.safeParse(feedUrlSchema, { feed_url: trimmed });
-    if (!result.success) {
-      return result.issues[0]?.message ?? "Invalid RSS URL.";
-    }
+	const result = v.safeParse(feedUrlSchema, { feed_url: trimmed });
+	if (!result.success) {
+		return result.issues[0]?.message ?? "Invalid RSS URL.";
+	}
 
-    return null;
-  }
+	return null;
+}
 
-  function resetForm() {
-    feedUrl = "";
-    validationError = null;
-    showAddForm = false;
-  }
+function resetForm() {
+	feedUrl = "";
+	validationError = null;
+	showAddForm = false;
+}
 
-  function handleUrlChange(event: Event) {
-    const target = event.target as HTMLInputElement;
-    feedUrl = target.value;
-    validationError = null;
-    actionMessage = null;
-  }
+function handleUrlChange(event: Event) {
+	const target = event.target as HTMLInputElement;
+	feedUrl = target.value;
+	validationError = null;
+	actionMessage = null;
+}
 
-  async function loadFeedLinks() {
-    isLoadingLinks = true;
-    loadingError = null;
-    try {
-      const links = await listFeedLinksClient();
-      feedLinks = links;
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to load feed links.";
-      loadingError = message;
-    } finally {
-      isLoadingLinks = false;
-    }
-  }
+async function loadFeedLinks() {
+	isLoadingLinks = true;
+	loadingError = null;
+	try {
+		const links = await listFeedLinksClient();
+		feedLinks = links;
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : "Failed to load feed links.";
+		loadingError = message;
+	} finally {
+		isLoadingLinks = false;
+	}
+}
 
-  async function handleSubmit(event: Event) {
-    event.preventDefault();
-    const error = validateUrl(feedUrl);
-    if (error) {
-      validationError = error;
-      return;
-    }
+async function handleSubmit(event: Event) {
+	event.preventDefault();
+	const error = validateUrl(feedUrl);
+	if (error) {
+		validationError = error;
+		return;
+	}
 
-    isSubmitting = true;
-    actionMessage = null;
+	isSubmitting = true;
+	actionMessage = null;
 
-    try {
-      await registerRssFeedClient(feedUrl.trim());
-      actionMessage = {
-        type: "success",
-        text: "Feed registered successfully.",
-      };
-      resetForm();
-      await loadFeedLinks();
-    } catch (err) {
-      let message = "Failed to register feed.";
-      if (err instanceof Error) {
-        message = err.message;
-      }
-      actionMessage = { type: "error", text: message };
-    } finally {
-      isSubmitting = false;
-    }
-  }
+	try {
+		await registerRssFeedClient(feedUrl.trim());
+		actionMessage = {
+			type: "success",
+			text: "Feed registered successfully.",
+		};
+		resetForm();
+		await loadFeedLinks();
+	} catch (err) {
+		let message = "Failed to register feed.";
+		if (err instanceof Error) {
+			message = err.message;
+		}
+		actionMessage = { type: "error", text: message };
+	} finally {
+		isSubmitting = false;
+	}
+}
 
-  function handleDeleteRequested(link: FeedLink) {
-    selectedLink = link;
-    isDeleteDialogOpen = true;
-  }
+function handleDeleteRequested(link: FeedLink) {
+	selectedLink = link;
+	isDeleteDialogOpen = true;
+}
 
-  async function handleDeleteConfirmed() {
-    if (!selectedLink) return;
+async function handleDeleteConfirmed() {
+	if (!selectedLink) return;
 
-    isDeleting = true;
-    try {
-      await deleteFeedLinkClient(selectedLink.id);
-      actionMessage = { type: "success", text: "Feed link deleted." };
-      await loadFeedLinks();
-    } catch (err) {
-      let message = "Failed to delete feed link.";
-      if (err instanceof Error) {
-        message = err.message;
-      }
-      actionMessage = { type: "error", text: message };
-    } finally {
-      isDeleting = false;
-      isDeleteDialogOpen = false;
-      selectedLink = null;
-    }
-  }
+	isDeleting = true;
+	try {
+		await deleteFeedLinkClient(selectedLink.id);
+		actionMessage = { type: "success", text: "Feed link deleted." };
+		await loadFeedLinks();
+	} catch (err) {
+		let message = "Failed to delete feed link.";
+		if (err instanceof Error) {
+			message = err.message;
+		}
+		actionMessage = { type: "error", text: message };
+	} finally {
+		isDeleting = false;
+		isDeleteDialogOpen = false;
+		selectedLink = null;
+	}
+}
 
-  function handleDeleteCancel() {
-    isDeleteDialogOpen = false;
-    selectedLink = null;
-  }
+function handleDeleteCancel() {
+	isDeleteDialogOpen = false;
+	selectedLink = null;
+}
 
-  function handleBackToFeeds() {
-    void goto("/sv/mobile/feeds");
-  }
+function handleBackToFeeds() {
+	void goto("/sv/mobile/feeds");
+}
 
-  function handleBackToHome() {
-    void goto("/sv");
-  }
+function handleBackToHome() {
+	void goto("/sv");
+}
 </script>
 
 <div class="min-h-[100dvh] flex flex-col" style="background: var(--app-bg);">

@@ -103,23 +103,24 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 			};
 
 			// Safely extract response status if available (without full response body)
-			const errorResponse =
-				(errorObj.response as Record<string, unknown> | undefined);
+			const errorResponse = errorObj.response as
+				| Record<string, unknown>
+				| undefined;
 			if (errorResponse) {
 				safeErrorInfo.responseStatus = errorResponse.status;
 				safeErrorInfo.responseStatusText = errorResponse.statusText;
 				// Log the error data if it exists, it might contain the Kratos reason
 				if (errorResponse.data) {
-					safeErrorInfo.responseData = JSON.stringify(errorResponse.data).substring(
-						0,
-						500,
-					);
+					safeErrorInfo.responseData = JSON.stringify(
+						errorResponse.data,
+					).substring(0, 500);
 				}
 			}
 
 			console.warn("[hooks.server] Session validation error details", {
 				pathname,
-				errorType: error instanceof Error ? error.constructor.name : typeof error,
+				errorType:
+					error instanceof Error ? error.constructor.name : typeof error,
 				errorMessage: errorMessage.substring(0, 200),
 				errorStatus,
 				errorInfo: safeErrorInfo,
@@ -153,7 +154,8 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 				// The endpoint handler will handle SSE-specific error formatting if needed
 				return new Response(
 					JSON.stringify({
-						error: errorStatus === 403 ? "Forbidden" : "Authentication required",
+						error:
+							errorStatus === 403 ? "Forbidden" : "Authentication required",
 						message: "Session validation failed",
 					}),
 					{
@@ -172,25 +174,25 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 			}
 		}
 
-	// パブリックルートはリダイレクトせずにそのまま処理
-	// これにより、/sv/loginなどのパブリックページへの無限リダイレクトループを防ぐ
-	if (isPublic) {
-		return resolveEvent(event, {
-			filterSerializedResponseHeaders: (name) => {
-				return name === "content-type";
-			},
-		});
-	}
+		// パブリックルートはリダイレクトせずにそのまま処理
+		// これにより、/sv/loginなどのパブリックページへの無限リダイレクトループを防ぐ
+		if (isPublic) {
+			return resolveEvent(event, {
+				filterSerializedResponseHeaders: (name) => {
+					return name === "content-type";
+				},
+			});
+		}
 
-	let returnTo: string;
-	if (pathname === "/sv" || pathname === "/sv/") {
-		returnTo = encodeURIComponent(`${url.origin}/sv/home`);
-	} else {
-		// パス名のみエンコード（クエリパラメータは含めない）
-		// これにより、すでにエンコード済みのreturn_toパラメータの二重エンコードを防ぐ
-		returnTo = encodeURIComponent(pathname);
-	}
-	throw redirect(303, `/sv/login?return_to=${returnTo}`);
+		let returnTo: string;
+		if (pathname === "/sv" || pathname === "/sv/") {
+			returnTo = encodeURIComponent(`${url.origin}/sv/home`);
+		} else {
+			// パス名のみエンコード（クエリパラメータは含めない）
+			// これにより、すでにエンコード済みのreturn_toパラメータの二重エンコードを防ぐ
+			returnTo = encodeURIComponent(pathname);
+		}
+		throw redirect(303, `/sv/login?return_to=${returnTo}`);
 	}
 
 	return resolveEvent(event, {
@@ -199,5 +201,3 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 		},
 	});
 };
-
-

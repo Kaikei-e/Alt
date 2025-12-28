@@ -1,48 +1,48 @@
 <script lang="ts">
-	import { onMount } from "svelte";
-	import { browser } from "$app/environment";
-	import { get7DaysRecapClient } from "$lib/api/client";
-	import type { RecapSummary } from "$lib/schema/recap";
-	import EmptyFeedState from "$lib/components/mobile/EmptyFeedState.svelte";
-	import SwipeRecapScreen from "$lib/components/mobile/recap/SwipeRecapScreen.svelte";
-	import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
-	import { Button } from "$lib/components/ui/button";
+import { onMount } from "svelte";
+import { browser } from "$app/environment";
+import { get7DaysRecapClient } from "$lib/api/client";
+import type { RecapSummary } from "$lib/schema/recap";
+import EmptyFeedState from "$lib/components/mobile/EmptyFeedState.svelte";
+import SwipeRecapScreen from "$lib/components/mobile/recap/SwipeRecapScreen.svelte";
+import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
+import { Button } from "$lib/components/ui/button";
 
-	let data = $state<RecapSummary | null>(null);
-	let isInitialLoading = $state(true);
-	let error = $state<Error | null>(null);
-	let isRetrying = $state(false);
+let data = $state<RecapSummary | null>(null);
+let isInitialLoading = $state(true);
+let error = $state<Error | null>(null);
+let isRetrying = $state(false);
 
-	const fetchData = async () => {
-		try {
-			isInitialLoading = true;
-			error = null;
-			const recap = await get7DaysRecapClient();
-			data = recap;
-		} catch (err) {
-			error = err instanceof Error ? err : new Error("Unknown error");
-			data = null;
-		} finally {
-			isInitialLoading = false;
-		}
-	};
+const fetchData = async () => {
+	try {
+		isInitialLoading = true;
+		error = null;
+		const recap = await get7DaysRecapClient();
+		data = recap;
+	} catch (err) {
+		error = err instanceof Error ? err : new Error("Unknown error");
+		data = null;
+	} finally {
+		isInitialLoading = false;
+	}
+};
 
-	const retry = async () => {
-		isRetrying = true;
-		try {
-			await fetchData();
-		} catch (err) {
-			console.error("Retry failed:", err);
-		} finally {
-			isRetrying = false;
-		}
-	};
+const retry = async () => {
+	isRetrying = true;
+	try {
+		await fetchData();
+	} catch (err) {
+		console.error("Retry failed:", err);
+	} finally {
+		isRetrying = false;
+	}
+};
 
-	onMount(() => {
-		if (browser) {
-			void fetchData();
-		}
-	});
+onMount(() => {
+	if (browser) {
+		void fetchData();
+	}
+});
 </script>
 
 <div class="min-h-[100dvh] relative" style="background: var(--app-bg);">

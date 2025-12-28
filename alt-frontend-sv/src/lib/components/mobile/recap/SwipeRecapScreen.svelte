@@ -1,38 +1,38 @@
 <script lang="ts">
-  import { fly } from "svelte/transition";
-  import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
-  import { Button } from "$lib/components/ui/button";
-  import SwipeRecapCard from "./SwipeRecapCard.svelte";
+import { fly } from "svelte/transition";
+import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
+import { Button } from "$lib/components/ui/button";
+import SwipeRecapCard from "./SwipeRecapCard.svelte";
 
-  interface Props {
-    genres: RecapGenre[];
-    summaryData?: RecapSummary | null;
-  }
+interface Props {
+	genres: RecapGenre[];
+	summaryData?: RecapSummary | null;
+}
 
-  const { genres, summaryData }: Props = $props();
+const { genres, summaryData }: Props = $props();
 
-  // State
-  let activeIndex = $state(0);
+// State
+let activeIndex = $state(0);
 
-  // Derived
-  const activeGenre = $derived(genres[activeIndex]);
-  const nextGenre = $derived(genres[(activeIndex + 1) % genres.length]);
-  const prevGenre = $derived(
-    genres[(activeIndex - 1 + genres.length) % genres.length],
-  );
-  const currentPosition = $derived(activeIndex + 1);
-  const totalCount = $derived(genres.length);
+// Derived
+const activeGenre = $derived(genres[activeIndex]);
+const nextGenre = $derived(genres[(activeIndex + 1) % genres.length]);
+const prevGenre = $derived(
+	genres[(activeIndex - 1 + genres.length) % genres.length],
+);
+const currentPosition = $derived(activeIndex + 1);
+const totalCount = $derived(genres.length);
 
-  // 無限ループ機能付きスワイプハンドラー
-  async function handleSwipe(direction: number) {
-    if (direction > 0) {
-      // 右スワイプ（前のカード）
-      activeIndex = activeIndex === 0 ? genres.length - 1 : activeIndex - 1;
-    } else {
-      // 左スワイプ（次のカード）
-      activeIndex = activeIndex === genres.length - 1 ? 0 : activeIndex + 1;
-    }
-  }
+// 無限ループ機能付きスワイプハンドラー
+async function handleSwipe(direction: number) {
+	if (direction > 0) {
+		// 右スワイプ（前のカード）
+		activeIndex = activeIndex === 0 ? genres.length - 1 : activeIndex - 1;
+	} else {
+		// 左スワイプ（次のカード）
+		activeIndex = activeIndex === genres.length - 1 ? 0 : activeIndex + 1;
+	}
+}
 </script>
 
 <div

@@ -1,43 +1,43 @@
 <script lang="ts">
-	import OverviewTab from "$lib/components/dashboard/OverviewTab.svelte";
-	import ClassificationTab from "$lib/components/dashboard/ClassificationTab.svelte";
-	import ClusteringTab from "$lib/components/dashboard/ClusteringTab.svelte";
-	import SummarizationTab from "$lib/components/dashboard/SummarizationTab.svelte";
-	import LogAnalysisTab from "$lib/components/dashboard/LogAnalysisTab.svelte";
-	import AdminJobsTab from "$lib/components/dashboard/AdminJobsTab.svelte";
-	import RecapJobsTab from "$lib/components/dashboard/RecapJobsTab.svelte";
-	import SystemMonitorTab from "$lib/components/dashboard/SystemMonitorTab.svelte";
-	import type { TimeWindow } from "$lib/schema/dashboard";
-	import { TIME_WINDOWS } from "$lib/schema/dashboard";
-	import { buttonVariants } from "$lib/components/ui/button";
-	import { cn } from "$lib/utils.js";
+import OverviewTab from "$lib/components/dashboard/OverviewTab.svelte";
+import ClassificationTab from "$lib/components/dashboard/ClassificationTab.svelte";
+import ClusteringTab from "$lib/components/dashboard/ClusteringTab.svelte";
+import SummarizationTab from "$lib/components/dashboard/SummarizationTab.svelte";
+import LogAnalysisTab from "$lib/components/dashboard/LogAnalysisTab.svelte";
+import AdminJobsTab from "$lib/components/dashboard/AdminJobsTab.svelte";
+import RecapJobsTab from "$lib/components/dashboard/RecapJobsTab.svelte";
+import SystemMonitorTab from "$lib/components/dashboard/SystemMonitorTab.svelte";
+import type { TimeWindow } from "$lib/schema/dashboard";
+import { TIME_WINDOWS } from "$lib/schema/dashboard";
+import { buttonVariants } from "$lib/components/ui/button";
+import { cn } from "$lib/utils.js";
 
-	let selectedTab = $state(0);
-	let timeWindow = $state<TimeWindow>("4h");
+let selectedTab = $state(0);
+let timeWindow = $state<TimeWindow>("4h");
 
-	const windowSeconds = $derived(TIME_WINDOWS[timeWindow]);
+const windowSeconds = $derived(TIME_WINDOWS[timeWindow]);
 
-	const timeWindowOptions: TimeWindow[] = ["4h", "24h", "3d", "7d"];
+const timeWindowOptions: TimeWindow[] = ["4h", "24h", "3d", "7d"];
 
-	// Tab organization:
-	// 1. Overview - Overall summary
-	// 2-4. Pipeline - Processing stages
-	// 5-6. Monitoring - System monitoring and analysis
-	// 7-8. Jobs - Job management
-	const tabs = [
-		// Overview
-		{ name: "Overview", component: OverviewTab },
-		// Pipeline
-		{ name: "Classification", component: ClassificationTab },
-		{ name: "Clustering", component: ClusteringTab },
-		{ name: "Summarization", component: SummarizationTab },
-		// Monitoring
-		{ name: "System Monitor", component: SystemMonitorTab },
-		{ name: "Log Analysis", component: LogAnalysisTab },
-		// Jobs
-		{ name: "Admin Jobs", component: AdminJobsTab },
-		{ name: "Recap Jobs", component: RecapJobsTab },
-	];
+// Tab organization:
+// 1. Overview - Overall summary
+// 2-4. Pipeline - Processing stages
+// 5-6. Monitoring - System monitoring and analysis
+// 7-8. Jobs - Job management
+const tabs = [
+	// Overview
+	{ name: "Overview", component: OverviewTab },
+	// Pipeline
+	{ name: "Classification", component: ClassificationTab },
+	{ name: "Clustering", component: ClusteringTab },
+	{ name: "Summarization", component: SummarizationTab },
+	// Monitoring
+	{ name: "System Monitor", component: SystemMonitorTab },
+	{ name: "Log Analysis", component: LogAnalysisTab },
+	// Jobs
+	{ name: "Admin Jobs", component: AdminJobsTab },
+	{ name: "Recap Jobs", component: RecapJobsTab },
+];
 </script>
 
 <div class="p-8 max-w-7xl mx-auto" data-style="alt-paper">

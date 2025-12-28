@@ -50,18 +50,16 @@ const loadMore = async () => {
 	try {
 		// Convert cursor string to number (offset)
 		// If cursor is null, pass undefined (same pattern as ViewedFeedsClient)
-		const cursorOffset = currentCursor ? parseInt(currentCursor, 10) : undefined;
+		const cursorOffset = currentCursor
+			? parseInt(currentCursor, 10)
+			: undefined;
 		if (cursorOffset !== undefined && isNaN(cursorOffset)) {
 			console.error("Invalid cursor value:", currentCursor);
 			setIsLoading(false);
 			return;
 		}
 
-		const searchResult = await searchFeedsClient(
-			searchQuery,
-			cursorOffset,
-			20,
-		);
+		const searchResult = await searchFeedsClient(searchQuery, cursorOffset, 20);
 
 		if (searchResult.error) {
 			console.error("Error loading more results:", searchResult.error);
@@ -74,7 +72,10 @@ const loadMore = async () => {
 		if (newResults.length === 0) {
 			// No new results, check if there's a next cursor
 			setHasMore(searchResult.next_cursor !== null);
-			if (searchResult.next_cursor !== null && searchResult.next_cursor !== undefined) {
+			if (
+				searchResult.next_cursor !== null &&
+				searchResult.next_cursor !== undefined
+			) {
 				setCursor(String(searchResult.next_cursor));
 			} else {
 				setHasMore(false);
@@ -85,7 +86,8 @@ const loadMore = async () => {
 			setResults([...results, ...newResults]);
 			// Convert cursor number to string for state management
 			setCursor(
-				searchResult.next_cursor !== null && searchResult.next_cursor !== undefined
+				searchResult.next_cursor !== null &&
+					searchResult.next_cursor !== undefined
 					? String(searchResult.next_cursor)
 					: null,
 			);

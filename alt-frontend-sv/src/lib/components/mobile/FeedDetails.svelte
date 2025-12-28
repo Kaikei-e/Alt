@@ -1,251 +1,249 @@
 <script lang="ts">
-	import { Archive, Star, Loader2, Sparkles } from "@lucide/svelte";
-	import { tick, untrack } from "svelte";
-	import { fade } from "svelte/transition";
-	import { browser } from "$app/environment";
-	import {
-		archiveContentClient,
-		type FeedContentOnTheFlyResponse,
-		type FetchArticleSummaryResponse,
-		getArticleSummaryClient,
-		getFeedContentOnTheFlyClient,
-		registerFavoriteFeedClient,
-		summarizeArticleClient,
-		streamSummarizeArticleClient,
-	} from "$lib/api/client";
-	import { processSummarizeStreamingText } from "$lib/utils/streamingRenderer";
-	import { Button, buttonVariants } from "$lib/components/ui/button";
-	import * as Sheet from "$lib/components/ui/sheet";
-	import RenderFeedDetails from "./RenderFeedDetails.svelte";
+import { Archive, Star, Loader2, Sparkles } from "@lucide/svelte";
+import { tick, untrack } from "svelte";
+import { fade } from "svelte/transition";
+import { browser } from "$app/environment";
+import {
+	archiveContentClient,
+	type FeedContentOnTheFlyResponse,
+	type FetchArticleSummaryResponse,
+	getArticleSummaryClient,
+	getFeedContentOnTheFlyClient,
+	registerFavoriteFeedClient,
+	summarizeArticleClient,
+	streamSummarizeArticleClient,
+} from "$lib/api/client";
+import { processSummarizeStreamingText } from "$lib/utils/streamingRenderer";
+import { Button, buttonVariants } from "$lib/components/ui/button";
+import * as Sheet from "$lib/components/ui/sheet";
+import RenderFeedDetails from "./RenderFeedDetails.svelte";
 
-	interface Props {
-		feedURL?: string;
-		feedTitle?: string;
-		initialData?: FetchArticleSummaryResponse | FeedContentOnTheFlyResponse;
-		open?: boolean;
-		onOpenChange?: (open: boolean) => void;
-		showButton?: boolean;
+interface Props {
+	feedURL?: string;
+	feedTitle?: string;
+	initialData?: FetchArticleSummaryResponse | FeedContentOnTheFlyResponse;
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
+	showButton?: boolean;
+}
+
+const {
+	feedURL,
+	feedTitle,
+	initialData,
+	open: openProp,
+	onOpenChange,
+	showButton = true,
+}: Props = $props();
+
+// Initialize with default, sync with prop in $effect
+let isOpen = $state(false);
+let isLoading = $state(false);
+let isFavoriting = $state(false);
+let error = $state<string | null>(null);
+let isBookmarked = $state(false);
+let isArchiving = $state(false);
+let isArchived = $state(false);
+let summary = $state<string | null>(null);
+let summaryError = $state<string | null>(null);
+let isSummarizing = $state(false);
+let abortController = $state<AbortController | null>(null);
+// Initialize state from props (props are immutable, so this is safe)
+let articleSummary = $state<FetchArticleSummaryResponse | null>(
+	(() => {
+		if (initialData && "matched_articles" in initialData) {
+			return initialData as FetchArticleSummaryResponse;
+		}
+		return null;
+	})(),
+);
+let feedDetails = $state<FeedContentOnTheFlyResponse | null>(
+	(() => {
+		if (initialData && "content" in initialData) {
+			return initialData as FeedContentOnTheFlyResponse;
+		}
+		return null;
+	})(),
+);
+
+// Create unique test ID based on feedURL (capture initial value)
+const uniqueId = $derived(feedURL ? btoa(feedURL).slice(0, 8) : "default");
+
+// Sync with external open prop - use $effect to track prop changes
+$effect(() => {
+	// Access openProp inside $effect to track changes
+	if (openProp !== undefined && openProp !== isOpen) {
+		isOpen = openProp;
 	}
+});
 
-	const {
-		feedURL,
-		feedTitle,
-		initialData,
-		open: openProp,
-		onOpenChange,
-		showButton = true,
-	}: Props = $props();
+// Auto-fetch data when opened externally (e.g., from ViewedFeedCard)
+$effect(() => {
+	// Only trigger when:
+	// 1. Modal is opening (isOpen becomes true)
+	// 2. No initial data provided
+	// 3. Data not already loaded
+	// 4. Not currently loading
+	if (
+		isOpen &&
+		!initialData &&
+		!articleSummary &&
+		!feedDetails &&
+		!isLoading &&
+		feedURL
+	) {
+		// Fetch data when opened externally
+		fetchData();
+	}
+});
 
-	// Initialize with default, sync with prop in $effect
-	let isOpen = $state(false);
-	let isLoading = $state(false);
-	let isFavoriting = $state(false);
-	let error = $state<string | null>(null);
-	let isBookmarked = $state(false);
-	let isArchiving = $state(false);
-	let isArchived = $state(false);
-	let summary = $state<string | null>(null);
-	let summaryError = $state<string | null>(null);
-	let isSummarizing = $state(false);
-	let abortController = $state<AbortController | null>(null);
-	// Initialize state from props (props are immutable, so this is safe)
-	let articleSummary = $state<FetchArticleSummaryResponse | null>(
-		(() => {
-			if (initialData && "matched_articles" in initialData) {
-				return initialData as FetchArticleSummaryResponse;
-			}
-			return null;
-		})(),
-	);
-	let feedDetails = $state<FeedContentOnTheFlyResponse | null>(
-		(() => {
-			if (initialData && "content" in initialData) {
-				return initialData as FeedContentOnTheFlyResponse;
-			}
-			return null;
-		})(),
-	);
+// Sync internal state to external
+$effect(() => {
+	if (onOpenChange && isOpen !== (openProp ?? false)) {
+		onOpenChange(isOpen);
+	}
+});
 
-	// Create unique test ID based on feedURL (capture initial value)
-	const uniqueId = $derived(feedURL ? btoa(feedURL).slice(0, 8) : "default");
+// Handle escape key to close modal
+$effect(() => {
+	if (!browser || !isOpen) return;
 
-	// Sync with external open prop - use $effect to track prop changes
-	$effect(() => {
-		// Access openProp inside $effect to track changes
-		if (openProp !== undefined && openProp !== isOpen) {
-			isOpen = openProp;
+	const handleEscape = (event: KeyboardEvent) => {
+		if (event.key === "Escape" && isOpen) {
+			handleHideDetails();
 		}
-	});
+	};
 
-	// Auto-fetch data when opened externally (e.g., from ViewedFeedCard)
-	$effect(() => {
-		// Only trigger when:
-		// 1. Modal is opening (isOpen becomes true)
-		// 2. No initial data provided
-		// 3. Data not already loaded
-		// 4. Not currently loading
-		if (
-			isOpen &&
-			!initialData &&
-			!articleSummary &&
-			!feedDetails &&
-			!isLoading &&
-			feedURL
-		) {
-			// Fetch data when opened externally
-			fetchData();
+	document.addEventListener("keydown", handleEscape);
+
+	return () => {
+		document.removeEventListener("keydown", handleEscape);
+	};
+});
+
+// Cleanup abort controller on destroy
+$effect(() => {
+	return () => {
+		if (abortController) {
+			abortController.abort();
 		}
-	});
+	};
+});
 
-	// Sync internal state to external
-	$effect(() => {
-		if (onOpenChange && isOpen !== (openProp ?? false)) {
-			onOpenChange(isOpen);
-		}
-	});
-
-	// Handle escape key to close modal
-	$effect(() => {
-		if (!browser || !isOpen) return;
-
-		const handleEscape = (event: KeyboardEvent) => {
-			if (event.key === "Escape" && isOpen) {
-				handleHideDetails();
-			}
-		};
-
-		document.addEventListener("keydown", handleEscape);
-
-		return () => {
-			document.removeEventListener("keydown", handleEscape);
-		};
-	});
-
-	// Cleanup abort controller on destroy
-	$effect(() => {
-		return () => {
-			if (abortController) {
-				abortController.abort();
-			}
-		};
-	});
-
-	// Reset state when feedURL changes (handling swipes)
-	let previousFeedUrl = $state(untrack(() => feedURL));
-	$effect(() => {
-		if (feedURL !== previousFeedUrl) {
-			// Abort any ongoing summarization
-			if (abortController) {
-				abortController.abort();
-				abortController = null;
-			}
-
-			// Reset all article-specific state
-			summary = null;
-			summaryError = null;
-			isSummarizing = false;
-			articleSummary = null;
-			feedDetails = null;
-			isFavoriting = false;
-			isArchiving = false;
-			isArchived = false;
-
-			// Update tracker
-			previousFeedUrl = feedURL;
-		}
-	});
-
-	const handleHideDetails = () => {
-		isOpen = false;
-		isArchived = false;
-		if (onOpenChange) {
-			onOpenChange(false);
-		}
+// Reset state when feedURL changes (handling swipes)
+let previousFeedUrl = $state(untrack(() => feedURL));
+$effect(() => {
+	if (feedURL !== previousFeedUrl) {
+		// Abort any ongoing summarization
 		if (abortController) {
 			abortController.abort();
 			abortController = null;
 		}
-	};
 
-	// Reusable function to fetch article data
-	const fetchData = async () => {
-		if (!feedURL) {
-			error = "No feed URL available";
-			return;
-		}
-
-		isLoading = true;
-		error = null;
-
-		// Fetch both summary and content independently
-		const summaryPromise = getArticleSummaryClient(feedURL).catch((err) => {
-			console.error("Error fetching article summary:", err);
-			return null;
-		});
-
-		const detailsPromise = getFeedContentOnTheFlyClient(feedURL).catch(
-			(err) => {
-				console.error("Error fetching article content:", err);
-				return null;
-			},
-		);
-
-		try {
-			const [summaryResult, detailsResult] = await Promise.all([
-				summaryPromise,
-				detailsPromise,
-			]);
-
-			// Check if summary has valid content
-			const hasValidSummary =
-				summaryResult?.matched_articles &&
-				summaryResult.matched_articles.length > 0;
-			// Check if details has valid content
-			const hasValidDetails =
-				detailsResult?.content && detailsResult.content.trim() !== "";
-
-			if (hasValidSummary) {
-				articleSummary = summaryResult;
-			}
-
-			if (hasValidDetails) {
-				feedDetails = detailsResult;
-
-				// Auto-archive article when displaying content
-				// This ensures the article exists in DB before summarization
-				archiveContentClient(feedURL, feedTitle).catch((err) => {
-					console.warn("Failed to auto-archive article:", err);
-					// Don't block UI on archive failure
-				});
-			}
-
-			// If neither API call succeeded with valid content, show error
-			if (!hasValidSummary && !hasValidDetails) {
-				error = "Unable to fetch article content";
-			}
-		} catch (err) {
-			console.error("Unexpected error:", err);
-			error = "Unexpected error occurred";
-		} finally {
-			isLoading = false;
-		}
-	};
-
-	const handleShowDetails = async () => {
+		// Reset all article-specific state
+		summary = null;
+		summaryError = null;
+		isSummarizing = false;
+		articleSummary = null;
+		feedDetails = null;
+		isFavoriting = false;
+		isArchiving = false;
 		isArchived = false;
 
-		// If we already have initial data, just open the modal
-		if (initialData) {
-			isOpen = true;
-			return;
+		// Update tracker
+		previousFeedUrl = feedURL;
+	}
+});
+
+const handleHideDetails = () => {
+	isOpen = false;
+	isArchived = false;
+	if (onOpenChange) {
+		onOpenChange(false);
+	}
+	if (abortController) {
+		abortController.abort();
+		abortController = null;
+	}
+};
+
+// Reusable function to fetch article data
+const fetchData = async () => {
+	if (!feedURL) {
+		error = "No feed URL available";
+		return;
+	}
+
+	isLoading = true;
+	error = null;
+
+	// Fetch both summary and content independently
+	const summaryPromise = getArticleSummaryClient(feedURL).catch((err) => {
+		console.error("Error fetching article summary:", err);
+		return null;
+	});
+
+	const detailsPromise = getFeedContentOnTheFlyClient(feedURL).catch((err) => {
+		console.error("Error fetching article content:", err);
+		return null;
+	});
+
+	try {
+		const [summaryResult, detailsResult] = await Promise.all([
+			summaryPromise,
+			detailsPromise,
+		]);
+
+		// Check if summary has valid content
+		const hasValidSummary =
+			summaryResult?.matched_articles &&
+			summaryResult.matched_articles.length > 0;
+		// Check if details has valid content
+		const hasValidDetails =
+			detailsResult?.content && detailsResult.content.trim() !== "";
+
+		if (hasValidSummary) {
+			articleSummary = summaryResult;
 		}
 
-		await fetchData();
-		isOpen = true;
-		if (onOpenChange) {
-			onOpenChange(true);
+		if (hasValidDetails) {
+			feedDetails = detailsResult;
+
+			// Auto-archive article when displaying content
+			// This ensures the article exists in DB before summarization
+			archiveContentClient(feedURL, feedTitle).catch((err) => {
+				console.warn("Failed to auto-archive article:", err);
+				// Don't block UI on archive failure
+			});
 		}
-	};
+
+		// If neither API call succeeded with valid content, show error
+		if (!hasValidSummary && !hasValidDetails) {
+			error = "Unable to fetch article content";
+		}
+	} catch (err) {
+		console.error("Unexpected error:", err);
+		error = "Unexpected error occurred";
+	} finally {
+		isLoading = false;
+	}
+};
+
+const handleShowDetails = async () => {
+	isArchived = false;
+
+	// If we already have initial data, just open the modal
+	if (initialData) {
+		isOpen = true;
+		return;
+	}
+
+	await fetchData();
+	isOpen = true;
+	if (onOpenChange) {
+		onOpenChange(true);
+	}
+};
 </script>
 
 {#if showButton && !isOpen}

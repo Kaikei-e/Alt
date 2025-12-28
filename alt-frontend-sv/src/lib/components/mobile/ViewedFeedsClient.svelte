@@ -142,9 +142,7 @@ const renderFeeds = $derived.by(() => {
 
 const hasVisibleContent = $derived(feeds.length > 0);
 
-const isInitialLoadingState = $derived(
-	isInitialLoading && feeds.length === 0,
-);
+const isInitialLoadingState = $derived(isInitialLoading && feeds.length === 0);
 </script>
 
 <div class="h-full flex flex-col" style="background: var(--app-bg);">

@@ -1,35 +1,35 @@
 <script lang="ts">
-	import { getOverview } from "$lib/api/client/dashboard";
-	import type { RecentActivity, TimeWindow } from "$lib/schema/dashboard";
-	import { TIME_WINDOWS } from "$lib/schema/dashboard";
-	import { onMount } from "svelte";
+import { getOverview } from "$lib/api/client/dashboard";
+import type { RecentActivity, TimeWindow } from "$lib/schema/dashboard";
+import { TIME_WINDOWS } from "$lib/schema/dashboard";
+import { onMount } from "svelte";
 
-	interface Props {
-		windowSeconds: number;
+interface Props {
+	windowSeconds: number;
+}
+
+let { windowSeconds }: Props = $props();
+
+let activities = $state<RecentActivity[]>([]);
+let loading = $state(true);
+let error = $state<string | null>(null);
+
+$effect(() => {
+	loadData();
+});
+
+async function loadData() {
+	loading = true;
+	error = null;
+	try {
+		activities = await getOverview(windowSeconds, 200);
+	} catch (e) {
+		error = e instanceof Error ? e.message : String(e);
+		console.error("Failed to load overview:", e);
+	} finally {
+		loading = false;
 	}
-
-	let { windowSeconds }: Props = $props();
-
-	let activities = $state<RecentActivity[]>([]);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
-
-	$effect(() => {
-		loadData();
-	});
-
-	async function loadData() {
-		loading = true;
-		error = null;
-		try {
-			activities = await getOverview(windowSeconds, 200);
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-			console.error("Failed to load overview:", e);
-		} finally {
-			loading = false;
-		}
-	}
+}
 </script>
 
 <div>

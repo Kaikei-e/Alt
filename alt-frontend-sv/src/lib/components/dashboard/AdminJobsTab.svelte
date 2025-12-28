@@ -1,56 +1,52 @@
 <script lang="ts">
-	import { getJobs } from "$lib/api/client/dashboard";
-	import type { AdminJob } from "$lib/schema/dashboard";
+import { getJobs } from "$lib/api/client/dashboard";
+import type { AdminJob } from "$lib/schema/dashboard";
 
-	interface Props {
-		windowSeconds: number;
+interface Props {
+	windowSeconds: number;
+}
+
+let { windowSeconds }: Props = $props();
+
+let jobs = $state<AdminJob[]>([]);
+let loading = $state(true);
+let error = $state<string | null>(null);
+
+$effect(() => {
+	loadData();
+});
+
+async function loadData() {
+	loading = true;
+	error = null;
+	try {
+		jobs = await getJobs(windowSeconds, 200);
+	} catch (e) {
+		error = e instanceof Error ? e.message : String(e);
+		console.error("Failed to load admin jobs:", e);
+	} finally {
+		loading = false;
 	}
+}
 
-	let { windowSeconds }: Props = $props();
+const runningCount = $derived(
+	jobs.filter((j) => j.status === "running").length,
+);
+const failedCount = $derived(jobs.filter((j) => j.status === "failed").length);
+const succeededCount = $derived(
+	jobs.filter((j) => j.status === "succeeded" || j.status === "partial").length,
+);
 
-	let jobs = $state<AdminJob[]>([]);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
-
-	$effect(() => {
-		loadData();
-	});
-
-	async function loadData() {
-		loading = true;
-		error = null;
-		try {
-			jobs = await getJobs(windowSeconds, 200);
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-			console.error("Failed to load admin jobs:", e);
-		} finally {
-			loading = false;
-		}
-	}
-
-	const runningCount = $derived(
-		jobs.filter((j) => j.status === "running").length,
-	);
-	const failedCount = $derived(
-		jobs.filter((j) => j.status === "failed").length,
-	);
-	const succeededCount = $derived(
-		jobs.filter(
-			(j) => j.status === "succeeded" || j.status === "partial",
-		).length,
-	);
-
-	function getDuration(job: AdminJob): string {
-		if (!job.finished_at) return "N/A";
-		const start = new Date(job.started_at).getTime();
-		const end = new Date(job.finished_at).getTime();
-		const seconds = Math.round((end - start) / 1000);
-		if (seconds < 60) return `${seconds}s`;
-		const minutes = Math.floor(seconds / 60);
-		const remainingSeconds = seconds % 60;
-		return `${minutes}m ${remainingSeconds}s`;
-	}
+function getDuration(job: AdminJob): string {
+	if (!job.finished_at) return "N/A";
+	const start = new Date(job.started_at).getTime();
+	const end = new Date(job.finished_at).getTime();
+	const seconds = Math.round((end - start) / 1000);
+	if (seconds < 60) return `${seconds}s`;
+	const minutes = Math.floor(seconds / 60);
+	const remainingSeconds = seconds % 60;
+	return `${minutes}m ${remainingSeconds}s`;
+}
 </script>
 
 <div>

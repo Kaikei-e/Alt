@@ -17,7 +17,9 @@ describe("FeedCard", () => {
 
 		expect(screen.getByText(renderFeedFixture.title)).toBeInTheDocument();
 		expect(screen.getByText(renderFeedFixture.excerpt)).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: /mark .* as read/i })).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /mark .* as read/i }),
+		).toBeInTheDocument();
 	});
 
 	it("calls setIsReadStatus with normalized URL when Mark as read is clicked", async () => {
@@ -30,10 +32,14 @@ describe("FeedCard", () => {
 			},
 		});
 
-		const actionButton = screen.getByRole("button", { name: /mark .* as read/i });
+		const actionButton = screen.getByRole("button", {
+			name: /mark .* as read/i,
+		});
 		await userEvent.click(actionButton);
 
-		expect(setIsReadStatus).toHaveBeenCalledWith(renderFeedFixture.normalizedUrl);
+		expect(setIsReadStatus).toHaveBeenCalledWith(
+			renderFeedFixture.normalizedUrl,
+		);
 	});
 
 	it("renders nothing when feed is already read", () => {

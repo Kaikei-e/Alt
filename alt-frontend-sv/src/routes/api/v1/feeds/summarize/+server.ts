@@ -93,7 +93,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			if (backendResponse.status === 202) {
 				// Async job - return job info for client-side polling
 				// Remove /api prefix from status_url if present (callClientAPI adds /sv/api)
-				const statusUrl = backendData.status_url || `/v1/feeds/summarize/status/${backendData.job_id}`;
+				const statusUrl =
+					backendData.status_url ||
+					`/v1/feeds/summarize/status/${backendData.job_id}`;
 				const normalizedStatusUrl = statusUrl.startsWith("/api/")
 					? statusUrl.replace(/^\/api/, "")
 					: statusUrl;

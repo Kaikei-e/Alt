@@ -2,7 +2,11 @@ import { render, screen, waitFor } from "@testing-library/svelte/svelte5";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { FeedSearchResult, SearchFeedItem, SearchQuery } from "$lib/schema/search";
+import type {
+	FeedSearchResult,
+	SearchFeedItem,
+	SearchQuery,
+} from "$lib/schema/search";
 import SearchWindow from "./SearchWindow.svelte";
 
 const { mockSearchFeedsClient } = vi.hoisted(() => {

@@ -1,148 +1,160 @@
 <script lang="ts">
-  import { SendHorizontal, Loader  } from '@lucide/svelte';
-  import { tick } from 'svelte';
-  import { base } from '$app/paths';
-  import { Button } from '$lib/components/ui/button';
-  import { Input } from '$lib/components/ui/input';
-  import { processAugurStreamingText } from '$lib/utils/streamingRenderer';
-  import { parseMarkdown } from '$lib/utils/simpleMarkdown';
-  import FloatingMenu from '$lib/components/mobile/feeds/swipe/FloatingMenu.svelte';
-  import augurAvatar from '$lib/assets/augur-mobile.png';
+import { SendHorizontal, Loader } from "@lucide/svelte";
+import { tick } from "svelte";
+import { base } from "$app/paths";
+import { Button } from "$lib/components/ui/button";
+import { Input } from "$lib/components/ui/input";
+import { processAugurStreamingText } from "$lib/utils/streamingRenderer";
+import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
+import augurAvatar from "$lib/assets/augur-mobile.png";
 
-  type Citation = {
-    ChunkText: string;
-    URL: string;
-    Title: string;
-    PublishedAt?: string;
-    Score?: number;
-    // ChunkID is intentionally excluded from UI
-  };
+type Citation = {
+	ChunkText: string;
+	URL: string;
+	Title: string;
+	PublishedAt?: string;
+	Score?: number;
+	// ChunkID is intentionally excluded from UI
+};
 
-  type Message = {
-    role: 'user' | 'assistant';
-    content: string;
-    citations?: Citation[];
-  };
+type Message = {
+	role: "user" | "assistant";
+	content: string;
+	citations?: Citation[];
+};
 
-  // State
-  let messages: Message[] = $state([]);
-  let inputValue = $state('');
-  let isLoading = $state(false);
-  let messagesEndRef: HTMLDivElement;
+// State
+let messages: Message[] = $state([]);
+let inputValue = $state("");
+let isLoading = $state(false);
+let messagesEndRef: HTMLDivElement;
 
-  // Auto-scroll to bottom
-  const scrollToBottom = async () => {
-    await tick();
-    if (messagesEndRef) {
-      messagesEndRef.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
+// Auto-scroll to bottom
+const scrollToBottom = async () => {
+	await tick();
+	if (messagesEndRef) {
+		messagesEndRef.scrollIntoView({ behavior: "smooth" });
+	}
+};
 
-  const handleSubmit = async () => {
-    if (!inputValue.trim() || isLoading) return;
+const handleSubmit = async () => {
+	if (!inputValue.trim() || isLoading) return;
 
-    const userMessage = inputValue.trim();
-    inputValue = '';
+	const userMessage = inputValue.trim();
+	inputValue = "";
 
-    // Add user message
-    messages = [...messages, { role: 'user', content: userMessage }];
-    await scrollToBottom();
+	// Add user message
+	messages = [...messages, { role: "user", content: userMessage }];
+	await scrollToBottom();
 
-    isLoading = true;
+	isLoading = true;
 
-    // Add placeholder for assistant message
-    messages = [...messages, { role: 'assistant', content: '' }];
-    let currentAssistantMessageIndex = messages.length - 1;
+	// Add placeholder for assistant message
+	messages = [...messages, { role: "assistant", content: "" }];
+	let currentAssistantMessageIndex = messages.length - 1;
 
-    try {
-      const response = await fetch(`${base}/api/v1/augur/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: messages.slice(0, -1) // Send context excluding empty placeholder
-        })
-      });
+	try {
+		const response = await fetch(`${base}/api/v1/augur/chat`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				messages: messages.slice(0, -1), // Send context excluding empty placeholder
+			}),
+		});
 
-      if (!response.ok) throw new Error('Failed to send message');
-      if (!response.body) throw new Error('No response body');
+		if (!response.ok) throw new Error("Failed to send message");
+		if (!response.body) throw new Error("No response body");
 
-      const reader = response.body.getReader();
+		const reader = response.body.getReader();
 
-      // Throttling state
-      let bufferedContent = "";
-      let lastUpdateTime = 0;
-      const THROTTLE_MS = 50;
+		// Throttling state
+		let bufferedContent = "";
+		let lastUpdateTime = 0;
+		const THROTTLE_MS = 50;
 
-      await processAugurStreamingText(reader, (text) => {
-         // Accumulate text but don't update state immediately
-         bufferedContent += text;
+		await processAugurStreamingText(
+			reader,
+			(text) => {
+				// Accumulate text but don't update state immediately
+				bufferedContent += text;
 
-         const now = Date.now();
-         if (now - lastUpdateTime > THROTTLE_MS) {
-             const currentMsg = messages[currentAssistantMessageIndex];
-             messages[currentAssistantMessageIndex] = {
-                 ...currentMsg,
-                 content: bufferedContent
-             };
-             lastUpdateTime = now;
-             // scrollToBottom(); // User requested to disable forced scrolling during generation
-         }
-      }, {
-          tick: async () => {
-             // Optional: custom tick if needed, but manual throttling handles reactivity
-          },
-          typewriter: false,
-          onMetadata: (meta: any) => {
-              if (meta && (meta.Contexts || meta.Citations)) {
-                  // Prioritize Citations (final), fallback to Contexts (initial)
-                  // Filter out UUIDs (ChunkID) for UI
-                  const rawSources = meta.Citations || meta.Contexts || [];
-                  const cleanCitations: Citation[] = rawSources.map((s: any) => ({
-                      ChunkText: s.ChunkText,
-                      URL: s.URL,
-                      Title: s.Title,
-                      PublishedAt: s.PublishedAt,
-                      Score: s.Score
-                  }));
+				const now = Date.now();
+				if (now - lastUpdateTime > THROTTLE_MS) {
+					const currentMsg = messages[currentAssistantMessageIndex];
+					messages[currentAssistantMessageIndex] = {
+						...currentMsg,
+						content: bufferedContent,
+					};
+					lastUpdateTime = now;
+					// scrollToBottom(); // User requested to disable forced scrolling during generation
+				}
+			},
+			{
+				tick: async () => {
+					// Optional: custom tick if needed, but manual throttling handles reactivity
+				},
+				typewriter: false,
+				onMetadata: (meta: any) => {
+					if (meta && (meta.Contexts || meta.Citations)) {
+						// Prioritize Citations (final), fallback to Contexts (initial)
+						// Filter out UUIDs (ChunkID) for UI
+						const rawSources = meta.Citations || meta.Contexts || [];
+						const cleanCitations: Citation[] = rawSources.map((s: any) => ({
+							ChunkText: s.ChunkText,
+							URL: s.URL,
+							Title: s.Title,
+							PublishedAt: s.PublishedAt,
+							Score: s.Score,
+						}));
 
-                  const currentMsg = messages[currentAssistantMessageIndex];
-                  messages[currentAssistantMessageIndex] = {
-                      ...currentMsg,
-                      citations: cleanCitations
-                  };
-                  // scrollToBottom(); // Disable auto-scroll
-              } else if (meta && meta.fallback) {
-                  // Handle fallback (insufficient evidence)
-                  bufferedContent = "I apologize, but I couldn't find enough information in my knowledge base to answer that properly.";
-                  const currentMsg = messages[currentAssistantMessageIndex];
-                  messages[currentAssistantMessageIndex] = {
-                      ...currentMsg,
-                      content: bufferedContent
-                  };
-              }
-          },
-          onComplete: () => {
-              // Ensure final content is rendered
-              if (messages[currentAssistantMessageIndex].content !== bufferedContent) {
-                  const currentMsg = messages[currentAssistantMessageIndex];
-                  messages[currentAssistantMessageIndex] = {
-                      ...currentMsg,
-                      content: bufferedContent
-                  };
-                  // scrollToBottom(); // Disable auto-scroll
-              }
-          }
-      });
-
-    } catch (error) {
-      console.error('Chat error:', error);
-      // Optional: Add error message to chat
-      messages = [...messages, { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' }];
-    } finally {
-      isLoading = false;
-      await scrollToBottom();
-    }
-  };
+						const currentMsg = messages[currentAssistantMessageIndex];
+						messages[currentAssistantMessageIndex] = {
+							...currentMsg,
+							citations: cleanCitations,
+						};
+						// scrollToBottom(); // Disable auto-scroll
+					} else if (meta && meta.fallback) {
+						// Handle fallback (insufficient evidence)
+						bufferedContent =
+							"I apologize, but I couldn't find enough information in my knowledge base to answer that properly.";
+						const currentMsg = messages[currentAssistantMessageIndex];
+						messages[currentAssistantMessageIndex] = {
+							...currentMsg,
+							content: bufferedContent,
+						};
+					}
+				},
+				onComplete: () => {
+					// Ensure final content is rendered
+					if (
+						messages[currentAssistantMessageIndex].content !== bufferedContent
+					) {
+						const currentMsg = messages[currentAssistantMessageIndex];
+						messages[currentAssistantMessageIndex] = {
+							...currentMsg,
+							content: bufferedContent,
+						};
+						// scrollToBottom(); // Disable auto-scroll
+					}
+				},
+			},
+		);
+	} catch (error) {
+		console.error("Chat error:", error);
+		// Optional: Add error message to chat
+		messages = [
+			...messages,
+			{
+				role: "assistant",
+				content: "Sorry, something went wrong. Please try again.",
+			},
+		];
+	} finally {
+		isLoading = false;
+		await scrollToBottom();
+	}
+};
 </script>
 
 <div class="flex flex-col h-full bg-background relative">

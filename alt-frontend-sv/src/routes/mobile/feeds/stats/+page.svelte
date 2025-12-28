@@ -1,69 +1,69 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { BookOpen, FileText, Layers, Rss } from "@lucide/svelte";
-  import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
-  import {
-    getDetailedFeedStatsClient,
-    getUnreadCountClient,
-  } from "$lib/api/client/feeds";
-  import type { DetailedFeedStatsSummary } from "$lib/schema/stats";
-  import { useSSEFeedsStats } from "$lib/hooks/useSSEFeedsStats.svelte";
+import { onMount } from "svelte";
+import { BookOpen, FileText, Layers, Rss } from "@lucide/svelte";
+import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
+import {
+	getDetailedFeedStatsClient,
+	getUnreadCountClient,
+} from "$lib/api/client/feeds";
+import type { DetailedFeedStatsSummary } from "$lib/schema/stats";
+import { useSSEFeedsStats } from "$lib/hooks/useSSEFeedsStats.svelte";
 
-  let stats: DetailedFeedStatsSummary | null = $state(null);
-  let unreadCount = $state(0);
-  let loading = $state(true);
-  let error: string | null = $state(null);
+let stats: DetailedFeedStatsSummary | null = $state(null);
+let unreadCount = $state(0);
+let loading = $state(true);
+let error: string | null = $state(null);
 
-  // SSE Connection
-  const sseStats = useSSEFeedsStats();
+// SSE Connection
+const sseStats = useSSEFeedsStats();
 
-  // Reactive state for display values
-  let displayFeedAmount = $state(0);
-  let displayTotalArticles = $state(0);
-  let displayUnsummarized = $state(0);
+// Reactive state for display values
+let displayFeedAmount = $state(0);
+let displayTotalArticles = $state(0);
+let displayUnsummarized = $state(0);
 
-  onMount(async () => {
-    try {
-      const [statsData, unreadData] = await Promise.all([
-        getDetailedFeedStatsClient(),
-        getUnreadCountClient(),
-      ]);
-      stats = statsData;
+onMount(async () => {
+	try {
+		const [statsData, unreadData] = await Promise.all([
+			getDetailedFeedStatsClient(),
+			getUnreadCountClient(),
+		]);
+		stats = statsData;
 
-      // Initialize display values with fetched data
-      displayFeedAmount = statsData.feed_amount.amount;
-      displayTotalArticles = statsData.total_articles.amount;
-      displayUnsummarized = statsData.unsummarized_articles.amount;
+		// Initialize display values with fetched data
+		displayFeedAmount = statsData.feed_amount.amount;
+		displayTotalArticles = statsData.total_articles.amount;
+		displayUnsummarized = statsData.unsummarized_articles.amount;
 
-      // Handle unread count response structure which wraps count in an object
-      unreadCount = unreadData.count;
-    } catch (e) {
-      console.error("Failed to fetch stats", e);
-      error = "Failed to load statistics";
-    } finally {
-      loading = false;
-    }
-  });
+		// Handle unread count response structure which wraps count in an object
+		unreadCount = unreadData.count;
+	} catch (e) {
+		console.error("Failed to fetch stats", e);
+		error = "Failed to load statistics";
+	} finally {
+		loading = false;
+	}
+});
 
-  // Synchronize SSE updates with display values
-  $effect(() => {
-    if (sseStats.isConnected) {
-      if (sseStats.feedAmount > 0) {
-        displayFeedAmount = sseStats.feedAmount;
-      }
-      if (sseStats.totalArticlesAmount > 0) {
-        displayTotalArticles = sseStats.totalArticlesAmount;
-      }
-      if (sseStats.unsummarizedArticlesAmount > 0) {
-        displayUnsummarized = sseStats.unsummarizedArticlesAmount;
-      }
-    }
-  });
+// Synchronize SSE updates with display values
+$effect(() => {
+	if (sseStats.isConnected) {
+		if (sseStats.feedAmount > 0) {
+			displayFeedAmount = sseStats.feedAmount;
+		}
+		if (sseStats.totalArticlesAmount > 0) {
+			displayTotalArticles = sseStats.totalArticlesAmount;
+		}
+		if (sseStats.unsummarizedArticlesAmount > 0) {
+			displayUnsummarized = sseStats.unsummarizedArticlesAmount;
+		}
+	}
+});
 
-  // Helper to format numbers nicely
-  function formatNumber(num: number): string {
-    return new Intl.NumberFormat().format(num);
-  }
+// Helper to format numbers nicely
+function formatNumber(num: number): string {
+	return new Intl.NumberFormat().format(num);
+}
 </script>
 
 <div

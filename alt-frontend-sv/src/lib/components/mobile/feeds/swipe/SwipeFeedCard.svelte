@@ -1,367 +1,364 @@
 <script lang="ts">
-  import {
-    BookOpen,
-    Loader,
-    Sparkles,
-    SquareArrowOutUpRight,
-  } from "@lucide/svelte";
-  import { onMount, tick } from "svelte";
-  import { Spring } from "svelte/motion";
-  import { fade } from "svelte/transition";
-  import { type SwipeDirection, swipe } from "$lib/actions/swipe";
-  import {
-    getFeedContentOnTheFlyClient,
-    summarizeArticleClient,
-    streamSummarizeArticleClient,
-  } from "$lib/api/client";
-  import { Button } from "$lib/components/ui/button";
-  import type { RenderFeed } from "$lib/schema/feed";
-  import {
-    processSummarizeStreamingText,
-    simulateTypewriterEffect,
-  } from "$lib/utils/streamingRenderer";
+import {
+	BookOpen,
+	Loader,
+	Sparkles,
+	SquareArrowOutUpRight,
+} from "@lucide/svelte";
+import { onMount, tick } from "svelte";
+import { Spring } from "svelte/motion";
+import { fade } from "svelte/transition";
+import { type SwipeDirection, swipe } from "$lib/actions/swipe";
+import {
+	getFeedContentOnTheFlyClient,
+	summarizeArticleClient,
+	streamSummarizeArticleClient,
+} from "$lib/api/client";
+import { Button } from "$lib/components/ui/button";
+import type { RenderFeed } from "$lib/schema/feed";
+import {
+	processSummarizeStreamingText,
+	simulateTypewriterEffect,
+} from "$lib/utils/streamingRenderer";
 
-  interface Props {
-    feed: RenderFeed;
-    statusMessage: string | null;
-    onDismiss: (direction: number) => Promise<void> | void;
-    getCachedContent?: (feedUrl: string) => string | null;
-    isBusy?: boolean;
-    initialArticleContent?: string | null;
-  }
+interface Props {
+	feed: RenderFeed;
+	statusMessage: string | null;
+	onDismiss: (direction: number) => Promise<void> | void;
+	getCachedContent?: (feedUrl: string) => string | null;
+	isBusy?: boolean;
+	initialArticleContent?: string | null;
+}
 
-  const {
-    feed,
-    statusMessage,
-    onDismiss,
-    getCachedContent,
-    isBusy = false,
-    initialArticleContent,
-  }: Props = $props();
+const {
+	feed,
+	statusMessage,
+	onDismiss,
+	getCachedContent,
+	isBusy = false,
+	initialArticleContent,
+}: Props = $props();
 
-  // State
-  let isAISummaryRequested = $state(false);
-  let aiSummary = $state<string | null>(null);
-  let summaryError = $state<string | null>(null);
-  let isSummarizing = $state(false);
+// State
+let isAISummaryRequested = $state(false);
+let aiSummary = $state<string | null>(null);
+let summaryError = $state<string | null>(null);
+let isSummarizing = $state(false);
 
-  let isContentExpanded = $state(false);
-  let fullContent = $state<string | null>(null);
-  let isLoadingContent = $state(false);
-  let contentError = $state<string | null>(null);
+let isContentExpanded = $state(false);
+let fullContent = $state<string | null>(null);
+let isLoadingContent = $state(false);
+let contentError = $state<string | null>(null);
 
-  // Swipe state with Spring
-  const SWIPE_THRESHOLD = 60;
-  const HORIZONTAL_SWIPE_THRESHOLD = 10; // 横スワイプ検出の閾値（px）
-  let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
-  let isDragging = $state(false);
-  let hasSwiped = $state(false);
-  let swipeElement: HTMLDivElement | null = $state(null);
-  let scrollAreaRef: HTMLDivElement | null = $state(null);
+// Swipe state with Spring
+const SWIPE_THRESHOLD = 60;
+const HORIZONTAL_SWIPE_THRESHOLD = 10; // 横スワイプ検出の閾値（px）
+let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
+let isDragging = $state(false);
+let hasSwiped = $state(false);
+let swipeElement: HTMLDivElement | null = $state(null);
+let scrollAreaRef: HTMLDivElement | null = $state(null);
 
-  // Derived styles
-  const cardStyle = $derived.by(() => {
-    const translate = x.current;
-    const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
+// Derived styles
+const cardStyle = $derived.by(() => {
+	const translate = x.current;
+	const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
 
-    return [
-      "max-width: calc(100% - 1rem)",
-      `transform: translate3d(${translate}px, 0, 0)`,
-      `opacity: ${opacity}`,
-      "will-change: transform, opacity",
-    ].join("; ");
-  });
+	return [
+		"max-width: calc(100% - 1rem)",
+		`transform: translate3d(${translate}px, 0, 0)`,
+		`opacity: ${opacity}`,
+		"will-change: transform, opacity",
+	].join("; ");
+});
 
-  // Derived
-  const sanitizedFullContent = $derived(fullContent);
-  const hasDescription = $derived(Boolean(feed.description));
-  const publishedLabel = $derived.by(() => {
-    if (feed.created_at) {
-      try {
-        return new Date(feed.created_at).toLocaleString();
-      } catch {
-        // Fallback
-      }
-    }
-    if (!feed.published) return null;
-    try {
-      return new Date(feed.published).toLocaleString();
-    } catch {
-      return feed.published;
-    }
-  });
+// Derived
+const sanitizedFullContent = $derived(fullContent);
+const hasDescription = $derived(Boolean(feed.description));
+const publishedLabel = $derived.by(() => {
+	if (feed.created_at) {
+		try {
+			return new Date(feed.created_at).toLocaleString();
+		} catch {
+			// Fallback
+		}
+	}
+	if (!feed.published) return null;
+	try {
+		return new Date(feed.published).toLocaleString();
+	} catch {
+		return feed.published;
+	}
+});
 
-  // Auto-fetch content
-  onMount(() => {
-    // Initialize with prop value if available
-    if (initialArticleContent) {
-      fullContent = initialArticleContent;
-    }
+// Auto-fetch content
+onMount(() => {
+	// Initialize with prop value if available
+	if (initialArticleContent) {
+		fullContent = initialArticleContent;
+	}
 
-    const cached = getCachedContent?.(feed.link);
-    if (cached) {
-      fullContent = cached;
-    } else if (!fullContent) {
-      // Background fetch
-      getFeedContentOnTheFlyClient(feed.link)
-        .then((res) => {
-          if (res.content) {
-            fullContent = res.content;
-          }
-        })
-        .catch((err) => {
-          console.error("[SwipeFeedCard] Error auto-fetching content:", err);
-        });
-    }
-  });
+	const cached = getCachedContent?.(feed.link);
+	if (cached) {
+		fullContent = cached;
+	} else if (!fullContent) {
+		// Background fetch
+		getFeedContentOnTheFlyClient(feed.link)
+			.then((res) => {
+				if (res.content) {
+					fullContent = res.content;
+				}
+			})
+			.catch((err) => {
+				console.error("[SwipeFeedCard] Error auto-fetching content:", err);
+			});
+	}
+});
 
-  // Set up swipe event listeners reactively
-  $effect(() => {
-    if (!swipeElement) return;
+// Set up swipe event listeners reactively
+$effect(() => {
+	if (!swipeElement) return;
 
-    const swipeHandler = (event: Event) => {
-      // 重複処理を防ぐ（scrollAreaRefとswipeElementの両方から発火する可能性がある）
-      if (hasSwiped) return;
-      handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
-    };
+	const swipeHandler = (event: Event) => {
+		// 重複処理を防ぐ（scrollAreaRefとswipeElementの両方から発火する可能性がある）
+		if (hasSwiped) return;
+		handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
+	};
 
-    const swipeMoveHandler = (event: Event) => {
-      const moveEvent = event as CustomEvent<{
-        deltaX: number;
-        deltaY: number;
-      }>;
-      const { deltaX, deltaY } = moveEvent.detail;
+	const swipeMoveHandler = (event: Event) => {
+		const moveEvent = event as CustomEvent<{
+			deltaX: number;
+			deltaY: number;
+		}>;
+		const { deltaX, deltaY } = moveEvent.detail;
 
-      // 横方向の動きが優勢なときだけ追従させる
-      if (Math.abs(deltaX) > Math.abs(deltaY)) {
-        isDragging = true;
-        x.set(deltaX, { instant: true });
-      }
-    };
+		// 横方向の動きが優勢なときだけ追従させる
+		if (Math.abs(deltaX) > Math.abs(deltaY)) {
+			isDragging = true;
+			x.set(deltaX, { instant: true });
+		}
+	};
 
-    const swipeEndHandler = (event: Event) => {
-      // ドラッグが終わったので中央に戻す
-      // 実際にスワイプが成立した場合は、swipe イベント → handleSwipe → onDismiss が走るので、
-      // カード自体はすぐ差し替えられる
-      // 成立しなかった場合だけ「中央にスナップバック」という役割分担
-      x.target = 0;
-      isDragging = false;
-    };
+	const swipeEndHandler = (event: Event) => {
+		// ドラッグが終わったので中央に戻す
+		// 実際にスワイプが成立した場合は、swipe イベント → handleSwipe → onDismiss が走るので、
+		// カード自体はすぐ差し替えられる
+		// 成立しなかった場合だけ「中央にスナップバック」という役割分担
+		x.target = 0;
+		isDragging = false;
+	};
 
-    // swipeElementにリスナーを追加
-    swipeElement.addEventListener("swipe", swipeHandler);
-    swipeElement.addEventListener("swipe:move", swipeMoveHandler);
-    swipeElement.addEventListener("swipe:end", swipeEndHandler);
+	// swipeElementにリスナーを追加
+	swipeElement.addEventListener("swipe", swipeHandler);
+	swipeElement.addEventListener("swipe:move", swipeMoveHandler);
+	swipeElement.addEventListener("swipe:end", swipeEndHandler);
 
-    return () => {
-      swipeElement?.removeEventListener("swipe", swipeHandler);
-      swipeElement?.removeEventListener("swipe:move", swipeMoveHandler);
-      swipeElement?.removeEventListener("swipe:end", swipeEndHandler);
-    };
-  });
+	return () => {
+		swipeElement?.removeEventListener("swipe", swipeHandler);
+		swipeElement?.removeEventListener("swipe:move", swipeMoveHandler);
+		swipeElement?.removeEventListener("swipe:end", swipeEndHandler);
+	};
+});
 
-  async function handleToggleContent() {
-    if (!isContentExpanded && !fullContent) {
-      const cached = getCachedContent?.(feed.link);
-      if (cached) {
-        fullContent = cached;
-        isContentExpanded = true;
-        return;
-      }
+async function handleToggleContent() {
+	if (!isContentExpanded && !fullContent) {
+		const cached = getCachedContent?.(feed.link);
+		if (cached) {
+			fullContent = cached;
+			isContentExpanded = true;
+			return;
+		}
 
-      isLoadingContent = true;
-      contentError = null;
+		isLoadingContent = true;
+		contentError = null;
 
-      try {
-        const res = await getFeedContentOnTheFlyClient(feed.link);
-        if (res.content) {
-          fullContent = res.content;
-        } else {
-          contentError = "Could not fetch article content";
-        }
-      } catch (err) {
-        console.error("Error fetching content:", err);
-        contentError = "Could not fetch article content";
-      } finally {
-        isLoadingContent = false;
-      }
-    }
-    isContentExpanded = !isContentExpanded;
-  }
+		try {
+			const res = await getFeedContentOnTheFlyClient(feed.link);
+			if (res.content) {
+				fullContent = res.content;
+			} else {
+				contentError = "Could not fetch article content";
+			}
+		} catch (err) {
+			console.error("Error fetching content:", err);
+			contentError = "Could not fetch article content";
+		} finally {
+			isLoadingContent = false;
+		}
+	}
+	isContentExpanded = !isContentExpanded;
+}
 
-  async function handleGenerateAISummary() {
-    // Hide existing SUMMARY section
-    isAISummaryRequested = true;
-    isSummarizing = true;
-    summaryError = null;
-    aiSummary = "";
+async function handleGenerateAISummary() {
+	// Hide existing SUMMARY section
+	isAISummaryRequested = true;
+	isSummarizing = true;
+	summaryError = null;
+	aiSummary = "";
 
-    try {
-      // Try streaming first
-      // We pass fullContent if we have it (e.g. from auto-fetch or expand)
-      const reader = await streamSummarizeArticleClient(
-        feed.link,
-        undefined, // Let backend resolve article_id from URL
-        undefined, // Content is fetched from DB by backend
-        feed.title,
-      );
+	try {
+		// Try streaming first
+		// We pass fullContent if we have it (e.g. from auto-fetch or expand)
+		const reader = await streamSummarizeArticleClient(
+			feed.link,
+			undefined, // Let backend resolve article_id from URL
+			undefined, // Content is fetched from DB by backend
+			feed.title,
+		);
 
-      // Use streaming renderer utility for incremental rendering
-      try {
-        const result = await processSummarizeStreamingText(
-          reader,
-          (chunk) => {
-            aiSummary = (aiSummary || "") + chunk;
-          },
-          {
-            tick,
-            typewriter: true, // Enable typewriter effect
-            typewriterDelay: 10, // 10ms delay per char
-            onChunk: (
-              chunkCount,
-              chunkSize,
-              decodedLength,
-              totalLength,
-              preview,
-            ) => {
-              // Hide "Now summarizing..." when first chunk arrives
-              if (chunkCount === 1) {
-                isSummarizing = false;
-              }
-              if (chunkCount <= 5) {
-                console.log("[StreamSummarize] Chunk received and rendered", {
-                  chunkCount,
-                  chunkSize,
-                  decodedLength,
-                  totalLength,
-                  preview,
-                });
-              }
-            },
-            onComplete: (totalLength, chunkCount) => {
-              console.log("[StreamSummarize] Final chunk decoded", {
-                chunkCount: chunkCount + 1,
-                totalLength,
-              });
-            },
-          },
-        );
+		// Use streaming renderer utility for incremental rendering
+		try {
+			const result = await processSummarizeStreamingText(
+				reader,
+				(chunk) => {
+					aiSummary = (aiSummary || "") + chunk;
+				},
+				{
+					tick,
+					typewriter: true, // Enable typewriter effect
+					typewriterDelay: 10, // 10ms delay per char
+					onChunk: (
+						chunkCount,
+						chunkSize,
+						decodedLength,
+						totalLength,
+						preview,
+					) => {
+						// Hide "Now summarizing..." when first chunk arrives
+						if (chunkCount === 1) {
+							isSummarizing = false;
+						}
+						if (chunkCount <= 5) {
+							console.log("[StreamSummarize] Chunk received and rendered", {
+								chunkCount,
+								chunkSize,
+								decodedLength,
+								totalLength,
+								preview,
+							});
+						}
+					},
+					onComplete: (totalLength, chunkCount) => {
+						console.log("[StreamSummarize] Final chunk decoded", {
+							chunkCount: chunkCount + 1,
+							totalLength,
+						});
+					},
+				},
+			);
 
-        const hasReceivedData = result.hasReceivedData;
-      } catch (streamErr) {
-        // Error during streaming (after initial connection)
-        console.error(
-          "[StreamSummarize] Error during stream reading:",
-          streamErr,
-        );
-        // If we received some data, keep it and show error
-        if (aiSummary && aiSummary.length > 0) {
-          console.warn(
-            "[StreamSummarize] Stream interrupted but partial data received",
-            {
-              receivedLength: aiSummary.length,
-            },
-          );
-          summaryError =
-            "Stream interrupted. Partial summary may be incomplete.";
-        } else {
-          // No data received, re-throw to trigger fallback
-          throw streamErr;
-        }
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      const isAuthError =
-        errorMessage.includes("403") ||
-        errorMessage.includes("401") ||
-        errorMessage.includes("Forbidden") ||
-        errorMessage.includes("Authentication");
+			const hasReceivedData = result.hasReceivedData;
+		} catch (streamErr) {
+			// Error during streaming (after initial connection)
+			console.error(
+				"[StreamSummarize] Error during stream reading:",
+				streamErr,
+			);
+			// If we received some data, keep it and show error
+			if (aiSummary && aiSummary.length > 0) {
+				console.warn(
+					"[StreamSummarize] Stream interrupted but partial data received",
+					{
+						receivedLength: aiSummary.length,
+					},
+				);
+				summaryError = "Stream interrupted. Partial summary may be incomplete.";
+			} else {
+				// No data received, re-throw to trigger fallback
+				throw streamErr;
+			}
+		}
+	} catch (err) {
+		const errorMessage = err instanceof Error ? err.message : String(err);
+		const isAuthError =
+			errorMessage.includes("403") ||
+			errorMessage.includes("401") ||
+			errorMessage.includes("Forbidden") ||
+			errorMessage.includes("Authentication");
 
-      console.error("[StreamSummarize] Error streaming summary:", {
-        error: errorMessage,
-        isAuthError,
-        hasPartialData: !!aiSummary && aiSummary.length > 0,
-      });
+		console.error("[StreamSummarize] Error streaming summary:", {
+			error: errorMessage,
+			isAuthError,
+			hasPartialData: !!aiSummary && aiSummary.length > 0,
+		});
 
-      // Don't retry on authentication errors - user needs to re-authenticate
-      if (isAuthError) {
-        summaryError =
-          "Authentication failed. Please refresh the page and try again.";
-        return;
-      }
+		// Don't retry on authentication errors - user needs to re-authenticate
+		if (isAuthError) {
+			summaryError =
+				"Authentication failed. Please refresh the page and try again.";
+			return;
+		}
 
-      // If we have partial data, don't fallback - show what we have
-      if (aiSummary && aiSummary.length > 0) {
-        console.warn(
-          "[StreamSummarize] Using partial summary due to stream error",
-        );
-        summaryError = "Stream interrupted. Summary may be incomplete.";
-        return;
-      }
+		// If we have partial data, don't fallback - show what we have
+		if (aiSummary && aiSummary.length > 0) {
+			console.warn(
+				"[StreamSummarize] Using partial summary due to stream error",
+			);
+			summaryError = "Stream interrupted. Summary may be incomplete.";
+			return;
+		}
 
-      // Fallback to legacy endpoint only if no data was received
-      console.log("[StreamSummarize] Falling back to legacy endpoint");
-      try {
-        const res = await summarizeArticleClient(feed.link);
-        if (res.success && res.summary) {
-          // Use typewriter effect for fallback legacy summary too
-          isSummarizing = false; // Stop spinner immediately as we have data
-          const typewriter = simulateTypewriterEffect(
-            (char) => {
-              aiSummary = (aiSummary || "") + char;
-            },
-            { tick, delay: 10 },
-          );
-          await typewriter.add(res.summary);
-        } else {
-          isSummarizing = false;
-          summaryError = "Failed to generate the summary";
-        }
-      } catch (legacyErr) {
-        console.error(
-          "[StreamSummarize] Legacy endpoint also failed:",
-          legacyErr,
-        );
-        isSummarizing = false;
-        summaryError = "Failed to generate the summary. Please try again.";
-      }
-    } finally {
-      // If NOT using typewriter effect for fallback, we would set isSummarizing = false here.
-      // But for fallback with typewriter, we set it false BEFORE starting typewriter.
-      // For streaming with typewriter, processStreamingText handles setting it false on first chunk?
-      // Wait, processStreamingText's onChunk callback sets isSummarizing = false.
-      // If streaming completes successfully, isSummarizing is already false.
-      // If streaming fails and we fallback, we set isSummarizing = false inside fallback block.
-      // So we can safely set it false here if it's still true (e.g. total failure).
-      if (isSummarizing && aiSummary === "") {
-        isSummarizing = false;
-      }
-      // Note: for successful streaming or fallback-typewriter, isSummarizing becomes false earlier to show text.
-    }
-  }
+		// Fallback to legacy endpoint only if no data was received
+		console.log("[StreamSummarize] Falling back to legacy endpoint");
+		try {
+			const res = await summarizeArticleClient(feed.link);
+			if (res.success && res.summary) {
+				// Use typewriter effect for fallback legacy summary too
+				isSummarizing = false; // Stop spinner immediately as we have data
+				const typewriter = simulateTypewriterEffect(
+					(char) => {
+						aiSummary = (aiSummary || "") + char;
+					},
+					{ tick, delay: 10 },
+				);
+				await typewriter.add(res.summary);
+			} else {
+				isSummarizing = false;
+				summaryError = "Failed to generate the summary";
+			}
+		} catch (legacyErr) {
+			console.error(
+				"[StreamSummarize] Legacy endpoint also failed:",
+				legacyErr,
+			);
+			isSummarizing = false;
+			summaryError = "Failed to generate the summary. Please try again.";
+		}
+	} finally {
+		// If NOT using typewriter effect for fallback, we would set isSummarizing = false here.
+		// But for fallback with typewriter, we set it false BEFORE starting typewriter.
+		// For streaming with typewriter, processStreamingText handles setting it false on first chunk?
+		// Wait, processStreamingText's onChunk callback sets isSummarizing = false.
+		// If streaming completes successfully, isSummarizing is already false.
+		// If streaming fails and we fallback, we set isSummarizing = false inside fallback block.
+		// So we can safely set it false here if it's still true (e.g. total failure).
+		if (isSummarizing && aiSummary === "") {
+			isSummarizing = false;
+		}
+		// Note: for successful streaming or fallback-typewriter, isSummarizing becomes false earlier to show text.
+	}
+}
 
-  async function handleSwipe(
-    event: CustomEvent<{ direction: SwipeDirection }>,
-  ) {
-    const dir = event.detail.direction;
-    if (dir !== "left" && dir !== "right") return;
+async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
+	const dir = event.detail.direction;
+	if (dir !== "left" && dir !== "right") return;
 
-    hasSwiped = true;
-    isDragging = false;
+	hasSwiped = true;
+	isDragging = false;
 
-    const width = swipeElement?.clientWidth ?? window.innerWidth;
-    const target = dir === "left" ? -width : width;
+	const width = swipeElement?.clientWidth ?? window.innerWidth;
+	const target = dir === "left" ? -width : width;
 
-    // 画面外までスプリングで飛ばす（慣性付きで気持ちよく）
-    await x.set(target, { preserveMomentum: 120 });
+	// 画面外までスプリングで飛ばす（慣性付きで気持ちよく）
+	await x.set(target, { preserveMomentum: 120 });
 
-    // ここで「次の記事へ」「前の記事へ」のロジックを呼ぶ
-    await onDismiss(dir === "left" ? -1 : 1);
+	// ここで「次の記事へ」「前の記事へ」のロジックを呼ぶ
+	await onDismiss(dir === "left" ? -1 : 1);
 
-    // 次のカードに備えてリセット
-    hasSwiped = false;
-    await x.set(0, { instant: true });
-  }
+	// 次のカードに備えてリセット
+	hasSwiped = false;
+	await x.set(0, { instant: true });
+}
 </script>
 
 <div

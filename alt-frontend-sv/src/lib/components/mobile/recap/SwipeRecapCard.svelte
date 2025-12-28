@@ -1,121 +1,117 @@
 <script lang="ts">
-	import { ChevronDown, ChevronUp, Link as LinkIcon } from "@lucide/svelte";
-	import { Spring } from "svelte/motion";
-	import { type SwipeDirection, swipe } from "$lib/actions/swipe";
-	import { Button } from "$lib/components/ui/button";
-	import type { RecapGenre } from "$lib/schema/recap";
+import { ChevronDown, ChevronUp, Link as LinkIcon } from "@lucide/svelte";
+import { Spring } from "svelte/motion";
+import { type SwipeDirection, swipe } from "$lib/actions/swipe";
+import { Button } from "$lib/components/ui/button";
+import type { RecapGenre } from "$lib/schema/recap";
 
-	interface Props {
-		genre: RecapGenre;
-		onDismiss: (direction: number) => Promise<void> | void;
-		isBusy?: boolean;
+interface Props {
+	genre: RecapGenre;
+	onDismiss: (direction: number) => Promise<void> | void;
+	isBusy?: boolean;
+}
+
+const { genre, onDismiss, isBusy = false }: Props = $props();
+
+// Swipe state with Spring
+const SWIPE_THRESHOLD = 60;
+let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
+let isDragging = $state(false);
+let hasSwiped = $state(false);
+let swipeElement: HTMLDivElement | null = $state(null);
+let scrollAreaRef: HTMLDivElement | null = $state(null);
+
+// Derived styles
+const cardStyle = $derived.by(() => {
+	const translate = x.current;
+	const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
+
+	return [
+		"max-width: calc(100% - 1rem)",
+		`transform: translate3d(${translate}px, 0, 0)`,
+		`opacity: ${opacity}`,
+		"will-change: transform, opacity",
+	].join("; ");
+});
+
+// State
+let isExpanded = $state(false);
+
+const handleToggle = () => {
+	isExpanded = !isExpanded;
+};
+
+// 箇条書きまたはサマリーから表示用のリストを生成
+const displayItems = $derived.by(() => {
+	if (genre.bullets && genre.bullets.length > 0) {
+		return genre.bullets;
 	}
+	return genre.summary.split("\n").filter((line) => line.trim().length > 0);
+});
 
-	const { genre, onDismiss, isBusy = false }: Props = $props();
+const visibleItems = $derived(
+	isExpanded ? displayItems : displayItems.slice(0, 3),
+);
 
-	// Swipe state with Spring
-	const SWIPE_THRESHOLD = 60;
-	let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
-	let isDragging = $state(false);
-	let hasSwiped = $state(false);
-	let swipeElement: HTMLDivElement | null = $state(null);
-	let scrollAreaRef: HTMLDivElement | null = $state(null);
+// Set up swipe event listeners reactively
+$effect(() => {
+	if (!swipeElement) return;
 
-	// Derived styles
-	const cardStyle = $derived.by(() => {
-		const translate = x.current;
-		const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
-
-		return [
-			"max-width: calc(100% - 1rem)",
-			`transform: translate3d(${translate}px, 0, 0)`,
-			`opacity: ${opacity}`,
-			"will-change: transform, opacity",
-		].join("; ");
-	});
-
-	// State
-	let isExpanded = $state(false);
-
-	const handleToggle = () => {
-		isExpanded = !isExpanded;
+	const swipeHandler = (event: Event) => {
+		if (hasSwiped) return;
+		handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
 	};
 
-	// 箇条書きまたはサマリーから表示用のリストを生成
-	const displayItems = $derived.by(() => {
-		if (genre.bullets && genre.bullets.length > 0) {
-			return genre.bullets;
+	const swipeMoveHandler = (event: Event) => {
+		const moveEvent = event as CustomEvent<{
+			deltaX: number;
+			deltaY: number;
+		}>;
+		const { deltaX, deltaY } = moveEvent.detail;
+
+		// 横方向の動きが優勢なときだけ追従させる
+		if (Math.abs(deltaX) > Math.abs(deltaY)) {
+			isDragging = true;
+			x.set(deltaX, { instant: true });
 		}
-		return genre.summary
-			.split("\n")
-			.filter((line) => line.trim().length > 0);
-	});
+	};
 
-	const visibleItems = $derived(
-		isExpanded ? displayItems : displayItems.slice(0, 3),
-	);
-
-	// Set up swipe event listeners reactively
-	$effect(() => {
-		if (!swipeElement) return;
-
-		const swipeHandler = (event: Event) => {
-			if (hasSwiped) return;
-			handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
-		};
-
-		const swipeMoveHandler = (event: Event) => {
-			const moveEvent = event as CustomEvent<{
-				deltaX: number;
-				deltaY: number;
-			}>;
-			const { deltaX, deltaY } = moveEvent.detail;
-
-			// 横方向の動きが優勢なときだけ追従させる
-			if (Math.abs(deltaX) > Math.abs(deltaY)) {
-				isDragging = true;
-				x.set(deltaX, { instant: true });
-			}
-		};
-
-		const swipeEndHandler = (event: Event) => {
-			x.target = 0;
-			isDragging = false;
-		};
-
-		swipeElement.addEventListener("swipe", swipeHandler);
-		swipeElement.addEventListener("swipe:move", swipeMoveHandler);
-		swipeElement.addEventListener("swipe:end", swipeEndHandler);
-
-		return () => {
-			swipeElement?.removeEventListener("swipe", swipeHandler);
-			swipeElement?.removeEventListener("swipe:move", swipeMoveHandler);
-			swipeElement?.removeEventListener("swipe:end", swipeEndHandler);
-		};
-	});
-
-	async function handleSwipe(
-		event: CustomEvent<{ direction: SwipeDirection }>,
-	) {
-		const dir = event.detail.direction;
-		if (dir !== "left" && dir !== "right") return;
-
-		hasSwiped = true;
+	const swipeEndHandler = (event: Event) => {
+		x.target = 0;
 		isDragging = false;
+	};
 
-		const width = swipeElement?.clientWidth ?? window.innerWidth;
-		const target = dir === "left" ? -width : width;
+	swipeElement.addEventListener("swipe", swipeHandler);
+	swipeElement.addEventListener("swipe:move", swipeMoveHandler);
+	swipeElement.addEventListener("swipe:end", swipeEndHandler);
 
-		// 画面外までスプリングで飛ばす（慣性付きで気持ちよく）
-		await x.set(target, { preserveMomentum: 120 });
+	return () => {
+		swipeElement?.removeEventListener("swipe", swipeHandler);
+		swipeElement?.removeEventListener("swipe:move", swipeMoveHandler);
+		swipeElement?.removeEventListener("swipe:end", swipeEndHandler);
+	};
+});
 
-		// ここで「次のカードへ」「前のカードへ」のロジックを呼ぶ
-		await onDismiss(dir === "left" ? -1 : 1);
+async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
+	const dir = event.detail.direction;
+	if (dir !== "left" && dir !== "right") return;
 
-		// 次のカードに備えてリセット
-		hasSwiped = false;
-		await x.set(0, { instant: true });
-	}
+	hasSwiped = true;
+	isDragging = false;
+
+	const width = swipeElement?.clientWidth ?? window.innerWidth;
+	const target = dir === "left" ? -width : width;
+
+	// 画面外までスプリングで飛ばす（慣性付きで気持ちよく）
+	await x.set(target, { preserveMomentum: 120 });
+
+	// ここで「次のカードへ」「前のカードへ」のロジックを呼ぶ
+	await onDismiss(dir === "left" ? -1 : 1);
+
+	// 次のカードに備えてリセット
+	hasSwiped = false;
+	await x.set(0, { instant: true });
+}
 </script>
 
 <div

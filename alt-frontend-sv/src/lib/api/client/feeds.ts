@@ -126,7 +126,8 @@ export async function searchFeedsClient(
 				results: cursorResponse.data,
 				error: null,
 				next_cursor: cursorResponse.next_cursor,
-				has_more: cursorResponse.has_more ?? cursorResponse.next_cursor !== null,
+				has_more:
+					cursorResponse.has_more ?? cursorResponse.next_cursor !== null,
 			};
 		}
 

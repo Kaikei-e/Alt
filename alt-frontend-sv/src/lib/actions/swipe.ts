@@ -223,10 +223,22 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 	// touchイベントを追加（Androidでpointercancelを防ぐため）
 	// passive: false で登録（preventDefaultを呼ぶため必須）
 	// capture: true で早めに拾い、スクロール開始より前に preventDefault できる確率を上げる
-	node.addEventListener("touchstart", onTouchStart, { passive: true, capture: true });
-	node.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
-	node.addEventListener("touchend", onTouchEnd, { passive: true, capture: true });
-	node.addEventListener("touchcancel", onTouchEnd, { passive: true, capture: true });
+	node.addEventListener("touchstart", onTouchStart, {
+		passive: true,
+		capture: true,
+	});
+	node.addEventListener("touchmove", onTouchMove, {
+		passive: false,
+		capture: true,
+	});
+	node.addEventListener("touchend", onTouchEnd, {
+		passive: true,
+		capture: true,
+	});
+	node.addEventListener("touchcancel", onTouchEnd, {
+		passive: true,
+		capture: true,
+	});
 
 	return {
 		update(newOptions: SwipeOptions) {

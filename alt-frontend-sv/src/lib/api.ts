@@ -287,9 +287,7 @@ export async function getReadFeedsWithCursor(
 /**
  * RSSフィードリンク一覧を取得
  */
-export async function getFeedLinks(
-	cookie: string | null,
-): Promise<FeedLink[]> {
+export async function getFeedLinks(cookie: string | null): Promise<FeedLink[]> {
 	return callBackendAPI<FeedLink[]>("/v1/rss-feed-link/list", cookie);
 }
 
@@ -405,4 +403,3 @@ export async function deleteFeedLink(
 		throw new Error(`Failed to connect to backend: ${errorMessage}`);
 	}
 }
-

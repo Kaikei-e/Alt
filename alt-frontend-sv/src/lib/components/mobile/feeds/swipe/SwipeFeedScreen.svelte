@@ -176,7 +176,10 @@ async function loadMore() {
 			}
 		} else {
 			// 通常の読み込み（2回目以降）
-			const res = await getFeedsWithCursorClient(cursor ?? undefined, PAGE_SIZE);
+			const res = await getFeedsWithCursorClient(
+				cursor ?? undefined,
+				PAGE_SIZE,
+			);
 			const newFeeds = res.data.map((f: SanitizedFeed) => toRenderFeed(f));
 
 			// Filter out read feeds

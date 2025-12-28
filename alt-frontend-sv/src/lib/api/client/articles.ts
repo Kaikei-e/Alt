@@ -141,8 +141,13 @@ async function pollSummarizeJobStatus(
 		// Wait before polling (except for first attempt and immediate retry after completion detection)
 		if (attempt > 0) {
 			// If we detected completion in previous attempt but didn't get summary, retry immediately
-			if (completedDetectedAt !== null && Date.now() - completedDetectedAt < pollInterval) {
-				await new Promise((resolve) => setTimeout(resolve, immediateRetryDelay));
+			if (
+				completedDetectedAt !== null &&
+				Date.now() - completedDetectedAt < pollInterval
+			) {
+				await new Promise((resolve) =>
+					setTimeout(resolve, immediateRetryDelay),
+				);
 			} else {
 				await new Promise((resolve) => setTimeout(resolve, pollInterval));
 			}
@@ -198,12 +203,15 @@ async function pollSummarizeJobStatus(
 
 			// Log timing information for debugging
 			if (statusResponse.status !== lastStatus) {
-				console.log(`[SummarizeJob] Status changed: ${lastStatus} -> ${statusResponse.status}`, {
-					jobId,
-					attempt,
-					pollDuration,
-					elapsed: Date.now() - startTime,
-				});
+				console.log(
+					`[SummarizeJob] Status changed: ${lastStatus} -> ${statusResponse.status}`,
+					{
+						jobId,
+						attempt,
+						pollDuration,
+						elapsed: Date.now() - startTime,
+					},
+				);
 				lastStatus = statusResponse.status;
 			}
 
@@ -228,17 +236,18 @@ async function pollSummarizeJobStatus(
 					// This might indicate a race condition - retry immediately
 					if (completedDetectedAt === null) {
 						completedDetectedAt = Date.now();
-						console.log(`[SummarizeJob] Completed status detected but summary not available, retrying immediately`, {
-							jobId,
-							attempt,
-						});
+						console.log(
+							`[SummarizeJob] Completed status detected but summary not available, retrying immediately`,
+							{
+								jobId,
+								attempt,
+							},
+						);
 					}
 					// Continue polling to get the summary
 				}
 			} else if (statusResponse.status === "failed") {
-				throw new Error(
-					statusResponse.error_message || "Summarization failed",
-				);
+				throw new Error(statusResponse.error_message || "Summarization failed");
 			}
 			// Continue polling for "pending" or "running"
 		} catch (error) {
@@ -312,7 +321,7 @@ export async function streamSummarizeArticleClient(
 	articleId?: string,
 	content?: string,
 	title?: string,
-	signal?: AbortSignal
+	signal?: AbortSignal,
 ): Promise<ReadableStreamDefaultReader<Uint8Array>> {
 	const payload: Record<string, unknown> = {
 		feed_url: feedUrl,

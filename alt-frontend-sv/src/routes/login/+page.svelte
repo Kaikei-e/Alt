@@ -1,52 +1,52 @@
 <script lang="ts">
-  import type { UiNode } from "@ory/client";
-  import { Button } from "$lib/components/ui/button";
-  import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-  } from "$lib/components/ui/card";
-  import { Input } from "$lib/components/ui/input";
-  import { Label } from "$lib/components/ui/label";
-  import type { PageData } from "./$types";
+import type { UiNode } from "@ory/client";
+import { Button } from "$lib/components/ui/button";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardFooter,
+	CardHeader,
+	CardTitle,
+} from "$lib/components/ui/card";
+import { Input } from "$lib/components/ui/input";
+import { Label } from "$lib/components/ui/label";
+import type { PageData } from "./$types";
 
-  const { data }: { data: PageData } = $props();
-  // This page always redirects, so data is never, but we need to handle the type
-  const flow = $derived(
-    (
-      data as {
-        flow?: {
-          ui: {
-            nodes: UiNode[];
-            action?: string;
-            method?: string;
-            messages?: Array<{ text: string }>;
-          };
-        };
-      }
-    )?.flow,
-  );
+const { data }: { data: PageData } = $props();
+// This page always redirects, so data is never, but we need to handle the type
+const flow = $derived(
+	(
+		data as {
+			flow?: {
+				ui: {
+					nodes: UiNode[];
+					action?: string;
+					method?: string;
+					messages?: Array<{ text: string }>;
+				};
+			};
+		}
+	)?.flow,
+);
 
-  // Helper to find node by name
-  function getNode(name: string): UiNode | undefined {
-    if (!flow) return undefined;
-    return flow.ui.nodes.find(
-      (n: UiNode) => (n.attributes as { name?: string }).name === name,
-    );
-  }
+// Helper to find node by name
+function getNode(name: string): UiNode | undefined {
+	if (!flow) return undefined;
+	return flow.ui.nodes.find(
+		(n: UiNode) => (n.attributes as { name?: string }).name === name,
+	);
+}
 
-  // Helper to get value from node
-  function getValue(node: UiNode | undefined): string {
-    return (node?.attributes as { value?: string })?.value || "";
-  }
+// Helper to get value from node
+function getValue(node: UiNode | undefined): string {
+	return (node?.attributes as { value?: string })?.value || "";
+}
 
-  // Helper to get error message
-  function getError(node: UiNode | undefined): string {
-    return node?.messages?.map((m) => m.text).join(" ") || "";
-  }
+// Helper to get error message
+function getError(node: UiNode | undefined): string {
+	return node?.messages?.map((m) => m.text).join(" ") || "";
+}
 </script>
 
 <svelte:head>
