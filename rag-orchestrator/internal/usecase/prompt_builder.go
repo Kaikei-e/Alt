@@ -74,7 +74,7 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 		"   ## Summary",
 		"   [Conclusion with key takeaways]",
 		"",
-		"5. Target length: 200-500 words depending on available context.",
+		"5. Target length: 300-700 words depending on available context.",
 		"6. You MUST include citations for your statements using the metadata from the context.",
 		"   - The \"citations\" array in your JSON output must list every chunk_id used in your answer.",
 		"   - In the text of your answer, refer to the source by appending [chunk_id] at the end of sentences.",
