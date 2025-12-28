@@ -10,7 +10,7 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"lint": "biome check",
+		"lint": "biome lint --write",
 		"format": "biome format --write",
 		"test": "bun run test:unit && bun run test:component",
 		"test:unit": "vitest run -c vitest.unit.config.ts",

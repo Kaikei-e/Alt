@@ -1,8 +1,8 @@
 <script lang="ts">
+import { onMount } from "svelte";
 import { getOverview } from "$lib/api/client/dashboard";
 import type { RecentActivity, TimeWindow } from "$lib/schema/dashboard";
 import { TIME_WINDOWS } from "$lib/schema/dashboard";
-import { onMount } from "svelte";
 
 interface Props {
 	windowSeconds: number;

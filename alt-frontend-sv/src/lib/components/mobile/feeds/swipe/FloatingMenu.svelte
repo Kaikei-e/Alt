@@ -1,5 +1,6 @@
 <script lang="ts">
 import {
+	BirdIcon,
 	CalendarRange,
 	ChartBar,
 	Eye,
@@ -14,7 +15,6 @@ import {
 	Search,
 	Star,
 	X,
-	BirdIcon,
 } from "@lucide/svelte";
 import { onMount } from "svelte";
 import { browser } from "$app/environment";

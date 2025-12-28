@@ -1,17 +1,17 @@
 <script lang="ts">
-import { ArrowLeft, Home, RefreshCw, Trash2, Plus } from "@lucide/svelte";
+import { ArrowLeft, Home, Plus, RefreshCw, Trash2 } from "@lucide/svelte";
+import * as v from "valibot";
 import { goto } from "$app/navigation";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
-import { feedUrlSchema } from "$lib/schema/validation/feedUrlSchema";
-import type { FeedLink } from "$lib/schema/feedLink";
 import {
 	deleteFeedLinkClient,
 	listFeedLinksClient,
 	registerRssFeedClient,
 } from "$lib/api/client";
-import * as v from "valibot";
+import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
+import { Button } from "$lib/components/ui/button";
+import { Input } from "$lib/components/ui/input";
+import type { FeedLink } from "$lib/schema/feedLink";
+import { feedUrlSchema } from "$lib/schema/validation/feedUrlSchema";
 
 interface PageData {
 	feedLinks: FeedLink[];

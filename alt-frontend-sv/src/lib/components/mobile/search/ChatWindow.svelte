@@ -1,13 +1,13 @@
 <script lang="ts">
-import { SendHorizontal, Loader } from "@lucide/svelte";
+import { Loader, SendHorizontal } from "@lucide/svelte";
 import { tick } from "svelte";
 import { base } from "$app/paths";
+import augurAvatar from "$lib/assets/augur-mobile.png";
+import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
 import { Button } from "$lib/components/ui/button";
 import { Input } from "$lib/components/ui/input";
-import { processAugurStreamingText } from "$lib/utils/streamingRenderer";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
-import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
-import augurAvatar from "$lib/assets/augur-mobile.png";
+import { processAugurStreamingText } from "$lib/utils/streamingRenderer";
 
 type Citation = {
 	ChunkText: string;

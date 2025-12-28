@@ -1,8 +1,8 @@
 <script lang="ts">
-import { Archive, ExternalLink, BookOpen } from "@lucide/svelte";
+import { Archive, BookOpen, ExternalLink } from "@lucide/svelte";
+import { archiveContentClient } from "$lib/api/client";
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
-import { archiveContentClient } from "$lib/api/client";
 import FeedDetails from "./FeedDetails.svelte";
 
 interface Props {

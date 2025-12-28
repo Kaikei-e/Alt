@@ -11,8 +11,8 @@ import { fade } from "svelte/transition";
 import { type SwipeDirection, swipe } from "$lib/actions/swipe";
 import {
 	getFeedContentOnTheFlyClient,
-	summarizeArticleClient,
 	streamSummarizeArticleClient,
+	summarizeArticleClient,
 } from "$lib/api/client";
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";

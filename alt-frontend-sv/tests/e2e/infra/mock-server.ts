@@ -1,7 +1,7 @@
-import http from "http";
-import url from "url";
 import fs from "fs";
+import http from "http";
 import path from "path";
+import url from "url";
 
 // Constants
 const KRATOS_PORT = 4001;

@@ -1,8 +1,8 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { getRecapJobs } from "$lib/api/client/dashboard";
-import type { RecapJob } from "$lib/schema/dashboard";
 import { Button } from "$lib/components/ui/button";
+import type { RecapJob } from "$lib/schema/dashboard";
 
 interface Props {
 	windowSeconds: number;

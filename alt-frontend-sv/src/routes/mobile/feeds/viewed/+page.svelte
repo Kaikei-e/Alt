@@ -1,6 +1,6 @@
 <script lang="ts">
-import ViewedFeedsClient from "$lib/components/mobile/ViewedFeedsClient.svelte";
 import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
+import ViewedFeedsClient from "$lib/components/mobile/ViewedFeedsClient.svelte";
 </script>
 
 <div

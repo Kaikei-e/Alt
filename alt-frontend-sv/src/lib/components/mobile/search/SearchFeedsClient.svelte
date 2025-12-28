@@ -2,9 +2,9 @@
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import type { SearchFeedItem, SearchQuery } from "$lib/schema/search";
-import SearchWindow from "./SearchWindow.svelte";
-import SearchResults from "./SearchResults.svelte";
 import FloatingMenu from "../feeds/swipe/FloatingMenu.svelte";
+import SearchResults from "./SearchResults.svelte";
+import SearchWindow from "./SearchWindow.svelte";
 
 let searchQuery = $state<SearchQuery>({ query: "" });
 let results = $state<SearchFeedItem[]>([]);

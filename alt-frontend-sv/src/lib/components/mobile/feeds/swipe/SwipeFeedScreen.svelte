@@ -3,10 +3,10 @@ import { onMount } from "svelte";
 import { fade, fly } from "svelte/transition";
 import { browser } from "$app/environment";
 import {
+	getFeedContentOnTheFlyClient,
 	getFeedsWithCursorClient,
 	getReadFeedsWithCursorClient,
 	updateFeedReadStatusClient,
-	getFeedContentOnTheFlyClient,
 } from "$lib/api/client";
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";

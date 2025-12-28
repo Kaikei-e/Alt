@@ -1,6 +1,6 @@
-import type { RequestHandler } from "./$types";
 import { error } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
+import type { RequestHandler } from "./$types";
 
 export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 	const { messages } = await request.json();

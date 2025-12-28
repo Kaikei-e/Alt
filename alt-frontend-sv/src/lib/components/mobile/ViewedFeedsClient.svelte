@@ -1,8 +1,8 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
-import { getReadFeedsWithCursorClient } from "$lib/api/client";
 import { infiniteScroll } from "$lib/actions/infinite-scroll";
+import { getReadFeedsWithCursorClient } from "$lib/api/client";
 import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
 import EmptyViewedFeedsState from "./EmptyViewedFeedsState.svelte";

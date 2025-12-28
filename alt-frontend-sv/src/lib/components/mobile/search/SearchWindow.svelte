@@ -1,11 +1,11 @@
 <script lang="ts">
+import { Loader } from "@lucide/svelte";
 import * as v from "valibot";
 import { searchFeedsClient } from "$lib/api/client";
-import { transformFeedSearchResult } from "$lib/utils/transformFeedSearchResult";
-import type { SearchFeedItem, SearchQuery } from "$lib/schema/search";
 import { Button } from "$lib/components/ui/button";
 import { Input } from "$lib/components/ui/input";
-import { Loader } from "@lucide/svelte";
+import type { SearchFeedItem, SearchQuery } from "$lib/schema/search";
+import { transformFeedSearchResult } from "$lib/utils/transformFeedSearchResult";
 
 interface Props {
 	searchQuery: SearchQuery;

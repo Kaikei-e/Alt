@@ -3,8 +3,8 @@ import { Loader } from "@lucide/svelte";
 import { browser } from "$app/environment";
 import { infiniteScroll } from "$lib/actions/infinite-scroll";
 import { searchFeedsClient } from "$lib/api/client";
-import { transformFeedSearchResult } from "$lib/utils/transformFeedSearchResult";
 import type { SearchFeedItem } from "$lib/schema/search";
+import { transformFeedSearchResult } from "$lib/utils/transformFeedSearchResult";
 import SearchResultItem from "./SearchResultItem.svelte";
 
 interface Props {

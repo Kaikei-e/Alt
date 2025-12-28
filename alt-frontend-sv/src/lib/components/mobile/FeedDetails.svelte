@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Archive, Star, Loader2, Sparkles } from "@lucide/svelte";
+import { Archive, Loader2, Sparkles, Star } from "@lucide/svelte";
 import { tick, untrack } from "svelte";
 import { fade } from "svelte/transition";
 import { browser } from "$app/environment";
@@ -10,12 +10,12 @@ import {
 	getArticleSummaryClient,
 	getFeedContentOnTheFlyClient,
 	registerFavoriteFeedClient,
-	summarizeArticleClient,
 	streamSummarizeArticleClient,
+	summarizeArticleClient,
 } from "$lib/api/client";
-import { processSummarizeStreamingText } from "$lib/utils/streamingRenderer";
 import { Button, buttonVariants } from "$lib/components/ui/button";
 import * as Sheet from "$lib/components/ui/sheet";
+import { processSummarizeStreamingText } from "$lib/utils/streamingRenderer";
 import RenderFeedDetails from "./RenderFeedDetails.svelte";
 
 interface Props {

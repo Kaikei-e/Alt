@@ -70,7 +70,7 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 		// Determine error type and status code
 		// @ory/client SDK may return ApiError with statusCode property
 		let errorStatus = 401;
-		let errorMessage = error instanceof Error ? error.message : String(error);
+		const errorMessage = error instanceof Error ? error.message : String(error);
 
 		// Check for statusCode in error object (ApiError from @ory/client)
 		if (error && typeof error === "object") {

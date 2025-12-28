@@ -1,13 +1,13 @@
 <script lang="ts">
-import { onMount } from "svelte";
 import { BookOpen, FileText, Layers, Rss } from "@lucide/svelte";
-import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
+import { onMount } from "svelte";
 import {
 	getDetailedFeedStatsClient,
 	getUnreadCountClient,
 } from "$lib/api/client/feeds";
-import type { DetailedFeedStatsSummary } from "$lib/schema/stats";
+import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
 import { useSSEFeedsStats } from "$lib/hooks/useSSEFeedsStats.svelte";
+import type { DetailedFeedStatsSummary } from "$lib/schema/stats";
 
 let stats: DetailedFeedStatsSummary | null = $state(null);
 let unreadCount = $state(0);

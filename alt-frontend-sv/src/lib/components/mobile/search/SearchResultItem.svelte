@@ -1,10 +1,10 @@
 <script lang="ts">
-import { SquareArrowOutUpRight, Loader2 } from "@lucide/svelte";
-import { Button } from "$lib/components/ui/button";
-import FeedDetails from "$lib/components/mobile/FeedDetails.svelte";
-import type { SearchFeedItem } from "$lib/schema/search";
+import { Loader2, SquareArrowOutUpRight } from "@lucide/svelte";
 import type { FetchArticleSummaryResponse } from "$lib/api/client";
 import { getArticleSummaryClient } from "$lib/api/client";
+import FeedDetails from "$lib/components/mobile/FeedDetails.svelte";
+import { Button } from "$lib/components/ui/button";
+import type { SearchFeedItem } from "$lib/schema/search";
 
 interface Props {
 	result: SearchFeedItem;

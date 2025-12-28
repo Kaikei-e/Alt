@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Cpu, HardDrive, Activity, Server, BarChart3 } from "@lucide/svelte";
+import { Activity, BarChart3, Cpu, HardDrive, Server } from "@lucide/svelte";
 import { onMount } from "svelte";
 
 interface SystemStats {

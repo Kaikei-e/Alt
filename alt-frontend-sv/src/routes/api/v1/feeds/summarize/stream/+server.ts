@@ -379,7 +379,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		let chunksForwarded = 0;
 
 		// Shared state for cleanup (accessible from both start and cancel)
-		let flushInterval: ReturnType<typeof setInterval> | null = null;
+		const flushInterval: ReturnType<typeof setInterval> | null = null;
 
 		const stream = new ReadableStream({
 			async start(controller) {

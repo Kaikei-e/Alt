@@ -2,11 +2,11 @@
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import { get7DaysRecapClient } from "$lib/api/client";
-import type { RecapSummary } from "$lib/schema/recap";
 import EmptyFeedState from "$lib/components/mobile/EmptyFeedState.svelte";
-import SwipeRecapScreen from "$lib/components/mobile/recap/SwipeRecapScreen.svelte";
 import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
+import SwipeRecapScreen from "$lib/components/mobile/recap/SwipeRecapScreen.svelte";
 import { Button } from "$lib/components/ui/button";
+import type { RecapSummary } from "$lib/schema/recap";
 
 let data = $state<RecapSummary | null>(null);
 let isInitialLoading = $state(true);

@@ -1,11 +1,11 @@
-import { callClientAPI } from "./core";
 import type {
 	AdminJob,
 	LogError,
+	RecapJob,
 	RecentActivity,
 	SystemMetric,
-	RecapJob,
 } from "$lib/schema/dashboard";
+import { callClientAPI } from "./core";
 
 export async function getMetrics(
 	metricType?: string,

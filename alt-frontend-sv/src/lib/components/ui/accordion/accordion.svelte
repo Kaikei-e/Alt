@@ -1,6 +1,6 @@
 <script lang="ts">
 // @biome-ignore lint/style/useImportType: AccordionPrimitive is used as a component, not just a type
-import { Accordion as AccordionPrimitive } from "bits-ui";
+import type { Accordion as AccordionPrimitive } from "bits-ui";
 
 let {
 	ref = $bindable(null),

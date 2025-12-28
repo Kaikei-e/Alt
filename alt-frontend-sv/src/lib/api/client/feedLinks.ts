@@ -1,5 +1,5 @@
-import { callClientAPI } from "./core";
 import type { FeedLink } from "$lib/schema/feedLink";
+import { callClientAPI } from "./core";
 
 /**
  * RSSフィードリンク一覧を取得（クライアントサイド）

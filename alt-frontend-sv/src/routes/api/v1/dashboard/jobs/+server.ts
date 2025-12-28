@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from "@sveltejs/kit";
-import { getBackendToken } from "$lib/api";
 import { env } from "$env/dynamic/private";
+import { getBackendToken } from "$lib/api";
 
 const BACKEND_BASE_URL = env.BACKEND_BASE_URL || "http://alt-backend:9000";
 

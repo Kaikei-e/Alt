@@ -14,11 +14,17 @@ export {
 	type MessageResponse,
 	registerFavoriteFeedClient,
 	type SummarizeArticleResponse,
-	summarizeArticleClient,
 	streamSummarizeArticleClient,
+	summarizeArticleClient,
 } from "./articles";
 // 共通のAPI呼び出しロジック
 export { callClientAPI } from "./core";
+// フィードリンク管理関連のAPI
+export {
+	deleteFeedLinkClient,
+	listFeedLinksClient,
+	registerRssFeedClient,
+} from "./feedLinks";
 // フィード関連のAPI
 export {
 	getFeedsWithCursorClient,
@@ -26,11 +32,5 @@ export {
 	searchFeedsClient,
 	updateFeedReadStatusClient,
 } from "./feeds";
-// フィードリンク管理関連のAPI
-export {
-	deleteFeedLinkClient,
-	listFeedLinksClient,
-	registerRssFeedClient,
-} from "./feedLinks";
 // リキャップ関連のAPI
 export { get7DaysRecapClient } from "./recap";

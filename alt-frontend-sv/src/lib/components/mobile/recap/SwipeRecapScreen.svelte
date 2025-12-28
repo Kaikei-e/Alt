@@ -1,7 +1,7 @@
 <script lang="ts">
 import { fly } from "svelte/transition";
-import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
 import { Button } from "$lib/components/ui/button";
+import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
 import SwipeRecapCard from "./SwipeRecapCard.svelte";
 
 interface Props {

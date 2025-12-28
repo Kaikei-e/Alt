@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { render, fireEvent, screen, waitFor } from "@testing-library/svelte";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import ChatWindow from "./ChatWindow.svelte";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as streamingRenderer from "$lib/utils/streamingRenderer";
+import ChatWindow from "./ChatWindow.svelte";
 
 // Mock scrollIntoView
 window.HTMLElement.prototype.scrollIntoView = vi.fn();
