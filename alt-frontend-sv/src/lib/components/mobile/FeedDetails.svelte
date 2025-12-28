@@ -268,22 +268,20 @@
 >
 	<Sheet.Content
 		side="bottom"
-		class="max-w-[500px] h-[85vh] bg-[#dbdbdb] border border-white/10 p-0 gap-0 flex flex-col overflow-hidden rounded-2xl shadow-2xl p-4"
+		class="max-w-[500px] h-[85vh] bg-surface-bg text-text-primary border-2 border-surface-border shadow-2xl rounded-2xl p-4 flex flex-col overflow-hidden gap-0 p-0"
 	>
 		<!-- Header -->
 		<Sheet.Header
-			class="flex items-center justify-between p-4 border-b border-white/10 shrink-0"
+			class="flex items-center justify-between p-4 bg-white border-b-2 border-surface-border shrink-0"
 		>
-			<Sheet.Title
-				class="text-lg font-bold text-black break-words line-clamp-3 pr-4"
-			>
+			<Sheet.Title class="text-xl font-bold text-text-primary break-words line-clamp-3 pr-4">
 				{feedTitle || "Article Details"}
 			</Sheet.Title>
 		</Sheet.Header>
 
 		<!-- Content -->
 		<div
-			class="flex-1 overflow-y-auto p-4 scrollable-content"
+			class="flex-1 overflow-y-auto p-4 bg-[#f8f8f8] scrollable-content"
 			id="summary-content"
 		>
 			{#if feedDetails || articleSummary}
@@ -304,21 +302,16 @@
 			{#if summary}
 				<div
 					id="summary-section"
-					class="mt-6 p-4 rounded-xl border-2 glass transition-all duration-300"
-					style="
-							border-color: var(--surface-border);
-							background: var(--surface-bg);
-						"
+					class="mt-6 p-5 rounded-lg border-2 border-alt-primary bg-white shadow-md"
 					transition:fade={{ duration: 200 }}
 				>
-					<h3
-						class="text-lg font-bold mb-3 flex items-center gap-2"
-						style="color: var(--text-primary);"
-					>
-						<Sparkles size={20} class="text-purple-500" />
-						Article Summary
-					</h3>
-					<p class="leading-relaxed text-base" style="color: var(--text-primary);">
+					<div class="flex items-center gap-2 mb-3 pb-2 border-b border-surface-border">
+						<Sparkles size={20} class="text-alt-primary" />
+						<h3 class="text-lg font-bold text-text-primary">
+							Article Summary
+						</h3>
+					</div>
+					<p class="leading-relaxed text-base text-text-primary whitespace-pre-wrap">
 						{summary}
 					</p>
 				</div>
@@ -335,12 +328,12 @@
 
 		<!-- Footer Actions -->
 		<Sheet.Footer
-			class="p-4 border-t border-black/10 bg-[#dbdbdb] shrink-0 flex-row justify-end gap-3 sm:justify-end"
+			class="p-4 bg-[#e8e8e8] border-t-2 border-surface-border shrink-0 flex-row justify-end gap-3 sm:justify-end"
 		>
 			<Button
 				variant="outline"
 				size="sm"
-				class="rounded-full border-white/20 text-black hover:bg-black/10 hover:text-black min-w-[100px] transition-all duration-200"
+				class="rounded-full border-alt-secondary text-text-primary hover:bg-alt-secondary hover:text-white min-w-[100px] transition-all duration-200"
 				onclick={async () => {
 					if (!feedURL) return;
 					isFavoriting = true;
@@ -362,7 +355,7 @@
 			<Button
 				variant="outline"
 				size="sm"
-				class="rounded-full border-white/20 text-black hover:bg-black/10 hover:text-black min-w-[100px] transition-all duration-200"
+				class="rounded-full border-alt-secondary text-text-primary hover:bg-alt-secondary hover:text-white min-w-[100px] transition-all duration-200"
 				onclick={async () => {
 					if (!feedURL) return;
 					isArchiving = true;
@@ -383,7 +376,7 @@
 
 			<Button
 				size="sm"
-				class="rounded-full font-bold min-w-[120px] text-black hover:bg-black/10 hover:text-black transition-all duration-200"
+				class="rounded-full font-bold min-w-[120px] bg-alt-primary text-white hover:bg-alt-secondary active:scale-95 transition-all duration-200"
 				onclick={async () => {
 					if (!feedURL) return;
 
@@ -533,21 +526,46 @@
 </Sheet.Root>
 
 <style>
+	/* Improve text rendering */
+	:global(.scrollable-content) {
+		font-smoothing: antialiased;
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+		text-rendering: optimizeLegibility;
+	}
+
+	/* Better line height for readability */
+	:global(.scrollable-content p) {
+		line-height: 1.7;
+		margin-bottom: 1em;
+	}
+
+	/* Heading hierarchy */
+	:global(.scrollable-content h1),
+	:global(.scrollable-content h2),
+	:global(.scrollable-content h3) {
+		font-weight: 700;
+		color: var(--text-primary);
+		margin-top: 1.5em;
+		margin-bottom: 0.5em;
+	}
+
+	/* Scrollbar styling */
 	:global(.scrollable-content::-webkit-scrollbar) {
-		width: 4px;
+		width: 6px;
 	}
 
 	:global(.scrollable-content::-webkit-scrollbar-track) {
-		background: transparent;
-		border-radius: 2px;
+		background: #f0f0f0;
+		border-radius: 3px;
 	}
 
 	:global(.scrollable-content::-webkit-scrollbar-thumb) {
-		background: rgba(255, 255, 255, 0.2);
-		border-radius: 2px;
+		background: #999999;
+		border-radius: 3px;
 	}
 
 	:global(.scrollable-content::-webkit-scrollbar-thumb:hover) {
-		background: rgba(255, 255, 255, 0.3);
+		background: #666666;
 	}
 </style>

@@ -17,15 +17,15 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 </script>
 
 {#if isLoading}
-	<p class="text-center py-8 italic" style="color: var(--text-secondary);">
+	<p class="text-center py-8 italic" style="color: var(--alt-text-secondary);">
 		Loading summary...
 	</p>
 {:else if error}
-	<p class="text-center py-8 italic" style="color: var(--text-secondary);">
+	<p class="text-center py-8 italic" style="color: var(--alt-text-secondary);">
 		{error}
 	</p>
 {:else if !feedDetails}
-	<p class="text-center py-8 italic" style="color: var(--text-secondary);">
+	<p class="text-center py-8 italic" style="color: var(--alt-text-secondary);">
 		Unable to load article content
 	</p>
 {:else if "matched_articles" in feedDetails && feedDetails.matched_articles?.length > 0}
@@ -33,24 +33,12 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 	{@const article = feedDetails.matched_articles[0]}
 	<div class="px-4 py-4">
 		<!-- Article Metadata -->
-		<div
-			class="mb-4 p-4 rounded-xl border"
-			style="
-				background: rgba(255, 255, 255, 0.05);
-				border-color: rgba(255, 255, 255, 0.1);
-			"
-		>
-			<h2
-				class="text-xl font-bold mb-2 leading-tight"
-				style="color: var(--text-primary);"
-			>
+		<div class="mb-4 p-4 rounded-lg border-2 border-surface-border bg-white shadow-sm">
+			<h2 class="text-xl font-bold mb-3 leading-tight text-text-primary">
 				{article.title}
 			</h2>
 
-			<div
-				class="flex items-center gap-3 text-base"
-				style="color: var(--text-secondary);"
-			>
+			<div class="flex items-center gap-3 text-sm text-text-secondary">
 				{#if article.author}
 					<p>By {article.author}</p>
 				{/if}
@@ -94,13 +82,13 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 	<div class="px-4 py-4">
 		<div
 			class="text-base leading-relaxed break-words"
-			style="color: var(--text-primary);"
+			style="color: var(--alt-text-primary);"
 		>
 			{@html feedDetails.content}
 		</div>
 	</div>
 {:else}
-	<p class="text-center py-8 italic" style="color: var(--text-secondary);">
+	<p class="text-center py-8 italic" style="color: var(--alt-text-secondary);">
 		Article content is not available
 	</p>
 {/if}
