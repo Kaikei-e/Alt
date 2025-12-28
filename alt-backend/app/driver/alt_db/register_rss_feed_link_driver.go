@@ -37,14 +37,7 @@ func (r *AltDBRepository) RegisterRSSFeedLink(ctx context.Context, link string) 
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			// Duplicate key error - this is a normal case, feed link already exists
 			logger.Logger.Info("RSS feed link already exists (duplicate)", "link", link, "sqlstate", pgErr.Code)
-			// Commit the transaction since this is not an error condition
-			// Note: defer will attempt to rollback, but it will be ignored since tx is closed after commit
-			if commitErr := tx.Commit(ctx); commitErr != nil {
-				logger.Logger.Error("Error committing transaction after duplicate detection", "error", commitErr)
-				return errors.New("error committing transaction after duplicate detection")
-			}
-			// Set err to nil to prevent defer from rolling back (though it will be ignored anyway)
-			err = nil
+			// Do not commit, as the transaction is aborted. Rollback is handled by defer or we can just return.
 			return nil // Return nil to indicate success (feed already registered)
 		}
 		// Other database errors
