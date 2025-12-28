@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Archive, Star, Loader2, Sparkles } from "@lucide/svelte";
-	import { tick } from "svelte";
+	import { tick, untrack } from "svelte";
 	import { fade } from "svelte/transition";
 	import { browser } from "$app/environment";
 	import {
@@ -131,7 +131,7 @@
 	});
 
 	// Reset state when feedURL changes (handling swipes)
-	let previousFeedUrl = $state(feedURL);
+	let previousFeedUrl = $state(untrack(() => feedURL));
 	$effect(() => {
 		if (feedURL !== previousFeedUrl) {
 			// Abort any ongoing summarization
@@ -528,7 +528,7 @@
 <style>
 	/* Improve text rendering */
 	:global(.scrollable-content) {
-		font-smoothing: antialiased;
+		/* font-smoothing removed */
 		-webkit-font-smoothing: antialiased;
 		-moz-osx-font-smoothing: grayscale;
 		text-rendering: optimizeLegibility;
