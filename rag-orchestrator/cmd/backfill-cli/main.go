@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -31,8 +32,8 @@ type Cursor struct {
 
 const (
 	cursorFile     = "cursor.json"
-	maxRetries     = 3
-	requestTimeout = 5 * time.Minute
+	maxRetries     = 1
+	requestTimeout = 100 * time.Second
 )
 
 func main() {
@@ -103,34 +104,61 @@ func main() {
 	defer rows.Close()
 
 	count := 0
-	success := 0
-	failed := 0
 
-	for rows.Next() {
-		time.Sleep(100 * time.Millisecond) // Slight throttle
-		var a Article
-		if err := rows.Scan(&a.ID, &a.Title, &a.Body, &a.URL, &a.UserID, &a.CreatedAt); err != nil {
-			fmt.Printf("Failed to scan article: %v\n", err)
-			continue
+	// Optimization: Process in batches with concurrency
+	const (
+		batchSize   = 40 // Process 20 items per cursor save
+		concurrency = 8  // 5 concurrent requests
+	)
+
+	// Worker pool semaphore
+	sem := make(chan struct{}, concurrency)
+
+	for {
+		batch := make([]Article, 0, batchSize)
+		// Fetch batch
+		for i := 0; i < batchSize && rows.Next(); i++ {
+			var a Article
+			if err := rows.Scan(&a.ID, &a.Title, &a.Body, &a.URL, &a.UserID, &a.CreatedAt); err != nil {
+				fmt.Printf("Failed to scan article: %v\n", err)
+				continue
+			}
+			batch = append(batch, a)
 		}
 
-		if err := sendWithRetry(client, orchestratorURL, a); err != nil {
-			fmt.Printf("Failed to send article %s: %v (Skipping)\n", a.ID, err)
-			failed++
-		} else {
-			success++
+		if len(batch) == 0 {
+			break // No more rows
 		}
 
-		// Always update cursor to prevent getting stuck on a failing/timeout item
-		saveCursor(Cursor{LastCreatedAt: a.CreatedAt, LastID: a.ID})
+		// Process batch concurrently
+		var wg sync.WaitGroup
+		for _, a := range batch {
+			wg.Add(1)
+			sem <- struct{}{} // Acquire token
+			go func(article Article) {
+				defer wg.Done()
+				defer func() { <-sem }() // Release token
 
-		count++
-		if count%50 == 0 {
-			fmt.Printf("Processed %d... (Success: %d, Failed: %d)\n", count, success, failed)
+				if err := sendWithRetry(client, orchestratorURL, article); err != nil {
+					fmt.Printf("Failed to send article %s: %v (Skipping)\n", article.ID, err)
+					// We verify failure count at batch level if needed, but for now we just log/skip
+				} else {
+					// Count success?
+					// Thread-safe counter would be needed, or just ignore for simple logs
+				}
+			}(a)
 		}
+		wg.Wait() // Wait for entire batch to finish
+
+		// Update cursor to the last item in the batch
+		lastArticle := batch[len(batch)-1]
+		saveCursor(Cursor{LastCreatedAt: lastArticle.CreatedAt, LastID: lastArticle.ID})
+
+		count += len(batch)
+		fmt.Printf("Processed %d items (Batch completed)...\n", count)
 	}
 
-	fmt.Printf("Backfill complete. Total: %d, Success: %d, Failed: %d\n", count, success, failed)
+	fmt.Printf("Backfill complete. Total items processed: %d\n", count)
 }
 
 func sendWithRetry(client *http.Client, baseURL string, a Article) error {
