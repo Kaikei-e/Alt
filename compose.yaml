@@ -1255,8 +1255,8 @@ services:
       - DB_USER=${RAG_DB_USER:-rag_user}
       - DB_PASSWORD_FILE=/run/secrets/rag_db_password
       - DB_NAME=${RAG_DB_NAME:-rag_db}
+      - EMBEDDER_EXTERNAL=${EMBEDDER_EXTERNAL}
       - AUGUR_EXTERNAL=${AUGUR_EXTERNAL}
-      - AUGUR_KNOWLEDGE_URL=${AUGUR_KNOWLEDGE_URL}
       - SEARCH_INDEXER_URL=http://search-indexer:9300
     secrets:
       - rag_db_password
@@ -1271,6 +1271,7 @@ services:
     labels:
       - rask.group=rag-orchestrator
     extra_hosts:
+      - "embedder-external:${EMBEDDER_EXTERNAL_HOST}"
       - "augur-external:${AUGUR_EXTERNAL_HOST}"
     logging:
       driver: "json-file"
