@@ -1,7 +1,7 @@
 <script lang="ts">
 import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
 // @biome-ignore lint/style/useImportType: AccordionPrimitive is used as a component, not just a type
-import type { Accordion as AccordionPrimitive } from "bits-ui";
+import { Accordion as AccordionPrimitive } from "bits-ui";
 import { cn, type WithoutChild } from "$lib/utils.js";
 
 let {
