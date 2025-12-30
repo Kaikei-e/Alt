@@ -90,3 +90,62 @@ export async function getUnreadCount(
 		count: Number(response.count),
 	};
 }
+
+/**
+ * Streaming feed stats via Server Streaming RPC.
+ */
+export interface StreamingFeedStats {
+	feedAmount: number;
+	unsummarizedFeedAmount: number;
+	totalArticles: number;
+	isHeartbeat: boolean;
+	timestamp: number;
+}
+
+/**
+ * Stream feed statistics in real-time via Connect-RPC Server Streaming.
+ *
+ * @param transport - The Connect transport to use
+ * @param onData - Callback when new stats are received
+ * @param onError - Callback on error (optional)
+ * @returns AbortController to cancel the stream
+ */
+export async function streamFeedStats(
+	transport: Transport,
+	onData: (stats: StreamingFeedStats) => void,
+	onError?: (error: Error) => void,
+): Promise<AbortController> {
+	const client = createFeedClient(transport);
+	const abortController = new AbortController();
+
+	// Start streaming in background
+	(async () => {
+		try {
+			const stream = client.streamFeedStats(
+				{},
+				{ signal: abortController.signal },
+			);
+
+			for await (const response of stream) {
+				const isHeartbeat = response.metadata?.isHeartbeat ?? false;
+
+				// Always call onData, even for heartbeats
+				// Components can decide whether to ignore heartbeats
+				onData({
+					feedAmount: Number(response.feedAmount),
+					unsummarizedFeedAmount: Number(response.unsummarizedFeedAmount),
+					totalArticles: Number(response.totalArticles),
+					isHeartbeat,
+					timestamp: Number(response.metadata?.timestamp ?? Date.now() / 1000),
+				});
+			}
+		} catch (error) {
+			// Only report error if not aborted
+			if (!abortController.signal.aborted && onError && error instanceof Error) {
+				onError(error);
+			}
+		}
+	})();
+
+	return abortController;
+}

@@ -5,7 +5,7 @@
  */
 
 import { onDestroy } from "svelte";
-import { createClientTransport } from "$lib/connect/transport";
+import { createClientTransport } from "$lib/connect/transport.client";
 import { streamFeedStats } from "$lib/connect/feeds";
 
 interface StreamingFeedStatsState {
