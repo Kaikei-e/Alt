@@ -115,13 +115,21 @@ func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens
 	// Unused now as we use Options["num_predict"]
 	_ = maxTokensPtr
 
+	// Determine Think level based on task complexity
+	// Short tasks (maxTokens < 300) use "low" - e.g., query expansion
+	// Longer tasks use "medium" - e.g., knowledge synthesis
+	think := "medium"
+	if maxTokens > 0 && maxTokens < 300 {
+		think = "low"
+	}
+
 	reqBody := chatRequest{
 		Model:     g.Model,
 		Messages:  []chatMessage{{Role: "user", Content: prompt}},
 		KeepAlive: -1,
 		Stream:    true,
 		// Format:    nil, // Force generic
-		Think: "low",
+		Think: think,
 		Options: map[string]interface{}{
 			"temperature": 0.2,
 		},
@@ -223,12 +231,20 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 		return nil, nil, fmt.Errorf("prompt is required for streaming generation")
 	}
 
+	// Determine Think level based on task complexity
+	// Short tasks (maxTokens < 300) use "low" - e.g., query expansion
+	// Longer tasks use "medium" - e.g., knowledge synthesis
+	think := "medium"
+	if maxTokens > 0 && maxTokens < 300 {
+		think = "low"
+	}
+
 	reqBody := chatRequest{
 		Model:     g.Model,
 		Messages:  []chatMessage{{Role: "user", Content: prompt}},
 		KeepAlive: -1,
 		Stream:    true,
-		Think:     "low",
+		Think:     think,
 		Options: map[string]interface{}{
 			"temperature": 0.2,
 		},
@@ -409,7 +425,7 @@ func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, m
 		KeepAlive: -1,
 		Stream:    false,
 		Format:    generationFormat,
-		Think:     "low",
+		Think:     "medium", // For complex knowledge synthesis tasks
 		Options: map[string]interface{}{
 			"temperature": 0.2,
 		},
@@ -489,7 +505,7 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 		KeepAlive: -1,
 		Stream:    true,
 		Format:    generationFormat,
-		Think:     "low",
+		Think:     "medium", // For complex knowledge synthesis tasks
 		Options: map[string]interface{}{
 			"temperature": 0.2,
 		},

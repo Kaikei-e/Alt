@@ -54,7 +54,8 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 	var sysSb strings.Builder
 	sysSb.WriteString("You are a helpful assistant.\n")
 	sysSb.WriteString("Reasoning: medium\n") // Implicitly setting reasoning level
-	sysSb.WriteString("Answer the User Query based ONLY on the Request Context.\n\n")
+	sysSb.WriteString("Your task is to answer the User Query by synthesizing information from the provided context documents.\n")
+	sysSb.WriteString("Even if the context does not contain a direct answer, extract and combine relevant facts to provide the best possible response.\n\n")
 
 	sysSb.WriteString("### Instructions\n")
 	sysSb.WriteString("1. Analyze the context documents provided below (identified by [index]).\n")
@@ -66,7 +67,8 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 	sysSb.WriteString("7. Output MUST be valid JSON with keys: \"answer\", \"citations\", \"fallback\", \"reason\".\n")
 	sysSb.WriteString("8. \"answer\": A Markdown string. Use [index] at the end of sentences to cite sources.\n")
 	sysSb.WriteString("9. \"citations\": A list of { \"chunk_id\": \"index\", \"reason\": \"...\" } for every chunk used.\n")
-	sysSb.WriteString("10. \"fallback\": Set to true ONLY if the context contains NO relevant information.\n")
+	sysSb.WriteString("10. \"fallback\": Set to true ONLY when the context documents are completely unrelated to the query topic.\n")
+	sysSb.WriteString("    If there is ANY tangentially related information, set fallback to false and provide a partial answer.\n")
 
 	if len(b.additionalInstructions) > 0 {
 		sysSb.WriteString("\n### Additional Rules\n")

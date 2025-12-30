@@ -98,6 +98,16 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		slog.Int("contexts_count", len(promptData.contexts)),
 		slog.String("retrieval_set_id", promptData.retrievalSetID))
 
+	// Log context titles for debugging
+	for i, ctx := range promptData.contexts {
+		u.logger.Debug("context_chunk_detail",
+			slog.String("request_id", requestID),
+			slog.Int("index", i+1),
+			slog.String("title", ctx.Title),
+			slog.Float64("score", float64(ctx.Score)),
+			slog.Int("chunk_length", len(ctx.ChunkText)))
+	}
+
 	// 3. Single Stage Generation
 	promptInput := PromptInput{
 		Query:         input.Query,
@@ -126,11 +136,18 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		promptSize += len(msg.Content)
 	}
 
+	firstTitle := ""
+	if len(promptData.contexts) > 0 {
+		firstTitle = promptData.contexts[0].Title
+	}
+
 	u.logger.Info("prompt_built",
 		slog.String("request_id", requestID),
 		slog.Int("chunks_used", len(promptData.contexts)),
 		slog.Int("prompt_size_chars", promptSize),
-		slog.Int("max_tokens", promptData.maxTokens))
+		slog.Int("max_tokens", promptData.maxTokens),
+		slog.String("first_context_title", firstTitle),
+		slog.String("query", input.Query))
 
 	generationStart := time.Now()
 	u.logger.Info("llm_generation_started",
@@ -174,7 +191,8 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.String("request_id", requestID),
 			slog.String("retrieval_set_id", promptData.retrievalSetID),
 			slog.String("reason", parsedAnswer.Reason),
-			slog.Int("contexts_available", len(promptData.contexts)))
+			slog.Int("contexts_available", len(promptData.contexts)),
+			slog.String("llm_raw_response", truncate(resp.Text, 500)))
 		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, parsedAnswer.Reason)
 	}
 
@@ -303,9 +321,12 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	}
 
 	contexts := retrieved.Contexts
+
+	// Limit to maxChunks
 	if len(contexts) > maxChunks {
 		contexts = contexts[:maxChunks]
 	}
+
 	result.contexts = contexts
 	result.expandedQueries = retrieved.ExpandedQueries
 
@@ -367,4 +388,11 @@ func (u *answerWithRAGUsecase) toPromptContexts(contexts []ContextItem) []Prompt
 func (u *answerWithRAGUsecase) generateCacheKey(input AnswerWithRAGInput) string {
 	// Simple key generation
 	return fmt.Sprintf("%s|%v|%s", input.Query, input.CandidateArticleIDs, input.Locale)
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

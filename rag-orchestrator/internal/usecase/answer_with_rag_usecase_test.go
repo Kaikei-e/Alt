@@ -101,9 +101,9 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 
 	// Expect Single Call
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		// Check for specific instruction
+		// Check for specific instruction (updated prompt)
 		return len(msgs) > 0 && msgs[0].Role == "system" &&
-			contains(msgs[0].Content, "Answer the User Query based ONLY on the Request Context") &&
+			contains(msgs[0].Content, "synthesizing information from the provided context documents") &&
 			contains(msgs[0].Content, "Value the information in the documents regardless of their language")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
@@ -122,7 +122,7 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 	builder := usecase.NewXMLPromptBuilder()
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 10, 512, "alpha-v1", "ja", testLogger)
+	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 7, 512, "alpha-v1", "ja", testLogger)
 
 	chunkID := uuid.New()
 	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
@@ -130,7 +130,7 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 			{
 				ChunkID:         chunkID,
 				ChunkText:       "Test chunk",
-				Score:           0.5,
+				Score:           0.6,
 				DocumentVersion: 1,
 			},
 		},
@@ -145,7 +145,7 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 }`
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
 		return len(msgs) > 0 && msgs[0].Role == "system" &&
-			contains(msgs[0].Content, "Answer the User Query based ONLY on the Request Context") &&
+			contains(msgs[0].Content, "synthesizing information from the provided context documents") &&
 			contains(msgs[0].Content, "Value the information in the documents regardless of their language")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: fallbackResponse, Done: true}, nil)
 
@@ -159,3 +159,4 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
+
