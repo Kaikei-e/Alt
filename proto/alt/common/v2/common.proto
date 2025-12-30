@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package alt.common.v2;
+
+option go_package = "alt/gen/proto/alt/common/v2;commonv2";
+
+// CursorRequest is used for cursor-based pagination requests
+message CursorRequest {
+  // Cursor for pagination (RFC3339 timestamp or opaque string)
+  optional string cursor = 1;
+  // Maximum number of items to return (default: 20, max: 100)
+  int32 limit = 2;
+}
+
+// CursorResponse contains pagination metadata
+message CursorResponse {
+  // Cursor for the next page
+  string next_cursor = 1;
+  // Whether there are more items available
+  bool has_more = 2;
+}

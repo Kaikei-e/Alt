@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package alt.feeds.v2;
+
+option go_package = "alt/gen/proto/alt/feeds/v2;feedsv2";
+
+// =============================================================================
+// Feed Stats Messages (Phase 1)
+// =============================================================================
+
+// GetFeedStatsRequest is the request for getting basic feed statistics
+message GetFeedStatsRequest {}
+
+// GetFeedStatsResponse contains basic feed statistics
+message GetFeedStatsResponse {
+  // Total number of feeds
+  int64 feed_amount = 1;
+  // Number of feeds with summaries
+  int64 summarized_feed_amount = 2;
+}
+
+// GetDetailedFeedStatsRequest is the request for getting detailed feed statistics
+message GetDetailedFeedStatsRequest {}
+
+// GetDetailedFeedStatsResponse contains detailed feed statistics
+message GetDetailedFeedStatsResponse {
+  // Total number of feeds
+  int64 feed_amount = 1;
+  // Total number of articles
+  int64 article_amount = 2;
+  // Number of unsummarized feeds
+  int64 unsummarized_feed_amount = 3;
+}
+
+// GetUnreadCountRequest is the request for getting unread article count
+message GetUnreadCountRequest {}
+
+// GetUnreadCountResponse contains the unread article count
+message GetUnreadCountResponse {
+  // Number of unread articles (today)
+  int64 count = 1;
+}
+
+// =============================================================================
+// Feed Stats Streaming Messages (Phase 2 - Server Streaming RPC)
+// =============================================================================
+
+// StreamFeedStatsRequest is the request for streaming feed statistics
+message StreamFeedStatsRequest {
+  // Empty for now - future: could add interval configuration
+}
+
+// StreamFeedStatsResponse contains feed statistics for streaming updates
+message StreamFeedStatsResponse {
+  // Total number of feeds
+  int64 feed_amount = 1;
+  // Number of unsummarized articles
+  int64 unsummarized_feed_amount = 2;
+  // Total number of articles
+  int64 total_articles = 3;
+  // Metadata about this response
+  ResponseMetadata metadata = 4;
+}
+
+// ResponseMetadata contains metadata about the streaming response
+message ResponseMetadata {
+  // Server timestamp (Unix seconds)
+  int64 timestamp = 1;
+  // Whether this is a heartbeat message (no data update)
+  bool is_heartbeat = 2;
+}
+
+// =============================================================================
+// FeedService Definition
+// =============================================================================
+
+// FeedService provides feed-related operations
+service FeedService {
+  // Unary RPCs (Phase 1)
+
+  // GetFeedStats returns basic feed statistics (feed count, summarized count)
+  rpc GetFeedStats(GetFeedStatsRequest) returns (GetFeedStatsResponse);
+
+  // GetDetailedFeedStats returns detailed feed statistics
+  rpc GetDetailedFeedStats(GetDetailedFeedStatsRequest) returns (GetDetailedFeedStatsResponse);
+
+  // GetUnreadCount returns the count of unread articles for today
+  rpc GetUnreadCount(GetUnreadCountRequest) returns (GetUnreadCountResponse);
+
+  // Server Streaming RPCs (Phase 2)
+
+  // StreamFeedStats streams real-time feed statistics updates
+  // Replaces SSE endpoint /v1/sse/feeds/stats
+  rpc StreamFeedStats(StreamFeedStatsRequest) returns (stream StreamFeedStatsResponse);
+}
