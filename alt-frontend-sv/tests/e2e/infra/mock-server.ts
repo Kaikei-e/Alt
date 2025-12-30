@@ -248,6 +248,69 @@ const backendServer = http.createServer((req, res) => {
 		return;
 	}
 
+	// Recap 7-days mock - matches RecapGenre schema
+	if (path === "/api/v1/recap/7days" || path === "/v1/recap/7days") {
+		res.writeHead(200);
+		res.end(
+			JSON.stringify({
+				genres: [
+					{
+						genre: "Technology",
+						summary: "Major developments in technology this week.",
+						topTerms: ["AI", "Web", "Frameworks"],
+						articleCount: 2,
+						clusterCount: 1,
+						evidenceLinks: [
+							{ articleId: "art-1", title: "GPT-5 Announced", sourceUrl: "https://example.com/gpt5", publishedAt: "2025-12-20T10:00:00Z", lang: "en" },
+							{ articleId: "art-2", title: "Claude Updates", sourceUrl: "https://example.com/claude", publishedAt: "2025-12-20T09:00:00Z", lang: "en" },
+						],
+						bullets: ["AI advances continue"],
+					},
+					{
+						genre: "AI/ML",
+						summary: "Latest papers and breakthroughs in ML.",
+						topTerms: ["ML", "Research"],
+						articleCount: 1,
+						clusterCount: 1,
+						evidenceLinks: [
+							{ articleId: "art-3", title: "New Architecture", sourceUrl: "https://example.com/arch", publishedAt: "2025-12-19T10:00:00Z", lang: "en" },
+						],
+						bullets: ["New architecture proposed"],
+					},
+				],
+			}),
+		);
+		return;
+	}
+
+	// Augur chat mock (streaming response) - uses SSE with event types
+	if (path === "/api/v1/augur/chat" || path === "/v1/augur/chat") {
+		res.writeHead(200, {
+			"Content-Type": "text/event-stream",
+			"Cache-Control": "no-cache",
+			Connection: "keep-alive",
+		});
+		// Use proper SSE format with `event: delta` for text chunks
+		res.write("event: delta\ndata: Based on your recent feeds, \n\n");
+		res.write("event: delta\ndata: here are the key trends: \n\n");
+		res.write("event: delta\ndata: AI development is accelerating.\n\n");
+		res.write("event: done\ndata: {}\n\n");
+		res.end();
+		return;
+	}
+
+	// Article content mock
+	if (path === "/api/v1/articles/content" || path === "/v1/articles/content") {
+		res.writeHead(200);
+		res.end(
+			JSON.stringify({
+				content: "<p>This is a mocked article content.</p>",
+				article_id: "mock-article-id",
+			}),
+		);
+		return;
+	}
+
 	res.writeHead(200); // Default to 200 OK empty json for others to prevent crashes, or 404?
 	// Ideally testing other endpoints will "fail" if they get empty json, but for SSR robustness empty is safer.
 	res.end(JSON.stringify({}));
