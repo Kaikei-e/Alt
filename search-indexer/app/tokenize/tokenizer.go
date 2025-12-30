@@ -43,34 +43,19 @@ func createSynonyms(tokenizer *tokenizer.Tokenizer, text string) map[string][]st
 	}
 }
 
-func processTagWithoutSynonyms(tags []string) []string {
-	tagWithoutSynonyms := make([]string, 0, len(tags))
-	for _, tag := range tags {
-		if !IsJapaneseTag(tag) {
-			tagWithoutSynonyms = append(tagWithoutSynonyms, tag)
-		}
-	}
-	return tagWithoutSynonyms
-}
-
 func ProcessTagToSynonyms(tokenizer *tokenizer.Tokenizer, tags []string) map[string][]string {
-	synonyms := make([]map[string][]string, 0, len(tags))
+	result := make(map[string][]string)
+
 	for _, tag := range tags {
 		if IsJapaneseTag(tag) {
-			synonyms = append(synonyms, createSynonyms(tokenizer, tag))
+			synonyms := createSynonyms(tokenizer, tag)
+			for k, v := range synonyms {
+				result[k] = v
+			}
 		}
 	}
 
-	if len(synonyms) == 0 {
-		nonJapaneseTags := processTagWithoutSynonyms(tags)
-		if len(nonJapaneseTags) == 0 {
-			// No tags to process, return empty map
-			return map[string][]string{}
-		}
-		return map[string][]string{
-			nonJapaneseTags[0]: nonJapaneseTags,
-		}
-	}
-
-	return synonyms[0]
+	// If no Japanese tags were processed, return empty map
+	// (non-Japanese tags don't need synonym processing)
+	return result
 }

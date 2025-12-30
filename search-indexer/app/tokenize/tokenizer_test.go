@@ -28,18 +28,20 @@ func TestProcessTagToSynonyms_AllJapaneseTags(t *testing.T) {
 	result := ProcessTagToSynonyms(tok, tags)
 	assert.NotNil(t, result)
 	assert.NotEmpty(t, result, "should return synonyms for Japanese tags")
+	// Check that both Japanese tags have synonyms
+	assert.Contains(t, result, "日本語")
+	assert.Contains(t, result, "テスト")
 }
 
 func TestProcessTagToSynonyms_AllEnglishTags(t *testing.T) {
 	tok, err := tokenizer.New(ipa.Dict(), tokenizer.OmitBosEos())
 	require.NoError(t, err)
 
-	// Test with only English tags
+	// Test with only English tags - no synonyms needed
 	tags := []string{"test", "english"}
 	result := ProcessTagToSynonyms(tok, tags)
 	assert.NotNil(t, result)
-	assert.NotEmpty(t, result, "should return map for English tags")
-	assert.Contains(t, result, "test", "should use first tag as key")
+	assert.Empty(t, result, "should return empty map for English-only tags (no synonyms needed)")
 }
 
 func TestProcessTagToSynonyms_MixedTags(t *testing.T) {
@@ -50,19 +52,23 @@ func TestProcessTagToSynonyms_MixedTags(t *testing.T) {
 	tags := []string{"test", "日本語", "english"}
 	result := ProcessTagToSynonyms(tok, tags)
 	assert.NotNil(t, result)
-	assert.NotEmpty(t, result, "should handle mixed tags")
+	// Only Japanese tags should have synonyms
+	assert.Contains(t, result, "日本語")
+	assert.NotContains(t, result, "test", "English tags should not be in synonyms")
+	assert.NotContains(t, result, "english", "English tags should not be in synonyms")
 }
 
 func TestProcessTagToSynonyms_OnlyJapaneseCharacters(t *testing.T) {
 	tok, err := tokenizer.New(ipa.Dict(), tokenizer.OmitBosEos())
 	require.NoError(t, err)
 
-	// Test with tags containing only Japanese characters (all filtered out)
+	// Test with tags containing only Japanese characters
 	tags := []string{"ひらがな", "カタカナ", "漢字"}
 	result := ProcessTagToSynonyms(tok, tags)
 	assert.NotNil(t, result)
 	// Japanese tags should generate synonyms
 	assert.NotEmpty(t, result)
+	assert.Len(t, result, 3, "should have synonyms for all 3 Japanese tags")
 }
 
 func TestIsJapaneseTag(t *testing.T) {
@@ -86,20 +92,4 @@ func TestIsJapaneseTag(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
-}
-
-func TestProcessTagWithoutSynonyms_EmptyArray(t *testing.T) {
-	// This should not panic even with empty array
-	result := processTagWithoutSynonyms([]string{})
-	assert.NotNil(t, result)
-	assert.Empty(t, result)
-}
-
-func TestProcessTagWithoutSynonyms_MixedTags(t *testing.T) {
-	tags := []string{"english", "日本語", "test"}
-	result := processTagWithoutSynonyms(tags)
-	assert.NotNil(t, result)
-	assert.Contains(t, result, "english")
-	assert.Contains(t, result, "test")
-	assert.NotContains(t, result, "日本語", "should filter out Japanese tags")
 }
