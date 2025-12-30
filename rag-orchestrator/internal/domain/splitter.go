@@ -34,7 +34,41 @@ func splitLongChunks(paragraphs []string) []string {
 
 			if chunkLen > 0 && chunkLen+spaceLen+sentenceLen > MaxChunkLength {
 				result = append(result, chunk)
-				chunk = sentence
+				chunk = ""
+				chunkLen = 0
+			}
+
+			// If sentence itself is too long, strictly split it
+			if utf8.RuneCountInString(sentence) > MaxChunkLength {
+				// If we have existing chunk content, flush it first
+				if chunk != "" {
+					result = append(result, chunk)
+					chunk = ""
+					chunkLen = 0
+				}
+
+				// Split the long sentence by MaxChunkLength
+				runes := []rune(sentence)
+				for len(runes) > 0 {
+					take := MaxChunkLength
+					if len(runes) < take {
+						take = len(runes)
+					}
+
+					// Avoid creating tiny chunks at the end if possible
+					if len(runes) == take && take < MinChunkLength && len(result) > 0 {
+						// Check if merging with previous is safe (e.g. up to 1.5x MaxChunkLength)
+						// We use 1500 as a safe upper bound, well within context limits
+						prevIdx := len(result) - 1
+						if utf8.RuneCountInString(result[prevIdx])+take < 1500 {
+							result[prevIdx] = result[prevIdx] + string(runes[:take])
+							break
+						}
+					}
+
+					result = append(result, string(runes[:take]))
+					runes = runes[take:]
+				}
 			} else {
 				if chunk != "" {
 					chunk += " "
