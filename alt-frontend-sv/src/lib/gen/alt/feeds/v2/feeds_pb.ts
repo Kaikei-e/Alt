@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/feeds/v2/feeds.proto.
  */
 export const file_alt_feeds_v2_feeds: GenFile = /*@__PURE__*/
-  fileDesc("ChhhbHQvZmVlZHMvdjIvZmVlZHMucHJvdG8SDGFsdC5mZWVkcy52MiIVChNHZXRGZWVkU3RhdHNSZXF1ZXN0IksKFEdldEZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEh4KFnN1bW1hcml6ZWRfZmVlZF9hbW91bnQYAiABKAMiHQobR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXF1ZXN0Im0KHEdldERldGFpbGVkRmVlZFN0YXRzUmVzcG9uc2USEwoLZmVlZF9hbW91bnQYASABKAMSFgoOYXJ0aWNsZV9hbW91bnQYAiABKAMSIAoYdW5zdW1tYXJpemVkX2ZlZWRfYW1vdW50GAMgASgDIhcKFUdldFVucmVhZENvdW50UmVxdWVzdCInChZHZXRVbnJlYWRDb3VudFJlc3BvbnNlEg0KBWNvdW50GAEgASgDIhgKFlN0cmVhbUZlZWRTdGF0c1JlcXVlc3QimgEKF1N0cmVhbUZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEiAKGHVuc3VtbWFyaXplZF9mZWVkX2Ftb3VudBgCIAEoAxIWCg50b3RhbF9hcnRpY2xlcxgDIAEoAxIwCghtZXRhZGF0YRgEIAEoCzIeLmFsdC5mZWVkcy52Mi5SZXNwb25zZU1ldGFkYXRhIjsKEFJlc3BvbnNlTWV0YWRhdGESEQoJdGltZXN0YW1wGAEgASgDEhQKDGlzX2hlYXJ0YmVhdBgCIAEoCDKSAwoLRmVlZFNlcnZpY2USVQoMR2V0RmVlZFN0YXRzEiEuYWx0LmZlZWRzLnYyLkdldEZlZWRTdGF0c1JlcXVlc3QaIi5hbHQuZmVlZHMudjIuR2V0RmVlZFN0YXRzUmVzcG9uc2USbQoUR2V0RGV0YWlsZWRGZWVkU3RhdHMSKS5hbHQuZmVlZHMudjIuR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXF1ZXN0GiouYWx0LmZlZWRzLnYyLkdldERldGFpbGVkRmVlZFN0YXRzUmVzcG9uc2USWwoOR2V0VW5yZWFkQ291bnQSIy5hbHQuZmVlZHMudjIuR2V0VW5yZWFkQ291bnRSZXF1ZXN0GiQuYWx0LmZlZWRzLnYyLkdldFVucmVhZENvdW50UmVzcG9uc2USYAoPU3RyZWFtRmVlZFN0YXRzEiQuYWx0LmZlZWRzLnYyLlN0cmVhbUZlZWRTdGF0c1JlcXVlc3QaJS5hbHQuZmVlZHMudjIuU3RyZWFtRmVlZFN0YXRzUmVzcG9uc2UwAUIkWiJhbHQvZ2VuL3Byb3RvL2FsdC9mZWVkcy92MjtmZWVkc3YyYgZwcm90bzM");
+  fileDesc("ChhhbHQvZmVlZHMvdjIvZmVlZHMucHJvdG8SDGFsdC5mZWVkcy52MiIVChNHZXRGZWVkU3RhdHNSZXF1ZXN0IksKFEdldEZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEh4KFnN1bW1hcml6ZWRfZmVlZF9hbW91bnQYAiABKAMiHQobR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXF1ZXN0Im0KHEdldERldGFpbGVkRmVlZFN0YXRzUmVzcG9uc2USEwoLZmVlZF9hbW91bnQYASABKAMSFgoOYXJ0aWNsZV9hbW91bnQYAiABKAMSIAoYdW5zdW1tYXJpemVkX2ZlZWRfYW1vdW50GAMgASgDIhcKFUdldFVucmVhZENvdW50UmVxdWVzdCInChZHZXRVbnJlYWRDb3VudFJlc3BvbnNlEg0KBWNvdW50GAEgASgDIhgKFlN0cmVhbUZlZWRTdGF0c1JlcXVlc3QimgEKF1N0cmVhbUZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEiAKGHVuc3VtbWFyaXplZF9mZWVkX2Ftb3VudBgCIAEoAxIWCg50b3RhbF9hcnRpY2xlcxgDIAEoAxIwCghtZXRhZGF0YRgEIAEoCzIeLmFsdC5mZWVkcy52Mi5SZXNwb25zZU1ldGFkYXRhIjsKEFJlc3BvbnNlTWV0YWRhdGESEQoJdGltZXN0YW1wGAEgASgDEhQKDGlzX2hlYXJ0YmVhdBgCIAEoCCJ/CghGZWVkSXRlbRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRITCgtkZXNjcmlwdGlvbhgDIAEoCRIMCgRsaW5rGAQgASgJEhEKCXB1Ymxpc2hlZBgFIAEoCRISCgpjcmVhdGVkX2F0GAYgASgJEg4KBmF1dGhvchgHIAEoCSJiChVHZXRVbnJlYWRGZWVkc1JlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAUSEQoEdmlldxgDIAEoCUgBiAEBQgkKB19jdXJzb3JCBwoFX3ZpZXciegoWR2V0VW5yZWFkRmVlZHNSZXNwb25zZRIkCgRkYXRhGAEgAygLMhYuYWx0LmZlZWRzLnYyLkZlZWRJdGVtEhgKC25leHRfY3Vyc29yGAIgASgJSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yIkQKE0dldFJlYWRGZWVkc1JlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAVCCQoHX2N1cnNvciJ4ChRHZXRSZWFkRmVlZHNSZXNwb25zZRIkCgRkYXRhGAEgAygLMhYuYWx0LmZlZWRzLnYyLkZlZWRJdGVtEhgKC25leHRfY3Vyc29yGAIgASgJSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yIkgKF0dldEZhdm9yaXRlRmVlZHNSZXF1ZXN0EhMKBmN1cnNvchgBIAEoCUgAiAEBEg0KBWxpbWl0GAIgASgFQgkKB19jdXJzb3IifAoYR2V0RmF2b3JpdGVGZWVkc1Jlc3BvbnNlEiQKBGRhdGEYASADKAsyFi5hbHQuZmVlZHMudjIuRmVlZEl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAlIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IiYQoSU2VhcmNoRmVlZHNSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEhMKBmN1cnNvchgCIAEoBUgAiAEBEhIKBWxpbWl0GAMgASgFSAGIAQFCCQoHX2N1cnNvckIICgZfbGltaXQidwoTU2VhcmNoRmVlZHNSZXNwb25zZRIkCgRkYXRhGAEgAygLMhYuYWx0LmZlZWRzLnYyLkZlZWRJdGVtEhgKC25leHRfY3Vyc29yGAIgASgFSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yMv0FCgtGZWVkU2VydmljZRJVCgxHZXRGZWVkU3RhdHMSIS5hbHQuZmVlZHMudjIuR2V0RmVlZFN0YXRzUmVxdWVzdBoiLmFsdC5mZWVkcy52Mi5HZXRGZWVkU3RhdHNSZXNwb25zZRJtChRHZXREZXRhaWxlZEZlZWRTdGF0cxIpLmFsdC5mZWVkcy52Mi5HZXREZXRhaWxlZEZlZWRTdGF0c1JlcXVlc3QaKi5hbHQuZmVlZHMudjIuR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXNwb25zZRJbCg5HZXRVbnJlYWRDb3VudBIjLmFsdC5mZWVkcy52Mi5HZXRVbnJlYWRDb3VudFJlcXVlc3QaJC5hbHQuZmVlZHMudjIuR2V0VW5yZWFkQ291bnRSZXNwb25zZRJgCg9TdHJlYW1GZWVkU3RhdHMSJC5hbHQuZmVlZHMudjIuU3RyZWFtRmVlZFN0YXRzUmVxdWVzdBolLmFsdC5mZWVkcy52Mi5TdHJlYW1GZWVkU3RhdHNSZXNwb25zZTABElsKDkdldFVucmVhZEZlZWRzEiMuYWx0LmZlZWRzLnYyLkdldFVucmVhZEZlZWRzUmVxdWVzdBokLmFsdC5mZWVkcy52Mi5HZXRVbnJlYWRGZWVkc1Jlc3BvbnNlElUKDEdldFJlYWRGZWVkcxIhLmFsdC5mZWVkcy52Mi5HZXRSZWFkRmVlZHNSZXF1ZXN0GiIuYWx0LmZlZWRzLnYyLkdldFJlYWRGZWVkc1Jlc3BvbnNlEmEKEEdldEZhdm9yaXRlRmVlZHMSJS5hbHQuZmVlZHMudjIuR2V0RmF2b3JpdGVGZWVkc1JlcXVlc3QaJi5hbHQuZmVlZHMudjIuR2V0RmF2b3JpdGVGZWVkc1Jlc3BvbnNlElIKC1NlYXJjaEZlZWRzEiAuYWx0LmZlZWRzLnYyLlNlYXJjaEZlZWRzUmVxdWVzdBohLmFsdC5mZWVkcy52Mi5TZWFyY2hGZWVkc1Jlc3BvbnNlQiRaImFsdC9nZW4vcHJvdG8vYWx0L2ZlZWRzL3YyO2ZlZWRzdjJiBnByb3RvMw");
 
 /**
  * GetFeedStatsRequest is the request for getting basic feed statistics
@@ -229,6 +229,335 @@ export const ResponseMetadataSchema: GenMessage<ResponseMetadata> = /*@__PURE__*
   messageDesc(file_alt_feeds_v2_feeds, 8);
 
 /**
+ * FeedItem represents a single feed/article item
+ *
+ * @generated from message alt.feeds.v2.FeedItem
+ */
+export type FeedItem = Message<"alt.feeds.v2.FeedItem"> & {
+  /**
+   * Unique identifier (typically the link URL)
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * Article title
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * Article description/excerpt (sanitized, truncated)
+   *
+   * @generated from field: string description = 3;
+   */
+  description: string;
+
+  /**
+   * Article URL
+   *
+   * @generated from field: string link = 4;
+   */
+  link: string;
+
+  /**
+   * Human-readable published date (e.g., "2 hours ago")
+   *
+   * @generated from field: string published = 5;
+   */
+  published: string;
+
+  /**
+   * RFC3339 timestamp for precise ordering
+   *
+   * @generated from field: string created_at = 6;
+   */
+  createdAt: string;
+
+  /**
+   * Author name (formatted from author/authors)
+   *
+   * @generated from field: string author = 7;
+   */
+  author: string;
+};
+
+/**
+ * Describes the message alt.feeds.v2.FeedItem.
+ * Use `create(FeedItemSchema)` to create a new message.
+ */
+export const FeedItemSchema: GenMessage<FeedItem> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 9);
+
+/**
+ * GetUnreadFeedsRequest is the request for fetching unread feeds with cursor
+ *
+ * @generated from message alt.feeds.v2.GetUnreadFeedsRequest
+ */
+export type GetUnreadFeedsRequest = Message<"alt.feeds.v2.GetUnreadFeedsRequest"> & {
+  /**
+   * Cursor for pagination (RFC3339 timestamp)
+   *
+   * @generated from field: optional string cursor = 1;
+   */
+  cursor?: string;
+
+  /**
+   * Maximum number of items to return (default: 20, max: 100)
+   *
+   * @generated from field: int32 limit = 2;
+   */
+  limit: number;
+
+  /**
+   * View mode: "swipe" for single-card response (optional)
+   *
+   * @generated from field: optional string view = 3;
+   */
+  view?: string;
+};
+
+/**
+ * Describes the message alt.feeds.v2.GetUnreadFeedsRequest.
+ * Use `create(GetUnreadFeedsRequestSchema)` to create a new message.
+ */
+export const GetUnreadFeedsRequestSchema: GenMessage<GetUnreadFeedsRequest> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 10);
+
+/**
+ * GetUnreadFeedsResponse contains unread feeds with pagination
+ *
+ * @generated from message alt.feeds.v2.GetUnreadFeedsResponse
+ */
+export type GetUnreadFeedsResponse = Message<"alt.feeds.v2.GetUnreadFeedsResponse"> & {
+  /**
+   * Feed items
+   *
+   * @generated from field: repeated alt.feeds.v2.FeedItem data = 1;
+   */
+  data: FeedItem[];
+
+  /**
+   * Cursor for the next page (null if no more)
+   *
+   * @generated from field: optional string next_cursor = 2;
+   */
+  nextCursor?: string;
+
+  /**
+   * Whether there are more items
+   *
+   * @generated from field: bool has_more = 3;
+   */
+  hasMore: boolean;
+};
+
+/**
+ * Describes the message alt.feeds.v2.GetUnreadFeedsResponse.
+ * Use `create(GetUnreadFeedsResponseSchema)` to create a new message.
+ */
+export const GetUnreadFeedsResponseSchema: GenMessage<GetUnreadFeedsResponse> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 11);
+
+/**
+ * GetReadFeedsRequest is the request for fetching read/viewed feeds with cursor
+ *
+ * @generated from message alt.feeds.v2.GetReadFeedsRequest
+ */
+export type GetReadFeedsRequest = Message<"alt.feeds.v2.GetReadFeedsRequest"> & {
+  /**
+   * Cursor for pagination (RFC3339 timestamp)
+   *
+   * @generated from field: optional string cursor = 1;
+   */
+  cursor?: string;
+
+  /**
+   * Maximum number of items to return (default: 32, max: 100)
+   *
+   * @generated from field: int32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message alt.feeds.v2.GetReadFeedsRequest.
+ * Use `create(GetReadFeedsRequestSchema)` to create a new message.
+ */
+export const GetReadFeedsRequestSchema: GenMessage<GetReadFeedsRequest> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 12);
+
+/**
+ * GetReadFeedsResponse contains read feeds with pagination
+ *
+ * @generated from message alt.feeds.v2.GetReadFeedsResponse
+ */
+export type GetReadFeedsResponse = Message<"alt.feeds.v2.GetReadFeedsResponse"> & {
+  /**
+   * Feed items
+   *
+   * @generated from field: repeated alt.feeds.v2.FeedItem data = 1;
+   */
+  data: FeedItem[];
+
+  /**
+   * Cursor for the next page
+   *
+   * @generated from field: optional string next_cursor = 2;
+   */
+  nextCursor?: string;
+
+  /**
+   * Whether there are more items
+   *
+   * @generated from field: bool has_more = 3;
+   */
+  hasMore: boolean;
+};
+
+/**
+ * Describes the message alt.feeds.v2.GetReadFeedsResponse.
+ * Use `create(GetReadFeedsResponseSchema)` to create a new message.
+ */
+export const GetReadFeedsResponseSchema: GenMessage<GetReadFeedsResponse> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 13);
+
+/**
+ * GetFavoriteFeedsRequest is the request for fetching favorite feeds with cursor
+ *
+ * @generated from message alt.feeds.v2.GetFavoriteFeedsRequest
+ */
+export type GetFavoriteFeedsRequest = Message<"alt.feeds.v2.GetFavoriteFeedsRequest"> & {
+  /**
+   * Cursor for pagination (RFC3339 timestamp)
+   *
+   * @generated from field: optional string cursor = 1;
+   */
+  cursor?: string;
+
+  /**
+   * Maximum number of items to return (default: 20, max: 100)
+   *
+   * @generated from field: int32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message alt.feeds.v2.GetFavoriteFeedsRequest.
+ * Use `create(GetFavoriteFeedsRequestSchema)` to create a new message.
+ */
+export const GetFavoriteFeedsRequestSchema: GenMessage<GetFavoriteFeedsRequest> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 14);
+
+/**
+ * GetFavoriteFeedsResponse contains favorite feeds with pagination
+ *
+ * @generated from message alt.feeds.v2.GetFavoriteFeedsResponse
+ */
+export type GetFavoriteFeedsResponse = Message<"alt.feeds.v2.GetFavoriteFeedsResponse"> & {
+  /**
+   * Feed items
+   *
+   * @generated from field: repeated alt.feeds.v2.FeedItem data = 1;
+   */
+  data: FeedItem[];
+
+  /**
+   * Cursor for the next page
+   *
+   * @generated from field: optional string next_cursor = 2;
+   */
+  nextCursor?: string;
+
+  /**
+   * Whether there are more items
+   *
+   * @generated from field: bool has_more = 3;
+   */
+  hasMore: boolean;
+};
+
+/**
+ * Describes the message alt.feeds.v2.GetFavoriteFeedsResponse.
+ * Use `create(GetFavoriteFeedsResponseSchema)` to create a new message.
+ */
+export const GetFavoriteFeedsResponseSchema: GenMessage<GetFavoriteFeedsResponse> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 15);
+
+/**
+ * SearchFeedsRequest is the request for searching feeds
+ *
+ * @generated from message alt.feeds.v2.SearchFeedsRequest
+ */
+export type SearchFeedsRequest = Message<"alt.feeds.v2.SearchFeedsRequest"> & {
+  /**
+   * Search query (required, non-empty)
+   *
+   * @generated from field: string query = 1;
+   */
+  query: string;
+
+  /**
+   * Offset for pagination (integer-based, not cursor)
+   *
+   * @generated from field: optional int32 cursor = 2;
+   */
+  cursor?: number;
+
+  /**
+   * Maximum number of items to return (default: 20, max: 100)
+   *
+   * @generated from field: optional int32 limit = 3;
+   */
+  limit?: number;
+};
+
+/**
+ * Describes the message alt.feeds.v2.SearchFeedsRequest.
+ * Use `create(SearchFeedsRequestSchema)` to create a new message.
+ */
+export const SearchFeedsRequestSchema: GenMessage<SearchFeedsRequest> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 16);
+
+/**
+ * SearchFeedsResponse contains search results with pagination
+ *
+ * @generated from message alt.feeds.v2.SearchFeedsResponse
+ */
+export type SearchFeedsResponse = Message<"alt.feeds.v2.SearchFeedsResponse"> & {
+  /**
+   * Search result items
+   *
+   * @generated from field: repeated alt.feeds.v2.FeedItem data = 1;
+   */
+  data: FeedItem[];
+
+  /**
+   * Next offset cursor (null if no more)
+   *
+   * @generated from field: optional int32 next_cursor = 2;
+   */
+  nextCursor?: number;
+
+  /**
+   * Whether there are more results
+   *
+   * @generated from field: bool has_more = 3;
+   */
+  hasMore: boolean;
+};
+
+/**
+ * Describes the message alt.feeds.v2.SearchFeedsResponse.
+ * Use `create(SearchFeedsResponseSchema)` to create a new message.
+ */
+export const SearchFeedsResponseSchema: GenMessage<SearchFeedsResponse> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 17);
+
+/**
  * FeedService provides feed-related operations
  *
  * Unary RPCs (Phase 1)
@@ -276,6 +605,50 @@ export const FeedService: GenService<{
     methodKind: "server_streaming";
     input: typeof StreamFeedStatsRequestSchema;
     output: typeof StreamFeedStatsResponseSchema;
+  },
+  /**
+   * GetUnreadFeeds returns unread feeds with cursor-based pagination
+   * Replaces GET /v1/feeds/fetch/cursor
+   *
+   * @generated from rpc alt.feeds.v2.FeedService.GetUnreadFeeds
+   */
+  getUnreadFeeds: {
+    methodKind: "unary";
+    input: typeof GetUnreadFeedsRequestSchema;
+    output: typeof GetUnreadFeedsResponseSchema;
+  },
+  /**
+   * GetReadFeeds returns read/viewed feeds with cursor-based pagination
+   * Replaces GET /v1/feeds/fetch/viewed/cursor
+   *
+   * @generated from rpc alt.feeds.v2.FeedService.GetReadFeeds
+   */
+  getReadFeeds: {
+    methodKind: "unary";
+    input: typeof GetReadFeedsRequestSchema;
+    output: typeof GetReadFeedsResponseSchema;
+  },
+  /**
+   * GetFavoriteFeeds returns favorite feeds with cursor-based pagination
+   * Replaces GET /v1/feeds/fetch/favorites/cursor
+   *
+   * @generated from rpc alt.feeds.v2.FeedService.GetFavoriteFeeds
+   */
+  getFavoriteFeeds: {
+    methodKind: "unary";
+    input: typeof GetFavoriteFeedsRequestSchema;
+    output: typeof GetFavoriteFeedsResponseSchema;
+  },
+  /**
+   * SearchFeeds searches for feeds by query with offset-based pagination
+   * Replaces POST /v1/feeds/search
+   *
+   * @generated from rpc alt.feeds.v2.FeedService.SearchFeeds
+   */
+  searchFeeds: {
+    methodKind: "unary";
+    input: typeof SearchFeedsRequestSchema;
+    output: typeof SearchFeedsResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_feeds_v2_feeds, 0);

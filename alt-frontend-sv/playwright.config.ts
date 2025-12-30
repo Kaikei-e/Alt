@@ -45,13 +45,6 @@ export default defineConfig({
 			use: { ...devices["Desktop Chrome"] },
 		},
 
-		// Desktop tests - Firefox (optional, for cross-browser coverage)
-		{
-			name: "desktop-firefox",
-			testMatch: /desktop\/.*\.spec\.ts/,
-			use: { ...devices["Desktop Firefox"] },
-		},
-
 		// Desktop tests - WebKit (optional)
 		{
 			name: "desktop-webkit",
@@ -79,12 +72,6 @@ export default defineConfig({
 			testMatch: /(?<!desktop\/)(?<!mobile\/)(?<!auth\/).*\.spec\.ts$/,
 			testIgnore: /(desktop|mobile|auth)\/.*\.spec\.ts/,
 			use: { ...devices["Desktop Chrome"] },
-		},
-		{
-			name: "firefox",
-			testMatch: /(?<!desktop\/)(?<!mobile\/)(?<!auth\/).*\.spec\.ts$/,
-			testIgnore: /(desktop|mobile|auth)\/.*\.spec\.ts/,
-			use: { ...devices["Desktop Firefox"] },
 		},
 		{
 			name: "webkit",

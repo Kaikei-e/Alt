@@ -91,6 +91,186 @@ export async function getUnreadCount(
 	};
 }
 
+// =============================================================================
+// Feed List Types and Functions (Phase 2)
+// =============================================================================
+
+/**
+ * Feed item from Connect-RPC (converted from proto)
+ */
+export interface ConnectFeedItem {
+	id: string;
+	title: string;
+	description: string;
+	link: string;
+	published: string;
+	createdAt: string;
+	author: string;
+}
+
+/**
+ * Cursor response for feed lists
+ */
+export interface FeedCursorResponse {
+	data: ConnectFeedItem[];
+	nextCursor: string | null;
+	hasMore: boolean;
+}
+
+/**
+ * Search response with offset-based pagination
+ */
+export interface FeedSearchResponse {
+	data: ConnectFeedItem[];
+	nextCursor: number | null;
+	hasMore: boolean;
+}
+
+/**
+ * Get unread feeds with cursor-based pagination via Connect-RPC.
+ *
+ * @param transport - The Connect transport to use
+ * @param cursor - Optional cursor for pagination (RFC3339 timestamp)
+ * @param limit - Maximum number of items to return (default: 20)
+ * @param view - Optional view mode ("swipe" for single-card response)
+ * @returns Unread feeds with pagination info
+ */
+export async function getUnreadFeeds(
+	transport: Transport,
+	cursor?: string,
+	limit: number = 20,
+	view?: "swipe",
+): Promise<FeedCursorResponse> {
+	const client = createFeedClient(transport);
+	const response = await client.getUnreadFeeds({
+		cursor,
+		limit,
+		view,
+	});
+
+	return {
+		data: response.data.map(convertProtoFeed),
+		nextCursor: response.nextCursor ?? null,
+		hasMore: response.hasMore,
+	};
+}
+
+/**
+ * Get read/viewed feeds with cursor-based pagination via Connect-RPC.
+ *
+ * @param transport - The Connect transport to use
+ * @param cursor - Optional cursor for pagination (RFC3339 timestamp)
+ * @param limit - Maximum number of items to return (default: 32)
+ * @returns Read feeds with pagination info
+ */
+export async function getReadFeeds(
+	transport: Transport,
+	cursor?: string,
+	limit: number = 32,
+): Promise<FeedCursorResponse> {
+	const client = createFeedClient(transport);
+	const response = await client.getReadFeeds({
+		cursor,
+		limit,
+	});
+
+	return {
+		data: response.data.map(convertProtoFeed),
+		nextCursor: response.nextCursor ?? null,
+		hasMore: response.hasMore,
+	};
+}
+
+/**
+ * Get favorite feeds with cursor-based pagination via Connect-RPC.
+ *
+ * @param transport - The Connect transport to use
+ * @param cursor - Optional cursor for pagination (RFC3339 timestamp)
+ * @param limit - Maximum number of items to return (default: 20)
+ * @returns Favorite feeds with pagination info
+ */
+export async function getFavoriteFeeds(
+	transport: Transport,
+	cursor?: string,
+	limit: number = 20,
+): Promise<FeedCursorResponse> {
+	const client = createFeedClient(transport);
+	const response = await client.getFavoriteFeeds({
+		cursor,
+		limit,
+	});
+
+	return {
+		data: response.data.map(convertProtoFeed),
+		nextCursor: response.nextCursor ?? null,
+		hasMore: response.hasMore,
+	};
+}
+
+// =============================================================================
+// Feed Search Types and Functions (Phase 3)
+// =============================================================================
+
+/**
+ * Search feeds with offset-based pagination via Connect-RPC.
+ *
+ * @param transport - The Connect transport to use
+ * @param query - Search query string
+ * @param cursor - Optional offset cursor for pagination
+ * @param limit - Maximum number of items to return (default: 20)
+ * @returns Search results with pagination info
+ */
+export async function searchFeeds(
+	transport: Transport,
+	query: string,
+	cursor?: number,
+	limit: number = 20,
+): Promise<FeedSearchResponse> {
+	const client = createFeedClient(transport);
+	const response = await client.searchFeeds({
+		query,
+		cursor,
+		limit,
+	});
+
+	return {
+		data: response.data.map(convertProtoFeed),
+		nextCursor: response.nextCursor ?? null,
+		hasMore: response.hasMore,
+	};
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Convert proto FeedItem to ConnectFeedItem.
+ */
+function convertProtoFeed(proto: {
+	id: string;
+	title: string;
+	description: string;
+	link: string;
+	published: string;
+	createdAt: string;
+	author: string;
+}): ConnectFeedItem {
+	return {
+		id: proto.id,
+		title: proto.title,
+		description: proto.description,
+		link: proto.link,
+		published: proto.published,
+		createdAt: proto.createdAt,
+		author: proto.author,
+	};
+}
+
+// =============================================================================
+// Streaming Types and Functions
+// =============================================================================
+
 /**
  * Streaming feed stats via Server Streaming RPC.
  */
