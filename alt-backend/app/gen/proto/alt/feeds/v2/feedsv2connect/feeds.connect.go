@@ -45,6 +45,17 @@ const (
 	// FeedServiceStreamFeedStatsProcedure is the fully-qualified name of the FeedService's
 	// StreamFeedStats RPC.
 	FeedServiceStreamFeedStatsProcedure = "/alt.feeds.v2.FeedService/StreamFeedStats"
+	// FeedServiceGetUnreadFeedsProcedure is the fully-qualified name of the FeedService's
+	// GetUnreadFeeds RPC.
+	FeedServiceGetUnreadFeedsProcedure = "/alt.feeds.v2.FeedService/GetUnreadFeeds"
+	// FeedServiceGetReadFeedsProcedure is the fully-qualified name of the FeedService's GetReadFeeds
+	// RPC.
+	FeedServiceGetReadFeedsProcedure = "/alt.feeds.v2.FeedService/GetReadFeeds"
+	// FeedServiceGetFavoriteFeedsProcedure is the fully-qualified name of the FeedService's
+	// GetFavoriteFeeds RPC.
+	FeedServiceGetFavoriteFeedsProcedure = "/alt.feeds.v2.FeedService/GetFavoriteFeeds"
+	// FeedServiceSearchFeedsProcedure is the fully-qualified name of the FeedService's SearchFeeds RPC.
+	FeedServiceSearchFeedsProcedure = "/alt.feeds.v2.FeedService/SearchFeeds"
 )
 
 // FeedServiceClient is a client for the alt.feeds.v2.FeedService service.
@@ -58,6 +69,18 @@ type FeedServiceClient interface {
 	// StreamFeedStats streams real-time feed statistics updates
 	// Replaces SSE endpoint /v1/sse/feeds/stats
 	StreamFeedStats(context.Context, *connect.Request[v2.StreamFeedStatsRequest]) (*connect.ServerStreamForClient[v2.StreamFeedStatsResponse], error)
+	// GetUnreadFeeds returns unread feeds with cursor-based pagination
+	// Replaces GET /v1/feeds/fetch/cursor
+	GetUnreadFeeds(context.Context, *connect.Request[v2.GetUnreadFeedsRequest]) (*connect.Response[v2.GetUnreadFeedsResponse], error)
+	// GetReadFeeds returns read/viewed feeds with cursor-based pagination
+	// Replaces GET /v1/feeds/fetch/viewed/cursor
+	GetReadFeeds(context.Context, *connect.Request[v2.GetReadFeedsRequest]) (*connect.Response[v2.GetReadFeedsResponse], error)
+	// GetFavoriteFeeds returns favorite feeds with cursor-based pagination
+	// Replaces GET /v1/feeds/fetch/favorites/cursor
+	GetFavoriteFeeds(context.Context, *connect.Request[v2.GetFavoriteFeedsRequest]) (*connect.Response[v2.GetFavoriteFeedsResponse], error)
+	// SearchFeeds searches for feeds by query with offset-based pagination
+	// Replaces POST /v1/feeds/search
+	SearchFeeds(context.Context, *connect.Request[v2.SearchFeedsRequest]) (*connect.Response[v2.SearchFeedsResponse], error)
 }
 
 // NewFeedServiceClient constructs a client for the alt.feeds.v2.FeedService service. By default, it
@@ -95,6 +118,30 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("StreamFeedStats")),
 			connect.WithClientOptions(opts...),
 		),
+		getUnreadFeeds: connect.NewClient[v2.GetUnreadFeedsRequest, v2.GetUnreadFeedsResponse](
+			httpClient,
+			baseURL+FeedServiceGetUnreadFeedsProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("GetUnreadFeeds")),
+			connect.WithClientOptions(opts...),
+		),
+		getReadFeeds: connect.NewClient[v2.GetReadFeedsRequest, v2.GetReadFeedsResponse](
+			httpClient,
+			baseURL+FeedServiceGetReadFeedsProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("GetReadFeeds")),
+			connect.WithClientOptions(opts...),
+		),
+		getFavoriteFeeds: connect.NewClient[v2.GetFavoriteFeedsRequest, v2.GetFavoriteFeedsResponse](
+			httpClient,
+			baseURL+FeedServiceGetFavoriteFeedsProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("GetFavoriteFeeds")),
+			connect.WithClientOptions(opts...),
+		),
+		searchFeeds: connect.NewClient[v2.SearchFeedsRequest, v2.SearchFeedsResponse](
+			httpClient,
+			baseURL+FeedServiceSearchFeedsProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("SearchFeeds")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -104,6 +151,10 @@ type feedServiceClient struct {
 	getDetailedFeedStats *connect.Client[v2.GetDetailedFeedStatsRequest, v2.GetDetailedFeedStatsResponse]
 	getUnreadCount       *connect.Client[v2.GetUnreadCountRequest, v2.GetUnreadCountResponse]
 	streamFeedStats      *connect.Client[v2.StreamFeedStatsRequest, v2.StreamFeedStatsResponse]
+	getUnreadFeeds       *connect.Client[v2.GetUnreadFeedsRequest, v2.GetUnreadFeedsResponse]
+	getReadFeeds         *connect.Client[v2.GetReadFeedsRequest, v2.GetReadFeedsResponse]
+	getFavoriteFeeds     *connect.Client[v2.GetFavoriteFeedsRequest, v2.GetFavoriteFeedsResponse]
+	searchFeeds          *connect.Client[v2.SearchFeedsRequest, v2.SearchFeedsResponse]
 }
 
 // GetFeedStats calls alt.feeds.v2.FeedService.GetFeedStats.
@@ -126,6 +177,26 @@ func (c *feedServiceClient) StreamFeedStats(ctx context.Context, req *connect.Re
 	return c.streamFeedStats.CallServerStream(ctx, req)
 }
 
+// GetUnreadFeeds calls alt.feeds.v2.FeedService.GetUnreadFeeds.
+func (c *feedServiceClient) GetUnreadFeeds(ctx context.Context, req *connect.Request[v2.GetUnreadFeedsRequest]) (*connect.Response[v2.GetUnreadFeedsResponse], error) {
+	return c.getUnreadFeeds.CallUnary(ctx, req)
+}
+
+// GetReadFeeds calls alt.feeds.v2.FeedService.GetReadFeeds.
+func (c *feedServiceClient) GetReadFeeds(ctx context.Context, req *connect.Request[v2.GetReadFeedsRequest]) (*connect.Response[v2.GetReadFeedsResponse], error) {
+	return c.getReadFeeds.CallUnary(ctx, req)
+}
+
+// GetFavoriteFeeds calls alt.feeds.v2.FeedService.GetFavoriteFeeds.
+func (c *feedServiceClient) GetFavoriteFeeds(ctx context.Context, req *connect.Request[v2.GetFavoriteFeedsRequest]) (*connect.Response[v2.GetFavoriteFeedsResponse], error) {
+	return c.getFavoriteFeeds.CallUnary(ctx, req)
+}
+
+// SearchFeeds calls alt.feeds.v2.FeedService.SearchFeeds.
+func (c *feedServiceClient) SearchFeeds(ctx context.Context, req *connect.Request[v2.SearchFeedsRequest]) (*connect.Response[v2.SearchFeedsResponse], error) {
+	return c.searchFeeds.CallUnary(ctx, req)
+}
+
 // FeedServiceHandler is an implementation of the alt.feeds.v2.FeedService service.
 type FeedServiceHandler interface {
 	// GetFeedStats returns basic feed statistics (feed count, summarized count)
@@ -137,6 +208,18 @@ type FeedServiceHandler interface {
 	// StreamFeedStats streams real-time feed statistics updates
 	// Replaces SSE endpoint /v1/sse/feeds/stats
 	StreamFeedStats(context.Context, *connect.Request[v2.StreamFeedStatsRequest], *connect.ServerStream[v2.StreamFeedStatsResponse]) error
+	// GetUnreadFeeds returns unread feeds with cursor-based pagination
+	// Replaces GET /v1/feeds/fetch/cursor
+	GetUnreadFeeds(context.Context, *connect.Request[v2.GetUnreadFeedsRequest]) (*connect.Response[v2.GetUnreadFeedsResponse], error)
+	// GetReadFeeds returns read/viewed feeds with cursor-based pagination
+	// Replaces GET /v1/feeds/fetch/viewed/cursor
+	GetReadFeeds(context.Context, *connect.Request[v2.GetReadFeedsRequest]) (*connect.Response[v2.GetReadFeedsResponse], error)
+	// GetFavoriteFeeds returns favorite feeds with cursor-based pagination
+	// Replaces GET /v1/feeds/fetch/favorites/cursor
+	GetFavoriteFeeds(context.Context, *connect.Request[v2.GetFavoriteFeedsRequest]) (*connect.Response[v2.GetFavoriteFeedsResponse], error)
+	// SearchFeeds searches for feeds by query with offset-based pagination
+	// Replaces POST /v1/feeds/search
+	SearchFeeds(context.Context, *connect.Request[v2.SearchFeedsRequest]) (*connect.Response[v2.SearchFeedsResponse], error)
 }
 
 // NewFeedServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -170,6 +253,30 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("StreamFeedStats")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceGetUnreadFeedsHandler := connect.NewUnaryHandler(
+		FeedServiceGetUnreadFeedsProcedure,
+		svc.GetUnreadFeeds,
+		connect.WithSchema(feedServiceMethods.ByName("GetUnreadFeeds")),
+		connect.WithHandlerOptions(opts...),
+	)
+	feedServiceGetReadFeedsHandler := connect.NewUnaryHandler(
+		FeedServiceGetReadFeedsProcedure,
+		svc.GetReadFeeds,
+		connect.WithSchema(feedServiceMethods.ByName("GetReadFeeds")),
+		connect.WithHandlerOptions(opts...),
+	)
+	feedServiceGetFavoriteFeedsHandler := connect.NewUnaryHandler(
+		FeedServiceGetFavoriteFeedsProcedure,
+		svc.GetFavoriteFeeds,
+		connect.WithSchema(feedServiceMethods.ByName("GetFavoriteFeeds")),
+		connect.WithHandlerOptions(opts...),
+	)
+	feedServiceSearchFeedsHandler := connect.NewUnaryHandler(
+		FeedServiceSearchFeedsProcedure,
+		svc.SearchFeeds,
+		connect.WithSchema(feedServiceMethods.ByName("SearchFeeds")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.feeds.v2.FeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FeedServiceGetFeedStatsProcedure:
@@ -180,6 +287,14 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 			feedServiceGetUnreadCountHandler.ServeHTTP(w, r)
 		case FeedServiceStreamFeedStatsProcedure:
 			feedServiceStreamFeedStatsHandler.ServeHTTP(w, r)
+		case FeedServiceGetUnreadFeedsProcedure:
+			feedServiceGetUnreadFeedsHandler.ServeHTTP(w, r)
+		case FeedServiceGetReadFeedsProcedure:
+			feedServiceGetReadFeedsHandler.ServeHTTP(w, r)
+		case FeedServiceGetFavoriteFeedsProcedure:
+			feedServiceGetFavoriteFeedsHandler.ServeHTTP(w, r)
+		case FeedServiceSearchFeedsProcedure:
+			feedServiceSearchFeedsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -203,4 +318,20 @@ func (UnimplementedFeedServiceHandler) GetUnreadCount(context.Context, *connect.
 
 func (UnimplementedFeedServiceHandler) StreamFeedStats(context.Context, *connect.Request[v2.StreamFeedStatsRequest], *connect.ServerStream[v2.StreamFeedStatsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.StreamFeedStats is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) GetUnreadFeeds(context.Context, *connect.Request[v2.GetUnreadFeedsRequest]) (*connect.Response[v2.GetUnreadFeedsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.GetUnreadFeeds is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) GetReadFeeds(context.Context, *connect.Request[v2.GetReadFeedsRequest]) (*connect.Response[v2.GetReadFeedsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.GetReadFeeds is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) GetFavoriteFeeds(context.Context, *connect.Request[v2.GetFavoriteFeedsRequest]) (*connect.Response[v2.GetFavoriteFeedsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.GetFavoriteFeeds is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) SearchFeeds(context.Context, *connect.Request[v2.SearchFeedsRequest]) (*connect.Response[v2.SearchFeedsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.SearchFeeds is not implemented"))
 }

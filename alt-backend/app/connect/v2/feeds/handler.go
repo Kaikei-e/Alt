@@ -3,6 +3,7 @@ package feeds
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -224,4 +225,215 @@ func (h *Handler) sendStatsUpdate(
 	}
 
 	return stream.Send(resp)
+}
+
+// =============================================================================
+// Feed List RPCs (Phase 2)
+// =============================================================================
+
+// GetUnreadFeeds returns unread feeds with cursor-based pagination.
+// Replaces GET /v1/feeds/fetch/cursor
+func (h *Handler) GetUnreadFeeds(
+	ctx context.Context,
+	req *connect.Request[feedsv2.GetUnreadFeedsRequest],
+) (*connect.Response[feedsv2.GetUnreadFeedsResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	// Parse and validate limit
+	limit := int(req.Msg.Limit)
+	if limit <= 0 {
+		limit = 20 // default
+		if req.Msg.View != nil && *req.Msg.View == "swipe" {
+			limit = 1
+		}
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Parse cursor if provided
+	var cursor *time.Time
+	if req.Msg.Cursor != nil && *req.Msg.Cursor != "" {
+		parsed, err := time.Parse(time.RFC3339, *req.Msg.Cursor)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("invalid cursor format, expected RFC3339: %w", err))
+		}
+		cursor = &parsed
+	}
+
+	// Call usecase
+	feeds, hasMore, err := h.container.FetchUnreadFeedsListCursorUsecase.Execute(ctx, cursor, limit)
+	if err != nil {
+		h.logger.Error("failed to fetch unread feeds", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	return connect.NewResponse(&feedsv2.GetUnreadFeedsResponse{
+		Data:       convertFeedsToProto(feeds),
+		NextCursor: deriveNextCursor(feeds, hasMore),
+		HasMore:    hasMore,
+	}), nil
+}
+
+// GetReadFeeds returns read/viewed feeds with cursor-based pagination.
+// Replaces GET /v1/feeds/fetch/viewed/cursor
+func (h *Handler) GetReadFeeds(
+	ctx context.Context,
+	req *connect.Request[feedsv2.GetReadFeedsRequest],
+) (*connect.Response[feedsv2.GetReadFeedsResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	// Parse and validate limit
+	limit := int(req.Msg.Limit)
+	if limit <= 0 {
+		limit = 32 // default for read feeds
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Parse cursor if provided
+	var cursor *time.Time
+	if req.Msg.Cursor != nil && *req.Msg.Cursor != "" {
+		parsed, err := time.Parse(time.RFC3339, *req.Msg.Cursor)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("invalid cursor format, expected RFC3339: %w", err))
+		}
+		cursor = &parsed
+	}
+
+	// Call usecase
+	feeds, err := h.container.FetchReadFeedsListCursorUsecase.Execute(ctx, cursor, limit)
+	if err != nil {
+		h.logger.Error("failed to fetch read feeds", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Determine hasMore based on result count vs requested limit
+	hasMore := len(feeds) >= limit
+
+	return connect.NewResponse(&feedsv2.GetReadFeedsResponse{
+		Data:       convertFeedsToProto(feeds),
+		NextCursor: deriveNextCursor(feeds, hasMore),
+		HasMore:    hasMore,
+	}), nil
+}
+
+// GetFavoriteFeeds returns favorite feeds with cursor-based pagination.
+// Replaces GET /v1/feeds/fetch/favorites/cursor
+func (h *Handler) GetFavoriteFeeds(
+	ctx context.Context,
+	req *connect.Request[feedsv2.GetFavoriteFeedsRequest],
+) (*connect.Response[feedsv2.GetFavoriteFeedsResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	// Parse and validate limit
+	limit := int(req.Msg.Limit)
+	if limit <= 0 {
+		limit = 20 // default
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Parse cursor if provided
+	var cursor *time.Time
+	if req.Msg.Cursor != nil && *req.Msg.Cursor != "" {
+		parsed, err := time.Parse(time.RFC3339, *req.Msg.Cursor)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("invalid cursor format, expected RFC3339: %w", err))
+		}
+		cursor = &parsed
+	}
+
+	// Call usecase
+	feeds, err := h.container.FetchFavoriteFeedsListCursorUsecase.Execute(ctx, cursor, limit)
+	if err != nil {
+		h.logger.Error("failed to fetch favorite feeds", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Determine hasMore based on result count vs requested limit
+	hasMore := len(feeds) >= limit
+
+	return connect.NewResponse(&feedsv2.GetFavoriteFeedsResponse{
+		Data:       convertFeedsToProto(feeds),
+		NextCursor: deriveNextCursor(feeds, hasMore),
+		HasMore:    hasMore,
+	}), nil
+}
+
+// =============================================================================
+// Feed Search RPC (Phase 3)
+// =============================================================================
+
+// SearchFeeds searches for feeds by query with offset-based pagination.
+// Replaces POST /v1/feeds/search
+func (h *Handler) SearchFeeds(
+	ctx context.Context,
+	req *connect.Request[feedsv2.SearchFeedsRequest],
+) (*connect.Response[feedsv2.SearchFeedsResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	// Validate query
+	if req.Msg.Query == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("query must not be empty"))
+	}
+
+	// Parse pagination params (offset-based)
+	offset := 0
+	if req.Msg.Cursor != nil {
+		offset = int(*req.Msg.Cursor)
+		if offset < 0 {
+			offset = 0
+		}
+	}
+
+	limit := 20
+	if req.Msg.Limit != nil {
+		limit = int(*req.Msg.Limit)
+		if limit <= 0 {
+			limit = 20
+		}
+		if limit > 100 {
+			limit = 100
+		}
+	}
+
+	// Call usecase with pagination
+	results, hasMore, err := h.container.FeedSearchUsecase.ExecuteWithPagination(
+		ctx, req.Msg.Query, offset, limit)
+	if err != nil {
+		h.logger.Error("failed to search feeds", "error", err, "query", req.Msg.Query)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Compute next cursor
+	var nextCursor *int32
+	if hasMore {
+		next := int32(offset + len(results))
+		nextCursor = &next
+	}
+
+	return connect.NewResponse(&feedsv2.SearchFeedsResponse{
+		Data:       convertFeedsToProto(results),
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	}), nil
 }

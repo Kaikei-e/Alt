@@ -185,3 +185,224 @@ func TestStreamFeedStats_HeartbeatConstruction(t *testing.T) {
 	assert.Equal(t, int64(0), heartbeat.TotalArticles)
 	assert.True(t, heartbeat.Metadata.IsHeartbeat)
 }
+
+// =============================================================================
+// Phase 2-3: Feed List and Search Helper Tests
+// =============================================================================
+
+func createSampleFeeds() []*domain.FeedItem {
+	now := time.Now()
+	return []*domain.FeedItem{
+		{
+			Title:           "Test Feed 1",
+			Description:     "<p>Test Description 1</p>",
+			Link:            "https://example.com/feed1",
+			Published:       now.Format(time.RFC3339),
+			PublishedParsed: now,
+			Author:          domain.Author{Name: "Author 1"},
+		},
+		{
+			Title:           "Test Feed 2",
+			Description:     "<p>Test Description 2</p>",
+			Link:            "https://example.com/feed2",
+			Published:       now.Add(-time.Hour).Format(time.RFC3339),
+			PublishedParsed: now.Add(-time.Hour),
+			Author:          domain.Author{Name: "Author 2"},
+		},
+	}
+}
+
+func TestConvertFeedsToProto(t *testing.T) {
+	feeds := createSampleFeeds()
+	protoFeeds := convertFeedsToProto(feeds)
+
+	require.Len(t, protoFeeds, 2)
+
+	// First feed
+	assert.Equal(t, "https://example.com/feed1", protoFeeds[0].Id)
+	assert.Equal(t, "Test Feed 1", protoFeeds[0].Title)
+	assert.Equal(t, "Test Description 1", protoFeeds[0].Description) // HTML sanitized
+	assert.Equal(t, "https://example.com/feed1", protoFeeds[0].Link)
+	assert.Equal(t, "Author 1", protoFeeds[0].Author)
+	assert.NotEmpty(t, protoFeeds[0].CreatedAt)
+	assert.NotEmpty(t, protoFeeds[0].Published)
+
+	// Second feed
+	assert.Equal(t, "https://example.com/feed2", protoFeeds[1].Id)
+	assert.Equal(t, "Test Feed 2", protoFeeds[1].Title)
+}
+
+func TestConvertFeedsToProto_EmptyList(t *testing.T) {
+	protoFeeds := convertFeedsToProto([]*domain.FeedItem{})
+	assert.Len(t, protoFeeds, 0)
+	assert.NotNil(t, protoFeeds) // Should be empty slice, not nil
+}
+
+func TestDeriveNextCursor_WithHasMore(t *testing.T) {
+	feeds := createSampleFeeds()
+	cursor := deriveNextCursor(feeds, true)
+
+	require.NotNil(t, cursor)
+	// Should be RFC3339 format
+	_, err := time.Parse(time.RFC3339, *cursor)
+	assert.NoError(t, err)
+}
+
+func TestDeriveNextCursor_WithoutHasMore(t *testing.T) {
+	feeds := createSampleFeeds()
+	cursor := deriveNextCursor(feeds, false)
+
+	assert.Nil(t, cursor)
+}
+
+func TestDeriveNextCursor_EmptyFeeds(t *testing.T) {
+	cursor := deriveNextCursor([]*domain.FeedItem{}, true)
+	assert.Nil(t, cursor)
+}
+
+func TestSanitizeDescription(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "removes HTML tags",
+			input:    "<p>Hello <strong>World</strong></p>",
+			expected: "Hello World",
+		},
+		{
+			name:     "handles empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "collapses whitespace",
+			input:    "Hello    World",
+			expected: "Hello World",
+		},
+		{
+			name:     "removes script tags",
+			input:    "<script>alert('xss')</script>Hello",
+			expected: "Hello",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sanitizeDescription(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestFormatTimeAgo(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name     string
+		input    time.Time
+		expected string
+	}{
+		{
+			name:     "just now",
+			input:    now.Add(-30 * time.Second),
+			expected: "Just now",
+		},
+		{
+			name:     "minutes ago",
+			input:    now.Add(-5 * time.Minute),
+			expected: "5m ago",
+		},
+		{
+			name:     "hours ago",
+			input:    now.Add(-3 * time.Hour),
+			expected: "3h ago",
+		},
+		{
+			name:     "yesterday",
+			input:    now.Add(-36 * time.Hour),
+			expected: "Yesterday",
+		},
+		{
+			name:     "zero time",
+			input:    time.Time{},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatTimeAgo(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestFormatAuthor(t *testing.T) {
+	tests := []struct {
+		name     string
+		author   domain.Author
+		authors  []domain.Author
+		expected string
+	}{
+		{
+			name:     "uses primary author",
+			author:   domain.Author{Name: "Primary Author"},
+			authors:  []domain.Author{{Name: "Secondary"}},
+			expected: "Primary Author",
+		},
+		{
+			name:     "falls back to first author",
+			author:   domain.Author{},
+			authors:  []domain.Author{{Name: "First Author"}},
+			expected: "First Author",
+		},
+		{
+			name:     "empty when no authors",
+			author:   domain.Author{},
+			authors:  []domain.Author{},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatAuthor(tt.author, tt.authors)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// Test response message construction for Phase 2-3
+func TestGetUnreadFeedsResponse_Construction(t *testing.T) {
+	feeds := createSampleFeeds()
+	protoFeeds := convertFeedsToProto(feeds)
+	nextCursor := deriveNextCursor(feeds, true)
+
+	resp := &feedsv2.GetUnreadFeedsResponse{
+		Data:       protoFeeds,
+		NextCursor: nextCursor,
+		HasMore:    true,
+	}
+
+	assert.Len(t, resp.Data, 2)
+	assert.True(t, resp.HasMore)
+	assert.NotNil(t, resp.NextCursor)
+}
+
+func TestSearchFeedsResponse_Construction(t *testing.T) {
+	feeds := createSampleFeeds()
+	protoFeeds := convertFeedsToProto(feeds)
+	offset := int32(20)
+
+	resp := &feedsv2.SearchFeedsResponse{
+		Data:       protoFeeds,
+		NextCursor: &offset,
+		HasMore:    true,
+	}
+
+	assert.Len(t, resp.Data, 2)
+	assert.True(t, resp.HasMore)
+	assert.Equal(t, int32(20), *resp.NextCursor)
+}
