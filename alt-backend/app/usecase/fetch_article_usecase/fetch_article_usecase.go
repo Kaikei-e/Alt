@@ -19,7 +19,7 @@ import (
 // ArticleUsecase defines the business logic for fetching articles
 type ArticleUsecase interface {
 	Execute(ctx context.Context, articleURL string) (*string, error)
-	FetchCompliantArticle(ctx context.Context, articleURL *url.URL, userContext domain.UserContext) (string, error)
+	FetchCompliantArticle(ctx context.Context, articleURL *url.URL, userContext domain.UserContext) (content string, articleID string, err error)
 }
 
 // ArticleRepository defines the data access interface needed by this usecase
@@ -67,7 +67,7 @@ func (u *ArticleUsecaseImpl) Execute(ctx context.Context, articleURL string) (*s
 	return &textOnly, nil
 }
 
-func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetURL *url.URL, userContext domain.UserContext) (string, error) {
+func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetURL *url.URL, userContext domain.UserContext) (content string, articleID string, err error) {
 	urlStr := targetURL.String()
 	domainStr := targetURL.Hostname()
 
@@ -76,24 +76,24 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 	if err != nil {
 		// Log error but generally fail if DB is down.
 		// Note via driver: returns nil, nil if Not Found.
-		return "", fmt.Errorf("failed to check existing article: %w", err)
+		return "", "", fmt.Errorf("failed to check existing article: %w", err)
 	}
 
 	if existingArticle != nil {
 		logger.Logger.Info("Article found in database", "url", urlStr, "id", existingArticle.ID)
-		return existingArticle.Content, nil
+		return existingArticle.Content, existingArticle.ID, nil
 	}
 
 	// 2. Check if the domain is in the declined_domains table for this user
 	isDeclined, err := u.repo.IsDomainDeclined(ctx, userContext.UserID.String(), domainStr)
 	if err != nil {
 		logger.Logger.Error("Failed to check if domain is declined", "error", err, "domain", domainStr, "user_id", userContext.UserID)
-		return "", fmt.Errorf("failed to check declined status: %w", err)
+		return "", "", fmt.Errorf("failed to check declined status: %w", err)
 	}
 
 	if isDeclined {
 		logger.Logger.Info("Domain is in declined list for user", "domain", domainStr, "user_id", userContext.UserID)
-		return "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
+		return "", "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
 	}
 
 	// 3. Robots.txt Compliance Check
@@ -109,7 +109,7 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 		if err := u.repo.SaveDeclinedDomain(ctx, userContext.UserID.String(), domainStr); err != nil {
 			logger.Logger.Error("Failed to save declined domain", "error", err, "domain", domainStr)
 		}
-		return "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
+		return "", "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
 	}
 
 	// 4. Fetch from Web
@@ -117,10 +117,10 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 	contentPtr, err := u.articleFetcher.FetchArticleContents(ctx, urlStr)
 	if err != nil {
 		logger.Logger.Error("Failed to fetch article content", "error", err, "url", urlStr)
-		return "", fmt.Errorf("fetch failed: %w", err)
+		return "", "", fmt.Errorf("fetch failed: %w", err)
 	}
 	if contentPtr == nil || *contentPtr == "" {
-		return "", fmt.Errorf("fetched content is empty")
+		return "", "", fmt.Errorf("fetched content is empty")
 	}
 	htmlContent := *contentPtr
 
@@ -161,5 +161,5 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 		}
 	}
 
-	return contentStr, nil
+	return contentStr, newID, nil
 }

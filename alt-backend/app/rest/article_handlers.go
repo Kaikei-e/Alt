@@ -77,7 +77,7 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 		}
 
 		// Call the usecase
-		content, err := container.ArticleUsecase.FetchCompliantArticle(c.Request().Context(), parsedURL, *user)
+		content, articleID, err := container.ArticleUsecase.FetchCompliantArticle(c.Request().Context(), parsedURL, *user)
 		if err != nil {
 			var complianceErr *domain.ComplianceError
 			if errors.As(err, &complianceErr) {
@@ -91,7 +91,7 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch article"})
 		}
 
-		return returnArticleResponse(c, parsedURL, content)
+		return returnArticleResponse(c, parsedURL, content, articleID)
 	}
 }
 
@@ -112,11 +112,12 @@ func validateFetchRequest(c echo.Context, targetURL string) (*url.URL, error) {
 	return parsedURL, nil
 }
 
-func returnArticleResponse(c echo.Context, articleURL *url.URL, content string) error {
+func returnArticleResponse(c echo.Context, articleURL *url.URL, content string, articleID string) error {
 	escapedContent := html_parser.StripTags(content)
 	return c.JSON(http.StatusOK, map[string]string{
-		"url":     articleURL.String(),
-		"content": escapedContent,
+		"url":        articleURL.String(),
+		"content":    escapedContent,
+		"article_id": articleID,
 	})
 }
 

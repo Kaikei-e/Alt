@@ -2,6 +2,7 @@ package main
 
 import (
 	"alt/config"
+	connectv2 "alt/connect/v2"
 	"alt/di"
 	"alt/driver/alt_db"
 	"alt/job"
@@ -74,12 +75,22 @@ func main() {
 
 	rest.RegisterRoutes(e, container, cfg)
 
-	// Start server in a goroutine
+	// Start REST server in a goroutine
 	go func() {
-		logger.Logger.Info("Server starting", "port", cfg.Server.Port)
+		logger.Logger.Info("REST server starting", "port", cfg.Server.Port)
 		if err := e.StartServer(server); err != nil && err != http.ErrServerClosed {
-			logger.Logger.Error("Error starting server", "error", err)
+			logger.Logger.Error("Error starting REST server", "error", err)
 			panic(err)
+		}
+	}()
+
+	// Start Connect-RPC server in a goroutine
+	connectPort := 9101
+	connectServer := connectv2.CreateConnectServer(container, cfg, log)
+	go func() {
+		logger.Logger.Info("Connect-RPC server starting", "port", connectPort)
+		if err := http.ListenAndServe(fmt.Sprintf(":%d", connectPort), connectServer); err != nil && err != http.ErrServerClosed {
+			logger.Logger.Error("Error starting Connect-RPC server", "error", err)
 		}
 	}()
 

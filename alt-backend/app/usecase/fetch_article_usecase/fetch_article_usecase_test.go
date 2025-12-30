@@ -296,13 +296,16 @@ func TestFetchArticleUsecase_FetchCompliantArticle_UpsertsToRAG(t *testing.T) {
 	}).Return(nil)
 
 	// Execute
-	result, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
+	content, articleID, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
 
 	// Verify
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
-	if result != contentStr {
-		t.Errorf("Expected content %s, got %s", contentStr, result)
+	if content != contentStr {
+		t.Errorf("Expected content %s, got %s", contentStr, content)
+	}
+	if articleID == "" {
+		t.Errorf("Expected non-empty article ID")
 	}
 }
