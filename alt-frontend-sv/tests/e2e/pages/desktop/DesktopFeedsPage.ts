@@ -49,8 +49,8 @@ export class DesktopFeedsPage extends BasePage {
 		// Feed detail modal
 		this.feedDetailModal = page.locator('[role="dialog"]');
 		this.modalTitle = this.feedDetailModal.locator("h2");
-		// Dialog.Close button - use data-dialog-close attribute to be specific
-		this.modalCloseButton = this.feedDetailModal.locator('[data-dialog-close]');
+		// Dialog.Close button - there are 2 close buttons (footer and X icon), use the one with text "Close"
+		this.modalCloseButton = this.feedDetailModal.getByRole("button", { name: "Close", exact: true }).first();
 		this.markAsReadButton = page.getByRole("button", { name: /mark as read/i });
 		this.fullArticleButton = page.getByRole("button", { name: /full article/i });
 		this.summarizeButton = page.getByRole("button", { name: /summarize/i });
