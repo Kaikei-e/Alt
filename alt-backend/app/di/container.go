@@ -44,6 +44,8 @@ import (
 	"alt/usecase/feed_link_usecase"
 	"alt/usecase/fetch_article_usecase"
 	"alt/usecase/fetch_articles_usecase"
+	"alt/usecase/fetch_recent_articles_usecase"
+	"alt/gateway/fetch_recent_articles_gateway"
 	"alt/usecase/fetch_feed_details_usecase"
 	"alt/usecase/fetch_feed_stats_usecase"
 	"alt/usecase/fetch_feed_tags_usecase"
@@ -110,6 +112,7 @@ type ApplicationComponents struct {
 	ArticleUsecase                      fetch_article_usecase.ArticleUsecase
 	ArchiveArticleUsecase               *archive_article_usecase.ArchiveArticleUsecase
 	FetchArticlesCursorUsecase          *fetch_articles_usecase.FetchArticlesCursorUsecase
+	FetchRecentArticlesUsecase          *fetch_recent_articles_usecase.FetchRecentArticlesUsecase
 	RecapArticlesUsecase                *recap_articles_usecase.RecapArticlesUsecase
 	RecapUsecase                        *recap_usecase.RecapUsecase
 	MorningUsecase                      morning_letter_port.MorningUsecase
@@ -217,6 +220,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	// Fetch articles with cursor components
 	fetchArticlesGatewayImpl := article_gateway.NewFetchArticlesGateway(pool)
 	fetchArticlesCursorUsecase := fetch_articles_usecase.NewFetchArticlesCursorUsecase(fetchArticlesGatewayImpl)
+
+	// Fetch recent articles components (for rag-orchestrator temporal topics)
+	fetchRecentArticlesGatewayImpl := fetch_recent_articles_gateway.NewFetchRecentArticlesGateway(pool)
+	fetchRecentArticlesUsecase := fetch_recent_articles_usecase.NewFetchRecentArticlesUsecase(fetchRecentArticlesGatewayImpl)
 	recapArticlesGateway := recap_articles_gateway.NewGateway(altDBRepository)
 	recapUsecaseCfg := recap_articles_usecase.Config{
 		DefaultPageSize: cfg.Recap.DefaultPageSize,
@@ -295,6 +302,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ArticleUsecase:                      fetchArticleUsecase,
 		ArchiveArticleUsecase:               archiveArticleUsecase,
 		FetchArticlesCursorUsecase:          fetchArticlesCursorUsecase,
+		FetchRecentArticlesUsecase:          fetchRecentArticlesUsecase,
 		RecapArticlesUsecase:                recapArticlesUsecase,
 		RecapUsecase:                        recapUsecase,
 		MorningUsecase:                      morningUsecase,
