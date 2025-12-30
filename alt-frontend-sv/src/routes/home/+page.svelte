@@ -1,7 +1,7 @@
 <script lang="ts">
 import { BookOpen, FileText, Layers, Rss } from "@lucide/svelte";
 import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
-import { useSSEFeedsStats } from "$lib/hooks/useSSEFeedsStats.svelte";
+import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
 
 interface StatsData {
 	feed_amount: { amount: number };
@@ -21,8 +21,8 @@ interface Props {
 
 const { data }: Props = $props();
 
-// SSE接続を確立
-const sseStats = useSSEFeedsStats();
+// Unified feed stats hook (SSE or Connect-RPC Streaming)
+const sseStats = useFeedStats();
 
 // 初期値としてサーバーサイドデータを使用、その後SSEで更新
 let feedAmount = $state(0);

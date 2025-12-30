@@ -1,6 +1,6 @@
 <script lang="ts" module>
 	export type FeedGridApi = {
-		removeFeedByUrl: (url: string) => void;
+		removeFeedByUrl: (url: string) => Promise<void>;
 	};
 </script>
 
@@ -31,9 +31,23 @@
 		feeds.filter(feed => !removedUrls.has(feed.normalizedUrl))
 	);
 
-	// Remove a feed by URL (for marking as read)
-	function removeFeedByUrl(url: string) {
+	// Remove a feed by URL (for marking as read) and fetch replacement
+	async function removeFeedByUrl(url: string) {
 		removedUrls = new Set(removedUrls).add(url);
+
+		// Fetch one more feed to replace the removed one
+		if (hasNextPage && nextCursor) {
+			try {
+				const result = await getFeedsWithCursorClient(nextCursor, 1);
+				if (result.data?.length > 0) {
+					feeds = [...feeds, ...result.data];
+					nextCursor = result.next_cursor ?? undefined;
+					hasNextPage = result.has_more ?? false;
+				}
+			} catch (err) {
+				console.error("Failed to fetch replacement feed:", err);
+			}
+		}
 	}
 
 	// Expose API to parent
@@ -60,7 +74,7 @@
 				feeds = result.data ?? [];
 			}
 
-			nextCursor = result.next_cursor;
+			nextCursor = result.next_cursor ?? undefined;
 			hasNextPage = result.has_more ?? false;
 		} catch (err) {
 			error = err as Error;
@@ -75,7 +89,7 @@
 		isFetchingNextPage = false;
 	}
 
-	// Intersection Observer for infinite scroll
+	// Initial data load
 	onMount(async () => {
 		try {
 			isLoading = true;
@@ -85,9 +99,11 @@
 		} finally {
 			isLoading = false;
 		}
+	});
 
-		// Setup observer after initial load
-		if (!loadMoreTrigger) return;
+	// Intersection Observer for infinite scroll (reactive to loadMoreTrigger)
+	$effect(() => {
+		if (!loadMoreTrigger || isLoading) return;
 
 		const observer = new IntersectionObserver(
 			(entries) => {
