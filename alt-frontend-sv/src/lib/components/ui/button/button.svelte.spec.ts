@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/svelte/svelte5";
-import userEvent from "@testing-library/user-event";
+import { page } from "@vitest/browser/context";
 import { createRawSnippet } from "svelte";
+import { render } from "vitest-browser-svelte";
 import { describe, expect, it, vi } from "vitest";
 
 import Button from "./button.svelte";
@@ -15,9 +15,9 @@ describe("Button", () => {
 			},
 		});
 
-		const actionButton = screen.getByRole("button", { name: /confirm/i });
-		expect(actionButton).toBeInTheDocument();
-		expect(actionButton).toBeEnabled();
+		const actionButton = page.getByRole("button", { name: /confirm/i });
+		await expect.element(actionButton).toBeInTheDocument();
+		await expect.element(actionButton).toBeEnabled();
 	});
 
 	it("renders an anchor when href is provided", async () => {
@@ -30,8 +30,8 @@ describe("Button", () => {
 			},
 		});
 
-		const link = screen.getByRole("link", { name: /visit/i });
-		expect(link).toHaveAttribute("href", "https://alt.ai");
+		const link = page.getByRole("link", { name: /visit/i });
+		await expect.element(link).toHaveAttribute("href", "https://alt.ai");
 	});
 
 	it("prevents navigation when disabled on an anchor", async () => {
@@ -45,10 +45,10 @@ describe("Button", () => {
 			},
 		});
 
-		const disabledLink = screen.getByRole("link", { name: /visit/i });
-		expect(disabledLink).not.toHaveAttribute("href");
-		expect(disabledLink).toHaveAttribute("aria-disabled", "true");
-		expect(disabledLink).toHaveAttribute("tabindex", "-1");
+		const disabledLink = page.getByRole("link", { name: /visit/i });
+		await expect.element(disabledLink).not.toHaveAttribute("href");
+		await expect.element(disabledLink).toHaveAttribute("aria-disabled", "true");
+		await expect.element(disabledLink).toHaveAttribute("tabindex", "-1");
 	});
 
 	it("emits a click event when clicked", async () => {
@@ -62,8 +62,8 @@ describe("Button", () => {
 			},
 		});
 
-		const actionButton = screen.getByRole("button", { name: /send/i });
-		await userEvent.click(actionButton);
+		const actionButton = page.getByRole("button", { name: /send/i });
+		await actionButton.click();
 
 		expect(clickHandler).toHaveBeenCalled();
 	});

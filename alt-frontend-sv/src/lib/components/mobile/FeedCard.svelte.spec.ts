@@ -1,12 +1,12 @@
-import { render, screen } from "@testing-library/svelte/svelte5";
-import userEvent from "@testing-library/user-event";
+import { page } from "@vitest/browser/context";
+import { render } from "vitest-browser-svelte";
 import { describe, expect, it, vi } from "vitest";
 
 import { renderFeedFixture } from "../../../../tests/fixtures/feeds";
 import FeedCard from "./FeedCard.svelte";
 
 describe("FeedCard", () => {
-	it("renders feed metadata and button when unread", () => {
+	it("renders feed metadata and button when unread", async () => {
 		render(FeedCard, {
 			props: {
 				feed: renderFeedFixture,
@@ -15,10 +15,10 @@ describe("FeedCard", () => {
 			},
 		});
 
-		expect(screen.getByText(renderFeedFixture.title)).toBeInTheDocument();
-		expect(screen.getByText(renderFeedFixture.excerpt)).toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: /mark .* as read/i }),
+		await expect.element(page.getByText(renderFeedFixture.title)).toBeInTheDocument();
+		await expect.element(page.getByText(renderFeedFixture.excerpt)).toBeInTheDocument();
+		await expect.element(
+			page.getByRole("button", { name: /mark .* as read/i }),
 		).toBeInTheDocument();
 	});
 
@@ -32,17 +32,17 @@ describe("FeedCard", () => {
 			},
 		});
 
-		const actionButton = screen.getByRole("button", {
+		const actionButton = page.getByRole("button", {
 			name: /mark .* as read/i,
 		});
-		await userEvent.click(actionButton);
+		await actionButton.click();
 
 		expect(setIsReadStatus).toHaveBeenCalledWith(
 			renderFeedFixture.normalizedUrl,
 		);
 	});
 
-	it("renders nothing when feed is already read", () => {
+	it("renders nothing when feed is already read", async () => {
 		render(FeedCard, {
 			props: {
 				feed: renderFeedFixture,
@@ -51,6 +51,6 @@ describe("FeedCard", () => {
 			},
 		});
 
-		expect(screen.queryByTestId("feed-card")).toBeNull();
+		await expect.element(page.getByTestId("feed-card")).not.toBeInTheDocument();
 	});
 });
