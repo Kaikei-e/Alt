@@ -76,3 +76,4 @@ alt-frontend-sv/playwright-report/*
 alt-frontend-sv/test-results/*
 failed.log
 rag-orchestrator/start_backfill.sh
+alt-frontend-sv/mock-server.log
