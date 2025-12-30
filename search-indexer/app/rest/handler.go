@@ -132,17 +132,3 @@ func SearchArticles(
 		logger.Logger.Error("encode failed", "err", err)
 	}
 }
-
-func toStringSlice(v interface{}) []string {
-	raw, ok := v.([]interface{})
-	if !ok {
-		return nil
-	}
-	out := make([]string, 0, len(raw))
-	for _, x := range raw {
-		if s, ok := x.(string); ok {
-			out = append(out, s)
-		}
-	}
-	return out
-}
