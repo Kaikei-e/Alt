@@ -26,7 +26,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	opts := connect.WithInterceptors(authInterceptor.Interceptor())
 
 	// Register Feed service
-	feedHandler := feeds.NewHandler(container, logger)
+	feedHandler := feeds.NewHandler(container, cfg, logger)
 	path, handler := feedsv2connect.NewFeedServiceHandler(feedHandler, opts)
 	mux.Handle(path, handler)
 
