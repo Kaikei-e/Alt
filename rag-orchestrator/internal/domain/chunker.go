@@ -23,6 +23,7 @@ const (
 	ChunkerVersionV5 ChunkerVersion = "v5"
 	// ChunkerVersionV6 improves consecutive short chunk merging and raises MinChunkLength to 80.
 	ChunkerVersionV6 ChunkerVersion = "v6"
+	ChunkerVersionV7 ChunkerVersion = "v7"
 )
 
 const (
@@ -55,7 +56,7 @@ func NewChunker() Chunker {
 }
 
 func (c *paragraphChunker) Version() ChunkerVersion {
-	return ChunkerVersionV6
+	return ChunkerVersionV7
 }
 
 // Chunk splits the body into chunks based on double newlines (paragraphs).
