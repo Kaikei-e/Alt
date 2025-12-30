@@ -1,7 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Starting Ollama server..."
+# ---- Root check and dynamic GID setup ------------------------------------
+if [ "$(id -u)" = "0" ]; then
+  echo "Running as root. Setting up dynamic GPU permissions..."
+
+  # Detect GID of /dev/dri/renderD128 or /dev/kfd
+  RENDER_GID=$(stat -c '%g' /dev/dri/renderD128 2>/dev/null || stat -c '%g' /dev/kfd 2>/dev/null || echo "")
+
+  if [ -n "$RENDER_GID" ]; then
+    echo "Detected GPU device GID: $RENDER_GID"
+    # Create group if it doesn't exist
+    if ! getent group "$RENDER_GID" >/dev/null; then
+      groupadd -g "$RENDER_GID" render-host || true
+    fi
+    # Add ollama-user to the group
+    usermod -aG "$(getent group "$RENDER_GID" | cut -d: -f1)" ollama-user || true
+  fi
+
+  # Also ensure ollama-user is in video group
+  VIDEO_GID=$(stat -c '%g' /dev/dri/card0 2>/dev/null || echo "")
+  if [ -n "$VIDEO_GID" ]; then
+    if ! getent group "$VIDEO_GID" >/dev/null; then
+      groupadd -g "$VIDEO_GID" video-host || true
+    fi
+    usermod -aG "$(getent group "$VIDEO_GID" | cut -d: -f1)" ollama-user || true
+  fi
+
+  echo "Dropping privileges to ollama-user..."
+  exec gosu ollama-user "$0" "$@"
+fi
+
+echo "Starting Ollama server as $(whoami)..."
 
 # Start Ollama in background
 ollama serve &

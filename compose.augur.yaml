@@ -13,6 +13,11 @@ services:
         condition: service_completed_successfully
     networks:
       - augur-network
+    environment:
+      - OLLAMA_VULKAN=1
+    devices:
+      - /dev/kfd
+      - /dev/dri
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
@@ -49,6 +54,10 @@ services:
       - OLLAMA_MODELS=/home/ollama-user/.ollama
       - OLLAMA_KEEP_ALIVE=24h
       - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_VULKAN=1
+    devices:
+      - /dev/kfd
+      - /dev/dri
     depends_on:
       knowledge-embedder-volume-init:
         condition: service_completed_successfully

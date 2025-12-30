@@ -8,10 +8,11 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y \
     ca-certificates \
     curl \
+    gosu \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# ---- Create ollama user if it doesn't exist ------------------------------
+# ---- Create ollama user --------------------------------------------------
 RUN groupadd -f -g 2000 ollama-user \
     && useradd -u 2000 -g 2000 -m -s /bin/bash ollama-user || true
 
@@ -45,7 +46,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
 
 EXPOSE 11434
 
-# ---- Runtime user --------------------------------------------------------
-USER ollama-user
+# ---- Runtime user (handled by entrypoint) --------------------------------
+# USER ollama-user
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
