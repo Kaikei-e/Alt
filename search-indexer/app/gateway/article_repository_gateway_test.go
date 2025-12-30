@@ -123,7 +123,7 @@ func TestArticleRepositoryGateway_GetArticlesWithTags(t *testing.T) {
 		{
 			name:         "driver error",
 			mockArticles: nil,
-			mockErr:      &DriverError{Op: "GetArticlesWithTags", Err: "database connection failed"},
+			mockErr:      &driver.DriverError{Op: "GetArticlesWithTags", Err: "database connection failed"},
 			limit:        10,
 			wantCount:    0,
 			wantErr:      true,

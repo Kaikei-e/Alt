@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"os"
 	"search-indexer/domain"
 	"testing"
 	"time"
@@ -78,20 +77,10 @@ func TestConfigGateway_LoadSearchIndexerConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up environment variables for this test
+			// Set up environment variables for this test using t.Setenv (auto-cleanup)
 			for key, value := range tt.envVars {
-				os.Setenv(key, value)
+				t.Setenv(key, value)
 			}
-			defer func() {
-				// Clean up environment variables
-				for key := range tt.envVars {
-					os.Unsetenv(key)
-				}
-				// Also clean up the required ones that might not be in tt.envVars
-				os.Unsetenv("DATABASE_URL")
-				os.Unsetenv("MEILISEARCH_HOST")
-				os.Unsetenv("MEILISEARCH_API_KEY")
-			}()
 
 			driver := &mockConfigDriver{
 				envVars: tt.envVars,
