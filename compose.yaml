@@ -195,6 +195,7 @@ services:
       - BACKEND_BASE_URL=${BACKEND_BASE_URL:-http://alt-backend:9000}
       - BACKEND_CONNECT_URL=${BACKEND_CONNECT_URL:-http://alt-backend:9101}  # Connect-RPC server
       - AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL:-http://auth-hub:8888}
+      - PUBLIC_USE_CONNECT_STREAMING=${PUBLIC_USE_CONNECT_STREAMING:-false}  # Feature flag for Connect-RPC Streaming
     ports:
       - "4173:4173"
     restart: always
