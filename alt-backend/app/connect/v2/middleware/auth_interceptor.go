@@ -1,0 +1,167 @@
+// Package middleware provides Connect-RPC interceptors for authentication and other cross-cutting concerns.
+package middleware
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+
+	"connectrpc.com/connect"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+
+	"alt/config"
+	"alt/domain"
+)
+
+const (
+	backendTokenHeader = "X-Alt-Backend-Token"
+)
+
+var (
+	errMissingToken    = errors.New("missing backend token")
+	errInvalidToken    = errors.New("invalid backend token")
+	errInvalidClaims   = errors.New("invalid claims")
+	errInvalidIssuer   = errors.New("invalid issuer")
+	errInvalidAudience = errors.New("invalid audience")
+)
+
+// BackendClaims represents the JWT claims for backend authentication
+type BackendClaims struct {
+	Email string `json:"email"`
+	Role  string `json:"role"`
+	Sid   string `json:"sid"`
+	jwt.RegisteredClaims
+}
+
+// AuthInterceptor provides JWT authentication for Connect-RPC handlers
+type AuthInterceptor struct {
+	logger   *slog.Logger
+	secret   []byte
+	issuer   string
+	audience string
+}
+
+// NewAuthInterceptor creates a new authentication interceptor
+func NewAuthInterceptor(logger *slog.Logger, cfg *config.Config) *AuthInterceptor {
+	secret := []byte(cfg.Auth.BackendTokenSecret)
+	if len(secret) == 0 {
+		if logger != nil {
+			logger.Warn("BACKEND_TOKEN_SECRET not set, JWT auth will deny all requests")
+		}
+	}
+
+	return &AuthInterceptor{
+		logger:   logger,
+		secret:   secret,
+		issuer:   cfg.Auth.BackendTokenIssuer,
+		audience: cfg.Auth.BackendTokenAudience,
+	}
+}
+
+// Interceptor returns a connect.Interceptor that can be used with Connect handlers
+func (a *AuthInterceptor) Interceptor() connect.Interceptor {
+	return connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+			userCtx, err := a.validateToken(req.Header().Get(backendTokenHeader))
+			if err != nil {
+				a.logError("auth failed", err)
+				return nil, a.toConnectError(err)
+			}
+
+			// Use domain's SetUserContext to attach user to context
+			ctx = domain.SetUserContext(ctx, userCtx)
+			return next(ctx, req)
+		}
+	})
+}
+
+// validateToken validates the JWT token and returns user context
+func (a *AuthInterceptor) validateToken(tokenStr string) (*domain.UserContext, error) {
+	if tokenStr == "" {
+		return nil, errMissingToken
+	}
+
+	if len(a.secret) == 0 {
+		return nil, fmt.Errorf("JWT secret not configured")
+	}
+
+	// Parse and validate token
+	parsed, err := jwt.ParseWithClaims(tokenStr, &BackendClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return a.secret, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errInvalidToken, err)
+	}
+
+	if !parsed.Valid {
+		return nil, errInvalidToken
+	}
+
+	claims, ok := parsed.Claims.(*BackendClaims)
+	if !ok {
+		return nil, errInvalidClaims
+	}
+
+	// Verify issuer
+	if claims.Issuer != a.issuer {
+		return nil, errInvalidIssuer
+	}
+
+	// Verify audience
+	audienceMatch := false
+	for _, aud := range claims.Audience {
+		if aud == a.audience {
+			audienceMatch = true
+			break
+		}
+	}
+	if !audienceMatch {
+		return nil, errInvalidAudience
+	}
+
+	// Parse user ID
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID in token: %w", err)
+	}
+
+	return &domain.UserContext{
+		UserID:    userID,
+		Email:     claims.Email,
+		Role:      domain.UserRole(claims.Role),
+		SessionID: claims.Sid,
+	}, nil
+}
+
+// toConnectError converts authentication errors to Connect errors
+func (a *AuthInterceptor) toConnectError(err error) *connect.Error {
+	switch {
+	case errors.Is(err, errMissingToken):
+		return connect.NewError(connect.CodeUnauthenticated, errors.New("missing backend token"))
+	case errors.Is(err, errInvalidToken), errors.Is(err, errInvalidClaims):
+		return connect.NewError(connect.CodeUnauthenticated, errors.New("invalid backend token"))
+	case errors.Is(err, errInvalidIssuer), errors.Is(err, errInvalidAudience):
+		return connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token issuer or audience"))
+	default:
+		return connect.NewError(connect.CodeUnauthenticated, errors.New("authentication failed"))
+	}
+}
+
+// logError logs authentication errors
+func (a *AuthInterceptor) logError(msg string, err error) {
+	if a.logger != nil {
+		a.logger.Error(msg, "error", err)
+	}
+}
+
+// GetUserContext extracts user context from the request context.
+// This is a convenience function that wraps domain.GetUserFromContext.
+func GetUserContext(ctx context.Context) (*domain.UserContext, error) {
+	return domain.GetUserFromContext(ctx)
+}
