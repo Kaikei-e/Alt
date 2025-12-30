@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/golang-jwt/jwt/v5"
@@ -61,20 +62,51 @@ func NewAuthInterceptor(logger *slog.Logger, cfg *config.Config) *AuthIntercepto
 }
 
 // Interceptor returns a connect.Interceptor that can be used with Connect handlers
+// It supports both unary and streaming RPCs
 func (a *AuthInterceptor) Interceptor() connect.Interceptor {
-	return connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
-		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			userCtx, err := a.validateToken(req.Header().Get(backendTokenHeader))
-			if err != nil {
-				a.logError("auth failed", err)
-				return nil, a.toConnectError(err)
-			}
+	return &authInterceptor{auth: a}
+}
 
-			// Use domain's SetUserContext to attach user to context
-			ctx = domain.SetUserContext(ctx, userCtx)
-			return next(ctx, req)
+// authInterceptor implements both unary and streaming interceptors
+type authInterceptor struct {
+	auth *AuthInterceptor
+}
+
+// WrapUnary implements connect.Interceptor for unary RPCs
+func (i *authInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		userCtx, err := i.auth.validateToken(req.Header().Get(backendTokenHeader))
+		if err != nil {
+			i.auth.logError("unary auth failed", err)
+			return nil, i.auth.toConnectError(err)
 		}
-	})
+
+		// Use domain's SetUserContext to attach user to context
+		ctx = domain.SetUserContext(ctx, userCtx)
+		return next(ctx, req)
+	}
+}
+
+// WrapStreamingClient implements connect.Interceptor for client streaming RPCs
+func (i *authInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		return next(ctx, spec)
+	}
+}
+
+// WrapStreamingHandler implements connect.Interceptor for server streaming RPCs
+func (i *authInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		userCtx, err := i.auth.validateToken(conn.RequestHeader().Get(backendTokenHeader))
+		if err != nil {
+			i.auth.logError("streaming auth failed", err)
+			return i.auth.toConnectError(err)
+		}
+
+		// Use domain's SetUserContext to attach user to context
+		ctx = domain.SetUserContext(ctx, userCtx)
+		return next(ctx, conn)
+	}
 }
 
 // validateToken validates the JWT token and returns user context
@@ -131,11 +163,24 @@ func (a *AuthInterceptor) validateToken(tokenStr string) (*domain.UserContext, e
 		return nil, fmt.Errorf("invalid user ID in token: %w", err)
 	}
 
+	// Get expiration and issued-at times from standard JWT claims
+	var expiresAt, loginAt time.Time
+	if claims.ExpiresAt != nil {
+		expiresAt = claims.ExpiresAt.Time
+	}
+	if claims.IssuedAt != nil {
+		loginAt = claims.IssuedAt.Time
+	}
+
+	// Note: Using UserID as TenantID (single-tenant architecture per auth-hub)
 	return &domain.UserContext{
 		UserID:    userID,
 		Email:     claims.Email,
 		Role:      domain.UserRole(claims.Role),
+		TenantID:  userID, // Use UserID as TenantID (single-tenant model)
 		SessionID: claims.Sid,
+		LoginAt:   loginAt,
+		ExpiresAt: expiresAt,
 	}, nil
 }
 
