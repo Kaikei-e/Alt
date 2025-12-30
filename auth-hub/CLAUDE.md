@@ -538,7 +538,7 @@ curl -H "Cookie: ory_kratos_session=<session>" \
 
 ## References
 
-- **Root CLAUDE.md:** `/home/koko/Documents/dev/Alt/CLAUDE.md`
+- **Root CLAUDE.md:** `/home/USER_NAME/Alt/CLAUDE.md`
 - **Implementation Plan:** `./PLAN.md`
 - [Ory Kratos Sessions](https://www.ory.sh/docs/kratos/session-management/overview)
 - [Nginx auth_request](http://nginx.org/en/docs/http/ngx_http_auth_request_module.html)
