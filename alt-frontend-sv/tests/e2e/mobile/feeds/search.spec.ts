@@ -36,8 +36,15 @@ test.describe("mobile feeds routes - search", () => {
 
 		await gotoMobileRoute(page, "feeds/search");
 
-		await page.getByTestId("search-input").fill("AI");
-		await page.getByRole("button", { name: "Search" }).click();
+		// Use pressSequentially to properly trigger Svelte reactive updates
+		const searchInput = page.getByTestId("search-input");
+		await searchInput.click();
+		await searchInput.pressSequentially("AI", { delay: 50 });
+
+		// Wait for button to be enabled (state has propagated)
+		const searchButton = page.getByRole("button", { name: "Search" });
+		await expect(searchButton).toBeEnabled();
+		await searchButton.click();
 
 		const results = page.getByTestId("search-result-item");
 		await expect(results).toHaveCount(1);
@@ -50,8 +57,13 @@ test.describe("mobile feeds routes - search", () => {
 	}) => {
 		await gotoMobileRoute(page, "feeds/search");
 
-		await page.getByTestId("search-input").fill("A");
-		await page.getByRole("button", { name: "Search" }).click();
+		// Use pressSequentially to properly trigger Svelte reactive updates
+		const searchInput = page.getByTestId("search-input");
+		await searchInput.click();
+		await searchInput.pressSequentially("A", { delay: 50 });
+
+		// Submit the form using Enter key since button may be disabled for single char
+		await searchInput.press("Enter");
 
 		await expect(
 			page.getByText("Search query must be at least 2 characters"),

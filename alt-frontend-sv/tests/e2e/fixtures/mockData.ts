@@ -85,29 +85,35 @@ export const ARTICLE_CONTENT_RESPONSE = {
 	content: "<p>This is a mocked article content.</p>",
 };
 
-// Recap data - matches RecapGenre schema
+// Recap data - matches backend API response (snake_case)
+// The client adapts these to camelCase internally
 export const RECAP_RESPONSE = {
+	job_id: "test-job-123",
+	executed_at: "2025-12-20T12:00:00Z",
+	window_start: "2025-12-13T00:00:00Z",
+	window_end: "2025-12-20T00:00:00Z",
+	total_articles: 4,
 	genres: [
 		{
 			genre: "Technology",
 			summary: "Major developments in technology this week include AI advances and new web frameworks.",
-			topTerms: ["AI", "Web", "Frameworks"],
-			articleCount: 3,
-			clusterCount: 2,
-			evidenceLinks: [
-				{ articleId: "art-1", title: "GPT-5 Announced", sourceUrl: "https://example.com/gpt5", publishedAt: "2025-12-20T10:00:00Z", lang: "en" },
-				{ articleId: "art-2", title: "Claude Gets Smarter", sourceUrl: "https://example.com/claude", publishedAt: "2025-12-20T09:00:00Z", lang: "en" },
+			top_terms: ["AI", "Web", "Frameworks"],
+			article_count: 3,
+			cluster_count: 2,
+			evidence_links: [
+				{ article_id: "art-1", title: "GPT-5 Announced", source_url: "https://example.com/gpt5", published_at: "2025-12-20T10:00:00Z", lang: "en" },
+				{ article_id: "art-2", title: "Claude Gets Smarter", source_url: "https://example.com/claude", published_at: "2025-12-20T09:00:00Z", lang: "en" },
 			],
 			bullets: ["AI advances continue", "New web frameworks emerging"],
 		},
 		{
 			genre: "AI/ML",
 			summary: "Latest papers and breakthroughs in machine learning research.",
-			topTerms: ["ML", "Research", "Transformers"],
-			articleCount: 1,
-			clusterCount: 1,
-			evidenceLinks: [
-				{ articleId: "art-4", title: "New Transformer Architecture", sourceUrl: "https://example.com/transformer", publishedAt: "2025-12-19T10:00:00Z", lang: "en" },
+			top_terms: ["ML", "Research", "Transformers"],
+			article_count: 1,
+			cluster_count: 1,
+			evidence_links: [
+				{ article_id: "art-4", title: "New Transformer Architecture", source_url: "https://example.com/transformer", published_at: "2025-12-19T10:00:00Z", lang: "en" },
 			],
 			bullets: ["New transformer architecture proposed"],
 		},
@@ -115,6 +121,11 @@ export const RECAP_RESPONSE = {
 };
 
 export const RECAP_EMPTY_RESPONSE = {
+	job_id: "test-job-empty",
+	executed_at: "2025-12-20T12:00:00Z",
+	window_start: "2025-12-13T00:00:00Z",
+	window_end: "2025-12-20T00:00:00Z",
+	total_articles: 0,
 	genres: [],
 };
 
@@ -174,14 +185,14 @@ export const createRecapGenre = (
 ) => ({
 	genre: genreName,
 	summary: `Summary for ${genreName}`,
-	topTerms: [genreName],
-	articleCount,
-	clusterCount,
-	evidenceLinks: Array.from({ length: articleCount }, (_, i) => ({
-		articleId: `${genreName.toLowerCase()}-art-${i}`,
+	top_terms: [genreName],
+	article_count: articleCount,
+	cluster_count: clusterCount,
+	evidence_links: Array.from({ length: articleCount }, (_, i) => ({
+		article_id: `${genreName.toLowerCase()}-art-${i}`,
 		title: `${genreName} Article ${i + 1}`,
-		sourceUrl: `https://example.com/${genreName.toLowerCase()}-${i}`,
-		publishedAt: new Date().toISOString(),
+		source_url: `https://example.com/${genreName.toLowerCase()}-${i}`,
+		published_at: new Date().toISOString(),
 		lang: "en" as const,
 	})),
 	bullets: [`Key point about ${genreName}`],
