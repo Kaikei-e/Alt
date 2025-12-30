@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { Loader2 } from "@lucide/svelte";
 	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 	import RecapGenreList from "$lib/components/desktop/recap/RecapGenreList.svelte";
 	import RecapDetail from "$lib/components/desktop/recap/RecapDetail.svelte";
 	import type { RecapGenre } from "$lib/schema/recap";
 	import { get7DaysRecapClient } from "$lib/api/client/recap";
+	import { loadingStore } from "$lib/stores/loading.svelte";
 
 	let selectedGenre = $state<RecapGenre | null>(null);
 
@@ -18,6 +18,7 @@
 	onMount(async () => {
 		try {
 			isLoading = true;
+			loadingStore.startLoading();
 			const result = await get7DaysRecapClient();
 			genres = result.genres ?? [];
 			// Auto-select first genre
@@ -28,6 +29,7 @@
 			error = err as Error;
 		} finally {
 			isLoading = false;
+			loadingStore.stopLoading();
 		}
 	});
 
@@ -39,9 +41,7 @@
 <PageHeader title="7-Day Recap" description="Weekly news summary by genre" />
 
 {#if isLoading}
-	<div class="flex items-center justify-center py-24">
-		<Loader2 class="h-8 w-8 animate-spin text-[var(--accent-primary)]" />
-	</div>
+	<!-- Loading state handled by SystemLoader via loadingStore -->
 {:else if error}
 	<div class="text-center py-12">
 		<p class="text-[var(--alt-error)] text-sm">
