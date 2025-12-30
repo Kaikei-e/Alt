@@ -41,7 +41,7 @@
 	}
 </script>
 
-<div class="border border-[var(--surface-border)] bg-white h-full overflow-y-auto">
+<div class="border border-[var(--surface-border)] bg-white">
 	<div class="p-4 border-b border-[var(--surface-border)]">
 		<h3 class="text-sm font-semibold text-[var(--text-primary)]">Genres</h3>
 		<p class="text-xs text-[var(--text-secondary)] mt-1">{genres.length} topics</p>

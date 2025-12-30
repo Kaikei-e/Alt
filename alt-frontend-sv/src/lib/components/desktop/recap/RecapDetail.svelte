@@ -10,7 +10,7 @@
 	let { genre }: Props = $props();
 </script>
 
-<div class="border border-[var(--surface-border)] bg-white h-full overflow-y-auto">
+<div class="border border-[var(--surface-border)] bg-white">
 	{#if !genre}
 		<!-- Placeholder state -->
 		<div class="flex items-center justify-center h-full p-12">

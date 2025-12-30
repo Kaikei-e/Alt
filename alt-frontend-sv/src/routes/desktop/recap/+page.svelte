@@ -55,7 +55,7 @@
 {:else}
 	<div class="grid grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
 		<!-- Genre list (left column, 1/3 width) -->
-		<div class="col-span-1">
+		<div class="col-span-1 h-full overflow-y-auto">
 			<RecapGenreList {genres} {selectedGenre} onSelectGenre={handleSelectGenre} />
 		</div>
 
