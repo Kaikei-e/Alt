@@ -1,7 +1,6 @@
 package config
 
 import (
-	"os"
 	"testing"
 	"time"
 )
@@ -36,21 +35,9 @@ func TestLoad(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear environment
-			clearEnv()
-
-			// Set test environment variables
+			// Set test environment variables using t.Setenv (auto-cleanup)
 			for k, v := range tt.envVars {
-				os.Setenv(k, v)
-			}
-			defer clearEnv()
-
-			if tt.wantErr {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Errorf("Load() should have panicked but didn't")
-					}
-				}()
+				t.Setenv(k, v)
 			}
 
 			cfg, err := Load()
@@ -96,16 +83,5 @@ func TestDatabaseConfig_ConnectionString(t *testing.T) {
 
 	if got != want {
 		t.Errorf("ConnectionString() = %v, want %v", got, want)
-	}
-}
-
-func clearEnv() {
-	vars := []string{
-		"DB_HOST", "DB_PORT", "DB_NAME", "SEARCH_INDEXER_DB_USER", "SEARCH_INDEXER_DB_PASSWORD",
-		"MEILISEARCH_HOST", "MEILISEARCH_API_KEY",
-		"DB_SSL_MODE", "DB_SSL_ROOT_CERT", "DB_SSL_CERT", "DB_SSL_KEY",
-	}
-	for _, v := range vars {
-		os.Unsetenv(v)
 	}
 }

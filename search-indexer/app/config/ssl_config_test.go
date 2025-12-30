@@ -1,7 +1,6 @@
 package config
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -139,22 +138,12 @@ func TestSSLConfigValidation(t *testing.T) {
 }
 
 func TestNewDatabaseConfigFromEnv(t *testing.T) {
-	// 環境変数をクリア
-	os.Clearenv()
-
-	// テスト用環境変数設定
-	envVars := map[string]string{
-		"DB_HOST":     "testhost",
-		"DB_SSL_MODE": "require",
-		"DB_USER":     "testuser",
-		"DB_PASSWORD": "testpass",
-		"DB_NAME":     "testdb",
-	}
-
-	for k, v := range envVars {
-		os.Setenv(k, v)
-	}
-	defer os.Clearenv()
+	// テスト用環境変数設定（t.Setenvで自動クリーンアップ）
+	t.Setenv("DB_HOST", "testhost")
+	t.Setenv("DB_SSL_MODE", "require")
+	t.Setenv("DB_USER", "testuser")
+	t.Setenv("DB_PASSWORD", "testpass")
+	t.Setenv("DB_NAME", "testdb")
 
 	config := NewDatabaseConfigFromEnv()
 	assert.NotNil(t, config)
@@ -167,23 +156,14 @@ func TestNewDatabaseConfigFromEnv(t *testing.T) {
 }
 
 func TestLoad_InvalidSSL(t *testing.T) {
-	os.Clearenv()
-
-	// 必要な環境変数を設定
-	envVars := map[string]string{
-		"DB_HOST":                    "localhost",
-		"DB_PORT":                    "5432",
-		"DB_NAME":                    "testdb",
-		"SEARCH_INDEXER_DB_USER":     "user",
-		"SEARCH_INDEXER_DB_PASSWORD": "pass",
-		"MEILISEARCH_HOST":           "http://localhost:7700",
-		"DB_SSL_MODE":                "disable", // 無効なSSLモード
-	}
-
-	for k, v := range envVars {
-		os.Setenv(k, v)
-	}
-	defer os.Clearenv()
+	// 必要な環境変数を設定（t.Setenvで自動クリーンアップ）
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_PORT", "5432")
+	t.Setenv("DB_NAME", "testdb")
+	t.Setenv("SEARCH_INDEXER_DB_USER", "user")
+	t.Setenv("SEARCH_INDEXER_DB_PASSWORD", "pass")
+	t.Setenv("MEILISEARCH_HOST", "http://localhost:7700")
+	t.Setenv("DB_SSL_MODE", "disable") // 無効なSSLモード
 
 	config, err := Load()
 	assert.Error(t, err)

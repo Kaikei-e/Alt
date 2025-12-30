@@ -46,13 +46,41 @@ type HTTPConfig struct {
 }
 
 func Load() (*Config, error) {
+	// Load required database environment variables
+	dbHost, err := getEnvRequired("DB_HOST")
+	if err != nil {
+		return nil, fmt.Errorf("database configuration error: %w", err)
+	}
+	dbPort, err := getEnvRequired("DB_PORT")
+	if err != nil {
+		return nil, fmt.Errorf("database configuration error: %w", err)
+	}
+	dbName, err := getEnvRequired("DB_NAME")
+	if err != nil {
+		return nil, fmt.Errorf("database configuration error: %w", err)
+	}
+	dbUser, err := getEnvRequired("SEARCH_INDEXER_DB_USER")
+	if err != nil {
+		return nil, fmt.Errorf("database configuration error: %w", err)
+	}
+	dbPassword, err := getEnvRequired("SEARCH_INDEXER_DB_PASSWORD")
+	if err != nil {
+		return nil, fmt.Errorf("database configuration error: %w", err)
+	}
+
+	// Load required Meilisearch environment variables
+	meilisearchHost, err := getEnvRequired("MEILISEARCH_HOST")
+	if err != nil {
+		return nil, fmt.Errorf("meilisearch configuration error: %w", err)
+	}
+
 	// Create database config with SSL support
 	dbConfig := &DatabaseConfig{
-		Host:     getEnvRequired("DB_HOST"),
-		Port:     getEnvRequired("DB_PORT"),
-		Name:     getEnvRequired("DB_NAME"),
-		User:     getEnvRequired("SEARCH_INDEXER_DB_USER"),
-		Password: getEnvRequired("SEARCH_INDEXER_DB_PASSWORD"),
+		Host:     dbHost,
+		Port:     dbPort,
+		Name:     dbName,
+		User:     dbUser,
+		Password: dbPassword,
 		Timeout:  10 * time.Second,
 		SSL: SSLConfig{
 			Mode:     getEnvOrDefault("DB_SSL_MODE", "prefer"),
@@ -64,14 +92,14 @@ func Load() (*Config, error) {
 
 	// SSL設定の検証
 	if err := dbConfig.ValidateSSLConfig(); err != nil {
-		slog.Error("Invalid SSL configuration", "error", err)
+		slog.Error("invalid SSL configuration", "error", err)
 		return nil, fmt.Errorf("SSL configuration error: %w", err)
 	}
 
 	cfg := &Config{
 		Database: *dbConfig,
 		Meilisearch: MeilisearchConfig{
-			Host:    getEnvRequired("MEILISEARCH_HOST"),
+			Host:    meilisearchHost,
 			APIKey:  getEnvOrDefault("MEILISEARCH_API_KEY", ""),
 			Timeout: 15 * time.Second,
 		},
@@ -88,7 +116,7 @@ func Load() (*Config, error) {
 		},
 	}
 
-	slog.Info("Configuration loaded",
+	slog.Info("configuration loaded",
 		"db_host", cfg.Database.Host,
 		"db_sslmode", cfg.Database.SSL.Mode,
 		"meilisearch_host", cfg.Meilisearch.Host,
@@ -164,20 +192,20 @@ func (c *DatabaseConfig) ValidateSSLConfig() error {
 	}
 }
 
-func getEnvRequired(key string) string {
+func getEnvRequired(key string) (string, error) {
 	// Check for _FILE suffix
 	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {
 		content, err := os.ReadFile(fileValue)
 		if err == nil {
-			return strings.TrimSpace(string(content))
+			return strings.TrimSpace(string(content)), nil
 		}
 	}
 
 	value := os.Getenv(key)
 	if value == "" {
-		panic(fmt.Sprintf("required environment variable %s is not set", key))
+		return "", fmt.Errorf("required environment variable %s is not set", key)
 	}
-	return value
+	return value, nil
 }
 
 func getEnvOrDefault(key, defaultValue string) string {
