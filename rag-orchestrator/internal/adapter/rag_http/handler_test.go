@@ -107,7 +107,7 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 		testLogger,
 	)
 
-	handler := rag_http.NewHandler(retrieve, answerUC, nil, nil)
+	handler := rag_http.NewHandler(retrieve, answerUC, nil, nil, nil)
 
 	body := bytes.NewBufferString(`{"query":"TPU"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", body)
@@ -160,7 +160,7 @@ func TestHandler_AnswerWithRAGStream(t *testing.T) {
 	}
 	close(events)
 
-	handler := rag_http.NewHandler(nil, &stubStreamUsecase{events: events}, nil, nil)
+	handler := rag_http.NewHandler(nil, &stubStreamUsecase{events: events}, nil, nil, nil)
 
 	body := bytes.NewBufferString(`{"query":"streaming"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer/stream", body)

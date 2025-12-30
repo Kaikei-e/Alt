@@ -25,6 +25,8 @@ type Config struct {
 	OllamaTimeout        int // Seconds
 	SearchIndexerURL     string
 	SearchIndexerTimeout int // Seconds
+	AltBackendURL        string
+	AltBackendTimeout    int // Seconds
 }
 
 func Load() *Config {
@@ -47,6 +49,8 @@ func Load() *Config {
 		OllamaTimeout:        getEnvInt("OLLAMA_TIMEOUT", 300),
 		SearchIndexerURL:     getEnv("SEARCH_INDEXER_URL", "http://search-indexer:8080"),
 		SearchIndexerTimeout: getEnvInt("SEARCH_INDEXER_TIMEOUT", 10),
+		AltBackendURL:        getEnv("ALT_BACKEND_URL", "http://alt-backend:9000"),
+		AltBackendTimeout:    getEnvInt("ALT_BACKEND_TIMEOUT", 30),
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
+	"rag-orchestrator/internal/adapter/altdb"
 	"rag-orchestrator/internal/adapter/rag_augur"
 	rag_http "rag-orchestrator/internal/adapter/rag_http"
 	"rag-orchestrator/internal/adapter/rag_http/openapi"
@@ -79,6 +80,21 @@ func main() {
 		log,
 	)
 
+	// Initialize ArticleClient for morning letter
+	articleClient := altdb.NewHTTPArticleClient(
+		cfg.AltBackendURL,
+		time.Duration(cfg.AltBackendTimeout)*time.Second,
+		log,
+	)
+	morningLetterPromptBuilder := usecase.NewMorningLetterPromptBuilder()
+	morningLetterUsecase := usecase.NewMorningLetterUsecase(
+		articleClient,
+		retrieveUsecase,
+		morningLetterPromptBuilder,
+		generator,
+		log,
+	)
+
 	// 6. Initialize & Start Worker
 	jobWorker := worker.NewJobWorker(jobRepo, indexUsecase, log)
 	jobWorker.Start()
@@ -94,13 +110,14 @@ func main() {
 	e.Use(middleware.Recover())
 
 	// 8. Initialize Handlers
-	handler := rag_http.NewHandler(retrieveUsecase, answerUsecase, indexUsecase, jobRepo)
+	handler := rag_http.NewHandler(retrieveUsecase, answerUsecase, indexUsecase, jobRepo, morningLetterUsecase)
 
 	// 9. Register OpenAPI Handlers
 	openapi.RegisterHandlers(e, handler)
 
-	// 10. Manual Registration for Backfill
+	// 10. Manual Registration for Backfill and Morning Letter
 	e.POST("/internal/rag/backfill", handler.Backfill)
+	e.POST("/v1/rag/morning-letter", handler.MorningLetter)
 
 	// 11. Health Checks
 	e.GET("/healthz", func(c echo.Context) error {

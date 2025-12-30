@@ -16,10 +16,11 @@ import (
 )
 
 type Handler struct {
-	retrieveUsecase usecase.RetrieveContextUsecase
-	answerUsecase   usecase.AnswerWithRAGUsecase
-	indexUsecase    usecase.IndexArticleUsecase
-	jobRepo         domain.RagJobRepository
+	retrieveUsecase      usecase.RetrieveContextUsecase
+	answerUsecase        usecase.AnswerWithRAGUsecase
+	indexUsecase         usecase.IndexArticleUsecase
+	jobRepo              domain.RagJobRepository
+	morningLetterUsecase usecase.MorningLetterUsecase
 }
 
 func mapAnswerRequestToInput(req openapi.AnswerRequest) usecase.AnswerWithRAGInput {
@@ -49,12 +50,14 @@ func NewHandler(
 	answerUsecase usecase.AnswerWithRAGUsecase,
 	indexUsecase usecase.IndexArticleUsecase,
 	jobRepo domain.RagJobRepository,
+	morningLetterUsecase usecase.MorningLetterUsecase,
 ) *Handler {
 	return &Handler{
-		retrieveUsecase: retrieveUsecase,
-		answerUsecase:   answerUsecase,
-		indexUsecase:    indexUsecase,
-		jobRepo:         jobRepo,
+		retrieveUsecase:      retrieveUsecase,
+		answerUsecase:        answerUsecase,
+		indexUsecase:         indexUsecase,
+		jobRepo:              jobRepo,
+		morningLetterUsecase: morningLetterUsecase,
 	}
 }
 
@@ -366,4 +369,114 @@ func writeSSE(w io.Writer, kind usecase.StreamEventKind, payload interface{}) er
 	}
 
 	return nil
+}
+
+// MorningLetterRequest defines the request for morning letter
+type MorningLetterRequest struct {
+	Query       string `json:"query"`
+	WithinHours *int   `json:"within_hours,omitempty"`
+	TopicLimit  *int   `json:"topic_limit,omitempty"`
+	Locale      string `json:"locale,omitempty"`
+}
+
+// MorningLetterResponse defines the response for morning letter
+type MorningLetterResponse struct {
+	Topics          []TopicSummary     `json:"topics"`
+	TimeWindow      TimeWindowResponse `json:"time_window"`
+	ArticlesScanned int                `json:"articles_scanned"`
+	GenerationInfo  GenerationInfo     `json:"generation_info"`
+}
+
+// TopicSummary represents a summarized topic
+type TopicSummary struct {
+	Topic       string       `json:"topic"`
+	Headline    string       `json:"headline"`
+	Summary     string       `json:"summary"`
+	Importance  float32      `json:"importance"`
+	ArticleRefs []ArticleRef `json:"article_refs"`
+	Keywords    []string     `json:"keywords"`
+}
+
+// ArticleRef is a lightweight reference to a source article
+type ArticleRef struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	URL         string    `json:"url"`
+	PublishedAt time.Time `json:"published_at"`
+}
+
+// TimeWindowResponse represents the time range for the query
+type TimeWindowResponse struct {
+	Since time.Time `json:"since"`
+	Until time.Time `json:"until"`
+}
+
+// GenerationInfo contains info about the LLM generation
+type GenerationInfo struct {
+	Model    string `json:"model"`
+	Fallback bool   `json:"fallback"`
+}
+
+// MorningLetter extracts important topics from recent articles
+// (POST /v1/rag/morning-letter)
+func (h *Handler) MorningLetter(ctx echo.Context) error {
+	var req MorningLetterRequest
+	if err := ctx.Bind(&req); err != nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	if req.Query == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "query is required"})
+	}
+
+	input := usecase.MorningLetterInput{
+		Query:  req.Query,
+		Locale: req.Locale,
+	}
+	if req.WithinHours != nil {
+		input.WithinHours = *req.WithinHours
+	}
+	if req.TopicLimit != nil {
+		input.TopicLimit = *req.TopicLimit
+	}
+
+	output, err := h.morningLetterUsecase.Execute(ctx.Request().Context(), input)
+	if err != nil {
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Map domain types to response types
+	topics := make([]TopicSummary, len(output.Topics))
+	for i, t := range output.Topics {
+		refs := make([]ArticleRef, len(t.ArticleRefs))
+		for j, r := range t.ArticleRefs {
+			refs[j] = ArticleRef{
+				ID:          r.ID.String(),
+				Title:       r.Title,
+				URL:         r.URL,
+				PublishedAt: r.PublishedAt,
+			}
+		}
+		topics[i] = TopicSummary{
+			Topic:       t.Topic,
+			Headline:    t.Headline,
+			Summary:     t.Summary,
+			Importance:  t.Importance,
+			ArticleRefs: refs,
+			Keywords:    t.Keywords,
+		}
+	}
+
+	return ctx.JSON(http.StatusOK, MorningLetterResponse{
+		Topics: topics,
+		TimeWindow: TimeWindowResponse{
+			Since: output.TimeWindow.Since,
+			Until: output.TimeWindow.Until,
+		},
+		ArticlesScanned: output.ArticlesScanned,
+		GenerationInfo: GenerationInfo{
+			Model:    output.GenerationInfo.Model,
+			Fallback: output.GenerationInfo.Fallback,
+		},
+	})
 }
