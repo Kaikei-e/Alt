@@ -4,9 +4,9 @@
 
 # Alt – Compose-First AI Knowledge Platform
 
-_Last reviewed on November 13, 2025._
+_Last reviewed on December 30, 2025._
 
-> Compose-first knowledge platform that ingests RSS content, enriches it with AI, and serves curated insights with a unified developer workflow across Go, Python, Rust, Deno, and Next.js services.
+> Compose-first knowledge platform that ingests RSS content, enriches it with AI (LLM summaries, tag extraction, RAG-powered Q&A), and serves curated insights with a unified developer workflow across Go, Python, Rust, and TypeScript (Next.js + SvelteKit) services.
 
 ## Table of Contents
 
@@ -46,13 +46,16 @@ _Last reviewed on November 13, 2025._
 ## Platform Snapshot
 
 - Compose-first developer experience: `make up` builds images, runs Atlas migrations, and starts the full stack under Docker Compose v2 profiles.
-- Clean Architecture across languages: Go services follow handler → usecase → port → gateway → driver, while Python, Rust, and Deno counterparts mirror the same contract-first approach.
+- Clean Architecture across languages: Go services follow handler → usecase → port → gateway → driver, while Python, Rust, and TypeScript counterparts mirror the same contract-first approach.
+- Dual frontend architecture: Next.js 16 (React 19) at root path for full-featured desktop/mobile UI, plus SvelteKit 5 (Svelte Runes) at `/sv` for high-performance modern dashboards with Connect-RPC integration.
+- Type-safe API evolution: Connect-RPC (port 9101) runs parallel to REST (port 9000), enabling Protocol Buffers-defined schemas with auto-generated Go/TypeScript clients via `make buf-generate`.
 - AI enrichment pipeline: pre-processor deduplicates and scores feeds, news-creator produces Ollama summaries, and tag-generator runs ONNX-backed extraction with SentenceTransformer fallback, keeps a background worker thread alive for batch throughput, and exposes a service-token gated `/api/v1/tags/batch` so downstream systems (Recap, recap-worker replays, etc.) can fetch cascade-aware tags and refresh the rolling `tag_label_graph` priors.
+- RAG-powered knowledge Q&A: rag-orchestrator indexes articles into pgvector chunks, retrieves relevant context via similarity search, and generates grounded answers with citations through knowledge-augur (Ollama LLM) and knowledge-embedder services.
 - Recap experience: recap-worker (Rust 2024) + recap-subworker (FastAPI) condense the latest seven days of articles into genre cards, evidence links, and summaries that power the mobile `/mobile/recap/7days` dashboard and backend `/v1/recap/7days` API, while deduplicating evidence, persisting `recap_cluster_evidence`, emitting `recap_genre_learning_results`, and shipping golden dataset evaluation metrics plus an offline `scripts/replay_genre_pipeline` helper.
 - Recap ingestion: the backend also hosts `GET /v1/recap/7days` (public) plus service-authenticated `POST /v1/recap/articles`; the latter enforces `X-Service-Token` + `RecapRateLimiter` meters, returns `X-RateLimit-*` headers, and validates `from/to` RFC3339 ranges before calling `RecapGateway`.
-- Dedicated recap-db (PostgreSQL 16) tracks jobs, cached articles, cluster evidence, tag-label graph priors, refine telemetry, and published recaps so reruns stay deterministic and audits replayable via Atlas migrations in `recap-migration-atlas/`.
-- Search-ready delivery: search-indexer batches 200-document upserts into Meilisearch 1.15.2 with tuned searchable/filterable attributes and semantic-ready schema defaults.
-- Observability built in: Rust rask log services stream structured JSON into ClickHouse 25.6, complemented by health endpoints and targeted dashboards.
+- Dedicated recap-db (PostgreSQL 18) tracks jobs, cached articles, cluster evidence, tag-label graph priors, refine telemetry, and published recaps so reruns stay deterministic and audits replayable via Atlas migrations in `recap-migration-atlas/`.
+- Search-ready delivery: search-indexer batches 200-document upserts into Meilisearch 1.27.0 with tuned searchable/filterable attributes and semantic-ready schema defaults.
+- Observability built in: Rust rask log services stream structured JSON into ClickHouse 25.9, complemented by health endpoints and targeted dashboards.
 - Streamed metrics: `/v1/sse/feeds/stats` keeps a heartbeat (10s) + ticker (configured via `SERVER_SSE_INTERVAL`) open so dashboards immediately reflect `feedAmount`, `unsummarizedFeedAmount`, and `articleAmount`.
 - Identity at the edge: auth-hub validates Kratos sessions, emits authoritative `X-Alt-*` headers, and caches them for five minutes so downstream services remain auth-agnostic.
 - TDD-first change management: every service mandates Red → Green → Refactor with exhaustive unit suites, integration hooks, and deterministic mocks before production merges.
@@ -119,31 +122,39 @@ flowchart LR
     classDef optional fill:#fff4e5,stroke:#f97316,color:#772b07,stroke-dasharray:4 3
     classDef data fill:#fef3c7,stroke:#d97706,color:#5b3a06
     classDef observability fill:#fde4f7,stroke:#c026d3,color:#4a0d68
+    classDef rag fill:#dbeafe,stroke:#1d4ed8,color:#1e3a5f
 
     Browser((Browser / Mobile Client)):::client
-    Nginx["nginx reverse proxy<br/>ports 80 ➜ services"]:::edge
-    UI["alt-frontend<br/>Next.js 15 + React 19"]:::core
+    Nginx["nginx reverse proxy<br/>ports 80 → services"]:::edge
+    UI["alt-frontend<br/>Next.js 16 + React 19"]:::core
+    UISv["alt-frontend-sv<br/>SvelteKit 5 /sv"]:::core
     AuthHub["auth-hub<br/>Go IAP proxy"]:::edge
-    Backend["alt-backend<br/>Go Clean Architecture"]:::core
+    Backend["alt-backend<br/>Go REST + Connect-RPC"]:::core
     Sidecar["sidecar-proxy<br/>HTTP policy"]:::core
     PreProc["pre-processor<br/>Go ingestion"]:::core
     Scheduler["pre-processor-sidecar<br/>Cron scheduler"]:::optional
     News["news-creator<br/>FastAPI + Ollama"]:::optional
     Tags["tag-generator<br/>FastAPI ML"]:::core
     Indexer["search-indexer<br/>Go → Meilisearch"]:::core
-    Postgres["PostgreSQL 16"]:::data
-    Kratos["Ory Kratos 1.1"]:::data
-    Meili["Meilisearch 1.15.2"]:::data
-    ClickHouse["ClickHouse 25.6"]:::data
+    RagOrch["rag-orchestrator<br/>Go RAG service"]:::rag
+    RagDB["rag-db<br/>PostgreSQL 18 + pgvector"]:::rag
+    KnowledgeAugur["knowledge-augur<br/>Ollama LLM"]:::rag
+    KnowledgeEmbed["knowledge-embedder<br/>Vector encoding"]:::rag
+    Postgres["PostgreSQL 17"]:::data
+    Kratos["Ory Kratos 1.3.0"]:::data
+    Meili["Meilisearch 1.27.0"]:::data
+    ClickHouse["ClickHouse 25.9"]:::data
     RaskF["rask-log-forwarder<br/>Rust sidecar"]:::observability
     RaskA["rask-log-aggregator<br/>Rust Axum API"]:::observability
     External["External APIs / RSS / Inoreader"]:::optional
 
     Browser -->|HTTPS| Nginx
     Nginx -->|/| UI
+    Nginx -->|/sv| UISv
     Nginx -->|/api| AuthHub
     AuthHub --> Backend
     UI -->|REST via AuthHub| Backend
+    UISv -->|Connect-RPC + REST| Backend
     Backend --> Sidecar
     Backend --> Postgres
     Backend --> Meili
@@ -157,6 +168,9 @@ flowchart LR
     News --> Postgres
     Indexer --> Postgres
     Indexer --> Meili
+    RagOrch --> RagDB
+    RagOrch --> KnowledgeAugur
+    RagOrch --> KnowledgeEmbed
     RaskF --> RaskA --> ClickHouse
     RaskF -->|tails| Nginx
     RaskF -->|tails| Backend
@@ -198,11 +212,12 @@ graph TD
     Nginx[Nginx Gateway]
 
     subgraph Frontend
-        AltFrontend[alt-frontend]
+        AltFrontend[alt-frontend<br/>Next.js]
+        AltFrontendSv[alt-frontend-sv<br/>SvelteKit /sv]
     end
 
     subgraph Backend
-        AltBackend[alt-backend]
+        AltBackend[alt-backend<br/>REST + Connect-RPC]
         AuthHub[auth-hub]
     end
 
@@ -215,11 +230,18 @@ graph TD
         TagGenerator[tag-generator]
     end
 
+    subgraph RAG
+        RagOrchestrator[rag-orchestrator]
+        KnowledgeAugur[knowledge-augur]
+        KnowledgeEmbedder[knowledge-embedder]
+    end
+
     subgraph Infrastructure
         Kratos[Ory Kratos]
         KratosDB[(Postgres: kratos-db)]
         AltDB[(Postgres: alt-db)]
         RecapDB[(Postgres: recap-db)]
+        RagDB[(Postgres: rag-db<br/>+ pgvector)]
         Meilisearch[(Meilisearch)]
         Ollama[Ollama LLM]
         Clickhouse[(Clickhouse)]
@@ -236,6 +258,7 @@ graph TD
 
     %% Nginx Routing
     Nginx -->|/| AltFrontend
+    Nginx -->|/sv| AltFrontendSv
     Nginx -->|/api/frontend| AltFrontend
     Nginx -->|/api/backend| AltBackend
     Nginx -->|/api/v1/sse| AltBackend
@@ -246,6 +269,9 @@ graph TD
     %% Frontend Interactions
     AltFrontend -->|SSR/API| AltBackend
     AltFrontend -->|Auth Validation| AuthHub
+    AltFrontendSv -->|Connect-RPC| AltBackend
+    AltFrontendSv -->|REST| AltBackend
+    AltFrontendSv -->|Auth Validation| AuthHub
 
     %% Backend Interactions
     AltBackend -->|SQL| AltDB
@@ -275,6 +301,12 @@ graph TD
 
     TagGenerator -->|SQL| AltDB
 
+    %% RAG Interactions
+    RagOrchestrator -->|SQL + Vector| RagDB
+    RagOrchestrator -->|Embed| KnowledgeEmbedder
+    RagOrchestrator -->|Generate| KnowledgeAugur
+    KnowledgeAugur -->|Inference| Ollama
+
     AuthHub -->|Identity| Kratos
     Kratos -->|SQL| KratosDB
 
@@ -292,11 +324,13 @@ graph TD
     classDef infra fill:#f2f3f4,stroke:#7f8c8d,stroke-width:2px,stroke-dasharray: 5 5;
     classDef gateway fill:#e8daef,stroke:#8e44ad,stroke-width:2px;
     classDef observability fill:#fadbd8,stroke:#c0392b,stroke-width:2px;
+    classDef rag fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px;
 
-    class AltFrontend frontend;
+    class AltFrontend,AltFrontendSv frontend;
     class AltBackend,AuthHub backend;
     class NewsCreator,RecapWorker,RecapSubworker,PreProcessor,SearchIndexer,TagGenerator worker;
-    class Kratos,KratosDB,AltDB,RecapDB,Meilisearch,Ollama,Clickhouse infra;
+    class RagOrchestrator,KnowledgeAugur,KnowledgeEmbedder rag;
+    class Kratos,KratosDB,AltDB,RecapDB,RagDB,Meilisearch,Ollama,Clickhouse infra;
     class Nginx,Browser gateway;
     class RaskForwarder,RaskAggregator observability;
 ```
@@ -307,7 +341,7 @@ Nginx fronts every `/api` call with `auth_request`, sending it to auth-hub. auth
 
 #### Component Responsibilities
 
-- **Client tier** – Next.js UI delivers responsive dashboards, handles optimistic interactions, and mirrors backend feature flags via `NEXT_PUBLIC_*` variables.
+- **Client tier** – Next.js UI (root path) and SvelteKit UI (`/sv` path) deliver responsive dashboards, handle optimistic interactions, and mirror backend feature flags via `NEXT_PUBLIC_*` / `PUBLIC_*` variables. SvelteKit uses Connect-RPC for type-safe API calls.
 - **Edge tier** – Nginx terminates TLS (when enabled), normalises headers, triggers auth-hub checks, and fan-outs requests to backend APIs or static assets.
 - **Core services** – alt-backend orchestrates domain logic, while pre-processor, tag-generator, news-creator, and search-indexer cooperate to enrich, store, and surface content.
 - **Data tier** – PostgreSQL persists canonical entities, Meilisearch powers discovery, ClickHouse retains observability telemetry, and Kratos maintains identities.
@@ -342,32 +376,96 @@ sequenceDiagram
     Browser-->>User: Rendered dashboard
 ```
 
+### Connect-RPC Architecture
+
+Alt runs REST (port 9000) and Connect-RPC (port 9101) in parallel, enabling gradual migration to type-safe APIs while maintaining backward compatibility.
+
+**Key Design Decisions:**
+- **Parallel operation** – REST `/v1/*` on port 9000 remains the default; Connect-RPC on port 9101 serves type-safe clients (primarily alt-frontend-sv).
+- **Protocol Buffers** – Schema definitions in `proto/alt/` generate Go handlers and TypeScript clients via `make buf-generate`.
+- **Auth interceptor** – JWT validation via `X-Alt-Backend-Token` header, reusing existing auth-hub token exchange.
+- **Phase 1 complete** – Feed Stats endpoints (`GetFeedStats`, `GetDetailedFeedStats`, `GetUnreadCount`) are live; additional endpoints migrating in phases.
+
+```mermaid
+flowchart TD
+    subgraph Frontends
+        NextJS[alt-frontend<br/>Next.js REST client]
+        SvelteKit[alt-frontend-sv<br/>Connect-RPC + REST]
+    end
+    subgraph "alt-backend"
+        REST[REST API<br/>Port 9000 /v1/*]
+        ConnectRPC[Connect-RPC Server<br/>Port 9101]
+    end
+    Proto[proto/*.proto<br/>Protocol Buffers]
+
+    NextJS --> REST
+    SvelteKit --> REST
+    SvelteKit --> ConnectRPC
+    Proto -.->|buf generate| ConnectRPC
+    Proto -.->|buf generate| SvelteKit
+```
+
+### RAG Pipeline Architecture
+
+The RAG (Retrieval Augmented Generation) pipeline enables knowledge-based question answering with grounded, citation-backed responses.
+
+**Pipeline Components:**
+- **rag-orchestrator** – Go service managing document indexing, context retrieval, and answer generation.
+- **rag-db** – PostgreSQL 18 with pgvector extension for vector similarity search.
+- **knowledge-embedder** – Generates vector embeddings for article chunks.
+- **knowledge-augur** – Ollama-based LLM for generating answers from retrieved context.
+
+**Flow:**
+1. **Indexing** – Articles are chunked, embedded, and stored with version tracking.
+2. **Retrieval** – Queries are embedded and matched against chunks via pgvector similarity search.
+3. **Generation** – Top-K context chunks are assembled into a prompt for LLM generation with structured JSON output.
+
+```mermaid
+flowchart LR
+    subgraph Indexing
+        Article[Article Content] --> IndexUC[rag-orchestrator<br/>Index Usecase]
+        IndexUC --> Chunk[Chunker]
+        Chunk --> Embed[knowledge-embedder<br/>Vector Encoding]
+        Embed --> RagDB[(rag-db<br/>pgvector)]
+    end
+    subgraph "Query & Answer"
+        Query[User Query] --> Retrieve[rag-orchestrator<br/>Retrieve Context]
+        Retrieve --> RagDB
+        RagDB --> Context[Top K Chunks]
+        Context --> Answer[Answer Usecase]
+        Answer --> Augur[knowledge-augur<br/>LLM Generation]
+        Augur --> Response[Answer + Citations]
+    end
+```
+
 ## Technology & Version Matrix
 
-| Layer | Primary Tech | Version (Oct 2025) | Notes |
+| Layer | Primary Tech | Version (Dec 2025) | Notes |
 | --- | --- | --- | --- |
-| Web UI | Next.js 15, React 19, TypeScript 5.9, pnpm 10.20.0 | Node.js 24 LTS | Chakra UI theme trio; App Router; Playwright + Vitest. |
-| Go API & Proxy | Go 1.25, Echo, `net/http/httputil` | Go 1.25.x | Clean Architecture with GoMock; `testing/synctest`; sidecar enforces HTTPS allowlists and shared timeouts. |
-| Go Data Pipeline | Go 1.25, `mercari/go-circuitbreaker`, `singleflight` | - | Pre-processor, scheduler, search-indexer; rate limit ≥5 s; 200-doc Meilisearch batches. |
-| Python AI Services | Python 3.11/3.14, FastAPI, Ollama, `uv` | Ollama 0.3.x | Clean Architecture; golden prompts; bias detection; Ruff/mypy gates. |
-| Recap pipeline | Rust 1.90 (Axum, Tokio, sqlx), FastAPI 0.115, PostgreSQL recap-db | Rust 1.90 / Python 3.11 | recap-worker orchestrates fetch→preprocess→dedupe→genre→persist; recap-subworker clusters evidence payloads; both depend on news-creator via the `ollama` profile. |
-| Identity & Tokens | Ory Kratos 1.1, auth-hub (Go 1.25), Deno 2.5.4 | - | 5-minute TTL cache; emits `X-Alt-*` headers; Inoreader refresh via `@std/testing/bdd`. |
-| Observability | Rust 1.90 (2024 edition), ClickHouse 25.6 | - | SIMD log forwarder; Axum aggregator; `criterion` benchmarks. |
-| Storage & Search | PostgreSQL 16, Meilisearch 1.15.2 | - | Atlas migrations; tuned searchable/filterable attributes; persisted volumes. |
-| Orchestration | Docker Desktop 4.36+, Compose v2.27+, Makefile | - | `make up/down/build`; optional `ollama` and `logging` profiles; `.env.template` as source. |
+| Web UI (Next.js) | Next.js 16, React 19.2, TypeScript 5.9, pnpm 10.25 | Node.js 24 LTS | Chakra UI 3.30; App Router; Playwright 1.57 + Vitest 4.0. |
+| Web UI (SvelteKit) | SvelteKit 2.49, Svelte 5.46, TailwindCSS v4, Vite 7.3 | Node.js 24 LTS | Svelte 5 Runes; `/sv` base path; Connect-RPC client; Biome linter. |
+| Go API & RPC | Go 1.24/1.25, Echo 4.14, Connect-RPC | Port 9000 (REST), 9101 (RPC) | Clean Architecture with GoMock; Protocol Buffers via `make buf-generate`. |
+| Go Data Pipeline | Go 1.24/1.25, `mercari/go-circuitbreaker`, `singleflight` | - | Pre-processor, scheduler, search-indexer; rate limit ≥5 s; 200-doc Meilisearch batches. |
+| RAG Pipeline | Go 1.25, pgvector, Ollama | Port 9010 | rag-orchestrator + knowledge-augur + knowledge-embedder; chunk-based retrieval with LLM generation. |
+| Python AI Services | Python 3.12/3.13, FastAPI, Ollama, `uv` | Ollama 0.3.x | Clean Architecture; golden prompts; bias detection; Ruff/mypy gates. |
+| Recap pipeline | Rust 1.87 (Axum, Tokio, sqlx), FastAPI 0.115, PostgreSQL 18 recap-db | Rust 2024 edition | recap-worker orchestrates fetch→preprocess→dedupe→genre→persist; recap-subworker clusters evidence; news-creator via `ollama` profile. |
+| Identity & Tokens | Ory Kratos 1.3.0, auth-hub (Go 1.25) | - | 5-minute TTL cache; emits `X-Alt-*` headers; auth-token-manager for Inoreader OAuth. |
+| Observability | Rust 1.87 (2024 edition), ClickHouse 25.9 | - | SIMD log forwarder; Axum aggregator; `criterion` benchmarks. |
+| Storage & Search | PostgreSQL 17/18, Meilisearch 1.27.0 | - | Atlas migrations; pgvector for RAG; tuned searchable/filterable attributes; persisted volumes. |
+| Orchestration | Docker Desktop 4.36+, Compose v2.27+, Makefile | - | `make up/down/build`; profiles: `ollama`, `logging`, `recap`, `rag-extension`. |
 
-> **Version cadence:** Go/Rust toolchains track stable releases quarterly, Next.js updates follow LTS adoption, and Python runtimes are pinned per service to avoid cross-environment drift. Update the matrix whenever upgrade stories land.
+> **Version cadence:** Go/Rust toolchains track stable releases quarterly, Next.js/SvelteKit updates follow LTS adoption, and Python runtimes are pinned per service to avoid cross-environment drift. Update the matrix whenever upgrade stories land.
 
 ## Getting Started
 
 ### Prerequisites
 
 - Docker Desktop 4.36+ (or Colima/Lima with Compose v2.27+) with at least 4 CPU / 8 GB memory allocated.
-- Node.js 24 LTS with `pnpm` ≥9 installed globally (`corepack enable pnpm`).
-- Go 1.25.x toolchain with `GOBIN` on your `PATH`.
-- Python 3.14 (for tag-generator) and Python 3.11 (for news-creator) with `uv` for environment management.
-- Rust 1.90 (2024 edition) and Cargo, including `rustup target add wasm32-unknown-unknown` if you run front-end bridges.
-- Deno 2.5.4 and optional GPU runtime (CUDA 12+) if you plan to run Ollama locally.
+- Node.js 24 LTS with `pnpm` ≥10 installed globally (`corepack enable pnpm`).
+- Go 1.24.x or 1.25.x toolchain with `GOBIN` on your `PATH`.
+- Python 3.12/3.13 (for tag-generator, recap-subworker) with `uv` for environment management.
+- Rust 1.87 (2024 edition) and Cargo for recap-worker and rask-* services.
+- Optional: GPU runtime (CUDA 12+) if you plan to run Ollama locally for news-creator and RAG.
 
 ### First-Time Setup
 
@@ -380,16 +478,22 @@ sequenceDiagram
 
 ### Compose Profiles
 
-- **Default** – Frontend, backend, PostgreSQL, Kratos, Meilisearch, search-indexer, tag-generator (mounts `./tag-generator/models/onnx` for the ONNX runtime and respects `SERVICE_SECRET`), ClickHouse, rask-log-aggregator.
+- **Default** – Frontend (Next.js + SvelteKit), backend, PostgreSQL 17, Kratos, Meilisearch, search-indexer, tag-generator (mounts `./tag-generator/models/onnx` for the ONNX runtime and respects `SERVICE_SECRET`), ClickHouse, rask-log-aggregator.
 - **`--profile ollama`** – Adds news-creator (FastAPI + Ollama) and pre-processor ingestion services with persistent model volume at `news_creator_models`.
-- **`--profile logging`** – Launches rask-log-forwarder sidecars that stream container logs into the aggregator; includes `x-rask-env` defaults.
-- **`--profile recap`** – Starts recap-worker (Rust), recap-subworker (FastAPI), recap-db (PostgreSQL 16), and the recap Atlas migrator. Pair it with `--profile ollama` so news-creator is available to finish summaries.
+- **`--profile logging`** – Launches rask-log-forwarder sidecars (8 services) that stream container logs into the aggregator; includes `x-rask-env` defaults.
+- **`--profile recap`** – Starts recap-worker (Rust), recap-subworker (FastAPI), recap-db (PostgreSQL 18), dashboard, and the recap Atlas migrator. Pair it with `--profile ollama` so news-creator is available to finish summaries.
+- **`--profile rag-extension`** – Starts rag-orchestrator, rag-db (PostgreSQL 18 + pgvector), rag-db-migrator, knowledge-augur, and knowledge-embedder for RAG-powered Q&A.
 
-Enable combinations as needed with `docker compose --profile ollama --profile logging up -d` or `docker compose --profile recap --profile ollama up recap-worker recap-subworker recap-db recap-db-migrator` when testing the Recap stack end-to-end.
+Enable combinations as needed:
+```bash
+docker compose --profile ollama --profile logging up -d
+docker compose --profile recap --profile ollama up -d
+docker compose --profile rag-extension up -d
+```
 
 ### Developer Setup Checklist
 
-1. **Install toolchains** – Docker Desktop/Colima, Go 1.25.x, Node.js 24 + `pnpm`, Python 3.11/3.14 with `uv`, Rust 1.90, and Deno 2.5.4 should all respond to `--version`.
+1. **Install toolchains** – Docker Desktop/Colima, Go 1.24/1.25, Node.js 24 + `pnpm`, Python 3.12/3.13 with `uv`, and Rust 1.87 should all respond to `--version`.
 2. **Bootstrap dependencies** – Run `pnpm -C alt-frontend install`, `uv sync` for Python services, `go mod download ./...`, and `cargo fetch` to warm caches.
 3. **Prepare environment** – Copy `.env.template` to `.env`, fill local-safe secrets, and confirm `scripts/check-env.js` passes.
 4. **Smoke the stack** – Execute `pnpm -C alt-frontend build`, `go test ./...`, `uv run pytest`, `cargo test`, then `make up`/`make down` to validate orchestration.
@@ -402,14 +506,14 @@ Each microservice maintains a `CLAUDE.md` for process guardrails plus a snapshot
 
 | Service | Primary Doc | Focus |
 | --- | --- | --- |
-| `alt-frontend/` | [docs/alt-frontend.md](docs/alt-frontend.md) | Next.js 15 + React 19 App Router UI with Chakra themes and the `/mobile/recap/7days` experience. |
-| `alt-frontend-sv/` | [docs/alt-frontend-sv.md](docs/alt-frontend-sv.md) | SvelteKit `/sv` experience with Runes, Tailwind v4, and authenticated dashboards. |
-| `alt-backend/app/` | [docs/alt-backend.md](docs/alt-backend.md) | Go 1.25 Clean Architecture REST API, SSE + recap endpoints, and background job runners. |
+| `alt-frontend/` | [docs/alt-frontend.md](docs/alt-frontend.md) | Next.js 16 + React 19 App Router UI with Chakra themes and the `/mobile/recap/7days` experience. |
+| `alt-frontend-sv/` | [docs/alt-frontend-sv.md](docs/alt-frontend-sv.md) | SvelteKit `/sv` experience with Runes, Tailwind v4, Connect-RPC client, and authenticated dashboards. |
+| `alt-backend/app/` | [docs/alt-backend.md](docs/alt-backend.md) | Go 1.24/1.25 Clean Architecture REST + Connect-RPC API, SSE + recap endpoints, and background job runners. |
 | `alt-backend/sidecar-proxy/` | [docs/sidecar-proxy.md](docs/sidecar-proxy.md) | Go egress proxy that enforces HTTPS allowlists, bypasses internal DNS, and exposes health/metrics/debug hooks. |
 | `pre-processor/app/` | [docs/pre-processor.md](docs/pre-processor.md) | Go ingestion service with dedupe/sanitization, circuit breakers, and async summarization queue. |
 | `pre-processor-sidecar/app/` | [docs/pre-processor-sidecar.md](docs/pre-processor-sidecar.md) | Scheduler handling Inoreader token refresh, Cron-mode toggles, and secret-watchers. |
 | `news-creator/app/` | [docs/news-creator.md](docs/news-creator.md) | FastAPI Ollama orchestrator with Model Bucket Routing, Map-Reduce summarisation, and golden prompts. |
-| `tag-generator/app/` | [docs/tag-generator.md](docs/tag-generator.md) | Python 3.14 ML pipeline batching tag extractions, cascade controls, and rolling `tag_label_graph` priors. |
+| `tag-generator/app/` | [docs/tag-generator.md](docs/tag-generator.md) | Python 3.13 ML pipeline batching tag extractions, cascade controls, and rolling `tag_label_graph` priors. |
 | `search-indexer/app/` | [docs/search-indexer.md](docs/search-indexer.md) | Go batch indexer (200 docs) into Meilisearch with tokenizer + schema bootstrapping plus `/v1/search`. |
 | `auth-hub/` | [docs/auth-hub.md](docs/auth-hub.md) | Kratos-aware IAP that validates sessions, caches 5m, and emits authoritative `X-Alt-*` headers. |
 | `auth-token-manager/` | [docs/auth-token-manager.md](docs/auth-token-manager.md) | Deno OAuth2 CLI refreshing Inoreader tokens, writing Kubernetes secrets, and monitoring horizons. |
@@ -418,6 +522,10 @@ Each microservice maintains a `CLAUDE.md` for process guardrails plus a snapshot
 | `recap-worker/` | [docs/recap-worker.md](docs/recap-worker.md) | Rust pipeline orchestrating fetch → preprocess → dedup → genre → evidence → news-creator → persist. |
 | `recap-subworker/` | [docs/recap-subworker.md](docs/recap-subworker.md) | FastAPI worker running clustering, classification, diagnostics, and admin learning jobs. |
 | `recap-db` | [docs/recap-db.md](docs/recap-db.md) | PostgreSQL schema contract for recap jobs, sections, evidence, tag graphs, and learning results. |
+| `rag-orchestrator/` | [docs/rag-orchestrator.md](docs/rag-orchestrator.md) | Go RAG service: article indexing, vector retrieval via pgvector, and LLM answer generation with citations. |
+| `rag-db` | [docs/rag-db.md](docs/rag-db.md) | PostgreSQL 18 + pgvector for RAG documents, versions, chunks, and events. |
+| `knowledge-augur/` | – | Ollama LLM variant for knowledge-based question answering with structured JSON output. |
+| `knowledge-embedder/` | – | Embedding service for generating vector representations of article chunks. |
 
 Additional reference docs include `docs/Alt-Architecture-07.md` for historical Kubernetes/Compose topology, the `docs/recap-*` retrospectives (runbooks, investigations, and pipeline notes), and the `docs/recap-7days-pipeline.md` overview for mobile/genre sequencing. Keep `CLAUDE.md` plus the linked snapshot fresh as you edit.
 
@@ -425,14 +533,14 @@ Additional reference docs include `docs/Alt-Architecture-07.md` for historical K
 
 Every `docs/<service>.md` snapshot pairs prose with architecture diagrams, configuration, testing commands, and operational notes derived from the current tree. Consult the linked doc before touching the service and refresh it whenever contracts or lint/test surface changes.
 
-- **alt-frontend** – Next.js 15 App Router UI with Chakra palettes, SWR/react-query caching, middleware-protected flows, and the `/mobile/recap/7days` experience that now renders evidence links + genre payloads. [docs/alt-frontend.md](docs/alt-frontend.md)
-- **alt-frontend-sv** – SvelteKit `/sv` gateway with Runes, Tailwind v4, SSE hooks, and Kratos-aware middleware powering the modern dashboard while exchanging tokens via auth-hub. [docs/alt-frontend-sv.md](docs/alt-frontend-sv.md)
-- **alt-backend/app** – Go 1.25 Clean Architecture API (handler → usecase → port → gateway → driver) with GoMock suites, Atlas migrations, structured slog, and the recap endpoints `/v1/recap/7days` + service-auth `/v1/recap/articles`. [docs/alt-backend.md](docs/alt-backend.md)
+- **alt-frontend** – Next.js 16 App Router UI with Chakra palettes, SWR/react-query caching, middleware-protected flows, and the `/mobile/recap/7days` experience that now renders evidence links + genre payloads. [docs/alt-frontend.md](docs/alt-frontend.md)
+- **alt-frontend-sv** – SvelteKit `/sv` gateway with Svelte 5 Runes, Tailwind v4, Connect-RPC client for type-safe APIs, SSE hooks, and Kratos-aware middleware powering the modern dashboard while exchanging tokens via auth-hub. [docs/alt-frontend-sv.md](docs/alt-frontend-sv.md)
+- **alt-backend/app** – Go 1.24/1.25 Clean Architecture API (handler → usecase → port → gateway → driver) with REST (port 9000) + Connect-RPC (port 9101), GoMock suites, Atlas migrations, structured slog, and the recap endpoints `/v1/recap/7days` + service-auth `/v1/recap/articles`. [docs/alt-backend.md](docs/alt-backend.md)
 - **alt-backend/sidecar-proxy** – Go egress proxy enforcing HTTPS allowlists, external DNS resolution, CONNECT tunnels, health/metrics/debug endpoints, and structured logging while remaining light enough to attach to Compose/Kubernetes. [docs/sidecar-proxy.md](docs/sidecar-proxy.md)
 - **pre-processor/app** – Go ingestion worker that deduplicates feeds, sanitizes content, queues summarisation jobs, and obeys 5-second host pacing with circuit breakers. [docs/pre-processor.md](docs/pre-processor.md)
 - **pre-processor-sidecar/app** – Scheduler rotating Inoreader tokens, syncing subscriptions, and exposing health/admin endpoints; uses `singleflight`, pluggable clocks, and secret watching. [docs/pre-processor-sidecar.md](docs/pre-processor-sidecar.md)
 - **news-creator/app** – FastAPI Ollama orchestrator featuring Model Bucket Routing, hierarchical Map-Reduce summarization, golden prompts, and fallback strategies for OOM or repetition. [docs/news-creator.md](docs/news-creator.md)
-- **tag-generator/app** – Python 3.14 ML pipeline batching tag extraction, running ONNX Runtime (with SentenceTransformer fallback), exposing `/api/v1/tags/batch`, and refreshing the rolling `tag_label_graph`. [docs/tag-generator.md](docs/tag-generator.md)
+- **tag-generator/app** – Python 3.13 ML pipeline batching tag extraction, running ONNX Runtime (with SentenceTransformer fallback), exposing `/api/v1/tags/batch`, and refreshing the rolling `tag_label_graph`. [docs/tag-generator.md](docs/tag-generator.md)
 - **search-indexer/app** – Go Meilisearch indexer that batches 200 documents, ensures schema settings, and exposes a `/v1/search` handler. [docs/search-indexer.md](docs/search-indexer.md)
 - **auth-hub** – Kratos-aware IAP that validates sessions, caches identities for five minutes, and emits authoritative `X-Alt-*` headers for downstream services. [docs/auth-hub.md](docs/auth-hub.md)
 - **auth-token-manager** – Deno OAuth2 CLI refreshing Inoreader tokens, writing Kubernetes secrets, and monitoring token horizon alerts. [docs/auth-token-manager.md](docs/auth-token-manager.md)
@@ -441,6 +549,10 @@ Every `docs/<service>.md` snapshot pairs prose with architecture diagrams, confi
 - **recap-worker** – Rust 2024 Axum orchestrator that fetches articles, preprocesses/deduplicates, assigns genres, assembles evidence, clusters via recap-subworker, summarizes via news-creator, and persists outputs for `/v1/recap/7days`. [docs/recap-worker.md](docs/recap-worker.md)
 - **recap-subworker** – FastAPI/Gunicorn clustering and classification worker using process pools, embeddings, and diagnostics; supports admin warmups and graph builds. [docs/recap-subworker.md](docs/recap-subworker.md)
 - **recap-db** – PostgreSQL schema contract for recap jobs, sections, evidence, tag graphs, and learning results plus migration helpers. [docs/recap-db.md](docs/recap-db.md)
+- **rag-orchestrator** – Go 1.25 RAG service implementing article indexing with chunking, vector embedding via knowledge-embedder, context retrieval via pgvector similarity search, and LLM answer generation with citations via knowledge-augur. [docs/rag-orchestrator.md](docs/rag-orchestrator.md)
+- **rag-db** – PostgreSQL 18 with pgvector extension storing documents, document versions, chunks, chunk events, and jobs for the RAG pipeline. [docs/rag-db.md](docs/rag-db.md)
+- **knowledge-augur** – Ollama-based LLM service for generating grounded answers with structured JSON output and citation tracking.
+- **knowledge-embedder** – Embedding service generating vector representations for article chunks using the configured embedding model.
 
 - **Cross-cutting note** – Structured logging, context propagation, deterministic tests, and environment-driven configuration apply to every service. Refresh the relevant `docs/<service>.md` snapshot whenever contracts, env guards, or test commands change, and read the `CLAUDE.md` file for process guardrails before committing.
 
@@ -523,6 +635,9 @@ flowchart LR
   | Recap Worker | `http://localhost:9005/health/ready` | Probes recap-subworker + news-creator before `200`; metrics at `/metrics`. |
   | Recap Subworker | `http://localhost:8002/health/ready` | `200` only when queue + process pool are healthy. |
   | Recap DB | `docker compose exec recap-db pg_isready -U $RECAP_DB_USER` | `accepting connections` |
+  | RAG Orchestrator | `http://localhost:9010/health` | HTTP 200 when rag-db + Ollama reachable. |
+  | alt-frontend-sv | `http://localhost:4173/sv` | SvelteKit UI at `/sv` base path. |
+  | Connect-RPC | `http://localhost:9101` | gRPC-Web/Connect protocol endpoint. |
 
 - Use `docker compose logs -f <service>` for quick debugging, query ClickHouse for high-volume analysis, and run `backup-postgres.sh` / `backup-postgres-docker.sh` only when the stack is quiesced.
 
@@ -560,12 +675,12 @@ CI expectations: PRs run lint + unit suites per language plus targeted integrati
 
 ## Data & Storage
 
-- PostgreSQL 16 (`db_data`) stores canonical entities: `feeds`, `articles`, `article_summaries`, `article_tags`, `ingestion_jobs`, `users`, and audit tables. Atlas migrations live in `migrations-atlas/` and must remain backward-compatible because `make up` replays them on every boot.
+- PostgreSQL 17 (`db_data_17`) stores canonical entities: `feeds`, `articles`, `article_summaries`, `article_tags`, `ingestion_jobs`, `users`, and audit tables. Atlas migrations live in `migrations-atlas/` and must remain backward-compatible because `make up` replays them on every boot.
 - Kratos maintains its own database (`kratos_db_data`) for identity state; never cross-link application tables to Kratos schemas—consume identity via auth-hub headers instead.
 - Meilisearch (`meili_data`) holds denormalised search documents built by `search-indexer`; run `docker compose exec meilisearch index list` to inspect configured indices.
 - ClickHouse (`clickhouse_data`) captures structured logs from rask-aggregator, enabling time-series queries, dashboards, and anomaly alerts.
-- recap-db (`recap_db_data`) is the dedicated PostgreSQL instance for recap-worker; it stores `recap_jobs`, cached articles, cluster evidence, and published summaries. Keep it in sync via `recap-migration-atlas/` + `make recap-migrate` before running the `recap` profile.
-- recap-db (`recap_db_data`) is the dedicated PostgreSQL instance for recap-worker; it stores `recap_jobs`, cached articles, `recap_cluster_evidence`, `tag_label_graph`, `recap_genre_learning_results`, and published summaries. Keep it in sync via `recap-migration-atlas/` + `make recap-migrate` before running the `recap` profile, and refresh the graph edges with `tag-generator/app/scripts/build_label_graph.py` (respecting `TAG_LABEL_GRAPH_WINDOW` / `TAG_LABEL_GRAPH_TTL_SECONDS`) or its background service thread whenever you update genre priors.
+- recap-db (PostgreSQL 18, `recap_db_data`) is the dedicated instance for recap-worker; it stores `recap_jobs`, cached articles, `recap_cluster_evidence`, `tag_label_graph`, `recap_genre_learning_results`, and published summaries. Keep it in sync via `recap-migration-atlas/` + `make recap-migrate` before running the `recap` profile.
+- rag-db (PostgreSQL 18 + pgvector, `rag_db_data`) stores RAG documents, versions, chunks, chunk events, and jobs. The pgvector extension enables similarity search over embeddings. Keep it in sync via `rag-migration-atlas/` before running the `rag-extension` profile.
 - Backups: `backup-postgres.sh` (local Docker) and `backup-postgres-docker.sh` (Compose-aware) provide snapshot scripts; schedule them before major migrations. ClickHouse backups can be scripted via `clickhouse-client` or S3-based storage (future).
 
 ### Data Model Overview
@@ -581,6 +696,12 @@ erDiagram
     RECAP_JOB_ARTICLES }o--|| RECAP_JOBS : belongs_to
     RECAP_JOBS ||--o{ RECAP_OUTPUTS : produces
     RECAP_OUTPUTS ||--o{ RECAP_CLUSTER_EVIDENCE : references
+
+    ARTICLES ||--o{ RAG_DOCUMENTS : indexed_as
+    RAG_DOCUMENTS ||--o{ RAG_DOCUMENT_VERSIONS : versioned_by
+    RAG_DOCUMENT_VERSIONS ||--o{ RAG_CHUNKS : split_into
+    RAG_CHUNKS ||--o{ RAG_CHUNK_EVENTS : tracked_by
+    RAG_JOBS ||--o{ RAG_DOCUMENTS : processes
 ```
 
 ### Storage Guardrails
@@ -641,6 +762,10 @@ erDiagram
 | Go tests flaky with timeouts | Missing fake clock or context deadline | Inject `testing/synctest` clock, set explicit deadlines, and avoid sleeping blindly in tests. |
 | Tag-generator batch fetch returns 401 | `SERVICE_SECRET` missing/mismatched or `X-Service-Token` header not sent | Align `.env` values for `SERVICE_SECRET`, include the same value when calling `/api/v1/tags/batch`, and confirm clients supply `X-Service-Token`. |
 | Playwright tests hang | Stack not running or selectors outdated | Start stack with `make up`; update POM selectors to match `data-testid` or page changes. |
+| RAG returns empty context | rag-db has no indexed articles or pgvector not enabled | Run indexing job via rag-orchestrator; check `docker compose logs rag-orchestrator`; verify pgvector extension with `docker compose exec rag-db psql -c "SELECT * FROM pg_extension"`. |
+| Connect-RPC calls fail | Port 9101 not exposed or Connect-RPC server not running | Verify `compose.yaml` exposes 9101; check `docker compose ps alt-backend`; confirm Connect-RPC server started in logs. |
+| alt-frontend-sv returns 404 | Wrong base path or SvelteKit not built | Requests must target `/sv` path; run `pnpm -C alt-frontend-sv build`; check svelte.config.js `kit.paths.base`. |
+| pgvector extension missing | rag-db migration not applied | Run `docker compose --profile rag-extension up rag-db-migrator`; verify with `docker compose exec rag-db psql -c "CREATE EXTENSION IF NOT EXISTS vector"`. |
 
 **General tip:** Use `docker compose ps` and `docker compose logs -f <service>` for health checks, `docker compose exec db psql -U $POSTGRES_USER $POSTGRES_DB` for database inspection, and `make down-volumes` to reset state (only when data loss is acceptable).
 
@@ -657,6 +782,11 @@ erDiagram
 - **Recap** – The seven-day batch summarization feature driven by recap-worker (Rust), recap-subworker (FastAPI), recap-db (PostgreSQL), and the mobile `/mobile/recap/7days` UI exposed via `/v1/recap/7days`.
 - **Singleflight** – Go concurrency primitive ensuring only one duplicate request executes; used for token refresh.
 - **TDD** – Test-Driven Development; the Red → Green → Refactor cycle enforced across all services.
+- **Connect-RPC** – Type-safe RPC framework using Protocol Buffers; HTTP/1.1 and HTTP/2 compatible with gRPC interoperability; runs on port 9101.
+- **RAG** – Retrieval Augmented Generation; combines vector similarity search with LLM generation for grounded, citation-backed answers.
+- **SvelteKit** – Modern web framework for Svelte with SSR/SSG support and file-based routing; powers alt-frontend-sv at `/sv`.
+- **Runes** – Svelte 5's reactive primitives (`$state`, `$derived`, `$effect`) replacing legacy reactivity; used in alt-frontend-sv.
+- **pgvector** – PostgreSQL extension for vector similarity search; enables RAG context retrieval in rag-db.
 
 ## Reference Resources
 
@@ -671,14 +801,37 @@ erDiagram
 ### Command Cheat Sheet
 
 ```bash
-make up
-make down
-docker compose --profile ollama --profile logging up -d
-pnpm -C alt-frontend test
-cd alt-backend/app && go test ./...
-make recap-migrate
-docker compose --profile recap --profile ollama up recap-worker recap-subworker recap-db -d
-curl http://localhost:9000/v1/recap/7days
+# Core stack management
+make up                                              # Build and start full stack
+make down                                            # Stop stack (keep volumes)
+make down-volumes                                    # Stop and reset all data
+
+# Profile activation
+docker compose --profile ollama --profile logging up -d    # AI + observability
+docker compose --profile recap --profile ollama up -d      # Recap pipeline
+docker compose --profile rag-extension up -d               # RAG services
+
+# Testing
+pnpm -C alt-frontend test                            # Next.js unit tests
+pnpm -C alt-frontend-sv check                        # SvelteKit type check
+cd alt-backend/app && go test ./...                  # Go backend tests
+
+# Migrations
+make recap-migrate                                   # Apply recap-db migrations
+docker compose --profile rag-extension up rag-db-migrator  # Apply RAG migrations
+
+# Connect-RPC code generation
+make buf-generate                                    # Generate Go + TypeScript from proto
+
+# Development servers
+pnpm -C alt-frontend-sv dev                          # SvelteKit dev server on :5173
+
+# Health checks
+curl http://localhost:9000/v1/health                 # Backend REST
+curl http://localhost:9101                           # Connect-RPC
+curl http://localhost:9010/health                    # RAG orchestrator
+curl http://localhost:4173/sv                        # SvelteKit frontend
+curl http://localhost:9000/v1/recap/7days            # Recap API
 ```
 
 ### Essential Environment Variables
@@ -693,6 +846,12 @@ curl http://localhost:9000/v1/recap/7days
 | `SERVICE_SECRET`, `INOREADER_CLIENT_ID`, `INOREADER_CLIENT_SECRET` | News-creator tests and Inoreader OAuth tokens | Export locally or inject via Secrets |
 | `RECAP_DB_USER`, `RECAP_DB_PASSWORD`, `RECAP_DB_NAME`, `RECAP_DB_PORT` | Recap PostgreSQL credentials shared by recap-worker, recap-subworker, and the migrator | `.env.template`, `recap-migration-atlas/.env.example` |
 | `RECAP_WORKER_URL`, `RECAP_SUBWORKER_BASE_URL`, `RECAP_WINDOW_DAYS` | alt-backend → recap-worker client target plus worker scheduling window | `.env.template` and Compose `recap` profile |
+| `BACKEND_CONNECT_URL` | Connect-RPC endpoint URL for SvelteKit frontend | `.env.template` |
+| `PUBLIC_USE_CONNECT_STREAMING` | Feature flag to enable Connect-RPC streaming in alt-frontend-sv | `.env.template` |
+| `OLLAMA_BASE_URL` | Ollama API URL for RAG and news-creator services | `http://localhost:11434` |
+| `EMBEDDING_MODEL` | Model name for generating embeddings in rag-orchestrator | `embeddinggemma` |
+| `GENERATION_MODEL` | LLM model for RAG answer generation | `gpt-oss:20b` |
+| `RAG_MAX_CHUNKS` | Maximum context chunks to retrieve for RAG queries | `10` |
 
 Keep `.env.template` updated with non-sensitive defaults whenever configuration changes, and mirror new variables here.
 
