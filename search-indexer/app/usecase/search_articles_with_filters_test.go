@@ -355,6 +355,6 @@ func BenchmarkSearchArticlesWithFiltersUsecase_Execute(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		usecase.Execute(ctx, query, filters, limit)
+		_, _ = usecase.Execute(ctx, query, filters, limit)
 	}
 }

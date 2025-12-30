@@ -70,7 +70,9 @@ func (u *IndexArticlesUsecase) ExecuteBackfill(ctx context.Context, lastCreatedA
 
 	for _, doc := range docs {
 		synonyms := tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags)
-		u.searchEngine.RegisterSynonyms(ctx, synonyms)
+		if len(synonyms) > 0 {
+			_ = u.searchEngine.RegisterSynonyms(ctx, synonyms)
+		}
 	}
 
 	return &IndexResult{
@@ -110,7 +112,9 @@ func (u *IndexArticlesUsecase) ExecuteIncremental(ctx context.Context, increment
 
 		for _, doc := range docs {
 			synonyms := tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags)
-			u.searchEngine.RegisterSynonyms(ctx, synonyms)
+			if len(synonyms) > 0 {
+				_ = u.searchEngine.RegisterSynonyms(ctx, synonyms)
+			}
 		}
 
 		result.IndexedCount = len(docs)
