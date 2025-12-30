@@ -193,6 +193,7 @@ services:
       - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
       - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL:-http://localhost:9000}
       - BACKEND_BASE_URL=${BACKEND_BASE_URL:-http://alt-backend:9000}
+      - BACKEND_CONNECT_URL=${BACKEND_CONNECT_URL:-http://alt-backend:9101}  # Connect-RPC server
       - AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL:-http://auth-hub:8888}
     ports:
       - "4173:4173"
@@ -222,11 +223,13 @@ services:
     restart: always
     ports:
       - "9000:9000"
+      - "9101:9101"  # Connect-RPC server
     networks:
       - alt-network
     volumes:
       - .env:/app/.env
     environment:
+      - CONNECT_PORT=9101  # Connect-RPC server port
       - DB_HOST=db  # PostgreSQL 17 (final)
       - DB_PORT=5432
       - DB_USER=${DB_USER}
