@@ -116,7 +116,7 @@ func (c *Client) ValidateUserToken(ctx context.Context, tokenString string) (*Us
 	if err != nil {
 		return nil, fmt.Errorf("token validation failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("invalid token: status %d", resp.StatusCode)
