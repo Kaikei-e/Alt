@@ -1,0 +1,139 @@
+# compose/workers.yaml - Background worker services
+# pre-processor-sidecar, search-indexer, tag-generator, auth-token-manager
+
+include:
+  - base.yaml
+
+services:
+  pre-processor-sidecar:
+    env_file:
+      - ../.env
+    build:
+      context: ../pre-processor-sidecar
+      dockerfile: Dockerfile
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - PRE_PROCESSOR_DB_USER=${PRE_PROCESSOR_DB_USER}
+      - PRE_PROCESSOR_DB_PASSWORD_FILE=/run/secrets/pre_processor_db_password
+      - INOREADER_CLIENT_ID_FILE=/run/secrets/inoreader_client_id
+      - INOREADER_CLIENT_SECRET_FILE=/run/secrets/inoreader_client_secret
+      - LOG_LEVEL=info
+      - SERVICE_NAME=pre-processor-sidecar
+      - TOKEN_STORAGE_TYPE=file
+      - TOKEN_STORAGE_PATH=/app/secrets/oauth2_token.env
+      - INOREADER_REFRESH_TOKEN_FILE=/app/secrets/oauth2_token.env
+    secrets:
+      - pre_processor_db_password
+      - inoreader_client_id
+      - inoreader_client_secret
+    volumes:
+      - oauth_token_data:/app/secrets
+    restart: always
+    networks:
+      - alt-network
+    tty: true
+    labels:
+      - rask.group=pre-processor-sidecar
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  search-indexer:
+    env_file:
+      - ../.env
+    build:
+      context: ../search-indexer
+      dockerfile: Dockerfile.search-indexer
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - DB_SSL_MODE=prefer
+      - SEARCH_INDEXER_DB_USER=${SEARCH_INDEXER_DB_USER}
+      - SEARCH_INDEXER_DB_PASSWORD_FILE=/run/secrets/search_indexer_db_password
+      - MEILISEARCH_HOST=${MEILISEARCH_HOST}
+      - MEILISEARCH_API_KEY_FILE=/run/secrets/meili_master_key
+      - MEILI_MASTER_KEY_FILE=/run/secrets/meili_master_key
+    secrets:
+      - search_indexer_db_password
+      - meili_master_key
+    networks:
+      - alt-network
+    ports:
+      - "9300:9300"
+    tty: true
+    labels:
+      - rask.group=search-indexer
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  tag-generator:
+    env_file:
+      - ../.env
+    build:
+      context: ../tag-generator
+      dockerfile: Dockerfile.tag-generator
+    networks:
+      - alt-network
+    ports:
+      - "9400:9400"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - DB_TAG_GENERATOR_USER=${DB_TAG_GENERATOR_USER}
+      - DB_TAG_GENERATOR_PASSWORD_FILE=/run/secrets/tag_generator_db_password
+      - PORT=9400
+      - SERVICE_SECRET_FILE=/run/secrets/service_secret
+      - CUDA_VISIBLE_DEVICES=""
+    secrets:
+      - tag_generator_db_password
+      - service_secret
+    volumes:
+      - ../scripts:/scripts:ro
+      - ../tag-generator/models/onnx:/models/onnx:ro
+    tty: true
+    restart: unless-stopped
+    labels:
+      - rask.group=tag-generator
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  auth-token-manager:
+    build:
+      context: ../auth-token-manager
+      dockerfile: Dockerfile
+    volumes:
+      - oauth_token_data:/app/secrets
+      - ../secrets/inoreader_client_id.txt:/run/secrets/inoreader_client_id
+      - ../secrets/inoreader_client_secret.txt:/run/secrets/inoreader_client_secret
+    environment:
+      - INOREADER_CLIENT_ID_FILE=/run/secrets/inoreader_client_id
+      - INOREADER_CLIENT_SECRET_FILE=/run/secrets/inoreader_client_secret
+      - INOREADER_REDIRECT_URI=http://127.0.0.1:9201/callback
+      - TOKEN_STORAGE_PATH=/app/secrets/oauth2_token.env
+      - LOG_LEVEL=info
+    restart: always
+    ports:
+      - "9201:9201"
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

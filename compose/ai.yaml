@@ -1,0 +1,105 @@
+# compose/ai.yaml - AI/LLM services
+# news-creator (Ollama), pre-processor
+
+include:
+  - base.yaml
+
+services:
+  news-creator:
+    env_file:
+      - ../.env
+    build:
+      context: ../news-creator
+      dockerfile: Dockerfile.creator
+    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - LD_LIBRARY_PATH=/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+      - OLLAMA_HOME=/home/ollama-user/.ollama
+      - OLLAMA_MODELS=/home/ollama-user/.ollama
+      - LLM_SERVICE_URL=${LLM_SERVICE_URL:-http://127.0.0.1:11435}
+      - LLM_MODEL=${LLM_MODEL:-gemma3-4b-16k}
+      - MODEL_ROUTING_ENABLED=true
+      - LLM_KEEP_ALIVE_16K=24h
+      - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
+      - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
+      - SERVICE_SECRET_FILE=/run/secrets/service_secret
+    secrets:
+      - service_secret
+    volumes:
+      - news_creator_models:/home/ollama-user/.ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    networks:
+      - alt-network
+    depends_on:
+      news-creator-volume-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    labels:
+      - rask.group=news-creator
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  news-creator-volume-init:
+    build:
+      context: ../news-creator
+      dockerfile: Dockerfile.creator
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["chown -R 2000:2000 /home/ollama-user/.ollama"]
+    user: "0:0"
+    volumes:
+      - news_creator_models:/home/ollama-user/.ollama
+    networks:
+      - alt-network
+    restart: "no"
+    labels:
+      - rask.group=news-creator-init
+
+  pre-processor:
+    env_file:
+      - ../.env
+    build:
+      context: ../pre-processor
+      dockerfile: Dockerfile
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - PRE_PROCESSOR_DB_USER=${PRE_PROCESSOR_DB_USER}
+      - PRE_PROCESSOR_DB_PASSWORD_FILE=/run/secrets/pre_processor_db_password
+      - DB_SSL_MODE=prefer
+      - LOG_LEVEL=info
+      - SERVICE_NAME=pre-processor
+    secrets:
+      - pre_processor_db_password
+    restart: always
+    ports:
+      - "9200:9200"
+    networks:
+      - alt-network
+    tty: true
+    labels:
+      - rask.group=pre-processor
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

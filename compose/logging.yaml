@@ -1,0 +1,196 @@
+# compose/logging.yaml - Logging infrastructure
+# Rask log aggregator and forwarders
+
+include:
+  - base.yaml
+
+services:
+  rask-log-aggregator:
+    build:
+      context: ../rask-log-aggregator
+      dockerfile: Dockerfile.rask-log-aggregator
+    restart: unless-stopped
+    ports:
+      - "9600:9600"
+    networks:
+      - alt-network
+    tty: true
+    labels:
+      - rask.group=rask-log-aggregator
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      APP_CLICKHOUSE_HOST: clickhouse
+      APP_CLICKHOUSE_PORT: 8123
+      APP_CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      APP_CLICKHOUSE_PASSWORD_FILE: /run/secrets/clickhouse_password
+      APP_CLICKHOUSE_DATABASE: ${CLICKHOUSE_DB}
+    secrets:
+      - clickhouse_password
+
+  nginx-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:nginx"
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "${NGINX_TARGET:-nginx}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+
+  alt-backend-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:alt-backend"
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "${ALT_BACKEND_TARGET:-alt-backend}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+
+  tag-generator-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:tag-generator"
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "tag-generator"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+
+  pre-processor-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:pre-processor"
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "pre-processor"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+
+  search-indexer-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:search-indexer"
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "search-indexer"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+
+  news-creator-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:news-creator"
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "news-creator"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+
+  meilisearch-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:meilisearch"
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "meilisearch"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    restart: unless-stopped
+
+  db-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:db"
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "db"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    restart: unless-stopped

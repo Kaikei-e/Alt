@@ -1,0 +1,87 @@
+# compose/base.yaml - Shared resources for Alt platform
+# This file contains secrets, networks, volumes, and YAML anchors
+# Used by all other compose files via 'include' directive
+
+secrets:
+  auth_shared_secret:
+    file: ../secrets/auth_shared_secret.txt
+  backend_token_secret:
+    file: ../secrets/backend_token_secret.txt
+  postgres_password:
+    file: ../secrets/postgres_password.txt
+  db_password:
+    file: ../secrets/db_password.txt
+  pre_processor_db_password:
+    file: ../secrets/pre_processor_db_password.txt
+  tag_generator_db_password:
+    file: ../secrets/tag_generator_db_password.txt
+  search_indexer_db_password:
+    file: ../secrets/search_indexer_db_password.txt
+  recap_db_password:
+    file: ../secrets/recap_db_password.txt
+  rag_db_password:
+    file: ../secrets/rag_db_password.txt
+  kratos_db_password:
+    file: ../secrets/kratos_db_password.txt
+  kratos_cookie_secret:
+    file: ../secrets/kratos_cookie_secret.txt
+  kratos_cipher_secret:
+    file: ../secrets/kratos_cipher_secret.txt
+  meili_master_key:
+    file: ../secrets/meili_master_key.txt
+  clickhouse_password:
+    file: ../secrets/clickhouse_password.txt
+  csrf_secret:
+    file: ../secrets/csrf_secret.txt
+  service_secret:
+    file: ../secrets/service_secret.txt
+  hugging_face_token:
+    file: ../secrets/hugging_face_token.txt
+  inoreader_client_id:
+    file: ../secrets/inoreader_client_id.txt
+  inoreader_client_secret:
+    file: ../secrets/inoreader_client_secret.txt
+
+networks:
+  alt-network:
+
+volumes:
+  db_data_17:
+  kratos_db_data:
+  meili_data:
+  rask_log_aggregator_data:
+  clickhouse_data:
+  news_creator_models:
+  recap_db_data:
+  rag_db_data:
+  oauth_token_data:
+
+x-rask-env: &rask-env
+  environment:
+    RASK_CONFIG: |
+      endpoint = "http://rask-log-aggregator:9600/v1/aggregate"
+      batch_size = 1
+      flush_interval_ms = 500
+      buffer_capacity = 100000
+      log_level = "info"
+
+x-rask-forwarder-env: &rask-forwarder-env
+  environment:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+    LOG_LEVEL: "info"
+    RUST_LOG: "info"
+    RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+    BATCH_SIZE: "1000"
+    FLUSH_INTERVAL_MS: "500"
+    BUFFER_CAPACITY: "100000"
+
+x-shared-env-file: &shared-env-file
+  env_file:
+    - ../.env
+
+x-logging-config: &logging-config
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"

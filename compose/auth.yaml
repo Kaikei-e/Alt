@@ -1,0 +1,156 @@
+# compose/auth.yaml - Authentication services
+# Kratos identity server and auth-hub
+
+include:
+  - base.yaml
+
+services:
+  kratos-db:
+    image: postgres:16-alpine
+    restart: always
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    environment:
+      POSTGRES_DB: ${KRATOS_DB_NAME:-kratos}
+      POSTGRES_USER: ${KRATOS_DB_USER:-kratos_user}
+      POSTGRES_PASSWORD_FILE: /run/secrets/kratos_db_password
+    secrets:
+      - kratos_db_password
+    volumes:
+      - kratos_db_data:/var/lib/postgresql/data
+      - ../kratos-db/init:/docker-entrypoint-initdb.d:rw
+      - ../docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ../docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KRATOS_DB_USER:-kratos_user} -d ${KRATOS_DB_NAME:-kratos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - alt-network
+    tty: true
+    labels:
+      - rask.group=kratos-db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  kratos-migrate:
+    image: oryd/kratos:v1.3.0
+    command: ["kratos", "migrate", "sql", "-e", "--yes", "--config", "/etc/config/kratos/kratos.yml"]
+    environment:
+      - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
+      - KRATOS_DB_PASSWORD_FILE=/run/secrets/kratos_db_password
+      - KRATOS_DB_HOST=${KRATOS_DB_HOST:-kratos-db}
+      - KRATOS_DB_PORT=${KRATOS_DB_PORT:-5432}
+      - KRATOS_DB_NAME=${KRATOS_DB_NAME:-kratos}
+      - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
+    secrets:
+      - kratos_db_password
+    volumes:
+      - ../kratos:/etc/config/kratos:ro
+      - ../kratos/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/entrypoint.sh"]
+    depends_on:
+      kratos-db:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - alt-network
+
+  kratos:
+    image: oryd/kratos:v1.3.0
+    command: ["kratos", "serve", "all", "--config", "/etc/config/kratos/kratos.yml"]
+    ports:
+      - "4433:4433"
+      - "4434:4434"
+    environment:
+      - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
+      - KRATOS_DB_PASSWORD_FILE=/run/secrets/kratos_db_password
+      - KRATOS_DB_HOST=${KRATOS_DB_HOST:-kratos-db}
+      - KRATOS_DB_PORT=${KRATOS_DB_PORT:-5432}
+      - KRATOS_DB_NAME=${KRATOS_DB_NAME:-kratos}
+      - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
+      - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
+      - KRATOS_ADMIN_URL=${KRATOS_ADMIN_URL:-http://kratos-admin:4434/}
+      - KRATOS_CORS_ALLOWED_ORIGIN_1=${KRATOS_CORS_ALLOWED_ORIGIN_1:-http://localhost:4173}
+      - KRATOS_CORS_ALLOWED_ORIGIN_2=${KRATOS_CORS_ALLOWED_ORIGIN_2:-http://localhost}
+      - KRATOS_DEFAULT_BROWSER_RETURN_URL=${KRATOS_DEFAULT_BROWSER_RETURN_URL:-http://localhost:4173/sv/}
+      - KRATOS_ALLOWED_RETURN_URL_1=${KRATOS_ALLOWED_RETURN_URL_1:-http://localhost:4173/sv/}
+      - KRATOS_ALLOWED_RETURN_URL_2=${KRATOS_ALLOWED_RETURN_URL_2:-http://localhost:4173/sv/home}
+      - KRATOS_ALLOWED_RETURN_URL_3=${KRATOS_ALLOWED_RETURN_URL_3:-http://localhost:4173/sv/auth/login}
+      - KRATOS_LOGIN_UI_URL=${KRATOS_LOGIN_UI_URL:-http://localhost:4173/sv/auth/login}
+      - KRATOS_REGISTRATION_UI_URL=${KRATOS_REGISTRATION_UI_URL:-http://localhost:4173/sv/register}
+      - KRATOS_ERROR_UI_URL=${KRATOS_ERROR_UI_URL:-http://localhost:4173/sv/error}
+      - KRATOS_SETTINGS_UI_URL=${KRATOS_SETTINGS_UI_URL:-http://localhost:4173/sv/settings}
+      - KRATOS_RECOVERY_UI_URL=${KRATOS_RECOVERY_UI_URL:-http://localhost:4173/sv/recovery}
+      - KRATOS_VERIFICATION_UI_URL=${KRATOS_VERIFICATION_UI_URL:-http://localhost:4173/sv/verification}
+      - KRATOS_COOKIE_SECRET_FILE=/run/secrets/kratos_cookie_secret
+      - KRATOS_CIPHER_SECRET_FILE=/run/secrets/kratos_cipher_secret
+    secrets:
+      - kratos_db_password
+      - kratos_cookie_secret
+      - kratos_cipher_secret
+    volumes:
+      - ../kratos:/etc/config/kratos:ro
+      - ../kratos/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/entrypoint.sh"]
+    depends_on:
+      kratos-db:
+        condition: service_healthy
+      kratos-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:4434/admin/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - alt-network
+
+  auth-hub:
+    build:
+      context: ../auth-hub
+      dockerfile: Dockerfile
+    environment:
+      - KRATOS_URL=http://kratos:4433
+      - PORT=8888
+      - CACHE_TTL=5m
+      - CSRF_SECRET_FILE=/run/secrets/csrf_secret
+      - AUTH_SHARED_SECRET_FILE=/run/secrets/auth_shared_secret
+      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_ISSUER=auth-hub
+      - BACKEND_TOKEN_AUDIENCE=alt-backend
+      - BACKEND_TOKEN_TTL=5m
+    secrets:
+      - csrf_secret
+      - auth_shared_secret
+      - backend_token_secret
+    depends_on:
+      kratos:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    labels:
+      - rask.group=alt-auth
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

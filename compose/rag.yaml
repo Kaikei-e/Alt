@@ -1,0 +1,105 @@
+# compose/rag.yaml - RAG extension services
+# RAG database and orchestrator
+
+include:
+  - base.yaml
+
+services:
+  rag-db:
+    build:
+      context: ../rag-db
+      dockerfile: Dockerfile
+    container_name: rag-db
+    restart: always
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    environment:
+      POSTGRES_DB: ${RAG_DB_NAME:-rag_db}
+      POSTGRES_USER: ${RAG_DB_USER:-rag_user}
+      POSTGRES_PASSWORD_FILE: /run/secrets/rag_db_password
+    secrets:
+      - rag_db_password
+    volumes:
+      - rag_db_data:/var/lib/postgresql
+      - ../docker/postgres/postgresql-recap.conf:/etc/postgresql/postgresql.conf:ro
+      - ../docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    ports:
+      - "5436:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${RAG_DB_USER:-rag_user} -d ${RAG_DB_NAME:-rag_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - alt-network
+    labels:
+      - rask.group=rag-db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  rag-db-migrator:
+    build:
+      context: ../rag-migration-atlas
+      dockerfile: docker/Dockerfile
+    container_name: rag_db_migrator
+    command: ["apply"]
+    environment:
+      DB_HOST: rag-db
+      DB_PORT: 5432
+      DB_USER: ${RAG_DB_USER:-rag_user}
+      DB_NAME: ${RAG_DB_NAME:-rag_db}
+      DB_PASSWORD_FILE: /run/secrets/rag_db_password
+      ATLAS_ENV: ${ATLAS_ENV:-kubernetes}
+      ATLAS_REVISIONS_SCHEMA: "public"
+      MIGRATE_BASELINE_VERSION: ${RAG_MIGRATE_BASELINE_VERSION:-}
+    secrets:
+      - rag_db_password
+    volumes:
+      - ../rag-migration-atlas/migrations:/migrations:ro
+    depends_on:
+      rag-db:
+        condition: service_healthy
+    networks:
+      - alt-network
+
+  rag-orchestrator:
+    build:
+      context: ../rag-orchestrator
+      dockerfile: Dockerfile
+    environment:
+      - ENV=production
+      - PORT=9010
+      - DB_HOST=rag-db
+      - DB_PORT=5432
+      - DB_USER=${RAG_DB_USER:-rag_user}
+      - DB_PASSWORD_FILE=/run/secrets/rag_db_password
+      - DB_NAME=${RAG_DB_NAME:-rag_db}
+      - EMBEDDER_EXTERNAL=${EMBEDDER_EXTERNAL}
+      - AUGUR_EXTERNAL=${AUGUR_EXTERNAL}
+      - SEARCH_INDEXER_URL=http://search-indexer:9300
+    secrets:
+      - rag_db_password
+    ports:
+      - "9010:9010"
+    depends_on:
+      rag-db:
+        condition: service_healthy
+    networks:
+      - alt-network
+    restart: unless-stopped
+    labels:
+      - rask.group=rag-orchestrator
+    extra_hosts:
+      - "embedder-external:${EMBEDDER_EXTERNAL_HOST}"
+      - "augur-external:${AUGUR_EXTERNAL_HOST}"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

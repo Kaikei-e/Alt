@@ -1,0 +1,120 @@
+# compose/db.yaml - Database services
+# PostgreSQL 17, Meilisearch, ClickHouse
+
+include:
+  - base.yaml
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: alt-db
+    restart: always
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      PRE_PROCESSOR_DB_USER: ${PRE_PROCESSOR_DB_USER}
+      PRE_PROCESSOR_DB_PASSWORD: ${PRE_PROCESSOR_DB_PASSWORD}
+      DB_TAG_GENERATOR_USER: ${DB_TAG_GENERATOR_USER}
+      DB_TAG_GENERATOR_PASSWORD: ${DB_TAG_GENERATOR_PASSWORD}
+      SEARCH_INDEXER_DB_USER: ${SEARCH_INDEXER_DB_USER}
+      SEARCH_INDEXER_DB_PASSWORD_FILE: /run/secrets/search_indexer_db_password
+    secrets:
+      - postgres_password
+      - pre_processor_db_password
+      - tag_generator_db_password
+      - search_indexer_db_password
+    volumes:
+      - db_data_17:/var/lib/postgresql/data
+      - ../db/init:/docker-entrypoint-initdb.d:rw
+      - ../docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ../docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - alt-network
+    tty: true
+    labels:
+      - rask.group=db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.27.0
+    restart: unless-stopped
+    command: sh -c "export MEILI_MASTER_KEY=$$(cat /run/secrets/meili_master_key) && meilisearch"
+    environment:
+      MEILI_ENV: "production"
+    secrets:
+      - meili_master_key
+    ports:
+      - "7700:7700"
+    volumes:
+      - meili_data:/meili_data
+    networks:
+      - alt-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 15G
+        reservations:
+          memory: 8G
+    tty: true
+    labels:
+      - rask.group=meilisearch
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.9
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-rask_logs}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-rask_user}
+      CLICKHOUSE_PASSWORD_FILE: /run/secrets/clickhouse_password
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    secrets:
+      - clickhouse_password
+    ports:
+      - "8123:8123"
+      - "9009:9000"
+    volumes:
+      - ../clickhouse/init:/docker-entrypoint-initdb.d
+      - clickhouse_data:/var/lib/clickhouse
+    networks:
+      - alt-network
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

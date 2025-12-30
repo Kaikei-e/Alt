@@ -1,0 +1,207 @@
+# compose/core.yaml - Core application services
+# nginx, frontend, backend, migrations
+
+include:
+  - base.yaml
+
+services:
+  nginx:
+    image: nginx:latest
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/conf.d:/etc/nginx/conf.d:rw
+      - ../nginx/docker-entrypoint.d:/docker-entrypoint.d:ro
+    secrets:
+      - auth_shared_secret
+    depends_on:
+      alt-frontend:
+        condition: service_healthy
+      alt-backend:
+        condition: service_healthy
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    tty: true
+    labels:
+      - rask.group=alt-frontend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  alt-frontend:
+    env_file:
+      - ../.env
+    build:
+      context: ../alt-frontend
+      dockerfile: Dockerfile.frontend
+      x-bake:
+        platforms: ["linux/amd64"]
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=/api
+        - API_URL=http://alt-backend:9000
+        - NEXT_PUBLIC_IDP_ORIGIN=${NEXT_PUBLIC_IDP_ORIGIN}
+        - NEXT_PUBLIC_KRATOS_PUBLIC_URL=${NEXT_PUBLIC_KRATOS_PUBLIC_URL}
+        - NEXT_PUBLIC_APP_ORIGIN=${NEXT_PUBLIC_APP_ORIGIN}
+        - NEXT_PUBLIC_RETURN_TO_DEFAULT=${NEXT_PUBLIC_RETURN_TO_DEFAULT}
+        - KRATOS_INTERNAL_URL=${KRATOS_INTERNAL_URL}
+        - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL}
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=/api
+      - API_URL=http://alt-backend:9000
+      - NEXT_PUBLIC_APP_ORIGIN=${NEXT_PUBLIC_APP_ORIGIN}
+      - NEXT_PUBLIC_RETURN_TO_DEFAULT=${NEXT_PUBLIC_RETURN_TO_DEFAULT}
+      - KRATOS_INTERNAL_URL=${KRATOS_INTERNAL_URL}
+      - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL}
+      - AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL}
+      - NODE_ENV=production
+      - PORT=3000
+    ports:
+      - "3000:3000"
+    restart: always
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health | grep -q '\"status\":\"ok\"' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    tty: true
+
+  alt-frontend-sv:
+    env_file:
+      - ../.env
+    build:
+      context: ../alt-frontend-sv
+      dockerfile: Dockerfile
+    environment:
+      - PORT=4173
+      - ORIGIN=${ORIGIN:-http://localhost:4173}
+      - BODY_SIZE_LIMIT=Infinity
+      - KRATOS_INTERNAL_URL=${KRATOS_INTERNAL_URL:-http://kratos:4433}
+      - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
+      - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL:-http://localhost:9000}
+      - BACKEND_BASE_URL=${BACKEND_BASE_URL:-http://alt-backend:9000}
+      - BACKEND_CONNECT_URL=${BACKEND_CONNECT_URL:-http://alt-backend:9101}
+      - AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL:-http://auth-hub:8888}
+      - PUBLIC_USE_CONNECT_STREAMING=${PUBLIC_USE_CONNECT_STREAMING:-false}
+    ports:
+      - "4173:4173"
+    restart: always
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    tty: true
+    labels:
+      - rask.group=alt-frontend-sv
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  alt-backend:
+    env_file:
+      - ../.env
+    build:
+      context: ../alt-backend
+      dockerfile: Dockerfile.backend
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9101:9101"
+    networks:
+      - alt-network
+    volumes:
+      - ../.env:/app/.env
+    environment:
+      - CONNECT_PORT=9101
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD_FILE=/run/secrets/db_password
+      - DB_NAME=${POSTGRES_DB}
+      - DB_SSL_MODE=prefer
+      - CSRF_SECRET_FILE=/run/secrets/csrf_secret
+      - SERVICE_SECRET_FILE=/run/secrets/service_secret
+      - AUTH_SHARED_SECRET_FILE=/run/secrets/auth_shared_secret
+      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_ISSUER=auth-hub
+      - BACKEND_TOKEN_AUDIENCE=alt-backend
+    secrets:
+      - auth_shared_secret
+      - backend_token_secret
+      - db_password
+      - csrf_secret
+      - service_secret
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '4.0'
+        reservations:
+          memory: 2G
+          cpus: '2.0'
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9000/v1/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    tty: true
+    labels:
+      - rask.group=alt-backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  migrate:
+    env_file:
+      - ../.env
+    build:
+      context: ../migrations-atlas
+      dockerfile: docker/Dockerfile
+    container_name: db_migrator
+    command: ["apply"]
+    environment:
+      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable&search_path=public"
+      MIGRATE_MAX_RETRIES: "12"
+      MIGRATE_RETRY_INTERVAL: "5"
+      MIGRATE_BASELINE_VERSION: ${MIGRATE_BASELINE_VERSION:-}
+      ATLAS_ENV: ${ATLAS_ENV:-kubernetes}
+      ATLAS_REVISIONS_SCHEMA: "public"
+    volumes:
+      - ../migrations-atlas/migrations:/migrations:ro
+    networks:
+      - alt-network

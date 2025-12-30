@@ -1,0 +1,215 @@
+# compose/recap.yaml - Recap services
+# Article summarization and evaluation
+
+include:
+  - base.yaml
+
+services:
+  recap-db:
+    image: postgres:18-alpine
+    container_name: recap-db
+    restart: always
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    environment:
+      POSTGRES_DB: ${RECAP_DB_NAME}
+      POSTGRES_USER: ${RECAP_DB_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/recap_db_password
+    secrets:
+      - recap_db_password
+    volumes:
+      - recap_db_data:/var/lib/postgresql/data
+      - ../recap-worker/recap-db/init:/docker-entrypoint-initdb.d:rw
+      - ../docker/postgres/postgresql-recap.conf:/etc/postgresql/postgresql.conf:ro
+      - ../docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${RECAP_DB_USER} -d ${RECAP_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - alt-network
+    tty: true
+    labels:
+      - rask.group=recap-db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  recap-db-migrator:
+    build:
+      context: ../recap-migration-atlas
+      dockerfile: docker/Dockerfile
+    container_name: recap_db_migrator
+    command: ["apply"]
+    environment:
+      DATABASE_URL: "postgres://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:${RECAP_DB_PORT}/${RECAP_DB_NAME}?sslmode=disable&search_path=public"
+      ATLAS_ENV: ${ATLAS_ENV:-kubernetes}
+      ATLAS_REVISIONS_SCHEMA: "public"
+      MIGRATE_BASELINE_VERSION: ${RECAP_MIGRATE_BASELINE_VERSION:-}
+    volumes:
+      - ../recap-migration-atlas/migrations:/migrations:ro
+    depends_on:
+      recap-db:
+        condition: service_healthy
+    networks:
+      - alt-network
+
+  recap-worker:
+    env_file:
+      - ../.env
+    build:
+      context: ../recap-worker
+      dockerfile: Dockerfile.recap-worker
+    networks:
+      - alt-network
+    environment:
+      - DATABASE_URL=postgres://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:${RECAP_DB_PORT}/${RECAP_DB_NAME}
+      - RECAP_DB_DSN=${RECAP_DB_DSN}
+      - RECAP_DB_HOST=recap-db
+      - RECAP_DB_PORT=${RECAP_DB_PORT}
+      - RECAP_DB_USER=${RECAP_DB_USER}
+      - RECAP_DB_PASSWORD_FILE=/run/secrets/recap_db_password
+      - RECAP_DB_NAME=${RECAP_DB_NAME}
+      - NEWS_CREATOR_BASE_URL=http://news-creator:11434
+      - SUBWORKER_BASE_URL=http://recap-subworker:8002
+      - ALT_BACKEND_BASE_URL=${ALT_BACKEND_BASE_URL}
+      - ALT_BACKEND_SERVICE_TOKEN_FILE=/run/secrets/service_secret
+      - TAG_LABEL_GRAPH_WINDOW=${TAG_LABEL_GRAPH_WINDOW}
+      - TAG_LABEL_GRAPH_TTL_SECONDS=${TAG_LABEL_GRAPH_TTL_SECONDS}
+      - HUGGING_FACE_TOKEN_PATH=/run/secrets/hugging_face_token
+    secrets:
+      - recap_db_password
+      - service_secret
+      - hugging_face_token
+    depends_on:
+      recap-db:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "9005:9005"
+    labels:
+      - rask.group=recap-worker
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  recap-subworker:
+    env_file:
+      - ../.env
+    build:
+      context: ../recap-subworker
+      dockerfile: Dockerfile.recap-subworker
+    networks:
+      - alt-network
+    environment:
+      - RECAP_SUBWORKER_DB_PASSWORD_FILE=/run/secrets/recap_db_password
+      - RECAP_SUBWORKER_BASE_URL=http://recap-subworker:8002
+      - RECAP_SUBWORKER_MODEL_BACKEND=sentence-transformers
+      - RECAP_SUBWORKER_MODEL_ID=intfloat/multilingual-e5-large
+      - RECAP_SUBWORKER_PIPELINE_MODE=inprocess
+      - RECAP_SUBWORKER_GUNICORN_WORKERS=6
+      - RECAP_SUBWORKER_GUNICORN_WORKER_TIMEOUT=3600
+      - RECAP_SUBWORKER_GUNICORN_MAX_REQUESTS=50000
+      - RECAP_SUBWORKER_GUNICORN_GRACEFUL_TIMEOUT=120
+      - RECAP_SUBWORKER_PROCESS_POOL_SIZE=2
+      - RECAP_SUBWORKER_MAX_BACKGROUND_RUNS=2
+      - RECAP_SUBWORKER_PIPELINE_WORKER_PROCESSES=2
+      - RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES=6
+      - RECAP_SUBWORKER_CLASSIFICATION_POOL_IDLE_TIMEOUT_SECONDS=60
+      - RECAP_SUBWORKER_DEVICE=cpu
+    ports:
+      - "8002:8002"
+    secrets:
+      - recap_db_password
+    volumes:
+      - ../recap-subworker/data/golden_classification.json:/app/data/golden_classification.json:ro
+      - ../recap-subworker/data/genre_classifier.joblib:/app/data/genre_classifier.joblib:ro
+      - ../recap-subworker/data/tfidf_vectorizer.joblib:/app/data/tfidf_vectorizer.joblib:ro
+      - ../recap-subworker/data/genre_thresholds.json:/app/data/genre_thresholds.json:ro
+    depends_on:
+      recap-worker:
+        condition: service_started
+    restart: unless-stopped
+    labels:
+      - rask.group=recap-subworker
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  dashboard:
+    env_file:
+      - ../.env
+    build:
+      context: ../dashboard
+      dockerfile: Dockerfile
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility]
+    ports:
+      - "8501:8501"
+      - "8502:8000"
+    environment:
+      - RECAP_DB_DSN=postgresql://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:5432/${RECAP_DB_NAME}
+      - SSE_PORT=8000
+    depends_on:
+      recap-db:
+        condition: service_healthy
+    networks:
+      - alt-network
+    restart: unless-stopped
+    labels:
+      - rask.group=dashboard
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  recap-evaluator:
+    build:
+      context: ../recap-evaluator
+      dockerfile: Dockerfile
+    environment:
+      - RECAP_DB_DSN=postgres://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:5432/${RECAP_DB_NAME}
+      - OLLAMA_URL=http://news-creator:11434
+      - RECAP_WORKER_URL=http://recap-worker:9005
+      - EVALUATION_SCHEDULE=0 6 * * *
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+    ports:
+      - "8085:8080"
+    depends_on:
+      recap-db:
+        condition: service_healthy
+    networks:
+      - alt-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    labels:
+      - rask.group=recap-evaluator
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
