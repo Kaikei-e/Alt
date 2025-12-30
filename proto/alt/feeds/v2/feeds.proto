@@ -71,6 +71,112 @@ message ResponseMetadata {
 }
 
 // =============================================================================
+// Feed Item Messages (Phase 2-3)
+// =============================================================================
+
+// FeedItem represents a single feed/article item
+message FeedItem {
+  // Unique identifier (typically the link URL)
+  string id = 1;
+  // Article title
+  string title = 2;
+  // Article description/excerpt (sanitized, truncated)
+  string description = 3;
+  // Article URL
+  string link = 4;
+  // Human-readable published date (e.g., "2 hours ago")
+  string published = 5;
+  // RFC3339 timestamp for precise ordering
+  string created_at = 6;
+  // Author name (formatted from author/authors)
+  string author = 7;
+}
+
+// =============================================================================
+// Feed List Messages (Phase 2)
+// =============================================================================
+
+// GetUnreadFeedsRequest is the request for fetching unread feeds with cursor
+message GetUnreadFeedsRequest {
+  // Cursor for pagination (RFC3339 timestamp)
+  optional string cursor = 1;
+  // Maximum number of items to return (default: 20, max: 100)
+  int32 limit = 2;
+  // View mode: "swipe" for single-card response (optional)
+  optional string view = 3;
+}
+
+// GetUnreadFeedsResponse contains unread feeds with pagination
+message GetUnreadFeedsResponse {
+  // Feed items
+  repeated FeedItem data = 1;
+  // Cursor for the next page (null if no more)
+  optional string next_cursor = 2;
+  // Whether there are more items
+  bool has_more = 3;
+}
+
+// GetReadFeedsRequest is the request for fetching read/viewed feeds with cursor
+message GetReadFeedsRequest {
+  // Cursor for pagination (RFC3339 timestamp)
+  optional string cursor = 1;
+  // Maximum number of items to return (default: 32, max: 100)
+  int32 limit = 2;
+}
+
+// GetReadFeedsResponse contains read feeds with pagination
+message GetReadFeedsResponse {
+  // Feed items
+  repeated FeedItem data = 1;
+  // Cursor for the next page
+  optional string next_cursor = 2;
+  // Whether there are more items
+  bool has_more = 3;
+}
+
+// GetFavoriteFeedsRequest is the request for fetching favorite feeds with cursor
+message GetFavoriteFeedsRequest {
+  // Cursor for pagination (RFC3339 timestamp)
+  optional string cursor = 1;
+  // Maximum number of items to return (default: 20, max: 100)
+  int32 limit = 2;
+}
+
+// GetFavoriteFeedsResponse contains favorite feeds with pagination
+message GetFavoriteFeedsResponse {
+  // Feed items
+  repeated FeedItem data = 1;
+  // Cursor for the next page
+  optional string next_cursor = 2;
+  // Whether there are more items
+  bool has_more = 3;
+}
+
+// =============================================================================
+// Feed Search Messages (Phase 3)
+// =============================================================================
+
+// SearchFeedsRequest is the request for searching feeds
+message SearchFeedsRequest {
+  // Search query (required, non-empty)
+  string query = 1;
+  // Offset for pagination (integer-based, not cursor)
+  optional int32 cursor = 2;
+  // Maximum number of items to return (default: 20, max: 100)
+  optional int32 limit = 3;
+}
+
+// SearchFeedsResponse contains search results with pagination
+message SearchFeedsResponse {
+  // Search result items
+  repeated FeedItem data = 1;
+  // Next offset cursor (null if no more)
+  optional int32 next_cursor = 2;
+  // Whether there are more results
+  bool has_more = 3;
+}
+
+// =============================================================================
 // FeedService Definition
 // =============================================================================
 
@@ -87,9 +193,29 @@ service FeedService {
   // GetUnreadCount returns the count of unread articles for today
   rpc GetUnreadCount(GetUnreadCountRequest) returns (GetUnreadCountResponse);
 
-  // Server Streaming RPCs (Phase 2)
+  // Server Streaming RPCs
 
   // StreamFeedStats streams real-time feed statistics updates
   // Replaces SSE endpoint /v1/sse/feeds/stats
   rpc StreamFeedStats(StreamFeedStatsRequest) returns (stream StreamFeedStatsResponse);
+
+  // Feed List RPCs (Phase 2)
+
+  // GetUnreadFeeds returns unread feeds with cursor-based pagination
+  // Replaces GET /v1/feeds/fetch/cursor
+  rpc GetUnreadFeeds(GetUnreadFeedsRequest) returns (GetUnreadFeedsResponse);
+
+  // GetReadFeeds returns read/viewed feeds with cursor-based pagination
+  // Replaces GET /v1/feeds/fetch/viewed/cursor
+  rpc GetReadFeeds(GetReadFeedsRequest) returns (GetReadFeedsResponse);
+
+  // GetFavoriteFeeds returns favorite feeds with cursor-based pagination
+  // Replaces GET /v1/feeds/fetch/favorites/cursor
+  rpc GetFavoriteFeeds(GetFavoriteFeedsRequest) returns (GetFavoriteFeedsResponse);
+
+  // Feed Search RPC (Phase 3)
+
+  // SearchFeeds searches for feeds by query with offset-based pagination
+  // Replaces POST /v1/feeds/search
+  rpc SearchFeeds(SearchFeedsRequest) returns (SearchFeedsResponse);
 }
