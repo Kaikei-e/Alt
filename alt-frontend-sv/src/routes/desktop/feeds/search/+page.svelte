@@ -6,59 +6,55 @@
 	import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
 	import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 	import { Input } from "$lib/components/ui/input";
+	import { Button } from "$lib/components/ui/button";
 
 	let selectedFeed = $state<RenderFeed | null>(null);
 	let isModalOpen = $state(false);
 	let searchQuery = $state("");
-	let debouncedQuery = $state("");
+	let lastSearchedQuery = $state("");
 
 	// Simple state for search
 	let feeds = $state<RenderFeed[]>([]);
 	let isLoading = $state(false);
 	let error = $state<Error | null>(null);
 
-	// Debounce search query
-	let debounceTimeout: ReturnType<typeof setTimeout>;
-	$effect(() => {
-		clearTimeout(debounceTimeout);
-		debounceTimeout = setTimeout(() => {
-			debouncedQuery = searchQuery;
-		}, 500);
-	});
+	async function handleSearch() {
+		if (!searchQuery.trim()) {
+			feeds = [];
+			error = null;
+			lastSearchedQuery = "";
+			return;
+		}
 
-	// Trigger search when debounced query changes
-	$effect(() => {
-		async function search() {
-			if (!debouncedQuery.trim()) {
+		try {
+			isLoading = true;
+			error = null;
+			lastSearchedQuery = searchQuery.trim();
+			const result = await searchFeedsClient(searchQuery.trim(), undefined, 50);
+
+			// Check for API error (following mobile pattern)
+			if (result.error) {
+				error = new Error(result.error);
 				feeds = [];
-				error = null;
+				isLoading = false;
 				return;
 			}
 
-			try {
-				isLoading = true;
-				error = null;
-				const result = await searchFeedsClient(debouncedQuery, undefined, 50);
-
-				// Check for API error (following mobile pattern)
-				if (result.error) {
-					error = new Error(result.error);
-					feeds = [];
-					isLoading = false;
-					return;
-				}
-
-				feeds = result.results ?? [];
-			} catch (err) {
-				error = err as Error;
-				feeds = [];
-			} finally {
-				isLoading = false;
-			}
+			feeds = result.results ?? [];
+		} catch (err) {
+			error = err as Error;
+			feeds = [];
+		} finally {
+			isLoading = false;
 		}
+	}
 
-		search();
-	});
+	function handleKeyDown(event: KeyboardEvent) {
+		if (event.key === "Enter") {
+			event.preventDefault();
+			handleSearch();
+		}
+	}
 
 	function handleSelectFeed(feed: RenderFeed) {
 		selectedFeed = feed;
@@ -70,23 +66,41 @@
 
 <!-- Search input -->
 <div class="mb-6">
-	<div class="relative max-w-2xl">
-		<Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-secondary)]" />
-		<Input
-			type="search"
-			bind:value={searchQuery}
-			placeholder="Search by title, content, or author..."
-			class="pl-10 h-12"
-		/>
-	</div>
+	<form onsubmit={(e) => { e.preventDefault(); handleSearch(); }} class="max-w-2xl">
+		<div class="flex gap-2">
+			<div class="relative flex-1">
+				<Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-secondary)]" />
+				<Input
+					type="search"
+					bind:value={searchQuery}
+					onkeydown={handleKeyDown}
+					placeholder="Search by title, content, or author..."
+					class="pl-10 h-12"
+					disabled={isLoading}
+				/>
+			</div>
+			<Button
+				type="submit"
+				disabled={isLoading || !searchQuery.trim()}
+				class="h-12 px-6 hover:opacity-90"
+				style="background: var(--accent-primary); color: var(--accent-primary-foreground);"
+			>
+				{#if isLoading}
+					<Loader2 class="h-4 w-4 animate-spin" />
+				{:else}
+					Search
+				{/if}
+			</Button>
+		</div>
+	</form>
 </div>
 
 <!-- Results -->
 <div class="w-full">
-	{#if searchQuery.trim().length === 0}
+	{#if !lastSearchedQuery && !isLoading}
 		<div class="text-center py-12">
 			<Search class="h-12 w-12 text-[var(--text-muted)] mx-auto mb-4" />
-			<p class="text-[var(--text-secondary)] text-sm">Enter a search query to get started</p>
+			<p class="text-[var(--text-secondary)] text-sm">Enter a search query and press Enter or click Search</p>
 		</div>
 	{:else if isLoading}
 		<div class="flex items-center justify-center py-24">
@@ -101,13 +115,13 @@
 	{:else if feeds.length === 0}
 		<div class="text-center py-12">
 			<p class="text-[var(--text-secondary)] text-sm">
-				No results found for "{debouncedQuery}"
+				No results found for "{lastSearchedQuery}"
 			</p>
 		</div>
 	{:else}
 		<div class="mb-4">
 			<p class="text-sm text-[var(--text-secondary)]">
-				Found {feeds.length} result{feeds.length === 1 ? "" : "s"}
+				Found {feeds.length} result{feeds.length === 1 ? "" : "s"} for "{lastSearchedQuery}"
 			</p>
 		</div>
 		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
