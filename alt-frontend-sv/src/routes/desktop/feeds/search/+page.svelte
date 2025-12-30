@@ -39,6 +39,15 @@
 				isLoading = true;
 				error = null;
 				const result = await searchFeedsClient(debouncedQuery, undefined, 50);
+
+				// Check for API error (following mobile pattern)
+				if (result.error) {
+					error = new Error(result.error);
+					feeds = [];
+					isLoading = false;
+					return;
+				}
+
 				feeds = result.results ?? [];
 			} catch (err) {
 				error = err as Error;
