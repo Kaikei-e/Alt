@@ -1,0 +1,49 @@
+# .altctl.yaml - altctl configuration file
+# This file configures the altctl CLI tool for the Alt platform
+
+# Project configuration
+project:
+  # Path to the Alt project root (auto-detected if not specified)
+
+  # Docker context to use
+  docker_context: "default"
+
+# Compose file configuration
+compose:
+  # Directory containing split compose files (relative to project root)
+  dir: "compose"
+  # Base compose file (always included first)
+  base_file: "base.yaml"
+
+# Default stacks to start with 'altctl up' (no arguments)
+defaults:
+  stacks:
+    - db
+    - auth
+    - core
+    - workers
+
+# Stack-specific overrides
+stacks:
+  ai:
+    # GPU requirements for AI stack
+    requires_gpu: true
+    # Longer timeout for model loading
+    startup_timeout: 600s
+  recap:
+    # Extended timeout for ML model initialization
+    startup_timeout: 300s
+
+# Logging configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
+  # Log format: text, json
+  format: "text"
+
+# Output preferences
+output:
+  # Use colors in terminal output
+  colors: true
+  # Show progress indicators
+  progress: true
