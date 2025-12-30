@@ -29,10 +29,8 @@ export function useFeedStats(): FeedStatsState {
 	const useStreaming = env.PUBLIC_USE_CONNECT_STREAMING === "true";
 
 	if (useStreaming) {
-		console.log("[useFeedStats] Using Connect-RPC Streaming");
 		return useStreamingFeedStats();
 	} else {
-		console.log("[useFeedStats] Using SSE (legacy)");
 		return useSSEFeedsStats();
 	}
 }

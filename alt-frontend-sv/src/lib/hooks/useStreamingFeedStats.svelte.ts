@@ -90,10 +90,6 @@ export function useStreamingFeedStats(): StreamingFeedStatsState {
 			MAX_RETRY_DELAY,
 		);
 
-		console.log(
-			`[useStreamingFeedStats] Scheduling reconnect in ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`,
-		);
-
 		reconnectTimer = setTimeout(() => {
 			reconnectTimer = null;
 			retryCount++;

@@ -17,7 +17,7 @@ import type { Transport } from "@connectrpc/connect";
  */
 export function createClientTransport(): Transport {
 	return createConnectTransport({
-		baseUrl: "/api/v2",
+		baseUrl: "/sv/api/v2",  // SvelteKit is mounted at /sv/
 		// Credentials are handled by the proxy
 		fetch: (input, init) =>
 			fetch(input, {

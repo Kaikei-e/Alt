@@ -115,19 +115,23 @@ export async function streamFeedStats(
 	onData: (stats: StreamingFeedStats) => void,
 	onError?: (error: Error) => void,
 ): Promise<AbortController> {
+	console.log("[streamFeedStats] Starting stream...");
 	const client = createFeedClient(transport);
 	const abortController = new AbortController();
 
 	// Start streaming in background
 	(async () => {
 		try {
+			console.log("[streamFeedStats] Calling client.streamFeedStats()...");
 			const stream = client.streamFeedStats(
 				{},
 				{ signal: abortController.signal },
 			);
 
+			console.log("[streamFeedStats] Stream created, waiting for data...");
 			for await (const response of stream) {
 				const isHeartbeat = response.metadata?.isHeartbeat ?? false;
+				console.log("[streamFeedStats] Received response:", { isHeartbeat, feedAmount: response.feedAmount });
 
 				// Always call onData, even for heartbeats
 				// Components can decide whether to ignore heartbeats
@@ -139,7 +143,9 @@ export async function streamFeedStats(
 					timestamp: Number(response.metadata?.timestamp ?? Date.now() / 1000),
 				});
 			}
+			console.log("[streamFeedStats] Stream ended normally");
 		} catch (error) {
+			console.error("[streamFeedStats] Stream error:", error);
 			// Only report error if not aborted
 			if (!abortController.signal.aborted && onError && error instanceof Error) {
 				onError(error);

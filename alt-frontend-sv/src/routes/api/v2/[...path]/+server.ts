@@ -17,10 +17,17 @@ const BACKEND_CONNECT_URL =
  * Connect-RPC primarily uses POST requests.
  */
 export const fallback: RequestHandler = async ({ request, params, cookies }) => {
+	console.log("[Connect-RPC Proxy] Request received:", {
+		method: request.method,
+		path: params.path,
+		url: request.url,
+	});
+
 	const cookieHeader = request.headers.get("cookie");
 	const token = await getBackendToken(cookieHeader);
 
 	if (!token) {
+		console.error("[Connect-RPC Proxy] Authentication failed: no backend token");
 		return new Response(
 			JSON.stringify({
 				code: "unauthenticated",
@@ -38,6 +45,7 @@ export const fallback: RequestHandler = async ({ request, params, cookies }) => 
 	// Construct the backend URL
 	const path = params.path || "";
 	const backendUrl = `${BACKEND_CONNECT_URL}/${path}`;
+	console.log("[Connect-RPC Proxy] Forwarding to:", backendUrl);
 
 	// Clone headers and add authentication
 	const headers = new Headers(request.headers);
@@ -55,6 +63,12 @@ export const fallback: RequestHandler = async ({ request, params, cookies }) => 
 			body: request.body,
 			// @ts-expect-error - duplex is needed for streaming request bodies
 			duplex: "half",
+		});
+
+		console.log("[Connect-RPC Proxy] Backend response:", {
+			status: response.status,
+			statusText: response.statusText,
+			contentType: response.headers.get("content-type"),
 		});
 
 		// Create response headers, preserving content-type for Connect-RPC
@@ -82,7 +96,7 @@ export const fallback: RequestHandler = async ({ request, params, cookies }) => 
 			headers: responseHeaders,
 		});
 	} catch (error) {
-		console.error("Connect-RPC proxy error:", error);
+		console.error("[Connect-RPC Proxy] Error:", error);
 		return new Response(
 			JSON.stringify({
 				code: "internal",
