@@ -9,10 +9,12 @@ interface RequestBody {
 
 interface BackendResponse {
 	content: string;
+	article_id: string;
 }
 
 interface SafeResponse {
 	content: string; // Will be sanitized
+	article_id: string;
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -93,6 +95,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			// For now, return as-is (sanitization should be added)
 			const safeResponse: SafeResponse = {
 				content: backendData.content, // sanitizeForArticle(backendData.content),
+				article_id: backendData.article_id,
 			};
 
 			return json(safeResponse);

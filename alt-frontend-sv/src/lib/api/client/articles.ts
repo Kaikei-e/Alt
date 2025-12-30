@@ -33,6 +33,7 @@ export interface FetchArticleSummaryResponse {
  */
 export interface FeedContentOnTheFlyResponse {
 	content: SafeHtmlString;
+	article_id: string;
 }
 
 /**

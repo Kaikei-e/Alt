@@ -1,3 +1,9 @@
+<script lang="ts" module>
+	export type FeedGridApi = {
+		removeFeedByUrl: (url: string) => void;
+	};
+</script>
+
 <script lang="ts">
 	import { Loader2 } from "@lucide/svelte";
 	import { getFeedsWithCursorClient } from "$lib/api/client/feeds";
@@ -9,12 +15,31 @@
 		onSelectFeed: (feed: RenderFeed) => void;
 		unreadOnly?: boolean;
 		sortBy?: string;
+		onReady?: (api: FeedGridApi) => void;
 	}
 
-	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc" }: Props = $props();
+	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", onReady }: Props = $props();
 
 	// Simple state for infinite scroll
 	let feeds = $state<RenderFeed[]>([]);
+
+	// Track removed feed URLs for optimistic updates
+	let removedUrls = $state<Set<string>>(new Set());
+
+	// Filter out removed feeds
+	const visibleFeeds = $derived(
+		feeds.filter(feed => !removedUrls.has(feed.normalizedUrl))
+	);
+
+	// Remove a feed by URL (for marking as read)
+	function removeFeedByUrl(url: string) {
+		removedUrls = new Set(removedUrls).add(url);
+	}
+
+	// Expose API to parent
+	$effect(() => {
+		onReady?.({ removeFeedByUrl });
+	});
 	let isLoading = $state(true);
 	let isFetchingNextPage = $state(false);
 	let error = $state<Error | null>(null);
@@ -93,14 +118,14 @@
 				Error loading feeds: {error.message}
 			</p>
 		</div>
-	{:else if feeds.length === 0}
+	{:else if visibleFeeds.length === 0}
 		<div class="text-center py-12">
 			<p class="text-[var(--text-secondary)] text-sm">No feeds found</p>
 		</div>
 	{:else}
 		<!-- Grid layout -->
 		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-			{#each feeds as feed (feed.id)}
+			{#each visibleFeeds as feed (feed.id)}
 				<DesktopFeedCard {feed} onSelect={onSelectFeed} />
 			{/each}
 		</div>

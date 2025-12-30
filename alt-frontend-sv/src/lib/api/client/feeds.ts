@@ -1,6 +1,6 @@
 import type { CursorResponse } from "$lib/api";
-import type { BackendFeedItem, SanitizedFeed } from "$lib/schema/feed";
-import { sanitizeFeed } from "$lib/schema/feed";
+import type { BackendFeedItem, RenderFeed } from "$lib/schema/feed";
+import { sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
 import type {
 	CursorSearchResponse,
 	FeedSearchResult,
@@ -19,7 +19,7 @@ import { callClientAPI } from "./core";
 export async function getFeedsWithCursorClient(
 	cursor?: string,
 	limit: number = 20,
-): Promise<CursorResponse<SanitizedFeed>> {
+): Promise<CursorResponse<RenderFeed>> {
 	const params = new URLSearchParams();
 	params.set("limit", limit.toString());
 	if (cursor) {
@@ -30,11 +30,12 @@ export async function getFeedsWithCursorClient(
 		`/v1/feeds/fetch/cursor?${params.toString()}`,
 	);
 
-	// Transform backend items to sanitized feeds
+	// Transform backend items to sanitized feeds, then to render-ready feeds
 	const sanitizedData = response.data.map((item) => sanitizeFeed(item));
+	const renderFeeds = sanitizedData.map((feed) => toRenderFeed(feed));
 
 	return {
-		data: sanitizedData,
+		data: renderFeeds,
 		next_cursor: response.next_cursor,
 		has_more: response.has_more ?? response.next_cursor !== null,
 	};
@@ -61,7 +62,7 @@ export async function updateFeedReadStatusClient(
 export async function getReadFeedsWithCursorClient(
 	cursor?: string,
 	limit: number = 32,
-): Promise<CursorResponse<SanitizedFeed>> {
+): Promise<CursorResponse<RenderFeed>> {
 	const params = new URLSearchParams();
 	params.set("limit", limit.toString());
 	if (cursor) {
@@ -72,11 +73,12 @@ export async function getReadFeedsWithCursorClient(
 		`/v1/feeds/fetch/viewed/cursor?${params.toString()}`,
 	);
 
-	// Transform backend items to sanitized feeds
+	// Transform backend items to sanitized feeds, then to render-ready feeds
 	const sanitizedData = response.data.map((item) => sanitizeFeed(item));
+	const renderFeeds = sanitizedData.map((feed) => toRenderFeed(feed));
 
 	return {
-		data: sanitizedData,
+		data: renderFeeds,
 		next_cursor: response.next_cursor,
 		has_more: response.has_more ?? response.next_cursor !== null,
 	};
