@@ -45,16 +45,6 @@ func SearchArticlesWithFilter(idxArticles meilisearch.IndexManager, query string
 	return results, nil
 }
 
-// maybe use this later
-func makeSearchFilter(tags []string) string {
-	filter := ""
-	for _, tag := range tags {
-		filter += fmt.Sprintf("tags = %s", tag)
-	}
-
-	return filter
-}
-
 // MakeSecureSearchFilter creates a secure Meilisearch filter from tags
 func MakeSecureSearchFilter(tags []string) string {
 	if len(tags) == 0 {

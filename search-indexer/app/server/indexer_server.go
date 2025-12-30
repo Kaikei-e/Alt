@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"search-indexer/port"
 	"search-indexer/usecase"
@@ -53,7 +54,7 @@ func (s *IndexerServer) Start(ctx context.Context, config Config) error {
 
 	go func() {
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("HTTP server error: %v\n", err)
+			slog.Error("http server error", "err", err)
 		}
 	}()
 
@@ -77,7 +78,7 @@ func (s *IndexerServer) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	limit := 20
 	if limitParam := r.URL.Query().Get("limit"); limitParam != "" {
-		fmt.Sscanf(limitParam, "%d", &limit)
+		_, _ = fmt.Sscanf(limitParam, "%d", &limit)
 	}
 
 	result, err := s.searchUsecase.Execute(r.Context(), query, limit)
@@ -88,7 +89,7 @@ func (s *IndexerServer) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"results": %d, "query": "%s"}`, len(result.Documents), query)
+	_, _ = fmt.Fprintf(w, `{"results": %d, "query": "%s"}`, len(result.Documents), query)
 }
 
 func (s *IndexerServer) runIndexLoop(ctx context.Context, config Config) {
@@ -97,24 +98,24 @@ func (s *IndexerServer) runIndexLoop(ctx context.Context, config Config) {
 	var lastID string
 	var incrementalMark *time.Time
 
-	fmt.Println("Starting Phase 1: Backfill")
+	slog.Info("starting Phase 1: Backfill")
 
 	// Get incrementalMark (latest created_at) at the start
 	mark, err := s.indexUsecase.GetIncrementalMark(ctx)
 	if err != nil {
-		fmt.Printf("Failed to get incremental mark: %v\n", err)
+		slog.Error("failed to get incremental mark", "err", err)
 		// Use current time as fallback
 		now := time.Now()
 		incrementalMark = &now
-		fmt.Printf("Using current time as incremental mark fallback: %v\n", incrementalMark)
+		slog.Info("using current time as incremental mark fallback", "mark", incrementalMark)
 	} else if mark == nil {
 		// No articles exist yet, use current time as fallback
 		now := time.Now()
 		incrementalMark = &now
-		fmt.Printf("No articles found, using current time as incremental mark: %v\n", incrementalMark)
+		slog.Info("no articles found, using current time as incremental mark", "mark", incrementalMark)
 	} else {
 		incrementalMark = mark
-		fmt.Printf("Incremental mark set: %v\n", incrementalMark)
+		slog.Info("incremental mark set", "mark", incrementalMark)
 	}
 
 	// Phase 1: Backfill loop (past direction)
@@ -127,23 +128,23 @@ func (s *IndexerServer) runIndexLoop(ctx context.Context, config Config) {
 
 		result, err := s.indexUsecase.ExecuteBackfill(ctx, lastCreatedAt, lastID, config.IndexBatchSize)
 		if err != nil {
-			fmt.Printf("Backfill error: %v\n", err)
+			slog.Error("backfill error", "err", err)
 			time.Sleep(config.IndexRetryDelay)
 			continue
 		}
 
 		if result.IndexedCount == 0 {
-			fmt.Println("Phase 1 complete: backfill done")
+			slog.Info("Phase 1 complete: backfill done")
 			break
 		}
 
-		fmt.Printf("Backfill indexed %d articles\n", result.IndexedCount)
+		slog.Info("backfill indexed", "count", result.IndexedCount)
 		lastCreatedAt = result.LastCreatedAt
 		lastID = result.LastID
 	}
 
 	// Phase 2: Incremental loop (future direction + deletion sync)
-	fmt.Println("Starting Phase 2: Incremental")
+	slog.Info("starting Phase 2: Incremental")
 
 	// Reset cursor for incremental phase
 	lastCreatedAt = nil
@@ -159,24 +160,24 @@ func (s *IndexerServer) runIndexLoop(ctx context.Context, config Config) {
 
 		result, err := s.indexUsecase.ExecuteIncremental(ctx, incrementalMark, lastCreatedAt, lastID, lastDeletedAt, config.IndexBatchSize)
 		if err != nil {
-			fmt.Printf("Incremental indexing error: %v\n", err)
+			slog.Error("incremental indexing error", "err", err)
 			time.Sleep(config.IndexRetryDelay)
 			continue
 		}
 
 		if result.IndexedCount > 0 {
-			fmt.Printf("Incremental indexed %d articles\n", result.IndexedCount)
+			slog.Info("incremental indexed", "count", result.IndexedCount)
 			lastCreatedAt = result.LastCreatedAt
 			lastID = result.LastID
 		}
 
 		if result.DeletedCount > 0 {
-			fmt.Printf("Deleted %d articles from index\n", result.DeletedCount)
+			slog.Info("deleted from index", "count", result.DeletedCount)
 			lastDeletedAt = result.LastDeletedAt
 		}
 
 		if result.IndexedCount == 0 && result.DeletedCount == 0 {
-			fmt.Println("No new articles or deletions")
+			slog.Info("no new articles or deletions")
 		}
 
 		time.Sleep(config.IndexInterval)
