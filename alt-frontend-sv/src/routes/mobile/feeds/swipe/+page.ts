@@ -56,46 +56,50 @@ export const load: PageLoad = async ({ fetch }) => {
 			nextCursor = feedsData.next_cursor;
 		}
 
-		// Fetch first article content
-		let articleContent: string | null = null;
+		// Fetch first article content as a non-blocking Promise (streaming pattern)
+		// This allows the page to render immediately while article content loads in background
+		let articleContentPromise: Promise<string | null> = Promise.resolve(null);
 		if (feeds.length > 0) {
-			try {
-				// Include basePath in the API URL for client-side fetch
-				const contentApiUrl = `${BASE_PATH}/api/v1/articles/content`;
-				const contentRes = await fetch(contentApiUrl, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ url: feeds[0].link }),
-				});
+			const contentApiUrl = `${BASE_PATH}/api/v1/articles/content`;
+			const feedUrl = feeds[0].link;
 
-				if (contentRes.ok) {
-					// Check Content-Type before parsing JSON
-					const contentType = contentRes.headers.get("content-type") || "";
-					const isJson = contentType.includes("application/json");
+			articleContentPromise = (async (): Promise<string | null> => {
+				try {
+					const contentRes = await fetch(contentApiUrl, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ url: feedUrl }),
+					});
 
-					if (isJson) {
-						const contentData: { content: string } = await contentRes.json();
-						articleContent = contentData.content;
-					} else {
+					if (contentRes.ok) {
+						const contentType = contentRes.headers.get("content-type") || "";
+						const isJson = contentType.includes("application/json");
+
+						if (isJson) {
+							const contentData: { content: string } =
+								await contentRes.json();
+							return contentData.content;
+						}
 						console.warn("Article content API returned non-JSON response:", {
 							contentType,
 							status: contentRes.status,
 						});
 					}
+				} catch (e) {
+					const errorMessage = e instanceof Error ? e.message : String(e);
+					console.error("Error fetching initial article content:", {
+						error: errorMessage,
+						url: feedUrl,
+					});
 				}
-			} catch (e) {
-				const errorMessage = e instanceof Error ? e.message : String(e);
-				console.error("Error fetching initial article content:", {
-					error: errorMessage,
-					url: feeds[0].link,
-				});
-			}
+				return null;
+			})();
 		}
 
 		return {
 			initialFeeds: feeds,
 			nextCursor,
-			articleContent,
+			articleContentPromise,
 		};
 	} catch (e) {
 		const errorMessage = e instanceof Error ? e.message : String(e);
@@ -108,7 +112,7 @@ export const load: PageLoad = async ({ fetch }) => {
 		return {
 			initialFeeds: [],
 			nextCursor: null,
-			articleContent: null,
+			articleContentPromise: Promise.resolve(null),
 		};
 	}
 };

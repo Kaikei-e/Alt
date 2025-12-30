@@ -3,10 +3,19 @@ import SwipeFeedScreen from "$lib/components/mobile/feeds/swipe/SwipeFeedScreen.
 import type { PageData } from "./$types";
 
 const { data }: { data: PageData } = $props();
+
+// Handle the streamed articleContent Promise
+let articleContent = $state<string | null>(null);
+
+$effect(() => {
+	data.articleContentPromise?.then((content) => {
+		articleContent = content;
+	});
+});
 </script>
 
 <SwipeFeedScreen
-  initialFeeds={data.initialFeeds}
-  initialNextCursor={data.nextCursor}
-  initialArticleContent={data.articleContent}
+	initialFeeds={data.initialFeeds}
+	initialNextCursor={data.nextCursor}
+	initialArticleContent={articleContent}
 />
