@@ -161,31 +161,12 @@ export function useSSEFeedsStats() {
 		return cleanupFn;
 	});
 
-	// Use $derived to ensure reactivity is preserved when returning from function
-	// This ensures that changes to isConnected are tracked by consumers
-	const derivedIsConnected = $derived(isConnected);
-	const derivedRetryCount = $derived(retryCount);
-	const derivedFeedAmount = $derived(feedAmount);
-	const derivedUnsummarizedArticlesAmount = $derived(
-		unsummarizedArticlesAmount,
-	);
-	const derivedTotalArticlesAmount = $derived(totalArticlesAmount);
-
+	// Return as getters to maintain reactivity when accessed from components
 	return {
-		get feedAmount() {
-			return derivedFeedAmount;
-		},
-		get unsummarizedArticlesAmount() {
-			return derivedUnsummarizedArticlesAmount;
-		},
-		get totalArticlesAmount() {
-			return derivedTotalArticlesAmount;
-		},
-		get isConnected() {
-			return derivedIsConnected;
-		},
-		get retryCount() {
-			return derivedRetryCount;
-		},
+		get feedAmount() { return feedAmount; },
+		get unsummarizedArticlesAmount() { return unsummarizedArticlesAmount; },
+		get totalArticlesAmount() { return totalArticlesAmount; },
+		get isConnected() { return isConnected; },
+		get retryCount() { return retryCount; },
 	};
 }
