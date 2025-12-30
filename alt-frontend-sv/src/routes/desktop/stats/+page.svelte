@@ -1,25 +1,26 @@
 <script lang="ts">
 	import { BarChart3, TrendingUp, FileText, CheckCircle } from "@lucide/svelte";
 	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-	import { useSSEFeedsStats } from "$lib/hooks/useSSEFeedsStats.svelte";
+	import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
 
-	const stats = useSSEFeedsStats();
+	const stats = useFeedStats();
 
-	let unreadCount = $derived(stats.unreadCount ?? 0);
-	let totalArticles = $derived(stats.totalArticles ?? 0);
-	let summarizedArticles = $derived(stats.summarizedArticles ?? 0);
+	let feedAmount = $derived(stats.feedAmount);
+	let totalArticlesAmount = $derived(stats.totalArticlesAmount);
+	let unsummarizedArticlesAmount = $derived(stats.unsummarizedArticlesAmount);
+	let summarizedArticles = $derived(totalArticlesAmount - unsummarizedArticlesAmount);
 	let connectionStatus = $derived(stats.isConnected ? "Connected" : "Disconnected");
 
 	let statCards = $derived([
 		{
-			label: "Unread Feeds",
-			value: unreadCount,
+			label: "Feed Count",
+			value: feedAmount,
 			icon: FileText,
 			color: "text-blue-600",
 		},
 		{
 			label: "Total Articles",
-			value: totalArticles,
+			value: totalArticlesAmount,
 			icon: BarChart3,
 			color: "text-green-600",
 		},

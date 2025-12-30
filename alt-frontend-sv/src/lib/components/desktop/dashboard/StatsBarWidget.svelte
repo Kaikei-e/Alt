@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { Rss, FileText, CheckCircle, Wifi, WifiOff } from "@lucide/svelte";
-	import { useSSEFeedsStats } from "$lib/hooks/useSSEFeedsStats.svelte";
+	import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
 
-	// Use SSE hook for real-time stats
-	const stats = useSSEFeedsStats();
+	// Use unified feed stats hook (supports both SSE and Connect-RPC Streaming)
+	const stats = useFeedStats();
 
 	// Use $derived to maintain reactivity - destructuring loses reactivity in Svelte 5
 	let feedAmount = $derived(stats.feedAmount);

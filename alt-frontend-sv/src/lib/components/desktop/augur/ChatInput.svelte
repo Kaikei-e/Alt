@@ -3,10 +3,10 @@
 	import { Button } from "$lib/components/ui/button";
 	import { Textarea } from "$lib/components/ui/textarea";
 
-	interface Props {
+	type Props = {
 		onSend: (message: string) => void;
 		disabled?: boolean;
-	}
+	};
 
 	let { onSend, disabled = false }: Props = $props();
 
@@ -29,13 +29,13 @@
 	}
 </script>
 
-<div class="border-t border-[var(--surface-border)] bg-white p-4">
+<div class="border-t border-border bg-background p-4">
 	<div class="flex gap-2">
 		<Textarea
 			bind:value={inputValue}
 			onkeydown={handleKeydown}
 			placeholder="Ask Augur anything..."
-			class="flex-1 resize-none min-h-[44px] max-h-[120px]"
+			class="flex-1 resize-none min-h-[44px] max-h-[120px] rounded-full border-border/50 bg-muted/30"
 			{disabled}
 			rows={1}
 		/>
@@ -48,7 +48,7 @@
 			<Send class="h-4 w-4" />
 		</Button>
 	</div>
-	<p class="text-xs text-[var(--text-muted)] mt-2">
+	<p class="text-xs text-muted-foreground mt-2">
 		Press Enter to send, Shift+Enter for new line
 	</p>
 </div>

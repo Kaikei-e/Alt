@@ -6,7 +6,7 @@ import {
 	getUnreadCountClient,
 } from "$lib/api/client/feeds";
 import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
-import { useSSEFeedsStats } from "$lib/hooks/useSSEFeedsStats.svelte";
+import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
 import type { DetailedFeedStatsSummary } from "$lib/schema/stats";
 
 let stats: DetailedFeedStatsSummary | null = $state(null);
@@ -14,8 +14,8 @@ let unreadCount = $state(0);
 let loading = $state(true);
 let error: string | null = $state(null);
 
-// SSE Connection
-const sseStats = useSSEFeedsStats();
+// Unified feed stats hook (SSE or Connect-RPC Streaming)
+const sseStats = useFeedStats();
 
 // Reactive state for display values
 let displayFeedAmount = $state(0);
