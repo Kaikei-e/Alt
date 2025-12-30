@@ -8,8 +8,8 @@
 	let { children }: { children: Snippet } = $props();
 
 	// Show loader during navigation OR when page is fetching data
-	// navigating from $app/state is used directly (no $ prefix needed)
-	let showLoader = $derived(!!navigating || loadingStore.isDesktopLoading);
+	// navigating from $app/state returns object with type: null when not navigating
+	let showLoader = $derived(navigating.type !== null || loadingStore.isDesktopLoading);
 </script>
 
 {#if showLoader}
