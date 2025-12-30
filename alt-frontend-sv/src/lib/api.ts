@@ -1,5 +1,11 @@
 import { env } from "$env/dynamic/private";
 import type { FeedLink } from "$lib/schema/feedLink";
+import { createServerTransport } from "$lib/connect/transport";
+import {
+	getUnreadFeeds as getUnreadFeedsConnect,
+	getReadFeeds as getReadFeedsConnect,
+	type ConnectFeedItem,
+} from "$lib/connect/feeds";
 
 // バックエンドAPIのベースURL（サーバーサイドからは内部URLを使用）
 const BACKEND_BASE_URL = env.BACKEND_BASE_URL || "http://alt-backend:9000";
@@ -190,23 +196,36 @@ export interface CursorResponse<T> {
 }
 
 /**
+ * ConnectFeedItem を BackendFeedItem 互換形式に変換
+ */
+function connectFeedToBackendFormat(item: ConnectFeedItem): unknown {
+	return {
+		title: item.title,
+		description: item.description,
+		link: item.link,
+		published: item.createdAt, // Use createdAt for RFC3339 format
+		created_at: item.createdAt,
+		author: item.author ? { name: item.author } : undefined,
+	};
+}
+
+/**
  * カーソルベースでフィードを取得
+ * Connect-RPC を使用
  */
 export async function getFeedsWithCursor(
 	cookie: string | null,
 	cursor?: string,
 	limit: number = 20,
 ): Promise<CursorResponse<unknown>> {
-	const params = new URLSearchParams();
-	params.set("limit", limit.toString());
-	if (cursor) {
-		params.set("cursor", cursor);
-	}
+	const transport = await createServerTransport(cookie);
+	const response = await getUnreadFeedsConnect(transport, cursor, limit);
 
-	return callBackendAPI<CursorResponse<unknown>>(
-		`/v1/feeds/fetch/cursor?${params.toString()}`,
-		cookie,
-	);
+	return {
+		data: response.data.map(connectFeedToBackendFormat),
+		next_cursor: response.nextCursor,
+		has_more: response.hasMore,
+	};
 }
 
 /**
@@ -266,22 +285,21 @@ export async function updateFeedReadStatus(
 
 /**
  * カーソルベースで既読フィードを取得
+ * Connect-RPC を使用
  */
 export async function getReadFeedsWithCursor(
 	cookie: string | null,
 	cursor?: string,
 	limit: number = 32,
 ): Promise<CursorResponse<unknown>> {
-	const params = new URLSearchParams();
-	params.set("limit", limit.toString());
-	if (cursor) {
-		params.set("cursor", cursor);
-	}
+	const transport = await createServerTransport(cookie);
+	const response = await getReadFeedsConnect(transport, cursor, limit);
 
-	return callBackendAPI<CursorResponse<unknown>>(
-		`/v1/feeds/fetch/viewed/cursor?${params.toString()}`,
-		cookie,
-	);
+	return {
+		data: response.data.map(connectFeedToBackendFormat),
+		next_cursor: response.nextCursor,
+		has_more: response.hasMore,
+	};
 }
 
 /**

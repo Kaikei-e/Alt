@@ -12,32 +12,56 @@ import type {
 	UnreadCountResponse,
 } from "$lib/schema/stats";
 import { callClientAPI } from "./core";
+import { createClientTransport } from "$lib/connect/transport.client";
+import {
+	getUnreadFeeds,
+	getReadFeeds,
+	searchFeeds as searchFeedsConnect,
+	type ConnectFeedItem,
+} from "$lib/connect/feeds";
+import {
+	formatPublishedDate,
+	generateExcerptFromDescription,
+	mergeTagsLabel,
+	normalizeUrl,
+} from "$lib/utils/feed";
+
+/**
+ * ConnectFeedItem を RenderFeed に変換
+ * バックエンドで既に sanitize/format 済みのデータを RenderFeed 形式に変換
+ */
+function connectFeedToRenderFeed(item: ConnectFeedItem): RenderFeed {
+	return {
+		id: item.id,
+		title: item.title,
+		description: item.description,
+		link: item.link,
+		published: item.published, // Already formatted as "2h ago" etc.
+		created_at: item.createdAt,
+		author: item.author || undefined,
+		// Generate display values from the already-sanitized data
+		publishedAtFormatted: formatPublishedDate(item.createdAt || item.published),
+		mergedTagsLabel: "", // Tags not available in Connect-RPC response
+		normalizedUrl: normalizeUrl(item.link),
+		excerpt: generateExcerptFromDescription(item.description),
+	};
+}
 
 /**
  * カーソルベースでフィードを取得（クライアントサイド）
+ * Connect-RPC を使用
  */
 export async function getFeedsWithCursorClient(
 	cursor?: string,
 	limit: number = 20,
 ): Promise<CursorResponse<RenderFeed>> {
-	const params = new URLSearchParams();
-	params.set("limit", limit.toString());
-	if (cursor) {
-		params.set("cursor", cursor);
-	}
-
-	const response = await callClientAPI<CursorResponse<BackendFeedItem>>(
-		`/v1/feeds/fetch/cursor?${params.toString()}`,
-	);
-
-	// Transform backend items to sanitized feeds, then to render-ready feeds
-	const sanitizedData = response.data.map((item) => sanitizeFeed(item));
-	const renderFeeds = sanitizedData.map((feed) => toRenderFeed(feed));
+	const transport = createClientTransport();
+	const response = await getUnreadFeeds(transport, cursor, limit);
 
 	return {
-		data: renderFeeds,
-		next_cursor: response.next_cursor,
-		has_more: response.has_more ?? response.next_cursor !== null,
+		data: response.data.map(connectFeedToRenderFeed),
+		next_cursor: response.nextCursor,
+		has_more: response.hasMore,
 	};
 }
 
@@ -58,35 +82,25 @@ export async function updateFeedReadStatusClient(
 
 /**
  * カーソルベースで既読フィードを取得（クライアントサイド）
+ * Connect-RPC を使用
  */
 export async function getReadFeedsWithCursorClient(
 	cursor?: string,
 	limit: number = 32,
 ): Promise<CursorResponse<RenderFeed>> {
-	const params = new URLSearchParams();
-	params.set("limit", limit.toString());
-	if (cursor) {
-		params.set("cursor", cursor);
-	}
-
-	const response = await callClientAPI<CursorResponse<BackendFeedItem>>(
-		`/v1/feeds/fetch/viewed/cursor?${params.toString()}`,
-	);
-
-	// Transform backend items to sanitized feeds, then to render-ready feeds
-	const sanitizedData = response.data.map((item) => sanitizeFeed(item));
-	const renderFeeds = sanitizedData.map((feed) => toRenderFeed(feed));
+	const transport = createClientTransport();
+	const response = await getReadFeeds(transport, cursor, limit);
 
 	return {
-		data: renderFeeds,
-		next_cursor: response.next_cursor,
-		has_more: response.has_more ?? response.next_cursor !== null,
+		data: response.data.map(connectFeedToRenderFeed),
+		next_cursor: response.nextCursor,
+		has_more: response.hasMore,
 	};
 }
 
 /**
  * フィードを検索（クライアントサイド）
- * カーソルベースのページネーションをサポート（offsetベース）
+ * Connect-RPC を使用（offsetベースのページネーション）
  */
 export async function searchFeedsClient(
 	query: string,
@@ -94,62 +108,23 @@ export async function searchFeedsClient(
 	limit: number = 20,
 ): Promise<FeedSearchResult> {
 	try {
-		// Prepare request payload
-		const payload: { query: string; cursor?: number; limit?: number } = {
-			query,
-		};
+		const transport = createClientTransport();
+		const response = await searchFeedsConnect(transport, query, cursor, limit);
 
-		if (cursor !== undefined && cursor !== null) {
-			payload.cursor = cursor;
-		}
-		if (limit !== undefined) {
-			payload.limit = limit;
-		}
+		// Convert ConnectFeedItem[] to SearchFeedItem[]
+		const results: SearchFeedItem[] = response.data.map((item) => ({
+			title: item.title,
+			description: item.description,
+			link: item.link,
+			published: item.published,
+			author: item.author ? { name: item.author } : undefined,
+		}));
 
-		const response = await callClientAPI<
-			SearchFeedItem[] | FeedSearchResult | CursorSearchResponse
-		>("/v1/feeds/search", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify(payload),
-		});
-
-		// Handle cursor-based response (new format)
-		if (
-			typeof response === "object" &&
-			response !== null &&
-			"data" in response &&
-			"next_cursor" in response
-		) {
-			const cursorResponse = response as CursorSearchResponse;
-			return {
-				results: cursorResponse.data,
-				error: null,
-				next_cursor: cursorResponse.next_cursor,
-				has_more:
-					cursorResponse.has_more ?? cursorResponse.next_cursor !== null,
-			};
-		}
-
-		// Handle array response (backward compatibility)
-		if (Array.isArray(response)) {
-			return {
-				results: response,
-				error: null,
-				next_cursor: null,
-				has_more: false,
-			};
-		}
-
-		// Handle FeedSearchResult response
-		const result = response as FeedSearchResult;
 		return {
-			results: result.results || [],
-			error: result.error || null,
-			next_cursor: result.next_cursor ?? null,
-			has_more: result.has_more ?? false,
+			results,
+			error: null,
+			next_cursor: response.nextCursor,
+			has_more: response.hasMore,
 		};
 	} catch (error) {
 		const errorMessage =
