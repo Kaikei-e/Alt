@@ -930,6 +930,44 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # === Recap Evaluator Service ===
+  # RecapJob精度評価マイクロサービス
+  # Usage: docker compose --profile recap-evaluation up -d recap-evaluator
+  recap-evaluator:
+    build:
+      context: ./recap-evaluator
+      dockerfile: Dockerfile
+    profiles:
+      - recap-evaluation
+    environment:
+      - RECAP_DB_DSN=postgres://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:5432/${RECAP_DB_NAME}
+      - OLLAMA_URL=http://news-creator:11434
+      - RECAP_WORKER_URL=http://recap-worker:9005
+      - EVALUATION_SCHEDULE=0 6 * * *
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+    ports:
+      - "8085:8080"
+    depends_on:
+      recap-db:
+        condition: service_healthy
+    networks:
+      - alt-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    labels:
+      - rask.group=recap-evaluator
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 ################### For Rask Log Aggregator ###################
   nginx-logs:
     build:
