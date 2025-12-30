@@ -942,6 +942,7 @@ services:
     environment:
       - RECAP_DB_DSN=postgres://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:5432/${RECAP_DB_NAME}
       - OLLAMA_URL=http://news-creator:11434
+      - OLLAMA_MODEL=gemma3-4b-16k
       - RECAP_WORKER_URL=http://recap-worker:9005
       - EVALUATION_SCHEDULE=0 6 * * *
       - LOG_LEVEL=INFO
