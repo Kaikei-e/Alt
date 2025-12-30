@@ -25,7 +25,7 @@
 	});
 </script>
 
-<div class="border border-[var(--surface-border)] bg-white p-6 flex flex-col h-full">
+<div class="border border-[var(--surface-border)] bg-white p-6 flex flex-col h-full overflow-x-hidden">
 	<!-- Header -->
 	<div class="flex items-center justify-between mb-4">
 		<h3 class="text-lg font-semibold text-[var(--text-primary)]">Unread Feeds</h3>
@@ -39,7 +39,7 @@
 	</div>
 
 	<!-- Content -->
-	<div class="flex-1 overflow-y-auto">
+	<div class="flex-1 overflow-y-auto overflow-x-hidden">
 		{#if isLoading}
 			<div class="flex items-center justify-center py-12">
 				<Loader2 class="h-6 w-6 animate-spin text-[var(--accent-primary)]" />
@@ -62,11 +62,11 @@
 							rel="noopener noreferrer"
 							class="block hover:bg-[var(--surface-hover)] p-2 -m-2 transition-colors duration-200"
 						>
-							<h4 class="text-sm font-medium text-[var(--text-primary)] line-clamp-2 mb-1">
+							<h4 class="text-sm font-medium text-[var(--text-primary)] line-clamp-2 mb-1 break-words">
 								{feed.title}
 							</h4>
 							{#if feed.excerpt}
-								<p class="text-xs text-[var(--text-secondary)] line-clamp-2">
+								<p class="text-xs text-[var(--text-secondary)] line-clamp-2 break-words">
 									{feed.excerpt}
 								</p>
 							{/if}
