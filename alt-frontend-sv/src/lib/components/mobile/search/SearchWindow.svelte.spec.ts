@@ -1,12 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/svelte/svelte5";
-import userEvent from "@testing-library/user-event";
+import { page } from "@vitest/browser/context";
+import { render } from "vitest-browser-svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type {
-	FeedSearchResult,
-	SearchFeedItem,
-	SearchQuery,
-} from "$lib/schema/search";
+import type { SearchFeedItem, SearchQuery } from "$lib/schema/search";
 import SearchWindow from "./SearchWindow.svelte";
 
 const { mockSearchFeedsClient } = vi.hoisted(() => {
@@ -44,19 +40,19 @@ describe("SearchWindow", () => {
 		const props = baseProps();
 		const { rerender } = render(SearchWindow, { props });
 
-		const input = screen.getByRole("textbox", { name: /search query/i });
-		await userEvent.type(input, "a");
+		const input = page.getByRole("textbox", { name: /search query/i });
+		await input.fill("a");
 		await rerender({
 			...props,
 			searchQuery: { query: "a" },
 		});
 
-		const button = screen.getByRole("button", { name: /search$/i });
-		await userEvent.click(button);
+		const button = page.getByRole("button", { name: /search$/i });
+		await button.click();
 
-		expect(
-			screen.getByText("Search query must be at least 2 characters"),
-		).toBeInTheDocument();
+		await expect
+			.element(page.getByText("Search query must be at least 2 characters"))
+			.toBeInTheDocument();
 		expect(mockSearchFeedsClient).not.toHaveBeenCalled();
 	});
 
@@ -76,17 +72,18 @@ describe("SearchWindow", () => {
 
 		const { rerender } = render(SearchWindow, { props });
 
-		const input = screen.getByRole("textbox", { name: /search query/i });
-		await userEvent.type(input, "Svelte");
+		const input = page.getByRole("textbox", { name: /search query/i });
+		await input.fill("Svelte");
 		await rerender({
 			...props,
 			searchQuery: { query: "Svelte" },
 		});
 
-		const button = screen.getByRole("button", { name: /search$/i });
-		await userEvent.click(button);
+		const button = page.getByRole("button", { name: /search$/i });
+		await button.click();
 
-		await waitFor(() => {
+		// Wait for the mock to be called (locators auto-retry)
+		await vi.waitFor(() => {
 			expect(mockSearchFeedsClient).toHaveBeenCalledWith("Svelte");
 		});
 

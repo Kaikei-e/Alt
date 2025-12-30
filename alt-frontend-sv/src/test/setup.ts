@@ -1,4 +1,1 @@
-import "@testing-library/jest-dom";
-import "@testing-library/svelte/vitest";
-
-// Svelte Testing Library + Vitest integration provides automatic cleanup.
+// Minimal setup - vitest-browser-svelte handles cleanup automatically.
