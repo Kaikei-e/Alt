@@ -15,6 +15,9 @@ const config = {
 		paths: {
 			base: "/sv",
 		},
+		version: {
+			name: Date.now().toString()
+		},
 	},
 };
 
