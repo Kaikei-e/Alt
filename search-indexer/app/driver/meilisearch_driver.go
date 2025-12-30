@@ -167,17 +167,43 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		// Delete the dummy document
 		deleteTask, err := d.index.DeleteDocument("init")
 		if err == nil {
-			d.index.WaitForTask(deleteTask.TaskUID, 15*1000)
+			_, _ = d.index.WaitForTask(deleteTask.TaskUID, 15*1000)
+		}
+	}
+
+	// Configure index settings (best practice: set before indexing)
+
+	// Set searchable attributes (prioritized order)
+	searchableAttrs := []string{"title", "content", "tags"}
+	if _, err := d.index.UpdateSearchableAttributes(&searchableAttrs); err != nil {
+		return &DriverError{
+			Op:  "EnsureIndex",
+			Err: "failed to set searchable attributes: " + err.Error(),
 		}
 	}
 
 	// Set filterable attributes for tags and user_id
 	filterableAttrs := []interface{}{"tags", "user_id"}
-	_, err = d.index.UpdateFilterableAttributes(&filterableAttrs)
-	if err != nil {
+	if _, err := d.index.UpdateFilterableAttributes(&filterableAttrs); err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
 			Err: "failed to set filterable attributes: " + err.Error(),
+		}
+	}
+
+	// Set ranking rules (default + custom)
+	rankingRules := []string{
+		"words",      // Number of matching query terms
+		"typo",       // Number of typos
+		"proximity",  // Proximity of query terms in document
+		"attribute",  // Attribute ranking order
+		"sort",       // User-defined sort parameter
+		"exactness",  // Similarity of matched vs. query words
+	}
+	if _, err := d.index.UpdateRankingRules(&rankingRules); err != nil {
+		return &DriverError{
+			Op:  "EnsureIndex",
+			Err: "failed to set ranking rules: " + err.Error(),
 		}
 	}
 

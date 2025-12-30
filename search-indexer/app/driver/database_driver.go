@@ -2,7 +2,6 @@ package driver
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -37,7 +36,12 @@ func NewDatabaseDriverFromConfig(ctx context.Context) (*DatabaseDriver, error) {
 	}, nil
 }
 
-// initDatabasePool initializes the database connection pool
+const (
+	dbMaxRetries = 5
+	dbRetryDelay = 5 * time.Second
+)
+
+// initDatabasePool initializes the database connection pool with retry logic
 func initDatabasePool(ctx context.Context) (*pgxpool.Pool, error) {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -56,14 +60,14 @@ func initDatabasePool(ctx context.Context) (*pgxpool.Pool, error) {
 
 		// SSL設定の検証
 		if err := dbConfig.ValidateSSLConfig(); err != nil {
-			slog.Error("Invalid SSL configuration", "error", err)
+			slog.Error("invalid SSL configuration", "error", err)
 			return nil, &DriverError{
 				Op:  "initDatabasePool",
 				Err: fmt.Sprintf("SSL configuration error: %v", err),
 			}
 		}
 
-		slog.Info("Database configuration",
+		slog.Info("database configuration",
 			"host", dbConfig.Host,
 			"database", dbConfig.Name,
 			"sslmode", dbConfig.SSL.Mode,
@@ -86,18 +90,39 @@ func initDatabasePool(ctx context.Context) (*pgxpool.Pool, error) {
 	poolConfig.MaxConnLifetime = time.Hour
 	poolConfig.MaxConnIdleTime = time.Minute * 30
 
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
-	if err != nil {
-		return nil, &DriverError{
-			Op:  "initDatabasePool",
-			Err: "failed to create database pool: " + err.Error(),
+	// Retry logic for database connection
+	var pool *pgxpool.Pool
+	var lastErr error
+
+	for attempt := 1; attempt <= dbMaxRetries; attempt++ {
+		pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
+		if err != nil {
+			lastErr = err
+			slog.Warn("database connection failed, retrying", "attempt", attempt, "max", dbMaxRetries, "err", err)
+			if attempt < dbMaxRetries {
+				time.Sleep(dbRetryDelay)
+			}
+			continue
 		}
+
+		if err := pool.Ping(ctx); err != nil {
+			pool.Close()
+			lastErr = err
+			slog.Warn("database ping failed, retrying", "attempt", attempt, "max", dbMaxRetries, "err", err)
+			if attempt < dbMaxRetries {
+				time.Sleep(dbRetryDelay)
+			}
+			continue
+		}
+
+		// Connection successful
+		break
 	}
 
-	if err := pool.Ping(ctx); err != nil {
+	if pool == nil {
 		return nil, &DriverError{
 			Op:  "initDatabasePool",
-			Err: "failed to ping database: " + err.Error(),
+			Err: fmt.Sprintf("failed to connect to database after %d attempts: %v", dbMaxRetries, lastErr),
 		}
 	}
 
@@ -223,24 +248,6 @@ func (d *DatabaseDriver) GetArticlesWithTagsCount(ctx context.Context) (int, err
 	}
 
 	return count, nil
-}
-
-func (d *DatabaseDriver) parseTagsJSON(tagsJSON []byte) ([]TagModel, error) {
-	type tagData struct {
-		Name string `json:"name"`
-	}
-
-	var tags []tagData
-	if err := json.Unmarshal(tagsJSON, &tags); err != nil {
-		return nil, err
-	}
-
-	result := make([]TagModel, len(tags))
-	for i, tag := range tags {
-		result[i] = TagModel{TagName: tag.Name}
-	}
-
-	return result, nil
 }
 
 // GetArticlesWithTagsForward fetches articles in forward direction (for incremental indexing)
