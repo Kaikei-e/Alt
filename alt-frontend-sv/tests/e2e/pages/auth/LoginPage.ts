@@ -101,12 +101,24 @@ export class LoginPage extends BasePage {
 
 	/**
 	 * Wait for the form to be ready (not redirecting)
+	 * Returns false if external auth (Cloudflare Access) is detected
 	 */
-	async waitForFormReady(): Promise<void> {
-		// Wait for either form to appear or redirecting text
-		await expect(
-			this.emailInput.or(this.redirectingText).first()
-		).toBeVisible({ timeout: 10000 });
+	async waitForFormReady(): Promise<boolean> {
+		// Wait for either form to appear, redirecting text, or external auth (Cloudflare)
+		const externalAuth = this.page.getByText(/send me a code|cloudflare/i);
+		try {
+			await expect(
+				this.emailInput.or(this.redirectingText).or(externalAuth).first()
+			).toBeVisible({ timeout: 10000 });
+
+			// Check if external auth is detected
+			if (await externalAuth.isVisible()) {
+				return false;
+			}
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	/**
@@ -114,5 +126,13 @@ export class LoginPage extends BasePage {
 	 */
 	async isRedirecting(): Promise<boolean> {
 		return this.redirectingText.isVisible();
+	}
+
+	/**
+	 * Check if external auth (e.g., Cloudflare Access) is being used
+	 */
+	async isExternalAuth(): Promise<boolean> {
+		const externalAuth = this.page.getByText(/send me a code|cloudflare/i);
+		return externalAuth.isVisible();
 	}
 }

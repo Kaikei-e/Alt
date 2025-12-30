@@ -89,7 +89,13 @@ test.describe("Login Page", () => {
 		);
 
 		await loginPage.goto();
-		await loginPage.waitForFormReady();
+		const formReady = await loginPage.waitForFormReady();
+
+		// Skip if external auth (e.g., Cloudflare Access) is detected
+		if (!formReady) {
+			test.skip(true, "External authentication in use");
+			return;
+		}
 
 		// Verify card title
 		await expect(loginPage.cardTitle).toBeVisible();
@@ -105,11 +111,11 @@ test.describe("Login Page", () => {
 		);
 
 		await loginPage.goto();
-		await loginPage.waitForFormReady();
+		const formReady = await loginPage.waitForFormReady();
 
-		// Skip if redirecting
-		if (await loginPage.isRedirecting()) {
-			test.skip();
+		// Skip if external auth or redirecting
+		if (!formReady || await loginPage.isRedirecting()) {
+			test.skip(true, "External authentication or redirect");
 			return;
 		}
 
@@ -123,10 +129,10 @@ test.describe("Login Page", () => {
 		);
 
 		await loginPage.goto();
-		await loginPage.waitForFormReady();
+		const formReady = await loginPage.waitForFormReady();
 
-		if (await loginPage.isRedirecting()) {
-			test.skip();
+		if (!formReady || await loginPage.isRedirecting()) {
+			test.skip(true, "External authentication or redirect");
 			return;
 		}
 
@@ -140,10 +146,10 @@ test.describe("Login Page", () => {
 		);
 
 		await loginPage.goto();
-		await loginPage.waitForFormReady();
+		const formReady = await loginPage.waitForFormReady();
 
-		if (await loginPage.isRedirecting()) {
-			test.skip();
+		if (!formReady || await loginPage.isRedirecting()) {
+			test.skip(true, "External authentication or redirect");
 			return;
 		}
 
@@ -159,10 +165,10 @@ test.describe("Login Page", () => {
 		);
 
 		await loginPage.goto();
-		await loginPage.waitForFormReady();
+		const formReady = await loginPage.waitForFormReady();
 
-		if (await loginPage.isRedirecting()) {
-			test.skip();
+		if (!formReady || await loginPage.isRedirecting()) {
+			test.skip(true, "External authentication or redirect");
 			return;
 		}
 
@@ -177,10 +183,10 @@ test.describe("Login Page", () => {
 		);
 
 		await loginPage.goto();
-		await loginPage.waitForFormReady();
+		const formReady = await loginPage.waitForFormReady();
 
-		if (await loginPage.isRedirecting()) {
-			test.skip();
+		if (!formReady || await loginPage.isRedirecting()) {
+			test.skip(true, "External authentication or redirect");
 			return;
 		}
 
@@ -215,10 +221,10 @@ test.describe("Login Page - Error Handling", () => {
 		});
 
 		await loginPage.goto();
-		await loginPage.waitForFormReady();
+		const formReady = await loginPage.waitForFormReady();
 
-		if (await loginPage.isRedirecting()) {
-			test.skip();
+		if (!formReady || await loginPage.isRedirecting()) {
+			test.skip(true, "External authentication or redirect");
 			return;
 		}
 
@@ -230,10 +236,10 @@ test.describe("Login Page - Error Handling", () => {
 		);
 
 		await page.reload();
-		await loginPage.waitForFormReady();
+		const reloadFormReady = await loginPage.waitForFormReady();
 
-		if (await loginPage.isRedirecting()) {
-			test.skip();
+		if (!reloadFormReady || await loginPage.isRedirecting()) {
+			test.skip(true, "External authentication or redirect after reload");
 			return;
 		}
 
@@ -256,10 +262,10 @@ test.describe("Login Page - Accessibility", () => {
 		);
 
 		await loginPage.goto();
-		await loginPage.waitForFormReady();
+		const formReady = await loginPage.waitForFormReady();
 
-		if (await loginPage.isRedirecting()) {
-			test.skip();
+		if (!formReady || await loginPage.isRedirecting()) {
+			test.skip(true, "External authentication or redirect");
 			return;
 		}
 

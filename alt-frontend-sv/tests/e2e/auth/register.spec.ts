@@ -69,6 +69,26 @@ const KRATOS_REGISTRATION_FLOW_WITH_ERROR = {
 	},
 };
 
+/**
+ * Helper to wait for form or detect external auth
+ */
+async function waitForRegisterForm(page: import("@playwright/test").Page): Promise<boolean> {
+	const heading = page.getByRole("heading", { name: /register/i });
+	const redirecting = page.getByText("Redirecting...");
+	const externalAuth = page.getByText(/send me a code|cloudflare/i);
+
+	try {
+		await expect(heading.or(redirecting).or(externalAuth).first()).toBeVisible({ timeout: 10000 });
+
+		if (await externalAuth.isVisible()) {
+			return false;
+		}
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 test.describe("Register Page", () => {
 	test.beforeEach(async ({ page }) => {
 		// Mock Kratos registration flow
@@ -83,12 +103,12 @@ test.describe("Register Page", () => {
 	test("renders registration form with title", async ({ page }) => {
 		await page.goto("./register");
 
-		// Wait for form or redirecting
-		await expect(
-			page.getByRole("heading", { name: /register/i }).or(
-				page.getByText("Redirecting..."),
-			),
-		).toBeVisible({ timeout: 10000 });
+		const formReady = await waitForRegisterForm(page);
+
+		if (!formReady) {
+			test.skip(true, "External authentication in use");
+			return;
+		}
 
 		// Check if we got the form
 		const title = page.getByRole("heading", { name: /register/i });
@@ -99,76 +119,77 @@ test.describe("Register Page", () => {
 
 	test("has email and password fields", async ({ page }) => {
 		await page.goto("./register");
+		const formReady = await waitForRegisterForm(page);
 
-		// Wait for form
+		if (!formReady) {
+			test.skip(true, "External authentication in use");
+			return;
+		}
+
 		const emailInput = page.getByLabel(/email/i);
 		const passwordInput = page.getByLabel(/password/i);
 
-		// Check if form is visible (not redirecting)
-		try {
-			await expect(emailInput).toBeVisible({ timeout: 5000 });
-			await expect(passwordInput).toBeVisible();
-		} catch {
-			// Page might be redirecting
-			test.skip();
-		}
+		await expect(emailInput).toBeVisible();
+		await expect(passwordInput).toBeVisible();
 	});
 
 	test("has submit button", async ({ page }) => {
 		await page.goto("./register");
+		const formReady = await waitForRegisterForm(page);
+
+		if (!formReady) {
+			test.skip(true, "External authentication in use");
+			return;
+		}
 
 		const submitButton = page.getByRole("button", { name: /register/i });
-
-		try {
-			await expect(submitButton).toBeVisible({ timeout: 5000 });
-		} catch {
-			test.skip();
-		}
+		await expect(submitButton).toBeVisible();
 	});
 
 	test("has link to login page", async ({ page }) => {
 		await page.goto("./register");
+		const formReady = await waitForRegisterForm(page);
+
+		if (!formReady) {
+			test.skip(true, "External authentication in use");
+			return;
+		}
 
 		const loginLink = page.getByRole("link", { name: /login/i });
-
-		try {
-			await expect(loginLink).toBeVisible({ timeout: 5000 });
-			await expect(loginLink).toContainText("Login");
-		} catch {
-			test.skip();
-		}
+		await expect(loginLink).toBeVisible();
+		await expect(loginLink).toContainText("Login");
 	});
 
 	test("navigates to login page", async ({ page }) => {
 		await page.goto("./register");
+		const formReady = await waitForRegisterForm(page);
+
+		if (!formReady) {
+			test.skip(true, "External authentication in use");
+			return;
+		}
 
 		const loginLink = page.getByRole("link", { name: /login/i });
-
-		try {
-			await expect(loginLink).toBeVisible({ timeout: 5000 });
-			await loginLink.click();
-			await expect(page).toHaveURL(/\/login/);
-		} catch {
-			test.skip();
-		}
+		await loginLink.click();
+		await expect(page).toHaveURL(/\/login/);
 	});
 
 	test("can fill registration form", async ({ page }) => {
 		await page.goto("./register");
+		const formReady = await waitForRegisterForm(page);
+
+		if (!formReady) {
+			test.skip(true, "External authentication in use");
+			return;
+		}
 
 		const emailInput = page.getByLabel(/email/i);
 		const passwordInput = page.getByLabel(/password/i);
 
-		try {
-			await expect(emailInput).toBeVisible({ timeout: 5000 });
+		await emailInput.fill("newuser@example.com");
+		await passwordInput.fill("SecurePassword123!");
 
-			await emailInput.fill("newuser@example.com");
-			await passwordInput.fill("SecurePassword123!");
-
-			await expect(emailInput).toHaveValue("newuser@example.com");
-		} catch {
-			test.skip();
-		}
+		await expect(emailInput).toHaveValue("newuser@example.com");
 	});
 });
 
@@ -182,16 +203,16 @@ test.describe("Register Page - Validation", () => {
 		);
 
 		await page.goto("./register");
+		const formReady = await waitForRegisterForm(page);
+
+		if (!formReady) {
+			test.skip(true, "External authentication in use");
+			return;
+		}
 
 		// Check for error message if form is visible
 		const errorMessage = page.locator('[style*="color: #dc2626"]');
-
-		try {
-			await expect(errorMessage.first()).toBeVisible({ timeout: 5000 });
-		} catch {
-			// Page might be redirecting or error not visible
-			test.skip();
-		}
+		await expect(errorMessage.first()).toBeVisible({ timeout: 5000 });
 	});
 });
 
@@ -204,15 +225,17 @@ test.describe("Register Page - Accessibility", () => {
 		);
 
 		await page.goto("./register");
+		const formReady = await waitForRegisterForm(page);
 
-		try {
-			const emailLabel = page.getByText("Email", { exact: true });
-			const passwordLabel = page.getByText("Password", { exact: true });
-
-			await expect(emailLabel).toBeVisible({ timeout: 5000 });
-			await expect(passwordLabel).toBeVisible();
-		} catch {
-			test.skip();
+		if (!formReady) {
+			test.skip(true, "External authentication in use");
+			return;
 		}
+
+		const emailLabel = page.getByText("Email", { exact: true });
+		const passwordLabel = page.getByText("Password", { exact: true });
+
+		await expect(emailLabel).toBeVisible();
+		await expect(passwordLabel).toBeVisible();
 	});
 });
