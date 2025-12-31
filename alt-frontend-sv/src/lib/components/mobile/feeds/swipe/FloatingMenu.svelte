@@ -127,7 +127,7 @@ const menuItems = [
 	},
 	{
 		label: "Morning Letter",
-		href: `${svBasePath}/mobile/recap/morning-letter/updates`,
+		href: `${svBasePath}/mobile/recap/morning-letter`,
 		category: "recap",
 		icon: Newspaper,
 		description: "Today's overnight updates",

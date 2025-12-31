@@ -9,7 +9,7 @@
 		type MorningLetterCitation,
 		type MorningLetterMeta,
 	} from "$lib/connect";
-	import augurAvatar from "$lib/assets/augur-mobile.png";
+	import augurAvatar from "$lib/assets/augur-chat.webp";
 
 	type Citation = {
 		URL: string;
