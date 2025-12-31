@@ -4,7 +4,7 @@
 
 # Alt – Compose-First AI Knowledge Platform
 
-_Last reviewed on December 30, 2025._
+_Last reviewed on December 31, 2025._
 
 > Compose-first knowledge platform that ingests RSS content, enriches it with AI (LLM summaries, tag extraction, RAG-powered Q&A), and serves curated insights with a unified developer workflow across Go, Python, Rust, and TypeScript (Next.js + SvelteKit) services.
 
@@ -78,32 +78,32 @@ Alt is designed to keep local parity with production by centering on Docker Comp
 ```mermaid
 flowchart LR
     subgraph Ingestion
-        RSS[External RSS / Inoreader] --> PreProc[pre-processor<br/>dedupe + summary]
+        RSS[External RSS / Inoreader] --> PreProc[pre-processor :9200<br/>dedupe + summary]
     end
     subgraph Tagging
-        PreProc --> TagGen[tag-generator<br/>ONNX + cascade]
+        PreProc -->|/api/v1/summarize| TagGen[tag-generator<br/>ONNX + cascade]
         TagGen --> Graph[tag_label_graph]
-        TagGen --> AltDB[(Postgres `<article_tags>`)]
+        TagGen -->|SQL| AltDB[(Postgres `<article_tags>`)]
     end
     subgraph RecapPipeline
-        AltBackend[alt-backend<br/>/v1/recap/articles + /v1/recap/7days]
-        RecapWorker[recap-worker<br/>fetch → dedup → genre → evidence]
-        RecapSub[recap-subworker<br/>clustering + dedup]
+        AltBackend[alt-backend :9000/:9101<br/>REST + Connect-RPC]
+        RecapWorker[recap-worker :9005<br/>fetch → dedup → genre → evidence]
+        RecapSub[recap-subworker :8002<br/>clustering + dedup]
         RecapDB[(recap-db<br/>jobs, cluster evidence, graph, learning results)]
-        NewsCreator[news-creator<br/>Ollama summaries]
-        RecapWorker --> RecapSub
-        RecapWorker --> NewsCreator
-        RecapWorker --> RecapDB
-        RecapWorker --> AltBackend
-        RecapSub --> RecapDB
-        NewsCreator --> RecapDB
-        AltBackend --> RecapWorker
+        NewsCreator[news-creator :8001<br/>Ollama summaries]
+        RecapWorker -->|/v1/runs| RecapSub
+        RecapWorker -->|/v1/summary/generate| NewsCreator
+        RecapWorker -->|SQL| RecapDB
+        RecapWorker -->|/v1/recap/articles| AltBackend
+        RecapSub -->|SQL| RecapDB
+        NewsCreator -->|SQL| RecapDB
+        AltBackend -->|/v1/recap/7days| RecapWorker
     end
-    subgraph Frontend & Metrics
+    subgraph "Frontend & Metrics"
         RecapDB --> Frontend[alt-frontend<br/>/mobile/recap/7days]
         RecapWorker --> Logs[rask-log-forwarder]
-        Logs --> ClickHouse[ClickHouse via rask-log-aggregator]
-        AuthHub[auth-hub<br/>Kratos → X-Alt-*] --> AltBackend
+        Logs -->|/v1/aggregate| ClickHouse[ClickHouse via rask-log-aggregator :9600]
+        AuthHub[auth-hub :8888<br/>Kratos → X-Alt-*] --> AltBackend
         AuthToken[auth-token-manager<br/>Inoreader OAuth] --> PreProc
     end
     Graph --> RecapWorker
@@ -125,53 +125,55 @@ flowchart LR
     classDef rag fill:#dbeafe,stroke:#1d4ed8,color:#1e3a5f
 
     Browser((Browser / Mobile Client)):::client
-    Nginx["nginx reverse proxy<br/>ports 80 → services"]:::edge
-    UI["alt-frontend<br/>Next.js 16 + React 19"]:::core
-    UISv["alt-frontend-sv<br/>SvelteKit 5 /sv"]:::core
-    AuthHub["auth-hub<br/>Go IAP proxy"]:::edge
-    Backend["alt-backend<br/>Go REST + Connect-RPC"]:::core
+    Nginx["nginx reverse proxy<br/>:80 → services"]:::edge
+    UI["alt-frontend :3000<br/>Next.js 16 + React 19"]:::core
+    UISv["alt-frontend-sv :4173<br/>SvelteKit 5 /sv"]:::core
+    AuthHub["auth-hub :8888<br/>Go IAP proxy"]:::edge
+    Backend["alt-backend :9000/:9101<br/>Go REST + Connect-RPC"]:::core
     Sidecar["sidecar-proxy<br/>HTTP policy"]:::core
-    PreProc["pre-processor<br/>Go ingestion"]:::core
+    PreProc["pre-processor :9200<br/>Go ingestion"]:::core
     Scheduler["pre-processor-sidecar<br/>Cron scheduler"]:::optional
-    News["news-creator<br/>FastAPI + Ollama"]:::optional
+    News["news-creator :8001<br/>FastAPI + Ollama"]:::optional
     Tags["tag-generator<br/>FastAPI ML"]:::core
-    Indexer["search-indexer<br/>Go → Meilisearch"]:::core
-    RagOrch["rag-orchestrator<br/>Go RAG service"]:::rag
+    Indexer["search-indexer :9300<br/>Go → Meilisearch"]:::core
+    RagOrch["rag-orchestrator :9010<br/>Go RAG service"]:::rag
     RagDB["rag-db<br/>PostgreSQL 18 + pgvector"]:::rag
     KnowledgeAugur["knowledge-augur<br/>Ollama LLM"]:::rag
     KnowledgeEmbed["knowledge-embedder<br/>Vector encoding"]:::rag
     Postgres["PostgreSQL 17"]:::data
-    Kratos["Ory Kratos 1.3.0"]:::data
-    Meili["Meilisearch 1.27.0"]:::data
-    ClickHouse["ClickHouse 25.9"]:::data
+    Kratos["Ory Kratos :4433"]:::data
+    Meili["Meilisearch :7700"]:::data
+    ClickHouse["ClickHouse :8123"]:::data
     RaskF["rask-log-forwarder<br/>Rust sidecar"]:::observability
-    RaskA["rask-log-aggregator<br/>Rust Axum API"]:::observability
+    RaskA["rask-log-aggregator :9600<br/>Rust Axum API"]:::observability
     External["External APIs / RSS / Inoreader"]:::optional
 
     Browser -->|HTTPS| Nginx
     Nginx -->|/| UI
     Nginx -->|/sv| UISv
     Nginx -->|/api| AuthHub
-    AuthHub --> Backend
-    UI -->|REST via AuthHub| Backend
-    UISv -->|Connect-RPC + REST| Backend
+    AuthHub -->|/validate| Backend
+    UI -->|REST :9000| Backend
+    UISv -->|Connect-RPC :9101| Backend
     Backend --> Sidecar
-    Backend --> Postgres
-    Backend --> Meili
-    Backend --> Kratos
+    Backend -->|SQL| Postgres
+    Backend -->|/v1/search| Meili
+    Backend -->|/sessions/whoami| Kratos
     Sidecar --> External
-    PreProc --> Backend
+    PreProc -->|/api/v1/summarize| News
     PreProc --> Tags
-    PreProc --> News
+    PreProc --> Backend
     Scheduler --> PreProc
-    Tags --> Postgres
-    News --> Postgres
-    Indexer --> Postgres
-    Indexer --> Meili
-    RagOrch --> RagDB
+    Tags -->|SQL| Postgres
+    News -->|SQL| Postgres
+    Indexer -->|SQL| Postgres
+    Indexer -->|batch 200| Meili
+    Backend -->|Connect-RPC| RagOrch
+    RagOrch -->|SQL + vector| RagDB
     RagOrch --> KnowledgeAugur
     RagOrch --> KnowledgeEmbed
-    RaskF --> RaskA --> ClickHouse
+    RaskF -->|/v1/aggregate| RaskA
+    RaskA -->|INSERT| ClickHouse
     RaskF -->|tails| Nginx
     RaskF -->|tails| Backend
     RaskF -->|tails| UI
@@ -186,18 +188,18 @@ flowchart LR
     classDef storage fill:#fff4d5,stroke:#fb8c00,color:#5d2c00
     classDef surface fill:#e8f5e9,stroke:#388e3c,color:#1b5e20
 
-    RSS[External RSS feeds]:::ingest --> Fetch[pre-processor<br/>Fetch & dedupe]:::ingest
+    RSS[External RSS feeds]:::ingest --> Fetch[pre-processor :9200<br/>Fetch & dedupe]:::ingest
     Fetch --> Score[Quality scoring + language detection]:::ingest
-    Score --> RawDB[(PostgreSQL<br/>raw articles)]:::storage
-    RawDB --> TagJob[tag-generator<br/>Batch tag extraction]:::ai
-    RawDB --> SummaryJob[news-creator<br/>LLM summary templating]:::ai
-    TagJob --> TagDB[(PostgreSQL<br/>article_tags)]:::storage
-    SummaryJob --> SummaryDB[(PostgreSQL<br/>article_summaries)]:::storage
-    TagDB --> IndexBatch[search-indexer<br/>200-doc upserts]:::ai
+    Score -->|SQL| RawDB[(PostgreSQL<br/>raw articles)]:::storage
+    RawDB --> TagJob[tag-generator<br/>/api/v1/tags/batch]:::ai
+    RawDB --> SummaryJob[news-creator :8001<br/>/api/v1/summarize]:::ai
+    TagJob -->|SQL| TagDB[(PostgreSQL<br/>article_tags)]:::storage
+    SummaryJob -->|SQL| SummaryDB[(PostgreSQL<br/>article_summaries)]:::storage
+    TagDB --> IndexBatch[search-indexer :9300<br/>batch 200 docs]:::ai
     SummaryDB --> IndexBatch
-    IndexBatch --> Meili[(Meilisearch<br/>search index)]:::storage
-    Meili --> API[alt-backend REST<br/>search + browse]:::surface
-    API --> Frontend[alt-frontend UI<br/>Chakra themes]:::surface
+    IndexBatch -->|upsert| Meili[(Meilisearch :7700<br/>search index)]:::storage
+    Meili --> API[alt-backend :9000<br/>/v1/search + /v1/feeds/*]:::surface
+    API --> Frontend[alt-frontend :3000<br/>Chakra themes]:::surface
 ```
 
 ### Microservice Communication Map
@@ -209,47 +211,47 @@ graph TD
     %% Nodes
     User((User))
     Browser[Browser / Mobile]
-    Nginx[Nginx Gateway]
+    Nginx[Nginx Gateway :80]
 
     subgraph Frontend
-        AltFrontend[alt-frontend<br/>Next.js]
-        AltFrontendSv[alt-frontend-sv<br/>SvelteKit /sv]
+        AltFrontend[alt-frontend :3000<br/>Next.js]
+        AltFrontendSv[alt-frontend-sv :4173<br/>SvelteKit /sv]
     end
 
     subgraph Backend
-        AltBackend[alt-backend<br/>REST + Connect-RPC]
-        AuthHub[auth-hub]
+        AltBackend[alt-backend :9000/:9101<br/>REST + Connect-RPC]
+        AuthHub[auth-hub :8888]
     end
 
     subgraph Workers
-        NewsCreator[news-creator]
-        RecapWorker[recap-worker]
-        RecapSubworker[recap-subworker]
-        PreProcessor[pre-processor]
-        SearchIndexer[search-indexer]
+        NewsCreator[news-creator :8001]
+        RecapWorker[recap-worker :9005]
+        RecapSubworker[recap-subworker :8002]
+        PreProcessor[pre-processor :9200]
+        SearchIndexer[search-indexer :9300]
         TagGenerator[tag-generator]
     end
 
     subgraph RAG
-        RagOrchestrator[rag-orchestrator]
+        RagOrchestrator[rag-orchestrator :9010]
         KnowledgeAugur[knowledge-augur]
         KnowledgeEmbedder[knowledge-embedder]
     end
 
     subgraph Infrastructure
-        Kratos[Ory Kratos]
+        Kratos[Ory Kratos :4433]
         KratosDB[(Postgres: kratos-db)]
         AltDB[(Postgres: alt-db)]
         RecapDB[(Postgres: recap-db)]
         RagDB[(Postgres: rag-db<br/>+ pgvector)]
-        Meilisearch[(Meilisearch)]
+        Meilisearch[(Meilisearch :7700)]
         Ollama[Ollama LLM]
-        Clickhouse[(Clickhouse)]
+        Clickhouse[(Clickhouse :8123)]
     end
 
     subgraph Observability
         RaskForwarder[rask-log-forwarder]
-        RaskAggregator[rask-log-aggregator]
+        RaskAggregator[rask-log-aggregator :9600]
     end
 
     %% External Access
@@ -260,44 +262,42 @@ graph TD
     Nginx -->|/| AltFrontend
     Nginx -->|/sv| AltFrontendSv
     Nginx -->|/api/frontend| AltFrontend
-    Nginx -->|/api/backend| AltBackend
+    Nginx -->|/api/backend :9000| AltBackend
     Nginx -->|/api/v1/sse| AltBackend
     Nginx -->|/ory| Kratos
     Nginx -->|/api/auth/csrf| AuthHub
     Nginx -->|/auth-validate| AuthHub
 
     %% Frontend Interactions
-    AltFrontend -->|SSR/API| AltBackend
-    AltFrontend -->|Auth Validation| AuthHub
-    AltFrontendSv -->|Connect-RPC| AltBackend
-    AltFrontendSv -->|REST| AltBackend
-    AltFrontendSv -->|Auth Validation| AuthHub
+    AltFrontend -->|REST :9000| AltBackend
+    AltFrontend -->|/validate| AuthHub
+    AltFrontendSv -->|Connect-RPC :9101| AltBackend
+    AltFrontendSv -->|REST :9000| AltBackend
+    AltFrontendSv -->|/validate| AuthHub
 
     %% Backend Interactions
     AltBackend -->|SQL| AltDB
-    AltBackend -->|Token Issue| AuthHub
-    AltBackend -->|Config/Usage| PreProcessor
-    AltBackend -->|Recap Data| RecapWorker
-    AltBackend -->|Tags| TagGenerator
+    AltBackend -->|/validate| AuthHub
+    AltBackend -->|/api/v1/summarize| PreProcessor
+    AltBackend -->|/v1/recap/*| RecapWorker
+    AltBackend -->|Connect-RPC MorningLetter| RagOrchestrator
 
     %% Worker Interactions
     NewsCreator -->|Inference| Ollama
-    NewsCreator -->|Auth| AuthHub
 
     RecapWorker -->|SQL| RecapDB
-    RecapWorker -->|Gen| NewsCreator
-    RecapWorker -->|Sub-task| RecapSubworker
-    RecapWorker -->|API| AltBackend
-    RecapWorker -->|Tags| TagGenerator
+    RecapWorker -->|/v1/summary/generate| NewsCreator
+    RecapWorker -->|/v1/runs| RecapSubworker
+    RecapWorker -->|/v1/recap/articles| AltBackend
+    RecapWorker -->|/api/v1/tags/batch| TagGenerator
 
     RecapSubworker -->|SQL| RecapDB
-    RecapSubworker -->|Learning| RecapWorker
 
     PreProcessor -->|SQL| AltDB
-    PreProcessor -->|Gen| NewsCreator
+    PreProcessor -->|/api/v1/summarize| NewsCreator
 
     SearchIndexer -->|SQL| AltDB
-    SearchIndexer -->|Index| Meilisearch
+    SearchIndexer -->|batch 200 docs| Meilisearch
 
     TagGenerator -->|SQL| AltDB
 
@@ -306,16 +306,17 @@ graph TD
     RagOrchestrator -->|Embed| KnowledgeEmbedder
     RagOrchestrator -->|Generate| KnowledgeAugur
     KnowledgeAugur -->|Inference| Ollama
+    AltBackend -->|/v1/search| Meilisearch
 
-    AuthHub -->|Identity| Kratos
+    AuthHub -->|/sessions/whoami| Kratos
     Kratos -->|SQL| KratosDB
 
     %% Observability Flows
     AltBackend -.->|Logs| RaskForwarder
     TagGenerator -.->|Logs| RaskForwarder
     Nginx -.->|Logs| RaskForwarder
-    RaskForwarder -->|Forward| RaskAggregator
-    RaskAggregator -->|Store| Clickhouse
+    RaskForwarder -->|/v1/aggregate| RaskAggregator
+    RaskAggregator -->|INSERT| Clickhouse
 
     %% Styles
     classDef frontend fill:#d4e6f1,stroke:#2874a6,stroke-width:2px;
@@ -384,24 +385,48 @@ Alt runs REST (port 9000) and Connect-RPC (port 9101) in parallel, enabling grad
 - **Parallel operation** – REST `/v1/*` on port 9000 remains the default; Connect-RPC on port 9101 serves type-safe clients (primarily alt-frontend-sv).
 - **Protocol Buffers** – Schema definitions in `proto/alt/` generate Go handlers and TypeScript clients via `make buf-generate`.
 - **Auth interceptor** – JWT validation via `X-Alt-Backend-Token` header, reusing existing auth-hub token exchange.
-- **Phase 1 complete** – Feed Stats endpoints (`GetFeedStats`, `GetDetailedFeedStats`, `GetUnreadCount`) are live; additional endpoints migrating in phases.
+- **5 Services, 21 Methods** – ArticleService (3), FeedService (10), RSSService (4), AugurService (2), MorningLetterService (1 via rag-orchestrator).
+
+**Connect-RPC Services:**
+
+| Service | Methods | Streaming | Description |
+|---------|---------|-----------|-------------|
+| ArticleService | 3 | No | FetchArticleContent, ArchiveArticle, FetchArticlesCursor |
+| FeedService | 10 | Yes | Stats, feeds, search, summarize (StreamFeedStats, StreamSummarize) |
+| RSSService | 4 | No | RegisterRSSFeed, ListRSSFeedLinks, DeleteRSSFeedLink, RegisterFavoriteFeed |
+| AugurService | 2 | Yes | StreamChat (RAG Q&A), RetrieveContext |
+| MorningLetterService | 1 | Yes | StreamChat (via rag-orchestrator :9010) |
 
 ```mermaid
 flowchart TD
     subgraph Frontends
-        NextJS[alt-frontend<br/>Next.js REST client]
-        SvelteKit[alt-frontend-sv<br/>Connect-RPC + REST]
+        NextJS[alt-frontend :3000<br/>Next.js REST client]
+        SvelteKit[alt-frontend-sv :4173<br/>Connect-RPC + REST]
     end
-    subgraph "alt-backend"
-        REST[REST API<br/>Port 9000 /v1/*]
-        ConnectRPC[Connect-RPC Server<br/>Port 9101]
+    subgraph "alt-backend :9000/:9101"
+        REST[REST API<br/>:9000 /v1/*]
+        subgraph ConnectRPC[:9101 Connect-RPC]
+            ArticleSvc[ArticleService<br/>3 methods]
+            FeedSvc[FeedService<br/>10 methods ★stream]
+            RSSSvc[RSSService<br/>4 methods]
+            AugurSvc[AugurService<br/>2 methods ★stream]
+            MLGateway[MorningLetterService<br/>Gateway → rag-orchestrator]
+        end
+    end
+    subgraph "rag-orchestrator :9010"
+        MLSvc[MorningLetterService<br/>Server ★stream]
     end
     Proto[proto/*.proto<br/>Protocol Buffers]
 
     NextJS --> REST
     SvelteKit --> REST
-    SvelteKit --> ConnectRPC
+    SvelteKit --> ArticleSvc
+    SvelteKit --> FeedSvc
+    SvelteKit --> RSSSvc
+    SvelteKit --> AugurSvc
+    MLGateway -->|gRPC| MLSvc
     Proto -.->|buf generate| ConnectRPC
+    Proto -.->|buf generate| MLSvc
     Proto -.->|buf generate| SvelteKit
 ```
 
@@ -410,7 +435,7 @@ flowchart TD
 The RAG (Retrieval Augmented Generation) pipeline enables knowledge-based question answering with grounded, citation-backed responses.
 
 **Pipeline Components:**
-- **rag-orchestrator** – Go service managing document indexing, context retrieval, and answer generation.
+- **rag-orchestrator :9010** – Go service managing document indexing, context retrieval, and answer generation. Implements MorningLetterService for Connect-RPC.
 - **rag-db** – PostgreSQL 18 with pgvector extension for vector similarity search.
 - **knowledge-embedder** – Generates vector embeddings for article chunks.
 - **knowledge-augur** – Ollama-based LLM for generating answers from retrieved context.
@@ -420,21 +445,29 @@ The RAG (Retrieval Augmented Generation) pipeline enables knowledge-based questi
 2. **Retrieval** – Queries are embedded and matched against chunks via pgvector similarity search.
 3. **Generation** – Top-K context chunks are assembled into a prompt for LLM generation with structured JSON output.
 
+**Connect-RPC Integration:**
+- alt-backend → rag-orchestrator via MorningLetterService (StreamChat for time-bounded RAG Q&A)
+- AugurService (alt-backend) for general RAG queries via RetrieveContext + StreamChat
+
 ```mermaid
 flowchart LR
     subgraph Indexing
-        Article[Article Content] --> IndexUC[rag-orchestrator<br/>Index Usecase]
+        Article[Article Content] --> IndexUC[rag-orchestrator :9010<br/>Index Usecase]
         IndexUC --> Chunk[Chunker]
         Chunk --> Embed[knowledge-embedder<br/>Vector Encoding]
-        Embed --> RagDB[(rag-db<br/>pgvector)]
+        Embed -->|SQL + vector| RagDB[(rag-db<br/>pgvector)]
     end
     subgraph "Query & Answer"
-        Query[User Query] --> Retrieve[rag-orchestrator<br/>Retrieve Context]
-        Retrieve --> RagDB
+        Query[User Query via Connect-RPC] --> Retrieve[rag-orchestrator :9010<br/>Retrieve Context]
+        Retrieve -->|similarity search| RagDB
         RagDB --> Context[Top K Chunks]
         Context --> Answer[Answer Usecase]
         Answer --> Augur[knowledge-augur<br/>LLM Generation]
-        Augur --> Response[Answer + Citations]
+        Augur -->|Ollama| Response[Answer + Citations]
+    end
+    subgraph "Connect-RPC Entry"
+        AltBackend[alt-backend :9101<br/>MorningLetterService Gateway] -->|gRPC| Retrieve
+        AltBackend2[alt-backend :9101<br/>AugurService] -->|StreamChat| Answer
     end
 ```
 
@@ -598,24 +631,26 @@ flowchart LR
     classDef ctrl fill:#fde68a,stroke:#d97706,color:#713f12
 
     Scheduler[[04:00 JST Cron]]:::ctrl
-    Admin[Manual trigger<br/>POST /v1/generate/recaps/7days]:::ctrl
-    Worker{{recap-worker<br/>Rust pipeline}}:::svc
-    AltAPI["alt-backend<br/>/v1/recap/articles"]:::svc
-    Subworker["recap-subworker<br/>FastAPI clustering"]:::svc
-    News["news-creator<br/>LLM summaries"]:::svc
-    RecapDB[(recap-db<br/>PostgreSQL 16)]:::data
-    BackendAPI["alt-backend<br/>/v1/recap/7days"]:::svc
+    Admin[Manual trigger<br/>POST :9005/v1/generate/recaps/7days]:::ctrl
+    Worker{{recap-worker :9005<br/>Rust pipeline}}:::svc
+    AltAPI["alt-backend :9000<br/>GET /v1/recap/articles"]:::svc
+    TagGen["tag-generator<br/>/api/v1/tags/batch"]:::svc
+    Subworker["recap-subworker :8002<br/>/v1/runs clustering"]:::svc
+    News["news-creator :8001<br/>/v1/summary/generate"]:::svc
+    RecapDB[(recap-db<br/>PostgreSQL 18)]:::data
+    BackendAPI["alt-backend :9000<br/>GET /v1/recap/7days"]:::svc
     Mobile["Mobile UI<br/>/mobile/recap/7days"]:::ui
 
     Scheduler --> Worker
     Admin --> Worker
-    Worker --> AltAPI
+    Worker -->|X-Service-Token| AltAPI
     AltAPI --> Worker
-    Worker --> Subworker
+    Worker -->|/api/v1/tags/batch| TagGen
+    Worker -->|/v1/runs| Subworker
     Subworker --> Worker
-    Worker --> News
+    Worker -->|/v1/summary/generate| News
     News --> Worker
-    Worker --> RecapDB
+    Worker -->|SQL| RecapDB
     RecapDB --> BackendAPI
     BackendAPI --> Mobile
 ```
