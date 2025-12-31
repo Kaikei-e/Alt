@@ -291,10 +291,11 @@ fn extract_domain(url: Option<&str>) -> Option<String> {
 }
 
 fn deduplicate_assignments(assignments: Vec<ScoredAssignment>) -> Vec<ScoredAssignment> {
-    let mut kept = Vec::new();
-    let mut seen_embeddings: Vec<Vec<f32>> = Vec::new();
-    let mut seen_titles = HashSet::new();
-    let mut seen_urls = HashSet::new();
+    let assignments_len = assignments.len();
+    let mut kept = Vec::with_capacity(assignments_len);
+    let mut seen_embeddings: Vec<Vec<f32>> = Vec::with_capacity(assignments_len);
+    let mut seen_titles = HashSet::with_capacity(assignments_len);
+    let mut seen_urls = HashSet::with_capacity(assignments_len);
 
     for sa in assignments {
         // 1. Source/URL Check
@@ -361,13 +362,14 @@ fn process_assignments(
     genre: &str,
     assignments: &[&GenreAssignment],
 ) -> (Vec<EvidenceArticle>, CorpusBuildStats) {
-    let mut articles = Vec::new();
+    let assignments_len = assignments.len();
+    let mut articles = Vec::with_capacity(assignments_len);
     let mut total_sentences = 0;
     let mut total_characters = 0;
-    let mut language_counts: HashMap<String, usize> = HashMap::new();
+    let mut language_counts: HashMap<String, usize> = HashMap::with_capacity(4); // ja, en, und, other
     let mut dropped_articles = 0usize;
     let mut dropped_sentences = 0usize;
-    let mut confidences: Vec<f32> = Vec::new();
+    let mut confidences: Vec<f32> = Vec::with_capacity(assignments_len);
     let mut supporting_articles = 0usize;
 
     // Recalculate score for the record since we want it in EvidenceArticle

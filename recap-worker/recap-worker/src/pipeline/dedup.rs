@@ -267,10 +267,13 @@ impl DedupStage for HashDedupStage {
         let signatures = build_signatures(&articles, self.window_size);
 
         let mut keep_flags = vec![true; total_articles];
-        let mut unique_signatures: Vec<ArticleSignature> = Vec::new();
+        let mut unique_signatures: Vec<ArticleSignature> = Vec::with_capacity(total_articles);
         let mut exact_hashes: FxHashMap<u64, usize> = FxHashMap::default();
+        exact_hashes.reserve(total_articles);
         let mut window_index: FxHashMap<u64, SmallVec<[usize; 8]>> = FxHashMap::default();
+        window_index.reserve(total_articles * self.window_size);
         let mut duplicates_map: FxHashMap<usize, Vec<String>> = FxHashMap::default();
+        duplicates_map.reserve(total_articles / 4);
 
         let mut dedup_state = DedupState {
             keep_flags: &mut keep_flags,
@@ -404,9 +407,9 @@ fn deduplicate_sentences(
     let sentences = split_sentences(&article.body);
     let total_sentences = sentences.len();
 
-    let mut seen_hashes = HashSet::new();
-    let mut unique_sentences = Vec::new();
-    let mut sentence_hashes = Vec::new();
+    let mut seen_hashes = HashSet::with_capacity(total_sentences);
+    let mut unique_sentences = Vec::with_capacity(total_sentences);
+    let mut sentence_hashes = Vec::with_capacity(total_sentences);
 
     for sentence in sentences {
         let hash = hash_text(&sentence);
