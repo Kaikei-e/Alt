@@ -85,7 +85,9 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback(ctx)
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				logger.SafeError("failed to rollback transaction", "error", rbErr, "original_error", err)
+			}
 		}
 	}()
 

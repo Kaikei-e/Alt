@@ -42,7 +42,12 @@ func (g *RecapJobGateway) GetRecapJobs(ctx context.Context, windowSeconds int64,
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request to %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

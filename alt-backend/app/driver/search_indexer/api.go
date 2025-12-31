@@ -43,7 +43,11 @@ func SearchArticles(query string) ([]models.SearchArticlesHit, error) {
 		return nil, errors.New("failed to send request")
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			logger.Logger.Debug("Failed to close response body", "error", closeErr)
+		}
+	}()
 
 	logger.Logger.Info("Search response received", "status", resp.StatusCode, "content-type", resp.Header.Get("Content-Type"))
 
@@ -109,7 +113,11 @@ func SearchArticlesWithUserID(query string, userID string) ([]models.SearchArtic
 		return nil, errors.New("failed to send request")
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			logger.Logger.Debug("Failed to close response body", "error", closeErr)
+		}
+	}()
 
 	logger.Logger.Info("Search response received", "status", resp.StatusCode, "user_id", userID)
 

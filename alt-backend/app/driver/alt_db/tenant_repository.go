@@ -35,7 +35,9 @@ func (r *TenantAwareRepository) withTenantContext(ctx context.Context, tenantID 
 	// セッションレベルでテナントIDを設定
 	_, err = tx.Exec(ctx, "SELECT set_current_tenant($1)", tenantID)
 	if err != nil {
-		tx.Rollback(ctx)
+		if rbErr := tx.Rollback(ctx); rbErr != nil {
+			return nil, nil, fmt.Errorf("failed to set tenant context: %w (rollback also failed: %v)", err, rbErr)
+		}
 		return nil, nil, fmt.Errorf("failed to set tenant context: %w", err)
 	}
 
@@ -181,7 +183,10 @@ func (r *TenantAwareRepository) CreateFeed(ctx context.Context, feed *domain.Fee
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback(tenantCtx)
+			if rbErr := tx.Rollback(tenantCtx); rbErr != nil {
+				// Log rollback error but preserve original error
+				err = fmt.Errorf("%w (rollback failed: %v)", err, rbErr)
+			}
 		}
 	}()
 
@@ -217,7 +222,10 @@ func (r *TenantAwareRepository) UpdateFeed(ctx context.Context, feedID uuid.UUID
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback(tenantCtx)
+			if rbErr := tx.Rollback(tenantCtx); rbErr != nil {
+				// Log rollback error but preserve original error
+				err = fmt.Errorf("%w (rollback failed: %v)", err, rbErr)
+			}
 		}
 	}()
 
@@ -246,7 +254,10 @@ func (r *TenantAwareRepository) DeleteFeed(ctx context.Context, feedID uuid.UUID
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback(tenantCtx)
+			if rbErr := tx.Rollback(tenantCtx); rbErr != nil {
+				// Log rollback error but preserve original error
+				err = fmt.Errorf("%w (rollback failed: %v)", err, rbErr)
+			}
 		}
 	}()
 
