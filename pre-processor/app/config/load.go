@@ -26,205 +26,303 @@ func LoadConfig() (*Config, error) {
 func loadFromEnv(config *Config) error {
 	*config = *defaultConfig()
 
+	// Load each configuration section
+	if err := loadServerConfig(&config.Server); err != nil {
+		return fmt.Errorf("failed to load server config: %w", err)
+	}
+
+	if err := loadHTTPConfig(&config.HTTP); err != nil {
+		return fmt.Errorf("failed to load HTTP config: %w", err)
+	}
+
+	if err := loadRetryConfig(&config.Retry); err != nil {
+		return fmt.Errorf("failed to load retry config: %w", err)
+	}
+
+	if err := loadRateLimitConfig(&config.RateLimit); err != nil {
+		return fmt.Errorf("failed to load rate limit config: %w", err)
+	}
+
+	if err := loadDLQConfig(&config.DLQ); err != nil {
+		return fmt.Errorf("failed to load DLQ config: %w", err)
+	}
+
+	if err := loadMetricsConfig(&config.Metrics); err != nil {
+		return fmt.Errorf("failed to load metrics config: %w", err)
+	}
+
+	if err := loadNewsCreatorConfig(&config.NewsCreator); err != nil {
+		return fmt.Errorf("failed to load news creator config: %w", err)
+	}
+
+	if err := loadAltServiceConfig(&config.AltService); err != nil {
+		return fmt.Errorf("failed to load alt service config: %w", err)
+	}
+
+	if err := loadSummarizeQueueConfig(&config.SummarizeQueue); err != nil {
+		return fmt.Errorf("failed to load summarize queue config: %w", err)
+	}
+
+	return nil
+}
+
+// loadServerConfig loads server configuration from environment variables
+func loadServerConfig(cfg *ServerConfig) error {
 	var err error
 
-	if config.Server.Port, err = parseIntEnv("SERVER_PORT", config.Server.Port); err != nil {
+	if cfg.Port, err = parseIntEnv("SERVER_PORT", cfg.Port); err != nil {
 		return err
 	}
 
-	if config.Server.ShutdownTimeout, err = parseDurationEnv("SERVER_SHUTDOWN_TIMEOUT", config.Server.ShutdownTimeout); err != nil {
+	if cfg.ShutdownTimeout, err = parseDurationEnv("SERVER_SHUTDOWN_TIMEOUT", cfg.ShutdownTimeout); err != nil {
 		return err
 	}
 
-	if config.Server.ReadTimeout, err = parseDurationEnv("SERVER_READ_TIMEOUT", config.Server.ReadTimeout); err != nil {
+	if cfg.ReadTimeout, err = parseDurationEnv("SERVER_READ_TIMEOUT", cfg.ReadTimeout); err != nil {
 		return err
 	}
 
-	if config.Server.WriteTimeout, err = parseDurationEnv("SERVER_WRITE_TIMEOUT", config.Server.WriteTimeout); err != nil {
+	if cfg.WriteTimeout, err = parseDurationEnv("SERVER_WRITE_TIMEOUT", cfg.WriteTimeout); err != nil {
 		return err
 	}
 
-	if config.HTTP.Timeout, err = parseDurationEnv("HTTP_TIMEOUT", config.HTTP.Timeout); err != nil {
+	return nil
+}
+
+// loadHTTPConfig loads HTTP configuration from environment variables
+func loadHTTPConfig(cfg *HTTPConfig) error {
+	var err error
+
+	if cfg.Timeout, err = parseDurationEnv("HTTP_TIMEOUT", cfg.Timeout); err != nil {
 		return err
 	}
 
-	if config.HTTP.MaxIdleConns, err = parseIntEnv("HTTP_MAX_IDLE_CONNS", config.HTTP.MaxIdleConns); err != nil {
+	if cfg.MaxIdleConns, err = parseIntEnv("HTTP_MAX_IDLE_CONNS", cfg.MaxIdleConns); err != nil {
 		return err
 	}
 
-	if config.HTTP.MaxIdleConnsPerHost, err = parseIntEnv("HTTP_MAX_IDLE_CONNS_PER_HOST", config.HTTP.MaxIdleConnsPerHost); err != nil {
+	if cfg.MaxIdleConnsPerHost, err = parseIntEnv("HTTP_MAX_IDLE_CONNS_PER_HOST", cfg.MaxIdleConnsPerHost); err != nil {
 		return err
 	}
 
-	if config.HTTP.IdleConnTimeout, err = parseDurationEnv("HTTP_IDLE_CONN_TIMEOUT", config.HTTP.IdleConnTimeout); err != nil {
+	if cfg.IdleConnTimeout, err = parseDurationEnv("HTTP_IDLE_CONN_TIMEOUT", cfg.IdleConnTimeout); err != nil {
 		return err
 	}
 
-	if config.HTTP.TLSHandshakeTimeout, err = parseDurationEnv("HTTP_TLS_HANDSHAKE_TIMEOUT", config.HTTP.TLSHandshakeTimeout); err != nil {
+	if cfg.TLSHandshakeTimeout, err = parseDurationEnv("HTTP_TLS_HANDSHAKE_TIMEOUT", cfg.TLSHandshakeTimeout); err != nil {
 		return err
 	}
 
-	if config.HTTP.ExpectContinueTimeout, err = parseDurationEnv("HTTP_EXPECT_CONTINUE_TIMEOUT", config.HTTP.ExpectContinueTimeout); err != nil {
+	if cfg.ExpectContinueTimeout, err = parseDurationEnv("HTTP_EXPECT_CONTINUE_TIMEOUT", cfg.ExpectContinueTimeout); err != nil {
 		return err
 	}
 
 	if agent := os.Getenv("HTTP_USER_AGENT"); agent != "" {
-		config.HTTP.UserAgent = agent
+		cfg.UserAgent = agent
 	}
 
-	if config.HTTP.UserAgentRotation, err = parseBoolEnv("HTTP_USER_AGENT_ROTATION", config.HTTP.UserAgentRotation); err != nil {
+	if cfg.UserAgentRotation, err = parseBoolEnv("HTTP_USER_AGENT_ROTATION", cfg.UserAgentRotation); err != nil {
 		return err
 	}
 
 	if agents := os.Getenv("HTTP_USER_AGENTS"); agents != "" {
-		config.HTTP.UserAgents = splitUserAgents(agents)
+		cfg.UserAgents = splitUserAgents(agents)
 	}
 
-	if config.HTTP.EnableBrowserHeaders, err = parseBoolEnv("HTTP_ENABLE_BROWSER_HEADERS", config.HTTP.EnableBrowserHeaders); err != nil {
+	if cfg.EnableBrowserHeaders, err = parseBoolEnv("HTTP_ENABLE_BROWSER_HEADERS", cfg.EnableBrowserHeaders); err != nil {
 		return err
 	}
 
-	if config.HTTP.SkipErrorResponses, err = parseBoolEnv("HTTP_SKIP_ERROR_RESPONSES", config.HTTP.SkipErrorResponses); err != nil {
+	if cfg.SkipErrorResponses, err = parseBoolEnv("HTTP_SKIP_ERROR_RESPONSES", cfg.SkipErrorResponses); err != nil {
 		return err
 	}
 
-	if config.HTTP.MinContentLength, err = parseIntEnv("HTTP_MIN_CONTENT_LENGTH", config.HTTP.MinContentLength); err != nil {
+	if cfg.MinContentLength, err = parseIntEnv("HTTP_MIN_CONTENT_LENGTH", cfg.MinContentLength); err != nil {
 		return err
 	}
 
-	if config.HTTP.MaxRedirects, err = parseIntEnv("HTTP_MAX_REDIRECTS", config.HTTP.MaxRedirects); err != nil {
+	if cfg.MaxRedirects, err = parseIntEnv("HTTP_MAX_REDIRECTS", cfg.MaxRedirects); err != nil {
 		return err
 	}
 
-	if config.HTTP.FollowRedirects, err = parseBoolEnv("HTTP_FOLLOW_REDIRECTS", config.HTTP.FollowRedirects); err != nil {
+	if cfg.FollowRedirects, err = parseBoolEnv("HTTP_FOLLOW_REDIRECTS", cfg.FollowRedirects); err != nil {
 		return err
 	}
 
-	if config.HTTP.UseEnvoyProxy, err = parseBoolEnv("USE_ENVOY_PROXY", config.HTTP.UseEnvoyProxy); err != nil {
+	if cfg.UseEnvoyProxy, err = parseBoolEnv("USE_ENVOY_PROXY", cfg.UseEnvoyProxy); err != nil {
 		return err
 	}
 
 	if proxy := os.Getenv("ENVOY_PROXY_URL"); proxy != "" {
-		config.HTTP.EnvoyProxyURL = proxy
+		cfg.EnvoyProxyURL = proxy
 	}
 
 	if path := os.Getenv("ENVOY_PROXY_PATH"); path != "" {
-		config.HTTP.EnvoyProxyPath = path
+		cfg.EnvoyProxyPath = path
 	}
 
-	if config.HTTP.EnvoyTimeout, err = parseDurationEnv("ENVOY_TIMEOUT", config.HTTP.EnvoyTimeout); err != nil {
+	if cfg.EnvoyTimeout, err = parseDurationEnv("ENVOY_TIMEOUT", cfg.EnvoyTimeout); err != nil {
 		return err
 	}
 
-	if config.Retry.MaxAttempts, err = parseIntEnv("RETRY_MAX_ATTEMPTS", config.Retry.MaxAttempts); err != nil {
+	return nil
+}
+
+// loadRetryConfig loads retry configuration from environment variables
+func loadRetryConfig(cfg *RetryConfig) error {
+	var err error
+
+	if cfg.MaxAttempts, err = parseIntEnv("RETRY_MAX_ATTEMPTS", cfg.MaxAttempts); err != nil {
 		return err
 	}
 
-	if config.Retry.BaseDelay, err = parseDurationEnv("RETRY_BASE_DELAY", config.Retry.BaseDelay); err != nil {
+	if cfg.BaseDelay, err = parseDurationEnv("RETRY_BASE_DELAY", cfg.BaseDelay); err != nil {
 		return err
 	}
 
-	if config.Retry.MaxDelay, err = parseDurationEnv("RETRY_MAX_DELAY", config.Retry.MaxDelay); err != nil {
+	if cfg.MaxDelay, err = parseDurationEnv("RETRY_MAX_DELAY", cfg.MaxDelay); err != nil {
 		return err
 	}
 
-	if config.Retry.BackoffFactor, err = parseFloatEnv("RETRY_BACKOFF_FACTOR", config.Retry.BackoffFactor); err != nil {
+	if cfg.BackoffFactor, err = parseFloatEnv("RETRY_BACKOFF_FACTOR", cfg.BackoffFactor); err != nil {
 		return err
 	}
 
-	if config.Retry.JitterFactor, err = parseFloatEnv("RETRY_JITTER_FACTOR", config.Retry.JitterFactor); err != nil {
+	if cfg.JitterFactor, err = parseFloatEnv("RETRY_JITTER_FACTOR", cfg.JitterFactor); err != nil {
 		return err
 	}
 
-	if config.RateLimit.DefaultInterval, err = parseDurationEnv("RATE_LIMIT_DEFAULT_INTERVAL", config.RateLimit.DefaultInterval); err != nil {
+	return nil
+}
+
+// loadRateLimitConfig loads rate limit configuration from environment variables
+func loadRateLimitConfig(cfg *RateLimitConfig) error {
+	var err error
+
+	if cfg.DefaultInterval, err = parseDurationEnv("RATE_LIMIT_DEFAULT_INTERVAL", cfg.DefaultInterval); err != nil {
 		return err
 	}
 
-	if config.RateLimit.BurstSize, err = parseIntEnv("RATE_LIMIT_BURST_SIZE", config.RateLimit.BurstSize); err != nil {
+	if cfg.BurstSize, err = parseIntEnv("RATE_LIMIT_BURST_SIZE", cfg.BurstSize); err != nil {
 		return err
 	}
 
-	if config.RateLimit.EnableAdaptive, err = parseBoolEnv("RATE_LIMIT_ENABLE_ADAPTIVE", config.RateLimit.EnableAdaptive); err != nil {
+	if cfg.EnableAdaptive, err = parseBoolEnv("RATE_LIMIT_ENABLE_ADAPTIVE", cfg.EnableAdaptive); err != nil {
 		return err
 	}
+
+	return nil
+}
+
+// loadDLQConfig loads DLQ configuration from environment variables
+func loadDLQConfig(cfg *DLQConfig) error {
+	var err error
 
 	if name := os.Getenv("DLQ_QUEUE_NAME"); name != "" {
-		config.DLQ.QueueName = name
+		cfg.QueueName = name
 	}
 
-	if config.DLQ.Timeout, err = parseDurationEnv("DLQ_TIMEOUT", config.DLQ.Timeout); err != nil {
+	if cfg.Timeout, err = parseDurationEnv("DLQ_TIMEOUT", cfg.Timeout); err != nil {
 		return err
 	}
 
-	if config.DLQ.RetryEnabled, err = parseBoolEnv("DLQ_RETRY_ENABLED", config.DLQ.RetryEnabled); err != nil {
+	if cfg.RetryEnabled, err = parseBoolEnv("DLQ_RETRY_ENABLED", cfg.RetryEnabled); err != nil {
 		return err
 	}
 
-	if config.Metrics.Enabled, err = parseBoolEnv("METRICS_ENABLED", config.Metrics.Enabled); err != nil {
+	return nil
+}
+
+// loadMetricsConfig loads metrics configuration from environment variables
+func loadMetricsConfig(cfg *MetricsConfig) error {
+	var err error
+
+	if cfg.Enabled, err = parseBoolEnv("METRICS_ENABLED", cfg.Enabled); err != nil {
 		return err
 	}
 
-	if config.Metrics.Port, err = parseIntEnv("METRICS_PORT", config.Metrics.Port); err != nil {
+	if cfg.Port, err = parseIntEnv("METRICS_PORT", cfg.Port); err != nil {
 		return err
 	}
 
 	if path := os.Getenv("METRICS_PATH"); path != "" {
-		config.Metrics.Path = path
+		cfg.Path = path
 	}
 
-	if config.Metrics.UpdateInterval, err = parseDurationEnv("METRICS_UPDATE_INTERVAL", config.Metrics.UpdateInterval); err != nil {
+	if cfg.UpdateInterval, err = parseDurationEnv("METRICS_UPDATE_INTERVAL", cfg.UpdateInterval); err != nil {
 		return err
 	}
 
+	if cfg.ReadHeaderTimeout, err = parseDurationEnv("METRICS_READ_HEADER_TIMEOUT", cfg.ReadHeaderTimeout); err != nil {
+		return err
+	}
+
+	if cfg.ReadTimeout, err = parseDurationEnv("METRICS_READ_TIMEOUT", cfg.ReadTimeout); err != nil {
+		return err
+	}
+
+	if cfg.WriteTimeout, err = parseDurationEnv("METRICS_WRITE_TIMEOUT", cfg.WriteTimeout); err != nil {
+		return err
+	}
+
+	if cfg.IdleTimeout, err = parseDurationEnv("METRICS_IDLE_TIMEOUT", cfg.IdleTimeout); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// loadNewsCreatorConfig loads news creator configuration from environment variables
+func loadNewsCreatorConfig(cfg *NewsCreatorConfig) error {
+	var err error
+
 	if host := os.Getenv("NEWS_CREATOR_HOST"); host != "" {
-		config.NewsCreator.Host = host
+		cfg.Host = host
 	}
 
 	if apiPath := os.Getenv("NEWS_CREATOR_API_PATH"); apiPath != "" {
-		config.NewsCreator.APIPath = apiPath
-	}
-
-	if host := os.Getenv("ALT_BACKEND_HOST"); host != "" {
-		config.AltService.Host = host
-	}
-
-	if config.AltService.Timeout, err = parseDurationEnv("ALT_BACKEND_TIMEOUT", config.AltService.Timeout); err != nil {
-		return err
+		cfg.APIPath = apiPath
 	}
 
 	if model := os.Getenv("NEWS_CREATOR_MODEL"); model != "" {
-		config.NewsCreator.Model = model
+		cfg.Model = model
 	}
 
-	if config.NewsCreator.Timeout, err = parseDurationEnv("NEWS_CREATOR_TIMEOUT", config.NewsCreator.Timeout); err != nil {
+	if cfg.Timeout, err = parseDurationEnv("NEWS_CREATOR_TIMEOUT", cfg.Timeout); err != nil {
 		return err
 	}
 
-	if config.SummarizeQueue.WorkerInterval, err = parseDurationEnv("SUMMARIZE_QUEUE_WORKER_INTERVAL", config.SummarizeQueue.WorkerInterval); err != nil {
+	return nil
+}
+
+// loadAltServiceConfig loads alt service configuration from environment variables
+func loadAltServiceConfig(cfg *AltServiceConfig) error {
+	var err error
+
+	if host := os.Getenv("ALT_BACKEND_HOST"); host != "" {
+		cfg.Host = host
+	}
+
+	if cfg.Timeout, err = parseDurationEnv("ALT_BACKEND_TIMEOUT", cfg.Timeout); err != nil {
 		return err
 	}
 
-	if config.SummarizeQueue.MaxRetries, err = parseIntEnv("SUMMARIZE_QUEUE_MAX_RETRIES", config.SummarizeQueue.MaxRetries); err != nil {
+	return nil
+}
+
+// loadSummarizeQueueConfig loads summarize queue configuration from environment variables
+func loadSummarizeQueueConfig(cfg *SummarizeQueueConfig) error {
+	var err error
+
+	if cfg.WorkerInterval, err = parseDurationEnv("SUMMARIZE_QUEUE_WORKER_INTERVAL", cfg.WorkerInterval); err != nil {
 		return err
 	}
 
-	if config.SummarizeQueue.PollingInterval, err = parseDurationEnv("SUMMARIZE_QUEUE_POLLING_INTERVAL", config.SummarizeQueue.PollingInterval); err != nil {
+	if cfg.MaxRetries, err = parseIntEnv("SUMMARIZE_QUEUE_MAX_RETRIES", cfg.MaxRetries); err != nil {
 		return err
 	}
 
-	if config.Metrics.ReadHeaderTimeout, err = parseDurationEnv("METRICS_READ_HEADER_TIMEOUT", config.Metrics.ReadHeaderTimeout); err != nil {
-		return err
-	}
-
-	if config.Metrics.ReadTimeout, err = parseDurationEnv("METRICS_READ_TIMEOUT", config.Metrics.ReadTimeout); err != nil {
-		return err
-	}
-
-	if config.Metrics.WriteTimeout, err = parseDurationEnv("METRICS_WRITE_TIMEOUT", config.Metrics.WriteTimeout); err != nil {
-		return err
-	}
-
-	if config.Metrics.IdleTimeout, err = parseDurationEnv("METRICS_IDLE_TIMEOUT", config.Metrics.IdleTimeout); err != nil {
+	if cfg.PollingInterval, err = parseDurationEnv("SUMMARIZE_QUEUE_POLLING_INTERVAL", cfg.PollingInterval); err != nil {
 		return err
 	}
 

@@ -1,7 +1,8 @@
 package config
 
 import (
-	"math/rand"
+	"crypto/rand"
+	"math/big"
 	"sync"
 )
 
@@ -40,7 +41,12 @@ func (uar *UserAgentRotator) GetRandomUserAgent() string {
 	uar.mu.Lock()
 	defer uar.mu.Unlock()
 
-	// Go 1.20+ seeds math/rand automatically.
-	index := rand.Intn(len(uar.config.UserAgents))
+	// Use crypto/rand for better randomness (security best practice)
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(uar.config.UserAgents))))
+	if err != nil {
+		// Fallback to first user agent if random generation fails
+		return uar.config.UserAgents[0]
+	}
+	index := int(n.Int64())
 	return uar.config.UserAgents[index]
 }

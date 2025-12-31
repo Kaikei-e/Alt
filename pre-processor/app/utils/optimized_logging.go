@@ -20,6 +20,14 @@ const (
 	TraceIDKey   ContextKey = "trace_id"
 )
 
+// Log level constants
+const (
+	LogLevelInfo  = "info"
+	LogLevelError = "error"
+	LogLevelDebug = "debug"
+	LogLevelWarn  = "warn"
+)
+
 // LogConfig holds logging configuration
 type LogConfig struct {
 	Level           string `env:"LOG_LEVEL" default:"info"`
@@ -162,13 +170,13 @@ func (l *OptimizedLogger) log(level string, msg string, args ...interface{}) {
 
 	// Log based on level
 	switch level {
-	case "info":
+	case LogLevelInfo:
 		l.baseLogger.Info(msg, allArgs...)
-	case "error":
+	case LogLevelError:
 		l.baseLogger.Error(msg, allArgs...)
-	case "debug":
+	case LogLevelDebug:
 		l.baseLogger.Debug(msg, allArgs...)
-	case "warn":
+	case LogLevelWarn:
 		l.baseLogger.Warn(msg, allArgs...)
 	}
 }

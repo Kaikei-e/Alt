@@ -9,6 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Test constants
+const (
+	testFeedURL = "testFeedURL"
+)
+
 func TestLRUCache(t *testing.T) {
 	tests := []struct {
 		name string
@@ -272,7 +277,7 @@ func TestFeedCache(t *testing.T) {
 			test: func(t *testing.T) {
 				cache := NewFeedCache(100, 30*time.Minute)
 
-				feedURL := "https://example.com/feed.xml"
+				feedURL := "testFeedURL"
 				feedData := &CachedFeed{
 					URL:     feedURL,
 					Content: "<rss><channel><title>Test Feed</title></channel></rss>",
@@ -302,7 +307,7 @@ func TestFeedCache(t *testing.T) {
 			test: func(t *testing.T) {
 				cache := NewFeedCache(100, 10*time.Millisecond)
 
-				feedURL := "https://example.com/feed.xml"
+				feedURL := "testFeedURL"
 				feedData := &CachedFeed{
 					URL:     feedURL,
 					Content: "<rss><channel><title>Test Feed</title></channel></rss>",
@@ -327,7 +332,7 @@ func TestFeedCache(t *testing.T) {
 			test: func(t *testing.T) {
 				cache := NewFeedCache(100, 30*time.Minute)
 
-				feedURL := "https://example.com/feed.xml"
+				feedURL := "testFeedURL"
 				feedData := &CachedFeed{
 					URL:     feedURL,
 					Content: "<rss><channel><title>Test Feed</title></channel></rss>",
@@ -391,8 +396,8 @@ func TestCacheManager(t *testing.T) {
 		// Add some data to caches
 		manager.LRU.Set("test", "value")
 		manager.URLDedup.IsDuplicate("https://example.com/test")
-		manager.FeedCache.SetFeed("https://example.com/feed.xml", &CachedFeed{
-			URL:     "https://example.com/feed.xml",
+		manager.FeedCache.SetFeed("testFeedURL", &CachedFeed{
+			URL:     "testFeedURL",
 			Content: "test content",
 		})
 
