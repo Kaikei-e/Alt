@@ -1,134 +1,81 @@
-# rask/CLAUDE.md
+# rask-log-aggregator/CLAUDE.md
 
-<!-- Model Configuration -->
-<!-- ALWAYS use claude-4-sonnet for this project -->
+## Overview
 
-## About Rask
+High-performance log aggregation service for the Alt platform. Built with **Rust 1.87+ (2024 Edition)**, **Axum**, and **ClickHouse**. Designed for extreme throughput and low-latency processing.
 
-> For the live ingestion/ClickHouse wiring snapshot, see `docs/rask-log-aggregator.md`.
+> For ClickHouse wiring and ingestion details, see `docs/rask-log-aggregator.md`.
 
-**Rask** (Norwegian for "fast") is a high-performance log aggregation service built with **Rust 1.87+ (2024 Edition)**, the **Axum framework**, and **Clean Architecture** principles. It is designed for extreme throughput and low-latency processing.
+## Quick Start
 
-**Core Responsibilities:**
--   Real-time, high-throughput log ingestion.
--   Zero-copy parsing and enrichment.
--   Structured log storage and indexing (ClickHouse).
--   Real-time alerting and analytics.
+```bash
+# Run tests
+cargo test
 
-## TDD and Testing Strategy
+# Run benchmarks
+cargo bench
 
-Development is strictly **Test-Driven**. We use a layered testing strategy that includes unit, integration, and performance tests.
+# Start service
+cargo run --release
+```
 
-### 1. Unit and Integration Testing
+## Core Capabilities
 
-This is the foundation of our TDD workflow. We test individual components in isolation and their interactions.
+- Zero-copy parsing with `bytes` and `nom`
+- Lock-free data structures (`crossbeam`, `dashmap`)
+- Vectorized processing with `rayon`
+- Structured storage in ClickHouse
 
-#### Testing Use Cases (Business Logic)
+## TDD Workflow
 
-Use cases are tested as plain Rust structs/functions, completely decoupled from Axum. Dependencies are mocked using traits.
+**IMPORTANT**: Always write failing tests BEFORE implementation.
+
+Testing layers:
+- **Unit**: Use cases as plain Rust structs, mock traits with `mockall`
+- **Integration**: Use `axum-test` for in-memory handler testing
+- **Performance**: Use `criterion` for benchmarking critical paths
+
+## Critical Guidelines
+
+1. **TDD First**: No implementation without failing tests
+2. **Rust 2024 Edition**: Use `async fn` in traits directly (no `async_trait`)
+3. **No `static mut`**: Use `OnceCell` or `Mutex` instead
+4. **Edition Hygiene**: Enforce `#![deny(warnings, rust_2024_idioms)]`
+5. **Zero-Copy**: Prefer `bytes::Bytes` over owned allocations
+
+## Testing with axum-test
 
 ```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mockall::predicate::*;
-    use mockall::*;
+use axum_test::TestServer;
 
-    // Create a mock using the `automock` attribute
-    #[automock]
-    trait LogRepository {
-        async fn save(&self, log: LogEntry) -> Result<(), String>;
-    }
-
-    #[tokio::test]
-    async fn test_ingest_log_use_case() {
-        // 1. Arrange: Create mock and set expectations
-        let mut mock_repo = MockLogRepository::new();
-        mock_repo.expect_save()
-            .with(eq(LogEntry { ... }))
-            .times(1)
-            .returning(|_| Ok(()));
-
-        // 2. Act: Execute the use case
-        let use_case = IngestLog::new(Arc::new(mock_repo));
-        let result = use_case.execute(LogEntry { ... }).await;
-
-        // 3. Assert
-        assert!(result.is_ok());
-    }
+#[tokio::test]
+async fn test_ingest_handler() {
+    let app = Router::new().route("/logs", post(handler));
+    let server = TestServer::new(app).unwrap();
+    let response = server.post("/logs").json(&payload).await;
+    response.assert_status(StatusCode::ACCEPTED);
 }
 ```
 
-#### Testing Axum Handlers
+## Common Pitfalls
 
-We use the `axum-test` crate for in-memory testing of our API handlers, which is fast and reliable.
+| Issue | Solution |
+|-------|----------|
+| Async trait errors | Use Rust 2024 native async traits |
+| Lock contention | Use lock-free structures (dashmap) |
+| Memory bloat | Check batch sizes, use zero-copy |
+| Benchmark regression | Review criterion results |
 
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::Router;
-    use axum_test::TestServer;
-    use std::sync::Arc;
+## Appendix: References
 
-    #[tokio::test]
-    async fn test_ingest_log_handler() {
-        // 1. Arrange: Mock the use case dependency
-        let mock_use_case = Arc::new(MockIngestLogUseCase::new());
-        // ... set expectations on the mock ...
+### Official Documentation
+- [Axum Documentation](https://docs.rs/axum/latest/axum/)
+- [axum-test Crate](https://crates.io/crates/axum-test)
 
-        // 2. Arrange: Create the Axum router with the mocked dependency
-        let app = Router::new()
-            .route("/logs", post(ingest_log_handler))
-            .with_state(mock_use_case);
+### Best Practices
+- [Claude Code Best Practices](https://www.anthropic.com/engineering/claude-code-best-practices)
+- [The Rust Performance Book](https://nnethercote.github.io/perf-book/)
 
-        // 3. Arrange: Create the test server
-        let server = TestServer::new(app).unwrap();
-
-        // 4. Act: Send a request to the handler
-        let response = server
-            .post("/logs")
-            .json(&serde_json::json!({ "message": "test log" }))
-            .await;
-
-        // 5. Assert
-        response.assert_status(StatusCode::ACCEPTED);
-    }
-}
-```
-
-### 2. Performance Testing
-
-We use `criterion` to benchmark critical code paths and prevent performance regressions.
-
-```rust
-#[cfg(test)]
-mod benches {
-    use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
-    fn benchmark_log_parsing(c: &mut Criterion) {
-        let log_line = b"..."; // Sample log line
-        c.bench_function("parse_log", |b| {
-            b.iter(|| parse_log_line(black_box(log_line)));
-        });
-    }
-}
-```
-
-## High-Performance Design
-
--   **Zero-Copy Processing**: Use `bytes::Bytes` and `nom` for efficient, zero-copy log parsing.
--   **Lock-Free Data Structures**: Use `crossbeam` channels and `dashmap` for high-throughput, concurrent data handling.
--   **Vectorized Processing**: Use `rayon` for parallel processing of log batches.
-
-## Rust 2024 Edition Best Practices
-
--   **Use `async fn` and `impl Trait` in traits directly.** Avoid `async_trait`.
--   **Eliminate `static mut`**. Use `OnceCell` or `Mutex` instead.
--   **Enforce edition hygiene** with `#![deny(warnings, rust_2024_idioms)]`.
-
-## References
-
--   [Testing Axum Applications with `axum-test`](https://crates.io/crates/axum-test)
--   [The Rust Performance Book](https://nnethercote.github.io/perf-book/)
--   [Clean Architecture in Rust](https://kigawas.me/blog/2024-02-18-rust-clean-architecture.html)
+### Testing
+- [mockall Crate](https://crates.io/crates/mockall)
+- [criterion Benchmarking](https://crates.io/crates/criterion)

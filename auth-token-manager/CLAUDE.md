@@ -1,124 +1,80 @@
-# CLAUDE.md - Auth Token Manager
+# auth-token-manager/CLAUDE.md
 
-## About This Service
+## Overview
 
-> Snapshot of the current CLI commands, health logic, and K8s secret workflow lives in `docs/auth-token-manager.md`.
+Deno-based OAuth2 token manager for Inoreader API. Handles token refresh and secure storage. Built with **Deno 2.x** and TypeScript.
 
-This is a Deno-based microservice responsible for OAuth2 token management, specifically for refreshing Inoreader API tokens. It is built with a Test-Driven Development (TDD) first approach, ensuring reliability and security.
+> For CLI commands and K8s secret workflow, see `docs/auth-token-manager.md`.
 
-- **Runtime**: Deno 2.x with TypeScript
-- **Core Task**: Inoreader OAuth2 token refresh and secure storage.
+## Quick Start
 
-## TDD in Deno
+```bash
+# Run tests
+deno test
 
-All development must follow the Red-Green-Refactor TDD cycle. We use Deno's built-in testing tools for this.
+# Run with coverage
+deno test --coverage
 
-### TDD Workflow: Refreshing a Token
+# Start service
+deno task start
 
-Here is a step-by-step example of how to implement the token refresh logic using TDD.
+# Format and lint
+deno fmt && deno lint
+```
 
-**1. RED: Write a failing test.**
+## TDD Workflow
 
-First, we test the `refreshToken` function, which doesn't exist yet. We use `stub` from `@std/testing/mock` to mock the `fetch` call, preventing real network requests.
+**IMPORTANT**: Always write failing tests BEFORE implementation.
+
+1. **RED**: Write a failing test
+2. **GREEN**: Write minimal code to pass
+3. **REFACTOR**: Improve quality, keep tests green
+
+Testing with Deno:
+- Use `@std/testing/asserts` for assertions
+- Use `stub` from `@std/testing/mock` for mocking `fetch`
+- Use `describe/it` from `@std/testing/bdd` for BDD-style tests
+
+## Critical Guidelines
+
+1. **TDD First**: No implementation without failing tests
+2. **Never Log Secrets**: Use sanitized logger for tokens
+3. **Restore Stubs**: Always restore mocked functions in `finally` blocks
+4. **Use BDD Style**: Organize tests with `describe/it` blocks
+
+## Testing with Stubs
 
 ```typescript
-// tests/auth/refreshToken.test.ts
-import { assertEquals, assertRejects } from "@std/testing/asserts";
 import { stub } from "@std/testing/mock";
-import { refreshToken } from "../../src/auth/refreshToken.ts";
 
-Deno.test("refreshToken should return new tokens on success", async () => {
-  // Mock a successful fetch response
+Deno.test("refreshToken returns new tokens", async () => {
   const fetchStub = stub(globalThis, "fetch", () =>
-    Promise.resolve(
-      new Response(JSON.stringify({ access_token: "new_token" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    )
+    Promise.resolve(new Response(JSON.stringify({ access_token: "new" })))
   );
-
   try {
-    const tokens = await refreshToken("old_refresh_token");
-    assertEquals(tokens.access_token, "new_token");
+    const tokens = await refreshToken("old_token");
+    assertEquals(tokens.access_token, "new");
   } finally {
-    fetchStub.restore(); // Always restore the original function
+    fetchStub.restore();
   }
 });
 ```
 
-Running `deno test` will fail because `refreshToken` is not implemented.
+## Common Pitfalls
 
-**2. GREEN: Write the minimal code to pass.**
+| Issue | Solution |
+|-------|----------|
+| Stub not restored | Use `finally` block |
+| Token in logs | Use sanitized logger |
+| Network call in tests | Mock `fetch` with stub |
 
-Now, we implement the function with the simplest logic to make the test pass.
+## Appendix: References
 
-```typescript
-// src/auth/refreshToken.ts
-export async function refreshToken(token: string): Promise<any> {
-    const response = await fetch("https://www.inoreader.com/oauth2/token", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-            client_id: Deno.env.get("INOREADER_CLIENT_ID")!,
-            client_secret: Deno.env.get("INOREADER_CLIENT_SECRET")!,
-            grant_type: "refresh_token",
-            refresh_token: token,
-        }),
-    });
+### Official Documentation
+- [Deno Testing](https://docs.deno.com/runtime/fundamentals/testing/)
+- [Deno Standard Library: Mock](https://jsr.io/@std/testing/doc/mock/~)
+- [Deno Standard Library: BDD](https://jsr.io/@std/testing/doc/bdd/~)
 
-    if (!response.ok) {
-        throw new Error("Failed to refresh token");
-    }
-
-    return await response.json();
-}
-```
-
-**3. REFACTOR: Improve the implementation.**
-
-Refactor the code for clarity and robustness. The tests should still pass.
-
-### BDD-Style Testing
-
-For better organization, use `describe` and `it` from `@std/testing/bdd`.
-
-```typescript
-import { describe, it, afterEach } from "@std/testing/bdd";
-
-describe("refreshToken()", () => {
-    afterEach(() => {
-        // Clean up mocks here
-    });
-
-    it("should return new tokens on success", async () => {
-        // ... test logic
-    });
-
-    it("should throw an error on failure", async () => {
-        // ... test logic for failure case
-    });
-});
-```
-
-## Secure Logging
-
-**Critical**: Never log OAuth tokens or other credentials. Use a sanitized logger that redacts sensitive fields.
-
-```typescript
-import { logger } from "./utils/logger.ts";
-
-// This will be automatically sanitized in the logs.
-logger.info("Token refresh successful", {
-  access_token: tokens.access_token, 
-  refresh_token: tokens.refresh_token,
-});
-```
-
-## References
-
--   [Deno Manual: Testing](https://deno.com/manual@v1.40/testing)
--   [Deno Standard Library: Mocking](https://deno.land/std@0.224.0/testing/mock.ts)
--   [Deno Standard Library: BDD](https://deno.land/std@0.224.0/testing/bdd.ts)
+### Best Practices
+- [Claude Code Best Practices](https://www.anthropic.com/engineering/claude-code-best-practices)
+- [Deno Style Guide](https://docs.deno.com/runtime/contributing/style_guide/)
