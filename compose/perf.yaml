@@ -1,0 +1,50 @@
+# compose/perf.yaml - Performance testing service
+# alt-perf: E2E performance measurement tool
+#
+# Usage:
+#   altctl up perf
+#   docker compose -f compose/base.yaml -f compose/perf.yaml run --rm alt-perf scan
+
+include:
+  - base.yaml
+
+services:
+  alt-perf:
+    build:
+      context: ../alt-perf
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      - PERF_BASE_URL=http://nginx
+      # Use Google Chrome Stable (installed via Puppeteer Docker guide)
+      - DISPLAY=:99
+      - CHROME_BIN=/usr/bin/google-chrome-stable
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+    volumes:
+      - ../alt-perf/reports:/app/reports
+      - ../alt-perf/config:/app/config:ro
+    shm_size: "2gb"
+    tmpfs:
+      - /tmp
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2"
+    # Security options for Chromium in Docker
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_ADMIN
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Don't start automatically (run manually)
+    profiles:
+      - perf
