@@ -3,13 +3,19 @@ module rag-orchestrator
 go 1.25.5
 
 require (
+	alt/gen/proto v0.0.0-00010101000000-000000000000
+	connectrpc.com/connect v1.18.1
 	github.com/getkin/kin-openapi v0.133.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/labstack/echo/v4 v4.14.0
 	github.com/pgvector/pgvector-go v0.3.0
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/net v0.48.0
 )
+
+// Map the proto-generated import path to local generated code
+replace alt/gen/proto => ./internal/gen/proto
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -34,10 +40,10 @@ require (
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
+	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
