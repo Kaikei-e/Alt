@@ -75,6 +75,7 @@ services:
     environment:
       - ENV=production
       - PORT=9010
+      - CONNECT_PORT=9011
       - DB_HOST=rag-db
       - DB_PORT=5432
       - DB_USER=${RAG_DB_USER:-rag_user}
@@ -89,6 +90,7 @@ services:
       - rag_db_password
     ports:
       - "9010:9010"
+      - "9011:9011"
     depends_on:
       rag-db:
         condition: service_healthy
