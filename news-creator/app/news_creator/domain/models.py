@@ -209,3 +209,25 @@ class RecapSummaryResponse(BaseModel):
     genre: str
     summary: RecapSummary
     metadata: RecapSummaryMetadata
+
+
+# ============================================================================
+# Query Expansion Models (for RAG-Orchestrator)
+# ============================================================================
+
+
+class ExpandQueryRequest(BaseModel):
+    """Request model for query expansion."""
+
+    query: str = Field(min_length=1, description="Original user query to expand")
+    japanese_count: int = Field(default=1, ge=0, le=5, description="Number of Japanese query variations")
+    english_count: int = Field(default=3, ge=0, le=10, description="Number of English query variations")
+
+
+class ExpandQueryResponse(BaseModel):
+    """Response model for query expansion."""
+
+    expanded_queries: List[str] = Field(description="List of expanded query variations")
+    original_query: str = Field(description="Original input query")
+    model: str = Field(description="Model used for generation")
+    processing_time_ms: Optional[float] = Field(default=None, description="Processing time in milliseconds")

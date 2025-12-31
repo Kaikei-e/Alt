@@ -22,10 +22,12 @@ from news_creator.gateway.ollama_gateway import OllamaGateway
 from news_creator.services.model_warmup import ModelWarmupService
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
+from news_creator.usecase.expand_query_usecase import ExpandQueryUsecase
 from news_creator.handler import (
     create_summarize_router,
     create_generate_router,
     create_recap_summary_router,
+    create_expand_query_router,
     create_health_router,
 )
 
@@ -58,6 +60,10 @@ class DependencyContainer:
             llm_provider=self.ollama_gateway,
         )
         self.recap_summary_usecase = RecapSummaryUsecase(
+            config=self.config,
+            llm_provider=self.ollama_gateway,
+        )
+        self.expand_query_usecase = ExpandQueryUsecase(
             config=self.config,
             llm_provider=self.ollama_gateway,
         )
@@ -107,6 +113,10 @@ app.include_router(
 app.include_router(
     create_recap_summary_router(container.recap_summary_usecase),
     tags=["recap-summary"]
+)
+app.include_router(
+    create_expand_query_router(container.expand_query_usecase),
+    tags=["query-expansion"]
 )
 app.include_router(
     create_health_router(container.ollama_gateway),

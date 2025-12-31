@@ -9,7 +9,7 @@ def test_config_loads_defaults():
     """Test that config loads with default values."""
     os.environ.pop("LLM_SERVICE_URL", None)
     os.environ.pop("LLM_MODEL", None)
-     os.environ["SERVICE_SECRET"] = "test-secret"
+    os.environ["SERVICE_SECRET"] = "test-secret"
 
     config = NewsCreatorConfig()
 
