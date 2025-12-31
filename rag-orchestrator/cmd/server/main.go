@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"rag-orchestrator/internal/adapter/altdb"
+	connectserver "rag-orchestrator/internal/adapter/connect"
 	"rag-orchestrator/internal/adapter/rag_augur"
 	rag_http "rag-orchestrator/internal/adapter/rag_http"
 	"rag-orchestrator/internal/adapter/rag_http/openapi"
@@ -131,21 +132,40 @@ func main() {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
 	})
 
-	// 12. Start Server
+	// 12. Start Echo Server (REST/OpenAPI)
 	go func() {
 		addr := fmt.Sprintf(":%s", cfg.Port)
-		log.Info("Starting server", "addr", addr)
+		log.Info("Starting Echo server", "addr", addr)
 		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
 			e.Logger.Fatal("shutting down the server")
 		}
 	}()
 
-	// 13. Graceful Shutdown
+	// 13. Start Connect-RPC Server
+	connectHandler := connectserver.CreateConnectServer(articleClient, answerUsecase, log)
+	connectServer := &http.Server{
+		Addr:    fmt.Sprintf(":%s", cfg.ConnectPort),
+		Handler: connectHandler,
+	}
+	go func() {
+		log.Info("Starting Connect-RPC server", "addr", connectServer.Addr)
+		if err := connectServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("Connect-RPC server error", "error", err)
+		}
+	}()
+
+	// 14. Graceful Shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	// Shutdown both servers
+	if err := connectServer.Shutdown(ctx); err != nil {
+		log.Error("Connect-RPC server shutdown error", "error", err)
+	}
 	if err := e.Shutdown(ctx); err != nil {
 		e.Logger.Fatal(err)
 	}
