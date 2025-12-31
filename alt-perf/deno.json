@@ -1,0 +1,42 @@
+{
+  "name": "alt-perf",
+  "version": "1.0.0",
+  "exports": "./main.ts",
+  "imports": {
+    "@std/cli": "jsr:@std/cli@^1.0.0",
+    "@std/yaml": "jsr:@std/yaml@^1.0.0",
+    "@std/fs": "jsr:@std/fs@^1.0.0",
+    "@std/path": "jsr:@std/path@^1.0.0",
+    "@std/assert": "jsr:@std/assert@^1.0.0",
+    "@std/fmt": "jsr:@std/fmt@^1.0.0",
+    "@astral/astral": "jsr:@astral/astral@^0.5.4"
+  },
+  "tasks": {
+    "perf": "deno run --allow-all main.ts",
+    "perf:scan": "deno run --allow-all main.ts scan",
+    "perf:flow": "deno run --allow-all main.ts flow",
+    "perf:load": "deno run --allow-all main.ts load",
+    "test": "deno test --allow-all tests/",
+    "test:unit": "deno test --allow-all tests/unit/",
+    "test:integration": "deno test --allow-all tests/integration/",
+    "fmt": "deno fmt",
+    "lint": "deno lint",
+    "check": "deno check main.ts src/**/*.ts"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "lib": ["deno.window", "deno.ns", "dom", "dom.iterable"]
+  },
+  "fmt": {
+    "useTabs": false,
+    "lineWidth": 100,
+    "indentWidth": 2,
+    "singleQuote": false
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}
