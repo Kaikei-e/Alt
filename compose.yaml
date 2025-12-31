@@ -1301,6 +1301,8 @@ services:
       - EMBEDDER_EXTERNAL=${EMBEDDER_EXTERNAL}
       - AUGUR_EXTERNAL=${AUGUR_EXTERNAL}
       - SEARCH_INDEXER_URL=http://search-indexer:9300
+      - QUERY_EXPANSION_URL=http://news-creator:11434
+      - QUERY_EXPANSION_TIMEOUT=30
     secrets:
       - rag_db_password
     ports:
