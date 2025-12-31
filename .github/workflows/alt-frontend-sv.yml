@@ -67,6 +67,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          clean: false
 
       - name: Mask sensitive paths and git information
         run: |
