@@ -4,7 +4,7 @@
 	import ChatMessage from "./ChatMessage.svelte";
 	import ChatInput from "./ChatInput.svelte";
 	import { createClientTransport, streamAugurChat, type AugurCitation } from "$lib/connect";
-	import augurAvatar from "$lib/assets/augur-mobile.png";
+	import augurAvatar from "$lib/assets/augur-chat.webp";
 
 	type Citation = {
 		URL: string;
