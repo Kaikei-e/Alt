@@ -95,6 +95,15 @@ var defaultStacks = []Stack{
 		Profile:     "rag-extension",
 		Optional:    true,
 	},
+	{
+		Name:        "perf",
+		Description: "E2E performance measurement tool (Deno/Astral)",
+		ComposeFile: "perf.yaml",
+		Services:    []string{"alt-perf"},
+		DependsOn:   []string{"base", "db", "auth", "core"},
+		Profile:     "perf",
+		Optional:    true,
+	},
 }
 
 // NewRegistry creates a new stack registry with default stacks

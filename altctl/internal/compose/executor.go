@@ -29,12 +29,19 @@ type DefaultExecutor struct {
 
 // NewExecutor creates a new command executor
 func NewExecutor(workDir string, logger *slog.Logger, dryRun bool) *DefaultExecutor {
-	return &DefaultExecutor{
+	e := &DefaultExecutor{
 		workDir: workDir,
 		env:     os.Environ(),
 		logger:  logger,
 		dryRun:  dryRun,
 	}
+
+	// Set default project name to "alt" if not set
+	if os.Getenv("COMPOSE_PROJECT_NAME") == "" {
+		e.SetEnv("COMPOSE_PROJECT_NAME", "alt")
+	}
+
+	return e
 }
 
 // Run executes a command and waits for completion
