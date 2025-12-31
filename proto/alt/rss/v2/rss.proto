@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package alt.rss.v2;
+
+option go_package = "alt/gen/proto/alt/rss/v2;rssv2";
+
+// =============================================================================
+// Register RSS Feed Link Messages
+// =============================================================================
+
+// RegisterRSSFeedRequest is the request for registering a new RSS feed
+message RegisterRSSFeedRequest {
+  // RSS feed URL to register (required)
+  string url = 1;
+}
+
+// RegisterRSSFeedResponse contains the result of registration
+message RegisterRSSFeedResponse {
+  // Success message
+  string message = 1;
+}
+
+// =============================================================================
+// List RSS Feed Links Messages
+// =============================================================================
+
+// ListRSSFeedLinksRequest is the request for listing all feed links
+message ListRSSFeedLinksRequest {}
+
+// RSSFeedLink represents a registered RSS feed link
+message RSSFeedLink {
+  // Feed link UUID
+  string id = 1;
+  // Feed URL
+  string url = 2;
+}
+
+// ListRSSFeedLinksResponse contains all registered feed links
+message ListRSSFeedLinksResponse {
+  // List of registered feed links
+  repeated RSSFeedLink links = 1;
+}
+
+// =============================================================================
+// Delete RSS Feed Link Messages
+// =============================================================================
+
+// DeleteRSSFeedLinkRequest is the request for deleting a feed link
+message DeleteRSSFeedLinkRequest {
+  // Feed link UUID to delete (required)
+  string id = 1;
+}
+
+// DeleteRSSFeedLinkResponse contains the result of deletion
+message DeleteRSSFeedLinkResponse {
+  // Success message
+  string message = 1;
+}
+
+// =============================================================================
+// Register Favorite Feed Messages
+// =============================================================================
+
+// RegisterFavoriteFeedRequest is the request for marking a feed as favorite
+message RegisterFavoriteFeedRequest {
+  // Feed URL to mark as favorite (required)
+  string url = 1;
+}
+
+// RegisterFavoriteFeedResponse contains the result of registration
+message RegisterFavoriteFeedResponse {
+  // Success message
+  string message = 1;
+}
+
+// =============================================================================
+// RSSService Definition
+// =============================================================================
+
+// RSSService provides RSS feed link management operations
+service RSSService {
+  // RegisterRSSFeed registers a new RSS feed link
+  // Replaces POST /v1/rss-feed-link/register
+  rpc RegisterRSSFeed(RegisterRSSFeedRequest) returns (RegisterRSSFeedResponse);
+
+  // ListRSSFeedLinks returns all registered feed links
+  // Replaces GET /v1/rss-feed-link/list
+  rpc ListRSSFeedLinks(ListRSSFeedLinksRequest) returns (ListRSSFeedLinksResponse);
+
+  // DeleteRSSFeedLink removes a registered feed link
+  // Replaces DELETE /v1/rss-feed-link/:id
+  rpc DeleteRSSFeedLink(DeleteRSSFeedLinkRequest) returns (DeleteRSSFeedLinkResponse);
+
+  // RegisterFavoriteFeed marks a feed as favorite
+  // Replaces POST /v1/feeds/register/favorite
+  rpc RegisterFavoriteFeed(RegisterFavoriteFeedRequest) returns (RegisterFavoriteFeedResponse);
+}

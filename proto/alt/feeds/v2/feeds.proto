@@ -177,6 +177,52 @@ message SearchFeedsResponse {
 }
 
 // =============================================================================
+// Streaming Summarize Messages (Phase 6)
+// =============================================================================
+
+// StreamSummarizeRequest is the request for streaming article summarization
+message StreamSummarizeRequest {
+  // Feed/article URL (required if article_id not provided)
+  optional string feed_url = 1;
+  // Existing article ID (required if feed_url not provided)
+  optional string article_id = 2;
+  // Pre-fetched content (optional, skips fetch if provided)
+  optional string content = 3;
+  // Article title (optional)
+  optional string title = 4;
+}
+
+// StreamSummarizeResponse contains a chunk of the summarization stream
+message StreamSummarizeResponse {
+  // Text chunk from summarization
+  string chunk = 1;
+  // Whether this is the final chunk
+  bool is_final = 2;
+  // Article ID (populated after first chunk or from cache)
+  string article_id = 3;
+  // Whether this response is from cache
+  bool is_cached = 4;
+  // Full summary (only populated if is_cached=true or is_final=true)
+  optional string full_summary = 5;
+}
+
+// =============================================================================
+// Mark As Read Messages (Phase 7)
+// =============================================================================
+
+// MarkAsReadRequest is the request for marking a feed as read
+message MarkAsReadRequest {
+  // Feed/article URL to mark as read (required)
+  string feed_url = 1;
+}
+
+// MarkAsReadResponse is the response after marking a feed as read
+message MarkAsReadResponse {
+  // Success message
+  string message = 1;
+}
+
+// =============================================================================
 // FeedService Definition
 // =============================================================================
 
@@ -218,4 +264,16 @@ service FeedService {
   // SearchFeeds searches for feeds by query with offset-based pagination
   // Replaces POST /v1/feeds/search
   rpc SearchFeeds(SearchFeedsRequest) returns (SearchFeedsResponse);
+
+  // Streaming Summarize RPC (Phase 6)
+
+  // StreamSummarize streams article summarization in real-time
+  // Replaces POST /v1/feeds/summarize/stream (SSE)
+  rpc StreamSummarize(StreamSummarizeRequest) returns (stream StreamSummarizeResponse);
+
+  // Mark As Read RPC (Phase 7)
+
+  // MarkAsRead marks a feed/article as read
+  // Replaces POST /v1/feeds/read
+  rpc MarkAsRead(MarkAsReadRequest) returns (MarkAsReadResponse);
 }

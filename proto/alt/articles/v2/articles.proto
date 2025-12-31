@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package alt.articles.v2;
+
+option go_package = "alt/gen/proto/alt/articles/v2;articlesv2";
+
+// =============================================================================
+// Fetch Article Content Messages
+// =============================================================================
+
+// FetchArticleContentRequest is the request for fetching article content
+message FetchArticleContentRequest {
+  // Article URL (required)
+  string url = 1;
+}
+
+// FetchArticleContentResponse contains the fetched article content
+message FetchArticleContentResponse {
+  // Original URL
+  string url = 1;
+  // Extracted article content (HTML tags stripped)
+  string content = 2;
+  // Generated article ID
+  string article_id = 3;
+}
+
+// =============================================================================
+// Archive Article Messages
+// =============================================================================
+
+// ArchiveArticleRequest is the request for archiving an article
+message ArchiveArticleRequest {
+  // Article URL to archive (required)
+  string feed_url = 1;
+  // Optional title override
+  optional string title = 2;
+}
+
+// ArchiveArticleResponse contains the result of archiving
+message ArchiveArticleResponse {
+  // Success message
+  string message = 1;
+}
+
+// =============================================================================
+// Fetch Articles with Cursor Messages
+// =============================================================================
+
+// FetchArticlesCursorRequest is the request for fetching articles with pagination
+message FetchArticlesCursorRequest {
+  // Maximum number of items to return (default: 20, max: 100)
+  int32 limit = 1;
+  // Cursor for pagination (RFC3339 timestamp)
+  optional string cursor = 2;
+}
+
+// ArticleItem represents a single article
+message ArticleItem {
+  // Article UUID
+  string id = 1;
+  // Article title
+  string title = 2;
+  // Article URL
+  string url = 3;
+  // Article content
+  string content = 4;
+  // Published timestamp (RFC3339)
+  string published_at = 5;
+  // Tags associated with the article
+  repeated string tags = 6;
+}
+
+// FetchArticlesCursorResponse contains articles with pagination info
+message FetchArticlesCursorResponse {
+  // Article items
+  repeated ArticleItem data = 1;
+  // Next cursor for pagination (RFC3339 timestamp)
+  optional string next_cursor = 2;
+  // Whether there are more items
+  bool has_more = 3;
+}
+
+// =============================================================================
+// ArticleService Definition
+// =============================================================================
+
+// ArticleService provides article-related operations
+service ArticleService {
+  // FetchArticleContent fetches and extracts compliant article content
+  // Replaces GET /v1/articles/fetch/content
+  rpc FetchArticleContent(FetchArticleContentRequest) returns (FetchArticleContentResponse);
+
+  // ArchiveArticle archives an article for later reading
+  // Replaces POST /v1/articles/archive
+  rpc ArchiveArticle(ArchiveArticleRequest) returns (ArchiveArticleResponse);
+
+  // FetchArticlesCursor fetches articles with cursor-based pagination
+  // Replaces GET /v1/articles/fetch/cursor
+  rpc FetchArticlesCursor(FetchArticlesCursorRequest) returns (FetchArticlesCursorResponse);
+}
