@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package alt.augur.v2;
+
+option go_package = "alt/gen/proto/alt/augur/v2;augurv2";
+
+// =============================================================================
+// AugurService - RAG-powered Chat Service
+// =============================================================================
+
+service AugurService {
+  // StreamChat performs a streaming chat with RAG context.
+  // Returns a stream of events: delta (text chunks), meta (citations), done (completion), or error.
+  rpc StreamChat(StreamChatRequest) returns (stream StreamChatEvent);
+
+  // RetrieveContext retrieves relevant context for a query without generating an answer.
+  // Useful for debugging or showing sources before chat.
+  rpc RetrieveContext(RetrieveContextRequest) returns (RetrieveContextResponse);
+}
+
+// =============================================================================
+// Chat Messages
+// =============================================================================
+
+// StreamChatRequest is the request for streaming chat.
+message StreamChatRequest {
+  // Chat message history (alternating user/assistant messages)
+  repeated ChatMessage messages = 1;
+}
+
+// ChatMessage represents a single message in the conversation.
+message ChatMessage {
+  // Role of the message sender: "user" or "assistant"
+  string role = 1;
+  // Content of the message
+  string content = 2;
+}
+
+// StreamChatEvent is a single event in the streaming response.
+// Each event has a kind and a corresponding payload.
+message StreamChatEvent {
+  // Event kind: "delta", "meta", "done", "fallback", "error"
+  string kind = 1;
+
+  // Payload based on kind (only one will be set)
+  oneof payload {
+    // Text chunk (when kind = "delta")
+    string delta = 2;
+    // Citations/metadata (when kind = "meta")
+    MetaPayload meta = 3;
+    // Completion result (when kind = "done")
+    DonePayload done = 4;
+    // Fallback reason code (when kind = "fallback")
+    string fallback_code = 5;
+    // Error message (when kind = "error")
+    string error_message = 6;
+  }
+}
+
+// MetaPayload contains metadata about the response, including citations.
+message MetaPayload {
+  // List of citations/sources used in the response
+  repeated Citation citations = 1;
+}
+
+// Citation represents a source reference.
+message Citation {
+  // URL of the source article
+  string url = 1;
+  // Title of the source article
+  string title = 2;
+  // Publication date (ISO8601 format)
+  string published_at = 3;
+}
+
+// DonePayload is sent when streaming completes successfully.
+message DonePayload {
+  // Full answer text
+  string answer = 1;
+  // List of citations used in the answer
+  repeated Citation citations = 2;
+}
+
+// =============================================================================
+// Context Retrieval Messages
+// =============================================================================
+
+// RetrieveContextRequest is the request for retrieving context without chat.
+message RetrieveContextRequest {
+  // Query to search for relevant context
+  string query = 1;
+  // Maximum number of context items to return (default: 5)
+  int32 limit = 2;
+}
+
+// RetrieveContextResponse contains the retrieved context items.
+message RetrieveContextResponse {
+  // List of relevant context items
+  repeated ContextItem contexts = 1;
+}
+
+// ContextItem represents a single piece of retrieved context.
+message ContextItem {
+  // URL of the source article
+  string url = 1;
+  // Title of the source article
+  string title = 2;
+  // Publication date (ISO8601 format)
+  string published_at = 3;
+  // Relevance score (0-1)
+  float score = 4;
+}
