@@ -3,6 +3,7 @@ package feeds
 import (
 	"context"
 	"log/slog"
+	"net/url"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 	feedsv2 "alt/gen/proto/alt/feeds/v2"
 	"alt/usecase/fetch_feed_stats_usecase"
+	"alt/usecase/reading_status"
 	"alt/utils/logger"
 
 	"alt/config"
@@ -45,6 +47,13 @@ func (m *mockUnsummarizedArticlesCountPort) Execute(ctx context.Context) (int, e
 	return 3, nil
 }
 
+// Mock for FeedsReadingStatusUsecase dependency
+type mockUpdateFeedStatusPort struct{}
+
+func (m *mockUpdateFeedStatusPort) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
+	return nil
+}
+
 // Create test handler
 func createTestHandler() *Handler {
 	// Initialize global logger for usecases
@@ -54,12 +63,14 @@ func createTestHandler() *Handler {
 	summarizedUsecase := fetch_feed_stats_usecase.NewSummarizedArticlesCountUsecase(&mockSummarizedArticlesCountPort{})
 	totalArticlesUsecase := fetch_feed_stats_usecase.NewTotalArticlesCountUsecase(&mockTotalArticlesCountPort{})
 	unsummarizedUsecase := fetch_feed_stats_usecase.NewUnsummarizedArticlesCountUsecase(&mockUnsummarizedArticlesCountPort{})
+	feedsReadingStatusUsecase := reading_status.NewFeedsReadingStatusUsecase(&mockUpdateFeedStatusPort{})
 
 	container := &di.ApplicationComponents{
 		FeedAmountUsecase:                feedAmountUsecase,
 		SummarizedArticlesCountUsecase:   summarizedUsecase,
 		TotalArticlesCountUsecase:        totalArticlesUsecase,
 		UnsummarizedArticlesCountUsecase: unsummarizedUsecase,
+		FeedsReadingStatusUsecase:        feedsReadingStatusUsecase,
 	}
 
 	cfg := &config.Config{
@@ -405,4 +416,187 @@ func TestSearchFeedsResponse_Construction(t *testing.T) {
 	assert.Len(t, resp.Data, 2)
 	assert.True(t, resp.HasMore)
 	assert.Equal(t, int32(20), *resp.NextCursor)
+}
+
+// =============================================================================
+// Phase 6: StreamSummarize Tests
+// =============================================================================
+
+func TestStreamSummarize_RequiresAuth(t *testing.T) {
+	handler := createTestHandler()
+	ctx := context.Background() // No auth
+
+	feedURL := "https://example.com/article"
+	req := connect.NewRequest(&feedsv2.StreamSummarizeRequest{
+		FeedUrl: &feedURL,
+	})
+
+	// Create a mock stream (we just need to test auth check)
+	err := handler.StreamSummarize(ctx, req, nil)
+
+	require.Error(t, err)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+func TestStreamSummarize_RequiresFeedURLOrArticleID(t *testing.T) {
+	handler := createTestHandler()
+	ctx := createAuthContext()
+
+	// Neither feed_url nor article_id provided
+	req := connect.NewRequest(&feedsv2.StreamSummarizeRequest{})
+
+	err := handler.StreamSummarize(ctx, req, nil)
+
+	require.Error(t, err)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeInvalidArgument, connectErr.Code())
+}
+
+func TestStreamSummarizeResponse_Construction(t *testing.T) {
+	articleID := "test-article-id"
+	summary := "This is a test summary"
+
+	// Test cached response construction
+	cachedResp := &feedsv2.StreamSummarizeResponse{
+		Chunk:       "",
+		IsFinal:     true,
+		ArticleId:   articleID,
+		IsCached:    true,
+		FullSummary: &summary,
+	}
+
+	assert.Equal(t, articleID, cachedResp.ArticleId)
+	assert.True(t, cachedResp.IsCached)
+	assert.True(t, cachedResp.IsFinal)
+	assert.Equal(t, summary, *cachedResp.FullSummary)
+
+	// Test streaming chunk construction
+	chunkText := "This is a chunk"
+	chunkResp := &feedsv2.StreamSummarizeResponse{
+		Chunk:     chunkText,
+		IsFinal:   false,
+		ArticleId: articleID,
+		IsCached:  false,
+	}
+
+	assert.Equal(t, chunkText, chunkResp.Chunk)
+	assert.False(t, chunkResp.IsFinal)
+	assert.False(t, chunkResp.IsCached)
+}
+
+func TestParseSSESummary(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "plain text passthrough",
+			input:    "Hello World",
+			expected: "Hello World",
+		},
+		{
+			name:     "extracts data from SSE",
+			input:    "data: Hello\ndata: World\n",
+			expected: "HelloWorld",
+		},
+		{
+			name:     "handles empty SSE data",
+			input:    "data: \n",
+			expected: "",
+		},
+		{
+			name:     "handles mixed content",
+			input:    "event: message\ndata: Test\n",
+			expected: "Test",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseSSESummary(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// =============================================================================
+// Phase 7: MarkAsRead Tests
+// =============================================================================
+
+func TestMarkAsRead_RequiresAuth(t *testing.T) {
+	handler := createTestHandler()
+	ctx := context.Background() // No auth
+
+	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
+		FeedUrl: "https://example.com/article",
+	})
+
+	resp, err := handler.MarkAsRead(ctx, req)
+
+	require.Error(t, err)
+	require.Nil(t, resp)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+func TestMarkAsRead_RequiresFeedURL(t *testing.T) {
+	handler := createTestHandler()
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
+		FeedUrl: "", // Empty URL
+	})
+
+	resp, err := handler.MarkAsRead(ctx, req)
+
+	require.Error(t, err)
+	require.Nil(t, resp)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeInvalidArgument, connectErr.Code())
+}
+
+func TestMarkAsRead_InvalidURL(t *testing.T) {
+	handler := createTestHandler()
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
+		FeedUrl: "://invalid-url", // Invalid URL
+	})
+
+	resp, err := handler.MarkAsRead(ctx, req)
+
+	require.Error(t, err)
+	require.Nil(t, resp)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeInvalidArgument, connectErr.Code())
+}
+
+func TestMarkAsRead_Success(t *testing.T) {
+	handler := createTestHandler()
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
+		FeedUrl: "https://example.com/article",
+	})
+
+	resp, err := handler.MarkAsRead(ctx, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "Feed read status updated", resp.Msg.Message)
+}
+
+func TestMarkAsReadResponse_Construction(t *testing.T) {
+	resp := &feedsv2.MarkAsReadResponse{
+		Message: "Feed read status updated",
+	}
+
+	assert.Equal(t, "Feed read status updated", resp.Message)
 }

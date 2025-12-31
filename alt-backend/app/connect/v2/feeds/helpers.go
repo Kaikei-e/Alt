@@ -121,3 +121,22 @@ func formatAuthor(author domain.Author, authors []domain.Author) string {
 	}
 	return ""
 }
+
+// parseSSESummary extracts the summary text from SSE-formatted data.
+func parseSSESummary(sseData string) string {
+	if !strings.Contains(sseData, "data:") {
+		return sseData
+	}
+
+	var result strings.Builder
+	lines := strings.Split(sseData, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "data:") {
+			dataContent := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			result.WriteString(dataContent)
+		}
+	}
+
+	return result.String()
+}

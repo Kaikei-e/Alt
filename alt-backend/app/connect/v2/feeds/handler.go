@@ -2,9 +2,14 @@
 package feeds
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"time"
 
 	"connectrpc.com/connect"
@@ -15,6 +20,8 @@ import (
 	"alt/config"
 	"alt/connect/v2/middleware"
 	"alt/di"
+	"alt/rest"
+	"alt/utils/html_parser"
 )
 
 // Handler implements the FeedService Connect-RPC service.
@@ -435,5 +442,385 @@ func (h *Handler) SearchFeeds(
 		Data:       convertFeedsToProto(results),
 		NextCursor: nextCursor,
 		HasMore:    hasMore,
+	}), nil
+}
+
+// =============================================================================
+// Streaming Summarize RPC (Phase 6)
+// =============================================================================
+
+// StreamSummarize streams article summarization in real-time.
+// Replaces POST /v1/feeds/summarize/stream (SSE)
+func (h *Handler) StreamSummarize(
+	ctx context.Context,
+	req *connect.Request[feedsv2.StreamSummarizeRequest],
+	stream *connect.ServerStream[feedsv2.StreamSummarizeResponse],
+) error {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	// Validate request: feed_url or article_id is required
+	feedURL := ""
+	if req.Msg.FeedUrl != nil {
+		feedURL = *req.Msg.FeedUrl
+	}
+	articleID := ""
+	if req.Msg.ArticleId != nil {
+		articleID = *req.Msg.ArticleId
+	}
+
+	if feedURL == "" && articleID == "" {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("feed_url or article_id is required"))
+	}
+
+	// Get optional content and title
+	content := ""
+	if req.Msg.Content != nil {
+		content = *req.Msg.Content
+	}
+	title := ""
+	if req.Msg.Title != nil {
+		title = *req.Msg.Title
+	}
+
+	// Resolve article ID and content
+	resolvedArticleID, resolvedTitle, resolvedContent, err := h.resolveArticle(ctx, feedURL, articleID, content, title)
+	if err != nil {
+		h.logger.Error("failed to resolve article", "error", err, "feed_url", feedURL, "article_id", articleID)
+		return connect.NewError(connect.CodeInternal, err)
+	}
+
+	if resolvedContent == "" {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("content cannot be empty for summarization"))
+	}
+
+	// Check cache for existing summary
+	existingSummary, err := h.container.AltDBRepository.FetchArticleSummaryByArticleID(ctx, resolvedArticleID)
+	if err == nil && existingSummary != nil && existingSummary.Summary != "" {
+		h.logger.Info("returning cached summary", "article_id", resolvedArticleID)
+		// Return cached summary immediately
+		return stream.Send(&feedsv2.StreamSummarizeResponse{
+			Chunk:       "",
+			IsFinal:     true,
+			ArticleId:   resolvedArticleID,
+			IsCached:    true,
+			FullSummary: &existingSummary.Summary,
+		})
+	}
+
+	h.logger.Info("starting stream summarization",
+		"article_id", resolvedArticleID,
+		"content_length", len(resolvedContent))
+
+	// Stream from pre-processor
+	preProcessorStream, err := h.streamPreProcessorSummarize(ctx, resolvedContent, resolvedArticleID, resolvedTitle)
+	if err != nil {
+		h.logger.Error("failed to start stream summarization", "error", err, "article_id", resolvedArticleID)
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	defer preProcessorStream.Close()
+
+	// Stream chunks to client and capture full summary
+	fullSummary, err := h.streamAndCapture(ctx, stream, preProcessorStream, resolvedArticleID)
+	if err != nil {
+		h.logger.Error("failed during streaming", "error", err, "article_id", resolvedArticleID)
+		return connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Save summary to database
+	if fullSummary != "" && resolvedArticleID != "" {
+		if err := h.container.AltDBRepository.SaveArticleSummary(ctx, resolvedArticleID, resolvedTitle, fullSummary); err != nil {
+			h.logger.Error("failed to save summary", "error", err, "article_id", resolvedArticleID)
+			// Don't return error, streaming was successful
+		} else {
+			h.logger.Info("summary saved", "article_id", resolvedArticleID, "summary_length", len(fullSummary))
+		}
+	}
+
+	// Send final message
+	return stream.Send(&feedsv2.StreamSummarizeResponse{
+		Chunk:       "",
+		IsFinal:     true,
+		ArticleId:   resolvedArticleID,
+		IsCached:    false,
+		FullSummary: &fullSummary,
+	})
+}
+
+// =============================================================================
+// StreamSummarize Helper Methods
+// =============================================================================
+
+// resolveArticle resolves the article ID and content from the request parameters.
+// It handles the following cases:
+// 1. article_id provided with content -> use as-is
+// 2. article_id provided without content -> fetch content from DB
+// 3. feed_url provided -> check DB or fetch from URL
+func (h *Handler) resolveArticle(ctx context.Context, feedURL, articleID, content, title string) (string, string, string, error) {
+	// Case 1 & 2: article_id provided
+	if articleID != "" {
+		if content == "" {
+			// Fetch content from DB
+			article, err := h.container.AltDBRepository.FetchArticleByID(ctx, articleID)
+			if err != nil {
+				return "", "", "", fmt.Errorf("failed to fetch article by ID: %w", err)
+			}
+			if article != nil {
+				if title == "" {
+					title = article.Title
+				}
+				return articleID, title, article.Content, nil
+			}
+		}
+		return articleID, title, content, nil
+	}
+
+	// Case 3: feed_url provided
+	if feedURL == "" {
+		return "", "", "", fmt.Errorf("feed_url or article_id is required")
+	}
+
+	// Check if article exists in DB
+	existingArticle, err := h.container.AltDBRepository.FetchArticleByURL(ctx, feedURL)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to fetch article by URL: %w", err)
+	}
+
+	if existingArticle != nil {
+		resolvedTitle := title
+		if resolvedTitle == "" {
+			resolvedTitle = existingArticle.Title
+		}
+		resolvedContent := content
+		if resolvedContent == "" {
+			resolvedContent = existingArticle.Content
+		}
+		return existingArticle.ID, resolvedTitle, resolvedContent, nil
+	}
+
+	// Article doesn't exist, need to fetch or use provided content
+	if content != "" {
+		// Use provided content and save
+		if title == "" {
+			title = "No Title"
+		}
+		newArticleID, err := h.container.AltDBRepository.SaveArticle(ctx, feedURL, title, content)
+		if err != nil {
+			return "", "", "", fmt.Errorf("failed to save article: %w", err)
+		}
+		return newArticleID, title, content, nil
+	}
+
+	// Fetch content from URL
+	fetchedContent, fetchedTitle, err := h.fetchArticleContent(ctx, feedURL)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to fetch article content: %w", err)
+	}
+
+	if title == "" {
+		title = fetchedTitle
+	}
+
+	// Save the article
+	newArticleID, err := h.container.AltDBRepository.SaveArticle(ctx, feedURL, title, fetchedContent)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to save article: %w", err)
+	}
+
+	return newArticleID, title, fetchedContent, nil
+}
+
+// fetchArticleContent fetches and extracts content from a URL.
+func (h *Handler) fetchArticleContent(ctx context.Context, urlStr string) (string, string, error) {
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid URL: %w", err)
+	}
+
+	// SSRF protection
+	if err := rest.IsAllowedURL(parsedURL); err != nil {
+		return "", "", fmt.Errorf("URL not allowed: %w", err)
+	}
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; AltBot/1.0; +http://alt.com/bot)")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to fetch URL: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("server returned status %d", resp.StatusCode)
+	}
+
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024)) // 2MB limit
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read body: %w", err)
+	}
+
+	htmlContent := string(bodyBytes)
+	title := html_parser.ExtractTitle(htmlContent)
+	extractedText := html_parser.ExtractArticleText(htmlContent)
+
+	if extractedText == "" {
+		h.logger.Warn("failed to extract article text, using raw HTML", "url", urlStr)
+		return htmlContent, title, nil
+	}
+
+	return extractedText, title, nil
+}
+
+// streamPreProcessorSummarize calls the pre-processor streaming API.
+func (h *Handler) streamPreProcessorSummarize(ctx context.Context, content, articleID, title string) (io.ReadCloser, error) {
+	if articleID == "" {
+		return nil, fmt.Errorf("article_id is required")
+	}
+
+	requestBody := map[string]string{
+		"content":    content,
+		"article_id": articleID,
+		"title":      title,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	client := &http.Client{
+		Timeout: 0, // No timeout for streaming
+	}
+
+	apiURL := fmt.Sprintf("%s/api/v1/summarize/stream", h.cfg.PreProcessor.URL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call pre-processor stream: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("pre-processor returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	h.logger.Info("pre-processor stream response received",
+		"article_id", articleID,
+		"status", resp.Status,
+		"content_type", resp.Header.Get("Content-Type"))
+
+	return resp.Body, nil
+}
+
+// streamAndCapture streams data from pre-processor to Connect stream and captures the full summary.
+func (h *Handler) streamAndCapture(
+	ctx context.Context,
+	stream *connect.ServerStream[feedsv2.StreamSummarizeResponse],
+	preProcessorStream io.Reader,
+	articleID string,
+) (string, error) {
+	var summaryBuf bytes.Buffer
+	responseBuf := make([]byte, 128)
+	bytesWritten := 0
+
+	for {
+		select {
+		case <-ctx.Done():
+			h.logger.Info("stream cancelled", "article_id", articleID)
+			return parseSSESummary(summaryBuf.String()), ctx.Err()
+		default:
+		}
+
+		n, err := preProcessorStream.Read(responseBuf)
+		if n > 0 {
+			bytesWritten += n
+			summaryBuf.Write(responseBuf[:n])
+
+			// Parse SSE chunk for Connect streaming
+			chunkText := string(responseBuf[:n])
+
+			// Send chunk to client
+			if sendErr := stream.Send(&feedsv2.StreamSummarizeResponse{
+				Chunk:     chunkText,
+				IsFinal:   false,
+				ArticleId: articleID,
+				IsCached:  false,
+			}); sendErr != nil {
+				h.logger.Error("failed to send chunk", "error", sendErr, "article_id", articleID)
+				return "", sendErr
+			}
+		}
+
+		if err != nil {
+			if err == io.EOF {
+				h.logger.Info("stream completed", "article_id", articleID, "bytes_written", bytesWritten)
+				break
+			}
+			h.logger.Error("failed to read from stream", "error", err, "article_id", articleID)
+			return "", err
+		}
+	}
+
+	return parseSSESummary(summaryBuf.String()), nil
+}
+
+// =============================================================================
+// Mark As Read RPC (Phase 7)
+// =============================================================================
+
+// MarkAsRead marks a feed/article as read.
+// Replaces POST /v1/feeds/read
+func (h *Handler) MarkAsRead(
+	ctx context.Context,
+	req *connect.Request[feedsv2.MarkAsReadRequest],
+) (*connect.Response[feedsv2.MarkAsReadResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	// Validate feed_url
+	if req.Msg.FeedUrl == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("feed_url is required"))
+	}
+
+	// Parse URL
+	feedURL, err := url.Parse(req.Msg.FeedUrl)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid feed_url: %w", err))
+	}
+
+	// Execute usecase
+	if err := h.container.FeedsReadingStatusUsecase.Execute(ctx, *feedURL); err != nil {
+		h.logger.Error("failed to mark feed as read", "error", err, "feed_url", req.Msg.FeedUrl)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	h.logger.Info("feed marked as read", "feed_url", req.Msg.FeedUrl)
+
+	return connect.NewResponse(&feedsv2.MarkAsReadResponse{
+		Message: "Feed read status updated",
 	}), nil
 }

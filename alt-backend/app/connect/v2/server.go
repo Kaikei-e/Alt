@@ -9,11 +9,15 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"alt/gen/proto/alt/articles/v2/articlesv2connect"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
+	"alt/gen/proto/alt/rss/v2/rssv2connect"
 
 	"alt/config"
+	"alt/connect/v2/articles"
 	"alt/connect/v2/feeds"
 	"alt/connect/v2/middleware"
+	"alt/connect/v2/rss"
 	"alt/di"
 )
 
@@ -27,10 +31,21 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 
 	// Register Feed service
 	feedHandler := feeds.NewHandler(container, cfg, logger)
-	path, handler := feedsv2connect.NewFeedServiceHandler(feedHandler, opts)
-	mux.Handle(path, handler)
+	feedPath, feedServiceHandler := feedsv2connect.NewFeedServiceHandler(feedHandler, opts)
+	mux.Handle(feedPath, feedServiceHandler)
+	logger.Info("Registered Connect-RPC FeedService", "path", feedPath)
 
-	logger.Info("Registered Connect-RPC FeedService", "path", path)
+	// Register Article service
+	articleHandler := articles.NewHandler(container, cfg, logger)
+	articlePath, articleServiceHandler := articlesv2connect.NewArticleServiceHandler(articleHandler, opts)
+	mux.Handle(articlePath, articleServiceHandler)
+	logger.Info("Registered Connect-RPC ArticleService", "path", articlePath)
+
+	// Register RSS service
+	rssHandler := rss.NewHandler(container, cfg, logger)
+	rssPath, rssServiceHandler := rssv2connect.NewRSSServiceHandler(rssHandler, opts)
+	mux.Handle(rssPath, rssServiceHandler)
+	logger.Info("Registered Connect-RPC RSSService", "path", rssPath)
 }
 
 // CreateConnectServer creates the Connect-RPC server with HTTP/2 support.
