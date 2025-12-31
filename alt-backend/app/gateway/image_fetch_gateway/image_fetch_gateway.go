@@ -526,7 +526,12 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 			},
 		)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	// Check HTTP status code
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

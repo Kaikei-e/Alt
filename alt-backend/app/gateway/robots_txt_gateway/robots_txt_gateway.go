@@ -78,7 +78,12 @@ func (g *RobotsTxtGateway) FetchRobotsTxt(ctx context.Context, domainName, schem
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch robots.txt: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

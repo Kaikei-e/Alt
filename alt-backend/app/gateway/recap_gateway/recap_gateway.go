@@ -45,7 +45,12 @@ func (g *RecapGateway) GetSevenDayRecap(ctx context.Context) (*domain.RecapSumma
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch recap from recap-worker: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, domain.ErrRecapNotFound

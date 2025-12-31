@@ -60,7 +60,11 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 		logger.Logger.Error("Failed to fetch morning updates from recap-worker", "error", err, "url", url)
 		return nil, fmt.Errorf("failed to fetch morning updates: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			logger.Logger.Debug("Failed to close response body", "error", closeErr)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)

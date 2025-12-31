@@ -103,7 +103,12 @@ func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleU
 	if err != nil {
 		return nil, fmt.Errorf("http request failed for %q: %w", parsedURL.String(), err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	// Validate HTTP status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

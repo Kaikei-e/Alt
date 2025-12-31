@@ -58,7 +58,12 @@ func (g *DashboardGateway) GetMetrics(ctx context.Context, metricType string, wi
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch metrics from recap-worker: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -97,7 +102,12 @@ func (g *DashboardGateway) GetOverview(ctx context.Context, windowSeconds, limit
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch overview from recap-worker: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -136,7 +146,12 @@ func (g *DashboardGateway) GetLogs(ctx context.Context, windowSeconds, limit int
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch logs from recap-worker: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -175,7 +190,12 @@ func (g *DashboardGateway) GetJobs(ctx context.Context, windowSeconds, limit int
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch jobs from recap-worker: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
