@@ -9,6 +9,7 @@ import (
 type Config struct {
 	Env                   string
 	Port                  string
+	ConnectPort           string // Connect-RPC server port
 	DBHost                string
 	DBPort                string
 	DBUser                string
@@ -35,6 +36,7 @@ func Load() *Config {
 	return &Config{
 		Env:                  getEnv("ENV", "development"),
 		Port:                 getEnv("PORT", "9010"),
+		ConnectPort:          getEnv("CONNECT_PORT", "9011"),
 		DBHost:               getEnv("DB_HOST", "rag-db"),
 		DBPort:               getEnv("DB_PORT", "5432"),
 		DBUser:               getEnv("DB_USER", "rag_user"),

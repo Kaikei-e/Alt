@@ -78,17 +78,12 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
-	// Extract fields from request (assuming request body has url, or we generate it/ignore it)
-	// The openapi spec might not have URL in UpsertIndexRequest, let's check.
-	// If URL is missing, we might pass empty string or handle it.
-	// Checking the previous handler code, the request struct was `openapi.UpsertIndexRequest`.
-	// We need to see if it has URL. If not, we pass empty string.
-
+	// Index the article with all required fields from the request
 	if err := h.indexUsecase.Upsert(
 		ctx.Request().Context(),
 		req.ArticleId,
 		req.Title,
-		"", // URL is not in the request body based on previous view
+		req.Url, // URL is a required field per OpenAPI spec
 		req.Body,
 	); err != nil {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})

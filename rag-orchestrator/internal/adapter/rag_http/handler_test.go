@@ -177,3 +177,81 @@ func TestHandler_AnswerWithRAGStream(t *testing.T) {
 		assert.Contains(t, response, `"Answer":"streamed answer"`)
 	}
 }
+
+// dummyIndexUsecase captures the parameters passed to Upsert
+type dummyIndexUsecase struct {
+	capturedURL   string
+	capturedTitle string
+	returnError   error
+}
+
+func (d *dummyIndexUsecase) Upsert(ctx context.Context, articleID, title, url, body string) error {
+	d.capturedURL = url
+	d.capturedTitle = title
+	return d.returnError
+}
+
+func (d *dummyIndexUsecase) Delete(ctx context.Context, articleID string) error {
+	return nil
+}
+
+func TestUpsertIndex_PassesUrlToUsecase(t *testing.T) {
+	e := echo.New()
+	dummy := &dummyIndexUsecase{}
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil)
+
+	// Prepare request with URL field populated
+	reqBody := openapi.UpsertIndexRequest{
+		ArticleId:   "test-article-123",
+		Title:       "Test Article Title",
+		Url:         "https://example.com/test-article",
+		Body:        "This is test article content for verification.",
+		UserId:      "user-456",
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	assert.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	// Execute handler
+	err = handler.UpsertIndex(c)
+
+	// Verify URL was passed to usecase (not empty string)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "https://example.com/test-article", dummy.capturedURL, "URL should be passed from request to usecase")
+	assert.Equal(t, "Test Article Title", dummy.capturedTitle, "Title should be passed correctly")
+}
+
+func TestUpsertIndex_ReturnsErrorWhenUsecaseFails(t *testing.T) {
+	e := echo.New()
+	dummy := &dummyIndexUsecase{
+		returnError: errors.New("indexing failed"),
+	}
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil)
+
+	reqBody := openapi.UpsertIndexRequest{
+		ArticleId: "test-article-123",
+		Title:     "Test Article",
+		Url:       "https://example.com/article",
+		Body:      "Content",
+		UserId:    "user-456",
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	assert.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err = handler.UpsertIndex(c)
+
+	assert.NoError(t, err) // handler doesn't return error, but sends error response
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+}

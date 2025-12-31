@@ -118,8 +118,8 @@ func TestChunker_Chunk(t *testing.T) {
 		assert.True(t, hasLongChunk)
 	})
 
-	t.Run("Returns v7 version", func(t *testing.T) {
-		assert.Equal(t, domain.ChunkerVersionV7, chunker.Version())
+	t.Run("Returns v8 version", func(t *testing.T) {
+		assert.Equal(t, domain.ChunkerVersionV8, chunker.Version())
 	})
 
 	t.Run("Handles Japanese sentence boundaries", func(t *testing.T) {
