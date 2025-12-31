@@ -11,15 +11,12 @@ import { fade } from "svelte/transition";
 import { type SwipeDirection, swipe } from "$lib/actions/swipe";
 import {
 	getFeedContentOnTheFlyClient,
-	streamSummarizeArticleClient,
 	summarizeArticleClient,
 } from "$lib/api/client";
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
-import {
-	processSummarizeStreamingText,
-	simulateTypewriterEffect,
-} from "$lib/utils/streamingRenderer";
+import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
+import { createClientTransport, streamSummarizeWithRenderer } from "$lib/connect";
 
 interface Props {
 	feed: RenderFeed;
@@ -197,84 +194,60 @@ async function handleGenerateAISummary() {
 	aiSummary = "";
 
 	try {
-		// Try streaming first
-		// We pass fullContent if we have it (e.g. from auto-fetch or expand)
-		const reader = await streamSummarizeArticleClient(
-			feed.link,
-			undefined, // Let backend resolve article_id from URL
-			undefined, // Content is fetched from DB by backend
-			feed.title,
+		// Use Connect-RPC streaming with renderer
+		const transport = createClientTransport();
+		const result = await streamSummarizeWithRenderer(
+			transport,
+			{
+				feedUrl: feed.link,
+				title: feed.title,
+			},
+			(chunk) => {
+				aiSummary = (aiSummary || "") + chunk;
+			},
+			{
+				tick,
+				typewriter: true, // Enable typewriter effect
+				typewriterDelay: 10, // 10ms delay per char
+				onChunk: (
+					chunkCount,
+					chunkSize,
+					decodedLength,
+					totalLength,
+					preview,
+				) => {
+					// Hide "Now summarizing..." when first chunk arrives
+					if (chunkCount === 1) {
+						isSummarizing = false;
+					}
+					if (chunkCount <= 5) {
+						console.log("[StreamSummarize] Chunk received and rendered", {
+							chunkCount,
+							chunkSize,
+							decodedLength,
+							totalLength,
+							preview,
+						});
+					}
+				},
+				onComplete: (totalLength, chunkCount) => {
+					console.log("[StreamSummarize] Final chunk decoded", {
+						chunkCount: chunkCount + 1,
+						totalLength,
+					});
+				},
+			},
 		);
 
-		// Use streaming renderer utility for incremental rendering
-		try {
-			const result = await processSummarizeStreamingText(
-				reader,
-				(chunk) => {
-					aiSummary = (aiSummary || "") + chunk;
-				},
-				{
-					tick,
-					typewriter: true, // Enable typewriter effect
-					typewriterDelay: 10, // 10ms delay per char
-					onChunk: (
-						chunkCount,
-						chunkSize,
-						decodedLength,
-						totalLength,
-						preview,
-					) => {
-						// Hide "Now summarizing..." when first chunk arrives
-						if (chunkCount === 1) {
-							isSummarizing = false;
-						}
-						if (chunkCount <= 5) {
-							console.log("[StreamSummarize] Chunk received and rendered", {
-								chunkCount,
-								chunkSize,
-								decodedLength,
-								totalLength,
-								preview,
-							});
-						}
-					},
-					onComplete: (totalLength, chunkCount) => {
-						console.log("[StreamSummarize] Final chunk decoded", {
-							chunkCount: chunkCount + 1,
-							totalLength,
-						});
-					},
-				},
-			);
-
-			const hasReceivedData = result.hasReceivedData;
-		} catch (streamErr) {
-			// Error during streaming (after initial connection)
-			console.error(
-				"[StreamSummarize] Error during stream reading:",
-				streamErr,
-			);
-			// If we received some data, keep it and show error
-			if (aiSummary && aiSummary.length > 0) {
-				console.warn(
-					"[StreamSummarize] Stream interrupted but partial data received",
-					{
-						receivedLength: aiSummary.length,
-					},
-				);
-				summaryError = "Stream interrupted. Partial summary may be incomplete.";
-			} else {
-				// No data received, re-throw to trigger fallback
-				throw streamErr;
-			}
-		}
+		const hasReceivedData = result.hasReceivedData;
 	} catch (err) {
 		const errorMessage = err instanceof Error ? err.message : String(err);
 		const isAuthError =
 			errorMessage.includes("403") ||
 			errorMessage.includes("401") ||
 			errorMessage.includes("Forbidden") ||
-			errorMessage.includes("Authentication");
+			errorMessage.includes("Authentication") ||
+			errorMessage.includes("unauthenticated");
 
 		console.error("[StreamSummarize] Error streaming summary:", {
 			error: errorMessage,
@@ -286,6 +259,7 @@ async function handleGenerateAISummary() {
 		if (isAuthError) {
 			summaryError =
 				"Authentication failed. Please refresh the page and try again.";
+			isSummarizing = false;
 			return;
 		}
 
@@ -295,6 +269,7 @@ async function handleGenerateAISummary() {
 				"[StreamSummarize] Using partial summary due to stream error",
 			);
 			summaryError = "Stream interrupted. Summary may be incomplete.";
+			isSummarizing = false;
 			return;
 		}
 
@@ -325,17 +300,10 @@ async function handleGenerateAISummary() {
 			summaryError = "Failed to generate the summary. Please try again.";
 		}
 	} finally {
-		// If NOT using typewriter effect for fallback, we would set isSummarizing = false here.
-		// But for fallback with typewriter, we set it false BEFORE starting typewriter.
-		// For streaming with typewriter, processStreamingText handles setting it false on first chunk?
-		// Wait, processStreamingText's onChunk callback sets isSummarizing = false.
-		// If streaming completes successfully, isSummarizing is already false.
-		// If streaming fails and we fallback, we set isSummarizing = false inside fallback block.
-		// So we can safely set it false here if it's still true (e.g. total failure).
+		// Set isSummarizing to false if it's still true (e.g. total failure or completion)
 		if (isSummarizing && aiSummary === "") {
 			isSummarizing = false;
 		}
-		// Note: for successful streaming or fallback-typewriter, isSummarizing becomes false earlier to show text.
 	}
 }
 

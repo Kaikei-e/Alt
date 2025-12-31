@@ -1,10 +1,9 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
 	import { Loader2 } from "@lucide/svelte";
-	import { base } from "$app/paths";
 	import ChatMessage from "./ChatMessage.svelte";
 	import ChatInput from "./ChatInput.svelte";
-	import { processAugurStreamingText } from "$lib/utils/streamingRenderer";
+	import { createClientTransport, streamAugurChat, type AugurCitation } from "$lib/connect";
 	import augurAvatar from "$lib/assets/augur-mobile.png";
 
 	type Citation = {
@@ -33,6 +32,7 @@
 
 	let isLoading = $state(false);
 	let chatContainer: HTMLDivElement;
+	let currentAbortController: AbortController | null = null;
 
 	async function scrollToBottom() {
 		await tick();
@@ -43,7 +43,24 @@
 		}
 	}
 
+	/**
+	 * Convert AugurCitation from Connect-RPC to component Citation format
+	 */
+	function convertCitations(citations: AugurCitation[]): Citation[] {
+		return citations.map((c) => ({
+			URL: c.url,
+			Title: c.title,
+			PublishedAt: c.publishedAt,
+		}));
+	}
+
 	async function handleSend(messageText: string) {
+		// Cancel any ongoing stream
+		if (currentAbortController) {
+			currentAbortController.abort();
+			currentAbortController = null;
+		}
+
 		// Add user message
 		const userMessage: Message = {
 			id: `user-${Date.now()}`,
@@ -66,32 +83,25 @@
 		}];
 		const currentAssistantMessageIndex = messages.length - 1;
 
+		// Throttling state for delta updates
+		let bufferedContent = "";
+		let lastUpdateTime = 0;
+		const THROTTLE_MS = 50;
+
 		try {
-			const response = await fetch(`${base}/api/v1/augur/chat`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					messages: messages.slice(0, -1).map(m => ({
-						role: m.role,
-						content: m.message,
-					})),
-				}),
-			});
+			const transport = createClientTransport();
 
-			if (!response.ok) throw new Error("Failed to send message");
-			if (!response.body) throw new Error("No response body");
+			// Build message history (excluding the empty placeholder)
+			const chatHistory = messages.slice(0, -1).map((m) => ({
+				role: m.role as "user" | "assistant",
+				content: m.message,
+			}));
 
-			const reader = response.body.getReader();
-
-			// Throttling state
-			let bufferedContent = "";
-			let lastUpdateTime = 0;
-			const THROTTLE_MS = 50;
-
-			await processAugurStreamingText(
-				reader,
+			currentAbortController = streamAugurChat(
+				transport,
+				{ messages: chatHistory },
+				// onDelta: text chunk received
 				(text) => {
-					// Accumulate text but don't update state immediately
 					bufferedContent += text;
 
 					const now = Date.now();
@@ -103,44 +113,47 @@
 						lastUpdateTime = now;
 					}
 				},
-				{
-					tick: async () => {
-						// Optional: custom tick if needed
-					},
-					typewriter: false,
-					onMetadata: (meta: any) => {
-						if (meta && (meta.Contexts || meta.Citations)) {
-							// Prioritize Citations (final), fallback to Contexts (initial)
-							const rawSources = meta.Citations || meta.Contexts || [];
-							const cleanCitations: Citation[] = rawSources.map((s: any) => ({
-								URL: s.URL,
-								Title: s.Title,
-								PublishedAt: s.PublishedAt,
-								Score: s.Score,
-							}));
-
-							messages[currentAssistantMessageIndex] = {
-								...messages[currentAssistantMessageIndex],
-								citations: cleanCitations,
-							};
-						} else if (meta && meta.fallback) {
-							// Handle fallback (insufficient evidence)
-							bufferedContent = "I apologize, but I couldn't find enough information in my knowledge base to answer that properly.";
-							messages[currentAssistantMessageIndex] = {
-								...messages[currentAssistantMessageIndex],
-								message: bufferedContent,
-							};
-						}
-					},
-					onComplete: () => {
-						// Ensure final content is rendered
-						if (messages[currentAssistantMessageIndex].message !== bufferedContent) {
-							messages[currentAssistantMessageIndex] = {
-								...messages[currentAssistantMessageIndex],
-								message: bufferedContent,
-							};
-						}
-					},
+				// onMeta: citations received
+				(citations) => {
+					messages[currentAssistantMessageIndex] = {
+						...messages[currentAssistantMessageIndex],
+						citations: convertCitations(citations),
+					};
+				},
+				// onComplete: streaming finished
+				(result) => {
+					// Ensure final content is rendered
+					messages[currentAssistantMessageIndex] = {
+						...messages[currentAssistantMessageIndex],
+						message: result.answer || bufferedContent,
+						citations: result.citations.length > 0
+							? convertCitations(result.citations)
+							: messages[currentAssistantMessageIndex].citations,
+					};
+					isLoading = false;
+					currentAbortController = null;
+					scrollToBottom();
+				},
+				// onFallback: insufficient context
+				(code) => {
+					messages[currentAssistantMessageIndex] = {
+						...messages[currentAssistantMessageIndex],
+						message: "I apologize, but I couldn't find enough information in my knowledge base to answer that properly.",
+					};
+					isLoading = false;
+					currentAbortController = null;
+					scrollToBottom();
+				},
+				// onError: error occurred
+				(error) => {
+					console.error("Chat error:", error);
+					messages[currentAssistantMessageIndex] = {
+						...messages[currentAssistantMessageIndex],
+						message: `Error: ${error.message}. Please try again.`,
+					};
+					isLoading = false;
+					currentAbortController = null;
+					scrollToBottom();
 				},
 			);
 		} catch (error) {
@@ -149,7 +162,6 @@
 				...messages[currentAssistantMessageIndex],
 				message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
 			};
-		} finally {
 			isLoading = false;
 			await scrollToBottom();
 		}
@@ -157,6 +169,13 @@
 
 	onMount(() => {
 		scrollToBottom();
+
+		// Cleanup on unmount
+		return () => {
+			if (currentAbortController) {
+				currentAbortController.abort();
+			}
+		};
 	});
 </script>
 

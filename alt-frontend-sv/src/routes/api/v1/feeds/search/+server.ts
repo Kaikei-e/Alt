@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from "@sveltejs/kit";
-import { createServerTransport } from "$lib/connect/transport";
+import { createServerTransport } from "$lib/connect/transport-server";
 import { searchFeeds } from "$lib/connect/feeds";
 
 export const POST: RequestHandler = async ({ request, url }) => {

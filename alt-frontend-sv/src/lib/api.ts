@@ -1,6 +1,6 @@
 import { env } from "$env/dynamic/private";
 import type { FeedLink } from "$lib/schema/feedLink";
-import { createServerTransport } from "$lib/connect/transport";
+import { createServerTransport } from "$lib/connect/transport-server";
 import {
 	getUnreadFeeds as getUnreadFeedsConnect,
 	getReadFeeds as getReadFeedsConnect,

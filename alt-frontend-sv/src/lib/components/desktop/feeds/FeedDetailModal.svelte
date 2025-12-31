@@ -4,8 +4,8 @@
 	import { Button } from "$lib/components/ui/button";
 	import * as Dialog from "$lib/components/ui/dialog";
 	import { updateFeedReadStatusClient } from "$lib/api/client/feeds";
-	import { getFeedContentOnTheFlyClient, streamSummarizeArticleClient } from "$lib/api/client/articles";
-	import { processSummarizeStreamingText } from "$lib/utils/streamingRenderer";
+	import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
+	import { createClientTransport, streamSummarizeWithAbortAdapter } from "$lib/connect";
 	import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 
 	interface Props {
@@ -96,35 +96,43 @@
 			abortController.abort();
 		}
 
+		isSummarizing = true;
+		summaryError = null;
+		summary = "";
+
 		try {
-			isSummarizing = true;
-			summaryError = null;
-			summary = "";
-			abortController = new AbortController();
-
-			const reader = await streamSummarizeArticleClient(
-				feed.link,
-				articleID || undefined,
-				undefined, // content
-				feed.title,
-				abortController.signal
-			);
-
-			// Process streaming chunks
-			await processSummarizeStreamingText(
-				reader,
+			const transport = createClientTransport();
+			abortController = streamSummarizeWithAbortAdapter(
+				transport,
+				{
+					feedUrl: feed.link,
+					articleId: articleID || undefined,
+					title: feed.title,
+				},
 				(chunk: string) => {
 					summary = (summary || "") + chunk;
+				},
+				{}, // No typewriter effect for desktop
+				(result) => {
+					// onComplete
+					isSummarizing = false;
+					abortController = null;
+				},
+				(error) => {
+					// onError
+					if (error.name !== 'AbortError') {
+						summaryError = error.message || "Failed to generate summary";
+					}
+					isSummarizing = false;
+					abortController = null;
 				}
 			);
-
 		} catch (err) {
 			if (err instanceof Error && err.name === 'AbortError') {
 				// User cancelled, ignore
 				return;
 			}
 			summaryError = err instanceof Error ? err.message : "Failed to generate summary";
-		} finally {
 			isSummarizing = false;
 			abortController = null;
 		}

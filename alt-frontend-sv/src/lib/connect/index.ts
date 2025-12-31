@@ -1,12 +1,13 @@
 /**
  * Connect-RPC client exports for alt-frontend-sv
+ *
+ * NOTE: Server-side transport (createServerTransport) must be imported directly
+ * from "$lib/connect/transport-server" to avoid bundling $env/dynamic/private
+ * in browser code.
  */
 
-// Transport utilities
-export {
-	createServerTransport,
-	createClientTransport,
-} from "./transport";
+// Client-side transport (safe for browser)
+export { createClientTransport } from "./transport-client";
 
 // FeedService client
 export {
@@ -65,3 +66,25 @@ export {
 	type DeleteRSSFeedLinkResult,
 	type RegisterFavoriteFeedResult,
 } from "./rss";
+
+// Streaming Adapter (Connect-RPC to Renderer bridge)
+export {
+	streamSummarizeWithRenderer,
+	streamSummarizeWithAbortAdapter,
+	type StreamSummarizeAdapterOptions,
+	type StreamSummarizeAdapterResult,
+} from "./streamingAdapter";
+
+// AugurService client (RAG-powered Chat)
+export {
+	createAugurClient,
+	streamAugurChat,
+	streamAugurChatAsync,
+	retrieveAugurContext,
+	type AugurCitation,
+	type AugurChatMessage,
+	type AugurStreamOptions,
+	type AugurStreamResult,
+	type AugurContextItem,
+	type RetrieveContextOptions,
+} from "./augur";
