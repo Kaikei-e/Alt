@@ -109,7 +109,7 @@ jobs:
         run: bun install
         working-directory: ${{ inputs.working-directory || 'alt-frontend-sv' }}
       - name: Run Playwright tests
-        run: npx playwright test --project=chromium --reporter=list
+        run: npx playwright test --project=auth --project=desktop-chromium --project=mobile-chrome --reporter=list
         working-directory: ${{ inputs.working-directory || 'alt-frontend-sv' }}
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
