@@ -2,7 +2,7 @@
 	import { User } from "@lucide/svelte";
 	import { cn } from "$lib/utils";
 	import { parseMarkdown } from "$lib/utils/simpleMarkdown";
-	import augurAvatar from "$lib/assets/augur-mobile.png";
+	import augurAvatar from "$lib/assets/augur-chat.webp";
 
 	type Citation = {
 		URL: string;

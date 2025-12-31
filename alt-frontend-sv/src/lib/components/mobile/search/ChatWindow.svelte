@@ -2,7 +2,8 @@
 import { Loader, SendHorizontal } from "@lucide/svelte";
 import { tick } from "svelte";
 import { base } from "$app/paths";
-import augurAvatar from "$lib/assets/augur-mobile.png";
+import augurAvatar from "$lib/assets/augur-chat.webp";
+import augurPlaceholder from "$lib/assets/augur-placeholder.webp";
 import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
 import { Button } from "$lib/components/ui/button";
 import { Input } from "$lib/components/ui/input";
@@ -162,7 +163,7 @@ const handleSubmit = async () => {
   <div class="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
     {#if messages.length === 0}
       <div class="flex flex-col items-center justify-center h-full text-muted-foreground opacity-50">
-        <img src={augurAvatar} alt="Augur" class="w-32 h-32 mb-4 rounded-full opacity-50 grayscale" />
+        <img src={augurPlaceholder} alt="Augur" class="w-32 h-32 mb-4 rounded-full opacity-50 grayscale" />
         <p>Ask Augur anything...</p>
       </div>
     {/if}
