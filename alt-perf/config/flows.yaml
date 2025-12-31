@@ -1,0 +1,93 @@
+# User Flow Definitions
+# Define multi-step user journeys to test end-to-end performance
+
+flows:
+  # Login and browse feeds flow
+  - name: "Login and Browse Feeds"
+    description: "User logs in and browses their feed list"
+    steps:
+      - action: navigate
+        url: "/auth/login"
+        waitFor: "form"
+
+      - action: fill
+        selector: "input[name='identifier']"
+        value: "${PERF_TEST_EMAIL}"
+
+      - action: fill
+        selector: "input[name='password']"
+        value: "${PERF_TEST_PASSWORD}"
+
+      - action: click
+        selector: "button[type='submit']"
+        waitFor: navigation
+
+      - action: navigate
+        url: "/mobile/feeds"
+        waitFor: "[data-testid='feeds-scroll-container']"
+        measure: true
+
+      - action: scroll
+        direction: down
+        amount: 500
+
+      - action: wait
+        duration: 2000
+        measure: true
+
+  # Mobile swipe flow
+  - name: "Mobile Feed Swipe Flow"
+    description: "User navigates to swipe view and swipes through articles"
+    requiresAuth: true
+    device: mobile-chrome
+    steps:
+      - action: navigate
+        url: "/mobile/feeds/swipe"
+        waitFor: "[data-testid='swipe-container']"
+        measure: true
+
+      - action: swipe
+        direction: left
+        repeat: 5
+        delay: 500
+
+      - action: wait
+        duration: 1000
+        measure: true
+
+  # Desktop article search flow
+  - name: "Desktop Article Search"
+    description: "User searches for articles on desktop"
+    requiresAuth: true
+    device: desktop-chrome
+    steps:
+      - action: navigate
+        url: "/desktop/articles/search"
+        waitFor: "[data-testid='search-input']"
+        measure: true
+
+      - action: type
+        selector: "[data-testid='search-input']"
+        value: "technology"
+
+      - action: wait
+        duration: 1500
+        measure: true
+
+  # Morning letter flow
+  - name: "Morning Letter View"
+    description: "User views their morning letter recap"
+    requiresAuth: true
+    device: mobile-chrome
+    steps:
+      - action: navigate
+        url: "/mobile/recap/morning-letter"
+        measure: true
+
+      - action: scroll
+        direction: down
+        amount: 1000
+
+      - action: wait
+        duration: 2000
+        measure: true

@@ -1,0 +1,64 @@
+# Performance Thresholds Configuration
+# Based on Core Web Vitals 2025 standards
+
+vitals:
+  # Largest Contentful Paint (milliseconds)
+  lcp:
+    good: 2500
+    poor: 4000
+
+  # Interaction to Next Paint (milliseconds)
+  inp:
+    good: 200
+    poor: 500
+
+  # Cumulative Layout Shift (score)
+  cls:
+    good: 0.1
+    poor: 0.25
+
+  # First Contentful Paint (milliseconds)
+  fcp:
+    good: 1800
+    poor: 3000
+
+  # Time to First Byte (milliseconds)
+  ttfb:
+    good: 800
+    poor: 1800
+
+navigation:
+  domContentLoaded:
+    good: 3000
+    poor: 6000
+
+  load:
+    good: 5000
+    poor: 10000
+
+load:
+  # Response time percentiles (milliseconds)
+  responseTime:
+    p50: 200
+    p95: 500
+    p99: 1000
+
+  # Maximum acceptable error rate (0-1)
+  errorRate:
+    max: 0.01  # 1%
+
+  # Minimum throughput (requests per second)
+  throughput:
+    min: 100
+
+scoring:
+  # Minimum score to pass (0-100)
+  passThreshold: 80
+
+  # Weights for each vital in overall score
+  weights:
+    lcp: 25
+    inp: 25
+    cls: 15
+    fcp: 15
+    ttfb: 20

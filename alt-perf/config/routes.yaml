@@ -1,0 +1,125 @@
+# Alt Performance Test Routes Configuration
+# SvelteKit frontend (/sv/) routes only
+
+baseUrl: "http://localhost"
+
+devices:
+  - desktop-chrome
+  - mobile-chrome
+
+# Auth is configured via environment variables in loader.ts
+# PERF_BASE_URL, TEST_EMAIL, TEST_PASSWORD
+
+routes:
+  # Public routes (no auth required)
+  public:
+    - path: "/sv/"
+      name: "Root"
+      requiresAuth: false
+
+    - path: "/sv/login"
+      name: "Login Page"
+      requiresAuth: false
+      waitFor: "form"
+
+    - path: "/sv/register"
+      name: "Registration Page"
+      requiresAuth: false
+      waitFor: "form"
+
+    - path: "/sv/auth/login"
+      name: "Auth Login"
+      requiresAuth: false
+
+  # Desktop routes
+  desktop:
+    - path: "/sv/home"
+      name: "Home"
+      requiresAuth: true
+      priority: high
+
+    - path: "/sv/dashboard"
+      name: "Dashboard"
+      requiresAuth: true
+
+    - path: "/sv/desktop"
+      name: "Desktop Root"
+      requiresAuth: true
+
+    - path: "/sv/desktop/feeds"
+      name: "Desktop Feeds"
+      requiresAuth: true
+      priority: high
+
+    - path: "/sv/desktop/feeds/favorites"
+      name: "Desktop Favorites"
+      requiresAuth: true
+
+    - path: "/sv/desktop/feeds/search"
+      name: "Desktop Search"
+      requiresAuth: true
+
+    - path: "/sv/desktop/feeds/viewed"
+      name: "Desktop Viewed"
+      requiresAuth: true
+
+    - path: "/sv/desktop/recap"
+      name: "Desktop Recap"
+      requiresAuth: true
+
+    - path: "/sv/desktop/augur"
+      name: "Desktop Augur"
+      requiresAuth: true
+
+    - path: "/sv/desktop/stats"
+      name: "Desktop Stats"
+      requiresAuth: true
+
+    - path: "/sv/desktop/settings/feeds"
+      name: "Desktop Feed Settings"
+      requiresAuth: true
+
+  # Mobile routes
+  mobile:
+    - path: "/sv/mobile/feeds"
+      name: "Mobile Feeds"
+      requiresAuth: true
+      priority: high
+
+    - path: "/sv/mobile/feeds/manage"
+      name: "Mobile Feed Management"
+      requiresAuth: true
+
+    - path: "/sv/mobile/feeds/swipe"
+      name: "Mobile Swipe View"
+      requiresAuth: true
+
+    - path: "/sv/mobile/feeds/search"
+      name: "Mobile Search"
+      requiresAuth: true
+
+    - path: "/sv/mobile/feeds/stats"
+      name: "Mobile Stats"
+      requiresAuth: true
+
+    - path: "/sv/mobile/feeds/viewed"
+      name: "Mobile Viewed"
+      requiresAuth: true
+
+    - path: "/sv/mobile/recap/7days"
+      name: "Mobile 7-Day Recap"
+      requiresAuth: true
+
+    - path: "/sv/mobile/retrieve/ask-augur"
+      name: "Mobile Ask Augur"
+      requiresAuth: true
+
+  # API endpoints (for load testing)
+  api:
+    - path: "/api/health"
+      name: "Frontend Health"
+      type: api
+
+    - path: "/api/backend/v1/health"
+      name: "Backend Health"
+      type: api
