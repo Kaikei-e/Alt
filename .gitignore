@@ -77,3 +77,7 @@ alt-frontend-sv/test-results/*
 failed.log
 rag-orchestrator/start_backfill.sh
 alt-frontend-sv/mock-server.log
+
+# Claude Code local files
+.claude/
+.agent/
