@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -21,6 +22,7 @@ import (
 	"alt/config"
 	"alt/connect/v2/middleware"
 	"alt/di"
+	"alt/domain"
 	"alt/rest"
 	"alt/utils/html_parser"
 )
@@ -881,8 +883,21 @@ func (h *Handler) MarkAsRead(
 
 	// Execute usecase
 	if err := h.container.FeedsReadingStatusUsecase.Execute(ctx, *feedURL); err != nil {
-		h.logger.Error("failed to mark feed as read", "error", err, "feed_url", req.Msg.FeedUrl)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		// Map domain errors to appropriate HTTP status codes
+		if errors.Is(err, domain.ErrFeedNotFound) {
+			h.logger.Info("feed not found for mark as read",
+				"feed_url", req.Msg.FeedUrl,
+				"error", err)
+			return nil, connect.NewError(connect.CodeNotFound,
+				fmt.Errorf("feed not found: %s", req.Msg.FeedUrl))
+		}
+
+		// All other errors are internal server errors
+		h.logger.Error("failed to mark feed as read",
+			"error", err,
+			"feed_url", req.Msg.FeedUrl)
+		return nil, connect.NewError(connect.CodeInternal,
+			fmt.Errorf("internal server error"))
 	}
 
 	h.logger.Info("feed marked as read", "feed_url", req.Msg.FeedUrl)

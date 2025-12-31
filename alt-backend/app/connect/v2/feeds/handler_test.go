@@ -656,3 +656,96 @@ func TestMarkAsReadResponse_Construction(t *testing.T) {
 
 	assert.Equal(t, "Feed read status updated", resp.Message)
 }
+
+// =============================================================================
+// Phase 7 (TDD): MarkAsRead Error Handling Tests
+// =============================================================================
+
+// Mock that returns ErrFeedNotFound
+type mockUpdateFeedStatusPortReturnsNotFound struct{}
+
+func (m *mockUpdateFeedStatusPortReturnsNotFound) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
+	return domain.ErrFeedNotFound
+}
+
+// Mock that returns generic error
+type mockUpdateFeedStatusPortReturnsError struct{}
+
+func (m *mockUpdateFeedStatusPortReturnsError) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
+	return assert.AnError // Generic error from testify
+}
+
+// Test that domain.ErrFeedNotFound returns HTTP 404
+func TestHandler_MarkAsRead_FeedNotFound_Returns404(t *testing.T) {
+	// Initialize logger
+	logger.InitLogger()
+
+	// Create usecase with mock that returns ErrFeedNotFound
+	feedsReadingStatusUsecase := reading_status.NewFeedsReadingStatusUsecase(&mockUpdateFeedStatusPortReturnsNotFound{})
+
+	container := &di.ApplicationComponents{
+		FeedsReadingStatusUsecase: feedsReadingStatusUsecase,
+	}
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			SSEInterval: 5 * time.Second,
+		},
+	}
+
+	handler := NewHandler(container, cfg, slog.Default())
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
+		FeedUrl: "https://example.com/nonexistent",
+	})
+
+	resp, err := handler.MarkAsRead(ctx, req)
+
+	// Should return NotFound error, not Internal error
+	require.Error(t, err)
+	require.Nil(t, resp)
+
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeNotFound, connectErr.Code(), "Expected HTTP 404 Not Found")
+	assert.Contains(t, connectErr.Message(), "feed not found", "Error message should mention 'feed not found'")
+}
+
+// Test that non-domain errors return HTTP 500
+func TestHandler_MarkAsRead_DatabaseError_Returns500(t *testing.T) {
+	// Initialize logger
+	logger.InitLogger()
+
+	// Create usecase with mock that returns generic error
+	feedsReadingStatusUsecase := reading_status.NewFeedsReadingStatusUsecase(&mockUpdateFeedStatusPortReturnsError{})
+
+	container := &di.ApplicationComponents{
+		FeedsReadingStatusUsecase: feedsReadingStatusUsecase,
+	}
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			SSEInterval: 5 * time.Second,
+		},
+	}
+
+	handler := NewHandler(container, cfg, slog.Default())
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
+		FeedUrl: "https://example.com/article",
+	})
+
+	resp, err := handler.MarkAsRead(ctx, req)
+
+	// Should return Internal error for non-domain errors
+	require.Error(t, err)
+	require.Nil(t, resp)
+
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeInternal, connectErr.Code(), "Expected HTTP 500 Internal Server Error")
+	// Should NOT leak internal error details to client
+	assert.Contains(t, connectErr.Message(), "internal server error", "Error message should be generic")
+}

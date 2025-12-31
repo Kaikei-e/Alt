@@ -42,6 +42,9 @@ const (
 	// ArticleServiceFetchArticlesCursorProcedure is the fully-qualified name of the ArticleService's
 	// FetchArticlesCursor RPC.
 	ArticleServiceFetchArticlesCursorProcedure = "/alt.articles.v2.ArticleService/FetchArticlesCursor"
+	// ArticleServiceFetchArticleSummaryProcedure is the fully-qualified name of the ArticleService's
+	// FetchArticleSummary RPC.
+	ArticleServiceFetchArticleSummaryProcedure = "/alt.articles.v2.ArticleService/FetchArticleSummary"
 )
 
 // ArticleServiceClient is a client for the alt.articles.v2.ArticleService service.
@@ -55,6 +58,9 @@ type ArticleServiceClient interface {
 	// FetchArticlesCursor fetches articles with cursor-based pagination
 	// Replaces GET /v1/articles/fetch/cursor
 	FetchArticlesCursor(context.Context, *connect.Request[v2.FetchArticlesCursorRequest]) (*connect.Response[v2.FetchArticlesCursorResponse], error)
+	// FetchArticleSummary fetches article summaries for multiple URLs
+	// Replaces POST /v1/articles/summary
+	FetchArticleSummary(context.Context, *connect.Request[v2.FetchArticleSummaryRequest]) (*connect.Response[v2.FetchArticleSummaryResponse], error)
 }
 
 // NewArticleServiceClient constructs a client for the alt.articles.v2.ArticleService service. By
@@ -86,6 +92,12 @@ func NewArticleServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(articleServiceMethods.ByName("FetchArticlesCursor")),
 			connect.WithClientOptions(opts...),
 		),
+		fetchArticleSummary: connect.NewClient[v2.FetchArticleSummaryRequest, v2.FetchArticleSummaryResponse](
+			httpClient,
+			baseURL+ArticleServiceFetchArticleSummaryProcedure,
+			connect.WithSchema(articleServiceMethods.ByName("FetchArticleSummary")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -94,6 +106,7 @@ type articleServiceClient struct {
 	fetchArticleContent *connect.Client[v2.FetchArticleContentRequest, v2.FetchArticleContentResponse]
 	archiveArticle      *connect.Client[v2.ArchiveArticleRequest, v2.ArchiveArticleResponse]
 	fetchArticlesCursor *connect.Client[v2.FetchArticlesCursorRequest, v2.FetchArticlesCursorResponse]
+	fetchArticleSummary *connect.Client[v2.FetchArticleSummaryRequest, v2.FetchArticleSummaryResponse]
 }
 
 // FetchArticleContent calls alt.articles.v2.ArticleService.FetchArticleContent.
@@ -111,6 +124,11 @@ func (c *articleServiceClient) FetchArticlesCursor(ctx context.Context, req *con
 	return c.fetchArticlesCursor.CallUnary(ctx, req)
 }
 
+// FetchArticleSummary calls alt.articles.v2.ArticleService.FetchArticleSummary.
+func (c *articleServiceClient) FetchArticleSummary(ctx context.Context, req *connect.Request[v2.FetchArticleSummaryRequest]) (*connect.Response[v2.FetchArticleSummaryResponse], error) {
+	return c.fetchArticleSummary.CallUnary(ctx, req)
+}
+
 // ArticleServiceHandler is an implementation of the alt.articles.v2.ArticleService service.
 type ArticleServiceHandler interface {
 	// FetchArticleContent fetches and extracts compliant article content
@@ -122,6 +140,9 @@ type ArticleServiceHandler interface {
 	// FetchArticlesCursor fetches articles with cursor-based pagination
 	// Replaces GET /v1/articles/fetch/cursor
 	FetchArticlesCursor(context.Context, *connect.Request[v2.FetchArticlesCursorRequest]) (*connect.Response[v2.FetchArticlesCursorResponse], error)
+	// FetchArticleSummary fetches article summaries for multiple URLs
+	// Replaces POST /v1/articles/summary
+	FetchArticleSummary(context.Context, *connect.Request[v2.FetchArticleSummaryRequest]) (*connect.Response[v2.FetchArticleSummaryResponse], error)
 }
 
 // NewArticleServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -149,6 +170,12 @@ func NewArticleServiceHandler(svc ArticleServiceHandler, opts ...connect.Handler
 		connect.WithSchema(articleServiceMethods.ByName("FetchArticlesCursor")),
 		connect.WithHandlerOptions(opts...),
 	)
+	articleServiceFetchArticleSummaryHandler := connect.NewUnaryHandler(
+		ArticleServiceFetchArticleSummaryProcedure,
+		svc.FetchArticleSummary,
+		connect.WithSchema(articleServiceMethods.ByName("FetchArticleSummary")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.articles.v2.ArticleService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ArticleServiceFetchArticleContentProcedure:
@@ -157,6 +184,8 @@ func NewArticleServiceHandler(svc ArticleServiceHandler, opts ...connect.Handler
 			articleServiceArchiveArticleHandler.ServeHTTP(w, r)
 		case ArticleServiceFetchArticlesCursorProcedure:
 			articleServiceFetchArticlesCursorHandler.ServeHTTP(w, r)
+		case ArticleServiceFetchArticleSummaryProcedure:
+			articleServiceFetchArticleSummaryHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -176,4 +205,8 @@ func (UnimplementedArticleServiceHandler) ArchiveArticle(context.Context, *conne
 
 func (UnimplementedArticleServiceHandler) FetchArticlesCursor(context.Context, *connect.Request[v2.FetchArticlesCursorRequest]) (*connect.Response[v2.FetchArticlesCursorResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.FetchArticlesCursor is not implemented"))
+}
+
+func (UnimplementedArticleServiceHandler) FetchArticleSummary(context.Context, *connect.Request[v2.FetchArticleSummaryRequest]) (*connect.Response[v2.FetchArticleSummaryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.FetchArticleSummary is not implemented"))
 }
