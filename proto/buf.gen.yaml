@@ -8,6 +8,14 @@ plugins:
   - local: protoc-gen-connect-go
     out: ../alt-backend/app/gen/proto
     opt: paths=source_relative
+  # rag-orchestrator - protobuf messages
+  - local: protoc-gen-go
+    out: ../rag-orchestrator/internal/gen/proto
+    opt: paths=source_relative
+  # rag-orchestrator - Connect-RPC handlers/clients
+  - local: protoc-gen-connect-go
+    out: ../rag-orchestrator/internal/gen/proto
+    opt: paths=source_relative
   # TypeScript frontend - protobuf messages and Connect-RPC clients
   # Connect-ES 2.0: protoc-gen-es generates both messages and services
   - local: ../alt-frontend-sv/node_modules/.bin/protoc-gen-es

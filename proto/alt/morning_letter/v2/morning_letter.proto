@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package alt.morning_letter.v2;
+
+option go_package = "alt/gen/proto/alt/morning_letter/v2;morningletterv2";
+
+// =============================================================================
+// MorningLetterService - Time-bounded RAG-powered Chat Service
+// =============================================================================
+
+service MorningLetterService {
+  // StreamChat performs a streaming chat with RAG context, filtered by time window.
+  // Returns a stream of events: delta (text chunks), meta (citations + time window), done (completion), or error.
+  rpc StreamChat(StreamChatRequest) returns (stream StreamChatEvent);
+}
+
+// =============================================================================
+// Chat Messages
+// =============================================================================
+
+// StreamChatRequest is the request for streaming chat with time filtering.
+message StreamChatRequest {
+  // Chat message history (alternating user/assistant messages)
+  repeated ChatMessage messages = 1;
+  // Time window in hours (default: 24, max: 168 = 7 days)
+  int32 within_hours = 2;
+}
+
+// ChatMessage represents a single message in the conversation.
+message ChatMessage {
+  // Role of the message sender: "user" or "assistant"
+  string role = 1;
+  // Content of the message
+  string content = 2;
+}
+
+// StreamChatEvent is a single event in the streaming response.
+// Each event has a kind and a corresponding payload.
+message StreamChatEvent {
+  // Event kind: "delta", "meta", "done", "fallback", "error"
+  string kind = 1;
+
+  // Payload based on kind (only one will be set)
+  oneof payload {
+    // Text chunk (when kind = "delta")
+    string delta = 2;
+    // Citations and time window metadata (when kind = "meta")
+    MetaPayload meta = 3;
+    // Completion result (when kind = "done")
+    DonePayload done = 4;
+    // Fallback reason code (when kind = "fallback")
+    string fallback_code = 5;
+    // Error message (when kind = "error")
+    string error_message = 6;
+  }
+}
+
+// MetaPayload contains metadata about the response, including citations and time window.
+message MetaPayload {
+  // List of citations/sources used in the response
+  repeated Citation citations = 1;
+  // Time window used for filtering articles
+  TimeWindow time_window = 2;
+  // Number of articles scanned in the time window
+  int32 articles_scanned = 3;
+}
+
+// Citation represents a source reference.
+message Citation {
+  // URL of the source article
+  string url = 1;
+  // Title of the source article
+  string title = 2;
+  // Publication date (ISO8601 format)
+  string published_at = 3;
+}
+
+// TimeWindow represents the time range for filtering.
+message TimeWindow {
+  // Start of the time window (ISO8601 format)
+  string since = 1;
+  // End of the time window (ISO8601 format)
+  string until = 2;
+}
+
+// DonePayload is sent when streaming completes successfully.
+message DonePayload {
+  // Full answer text
+  string answer = 1;
+  // List of citations used in the answer
+  repeated Citation citations = 2;
+}
