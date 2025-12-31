@@ -72,6 +72,19 @@ down-volumes:
 	@echo "Stopping Docker Compose services and removing volumes..."
 	docker compose down --volumes
 
+# E2E パフォーマンステスト
+perf-scan: $(ENV_FILE)
+	@echo "Running E2E performance scan..."
+	docker compose -p alt -f compose/base.yaml -f compose/perf.yaml run --rm alt-perf scan
+
+perf-flow: $(ENV_FILE)
+	@echo "Running user flow tests..."
+	docker compose -p alt -f compose/base.yaml -f compose/perf.yaml run --rm alt-perf flow
+
+perf-build: $(ENV_FILE)
+	@echo "Building alt-perf image..."
+	docker compose -p alt -f compose/base.yaml -f compose/perf.yaml build alt-perf
+
 # コンテナ、イメージ、ボリュームなどを全てクリーンアップするターゲット
 clean: down-volumes
 	@echo "Cleaning up dangling images and build cache..."
