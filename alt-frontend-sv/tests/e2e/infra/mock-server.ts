@@ -457,3 +457,16 @@ export async function stopMockServers() {
 		backendServer.close(onClose);
 	});
 }
+
+// Graceful shutdown handlers for local development
+process.on("SIGINT", async () => {
+	console.log("\nShutting down mock servers gracefully...");
+	await stopMockServers();
+	process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+	console.log("\nShutting down mock servers gracefully...");
+	await stopMockServers();
+	process.exit(0);
+});

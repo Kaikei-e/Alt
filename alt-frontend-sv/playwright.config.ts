@@ -15,7 +15,6 @@ export default defineConfig({
 	],
 
 	globalSetup: "./tests/e2e/global-setup",
-	globalTeardown: "./tests/e2e/global-teardown",
 
 	use: {
 		// Enhanced tracing for debugging
