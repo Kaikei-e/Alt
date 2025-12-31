@@ -74,6 +74,7 @@ recap-subworker/data
 recap-worker/recap-worker/tests/data/golden_classification.json
 alt-frontend-sv/playwright-report/*
 alt-frontend-sv/test-results/*
+alt-frontend-sv/.svelte-kit/
 failed.log
 rag-orchestrator/start_backfill.sh
 alt-frontend-sv/mock-server.log
