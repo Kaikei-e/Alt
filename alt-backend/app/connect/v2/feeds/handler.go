@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -733,46 +734,78 @@ func (h *Handler) streamPreProcessorSummarize(ctx context.Context, content, arti
 }
 
 // streamAndCapture streams data from pre-processor to Connect stream and captures the full summary.
+// It parses SSE events and sends only the data content to the client.
 func (h *Handler) streamAndCapture(
 	ctx context.Context,
 	stream *connect.ServerStream[feedsv2.StreamSummarizeResponse],
 	preProcessorStream io.Reader,
 	articleID string,
 ) (string, error) {
-	var summaryBuf bytes.Buffer
-	responseBuf := make([]byte, 128)
+	var summaryBuf strings.Builder
+	var sseBuf strings.Builder
+	responseBuf := make([]byte, 256)
 	bytesWritten := 0
 
 	for {
 		select {
 		case <-ctx.Done():
 			h.logger.Info("stream cancelled", "article_id", articleID)
-			return parseSSESummary(summaryBuf.String()), ctx.Err()
+			return summaryBuf.String(), ctx.Err()
 		default:
 		}
 
 		n, err := preProcessorStream.Read(responseBuf)
 		if n > 0 {
 			bytesWritten += n
-			summaryBuf.Write(responseBuf[:n])
+			sseBuf.Write(responseBuf[:n])
 
-			// Parse SSE chunk for Connect streaming
-			chunkText := string(responseBuf[:n])
+			// Process complete SSE events (separated by double newline)
+			for {
+				sseData := sseBuf.String()
+				splitIdx := strings.Index(sseData, "\n\n")
+				if splitIdx == -1 {
+					break // No complete event yet
+				}
 
-			// Send chunk to client
-			if sendErr := stream.Send(&feedsv2.StreamSummarizeResponse{
-				Chunk:     chunkText,
-				IsFinal:   false,
-				ArticleId: articleID,
-				IsCached:  false,
-			}); sendErr != nil {
-				h.logger.Error("failed to send chunk", "error", sendErr, "article_id", articleID)
-				return "", sendErr
+				// Extract the complete event
+				eventStr := sseData[:splitIdx]
+				sseBuf.Reset()
+				sseBuf.WriteString(sseData[splitIdx+2:])
+
+				// Parse the SSE event and extract data content
+				dataContent := extractSSEData(eventStr)
+				if dataContent != "" {
+					summaryBuf.WriteString(dataContent)
+
+					// Send parsed content to client
+					if sendErr := stream.Send(&feedsv2.StreamSummarizeResponse{
+						Chunk:     dataContent,
+						IsFinal:   false,
+						ArticleId: articleID,
+						IsCached:  false,
+					}); sendErr != nil {
+						h.logger.Error("failed to send chunk", "error", sendErr, "article_id", articleID)
+						return "", sendErr
+					}
+				}
 			}
 		}
 
 		if err != nil {
 			if err == io.EOF {
+				// Process any remaining data in buffer
+				if sseBuf.Len() > 0 {
+					dataContent := extractSSEData(sseBuf.String())
+					if dataContent != "" {
+						summaryBuf.WriteString(dataContent)
+						_ = stream.Send(&feedsv2.StreamSummarizeResponse{
+							Chunk:     dataContent,
+							IsFinal:   false,
+							ArticleId: articleID,
+							IsCached:  false,
+						})
+					}
+				}
 				h.logger.Info("stream completed", "article_id", articleID, "bytes_written", bytesWritten)
 				break
 			}
@@ -781,7 +814,21 @@ func (h *Handler) streamAndCapture(
 		}
 	}
 
-	return parseSSESummary(summaryBuf.String()), nil
+	return summaryBuf.String(), nil
+}
+
+// extractSSEData extracts the data content from an SSE event string.
+func extractSSEData(eventStr string) string {
+	var result strings.Builder
+	lines := strings.Split(eventStr, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "data:") {
+			dataContent := strings.TrimPrefix(line, "data:")
+			result.WriteString(dataContent)
+		}
+	}
+	return result.String()
 }
 
 // =============================================================================

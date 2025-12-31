@@ -10,11 +10,13 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"alt/gen/proto/alt/articles/v2/articlesv2connect"
+	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
 	"alt/gen/proto/alt/rss/v2/rssv2connect"
 
 	"alt/config"
 	"alt/connect/v2/articles"
+	"alt/connect/v2/augur"
 	"alt/connect/v2/feeds"
 	"alt/connect/v2/middleware"
 	"alt/connect/v2/rss"
@@ -46,6 +48,12 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	rssPath, rssServiceHandler := rssv2connect.NewRSSServiceHandler(rssHandler, opts)
 	mux.Handle(rssPath, rssServiceHandler)
 	logger.Info("Registered Connect-RPC RSSService", "path", rssPath)
+
+	// Register Augur service
+	augurHandler := augur.NewHandler(container.RetrieveContextUsecase, container.AnswerChatUsecase, logger)
+	augurPath, augurServiceHandler := augurv2connect.NewAugurServiceHandler(augurHandler, opts)
+	mux.Handle(augurPath, augurServiceHandler)
+	logger.Info("Registered Connect-RPC AugurService", "path", augurPath)
 }
 
 // CreateConnectServer creates the Connect-RPC server with HTTP/2 support.
