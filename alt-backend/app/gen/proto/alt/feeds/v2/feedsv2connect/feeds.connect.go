@@ -56,6 +56,11 @@ const (
 	FeedServiceGetFavoriteFeedsProcedure = "/alt.feeds.v2.FeedService/GetFavoriteFeeds"
 	// FeedServiceSearchFeedsProcedure is the fully-qualified name of the FeedService's SearchFeeds RPC.
 	FeedServiceSearchFeedsProcedure = "/alt.feeds.v2.FeedService/SearchFeeds"
+	// FeedServiceStreamSummarizeProcedure is the fully-qualified name of the FeedService's
+	// StreamSummarize RPC.
+	FeedServiceStreamSummarizeProcedure = "/alt.feeds.v2.FeedService/StreamSummarize"
+	// FeedServiceMarkAsReadProcedure is the fully-qualified name of the FeedService's MarkAsRead RPC.
+	FeedServiceMarkAsReadProcedure = "/alt.feeds.v2.FeedService/MarkAsRead"
 )
 
 // FeedServiceClient is a client for the alt.feeds.v2.FeedService service.
@@ -81,6 +86,12 @@ type FeedServiceClient interface {
 	// SearchFeeds searches for feeds by query with offset-based pagination
 	// Replaces POST /v1/feeds/search
 	SearchFeeds(context.Context, *connect.Request[v2.SearchFeedsRequest]) (*connect.Response[v2.SearchFeedsResponse], error)
+	// StreamSummarize streams article summarization in real-time
+	// Replaces POST /v1/feeds/summarize/stream (SSE)
+	StreamSummarize(context.Context, *connect.Request[v2.StreamSummarizeRequest]) (*connect.ServerStreamForClient[v2.StreamSummarizeResponse], error)
+	// MarkAsRead marks a feed/article as read
+	// Replaces POST /v1/feeds/read
+	MarkAsRead(context.Context, *connect.Request[v2.MarkAsReadRequest]) (*connect.Response[v2.MarkAsReadResponse], error)
 }
 
 // NewFeedServiceClient constructs a client for the alt.feeds.v2.FeedService service. By default, it
@@ -142,6 +153,18 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("SearchFeeds")),
 			connect.WithClientOptions(opts...),
 		),
+		streamSummarize: connect.NewClient[v2.StreamSummarizeRequest, v2.StreamSummarizeResponse](
+			httpClient,
+			baseURL+FeedServiceStreamSummarizeProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("StreamSummarize")),
+			connect.WithClientOptions(opts...),
+		),
+		markAsRead: connect.NewClient[v2.MarkAsReadRequest, v2.MarkAsReadResponse](
+			httpClient,
+			baseURL+FeedServiceMarkAsReadProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("MarkAsRead")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -155,6 +178,8 @@ type feedServiceClient struct {
 	getReadFeeds         *connect.Client[v2.GetReadFeedsRequest, v2.GetReadFeedsResponse]
 	getFavoriteFeeds     *connect.Client[v2.GetFavoriteFeedsRequest, v2.GetFavoriteFeedsResponse]
 	searchFeeds          *connect.Client[v2.SearchFeedsRequest, v2.SearchFeedsResponse]
+	streamSummarize      *connect.Client[v2.StreamSummarizeRequest, v2.StreamSummarizeResponse]
+	markAsRead           *connect.Client[v2.MarkAsReadRequest, v2.MarkAsReadResponse]
 }
 
 // GetFeedStats calls alt.feeds.v2.FeedService.GetFeedStats.
@@ -197,6 +222,16 @@ func (c *feedServiceClient) SearchFeeds(ctx context.Context, req *connect.Reques
 	return c.searchFeeds.CallUnary(ctx, req)
 }
 
+// StreamSummarize calls alt.feeds.v2.FeedService.StreamSummarize.
+func (c *feedServiceClient) StreamSummarize(ctx context.Context, req *connect.Request[v2.StreamSummarizeRequest]) (*connect.ServerStreamForClient[v2.StreamSummarizeResponse], error) {
+	return c.streamSummarize.CallServerStream(ctx, req)
+}
+
+// MarkAsRead calls alt.feeds.v2.FeedService.MarkAsRead.
+func (c *feedServiceClient) MarkAsRead(ctx context.Context, req *connect.Request[v2.MarkAsReadRequest]) (*connect.Response[v2.MarkAsReadResponse], error) {
+	return c.markAsRead.CallUnary(ctx, req)
+}
+
 // FeedServiceHandler is an implementation of the alt.feeds.v2.FeedService service.
 type FeedServiceHandler interface {
 	// GetFeedStats returns basic feed statistics (feed count, summarized count)
@@ -220,6 +255,12 @@ type FeedServiceHandler interface {
 	// SearchFeeds searches for feeds by query with offset-based pagination
 	// Replaces POST /v1/feeds/search
 	SearchFeeds(context.Context, *connect.Request[v2.SearchFeedsRequest]) (*connect.Response[v2.SearchFeedsResponse], error)
+	// StreamSummarize streams article summarization in real-time
+	// Replaces POST /v1/feeds/summarize/stream (SSE)
+	StreamSummarize(context.Context, *connect.Request[v2.StreamSummarizeRequest], *connect.ServerStream[v2.StreamSummarizeResponse]) error
+	// MarkAsRead marks a feed/article as read
+	// Replaces POST /v1/feeds/read
+	MarkAsRead(context.Context, *connect.Request[v2.MarkAsReadRequest]) (*connect.Response[v2.MarkAsReadResponse], error)
 }
 
 // NewFeedServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -277,6 +318,18 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("SearchFeeds")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceStreamSummarizeHandler := connect.NewServerStreamHandler(
+		FeedServiceStreamSummarizeProcedure,
+		svc.StreamSummarize,
+		connect.WithSchema(feedServiceMethods.ByName("StreamSummarize")),
+		connect.WithHandlerOptions(opts...),
+	)
+	feedServiceMarkAsReadHandler := connect.NewUnaryHandler(
+		FeedServiceMarkAsReadProcedure,
+		svc.MarkAsRead,
+		connect.WithSchema(feedServiceMethods.ByName("MarkAsRead")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.feeds.v2.FeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FeedServiceGetFeedStatsProcedure:
@@ -295,6 +348,10 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 			feedServiceGetFavoriteFeedsHandler.ServeHTTP(w, r)
 		case FeedServiceSearchFeedsProcedure:
 			feedServiceSearchFeedsHandler.ServeHTTP(w, r)
+		case FeedServiceStreamSummarizeProcedure:
+			feedServiceStreamSummarizeHandler.ServeHTTP(w, r)
+		case FeedServiceMarkAsReadProcedure:
+			feedServiceMarkAsReadHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -334,4 +391,12 @@ func (UnimplementedFeedServiceHandler) GetFavoriteFeeds(context.Context, *connec
 
 func (UnimplementedFeedServiceHandler) SearchFeeds(context.Context, *connect.Request[v2.SearchFeedsRequest]) (*connect.Response[v2.SearchFeedsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.SearchFeeds is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) StreamSummarize(context.Context, *connect.Request[v2.StreamSummarizeRequest], *connect.ServerStream[v2.StreamSummarizeResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.StreamSummarize is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) MarkAsRead(context.Context, *connect.Request[v2.MarkAsReadRequest]) (*connect.Response[v2.MarkAsReadResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.MarkAsRead is not implemented"))
 }
