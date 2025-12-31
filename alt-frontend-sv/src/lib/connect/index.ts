@@ -88,3 +88,16 @@ export {
 	type AugurContextItem,
 	type RetrieveContextOptions,
 } from "./augur";
+
+// MorningLetterService client (Time-bounded RAG Chat)
+export {
+	createMorningLetterClient,
+	streamMorningLetterChat,
+	streamMorningLetterChatAsync,
+	type MorningLetterCitation,
+	type MorningLetterTimeWindow,
+	type MorningLetterChatMessage,
+	type MorningLetterStreamOptions,
+	type MorningLetterMeta,
+	type MorningLetterStreamResult,
+} from "./morning_letter";
