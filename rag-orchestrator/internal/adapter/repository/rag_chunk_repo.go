@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"rag-orchestrator/internal/domain"
+	"sort"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -125,12 +126,71 @@ func (r *ragChunkRepository) InsertEvents(ctx context.Context, events []domain.R
 }
 
 func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, candidateArticleIDs []string, limit int) ([]domain.SearchResult, error) {
-	// Construct query
-	// We want chunks from the *current version* of documents.
-	baseQuery := `
+	// Two-Stage Search for HNSW Index Efficiency
+	//
+	// Stage 1: Pure vector search on rag_chunks (uses HNSW index efficiently)
+	// Stage 2: Enrich with metadata via JOIN (filters to current version only)
+	//
+	// This approach ensures HNSW index is used in Stage 1, then filters/enriches
+	// in Stage 2 with a smaller candidate set.
+
+	// Fetch more candidates in Stage 1 to account for filtering in Stage 2
+	// (some chunks may belong to non-current versions)
+	candidateMultiplier := 3
+	stage1Limit := limit * candidateMultiplier
+	if stage1Limit > 500 {
+		stage1Limit = 500 // Cap to prevent excessive memory usage
+	}
+
+	// Stage 1: Pure vector search (HNSW optimized)
+	stage1Query := `
+		SELECT c.id, (c.embedding <=> $1) as distance
+		FROM rag_chunks c
+		ORDER BY distance ASC
+		LIMIT $2
+	`
+	stage1Rows, err := r.getExecutor(ctx).Query(ctx, stage1Query, pgvector.NewVector(queryVector), stage1Limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search chunks (stage 1): %w", err)
+	}
+
+	// Collect chunk IDs and distances from Stage 1
+	type chunkCandidate struct {
+		id       uuid.UUID
+		distance float32
+	}
+	candidates := make([]chunkCandidate, 0, stage1Limit)
+	chunkIDs := make([]uuid.UUID, 0, stage1Limit)
+
+	for stage1Rows.Next() {
+		var id uuid.UUID
+		var distance float32
+		if err := stage1Rows.Scan(&id, &distance); err != nil {
+			stage1Rows.Close()
+			return nil, fmt.Errorf("failed to scan stage 1 result: %w", err)
+		}
+		candidates = append(candidates, chunkCandidate{id: id, distance: distance})
+		chunkIDs = append(chunkIDs, id)
+	}
+	stage1Rows.Close()
+	if err := stage1Rows.Err(); err != nil {
+		return nil, fmt.Errorf("stage 1 rows error: %w", err)
+	}
+
+	if len(candidates) == 0 {
+		return []domain.SearchResult{}, nil
+	}
+
+	// Build distance lookup map
+	distanceMap := make(map[uuid.UUID]float32, len(candidates))
+	for _, c := range candidates {
+		distanceMap[c.id] = c.distance
+	}
+
+	// Stage 2: Enrich with metadata, filter by current version and candidate articles
+	stage2Query := `
 		SELECT
 			c.id, c.version_id, c.ordinal, c.content, c.embedding, c.created_at,
-			(c.embedding <=> $1) as distance,
 			d.article_id,
 			v.version_number,
 			v.title,
@@ -138,37 +198,34 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		FROM rag_chunks c
 		JOIN rag_document_versions v ON c.version_id = v.id
 		JOIN rag_documents d ON v.document_id = d.id
-		WHERE d.current_version_id = v.id
+		WHERE c.id = ANY($1)
+		  AND d.current_version_id = v.id
 	`
-	args := []interface{}{pgvector.NewVector(queryVector)}
+	args := []interface{}{chunkIDs}
 	argIdx := 2
 
 	if len(candidateArticleIDs) > 0 {
-		baseQuery += fmt.Sprintf(" AND d.article_id = ANY($%d)", argIdx)
+		stage2Query += fmt.Sprintf(" AND d.article_id = ANY($%d)", argIdx)
 		args = append(args, candidateArticleIDs)
-		argIdx++
 	}
 
-	baseQuery += fmt.Sprintf(" ORDER BY distance ASC LIMIT $%d", argIdx)
-	args = append(args, limit)
-
-	rows, err := r.getExecutor(ctx).Query(ctx, baseQuery, args...)
+	stage2Rows, err := r.getExecutor(ctx).Query(ctx, stage2Query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to search chunks: %w", err)
+		return nil, fmt.Errorf("failed to enrich chunks (stage 2): %w", err)
 	}
-	defer rows.Close()
+	defer stage2Rows.Close()
 
 	var results []domain.SearchResult
-	for rows.Next() {
+	for stage2Rows.Next() {
 		var c domain.RagChunk
-		var distance float32
 		var articleID string
 		var versionNumber int
-		var title, url sql.NullString // Handle potential nulls if older records exist
-		if err := rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.Embedding, &c.CreatedAt, &distance, &articleID, &versionNumber, &title, &url); err != nil {
-			return nil, fmt.Errorf("failed to scan search result: %w", err)
+		var title, url sql.NullString
+		if err := stage2Rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.Embedding, &c.CreatedAt, &articleID, &versionNumber, &title, &url); err != nil {
+			return nil, fmt.Errorf("failed to scan stage 2 result: %w", err)
 		}
-		// Convert distance to similarity score (Approximate)
+
+		distance := distanceMap[c.ID]
 		results = append(results, domain.SearchResult{
 			Chunk:           c,
 			Score:           1.0 - distance,
@@ -178,8 +235,24 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 			DocumentVersion: versionNumber,
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows error: %w", err)
+	if err := stage2Rows.Err(); err != nil {
+		return nil, fmt.Errorf("stage 2 rows error: %w", err)
 	}
+
+	// Sort by distance (score descending) and limit
+	// Results from Stage 2 are not ordered, so we need to sort
+	sortByDistance(results)
+
+	if len(results) > limit {
+		results = results[:limit]
+	}
+
 	return results, nil
+}
+
+// sortByDistance sorts search results by score in descending order (higher score = more similar)
+func sortByDistance(results []domain.SearchResult) {
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Score > results[j].Score
+	})
 }

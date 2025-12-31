@@ -7,6 +7,7 @@ import (
 	"rag-orchestrator/internal/domain"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,12 +42,13 @@ type RetrieveContextUsecase interface {
 }
 
 type retrieveContextUsecase struct {
-	chunkRepo    domain.RagChunkRepository
-	docRepo      domain.RagDocumentRepository
-	encoder      domain.VectorEncoder
-	llmClient    domain.LLMClient
-	searchClient domain.SearchClient
-	logger       *slog.Logger
+	chunkRepo     domain.RagChunkRepository
+	docRepo       domain.RagDocumentRepository
+	encoder       domain.VectorEncoder
+	llmClient     domain.LLMClient
+	searchClient  domain.SearchClient
+	queryExpander domain.QueryExpander
+	logger        *slog.Logger
 }
 
 // NewRetrieveContextUsecase creates a new RetrieveContextUsecase.
@@ -56,15 +58,17 @@ func NewRetrieveContextUsecase(
 	encoder domain.VectorEncoder,
 	llmClient domain.LLMClient,
 	searchClient domain.SearchClient,
+	queryExpander domain.QueryExpander,
 	logger *slog.Logger,
 ) RetrieveContextUsecase {
 	return &retrieveContextUsecase{
-		chunkRepo:    chunkRepo,
-		docRepo:      docRepo,
-		encoder:      encoder,
-		llmClient:    llmClient,
-		searchClient: searchClient,
-		logger:       logger,
+		chunkRepo:     chunkRepo,
+		docRepo:       docRepo,
+		encoder:       encoder,
+		llmClient:     llmClient,
+		searchClient:  searchClient,
+		queryExpander: queryExpander,
+		logger:        logger,
 	}
 }
 
@@ -160,13 +164,58 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		slog.Int("query_count", len(queries)),
 		slog.Any("queries", queries))
 
-	// 2. Search & Merge using Quota Strategy
+	// 2. Search & Merge using Quota Strategy with Parallel Vector Search
 	const (
 		searchLimit   = 50
 		rrfK          = 60.0
 		quotaOriginal = 5
 		quotaExpanded = 5
 	)
+
+	// Parallel vector search for all query embeddings
+	type searchResult struct {
+		index   int
+		results []domain.SearchResult
+		err     error
+	}
+
+	searchStart := time.Now()
+	resultsChan := make(chan searchResult, len(embeddings))
+	var wg sync.WaitGroup
+
+	for i, queryVector := range embeddings {
+		wg.Add(1)
+		go func(idx int, qv []float32) {
+			defer wg.Done()
+			results, err := u.chunkRepo.Search(ctx, qv, input.CandidateArticleIDs, searchLimit)
+			resultsChan <- searchResult{index: idx, results: results, err: err}
+		}(i, queryVector)
+	}
+
+	// Wait for all searches to complete, then close channel
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	// Collect results from channel
+	allResults := make([][]domain.SearchResult, len(embeddings))
+	var searchErr error
+	for sr := range resultsChan {
+		if sr.err != nil && searchErr == nil {
+			searchErr = sr.err
+		}
+		allResults[sr.index] = sr.results
+	}
+	if searchErr != nil {
+		return nil, fmt.Errorf("failed to search chunks: %w", searchErr)
+	}
+
+	searchDuration := time.Since(searchStart)
+	u.logger.Info("parallel_vector_search_completed",
+		slog.String("retrieval_id", retrievalID),
+		slog.Int("query_count", len(embeddings)),
+		slog.Int64("duration_ms", searchDuration.Milliseconds()))
 
 	var hitsOriginal []domain.SearchResult
 
@@ -177,12 +226,8 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 	}
 	chunksMapExpanded := make(map[uuid.UUID]*chunkData)
 
-	for i, queryVector := range embeddings {
-		results, err := u.chunkRepo.Search(ctx, queryVector, input.CandidateArticleIDs, searchLimit)
-		if err != nil {
-			return nil, fmt.Errorf("failed to search chunks: %w", err)
-		}
-
+	// Process collected results
+	for i, results := range allResults {
 		if i == 0 {
 			// Original Query (Index 0)
 			hitsOriginal = results
@@ -322,6 +367,26 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 }
 
 func (u *retrieveContextUsecase) expandQuery(ctx context.Context, query string) ([]string, error) {
+	// Use the dedicated QueryExpander (news-creator) for faster GPU-accelerated expansion
+	if u.queryExpander != nil {
+		// Generate 1 Japanese + 3 English query variations
+		expansions, err := u.queryExpander.ExpandQuery(ctx, query, 1, 3)
+		if err != nil {
+			u.logger.Warn("query_expansion_via_news_creator_failed",
+				slog.String("query", query),
+				slog.String("error", err.Error()))
+			// Fall back to legacy LLM-based expansion
+			return u.expandQueryLegacy(ctx, query)
+		}
+		return expansions, nil
+	}
+
+	// Fallback to legacy expansion if no QueryExpander is configured
+	return u.expandQueryLegacy(ctx, query)
+}
+
+// expandQueryLegacy uses the LLMClient for query expansion (legacy fallback).
+func (u *retrieveContextUsecase) expandQueryLegacy(ctx context.Context, query string) ([]string, error) {
 	currentDate := time.Now().Format("2006-01-02")
 	prompt := fmt.Sprintf(`You are an expert search query generator.
 Current Date: %s

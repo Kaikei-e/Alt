@@ -7,26 +7,28 @@ import (
 )
 
 type Config struct {
-	Env                  string
-	Port                 string
-	DBHost               string
-	DBPort               string
-	DBUser               string
-	DBPassword           string
-	DBName               string
-	OllamaURL            string
-	EmbeddingModel       string
-	PromptVersion        string
-	AnswerMaxChunks      int
-	AnswerMaxTokens      int
-	DefaultLocale        string
-	KnowledgeAugurURL    string
-	KnowledgeAugurModel  string
-	OllamaTimeout        int // Seconds
-	SearchIndexerURL     string
-	SearchIndexerTimeout int // Seconds
-	AltBackendURL        string
-	AltBackendTimeout    int // Seconds
+	Env                   string
+	Port                  string
+	DBHost                string
+	DBPort                string
+	DBUser                string
+	DBPassword            string
+	DBName                string
+	OllamaURL             string
+	EmbeddingModel        string
+	PromptVersion         string
+	AnswerMaxChunks       int
+	AnswerMaxTokens       int
+	DefaultLocale         string
+	KnowledgeAugurURL     string
+	KnowledgeAugurModel   string
+	OllamaTimeout         int // Seconds
+	SearchIndexerURL      string
+	SearchIndexerTimeout  int // Seconds
+	AltBackendURL         string
+	AltBackendTimeout     int // Seconds
+	QueryExpansionURL     string // news-creator URL for query expansion
+	QueryExpansionTimeout int    // Seconds
 }
 
 func Load() *Config {
@@ -49,8 +51,10 @@ func Load() *Config {
 		OllamaTimeout:        getEnvInt("OLLAMA_TIMEOUT", 300),
 		SearchIndexerURL:     getEnv("SEARCH_INDEXER_URL", "http://search-indexer:8080"),
 		SearchIndexerTimeout: getEnvInt("SEARCH_INDEXER_TIMEOUT", 10),
-		AltBackendURL:        getEnv("ALT_BACKEND_URL", "http://alt-backend:9000"),
-		AltBackendTimeout:    getEnvInt("ALT_BACKEND_TIMEOUT", 30),
+		AltBackendURL:         getEnv("ALT_BACKEND_URL", "http://alt-backend:9000"),
+		AltBackendTimeout:     getEnvInt("ALT_BACKEND_TIMEOUT", 30),
+		QueryExpansionURL:     getEnv("QUERY_EXPANSION_URL", "http://news-creator:11434"),
+		QueryExpansionTimeout: getEnvInt("QUERY_EXPANSION_TIMEOUT", 30),
 	}
 }
 

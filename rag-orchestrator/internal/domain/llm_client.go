@@ -33,3 +33,11 @@ type LLMStreamChunk struct {
 	EvalCount       *int
 	TotalDuration   *int64
 }
+
+// QueryExpander defines the capability to expand a user query into multiple search variations.
+type QueryExpander interface {
+	// ExpandQuery generates search query variations from the input query.
+	// japaneseCount: number of Japanese query variations to generate
+	// englishCount: number of English query variations to generate
+	ExpandQuery(ctx context.Context, query string, japaneseCount, englishCount int) ([]string, error)
+}
