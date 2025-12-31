@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -253,12 +254,22 @@ func (m *ConnectionPoolManager) StopMetricsCollection() {
 func getEnvOrDefault(key, defaultValue string) string {
 	// First check for _FILE suffix (Docker Secrets support)
 	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {
-		content, err := os.ReadFile(fileValue)
-		if err == nil {
-			return strings.TrimSpace(string(content))
+		// Validate file path to prevent path traversal attacks
+		// Only allow absolute paths and clean the path
+		cleanPath := filepath.Clean(fileValue)
+		if !filepath.IsAbs(cleanPath) {
+			logger.Logger.Warn("Ignoring relative file path in environment variable",
+				"key", key+"_FILE", "path", fileValue)
+			// Fall through to check regular env var
+		} else {
+			// #nosec G304 - File path is validated and cleaned
+			content, err := os.ReadFile(cleanPath)
+			if err == nil {
+				return strings.TrimSpace(string(content))
+			}
+			logger.Logger.Warn("Failed to read file from environment variable",
+				"key", key+"_FILE", "path", cleanPath, "error", err)
 		}
-		// Log error if needed, but we don't have logger here easily without import cycle or global logger usage
-		// Assuming global logger is available or we just fall back
 	}
 
 	if value := os.Getenv(key); value != "" {

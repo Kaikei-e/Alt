@@ -20,6 +20,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Test constants
+const (
+	testQualityCheckerURL = "http://quality-checker.test/api/generate"
+)
+
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -303,7 +308,7 @@ func TestScoreSummary(t *testing.T) {
 			withMockTransport(t, http.HandlerFunc(tc.serverResponse))
 
 			originalURL := qualityCheckerAPIURL
-			qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+			qualityCheckerAPIURL = testQualityCheckerURL
 			t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 			// Execute test
@@ -400,7 +405,7 @@ func TestScoreSummaryWithRetry(t *testing.T) {
 
 			// Override API URL
 			originalURL := qualityCheckerAPIURL
-			qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+			qualityCheckerAPIURL = testQualityCheckerURL
 			t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 			// Execute test
@@ -471,7 +476,7 @@ func TestJudgeArticleQualityScoring(t *testing.T) {
 	}))
 
 	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+	qualityCheckerAPIURL = testQualityCheckerURL
 	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 	article := &driver.ArticleWithSummary{
@@ -500,7 +505,7 @@ func TestRemoveLowScoreSummary(t *testing.T) {
 	}))
 
 	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+	qualityCheckerAPIURL = testQualityCheckerURL
 	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 	article := &driver.ArticleWithSummary{
@@ -546,7 +551,7 @@ func TestScoreSummaryContextCancellation(t *testing.T) {
 	}))
 
 	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+	qualityCheckerAPIURL = testQualityCheckerURL
 	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 	// Create a context that's already cancelled
@@ -669,7 +674,7 @@ func TestIsConnectionError(t *testing.T) {
 func TestJudgeArticleQualityConnectionError(t *testing.T) {
 	// Test with connection refused error (simulating news-creator being down)
 	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+	qualityCheckerAPIURL = testQualityCheckerURL
 	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 	originalTransport := http.DefaultTransport
@@ -697,7 +702,7 @@ func TestJudgeArticleQualityConnectionError(t *testing.T) {
 // TestJudgeArticleQualityTimeoutError tests that JudgeArticleQuality handles timeout errors correctly
 func TestJudgeArticleQualityTimeoutError(t *testing.T) {
 	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+	qualityCheckerAPIURL = testQualityCheckerURL
 	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 	originalTransport := http.DefaultTransport
@@ -742,7 +747,7 @@ func TestJudgeArticleQualityLowScoreStillDeletes(t *testing.T) {
 	}))
 
 	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = "http://quality-checker.test/api/generate"
+	qualityCheckerAPIURL = testQualityCheckerURL
 	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
 
 	article := &driver.ArticleWithSummary{

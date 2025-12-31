@@ -71,6 +71,7 @@ func TestFileDLQManager_PublishFailedArticle(t *testing.T) {
 
 	// ファイル内容を確認
 	filePath := filepath.Join(expectedDir, files[0].Name())
+	// #nosec G304 - Test code with controlled file path
 	content, err := os.ReadFile(filePath)
 	require.NoError(t, err)
 
@@ -136,19 +137,19 @@ func TestFileDLQManager_Cleanup(t *testing.T) {
 	// 古いファイルを作成
 	oldTime := time.Now().Add(-2 * time.Hour)
 	oldDir := filepath.Join(tempDir, "failed-articles", oldTime.Format("2006-01-02"))
-	require.NoError(t, os.MkdirAll(oldDir, 0755))
+	require.NoError(t, os.MkdirAll(oldDir, 0750))
 
 	oldFile := filepath.Join(oldDir, "old_message.json")
-	require.NoError(t, os.WriteFile(oldFile, []byte(`{"test": "data"}`), 0644))
+	require.NoError(t, os.WriteFile(oldFile, []byte(`{"test": "data"}`), 0600))
 	require.NoError(t, os.Chtimes(oldFile, oldTime, oldTime))
 
 	// 新しいファイルを作成
 	newTime := time.Now()
 	newDir := filepath.Join(tempDir, "failed-articles", newTime.Format("2006-01-02"))
-	require.NoError(t, os.MkdirAll(newDir, 0755))
+	require.NoError(t, os.MkdirAll(newDir, 0750))
 
 	newFile := filepath.Join(newDir, "new_message.json")
-	require.NoError(t, os.WriteFile(newFile, []byte(`{"test": "data"}`), 0644))
+	require.NoError(t, os.WriteFile(newFile, []byte(`{"test": "data"}`), 0600))
 
 	// クリーンアップ実行
 	err := dlqManager.cleanup()
@@ -174,11 +175,11 @@ func TestFileDLQManager_GetStats(t *testing.T) {
 
 	// テストファイルを作成
 	testDir := filepath.Join(tempDir, "failed-articles", "2024-01-15")
-	require.NoError(t, os.MkdirAll(testDir, 0755))
+	require.NoError(t, os.MkdirAll(testDir, 0750))
 
 	for i := 0; i < 3; i++ {
 		fileName := filepath.Join(testDir, "test_"+string(rune('a'+i))+".json")
-		require.NoError(t, os.WriteFile(fileName, []byte(`{"test": "data"}`), 0644))
+		require.NoError(t, os.WriteFile(fileName, []byte(`{"test": "data"}`), 0600))
 	}
 
 	stats, err := dlqManager.GetStats()

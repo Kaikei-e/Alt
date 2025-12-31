@@ -22,6 +22,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Test constants
+const (
+	testServiceURL = "http://test-service"
+)
+
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -218,7 +223,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 			if tc.handler != nil {
 				setRepoTransport(repo, newHandlerTransport(tc.handler, 0))
 				if tc.serviceURL == "http://localhost:8080" {
-					serviceURL = "http://test-service"
+					serviceURL = testServiceURL
 				}
 			}
 
@@ -241,7 +246,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 		setRepoTransport(repo, newErrorTransport(errors.New("dial error")))
 
-		err := repo.CheckHealth(context.Background(), "http://test-service")
+		err := repo.CheckHealth(context.Background(), testServiceURL)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "health check request failed")
 	})
@@ -278,7 +283,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		}, 100*time.Millisecond))
 
-		err := repo.CheckHealth(ctx, "http://test-service")
+		err := repo.CheckHealth(ctx, testServiceURL)
 		assert.Error(t, err)
 	})
 
@@ -293,7 +298,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		}, 100*time.Millisecond))
 
-		err := repo.CheckHealth(ctx, "http://test-service")
+		err := repo.CheckHealth(ctx, testServiceURL)
 		assert.Error(t, err)
 	})
 }
@@ -352,7 +357,7 @@ func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 				}, 0))
 
 				// Use a valid base URL to avoid external calls
-				testURL := "http://test-service/api/tags"
+				testURL := testServiceURL + "/api/tags"
 				err := repo.CheckHealth(context.Background(), testURL)
 
 				if tc.expectError {
@@ -402,7 +407,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 				setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusOK)
 				}, 0))
-				return repo, "http://test-service"
+				return repo, testServiceURL
 			},
 			validate: func(t *testing.T, result interface{}, err error) {
 				assert.NoError(t, err)
@@ -431,7 +436,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 				setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusOK)
 				}, 0))
-				return repo, "http://test-service"
+				return repo, testServiceURL
 			},
 			validate: func(t *testing.T, result interface{}, err error) {
 				assert.NoError(t, err)
@@ -490,7 +495,7 @@ func BenchmarkExternalAPIRepository_CheckHealth(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = repo.CheckHealth(context.Background(), "http://test-service")
+		_ = repo.CheckHealth(context.Background(), testServiceURL)
 	}
 }
 
@@ -508,7 +513,7 @@ func TestExternalAPIRepository_HelperFunctions(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		}, 10*time.Millisecond))
 
-		err := repo.CheckHealth(context.Background(), "http://test-service")
+		err := repo.CheckHealth(context.Background(), testServiceURL)
 		assert.NoError(t, err)
 	})
 }
@@ -526,7 +531,7 @@ func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		}, 100*time.Millisecond))
 
-		err := repo.CheckHealth(ctx, "http://test-service")
+		err := repo.CheckHealth(ctx, testServiceURL)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "health check request failed")
 	})
@@ -542,7 +547,7 @@ func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 			_, _ = w.Write([]byte("invalid json {"))
 		}, 0))
 
-		err := repo.CheckHealth(context.Background(), "http://test-service")
+		err := repo.CheckHealth(context.Background(), testServiceURL)
 		// Should succeed since we only check status code, not response body
 		assert.NoError(t, err)
 	})
