@@ -335,3 +335,256 @@ export async function streamFeedStats(
 
 	return abortController;
 }
+
+// =============================================================================
+// Streaming Summarize Types and Functions (Phase 6)
+// =============================================================================
+
+/**
+ * Request options for streaming summarization.
+ */
+export interface StreamSummarizeOptions {
+	/** Feed/article URL (required if articleId not provided) */
+	feedUrl?: string;
+	/** Existing article ID (required if feedUrl not provided) */
+	articleId?: string;
+	/** Pre-fetched content (optional, skips fetch if provided) */
+	content?: string;
+	/** Article title (optional) */
+	title?: string;
+}
+
+/**
+ * Streaming summarize chunk response.
+ */
+export interface StreamSummarizeChunk {
+	/** Text chunk from summarization */
+	chunk: string;
+	/** Whether this is the final chunk */
+	isFinal: boolean;
+	/** Article ID (populated after first chunk or from cache) */
+	articleId: string;
+	/** Whether this response is from cache */
+	isCached: boolean;
+	/** Full summary (only populated if isCached=true or isFinal=true) */
+	fullSummary: string | null;
+}
+
+/**
+ * Result returned when streaming completes successfully.
+ */
+export interface StreamSummarizeResult {
+	/** The article ID */
+	articleId: string;
+	/** The full summary text */
+	summary: string;
+	/** Whether the result was from cache */
+	wasCached: boolean;
+}
+
+/**
+ * Stream article summarization in real-time via Connect-RPC Server Streaming.
+ *
+ * @param transport - The Connect transport to use
+ * @param options - Request options (feedUrl or articleId required)
+ * @param onChunk - Callback when a chunk is received (optional)
+ * @param onError - Callback on error (optional)
+ * @returns Promise that resolves with the full summary when complete
+ */
+export async function streamSummarize(
+	transport: Transport,
+	options: StreamSummarizeOptions,
+	onChunk?: (chunk: StreamSummarizeChunk) => void,
+	onError?: (error: Error) => void,
+): Promise<StreamSummarizeResult> {
+	const client = createFeedClient(transport);
+
+	// Validate options
+	if (!options.feedUrl && !options.articleId) {
+		throw new Error("Either feedUrl or articleId is required");
+	}
+
+	let articleId = "";
+	let fullSummary = "";
+	let wasCached = false;
+
+	try {
+		const stream = client.streamSummarize({
+			feedUrl: options.feedUrl,
+			articleId: options.articleId,
+			content: options.content,
+			title: options.title,
+		});
+
+		for await (const response of stream) {
+			// Update article ID if provided
+			if (response.articleId) {
+				articleId = response.articleId;
+			}
+
+			// Check if cached response
+			if (response.isCached && response.fullSummary) {
+				wasCached = true;
+				fullSummary = response.fullSummary;
+			}
+
+			// Accumulate chunks if not cached
+			if (!response.isCached && response.chunk) {
+				fullSummary += response.chunk;
+			}
+
+			// If final message with full summary, use that
+			if (response.isFinal && response.fullSummary) {
+				fullSummary = response.fullSummary;
+			}
+
+			// Call onChunk callback if provided
+			if (onChunk) {
+				onChunk({
+					chunk: response.chunk,
+					isFinal: response.isFinal,
+					articleId: response.articleId,
+					isCached: response.isCached,
+					fullSummary: response.fullSummary ?? null,
+				});
+			}
+		}
+
+		return {
+			articleId,
+			summary: fullSummary,
+			wasCached,
+		};
+	} catch (error) {
+		if (onError && error instanceof Error) {
+			onError(error);
+		}
+		throw error;
+	}
+}
+
+/**
+ * Stream article summarization with AbortController support.
+ *
+ * @param transport - The Connect transport to use
+ * @param options - Request options (feedUrl or articleId required)
+ * @param onChunk - Callback when a chunk is received
+ * @param onComplete - Callback when streaming completes successfully
+ * @param onError - Callback on error (optional)
+ * @returns AbortController to cancel the stream
+ */
+export function streamSummarizeWithAbort(
+	transport: Transport,
+	options: StreamSummarizeOptions,
+	onChunk: (chunk: StreamSummarizeChunk) => void,
+	onComplete: (result: StreamSummarizeResult) => void,
+	onError?: (error: Error) => void,
+): AbortController {
+	const abortController = new AbortController();
+
+	// Validate options
+	if (!options.feedUrl && !options.articleId) {
+		const error = new Error("Either feedUrl or articleId is required");
+		if (onError) {
+			onError(error);
+		}
+		return abortController;
+	}
+
+	const client = createFeedClient(transport);
+
+	// Start streaming in background
+	(async () => {
+		let articleId = "";
+		let fullSummary = "";
+		let wasCached = false;
+
+		try {
+			const stream = client.streamSummarize(
+				{
+					feedUrl: options.feedUrl,
+					articleId: options.articleId,
+					content: options.content,
+					title: options.title,
+				},
+				{ signal: abortController.signal },
+			);
+
+			for await (const response of stream) {
+				// Update article ID if provided
+				if (response.articleId) {
+					articleId = response.articleId;
+				}
+
+				// Check if cached response
+				if (response.isCached && response.fullSummary) {
+					wasCached = true;
+					fullSummary = response.fullSummary;
+				}
+
+				// Accumulate chunks if not cached
+				if (!response.isCached && response.chunk) {
+					fullSummary += response.chunk;
+				}
+
+				// If final message with full summary, use that
+				if (response.isFinal && response.fullSummary) {
+					fullSummary = response.fullSummary;
+				}
+
+				// Call onChunk callback
+				onChunk({
+					chunk: response.chunk,
+					isFinal: response.isFinal,
+					articleId: response.articleId,
+					isCached: response.isCached,
+					fullSummary: response.fullSummary ?? null,
+				});
+			}
+
+			// Call onComplete when streaming finishes successfully
+			onComplete({
+				articleId,
+				summary: fullSummary,
+				wasCached,
+			});
+		} catch (error) {
+			// Only report error if not aborted
+			if (!abortController.signal.aborted && onError && error instanceof Error) {
+				onError(error);
+			}
+		}
+	})();
+
+	return abortController;
+}
+
+// =============================================================================
+// Mark As Read Functions (Phase 7)
+// =============================================================================
+
+/**
+ * Result of marking a feed as read
+ */
+export interface MarkAsReadResult {
+	message: string;
+}
+
+/**
+ * Marks a feed/article as read via Connect-RPC.
+ *
+ * @param transport - The Connect transport to use
+ * @param feedUrl - The URL of the feed/article to mark as read
+ * @returns The success message
+ */
+export async function markAsRead(
+	transport: Transport,
+	feedUrl: string,
+): Promise<MarkAsReadResult> {
+	const client = createFeedClient(transport);
+	const response = await client.markAsRead({ feedUrl });
+
+	return {
+		message: response.message,
+	};
+}

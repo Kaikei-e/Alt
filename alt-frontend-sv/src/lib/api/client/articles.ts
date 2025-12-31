@@ -1,4 +1,5 @@
 import { callClientAPI } from "./core";
+import { createClientTransport } from "$lib/connect/transport.client";
 
 /**
  * Safe HTML string type (server-sanitized)
@@ -70,38 +71,36 @@ export async function getArticleSummaryClient(
 
 /**
  * Get feed content on-the-fly (クライアントサイド)
+ * Connect-RPC を使用
  */
 export async function getFeedContentOnTheFlyClient(
 	feedUrl: string,
 ): Promise<FeedContentOnTheFlyResponse> {
-	return callClientAPI<FeedContentOnTheFlyResponse>("/v1/articles/content", {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify({ url: feedUrl }),
-	});
+	const transport = createClientTransport();
+	const { fetchArticleContent } = await import("$lib/connect/articles");
+	const response = await fetchArticleContent(transport, feedUrl);
+
+	return {
+		content: response.content,
+		article_id: response.articleId,
+	};
 }
 
 /**
  * Archive content (クライアントサイド)
+ * Connect-RPC を使用
  */
 export async function archiveContentClient(
 	feedUrl: string,
 	title?: string,
 ): Promise<MessageResponse> {
-	const payload: Record<string, unknown> = { feed_url: feedUrl };
-	if (title?.trim()) {
-		payload.title = title.trim();
-	}
+	const transport = createClientTransport();
+	const { archiveArticle } = await import("$lib/connect/articles");
+	const response = await archiveArticle(transport, feedUrl, title?.trim());
 
-	return callClientAPI<MessageResponse>("/v1/articles/archive", {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify(payload),
-	});
+	return {
+		message: response.message,
+	};
 }
 
 /**
@@ -300,17 +299,18 @@ export async function summarizeArticleClient(
 
 /**
  * Register favorite feed (クライアントサイド)
+ * Connect-RPC を使用
  */
 export async function registerFavoriteFeedClient(
 	url: string,
 ): Promise<MessageResponse> {
-	return callClientAPI<MessageResponse>("/v1/feeds/register/favorite", {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify({ url }),
-	});
+	const transport = createClientTransport();
+	const { registerFavoriteFeed } = await import("$lib/connect/rss");
+	const response = await registerFavoriteFeed(transport, url);
+
+	return {
+		message: response.message,
+	};
 }
 
 /**

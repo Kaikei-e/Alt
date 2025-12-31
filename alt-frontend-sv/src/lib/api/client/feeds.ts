@@ -1,8 +1,7 @@
 import type { CursorResponse } from "$lib/api";
-import type { BackendFeedItem, RenderFeed } from "$lib/schema/feed";
-import { sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
+import type { RenderFeed } from "$lib/schema/feed";
+import { toRenderFeed } from "$lib/schema/feed";
 import type {
-	CursorSearchResponse,
 	FeedSearchResult,
 	SearchFeedItem,
 } from "$lib/schema/search";
@@ -11,7 +10,6 @@ import type {
 	FeedStatsSummary,
 	UnreadCountResponse,
 } from "$lib/schema/stats";
-import { callClientAPI } from "./core";
 import { createClientTransport } from "$lib/connect/transport.client";
 import {
 	getUnreadFeeds,
@@ -22,7 +20,6 @@ import {
 import {
 	formatPublishedDate,
 	generateExcerptFromDescription,
-	mergeTagsLabel,
 	normalizeUrl,
 } from "$lib/utils/feed";
 
@@ -67,17 +64,14 @@ export async function getFeedsWithCursorClient(
 
 /**
  * フィードを既読にする（クライアントサイド）
+ * Connect-RPC を使用
  */
 export async function updateFeedReadStatusClient(
 	feedUrl: string,
 ): Promise<void> {
-	await callClientAPI("/v1/feeds/read", {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify({ feed_url: feedUrl }),
-	});
+	const transport = createClientTransport();
+	const { markAsRead } = await import("$lib/connect/feeds");
+	await markAsRead(transport, feedUrl);
 }
 
 /**
@@ -140,21 +134,45 @@ export async function searchFeedsClient(
 
 /**
  * フィードの統計情報を取得（クライアントサイド）
+ * Connect-RPC を使用
  */
 export async function getFeedStatsClient(): Promise<FeedStatsSummary> {
-	return callClientAPI<FeedStatsSummary>("/v1/feeds/stats");
+	const transport = createClientTransport();
+	const { getFeedStats } = await import("$lib/connect/feeds");
+	const response = await getFeedStats(transport);
+
+	return {
+		feed_amount: { amount: response.feedAmount },
+		summarized_feed: { amount: response.summarizedFeedAmount },
+	};
 }
 
 /**
  * フィードの詳細統計情報を取得（クライアントサイド）
+ * Connect-RPC を使用
  */
 export async function getDetailedFeedStatsClient(): Promise<DetailedFeedStatsSummary> {
-	return callClientAPI<DetailedFeedStatsSummary>("/v1/feeds/stats/detailed");
+	const transport = createClientTransport();
+	const { getDetailedFeedStats } = await import("$lib/connect/feeds");
+	const response = await getDetailedFeedStats(transport);
+
+	return {
+		feed_amount: { amount: response.feedAmount },
+		total_articles: { amount: response.articleAmount },
+		unsummarized_articles: { amount: response.unsummarizedFeedAmount },
+	};
 }
 
 /**
  * 未読記事数を取得（クライアントサイド）
+ * Connect-RPC を使用
  */
 export async function getUnreadCountClient(): Promise<UnreadCountResponse> {
-	return callClientAPI<UnreadCountResponse>("/v1/feeds/count/unreads");
+	const transport = createClientTransport();
+	const { getUnreadCount } = await import("$lib/connect/feeds");
+	const response = await getUnreadCount(transport);
+
+	return {
+		count: response.count,
+	};
 }

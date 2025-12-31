@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/feeds/v2/feeds.proto.
  */
 export const file_alt_feeds_v2_feeds: GenFile = /*@__PURE__*/
-  fileDesc("ChhhbHQvZmVlZHMvdjIvZmVlZHMucHJvdG8SDGFsdC5mZWVkcy52MiIVChNHZXRGZWVkU3RhdHNSZXF1ZXN0IksKFEdldEZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEh4KFnN1bW1hcml6ZWRfZmVlZF9hbW91bnQYAiABKAMiHQobR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXF1ZXN0Im0KHEdldERldGFpbGVkRmVlZFN0YXRzUmVzcG9uc2USEwoLZmVlZF9hbW91bnQYASABKAMSFgoOYXJ0aWNsZV9hbW91bnQYAiABKAMSIAoYdW5zdW1tYXJpemVkX2ZlZWRfYW1vdW50GAMgASgDIhcKFUdldFVucmVhZENvdW50UmVxdWVzdCInChZHZXRVbnJlYWRDb3VudFJlc3BvbnNlEg0KBWNvdW50GAEgASgDIhgKFlN0cmVhbUZlZWRTdGF0c1JlcXVlc3QimgEKF1N0cmVhbUZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEiAKGHVuc3VtbWFyaXplZF9mZWVkX2Ftb3VudBgCIAEoAxIWCg50b3RhbF9hcnRpY2xlcxgDIAEoAxIwCghtZXRhZGF0YRgEIAEoCzIeLmFsdC5mZWVkcy52Mi5SZXNwb25zZU1ldGFkYXRhIjsKEFJlc3BvbnNlTWV0YWRhdGESEQoJdGltZXN0YW1wGAEgASgDEhQKDGlzX2hlYXJ0YmVhdBgCIAEoCCJ/CghGZWVkSXRlbRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRITCgtkZXNjcmlwdGlvbhgDIAEoCRIMCgRsaW5rGAQgASgJEhEKCXB1Ymxpc2hlZBgFIAEoCRISCgpjcmVhdGVkX2F0GAYgASgJEg4KBmF1dGhvchgHIAEoCSJiChVHZXRVbnJlYWRGZWVkc1JlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAUSEQoEdmlldxgDIAEoCUgBiAEBQgkKB19jdXJzb3JCBwoFX3ZpZXciegoWR2V0VW5yZWFkRmVlZHNSZXNwb25zZRIkCgRkYXRhGAEgAygLMhYuYWx0LmZlZWRzLnYyLkZlZWRJdGVtEhgKC25leHRfY3Vyc29yGAIgASgJSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yIkQKE0dldFJlYWRGZWVkc1JlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAVCCQoHX2N1cnNvciJ4ChRHZXRSZWFkRmVlZHNSZXNwb25zZRIkCgRkYXRhGAEgAygLMhYuYWx0LmZlZWRzLnYyLkZlZWRJdGVtEhgKC25leHRfY3Vyc29yGAIgASgJSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yIkgKF0dldEZhdm9yaXRlRmVlZHNSZXF1ZXN0EhMKBmN1cnNvchgBIAEoCUgAiAEBEg0KBWxpbWl0GAIgASgFQgkKB19jdXJzb3IifAoYR2V0RmF2b3JpdGVGZWVkc1Jlc3BvbnNlEiQKBGRhdGEYASADKAsyFi5hbHQuZmVlZHMudjIuRmVlZEl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAlIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IiYQoSU2VhcmNoRmVlZHNSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEhMKBmN1cnNvchgCIAEoBUgAiAEBEhIKBWxpbWl0GAMgASgFSAGIAQFCCQoHX2N1cnNvckIICgZfbGltaXQidwoTU2VhcmNoRmVlZHNSZXNwb25zZRIkCgRkYXRhGAEgAygLMhYuYWx0LmZlZWRzLnYyLkZlZWRJdGVtEhgKC25leHRfY3Vyc29yGAIgASgFSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yMv0FCgtGZWVkU2VydmljZRJVCgxHZXRGZWVkU3RhdHMSIS5hbHQuZmVlZHMudjIuR2V0RmVlZFN0YXRzUmVxdWVzdBoiLmFsdC5mZWVkcy52Mi5HZXRGZWVkU3RhdHNSZXNwb25zZRJtChRHZXREZXRhaWxlZEZlZWRTdGF0cxIpLmFsdC5mZWVkcy52Mi5HZXREZXRhaWxlZEZlZWRTdGF0c1JlcXVlc3QaKi5hbHQuZmVlZHMudjIuR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXNwb25zZRJbCg5HZXRVbnJlYWRDb3VudBIjLmFsdC5mZWVkcy52Mi5HZXRVbnJlYWRDb3VudFJlcXVlc3QaJC5hbHQuZmVlZHMudjIuR2V0VW5yZWFkQ291bnRSZXNwb25zZRJgCg9TdHJlYW1GZWVkU3RhdHMSJC5hbHQuZmVlZHMudjIuU3RyZWFtRmVlZFN0YXRzUmVxdWVzdBolLmFsdC5mZWVkcy52Mi5TdHJlYW1GZWVkU3RhdHNSZXNwb25zZTABElsKDkdldFVucmVhZEZlZWRzEiMuYWx0LmZlZWRzLnYyLkdldFVucmVhZEZlZWRzUmVxdWVzdBokLmFsdC5mZWVkcy52Mi5HZXRVbnJlYWRGZWVkc1Jlc3BvbnNlElUKDEdldFJlYWRGZWVkcxIhLmFsdC5mZWVkcy52Mi5HZXRSZWFkRmVlZHNSZXF1ZXN0GiIuYWx0LmZlZWRzLnYyLkdldFJlYWRGZWVkc1Jlc3BvbnNlEmEKEEdldEZhdm9yaXRlRmVlZHMSJS5hbHQuZmVlZHMudjIuR2V0RmF2b3JpdGVGZWVkc1JlcXVlc3QaJi5hbHQuZmVlZHMudjIuR2V0RmF2b3JpdGVGZWVkc1Jlc3BvbnNlElIKC1NlYXJjaEZlZWRzEiAuYWx0LmZlZWRzLnYyLlNlYXJjaEZlZWRzUmVxdWVzdBohLmFsdC5mZWVkcy52Mi5TZWFyY2hGZWVkc1Jlc3BvbnNlQiRaImFsdC9nZW4vcHJvdG8vYWx0L2ZlZWRzL3YyO2ZlZWRzdjJiBnByb3RvMw");
+  fileDesc("ChhhbHQvZmVlZHMvdjIvZmVlZHMucHJvdG8SDGFsdC5mZWVkcy52MiIVChNHZXRGZWVkU3RhdHNSZXF1ZXN0IksKFEdldEZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEh4KFnN1bW1hcml6ZWRfZmVlZF9hbW91bnQYAiABKAMiHQobR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXF1ZXN0Im0KHEdldERldGFpbGVkRmVlZFN0YXRzUmVzcG9uc2USEwoLZmVlZF9hbW91bnQYASABKAMSFgoOYXJ0aWNsZV9hbW91bnQYAiABKAMSIAoYdW5zdW1tYXJpemVkX2ZlZWRfYW1vdW50GAMgASgDIhcKFUdldFVucmVhZENvdW50UmVxdWVzdCInChZHZXRVbnJlYWRDb3VudFJlc3BvbnNlEg0KBWNvdW50GAEgASgDIhgKFlN0cmVhbUZlZWRTdGF0c1JlcXVlc3QimgEKF1N0cmVhbUZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEiAKGHVuc3VtbWFyaXplZF9mZWVkX2Ftb3VudBgCIAEoAxIWCg50b3RhbF9hcnRpY2xlcxgDIAEoAxIwCghtZXRhZGF0YRgEIAEoCzIeLmFsdC5mZWVkcy52Mi5SZXNwb25zZU1ldGFkYXRhIjsKEFJlc3BvbnNlTWV0YWRhdGESEQoJdGltZXN0YW1wGAEgASgDEhQKDGlzX2hlYXJ0YmVhdBgCIAEoCCJ/CghGZWVkSXRlbRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRITCgtkZXNjcmlwdGlvbhgDIAEoCRIMCgRsaW5rGAQgASgJEhEKCXB1Ymxpc2hlZBgFIAEoCRISCgpjcmVhdGVkX2F0GAYgASgJEg4KBmF1dGhvchgHIAEoCSJiChVHZXRVbnJlYWRGZWVkc1JlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAUSEQoEdmlldxgDIAEoCUgBiAEBQgkKB19jdXJzb3JCBwoFX3ZpZXciegoWR2V0VW5yZWFkRmVlZHNSZXNwb25zZRIkCgRkYXRhGAEgAygLMhYuYWx0LmZlZWRzLnYyLkZlZWRJdGVtEhgKC25leHRfY3Vyc29yGAIgASgJSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yIkQKE0dldFJlYWRGZWVkc1JlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAVCCQoHX2N1cnNvciJ4ChRHZXRSZWFkRmVlZHNSZXNwb25zZRIkCgRkYXRhGAEgAygLMhYuYWx0LmZlZWRzLnYyLkZlZWRJdGVtEhgKC25leHRfY3Vyc29yGAIgASgJSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yIkgKF0dldEZhdm9yaXRlRmVlZHNSZXF1ZXN0EhMKBmN1cnNvchgBIAEoCUgAiAEBEg0KBWxpbWl0GAIgASgFQgkKB19jdXJzb3IifAoYR2V0RmF2b3JpdGVGZWVkc1Jlc3BvbnNlEiQKBGRhdGEYASADKAsyFi5hbHQuZmVlZHMudjIuRmVlZEl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAlIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IiYQoSU2VhcmNoRmVlZHNSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEhMKBmN1cnNvchgCIAEoBUgAiAEBEhIKBWxpbWl0GAMgASgFSAGIAQFCCQoHX2N1cnNvckIICgZfbGltaXQidwoTU2VhcmNoRmVlZHNSZXNwb25zZRIkCgRkYXRhGAEgAygLMhYuYWx0LmZlZWRzLnYyLkZlZWRJdGVtEhgKC25leHRfY3Vyc29yGAIgASgFSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yIqQBChZTdHJlYW1TdW1tYXJpemVSZXF1ZXN0EhUKCGZlZWRfdXJsGAEgASgJSACIAQESFwoKYXJ0aWNsZV9pZBgCIAEoCUgBiAEBEhQKB2NvbnRlbnQYAyABKAlIAogBARISCgV0aXRsZRgEIAEoCUgDiAEBQgsKCV9mZWVkX3VybEINCgtfYXJ0aWNsZV9pZEIKCghfY29udGVudEIICgZfdGl0bGUijQEKF1N0cmVhbVN1bW1hcml6ZVJlc3BvbnNlEg0KBWNodW5rGAEgASgJEhAKCGlzX2ZpbmFsGAIgASgIEhIKCmFydGljbGVfaWQYAyABKAkSEQoJaXNfY2FjaGVkGAQgASgIEhkKDGZ1bGxfc3VtbWFyeRgFIAEoCUgAiAEBQg8KDV9mdWxsX3N1bW1hcnkiJQoRTWFya0FzUmVhZFJlcXVlc3QSEAoIZmVlZF91cmwYASABKAkiJQoSTWFya0FzUmVhZFJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkysAcKC0ZlZWRTZXJ2aWNlElUKDEdldEZlZWRTdGF0cxIhLmFsdC5mZWVkcy52Mi5HZXRGZWVkU3RhdHNSZXF1ZXN0GiIuYWx0LmZlZWRzLnYyLkdldEZlZWRTdGF0c1Jlc3BvbnNlEm0KFEdldERldGFpbGVkRmVlZFN0YXRzEikuYWx0LmZlZWRzLnYyLkdldERldGFpbGVkRmVlZFN0YXRzUmVxdWVzdBoqLmFsdC5mZWVkcy52Mi5HZXREZXRhaWxlZEZlZWRTdGF0c1Jlc3BvbnNlElsKDkdldFVucmVhZENvdW50EiMuYWx0LmZlZWRzLnYyLkdldFVucmVhZENvdW50UmVxdWVzdBokLmFsdC5mZWVkcy52Mi5HZXRVbnJlYWRDb3VudFJlc3BvbnNlEmAKD1N0cmVhbUZlZWRTdGF0cxIkLmFsdC5mZWVkcy52Mi5TdHJlYW1GZWVkU3RhdHNSZXF1ZXN0GiUuYWx0LmZlZWRzLnYyLlN0cmVhbUZlZWRTdGF0c1Jlc3BvbnNlMAESWwoOR2V0VW5yZWFkRmVlZHMSIy5hbHQuZmVlZHMudjIuR2V0VW5yZWFkRmVlZHNSZXF1ZXN0GiQuYWx0LmZlZWRzLnYyLkdldFVucmVhZEZlZWRzUmVzcG9uc2USVQoMR2V0UmVhZEZlZWRzEiEuYWx0LmZlZWRzLnYyLkdldFJlYWRGZWVkc1JlcXVlc3QaIi5hbHQuZmVlZHMudjIuR2V0UmVhZEZlZWRzUmVzcG9uc2USYQoQR2V0RmF2b3JpdGVGZWVkcxIlLmFsdC5mZWVkcy52Mi5HZXRGYXZvcml0ZUZlZWRzUmVxdWVzdBomLmFsdC5mZWVkcy52Mi5HZXRGYXZvcml0ZUZlZWRzUmVzcG9uc2USUgoLU2VhcmNoRmVlZHMSIC5hbHQuZmVlZHMudjIuU2VhcmNoRmVlZHNSZXF1ZXN0GiEuYWx0LmZlZWRzLnYyLlNlYXJjaEZlZWRzUmVzcG9uc2USYAoPU3RyZWFtU3VtbWFyaXplEiQuYWx0LmZlZWRzLnYyLlN0cmVhbVN1bW1hcml6ZVJlcXVlc3QaJS5hbHQuZmVlZHMudjIuU3RyZWFtU3VtbWFyaXplUmVzcG9uc2UwARJPCgpNYXJrQXNSZWFkEh8uYWx0LmZlZWRzLnYyLk1hcmtBc1JlYWRSZXF1ZXN0GiAuYWx0LmZlZWRzLnYyLk1hcmtBc1JlYWRSZXNwb25zZUIkWiJhbHQvZ2VuL3Byb3RvL2FsdC9mZWVkcy92MjtmZWVkc3YyYgZwcm90bzM");
 
 /**
  * GetFeedStatsRequest is the request for getting basic feed statistics
@@ -558,6 +558,139 @@ export const SearchFeedsResponseSchema: GenMessage<SearchFeedsResponse> = /*@__P
   messageDesc(file_alt_feeds_v2_feeds, 17);
 
 /**
+ * StreamSummarizeRequest is the request for streaming article summarization
+ *
+ * @generated from message alt.feeds.v2.StreamSummarizeRequest
+ */
+export type StreamSummarizeRequest = Message<"alt.feeds.v2.StreamSummarizeRequest"> & {
+  /**
+   * Feed/article URL (required if article_id not provided)
+   *
+   * @generated from field: optional string feed_url = 1;
+   */
+  feedUrl?: string;
+
+  /**
+   * Existing article ID (required if feed_url not provided)
+   *
+   * @generated from field: optional string article_id = 2;
+   */
+  articleId?: string;
+
+  /**
+   * Pre-fetched content (optional, skips fetch if provided)
+   *
+   * @generated from field: optional string content = 3;
+   */
+  content?: string;
+
+  /**
+   * Article title (optional)
+   *
+   * @generated from field: optional string title = 4;
+   */
+  title?: string;
+};
+
+/**
+ * Describes the message alt.feeds.v2.StreamSummarizeRequest.
+ * Use `create(StreamSummarizeRequestSchema)` to create a new message.
+ */
+export const StreamSummarizeRequestSchema: GenMessage<StreamSummarizeRequest> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 18);
+
+/**
+ * StreamSummarizeResponse contains a chunk of the summarization stream
+ *
+ * @generated from message alt.feeds.v2.StreamSummarizeResponse
+ */
+export type StreamSummarizeResponse = Message<"alt.feeds.v2.StreamSummarizeResponse"> & {
+  /**
+   * Text chunk from summarization
+   *
+   * @generated from field: string chunk = 1;
+   */
+  chunk: string;
+
+  /**
+   * Whether this is the final chunk
+   *
+   * @generated from field: bool is_final = 2;
+   */
+  isFinal: boolean;
+
+  /**
+   * Article ID (populated after first chunk or from cache)
+   *
+   * @generated from field: string article_id = 3;
+   */
+  articleId: string;
+
+  /**
+   * Whether this response is from cache
+   *
+   * @generated from field: bool is_cached = 4;
+   */
+  isCached: boolean;
+
+  /**
+   * Full summary (only populated if is_cached=true or is_final=true)
+   *
+   * @generated from field: optional string full_summary = 5;
+   */
+  fullSummary?: string;
+};
+
+/**
+ * Describes the message alt.feeds.v2.StreamSummarizeResponse.
+ * Use `create(StreamSummarizeResponseSchema)` to create a new message.
+ */
+export const StreamSummarizeResponseSchema: GenMessage<StreamSummarizeResponse> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 19);
+
+/**
+ * MarkAsReadRequest is the request for marking a feed as read
+ *
+ * @generated from message alt.feeds.v2.MarkAsReadRequest
+ */
+export type MarkAsReadRequest = Message<"alt.feeds.v2.MarkAsReadRequest"> & {
+  /**
+   * Feed/article URL to mark as read (required)
+   *
+   * @generated from field: string feed_url = 1;
+   */
+  feedUrl: string;
+};
+
+/**
+ * Describes the message alt.feeds.v2.MarkAsReadRequest.
+ * Use `create(MarkAsReadRequestSchema)` to create a new message.
+ */
+export const MarkAsReadRequestSchema: GenMessage<MarkAsReadRequest> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 20);
+
+/**
+ * MarkAsReadResponse is the response after marking a feed as read
+ *
+ * @generated from message alt.feeds.v2.MarkAsReadResponse
+ */
+export type MarkAsReadResponse = Message<"alt.feeds.v2.MarkAsReadResponse"> & {
+  /**
+   * Success message
+   *
+   * @generated from field: string message = 1;
+   */
+  message: string;
+};
+
+/**
+ * Describes the message alt.feeds.v2.MarkAsReadResponse.
+ * Use `create(MarkAsReadResponseSchema)` to create a new message.
+ */
+export const MarkAsReadResponseSchema: GenMessage<MarkAsReadResponse> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 21);
+
+/**
  * FeedService provides feed-related operations
  *
  * Unary RPCs (Phase 1)
@@ -649,6 +782,28 @@ export const FeedService: GenService<{
     methodKind: "unary";
     input: typeof SearchFeedsRequestSchema;
     output: typeof SearchFeedsResponseSchema;
+  },
+  /**
+   * StreamSummarize streams article summarization in real-time
+   * Replaces POST /v1/feeds/summarize/stream (SSE)
+   *
+   * @generated from rpc alt.feeds.v2.FeedService.StreamSummarize
+   */
+  streamSummarize: {
+    methodKind: "server_streaming";
+    input: typeof StreamSummarizeRequestSchema;
+    output: typeof StreamSummarizeResponseSchema;
+  },
+  /**
+   * MarkAsRead marks a feed/article as read
+   * Replaces POST /v1/feeds/read
+   *
+   * @generated from rpc alt.feeds.v2.FeedService.MarkAsRead
+   */
+  markAsRead: {
+    methodKind: "unary";
+    input: typeof MarkAsReadRequestSchema;
+    output: typeof MarkAsReadResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_feeds_v2_feeds, 0);
