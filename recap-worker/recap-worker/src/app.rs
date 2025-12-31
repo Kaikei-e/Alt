@@ -158,7 +158,10 @@ mod tests {
     async fn component_registry_builds() {
         let config = {
             let _lock = ENV_MUTEX.lock().expect("env mutex");
-            // SAFETY: test code adjusts deterministic environment state sequentially.
+            // SAFETY: Environment variable modifications are protected by ENV_MUTEX held via _lock.
+            // The mutex ensures exclusive access during test setup, preventing data races from
+            // parallel tests. All values are valid UTF-8 string literals. The lock lifetime extends
+            // through Config::from_env() to guarantee environment stability during config construction.
             unsafe {
                 std::env::set_var(
                     "RECAP_DB_DSN",

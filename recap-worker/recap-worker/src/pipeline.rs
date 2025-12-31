@@ -457,7 +457,11 @@ mod tests {
 
     fn setup_config() -> Arc<Config> {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
-        // SAFETY: tests adjust environment variables in a controlled manner.
+        // SAFETY: Environment variable modifications are protected by ENV_MUTEX which is held
+        // for the duration of this function (via _lock). The mutex prevents concurrent access
+        // from other tests running in parallel, ensuring no data races. All values are valid
+        // UTF-8 string literals. The lock is held until Config::from_env() completes, ensuring
+        // the environment is stable during config construction.
         unsafe {
             std::env::set_var(
                 "RECAP_DB_DSN",

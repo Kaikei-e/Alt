@@ -31,6 +31,12 @@ impl TokenCounter {
                 .to_string();
 
             // 環境変数にも設定しておく（他のライブラリが使用する可能性があるため）
+            // SAFETY: This function is called during TokenCounter initialization, which typically
+            // occurs once at application startup. While theoretically multiple threads could call
+            // this concurrently, in practice this is initialized by the ComponentRegistry during
+            // single-threaded startup. The environment variable is set to a read-only value and
+            // not modified afterwards. If concurrent initialization becomes a concern, consider
+            // using std::sync::Once or an initialization lock.
             unsafe {
                 std::env::set_var("HF_TOKEN", &token);
             }
@@ -55,6 +61,10 @@ impl TokenCounter {
         };
 
         // 環境変数も設定（hf-hubが環境変数を読み取る可能性があるため）
+        // SAFETY: Setting HF_TOKEN environment variable for use by hf-hub and related libraries.
+        // This is safe because: (1) it's called during initialization before concurrent access,
+        // (2) the token value is immutable after being set, and (3) this duplicates the setting
+        // from above (line 35) to ensure the variable is available for FromPretrainedParameters.
         unsafe {
             std::env::set_var("HF_TOKEN", &token);
         }

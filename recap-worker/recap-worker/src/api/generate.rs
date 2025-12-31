@@ -111,6 +111,10 @@ mod tests {
     async fn trigger_returns_accepted_with_configured_defaults() {
         let config = {
             let _lock = ENV_MUTEX.lock().expect("env mutex");
+            // SAFETY: Environment variable modifications are protected by ENV_MUTEX held via _lock.
+            // The mutex ensures exclusive access during test setup, preventing concurrent modifications
+            // from parallel tests. All values are valid UTF-8 string literals. The lock lifetime
+            // extends through Config::from_env() to ensure environment stability during config loading.
             unsafe {
                 std::env::set_var(
                     "RECAP_DB_DSN",
@@ -167,6 +171,9 @@ mod tests {
 
         {
             let _lock = ENV_MUTEX.lock().expect("env mutex cleanup");
+            // SAFETY: Environment variable cleanup protected by ENV_MUTEX held via _lock.
+            // This ensures no other test is concurrently accessing or modifying these variables.
+            // Cleanup is necessary to prevent test pollution and ensure test isolation.
             unsafe {
                 std::env::remove_var("RECAP_DB_DSN");
                 std::env::remove_var("NEWS_CREATOR_BASE_URL");

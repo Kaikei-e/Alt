@@ -144,6 +144,10 @@ mod tests {
 
     #[test]
     fn load_from_env_defaults_when_missing() {
+        // SAFETY: Modifying environment variable without mutex protection. This is potentially
+        // unsafe if tests run in parallel, as concurrent env var access can cause data races.
+        // TODO: Consider using ENV_MUTEX (from config::ENV_MUTEX) to protect this operation.
+        // Current assumption: This test doesn't conflict with other tests using GRAPH_CONFIG.
         unsafe {
             env::remove_var("GRAPH_CONFIG");
         }
@@ -154,10 +158,16 @@ mod tests {
     #[test]
     fn load_from_env_reads_yaml() {
         let fixture = fixtures_path();
+        // SAFETY: Setting environment variable without mutex protection. This is potentially
+        // unsafe if tests run in parallel, as concurrent env var modifications can cause data races.
+        // TODO: Consider using ENV_MUTEX (from config::ENV_MUTEX) to protect this operation.
+        // Current assumption: This test doesn't conflict with other tests using GRAPH_CONFIG.
         unsafe {
             env::set_var("GRAPH_CONFIG", &fixture);
         }
         let overrides = GraphOverrideSettings::load_from_env().expect("should parse fixture");
+        // SAFETY: Removing environment variable without mutex protection. See TODO above.
+        // This cleanup is necessary but should be protected by ENV_MUTEX for proper isolation.
         unsafe {
             env::remove_var("GRAPH_CONFIG");
         }

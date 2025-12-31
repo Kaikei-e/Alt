@@ -1022,14 +1022,20 @@ mod tests {
     use super::*;
 
     fn set_env(name: &str, value: &str) {
-        // SAFETY: tests run sequentially and assign valid UTF-8 values.
+        // SAFETY: Environment variable modification is protected by ENV_MUTEX (acquired by all
+        // tests before calling this function). The mutex ensures exclusive access during env var
+        // mutations, preventing data races. All callers must hold the ENV_MUTEX lock before
+        // invoking this function. The value parameter is valid UTF-8 (&str guarantee).
         unsafe {
             env::set_var(name, value);
         }
     }
 
     fn remove_env(name: &str) {
-        // SAFETY: tests run sequentially and clean up deterministic keys.
+        // SAFETY: Environment variable modification is protected by ENV_MUTEX (acquired by all
+        // tests before calling this function). The mutex ensures exclusive access during env var
+        // mutations, preventing data races. All callers must hold the ENV_MUTEX lock before
+        // invoking this function.
         unsafe {
             env::remove_var(name);
         }
