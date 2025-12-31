@@ -10,10 +10,12 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o rag-orchestrator cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o backfill cmd/backfill/main.go
 
 FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /app/rag-orchestrator .
+COPY --from=builder /app/backfill .
 
 EXPOSE 9010
 EXPOSE 9011
