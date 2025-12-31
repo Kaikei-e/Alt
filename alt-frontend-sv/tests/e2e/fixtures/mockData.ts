@@ -276,6 +276,8 @@ export const CONNECT_RPC_PATHS = {
 	fetchArticleContent: "**/api/v2/alt.articles.v2.ArticleService/FetchArticleContent",
 	// Augur service
 	augurStreamChat: "**/api/v2/alt.augur.v2.AugurService/StreamChat",
+	// MorningLetter service
+	morningLetterStreamChat: "**/api/v2/alt.morning_letter.v2.MorningLetterService/StreamChat",
 };
 
 // Connect-RPC Article Content response
@@ -313,6 +315,66 @@ export const CONNECT_AUGUR_SIMPLE_RESPONSE = [
 		kind: "done",
 		done: {
 			answer: "Response to your question.",
+			citations: [],
+		},
+	},
+];
+
+// =============================================================================
+// MorningLetter Mock Data
+// =============================================================================
+
+/**
+ * Connect-RPC MorningLetter streaming response messages.
+ * MorningLetter is similar to Augur but includes time window metadata.
+ */
+export const CONNECT_MORNING_LETTER_STREAM_MESSAGES = [
+	{
+		kind: "meta",
+		meta: {
+			citations: [],
+			timeWindow: {
+				since: "2025-12-30T00:00:00Z",
+				until: "2025-12-31T00:00:00Z",
+			},
+			articlesScanned: 42,
+		},
+	},
+	{ kind: "delta", delta: "Based on the past 24 hours of news, " },
+	{ kind: "delta", delta: "here are the key developments: " },
+	{ kind: "delta", delta: "AI research has made significant progress." },
+	{
+		kind: "done",
+		done: {
+			answer: "Based on the past 24 hours of news, here are the key developments: AI research has made significant progress.",
+			citations: [
+				{ url: "https://example.com/ai-news", title: "AI Research Update", publishedAt: "2025-12-31T08:00:00Z" },
+				{ url: "https://example.com/tech-weekly", title: "Tech Weekly", publishedAt: "2025-12-31T06:00:00Z" },
+			],
+		},
+	},
+];
+
+/**
+ * Simple Connect-RPC MorningLetter response for conversation tests
+ */
+export const CONNECT_MORNING_LETTER_SIMPLE_RESPONSE = [
+	{
+		kind: "meta",
+		meta: {
+			citations: [],
+			timeWindow: {
+				since: "2025-12-30T00:00:00Z",
+				until: "2025-12-31T00:00:00Z",
+			},
+			articlesScanned: 10,
+		},
+	},
+	{ kind: "delta", delta: "Here is your morning briefing." },
+	{
+		kind: "done",
+		done: {
+			answer: "Here is your morning briefing.",
 			citations: [],
 		},
 	},
