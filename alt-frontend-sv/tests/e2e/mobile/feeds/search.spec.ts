@@ -1,37 +1,13 @@
-import { expect, type Route, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { gotoMobileRoute } from "../../helpers/navigation";
-
-const SEARCH_RESPONSE = {
-	data: [
-		{
-			title: "AI Weekly",
-			description:
-				"A deep dive into AI research, tooling, and production learnings.",
-			link: "https://example.com/ai-weekly",
-			published: "2025-12-18T08:30:00Z",
-			author: { name: "Casey" },
-		},
-	],
-	next_cursor: null,
-	has_more: false,
-};
-
-const fulfillJson = async (
-	route: Route,
-	body: unknown,
-	status: number = 200,
-) => {
-	await route.fulfill({
-		status,
-		contentType: "application/json",
-		body: JSON.stringify(body),
-	});
-};
+import { fulfillJson } from "../../utils/mockHelpers";
+import { CONNECT_SEARCH_RESPONSE, CONNECT_RPC_PATHS } from "../../fixtures/mockData";
 
 test.describe("mobile feeds routes - search", () => {
 	test("search page shows results for a valid query", async ({ page }) => {
-		await page.route("**/api/v1/feeds/search", (route) =>
-			fulfillJson(route, SEARCH_RESPONSE),
+		// Mock Connect-RPC search endpoint
+		await page.route(CONNECT_RPC_PATHS.searchFeeds, (route) =>
+			fulfillJson(route, CONNECT_SEARCH_RESPONSE),
 		);
 
 		await gotoMobileRoute(page, "feeds/search");

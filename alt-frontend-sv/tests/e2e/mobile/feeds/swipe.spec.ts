@@ -1,59 +1,80 @@
-import { expect, type Route, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { gotoMobileRoute } from "../../helpers/navigation";
+import { fulfillJson } from "../../utils/mockHelpers";
+import {
+	CONNECT_RPC_PATHS,
+	CONNECT_ARTICLE_CONTENT_RESPONSE,
+} from "../../fixtures/mockData";
 
-const FEEDS_RESPONSE = {
+// Swipe mode uses view: "swipe" parameter which returns single item
+const SWIPE_FEEDS_RESPONSE = {
 	data: [
 		{
+			id: "feed-1",
 			title: "AI Trends",
 			description: "Latest AI updates across the ecosystem.",
 			link: "https://example.com/ai-trends",
-			published: "2025-12-20T10:00:00Z",
-			author: { name: "Alice" },
-		},
-		{
-			title: "Svelte 5 Tips",
-			description: "Runes-first patterns for fast interfaces.",
-			link: "https://example.com/svelte-5",
-			published: "2025-12-19T09:00:00Z",
-			author: { name: "Bob" },
+			published: "2 hours ago",
+			createdAt: new Date().toISOString(),
+			author: "Alice",
 		},
 	],
-	next_cursor: null,
-	has_more: false,
+	nextCursor: "next-cursor-123",
+	hasMore: true,
 };
 
 const VIEWED_FEEDS_EMPTY = {
 	data: [],
-	next_cursor: null,
-	has_more: false,
+	nextCursor: "",
+	hasMore: false,
 };
 
-const ARTICLE_CONTENT_RESPONSE = {
-	content: "<p>This is a mocked article.</p>",
+// v1 REST API format for swipe +page.ts loader
+const V1_FEEDS_RESPONSE = {
+	data: [
+		{
+			id: "feed-1",
+			url: "https://example.com/ai-trends",
+			title: "AI Trends",
+			description: "Latest AI updates across the ecosystem.",
+			link: "https://example.com/ai-trends",
+			published_at: "2025-12-20T10:00:00Z",
+			tags: ["AI", "Tech"],
+			author: { name: "Alice" },
+			thumbnail: null,
+			feed_domain: "example.com",
+			read_at: null,
+			created_at: new Date().toISOString(),
+			updated_at: new Date().toISOString(),
+		},
+	],
+	next_cursor: "next-cursor-123",
+	has_more: true,
 };
 
-const fulfillJson = async (
-	route: Route,
-	body: unknown,
-	status: number = 200,
-) => {
-	await route.fulfill({
-		status,
-		contentType: "application/json",
-		body: JSON.stringify(body),
-	});
+const V1_ARTICLE_CONTENT = {
+	content: "<p>This is a mocked article content.</p>",
 };
 
 test.describe("mobile feeds routes - swipe", () => {
 	test("swipe page renders swipe card and action footer", async ({ page }) => {
+		// Mock v1 REST API endpoints (used by +page.ts loader)
 		await page.route("**/api/v1/feeds/fetch/cursor**", (route) =>
-			fulfillJson(route, FEEDS_RESPONSE),
-		);
-		await page.route("**/api/v1/feeds/fetch/viewed/cursor**", (route) =>
-			fulfillJson(route, VIEWED_FEEDS_EMPTY),
+			fulfillJson(route, V1_FEEDS_RESPONSE),
 		);
 		await page.route("**/api/v1/articles/content**", (route) =>
-			fulfillJson(route, ARTICLE_CONTENT_RESPONSE),
+			fulfillJson(route, V1_ARTICLE_CONTENT),
+		);
+
+		// Mock Connect-RPC endpoints (used by client-side components)
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, SWIPE_FEEDS_RESPONSE),
+		);
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, VIEWED_FEEDS_EMPTY),
+		);
+		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
+			fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE),
 		);
 
 		// Initial load might fail SSR if mocks are not hit by server, but client should retry or load

@@ -2,10 +2,12 @@ import { expect, test } from "@playwright/test";
 import { DesktopFeedsPage } from "../../pages/desktop/DesktopFeedsPage";
 import { fulfillJson } from "../../utils/mockHelpers";
 import {
-	FEEDS_RESPONSE,
-	FEEDS_EMPTY_RESPONSE,
-	MARK_AS_READ_RESPONSE,
-	ARTICLE_CONTENT_RESPONSE,
+	CONNECT_FEEDS_RESPONSE,
+	CONNECT_FEEDS_EMPTY_RESPONSE,
+	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
+	CONNECT_MARK_AS_READ_RESPONSE,
+	CONNECT_RPC_PATHS,
+	CONNECT_ARTICLE_CONTENT_RESPONSE,
 } from "../../fixtures/mockData";
 
 test.describe("Desktop Feeds", () => {
@@ -14,14 +16,14 @@ test.describe("Desktop Feeds", () => {
 	test.beforeEach(async ({ page }) => {
 		feedsPage = new DesktopFeedsPage(page);
 
-		// Default mock for feeds endpoint
-		await page.route("**/api/v1/feeds/fetch/cursor**", (route) =>
-			fulfillJson(route, FEEDS_RESPONSE),
+		// Mock Connect-RPC endpoints
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, CONNECT_FEEDS_RESPONSE),
 		);
 
-		// Mock viewed feeds (empty)
-		await page.route("**/api/v1/feeds/fetch/viewed/cursor**", (route) =>
-			fulfillJson(route, FEEDS_EMPTY_RESPONSE),
+		// Mock read feeds (empty)
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
 		);
 	});
 
@@ -75,9 +77,9 @@ test.describe("Desktop Feeds", () => {
 	});
 
 	test("marks feed as read and closes modal", async ({ page }) => {
-		// Mock mark as read endpoint
-		await page.route("**/api/v1/feeds/read", (route) =>
-			fulfillJson(route, MARK_AS_READ_RESPONSE),
+		// Mock mark as read endpoint (Connect-RPC)
+		await page.route(CONNECT_RPC_PATHS.markAsRead, (route) =>
+			fulfillJson(route, CONNECT_MARK_AS_READ_RESPONSE),
 		);
 
 		await feedsPage.goto();
@@ -99,9 +101,9 @@ test.describe("Desktop Feeds", () => {
 	});
 
 	test("shows empty state when no feeds", async ({ page }) => {
-		// Override with empty response
-		await page.route("**/api/v1/feeds/fetch/cursor**", (route) =>
-			fulfillJson(route, FEEDS_EMPTY_RESPONSE),
+		// Override with empty response (Connect-RPC)
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, CONNECT_FEEDS_EMPTY_RESPONSE),
 		);
 
 		await feedsPage.goto();
@@ -112,9 +114,9 @@ test.describe("Desktop Feeds", () => {
 	});
 
 	test("shows error state on API failure", async ({ page }) => {
-		// Mock error response
-		await page.route("**/api/v1/feeds/fetch/cursor**", (route) =>
-			fulfillJson(route, { error: "Server error" }, 500),
+		// Mock error response (Connect-RPC)
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, { code: "internal", message: "Server error" }, 500),
 		);
 
 		await feedsPage.goto();
@@ -127,9 +129,9 @@ test.describe("Desktop Feeds", () => {
 	});
 
 	test("loads full article in modal", async ({ page }) => {
-		// Mock article content endpoint
-		await page.route("**/api/v1/articles/content**", (route) =>
-			fulfillJson(route, ARTICLE_CONTENT_RESPONSE),
+		// Mock article content endpoint (Connect-RPC)
+		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
+			fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE),
 		);
 
 		await feedsPage.goto();
@@ -152,11 +154,12 @@ test.describe("Desktop Feeds - Accessibility", () => {
 	test("feed cards have accessible labels", async ({ page }) => {
 		const feedsPage = new DesktopFeedsPage(page);
 
-		await page.route("**/api/v1/feeds/fetch/cursor**", (route) =>
-			fulfillJson(route, FEEDS_RESPONSE),
+		// Mock Connect-RPC endpoints
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, CONNECT_FEEDS_RESPONSE),
 		);
-		await page.route("**/api/v1/feeds/fetch/viewed/cursor**", (route) =>
-			fulfillJson(route, FEEDS_EMPTY_RESPONSE),
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
 		);
 
 		await feedsPage.goto();

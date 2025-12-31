@@ -1,8 +1,22 @@
 import { expect, test } from "@playwright/test";
 import { gotoMobileRoute } from "../../helpers/navigation";
+import { fulfillJson } from "../../utils/mockHelpers";
+import {
+	CONNECT_FEEDS_RESPONSE,
+	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
+	CONNECT_RPC_PATHS,
+} from "../../fixtures/mockData";
 
 test.describe("mobile feeds routes", () => {
 	test("feeds list renders with multiple cards", async ({ page }) => {
+		// Mock Connect-RPC endpoints
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, CONNECT_FEEDS_RESPONSE),
+		);
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
+		);
+
 		await gotoMobileRoute(page, "feeds");
 
 		// Wait for loading to complete - check for loading indicator to disappear
@@ -31,6 +45,14 @@ test.describe("mobile feeds routes", () => {
 	});
 
 	test("feed card has external link", async ({ page }) => {
+		// Mock Connect-RPC endpoints
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, CONNECT_FEEDS_RESPONSE),
+		);
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
+		);
+
 		await gotoMobileRoute(page, "feeds");
 
 		// Wait for cards to load
@@ -47,6 +69,14 @@ test.describe("mobile feeds routes", () => {
 	});
 
 	test("feed card has show details button", async ({ page }) => {
+		// Mock Connect-RPC endpoints
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, CONNECT_FEEDS_RESPONSE),
+		);
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
+		);
+
 		await gotoMobileRoute(page, "feeds");
 
 		// Wait for cards to load

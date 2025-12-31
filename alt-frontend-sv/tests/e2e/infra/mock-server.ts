@@ -100,6 +100,44 @@ const VIEWED_FEEDS_EMPTY = {
 	has_more: false,
 };
 
+// Connect-RPC response format (camelCase for JSON mapping)
+const CONNECT_FEEDS_RESPONSE = {
+	data: [
+		{
+			id: "feed-1",
+			title: "AI Trends",
+			description: "Deep dive into the ecosystem.",
+			link: "https://example.com/ai-trends",
+			published: "2 hours ago",
+			createdAt: new Date().toISOString(),
+			author: "Alice",
+		},
+		{
+			id: "feed-2",
+			title: "Svelte 5 Tips",
+			description: "Runes-first patterns for fast interfaces.",
+			link: "https://example.com/svelte-5",
+			published: "1 day ago",
+			createdAt: new Date().toISOString(),
+			author: "Bob",
+		},
+	],
+	nextCursor: "next-cursor-123",
+	hasMore: true,
+};
+
+const CONNECT_READ_FEEDS_RESPONSE = {
+	data: [],
+	nextCursor: "",
+	hasMore: false,
+};
+
+const CONNECT_ARTICLE_CONTENT_RESPONSE = {
+	url: "https://example.com/ai-trends",
+	content: "<p>This is a mocked article content for E2E testing.</p>",
+	articleId: "article-123",
+};
+
 // --- Kratos Server ---
 const kratosServer = http.createServer((req, res) => {
 	const parsedUrl = url.parse(req.url!, true);
@@ -308,6 +346,73 @@ const backendServer = http.createServer((req, res) => {
 				article_id: "mock-article-id",
 			}),
 		);
+		return;
+	}
+
+	// =============================================================================
+	// Connect-RPC v2 Endpoints (server-side SSR calls)
+	// =============================================================================
+
+	// Connect-RPC: GetUnreadFeeds
+	if (path === "/alt.feeds.v2.FeedService/GetUnreadFeeds") {
+		res.setHeader("Content-Type", "application/json");
+		res.writeHead(200);
+		res.end(JSON.stringify(CONNECT_FEEDS_RESPONSE));
+		return;
+	}
+
+	// Connect-RPC: GetReadFeeds
+	if (path === "/alt.feeds.v2.FeedService/GetReadFeeds") {
+		res.setHeader("Content-Type", "application/json");
+		res.writeHead(200);
+		res.end(JSON.stringify(CONNECT_READ_FEEDS_RESPONSE));
+		return;
+	}
+
+	// Connect-RPC: MarkAsRead
+	if (path === "/alt.feeds.v2.FeedService/MarkAsRead") {
+		res.setHeader("Content-Type", "application/json");
+		res.writeHead(200);
+		res.end(JSON.stringify({ message: "Feed marked as read" }));
+		return;
+	}
+
+	// Connect-RPC: FetchArticleContent
+	if (path === "/alt.articles.v2.ArticleService/FetchArticleContent") {
+		res.setHeader("Content-Type", "application/json");
+		res.writeHead(200);
+		res.end(JSON.stringify(CONNECT_ARTICLE_CONTENT_RESPONSE));
+		return;
+	}
+
+	// Connect-RPC: StreamChat (Augur) - streaming response
+	if (path === "/alt.augur.v2.AugurService/StreamChat") {
+		res.setHeader("Content-Type", "application/connect+json");
+		res.setHeader("Connect-Content-Encoding", "identity");
+		res.setHeader("Connect-Accept-Encoding", "identity");
+		res.writeHead(200);
+		// Connect-RPC streaming format: newline-delimited JSON
+		const messages = [
+			{ result: { kind: "delta", payload: { case: "delta", value: "Based on your recent feeds, " } } },
+			{ result: { kind: "delta", payload: { case: "delta", value: "here are the key trends: " } } },
+			{ result: { kind: "delta", payload: { case: "delta", value: "AI development is accelerating." } } },
+			{
+				result: {
+					kind: "done",
+					payload: {
+						case: "done",
+						value: {
+							answer: "Based on your recent feeds, here are the key trends: AI development is accelerating.",
+							citations: [
+								{ url: "https://example.com/ai", title: "AI News", publishedAt: "2025-12-20T10:00:00Z" },
+							],
+						},
+					},
+				},
+			},
+			{ result: {} },
+		];
+		res.end(messages.map((m) => JSON.stringify(m)).join("\n") + "\n");
 		return;
 	}
 

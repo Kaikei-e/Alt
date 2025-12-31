@@ -1,28 +1,13 @@
-import { expect, type Route, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { gotoMobileRoute } from "../../helpers/navigation";
-
-const VIEWED_FEEDS_EMPTY = {
-	data: [],
-	next_cursor: null,
-	has_more: false,
-};
-
-const fulfillJson = async (
-	route: Route,
-	body: unknown,
-	status: number = 200,
-) => {
-	await route.fulfill({
-		status,
-		contentType: "application/json",
-		body: JSON.stringify(body),
-	});
-};
+import { fulfillJson } from "../../utils/mockHelpers";
+import { CONNECT_READ_FEEDS_EMPTY_RESPONSE, CONNECT_RPC_PATHS } from "../../fixtures/mockData";
 
 test.describe("mobile feeds routes - viewed", () => {
 	test("viewed page shows empty history state", async ({ page }) => {
-		await page.route("**/api/v1/feeds/fetch/viewed/cursor**", (route) =>
-			fulfillJson(route, VIEWED_FEEDS_EMPTY),
+		// Mock Connect-RPC endpoint
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
 		);
 
 		await gotoMobileRoute(page, "feeds/viewed");

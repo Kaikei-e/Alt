@@ -197,3 +197,123 @@ export const createRecapGenre = (
 	})),
 	bullets: [`Key point about ${genreName}`],
 });
+
+// =============================================================================
+// Connect-RPC v2 Mock Data (camelCase format)
+// =============================================================================
+
+/**
+ * Connect-RPC FeedItem format (camelCase)
+ */
+export const CONNECT_FEEDS_RESPONSE = {
+	data: [
+		{
+			id: "feed-1",
+			title: "AI Trends",
+			description: "Deep dive into the ecosystem.",
+			link: "https://example.com/ai-trends",
+			published: "2 hours ago",
+			createdAt: new Date().toISOString(),
+			author: "Alice",
+		},
+		{
+			id: "feed-2",
+			title: "Svelte 5 Tips",
+			description: "Runes-first patterns for fast interfaces.",
+			link: "https://example.com/svelte-5",
+			published: "1 day ago",
+			createdAt: new Date().toISOString(),
+			author: "Bob",
+		},
+	],
+	nextCursor: "next-cursor-123",
+	hasMore: true,
+};
+
+export const CONNECT_FEEDS_EMPTY_RESPONSE = {
+	data: [],
+	nextCursor: "",
+	hasMore: false,
+};
+
+export const CONNECT_READ_FEEDS_EMPTY_RESPONSE = {
+	data: [],
+	nextCursor: "",
+	hasMore: false,
+};
+
+export const CONNECT_MARK_AS_READ_RESPONSE = {
+	message: "Feed marked as read",
+};
+
+export const CONNECT_SEARCH_RESPONSE = {
+	data: [
+		{
+			id: "search-1",
+			title: "AI Weekly",
+			description: "A deep dive into AI research, tooling, and production learnings.",
+			link: "https://example.com/ai-weekly",
+			published: "3 days ago",
+			createdAt: new Date().toISOString(),
+			author: "Casey",
+		},
+	],
+	nextCursor: null,
+	hasMore: false,
+};
+
+// Connect-RPC service paths
+export const CONNECT_RPC_PATHS = {
+	getUnreadFeeds: "**/api/v2/alt.feeds.v2.FeedService/GetUnreadFeeds",
+	getReadFeeds: "**/api/v2/alt.feeds.v2.FeedService/GetReadFeeds",
+	markAsRead: "**/api/v2/alt.feeds.v2.FeedService/MarkAsRead",
+	searchFeeds: "**/api/v2/alt.feeds.v2.FeedService/SearchFeeds",
+	getFeedStats: "**/api/v2/alt.feeds.v2.FeedService/GetFeedStats",
+	getDetailedFeedStats: "**/api/v2/alt.feeds.v2.FeedService/GetDetailedFeedStats",
+	getUnreadCount: "**/api/v2/alt.feeds.v2.FeedService/GetUnreadCount",
+	streamSummarize: "**/api/v2/alt.feeds.v2.FeedService/StreamSummarize",
+	// Article service
+	fetchArticleContent: "**/api/v2/alt.articles.v2.ArticleService/FetchArticleContent",
+	// Augur service
+	augurStreamChat: "**/api/v2/alt.augur.v2.AugurService/StreamChat",
+};
+
+// Connect-RPC Article Content response
+export const CONNECT_ARTICLE_CONTENT_RESPONSE = {
+	url: "https://example.com/ai-trends",
+	content: "<p>This is a mocked article content for E2E testing.</p>",
+	articleId: "article-123",
+};
+
+/**
+ * Connect-RPC Augur streaming response messages.
+ * Uses protobuf JSON wire format where oneof fields use their field name directly.
+ */
+export const CONNECT_AUGUR_STREAM_MESSAGES = [
+	{ kind: "delta", delta: "Based on your recent feeds, " },
+	{ kind: "delta", delta: "here are the key trends: " },
+	{ kind: "delta", delta: "AI development is accelerating." },
+	{
+		kind: "done",
+		done: {
+			answer: "Based on your recent feeds, here are the key trends: AI development is accelerating.",
+			citations: [
+				{ url: "https://example.com/ai", title: "AI News", publishedAt: "2025-12-20T10:00:00Z" },
+			],
+		},
+	},
+];
+
+/**
+ * Simple Connect-RPC Augur response for conversation tests
+ */
+export const CONNECT_AUGUR_SIMPLE_RESPONSE = [
+	{ kind: "delta", delta: "Response to your question." },
+	{
+		kind: "done",
+		done: {
+			answer: "Response to your question.",
+			citations: [],
+		},
+	},
+];

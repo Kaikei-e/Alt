@@ -107,6 +107,7 @@ export default defineConfig({
 			KRATOS_INTERNAL_URL: "http://127.0.0.1:4001",
 			AUTH_HUB_INTERNAL_URL: "http://127.0.0.1:4002",
 			BACKEND_BASE_URL: "http://127.0.0.1:4003",
+			BACKEND_CONNECT_URL: "http://127.0.0.1:4003",
 		},
 	},
 });

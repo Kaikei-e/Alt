@@ -1,7 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { DesktopAugurPage } from "../../pages/desktop/DesktopAugurPage";
-import { fulfillStream } from "../../utils/mockHelpers";
-import { AUGUR_RESPONSE_CHUNKS } from "../../fixtures/mockData";
+import { fulfillStream, fulfillConnectStream } from "../../utils/mockHelpers";
+import {
+	AUGUR_RESPONSE_CHUNKS,
+	CONNECT_AUGUR_STREAM_MESSAGES,
+	CONNECT_AUGUR_SIMPLE_RESPONSE,
+	CONNECT_RPC_PATHS,
+} from "../../fixtures/mockData";
 
 test.describe("Desktop Augur Chat", () => {
 	let augurPage: DesktopAugurPage;
@@ -41,9 +46,9 @@ test.describe("Desktop Augur Chat", () => {
 	});
 
 	test("sends user message and displays it", async ({ page }) => {
-		// Mock the streaming response
-		await page.route("**/api/v1/augur/chat", async (route) => {
-			await fulfillStream(route, AUGUR_RESPONSE_CHUNKS);
+		// Mock Connect-RPC streaming response
+		await page.route(CONNECT_RPC_PATHS.augurStreamChat, async (route) => {
+			await fulfillConnectStream(route, CONNECT_AUGUR_STREAM_MESSAGES);
 		});
 
 		await augurPage.goto();
@@ -58,9 +63,9 @@ test.describe("Desktop Augur Chat", () => {
 
 	test("shows thinking indicator while waiting for response", async ({ page }) => {
 		// Mock with delay to observe loading state
-		await page.route("**/api/v1/augur/chat", async (route) => {
+		await page.route(CONNECT_RPC_PATHS.augurStreamChat, async (route) => {
 			await new Promise((resolve) => setTimeout(resolve, 500));
-			await fulfillStream(route, AUGUR_RESPONSE_CHUNKS);
+			await fulfillConnectStream(route, CONNECT_AUGUR_STREAM_MESSAGES);
 		});
 
 		await augurPage.goto();
@@ -73,8 +78,8 @@ test.describe("Desktop Augur Chat", () => {
 	});
 
 	test("displays AI response after sending message", async ({ page }) => {
-		await page.route("**/api/v1/augur/chat", async (route) => {
-			await fulfillStream(route, AUGUR_RESPONSE_CHUNKS);
+		await page.route(CONNECT_RPC_PATHS.augurStreamChat, async (route) => {
+			await fulfillConnectStream(route, CONNECT_AUGUR_STREAM_MESSAGES);
 		});
 
 		await augurPage.goto();
@@ -85,7 +90,7 @@ test.describe("Desktop Augur Chat", () => {
 		// Wait for response
 		await augurPage.waitForResponse();
 
-		// Verify response appears (content from AUGUR_RESPONSE_CHUNKS)
+		// Verify response appears (content from CONNECT_AUGUR_STREAM_MESSAGES)
 		await expect(
 			page.getByText(/based on your recent feeds/i),
 		).toBeVisible({ timeout: 10000 });
@@ -93,9 +98,9 @@ test.describe("Desktop Augur Chat", () => {
 
 	test("disables input while processing", async ({ page }) => {
 		// Mock with delay
-		await page.route("**/api/v1/augur/chat", async (route) => {
+		await page.route(CONNECT_RPC_PATHS.augurStreamChat, async (route) => {
 			await new Promise((resolve) => setTimeout(resolve, 1000));
-			await fulfillStream(route, AUGUR_RESPONSE_CHUNKS);
+			await fulfillConnectStream(route, CONNECT_AUGUR_STREAM_MESSAGES);
 		});
 
 		await augurPage.goto();
@@ -110,11 +115,11 @@ test.describe("Desktop Augur Chat", () => {
 
 	test("handles error gracefully", async ({ page }) => {
 		// Mock error response
-		await page.route("**/api/v1/augur/chat", async (route) => {
+		await page.route(CONNECT_RPC_PATHS.augurStreamChat, async (route) => {
 			await route.fulfill({
 				status: 500,
 				contentType: "application/json",
-				body: JSON.stringify({ error: "Server error" }),
+				body: JSON.stringify({ code: "internal", message: "Server error" }),
 			});
 		});
 
@@ -132,9 +137,8 @@ test.describe("Desktop Augur Chat - Conversation", () => {
 	test("maintains conversation history", async ({ page }) => {
 		const augurPage = new DesktopAugurPage(page);
 
-		await page.route("**/api/v1/augur/chat", async (route) => {
-			// Plain text chunks for streaming response
-			await fulfillStream(route, ["Response to your question."]);
+		await page.route(CONNECT_RPC_PATHS.augurStreamChat, async (route) => {
+			await fulfillConnectStream(route, CONNECT_AUGUR_SIMPLE_RESPONSE);
 		});
 
 		await augurPage.goto();
