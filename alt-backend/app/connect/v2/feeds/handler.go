@@ -523,7 +523,11 @@ func (h *Handler) StreamSummarize(
 		h.logger.Error("failed to start stream summarization", "error", err, "article_id", resolvedArticleID)
 		return connect.NewError(connect.CodeInternal, err)
 	}
-	defer preProcessorStream.Close()
+	defer func() {
+		if closeErr := preProcessorStream.Close(); closeErr != nil {
+			h.logger.Debug("failed to close pre-processor stream", "error", closeErr)
+		}
+	}()
 
 	// Stream chunks to client and capture full summary
 	fullSummary, err := h.streamAndCapture(ctx, stream, preProcessorStream, resolvedArticleID)

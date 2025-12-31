@@ -69,7 +69,11 @@ func (h *Handler) StreamChat(
 		h.logger.Error("failed to connect to rag-orchestrator", slog.String("error", err.Error()))
 		return connect.NewError(connect.CodeInternal, err)
 	}
-	defer upstreamStream.Close()
+	defer func() {
+		if closeErr := upstreamStream.Close(); closeErr != nil {
+			h.logger.Debug("failed to close upstream stream", slog.String("error", closeErr.Error()))
+		}
+	}()
 
 	// Proxy events from rag-orchestrator to client
 	eventCount := 0

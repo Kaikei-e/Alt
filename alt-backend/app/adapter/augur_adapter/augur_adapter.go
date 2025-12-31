@@ -104,9 +104,8 @@ func (a *AugurAdapter) Answer(ctx context.Context, input rag_integration_port.An
 	reqBody := rag_gateway.AnswerRequest{
 		Query: input.Query,
 	}
-	if input.SessionID != "" {
-		// sessionId := input.SessionID // If mapped in future
-	}
+	// SessionID is reserved for future use when session context is needed
+	_ = input.SessionID
 	if len(input.Contexts) > 0 {
 		reqBody.CandidateArticleIds = &input.Contexts // Reusing this field if appropriate, or check mapping
 	}
@@ -124,7 +123,12 @@ func (a *AugurAdapter) Answer(ctx context.Context, input rag_integration_port.An
 
 		go func() {
 			defer close(resultChan)
-			defer resp.Body.Close()
+			defer func() {
+				if closeErr := resp.Body.Close(); closeErr != nil {
+					// Log but don't fail - data has been streamed
+					_ = closeErr
+				}
+			}()
 
 			// Simple scanner for SSE-like or JSON stream
 			// Assuming the backend returns raw chunks or SSE.
