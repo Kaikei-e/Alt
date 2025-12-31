@@ -36,6 +36,22 @@ func fallbackText(r io.Reader) string {
 	return b.String()
 }
 
+// extractPTagsFromReader extracts p tags from a non-gzip reader.
+func extractPTagsFromReader(_ context.Context, r io.Reader) ([]string, error) {
+	policy := bluemonday.NewPolicy()
+	policy.AllowElements("p", "a", "strong", "em")
+	cleaned := policy.SanitizeReader(r)
+
+	doc, err := goquery.NewDocumentFromReader(cleaned)
+	if err != nil {
+		return []string{fallbackText(cleaned)}, nil
+	}
+	return doc.Find("p").
+		Map(func(_ int, s *goquery.Selection) string {
+			return strings.TrimSpace(s.Text())
+		}), nil
+}
+
 func ExtractPTags(ctx context.Context, htmlR io.Reader, ctype string) ([]string, error) {
 	// ① エンコーディング変換
 	r, err := newUTF8Reader(ctx, htmlR, ctype)
@@ -45,8 +61,17 @@ func ExtractPTags(ctx context.Context, htmlR io.Reader, ctype string) ([]string,
 
 	// ② gzip 展開 & ③ サイズ制限
 	r = io.LimitReader(r, 1<<20)
-	gzr, _ := gzip.NewReader(r)
-	defer gzr.Close()
+	gzr, gzErr := gzip.NewReader(r)
+	if gzErr != nil {
+		// Not gzip encoded, use original reader
+		return extractPTagsFromReader(ctx, r)
+	}
+	defer func() {
+		if closeErr := gzr.Close(); closeErr != nil {
+			// Log but don't fail - data has been read
+			_ = closeErr
+		}
+	}()
 
 	// ④ Sanitize
 	policy := bluemonday.NewPolicy()

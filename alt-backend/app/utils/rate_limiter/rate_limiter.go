@@ -1,3 +1,5 @@
+// Package rate_limiter provides host-based rate limiting for external API calls.
+// It ensures compliance with rate limits by throttling requests to each unique host.
 package rate_limiter
 
 import (
@@ -10,12 +12,18 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// HostRateLimiter implements per-host rate limiting using token bucket algorithm.
+// It maintains separate rate limiters for each unique host to prevent exceeding
+// external API rate limits.
 type HostRateLimiter struct {
 	limiters map[string]*rate.Limiter
 	mu       sync.RWMutex
 	interval time.Duration
 }
 
+// NewHostRateLimiter creates a new HostRateLimiter with the specified interval
+// between requests to the same host. The interval should be at least 5 seconds
+// for external API compliance.
 func NewHostRateLimiter(interval time.Duration) *HostRateLimiter {
 	return &HostRateLimiter{
 		limiters: make(map[string]*rate.Limiter),
@@ -23,6 +31,9 @@ func NewHostRateLimiter(interval time.Duration) *HostRateLimiter {
 	}
 }
 
+// WaitForHost blocks until the rate limiter allows a request to the host
+// extracted from the URL. It returns an error if the URL is invalid or
+// if the context is cancelled.
 func (h *HostRateLimiter) WaitForHost(ctx context.Context, urlStr string) error {
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {

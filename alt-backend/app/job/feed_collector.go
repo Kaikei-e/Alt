@@ -72,7 +72,11 @@ func validateFeedURL(ctx context.Context, feedURL url.URL, rateLimiter *rate_lim
 	if err != nil {
 		return fmt.Errorf("failed to access URL: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			logger.Logger.Debug("Failed to close response body", "error", closeErr)
+		}
+	}()
 
 	// Log response details for debugging
 	logger.Logger.Info("Feed URL validation response",

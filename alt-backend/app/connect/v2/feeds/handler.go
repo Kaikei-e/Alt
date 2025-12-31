@@ -666,7 +666,12 @@ func (h *Handler) fetchArticleContent(ctx context.Context, urlStr string) (strin
 	if err != nil {
 		return "", "", fmt.Errorf("failed to fetch URL: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", "", fmt.Errorf("server returned status %d", resp.StatusCode)
@@ -725,7 +730,10 @@ func (h *Handler) streamPreProcessorSummarize(ctx context.Context, content, arti
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - error response has been read
+			_ = closeErr
+		}
 		return nil, fmt.Errorf("pre-processor returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 

@@ -1,3 +1,6 @@
+// Package middleware provides HTTP middleware components for the Alt backend.
+// It includes authentication, rate limiting, DoS protection, and other
+// cross-cutting concerns for the Echo web framework.
 package middleware
 
 import (

@@ -48,7 +48,9 @@ func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 					feedModels[i] = feedModel
 				}
 
-				r.RegisterMultipleFeeds(ctx, feedModels)
+				if err := r.RegisterMultipleFeeds(ctx, feedModels); err != nil {
+					logger.Logger.Error("Error registering feeds", "error", err, "feed_count", len(feedModels))
+				}
 			}
 
 			logger.Logger.Info("Sleeping for 1 hour until next feed collection cycle")

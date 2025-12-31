@@ -1,3 +1,6 @@
+// Package errors provides structured error handling for the Alt backend application.
+// It defines error types with codes, messages, causes, and contextual information
+// to facilitate debugging and error tracking across the application layers.
 package errors
 
 import (
@@ -5,8 +8,10 @@ import (
 	"log/slog"
 )
 
+// ErrorCode represents a categorized error type for structured error handling.
 type ErrorCode string
 
+// Error code constants for categorizing application errors.
 const (
 	ErrCodeDatabase       ErrorCode = "DATABASE_ERROR"
 	ErrCodeValidation     ErrorCode = "VALIDATION_ERROR"
@@ -17,6 +22,8 @@ const (
 	ErrCodeUnknown        ErrorCode = "UNKNOWN_ERROR"
 )
 
+// AppError represents a structured application error with code, message, cause, and context.
+// It implements the error interface and supports error unwrapping.
 type AppError struct {
 	Code    ErrorCode
 	Message string
@@ -24,6 +31,7 @@ type AppError struct {
 	Context map[string]interface{}
 }
 
+// Error returns a string representation of the AppError.
 func (e *AppError) Error() string {
 	if e.Cause != nil {
 		return fmt.Sprintf("%s: %s (caused by: %v)", e.Code, e.Message, e.Cause)
@@ -31,11 +39,12 @@ func (e *AppError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
 
+// Unwrap returns the underlying cause error for use with errors.Is and errors.As.
 func (e *AppError) Unwrap() error {
 	return e.Cause
 }
 
-// Helper functions for common error patterns
+// DatabaseError creates an AppError for database-related errors.
 func DatabaseError(message string, cause error, context map[string]interface{}) *AppError {
 	return &AppError{
 		Code:    ErrCodeDatabase,
@@ -45,6 +54,7 @@ func DatabaseError(message string, cause error, context map[string]interface{}) 
 	}
 }
 
+// ValidationError creates an AppError for input validation failures.
 func ValidationError(message string, context map[string]interface{}) *AppError {
 	return &AppError{
 		Code:    ErrCodeValidation,
@@ -53,6 +63,7 @@ func ValidationError(message string, context map[string]interface{}) *AppError {
 	}
 }
 
+// RateLimitError creates an AppError for rate limiting violations.
 func RateLimitError(message string, cause error, context map[string]interface{}) *AppError {
 	return &AppError{
 		Code:    ErrCodeRateLimit,
@@ -62,6 +73,7 @@ func RateLimitError(message string, cause error, context map[string]interface{})
 	}
 }
 
+// ExternalAPIError creates an AppError for external API call failures.
 func ExternalAPIError(message string, cause error, context map[string]interface{}) *AppError {
 	return &AppError{
 		Code:    ErrCodeExternalAPI,
@@ -71,6 +83,7 @@ func ExternalAPIError(message string, cause error, context map[string]interface{
 	}
 }
 
+// TimeoutError creates an AppError for timeout-related errors.
 func TimeoutError(message string, cause error, context map[string]interface{}) *AppError {
 	return &AppError{
 		Code:    ErrCodeTimeout,
@@ -80,6 +93,7 @@ func TimeoutError(message string, cause error, context map[string]interface{}) *
 	}
 }
 
+// TLSCertificateError creates an AppError for TLS certificate validation failures.
 func TLSCertificateError(message string, cause error, context map[string]interface{}) *AppError {
 	return &AppError{
 		Code:    ErrCodeTLSCertificate,
@@ -89,6 +103,7 @@ func TLSCertificateError(message string, cause error, context map[string]interfa
 	}
 }
 
+// UnknownError creates an AppError for unclassified errors.
 func UnknownError(message string, cause error, context map[string]interface{}) *AppError {
 	return &AppError{
 		Code:    ErrCodeUnknown,

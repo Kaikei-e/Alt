@@ -14,6 +14,9 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// Header constants for authentication.
+// These headers are set by the edge proxy (nginx) after validating the user session.
+
 const (
 	userIDHeader       = "X-Alt-User-Id"
 	tenantIDHeader     = "X-Alt-Tenant-Id"
@@ -23,11 +26,12 @@ const (
 	sharedSecretHeader = "X-Alt-Shared-Secret"
 )
 
+// Authentication error types.
 var (
 	errMissingHeaders = errors.New("missing authentication headers")
 	errInvalidUserID  = errors.New("invalid user identifier")
 	errInvalidTenant  = errors.New("invalid tenant identifier")
-	errInvalidSecret  = errors.New("invalid shared secret")
+	errInvalidSecret  = errors.New("invalid shared secret") //nolint:unused // Reserved for future use
 )
 
 // AuthMiddleware validates lightweight identity headers provided by the frontend.

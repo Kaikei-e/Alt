@@ -28,7 +28,12 @@ func CSVToURLList(csvPath string) ([]url.URL, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer csvFile.Close()
+	defer func() {
+		if closeErr := csvFile.Close(); closeErr != nil {
+			// Log error but don't fail - data has been read
+			_ = closeErr
+		}
+	}()
 
 	csvReader := csv.NewReader(csvFile)
 	csvReader.FieldsPerRecord = -1
