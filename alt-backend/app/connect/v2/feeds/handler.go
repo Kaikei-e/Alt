@@ -818,14 +818,22 @@ func (h *Handler) streamAndCapture(
 }
 
 // extractSSEData extracts the data content from an SSE event string.
+// It attempts to JSON-decode the data content to handle escaped Unicode characters.
 func extractSSEData(eventStr string) string {
 	var result strings.Builder
 	lines := strings.Split(eventStr, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "data:") {
-			dataContent := strings.TrimPrefix(line, "data:")
-			result.WriteString(dataContent)
+			dataContent := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			// Try to JSON-decode the content to handle escaped Unicode
+			var decoded string
+			if err := json.Unmarshal([]byte(dataContent), &decoded); err == nil {
+				result.WriteString(decoded)
+			} else {
+				// Fallback: use raw content if not valid JSON
+				result.WriteString(dataContent)
+			}
 		}
 	}
 	return result.String()

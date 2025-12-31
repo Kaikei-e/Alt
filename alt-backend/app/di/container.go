@@ -1,6 +1,8 @@
 package di
 
 import (
+	"log/slog"
+
 	"alt/adapter/augur_adapter"
 	"alt/config"
 	"alt/driver/alt_db"
@@ -23,6 +25,7 @@ import (
 	"alt/gateway/fetch_inoreader_summary_gateway"
 	"alt/gateway/image_fetch_gateway"
 	"alt/gateway/morning_gateway"
+	"alt/gateway/morning_letter_connect_gateway"
 	"alt/gateway/rag_gateway"
 	"alt/gateway/rate_limiter_gateway"
 	"alt/gateway/recap_articles_gateway"
@@ -81,9 +84,10 @@ type ApplicationComponents struct {
 	AltDBRepository *alt_db.AltDBRepository
 
 	// Gateways
-	RobotsTxtGateway    *robots_txt_gateway.RobotsTxtGateway
-	FetchArticleGateway *fetch_article_gateway.FetchArticleGateway
-	RagIntegration      rag_integration_port.RagIntegrationPort
+	RobotsTxtGateway             *robots_txt_gateway.RobotsTxtGateway
+	FetchArticleGateway          *fetch_article_gateway.FetchArticleGateway
+	RagIntegration               rag_integration_port.RagIntegrationPort
+	MorningLetterConnectGateway  *morning_letter_connect_gateway.Gateway
 
 	// Usecases
 	FetchSingleFeedUsecase              *fetch_feed_usecase.FetchSingleFeedUsecase
@@ -261,6 +265,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	scrapingDomainGatewayImpl := scraping_domain_gateway.NewScrapingDomainGateway(altDBRepository)
 	scrapingDomainUsecase := scraping_domain_usecase.NewScrapingDomainUsecaseWithRepository(scrapingDomainGatewayImpl, robotsTxtGatewayImpl, altDBRepository)
 
+	// MorningLetter Connect-RPC gateway (calls rag-orchestrator)
+	morningLetterConnectGateway := morning_letter_connect_gateway.NewGateway(cfg.Rag.OrchestratorConnectURL, slog.Default())
+
 	return &ApplicationComponents{
 		// Ports
 		ConfigPort:       configPort,
@@ -271,9 +278,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		AltDBRepository: altDBRepository,
 
 		// Gateways
-		RobotsTxtGateway:    robotsTxtGatewayImpl,
-		FetchArticleGateway: fetchArticleGatewayImpl,
-		RagIntegration:      ragAdapterImpl,
+		RobotsTxtGateway:            robotsTxtGatewayImpl,
+		FetchArticleGateway:         fetchArticleGatewayImpl,
+		RagIntegration:              ragAdapterImpl,
+		MorningLetterConnectGateway: morningLetterConnectGateway,
 
 		// Usecases
 		FetchSingleFeedUsecase:              fetchSingleFeedUsecase,

@@ -12,6 +12,7 @@ import (
 	"alt/gen/proto/alt/articles/v2/articlesv2connect"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
+	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/gen/proto/alt/rss/v2/rssv2connect"
 
 	"alt/config"
@@ -19,6 +20,7 @@ import (
 	"alt/connect/v2/augur"
 	"alt/connect/v2/feeds"
 	"alt/connect/v2/middleware"
+	"alt/connect/v2/morning_letter"
 	"alt/connect/v2/rss"
 	"alt/di"
 )
@@ -54,6 +56,12 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	augurPath, augurServiceHandler := augurv2connect.NewAugurServiceHandler(augurHandler, opts)
 	mux.Handle(augurPath, augurServiceHandler)
 	logger.Info("Registered Connect-RPC AugurService", "path", augurPath)
+
+	// Register MorningLetter service
+	morningLetterHandler := morning_letter.NewHandler(container.MorningLetterConnectGateway, logger)
+	morningLetterPath, morningLetterServiceHandler := morningletterv2connect.NewMorningLetterServiceHandler(morningLetterHandler, opts)
+	mux.Handle(morningLetterPath, morningLetterServiceHandler)
+	logger.Info("Registered Connect-RPC MorningLetterService", "path", morningLetterPath)
 }
 
 // CreateConnectServer creates the Connect-RPC server with HTTP/2 support.

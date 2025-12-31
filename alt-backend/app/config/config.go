@@ -44,7 +44,8 @@ type RecapConfig struct {
 }
 
 type RAGConfig struct {
-	OrchestratorURL string `json:"orchestrator_url" env:"RAG_ORCHESTRATOR_URL" default:"http://rag-orchestrator:9010"`
+	OrchestratorURL        string `json:"orchestrator_url" env:"RAG_ORCHESTRATOR_URL" default:"http://rag-orchestrator:9010"`
+	OrchestratorConnectURL string `json:"orchestrator_connect_url" env:"RAG_ORCHESTRATOR_CONNECT_URL" default:"http://rag-orchestrator:9011"`
 }
 
 type AuthConfig struct {
