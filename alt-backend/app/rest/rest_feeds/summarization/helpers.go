@@ -84,7 +84,12 @@ func callPreProcessorSummarize(ctx context.Context, content, articleID, title, p
 	if err != nil {
 		return "", fmt.Errorf("failed to call pre-processor: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -143,7 +148,10 @@ func streamPreProcessorSummarize(ctx context.Context, content, articleID, title,
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - error response has been read
+			_ = closeErr
+		}
 
 		errorBody := string(bodyBytes)
 		if readErr != nil {
@@ -197,7 +205,12 @@ func callPreProcessorSummarizeQueue(ctx context.Context, articleID, title, prePr
 	if err != nil {
 		return "", fmt.Errorf("failed to submit queue request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	if resp.StatusCode != http.StatusAccepted {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -247,7 +260,12 @@ func callPreProcessorSummarizeStatus(ctx context.Context, jobID, preProcessorURL
 	if err != nil {
 		return nil, fmt.Errorf("failed to check job status: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil
@@ -358,7 +376,12 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to fetch URL: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", "", "", fmt.Errorf("server returned status %d", resp.StatusCode)

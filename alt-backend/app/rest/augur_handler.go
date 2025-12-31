@@ -120,10 +120,16 @@ func (h *AugurHandler) Answer(c echo.Context) error {
 				if len(eventStr) > 10 && (eventStr[:10] == "event:meta" || eventStr[:11] == "event: meta") {
 					// We need to sanitize this
 					processedEvent := sanitizeMetaEvent(eventStr)
-					c.Response().Write([]byte(processedEvent))
+					if _, err := c.Response().Write([]byte(processedEvent)); err != nil {
+						// Client disconnected, stop streaming
+						return nil
+					}
 				} else {
 					// Pass through other events (delta, etc)
-					c.Response().Write([]byte(eventStr))
+					if _, err := c.Response().Write([]byte(eventStr)); err != nil {
+						// Client disconnected, stop streaming
+						return nil
+					}
 				}
 				c.Response().Flush()
 			}

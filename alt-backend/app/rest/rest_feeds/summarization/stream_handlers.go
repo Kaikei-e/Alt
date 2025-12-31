@@ -104,7 +104,11 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 			logger.Logger.Error("Failed to start stream summarization", "error", err, "article_id", req.ArticleID)
 			return handleError(c, err, "summarize_feed_stream")
 		}
-		defer stream.Close()
+		defer func() {
+			if closeErr := stream.Close(); closeErr != nil {
+				logger.Logger.Debug("Failed to close stream", "error", closeErr)
+			}
+		}()
 
 		logger.Logger.Info("Stream obtained from pre-processor", "article_id", req.ArticleID)
 		setStreamingHeaders(c)

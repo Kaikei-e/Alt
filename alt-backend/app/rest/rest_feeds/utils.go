@@ -295,7 +295,12 @@ func FetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to fetch URL: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	// Check status code
 	if resp.StatusCode != http.StatusOK {
@@ -411,7 +416,12 @@ func CallPreProcessorSummarize(ctx context.Context, content string, articleID st
 	if err != nil {
 		return "", fmt.Errorf("failed to call pre-processor: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - response has been processed
+			_ = closeErr
+		}
+	}()
 
 	// Check status code
 	if resp.StatusCode != http.StatusOK {
@@ -484,7 +494,10 @@ func StreamPreProcessorSummarize(ctx context.Context, content string, articleID 
 	if resp.StatusCode != http.StatusOK {
 		// Read error response body for better error reporting
 		bodyBytes, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log but don't fail - error response has been read
+			_ = closeErr
+		}
 
 		errorBody := string(bodyBytes)
 		if readErr != nil {

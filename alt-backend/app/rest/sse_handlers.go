@@ -106,7 +106,10 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 
 		// Send initial data
 		if jsonData, err := json.Marshal(initialStats); err == nil {
-			c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
+			if _, writeErr := c.Response().Write([]byte("data: " + string(jsonData) + "\n\n")); writeErr != nil {
+				logger.Logger.Debug("Failed to send initial SSE data", "error", writeErr)
+				return nil
+			}
 			flusher.Flush()
 		}
 
