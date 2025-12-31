@@ -391,7 +391,8 @@ func TestHealthMetricsCollector_ConcurrentAccess(t *testing.T) {
 
 	// Verify final metrics
 	metrics := collector.GetHealthMetrics(ctx)
-	expectedRequests := uint64(numWorkers * requestsPerWorker)
+	// Convert to uint64 before multiplication to prevent overflow
+	expectedRequests := uint64(numWorkers) * uint64(requestsPerWorker)
 
 	assert.Equal(t, expectedRequests, metrics.RequestCount,
 		"should record all concurrent requests")

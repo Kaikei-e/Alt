@@ -18,6 +18,12 @@ import (
 	"pre-processor/utils"
 )
 
+// URL scheme constants
+const (
+	SchemeHTTP  = "http"
+	SchemeHTTPS = "https"
+)
+
 // HTTPClient interface for dependency injection.
 type HTTPClient interface {
 	Get(url string) (*http.Response, error)
@@ -305,7 +311,7 @@ func (s *articleFetcherService) ValidateURL(urlStr string) error {
 	}
 
 	// Validate scheme
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+	if parsedURL.Scheme != SchemeHTTP && parsedURL.Scheme != SchemeHTTPS {
 		s.logger.Error("URL validation failed", "url", urlStr, "error", "only HTTP or HTTPS schemes allowed")
 		return errors.New("only HTTP or HTTPS schemes allowed")
 	}

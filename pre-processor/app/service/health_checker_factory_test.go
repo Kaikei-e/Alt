@@ -15,6 +15,12 @@ import (
 	"pre-processor/config"
 )
 
+// Test constants
+const (
+	envoyHTTPClientTypeName = "EnvoyHTTPClient"
+	healthEndpointPath      = "/health"
+)
+
 func setHealthCheckerTransport(t *testing.T, service HealthCheckerService, handler http.HandlerFunc, delay time.Duration) {
 	t.Helper()
 	healthService, ok := service.(*healthCheckerService)
@@ -101,11 +107,11 @@ func TestNewHealthCheckerServiceWithFactory(t *testing.T) {
 
 			// Verify client type matches expectation
 			clientType := getClientTypeName(healthService.client)
-			if tc.expectEnvoy && clientType != "EnvoyHTTPClient" {
-				t.Errorf("%s: expected EnvoyHTTPClient but got %s", tc.description, clientType)
+			if tc.expectEnvoy && clientType != envoyHTTPClientTypeName {
+				t.Errorf("%s: expected %s but got %s", tc.description, envoyHTTPClientTypeName, clientType)
 			}
-			if !tc.expectEnvoy && clientType == "EnvoyHTTPClient" {
-				t.Errorf("%s: expected non-Envoy client but got EnvoyHTTPClient", tc.description)
+			if !tc.expectEnvoy && clientType == envoyHTTPClientTypeName {
+				t.Errorf("%s: expected non-Envoy client but got %s", tc.description, envoyHTTPClientTypeName)
 			}
 
 			t.Logf("%s: created health checker with client type: %s", tc.description, clientType)
@@ -116,8 +122,8 @@ func TestNewHealthCheckerServiceWithFactory(t *testing.T) {
 // TestHealthCheckerFactory_Integration tests end-to-end health check functionality
 func TestHealthCheckerFactory_Integration(t *testing.T) {
 	mockNewsCreatorHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Health checker calls /health endpoint
-		if r.URL.Path == "/health" {
+		// Health checker calls healthEndpointPath endpoint
+		if r.URL.Path == healthEndpointPath {
 			// Mock healthy response with models
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -226,8 +232,8 @@ func TestHealthCheckerFactory_WaitForHealthy(t *testing.T) {
 	callCount := 0
 	mockHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
-		// Health checker calls /health endpoint
-		if r.URL.Path == "/health" {
+		// Health checker calls healthEndpointPath endpoint
+		if r.URL.Path == healthEndpointPath {
 			if callCount >= 2 { // Become healthy after second call
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)

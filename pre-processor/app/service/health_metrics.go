@@ -12,6 +12,20 @@ import (
 	"pre-processor/utils/logger"
 )
 
+// Service status constants
+const (
+	ServiceStatusHealthy  = "healthy"
+	ServiceStatusDegraded = "degraded"
+	ServiceStatusWarning  = "warning"
+	ServiceStatusCritical = "critical"
+)
+
+// Alert level constants
+const (
+	AlertLevelWarning  = "warning"
+	AlertLevelCritical = "critical"
+)
+
 // HealthMetrics represents the comprehensive health metrics structure from TASK4.md
 type HealthMetrics struct {
 	LogsPerSecond  float64 `json:"logs_per_second"`
@@ -255,13 +269,13 @@ func (hmc *HealthMetricsCollector) ResetMetrics(ctx context.Context) {
 
 func (hmc *HealthMetricsCollector) calculateServiceStatus(errorRate float64) string {
 	if errorRate > 5.0 {
-		return "critical"
+		return ServiceStatusCritical
 	} else if errorRate > 1.0 {
-		return "warning"
+		return ServiceStatusWarning
 	} else if errorRate > 0.1 {
-		return "degraded"
+		return ServiceStatusDegraded
 	}
-	return "healthy"
+	return ServiceStatusHealthy
 }
 
 func (hmc *HealthMetricsCollector) calculateSLACompliance() float64 {
@@ -294,12 +308,12 @@ func (hmc *HealthMetricsCollector) checkMemoryHealth(memStats runtime.MemStats) 
 	memoryMB := memStats.Alloc / 1024 / 1024
 	heapMB := memStats.HeapAlloc / 1024 / 1024
 
-	status := "healthy"
+	status := ServiceStatusHealthy
 	if memoryMB > 500 { // 500MB threshold
-		status = "warning"
+		status = ServiceStatusWarning
 	}
 	if memoryMB > 1000 { // 1GB threshold
-		status = "critical"
+		status = ServiceStatusCritical
 	}
 
 	return map[string]interface{}{
@@ -313,12 +327,12 @@ func (hmc *HealthMetricsCollector) checkMemoryHealth(memStats runtime.MemStats) 
 func (hmc *HealthMetricsCollector) checkGoroutineHealth() map[string]interface{} {
 	count := runtime.NumGoroutine()
 
-	status := "healthy"
+	status := ServiceStatusHealthy
 	if count > 100 {
-		status = "warning"
+		status = ServiceStatusWarning
 	}
 	if count > 500 {
-		status = "critical"
+		status = ServiceStatusCritical
 	}
 
 	return map[string]interface{}{
@@ -345,7 +359,7 @@ func (hmc *HealthMetricsCollector) CheckAlerts(ctx context.Context) []HealthAler
 	// Error rate alert
 	if metrics.ErrorRate > 5.0 {
 		alerts = append(alerts, HealthAlert{
-			Level:     "critical",
+			Level:     AlertLevelCritical,
 			Message:   "High error rate detected",
 			Metric:    "error_rate",
 			Value:     metrics.ErrorRate,
@@ -354,7 +368,7 @@ func (hmc *HealthMetricsCollector) CheckAlerts(ctx context.Context) []HealthAler
 		})
 	} else if metrics.ErrorRate > 1.0 {
 		alerts = append(alerts, HealthAlert{
-			Level:     "warning",
+			Level:     AlertLevelWarning,
 			Message:   "Elevated error rate",
 			Metric:    "error_rate",
 			Value:     metrics.ErrorRate,
@@ -366,7 +380,7 @@ func (hmc *HealthMetricsCollector) CheckAlerts(ctx context.Context) []HealthAler
 	// Memory usage alert
 	if metrics.MemoryUsage > 1000 { // 1GB
 		alerts = append(alerts, HealthAlert{
-			Level:     "critical",
+			Level:     AlertLevelCritical,
 			Message:   "High memory usage",
 			Metric:    "memory_usage",
 			Value:     float64(metrics.MemoryUsage),
@@ -375,7 +389,7 @@ func (hmc *HealthMetricsCollector) CheckAlerts(ctx context.Context) []HealthAler
 		})
 	} else if metrics.MemoryUsage > 500 { // 500MB
 		alerts = append(alerts, HealthAlert{
-			Level:     "warning",
+			Level:     AlertLevelWarning,
 			Message:   "Elevated memory usage",
 			Metric:    "memory_usage",
 			Value:     float64(metrics.MemoryUsage),
@@ -387,7 +401,7 @@ func (hmc *HealthMetricsCollector) CheckAlerts(ctx context.Context) []HealthAler
 	// High latency alert
 	if metrics.AvgLatency > 1000 { // 1 second
 		alerts = append(alerts, HealthAlert{
-			Level:     "critical",
+			Level:     AlertLevelCritical,
 			Message:   "High average latency",
 			Metric:    "avg_latency",
 			Value:     metrics.AvgLatency,
@@ -396,7 +410,7 @@ func (hmc *HealthMetricsCollector) CheckAlerts(ctx context.Context) []HealthAler
 		})
 	} else if metrics.AvgLatency > 500 { // 500ms
 		alerts = append(alerts, HealthAlert{
-			Level:     "warning",
+			Level:     AlertLevelWarning,
 			Message:   "Elevated average latency",
 			Metric:    "avg_latency",
 			Value:     metrics.AvgLatency,
@@ -408,7 +422,7 @@ func (hmc *HealthMetricsCollector) CheckAlerts(ctx context.Context) []HealthAler
 	// Goroutine leak alert
 	if metrics.GoroutineCount > 500 {
 		alerts = append(alerts, HealthAlert{
-			Level:     "critical",
+			Level:     AlertLevelCritical,
 			Message:   "Potential goroutine leak",
 			Metric:    "goroutine_count",
 			Value:     float64(metrics.GoroutineCount),
@@ -417,7 +431,7 @@ func (hmc *HealthMetricsCollector) CheckAlerts(ctx context.Context) []HealthAler
 		})
 	} else if metrics.GoroutineCount > 100 {
 		alerts = append(alerts, HealthAlert{
-			Level:     "warning",
+			Level:     AlertLevelWarning,
 			Message:   "High goroutine count",
 			Metric:    "goroutine_count",
 			Value:     float64(metrics.GoroutineCount),
