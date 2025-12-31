@@ -112,6 +112,12 @@ func runUp(cmd *cobra.Command, args []string) error {
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	removeOrphans, _ := cmd.Flags().GetBool("remove-orphans")
 
+	// Disable remove-orphans when --no-deps is used to prevent removing other stacks
+	if noDeps && removeOrphans && !cmd.Flags().Changed("remove-orphans") {
+		removeOrphans = false
+		printer.Warning("Auto-disabled --remove-orphans (use --remove-orphans=true to override)")
+	}
+
 	// Create compose client
 	client := compose.NewClient(
 		getProjectRoot(),

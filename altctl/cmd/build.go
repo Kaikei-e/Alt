@@ -18,10 +18,12 @@ var buildCmd = &cobra.Command{
 	Long: `Build Docker images for one or more stacks.
 
 If no stacks are specified, builds all default stacks.
+Dependencies are automatically built unless --no-deps is specified.
 
 Examples:
   altctl build                 # Build all default stacks
   altctl build core            # Build core stack images
+  altctl build recap --no-deps # Build only recap images
   altctl build --no-cache      # Build without cache
   altctl build --pull          # Pull base images before building`,
 	Args:              cobra.ArbitraryArgs,
@@ -35,6 +37,7 @@ func init() {
 	buildCmd.Flags().Bool("no-cache", false, "build without cache")
 	buildCmd.Flags().Bool("pull", false, "pull base images before building")
 	buildCmd.Flags().Bool("parallel", true, "build in parallel")
+	buildCmd.Flags().Bool("no-deps", false, "don't build dependent stacks")
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
@@ -50,10 +53,24 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		stackNames = cfg.Defaults.Stacks
 	}
 
-	// Resolve dependencies
-	stacks, err := resolver.Resolve(stackNames)
-	if err != nil {
-		return fmt.Errorf("resolving dependencies: %w", err)
+	// Resolve dependencies unless --no-deps is set
+	noDeps, _ := cmd.Flags().GetBool("no-deps")
+	var stacks []*stack.Stack
+	var err error
+
+	if noDeps {
+		for _, name := range stackNames {
+			s, ok := registry.Get(name)
+			if !ok {
+				return fmt.Errorf("unknown stack: %s", name)
+			}
+			stacks = append(stacks, s)
+		}
+	} else {
+		stacks, err = resolver.Resolve(stackNames)
+		if err != nil {
+			return fmt.Errorf("resolving dependencies: %w", err)
+		}
 	}
 
 	// Collect compose files

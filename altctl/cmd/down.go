@@ -32,7 +32,7 @@ Examples:
 func init() {
 	rootCmd.AddCommand(downCmd)
 
-	downCmd.Flags().BoolP("volumes", "v", false, "remove named volumes")
+	downCmd.Flags().Bool("volumes", false, "remove named volumes")
 	downCmd.Flags().Bool("remove-orphans", true, "remove orphan containers")
 	downCmd.Flags().Bool("no-deps", false, "don't stop dependent stacks")
 	downCmd.Flags().Duration("timeout", 30*time.Second, "timeout for container shutdown")
