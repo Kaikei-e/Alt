@@ -90,6 +90,9 @@ message FeedItem {
   string created_at = 6;
   // Author name (formatted from author/authors)
   string author = 7;
+  // Article ID in the articles table (empty if article doesn't exist)
+  // When empty, mark as read functionality should be disabled
+  optional string article_id = 8;
 }
 
 // =============================================================================
