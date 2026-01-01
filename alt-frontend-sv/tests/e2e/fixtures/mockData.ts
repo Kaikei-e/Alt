@@ -209,6 +209,7 @@ export const CONNECT_FEEDS_RESPONSE = {
 	data: [
 		{
 			id: "feed-1",
+			articleId: "article-1",
 			title: "AI Trends",
 			description: "Deep dive into the ecosystem.",
 			link: "https://example.com/ai-trends",
@@ -218,6 +219,7 @@ export const CONNECT_FEEDS_RESPONSE = {
 		},
 		{
 			id: "feed-2",
+			articleId: "article-2",
 			title: "Svelte 5 Tips",
 			description: "Runes-first patterns for fast interfaces.",
 			link: "https://example.com/svelte-5",

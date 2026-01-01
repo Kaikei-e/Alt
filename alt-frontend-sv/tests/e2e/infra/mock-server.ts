@@ -3,10 +3,10 @@ import http from "http";
 import path from "path";
 import url from "url";
 
-// Constants
-const KRATOS_PORT = 4001;
-const AUTH_HUB_PORT = 4002;
-const BACKEND_PORT = 4003;
+// Constants (exported for health check verification)
+export const KRATOS_PORT = 4001;
+export const AUTH_HUB_PORT = 4002;
+export const BACKEND_PORT = 4003;
 
 const KRATOS_SESSION_COOKIE_NAME = "ory_kratos_session";
 const KRATOS_SESSION_COOKIE_VALUE = "e2e-session";
@@ -105,6 +105,7 @@ const CONNECT_FEEDS_RESPONSE = {
 	data: [
 		{
 			id: "feed-1",
+			articleId: "article-1",
 			title: "AI Trends",
 			description: "Deep dive into the ecosystem.",
 			link: "https://example.com/ai-trends",
@@ -114,6 +115,7 @@ const CONNECT_FEEDS_RESPONSE = {
 		},
 		{
 			id: "feed-2",
+			articleId: "article-2",
 			title: "Svelte 5 Tips",
 			description: "Runes-first patterns for fast interfaces.",
 			link: "https://example.com/svelte-5",
@@ -155,6 +157,13 @@ const kratosServer = http.createServer((req, res) => {
 		return;
 	}
 
+	// Health check endpoint for startup verification
+	if (path === "/health") {
+		res.writeHead(200, { "Content-Type": "text/plain" });
+		res.end("OK");
+		return;
+	}
+
 	if (path === "/sessions/whoami") {
 		const cookieHeader = req.headers.cookie;
 		if (hasSessionCookie(cookieHeader)) {
@@ -174,6 +183,169 @@ const kratosServer = http.createServer((req, res) => {
 		return;
 	}
 
+	// Login flow endpoints for SSR auth pages
+	if (path?.startsWith("/self-service/login")) {
+		const flowId = "flow-e2e-mock";
+		const loginFlow = {
+			id: flowId,
+			type: "browser",
+			expires_at: new Date(Date.now() + 3600000).toISOString(),
+			issued_at: new Date().toISOString(),
+			request_url: `http://127.0.0.1:${KRATOS_PORT}/self-service/login/browser`,
+			ui: {
+				action: `http://127.0.0.1:${KRATOS_PORT}/self-service/login?flow=${flowId}`,
+				method: "POST",
+				nodes: [
+					{
+						type: "input",
+						group: "default",
+						attributes: {
+							name: "csrf_token",
+							type: "hidden",
+							value: "mock-csrf-token",
+							required: true,
+						},
+						messages: [],
+						meta: {},
+					},
+					{
+						type: "input",
+						group: "default",
+						attributes: {
+							name: "identifier",
+							type: "email",
+							value: "",
+							required: true,
+						},
+						messages: [],
+						meta: { label: { id: 1, text: "Email", type: "info" } },
+					},
+					{
+						type: "input",
+						group: "password",
+						attributes: {
+							name: "password",
+							type: "password",
+							required: true,
+						},
+						messages: [],
+						meta: { label: { id: 2, text: "Password", type: "info" } },
+					},
+					{
+						type: "input",
+						group: "password",
+						attributes: {
+							name: "method",
+							type: "submit",
+							value: "password",
+						},
+						messages: [],
+						meta: { label: { id: 3, text: "Login", type: "info" } },
+					},
+				],
+				messages: [],
+			},
+		};
+
+		// /self-service/login/browser - redirects to the app with flow parameter
+		if (path === "/self-service/login/browser") {
+			const returnTo = parsedUrl.query.return_to as string || "http://127.0.0.1:4174/sv/home";
+			// Parse return_to to extract base URL (before /sv/)
+			const returnToUrl = new URL(returnTo);
+			const redirectUrl = `${returnToUrl.origin}/sv/auth/login?flow=${flowId}`;
+			log(`[Mock Kratos] Redirecting to: ${redirectUrl}`);
+			res.writeHead(303, { Location: redirectUrl });
+			res.end();
+			return;
+		}
+
+		// /self-service/login?flow=xxx - returns the flow data (for SSR)
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(JSON.stringify(loginFlow));
+		return;
+	}
+
+	// Registration flow endpoints for SSR auth pages
+	if (path?.startsWith("/self-service/registration")) {
+		const flowId = "flow-e2e-mock-reg";
+		const registrationFlow = {
+			id: flowId,
+			type: "browser",
+			expires_at: new Date(Date.now() + 3600000).toISOString(),
+			issued_at: new Date().toISOString(),
+			request_url: `http://127.0.0.1:${KRATOS_PORT}/self-service/registration/browser`,
+			ui: {
+				action: `http://127.0.0.1:${KRATOS_PORT}/self-service/registration?flow=${flowId}`,
+				method: "POST",
+				nodes: [
+					{
+						type: "input",
+						group: "default",
+						attributes: {
+							name: "csrf_token",
+							type: "hidden",
+							value: "mock-csrf-token",
+							required: true,
+						},
+						messages: [],
+						meta: {},
+					},
+					{
+						type: "input",
+						group: "default",
+						attributes: {
+							name: "traits.email",
+							type: "email",
+							value: "",
+							required: true,
+						},
+						messages: [],
+						meta: { label: { id: 1, text: "Email", type: "info" } },
+					},
+					{
+						type: "input",
+						group: "password",
+						attributes: {
+							name: "password",
+							type: "password",
+							required: true,
+						},
+						messages: [],
+						meta: { label: { id: 2, text: "Password", type: "info" } },
+					},
+					{
+						type: "input",
+						group: "password",
+						attributes: {
+							name: "method",
+							type: "submit",
+							value: "password",
+						},
+						messages: [],
+						meta: { label: { id: 3, text: "Register", type: "info" } },
+					},
+				],
+				messages: [],
+			},
+		};
+
+		// /self-service/registration/browser - redirects to the app with flow parameter
+		if (path === "/self-service/registration/browser") {
+			const returnTo = parsedUrl.query.return_to as string || "http://127.0.0.1:4174/sv/home";
+			const returnToUrl = new URL(returnTo);
+			const redirectUrl = `${returnToUrl.origin}/sv/auth/register?flow=${flowId}`;
+			log(`[Mock Kratos] Redirecting to: ${redirectUrl}`);
+			res.writeHead(303, { Location: redirectUrl });
+			res.end();
+			return;
+		}
+
+		// /self-service/registration?flow=xxx - returns the flow data (for SSR)
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(JSON.stringify(registrationFlow));
+		return;
+	}
+
 	res.writeHead(404);
 	res.end("Not Found");
 });
@@ -184,6 +356,13 @@ const authHubServer = http.createServer((req, res) => {
 	const path = parsedUrl.pathname;
 
 	log(`[Mock AuthHub] ${req.method} ${parsedUrl.pathname}`);
+
+	// Health check endpoint for startup verification
+	if (path === "/health") {
+		res.writeHead(200, { "Content-Type": "text/plain" });
+		res.end("OK");
+		return;
+	}
 
 	if (path === "/session" || path === "/auth/session") {
 		res.writeHead(200, {
@@ -209,6 +388,13 @@ const backendServer = http.createServer((req, res) => {
 	const path = parsedUrl.pathname;
 
 	log(`[Mock Backend] ${req.method} ${parsedUrl.pathname}`);
+
+	// Health check endpoint for startup verification
+	if (path === "/health") {
+		res.writeHead(200, { "Content-Type": "text/plain" });
+		res.end("OK");
+		return;
+	}
 
 	res.setHeader("Content-Type", "application/json");
 
@@ -456,6 +642,40 @@ export async function stopMockServers() {
 		authHubServer.close(onClose);
 		backendServer.close(onClose);
 	});
+}
+
+/**
+ * Wait for all mock servers to be ready by checking their health endpoints.
+ * This is critical for CI environments where server startup may be slower.
+ */
+export async function waitForMockServersReady(maxRetries = 20, retryDelayMs = 250): Promise<void> {
+	const ports = [KRATOS_PORT, AUTH_HUB_PORT, BACKEND_PORT];
+
+	for (const port of ports) {
+		let lastError: Error | null = null;
+
+		for (let attempt = 0; attempt < maxRetries; attempt++) {
+			try {
+				const response = await fetch(`http://127.0.0.1:${port}/health`);
+				if (response.ok) {
+					console.log(`Mock server on port ${port} is ready`);
+					break;
+				}
+			} catch (err) {
+				lastError = err as Error;
+			}
+
+			if (attempt === maxRetries - 1) {
+				throw new Error(
+					`Mock server on port ${port} not ready after ${maxRetries} attempts: ${lastError?.message}`
+				);
+			}
+
+			await new Promise((r) => setTimeout(r, retryDelayMs));
+		}
+	}
+
+	console.log("All mock servers are ready");
 }
 
 // Graceful shutdown handlers for local development

@@ -7,6 +7,12 @@ export default defineConfig({
 	retries: process.env.CI ? 2 : 0,
 	workers: process.env.CI ? 1 : undefined,
 
+	// CI-optimized timeouts
+	timeout: process.env.CI ? 60_000 : 30_000,
+	expect: {
+		timeout: process.env.CI ? 15_000 : 5_000,
+	},
+
 	// Enhanced reporters
 	reporter: [
 		["list"],
@@ -15,8 +21,13 @@ export default defineConfig({
 	],
 
 	globalSetup: "./tests/e2e/global-setup",
+	globalTeardown: "./tests/e2e/global-teardown",
 
 	use: {
+		// CI-optimized action timeouts
+		actionTimeout: process.env.CI ? 15_000 : 10_000,
+		navigationTimeout: process.env.CI ? 30_000 : 15_000,
+
 		// Enhanced tracing for debugging
 		trace: "retain-on-failure",
 		screenshot: "only-on-failure",
@@ -104,6 +115,7 @@ export default defineConfig({
 			ORIGIN: "http://127.0.0.1:4174",
 			E2E_TEST_MODE: "true",
 			KRATOS_INTERNAL_URL: "http://127.0.0.1:4001",
+			KRATOS_PUBLIC_URL: "http://127.0.0.1:4001",
 			AUTH_HUB_INTERNAL_URL: "http://127.0.0.1:4002",
 			BACKEND_BASE_URL: "http://127.0.0.1:4003",
 			BACKEND_CONNECT_URL: "http://127.0.0.1:4003",
