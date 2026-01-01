@@ -7,6 +7,7 @@ const DISMISSED_CLEANUP_DELAY = 3000; // ms
 
 export class ArticlePrefetcher {
 	private contentCache = new Map<string, string | "loading">();
+	private articleIdCache = new Map<string, string>();
 	private prefetchTimeouts: ReturnType<typeof setTimeout>[] = [];
 	private dismissedArticles = new Set<string>();
 	private dismissalTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
@@ -37,11 +38,13 @@ export class ArticlePrefetcher {
 
 			if (response.content) {
 				this.contentCache.set(feedUrl, response.content);
-				// Note: Archiving happens on the server side in the original implementation,
-				// but here we might need a separate call if the client API doesn't handle it automatically.
-				// For now, we assume fetching content is enough or archiving is handled elsewhere.
 			} else {
 				this.contentCache.delete(feedUrl);
+			}
+
+			// Cache article_id if present
+			if (response.article_id) {
+				this.articleIdCache.set(feedUrl, response.article_id);
 			}
 
 			// Clean up old cache entries
@@ -91,6 +94,13 @@ export class ArticlePrefetcher {
 	public getCachedContent(feedUrl: string): string | null {
 		const cached = this.contentCache.get(feedUrl);
 		return cached === "loading" ? null : cached || null;
+	}
+
+	/**
+	 * Get cached article_id for a feed URL
+	 */
+	public getCachedArticleId(feedUrl: string): string | null {
+		return this.articleIdCache.get(feedUrl) ?? null;
 	}
 
 	/**

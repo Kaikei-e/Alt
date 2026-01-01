@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Search, Loader2 } from "@lucide/svelte";
 	import { searchFeedsClient } from "$lib/api/client/feeds";
-	import type { RenderFeed } from "$lib/schema/feed";
+	import { type RenderFeed, sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
 	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 	import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
 	import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
@@ -40,7 +40,8 @@
 				return;
 			}
 
-			feeds = result.results ?? [];
+			const rawResults = result.results ?? [];
+			feeds = rawResults.map(item => toRenderFeed(sanitizeFeed(item), item.tags));
 		} catch (err) {
 			error = err as Error;
 			feeds = [];

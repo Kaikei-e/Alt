@@ -165,6 +165,15 @@ async function loadMore() {
 									cache.delete(oldestKey);
 								}
 							}
+
+							// Cache article_id if present
+							if (articleRes.article_id) {
+								const articleIdCache = (articlePrefetcher as any).articleIdCache as Map<
+									string,
+									string
+								>;
+								articleIdCache.set(feedUrl, articleRes.article_id);
+							}
 						})
 						.catch((err) => {
 							console.warn(
@@ -240,6 +249,20 @@ async function handleDismiss(_direction: number) {
 function getCachedContent(url: string) {
 	return articlePrefetcher.getCachedContent(url);
 }
+
+function getCachedArticleId(url: string) {
+	return articlePrefetcher.getCachedArticleId(url);
+}
+
+/**
+ * Handle articleId resolution when content fetch creates an article.
+ * Updates the feed data so UI reflects that the article is now saved.
+ */
+function handleArticleIdResolved(feedLink: string, articleId: string) {
+	feeds = feeds.map(f =>
+		f.link === feedLink ? { ...f, articleId } : f
+	);
+}
 </script>
 
 <div
@@ -291,10 +314,12 @@ function getCachedContent(url: string) {
             statusMessage={liveRegionMessage}
             onDismiss={handleDismiss}
             {getCachedContent}
+            {getCachedArticleId}
             isBusy={isLoading}
             initialArticleContent={activeIndex === 0
               ? initialArticleContent
               : undefined}
+            onArticleIdResolved={handleArticleIdResolved}
           />
         </div>
       {/key}

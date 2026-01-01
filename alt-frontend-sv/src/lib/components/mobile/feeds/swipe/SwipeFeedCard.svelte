@@ -23,8 +23,11 @@ interface Props {
 	statusMessage: string | null;
 	onDismiss: (direction: number) => Promise<void> | void;
 	getCachedContent?: (feedUrl: string) => string | null;
+	getCachedArticleId?: (feedUrl: string) => string | null;
 	isBusy?: boolean;
 	initialArticleContent?: string | null;
+	/** Callback when articleId is resolved (e.g., after fetching content creates an article) */
+	onArticleIdResolved?: (feedLink: string, articleId: string) => void;
 }
 
 const {
@@ -32,8 +35,10 @@ const {
 	statusMessage,
 	onDismiss,
 	getCachedContent,
+	getCachedArticleId,
 	isBusy = false,
 	initialArticleContent,
+	onArticleIdResolved,
 }: Props = $props();
 
 // State
@@ -98,12 +103,21 @@ onMount(() => {
 	const cached = getCachedContent?.(feed.link);
 	if (cached) {
 		fullContent = cached;
+		// Also check for cached articleId and notify parent
+		const cachedArticleId = getCachedArticleId?.(feed.link);
+		if (cachedArticleId && onArticleIdResolved) {
+			onArticleIdResolved(feed.link, cachedArticleId);
+		}
 	} else if (!fullContent) {
 		// Background fetch
 		getFeedContentOnTheFlyClient(feed.link)
 			.then((res) => {
 				if (res.content) {
 					fullContent = res.content;
+				}
+				// Notify parent if articleId was resolved (article created during fetch)
+				if (res.article_id && onArticleIdResolved) {
+					onArticleIdResolved(feed.link, res.article_id);
 				}
 			})
 			.catch((err) => {

@@ -32,7 +32,7 @@
 				feeds = result.data ?? [];
 			}
 
-			nextCursor = result.next_cursor;
+			nextCursor = result.next_cursor ?? undefined;
 			hasNextPage = result.has_more ?? false;
 		} catch (err) {
 			error = err as Error;
@@ -47,18 +47,25 @@
 		isFetchingNextPage = false;
 	}
 
-	onMount(async () => {
-		try {
-			isLoading = true;
-			await loadFeeds();
-		} catch (err) {
-			error = err as Error;
-		} finally {
-			isLoading = false;
-		}
+	onMount(() => {
+		// Run async initialization
+		void (async () => {
+			try {
+				isLoading = true;
+				await loadFeeds();
+			} catch (err) {
+				error = err as Error;
+			} finally {
+				isLoading = false;
+			}
+		})();
 
-		// Setup observer after initial load
-		if (!loadMoreTrigger) return;
+		// Setup observer after initial load - will run after async completes via effect
+	});
+
+	// Effect to setup IntersectionObserver once loadMoreTrigger is available
+	$effect(() => {
+		if (!loadMoreTrigger || isLoading) return;
 
 		const observer = new IntersectionObserver(
 			(entries) => {

@@ -95,7 +95,7 @@ export class DesktopAugurPage extends BasePage {
 	async getLastAssistantMessage(): Promise<string> {
 		const messages = this.getAssistantMessages();
 		const lastMessage = messages.last();
-		return lastMessage.textContent() ?? "";
+		return (await lastMessage.textContent()) ?? "";
 	}
 
 	/**

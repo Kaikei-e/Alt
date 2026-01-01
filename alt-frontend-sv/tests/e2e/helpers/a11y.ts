@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { injectAxe, getViolations, checkA11y } from "axe-playwright";
+import type { Result, RunOptions } from "axe-core";
 
 /**
  * Accessibility testing helper using axe-playwright.
@@ -26,6 +27,32 @@ export interface A11yViolation {
 }
 
 /**
+ * Build axe-core RunOptions from our A11yOptions
+ */
+function buildAxeOptions(options: A11yOptions): RunOptions {
+	const runOptions: RunOptions = {};
+
+	if (options.disableRules?.length) {
+		runOptions.rules = options.disableRules.reduce(
+			(acc, rule) => {
+				acc[rule] = { enabled: false };
+				return acc;
+			},
+			{} as Record<string, { enabled: boolean }>,
+		);
+	}
+
+	if (options.tags?.length) {
+		runOptions.runOnly = {
+			type: "tag",
+			values: options.tags,
+		};
+	}
+
+	return runOptions;
+}
+
+/**
  * Check page accessibility using axe-core.
  * Throws an error if violations are found.
  */
@@ -33,47 +60,13 @@ export async function checkAccessibility(
 	page: Page,
 	options: A11yOptions = {},
 ): Promise<void> {
-	let axe = new AxeBuilder({ page });
+	await injectAxe(page);
 
-	if (options.disableRules?.length) {
-		axe = axe.disableRules(options.disableRules);
-	}
+	const context = options.includeSelector || undefined;
+	const axeOptions = buildAxeOptions(options);
 
-	if (options.includeSelector) {
-		axe = axe.include(options.includeSelector);
-	}
-
-	if (options.excludeSelector) {
-		axe = axe.exclude(options.excludeSelector);
-	}
-
-	if (options.tags?.length) {
-		axe = axe.withTags(options.tags);
-	}
-
-	const results = await axe.analyze();
-
-	if (results.violations.length > 0) {
-		const violations: A11yViolation[] = results.violations.map((v) => ({
-			id: v.id,
-			impact: v.impact ?? null,
-			description: v.description,
-			nodes: v.nodes.length,
-			help: v.help,
-			helpUrl: v.helpUrl,
-		}));
-
-		const summary = violations
-			.map(
-				(v) =>
-					`- ${v.id} (${v.impact}): ${v.description} [${v.nodes} node(s)]`,
-			)
-			.join("\n");
-
-		throw new Error(
-			`Accessibility violations found:\n${summary}\n\nSee detailed report for fixes.`,
-		);
-	}
+	// checkA11y throws if there are violations
+	await checkA11y(page, context, { axeOptions }, false);
 }
 
 /**
@@ -84,27 +77,14 @@ export async function getAccessibilityViolations(
 	page: Page,
 	options: A11yOptions = {},
 ): Promise<A11yViolation[]> {
-	let axe = new AxeBuilder({ page });
+	await injectAxe(page);
 
-	if (options.disableRules?.length) {
-		axe = axe.disableRules(options.disableRules);
-	}
+	const context = options.includeSelector || undefined;
+	const axeOptions = buildAxeOptions(options);
 
-	if (options.includeSelector) {
-		axe = axe.include(options.includeSelector);
-	}
+	const violations = await getViolations(page, context, axeOptions);
 
-	if (options.excludeSelector) {
-		axe = axe.exclude(options.excludeSelector);
-	}
-
-	if (options.tags?.length) {
-		axe = axe.withTags(options.tags);
-	}
-
-	const results = await axe.analyze();
-
-	return results.violations.map((v) => ({
+	return violations.map((v: Result) => ({
 		id: v.id,
 		impact: v.impact ?? null,
 		description: v.description,
