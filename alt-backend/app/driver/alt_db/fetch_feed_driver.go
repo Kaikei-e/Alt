@@ -166,11 +166,11 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 
 	if cursor == nil {
 		// First page - no cursor
+		// Use scalar subquery for article_id to avoid duplicates when multiple articles have the same URL
 		query = `
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
-			       a.id AS article_id
+			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id
 			FROM feeds f
-			LEFT JOIN articles a ON a.url = f.link AND a.deleted_at IS NULL
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM read_status rs
@@ -184,11 +184,11 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 		args = []interface{}{limit, user.UserID}
 	} else {
 		// Subsequent pages - use cursor
+		// Use scalar subquery for article_id to avoid duplicates when multiple articles have the same URL
 		query = `
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
-			       a.id AS article_id
+			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id
 			FROM feeds f
-			LEFT JOIN articles a ON a.url = f.link AND a.deleted_at IS NULL
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM read_status rs

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -22,17 +23,22 @@ func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.
 	}
 
 	// Normalize the input URL
-	normalizedURL, err := utils.NormalizeURL(articleURL.String())
+	originalURL := articleURL.String()
+	normalizedURL, err := utils.NormalizeURL(originalURL)
 	if err != nil {
-		logger.SafeError("Error normalizing article URL", "error", err, "articleURL", articleURL.String())
+		logger.SafeError("Error normalizing article URL", "error", err, "articleURL", originalURL)
 		return err
 	}
 
+	// Create URL with trailing slash (DB may have URLs with trailing slash)
+	withSlashURL := strings.TrimSuffix(originalURL, "/") + "/"
+
 	// Resolve article ID from URL
-	getArticleQuery := `SELECT id FROM articles WHERE url = $1`
+	// Try normalized (no slash), original, and with-slash versions (zero-trust: DB may have non-normalized URLs)
+	getArticleQuery := `SELECT id FROM articles WHERE url = $1 OR url = $2 OR url = $3 LIMIT 1`
 
 	var articleID string
-	err = r.pool.QueryRow(ctx, getArticleQuery, normalizedURL).Scan(&articleID)
+	err = r.pool.QueryRow(ctx, getArticleQuery, normalizedURL, originalURL, withSlashURL).Scan(&articleID)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
