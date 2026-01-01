@@ -11,7 +11,9 @@
 #   docker-compose down --profile logging   # Stop with logging services
 #
 
-### DEPRECATED Move to altctl/ . So you should write new lines at ./altctl/ .
+### THIS COMPOSE FILE IS DEPRECATED. Move to altctl/ . So you should write new lines at ./altctl/ .
+### READ HERE FIRST!!!
+
 
 secrets:
   auth_shared_secret:
