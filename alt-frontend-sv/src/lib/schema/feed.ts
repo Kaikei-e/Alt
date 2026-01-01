@@ -13,6 +13,9 @@ export type Feed = {
 	published: string;
 	created_at?: string;
 	author?: string;
+	// Article ID in the articles table. Empty/undefined if article doesn't exist.
+	// When empty, mark as read functionality should be disabled.
+	articleId?: string;
 };
 
 export type SanitizedFeed = {
@@ -23,6 +26,8 @@ export type SanitizedFeed = {
 	published: string;
 	created_at?: string;
 	author?: string; // サニタイゼーション済み
+	// Article ID in the articles table. Empty/undefined if article doesn't exist.
+	articleId?: string;
 };
 
 /**
@@ -50,6 +55,8 @@ export interface BackendFeedItem {
 		name: string;
 	}>;
 	tags?: string[]; // Tags array from backend (if available)
+	// Article ID in the articles table (from Connect-RPC proto)
+	article_id?: string;
 }
 
 /**
@@ -120,6 +127,8 @@ export function sanitizeFeed(rawFeed: BackendFeedItem): SanitizedFeed {
 		published: rawFeed.published || "",
 		created_at: rawFeed.created_at,
 		author: sanitized.author || undefined,
+		// Article ID from articles table - empty/undefined if article doesn't exist
+		articleId: rawFeed.article_id || undefined,
 	};
 }
 

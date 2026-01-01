@@ -325,9 +325,13 @@ export async function streamFeedStats(
 			}
 			console.log("[streamFeedStats] Stream ended normally");
 		} catch (error) {
+			// Check abort BEFORE logging to suppress navigation-related errors
+			if (abortController.signal.aborted) {
+				console.log("[streamFeedStats] Stream closed due to navigation");
+				return;
+			}
 			console.error("[streamFeedStats] Stream error:", error);
-			// Only report error if not aborted
-			if (!abortController.signal.aborted && onError && error instanceof Error) {
+			if (onError && error instanceof Error) {
 				onError(error);
 			}
 		}

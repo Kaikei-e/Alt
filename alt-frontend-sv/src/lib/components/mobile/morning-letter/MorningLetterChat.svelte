@@ -344,8 +344,8 @@
 				onkeydown={handleKeydown}
 				placeholder="Ask about today's news..."
 				disabled={isLoading}
-				class="flex-1 px-4 py-2 text-sm rounded-full border focus:outline-none focus:ring-2 disabled:opacity-50"
-				style="background: var(--app-bg); border-color: var(--border-color); color: var(--text-primary);"
+				class="flex-1 px-4 py-2 rounded-full border focus:outline-none focus:ring-2 disabled:opacity-50"
+				style="background: var(--app-bg); border-color: var(--border-color); color: var(--text-primary); font-size: 16px;"
 			/>
 			<button
 				onclick={handleSend}
