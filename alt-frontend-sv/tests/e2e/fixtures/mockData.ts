@@ -274,6 +274,7 @@ export const CONNECT_RPC_PATHS = {
 	streamSummarize: "**/api/v2/alt.feeds.v2.FeedService/StreamSummarize",
 	// Article service
 	fetchArticleContent: "**/api/v2/alt.articles.v2.ArticleService/FetchArticleContent",
+	fetchArticleSummary: "**/api/v2/alt.articles.v2.ArticleService/FetchArticleSummary",
 	// Augur service
 	augurStreamChat: "**/api/v2/alt.augur.v2.AugurService/StreamChat",
 	// MorningLetter service
