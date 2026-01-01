@@ -31,10 +31,10 @@ jobs:
 
     steps:
       - name: Pre-checkout cleanup
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:${{ github.workspace }}" \
-            alpine sh -c "rm -rf '${{ github.workspace }}'/* '${{ github.workspace }}'/.* 2>/dev/null || true"
+        uses: docker://alpine:latest
+        with:
+          entrypoint: /bin/sh
+          args: -c "rm -rf /github/workspace/* /github/workspace/.* 2>/dev/null; chown -R 1001:1001 /github/workspace 2>/dev/null || true"
 
       - name: Checkout repository
         uses: actions/checkout@v5
