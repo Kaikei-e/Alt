@@ -39,7 +39,7 @@ func init() {
 	upCmd.Flags().Bool("no-deps", false, "don't start dependent stacks")
 	upCmd.Flags().Bool("all", false, "start all stacks including optional ones")
 	upCmd.Flags().Duration("timeout", 5*time.Minute, "timeout for container startup")
-	upCmd.Flags().Bool("remove-orphans", true, "remove orphan containers")
+	upCmd.Flags().Bool("remove-orphans", false, "remove orphan containers")
 }
 
 func runUp(cmd *cobra.Command, args []string) error {
