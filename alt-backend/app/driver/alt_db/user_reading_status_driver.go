@@ -13,8 +13,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// MarkArticleAsRead marks an article as read for the current user.
-// It resolves the article by URL and upserts a record in user_reading_status.
+// MarkArticleAsRead marks a feed as read for the current user.
+// It resolves the feed by URL (feeds.link) and upserts a record in read_status.
+// Note: This function is named MarkArticleAsRead for API compatibility, but it
+// operates on feeds (not articles) because not all feeds have corresponding articles.
 func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
@@ -26,34 +28,34 @@ func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.
 	originalURL := articleURL.String()
 	normalizedURL, err := utils.NormalizeURL(originalURL)
 	if err != nil {
-		logger.SafeError("Error normalizing article URL", "error", err, "articleURL", originalURL)
+		logger.SafeError("Error normalizing feed URL", "error", err, "feedURL", originalURL)
 		return err
 	}
 
 	// Create URL with trailing slash (DB may have URLs with trailing slash)
 	withSlashURL := strings.TrimSuffix(originalURL, "/") + "/"
 
-	// Resolve article ID from URL
+	// Resolve feed ID from URL
 	// Try normalized (no slash), original, and with-slash versions (zero-trust: DB may have non-normalized URLs)
-	getArticleQuery := `SELECT id FROM articles WHERE url = $1 OR url = $2 OR url = $3 LIMIT 1`
+	getFeedQuery := `SELECT id FROM feeds WHERE link = $1 OR link = $2 OR link = $3 LIMIT 1`
 
-	var articleID string
-	err = r.pool.QueryRow(ctx, getArticleQuery, normalizedURL, originalURL, withSlashURL).Scan(&articleID)
+	var feedID string
+	err = r.pool.QueryRow(ctx, getFeedQuery, normalizedURL, originalURL, withSlashURL).Scan(&feedID)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			logger.SafeError("Article not found",
+			logger.SafeError("Feed not found",
 				"normalizedURL", normalizedURL,
 				"originalURL", articleURL.String(),
 				"user_id", user.UserID)
-			return domain.ErrArticleNotFound
+			return domain.ErrFeedNotFound
 		}
-		logger.SafeError("Error querying article", "error", err, "normalizedURL", normalizedURL)
-		return fmt.Errorf("failed to query article: %w", err)
+		logger.SafeError("Error querying feed", "error", err, "normalizedURL", normalizedURL)
+		return fmt.Errorf("failed to query feed: %w", err)
 	}
 
-	logger.SafeInfo("Found matching article",
-		"articleID", articleID,
+	logger.SafeInfo("Found matching feed",
+		"feedID", feedID,
 		"normalizedURL", normalizedURL)
 
 	// Start transaction for upsert
@@ -69,20 +71,20 @@ func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.
 		}
 	}()
 
-	// Upsert user reading status
+	// Upsert read status
 	upsertQuery := `
-		INSERT INTO user_reading_status (user_id, article_id, is_read, read_at, created_at)
+		INSERT INTO read_status (feed_id, user_id, is_read, read_at, created_at)
 		VALUES ($1, $2, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		ON CONFLICT (user_id, article_id) DO UPDATE
+		ON CONFLICT (feed_id, user_id) DO UPDATE
 		SET is_read = TRUE, read_at = CURRENT_TIMESTAMP
 	`
 
-	if _, err = tx.Exec(ctx, upsertQuery, user.UserID, articleID); err != nil {
-		logger.SafeError("Error updating article reading status",
+	if _, err = tx.Exec(ctx, upsertQuery, feedID, user.UserID); err != nil {
+		logger.SafeError("Error updating feed read status",
 			"error", err,
 			"user_id", user.UserID,
-			"article_id", articleID)
-		return fmt.Errorf("failed to update article reading status: %w", err)
+			"feed_id", feedID)
+		return fmt.Errorf("failed to update feed read status: %w", err)
 	}
 
 	if err = tx.Commit(context.Background()); err != nil {
@@ -90,9 +92,9 @@ func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	logger.SafeInfo("article reading status updated successfully",
+	logger.SafeInfo("feed read status updated successfully",
 		"user_id", user.UserID,
-		"article_id", articleID,
+		"feed_id", feedID,
 		"is_read", true)
 
 	return nil

@@ -16,7 +16,7 @@ import (
 const upsertArticleQuery = `
 	INSERT INTO articles (title, content, url, user_id, feed_id)
 	VALUES ($1, $2, $3, $4, $5)
-	ON CONFLICT (url) DO UPDATE
+	ON CONFLICT (url, user_id) DO UPDATE
 	SET title = EXCLUDED.title,
 		content = EXCLUDED.content,
 		user_id = EXCLUDED.user_id,

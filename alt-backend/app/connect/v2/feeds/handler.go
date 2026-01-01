@@ -884,25 +884,25 @@ func (h *Handler) MarkAsRead(
 	// Execute usecase
 	if err := h.container.ArticlesReadingStatusUsecase.Execute(ctx, *articleURL); err != nil {
 		// Map domain errors to appropriate HTTP status codes
-		if errors.Is(err, domain.ErrArticleNotFound) {
-			h.logger.Info("article not found for mark as read",
+		if errors.Is(err, domain.ErrFeedNotFound) {
+			h.logger.Info("feed not found for mark as read",
 				"article_url", req.Msg.ArticleUrl,
 				"error", err)
 			return nil, connect.NewError(connect.CodeNotFound,
-				fmt.Errorf("article not found: %s", req.Msg.ArticleUrl))
+				fmt.Errorf("feed not found: %s", req.Msg.ArticleUrl))
 		}
 
 		// All other errors are internal server errors
-		h.logger.Error("failed to mark article as read",
+		h.logger.Error("failed to mark feed as read",
 			"error", err,
 			"article_url", req.Msg.ArticleUrl)
 		return nil, connect.NewError(connect.CodeInternal,
 			fmt.Errorf("internal server error"))
 	}
 
-	h.logger.Info("article marked as read", "article_url", req.Msg.ArticleUrl)
+	h.logger.Info("feed marked as read", "article_url", req.Msg.ArticleUrl)
 
 	return connect.NewResponse(&feedsv2.MarkAsReadResponse{
-		Message: "Article read status updated",
+		Message: "Feed read status updated",
 	}), nil
 }

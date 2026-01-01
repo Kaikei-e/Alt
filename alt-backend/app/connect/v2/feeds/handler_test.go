@@ -655,26 +655,26 @@ func TestMarkAsRead_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.Equal(t, "Article read status updated", resp.Msg.Message)
+	assert.Equal(t, "Feed read status updated", resp.Msg.Message)
 }
 
 func TestMarkAsReadResponse_Construction(t *testing.T) {
 	resp := &feedsv2.MarkAsReadResponse{
-		Message: "Article read status updated",
+		Message: "Feed read status updated",
 	}
 
-	assert.Equal(t, "Article read status updated", resp.Message)
+	assert.Equal(t, "Feed read status updated", resp.Message)
 }
 
 // =============================================================================
 // Phase 7 (TDD): MarkAsRead Error Handling Tests
 // =============================================================================
 
-// Mock that returns ErrArticleNotFound
+// Mock that returns ErrFeedNotFound
 type mockUpdateArticleStatusPortReturnsNotFound struct{}
 
 func (m *mockUpdateArticleStatusPortReturnsNotFound) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
-	return domain.ErrArticleNotFound
+	return domain.ErrFeedNotFound
 }
 
 // Mock that returns generic error
@@ -684,12 +684,12 @@ func (m *mockUpdateArticleStatusPortReturnsError) MarkArticleAsRead(ctx context.
 	return assert.AnError // Generic error from testify
 }
 
-// Test that domain.ErrArticleNotFound returns HTTP 404
-func TestHandler_MarkAsRead_ArticleNotFound_Returns404(t *testing.T) {
+// Test that domain.ErrFeedNotFound returns HTTP 404
+func TestHandler_MarkAsRead_FeedNotFound_Returns404(t *testing.T) {
 	// Initialize logger
 	logger.InitLogger()
 
-	// Create usecase with mock that returns ErrArticleNotFound
+	// Create usecase with mock that returns ErrFeedNotFound
 	articlesReadingStatusUsecase := reading_status.NewArticlesReadingStatusUsecase(&mockUpdateArticleStatusPortReturnsNotFound{})
 
 	container := &di.ApplicationComponents{
@@ -718,7 +718,7 @@ func TestHandler_MarkAsRead_ArticleNotFound_Returns404(t *testing.T) {
 	var connectErr *connect.Error
 	require.ErrorAs(t, err, &connectErr)
 	assert.Equal(t, connect.CodeNotFound, connectErr.Code(), "Expected HTTP 404 Not Found")
-	assert.Contains(t, connectErr.Message(), "article not found", "Error message should mention 'article not found'")
+	assert.Contains(t, connectErr.Message(), "feed not found", "Error message should mention 'feed not found'")
 }
 
 // Test that non-domain errors return HTTP 500
