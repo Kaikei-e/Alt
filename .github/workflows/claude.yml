@@ -25,6 +25,16 @@ jobs:
       id-token: write
       actions: read # Required for Claude to read CI results on PRs
     steps:
+      - name: Pre-checkout cleanup
+        run: |
+          # Remove Claude Code artifacts if accessible
+          rm -rf "$GITHUB_WORKSPACE/.claude" 2>/dev/null || true
+          # Remove stale git locks
+          find "$GITHUB_WORKSPACE" -name "*.lock" -type f -delete 2>/dev/null || true
+          # Fix ownership for files we own
+          find "$GITHUB_WORKSPACE" -user "$(whoami)" -exec chmod u+w {} \; 2>/dev/null || true
+        continue-on-error: true
+
       - name: Checkout repository
         uses: actions/checkout@v5
         with:

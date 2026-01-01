@@ -51,11 +51,18 @@ jobs:
       - name: Clean workspace
         if: runner.environment == 'self-hosted'
         run: |
+          # Remove Claude Code artifacts if accessible
+          rm -rf "$GITHUB_WORKSPACE/.claude" 2>/dev/null || true
+          # Remove stale git locks
+          find "$GITHUB_WORKSPACE" -name "*.lock" -type f -delete 2>/dev/null || true
+          # Fix ownership for files we own
+          find "$GITHUB_WORKSPACE" -user "$(whoami)" -exec chmod u+w {} \; 2>/dev/null || true
           # Rustキャッシュディレクトリの権限を修正
-          sudo chown -R $(whoami):staff ~/.cargo || true
-          sudo chown -R $(whoami):staff ~/Library/Caches/cargo-target || true
+          chown -R $(whoami):staff ~/.cargo 2>/dev/null || true
+          chown -R $(whoami):staff ~/Library/Caches/cargo-target 2>/dev/null || true
           # ワークスペースをクリーン
           rm -rf ${{ github.workspace }}/target || true
+        continue-on-error: true
 
       - uses: actions/checkout@v5
 
