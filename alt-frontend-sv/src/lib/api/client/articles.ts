@@ -65,8 +65,18 @@ export async function getArticleSummaryClient(
 	const { fetchArticleSummary } = await import("$lib/connect/articles");
 	const response = await fetchArticleSummary(transport, [feedUrl]);
 
+	// Convert camelCase to snake_case for API compatibility
 	return {
-		matched_articles: response.matchedArticles,
+		matched_articles: response.matchedArticles.map((item) => ({
+			article_url: feedUrl,
+			title: item.title,
+			author: item.author || undefined,
+			content: item.content,
+			content_type: "text/html",
+			published_at: item.publishedAt,
+			fetched_at: item.fetchedAt,
+			source_id: item.sourceId,
+		})),
 		total_matched: response.totalMatched,
 		requested_count: response.requestedCount,
 	};
@@ -283,7 +293,7 @@ export async function summarizeArticleClient(
 
 	return {
 		success: true,
-		summary: result.fullSummary,
+		summary: result.summary,
 		article_id: result.articleId,
 		feed_url: feedUrl,
 	};

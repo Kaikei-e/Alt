@@ -579,10 +579,10 @@ export interface MarkAsReadResult {
  */
 export async function markAsRead(
 	transport: Transport,
-	feedUrl: string,
+	articleUrl: string,
 ): Promise<MarkAsReadResult> {
 	const client = createFeedClient(transport);
-	const response = await client.markAsRead({ feedUrl });
+	const response = await client.markAsRead({ articleUrl });
 
 	return {
 		message: response.message,
