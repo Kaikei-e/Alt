@@ -6,7 +6,9 @@ include:
 
 services:
   recap-db:
-    image: postgres:18-alpine
+    build:
+      context: ../docker/postgres
+      dockerfile: Dockerfile.recap-db
     container_name: recap-db
     restart: always
     command: >

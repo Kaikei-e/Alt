@@ -15,8 +15,8 @@ services:
       - DB_HOST=db
       - DB_PORT=5432
       - DB_NAME=${DB_NAME}
-      - PRE_PROCESSOR_DB_USER=${PRE_PROCESSOR_DB_USER}
-      - PRE_PROCESSOR_DB_PASSWORD_FILE=/run/secrets/pre_processor_db_password
+      - PRE_PROCESSOR_SIDECAR_DB_USER=${PRE_PROCESSOR_SIDECAR_DB_USER}
+      - PRE_PROCESSOR_SIDECAR_DB_PASSWORD_FILE=/run/secrets/pre_processor_sidecar_db_password
       - INOREADER_CLIENT_ID_FILE=/run/secrets/inoreader_client_id
       - INOREADER_CLIENT_SECRET_FILE=/run/secrets/inoreader_client_secret
       - LOG_LEVEL=info
@@ -25,7 +25,7 @@ services:
       - TOKEN_STORAGE_PATH=/app/secrets/oauth2_token.env
       - INOREADER_REFRESH_TOKEN_FILE=/app/secrets/oauth2_token.env
     secrets:
-      - pre_processor_db_password
+      - pre_processor_sidecar_db_password
       - inoreader_client_id
       - inoreader_client_secret
     volumes:

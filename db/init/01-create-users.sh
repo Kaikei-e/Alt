@@ -19,6 +19,9 @@ TAG_GENERATOR_PASSWORD="${DB_TAG_GENERATOR_PASSWORD:-}"
 SEARCH_INDEXER_USER="${SEARCH_INDEXER_DB_USER:-search_indexer_user}"
 SEARCH_INDEXER_PASSWORD="${SEARCH_INDEXER_DB_PASSWORD:-}"
 
+PRE_PROCESSOR_SIDECAR_USER="${PRE_PROCESSOR_SIDECAR_DB_USER:-pre_processor_sidecar_user}"
+PRE_PROCESSOR_SIDECAR_PASSWORD="${PRE_PROCESSOR_SIDECAR_DB_PASSWORD:-}"
+
 # Ensure the target database exists even if the data directory was pre-populated
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-EOSQL
     DO \$\$
@@ -116,5 +119,9 @@ grant_basic_access "$TAG_GENERATOR_USER"
 echo "Ensuring search-indexer role '${SEARCH_INDEXER_USER}' exists..."
 create_or_update_role "$SEARCH_INDEXER_USER" "$SEARCH_INDEXER_PASSWORD"
 grant_basic_access "$SEARCH_INDEXER_USER"
+
+echo "Ensuring pre-processor-sidecar role '${PRE_PROCESSOR_SIDECAR_USER}' exists..."
+create_or_update_role "$PRE_PROCESSOR_SIDECAR_USER" "$PRE_PROCESSOR_SIDECAR_PASSWORD"
+grant_basic_access "$PRE_PROCESSOR_SIDECAR_USER"
 
 echo "Database role provisioning completed."

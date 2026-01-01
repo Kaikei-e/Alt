@@ -13,6 +13,8 @@ secrets:
     file: ../secrets/db_password.txt
   pre_processor_db_password:
     file: ../secrets/pre_processor_db_password.txt
+  pre_processor_sidecar_db_password:
+    file: ../secrets/pre_processor_sidecar_db_password.txt
   tag_generator_db_password:
     file: ../secrets/tag_generator_db_password.txt
   search_indexer_db_password:
