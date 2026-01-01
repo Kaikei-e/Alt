@@ -101,6 +101,7 @@ type ApplicationComponents struct {
 	ListFeedLinksUsecase                *feed_link_usecase.ListFeedLinksUsecase
 	DeleteFeedLinkUsecase               *feed_link_usecase.DeleteFeedLinkUsecase
 	FeedsReadingStatusUsecase           *reading_status.FeedsReadingStatusUsecase
+	ArticlesReadingStatusUsecase        *reading_status.ArticlesReadingStatusUsecase
 	FeedsSummaryUsecase                 *fetch_feed_details_usecase.FeedsSummaryUsecase
 	FeedAmountUsecase                   *fetch_feed_stats_usecase.FeedsCountUsecase
 	UnsummarizedArticlesCountUsecase    *fetch_feed_stats_usecase.UnsummarizedArticlesCountUsecase
@@ -167,6 +168,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	updateFeedStatusGatewayImpl := update_feed_status_gateway.NewUpdateFeedStatusGateway(pool)
 	feedsReadingStatusUsecase := reading_status.NewFeedsReadingStatusUsecase(updateFeedStatusGatewayImpl)
+
+	// Article reading status usecase (uses AltDBRepository which implements UpdateArticleStatusPort)
+	articlesReadingStatusUsecase := reading_status.NewArticlesReadingStatusUsecase(altDBRepository)
 
 	feedSummaryGatewayImpl := fetch_feed_detail_gateway.NewFeedSummaryGateway(pool)
 	feedsSummaryUsecase := fetch_feed_details_usecase.NewFeedsSummaryUsecase(feedSummaryGatewayImpl)
@@ -295,6 +299,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ListFeedLinksUsecase:                listFeedLinksUsecase,
 		DeleteFeedLinkUsecase:               deleteFeedLinkUsecase,
 		FeedsReadingStatusUsecase:           feedsReadingStatusUsecase,
+		ArticlesReadingStatusUsecase:        articlesReadingStatusUsecase,
 		FeedsSummaryUsecase:                 feedsSummaryUsecase,
 		FeedAmountUsecase:                   feedsCountUsecase,
 		UnsummarizedArticlesCountUsecase:    unsummarizedArticlesCountUsecase,

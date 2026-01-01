@@ -178,9 +178,9 @@ export class DesktopFeedsApi {
       : description;
   }
 
-  async markAsRead(feedId: string): Promise<void> {
+  async markAsRead(articleUrl: string): Promise<void> {
     // 既存のfeedApiを利用
-    await feedApi.updateFeedReadStatus(feedId);
+    await feedApi.updateFeedReadStatus(articleUrl);
     this.invalidateFeedCaches();
   }
 

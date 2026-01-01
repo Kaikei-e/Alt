@@ -81,6 +81,42 @@ message FetchArticlesCursorResponse {
 }
 
 // =============================================================================
+// Fetch Article Summary Messages
+// =============================================================================
+
+// FetchArticleSummaryRequest is the request for fetching article summaries
+message FetchArticleSummaryRequest {
+  // List of feed URLs to fetch summaries for (max 50 URLs)
+  repeated string feed_urls = 1;
+}
+
+// ArticleSummaryItem represents a single article summary
+message ArticleSummaryItem {
+  // Article title
+  string title = 1;
+  // Article content
+  string content = 2;
+  // Article author
+  string author = 3;
+  // Published timestamp
+  string published_at = 4;
+  // Fetched timestamp
+  string fetched_at = 5;
+  // Source ID
+  string source_id = 6;
+}
+
+// FetchArticleSummaryResponse contains article summaries
+message FetchArticleSummaryResponse {
+  // Matched articles
+  repeated ArticleSummaryItem matched_articles = 1;
+  // Total number of matched articles
+  int32 total_matched = 2;
+  // Number of requested URLs
+  int32 requested_count = 3;
+}
+
+// =============================================================================
 // ArticleService Definition
 // =============================================================================
 
@@ -97,4 +133,8 @@ service ArticleService {
   // FetchArticlesCursor fetches articles with cursor-based pagination
   // Replaces GET /v1/articles/fetch/cursor
   rpc FetchArticlesCursor(FetchArticlesCursorRequest) returns (FetchArticlesCursorResponse);
+
+  // FetchArticleSummary fetches article summaries for multiple URLs
+  // Replaces POST /v1/articles/summary
+  rpc FetchArticleSummary(FetchArticleSummaryRequest) returns (FetchArticleSummaryResponse);
 }

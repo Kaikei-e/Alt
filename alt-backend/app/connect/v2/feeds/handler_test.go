@@ -54,6 +54,13 @@ func (m *mockUpdateFeedStatusPort) UpdateFeedStatus(ctx context.Context, feedURL
 	return nil
 }
 
+// Mock for ArticlesReadingStatusUsecase dependency
+type mockUpdateArticleStatusPort struct{}
+
+func (m *mockUpdateArticleStatusPort) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
+	return nil
+}
+
 // Create test handler
 func createTestHandler() *Handler {
 	// Initialize global logger for usecases
@@ -64,6 +71,7 @@ func createTestHandler() *Handler {
 	totalArticlesUsecase := fetch_feed_stats_usecase.NewTotalArticlesCountUsecase(&mockTotalArticlesCountPort{})
 	unsummarizedUsecase := fetch_feed_stats_usecase.NewUnsummarizedArticlesCountUsecase(&mockUnsummarizedArticlesCountPort{})
 	feedsReadingStatusUsecase := reading_status.NewFeedsReadingStatusUsecase(&mockUpdateFeedStatusPort{})
+	articlesReadingStatusUsecase := reading_status.NewArticlesReadingStatusUsecase(&mockUpdateArticleStatusPort{})
 
 	container := &di.ApplicationComponents{
 		FeedAmountUsecase:                feedAmountUsecase,
@@ -71,6 +79,7 @@ func createTestHandler() *Handler {
 		TotalArticlesCountUsecase:        totalArticlesUsecase,
 		UnsummarizedArticlesCountUsecase: unsummarizedUsecase,
 		FeedsReadingStatusUsecase:        feedsReadingStatusUsecase,
+		ArticlesReadingStatusUsecase:     articlesReadingStatusUsecase,
 	}
 
 	cfg := &config.Config{
@@ -588,7 +597,7 @@ func TestMarkAsRead_RequiresAuth(t *testing.T) {
 	ctx := context.Background() // No auth
 
 	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
-		FeedUrl: "https://example.com/article",
+		ArticleUrl: "https://example.com/article",
 	})
 
 	resp, err := handler.MarkAsRead(ctx, req)
@@ -600,12 +609,12 @@ func TestMarkAsRead_RequiresAuth(t *testing.T) {
 	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 }
 
-func TestMarkAsRead_RequiresFeedURL(t *testing.T) {
+func TestMarkAsRead_RequiresArticleURL(t *testing.T) {
 	handler := createTestHandler()
 	ctx := createAuthContext()
 
 	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
-		FeedUrl: "", // Empty URL
+		ArticleUrl: "", // Empty URL
 	})
 
 	resp, err := handler.MarkAsRead(ctx, req)
@@ -622,7 +631,7 @@ func TestMarkAsRead_InvalidURL(t *testing.T) {
 	ctx := createAuthContext()
 
 	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
-		FeedUrl: "://invalid-url", // Invalid URL
+		ArticleUrl: "://invalid-url", // Invalid URL
 	})
 
 	resp, err := handler.MarkAsRead(ctx, req)
@@ -639,20 +648,113 @@ func TestMarkAsRead_Success(t *testing.T) {
 	ctx := createAuthContext()
 
 	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
-		FeedUrl: "https://example.com/article",
+		ArticleUrl: "https://example.com/article",
 	})
 
 	resp, err := handler.MarkAsRead(ctx, req)
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.Equal(t, "Feed read status updated", resp.Msg.Message)
+	assert.Equal(t, "Article read status updated", resp.Msg.Message)
 }
 
 func TestMarkAsReadResponse_Construction(t *testing.T) {
 	resp := &feedsv2.MarkAsReadResponse{
-		Message: "Feed read status updated",
+		Message: "Article read status updated",
 	}
 
-	assert.Equal(t, "Feed read status updated", resp.Message)
+	assert.Equal(t, "Article read status updated", resp.Message)
+}
+
+// =============================================================================
+// Phase 7 (TDD): MarkAsRead Error Handling Tests
+// =============================================================================
+
+// Mock that returns ErrArticleNotFound
+type mockUpdateArticleStatusPortReturnsNotFound struct{}
+
+func (m *mockUpdateArticleStatusPortReturnsNotFound) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
+	return domain.ErrArticleNotFound
+}
+
+// Mock that returns generic error
+type mockUpdateArticleStatusPortReturnsError struct{}
+
+func (m *mockUpdateArticleStatusPortReturnsError) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
+	return assert.AnError // Generic error from testify
+}
+
+// Test that domain.ErrArticleNotFound returns HTTP 404
+func TestHandler_MarkAsRead_ArticleNotFound_Returns404(t *testing.T) {
+	// Initialize logger
+	logger.InitLogger()
+
+	// Create usecase with mock that returns ErrArticleNotFound
+	articlesReadingStatusUsecase := reading_status.NewArticlesReadingStatusUsecase(&mockUpdateArticleStatusPortReturnsNotFound{})
+
+	container := &di.ApplicationComponents{
+		ArticlesReadingStatusUsecase: articlesReadingStatusUsecase,
+	}
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			SSEInterval: 5 * time.Second,
+		},
+	}
+
+	handler := NewHandler(container, cfg, slog.Default())
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
+		ArticleUrl: "https://example.com/nonexistent",
+	})
+
+	resp, err := handler.MarkAsRead(ctx, req)
+
+	// Should return NotFound error, not Internal error
+	require.Error(t, err)
+	require.Nil(t, resp)
+
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeNotFound, connectErr.Code(), "Expected HTTP 404 Not Found")
+	assert.Contains(t, connectErr.Message(), "article not found", "Error message should mention 'article not found'")
+}
+
+// Test that non-domain errors return HTTP 500
+func TestHandler_MarkAsRead_DatabaseError_Returns500(t *testing.T) {
+	// Initialize logger
+	logger.InitLogger()
+
+	// Create usecase with mock that returns generic error
+	articlesReadingStatusUsecase := reading_status.NewArticlesReadingStatusUsecase(&mockUpdateArticleStatusPortReturnsError{})
+
+	container := &di.ApplicationComponents{
+		ArticlesReadingStatusUsecase: articlesReadingStatusUsecase,
+	}
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			SSEInterval: 5 * time.Second,
+		},
+	}
+
+	handler := NewHandler(container, cfg, slog.Default())
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
+		ArticleUrl: "https://example.com/article",
+	})
+
+	resp, err := handler.MarkAsRead(ctx, req)
+
+	// Should return Internal error for non-domain errors
+	require.Error(t, err)
+	require.Nil(t, resp)
+
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeInternal, connectErr.Code(), "Expected HTTP 500 Internal Server Error")
+	// Should NOT leak internal error details to client
+	assert.Contains(t, connectErr.Message(), "internal server error", "Error message should be generic")
 }

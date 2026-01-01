@@ -225,3 +225,58 @@ func convertArticlesToProto(articles []*domain.Article) []*articlesv2.ArticleIte
 	}
 	return result
 }
+
+// FetchArticleSummary fetches article summaries for multiple URLs.
+// Replaces POST /v1/articles/summary
+func (h *Handler) FetchArticleSummary(
+	ctx context.Context,
+	req *connect.Request[articlesv2.FetchArticleSummaryRequest],
+) (*connect.Response[articlesv2.FetchArticleSummaryResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	feedUrls := req.Msg.FeedUrls
+
+	// Validation
+	if len(feedUrls) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("feed_urls cannot be empty"))
+	}
+	if len(feedUrls) > 50 {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("maximum 50 URLs allowed"))
+	}
+
+	// Fetch summaries using existing usecase
+	summaries, err := h.container.FetchInoreaderSummaryUsecase.Execute(ctx, feedUrls)
+	if err != nil {
+		h.logger.Error("failed to fetch article summaries", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Convert to proto response
+	items := make([]*articlesv2.ArticleSummaryItem, 0, len(summaries))
+	for _, s := range summaries {
+		author := ""
+		if s.Author != nil {
+			author = *s.Author
+		}
+
+		items = append(items, &articlesv2.ArticleSummaryItem{
+			Title:       s.Title,
+			Content:     s.Content,
+			Author:      author,
+			PublishedAt: s.PublishedAt.Format(time.RFC3339),
+			FetchedAt:   s.FetchedAt.Format(time.RFC3339),
+			SourceId:    s.InoreaderID,
+		})
+	}
+
+	return connect.NewResponse(&articlesv2.FetchArticleSummaryResponse{
+		MatchedArticles: items,
+		TotalMatched:    int32(len(items)),
+		RequestedCount:  int32(len(feedUrls)),
+	}), nil
+}

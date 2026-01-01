@@ -56,17 +56,30 @@ export interface SummarizeArticleResponse {
 
 /**
  * Get article summary (クライアントサイド)
+ * Connect-RPCを使用
  */
 export async function getArticleSummaryClient(
 	feedUrl: string,
 ): Promise<FetchArticleSummaryResponse> {
-	return callClientAPI<FetchArticleSummaryResponse>("/v1/articles/summary", {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify({ feed_urls: [feedUrl] }),
-	});
+	const transport = createClientTransport();
+	const { fetchArticleSummary } = await import("$lib/connect/articles");
+	const response = await fetchArticleSummary(transport, [feedUrl]);
+
+	// Convert camelCase to snake_case for API compatibility
+	return {
+		matched_articles: response.matchedArticles.map((item) => ({
+			article_url: feedUrl,
+			title: item.title,
+			author: item.author || undefined,
+			content: item.content,
+			content_type: "text/html",
+			published_at: item.publishedAt,
+			fetched_at: item.fetchedAt,
+			source_id: item.sourceId,
+		})),
+		total_matched: response.totalMatched,
+		requested_count: response.requestedCount,
+	};
 }
 
 /**
@@ -268,33 +281,22 @@ async function pollSummarizeJobStatus(
 
 /**
  * Summarize article (クライアントサイド)
+ * 内部的にConnect-RPC Server Streamingを使用し、全チャンクを収集してから返す
  */
 export async function summarizeArticleClient(
 	feedUrl: string,
 ): Promise<SummarizeArticleResponse> {
-	const response = await callClientAPI<SummarizeJobResponse>(
-		"/v1/feeds/summarize",
-		{
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({ feed_url: feedUrl }),
-		},
-	);
+	const transport = createClientTransport();
+	const { streamSummarize } = await import("$lib/connect/feeds");
 
-	// Check if this is an async job (202 Accepted with job_id)
-	if (response.job_id && response.status_url) {
-		// Poll for job completion
-		return await pollSummarizeJobStatus(
-			response.job_id,
-			response.status_url,
-			feedUrl,
-		);
-	}
+	const result = await streamSummarize(transport, { feedUrl });
 
-	// Immediate result (200 OK) - return as SummarizeArticleResponse
-	return response as SummarizeArticleResponse;
+	return {
+		success: true,
+		summary: result.summary,
+		article_id: result.articleId,
+		feed_url: feedUrl,
+	};
 }
 
 /**
@@ -313,56 +315,3 @@ export async function registerFavoriteFeedClient(
 	};
 }
 
-/**
- * Stream article summary (Client-side)
- * Returns a readable stream reader.
- */
-export async function streamSummarizeArticleClient(
-	feedUrl: string,
-	articleId?: string,
-	content?: string,
-	title?: string,
-	signal?: AbortSignal,
-): Promise<ReadableStreamDefaultReader<Uint8Array>> {
-	const payload: Record<string, unknown> = {
-		feed_url: feedUrl,
-		article_id: articleId,
-		title,
-	};
-
-	if (content) {
-		payload.content = content;
-	}
-
-	const response = await fetch("/sv/api/v1/feeds/summarize/stream", {
-		method: "POST",
-		signal,
-		headers: {
-			"Content-Type": "application/json",
-		},
-		credentials: "include", // 認証クッキーを送信
-		body: JSON.stringify(payload),
-	});
-
-	if (!response.ok) {
-		const errorText = await response.text().catch(() => "");
-		const isAuthError = response.status === 401 || response.status === 403;
-		console.error("Streaming request failed", {
-			status: response.status,
-			statusText: response.statusText,
-			isAuthError,
-			errorBody: errorText.substring(0, 200),
-		});
-		// Include status code in error message for better error handling
-		const errorMsg = isAuthError
-			? `Authentication failed: ${response.status} ${response.statusText}`
-			: `Streaming failed: ${response.status} ${response.statusText}`;
-		throw new Error(errorMsg);
-	}
-
-	if (!response.body) {
-		throw new Error("Response body is empty");
-	}
-
-	return response.body.getReader();
-}

@@ -6,7 +6,7 @@ import {
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
 } from "../../fixtures/mockData";
 
-// Swipe mode uses view: "swipe" parameter which returns single item
+// Swipe mode uses Connect-RPC for data fetching (SSR disabled)
 const SWIPE_FEEDS_RESPONSE = {
 	data: [
 		{
@@ -29,44 +29,10 @@ const VIEWED_FEEDS_EMPTY = {
 	hasMore: false,
 };
 
-// v1 REST API format for swipe +page.ts loader
-const V1_FEEDS_RESPONSE = {
-	data: [
-		{
-			id: "feed-1",
-			url: "https://example.com/ai-trends",
-			title: "AI Trends",
-			description: "Latest AI updates across the ecosystem.",
-			link: "https://example.com/ai-trends",
-			published_at: "2025-12-20T10:00:00Z",
-			tags: ["AI", "Tech"],
-			author: { name: "Alice" },
-			thumbnail: null,
-			feed_domain: "example.com",
-			read_at: null,
-			created_at: new Date().toISOString(),
-			updated_at: new Date().toISOString(),
-		},
-	],
-	next_cursor: "next-cursor-123",
-	has_more: true,
-};
-
-const V1_ARTICLE_CONTENT = {
-	content: "<p>This is a mocked article content.</p>",
-};
-
 test.describe("mobile feeds routes - swipe", () => {
 	test("swipe page renders swipe card and action footer", async ({ page }) => {
-		// Mock v1 REST API endpoints (used by +page.ts loader)
-		await page.route("**/api/v1/feeds/fetch/cursor**", (route) =>
-			fulfillJson(route, V1_FEEDS_RESPONSE),
-		);
-		await page.route("**/api/v1/articles/content**", (route) =>
-			fulfillJson(route, V1_ARTICLE_CONTENT),
-		);
-
-		// Mock Connect-RPC endpoints (used by client-side components)
+		// Mock Connect-RPC endpoints (used by +page.ts loader and client-side components)
+		// Note: SSR is disabled for this page, all data is fetched client-side via Connect-RPC
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
 			fulfillJson(route, SWIPE_FEEDS_RESPONSE),
 		);
@@ -77,7 +43,6 @@ test.describe("mobile feeds routes - swipe", () => {
 			fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE),
 		);
 
-		// Initial load might fail SSR if mocks are not hit by server, but client should retry or load
 		await gotoMobileRoute(page, "feeds/swipe");
 
 		await expect(page.getByTestId("swipe-card")).toBeVisible();

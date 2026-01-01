@@ -1,98 +1,38 @@
-import type { CursorResponse } from "$lib/api";
-import type { BackendFeedItem } from "$lib/schema/feed";
-import { sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
+import type { RenderFeed } from "$lib/schema/feed";
 import type { PageLoad } from "./$types";
+import { getFeedsWithCursorClient, getFeedContentOnTheFlyClient } from "$lib/api/client";
 
-// Base path matches svelte.config.js paths.base
-const BASE_PATH = "/sv";
+// Disable SSR for this page - Connect-RPC client requires browser context
+export const ssr = false;
 
-export const load: PageLoad = async ({ fetch }) => {
+export const load: PageLoad = async () => {
 	try {
 		const limit = 3;
-		// Include basePath in the API URL for client-side fetch
-		const apiUrl = `${BASE_PATH}/api/v1/feeds/fetch/cursor?limit=${limit}`;
-		const feedsRes = await fetch(apiUrl);
 
-		if (!feedsRes.ok) {
-			const errorText = await feedsRes.text().catch(() => "");
-			console.error("Failed to fetch feeds:", {
-				status: feedsRes.status,
-				statusText: feedsRes.statusText,
-				contentType: feedsRes.headers.get("content-type"),
-				bodyPreview: errorText.substring(0, 200),
-			});
-			throw new Error(
-				`Failed to fetch feeds: ${feedsRes.status} ${feedsRes.statusText}`,
-			);
-		}
+		// Use Connect-RPC client function
+		const feedsData = await getFeedsWithCursorClient(undefined, limit);
 
-		// Check Content-Type before parsing JSON
-		const contentType = feedsRes.headers.get("content-type") || "";
-		const isJson = contentType.includes("application/json");
-
-		if (!isJson) {
-			const text = await feedsRes.text().catch(() => "");
-			console.error("API returned non-JSON response:", {
-				url: apiUrl,
-				contentType,
-				status: feedsRes.status,
-				bodyPreview: text.substring(0, 200),
-			});
-			throw new Error(
-				`API returned non-JSON response (${contentType}). This may indicate a routing error or server-side error page.`,
-			);
-		}
-
-		const feedsData: CursorResponse<BackendFeedItem> = await feedsRes.json();
-
-		let feeds: ReturnType<typeof toRenderFeed>[] = [];
-		let nextCursor: string | null = null;
-
-		if (feedsData.data && Array.isArray(feedsData.data)) {
-			feeds = feedsData.data.map((item: BackendFeedItem) => {
-				const sanitized = sanitizeFeed(item);
-				return toRenderFeed(sanitized, item.tags);
-			});
-			nextCursor = feedsData.next_cursor;
-		}
+		const feeds: RenderFeed[] = feedsData.data;
+		const nextCursor = feedsData.next_cursor;
 
 		// Fetch first article content as a non-blocking Promise (streaming pattern)
 		// This allows the page to render immediately while article content loads in background
 		let articleContentPromise: Promise<string | null> = Promise.resolve(null);
 		if (feeds.length > 0) {
-			const contentApiUrl = `${BASE_PATH}/api/v1/articles/content`;
 			const feedUrl = feeds[0].link;
 
 			articleContentPromise = (async (): Promise<string | null> => {
 				try {
-					const contentRes = await fetch(contentApiUrl, {
-						method: "POST",
-						headers: { "Content-Type": "application/json" },
-						body: JSON.stringify({ url: feedUrl }),
-					});
-
-					if (contentRes.ok) {
-						const contentType = contentRes.headers.get("content-type") || "";
-						const isJson = contentType.includes("application/json");
-
-						if (isJson) {
-							const contentData: { content: string } =
-								await contentRes.json();
-							return contentData.content;
-						}
-						console.warn("Article content API returned non-JSON response:", {
-							contentType,
-							status: contentRes.status,
-						});
-					}
+					const contentData = await getFeedContentOnTheFlyClient(feedUrl);
+					return contentData.content;
 				} catch (e) {
 					const errorMessage = e instanceof Error ? e.message : String(e);
 					console.error("Error fetching initial article content:", {
 						error: errorMessage,
 						url: feedUrl,
 					});
+					return null;
 				}
-				return null;
 			})();
 		}
 

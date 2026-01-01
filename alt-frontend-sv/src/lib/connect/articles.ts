@@ -49,6 +49,27 @@ export interface ArticleCursorResponse {
 	hasMore: boolean;
 }
 
+/**
+ * Article summary item
+ */
+export interface ArticleSummaryItem {
+	title: string;
+	content: string;
+	author: string;
+	publishedAt: string;
+	fetchedAt: string;
+	sourceId: string;
+}
+
+/**
+ * Article summary response
+ */
+export interface FetchArticleSummaryResult {
+	matchedArticles: ArticleSummaryItem[];
+	totalMatched: number;
+	requestedCount: number;
+}
+
 // =============================================================================
 // Client Factory
 // =============================================================================
@@ -132,6 +153,34 @@ export async function fetchArticlesCursor(
 		data: response.data.map(convertProtoArticle),
 		nextCursor: response.nextCursor ?? null,
 		hasMore: response.hasMore,
+	};
+}
+
+/**
+ * Fetches article summaries for multiple URLs via Connect-RPC.
+ *
+ * @param transport - The Connect transport to use
+ * @param feedUrls - List of feed URLs to fetch summaries for (max 50)
+ * @returns Article summaries with metadata
+ */
+export async function fetchArticleSummary(
+	transport: Transport,
+	feedUrls: string[],
+): Promise<FetchArticleSummaryResult> {
+	const client = createArticleClient(transport);
+	const response = await client.fetchArticleSummary({ feedUrls });
+
+	return {
+		matchedArticles: response.matchedArticles.map((item) => ({
+			title: item.title,
+			content: item.content,
+			author: item.author,
+			publishedAt: item.publishedAt,
+			fetchedAt: item.fetchedAt,
+			sourceId: item.sourceId,
+		})),
+		totalMatched: response.totalMatched,
+		requestedCount: response.requestedCount,
 	};
 }
 

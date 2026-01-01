@@ -74,11 +74,6 @@
 
 			const response = await getFeedContentOnTheFlyClient(feed.link);
 
-			if (response.error) {
-				contentError = response.error;
-				return;
-			}
-
 			articleContent = response.content || null;
 			articleID = response.article_id || null;
 		} catch (err) {
@@ -201,7 +196,7 @@
 						<div class="mb-6 p-4 bg-white rounded border border-gray-200">
 							<h3 class="text-sm font-semibold text-gray-500 mb-3">FULL ARTICLE</h3>
 							<RenderFeedDetails
-								feedDetails={articleContent ? { content: articleContent, article_id: articleID } : null}
+								feedDetails={articleContent ? { content: articleContent, article_id: articleID ?? "" } : null}
 								error={contentError}
 							/>
 						</div>
