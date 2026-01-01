@@ -15,15 +15,15 @@ import (
 var downCmd = &cobra.Command{
 	Use:   "down [stacks...]",
 	Short: "Stop specified stacks",
-	Long: `Stop one or more stacks. By default, also stops stacks that depend on them.
+	Long: `Stop one or more stacks. By default, only stops the specified stacks.
 
 If no stacks are specified, stops all running stacks.
 
 Examples:
   altctl down                  # Stop all running stacks
-  altctl down ai               # Stop AI stack and its dependents
+  altctl down recap            # Stop only recap stack
   altctl down --volumes        # Stop and remove volumes
-  altctl down db --no-deps     # Stop only db, keep dependents running`,
+  altctl down db --with-deps   # Stop db and stacks that depend on it`,
 	Args:              cobra.ArbitraryArgs,
 	ValidArgsFunction: completeStackNames,
 	RunE:              runDown,
@@ -34,7 +34,7 @@ func init() {
 
 	downCmd.Flags().Bool("volumes", false, "remove named volumes")
 	downCmd.Flags().Bool("remove-orphans", false, "remove orphan containers")
-	downCmd.Flags().Bool("no-deps", false, "don't stop dependent stacks")
+	downCmd.Flags().Bool("with-deps", false, "also stop stacks that depend on the specified stacks")
 	downCmd.Flags().Duration("timeout", 30*time.Second, "timeout for container shutdown")
 }
 
@@ -52,24 +52,25 @@ func runDown(cmd *cobra.Command, args []string) error {
 		stackNames = registry.Names()
 	}
 
-	// Resolve dependents unless --no-deps is set
-	noDeps, _ := cmd.Flags().GetBool("no-deps")
+	// Only resolve dependents if --with-deps is set
+	withDeps, _ := cmd.Flags().GetBool("with-deps")
 	var stacks []*stack.Stack
 	var err error
 
-	if noDeps {
+	if withDeps {
+		// Get stacks in reverse order (dependents first)
+		stacks, err = resolver.ResolveWithDependents(stackNames)
+		if err != nil {
+			return fmt.Errorf("resolving dependencies: %w", err)
+		}
+	} else {
+		// Default: only stop the specified stacks
 		for _, name := range stackNames {
 			s, ok := registry.Get(name)
 			if !ok {
 				return fmt.Errorf("unknown stack: %s", name)
 			}
 			stacks = append(stacks, s)
-		}
-	} else {
-		// Get stacks in reverse order (dependents first)
-		stacks, err = resolver.ResolveWithDependents(stackNames)
-		if err != nil {
-			return fmt.Errorf("resolving dependencies: %w", err)
 		}
 	}
 
