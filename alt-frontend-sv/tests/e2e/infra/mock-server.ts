@@ -563,6 +563,28 @@ const backendServer = http.createServer((req, res) => {
 		return;
 	}
 
+	// Connect-RPC: GetDetailedFeedStats
+	if (path === "/alt.feeds.v2.FeedService/GetDetailedFeedStats") {
+		res.setHeader("Content-Type", "application/json");
+		res.writeHead(200);
+		res.end(JSON.stringify({
+			feedAmount: 12,
+			articleAmount: 345,
+			unsummarizedFeedAmount: 7,
+		}));
+		return;
+	}
+
+	// Connect-RPC: GetUnreadCount
+	if (path === "/alt.feeds.v2.FeedService/GetUnreadCount") {
+		res.setHeader("Content-Type", "application/json");
+		res.writeHead(200);
+		res.end(JSON.stringify({
+			count: 42,
+		}));
+		return;
+	}
+
 	// Connect-RPC: FetchArticleContent
 	if (path === "/alt.articles.v2.ArticleService/FetchArticleContent") {
 		res.setHeader("Content-Type", "application/json");
