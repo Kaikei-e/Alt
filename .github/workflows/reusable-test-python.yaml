@@ -85,7 +85,7 @@ jobs:
         uses: docker://alpine:latest
         with:
           entrypoint: /bin/sh
-          args: -c "rm -rf /github/workspace/.claude && find /github/workspace -name '*.lock' -type f -delete 2>/dev/null; chown -R 1001:1001 /github/workspace 2>/dev/null || true"
+          args: -c "rm -rf /github/workspace/* /github/workspace/.* 2>/dev/null || true"
 
       - name: Checkout (sparse)
         uses: actions/checkout@v5
