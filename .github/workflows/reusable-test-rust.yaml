@@ -50,19 +50,10 @@ jobs:
 
       - name: Clean workspace
         if: runner.environment == 'self-hosted'
-        run: |
-          # Remove Claude Code artifacts
-          sudo rm -rf "$GITHUB_WORKSPACE/.claude" 2>/dev/null || true
-          # Remove stale git locks
-          sudo find "$GITHUB_WORKSPACE" -name "*.lock" -type f -delete 2>/dev/null || true
-          # Fix ownership for entire workspace
-          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" 2>/dev/null || true
-          # Rustキャッシュディレクトリの権限を修正
-          sudo chown -R "$(id -u):$(id -g)" ~/.cargo 2>/dev/null || true
-          sudo chown -R "$(id -u):$(id -g)" ~/Library/Caches/cargo-target 2>/dev/null || true
-          # ワークスペースをクリーン
-          rm -rf ${{ github.workspace }}/target || true
-        continue-on-error: true
+        uses: docker://alpine:latest
+        with:
+          entrypoint: /bin/sh
+          args: -c "rm -rf /github/workspace/.claude && find /github/workspace -name '*.lock' -type f -delete 2>/dev/null; chown -R 1001:1001 /github/workspace 2>/dev/null; rm -rf /github/workspace/target 2>/dev/null || true"
 
       - uses: actions/checkout@v5
 
