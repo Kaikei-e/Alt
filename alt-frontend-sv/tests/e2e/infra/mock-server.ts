@@ -333,7 +333,7 @@ const kratosServer = http.createServer((req, res) => {
 		if (path === "/self-service/registration/browser") {
 			const returnTo = parsedUrl.query.return_to as string || "http://127.0.0.1:4174/sv/home";
 			const returnToUrl = new URL(returnTo);
-			const redirectUrl = `${returnToUrl.origin}/sv/auth/register?flow=${flowId}`;
+			const redirectUrl = `${returnToUrl.origin}/sv/register?flow=${flowId}`;
 			log(`[Mock Kratos] Redirecting to: ${redirectUrl}`);
 			res.writeHead(303, { Location: redirectUrl });
 			res.end();
