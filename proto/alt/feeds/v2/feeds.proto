@@ -210,13 +210,13 @@ message StreamSummarizeResponse {
 // Mark As Read Messages (Phase 7)
 // =============================================================================
 
-// MarkAsReadRequest is the request for marking a feed as read
+// MarkAsReadRequest is the request for marking an article as read
 message MarkAsReadRequest {
-  // Feed/article URL to mark as read (required)
-  string feed_url = 1;
+  // Article URL to mark as read (required)
+  string article_url = 1;
 }
 
-// MarkAsReadResponse is the response after marking a feed as read
+// MarkAsReadResponse is the response after marking an article as read
 message MarkAsReadResponse {
   // Success message
   string message = 1;
@@ -273,7 +273,7 @@ service FeedService {
 
   // Mark As Read RPC (Phase 7)
 
-  // MarkAsRead marks a feed/article as read
+  // MarkAsRead marks an article as read by its URL
   // Replaces POST /v1/feeds/read
   rpc MarkAsRead(MarkAsReadRequest) returns (MarkAsReadResponse);
 }
