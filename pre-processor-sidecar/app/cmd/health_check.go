@@ -97,14 +97,15 @@ func defaultDatabaseHealthCheck(cfg *config.Config) bool {
 }
 
 func defaultTokenManagerHealthCheck(baseURL string) (bool, error) {
-	// For now, just check if we have the required environment variables
-	clientID := os.Getenv("INOREADER_CLIENT_ID")
-	clientSecret := os.Getenv("INOREADER_CLIENT_SECRET")
-	
+	// Check for OAuth2 credentials from file or environment variable
+	// Uses GetSecretOrEnv to support both file-based secrets (Docker/K8s) and env vars
+	clientID := config.GetSecretOrEnv("INOREADER_CLIENT_ID_FILE", "INOREADER_CLIENT_ID")
+	clientSecret := config.GetSecretOrEnv("INOREADER_CLIENT_SECRET_FILE", "INOREADER_CLIENT_SECRET")
+
 	if clientID == "" || clientSecret == "" {
 		return false, fmt.Errorf("OAuth2 credentials not configured")
 	}
-	
+
 	return true, nil
 }
 
@@ -115,10 +116,10 @@ func defaultOAuth2HealthCheck(cfg *config.Config) (bool, error) {
 
 	// Check if OAuth2 configuration exists
 	if cfg.OAuth2.ClientID == "" || cfg.OAuth2.ClientSecret == "" {
-		// Try environment variables as fallback
-		clientID := os.Getenv("INOREADER_CLIENT_ID")
-		clientSecret := os.Getenv("INOREADER_CLIENT_SECRET")
-		
+		// Try file-based secrets or environment variables as fallback
+		clientID := config.GetSecretOrEnv("INOREADER_CLIENT_ID_FILE", "INOREADER_CLIENT_ID")
+		clientSecret := config.GetSecretOrEnv("INOREADER_CLIENT_SECRET_FILE", "INOREADER_CLIENT_SECRET")
+
 		if clientID == "" || clientSecret == "" {
 			return false, fmt.Errorf("OAuth2 credentials not configured")
 		}

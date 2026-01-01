@@ -183,15 +183,15 @@ func LoadConfig() (*Config, error) {
 			Port:     getEnvOrDefault("DB_PORT", "5432"),
 			Name:     getEnvOrDefault("DB_NAME", "alt"),
 			User:     getEnvOrDefault("PRE_PROCESSOR_SIDECAR_DB_USER", "pre_processor_sidecar_user"),
-			Password: getSecretOrEnv("PRE_PROCESSOR_DB_PASSWORD_FILE", "PRE_PROCESSOR_SIDECAR_DB_PASSWORD"),
+			Password: GetSecretOrEnv("PRE_PROCESSOR_DB_PASSWORD_FILE", "PRE_PROCESSOR_SIDECAR_DB_PASSWORD"),
 			SSLMode:  getEnvOrDefault("DB_SSL_MODE", "disable"),
 		},
 
 		Inoreader: InoreaderConfig{
 			BaseURL:      getEnvOrDefault("INOREADER_BASE_URL", "https://www.inoreader.com/reader/api/0"),
-			ClientID:     getSecretOrEnv("INOREADER_CLIENT_ID_FILE", "INOREADER_CLIENT_ID"),         // Required from secret
-			ClientSecret: getSecretOrEnv("INOREADER_CLIENT_SECRET_FILE", "INOREADER_CLIENT_SECRET"), // Required from secret
-			RefreshToken: getSecretOrEnv("INOREADER_REFRESH_TOKEN_FILE", "INOREADER_REFRESH_TOKEN"), // Required from secret
+			ClientID:     GetSecretOrEnv("INOREADER_CLIENT_ID_FILE", "INOREADER_CLIENT_ID"),         // Required from secret
+			ClientSecret: GetSecretOrEnv("INOREADER_CLIENT_SECRET_FILE", "INOREADER_CLIENT_SECRET"), // Required from secret
+			RefreshToken: GetSecretOrEnv("INOREADER_REFRESH_TOKEN_FILE", "INOREADER_REFRESH_TOKEN"), // Required from secret
 		},
 
 		Proxy: ProxyConfig{
@@ -204,9 +204,9 @@ func LoadConfig() (*Config, error) {
 		},
 
 		OAuth2: OAuth2Config{
-			ClientID:     getSecretOrEnv("INOREADER_CLIENT_ID_FILE", "INOREADER_CLIENT_ID"),         // Required from secret
-			ClientSecret: getSecretOrEnv("INOREADER_CLIENT_SECRET_FILE", "INOREADER_CLIENT_SECRET"), // Required from secret
-			RefreshToken: getSecretOrEnv("INOREADER_REFRESH_TOKEN_FILE", "INOREADER_REFRESH_TOKEN"), // Optional - managed by auth-token-manager
+			ClientID:     GetSecretOrEnv("INOREADER_CLIENT_ID_FILE", "INOREADER_CLIENT_ID"),         // Required from secret
+			ClientSecret: GetSecretOrEnv("INOREADER_CLIENT_SECRET_FILE", "INOREADER_CLIENT_SECRET"), // Required from secret
+			RefreshToken: GetSecretOrEnv("INOREADER_REFRESH_TOKEN_FILE", "INOREADER_REFRESH_TOKEN"), // Optional - managed by auth-token-manager
 			BaseURL:      getEnvOrDefault("INOREADER_OAUTH2_BASE_URL", "https://www.inoreader.com"), // OAuth2 specific base URL
 		},
 
@@ -437,8 +437,9 @@ func getEnvOrDefaultFloat(key string, defaultValue float64) float64 {
 	return defaultValue
 }
 
-// getSecretOrEnv reads secret from file defined in fileEnv or falls back to env variable
-func getSecretOrEnv(fileEnv, env string) string {
+// GetSecretOrEnv reads secret from file defined in fileEnv or falls back to env variable
+// Exported for use in health checks and other packages
+func GetSecretOrEnv(fileEnv, env string) string {
 	if filePath := os.Getenv(fileEnv); filePath != "" {
 		if content, err := os.ReadFile(filePath); err == nil {
 			return strings.TrimSpace(string(content))
