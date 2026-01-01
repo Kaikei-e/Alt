@@ -4,8 +4,8 @@
 -- Atlas Version: v0.35+
 
 -- Add index on link column for faster URL lookups
--- Using CONCURRENTLY to avoid blocking writes in production
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_feeds_link ON feeds (link);
+-- Note: Not using CONCURRENTLY as Atlas runs migrations in transactions
+CREATE INDEX IF NOT EXISTS idx_feeds_link ON feeds (link);
 
 -- Add comment explaining the index purpose
 COMMENT ON INDEX idx_feeds_link IS 'Index for fast URL lookups in MarkAsRead API (SELECT id FROM feeds WHERE link = ?)';
