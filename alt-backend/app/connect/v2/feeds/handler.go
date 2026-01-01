@@ -857,7 +857,7 @@ func extractSSEData(eventStr string) string {
 // Mark As Read RPC (Phase 7)
 // =============================================================================
 
-// MarkAsRead marks a feed/article as read.
+// MarkAsRead marks an article as read by its URL.
 // Replaces POST /v1/feeds/read
 func (h *Handler) MarkAsRead(
 	ctx context.Context,
@@ -868,41 +868,41 @@ func (h *Handler) MarkAsRead(
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
 
-	// Validate feed_url
-	if req.Msg.FeedUrl == "" {
+	// Validate article_url
+	if req.Msg.ArticleUrl == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("feed_url is required"))
+			fmt.Errorf("article_url is required"))
 	}
 
 	// Parse URL
-	feedURL, err := url.Parse(req.Msg.FeedUrl)
+	articleURL, err := url.Parse(req.Msg.ArticleUrl)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("invalid feed_url: %w", err))
+			fmt.Errorf("invalid article_url: %w", err))
 	}
 
 	// Execute usecase
-	if err := h.container.FeedsReadingStatusUsecase.Execute(ctx, *feedURL); err != nil {
+	if err := h.container.ArticlesReadingStatusUsecase.Execute(ctx, *articleURL); err != nil {
 		// Map domain errors to appropriate HTTP status codes
-		if errors.Is(err, domain.ErrFeedNotFound) {
-			h.logger.Info("feed not found for mark as read",
-				"feed_url", req.Msg.FeedUrl,
+		if errors.Is(err, domain.ErrArticleNotFound) {
+			h.logger.Info("article not found for mark as read",
+				"article_url", req.Msg.ArticleUrl,
 				"error", err)
 			return nil, connect.NewError(connect.CodeNotFound,
-				fmt.Errorf("feed not found: %s", req.Msg.FeedUrl))
+				fmt.Errorf("article not found: %s", req.Msg.ArticleUrl))
 		}
 
 		// All other errors are internal server errors
-		h.logger.Error("failed to mark feed as read",
+		h.logger.Error("failed to mark article as read",
 			"error", err,
-			"feed_url", req.Msg.FeedUrl)
+			"article_url", req.Msg.ArticleUrl)
 		return nil, connect.NewError(connect.CodeInternal,
 			fmt.Errorf("internal server error"))
 	}
 
-	h.logger.Info("feed marked as read", "feed_url", req.Msg.FeedUrl)
+	h.logger.Info("article marked as read", "article_url", req.Msg.ArticleUrl)
 
 	return connect.NewResponse(&feedsv2.MarkAsReadResponse{
-		Message: "Feed read status updated",
+		Message: "Article read status updated",
 	}), nil
 }

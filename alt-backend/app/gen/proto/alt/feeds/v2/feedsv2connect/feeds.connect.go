@@ -89,7 +89,7 @@ type FeedServiceClient interface {
 	// StreamSummarize streams article summarization in real-time
 	// Replaces POST /v1/feeds/summarize/stream (SSE)
 	StreamSummarize(context.Context, *connect.Request[v2.StreamSummarizeRequest]) (*connect.ServerStreamForClient[v2.StreamSummarizeResponse], error)
-	// MarkAsRead marks a feed/article as read
+	// MarkAsRead marks an article as read by its URL
 	// Replaces POST /v1/feeds/read
 	MarkAsRead(context.Context, *connect.Request[v2.MarkAsReadRequest]) (*connect.Response[v2.MarkAsReadResponse], error)
 }
@@ -258,7 +258,7 @@ type FeedServiceHandler interface {
 	// StreamSummarize streams article summarization in real-time
 	// Replaces POST /v1/feeds/summarize/stream (SSE)
 	StreamSummarize(context.Context, *connect.Request[v2.StreamSummarizeRequest], *connect.ServerStream[v2.StreamSummarizeResponse]) error
-	// MarkAsRead marks a feed/article as read
+	// MarkAsRead marks an article as read by its URL
 	// Replaces POST /v1/feeds/read
 	MarkAsRead(context.Context, *connect.Request[v2.MarkAsReadRequest]) (*connect.Response[v2.MarkAsReadResponse], error)
 }
