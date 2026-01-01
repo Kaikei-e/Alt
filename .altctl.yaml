@@ -29,10 +29,10 @@ stacks:
     # GPU requirements for AI stack
     requires_gpu: true
     # Longer timeout for model loading
-    startup_timeout: 600s
+    startup_timeout: 1200s
   recap:
     # Extended timeout for ML model initialization
-    startup_timeout: 300s
+    startup_timeout: 1200s
 
 # Logging configuration
 logging:
