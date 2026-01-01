@@ -36,6 +36,8 @@ function connectFeedToRenderFeed(item: ConnectFeedItem): RenderFeed {
 		published: item.published, // Already formatted as "2h ago" etc.
 		created_at: item.createdAt,
 		author: item.author || undefined,
+		// Article ID in the articles table - used to determine if mark-as-read is available
+		articleId: item.articleId,
 		// Generate display values from the already-sanitized data
 		publishedAtFormatted: formatPublishedDate(item.createdAt || item.published),
 		mergedTagsLabel: "", // Tags not available in Connect-RPC response

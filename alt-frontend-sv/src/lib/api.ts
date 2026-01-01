@@ -206,6 +206,8 @@ function connectFeedToBackendFormat(item: ConnectFeedItem): unknown {
 		published: item.createdAt, // Use createdAt for RFC3339 format
 		created_at: item.createdAt,
 		author: item.author ? { name: item.author } : undefined,
+		// Article ID in the articles table - required for mark-as-read functionality
+		article_id: item.articleId,
 	};
 }
 

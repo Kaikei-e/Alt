@@ -106,6 +106,8 @@ export interface ConnectFeedItem {
 	published: string;
 	createdAt: string;
 	author: string;
+	/** Article ID in the articles table. Undefined if article doesn't exist. */
+	articleId?: string;
 }
 
 /**
@@ -255,6 +257,7 @@ function convertProtoFeed(proto: {
 	published: string;
 	createdAt: string;
 	author: string;
+	articleId?: string;
 }): ConnectFeedItem {
 	return {
 		id: proto.id,
@@ -264,6 +267,7 @@ function convertProtoFeed(proto: {
 		published: proto.published,
 		createdAt: proto.createdAt,
 		author: proto.author,
+		articleId: proto.articleId || undefined,
 	};
 }
 
@@ -575,6 +579,17 @@ export interface MarkAsReadResult {
 }
 
 /**
+ * Normalizes a URL by removing trailing slash (except for root path).
+ * This ensures consistent URL comparison across frontend and backend.
+ */
+function normalizeUrl(url: string): string {
+	if (url.endsWith('/') && url !== '/') {
+		return url.slice(0, -1);
+	}
+	return url;
+}
+
+/**
  * Marks a feed/article as read via Connect-RPC.
  *
  * @param transport - The Connect transport to use
@@ -585,8 +600,11 @@ export async function markAsRead(
 	transport: Transport,
 	articleUrl: string,
 ): Promise<MarkAsReadResult> {
+	// Normalize URL to remove trailing slash (zero-trust: ensure consistency)
+	const normalizedUrl = normalizeUrl(articleUrl);
+
 	const client = createFeedClient(transport);
-	const response = await client.markAsRead({ articleUrl });
+	const response = await client.markAsRead({ articleUrl: normalizedUrl });
 
 	return {
 		message: response.message,
