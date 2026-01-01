@@ -135,8 +135,8 @@ export class FeedApi {
     );
   }
 
-  async updateFeedReadStatus(url: string): Promise<MessageResponse> {
-    return this.apiClient.post("/v1/feeds/read", { feed_url: url });
+  async updateFeedReadStatus(articleUrl: string): Promise<MessageResponse> {
+    return this.apiClient.post("/v1/feeds/read", { article_url: articleUrl });
   }
 
   async searchFeeds(query: string): Promise<FeedSearchResult> {

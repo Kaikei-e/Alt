@@ -43,7 +43,7 @@ export interface FeedSource {
 export interface DesktopFeedCardProps {
   feed: DesktopFeed;
   variant?: "default" | "compact" | "detailed";
-  onMarkAsRead: (feedId: string) => void;
+  onMarkAsRead: (articleUrl: string) => void;
   onToggleFavorite: (feedId: string) => void;
   onToggleBookmark: (feedId: string) => void;
   onReadLater: (feedId: string) => void;
