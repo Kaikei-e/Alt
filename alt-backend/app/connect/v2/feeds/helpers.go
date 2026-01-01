@@ -17,7 +17,7 @@ import (
 func convertFeedsToProto(feeds []*domain.FeedItem) []*feedsv2.FeedItem {
 	result := make([]*feedsv2.FeedItem, 0, len(feeds))
 	for _, feed := range feeds {
-		result = append(result, &feedsv2.FeedItem{
+		item := &feedsv2.FeedItem{
 			Id:          feed.Link, // Use Link as ID for consistency with frontend
 			Title:       feed.Title,
 			Description: sanitizeDescription(feed.Description),
@@ -25,7 +25,15 @@ func convertFeedsToProto(feeds []*domain.FeedItem) []*feedsv2.FeedItem {
 			Published:   formatTimeAgo(feed.PublishedParsed),
 			CreatedAt:   feed.PublishedParsed.Format(time.RFC3339),
 			Author:      formatAuthor(feed.Author, feed.Authors),
-		})
+		}
+
+		// Set ArticleId if article exists in database
+		// When empty, mark as read functionality should be disabled on frontend
+		if feed.ArticleID != "" {
+			item.ArticleId = &feed.ArticleID
+		}
+
+		result = append(result, item)
 	}
 	return result
 }

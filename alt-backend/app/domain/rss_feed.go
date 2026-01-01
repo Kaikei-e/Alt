@@ -57,6 +57,9 @@ type FeedItem struct {
 	PublishedParsed time.Time `json:"publishedParsed"`
 	Author          Author    `json:"author"`
 	Authors         []Author  `json:"authors"`
+	// ArticleID is the ID of the corresponding article in the articles table.
+	// Empty string if no article exists for this feed item.
+	ArticleID string `json:"articleId,omitempty"`
 }
 
 type Author struct {

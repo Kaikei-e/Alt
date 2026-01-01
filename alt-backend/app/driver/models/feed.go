@@ -10,6 +10,8 @@ type Feed struct {
 	PubDate     time.Time `db:"pub_date"`
 	CreatedAt   time.Time `db:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at"`
+	// ArticleID is the ID of the corresponding article in the articles table (nullable)
+	ArticleID *string `db:"article_id"`
 }
 
 type FeedAndArticle struct {

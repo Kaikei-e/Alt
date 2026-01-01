@@ -228,16 +228,24 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 				"created_at", feed.CreatedAt,
 				"published_parsed", publishedTime,
 				"link", feed.Link,
+				"article_id", feed.ArticleID,
 			)
 		}
 
-		feedItems = append(feedItems, &domain.FeedItem{
+		feedItem := &domain.FeedItem{
 			Title:           feed.Title,
 			Description:     feed.Description,
 			Link:            feed.Link,
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
-		})
+		}
+
+		// Set ArticleID if article exists in database
+		if feed.ArticleID != nil {
+			feedItem.ArticleID = *feed.ArticleID
+		}
+
+		feedItems = append(feedItems, feedItem)
 	}
 
 	return feedItems, nil

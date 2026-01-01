@@ -160,14 +160,17 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 	// Cursor-based pagination using created_at only
 	// created_at is always populated (NOT NULL DEFAULT CURRENT_TIMESTAMP) and reliable
 	// pub_date has many zero values (0001-01-01) and is not reliable for pagination
+	// LEFT JOIN with articles table to get article_id if article exists
 	var query string
 	var args []interface{}
 
 	if cursor == nil {
 		// First page - no cursor
 		query = `
-			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
+			       a.id AS article_id
 			FROM feeds f
+			LEFT JOIN articles a ON a.url = f.link AND a.deleted_at IS NULL
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM read_status rs
@@ -182,8 +185,10 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 	} else {
 		// Subsequent pages - use cursor
 		query = `
-			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
+			       a.id AS article_id
 			FROM feeds f
+			LEFT JOIN articles a ON a.url = f.link AND a.deleted_at IS NULL
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM read_status rs
@@ -208,7 +213,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 	var feeds []*models.Feed
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID)
 		if err != nil {
 			logger.Logger.Error("error scanning unread feeds with cursor", "error", err)
 			return nil, errors.New("error scanning feeds list")
