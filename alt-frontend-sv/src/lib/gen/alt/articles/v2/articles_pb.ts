@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/articles/v2/articles.proto.
  */
 export const file_alt_articles_v2_articles: GenFile = /*@__PURE__*/
-  fileDesc("Ch5hbHQvYXJ0aWNsZXMvdjIvYXJ0aWNsZXMucHJvdG8SD2FsdC5hcnRpY2xlcy52MiIpChpGZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBILCgN1cmwYASABKAkiTwobRmV0Y2hBcnRpY2xlQ29udGVudFJlc3BvbnNlEgsKA3VybBgBIAEoCRIPCgdjb250ZW50GAIgASgJEhIKCmFydGljbGVfaWQYAyABKAkiRwoVQXJjaGl2ZUFydGljbGVSZXF1ZXN0EhAKCGZlZWRfdXJsGAEgASgJEhIKBXRpdGxlGAIgASgJSACIAQFCCAoGX3RpdGxlIikKFkFyY2hpdmVBcnRpY2xlUmVzcG9uc2USDwoHbWVzc2FnZRgBIAEoCSJLChpGZXRjaEFydGljbGVzQ3Vyc29yUmVxdWVzdBINCgVsaW1pdBgBIAEoBRITCgZjdXJzb3IYAiABKAlIAIgBAUIJCgdfY3Vyc29yImoKC0FydGljbGVJdGVtEgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEgsKA3VybBgDIAEoCRIPCgdjb250ZW50GAQgASgJEhQKDHB1Ymxpc2hlZF9hdBgFIAEoCRIMCgR0YWdzGAYgAygJIoUBChtGZXRjaEFydGljbGVzQ3Vyc29yUmVzcG9uc2USKgoEZGF0YRgBIAMoCzIcLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvcjLXAgoOQXJ0aWNsZVNlcnZpY2UScAoTRmV0Y2hBcnRpY2xlQ29udGVudBIrLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVDb250ZW50UmVzcG9uc2USYQoOQXJjaGl2ZUFydGljbGUSJi5hbHQuYXJ0aWNsZXMudjIuQXJjaGl2ZUFydGljbGVSZXF1ZXN0GicuYWx0LmFydGljbGVzLnYyLkFyY2hpdmVBcnRpY2xlUmVzcG9uc2UScAoTRmV0Y2hBcnRpY2xlc0N1cnNvchIrLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVzQ3Vyc29yUmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVzQ3Vyc29yUmVzcG9uc2VCKlooYWx0L2dlbi9wcm90by9hbHQvYXJ0aWNsZXMvdjI7YXJ0aWNsZXN2MmIGcHJvdG8z");
+  fileDesc("Ch5hbHQvYXJ0aWNsZXMvdjIvYXJ0aWNsZXMucHJvdG8SD2FsdC5hcnRpY2xlcy52MiIpChpGZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBILCgN1cmwYASABKAkiTwobRmV0Y2hBcnRpY2xlQ29udGVudFJlc3BvbnNlEgsKA3VybBgBIAEoCRIPCgdjb250ZW50GAIgASgJEhIKCmFydGljbGVfaWQYAyABKAkiRwoVQXJjaGl2ZUFydGljbGVSZXF1ZXN0EhAKCGZlZWRfdXJsGAEgASgJEhIKBXRpdGxlGAIgASgJSACIAQFCCAoGX3RpdGxlIikKFkFyY2hpdmVBcnRpY2xlUmVzcG9uc2USDwoHbWVzc2FnZRgBIAEoCSJLChpGZXRjaEFydGljbGVzQ3Vyc29yUmVxdWVzdBINCgVsaW1pdBgBIAEoBRITCgZjdXJzb3IYAiABKAlIAIgBAUIJCgdfY3Vyc29yImoKC0FydGljbGVJdGVtEgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEgsKA3VybBgDIAEoCRIPCgdjb250ZW50GAQgASgJEhQKDHB1Ymxpc2hlZF9hdBgFIAEoCRIMCgR0YWdzGAYgAygJIoUBChtGZXRjaEFydGljbGVzQ3Vyc29yUmVzcG9uc2USKgoEZGF0YRgBIAMoCzIcLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciIvChpGZXRjaEFydGljbGVTdW1tYXJ5UmVxdWVzdBIRCglmZWVkX3VybHMYASADKAkigQEKEkFydGljbGVTdW1tYXJ5SXRlbRINCgV0aXRsZRgBIAEoCRIPCgdjb250ZW50GAIgASgJEg4KBmF1dGhvchgDIAEoCRIUCgxwdWJsaXNoZWRfYXQYBCABKAkSEgoKZmV0Y2hlZF9hdBgFIAEoCRIRCglzb3VyY2VfaWQYBiABKAkijAEKG0ZldGNoQXJ0aWNsZVN1bW1hcnlSZXNwb25zZRI9ChBtYXRjaGVkX2FydGljbGVzGAEgAygLMiMuYWx0LmFydGljbGVzLnYyLkFydGljbGVTdW1tYXJ5SXRlbRIVCg10b3RhbF9tYXRjaGVkGAIgASgFEhcKD3JlcXVlc3RlZF9jb3VudBgDIAEoBTLJAwoOQXJ0aWNsZVNlcnZpY2UScAoTRmV0Y2hBcnRpY2xlQ29udGVudBIrLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVDb250ZW50UmVzcG9uc2USYQoOQXJjaGl2ZUFydGljbGUSJi5hbHQuYXJ0aWNsZXMudjIuQXJjaGl2ZUFydGljbGVSZXF1ZXN0GicuYWx0LmFydGljbGVzLnYyLkFyY2hpdmVBcnRpY2xlUmVzcG9uc2UScAoTRmV0Y2hBcnRpY2xlc0N1cnNvchIrLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVzQ3Vyc29yUmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVzQ3Vyc29yUmVzcG9uc2UScAoTRmV0Y2hBcnRpY2xlU3VtbWFyeRIrLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVTdW1tYXJ5UmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVTdW1tYXJ5UmVzcG9uc2VCKlooYWx0L2dlbi9wcm90by9hbHQvYXJ0aWNsZXMvdjI7YXJ0aWNsZXN2MmIGcHJvdG8z");
 
 /**
  * FetchArticleContentRequest is the request for fetching article content
@@ -237,6 +237,118 @@ export const FetchArticlesCursorResponseSchema: GenMessage<FetchArticlesCursorRe
   messageDesc(file_alt_articles_v2_articles, 6);
 
 /**
+ * FetchArticleSummaryRequest is the request for fetching article summaries
+ *
+ * @generated from message alt.articles.v2.FetchArticleSummaryRequest
+ */
+export type FetchArticleSummaryRequest = Message<"alt.articles.v2.FetchArticleSummaryRequest"> & {
+  /**
+   * List of feed URLs to fetch summaries for (max 50 URLs)
+   *
+   * @generated from field: repeated string feed_urls = 1;
+   */
+  feedUrls: string[];
+};
+
+/**
+ * Describes the message alt.articles.v2.FetchArticleSummaryRequest.
+ * Use `create(FetchArticleSummaryRequestSchema)` to create a new message.
+ */
+export const FetchArticleSummaryRequestSchema: GenMessage<FetchArticleSummaryRequest> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 7);
+
+/**
+ * ArticleSummaryItem represents a single article summary
+ *
+ * @generated from message alt.articles.v2.ArticleSummaryItem
+ */
+export type ArticleSummaryItem = Message<"alt.articles.v2.ArticleSummaryItem"> & {
+  /**
+   * Article title
+   *
+   * @generated from field: string title = 1;
+   */
+  title: string;
+
+  /**
+   * Article content
+   *
+   * @generated from field: string content = 2;
+   */
+  content: string;
+
+  /**
+   * Article author
+   *
+   * @generated from field: string author = 3;
+   */
+  author: string;
+
+  /**
+   * Published timestamp
+   *
+   * @generated from field: string published_at = 4;
+   */
+  publishedAt: string;
+
+  /**
+   * Fetched timestamp
+   *
+   * @generated from field: string fetched_at = 5;
+   */
+  fetchedAt: string;
+
+  /**
+   * Source ID
+   *
+   * @generated from field: string source_id = 6;
+   */
+  sourceId: string;
+};
+
+/**
+ * Describes the message alt.articles.v2.ArticleSummaryItem.
+ * Use `create(ArticleSummaryItemSchema)` to create a new message.
+ */
+export const ArticleSummaryItemSchema: GenMessage<ArticleSummaryItem> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 8);
+
+/**
+ * FetchArticleSummaryResponse contains article summaries
+ *
+ * @generated from message alt.articles.v2.FetchArticleSummaryResponse
+ */
+export type FetchArticleSummaryResponse = Message<"alt.articles.v2.FetchArticleSummaryResponse"> & {
+  /**
+   * Matched articles
+   *
+   * @generated from field: repeated alt.articles.v2.ArticleSummaryItem matched_articles = 1;
+   */
+  matchedArticles: ArticleSummaryItem[];
+
+  /**
+   * Total number of matched articles
+   *
+   * @generated from field: int32 total_matched = 2;
+   */
+  totalMatched: number;
+
+  /**
+   * Number of requested URLs
+   *
+   * @generated from field: int32 requested_count = 3;
+   */
+  requestedCount: number;
+};
+
+/**
+ * Describes the message alt.articles.v2.FetchArticleSummaryResponse.
+ * Use `create(FetchArticleSummaryResponseSchema)` to create a new message.
+ */
+export const FetchArticleSummaryResponseSchema: GenMessage<FetchArticleSummaryResponse> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 9);
+
+/**
  * ArticleService provides article-related operations
  *
  * @generated from service alt.articles.v2.ArticleService
@@ -274,6 +386,17 @@ export const ArticleService: GenService<{
     methodKind: "unary";
     input: typeof FetchArticlesCursorRequestSchema;
     output: typeof FetchArticlesCursorResponseSchema;
+  },
+  /**
+   * FetchArticleSummary fetches article summaries for multiple URLs
+   * Replaces POST /v1/articles/summary
+   *
+   * @generated from rpc alt.articles.v2.ArticleService.FetchArticleSummary
+   */
+  fetchArticleSummary: {
+    methodKind: "unary";
+    input: typeof FetchArticleSummaryRequestSchema;
+    output: typeof FetchArticleSummaryResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_articles_v2_articles, 0);

@@ -14,7 +14,6 @@ export {
 	type MessageResponse,
 	registerFavoriteFeedClient,
 	type SummarizeArticleResponse,
-	streamSummarizeArticleClient,
 	summarizeArticleClient,
 } from "./articles";
 // 共通のAPI呼び出しロジック
