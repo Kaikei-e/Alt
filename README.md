@@ -115,69 +115,148 @@ flowchart LR
 ### Compose Topology
 
 ```mermaid
-flowchart LR
-    classDef client fill:#e6f4ff,stroke:#1f5aa5,color:#0d1f33
-    classDef edge fill:#f2e4ff,stroke:#8a4bd7,color:#34175f
-    classDef core fill:#e8f5e9,stroke:#2f855a,color:#123524
-    classDef optional fill:#fff4e5,stroke:#f97316,color:#772b07,stroke-dasharray:4 3
-    classDef data fill:#fef3c7,stroke:#d97706,color:#5b3a06
-    classDef observability fill:#fde4f7,stroke:#c026d3,color:#4a0d68
-    classDef rag fill:#dbeafe,stroke:#1d4ed8,color:#1e3a5f
+flowchart TB
+    %% Style Definitions
+    classDef client fill:#e6f4ff,stroke:#1f5aa5,color:#0d1f33,stroke-width:2px
+    classDef edge fill:#f2e4ff,stroke:#8a4bd7,color:#34175f,stroke-width:2px
+    classDef core fill:#e8f5e9,stroke:#2f855a,color:#123524,stroke-width:2px
+    classDef ai fill:#fff4e5,stroke:#f97316,color:#772b07,stroke-width:2px,stroke-dasharray:4 3
+    classDef data fill:#fef3c7,stroke:#d97706,color:#5b3a06,stroke-width:2px
+    classDef recap fill:#fce7f3,stroke:#db2777,color:#831843,stroke-width:2px,stroke-dasharray:4 3
+    classDef rag fill:#dbeafe,stroke:#1d4ed8,color:#1e3a5f,stroke-width:2px,stroke-dasharray:4 3
+    classDef observability fill:#fde4f7,stroke:#c026d3,color:#4a0d68,stroke-width:2px,stroke-dasharray:4 3
 
-    Browser((Browser / Mobile Client)):::client
-    Nginx["nginx reverse proxy<br/>:80 → services"]:::edge
-    UI["alt-frontend :3000<br/>Next.js 16 + React 19"]:::core
-    UISv["alt-frontend-sv :4173<br/>SvelteKit 5 /sv"]:::core
-    AuthHub["auth-hub :8888<br/>Go IAP proxy"]:::edge
-    Backend["alt-backend :9000/:9101<br/>Go REST + Connect-RPC"]:::core
-    Sidecar["sidecar-proxy<br/>HTTP policy"]:::core
-    PreProc["pre-processor :9200<br/>Go ingestion"]:::core
-    Scheduler["pre-processor-sidecar<br/>Cron scheduler"]:::optional
-    News["news-creator :8001<br/>FastAPI + Ollama"]:::optional
-    Tags["tag-generator<br/>FastAPI ML"]:::core
-    Indexer["search-indexer :9300<br/>Go → Meilisearch"]:::core
-    RagOrch["rag-orchestrator :9010<br/>Go RAG service"]:::rag
-    RagDB["rag-db<br/>PostgreSQL 18 + pgvector"]:::rag
-    KnowledgeAugur["knowledge-augur<br/>Ollama LLM"]:::rag
-    KnowledgeEmbed["knowledge-embedder<br/>Vector encoding"]:::rag
-    Postgres["PostgreSQL 17"]:::data
-    Kratos["Ory Kratos :4433"]:::data
-    Meili["Meilisearch :7700"]:::data
-    ClickHouse["ClickHouse :8123"]:::data
-    RaskF["rask-log-forwarder<br/>Rust sidecar"]:::observability
-    RaskA["rask-log-aggregator :9600<br/>Rust Axum API"]:::observability
-    External["External APIs / RSS / Inoreader"]:::optional
+    %% Client
+    Browser((Browser)):::client
 
-    Browser -->|HTTPS| Nginx
-    Nginx -->|/| UI
-    Nginx -->|/sv| UISv
-    Nginx -->|/api| AuthHub
-    AuthHub -->|/validate| Backend
-    UI -->|REST :9000| Backend
-    UISv -->|Connect-RPC :9101| Backend
-    Backend --> Sidecar
-    Backend -->|SQL| Postgres
-    Backend -->|/v1/search| Meili
-    Backend -->|/sessions/whoami| Kratos
-    Sidecar --> External
-    PreProc -->|/api/v1/summarize| News
-    PreProc --> Tags
-    PreProc --> Backend
-    Scheduler --> PreProc
-    Tags -->|SQL| Postgres
-    News -->|SQL| Postgres
-    Indexer -->|SQL| Postgres
-    Indexer -->|batch 200| Meili
-    Backend -->|Connect-RPC| RagOrch
-    RagOrch -->|SQL + vector| RagDB
-    RagOrch --> KnowledgeAugur
+    subgraph EDGE["Edge Layer :80"]
+        Nginx["nginx :80"]:::edge
+        AuthHub["auth-hub :8888"]:::edge
+    end
+
+    subgraph FRONTEND["Frontend"]
+        AltFrontend["alt-frontend :3000<br/>Next.js 16"]:::core
+        AltFrontendSv["alt-frontend-sv :4173<br/>SvelteKit 5"]:::core
+    end
+
+    subgraph BACKEND["Backend Services"]
+        AltBackend["alt-backend<br/>:9000 REST / :9101 RPC"]:::core
+        SearchIndexer["search-indexer :9300"]:::core
+        TagGenerator["tag-generator :9400"]:::core
+        PreProcSidecar["pre-processor-sidecar"]:::core
+        AuthTokenMgr["auth-token-manager :9201"]:::core
+    end
+
+    subgraph OLLAMA["Profile: ollama"]
+        PreProcessor["pre-processor :9200"]:::ai
+        NewsCreator["news-creator :11434"]:::ai
+    end
+
+    subgraph RECAP["Profile: recap"]
+        RecapWorker["recap-worker :9005"]:::recap
+        RecapSubworker["recap-subworker :8002"]:::recap
+        RecapDB["recap-db :5435"]:::recap
+        Dashboard["dashboard :8501"]:::recap
+    end
+
+    subgraph RAG["Profile: rag-extension"]
+        RagOrch["rag-orchestrator<br/>:9010 / :9011"]:::rag
+        RagDB["rag-db :5436<br/>pgvector"]:::rag
+    end
+
+    subgraph DATA["Data Layer"]
+        DB["db :5432<br/>PostgreSQL 17"]:::data
+        Meili["meilisearch :7700"]:::data
+        Kratos["kratos :4433/:4434"]:::data
+        KratosDB["kratos-db :5434"]:::data
+    end
+
+    subgraph OBSERVABILITY["Profile: logging"]
+        ClickHouse["clickhouse :8123"]:::observability
+        RaskAgg["rask-log-aggregator :9600"]:::observability
+        LogFwd["log-forwarders ×8"]:::observability
+    end
+
+    subgraph EXTERNAL["External"]
+        KnowledgeAugur["knowledge-augur :11435"]:::rag
+        KnowledgeEmbed["knowledge-embedder :11436"]:::rag
+        Inoreader["Inoreader API"]:::client
+    end
+
+    %% Request Flow
+    Browser --> Nginx
+    Nginx -->|"/"| AltFrontend
+    Nginx -->|"/sv"| AltFrontendSv
+    Nginx -->|"/api"| AuthHub
+    Nginx -->|"/ory"| Kratos
+
+    AuthHub --> Kratos
+    AuthHub -->|"X-Alt-*"| AltBackend
+
+    AltFrontend -->|REST| AltBackend
+    AltFrontendSv -->|Connect-RPC| AltBackend
+
+    %% Backend Flows
+    AltBackend --> DB
+    AltBackend --> Meili
+    AltBackend --> RecapWorker
+    AltBackend -->|RPC| RagOrch
+
+    SearchIndexer --> DB
+    SearchIndexer -->|batch| Meili
+    TagGenerator --> DB
+
+    PreProcSidecar --> PreProcessor
+    AuthTokenMgr -->|OAuth2| Inoreader
+
+    %% AI Pipeline
+    PreProcessor --> DB
+    PreProcessor --> NewsCreator
+
+    %% Recap Pipeline
+    RecapWorker --> RecapDB
+    RecapWorker --> RecapSubworker
+    RecapWorker --> NewsCreator
+    RecapSubworker --> RecapDB
+
+    %% RAG Pipeline
+    RagOrch --> RagDB
     RagOrch --> KnowledgeEmbed
-    RaskF -->|/v1/aggregate| RaskA
-    RaskA -->|INSERT| ClickHouse
-    RaskF -->|tails| Nginx
-    RaskF -->|tails| Backend
-    RaskF -->|tails| UI
+    RagOrch --> KnowledgeAugur
+    RagOrch --> SearchIndexer
+
+    %% Identity
+    Kratos --> KratosDB
+
+    %% Observability
+    LogFwd --> RaskAgg
+    RaskAgg --> ClickHouse
 ```
+
+**Legend:**
+
+| Style | Profile | Description |
+|-------|---------|-------------|
+| Green (solid) | default | Core services (always running) |
+| Orange (dashed) | `--profile ollama` | AI/LLM services |
+| Pink (dashed) | `--profile recap` | Summarization pipeline |
+| Blue (dashed) | `--profile rag-extension` | RAG services |
+| Magenta (dashed) | `--profile logging` | Log aggregation |
+| Yellow | — | Data stores |
+
+**Network:** `alt-network` (shared by all services)
+
+**Persistent Volumes:**
+| Volume | Service | Description |
+|--------|---------|-------------|
+| `db_data_17` | db | PostgreSQL 17 main data |
+| `kratos_db_data` | kratos-db | Identity provider data |
+| `meili_data` | meilisearch | Search indices |
+| `recap_db_data` | recap-db | Recap pipeline data |
+| `rag_db_data` | rag-db | RAG vectors (pgvector) |
+| `clickhouse_data` | clickhouse | Log analytics |
+| `news_creator_models` | news-creator | Ollama LLM models |
+| `oauth_token_data` | auth-token-manager | OAuth2 tokens |
 
 ### Data Intelligence Flow
 
