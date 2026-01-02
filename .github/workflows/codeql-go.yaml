@@ -107,6 +107,16 @@ jobs:
           echo "After cleanup:"
           df -h
 
+      - name: Clear corrupted CodeQL toolcache
+        if: runner.environment == 'self-hosted'
+        run: |
+          # Fix for libjli.so error - clear potentially corrupted CodeQL cache
+          # See: https://github.com/github/codeql-action/issues/1082
+          if [ -d "$RUNNER_TOOL_CACHE/CodeQL" ]; then
+            echo "Clearing CodeQL toolcache at $RUNNER_TOOL_CACHE/CodeQL"
+            rm -rf "$RUNNER_TOOL_CACHE/CodeQL"
+          fi
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
