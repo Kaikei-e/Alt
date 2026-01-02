@@ -243,8 +243,7 @@ flowchart LR
 Direct API calls and data flow between microservices.
 
 ```mermaid
-%%{init: {'flowchart': {'nodeSpacing': 30, 'rankSpacing': 40}}}%%
-flowchart TD
+flowchart LR
     classDef client fill:#e6f4ff,stroke:#1f5aa5,stroke-width:2px
     classDef edge fill:#f2e4ff,stroke:#8a4bd7,stroke-width:2px
     classDef fe fill:#d4e6f1,stroke:#2874a6,stroke-width:2px
@@ -254,36 +253,69 @@ flowchart TD
     classDef rag fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,stroke-dasharray:4
     classDef obs fill:#fde4f7,stroke:#c026d3,stroke-width:2px,stroke-dasharray:4
 
-    U((User)):::client --> N[nginx :80]:::edge
-    N --> A[auth-hub :8888]:::edge --> K[(kratos :4433)]:::db --> KD[(kratos-db)]:::db
+    subgraph Entry["Entry"]
+        direction TB
+        U((User)):::client
+        U --> N[nginx :80]:::edge
+        N --> A[auth-hub :8888]:::edge
+        A --> K[(kratos)]:::db
+        K --> KD[(kratos-db)]:::db
+    end
 
-    N --> F1[alt-frontend :3000]:::fe --> API
-    N --> F2[alt-frontend-sv :4173]:::fe --> API
+    subgraph Frontend
+        direction TB
+        F1[alt-frontend :3000]:::fe
+        F2[alt-frontend-sv :4173]:::fe
+    end
 
-    API[alt-backend :9000/:9101]:::be
+    subgraph Core["Core"]
+        direction TB
+        API[alt-backend<br/>:9000/:9101]:::be
+        API --> Idx[search-indexer :9300]:::wk
+        API --> Tag[tag-generator :9400]:::wk
+        Idx --> DB[(db :5432)]:::db
+        Tag --> DB
+        Idx --> M[(meilisearch :7700)]:::db
+    end
 
-    API --> W1[search-indexer :9300]:::wk --> D1[(db :5432)]:::db
-    W1 --> M[(meilisearch :7700)]:::db
+    subgraph AI["AI Pipeline"]
+        direction TB
+        PP[pre-processor :9200]:::wk
+        PP --> NC[news-creator :11434]:::wk
+        NC --> DB2[(db)]:::db
+    end
 
-    API --> W2[tag-generator :9400]:::wk --> D1
+    subgraph Recap["Recap"]
+        direction TB
+        RW[recap-worker :9005]:::wk
+        RW --> RS[recap-subworker :8002]:::wk
+        RW --> RD[(recap-db :5435)]:::db
+        RS --> RD
+    end
 
-    API --> W3[pre-processor :9200]:::wk --> NC[news-creator :11434]:::wk
-    W3 --> D1
+    subgraph RAG["RAG"]
+        direction TB
+        RO[rag-orchestrator :9010]:::rag
+        RO --> AU[knowledge-augur]:::rag
+        RO --> EM[knowledge-embedder]:::rag
+        RO --> VD[(rag-db :5436)]:::db
+    end
 
-    API --> RW[recap-worker :9005]:::wk --> RS[recap-subworker :8002]:::wk
+    subgraph Obs["Logging"]
+        direction TB
+        LF[log-forwarders]:::obs
+        LF --> LA[rask-log-agg :9600]:::obs
+        LA --> CH[(clickhouse :8123)]:::obs
+    end
+
+    N --> F1 & F2
+    F1 & F2 --> API
+    API --> PP
+    API --> RW
+    API --> RO
     RW --> NC
-    RW --> RD[(recap-db :5435)]:::db
-    RS --> RD
-
-    API --> RO[rag-orchestrator :9010]:::rag
-    RO --> AU[knowledge-augur :11435]:::rag
-    RO --> EM[knowledge-embedder :11436]:::rag
-    RO --> VD[(rag-db :5436)]:::db
-
-    LF[log-forwarders]:::obs
     N -.-> LF
     API -.-> LF
-    LF --> LA[rask-log-agg :9600]:::obs --> CH[(clickhouse :8123)]:::obs
 ```
 
 ### Identity & Edge Access
