@@ -492,31 +492,24 @@ func TestJudgeArticleQualityScoring(t *testing.T) {
 
 // TestRemoveLowScoreSummary tests the summary removal logic
 func TestRemoveLowScoreSummary(t *testing.T) {
-	// Test only high score case that doesn't need database
-	withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := ollamaResponse{
-			Response: "<score>25</score>", // High score
-			Done:     true,
-		}
-		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	}))
-
-	originalURL := qualityCheckerAPIURL
-	qualityCheckerAPIURL = testQualityCheckerURL
-	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
-
 	article := &driver.ArticleWithSummary{
 		ArticleID:       "test-article",
 		Content:         "Good content",
 		SummaryJapanese: "良い要約",
 	}
 
-	// High score should not delete, so no DB operation
-	err := RemoveLowScoreSummary(context.Background(), nil, article)
-	require.NoError(t, err, "Should not delete summary with high score")
+	t.Run("nil score returns error", func(t *testing.T) {
+		err := RemoveLowScoreSummary(context.Background(), nil, article, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "received nil score")
+	})
+
+	t.Run("nil dbPool returns error", func(t *testing.T) {
+		score := &Score{Overall: 10} // Low score
+		err := RemoveLowScoreSummary(context.Background(), nil, article, score)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "database pool is nil")
+	})
 }
 
 // TestJudgeTemplate verifies the prompt template is valid

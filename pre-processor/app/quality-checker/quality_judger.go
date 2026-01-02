@@ -296,125 +296,97 @@ func attemptEmergencyParsing(response string) *Score {
 	return nil
 }
 
-func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWithSummary *driver.ArticleWithSummary) error {
-	// Create the proper prompt for scoring
-	prompt := fmt.Sprintf(JudgeTemplate, articleWithSummary.Content, articleWithSummary.SummaryJapanese)
-
-	score, err := scoreSummaryWithRetry(ctx, prompt, 3)
-	if err != nil {
-		// Check if this is a connection error (service unavailable)
-		if isConnectionError(err) {
-			logger.Logger.Warn("Connection error while scoring summary in RemoveLowScoreSummary, aborting deletion to prevent data loss",
-				"error", err,
-				"articleID", articleWithSummary.ArticleID)
-			// Return error without deleting data - this indicates service unavailability, not low quality
-			return fmt.Errorf("failed to connect to news-creator service: %w", err)
-		}
-
-		// For non-connection errors, we should not delete data
-		logger.Logger.Error("Failed to score summary after retries (non-connection error) in RemoveLowScoreSummary",
-			"error", err,
-			"articleID", articleWithSummary.ArticleID)
-		return fmt.Errorf("failed to score summary (non-connection error): %w", err)
-	}
-
+// RemoveLowScoreSummary deletes a low-quality summary from the database and triggers re-fetch of the article.
+// The score parameter is passed from the caller to avoid redundant LLM calls for scoring.
+func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWithSummary *driver.ArticleWithSummary, score *Score) error {
+	// Score is now passed from caller (JudgeArticleQuality) to avoid redundant LLM calls
 	if score == nil {
 		logger.Logger.Error("Received nil score", "articleID", articleWithSummary.ArticleID)
 		return errors.New("received nil score for article " + articleWithSummary.ArticleID)
 	}
 
-	logger.Logger.Info("Article quality score",
+	// Validate dbPool is not nil before attempting deletion
+	if dbPool == nil {
+		return errors.New("database pool is nil, cannot delete summary")
+	}
+
+	logger.Logger.Info("Removing low quality summary",
 		"articleID", articleWithSummary.ArticleID,
-		"score", score.Overall)
+		"score", score.Overall,
+		"threshold", lowScoreThreshold)
 
-	// If score is too low, remove the summary (but keep the article)
-	// This only happens when we successfully got a score from the service
-	if score.Overall < lowScoreThreshold {
-		// Validate dbPool is not nil before attempting deletion
-		if dbPool == nil {
-			return errors.New("database pool is nil, cannot delete summary")
+	// Remove the summary (but keep the article)
+	txOptions := pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead,
+	}
+
+	tx, err := dbPool.BeginTx(ctx, txOptions)
+	if err != nil {
+		logger.Logger.Error("Failed to begin transaction", "error", err)
+		return errors.New("failed to begin transaction")
+	}
+
+	_, err = tx.Exec(ctx, "DELETE FROM article_summaries WHERE article_id = $1", articleWithSummary.ArticleID)
+	if err != nil {
+		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
+			logger.Logger.Error("Failed to rollback transaction", "error", rollbackErr)
 		}
-		logger.Logger.Info("Removing low quality summary",
+		logger.Logger.Error("Failed to delete article summary", "error", err, "articleID", articleWithSummary.ArticleID)
+		return errors.New("failed to delete article summary")
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		logger.Logger.Error("Failed to commit transaction", "error", err)
+		return errors.New("failed to commit transaction")
+	}
+
+	logger.Logger.Info("Deleted low quality article summary", "articleID", articleWithSummary.ArticleID)
+
+	// Re-fetch article from web after deletion (same mechanism as alt-backend)
+	// First, get article from database to obtain URL
+	article, fetchErr := driver.GetArticleByID(ctx, dbPool, articleWithSummary.ArticleID)
+	if fetchErr != nil {
+		logger.Logger.Warn("Failed to get article for re-fetch after summary deletion",
 			"articleID", articleWithSummary.ArticleID,
-			"score", score.Overall,
-			"threshold", lowScoreThreshold)
-
-		txOptions := pgx.TxOptions{
-			IsoLevel: pgx.RepeatableRead,
+			"error", fetchErr)
+	} else if article == nil {
+		logger.Logger.Warn("Article not found for re-fetch after summary deletion",
+			"articleID", articleWithSummary.ArticleID)
+	} else if article.URL == "" {
+		logger.Logger.Warn("Article URL is empty, cannot re-fetch from web",
+			"articleID", articleWithSummary.ArticleID)
+	} else {
+		// Re-fetch article from web using HTTP request
+		client := &http.Client{
+			Timeout: 30 * time.Second,
 		}
-
-		tx, err := dbPool.BeginTx(ctx, txOptions)
+		req, err := http.NewRequestWithContext(ctx, "GET", article.URL, nil)
 		if err != nil {
-			logger.Logger.Error("Failed to begin transaction", "error", err)
-			return errors.New("failed to begin transaction")
-		}
-
-		_, err = tx.Exec(ctx, "DELETE FROM article_summaries WHERE article_id = $1", articleWithSummary.ArticleID)
-		if err != nil {
-			err = tx.Rollback(ctx)
-			if err != nil {
-				logger.Logger.Error("Failed to rollback transaction", "error", err)
-			}
-			logger.Logger.Error("Failed to delete article summary", "error", err, "articleID", articleWithSummary.ArticleID)
-
-			return errors.New("failed to delete article summary")
-		}
-
-		err = tx.Commit(ctx)
-		if err != nil {
-			logger.Logger.Error("Failed to commit transaction", "error", err)
-			return errors.New("failed to commit transaction")
-		}
-
-		logger.Logger.Info("Deleted low quality article summary", "articleID", articleWithSummary.ArticleID)
-
-		// Re-fetch article from web after deletion (same mechanism as alt-backend)
-		// First, get article from database to obtain URL
-		article, fetchErr := driver.GetArticleByID(ctx, dbPool, articleWithSummary.ArticleID)
-		if fetchErr != nil {
-			logger.Logger.Warn("Failed to get article for re-fetch after summary deletion",
+			logger.Logger.Warn("Failed to create HTTP request for article re-fetch",
 				"articleID", articleWithSummary.ArticleID,
-				"error", fetchErr)
-		} else if article == nil {
-			logger.Logger.Warn("Article not found for re-fetch after summary deletion",
-				"articleID", articleWithSummary.ArticleID)
-		} else if article.URL == "" {
-			logger.Logger.Warn("Article URL is empty, cannot re-fetch from web",
-				"articleID", articleWithSummary.ArticleID)
+				"url", article.URL,
+				"error", err)
 		} else {
-			// Re-fetch article from web using HTTP request
-			client := &http.Client{
-				Timeout: 30 * time.Second,
-			}
-			req, err := http.NewRequestWithContext(ctx, "GET", article.URL, nil)
+			req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; AltBot/1.0; +https://alt.example.com/bot)")
+			resp, err := client.Do(req)
 			if err != nil {
-				logger.Logger.Warn("Failed to create HTTP request for article re-fetch",
+				logger.Logger.Warn("Failed to re-fetch article from web after summary deletion",
 					"articleID", articleWithSummary.ArticleID,
 					"url", article.URL,
 					"error", err)
 			} else {
-				req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; AltBot/1.0; +https://alt.example.com/bot)")
-				resp, err := client.Do(req)
-				if err != nil {
-					logger.Logger.Warn("Failed to re-fetch article from web after summary deletion",
-						"articleID", articleWithSummary.ArticleID,
-						"url", article.URL,
-						"error", err)
-				} else {
-					defer func() {
-						if err := resp.Body.Close(); err != nil {
-							logger.Logger.Error("Failed to close response body", "error", err)
-						}
-					}()
-					logger.Logger.Info("Successfully re-fetched article from web after summary deletion",
-						"articleID", articleWithSummary.ArticleID,
-						"url", article.URL,
-						"status_code", resp.StatusCode)
-				}
+				defer func() {
+					if closeErr := resp.Body.Close(); closeErr != nil {
+						logger.Logger.Error("Failed to close response body", "error", closeErr)
+					}
+				}()
+				logger.Logger.Info("Successfully re-fetched article from web after summary deletion",
+					"articleID", articleWithSummary.ArticleID,
+					"url", article.URL,
+					"status_code", resp.StatusCode)
 			}
 		}
-	} else {
-		logger.Logger.Info("Summary quality is acceptable", "articleID", articleWithSummary.ArticleID, "score", score.Overall)
 	}
 
 	return nil
@@ -506,11 +478,7 @@ func JudgeArticleQuality(ctx context.Context, dbPool *pgxpool.Pool, articleWithS
 	// If score is too low, remove the summary (but keep the article)
 	// This only happens when we successfully got a score from the service
 	if score.Overall < lowScoreThreshold {
-		logger.Logger.Info("Removing low quality summary",
-			"articleID", articleWithSummary.ArticleID,
-			"score", score.Overall,
-			"threshold", lowScoreThreshold)
-		return RemoveLowScoreSummary(ctx, dbPool, articleWithSummary)
+		return RemoveLowScoreSummary(ctx, dbPool, articleWithSummary, score)
 	}
 
 	logger.Logger.Info("Summary quality is acceptable", "articleID", articleWithSummary.ArticleID, "score", score.Overall)
