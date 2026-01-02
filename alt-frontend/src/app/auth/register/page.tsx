@@ -1,8 +1,6 @@
 // app/auth/register/page.tsx
+// Redirect to SvelteKit registration page for unified auth flow
 import { redirect } from "next/navigation";
-import { KRATOS_PUBLIC_URL } from "@/lib/env.public";
-import RegisterClient from "../../register/register-client";
-export const dynamic = "force-dynamic";
 
 export default async function RegisterPage({
   searchParams,
@@ -10,15 +8,13 @@ export default async function RegisterPage({
   searchParams: Promise<Record<string, string>>;
 }) {
   const params = await searchParams;
-  const flow = params.flow;
-  const ret = params.return_to ?? "/"; // 既定はトップ
+  const returnTo = params.return_to;
 
-  if (!flow) {
-    const u = new URL(`${KRATOS_PUBLIC_URL}/self-service/registration/browser`);
-    const app = process.env.NEXT_PUBLIC_APP_ORIGIN!; // e.g. https://curionoah.com
-    u.searchParams.set("return_to", new URL(ret, app).toString());
-    redirect(u.toString()); // ブラウザフローはリダイレクトが仕様
+  // Build redirect URL to SvelteKit registration page
+  const svRegisterUrl = new URL("/sv/register", process.env.NEXT_PUBLIC_APP_ORIGIN || "https://curionoah.com");
+  if (returnTo) {
+    svRegisterUrl.searchParams.set("return_to", returnTo);
   }
 
-  return <RegisterClient returnUrl={ret} flowId={flow} />;
+  redirect(svRegisterUrl.toString());
 }

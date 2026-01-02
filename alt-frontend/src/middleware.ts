@@ -13,6 +13,7 @@ const PUBLIC_ROUTES = [
   /^\/test(\/|$)/, // Allow test pages for E2E testing
   /^\/public\/landing(\/|$)/, // Public landing page
   /^\/landing$/, // Landing page shortcut
+  /^\/register$/, // Legacy register redirect to /auth/register
 ];
 
 export async function middleware(req: NextRequest) {

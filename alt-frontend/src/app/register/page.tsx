@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
 export default function LegacyRegisterRedirect() {
-  // 308 Permanent Redirect to unified auth path
-  redirect("/auth/register");
+  // Redirect to SvelteKit registration page for unified auth flow
+  redirect("/sv/register");
 }
