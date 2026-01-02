@@ -48,6 +48,9 @@ function getError(node: UiNode | undefined): string {
           <input type="hidden" name="csrf_token" value={getValue(csrfNode)} />
         {/if}
 
+        <!-- Method: password strategy -->
+        <input type="hidden" name="method" value="password" />
+
         <!-- Email -->
         {#if getNode("traits.email")}
           {@const emailNode = getNode("traits.email")}
