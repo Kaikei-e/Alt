@@ -25,10 +25,14 @@ jobs:
 
     steps:
       - name: Pre-checkout cleanup
+        if: runner.environment == 'self-hosted'
         uses: docker://alpine:latest
         with:
           entrypoint: /bin/sh
-          args: -c "rm -rf /github/workspace/* /github/workspace/.* 2>/dev/null; chown -R 1001:1001 /github/workspace 2>/dev/null || true"
+          # Docker runs as root to delete files and fix permissions for 'runners' group
+          # chmod 2775 = setgid + rwxrwxr-x (group inherits, group writable)
+          # See: https://github.com/actions/runner/issues/434
+          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp runners /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
 
       - name: Checkout repository
         uses: actions/checkout@v5
