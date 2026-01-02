@@ -30,13 +30,13 @@ jobs:
     steps:
       - name: Pre-checkout cleanup
         if: runner.environment == 'self-hosted'
-        run: |
-          # Clean workspace with proper permissions using host shell
-          # Docker-based cleanup doesn't work because /github/workspace is not the actual path on self-hosted runners
-          if [ -d "$GITHUB_WORKSPACE" ]; then
-            sudo rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* 2>/dev/null || true
-            sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" 2>/dev/null || true
-          fi
+        uses: docker://alpine:latest
+        with:
+          entrypoint: /bin/sh
+          # Use find -delete to safely remove all files including .git
+          # Docker runs as root so it can delete root-owned files from previous runs
+          # See: https://github.com/actions/runner/issues/434
+          args: -c "echo 'Cleaning workspace as root...' && find /github/workspace -mindepth 1 -delete 2>/dev/null || true && echo 'Cleanup complete'"
 
       - name: Checkout code
         uses: actions/checkout@v5
