@@ -45,7 +45,9 @@ RUN apt-get update \
 RUN groupadd -r recap && useradd -r -g recap recap
 
 # 環境変数
+# HOME設定はdeepevalが~/.deepevalを作成するため必要
 ENV PATH="/app/.venv/bin:$PATH" \
+    HOME=/app \
     OMP_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1
@@ -58,7 +60,8 @@ COPY --chown=recap:recap pyproject.toml README.md ./
 COPY --chown=recap:recap recap_subworker ./recap_subworker
 
 # データディレクトリ作成
-RUN mkdir -p /app/data /app/resources && chown -R recap:recap /app/data /app/resources
+# .deepeval: deepevalライブラリがテレメトリ用に作成しようとするディレクトリ
+RUN mkdir -p /app/data /app/resources /app/.deepeval && chown -R recap:recap /app/data /app/resources /app/.deepeval
 
 # ジャンル分類器の重みファイルをコピー
 COPY --chown=recap:recap recap_subworker/resources/genre_classifier_weights.json /app/resources/
