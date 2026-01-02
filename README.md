@@ -115,122 +115,79 @@ flowchart LR
 ### Compose Topology
 
 ```mermaid
-flowchart TB
-    %% Style Definitions
-    classDef client fill:#e6f4ff,stroke:#1f5aa5,color:#0d1f33,stroke-width:2px
-    classDef edge fill:#f2e4ff,stroke:#8a4bd7,color:#34175f,stroke-width:2px
-    classDef core fill:#e8f5e9,stroke:#2f855a,color:#123524,stroke-width:2px
-    classDef ai fill:#fff4e5,stroke:#f97316,color:#772b07,stroke-width:2px,stroke-dasharray:4 3
-    classDef data fill:#fef3c7,stroke:#d97706,color:#5b3a06,stroke-width:2px
-    classDef recap fill:#fce7f3,stroke:#db2777,color:#831843,stroke-width:2px,stroke-dasharray:4 3
-    classDef rag fill:#dbeafe,stroke:#1d4ed8,color:#1e3a5f,stroke-width:2px,stroke-dasharray:4 3
-    classDef observability fill:#fde4f7,stroke:#c026d3,color:#4a0d68,stroke-width:2px,stroke-dasharray:4 3
+flowchart TD
+    classDef client fill:#e6f4ff,stroke:#1f5aa5,stroke-width:2px
+    classDef edge fill:#f2e4ff,stroke:#8a4bd7,stroke-width:2px
+    classDef core fill:#e8f5e9,stroke:#2f855a,stroke-width:2px
+    classDef ai fill:#fff4e5,stroke:#f97316,stroke-width:2px,stroke-dasharray:4
+    classDef data fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    classDef recap fill:#fce7f3,stroke:#db2777,stroke-width:2px,stroke-dasharray:4
+    classDef rag fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,stroke-dasharray:4
+    classDef obs fill:#fde4f7,stroke:#c026d3,stroke-width:2px,stroke-dasharray:4
 
-    %% Client
     Browser((Browser)):::client
-
-    subgraph EDGE["Edge Layer :80"]
-        Nginx["nginx :80"]:::edge
-        AuthHub["auth-hub :8888"]:::edge
-    end
-
-    subgraph FRONTEND["Frontend"]
-        AltFrontend["alt-frontend :3000<br/>Next.js 16"]:::core
-        AltFrontendSv["alt-frontend-sv :4173<br/>SvelteKit 5"]:::core
-    end
-
-    subgraph BACKEND["Backend Services"]
-        AltBackend["alt-backend<br/>:9000 REST / :9101 RPC"]:::core
-        SearchIndexer["search-indexer :9300"]:::core
-        TagGenerator["tag-generator :9400"]:::core
-        PreProcSidecar["pre-processor-sidecar"]:::core
-        AuthTokenMgr["auth-token-manager :9201"]:::core
-    end
-
-    subgraph OLLAMA["Profile: ollama"]
-        PreProcessor["pre-processor :9200"]:::ai
-        NewsCreator["news-creator :11434"]:::ai
-    end
-
-    subgraph RECAP["Profile: recap"]
-        RecapWorker["recap-worker :9005"]:::recap
-        RecapSubworker["recap-subworker :8002"]:::recap
-        RecapDB["recap-db :5435"]:::recap
-        Dashboard["dashboard :8501"]:::recap
-    end
-
-    subgraph RAG["Profile: rag-extension"]
-        RagOrch["rag-orchestrator<br/>:9010 / :9011"]:::rag
-        RagDB["rag-db :5436<br/>pgvector"]:::rag
-    end
-
-    subgraph DATA["Data Layer"]
-        DB["db :5432<br/>PostgreSQL 17"]:::data
-        Meili["meilisearch :7700"]:::data
-        Kratos["kratos :4433/:4434"]:::data
-        KratosDB["kratos-db :5434"]:::data
-    end
-
-    subgraph OBSERVABILITY["Profile: logging"]
-        ClickHouse["clickhouse :8123"]:::observability
-        RaskAgg["rask-log-aggregator :9600"]:::observability
-        LogFwd["log-forwarders ×8"]:::observability
-    end
-
-    subgraph EXTERNAL["External"]
-        KnowledgeAugur["knowledge-augur :11435"]:::rag
-        KnowledgeEmbed["knowledge-embedder :11436"]:::rag
-        Inoreader["Inoreader API"]:::client
-    end
-
-    %% Request Flow
     Browser --> Nginx
-    Nginx -->|"/"| AltFrontend
-    Nginx -->|"/sv"| AltFrontendSv
-    Nginx -->|"/api"| AuthHub
-    Nginx -->|"/ory"| Kratos
+
+    subgraph Edge["Edge :80"]
+        Nginx[nginx]:::edge
+        Nginx --> AuthHub[auth-hub :8888]:::edge
+    end
 
     AuthHub --> Kratos
-    AuthHub -->|"X-Alt-*"| AltBackend
+    Nginx --> UI
+    Nginx --> UISv
 
-    AltFrontend -->|REST| AltBackend
-    AltFrontendSv -->|Connect-RPC| AltBackend
+    subgraph FE["Frontend"]
+        UI[alt-frontend :3000]:::core
+        UISv[alt-frontend-sv :4173]:::core
+    end
 
-    %% Backend Flows
-    AltBackend --> DB
-    AltBackend --> Meili
-    AltBackend --> RecapWorker
-    AltBackend -->|RPC| RagOrch
+    UI --> API
+    UISv --> API
 
-    SearchIndexer --> DB
-    SearchIndexer -->|batch| Meili
-    TagGenerator --> DB
+    subgraph BE["Backend"]
+        API[alt-backend :9000/:9101]:::core
+        API --> Idx[search-indexer :9300]:::core
+        API --> Tag[tag-generator :9400]:::core
+    end
 
-    PreProcSidecar --> PreProcessor
-    AuthTokenMgr -->|OAuth2| Inoreader
+    API --> RW
+    API --> RO
+    Idx --> Meili
+    Tag --> DB
 
-    %% AI Pipeline
-    PreProcessor --> DB
-    PreProcessor --> NewsCreator
+    subgraph OL["Profile: ollama"]
+        PP[pre-processor :9200]:::ai
+        PP --> NC[news-creator :11434]:::ai
+    end
 
-    %% Recap Pipeline
-    RecapWorker --> RecapDB
-    RecapWorker --> RecapSubworker
-    RecapWorker --> NewsCreator
-    RecapSubworker --> RecapDB
+    subgraph RC["Profile: recap"]
+        RW[recap-worker :9005]:::recap
+        RW --> RS[recap-subworker :8002]:::recap
+    end
 
-    %% RAG Pipeline
-    RagOrch --> RagDB
-    RagOrch --> KnowledgeEmbed
-    RagOrch --> KnowledgeAugur
-    RagOrch --> SearchIndexer
+    subgraph RG["Profile: rag-extension"]
+        RO[rag-orchestrator :9010]:::rag
+    end
 
-    %% Identity
-    Kratos --> KratosDB
+    PP --> DB
+    RW --> NC
+    RW --> RecapDB
+    RO --> RagDB
+    RO --> Idx
 
-    %% Observability
-    LogFwd --> RaskAgg
-    RaskAgg --> ClickHouse
+    subgraph Data["Data Stores"]
+        DB[(db :5432)]:::data
+        Meili[(meilisearch :7700)]:::data
+        Kratos[(kratos :4433)]:::data
+        RecapDB[(recap-db :5435)]:::recap
+        RagDB[(rag-db :5436)]:::rag
+    end
+
+    subgraph Obs["Profile: logging"]
+        Rask[rask-log-agg :9600]:::obs
+        Rask --> CH[(clickhouse :8123)]:::obs
+    end
 ```
 
 **Legend:**
