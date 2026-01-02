@@ -20,6 +20,8 @@ services:
     depends_on:
       alt-frontend:
         condition: service_healthy
+      alt-frontend-sv:
+        condition: service_healthy
       alt-backend:
         condition: service_healthy
     networks:
@@ -118,6 +120,12 @@ services:
         reservations:
           memory: 256M
     tty: true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4173/health | grep -q 'OK' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     labels:
       - rask.group=alt-frontend-sv
     logging:
