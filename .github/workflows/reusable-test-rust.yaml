@@ -24,7 +24,19 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 30
     steps:
-      - name: Configure logging
+      - name: Pre-checkout cleanup
+        if: runner.environment == 'self-hosted'
+        uses: docker://alpine:latest
+        with:
+          entrypoint: /bin/sh
+          # Docker runs as root to delete files and fix permissions for 'runners' group
+          # chmod 2775 = setgid + rwxrwxr-x (group inherits, group writable)
+          # See: https://github.com/actions/runner/issues/434
+          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp runners /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
+
+      - uses: actions/checkout@v5
+
+      - name: Configure logging (mask)
         if: runner.environment == 'self-hosted'
         run: |
           echo "::group::Masking Configuration"
@@ -38,24 +50,15 @@ jobs:
           [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
           [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
 
-          # Mask Git PII
+          # Mask Git PII (now available after checkout)
           if command -v git >/dev/null 2>&1; then
-            echo "::add-mask::$(git log -1 --pretty=format:'%an')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ae')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%cn')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ce')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%an' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ae' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%cn' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
           fi
 
           echo "::endgroup::"
-
-      - name: Clean workspace
-        if: runner.environment == 'self-hosted'
-        uses: docker://alpine:latest
-        with:
-          entrypoint: /bin/sh
-          args: -c "rm -rf /github/workspace/* /github/workspace/.* 2>/dev/null; chown -R 1001:1001 /github/workspace 2>/dev/null || true"
-
-      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         run: |

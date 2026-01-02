@@ -49,6 +49,9 @@ jobs:
     runs-on: self-hosted
     container:
       image: mcr.microsoft.com/playwright:v1.57.0-jammy
+      # Run as root to fix permission issues with files from previous runs
+      # See: https://github.com/actions/checkout/issues/1203
+      options: --user root
     timeout-minutes: 60
 
     env:
@@ -59,10 +62,11 @@ jobs:
 
     steps:
       - name: Pre-checkout cleanup
-        uses: docker://alpine:latest
-        with:
-          entrypoint: /bin/sh
-          args: -c "rm -rf /github/workspace/* /github/workspace/.* 2>/dev/null; chown -R 1001:1001 /github/workspace 2>/dev/null || true"
+        run: |
+          # Clean workspace - running as root in container so we can remove any files
+          if [ -d "$GITHUB_WORKSPACE" ]; then
+            rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* 2>/dev/null || true
+          fi
 
       - uses: actions/checkout@v5
 
@@ -79,12 +83,12 @@ jobs:
           [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
           [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
 
-          # Mask Git PII
+          # Mask Git PII (now available after checkout)
           if command -v git >/dev/null 2>&1; then
-            echo "::add-mask::$(git log -1 --pretty=format:'%an')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ae')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%cn')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ce')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%an' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ae' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%cn' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
           fi
 
           echo "::endgroup::"
