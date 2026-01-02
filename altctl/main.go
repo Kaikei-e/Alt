@@ -13,6 +13,7 @@ var version = "dev"
 func main() {
 	cmd.SetVersion(version)
 	if err := cmd.Execute(); err != nil {
+		os.Stderr.WriteString("Error: " + err.Error() + "\n")
 		os.Exit(1)
 	}
 }

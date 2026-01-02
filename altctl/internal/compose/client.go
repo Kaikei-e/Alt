@@ -43,6 +43,7 @@ type BuildOptions struct {
 	NoCache  bool
 	Pull     bool
 	Parallel bool
+	Progress string
 }
 
 // LogsOptions configures the logs command
@@ -126,6 +127,9 @@ func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
 	}
 	if opts.Parallel {
 		args = append(args, "--parallel")
+	}
+	if opts.Progress != "" {
+		args = append(args, "--progress", opts.Progress)
 	}
 
 	return c.executor.Run(ctx, "docker", append([]string{"compose"}, args...))

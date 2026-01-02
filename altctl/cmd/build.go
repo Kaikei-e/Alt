@@ -38,6 +38,7 @@ func init() {
 	buildCmd.Flags().Bool("pull", false, "pull base images before building")
 	buildCmd.Flags().Bool("parallel", true, "build in parallel")
 	buildCmd.Flags().Bool("no-deps", false, "don't build dependent stacks")
+	buildCmd.Flags().String("progress", "auto", "set type of progress output (auto, tty, plain, quiet)")
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
@@ -97,6 +98,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	noCache, _ := cmd.Flags().GetBool("no-cache")
 	pull, _ := cmd.Flags().GetBool("pull")
 	parallel, _ := cmd.Flags().GetBool("parallel")
+	progress, _ := cmd.Flags().GetString("progress")
 
 	// Create compose client
 	client := compose.NewClient(
@@ -115,6 +117,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		NoCache:  noCache,
 		Pull:     pull,
 		Parallel: parallel,
+		Progress: progress,
 	})
 
 	if err != nil {

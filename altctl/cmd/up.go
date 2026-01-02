@@ -40,6 +40,7 @@ func init() {
 	upCmd.Flags().Bool("all", false, "start all stacks including optional ones")
 	upCmd.Flags().Duration("timeout", 5*time.Minute, "timeout for container startup")
 	upCmd.Flags().Bool("remove-orphans", false, "remove orphan containers")
+	upCmd.Flags().String("progress", "auto", "set type of progress output (auto, tty, plain, quiet) (implies --build)")
 }
 
 func runUp(cmd *cobra.Command, args []string) error {
@@ -111,6 +112,7 @@ func runUp(cmd *cobra.Command, args []string) error {
 	detach, _ := cmd.Flags().GetBool("detach")
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	removeOrphans, _ := cmd.Flags().GetBool("remove-orphans")
+	progress, _ := cmd.Flags().GetString("progress")
 
 	// Disable remove-orphans when --no-deps is used to prevent removing other stacks
 	if noDeps && removeOrphans && !cmd.Flags().Changed("remove-orphans") {
@@ -125,6 +127,28 @@ func runUp(cmd *cobra.Command, args []string) error {
 		logger,
 		dryRun,
 	)
+
+	// If progress is specified or build is requested with progress, run build first
+	// We do this because 'docker compose up --build' doesn't support --progress flag directly in all versions/wrappers
+	// and it gives us better control.
+	if progress != "auto" || (build && cmd.Flags().Changed("progress")) {
+		printer.Header("Building Stacks")
+
+		buildCtx, buildCancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer buildCancel()
+
+		err = client.Build(buildCtx, compose.BuildOptions{
+			Files:    files,
+			Progress: progress,
+		})
+		if err != nil {
+			printer.Error("Failed to build stacks: %v", err)
+			return err
+		}
+
+		// We just built, so we don't need to build again in Up
+		build = false
+	}
 
 	// Start services
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
