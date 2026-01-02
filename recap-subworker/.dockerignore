@@ -1,0 +1,99 @@
+# =============================================================================
+# Docker Build Context Optimization for recap-subworker
+# Target: Exclude Python artifacts and development files
+# Expected: 15GB → ~1GB (93% reduction)
+# =============================================================================
+
+# Python virtual environments (8.4GB)
+.venv/
+venv/
+ENV/
+env/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+.installed.cfg
+*.egg
+
+# Build artifacts
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Tools
+.ruff_cache/
+.uv-cache/
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Misc
+.DS_Store
+*.log
+logs/
+.env
+.env.*
+!.env.example
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development scripts (not needed in production)
+scripts/
+
+# Tests (not needed in production image)
+tests/
+
+# deepeval cache
+.deepeval/
+
+# Training artifacts (large files, not needed for inference)
+# learning_machine/artifacts/ contains ~5.5GB of model files
+recap_subworker/learning_machine/artifacts/
+recap_subworker/learning_machine/data/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+wandb/
+mlruns/
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/

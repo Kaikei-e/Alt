@@ -20,13 +20,19 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /uvx /bin/
 # キャッシュ設定
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
-# 依存関係ファイルとアプリケーションコードをコピー
-COPY pyproject.toml README.md ./
+# 【レイヤーキャッシュ最適化】依存関係ファイルのみを先にコピー
+COPY pyproject.toml uv.lock README.md ./
+
+# 依存関係をインストール（プロジェクト自体は後でインストール）
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+
+# アプリケーションコードをコピー
 COPY recap_subworker ./recap_subworker
 
-# 依存関係をインストール
+# プロジェクトをインストール（依存関係はキャッシュ済み）
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev
+    uv sync --frozen --no-dev
 
 # ==============================================================================
 # ランタイムステージ
