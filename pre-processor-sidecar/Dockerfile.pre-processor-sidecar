@@ -1,43 +1,29 @@
-FROM golang:1.24.3-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
-# Install git for go mod download
-RUN apk add --no-cache git
+# ビルド時に必要な依存関係
+RUN apk add --no-cache ca-certificates tzdata
 
-# Copy go mod files first for better caching
+# 依存関係キャッシュ最適化
 COPY ./app/go.mod ./app/go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy source code
 COPY ./app ./
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o pre-processor-sidecar ./cmd
+# 最適化ビルド: シンボル除去 + 静的リンク
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -o pre-processor-sidecar ./cmd
 
-# Final stage
-FROM alpine:3.20
+# 最小イメージ (distroless/static) + 非rootユーザー
+FROM gcr.io/distroless/static-debian12:nonroot
 
-# Add ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates tzdata
+# タイムゾーンデータをコピー
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 
-WORKDIR /app/
+COPY --from=builder /app/pre-processor-sidecar /pre-processor-sidecar
 
-# Copy the binary
-COPY --from=builder /app/pre-processor-sidecar .
+USER nonroot:nonroot
 
-# Create non-root user for security
-RUN addgroup -g 1000 app && adduser -D -s /bin/sh -u 1000 -G app app
-
-# Create temp directory for writable filesystem
-RUN mkdir -p /tmp && chown -R app:app /tmp
-
-USER app
-
-# Health check endpoint
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD ./pre-processor-sidecar --health-check || exit 1
-
-ENTRYPOINT ["./pre-processor-sidecar"]
+ENTRYPOINT ["/pre-processor-sidecar"]

@@ -1,11 +1,11 @@
-# Multi-stage build for optimized image size
+# ==============================================================================
+# ビルドステージ
+# ==============================================================================
 FROM python:3.12-slim AS builder
-
-ENV UV_LINK_MODE=copy
 
 WORKDIR /app
 
-# Install build dependencies only
+# ビルド依存関係
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     build-essential \
@@ -14,55 +14,57 @@ RUN apt-get update \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN pip install --no-cache-dir uv==0.9.7
+# uv を公式イメージからコピー
+COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /uvx /bin/
 
-# Copy dependency files and application code (needed for local package installation)
+# キャッシュ設定
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+
+# 依存関係ファイルとアプリケーションコードをコピー
 COPY pyproject.toml README.md ./
 COPY recap_subworker ./recap_subworker
 
-# Install dependencies (including local package)
-RUN uv sync --no-dev \
-    && uv cache prune || true
+# 依存関係をインストール
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev
 
-# Runtime stage - minimal image
-FROM python:3.12-slim AS runtime
+# ==============================================================================
+# ランタイムステージ
+# ==============================================================================
+FROM python:3.12-slim
 
-ENV UV_LINK_MODE=copy \
-    UV_NO_SYNC=1 \
-    PATH="/app/.venv/bin:$PATH" \
+WORKDIR /app
+
+# ランタイム依存関係のみ
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 非rootユーザー作成
+RUN groupadd -r recap && useradd -r -g recap recap
+
+# 環境変数
+ENV PATH="/app/.venv/bin:$PATH" \
     OMP_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1
 
-WORKDIR /app
-
-# Install only runtime dependencies (no build tools)
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
-
-# Install uv (lightweight, needed for uv run)
-RUN pip install --no-cache-dir uv==0.9.7
-
-# Copy virtual environment from builder
+# 仮想環境をコピー
 COPY --from=builder /app/.venv /app/.venv
 
-# Copy application code
-COPY pyproject.toml README.md ./
-COPY recap_subworker ./recap_subworker
+# アプリケーションコードをコピー
+COPY --chown=recap:recap pyproject.toml README.md ./
+COPY --chown=recap:recap recap_subworker ./recap_subworker
 
-# Copy golden dataset for evaluation
-RUN mkdir -p /app/data
-# Note: Golden dataset should be provided via volume mount or copied from recap-worker
-# For development, you can mount: -v /path/to/golden_classification.json:/app/data/golden_classification.json
+# データディレクトリ作成
+RUN mkdir -p /app/data /app/resources && chown -R recap:recap /app/data /app/resources
 
-# Copy genre classifier weights file
-RUN mkdir -p /app/resources
-COPY recap_subworker/resources/genre_classifier_weights.json /app/resources/genre_classifier_weights.json
+# ジャンル分類器の重みファイルをコピー
+COPY --chown=recap:recap recap_subworker/resources/genre_classifier_weights.json /app/resources/
+
+USER recap
 
 EXPOSE 8002
 
-CMD ["uv", "run", "--no-sync", "gunicorn", "-c", "recap_subworker/infra/gunicorn_conf.py", "recap_subworker.app.main:create_app"]
+CMD ["gunicorn", "-c", "recap_subworker/infra/gunicorn_conf.py", "recap_subworker.app.main:create_app"]

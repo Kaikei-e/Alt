@@ -1,34 +1,25 @@
 # Dockerfile.rask-log-forwarder
-FROM rust:1.92-bookworm AS builder
+FROM rust:1.92-slim AS builder
 
 WORKDIR /app
+
+# 依存関係キャッシュ最適化
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir src && echo "fn main() {}" > src/main.rs && \
+    cargo build --release && \
+    rm -rf src target/release/deps/rask*
+
 COPY . .
 
-# Build with release optimizations
+# リリースビルド
 RUN cargo build --release --bin rask-log-forwarder
 
-# Runtime image
-FROM debian:bookworm-slim
+# 最小イメージ (distroless/cc) + 非rootユーザー
+FROM gcr.io/distroless/cc-debian12:nonroot
 
-# Install required runtime dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/rask-log-forwarder /rask-log-forwarder
 
-# Create non-root user
-RUN useradd -r -s /bin/false rask
+# /tmp ディレクトリは distroless に存在するため追加設定不要
+USER nonroot:nonroot
 
-# Copy binary
-COPY --from=builder /app/target/release/rask-log-forwarder /usr/local/bin/
-
-# Create directories
-RUN mkdir -p /tmp/rask-fallback && chown rask:rask /tmp/rask-fallback
-
-# Health check disabled for network_mode issues
-# HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-#     CMD curl -f http://localhost:9090/health || exit 1
-
-USER rask
-
-ENTRYPOINT ["rask-log-forwarder"]
+ENTRYPOINT ["/rask-log-forwarder"]

@@ -2,14 +2,23 @@ FROM rust:1.92-slim AS builder
 
 WORKDIR /app
 
+# 依存関係キャッシュ最適化 (Cargo.toml/Cargo.lock を先にコピー)
+COPY app/Cargo.toml app/Cargo.lock ./
+RUN mkdir src && echo "fn main() {}" > src/main.rs && \
+    cargo build --release && \
+    rm -rf src target/release/deps/rask*
+
 COPY app/ .
 
+# リリースビルド
 RUN cargo build --release --bin rask
 
-FROM debian:bookworm-slim
+# 最小イメージ (distroless/cc) + 非rootユーザー
+# libc が必要な Rust バイナリ向け
+FROM gcr.io/distroless/cc-debian12:nonroot
 
-WORKDIR /app
+COPY --from=builder /app/target/release/rask /rask-log-aggregator
 
-COPY --from=builder /app/target/release/rask /usr/local/bin/rask-log-aggregator
+USER nonroot:nonroot
 
-CMD ["rask-log-aggregator"]
+ENTRYPOINT ["/rask-log-aggregator"]

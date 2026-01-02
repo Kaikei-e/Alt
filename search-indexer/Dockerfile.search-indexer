@@ -2,19 +2,24 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
+# 依存関係キャッシュ最適化
 COPY ./app/go.mod ./app/go.sum ./
 RUN go mod download
 
 COPY ./app .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /usr/local/bin/app ./main.go
+# 最適化ビルド: シンボル除去 + 静的リンク
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -o /app/search-indexer ./main.go
 
-FROM alpine:latest
+# 最小イメージ (distroless/static) + 非rootユーザー
+FROM gcr.io/distroless/static-debian12:nonroot
 
-WORKDIR /app
+COPY --from=builder /app/search-indexer /search-indexer
 
-COPY --from=builder /usr/local/bin/app /usr/local/bin/app
-
-CMD ["/usr/local/bin/app"]
+USER nonroot:nonroot
 
 EXPOSE 9300
+
+ENTRYPOINT ["/search-indexer"]

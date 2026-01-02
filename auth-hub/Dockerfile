@@ -1,34 +1,32 @@
 # Build stage
 FROM golang:1.25-alpine AS builder
 
-# Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
+# ビルド時に必要な依存関係
+RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /build
 
-# Copy go mod files and download dependencies
+# 依存関係キャッシュ最適化
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
-    -ldflags='-w -s -extldflags "-static"' \
+# 最適化ビルド: シンボル除去 + 静的リンク
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
     -o auth-hub main.go
 
-# Final stage
-FROM alpine:latest
+# 最小イメージ (distroless/static) + 非rootユーザー
+FROM gcr.io/distroless/static-debian12:nonroot
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
+# タイムゾーンデータをコピー
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 
-# Copy the binary
 COPY --from=builder /build/auth-hub /auth-hub
 
-# Expose port
+USER nonroot:nonroot
+
 EXPOSE 8888
 
-# Run the application
 ENTRYPOINT ["/auth-hub"]

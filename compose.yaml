@@ -820,9 +820,11 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # === Recap Worker PostgreSQL 18 ===
+  # === Recap Worker PostgreSQL 18 (pg_cron enabled) ===
   recap-db:
-    image: postgres:18-alpine
+    build:
+      context: ./docker/postgres
+      dockerfile: Dockerfile.recap-db
     container_name: recap-db
     profiles:
       - recap
@@ -838,7 +840,8 @@ services:
     secrets:
       - recap_db_password
     volumes:
-      - recap_db_data:/var/lib/postgresql/data
+      # PostgreSQL 18+ requires mount at /var/lib/postgresql (not /data)
+      - recap_db_data:/var/lib/postgresql
       - ./recap-worker/recap-db/init:/docker-entrypoint-initdb.d:rw
       - ./docker/postgres/postgresql-recap.conf:/etc/postgresql/postgresql.conf:ro
       - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
@@ -1243,8 +1246,8 @@ services:
       - rag_db_password
     volumes:
       - rag_db_data:/var/lib/postgresql
-      # Using recap config as a base/safe default for now
-      - ./docker/postgres/postgresql-recap.conf:/etc/postgresql/postgresql.conf:ro
+      # rag-db用設定 (pgvector のみ、pg_cron なし)
+      - ./docker/postgres/postgresql-rag.conf:/etc/postgresql/postgresql.conf:ro
       - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     ports:
       - "5436:5432"

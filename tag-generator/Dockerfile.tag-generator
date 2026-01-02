@@ -1,21 +1,31 @@
-FROM python:3.13-slim
-
-# Minimal OS deps (mecab etc. omitted for brevity)
-RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/lists/*
+# ==============================================================================
+# ビルドステージ
+# ==============================================================================
+FROM python:3.13-slim AS builder
 
 WORKDIR /app
+
+# ビルド依存関係
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv を公式イメージからコピー
+COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /uvx /bin/
+
+# キャッシュ設定
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+
 COPY app/pyproject.toml app/uv.lock ./
 
-# Install uv package manager
-RUN pip install --no-cache-dir uv
-
-# === install binary wheels ====================================================
-# Step 1: Install PyTorch first (CPU-only version from custom index)
-RUN uv pip install --system --no-cache-dir torch torchvision torchaudio \
+# PyTorch (CPU版) をインストール
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system torch torchvision torchaudio \
     --index-url https://download.pytorch.org/whl/cpu
 
-# Step 2: Install ML dependencies explicitly before syncing
-RUN uv pip install --system --no-cache-dir \
+# ML依存関係をインストール
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system \
     sentence-transformers>=3.3.0 \
     keybert>=0.8.5 \
     transformers>=4.40.0 \
@@ -23,37 +33,70 @@ RUN uv pip install --system --no-cache-dir \
     onnxruntime>=1.21.0 \
     unidic
 
-# Step 2.5: Download unidic dictionary data
+# unidic 辞書データをダウンロード
 RUN python -m unidic download
 
-# Step 3: Sync core project dependencies
-RUN uv sync --locked --no-dev
+# プロジェクト依存関係を同期
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev
 
-# Step 4: Install project in editable mode
-RUN uv pip install --system --no-cache-dir -e .
+# プロジェクトをインストール
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -e .
 
-# Step 5: Verify ML packages are installed correctly
-RUN python -c "import torch; print(f'✅ PyTorch {torch.__version__}')" && \
-    python -c "import sentence_transformers; print(f'✅ SentenceTransformers {sentence_transformers.__version__}')" && \
-    python -c "import keybert; print('✅ KeyBERT installed')" && \
-    python -c "import transformers; print(f'✅ Transformers {transformers.__version__}')" && \
-    python -c "import onnxruntime; print(f'✅ ONNX Runtime {onnxruntime.__version__}')"
+# ML パッケージの検証
+RUN python -c "import torch; print(f'PyTorch {torch.__version__}')" && \
+    python -c "import sentence_transformers; print(f'SentenceTransformers {sentence_transformers.__version__}')" && \
+    python -c "import keybert; print('KeyBERT installed')" && \
+    python -c "import transformers; print(f'Transformers {transformers.__version__}')" && \
+    python -c "import onnxruntime; print(f'ONNX Runtime {onnxruntime.__version__}')"
 
-# Optional: pre‑cache the SBERT model and download NLTK data
+# SBERT モデルと NLTK データをキャッシュ
 RUN python - <<'PY'
 import nltk
 from sentence_transformers import SentenceTransformer
 
-# Download NLTK data
 nltk.download('punkt_tab', quiet=True)
 nltk.download('stopwords', quiet=True)
-print('✅ NLTK data downloaded')
+print('NLTK data downloaded')
 
-# Cache SBERT model
 SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device='cpu')
-print('✅ SBERT model cached')
+print('SBERT model cached')
 PY
 
-COPY app/ .
-# Run FastAPI app for API endpoints (batch processing can run separately if needed)
+# ==============================================================================
+# ランタイムステージ
+# ==============================================================================
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# 非rootユーザー作成
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Python環境をコピー
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# NLTKデータをコピー
+COPY --from=builder /root/nltk_data /home/appuser/nltk_data
+
+# SBERTモデルキャッシュをコピー
+COPY --from=builder /root/.cache/huggingface /home/appuser/.cache/huggingface
+RUN chown -R appuser:appuser /home/appuser
+
+# unidic辞書をコピー
+COPY --from=builder /usr/local/lib/python3.13/site-packages/unidic /usr/local/lib/python3.13/site-packages/unidic
+
+# アプリケーションコードをコピー
+COPY --chown=appuser:appuser app/ .
+
+# 環境変数
+ENV NLTK_DATA=/home/appuser/nltk_data \
+    HF_HOME=/home/appuser/.cache/huggingface
+
+USER appuser
+
+EXPOSE 8000
+
 CMD ["python", "auth_service.py"]

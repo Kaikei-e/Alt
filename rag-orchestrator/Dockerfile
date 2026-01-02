@@ -2,21 +2,31 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
-# Copy go.mod files first (including proto module for replace directive)
+# go.modファイルをコピー (proto モジュールのreplace directive含む)
 COPY go.mod go.sum ./
 COPY internal/gen/proto/go.mod internal/gen/proto/go.sum* ./internal/gen/proto/
 
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o rag-orchestrator cmd/server/main.go
-RUN CGO_ENABLED=0 GOOS=linux go build -o backfill cmd/backfill/main.go
 
-FROM alpine:latest
-WORKDIR /app
-COPY --from=builder /app/rag-orchestrator .
-COPY --from=builder /app/backfill .
+# 最適化ビルド: シンボル除去 + 静的リンク
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -o rag-orchestrator cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -o backfill cmd/backfill/main.go
+
+# 最小イメージ (distroless/static) + 非rootユーザー
+FROM gcr.io/distroless/static-debian12:nonroot
+
+COPY --from=builder /app/rag-orchestrator /rag-orchestrator
+COPY --from=builder /app/backfill /backfill
+
+USER nonroot:nonroot
 
 EXPOSE 9010
 EXPOSE 9011
-CMD ["./rag-orchestrator"]
+
+ENTRYPOINT ["/rag-orchestrator"]

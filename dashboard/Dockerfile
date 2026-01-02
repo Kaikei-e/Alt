@@ -1,28 +1,60 @@
+# ==============================================================================
+# ビルドステージ
+# ==============================================================================
+FROM python:3.12-slim AS builder
+
+WORKDIR /app
+
+# ビルド依存関係
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv を公式イメージからコピー
+COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /uvx /bin/
+
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+
+COPY requirements.txt .
+
+# 依存関係をインストール (仮想環境作成)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv venv /app/.venv && \
+    uv pip install --no-cache -r requirements.txt
+
+# ==============================================================================
+# ランタイムステージ
+# ==============================================================================
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies (needed for some python packages)
-RUN apt-get update && apt-get install -y \
-    build-essential \
+# ランタイム依存関係のみ (curl はヘルスチェック用)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 非rootユーザー作成
+RUN groupadd -r dashboard && useradd -r -g dashboard dashboard
 
-COPY . .
+# 仮想環境をコピー
+COPY --from=builder /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
 
-# Copy and set permissions for entrypoint script
-COPY entrypoint.sh /app/entrypoint.sh
+# アプリケーションコードをコピー
+COPY --chown=dashboard:dashboard . .
+
+# エントリーポイントスクリプトの権限設定
 RUN chmod +x /app/entrypoint.sh
 
-# Expose Streamlit and SSE ports
+# Streamlit と SSE ポートを公開
 EXPOSE 8501 8000
 
-# Healthcheck: verify both Streamlit and SSE server are running
+# ヘルスチェック
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl --fail http://localhost:8501/_stcore/health && curl --fail http://localhost:8000/health || exit 1
+
+USER dashboard
 
 ENTRYPOINT ["/app/entrypoint.sh"]
