@@ -32,7 +32,7 @@ jobs:
           # Docker runs as root to delete files and fix permissions for 'runners' group
           # chmod 2775 = setgid + rwxrwxr-x (group inherits, group writable)
           # See: https://github.com/actions/runner/issues/434
-          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp runners /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
+          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $(stat -c '%g' /github/workspace/..) /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
 
       - name: Checkout repository
         uses: actions/checkout@v5
