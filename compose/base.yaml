@@ -2,6 +2,8 @@
 # This file contains secrets, networks, volumes, and YAML anchors
 # Used by all other compose files via 'include' directive
 
+name: alt
+
 secrets:
   auth_shared_secret:
     file: ../secrets/auth_shared_secret.txt

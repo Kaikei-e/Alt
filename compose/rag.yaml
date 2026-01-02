@@ -23,7 +23,7 @@ services:
       - rag_db_password
     volumes:
       - rag_db_data:/var/lib/postgresql
-      - ../docker/postgres/postgresql-recap.conf:/etc/postgresql/postgresql.conf:ro
+      - ../docker/postgres/postgresql-rag.conf:/etc/postgresql/postgresql.conf:ro
       - ../docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     ports:
       - "5436:5432"

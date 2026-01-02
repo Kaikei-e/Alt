@@ -22,7 +22,8 @@ services:
     secrets:
       - recap_db_password
     volumes:
-      - recap_db_data:/var/lib/postgresql/data
+      # PostgreSQL 18+ requires mount at /var/lib/postgresql (not /data)
+      - recap_db_data:/var/lib/postgresql
       - ../recap-worker/recap-db/init:/docker-entrypoint-initdb.d:rw
       - ../docker/postgres/postgresql-recap.conf:/etc/postgresql/postgresql.conf:ro
       - ../docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
