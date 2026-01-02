@@ -1,6 +1,6 @@
 # Tag Generator
 
-_Last reviewed: November 17, 2025_
+_Last reviewed: January 2, 2026_
 
 **Location:** `tag-generator/app`
 
@@ -50,8 +50,23 @@ flowchart TD
 - Processing: `PROCESSING_INTERVAL`, `BATCH_LIMIT`, `PROGRESS_LOG_INTERVAL`, `MEMORY_CLEANUP_INTERVAL`, `ENABLE_GC_COLLECTION`.
 - Health: `HEALTH_CHECK_INTERVAL`, `MAX_CONSECUTIVE_EMPTY_CYCLES`.
 - ONNX: `TAG_ONNX_MODEL_PATH` (default `/models/onnx/model.onnx`), `use_onnx_runtime` toggles fallback; when model missing, automatically switches to SentenceTransformer + KeyBERT.
+- **Memory optimization**: `TAG_USE_FP16=true` enables FP16 (half-precision) for ~200-300MB memory reduction; recommended for GPU, works on CPU with potential speed tradeoff. See [ADR-0042](./ADR/000042.md).
 - Service tokens: `SERVICE_SECRET` secures `/api/v1/tags/batch`; absence emits 500, missing/invalid headers emit 401/403.
 - Tag label graph windows: `TAG_LABEL_GRAPH_WINDOW` (default `7d`) and `TAG_LABEL_GRAPH_TTL_SECONDS` (900) align scripts + recap-worker.
+
+## Memory Optimization
+The service uses a singleton `ModelManager` to share ML models across all `TagExtractor` instances, avoiding duplicate loading. Key optimization levers:
+
+| Setting | Effect | Memory Impact |
+|---------|--------|---------------|
+| `TAG_USE_FP16=true` | Convert model weights to FP16 | ~200-300MB reduction |
+| ONNX Runtime (default) | Use optimized inference engine | ~100MB reduction + faster inference |
+| `MEMORY_CLEANUP_INTERVAL` | GC frequency during batch processing | Prevents accumulation |
+
+**Typical memory footprint:**
+- Default (FP32): ~2GB
+- With FP16: ~1.6-1.8GB
+- With FP16 + ONNX: ~1.4-1.6GB (requires ONNX model file)
 
 ## Testing & Tooling
 - `uv run pytest` covers unit tests (`tag_extractor`, `tag_fetcher`, `tag_inserter`) and integration suites (pipeline end-to-end).
@@ -73,3 +88,5 @@ flowchart TD
 ## LLM Notes
 - Specify whether edits touch `ArticleFetcher`, `TagExtractor`, `TagInserter`, or `TagGeneratorService`.
 - Provide `TAG_ONNX_MODEL_PATH` or `SERVICE_SECRET` when generating env wiring; instruct models not to duplicate DSN logic but to reuse `_get_database_dsn()`.
+- For memory optimization, use `TAG_USE_FP16=true`; this modifies `ModelManager._load_models()` behavior. The singleton pattern ensures models are shared across threads.
+- Model config flows: `TagExtractionConfig` → `ModelConfig` → `ModelManager.get_models()`. Changes to model loading should go through `model_manager.py`.
