@@ -10,10 +10,11 @@ CREATE INDEX idx_articles_user_id ON articles(user_id);
 CREATE INDEX idx_articles_user_created ON articles(user_id, created_at DESC);
 
 -- Migrate existing data to single user
+-- DEPRECATED: Default user ID no longer used (now using Kratos identity)
 -- User ID: 572d583d-dcc4-4ffc-b6b1-9cd0181401ee (from system logs)
-UPDATE articles
-SET user_id = '572d583d-dcc4-4ffc-b6b1-9cd0181401ee'::UUID
-WHERE user_id IS NULL;
+-- UPDATE articles
+-- SET user_id = '572d583d-dcc4-4ffc-b6b1-9cd0181401ee'::UUID
+-- WHERE user_id IS NULL;
 
 -- Make user_id NOT NULL now that all rows have a value
 ALTER TABLE articles ALTER COLUMN user_id SET NOT NULL;

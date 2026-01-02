@@ -3,10 +3,11 @@
 -- This migration assumes there is only one user in the system
 
 -- Update all existing favorite_feeds to belong to the single user
+-- DEPRECATED: Default user ID no longer used (now using Kratos identity)
 -- User ID: 572d583d-dcc4-4ffc-b6b1-9cd0181401ee (from logs)
-UPDATE favorite_feeds
-SET user_id = '572d583d-dcc4-4ffc-b6b1-9cd0181401ee'::UUID
-WHERE user_id IS NULL;
+-- UPDATE favorite_feeds
+-- SET user_id = '572d583d-dcc4-4ffc-b6b1-9cd0181401ee'::UUID
+-- WHERE user_id IS NULL;
 
 -- Make user_id NOT NULL now that all rows have a value
 ALTER TABLE favorite_feeds
