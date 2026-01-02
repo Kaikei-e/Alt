@@ -33,9 +33,10 @@ jobs:
         uses: docker://alpine:latest
         with:
           entrypoint: /bin/sh
-          # Docker runs as root so it can delete root-owned files from previous runs
+          # Docker runs as root so it can delete root-owned files and fix permissions
+          # chmod 777 allows any runner user to write to the workspace
           # See: https://github.com/actions/runner/issues/434
-          args: -c "echo 'Before cleanup:' && ls -la /github/workspace 2>&1 && rm -rfv /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>&1 && echo 'After cleanup:' && ls -la /github/workspace 2>&1"
+          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chmod 777 /github/workspace; echo 'Cleaned and chmod 777'"
 
       - name: Checkout code
         uses: actions/checkout@v5
