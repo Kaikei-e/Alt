@@ -240,136 +240,105 @@ flowchart LR
 
 ### Microservice Communication Map
 
-This diagram visualizes the direct API calls and data flow between microservices, highlighting the interconnected nature of the platform ("Mandala" view).
+Direct API calls and data flow between microservices.
 
 ```mermaid
-graph TD
-    %% Nodes
-    User((User))
-    Browser[Browser / Mobile]
-    Nginx[Nginx Gateway :80]
+flowchart TD
+    classDef client fill:#e6f4ff,stroke:#1f5aa5,stroke-width:2px
+    classDef edge fill:#f2e4ff,stroke:#8a4bd7,stroke-width:2px
+    classDef frontend fill:#d4e6f1,stroke:#2874a6,stroke-width:2px
+    classDef backend fill:#d5f5e3,stroke:#1e8449,stroke-width:2px
+    classDef worker fill:#fcf3cf,stroke:#d4ac0d,stroke-width:2px
+    classDef data fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    classDef rag fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,stroke-dasharray:4
+    classDef obs fill:#fde4f7,stroke:#c026d3,stroke-width:2px,stroke-dasharray:4
 
-    subgraph Frontend
-        AltFrontend[alt-frontend :3000<br/>Next.js]
-        AltFrontendSv[alt-frontend-sv :4173<br/>SvelteKit /sv]
-    end
-
-    subgraph Backend
-        AltBackend[alt-backend :9000/:9101<br/>REST + Connect-RPC]
-        AuthHub[auth-hub :8888]
-    end
-
-    subgraph Workers
-        NewsCreator[news-creator :8001]
-        RecapWorker[recap-worker :9005]
-        RecapSubworker[recap-subworker :8002]
-        PreProcessor[pre-processor :9200]
-        SearchIndexer[search-indexer :9300]
-        TagGenerator[tag-generator]
-    end
-
-    subgraph RAG
-        RagOrchestrator[rag-orchestrator :9010]
-        KnowledgeAugur[knowledge-augur]
-        KnowledgeEmbedder[knowledge-embedder]
-    end
-
-    subgraph Infrastructure
-        Kratos[Ory Kratos :4433]
-        KratosDB[(Postgres: kratos-db)]
-        AltDB[(Postgres: alt-db)]
-        RecapDB[(Postgres: recap-db)]
-        RagDB[(Postgres: rag-db<br/>+ pgvector)]
-        Meilisearch[(Meilisearch :7700)]
-        Ollama[Ollama LLM]
-        Clickhouse[(Clickhouse :8123)]
-    end
-
-    subgraph Observability
-        RaskForwarder[rask-log-forwarder]
-        RaskAggregator[rask-log-aggregator :9600]
-    end
-
-    %% External Access
-    User --> Browser
+    User((User)):::client
+    User --> Browser[Browser]:::client
     Browser -->|HTTPS| Nginx
 
-    %% Nginx Routing
-    Nginx -->|/| AltFrontend
-    Nginx -->|/sv| AltFrontendSv
-    Nginx -->|/api/frontend| AltFrontend
-    Nginx -->|/api/backend :9000| AltBackend
-    Nginx -->|/api/v1/sse| AltBackend
-    Nginx -->|/ory| Kratos
-    Nginx -->|/api/auth/csrf| AuthHub
-    Nginx -->|/auth-validate| AuthHub
+    subgraph Edge["Edge :80"]
+        Nginx[nginx]:::edge
+        AuthHub[auth-hub :8888]:::edge
+    end
 
-    %% Frontend Interactions
-    AltFrontend -->|REST :9000| AltBackend
-    AltFrontend -->|/validate| AuthHub
-    AltFrontendSv -->|Connect-RPC :9101| AltBackend
-    AltFrontendSv -->|REST :9000| AltBackend
-    AltFrontendSv -->|/validate| AuthHub
-
-    %% Backend Interactions
-    AltBackend -->|SQL| AltDB
-    AltBackend -->|/validate| AuthHub
-    AltBackend -->|/api/v1/summarize| PreProcessor
-    AltBackend -->|/v1/recap/*| RecapWorker
-    AltBackend -->|Connect-RPC MorningLetter| RagOrchestrator
-
-    %% Worker Interactions
-    NewsCreator -->|Inference| Ollama
-
-    RecapWorker -->|SQL| RecapDB
-    RecapWorker -->|/v1/summary/generate| NewsCreator
-    RecapWorker -->|/v1/runs| RecapSubworker
-    RecapWorker -->|/v1/recap/articles| AltBackend
-    RecapWorker -->|/api/v1/tags/batch| TagGenerator
-
-    RecapSubworker -->|SQL| RecapDB
-
-    PreProcessor -->|SQL| AltDB
-    PreProcessor -->|/api/v1/summarize| NewsCreator
-
-    SearchIndexer -->|SQL| AltDB
-    SearchIndexer -->|batch 200 docs| Meilisearch
-
-    TagGenerator -->|SQL| AltDB
-
-    %% RAG Interactions
-    RagOrchestrator -->|SQL + Vector| RagDB
-    RagOrchestrator -->|Embed| KnowledgeEmbedder
-    RagOrchestrator -->|Generate| KnowledgeAugur
-    KnowledgeAugur -->|Inference| Ollama
-    AltBackend -->|/v1/search| Meilisearch
-
+    Nginx -->|"/"| UI
+    Nginx -->|"/sv"| UISv
+    Nginx -->|"/api"| API
+    Nginx -->|"/ory"| Kratos
+    Nginx --> AuthHub
     AuthHub -->|/sessions/whoami| Kratos
-    Kratos -->|SQL| KratosDB
 
-    %% Observability Flows
-    AltBackend -.->|Logs| RaskForwarder
-    TagGenerator -.->|Logs| RaskForwarder
-    Nginx -.->|Logs| RaskForwarder
-    RaskForwarder -->|/v1/aggregate| RaskAggregator
-    RaskAggregator -->|INSERT| Clickhouse
+    subgraph FE["Frontend"]
+        UI[alt-frontend :3000]:::frontend
+        UISv[alt-frontend-sv :4173]:::frontend
+    end
 
-    %% Styles
-    classDef frontend fill:#d4e6f1,stroke:#2874a6,stroke-width:2px;
-    classDef backend fill:#d5f5e3,stroke:#1e8449,stroke-width:2px;
-    classDef worker fill:#fcf3cf,stroke:#d4ac0d,stroke-width:2px;
-    classDef infra fill:#f2f3f4,stroke:#7f8c8d,stroke-width:2px,stroke-dasharray: 5 5;
-    classDef gateway fill:#e8daef,stroke:#8e44ad,stroke-width:2px;
-    classDef observability fill:#fadbd8,stroke:#c0392b,stroke-width:2px;
-    classDef rag fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px;
+    UI -->|REST| API
+    UISv -->|Connect-RPC| API
 
-    class AltFrontend,AltFrontendSv frontend;
-    class AltBackend,AuthHub backend;
-    class NewsCreator,RecapWorker,RecapSubworker,PreProcessor,SearchIndexer,TagGenerator worker;
-    class RagOrchestrator,KnowledgeAugur,KnowledgeEmbedder rag;
-    class Kratos,KratosDB,AltDB,RecapDB,RagDB,Meilisearch,Ollama,Clickhouse infra;
-    class Nginx,Browser gateway;
-    class RaskForwarder,RaskAggregator observability;
+    subgraph BE["Backend"]
+        API[alt-backend :9000/:9101]:::backend
+    end
+
+    API -->|SQL| DB
+    API -->|/v1/search| Meili
+    API -->|/v1/recap/*| RW
+    API -->|Connect-RPC| RO
+
+    subgraph Workers["Workers"]
+        PP[pre-processor :9200]:::worker
+        NC[news-creator :11434]:::worker
+        Idx[search-indexer :9300]:::worker
+        Tag[tag-generator :9400]:::worker
+    end
+
+    PP -->|SQL| DB
+    PP -->|/api/generate| NC
+    Idx -->|SQL| DB
+    Idx -->|batch| Meili
+    Tag -->|SQL| DB
+
+    subgraph Recap["Profile: recap"]
+        RW[recap-worker :9005]:::worker
+        RS[recap-subworker :8002]:::worker
+    end
+
+    RW -->|SQL| RecapDB
+    RW -->|/v1/runs| RS
+    RW -->|/v1/generate| NC
+    RS -->|SQL| RecapDB
+
+    subgraph RAG["Profile: rag-extension"]
+        RO[rag-orchestrator :9010]:::rag
+        Augur[knowledge-augur :11435]:::rag
+        Embed[knowledge-embedder :11436]:::rag
+    end
+
+    RO -->|SQL+vector| RagDB
+    RO -->|embed| Embed
+    RO -->|generate| Augur
+
+    subgraph Data["Data Stores"]
+        DB[(db :5432)]:::data
+        Meili[(meilisearch :7700)]:::data
+        Kratos[(kratos :4433)]:::data
+        RecapDB[(recap-db :5435)]:::data
+        RagDB[(rag-db :5436)]:::data
+    end
+
+    Kratos -->|SQL| KratosDB[(kratos-db :5434)]:::data
+
+    subgraph Obs["Profile: logging"]
+        Fwd[log-forwarders ×8]:::obs
+        Agg[rask-log-agg :9600]:::obs
+        CH[(clickhouse :8123)]:::obs
+    end
+
+    API -.->|logs| Fwd
+    Nginx -.->|logs| Fwd
+    Fwd -->|/v1/aggregate| Agg
+    Agg -->|INSERT| CH
 ```
 
 ### Identity & Edge Access
