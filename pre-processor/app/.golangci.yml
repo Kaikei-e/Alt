@@ -18,6 +18,14 @@ linters:
     - goconst        # 定数化可能な文字列検出
     - revive         # golintの後継
     - unparam        # 未使用パラメータ検出
+  settings:
+    gocyclo:
+      min-complexity: 15
+    dupl:
+      threshold: 100
+    goconst:
+      min-len: 3
+      min-occurrences: 3
 
 formatters:
   enable:
@@ -29,12 +37,3 @@ issues:
 
 severity:
   default: error
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-  dupl:
-    threshold: 100
-  goconst:
-    min-len: 3
-    min-occurrences: 3
