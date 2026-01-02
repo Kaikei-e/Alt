@@ -24,15 +24,22 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 30
     steps:
+      - name: Get workspace parent GID
+        if: runner.environment == 'self-hosted'
+        id: get-gid
+        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
+
       - name: Pre-checkout cleanup
         if: runner.environment == 'self-hosted'
         uses: docker://alpine:latest
+        env:
+          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
         with:
           entrypoint: /bin/sh
           # Docker runs as root to delete files and fix permissions for 'runners' group
           # chmod 2775 = setgid + rwxrwxr-x (group inherits, group writable)
           # See: https://github.com/actions/runner/issues/434
-          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $(stat -c '%g' /github/workspace/..) /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
+          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
 
       - uses: actions/checkout@v5
 
