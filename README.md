@@ -243,102 +243,47 @@ flowchart LR
 Direct API calls and data flow between microservices.
 
 ```mermaid
+%%{init: {'flowchart': {'nodeSpacing': 30, 'rankSpacing': 40}}}%%
 flowchart TD
     classDef client fill:#e6f4ff,stroke:#1f5aa5,stroke-width:2px
     classDef edge fill:#f2e4ff,stroke:#8a4bd7,stroke-width:2px
-    classDef frontend fill:#d4e6f1,stroke:#2874a6,stroke-width:2px
-    classDef backend fill:#d5f5e3,stroke:#1e8449,stroke-width:2px
-    classDef worker fill:#fcf3cf,stroke:#d4ac0d,stroke-width:2px
-    classDef data fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    classDef fe fill:#d4e6f1,stroke:#2874a6,stroke-width:2px
+    classDef be fill:#d5f5e3,stroke:#1e8449,stroke-width:2px
+    classDef wk fill:#fcf3cf,stroke:#d4ac0d,stroke-width:2px
+    classDef db fill:#fef3c7,stroke:#d97706,stroke-width:2px
     classDef rag fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,stroke-dasharray:4
     classDef obs fill:#fde4f7,stroke:#c026d3,stroke-width:2px,stroke-dasharray:4
 
-    User((User)):::client
-    User --> Browser[Browser]:::client
-    Browser -->|HTTPS| Nginx
+    U((User)):::client --> N[nginx :80]:::edge
+    N --> A[auth-hub :8888]:::edge --> K[(kratos :4433)]:::db --> KD[(kratos-db)]:::db
 
-    subgraph Edge["Edge :80"]
-        Nginx[nginx]:::edge
-        AuthHub[auth-hub :8888]:::edge
-    end
+    N --> F1[alt-frontend :3000]:::fe --> API
+    N --> F2[alt-frontend-sv :4173]:::fe --> API
 
-    Nginx -->|"/"| UI
-    Nginx -->|"/sv"| UISv
-    Nginx -->|"/api"| API
-    Nginx -->|"/ory"| Kratos
-    Nginx --> AuthHub
-    AuthHub -->|/sessions/whoami| Kratos
+    API[alt-backend :9000/:9101]:::be
 
-    subgraph FE["Frontend"]
-        UI[alt-frontend :3000]:::frontend
-        UISv[alt-frontend-sv :4173]:::frontend
-    end
+    API --> W1[search-indexer :9300]:::wk --> D1[(db :5432)]:::db
+    W1 --> M[(meilisearch :7700)]:::db
 
-    UI -->|REST| API
-    UISv -->|Connect-RPC| API
+    API --> W2[tag-generator :9400]:::wk --> D1
 
-    subgraph BE["Backend"]
-        API[alt-backend :9000/:9101]:::backend
-    end
+    API --> W3[pre-processor :9200]:::wk --> NC[news-creator :11434]:::wk
+    W3 --> D1
 
-    API -->|SQL| DB
-    API -->|/v1/search| Meili
-    API -->|/v1/recap/*| RW
-    API -->|Connect-RPC| RO
+    API --> RW[recap-worker :9005]:::wk --> RS[recap-subworker :8002]:::wk
+    RW --> NC
+    RW --> RD[(recap-db :5435)]:::db
+    RS --> RD
 
-    subgraph Workers["Workers"]
-        PP[pre-processor :9200]:::worker
-        NC[news-creator :11434]:::worker
-        Idx[search-indexer :9300]:::worker
-        Tag[tag-generator :9400]:::worker
-    end
+    API --> RO[rag-orchestrator :9010]:::rag
+    RO --> AU[knowledge-augur :11435]:::rag
+    RO --> EM[knowledge-embedder :11436]:::rag
+    RO --> VD[(rag-db :5436)]:::db
 
-    PP -->|SQL| DB
-    PP -->|/api/generate| NC
-    Idx -->|SQL| DB
-    Idx -->|batch| Meili
-    Tag -->|SQL| DB
-
-    subgraph Recap["Profile: recap"]
-        RW[recap-worker :9005]:::worker
-        RS[recap-subworker :8002]:::worker
-    end
-
-    RW -->|SQL| RecapDB
-    RW -->|/v1/runs| RS
-    RW -->|/v1/generate| NC
-    RS -->|SQL| RecapDB
-
-    subgraph RAG["Profile: rag-extension"]
-        RO[rag-orchestrator :9010]:::rag
-        Augur[knowledge-augur :11435]:::rag
-        Embed[knowledge-embedder :11436]:::rag
-    end
-
-    RO -->|SQL+vector| RagDB
-    RO -->|embed| Embed
-    RO -->|generate| Augur
-
-    subgraph Data["Data Stores"]
-        DB[(db :5432)]:::data
-        Meili[(meilisearch :7700)]:::data
-        Kratos[(kratos :4433)]:::data
-        RecapDB[(recap-db :5435)]:::data
-        RagDB[(rag-db :5436)]:::data
-    end
-
-    Kratos -->|SQL| KratosDB[(kratos-db :5434)]:::data
-
-    subgraph Obs["Profile: logging"]
-        Fwd[log-forwarders ×8]:::obs
-        Agg[rask-log-agg :9600]:::obs
-        CH[(clickhouse :8123)]:::obs
-    end
-
-    API -.->|logs| Fwd
-    Nginx -.->|logs| Fwd
-    Fwd -->|/v1/aggregate| Agg
-    Agg -->|INSERT| CH
+    LF[log-forwarders]:::obs
+    N -.-> LF
+    API -.-> LF
+    LF --> LA[rask-log-agg :9600]:::obs --> CH[(clickhouse :8123)]:::obs
 ```
 
 ### Identity & Edge Access
