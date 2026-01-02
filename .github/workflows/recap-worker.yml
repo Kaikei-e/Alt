@@ -28,6 +28,19 @@ jobs:
         shell: bash
 
     steps:
+      - name: Pre-checkout cleanup
+        if: runner.environment == 'self-hosted'
+        run: |
+          # Clean workspace with proper permissions using host shell
+          # Docker-based cleanup doesn't work because /github/workspace is not the actual path on self-hosted runners
+          if [ -d "$GITHUB_WORKSPACE" ]; then
+            sudo rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* 2>/dev/null || true
+            sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" 2>/dev/null || true
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@v5
+
       - name: Configure logging (mask sensitive info)
         if: runner.environment == 'self-hosted'
         run: |
@@ -42,25 +55,15 @@ jobs:
           [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
           [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
 
-          # Mask Git PII
+          # Mask Git PII (now available after checkout)
           if command -v git >/dev/null 2>&1; then
-            echo "::add-mask::$(git log -1 --pretty=format:'%an')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ae')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%cn')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ce')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%an' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ae' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%cn' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
           fi
 
           echo "::endgroup::"
-
-      - name: Pre-checkout cleanup
-        if: runner.environment == 'self-hosted'
-        uses: docker://alpine:latest
-        with:
-          entrypoint: /bin/sh
-          args: -c "rm -rf /github/workspace/* /github/workspace/.* 2>/dev/null; chown -R 1001:1001 /github/workspace 2>/dev/null || true"
-
-      - name: Checkout code
-        uses: actions/checkout@v5
 
       - name: Clean workspace and clear caches
         if: runner.environment == 'self-hosted'
