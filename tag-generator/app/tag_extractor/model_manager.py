@@ -44,6 +44,7 @@ class ModelConfig:
     onnx_pooling: str = "cls"
     onnx_batch_size: int = 16
     onnx_max_length: int = 256
+    use_fp16: bool = False  # Enable FP16 for ~50% memory reduction (GPU recommended)
 
 
 class ModelManager:
@@ -169,6 +170,24 @@ class ModelManager:
                 logger.info("Loading SentenceTransformer model", model_name=config.model_name)
                 self._embedder = SentenceTransformer(config.model_name, device=config.device)
                 logger.info("SentenceTransformer loaded successfully")
+
+                # Apply FP16 conversion for memory optimization (~50% reduction)
+                fp16_applied = False
+                if config.use_fp16:
+                    try:
+                        self._embedder.half()
+                        fp16_applied = True
+                        logger.info(
+                            "FP16 conversion applied to SentenceTransformer",
+                            device=config.device,
+                            expected_memory_reduction="~50%",
+                        )
+                    except Exception as fp16_error:
+                        logger.warning(
+                            "FP16 conversion failed, continuing with FP32",
+                            error=str(fp16_error),
+                        )
+
                 self._embedder_backend = "sentence_transformer"
                 embedding_dim = None
                 if hasattr(self._embedder, "get_sentence_embedding_dimension"):
@@ -180,6 +199,7 @@ class ModelManager:
                     "backend": "sentence_transformer",
                     "model_name": config.model_name,
                     "device": config.device,
+                    "fp16": fp16_applied,
                 }
                 if embedding_dim is not None:
                     self._embedder_metadata["embedding_dimension"] = embedding_dim

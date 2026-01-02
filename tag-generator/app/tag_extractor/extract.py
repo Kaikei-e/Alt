@@ -79,6 +79,7 @@ class TagExtractionConfig:
     onnx_pooling: str = "cls"
     onnx_batch_size: int = 16
     onnx_max_length: int = 256
+    use_fp16: bool = False  # Enable FP16 for ~50% memory reduction (set via TAG_USE_FP16=true)
 
     def __post_init__(self) -> None:
         """Set default ONNX model path if not provided."""
@@ -95,6 +96,11 @@ class TagExtractionConfig:
                     use_onnx_runtime=self.use_onnx_runtime,
                 )
                 self.use_onnx_runtime = False
+
+        # Enable FP16 via environment variable (TAG_USE_FP16=true)
+        if os.getenv("TAG_USE_FP16", "").lower() in ("true", "1", "yes"):
+            self.use_fp16 = True
+            logger.info("FP16 mode enabled via TAG_USE_FP16 environment variable")
 
 
 @dataclass
@@ -329,6 +335,7 @@ class TagExtractor:
                 onnx_pooling=self.config.onnx_pooling,
                 onnx_batch_size=self.config.onnx_batch_size,
                 onnx_max_length=self.config.onnx_max_length,
+                use_fp16=self.config.use_fp16,
             )
             self._embedder, self._keybert, self._ja_tagger = self._model_manager.get_models(model_config)
             self._models_loaded = True
@@ -339,6 +346,7 @@ class TagExtractor:
                 "Models loaded via ModelManager",
                 embedder_backend=self._embedding_backend,
                 embedder_class=type(self._embedder).__name__,
+                fp16_enabled=self.config.use_fp16,
             )
 
     def _load_stopwords(self) -> None:
