@@ -1,5 +1,4 @@
 -- Align recap_preprocess_metrics schema with Recap Worker DAO expectations.
-BEGIN;
 
 -- Preserve the legacy table for data migration.
 ALTER TABLE recap_preprocess_metrics
@@ -93,6 +92,4 @@ SELECT
 FROM aggregated;
 
 DROP TABLE recap_preprocess_metrics_legacy;
-
-COMMIT;
 
