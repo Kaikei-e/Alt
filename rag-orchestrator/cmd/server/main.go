@@ -112,7 +112,28 @@ func main() {
 	e.Use(middleware.Recover())
 
 	// 8. Initialize Handlers
-	handler := rag_http.NewHandler(retrieveUsecase, answerUsecase, indexUsecase, jobRepo, morningLetterUsecase)
+	// Create factories for hyper-boost support
+	embedderFactory := func(url string, model string, timeout int) domain.VectorEncoder {
+		return rag_augur.NewOllamaEmbedder(url, model, timeout)
+	}
+	indexUsecaseFactory := func(encoder domain.VectorEncoder) usecase.IndexArticleUsecase {
+		return usecase.NewIndexArticleUsecase(
+			docRepo,
+			chunkRepo,
+			txManager,
+			hasher,
+			chunker,
+			encoder,
+		)
+	}
+	handler := rag_http.NewHandler(
+		retrieveUsecase,
+		answerUsecase,
+		indexUsecase,
+		jobRepo,
+		morningLetterUsecase,
+		rag_http.WithEmbedderOverride(embedderFactory, indexUsecaseFactory, cfg.EmbeddingModel, cfg.OllamaTimeout),
+	)
 
 	// 9. Register OpenAPI Handlers
 	openapi.RegisterHandlers(e, handler)

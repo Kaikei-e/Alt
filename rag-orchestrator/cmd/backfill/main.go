@@ -29,6 +29,7 @@ var (
 	concurrency int
 	batchSize   int
 	dryRun      bool
+	hyperBoost  bool
 )
 
 func main() {
@@ -88,6 +89,7 @@ func init() {
 	runCmd.Flags().IntVar(&concurrency, "concurrency", 4, "number of concurrent requests")
 	runCmd.Flags().IntVar(&batchSize, "batch-size", 40, "articles per batch")
 	runCmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be processed without actually processing")
+	runCmd.Flags().BoolVar(&hyperBoost, "hyper-boost", false, "use local GPU for embedding (starts temporary Ollama container)")
 
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(statusCmd)
@@ -129,6 +131,45 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 	cfg.BatchSize = batchSize
 	cfg.DryRun = dryRun
 
+	// Setup context for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle hyper-boost mode
+	var hb *backfill.HyperBoost
+	if hyperBoost {
+		logger.Info("initializing hyper-boost mode")
+
+		var err error
+		hb, err = backfill.NewHyperBoost(logger)
+		if err != nil {
+			return fmt.Errorf("create hyperboost: %w", err)
+		}
+		defer func() {
+			if stopErr := hb.Stop(context.Background()); stopErr != nil {
+				logger.Warn("failed to stop hyperboost container", slog.String("error", stopErr.Error()))
+			}
+			hb.Close()
+		}()
+
+		if err := hb.Start(ctx); err != nil {
+			return fmt.Errorf("start hyperboost container: %w", err)
+		}
+
+		if err := hb.WaitReady(ctx); err != nil {
+			return fmt.Errorf("hyperboost container not ready: %w", err)
+		}
+
+		if err := hb.PullModel(ctx); err != nil {
+			return fmt.Errorf("pull embedding model: %w", err)
+		}
+
+		cfg.EmbedderOverrideURL = hb.EmbedderURL()
+		logger.Info("hyper-boost enabled",
+			slog.String("embedder_url", cfg.EmbedderOverrideURL),
+		)
+	}
+
 	// Parse dates
 	if fromDate != "" {
 		t, err := time.Parse("2006-01-02", fromDate)
@@ -152,6 +193,7 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 		slog.Int("concurrency", cfg.Concurrency),
 		slog.Int("batch_size", cfg.BatchSize),
 		slog.Bool("dry_run", cfg.DryRun),
+		slog.Bool("hyper_boost", hyperBoost),
 		slog.String("from_date", fromDate),
 		slog.String("to_date", toDate),
 	)
@@ -162,10 +204,7 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 	}
 	defer runner.Close()
 
-	// Setup graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+	// Setup signal handler for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {

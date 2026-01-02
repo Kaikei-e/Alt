@@ -30,15 +30,16 @@ type Article struct {
 
 // Config holds the runner configuration.
 type Config struct {
-	DatabaseURL     string
-	OrchestratorURL string
-	CursorFile      string
-	FromDate        time.Time
-	ToDate          time.Time
-	Concurrency     int
-	BatchSize       int
-	DryRun          bool
-	RequestTimeout  time.Duration
+	DatabaseURL         string
+	OrchestratorURL     string
+	CursorFile          string
+	FromDate            time.Time
+	ToDate              time.Time
+	Concurrency         int
+	BatchSize           int
+	DryRun              bool
+	RequestTimeout      time.Duration
+	EmbedderOverrideURL string // hyper-boost: override embedder URL via X-Embedder-URL header
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -46,7 +47,7 @@ func DefaultConfig() Config {
 	return Config{
 		OrchestratorURL: "http://localhost:9010",
 		CursorFile:      "cursor.json",
-		Concurrency:     4,
+		Concurrency:     8,
 		BatchSize:       40,
 		RequestTimeout:  100 * time.Second,
 	}
@@ -388,6 +389,9 @@ func (r *Runner) sendArticle(ctx context.Context, a Article) error {
 		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if r.cfg.EmbedderOverrideURL != "" {
+		req.Header.Set("X-Embedder-URL", r.cfg.EmbedderOverrideURL)
+	}
 
 	resp, err := r.client.Do(req)
 	if err != nil {

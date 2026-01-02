@@ -15,12 +15,24 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// EmbedderFactory creates a VectorEncoder from a URL.
+type EmbedderFactory func(url string, model string, timeout int) domain.VectorEncoder
+
+// IndexUsecaseFactory creates an IndexArticleUsecase with a given encoder.
+type IndexUsecaseFactory func(encoder domain.VectorEncoder) usecase.IndexArticleUsecase
+
 type Handler struct {
 	retrieveUsecase      usecase.RetrieveContextUsecase
 	answerUsecase        usecase.AnswerWithRAGUsecase
 	indexUsecase         usecase.IndexArticleUsecase
 	jobRepo              domain.RagJobRepository
 	morningLetterUsecase usecase.MorningLetterUsecase
+
+	// For hyper-boost support
+	embedderFactory     EmbedderFactory
+	indexUsecaseFactory IndexUsecaseFactory
+	embeddingModel      string
+	embedderTimeout     int
 }
 
 func mapAnswerRequestToInput(req openapi.AnswerRequest) usecase.AnswerWithRAGInput {
@@ -45,20 +57,43 @@ func mapAnswerRequestToInput(req openapi.AnswerRequest) usecase.AnswerWithRAGInp
 	return input
 }
 
+// HandlerOption configures the Handler.
+type HandlerOption func(*Handler)
+
+// WithEmbedderOverride enables X-Embedder-URL header support for hyper-boost.
+func WithEmbedderOverride(
+	embedderFactory EmbedderFactory,
+	indexUsecaseFactory IndexUsecaseFactory,
+	embeddingModel string,
+	embedderTimeout int,
+) HandlerOption {
+	return func(h *Handler) {
+		h.embedderFactory = embedderFactory
+		h.indexUsecaseFactory = indexUsecaseFactory
+		h.embeddingModel = embeddingModel
+		h.embedderTimeout = embedderTimeout
+	}
+}
+
 func NewHandler(
 	retrieveUsecase usecase.RetrieveContextUsecase,
 	answerUsecase usecase.AnswerWithRAGUsecase,
 	indexUsecase usecase.IndexArticleUsecase,
 	jobRepo domain.RagJobRepository,
 	morningLetterUsecase usecase.MorningLetterUsecase,
+	opts ...HandlerOption,
 ) *Handler {
-	return &Handler{
+	h := &Handler{
 		retrieveUsecase:      retrieveUsecase,
 		answerUsecase:        answerUsecase,
 		indexUsecase:         indexUsecase,
 		jobRepo:              jobRepo,
 		morningLetterUsecase: morningLetterUsecase,
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // Ensure Handler implements ServerInterface
@@ -78,8 +113,15 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
+	// Check for embedder override (hyper-boost)
+	indexUsecase := h.indexUsecase
+	if embedderURL := ctx.Request().Header.Get("X-Embedder-URL"); embedderURL != "" && h.embedderFactory != nil && h.indexUsecaseFactory != nil {
+		encoder := h.embedderFactory(embedderURL, h.embeddingModel, h.embedderTimeout)
+		indexUsecase = h.indexUsecaseFactory(encoder)
+	}
+
 	// Index the article with all required fields from the request
-	if err := h.indexUsecase.Upsert(
+	if err := indexUsecase.Upsert(
 		ctx.Request().Context(),
 		req.ArticleId,
 		req.Title,
