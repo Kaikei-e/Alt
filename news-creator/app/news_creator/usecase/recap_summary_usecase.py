@@ -425,11 +425,11 @@ class RecapSummaryUsecase:
         )
 
     def _build_prompt(self, request: RecapSummaryRequest, max_bullets: int, intermediate: bool = False) -> str:
-        # Truncate cluster section to fit within 80K context window
-        # Context window is now 80K tokens (81920), configured in entrypoint.sh and config.py
-        # 71K tokens ≈ 284K-568K chars, but we need to reserve space for prompt template
-        # Reserve ~1K tokens for prompt template and safety margin, leaving ~70K tokens for content
-        # Using ~280K chars (≈70K tokens) for cluster_section to leave room for prompt template
+        # Truncate cluster section to fit within context window
+        # Context window is 16K (default) or 60K tokens (61440), configured in entrypoint.sh and config.py
+        # Model routing automatically selects 16K or 60K based on input size
+        # Reserve ~1K tokens for prompt template and safety margin
+        # Using conservative 50K chars (~12K tokens) for cluster_section to fit in 16K context
         MAX_CLUSTER_SECTION_LENGTH = 50_000  # characters (conservative estimate for ~12K tokens in 16K context)
 
         max_clusters = max(3, min(len(request.clusters), max_bullets + 2))

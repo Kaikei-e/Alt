@@ -11,12 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 class ModelRouter:
-    """Routes requests to appropriate model bucket (16K, 80K) based on token count."""
+    """Routes requests to appropriate model bucket (16K, 60K) based on token count."""
 
     # Bucket definitions (context window sizes)
     # BUCKET_8K = 8192  # 8kモデルは使用しない
     BUCKET_16K = 16384
-    BUCKET_80K = 81920
+    BUCKET_60K = 61440
 
     def __init__(
         self,
@@ -62,13 +62,13 @@ class ModelRouter:
         if self.oom_detector.two_model_mode:
             return self._select_model_3mode(prompt, max_new_tokens)
 
-        # Normal 2-model mode (16K, 80K)
+        # Normal 2-model mode (16K, 60K)
         return self._select_model_3mode(prompt, max_new_tokens)
 
     def _select_model_3mode(
         self, prompt: str, max_new_tokens: Optional[int] = None
     ) -> Tuple[str, int]:
-        """Select model in 2-model mode (16K, 80K)."""
+        """Select model in 2-model mode (16K, 60K)."""
         # Calculate token count
         prompt_tokens = count_tokens(prompt)
         max_new = max_new_tokens or self.config.llm_num_predict
@@ -103,24 +103,24 @@ class ModelRouter:
             },
         )
 
-        # Select bucket (16K, or 80K)
+        # Select bucket (16K, or 60K)
         # if needed_tokens <= self.BUCKET_8K:  # 8kモデルは使用しない
         #     selected_bucket = self.BUCKET_8K
         #     selected_model = self.config.model_8k_name
         if needed_tokens <= self.BUCKET_16K:
             selected_bucket = self.BUCKET_16K
             selected_model = self.config.model_16k_name
-        elif needed_tokens <= self.BUCKET_80K:
-            selected_bucket = self.BUCKET_80K
-            selected_model = self.config.model_80k_name
+        elif needed_tokens <= self.BUCKET_60K:
+            selected_bucket = self.BUCKET_60K
+            selected_model = self.config.model_60k_name
         else:
-            # Exceeds 80K, use 80K anyway (will need hierarchical summarization)
+            # Exceeds 60K, use 60K anyway (will need hierarchical summarization)
             logger.warning(
-                f"Token count ({needed_tokens}) exceeds 80K bucket. Using 80K model.",
+                f"Token count ({needed_tokens}) exceeds 60K bucket. Using 60K model.",
                 extra={"needed_tokens": needed_tokens, "prompt_tokens": prompt_tokens},
             )
-            selected_bucket = self.BUCKET_80K
-            selected_model = self.config.model_80k_name
+            selected_bucket = self.BUCKET_60K
+            selected_model = self.config.model_60k_name
 
         # Apply 2x rule: only switch if current bucket is 2x or more larger
         if self._current_bucket is not None:
@@ -154,7 +154,7 @@ class ModelRouter:
                     if self._current_bucket == self.BUCKET_16K:
                         selected_model = self.config.model_16k_name
                     else:
-                        selected_model = self.config.model_80k_name
+                        selected_model = self.config.model_60k_name
                     selected_bucket = self._current_bucket
             else:
                 # Switching to larger bucket or same bucket
@@ -183,7 +183,7 @@ class ModelRouter:
             # First selection
             self._current_bucket = selected_bucket
 
-        # Log model loading strategy (16K/80K on-demand)
+        # Log model loading strategy (16K/60K on-demand)
         # loading_strategy = "always-loaded" if selected_model == self.config.model_8k_name else "on-demand"  # 8kモデルは使用しない
         loading_strategy = "on-demand"
         logger.info(

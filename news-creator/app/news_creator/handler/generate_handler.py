@@ -57,8 +57,8 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
                     )
 
             # Protection: Validate prompt length
-            # 80k tokens ~ 320,000 chars. Reject anything larger to prevent queue clogging.
-            MAX_PROMPT_LENGTH_CHARS = 320_000
+            # 60k tokens ~ 240,000 chars. Reject anything larger to prevent queue clogging.
+            MAX_PROMPT_LENGTH_CHARS = 240_000
             if request.prompt and len(request.prompt) > MAX_PROMPT_LENGTH_CHARS:
                  logger.warning(
                      "Rejecting request with excessive prompt length",

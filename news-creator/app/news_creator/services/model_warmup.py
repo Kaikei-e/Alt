@@ -28,7 +28,7 @@ class ModelWarmupService:
         """
         Warm up models based on configuration.
 
-        - 2-model mode: Warm up 16K model only (80K is loaded on-demand)
+        - 2-model mode: Warm up 16K model only (60K is loaded on-demand)
         - Single model mode: Warm up default model
         """
         if not self.config.warmup_enabled:
@@ -43,7 +43,7 @@ class ModelWarmupService:
         try:
             models_to_warmup = []
             if self.config.model_routing_enabled:
-                # RTX 4060最適化: 16Kモデルのみをウォームアップ（80Kはオンデマンドでロード）
+                # RTX 4060最適化: 16Kモデルのみをウォームアップ（60Kはオンデマンドでロード）
                 # models_to_warmup = [
                 #     self.config.model_8k_name,  # 8kモデルは使用しない
                 # ]
@@ -51,7 +51,7 @@ class ModelWarmupService:
                     self.config.model_16k_name,
                 ]
                 logger.info(
-                    f"Warming up 16K model only (80K will be loaded on-demand when needed)"
+                    f"Warming up 16K model only (60K will be loaded on-demand when needed)"
                 )
             else:
                 # Single model mode: warm up default model

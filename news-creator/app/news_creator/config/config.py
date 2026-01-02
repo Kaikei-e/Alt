@@ -38,12 +38,12 @@ class NewsCreatorConfig:
         self.model_name = os.getenv("LLM_MODEL", "gemma3:4b")
         self.llm_timeout_seconds = self._get_int("LLM_TIMEOUT_SECONDS", 300)  # 5分に増加（1000トークン生成 + 続き生成に対応）
         self.llm_keep_alive = self._get_int("LLM_KEEP_ALIVE_SECONDS", "24h")
-        # Model-specific keep_alive settings (best practice: 16K/80K on-demand)
+        # Model-specific keep_alive settings (best practice: 16K/60K on-demand)
         # 16K model: 24h to allow unloading after use to save VRAM
-        # 80K model: 15m to allow quick unloading after use to save VRAM
+        # 60K model: 15m to allow quick unloading after use to save VRAM
         # self.llm_keep_alive_8k = os.getenv("LLM_KEEP_ALIVE_8K", "0")  # 8kモデルは使用しない
         self.llm_keep_alive_16k = os.getenv("LLM_KEEP_ALIVE_16K", "24h")
-        self.llm_keep_alive_80k = os.getenv("LLM_KEEP_ALIVE_80K", "15m")
+        self.llm_keep_alive_60k = os.getenv("LLM_KEEP_ALIVE_60K", "15m")
 
         # Concurrency settings:
         # - OLLAMA_REQUEST_CONCURRENCY が明示的に設定されている場合はそれを優先
@@ -61,7 +61,7 @@ class NewsCreatorConfig:
             self._ollama_concurrency_source = "OLLAMA_NUM_PARALLEL"
 
         # ---- Generation parameters (Gemma3 + Ollama options) ----
-        # Default: 16K context for normal AI Summary (80K is used only for Recap)
+        # Default: 16K context for normal AI Summary (60K is used only for Recap)
         self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 16384)
         # RTX 4060最適化: バッチサイズ1024（entrypoint.shのOLLAMA_NUM_BATCHと統一）
         self.llm_num_batch = self._get_int("LLM_NUM_BATCH", 1024)
@@ -102,13 +102,13 @@ class NewsCreatorConfig:
         self.hierarchical_single_article_threshold = self._get_int("HIERARCHICAL_SINGLE_ARTICLE_THRESHOLD", 25_000)
         self.hierarchical_single_article_chunk_size = self._get_int("HIERARCHICAL_SINGLE_ARTICLE_CHUNK_SIZE", 10_000)
 
-        # Model routing settings (2-model bucket system: 16K, 80K)
+        # Model routing settings (2-model bucket system: 16K, 60K)
         self.model_routing_enabled = os.getenv("MODEL_ROUTING_ENABLED", "true").lower() == "true"
         # Base model name (e.g., "gemma3:4b") - will be auto-mapped to bucket models
         self.model_base_name = os.getenv("MODEL_BASE_NAME", "gemma3:4b")
         # self.model_8k_name = os.getenv("MODEL_8K_NAME", "gemma3-4b-8k")  # 8kモデルは使用しない
         self.model_16k_name = os.getenv("MODEL_16K_NAME", "gemma3-4b-16k")
-        self.model_80k_name = os.getenv("MODEL_80K_NAME", "gemma3-4b-80k")
+        self.model_60k_name = os.getenv("MODEL_60K_NAME", "gemma3-4b-60k")
         self.token_safety_margin_percent = self._get_int("TOKEN_SAFETY_MARGIN_PERCENT", 10)
         self.token_safety_margin_fixed = self._get_int("TOKEN_SAFETY_MARGIN_FIXED", 512)
         self.oom_detection_enabled = os.getenv("OOM_DETECTION_ENABLED", "true").lower() == "true"
@@ -119,7 +119,7 @@ class NewsCreatorConfig:
         self._bucket_model_names = {
             # self.model_8k_name,  # 8kモデルは使用しない
             self.model_16k_name,
-            self.model_80k_name,
+            self.model_60k_name,
         }
 
         logger.info(
@@ -175,9 +175,9 @@ class NewsCreatorConfig:
         if model_name == self.model_16k_name:
             # 16K model: on-demand, use 30m to allow unloading after use
             return self.llm_keep_alive_16k
-        elif model_name == self.model_80k_name:
-            # 80K model: on-demand, use 15m to allow quick unloading after use
-            return self.llm_keep_alive_80k
+        elif model_name == self.model_60k_name:
+            # 60K model: on-demand, use 15m to allow quick unloading after use
+            return self.llm_keep_alive_60k
         else:
             # Unknown model: use default keep_alive (backward compatibility)
             return self.llm_keep_alive

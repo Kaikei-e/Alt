@@ -122,7 +122,7 @@ All configuration is done via environment variables:
 | `LLM_KEEP_ALIVE_SECONDS` | Model keep-alive (fallback for unknown models) | `-1` (forever) |
 | `LLM_KEEP_ALIVE_8K` | Keep-alive for 8K model (always loaded) | `24h` |
 | `LLM_KEEP_ALIVE_16K` | Keep-alive for 16K model (on-demand) | `30m` |
-| `LLM_KEEP_ALIVE_80K` | Keep-alive for 80K model (on-demand) | `15m` |
+| `LLM_KEEP_ALIVE_60K` | Keep-alive for 60K model (on-demand) | `15m` |
 
 ### LLM Parameters
 

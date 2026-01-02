@@ -40,9 +40,9 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages -r /home/ollam
 COPY --chown=ollama-user:ollama-user app/ /home/ollama-user/app/
 
 # ---- Copy Modelfiles for model creation ----------------------------------
-# Copy 2 models: 16K, and 80K
-# COPY --chown=ollama-user:ollama-user Modelfile.gemma3-4b-8k Modelfile.gemma3-4b-16k Modelfile.gemma3-4b-80k /home/ollama-user/  # 8kモデルは使用しない
-COPY --chown=ollama-user:ollama-user Modelfile.gemma3-4b-16k Modelfile.gemma3-4b-80k /home/ollama-user/
+# Copy 2 models: 16K, and 60K
+# COPY --chown=ollama-user:ollama-user Modelfile.gemma3-4b-8k Modelfile.gemma3-4b-16k Modelfile.gemma3-4b-60k /home/ollama-user/  # 8kモデルは使用しない
+COPY --chown=ollama-user:ollama-user Modelfile.gemma3-4b-16k Modelfile.gemma3-4b-60k /home/ollama-user/
 
 # ---- Environment configuration -------------------------------------------
 ENV OLLAMA_HOST=127.0.0.1:11435

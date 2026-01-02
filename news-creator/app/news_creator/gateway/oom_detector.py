@@ -73,7 +73,7 @@ class OOMDetector:
             self._oom_detected = True
             self._two_model_mode = True
             logger.error(
-                "OOM detected from Ollama response. Switching to 2-model mode (16K, 80K).",
+                "OOM detected from Ollama response. Switching to 2-model mode (16K, 60K).",
                 extra={"error": error_msg},
             )
             return True
@@ -98,7 +98,7 @@ class OOMDetector:
             self._oom_detected = True
             self._two_model_mode = True
             logger.error(
-                "OOM detected from exception. Switching to 2-model mode (16K, 80K).",
+                "OOM detected from exception. Switching to 2-model mode (16K, 60K).",
                 extra={"exception": error_msg},
             )
             return True
@@ -112,7 +112,7 @@ class OOMDetector:
 
     @property
     def two_model_mode(self) -> bool:
-        """Check if 2-model mode is active (16K, 80K only)."""
+        """Check if 2-model mode is active (16K, 60K only)."""
         return self._two_model_mode
 
     def reset(self):

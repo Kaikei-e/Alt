@@ -32,13 +32,13 @@ export NVIDIA_VISIBLE_DEVICES="${NVIDIA_VISIBLE_DEVICES:-all}"
 export NVIDIA_DRIVER_CAPABILITIES="${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}"
 export LD_LIBRARY_PATH="/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH:-}"
 export OLLAMA_HOST="${OLLAMA_HOST:-127.0.0.1:11435}"   # 明示的にポート11435を指定
-export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-16384}" # デフォルトは16K（通常のAI Summary用、80KはRecap時のみ）
+export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-16384}" # デフォルトは16K（通常のAI Summary用、60KはRecap時のみ）
 # モデルごとの同時実行上限（Ollama サーバ側）。news-creator 側では:
 # - OLLAMA_REQUEST_CONCURRENCY が設定されていない場合、この OLLAMA_NUM_PARALLEL の値に自動追従
 # - OLLAMA_REQUEST_CONCURRENCY が明示設定されている場合はそちらを優先
 # 8GB VRAM では並列 1 がより安定だが、検証目的で 2 並列にする場合は OLLAMA_NUM_PARALLEL=2 を指定する
 export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-2}"
-# 最適化: 16Kモデルのみを常時GPU上にロード（80Kはオンデマンド）
+# 最適化: 16Kモデルのみを常時GPU上にロード（60Kはオンデマンド）
 # OLLAMA_MAX_LOADED_MODELS=1 により、同時に1つのモデルのみがGPUメモリにロードされる。
 export OLLAMA_MAX_LOADED_MODELS_FORCE="${OLLAMA_MAX_LOADED_MODELS_FORCE:-1}"
 export OLLAMA_MAX_LOADED_MODELS="$OLLAMA_MAX_LOADED_MODELS_FORCE"
@@ -148,7 +148,7 @@ else
 fi
 
 # --- create model variants with fixed num_ctx ----------------------------------------
-echo "Creating model variants with fixed num_ctx (16K, 80K)..."
+echo "Creating model variants with fixed num_ctx (16K, 60K)..."
 
 # Find Modelfile directory (same directory as entrypoint.sh)
 MODELFILE_DIR="$(dirname "$0")"
@@ -180,16 +180,16 @@ create_model() {
   fi
 }
 
-# Create 2 models: 16K, and 80K
+# Create 2 models: 16K, and 60K
 # create_model "gemma3-4b-8k" "$MODELFILE_DIR/Modelfile.gemma3-4b-8k"  # 8kモデルは使用しない
 create_model "gemma3-4b-16k" "$MODELFILE_DIR/Modelfile.gemma3-4b-16k"
-create_model "gemma3-4b-80k" "$MODELFILE_DIR/Modelfile.gemma3-4b-80k"
+create_model "gemma3-4b-60k" "$MODELFILE_DIR/Modelfile.gemma3-4b-60k"
 
 echo "Model variants created (if needed)."
 
-# --- preload 16K model only (80K is loaded on-demand) ------------------------
-# RTX 4060最適化: 16Kモデルのみを常時GPU上にロード（80Kはオンデマンドでロード）
-echo "Preloading 16K model only (80K will be loaded on-demand)..."
+# --- preload 16K model only (60K is loaded on-demand) ------------------------
+# RTX 4060最適化: 16Kモデルのみを常時GPU上にロード（60Kはオンデマンドでロード）
+echo "Preloading 16K model only (60K will be loaded on-demand)..."
 # 16Kモデルを実行して、確実にGPU上にロード・保持されるようにする
 # APIを使用してkeep_aliveを指定（より確実にGPUにロードされる）
 echo "  Loading 16K model (attempt 1/3)..."

@@ -210,7 +210,7 @@ class OllamaGateway(LLMProviderPort):
                 }
             )
 
-        # Log model loading strategy (16K/80K on-demand)
+        # Log model loading strategy (16K/60K on-demand)
         # model_loading_strategy = "always-loaded" if payload['model'] == self.config.model_8k_name else "on-demand"  # 8kモデルは使用しない
         model_loading_strategy = "on-demand"
         logger.info(
