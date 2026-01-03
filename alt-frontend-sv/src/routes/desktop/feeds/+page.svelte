@@ -101,4 +101,6 @@
 	{hasNext}
 	onPrevious={handlePrevious}
 	onNext={handleNext}
+	feeds={feedGridApi?.getVisibleFeeds() ?? []}
+	{currentIndex}
 />

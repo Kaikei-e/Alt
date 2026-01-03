@@ -369,13 +369,11 @@ test.describe("Desktop Feeds - Modal Navigation", () => {
 	test("prefetches next 2 articles when modal opens", async ({ page }) => {
 		const fetchRequests: string[] = [];
 
-		// Track article content fetch requests
-		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, async (route) => {
-			const postData = route.request().postDataJSON();
-			if (postData?.feedUrl) {
-				fetchRequests.push(postData.feedUrl);
+		// Monitor all requests to the article content endpoint
+		page.on("request", (request) => {
+			if (request.url().includes("FetchArticleContent")) {
+				fetchRequests.push(request.url());
 			}
-			await fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE);
 		});
 
 		await feedsPage.goto();
@@ -385,8 +383,8 @@ test.describe("Desktop Feeds - Modal Navigation", () => {
 		await feedsPage.selectFeed("First Feed");
 		await feedsPage.expectModalTitle("First Feed");
 
-		// Wait for prefetch to complete (500ms delay + fetch time)
-		await page.waitForTimeout(1500);
+		// Wait for prefetch to complete (500ms delay * 2 + fetch time)
+		await page.waitForTimeout(2000);
 
 		// Should have fetched: current (1st) + prefetched (2nd, 3rd)
 		expect(fetchRequests.length).toBeGreaterThanOrEqual(3);

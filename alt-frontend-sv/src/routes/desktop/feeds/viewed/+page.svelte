@@ -155,4 +155,6 @@
 	{hasNext}
 	onPrevious={handlePrevious}
 	onNext={handleNext}
+	{feeds}
+	{currentIndex}
 />

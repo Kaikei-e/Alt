@@ -136,6 +136,16 @@
 	async function handleFetchFullArticle() {
 		if (!feed?.link || isFetchingContent) return;
 
+		// Check prefetch cache first
+		const cachedContent = articlePrefetcher.getCachedContent(feed.link);
+		const cachedArticleId = articlePrefetcher.getCachedArticleId(feed.link);
+
+		if (cachedContent) {
+			articleContent = cachedContent;
+			articleID = cachedArticleId;
+			return;
+		}
+
 		try {
 			isFetchingContent = true;
 			contentError = null;
