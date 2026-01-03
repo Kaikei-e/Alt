@@ -179,7 +179,7 @@ jobs:
       - name: Run type checking
         if: ${{ inputs.job-type == 'typecheck' }}
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
-        run: uv run pyright .
+        run: uv run pyrefly check .
 
       - name: Cleanup (self-hosted)
         if: always() && runner.environment == 'self-hosted'
