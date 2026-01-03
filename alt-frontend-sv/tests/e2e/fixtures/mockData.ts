@@ -244,6 +244,25 @@ export const CONNECT_READ_FEEDS_EMPTY_RESPONSE = {
 	hasMore: false,
 };
 
+// Connect-RPC FeedItem without articleId (not saved in database)
+// Used to test the "Not Saved" -> "Mark as Read" transition after fetching full article
+export const CONNECT_FEEDS_WITHOUT_ARTICLE_ID = {
+	data: [
+		{
+			id: "feed-1",
+			articleId: "", // Empty = not saved in articles table
+			title: "AI Trends",
+			description: "Deep dive into the ecosystem.",
+			link: "https://example.com/ai-trends",
+			published: "2 hours ago",
+			createdAt: new Date().toISOString(),
+			author: "Alice",
+		},
+	],
+	nextCursor: "",
+	hasMore: false,
+};
+
 export const CONNECT_MARK_AS_READ_RESPONSE = {
 	message: "Feed marked as read",
 };

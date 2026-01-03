@@ -4,6 +4,7 @@ import { fulfillJson } from "../../utils/mockHelpers";
 import {
 	CONNECT_FEEDS_RESPONSE,
 	CONNECT_FEEDS_EMPTY_RESPONSE,
+	CONNECT_FEEDS_WITHOUT_ARTICLE_ID,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_MARK_AS_READ_RESPONSE,
 	CONNECT_RPC_PATHS,
@@ -147,6 +148,45 @@ test.describe("Desktop Feeds", () => {
 		await expect(
 			page.getByRole("button", { name: /article loaded/i }),
 		).toBeVisible({ timeout: 10000 });
+	});
+
+	test("shows 'Mark as Read' button after fetching full article for unsaved feed", async ({ page }) => {
+		// Override feeds with feed that has no articleId (not saved)
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, CONNECT_FEEDS_WITHOUT_ARTICLE_ID),
+		);
+
+		// Mock read feeds (empty)
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
+		);
+
+		// Mock article content endpoint - returns articleId when fetched
+		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
+			fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE),
+		);
+
+		// Mock mark as read endpoint
+		await page.route(CONNECT_RPC_PATHS.markAsRead, (route) =>
+			fulfillJson(route, CONNECT_MARK_AS_READ_RESPONSE),
+		);
+
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		// Open modal - should show "Not Saved" initially because articleId is empty
+		await feedsPage.selectFeed("AI Trends");
+		await expect(page.getByRole("button", { name: /not saved/i })).toBeVisible();
+
+		// Click Full Article button
+		await feedsPage.fullArticleButton.click();
+
+		// Wait for article to load
+		await expect(page.getByRole("button", { name: /article loaded/i })).toBeVisible({ timeout: 10000 });
+
+		// After article is fetched, "Mark as Read" should be available (not "Not Saved")
+		await expect(page.getByRole("button", { name: /mark as read/i })).toBeVisible();
+		await expect(page.getByRole("button", { name: /not saved/i })).not.toBeVisible();
 	});
 });
 

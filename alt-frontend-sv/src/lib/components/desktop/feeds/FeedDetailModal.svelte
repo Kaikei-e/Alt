@@ -269,10 +269,10 @@
 						<Button
 							onclick={handleMarkAsRead}
 							variant="outline"
-							disabled={isMarkingAsRead || !feed?.articleId}
-							title={!feed?.articleId ? "Article not saved in database" : undefined}
+							disabled={isMarkingAsRead || !(feed?.articleId || articleID)}
+							title={!(feed?.articleId || articleID) ? "Article not saved in database" : undefined}
 						>
-							{isMarkingAsRead ? "Marking..." : !feed?.articleId ? "Not Saved" : "Mark as Read"}
+							{isMarkingAsRead ? "Marking..." : !(feed?.articleId || articleID) ? "Not Saved" : "Mark as Read"}
 						</Button>
 
 						<!-- Close -->
