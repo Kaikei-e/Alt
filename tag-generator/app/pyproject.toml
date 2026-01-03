@@ -58,7 +58,7 @@ dev = [
     "bandit>=1.8.0",
 
     # Type Checking
-    "pyright>=1.1.390",
+    "pyrefly>=0.42.0",
     "types-psycopg2>=2.9.21.20250516",
 
     # Additional test dependencies for CI
@@ -141,3 +141,19 @@ skips = [
     "B108",
     "B602",
 ] # Skip assert_used, subprocess import, subprocess execution, try_except_pass, hardcoded_bind_all_interfaces, hardcoded_tmp_directory, and subprocess_popen_with_shell_equals_true tests
+
+[tool.pyrefly]
+project-includes = ["."]
+project-excludes = [
+    "**/__pycache__",
+    "**/.venv",
+    "**/build",
+    "**/dist",
+    "**/*.egg-info",
+]
+python-version = "3.13"
+
+# Suppress errors for optional ML dependencies (installed separately in Docker)
+[tool.pyrefly.errors]
+missing-import = false
+missing-module-attribute = false

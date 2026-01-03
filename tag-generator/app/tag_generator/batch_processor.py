@@ -311,7 +311,6 @@ class BatchProcessor:
         # Collect articles for batch processing (keep autocommit for fetching)
         articles_to_process: list[dict[str, Any]] = []
         fetch_attempts = 0
-        max_empty_fetches = 3  # Allow 3 empty fetches before switching to fallback
 
         while len(articles_to_process) < int(self.config.batch_limit):
             try:

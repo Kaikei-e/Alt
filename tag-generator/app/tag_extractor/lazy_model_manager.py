@@ -53,7 +53,7 @@ class LazyModelManager:
         self.models: dict[str, ModelInfo] = {}
         self._locks: dict[str, Lock] = {}
         self._global_lock = Lock()
-        self._total_memory_mb = 0
+        self._total_memory_mb: float = 0.0
 
         # Create cache directory
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -95,7 +95,7 @@ class LazyModelManager:
         loaded_models = [(name, info) for name, info in self.models.items() if info.loaded]
         loaded_models.sort(key=lambda x: x[1].last_accessed)
 
-        freed_memory = 0
+        freed_memory: float = 0.0
         for name, info in loaded_models:
             if freed_memory >= required_memory:
                 break
