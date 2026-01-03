@@ -8,10 +8,14 @@ from typing import Any, Union
 from ..infra.config import Settings
 from .classifier import GenreClassifierService
 from .embedder import Embedder, EmbedderConfig
-from .learning_machine_classifier import LearningMachineStudentClassifier
+# LearningMachineStudentClassifier is lazily imported in initialize() to avoid CUDA fork issues
+# See: https://docs.pytorch.org/docs/stable/notes/multiprocessing.html
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .learning_machine_classifier import LearningMachineStudentClassifier
 
-_CLASSIFIER: Union[GenreClassifierService, LearningMachineStudentClassifier, None] = None
+_CLASSIFIER: Union[GenreClassifierService, "LearningMachineStudentClassifier", None] = None
 
 
 def initialize(settings_payload: dict[str, Any]) -> None:
@@ -35,18 +39,30 @@ def initialize(settings_payload: dict[str, Any]) -> None:
         backend = getattr(settings, "classification_backend", "joblib")
 
         if backend == "learning_machine":
+            # Lazy import to avoid importing torch at module level
+            from .learning_machine_classifier import LearningMachineStudentClassifier
+
             logger.info("using learning_machine student classifier backend")
             # Load learning machine student models
             student_ja_dir = getattr(settings, "learning_machine_student_ja_dir", None)
             student_en_dir = getattr(settings, "learning_machine_student_en_dir", None)
             taxonomy_path = getattr(settings, "learning_machine_taxonomy_path", None)
-            device = getattr(settings, "device", "cpu")
+            # Use classification_device for classification models (separate from embedding device)
+            classification_device = getattr(settings, "classification_device", None)
+            if classification_device is None:
+                classification_device = getattr(settings, "device", "cpu")
+
+            logger.info(
+                "classification device configured",
+                classification_device=classification_device,
+                embedding_device=getattr(settings, "device", "cpu"),
+            )
 
             _CLASSIFIER = LearningMachineStudentClassifier(
                 student_ja_dir=student_ja_dir,
                 student_en_dir=student_en_dir,
                 taxonomy_path=taxonomy_path,
-                device=device,
+                device=classification_device,
             )
         else:
             # Default: joblib backend (backward compatibility)

@@ -9,7 +9,8 @@ import time
 from typing import Any
 
 from ..infra.config import Settings
-from . import classification_worker
+# classification_worker is lazily imported in _ensure_pool() to avoid CUDA fork issues
+# See: https://docs.pytorch.org/docs/stable/notes/multiprocessing.html
 
 
 class ClassificationRunner:
@@ -39,6 +40,10 @@ class ClassificationRunner:
     def _ensure_pool(self) -> multiprocessing.Pool:
         """Ensure the worker pool is initialized, creating it if necessary."""
         import structlog
+
+        # Lazy import to avoid importing torch in master process before fork
+        # This prevents "Cannot re-initialize CUDA in forked subprocess" errors
+        from . import classification_worker
 
         logger = structlog.get_logger(__name__)
 
@@ -72,6 +77,8 @@ class ClassificationRunner:
     def _verify_worker_initialization(self) -> None:
         """Verify that worker processes are initialized correctly with a timeout."""
         import structlog
+
+        from . import classification_worker  # Lazy import
 
         logger = structlog.get_logger(__name__)
         timeout = self._settings.classification_worker_init_timeout_seconds
@@ -215,6 +222,8 @@ class ClassificationRunner:
 
         The pool is initialized on-demand if not already active.
         """
+        from . import classification_worker  # Lazy import
+
         # Ensure pool is initialized
         pool = self._ensure_pool()
 

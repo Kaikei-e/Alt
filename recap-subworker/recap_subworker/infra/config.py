@@ -45,6 +45,11 @@ class Settings(BaseSettings):
                     new_netloc = f"{user_pass}:{self.recap_db_password}@{host_port}"
 
                 self.db_url = urlunparse((u.scheme, new_netloc, u.path, u.params, u.query, u.fragment))
+
+        # classification_device defaults to device if not explicitly set
+        if self.classification_device is None:
+            self.classification_device = self.device
+
         return self
 
     @property
@@ -140,6 +145,15 @@ class Settings(BaseSettings):
         description="Embedding backend selection",
     )
     device: str = Field("cpu", description="Primary device for embedding inference")
+    classification_device: str | None = Field(
+        None,
+        description="Device for classification model inference. Defaults to 'device' if not set.",
+        validation_alias=AliasChoices(
+            "classification_device",
+            "RECAP_CLASSIFICATION_DEVICE",
+            "RECAP_SUBWORKER_CLASSIFICATION_DEVICE"
+        ),
+    )
     onnx_model_path: str | None = Field(
         None,
         description="Path to ONNX model file (.onnx). Required when model_backend='onnx'",
