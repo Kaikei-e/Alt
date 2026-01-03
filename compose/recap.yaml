@@ -121,7 +121,8 @@ services:
       - RECAP_SUBWORKER_MODEL_BACKEND=sentence-transformers
       - RECAP_SUBWORKER_MODEL_ID=intfloat/multilingual-e5-large
       - RECAP_SUBWORKER_PIPELINE_MODE=inprocess
-      - RECAP_SUBWORKER_GUNICORN_WORKERS=6
+      # Single worker for CUDA compatibility (CUDA context survives fork only in single worker mode)
+      - RECAP_SUBWORKER_GUNICORN_WORKERS=1
       - RECAP_SUBWORKER_GUNICORN_WORKER_TIMEOUT=3600
       - RECAP_SUBWORKER_GUNICORN_MAX_REQUESTS=50000
       - RECAP_SUBWORKER_GUNICORN_GRACEFUL_TIMEOUT=120
@@ -130,7 +131,7 @@ services:
       - RECAP_SUBWORKER_PIPELINE_WORKER_PROCESSES=2
       - RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES=6
       - RECAP_SUBWORKER_CLASSIFICATION_POOL_IDLE_TIMEOUT_SECONDS=60
-      # Embedding (Clustering) - GPU使用で高速化
+      # Embedding (Clustering) - GPU使用で高速化 (workers=1 for CUDA compatibility)
       - RECAP_SUBWORKER_DEVICE=cuda
       - RECAP_SUBWORKER_BATCH_SIZE=8
       # Classification (Learning Machine) - CPU使用でOOM回避
