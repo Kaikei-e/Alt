@@ -67,7 +67,7 @@ COPY --chown=recap:recap recap_subworker ./recap_subworker
 
 # データディレクトリ作成
 # .deepeval: deepevalライブラリがテレメトリ用に作成しようとするディレクトリ
-RUN mkdir -p /app/data /app/resources /app/.deepeval && chown -R recap:recap /app/data /app/resources /app/.deepeval
+RUN mkdir -p /app/data /app/resources /app/.deepeval /app/.cache && chown -R recap:recap /app/data /app/resources /app/.deepeval /app/.cache
 
 # ジャンル分類器の重みファイルをコピー
 COPY --chown=recap:recap recap_subworker/resources/genre_classifier_weights.json /app/resources/
@@ -76,4 +76,7 @@ USER recap
 
 EXPOSE 8002
 
-CMD ["gunicorn", "-c", "recap_subworker/infra/gunicorn_conf.py", "recap_subworker.app.main:create_app"]
+# Use uvicorn directly instead of gunicorn to avoid CUDA fork issues
+# PyTorch CUDA does not support fork() - see https://docs.pytorch.org/docs/stable/notes/multiprocessing.html
+# Gunicorn uses fork to create workers, which breaks CUDA. Uvicorn in single-process mode avoids this.
+CMD ["python", "-m", "uvicorn", "recap_subworker.app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8002"]
