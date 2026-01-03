@@ -51,7 +51,8 @@ class CursorManager:
                 if time_diff.total_seconds() > 3600:  # More than 1 hour in future
                     cursor_is_poisoned = True
                     reason = f"cursor {time_diff.total_seconds() / 3600:.1f} hours in future"
-                elif time_diff.total_seconds() < -86400 * 30:  # More than 30 days old
+                # Note: Backfill mode may process articles older than 30 days, so use 365 days threshold
+                elif time_diff.total_seconds() < -86400 * 365:  # More than 365 days old
                     cursor_is_poisoned = True
                     reason = f"cursor {abs(time_diff.total_seconds()) / 86400:.1f} days old"
 

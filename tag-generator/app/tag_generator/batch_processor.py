@@ -328,8 +328,10 @@ class BatchProcessor:
                         if not self.backfill_completed:
                             logger.info("Backfill completed: no more articles found in consecutive fetches")
                             self.backfill_completed = True
-                        # Try fallback approach one more time
-                        if fetch_attempts >= max_empty_fetches and len(articles_to_process) == 0:
+                        # Try fallback approach when cursor pagination fails to find articles
+                        # Note: fetch_attempts is local and resets each call, so we use
+                        # consecutive_empty_backfill_fetches (class-level) to track across calls
+                        if len(articles_to_process) == 0:
                             logger.warning(
                                 "Cursor pagination consistently failing, switching to untagged article fallback"
                             )
@@ -413,9 +415,14 @@ class BatchProcessor:
                 batch_stats["last_id"] = last_id
                 batch_stats["has_more_pending"] = len(articles_to_process) >= self.config.batch_limit
 
-                # Commit the transaction only if batch processing was successful
-                if cast(int, batch_stats.get("successful", 0)) > 0:
-                    # Update persistent cursor position for next cycle (ensure string format)
+                # Commit the transaction if articles were processed (including skipped)
+                # Only rollback on actual errors (failed > 0)
+                total_processed = cast(int, batch_stats.get("total_processed", 0))
+                failed = cast(int, batch_stats.get("failed", 0))
+                successful = cast(int, batch_stats.get("successful", 0))
+
+                if total_processed > 0 and failed == 0:
+                    # Update cursor even if all articles were skipped (no tags extracted)
                     cursor_manager.update_cursor_position(last_created_at, last_id)
                     newest_article = articles_to_process[0]
                     newest_created_at = (
@@ -424,11 +431,16 @@ class BatchProcessor:
                         else newest_article["created_at"].isoformat()
                     )
                     cursor_manager.update_forward_cursor_position(newest_created_at, newest_article["id"])
-                    logger.info(f"Updated cursor position for next cycle: {last_created_at}, ID: {last_id}")
+                    logger.info(
+                        f"Cursor advanced: processed {total_processed}, successful {successful}, "
+                        f"position: {last_created_at}, ID: {last_id}"
+                    )
                     conn.commit()
-                else:
+                elif failed > 0:
                     conn.rollback()
-                    logger.warning("Transaction rolled back due to batch processing failure")
+                    logger.warning(f"Transaction rolled back due to {failed} processing errors")
+                else:
+                    conn.commit()  # No articles processed, commit cleanly
             else:
                 # No articles to process, still commit to end transaction cleanly
                 conn.commit()
