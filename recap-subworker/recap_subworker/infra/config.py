@@ -140,7 +140,7 @@ class Settings(BaseSettings):
         "BAAI/bge-m3-distill-8l",
         description="Fallback model identifier for reduced CPU usage",
     )
-    model_backend: Literal["sentence-transformers", "onnx", "hash"] = Field(
+    model_backend: Literal["sentence-transformers", "onnx", "hash", "ollama-remote"] = Field(
         "sentence-transformers",
         description="Embedding backend selection",
     )
@@ -175,6 +175,23 @@ class Settings(BaseSettings):
         le=1024,
         description="Maximum sequence length for ONNX tokenizer",
         validation_alias=AliasChoices("RECAP_ONNX_MAX_LENGTH", "RECAP_SUBWORKER_ONNX_MAX_LENGTH"),
+    )
+    # Ollama remote embedding settings
+    ollama_embed_url: str | None = Field(
+        None,
+        description="Remote Ollama API URL for embeddings (e.g., http://host:11436). Required when model_backend='ollama-remote'",
+        validation_alias=AliasChoices("OLLAMA_EMBED_URL", "RECAP_SUBWORKER_OLLAMA_EMBED_URL"),
+    )
+    ollama_embed_model: str = Field(
+        "mxbai-embed-large",
+        description="Ollama embedding model name",
+        validation_alias=AliasChoices("OLLAMA_EMBED_MODEL", "RECAP_SUBWORKER_OLLAMA_EMBED_MODEL"),
+    )
+    ollama_embed_timeout: float = Field(
+        30.0,
+        ge=1.0,
+        description="Timeout in seconds for Ollama embedding API calls",
+        validation_alias=AliasChoices("OLLAMA_EMBED_TIMEOUT", "RECAP_SUBWORKER_OLLAMA_EMBED_TIMEOUT"),
     )
     batch_size: int = Field(64, ge=1, description="Maximum sentences per embedding batch")
     max_total_sentences: int = Field(

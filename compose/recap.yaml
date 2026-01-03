@@ -118,8 +118,10 @@ services:
     environment:
       - RECAP_SUBWORKER_DB_PASSWORD_FILE=/run/secrets/recap_db_password
       - RECAP_SUBWORKER_BASE_URL=http://recap-subworker:8002
-      - RECAP_SUBWORKER_MODEL_BACKEND=sentence-transformers
-      - RECAP_SUBWORKER_MODEL_ID=intfloat/multilingual-e5-large
+      - RECAP_SUBWORKER_MODEL_BACKEND=${RECAP_SUBWORKER_MODEL_BACKEND:-sentence-transformers}
+      - RECAP_SUBWORKER_MODEL_ID=${RECAP_SUBWORKER_MODEL_ID:-intfloat/multilingual-e5-large}
+      - RECAP_SUBWORKER_OLLAMA_EMBED_URL=${OLLAMA_EMBED_URL:-}
+      - RECAP_SUBWORKER_OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-mxbai-embed-large}
       - RECAP_SUBWORKER_PIPELINE_MODE=inprocess
       # Single worker for CUDA compatibility (CUDA context survives fork only in single worker mode)
       - RECAP_SUBWORKER_GUNICORN_WORKERS=1
@@ -131,8 +133,10 @@ services:
       - RECAP_SUBWORKER_PIPELINE_WORKER_PROCESSES=2
       - RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES=6
       - RECAP_SUBWORKER_CLASSIFICATION_POOL_IDLE_TIMEOUT_SECONDS=60
-      # Embedding (Clustering) - GPU使用で高速化 (workers=1 for CUDA compatibility)
-      - RECAP_SUBWORKER_DEVICE=cuda
+      # Embedding device (for sentence-transformers backend only, ignored when using ollama-remote)
+      # - cuda: Use local NVIDIA GPU (requires workers=1 for CUDA compatibility)
+      # - cpu: Use CPU (when using ollama-remote, set to cpu to avoid loading local GPU model)
+      - RECAP_SUBWORKER_DEVICE=${RECAP_SUBWORKER_DEVICE:-cuda}
       - RECAP_SUBWORKER_BATCH_SIZE=8
       # Classification (Learning Machine) - CPU使用でOOM回避
       - RECAP_SUBWORKER_CLASSIFICATION_DEVICE=cpu

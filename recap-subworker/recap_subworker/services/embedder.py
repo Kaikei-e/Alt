@@ -35,7 +35,7 @@ except ImportError:
     AutoTokenizer = None  # type: ignore[assignment, unused-ignore]
 
 
-BackendLiteral = Literal["sentence-transformers", "onnx", "hash"]
+BackendLiteral = Literal["sentence-transformers", "onnx", "hash", "ollama-remote"]
 
 
 @dataclass(slots=True)
@@ -50,6 +50,10 @@ class EmbedderConfig:
     onnx_tokenizer_name: str | None = None
     onnx_pooling: Literal["cls", "mean"] = "mean"
     onnx_max_length: int = 512
+    # Ollama remote settings
+    ollama_embed_url: str | None = None
+    ollama_embed_model: str = "mxbai-embed-large"
+    ollama_embed_timeout: float = 30.0
 
 
 class Embedder:
@@ -247,6 +251,84 @@ class Embedder:
 
         return OnnxModelAdapter(session, tokenizer, self.config.onnx_pooling, self.config.onnx_max_length)
 
+    def _load_ollama_remote_model(self):
+        """Load Ollama remote embedding client."""
+        import httpx
+
+        if not self.config.ollama_embed_url:
+            raise ValueError(
+                "ollama_embed_url is required when backend='ollama-remote'. "
+                "Set OLLAMA_EMBED_URL environment variable."
+            )
+
+        logger.info(
+            "Initializing Ollama remote embedding client",
+            url=self.config.ollama_embed_url,
+            model=self.config.ollama_embed_model,
+            timeout=self.config.ollama_embed_timeout,
+        )
+
+        class OllamaRemoteAdapter:
+            """Adapter for Ollama /api/embed endpoint."""
+
+            def __init__(self, url: str, model: str, timeout: float):
+                self.url = url.rstrip("/")
+                self.model = model
+                self.timeout = timeout
+                self._client = httpx.Client(timeout=timeout)
+                self._embedding_dim: int | None = None
+
+            def _get_embeddings(self, texts: list[str]) -> list[list[float]]:
+                """Call Ollama API to get embeddings."""
+                response = self._client.post(
+                    f"{self.url}/api/embed",
+                    json={"model": self.model, "input": texts},
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data["embeddings"]
+
+            def encode(
+                self,
+                sentences: Sequence[str],
+                batch_size: int,
+                normalize_embeddings: bool = True,
+                show_progress_bar: bool = False,
+            ) -> np.ndarray:
+                if not sentences:
+                    return np.zeros((0, self._embedding_dim or 1024), dtype=np.float32)
+
+                all_embeddings: list[np.ndarray] = []
+
+                for i in range(0, len(sentences), batch_size):
+                    batch = list(sentences[i:i + batch_size])
+                    embeddings = self._get_embeddings(batch)
+                    batch_array = np.array(embeddings, dtype=np.float32)
+
+                    if self._embedding_dim is None and batch_array.shape[1] > 0:
+                        self._embedding_dim = batch_array.shape[1]
+
+                    if normalize_embeddings:
+                        norms = np.linalg.norm(batch_array, axis=1, keepdims=True)
+                        norms = np.where(norms == 0, 1.0, norms)
+                        batch_array = batch_array / norms
+
+                    all_embeddings.append(batch_array)
+
+                if not all_embeddings:
+                    return np.zeros((0, self._embedding_dim or 1024), dtype=np.float32)
+
+                return np.vstack(all_embeddings)
+
+            def close(self):
+                self._client.close()
+
+        return OllamaRemoteAdapter(
+            self.config.ollama_embed_url,
+            self.config.ollama_embed_model,
+            self.config.ollama_embed_timeout,
+        )
+
     def _ensure_model(self):
         if self._model is not None:
             return
@@ -259,6 +341,8 @@ class Embedder:
                 self._model = self._load_sentence_transformer()
             elif self.config.backend == "onnx":
                 self._model = self._load_onnx_model()
+            elif self.config.backend == "ollama-remote":
+                self._model = self._load_ollama_remote_model()
             else:
                 # hash backend does not require lazy model initialization
                 self._model = None
@@ -397,7 +481,11 @@ class Embedder:
 
     def close(self) -> None:
         """Release resources (if any)."""
-
+        if self._model is not None and hasattr(self._model, "close"):
+            try:
+                self._model.close()
+            except Exception:
+                pass
         self._model = None
 
     def _hash_sentence(self, sentence: str) -> np.ndarray:
