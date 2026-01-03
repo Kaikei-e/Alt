@@ -59,9 +59,7 @@ services:
         max-file: "3"
 
   news-creator-volume-init:
-    build:
-      context: ../news-creator
-      dockerfile: Dockerfile.creator
+    image: alpine:3.21
     entrypoint: ["/bin/sh", "-c"]
     command: ["chown -R 2000:2000 /home/ollama-user/.ollama"]
     user: "0:0"
