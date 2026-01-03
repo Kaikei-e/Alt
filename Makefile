@@ -19,59 +19,6 @@ POSTGRES_USER ?= devuser
 POSTGRES_PASSWORD ?= devpassword
 POSTGRES_DB ?= devdb
 
-# デフォルトのターゲット
-all: build up
-
-# .env ファイルが存在しない場合に作成するターゲット
-$(ENV_FILE): $(ENV_TEMPLATE)
-	@echo "Checking for $(ENV_FILE)..."
-	@if [ ! -f $(ENV_FILE) ]; then \
-		echo "Creating $(ENV_FILE) from $(ENV_TEMPLATE)..."; \
-		cp $(ENV_TEMPLATE) $(ENV_FILE); \
-		echo "--------------------------------------------------------"; \
-		echo "The $(ENV_FILE) file has been created from $(ENV_TEMPLATE)."; \
-		echo "Please review and customize it with your specific environment variables, especially for sensitive data."; \
-		echo "--------------------------------------------------------"; \
-	else \
-		echo "$(ENV_FILE) already exists. Skipping creation."; \
-	fi
-
-# docker-compose up --build -d を実行するターゲット
-up: $(ENV_FILE)
-	@echo "Setting Docker context to $(DOCKER_CONTEXT) (has most data/volumes)..."
-	@docker context use $(DOCKER_CONTEXT) || true
-	@echo "Starting Docker Compose services..."
-	docker compose up --build -d
-
-up-clean-frontend: $(ENV_FILE)
-	@echo "Starting Docker Compose services with clean frontend build..."
-	docker build --no-cache -f ./alt-frontend/Dockerfile.frontend -t alt-frontend ./alt-frontend
-	docker compose up alt-frontend alt-backend db migrate nginx pre-processor --build -d
-
-up-with-news-creator: $(ENV_FILE)
-	@echo "Starting Docker Compose services with new creator build..."
-	docker build --no-cache -f ./news-creator/Dockerfile.creator -t news-creator ./news-creator
-	docker compose up --build -d
-
-# Dockerイメージをビルドするターゲット (個別実行も可能)
-build: $(ENV_FILE)
-	@echo "Setting Docker context to $(DOCKER_CONTEXT)..."
-	@docker context use $(DOCKER_CONTEXT) || true
-	@echo "Building Docker images..."
-	docker compose build
-
-# サービスを停止するターゲット
-down:
-	@echo "Setting Docker context to $(DOCKER_CONTEXT)..."
-	@docker context use $(DOCKER_CONTEXT) || true
-	@echo "Stopping Docker Compose services..."
-	docker compose down
-
-# ボリュームも削除してサービスを停止するターゲット (開発時によく使う)
-down-volumes:
-	@echo "Stopping Docker Compose services and removing volumes..."
-	docker compose down --volumes
-
 # E2E パフォーマンステスト
 perf-scan: $(ENV_FILE)
 	@echo "Running E2E performance scan..."
@@ -135,10 +82,6 @@ generate-mocks:
 		fi; \
 	done
 	@echo "GoMock mocks generated successfully in $(MOCKS_DIR)/"
-
-backup-db:
-	@echo "Backing up database..."
-	docker compose exec db pg_dump -U $(POSTGRES_USER) -h localhost -p 5432 $(POSTGRES_DB) > backup.sql
 
 dev-ssl-setup:
 	@echo "Generating development SSL certificates..."
@@ -346,4 +289,4 @@ clean-tag-onnx:
 	@rm -rf $(TAG_ONNX_DIR) $(TAG_ONNX_VENV)
 	@echo "tag-generator ONNX assets cleaned."
 
-.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking
+.PHONY: clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking
