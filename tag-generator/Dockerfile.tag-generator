@@ -51,8 +51,13 @@ RUN python -c "import torch; print(f'PyTorch {torch.__version__}')" && \
     python -c "import transformers; print(f'Transformers {transformers.__version__}')" && \
     python -c "import onnxruntime; print(f'ONNX Runtime {onnxruntime.__version__}')"
 
-# SBERT モデルと NLTK データをキャッシュ
-RUN python - <<'PY'
+# SBERT モデルと NLTK データをキャッシュ（BuildKit キャッシュマウント使用）
+# キャッシュマウントでダウンロードを高速化し、ランタイム用に別ディレクトリにコピー
+RUN --mount=type=cache,target=/tmp/hf_cache \
+    --mount=type=cache,target=/tmp/nltk_cache \
+    HF_HOME=/tmp/hf_cache NLTK_DATA=/tmp/nltk_cache python - <<'PY' && \
+    cp -r /tmp/hf_cache /root/.cache/huggingface && \
+    cp -r /tmp/nltk_cache /root/nltk_data
 import nltk
 from sentence_transformers import SentenceTransformer
 
