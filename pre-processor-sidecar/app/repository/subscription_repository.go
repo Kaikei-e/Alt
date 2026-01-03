@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"pre-processor-sidecar/models"
+	"pre-processor-sidecar/utils"
 
 	"github.com/google/uuid"
 )
@@ -89,14 +90,23 @@ func (r *PostgreSQLSubscriptionRepository) SaveSubscriptions(ctx context.Context
 			category = sub.Categories[0].Label
 		}
 
-		_, err := stmt.ExecContext(ctx,
+		// Zero-trust: Normalize URL to remove tracking parameters (UTM, etc.)
+		normalizedURL, err := utils.NormalizeURL(sub.URL)
+		if err != nil {
+			r.logger.Warn("Failed to normalize feed URL, using original",
+				"url", sub.URL,
+				"error", err)
+			normalizedURL = sub.URL
+		}
+
+		_, err = stmt.ExecContext(ctx,
 			id,
 			sub.InoreaderID, // Inoreader ID
 			sub.Title,
-			category, // Extracted from Categories
-			sub.URL,  // Feed URL
-			now,      // synced_at
-			now,      // created_at
+			category,     // Extracted from Categories
+			normalizedURL, // Feed URL (normalized)
+			now,          // synced_at
+			now,          // created_at
 		)
 		if err != nil {
 			r.logger.Error("Failed to save subscription",
@@ -227,17 +237,26 @@ func (r *PostgreSQLSubscriptionRepository) UpdateSubscription(ctx context.Contex
 		category = subscription.Categories[0].Label
 	}
 
+	// Zero-trust: Normalize URL to remove tracking parameters (UTM, etc.)
+	normalizedURL, err := utils.NormalizeURL(subscription.URL)
+	if err != nil {
+		r.logger.Warn("Failed to normalize feed URL, using original",
+			"url", subscription.URL,
+			"error", err)
+		normalizedURL = subscription.URL
+	}
+
 	query := `
 		UPDATE inoreader_subscriptions
 		SET title = $2, category = $3, feed_url = $4, synced_at = $5
 		WHERE inoreader_id = $1
 	`
 
-	_, err := r.db.ExecContext(ctx, query,
+	_, err = r.db.ExecContext(ctx, query,
 		subscription.InoreaderID, // Inoreader ID
 		subscription.Title,
-		category,         // Extracted from Categories
-		subscription.URL, // Feed URL
+		category,      // Extracted from Categories
+		normalizedURL, // Feed URL (normalized)
 		time.Now(),
 	)
 	if err != nil {
@@ -270,6 +289,15 @@ func (r *PostgreSQLSubscriptionRepository) DeleteSubscription(ctx context.Contex
 
 // CreateSubscription creates a single subscription record for auto-creation functionality
 func (r *PostgreSQLSubscriptionRepository) CreateSubscription(ctx context.Context, subscription *models.Subscription) error {
+	// Zero-trust: Normalize URL to remove tracking parameters (UTM, etc.)
+	normalizedURL, err := utils.NormalizeURL(subscription.FeedURL)
+	if err != nil {
+		r.logger.Warn("Failed to normalize feed URL, using original",
+			"url", subscription.FeedURL,
+			"error", err)
+		normalizedURL = subscription.FeedURL
+	}
+
 	query := `
 		INSERT INTO inoreader_subscriptions (
 			id, inoreader_id, feed_url, title, category, synced_at, created_at
@@ -280,10 +308,10 @@ func (r *PostgreSQLSubscriptionRepository) CreateSubscription(ctx context.Contex
 			category = EXCLUDED.category,
 			synced_at = EXCLUDED.synced_at`
 
-	_, err := r.db.ExecContext(ctx, query,
+	_, err = r.db.ExecContext(ctx, query,
 		subscription.ID,
 		subscription.InoreaderID,
-		subscription.FeedURL,
+		normalizedURL, // Feed URL (normalized)
 		subscription.Title,
 		subscription.Category,
 		subscription.SyncedAt,
@@ -300,7 +328,7 @@ func (r *PostgreSQLSubscriptionRepository) CreateSubscription(ctx context.Contex
 	r.logger.Info("Successfully created subscription",
 		"inoreader_id", subscription.InoreaderID,
 		"title", subscription.Title,
-		"feed_url", subscription.FeedURL)
+		"feed_url", normalizedURL)
 
 	return nil
 }
