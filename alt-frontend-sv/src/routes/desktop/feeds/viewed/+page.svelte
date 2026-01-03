@@ -84,9 +84,30 @@
 		};
 	});
 
-	function handleSelectFeed(feed: RenderFeed) {
+	// Navigation state
+	let currentIndex = $state(-1);
+
+	const hasPrevious = $derived(currentIndex > 0);
+	const hasNext = $derived(currentIndex >= 0 && currentIndex < feeds.length - 1);
+
+	function handleSelectFeed(feed: RenderFeed, index: number) {
 		selectedFeed = feed;
+		currentIndex = index;
 		isModalOpen = true;
+	}
+
+	function handlePrevious() {
+		if (currentIndex > 0) {
+			selectedFeed = feeds[currentIndex - 1];
+			currentIndex = currentIndex - 1;
+		}
+	}
+
+	function handleNext() {
+		if (currentIndex >= 0 && currentIndex < feeds.length - 1) {
+			selectedFeed = feeds[currentIndex + 1];
+			currentIndex = currentIndex + 1;
+		}
 	}
 </script>
 
@@ -109,8 +130,8 @@
 		</div>
 	{:else}
 		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-			{#each feeds as feed (feed.id)}
-				<DesktopFeedCard {feed} onSelect={handleSelectFeed} isRead={true} />
+			{#each feeds as feed, index (feed.id)}
+				<DesktopFeedCard {feed} onSelect={(f) => handleSelectFeed(f, index)} isRead={true} />
 			{/each}
 		</div>
 
@@ -130,4 +151,8 @@
 	bind:open={isModalOpen}
 	feed={selectedFeed}
 	onOpenChange={(open) => (isModalOpen = open)}
+	{hasPrevious}
+	{hasNext}
+	onPrevious={handlePrevious}
+	onNext={handleNext}
 />

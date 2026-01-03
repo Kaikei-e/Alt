@@ -365,4 +365,30 @@ test.describe("Desktop Feeds - Modal Navigation", () => {
 		// Should not have previous arrow on first feed
 		await expect(feedsPage.prevFeedButton).not.toBeVisible();
 	});
+
+	test("prefetches next 2 articles when modal opens", async ({ page }) => {
+		const fetchRequests: string[] = [];
+
+		// Track article content fetch requests
+		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, async (route) => {
+			const postData = route.request().postDataJSON();
+			if (postData?.feedUrl) {
+				fetchRequests.push(postData.feedUrl);
+			}
+			await fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE);
+		});
+
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		// Open first feed - should trigger prefetch of next 2 articles
+		await feedsPage.selectFeed("First Feed");
+		await feedsPage.expectModalTitle("First Feed");
+
+		// Wait for prefetch to complete (500ms delay + fetch time)
+		await page.waitForTimeout(1500);
+
+		// Should have fetched: current (1st) + prefetched (2nd, 3rd)
+		expect(fetchRequests.length).toBeGreaterThanOrEqual(3);
+	});
 });
