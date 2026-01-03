@@ -17,3 +17,32 @@ docker compose --profile recap up recap-subworker
 # Direct gunicorn launch (virtualenv already synced via uv)
 uv run gunicorn -c recap_subworker/infra/gunicorn_conf.py recap_subworker.app.main:create_app
 ```
+
+## デバイス設定
+
+EmbeddingモデルとClassificationモデルで異なるデバイスを使用できます。
+
+### 分離設定（推奨）
+
+```bash
+# Embedding（クラスタリング）にGPU、Classification（分類）にCPU
+export RECAP_SUBWORKER_DEVICE=cuda
+export RECAP_SUBWORKER_CLASSIFICATION_DEVICE=cpu
+```
+
+### 単一設定（後方互換）
+
+```bash
+# 両方にCPUを使用（デフォルト）
+export RECAP_SUBWORKER_DEVICE=cpu
+```
+
+`RECAP_SUBWORKER_CLASSIFICATION_DEVICE` 未設定時は `RECAP_SUBWORKER_DEVICE` の値を継承します。
+
+### 推奨構成
+
+| GPU VRAM | Ollama併用 | 推奨設定 |
+|----------|-----------|----------|
+| 8GB以上 | なし | 両方 `cuda` |
+| 8GB | あり (~5GB使用) | embedding: `cuda`, classification: `cpu` |
+| 4GB未満 | - | 両方 `cpu` |
