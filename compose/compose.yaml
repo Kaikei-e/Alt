@@ -1,0 +1,16 @@
+# compose/compose.yaml - All stacks combined
+# This file enables direct 'docker compose' usage without altctl
+# For stack-based management, use 'altctl' instead
+
+name: alt
+
+include:
+  - ai.yaml
+  - auth.yaml
+  - core.yaml
+  - db.yaml
+  - logging.yaml
+  - perf.yaml
+  - rag.yaml
+  - recap.yaml
+  - workers.yaml
