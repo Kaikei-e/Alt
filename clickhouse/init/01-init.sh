@@ -16,7 +16,8 @@ clickhouse client -n --database "${CLICKHOUSE_DB:-rask_logs}" <<-EOSQL
     ) ENGINE = MergeTree()
     PARTITION BY (service_group, service_name)
     ORDER BY (timestamp)
-    TTL timestamp + INTERVAL 2 DAY DELETE;
+    TTL timestamp + INTERVAL 2 DAY DELETE
+    SETTINGS ttl_only_drop_parts = 1;
 
     ALTER TABLE logs MODIFY TTL timestamp + INTERVAL 2 DAY DELETE;
     OPTIMIZE TABLE logs FINAL;
