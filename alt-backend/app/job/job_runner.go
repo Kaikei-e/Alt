@@ -6,6 +6,7 @@ import (
 
 	"alt/driver/alt_db"
 	"alt/driver/models"
+	"alt/utils"
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
 )
@@ -37,10 +38,18 @@ func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 					if pubDate.IsZero() {
 						pubDate = time.Now().UTC()
 					}
+					// Zero-trust: Normalize URL to remove tracking parameters (UTM, etc.)
+					normalizedLink, err := utils.NormalizeURL(feedItem.Link)
+					if err != nil {
+						logger.Logger.Warn("Failed to normalize feed link, using original",
+							"link", feedItem.Link,
+							"error", err)
+						normalizedLink = feedItem.Link
+					}
 					feedModel := models.Feed{
 						Title:       feedItem.Title,
 						Description: feedItem.Description,
-						Link:        feedItem.Link,
+						Link:        normalizedLink,
 						PubDate:     pubDate,
 						CreatedAt:   time.Now().UTC(),
 						UpdatedAt:   time.Now().UTC(),
