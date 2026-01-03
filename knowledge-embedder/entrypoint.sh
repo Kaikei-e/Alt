@@ -54,18 +54,22 @@ if ! curl -fs "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Ensure embedding model exists
-echo "Ensuring embeddinggemma model is available..."
-if ! ollama list 2>/dev/null | grep -q "embeddinggemma"; then
-  echo "Pulling embeddinggemma model..."
-  if ollama pull embeddinggemma; then
-      echo "  Model embeddinggemma pulled successfully"
+# Ensure embedding models exist
+EMBEDDING_MODELS="embeddinggemma mxbai-embed-large"
+
+for model in $EMBEDDING_MODELS; do
+  echo "Ensuring $model model is available..."
+  if ! ollama list 2>/dev/null | grep -q "$model"; then
+    echo "Pulling $model model..."
+    if ollama pull "$model"; then
+        echo "  Model $model pulled successfully"
+    else
+        echo "  Warning: Failed to pull $model (non-fatal)"
+    fi
   else
-      echo "  Error: Failed to pull embeddinggemma"
+    echo "  Model $model already exists"
   fi
-else
-  echo "  Model embeddinggemma already exists"
-fi
+done
 
 # Wait for server process
 wait "$SERVER_PID"
