@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/driver/alt_db"
 	"alt/driver/models"
+	"alt/utils"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -35,10 +36,19 @@ func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domai
 			continue
 		}
 
+		// Zero-trust: Normalize URL to remove tracking parameters (UTM, etc.)
+		normalizedLink, err := utils.NormalizeURL(feedItem.Link)
+		if err != nil {
+			logger.Logger.Warn("Failed to normalize feed link, using original",
+				"link", feedItem.Link,
+				"error", err)
+			normalizedLink = feedItem.Link
+		}
+
 		feedModel := &models.Feed{
 			Title:       strings.TrimSpace(feedItem.Title),
 			Description: feedItem.Description,
-			Link:        feedItem.Link,
+			Link:        normalizedLink,
 			PubDate:     feedItem.PublishedParsed,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),

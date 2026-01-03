@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -24,7 +23,7 @@ func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.
 		return errors.New("authentication required")
 	}
 
-	// Normalize the input URL
+	// Zero-trust: Normalize the input URL (removes UTM parameters, trailing slashes, etc.)
 	originalURL := articleURL.String()
 	normalizedURL, err := utils.NormalizeURL(originalURL)
 	if err != nil {
@@ -32,21 +31,17 @@ func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.
 		return err
 	}
 
-	// Create URL with trailing slash (DB may have URLs with trailing slash)
-	withSlashURL := strings.TrimSuffix(originalURL, "/") + "/"
-
-	// Resolve feed ID from URL
-	// Try normalized (no slash), original, and with-slash versions (zero-trust: DB may have non-normalized URLs)
-	getFeedQuery := `SELECT id FROM feeds WHERE link = $1 OR link = $2 OR link = $3 LIMIT 1`
+	// Resolve feed ID from URL using normalized URL only (DB should have normalized URLs)
+	getFeedQuery := `SELECT id FROM feeds WHERE link = $1 LIMIT 1`
 
 	var feedID string
-	err = r.pool.QueryRow(ctx, getFeedQuery, normalizedURL, originalURL, withSlashURL).Scan(&feedID)
+	err = r.pool.QueryRow(ctx, getFeedQuery, normalizedURL).Scan(&feedID)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			logger.SafeError("Feed not found",
 				"normalizedURL", normalizedURL,
-				"originalURL", articleURL.String(),
+				"originalURL", originalURL,
 				"user_id", user.UserID)
 			return domain.ErrFeedNotFound
 		}
