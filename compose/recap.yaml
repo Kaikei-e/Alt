@@ -130,7 +130,11 @@ services:
       - RECAP_SUBWORKER_PIPELINE_WORKER_PROCESSES=2
       - RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES=6
       - RECAP_SUBWORKER_CLASSIFICATION_POOL_IDLE_TIMEOUT_SECONDS=60
-      - RECAP_SUBWORKER_DEVICE=cpu
+      # Embedding (Clustering) - GPU使用で高速化
+      - RECAP_SUBWORKER_DEVICE=cuda
+      - RECAP_SUBWORKER_BATCH_SIZE=8
+      # Classification (Learning Machine) - CPU使用でOOM回避
+      - RECAP_SUBWORKER_CLASSIFICATION_DEVICE=cpu
     ports:
       - "8002:8002"
     secrets:
@@ -140,9 +144,18 @@ services:
       - ../recap-subworker/data/genre_classifier.joblib:/app/data/genre_classifier.joblib:ro
       - ../recap-subworker/data/tfidf_vectorizer.joblib:/app/data/tfidf_vectorizer.joblib:ro
       - ../recap-subworker/data/genre_thresholds.json:/app/data/genre_thresholds.json:ro
+      # Learning Machine model artifacts
+      - ../recap-subworker/recap_subworker/learning_machine/artifacts:/app/recap_subworker/learning_machine/artifacts:ro
     depends_on:
       recap-worker:
         condition: service_started
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     restart: unless-stopped
     labels:
       - rask.group=recap-subworker

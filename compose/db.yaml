@@ -108,6 +108,7 @@ services:
       - "9009:9000"
     volumes:
       - ../clickhouse/init:/docker-entrypoint-initdb.d
+      - ../clickhouse/config/system_tables.xml:/etc/clickhouse-server/config.d/system_tables.xml:ro
       - clickhouse_data:/var/lib/clickhouse
     networks:
       - alt-network
