@@ -125,7 +125,9 @@ func (r *ragChunkRepository) InsertEvents(ctx context.Context, events []domain.R
 	return nil
 }
 
-func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, candidateArticleIDs []string, limit int) ([]domain.SearchResult, error) {
+// Search performs a vector search across all chunks (Augur use case).
+// Uses Two-Stage Search for HNSW index efficiency.
+func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, limit int) ([]domain.SearchResult, error) {
 	// Two-Stage Search for HNSW Index Efficiency
 	//
 	// Stage 1: Pure vector search on rag_chunks (uses HNSW index efficiently)
@@ -187,7 +189,7 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		distanceMap[c.id] = c.distance
 	}
 
-	// Stage 2: Enrich with metadata, filter by current version and candidate articles
+	// Stage 2: Enrich with metadata, filter by current version only
 	stage2Query := `
 		SELECT
 			c.id, c.version_id, c.ordinal, c.content, c.embedding, c.created_at,
@@ -201,15 +203,8 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		WHERE c.id = ANY($1)
 		  AND d.current_version_id = v.id
 	`
-	args := []interface{}{chunkIDs}
-	argIdx := 2
 
-	if len(candidateArticleIDs) > 0 {
-		stage2Query += fmt.Sprintf(" AND d.article_id = ANY($%d)", argIdx)
-		args = append(args, candidateArticleIDs)
-	}
-
-	stage2Rows, err := r.getExecutor(ctx).Query(ctx, stage2Query, args...)
+	stage2Rows, err := r.getExecutor(ctx).Query(ctx, stage2Query, chunkIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to enrich chunks (stage 2): %w", err)
 	}
@@ -245,6 +240,67 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 
 	if len(results) > limit {
 		results = results[:limit]
+	}
+
+	return results, nil
+}
+
+// SearchWithinArticles performs a vector search within specific articles (Morning Letter use case).
+// Uses pre-filtering by article IDs before vector search.
+// This is less efficient than Search() but necessary when filtering to a small subset of articles.
+func (r *ragChunkRepository) SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int) ([]domain.SearchResult, error) {
+	if len(articleIDs) == 0 {
+		return []domain.SearchResult{}, nil
+	}
+
+	// Single-pass query with pre-filtering by article IDs
+	// Note: HNSW index cannot be used efficiently with this approach,
+	// but since we're filtering to a small subset of articles, performance is acceptable.
+	query := `
+		SELECT
+			c.id, c.version_id, c.ordinal, c.content, c.embedding, c.created_at,
+			d.article_id,
+			v.version_number,
+			v.title,
+			v.url,
+			(c.embedding <=> $1) as distance
+		FROM rag_chunks c
+		JOIN rag_document_versions v ON c.version_id = v.id
+		JOIN rag_documents d ON v.document_id = d.id
+		WHERE d.article_id = ANY($2)
+		  AND d.current_version_id = v.id
+		ORDER BY distance ASC
+		LIMIT $3
+	`
+
+	rows, err := r.getExecutor(ctx).Query(ctx, query, pgvector.NewVector(queryVector), articleIDs, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search within articles: %w", err)
+	}
+	defer rows.Close()
+
+	var results []domain.SearchResult
+	for rows.Next() {
+		var c domain.RagChunk
+		var articleID string
+		var versionNumber int
+		var title, url sql.NullString
+		var distance float32
+		if err := rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.Embedding, &c.CreatedAt, &articleID, &versionNumber, &title, &url, &distance); err != nil {
+			return nil, fmt.Errorf("failed to scan search result: %w", err)
+		}
+
+		results = append(results, domain.SearchResult{
+			Chunk:           c,
+			Score:           1.0 - distance,
+			ArticleID:       articleID,
+			Title:           title.String,
+			URL:             url.String,
+			DocumentVersion: versionNumber,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
 	}
 
 	return results, nil

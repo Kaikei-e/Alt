@@ -82,9 +82,14 @@ type RagChunkRepository interface {
 	// InsertEvents inserts multiple chunk events.
 	InsertEvents(ctx context.Context, events []RagChunkEvent) error
 
-	// Search performs a vector search for chunks.
-	// candidateArticleIDs: if not empty, filter chunks to these articles.
-	Search(ctx context.Context, queryVector []float32, candidateArticleIDs []string, limit int) ([]SearchResult, error)
+	// Search performs a vector search across all chunks (Augur use case).
+	// Uses Two-Stage Search for HNSW index efficiency.
+	Search(ctx context.Context, queryVector []float32, limit int) ([]SearchResult, error)
+
+	// SearchWithinArticles performs a vector search within specific articles (Morning Letter use case).
+	// Uses pre-filtering by article IDs before vector search.
+	// articleIDs must not be empty.
+	SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int) ([]SearchResult, error)
 }
 
 // SearchResult represents a chunk found via vector search, including its similarity score.

@@ -78,7 +78,8 @@ func TestRetrieveContext_Execute_Success(t *testing.T) {
 
 	// 3. Search (parallel, but mock any call)
 	// Expect 5 searches (original + 4 expanded)
-	mockChunkRepo.On("Search", ctx, queryVec, []string(nil), 50).Return([]domain.SearchResult{
+	// Since CandidateArticleIDs is empty, Search() is called (Augur use case)
+	mockChunkRepo.On("Search", ctx, queryVec, 50).Return([]domain.SearchResult{
 		{
 			Chunk: domain.RagChunk{
 				ID:      uuid.New(),

@@ -71,8 +71,16 @@ func (m *MockRagChunkRepository) InsertEvents(ctx context.Context, events []doma
 	return args.Error(0)
 }
 
-func (m *MockRagChunkRepository) Search(ctx context.Context, queryVector []float32, candidateArticleIDs []string, limit int) ([]domain.SearchResult, error) {
-	args := m.Called(ctx, queryVector, candidateArticleIDs, limit)
+func (m *MockRagChunkRepository) Search(ctx context.Context, queryVector []float32, limit int) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.SearchResult), args.Error(1)
+}
+
+func (m *MockRagChunkRepository) SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, articleIDs, limit)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -166,13 +174,14 @@ func TestIndexArticle_Upsert_NewArticle(t *testing.T) {
 	})).Return(nil)
 
 	// Insert Chunks
+	// Note: Short paragraphs (< 80 chars) are merged by Chunker v8
 	mockChunkRepo.On("BulkInsertChunks", ctx, mock.MatchedBy(func(chunks []domain.RagChunk) bool {
-		return len(chunks) == 2 // 2 Paragraphs
+		return len(chunks) == 1 // Merged into 1 chunk due to MinChunkLength
 	})).Return(nil)
 
 	// Insert Events
 	mockChunkRepo.On("InsertEvents", ctx, mock.MatchedBy(func(events []domain.RagChunkEvent) bool {
-		return len(events) == 2 && events[0].EventType == "added"
+		return len(events) == 1 && events[0].EventType == "added"
 	})).Return(nil)
 
 	// Update Current Version
@@ -198,8 +207,9 @@ func TestIndexArticle_Upsert_Update(t *testing.T) {
 	ctx := context.Background()
 	articleID := "update-article"
 	title := "Update Title"
-	// Old body: "Start.\n\nEnd."
-	// New body: "Start.\n\nMiddle.\n\nEnd." (Middle added)
+	// Old body: single merged chunk (short paragraphs merged)
+	// New body: different content -> triggers update
+	// Note: Chunker v8 merges short paragraphs (< 80 chars)
 	body := "Start.\n\nMiddle.\n\nEnd."
 
 	docID := uuid.New()
@@ -221,10 +231,9 @@ func TestIndexArticle_Upsert_Update(t *testing.T) {
 	}, nil)
 
 	// 3. Get Old Chunks (for Diff)
-	// Old: ["Start.", "End."]
+	// Old: single merged chunk
 	mockChunkRepo.On("GetChunksByVersionID", ctx, verID).Return([]domain.RagChunk{
-		{Ordinal: 0, Content: "Start.", ID: uuid.New()},
-		{Ordinal: 1, Content: "End.", ID: uuid.New()},
+		{Ordinal: 0, Content: "Start.\n\nEnd.", ID: uuid.New()},
 	}, nil)
 
 	// 4. Create Version (v2)
@@ -232,29 +241,15 @@ func TestIndexArticle_Upsert_Update(t *testing.T) {
 		return v.VersionNumber == 2
 	})).Return(nil)
 
-	// 5. Insert New Chunks (3 chunks)
+	// 5. Insert New Chunks (1 merged chunk)
 	mockChunkRepo.On("BulkInsertChunks", ctx, mock.MatchedBy(func(chunks []domain.RagChunk) bool {
-		return len(chunks) == 3
+		return len(chunks) == 1 // Merged into 1 chunk due to MinChunkLength
 	})).Return(nil)
 
 	// 6. Insert Events
-	// Diff: Start (Unchanged), Middle (Added), End (Unchanged) -> wait.
-	// LCS: Start match, End match. Middle inserted.
-	// Events: Unchanged, Added, Unchanged.
+	// New content differs from old -> 1 "updated" event
 	mockChunkRepo.On("InsertEvents", ctx, mock.MatchedBy(func(events []domain.RagChunkEvent) bool {
-		// Should have 3 events? Depend on implementation.
-		// Implementation loops over DiffEvents.
-		// DiffChunks returns events for gaps and matches.
-		// Start: Match -> Unchanged
-		// Middle: Gap -> Added
-		// End: Match -> Unchanged
-		// Total 3 events.
-		if len(events) != 3 {
-			return false
-		}
-		// Order depends on DiffChunks implementation.
-		// Assuming: Unchanged, Added, Unchanged.
-		return true // weak check for now
+		return len(events) == 1
 	})).Return(nil)
 
 	// 7. Update Current Version

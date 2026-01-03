@@ -183,11 +183,24 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 	resultsChan := make(chan searchResult, len(embeddings))
 	var wg sync.WaitGroup
 
+	// Choose search strategy based on whether we have candidate article IDs
+	// - CandidateArticleIDs present: Morning Letter use case (time-bounded search)
+	// - CandidateArticleIDs empty: Augur use case (full corpus search)
+	hasCandidateArticles := len(input.CandidateArticleIDs) > 0
+
 	for i, queryVector := range embeddings {
 		wg.Add(1)
 		go func(idx int, qv []float32) {
 			defer wg.Done()
-			results, err := u.chunkRepo.Search(ctx, qv, input.CandidateArticleIDs, searchLimit)
+			var results []domain.SearchResult
+			var err error
+			if hasCandidateArticles {
+				// Morning Letter: Search within specific articles
+				results, err = u.chunkRepo.SearchWithinArticles(ctx, qv, input.CandidateArticleIDs, searchLimit)
+			} else {
+				// Augur: Search across all chunks
+				results, err = u.chunkRepo.Search(ctx, qv, searchLimit)
+			}
 			resultsChan <- searchResult{index: idx, results: results, err: err}
 		}(i, queryVector)
 	}
