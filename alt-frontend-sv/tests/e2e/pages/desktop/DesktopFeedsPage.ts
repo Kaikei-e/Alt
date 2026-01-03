@@ -27,6 +27,10 @@ export class DesktopFeedsPage extends BasePage {
 	readonly fullArticleButton: Locator;
 	readonly summarizeButton: Locator;
 
+	// Modal navigation arrows
+	readonly prevFeedButton: Locator;
+	readonly nextFeedButton: Locator;
+
 	// Infinite scroll
 	readonly loadMoreTrigger: Locator;
 	readonly loadingMoreSpinner: Locator;
@@ -54,6 +58,10 @@ export class DesktopFeedsPage extends BasePage {
 		this.markAsReadButton = page.getByRole("button", { name: /mark as read/i });
 		this.fullArticleButton = page.getByRole("button", { name: /full article/i });
 		this.summarizeButton = page.getByRole("button", { name: /summarize/i });
+
+		// Modal navigation arrows
+		this.prevFeedButton = this.feedDetailModal.getByRole("button", { name: /previous feed/i });
+		this.nextFeedButton = this.feedDetailModal.getByRole("button", { name: /next feed/i });
 
 		// Infinite scroll elements
 		this.loadMoreTrigger = page.getByText("Scroll for more");
@@ -109,11 +117,10 @@ export class DesktopFeedsPage extends BasePage {
 
 	/**
 	 * Mark the currently open feed as read
+	 * Note: After marking as read, modal navigates to next feed or closes if last
 	 */
 	async markCurrentFeedAsRead(): Promise<void> {
 		await this.markAsReadButton.click();
-		// Modal should close after marking as read
-		await expect(this.feedDetailModal).not.toBeVisible({ timeout: 5000 });
 	}
 
 	/**
@@ -135,5 +142,33 @@ export class DesktopFeedsPage extends BasePage {
 	 */
 	async expectModalTitle(title: string): Promise<void> {
 		await expect(this.modalTitle).toContainText(title);
+	}
+
+	/**
+	 * Navigate to the next feed in the modal
+	 */
+	async navigateToNextFeed(): Promise<void> {
+		await this.nextFeedButton.click();
+	}
+
+	/**
+	 * Navigate to the previous feed in the modal
+	 */
+	async navigateToPreviousFeed(): Promise<void> {
+		await this.prevFeedButton.click();
+	}
+
+	/**
+	 * Navigate to next feed using keyboard
+	 */
+	async navigateToNextFeedWithKeyboard(): Promise<void> {
+		await this.page.keyboard.press("ArrowRight");
+	}
+
+	/**
+	 * Navigate to previous feed using keyboard
+	 */
+	async navigateToPreviousFeedWithKeyboard(): Promise<void> {
+		await this.page.keyboard.press("ArrowLeft");
 	}
 }

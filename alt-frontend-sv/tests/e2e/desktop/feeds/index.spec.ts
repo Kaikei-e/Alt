@@ -5,6 +5,7 @@ import {
 	CONNECT_FEEDS_RESPONSE,
 	CONNECT_FEEDS_EMPTY_RESPONSE,
 	CONNECT_FEEDS_WITHOUT_ARTICLE_ID,
+	CONNECT_FEEDS_NAVIGATION_RESPONSE,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_MARK_AS_READ_RESPONSE,
 	CONNECT_RPC_PATHS,
@@ -25,6 +26,11 @@ test.describe("Desktop Feeds", () => {
 		// Mock read feeds (empty)
 		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
 			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
+		);
+
+		// Mock article content (auto-fetched on modal open)
+		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
+			fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE),
 		);
 	});
 
@@ -49,7 +55,7 @@ test.describe("Desktop Feeds", () => {
 		await expect(feedsPage.getFeedCardByTitle("Svelte 5 Tips")).toBeVisible();
 	});
 
-	test("opens feed detail modal on card click", async () => {
+	test("opens feed detail modal on card click", async ({ page }) => {
 		await feedsPage.goto();
 		await feedsPage.waitForFeedsLoaded();
 
@@ -62,7 +68,10 @@ test.describe("Desktop Feeds", () => {
 
 		// Verify action buttons are present
 		await expect(feedsPage.markAsReadButton).toBeVisible();
-		await expect(feedsPage.fullArticleButton).toBeVisible();
+		// Article button shows "Full Article" or "Article Loaded" depending on auto-fetch state
+		await expect(
+			page.getByRole("button", { name: /full article|article loaded/i }),
+		).toBeVisible();
 	});
 
 	test("closes feed detail modal", async () => {
@@ -77,7 +86,7 @@ test.describe("Desktop Feeds", () => {
 		await expect(feedsPage.feedDetailModal).not.toBeVisible();
 	});
 
-	test("marks feed as read and closes modal", async ({ page }) => {
+	test("marks feed as read and navigates to next feed", async ({ page }) => {
 		// Mock mark as read endpoint (Connect-RPC)
 		await page.route(CONNECT_RPC_PATHS.markAsRead, (route) =>
 			fulfillJson(route, CONNECT_MARK_AS_READ_RESPONSE),
@@ -89,16 +98,40 @@ test.describe("Desktop Feeds", () => {
 		// Get initial feed count
 		const initialCount = await feedsPage.getFeedCount();
 
-		// Open modal and mark as read
+		// Open first feed and mark as read
 		await feedsPage.selectFeed("AI Trends");
-		await feedsPage.markCurrentFeedAsRead();
+		await feedsPage.expectModalTitle("AI Trends");
 
-		// Modal should close
-		await expect(feedsPage.feedDetailModal).not.toBeVisible();
+		// Mark as read - should navigate to next feed (Svelte 5 Tips)
+		await feedsPage.markAsReadButton.click();
+
+		// Modal should still be visible but showing next feed
+		await expect(feedsPage.feedDetailModal).toBeVisible();
+		await feedsPage.expectModalTitle("Svelte 5 Tips");
 
 		// Feed count should decrease by 1
 		const newCount = await feedsPage.getFeedCount();
 		expect(newCount).toBe(initialCount - 1);
+	});
+
+	test("marks last feed as read and closes modal", async ({ page }) => {
+		// Mock mark as read endpoint (Connect-RPC)
+		await page.route(CONNECT_RPC_PATHS.markAsRead, (route) =>
+			fulfillJson(route, CONNECT_MARK_AS_READ_RESPONSE),
+		);
+
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		// Open last feed (Svelte 5 Tips is second and last)
+		await feedsPage.selectFeed("Svelte 5 Tips");
+		await feedsPage.expectModalTitle("Svelte 5 Tips");
+
+		// Mark as read - should close modal since it's the last feed
+		await feedsPage.markAsReadButton.click();
+
+		// Modal should close
+		await expect(feedsPage.feedDetailModal).not.toBeVisible();
 	});
 
 	test("shows empty state when no feeds", async ({ page }) => {
@@ -129,64 +162,32 @@ test.describe("Desktop Feeds", () => {
 		await expect(feedsPage.errorMessage).toBeVisible();
 	});
 
-	test("loads full article in modal", async ({ page }) => {
-		// Mock article content endpoint (Connect-RPC)
-		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
-			fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE),
-		);
-
+	test("auto-fetches article content when modal opens", async () => {
 		await feedsPage.goto();
 		await feedsPage.waitForFeedsLoaded();
 
-		// Open modal
+		// Open modal - article should be auto-fetched (mock is set in beforeEach)
 		await feedsPage.selectFeed("AI Trends");
 
-		// Click full article button
-		await feedsPage.fullArticleButton.click();
-
-		// Wait for button state to change (showing "Article Loaded")
+		// Wait for button state to change (showing "Article Loaded") without clicking
 		await expect(
-			page.getByRole("button", { name: /article loaded/i }),
+			feedsPage.page.getByRole("button", { name: /article loaded/i }),
 		).toBeVisible({ timeout: 10000 });
 	});
 
-	test("shows 'Mark as Read' button after fetching full article for unsaved feed", async ({ page }) => {
+	test("mark as read is always enabled regardless of articleId", async ({ page }) => {
 		// Override feeds with feed that has no articleId (not saved)
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
 			fulfillJson(route, CONNECT_FEEDS_WITHOUT_ARTICLE_ID),
 		);
 
-		// Mock read feeds (empty)
-		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
-			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
-		);
-
-		// Mock article content endpoint - returns articleId when fetched
-		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
-			fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE),
-		);
-
-		// Mock mark as read endpoint
-		await page.route(CONNECT_RPC_PATHS.markAsRead, (route) =>
-			fulfillJson(route, CONNECT_MARK_AS_READ_RESPONSE),
-		);
-
 		await feedsPage.goto();
 		await feedsPage.waitForFeedsLoaded();
 
-		// Open modal - should show "Not Saved" initially because articleId is empty
+		// Open modal - Mark as Read should be immediately available
 		await feedsPage.selectFeed("AI Trends");
-		await expect(page.getByRole("button", { name: /not saved/i })).toBeVisible();
-
-		// Click Full Article button
-		await feedsPage.fullArticleButton.click();
-
-		// Wait for article to load
-		await expect(page.getByRole("button", { name: /article loaded/i })).toBeVisible({ timeout: 10000 });
-
-		// After article is fetched, "Mark as Read" should be available (not "Not Saved")
 		await expect(page.getByRole("button", { name: /mark as read/i })).toBeVisible();
-		await expect(page.getByRole("button", { name: /not saved/i })).not.toBeVisible();
+		await expect(page.getByRole("button", { name: /mark as read/i })).toBeEnabled();
 	});
 });
 
@@ -213,5 +214,155 @@ test.describe("Desktop Feeds - Accessibility", () => {
 			const ariaLabel = await cards.nth(i).getAttribute("aria-label");
 			expect(ariaLabel).toMatch(/^Open .+$/);
 		}
+	});
+});
+
+test.describe("Desktop Feeds - Modal Navigation", () => {
+	let feedsPage: DesktopFeedsPage;
+
+	test.beforeEach(async ({ page }) => {
+		feedsPage = new DesktopFeedsPage(page);
+
+		// Mock with 3 feeds for navigation testing
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, CONNECT_FEEDS_NAVIGATION_RESPONSE),
+		);
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
+		);
+		// Mock article content
+		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
+			fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE),
+		);
+	});
+
+	test("shows next arrow but not previous arrow on first feed", async () => {
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		// Click on first feed
+		await feedsPage.selectFeed("First Feed");
+		await feedsPage.expectModalTitle("First Feed");
+
+		// Should show next arrow but not previous
+		await expect(feedsPage.nextFeedButton).toBeVisible();
+		await expect(feedsPage.prevFeedButton).not.toBeVisible();
+	});
+
+	test("shows both arrows on middle feed", async () => {
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		// Click on second feed
+		await feedsPage.selectFeed("Second Feed");
+		await feedsPage.expectModalTitle("Second Feed");
+
+		// Should show both arrows
+		await expect(feedsPage.prevFeedButton).toBeVisible();
+		await expect(feedsPage.nextFeedButton).toBeVisible();
+	});
+
+	test("shows previous arrow but not next arrow on last feed", async () => {
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		// Click on last feed
+		await feedsPage.selectFeed("Third Feed");
+		await feedsPage.expectModalTitle("Third Feed");
+
+		// Should show previous arrow but not next
+		await expect(feedsPage.prevFeedButton).toBeVisible();
+		await expect(feedsPage.nextFeedButton).not.toBeVisible();
+	});
+
+	test("navigates to next feed using arrow button", async () => {
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		// Open first feed
+		await feedsPage.selectFeed("First Feed");
+		await feedsPage.expectModalTitle("First Feed");
+
+		// Click next arrow
+		await feedsPage.navigateToNextFeed();
+
+		// Should now show second feed
+		await feedsPage.expectModalTitle("Second Feed");
+	});
+
+	test("navigates to previous feed using arrow button", async () => {
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		// Open second feed
+		await feedsPage.selectFeed("Second Feed");
+		await feedsPage.expectModalTitle("Second Feed");
+
+		// Click previous arrow
+		await feedsPage.navigateToPreviousFeed();
+
+		// Should now show first feed
+		await feedsPage.expectModalTitle("First Feed");
+	});
+
+	test("navigates to next feed using keyboard arrow right", async () => {
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		// Open first feed
+		await feedsPage.selectFeed("First Feed");
+		await feedsPage.expectModalTitle("First Feed");
+
+		// Press right arrow
+		await feedsPage.navigateToNextFeedWithKeyboard();
+
+		// Should now show second feed
+		await feedsPage.expectModalTitle("Second Feed");
+	});
+
+	test("navigates to previous feed using keyboard arrow left", async () => {
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		// Open second feed
+		await feedsPage.selectFeed("Second Feed");
+		await feedsPage.expectModalTitle("Second Feed");
+
+		// Press left arrow
+		await feedsPage.navigateToPreviousFeedWithKeyboard();
+
+		// Should now show first feed
+		await feedsPage.expectModalTitle("First Feed");
+	});
+
+	test("can navigate through all feeds sequentially", async () => {
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		// Open first feed
+		await feedsPage.selectFeed("First Feed");
+		await feedsPage.expectModalTitle("First Feed");
+
+		// Navigate to second
+		await feedsPage.navigateToNextFeed();
+		await feedsPage.expectModalTitle("Second Feed");
+
+		// Navigate to third
+		await feedsPage.navigateToNextFeed();
+		await feedsPage.expectModalTitle("Third Feed");
+
+		// Should not have next arrow on last feed
+		await expect(feedsPage.nextFeedButton).not.toBeVisible();
+
+		// Navigate back to second
+		await feedsPage.navigateToPreviousFeed();
+		await feedsPage.expectModalTitle("Second Feed");
+
+		// Navigate back to first
+		await feedsPage.navigateToPreviousFeed();
+		await feedsPage.expectModalTitle("First Feed");
+
+		// Should not have previous arrow on first feed
+		await expect(feedsPage.prevFeedButton).not.toBeVisible();
 	});
 });

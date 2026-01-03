@@ -1,18 +1,19 @@
 <script lang="ts" module>
+	import type { RenderFeed } from "$lib/schema/feed";
 	export type FeedGridApi = {
 		removeFeedByUrl: (url: string) => Promise<void>;
+		getVisibleFeeds: () => RenderFeed[];
 	};
 </script>
 
 <script lang="ts">
 	import { Loader2 } from "@lucide/svelte";
 	import { getFeedsWithCursorClient } from "$lib/api/client/feeds";
-	import type { RenderFeed } from "$lib/schema/feed";
 	import DesktopFeedCard from "./DesktopFeedCard.svelte";
 	import { onMount } from "svelte";
 
 	interface Props {
-		onSelectFeed: (feed: RenderFeed) => void;
+		onSelectFeed: (feed: RenderFeed, index: number, totalCount: number) => void;
 		unreadOnly?: boolean;
 		sortBy?: string;
 		onReady?: (api: FeedGridApi) => void;
@@ -52,7 +53,7 @@
 
 	// Expose API to parent
 	$effect(() => {
-		onReady?.({ removeFeedByUrl });
+		onReady?.({ removeFeedByUrl, getVisibleFeeds: () => visibleFeeds });
 	});
 	let isLoading = $state(true);
 	let isFetchingNextPage = $state(false);
@@ -141,8 +142,8 @@
 	{:else}
 		<!-- Grid layout -->
 		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-			{#each visibleFeeds as feed (feed.id)}
-				<DesktopFeedCard {feed} onSelect={onSelectFeed} />
+			{#each visibleFeeds as feed, index (feed.id)}
+				<DesktopFeedCard {feed} onSelect={(f) => onSelectFeed(f, index, visibleFeeds.length)} />
 			{/each}
 		</div>
 

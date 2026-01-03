@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ExternalLink, Loader2, FileText, Sparkles, Check } from "@lucide/svelte";
+	import { ExternalLink, Loader2, FileText, Sparkles, Check, ChevronLeft, ChevronRight } from "@lucide/svelte";
 	import type { RenderFeed } from "$lib/schema/feed";
 	import { Button } from "$lib/components/ui/button";
 	import * as Dialog from "$lib/components/ui/dialog";
@@ -7,15 +7,22 @@
 	import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
 	import { createClientTransport, streamSummarizeWithAbortAdapter } from "$lib/connect";
 	import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
+	import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 
 	interface Props {
 		open: boolean;
 		feed: RenderFeed | null;
 		onOpenChange: (open: boolean) => void;
 		onMarkAsRead?: (feedUrl: string) => void;
+		hasPrevious?: boolean;
+		hasNext?: boolean;
+		onPrevious?: () => void;
+		onNext?: () => void;
+		feeds?: RenderFeed[];
+		currentIndex?: number;
 	}
 
-	let { open = $bindable(), feed, onOpenChange, onMarkAsRead }: Props = $props();
+	let { open = $bindable(), feed, onOpenChange, onMarkAsRead, hasPrevious = false, hasNext = false, onPrevious, onNext, feeds, currentIndex }: Props = $props();
 
 	// Mark as read state
 	let isMarkingAsRead = $state(false);
@@ -31,6 +38,9 @@
 	let summary = $state<string | null>(null);
 	let summaryError = $state<string | null>(null);
 	let abortController = $state<AbortController | null>(null);
+
+	// Track previous feed URL to detect actual feed changes
+	let previousFeedUrl = $state<string | null>(null);
 
 	// Cleanup on modal close
 	$effect(() => {
@@ -48,6 +58,63 @@
 			isSummarizing = false;
 			contentError = null;
 			summaryError = null;
+			previousFeedUrl = null;
+		}
+	});
+
+	// Reset content states when feed changes (for arrow navigation)
+	$effect(() => {
+		const currentFeedUrl = feed?.normalizedUrl ?? null;
+
+		// Only reset when feed actually changes
+		if (currentFeedUrl === previousFeedUrl) return;
+
+		previousFeedUrl = currentFeedUrl;
+
+		// Cancel any ongoing summary request
+		if (abortController) {
+			abortController.abort();
+			abortController = null;
+		}
+		// Reset content states
+		articleContent = null;
+		articleID = null;
+		summary = null;
+		isFetchingContent = false;
+		isSummarizing = false;
+		contentError = null;
+		summaryError = null;
+	});
+
+	// Auto-fetch article content when modal opens
+	$effect(() => {
+		if (open && feed?.link && !articleContent && !isFetchingContent && !contentError) {
+			handleFetchFullArticle();
+		}
+	});
+
+	// Keyboard navigation
+	$effect(() => {
+		if (!open) return;
+
+		function handleKeyDown(event: KeyboardEvent) {
+			if (event.key === "ArrowLeft" && hasPrevious) {
+				event.preventDefault();
+				onPrevious?.();
+			} else if (event.key === "ArrowRight" && hasNext) {
+				event.preventDefault();
+				onNext?.();
+			}
+		}
+
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	});
+
+	// Prefetch next 2 articles when modal opens or feed changes
+	$effect(() => {
+		if (open && feeds && currentIndex !== undefined && currentIndex >= 0) {
+			articlePrefetcher.triggerPrefetch(feeds, currentIndex, 2);
 		}
 	});
 
@@ -58,6 +125,7 @@
 			isMarkingAsRead = true;
 			await updateFeedReadStatusClient(feed.normalizedUrl);
 			onMarkAsRead?.(feed.normalizedUrl);
+			// Parent handles navigation/closing after removing the feed
 		} catch (error) {
 			console.error("Failed to mark feed as read:", error);
 		} finally {
@@ -138,11 +206,31 @@
 	<Dialog.Portal>
 		<Dialog.Overlay class="fixed inset-0 bg-black/50 z-50" />
 		<Dialog.Content
-			class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-6xl sm:max-w-6xl max-h-[90vh] bg-white rounded-lg shadow-xl overflow-hidden flex flex-col z-50"
+			class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[75vw] sm:max-w-[1800px] h-[75vh] bg-white rounded-lg shadow-xl overflow-hidden flex flex-col z-50"
 		>
+			<!-- Navigation Arrows (inside modal at edges) -->
+			{#if hasPrevious}
+				<button
+					onclick={onPrevious}
+					class="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors z-10 shadow"
+					aria-label="Previous feed"
+				>
+					<ChevronLeft class="h-6 w-6 text-gray-700" />
+				</button>
+			{/if}
+			{#if hasNext}
+				<button
+					onclick={onNext}
+					class="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors z-10 shadow"
+					aria-label="Next feed"
+				>
+					<ChevronRight class="h-6 w-6 text-gray-700" />
+				</button>
+			{/if}
+
 			{#if feed}
 				<!-- Header Section -->
-				<div class="p-6 border-b border-gray-200">
+				<div class="py-6 border-b border-gray-200" style="padding-left: 70px; padding-right: 70px;">
 					<!-- Title with external link -->
 					<a
 						href={feed.link}
@@ -182,7 +270,7 @@
 				</div>
 
 				<!-- Scrollable Content Section -->
-				<div class="flex-1 overflow-y-auto p-6 bg-[#f8f8f8]">
+				<div class="flex-1 overflow-y-auto py-6 bg-[#f8f8f8]" style="padding-left: 70px; padding-right: 70px;">
 					<!-- Excerpt (always visible) -->
 					{#if feed.excerpt}
 						<div class="mb-6 p-4 bg-white rounded border border-gray-200">
@@ -225,7 +313,7 @@
 				</div>
 
 				<!-- Footer Actions -->
-				<div class="p-4 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-3 items-center">
+				<div class="py-4 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-3 items-center" style="padding-left: 70px; padding-right: 70px;">
 					<!-- 左側グループ: アクションボタン -->
 					<div class="flex gap-3 flex-1 min-w-0">
 						<!-- Full Article Button -->
@@ -269,10 +357,9 @@
 						<Button
 							onclick={handleMarkAsRead}
 							variant="outline"
-							disabled={isMarkingAsRead || !(feed?.articleId || articleID)}
-							title={!(feed?.articleId || articleID) ? "Article not saved in database" : undefined}
+							disabled={isMarkingAsRead}
 						>
-							{isMarkingAsRead ? "Marking..." : !(feed?.articleId || articleID) ? "Not Saved" : "Mark as Read"}
+							{isMarkingAsRead ? "Marking..." : "Mark as Read"}
 						</Button>
 
 						<!-- Close -->

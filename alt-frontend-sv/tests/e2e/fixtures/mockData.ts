@@ -232,6 +232,46 @@ export const CONNECT_FEEDS_RESPONSE = {
 	hasMore: true,
 };
 
+/**
+ * Connect-RPC FeedItem with 3 feeds for navigation testing
+ */
+export const CONNECT_FEEDS_NAVIGATION_RESPONSE = {
+	data: [
+		{
+			id: "feed-1",
+			articleId: "article-1",
+			title: "First Feed",
+			description: "First feed description.",
+			link: "https://example.com/first",
+			published: "1 hour ago",
+			createdAt: new Date().toISOString(),
+			author: "Alice",
+		},
+		{
+			id: "feed-2",
+			articleId: "article-2",
+			title: "Second Feed",
+			description: "Second feed description.",
+			link: "https://example.com/second",
+			published: "2 hours ago",
+			createdAt: new Date().toISOString(),
+			author: "Bob",
+		},
+		{
+			id: "feed-3",
+			articleId: "article-3",
+			title: "Third Feed",
+			description: "Third feed description.",
+			link: "https://example.com/third",
+			published: "3 hours ago",
+			createdAt: new Date().toISOString(),
+			author: "Charlie",
+		},
+	],
+	nextCursor: "",
+	hasMore: false,
+};
+
 export const CONNECT_FEEDS_EMPTY_RESPONSE = {
 	data: [],
 	nextCursor: "",
