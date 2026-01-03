@@ -1,0 +1,99 @@
+<clickhouse>
+    <!-- TTL 2 days for all system log tables -->
+
+    <query_log replace="1">
+        <database>system</database>
+        <table>query_log</table>
+        <engine>
+            ENGINE = MergeTree
+            PARTITION BY (event_date)
+            ORDER BY (event_time)
+            TTL event_date + INTERVAL 2 DAY DELETE
+            SETTINGS ttl_only_drop_parts = 1
+        </engine>
+    </query_log>
+
+    <trace_log replace="1">
+        <database>system</database>
+        <table>trace_log</table>
+        <engine>
+            ENGINE = MergeTree
+            PARTITION BY (event_date)
+            ORDER BY (event_time)
+            TTL event_date + INTERVAL 2 DAY DELETE
+            SETTINGS ttl_only_drop_parts = 1
+        </engine>
+    </trace_log>
+
+    <query_thread_log replace="1">
+        <database>system</database>
+        <table>query_thread_log</table>
+        <engine>
+            ENGINE = MergeTree
+            PARTITION BY (event_date)
+            ORDER BY (event_time)
+            TTL event_date + INTERVAL 2 DAY DELETE
+            SETTINGS ttl_only_drop_parts = 1
+        </engine>
+    </query_thread_log>
+
+    <asynchronous_metric_log replace="1">
+        <database>system</database>
+        <table>asynchronous_metric_log</table>
+        <engine>
+            ENGINE = MergeTree
+            PARTITION BY (event_date)
+            ORDER BY (event_time)
+            TTL event_date + INTERVAL 2 DAY DELETE
+            SETTINGS ttl_only_drop_parts = 1
+        </engine>
+    </asynchronous_metric_log>
+
+    <metric_log replace="1">
+        <database>system</database>
+        <table>metric_log</table>
+        <engine>
+            ENGINE = MergeTree
+            PARTITION BY (event_date)
+            ORDER BY (event_time)
+            TTL event_date + INTERVAL 2 DAY DELETE
+            SETTINGS ttl_only_drop_parts = 1
+        </engine>
+    </metric_log>
+
+    <part_log replace="1">
+        <database>system</database>
+        <table>part_log</table>
+        <engine>
+            ENGINE = MergeTree
+            PARTITION BY (event_date)
+            ORDER BY (event_time)
+            TTL event_date + INTERVAL 2 DAY DELETE
+            SETTINGS ttl_only_drop_parts = 1
+        </engine>
+    </part_log>
+
+    <text_log replace="1">
+        <database>system</database>
+        <table>text_log</table>
+        <engine>
+            ENGINE = MergeTree
+            PARTITION BY (event_date)
+            ORDER BY (event_time)
+            TTL event_date + INTERVAL 2 DAY DELETE
+            SETTINGS ttl_only_drop_parts = 1
+        </engine>
+    </text_log>
+
+    <error_log replace="1">
+        <database>system</database>
+        <table>error_log</table>
+        <engine>
+            ENGINE = MergeTree
+            PARTITION BY (event_date)
+            ORDER BY (event_time)
+            TTL event_date + INTERVAL 2 DAY DELETE
+            SETTINGS ttl_only_drop_parts = 1
+        </engine>
+    </error_log>
+</clickhouse>
