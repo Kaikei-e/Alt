@@ -20,6 +20,7 @@ import (
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
 
 	"alt/config"
+	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
 	"alt/di"
 	"alt/domain"
@@ -53,19 +54,17 @@ func (h *Handler) GetFeedStats(
 ) (*connect.Response[feedsv2.GetFeedStatsResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	feedCount, err := h.container.FeedAmountUsecase.Execute(ctx)
 	if err != nil {
-		h.logger.Error("failed to get feed count", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "GetFeedStats.FeedAmount")
 	}
 
 	summarizedCount, err := h.container.SummarizedArticlesCountUsecase.Execute(ctx)
 	if err != nil {
-		h.logger.Error("failed to get summarized count", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "GetFeedStats.SummarizedCount")
 	}
 
 	return connect.NewResponse(&feedsv2.GetFeedStatsResponse{
@@ -81,25 +80,22 @@ func (h *Handler) GetDetailedFeedStats(
 ) (*connect.Response[feedsv2.GetDetailedFeedStatsResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	feedCount, err := h.container.FeedAmountUsecase.Execute(ctx)
 	if err != nil {
-		h.logger.Error("failed to get feed count", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "GetDetailedFeedStats.FeedAmount")
 	}
 
 	articleCount, err := h.container.TotalArticlesCountUsecase.Execute(ctx)
 	if err != nil {
-		h.logger.Error("failed to get article count", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "GetDetailedFeedStats.ArticleCount")
 	}
 
 	unsummarizedCount, err := h.container.UnsummarizedArticlesCountUsecase.Execute(ctx)
 	if err != nil {
-		h.logger.Error("failed to get unsummarized count", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "GetDetailedFeedStats.UnsummarizedCount")
 	}
 
 	return connect.NewResponse(&feedsv2.GetDetailedFeedStatsResponse{
@@ -116,7 +112,7 @@ func (h *Handler) GetUnreadCount(
 ) (*connect.Response[feedsv2.GetUnreadCountResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Default to start of today (00:00:00 UTC)
@@ -125,8 +121,7 @@ func (h *Handler) GetUnreadCount(
 
 	count, err := h.container.TodayUnreadArticlesCountUsecase.Execute(ctx, since)
 	if err != nil {
-		h.logger.Error("failed to get unread count", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "GetUnreadCount")
 	}
 
 	return connect.NewResponse(&feedsv2.GetUnreadCountResponse{
@@ -144,7 +139,7 @@ func (h *Handler) StreamFeedStats(
 	// Authentication check
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return connect.NewError(connect.CodeUnauthenticated, err)
+		return connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Get update intervals from config
@@ -249,7 +244,7 @@ func (h *Handler) GetUnreadFeeds(
 ) (*connect.Response[feedsv2.GetUnreadFeedsResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Parse and validate limit
@@ -278,8 +273,7 @@ func (h *Handler) GetUnreadFeeds(
 	// Call usecase
 	feeds, hasMore, err := h.container.FetchUnreadFeedsListCursorUsecase.Execute(ctx, cursor, limit)
 	if err != nil {
-		h.logger.Error("failed to fetch unread feeds", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "GetUnreadFeeds")
 	}
 
 	return connect.NewResponse(&feedsv2.GetUnreadFeedsResponse{
@@ -297,7 +291,7 @@ func (h *Handler) GetReadFeeds(
 ) (*connect.Response[feedsv2.GetReadFeedsResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Parse and validate limit
@@ -323,8 +317,7 @@ func (h *Handler) GetReadFeeds(
 	// Call usecase
 	feeds, err := h.container.FetchReadFeedsListCursorUsecase.Execute(ctx, cursor, limit)
 	if err != nil {
-		h.logger.Error("failed to fetch read feeds", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "GetReadFeeds")
 	}
 
 	// Determine hasMore based on result count vs requested limit
@@ -345,7 +338,7 @@ func (h *Handler) GetFavoriteFeeds(
 ) (*connect.Response[feedsv2.GetFavoriteFeedsResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Parse and validate limit
@@ -371,8 +364,7 @@ func (h *Handler) GetFavoriteFeeds(
 	// Call usecase
 	feeds, err := h.container.FetchFavoriteFeedsListCursorUsecase.Execute(ctx, cursor, limit)
 	if err != nil {
-		h.logger.Error("failed to fetch favorite feeds", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "GetFavoriteFeeds")
 	}
 
 	// Determine hasMore based on result count vs requested limit
@@ -397,7 +389,7 @@ func (h *Handler) SearchFeeds(
 ) (*connect.Response[feedsv2.SearchFeedsResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Validate query
@@ -430,8 +422,7 @@ func (h *Handler) SearchFeeds(
 	results, hasMore, err := h.container.FeedSearchUsecase.ExecuteWithPagination(
 		ctx, req.Msg.Query, offset, limit)
 	if err != nil {
-		h.logger.Error("failed to search feeds", "error", err, "query", req.Msg.Query)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "SearchFeeds")
 	}
 
 	// Compute next cursor
@@ -461,7 +452,7 @@ func (h *Handler) StreamSummarize(
 ) error {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return connect.NewError(connect.CodeUnauthenticated, err)
+		return connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Validate request: feed_url or article_id is required
@@ -492,8 +483,7 @@ func (h *Handler) StreamSummarize(
 	// Resolve article ID and content
 	resolvedArticleID, resolvedTitle, resolvedContent, err := h.resolveArticle(ctx, feedURL, articleID, content, title)
 	if err != nil {
-		h.logger.Error("failed to resolve article", "error", err, "feed_url", feedURL, "article_id", articleID)
-		return connect.NewError(connect.CodeInternal, err)
+		return errorhandler.HandleInternalError(h.logger, err, "StreamSummarize.ResolveArticle")
 	}
 
 	if resolvedContent == "" {
@@ -522,8 +512,7 @@ func (h *Handler) StreamSummarize(
 	// Stream from pre-processor
 	preProcessorStream, err := h.streamPreProcessorSummarize(ctx, resolvedContent, resolvedArticleID, resolvedTitle)
 	if err != nil {
-		h.logger.Error("failed to start stream summarization", "error", err, "article_id", resolvedArticleID)
-		return connect.NewError(connect.CodeInternal, err)
+		return errorhandler.HandleInternalError(h.logger, err, "StreamSummarize.StartStream")
 	}
 	defer func() {
 		if closeErr := preProcessorStream.Close(); closeErr != nil {
@@ -534,8 +523,7 @@ func (h *Handler) StreamSummarize(
 	// Stream chunks to client and capture full summary
 	fullSummary, err := h.streamAndCapture(ctx, stream, preProcessorStream, resolvedArticleID)
 	if err != nil {
-		h.logger.Error("failed during streaming", "error", err, "article_id", resolvedArticleID)
-		return connect.NewError(connect.CodeInternal, err)
+		return errorhandler.HandleInternalError(h.logger, err, "StreamSummarize.Streaming")
 	}
 
 	// Save summary to database
@@ -865,7 +853,7 @@ func (h *Handler) MarkAsRead(
 ) (*connect.Response[feedsv2.MarkAsReadResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Validate article_url
@@ -893,11 +881,7 @@ func (h *Handler) MarkAsRead(
 		}
 
 		// All other errors are internal server errors
-		h.logger.Error("failed to mark feed as read",
-			"error", err,
-			"article_url", req.Msg.ArticleUrl)
-		return nil, connect.NewError(connect.CodeInternal,
-			fmt.Errorf("internal server error"))
+		return nil, errorhandler.HandleInternalError(h.logger, err, "MarkAsRead")
 	}
 
 	h.logger.Info("feed marked as read", "article_url", req.Msg.ArticleUrl)

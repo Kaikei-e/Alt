@@ -755,6 +755,7 @@ func TestHandler_MarkAsRead_DatabaseError_Returns500(t *testing.T) {
 	var connectErr *connect.Error
 	require.ErrorAs(t, err, &connectErr)
 	assert.Equal(t, connect.CodeInternal, connectErr.Code(), "Expected HTTP 500 Internal Server Error")
-	// Should NOT leak internal error details to client
-	assert.Contains(t, connectErr.Message(), "internal server error", "Error message should be generic")
+	// Should NOT leak internal error details to client - now uses safe message with error ID
+	assert.Contains(t, connectErr.Message(), "An unexpected error occurred", "Error message should be generic and user-friendly")
+	assert.Contains(t, connectErr.Message(), "Error ID:", "Error message should contain Error ID for traceability")
 }

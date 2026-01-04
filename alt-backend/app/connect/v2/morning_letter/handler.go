@@ -8,6 +8,7 @@ import (
 
 	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
+	"alt/connect/errorhandler"
 	"alt/domain"
 	"alt/gateway/morning_letter_connect_gateway"
 )
@@ -42,7 +43,7 @@ func (h *Handler) StreamChat(
 	_, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		h.logger.Error("authentication failed", slog.String("error", err.Error()))
-		return connect.NewError(connect.CodeUnauthenticated, err)
+		return connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Validate request
@@ -66,8 +67,7 @@ func (h *Handler) StreamChat(
 	// Call rag-orchestrator via gateway
 	upstreamStream, err := h.gateway.StreamChat(ctx, req.Msg.Messages, withinHours)
 	if err != nil {
-		h.logger.Error("failed to connect to rag-orchestrator", slog.String("error", err.Error()))
-		return connect.NewError(connect.CodeInternal, err)
+		return errorhandler.HandleInternalError(h.logger, err, "StreamChat.ConnectUpstream")
 	}
 	defer func() {
 		if closeErr := upstreamStream.Close(); closeErr != nil {
@@ -82,16 +82,14 @@ func (h *Handler) StreamChat(
 
 		// Send to downstream client
 		if err := stream.Send(event); err != nil {
-			h.logger.Error("failed to send event to client", slog.String("error", err.Error()))
-			return connect.NewError(connect.CodeInternal, err)
+			return errorhandler.HandleInternalError(h.logger, err, "StreamChat.SendEvent")
 		}
 		eventCount++
 	}
 
 	// Check for upstream errors
 	if err := upstreamStream.Err(); err != nil {
-		h.logger.Error("upstream stream error", slog.String("error", err.Error()))
-		return connect.NewError(connect.CodeInternal, err)
+		return errorhandler.HandleInternalError(h.logger, err, "StreamChat.UpstreamError")
 	}
 
 	h.logger.Info("MorningLetter.StreamChat completed",

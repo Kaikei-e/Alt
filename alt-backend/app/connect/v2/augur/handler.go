@@ -8,6 +8,7 @@ import (
 
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
+	"alt/connect/errorhandler"
 	"alt/domain"
 	"alt/port/rag_integration_port"
 	"alt/usecase/answer_chat_usecase"
@@ -49,7 +50,7 @@ func (h *Handler) StreamChat(
 	_, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		h.logger.Error("authentication failed", "error", err)
-		return connect.NewError(connect.CodeUnauthenticated, err)
+		return connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Extract last user message as query
@@ -76,8 +77,7 @@ func (h *Handler) StreamChat(
 
 	answerChan, err := h.answerChatUsecase.Execute(ctx, input)
 	if err != nil {
-		h.logger.Error("failed to execute answer chat usecase", "error", err)
-		return connect.NewError(connect.CodeInternal, err)
+		return errorhandler.HandleInternalError(h.logger, err, "StreamChat.ExecuteAnswerChat")
 	}
 
 	// Process SSE stream and convert to Connect-RPC events
@@ -114,8 +114,7 @@ func (h *Handler) StreamChat(
 
 			// Send to stream
 			if err := stream.Send(event); err != nil {
-				h.logger.Error("failed to send event", "error", err)
-				return connect.NewError(connect.CodeInternal, err)
+				return errorhandler.HandleInternalError(h.logger, err, "StreamChat.SendEvent")
 			}
 		}
 	}
@@ -276,7 +275,7 @@ func (h *Handler) RetrieveContext(
 	_, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		h.logger.Error("authentication failed", "error", err)
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	query := req.Msg.Query
@@ -289,8 +288,7 @@ func (h *Handler) RetrieveContext(
 	// Call usecase
 	contexts, err := h.retrieveContextUsecase.Execute(ctx, query)
 	if err != nil {
-		h.logger.Error("failed to retrieve context", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "RetrieveContext")
 	}
 
 	// Convert to protobuf response

@@ -15,6 +15,7 @@ import (
 	"alt/gen/proto/alt/rss/v2/rssv2connect"
 
 	"alt/config"
+	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
 	"alt/di"
 	"alt/rest"
@@ -47,7 +48,7 @@ func (h *Handler) RegisterRSSFeed(
 ) (*connect.Response[rssv2.RegisterRSSFeedResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Validate URL
@@ -70,8 +71,7 @@ func (h *Handler) RegisterRSSFeed(
 
 	// Call usecase
 	if err := h.container.RegisterFeedsUsecase.Execute(ctx, req.Msg.Url); err != nil {
-		h.logger.Error("failed to register RSS feed", "error", err, "url", req.Msg.Url)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "RegisterRSSFeed")
 	}
 
 	return connect.NewResponse(&rssv2.RegisterRSSFeedResponse{
@@ -87,14 +87,13 @@ func (h *Handler) ListRSSFeedLinks(
 ) (*connect.Response[rssv2.ListRSSFeedLinksResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Call usecase
 	links, err := h.container.ListFeedLinksUsecase.Execute(ctx)
 	if err != nil {
-		h.logger.Error("failed to list feed links", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "ListRSSFeedLinks")
 	}
 
 	// Convert to proto
@@ -119,7 +118,7 @@ func (h *Handler) DeleteRSSFeedLink(
 ) (*connect.Response[rssv2.DeleteRSSFeedLinkResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Validate ID
@@ -136,8 +135,7 @@ func (h *Handler) DeleteRSSFeedLink(
 
 	// Call usecase
 	if err := h.container.DeleteFeedLinkUsecase.Execute(ctx, linkID); err != nil {
-		h.logger.Error("failed to delete feed link", "error", err, "id", req.Msg.Id)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "DeleteRSSFeedLink")
 	}
 
 	return connect.NewResponse(&rssv2.DeleteRSSFeedLinkResponse{
@@ -153,7 +151,7 @@ func (h *Handler) RegisterFavoriteFeed(
 ) (*connect.Response[rssv2.RegisterFavoriteFeedResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Validate URL
@@ -176,8 +174,7 @@ func (h *Handler) RegisterFavoriteFeed(
 
 	// Call usecase
 	if err := h.container.RegisterFavoriteFeedUsecase.Execute(ctx, req.Msg.Url); err != nil {
-		h.logger.Error("failed to register favorite feed", "error", err, "url", req.Msg.Url)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "RegisterFavoriteFeed")
 	}
 
 	return connect.NewResponse(&rssv2.RegisterFavoriteFeedResponse{

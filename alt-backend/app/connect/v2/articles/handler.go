@@ -15,6 +15,7 @@ import (
 	"alt/gen/proto/alt/articles/v2/articlesv2connect"
 
 	"alt/config"
+	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
 	"alt/di"
 	"alt/domain"
@@ -50,7 +51,7 @@ func (h *Handler) FetchArticleContent(
 ) (*connect.Response[articlesv2.FetchArticleContentResponse], error) {
 	user, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Validate URL
@@ -85,8 +86,7 @@ func (h *Handler) FetchArticleContent(
 				fmt.Errorf("request timeout"))
 		}
 
-		h.logger.Error("failed to fetch article", "error", err, "url", req.Msg.Url)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "FetchArticleContent")
 	}
 
 	// Strip HTML tags from content
@@ -107,7 +107,7 @@ func (h *Handler) ArchiveArticle(
 ) (*connect.Response[articlesv2.ArchiveArticleResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Validate URL
@@ -139,8 +139,7 @@ func (h *Handler) ArchiveArticle(
 
 	// Call usecase
 	if err := h.container.ArchiveArticleUsecase.Execute(ctx, input); err != nil {
-		h.logger.Error("failed to archive article", "error", err, "url", req.Msg.FeedUrl)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "ArchiveArticle")
 	}
 
 	return connect.NewResponse(&articlesv2.ArchiveArticleResponse{
@@ -156,7 +155,7 @@ func (h *Handler) FetchArticlesCursor(
 ) (*connect.Response[articlesv2.FetchArticlesCursorResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Parse and validate limit
@@ -182,8 +181,7 @@ func (h *Handler) FetchArticlesCursor(
 	// Call usecase (request limit+1 to determine hasMore)
 	articles, err := h.container.FetchArticlesCursorUsecase.Execute(ctx, cursor, limit+1)
 	if err != nil {
-		h.logger.Error("failed to fetch articles", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "FetchArticlesCursor")
 	}
 
 	// Determine hasMore and trim result
@@ -234,7 +232,7 @@ func (h *Handler) FetchArticleSummary(
 ) (*connect.Response[articlesv2.FetchArticleSummaryResponse], error) {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	feedUrls := req.Msg.FeedUrls
@@ -252,8 +250,7 @@ func (h *Handler) FetchArticleSummary(
 	// Fetch summaries using existing usecase
 	summaries, err := h.container.FetchInoreaderSummaryUsecase.Execute(ctx, feedUrls)
 	if err != nil {
-		h.logger.Error("failed to fetch article summaries", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleInternalError(h.logger, err, "FetchArticleSummary")
 	}
 
 	// Convert to proto response
