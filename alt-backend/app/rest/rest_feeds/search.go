@@ -14,7 +14,7 @@ func RestHandleSearchFeeds(container *di.ApplicationComponents) echo.HandlerFunc
 		err := c.Bind(&payload)
 		if err != nil {
 			logger.Logger.Error("Error binding search payload", "error", err)
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return HandleValidationError(c, "Invalid request format", "body", nil)
 		}
 
 		if payload.Query == "" {
@@ -51,7 +51,7 @@ func RestHandleSearchFeeds(container *di.ApplicationComponents) echo.HandlerFunc
 			results, hasMore, err := container.FeedSearchUsecase.ExecuteWithPagination(c.Request().Context(), payload.Query, offset, limit)
 			if err != nil {
 				logger.Logger.Error("Error executing feed search with pagination", "error", err, "query", payload.Query)
-				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return HandleError(c, err, "SearchFeedsWithPagination")
 			}
 
 			logger.Logger.Info("Feed search with pagination completed successfully",
@@ -86,7 +86,7 @@ func RestHandleSearchFeeds(container *di.ApplicationComponents) echo.HandlerFunc
 		results, err := container.FeedSearchUsecase.Execute(c.Request().Context(), payload.Query)
 		if err != nil {
 			logger.Logger.Error("Error executing feed search", "error", err, "query", payload.Query)
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return HandleError(c, err, "SearchFeeds")
 		}
 
 		logger.Logger.Info("Feed search completed successfully", "query", payload.Query, "results_count", len(results))

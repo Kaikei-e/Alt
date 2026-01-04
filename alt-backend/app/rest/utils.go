@@ -22,7 +22,9 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// HandleError converts errors to appropriate HTTP responses using enhanced error handling
+// HandleError converts errors to appropriate HTTP responses using enhanced error handling.
+// IMPORTANT: This function ensures internal error details are NEVER exposed to clients.
+// All error messages are sanitized using SafeMessage() before being returned.
 func HandleError(c echo.Context, err error, operation string) error {
 	// Enrich error with REST layer context
 	var enrichedErr *errors.AppContextError
@@ -78,22 +80,18 @@ func HandleError(c echo.Context, err error, operation string) error {
 		)
 	}
 
-	// Log the error
+	// Log the full error details (internal only - never sent to client)
 	logger.Logger.Error(
 		"REST API Error",
+		"error_id", enrichedErr.ErrorID,
 		"error", enrichedErr.Error(),
 		"code", enrichedErr.Code,
 		"operation", operation,
 		"path", c.Request().URL.Path,
 	)
 
-	// Return JSON response
-	return c.JSON(enrichedErr.HTTPStatusCode(), map[string]interface{}{
-		"error": map[string]interface{}{
-			"code":    enrichedErr.Code,
-			"message": enrichedErr.Message,
-		},
-	})
+	// Return secure JSON response (SafeMessage() ensures no internal details leak)
+	return c.JSON(enrichedErr.HTTPStatusCode(), enrichedErr.ToSecureHTTPResponse())
 }
 
 // handleValidationError handles validation errors

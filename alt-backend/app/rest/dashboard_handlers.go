@@ -39,9 +39,7 @@ func handleGetMetrics(gateway *dashboard_gateway.DashboardGateway) echo.HandlerF
 
 		data, err := gateway.GetMetrics(c.Request().Context(), metricType, windowSeconds, limit)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": err.Error(),
-			})
+			return HandleError(c, err, "GetMetrics")
 		}
 
 		c.Response().Header().Set("Content-Type", "application/json")
@@ -62,9 +60,7 @@ func handleGetOverview(gateway *dashboard_gateway.DashboardGateway) echo.Handler
 
 		data, err := gateway.GetOverview(c.Request().Context(), windowSeconds, limit)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": err.Error(),
-			})
+			return HandleError(c, err, "GetOverview")
 		}
 
 		c.Response().Header().Set("Content-Type", "application/json")
@@ -85,9 +81,7 @@ func handleGetLogs(gateway *dashboard_gateway.DashboardGateway) echo.HandlerFunc
 
 		data, err := gateway.GetLogs(c.Request().Context(), windowSeconds, limit)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": err.Error(),
-			})
+			return HandleError(c, err, "GetLogs")
 		}
 
 		c.Response().Header().Set("Content-Type", "application/json")
@@ -108,9 +102,7 @@ func handleGetJobs(gateway *dashboard_gateway.DashboardGateway) echo.HandlerFunc
 
 		data, err := gateway.GetJobs(c.Request().Context(), windowSeconds, limit)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": err.Error(),
-			})
+			return HandleError(c, err, "GetJobs")
 		}
 
 		c.Response().Header().Set("Content-Type", "application/json")
@@ -131,9 +123,7 @@ func handleGetRecapJobs(usecase dashboard_usecase.GetRecapJobsUsecase) echo.Hand
 
 		jobs, err := usecase.Execute(c.Request().Context(), windowSeconds, limit)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": err.Error(),
-			})
+			return HandleError(c, err, "GetRecapJobs")
 		}
 
 		c.Response().Header().Set("Content-Type", "application/json")

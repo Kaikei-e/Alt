@@ -19,24 +19,24 @@ func RestHandleFetchFeedDetails(container *di.ApplicationComponents) echo.Handle
 		err := c.Bind(&payload)
 		if err != nil {
 			logger.Logger.Error("Error binding feed URL", "error", err)
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return HandleValidationError(c, "Invalid request format", "body", nil)
 		}
 
 		feedURLParsed, err := url.Parse(payload.FeedURL)
 		if err != nil {
 			logger.Logger.Error("Error parsing feed URL", "error", err)
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return HandleValidationError(c, "Invalid URL format", "feed_url", payload.FeedURL)
 		}
 
 		err = IsAllowedURL(feedURLParsed)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return HandleValidationError(c, "URL not allowed for security reasons", "feed_url", payload.FeedURL)
 		}
 
 		details, err := container.FeedsSummaryUsecase.Execute(c.Request().Context(), feedURLParsed)
 		if err != nil {
 			logger.Logger.Error("Error fetching feed details", "error", err)
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return HandleError(c, err, "FetchFeedDetails")
 		}
 		return c.JSON(http.StatusOK, details)
 	}

@@ -34,7 +34,7 @@ func (h *AugurHandler) RetrieveContext(c echo.Context) error {
 
 	contexts, err := h.retrieveContextUsecase.Execute(c.Request().Context(), query)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return HandleError(c, err, "RetrieveContext")
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -78,7 +78,7 @@ func (h *AugurHandler) Answer(c echo.Context) error {
 
 	answerChan, err := h.answerChatUsecase.Execute(c.Request().Context(), input)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return HandleError(c, err, "Answer")
 	}
 
 	if req.Stream {

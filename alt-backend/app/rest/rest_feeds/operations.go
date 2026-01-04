@@ -18,17 +18,17 @@ func RestHandleMarkFeedAsRead(container *di.ApplicationComponents) echo.HandlerF
 		err := c.Bind(&readStatus)
 		if err != nil {
 			logger.Logger.Error("Error binding read status", "error", err)
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return HandleValidationError(c, "Invalid request format", "body", nil)
 		}
 		feedURL, err := url.Parse(readStatus.FeedURL)
 		if err != nil {
 			logger.Logger.Error("Error parsing feed URL", "error", err)
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return HandleValidationError(c, "Invalid URL format", "feed_url", readStatus.FeedURL)
 		}
 		err = container.FeedsReadingStatusUsecase.Execute(c.Request().Context(), *feedURL)
 		if err != nil {
 			logger.Logger.Error("Error updating feed read status", "error", err)
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return HandleError(c, err, "MarkFeedAsRead")
 		}
 
 		logger.Logger.Info("Feed read status updated", "feedURL", feedURL)
