@@ -92,6 +92,9 @@ def _get_embedder(settings: Settings) -> Embedder:
             onnx_tokenizer_name=settings.onnx_tokenizer_name,
             onnx_pooling=settings.onnx_pooling,
             onnx_max_length=settings.onnx_max_length,
+            ollama_embed_url=settings.ollama_embed_url,
+            ollama_embed_model=settings.ollama_embed_model,
+            ollama_embed_timeout=settings.ollama_embed_timeout,
         )
         _embedder = Embedder(config)
     return _embedder

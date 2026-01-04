@@ -98,6 +98,9 @@ class EvaluationService:
             device=self.settings.device,
             batch_size=self.settings.batch_size,
             cache_size=self.settings.embed_cache_size,
+            ollama_embed_url=self.settings.ollama_embed_url,
+            ollama_embed_model=self.settings.ollama_embed_model,
+            ollama_embed_timeout=self.settings.ollama_embed_timeout,
         )
         self.embedder = Embedder(config)
 

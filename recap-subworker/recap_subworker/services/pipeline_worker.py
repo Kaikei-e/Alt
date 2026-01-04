@@ -43,6 +43,9 @@ def initialize(settings_payload: dict[str, Any]) -> None:
             device=settings.device,
             batch_size=settings.batch_size,
             cache_size=settings.embed_cache_size,
+            ollama_embed_url=settings.ollama_embed_url,
+            ollama_embed_model=settings.ollama_embed_model,
+            ollama_embed_timeout=settings.ollama_embed_timeout,
         )
         embedder = Embedder(config)
 
