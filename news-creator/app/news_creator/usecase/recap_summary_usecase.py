@@ -717,7 +717,7 @@ class RecapSummaryUsecase:
 
         sanitized = {
             "title": title,
-            "bullets": [bullet[:500] for bullet in bullets],
+            "bullets": [bullet[:1000] for bullet in bullets],
             "language": language,
         }
         if references:
