@@ -1,6 +1,8 @@
 package errors
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 )
@@ -15,6 +17,7 @@ type AppContextError struct {
 	Operation string                 `json:"operation,omitempty"` // Specific operation/method name
 	Cause     error                  `json:"-"`                   // Underlying error (not serialized)
 	Context   map[string]interface{} `json:"context,omitempty"`   // Additional context information
+	ErrorID   string                 `json:"-"`                   // Unique ID for log correlation (not serialized to legacy response)
 }
 
 // Error implements the error interface
@@ -91,6 +94,16 @@ func (e *AppContextError) IsRetryable() bool {
 	}
 }
 
+// generateErrorID generates a short unique error ID for log correlation
+func generateErrorID() string {
+	b := make([]byte, 4) // 4 bytes = 8 hex characters
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to a fixed ID if random generation fails
+		return "00000000"
+	}
+	return hex.EncodeToString(b)
+}
+
 // NewAppContextError creates a new AppContextError with full context
 func NewAppContextError(
 	code, message, layer, component, operation string,
@@ -109,6 +122,7 @@ func NewAppContextError(
 		Operation: operation,
 		Cause:     cause,
 		Context:   context,
+		ErrorID:   generateErrorID(),
 	}
 }
 
@@ -201,4 +215,55 @@ func NewUnknownContextError(message, layer, component, operation string, cause e
 	}
 	context["error_type"] = "unknown"
 	return NewAppContextError("UNKNOWN_ERROR", message, layer, component, operation, cause, context)
+}
+
+// safeMessages maps error codes to user-friendly, non-leaking messages
+var safeMessages = map[string]string{
+	"DATABASE_ERROR":        "A temporary service error occurred. Please try again later.",
+	"EXTERNAL_API_ERROR":    "Unable to connect to external service. Please try again.",
+	"VALIDATION_ERROR":      "", // Use original message (safe by design)
+	"RATE_LIMIT_ERROR":      "Too many requests. Please wait before trying again.",
+	"TIMEOUT_ERROR":         "The request took too long. Please try again.",
+	"TLS_CERTIFICATE_ERROR": "Unable to establish secure connection.",
+	"UNKNOWN_ERROR":         "An unexpected error occurred. Please try again later.",
+}
+
+// SafeMessage returns a user-friendly message that does not leak internal details.
+// For VALIDATION_ERROR, the original message is returned as it is designed to be safe.
+// For other error types, a generic safe message is returned.
+func (e *AppContextError) SafeMessage() string {
+	if msg, ok := safeMessages[e.Code]; ok && msg != "" {
+		return msg
+	}
+	// VALIDATION_ERROR uses original message (safe by design)
+	if e.Code == "VALIDATION_ERROR" {
+		return e.Message
+	}
+	return "An error occurred."
+}
+
+// SecureHTTPResponse represents a secure HTTP error response that does not leak internal details
+type SecureHTTPResponse struct {
+	Error SecureErrorDetail `json:"error"`
+}
+
+// SecureErrorDetail contains the error details for SecureHTTPResponse
+type SecureErrorDetail struct {
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	ErrorID   string `json:"error_id,omitempty"`
+	Retryable bool   `json:"retryable,omitempty"`
+}
+
+// ToSecureHTTPResponse converts an AppContextError to a secure HTTP response
+// that does not expose internal error details to the client
+func (e *AppContextError) ToSecureHTTPResponse() SecureHTTPResponse {
+	return SecureHTTPResponse{
+		Error: SecureErrorDetail{
+			Code:      e.Code,
+			Message:   e.SafeMessage(),
+			ErrorID:   e.ErrorID,
+			Retryable: e.IsRetryable(),
+		},
+	}
 }
