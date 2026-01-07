@@ -56,6 +56,7 @@ RUN python -c "import torch; print(f'PyTorch {torch.__version__}')" && \
 RUN --mount=type=cache,target=/tmp/hf_cache \
     --mount=type=cache,target=/tmp/nltk_cache \
     HF_HOME=/tmp/hf_cache NLTK_DATA=/tmp/nltk_cache python - <<'PY' && \
+    mkdir -p /root/.cache && \
     cp -r /tmp/hf_cache /root/.cache/huggingface && \
     cp -r /tmp/nltk_cache /root/nltk_data
 import nltk
