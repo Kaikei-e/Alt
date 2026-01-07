@@ -280,11 +280,21 @@ class Embedder:
 
             def _get_embeddings(self, texts: list[str]) -> list[list[float]]:
                 """Call Ollama API to get embeddings."""
-                response = self._client.post(
-                    f"{self.url}/api/embed",
-                    json={"model": self.model, "input": texts},
-                )
-                response.raise_for_status()
+                try:
+                    response = self._client.post(
+                        f"{self.url}/api/embed",
+                        json={"model": self.model, "input": texts},
+                    )
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    # HTTPStatusError is not picklable (keyword-only args issue)
+                    # Re-raise as a simple RuntimeError for multiprocessing compatibility
+                    # See: https://github.com/encode/httpx/discussions/1562
+                    raise RuntimeError(
+                        f"Ollama API error: {exc.response.status_code} - {exc.response.text[:200]}"
+                    ) from None
+                except httpx.RequestError as exc:
+                    raise RuntimeError(f"Ollama API request failed: {exc}") from None
                 data = response.json()
                 return data["embeddings"]
 
