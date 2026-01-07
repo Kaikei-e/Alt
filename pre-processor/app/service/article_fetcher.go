@@ -16,6 +16,7 @@ import (
 	"pre-processor/models"
 	"pre-processor/retry"
 	"pre-processor/utils"
+	apperrors "pre-processor/utils/errors"
 )
 
 // URL scheme constants
@@ -72,7 +73,7 @@ func NewArticleFetcherServiceWithRetryAndDLQ(logger *slog.Logger, retrier *retry
 			BackoffFactor: 2.0,
 			JitterFactor:  0.1,
 		}
-		retrier = retry.NewRetrier(retryConfig, IsRetryableError, logger)
+		retrier = retry.NewRetrier(retryConfig, apperrors.IsRetryable, logger)
 	}
 
 	return &articleFetcherService{
@@ -113,7 +114,7 @@ func NewArticleFetcherServiceWithFactoryAndDLQ(cfg *config.Config, logger *slog.
 			BackoffFactor: 2.0,
 			JitterFactor:  0.1,
 		}
-		retrier = retry.NewRetrier(retryConfig, IsRetryableError, logger)
+		retrier = retry.NewRetrier(retryConfig, apperrors.IsRetryable, logger)
 	}
 
 	factory := NewHTTPClientFactory(cfg, logger)

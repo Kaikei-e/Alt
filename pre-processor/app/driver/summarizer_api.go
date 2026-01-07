@@ -3,7 +3,6 @@ package driver
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,6 +10,7 @@ import (
 	"strings"
 
 	"pre-processor/config"
+	"pre-processor/domain"
 	"pre-processor/models"
 	"pre-processor/utils"
 	"pre-processor/utils/html_parser"
@@ -39,8 +39,9 @@ type SummarizeResponse struct {
 	TotalDurationMs  *float64 `json:"total_duration_ms,omitempty"`
 }
 
-// ErrContentTooShort is returned when article content is too short for summarization
-var ErrContentTooShort = errors.New("article content too short for summarization (less than 100 characters)")
+// ErrContentTooShort is an alias for domain.ErrContentTooShort for backward compatibility
+// Deprecated: Use domain.ErrContentTooShort directly
+var ErrContentTooShort = domain.ErrContentTooShort
 
 func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cfg *config.Config, logger *slog.Logger) (*SummarizedContent, error) {
 	// Zero Trust: Always extract text from content before sending to news-creator

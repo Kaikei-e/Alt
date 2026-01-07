@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"pre-processor/config"
+	"pre-processor/domain"
 	"pre-processor/driver"
 	"pre-processor/models"
 )
@@ -59,9 +60,9 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 	driverSummary, err := driver.ArticleSummarizerAPIClient(ctx, article, r.config, r.logger)
 	if err != nil {
 		// Handle content too short as a normal case, not an error
-		if errors.Is(err, driver.ErrContentTooShort) {
+		if errors.Is(err, domain.ErrContentTooShort) {
 			r.logger.Info("skipping summarization: content too short", "article_id", article.ID)
-			return nil, driver.ErrContentTooShort
+			return nil, domain.ErrContentTooShort
 		}
 		r.logger.Error("failed to summarize article", "error", err, "article_id", article.ID)
 		return nil, fmt.Errorf("failed to summarize article: %w", err)
@@ -101,9 +102,9 @@ func (r *externalAPIRepository) StreamSummarizeArticle(ctx context.Context, arti
 	// Use driver function for streaming
 	streamBody, err := driver.StreamArticleSummarizerAPIClient(ctx, article, r.config, r.logger)
 	if err != nil {
-		if errors.Is(err, driver.ErrContentTooShort) {
+		if errors.Is(err, domain.ErrContentTooShort) {
 			r.logger.Info("skipping summarization: content too short", "article_id", article.ID)
-			return nil, driver.ErrContentTooShort
+			return nil, domain.ErrContentTooShort
 		}
 		r.logger.Error("failed to start streaming summary", "error", err, "article_id", article.ID)
 		return nil, fmt.Errorf("failed to start streaming summary: %w", err)

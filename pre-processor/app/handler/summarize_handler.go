@@ -8,9 +8,10 @@ import (
 	"net/http"
 	"strings"
 
-	"pre-processor/driver"
+	"pre-processor/domain"
 	"pre-processor/models"
 	"pre-processor/repository"
+	apperrors "pre-processor/utils/errors"
 	"pre-processor/utils/html_parser"
 
 	"github.com/labstack/echo/v4"
@@ -57,14 +58,20 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 	// Parse request body
 	var req SummarizeRequest
 	if err := c.Bind(&req); err != nil {
-		h.logger.Error("failed to bind request", "error", err)
-		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request format")
+		return apperrors.NewValidationContextError(
+			"invalid request format",
+			"handler", "SummarizeHandler", "HandleSummarize",
+			map[string]interface{}{"bind_error": err.Error()},
+		)
 	}
 
 	// Validate required fields
 	if req.ArticleID == "" {
-		h.logger.Warn("empty article_id provided")
-		return echo.NewHTTPError(http.StatusBadRequest, "Article ID cannot be empty")
+		return apperrors.NewValidationContextError(
+			domain.ErrMissingArticleID.Error(),
+			"handler", "SummarizeHandler", "HandleSummarize",
+			nil,
+		)
 	}
 
 	// If content is empty, try to fetch from DB
@@ -72,16 +79,26 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 		h.logger.Info("content is empty, fetching from DB", "article_id", req.ArticleID)
 		fetchedArticle, err := h.articleRepo.FindByID(ctx, req.ArticleID)
 		if err != nil {
-			h.logger.Error("failed to fetch article from DB", "error", err, "article_id", req.ArticleID)
-			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch article content")
+			return apperrors.NewDatabaseContextError(
+				"failed to fetch article content",
+				"handler", "SummarizeHandler", "HandleSummarize",
+				err,
+				map[string]interface{}{"article_id": req.ArticleID},
+			)
 		}
 		if fetchedArticle == nil {
-			h.logger.Warn("article not found in DB", "article_id", req.ArticleID)
-			return echo.NewHTTPError(http.StatusNotFound, "Article not found")
+			return apperrors.NewNotFoundContextError(
+				domain.ErrArticleNotFound.Error(),
+				"handler", "SummarizeHandler", "HandleSummarize",
+				map[string]interface{}{"article_id": req.ArticleID},
+			)
 		}
 		if fetchedArticle.Content == "" {
-			h.logger.Warn("article found but content is empty", "article_id", req.ArticleID)
-			return echo.NewHTTPError(http.StatusBadRequest, "Article content is empty in database")
+			return apperrors.NewValidationContextError(
+				domain.ErrArticleContentEmpty.Error(),
+				"handler", "SummarizeHandler", "HandleSummarize",
+				map[string]interface{}{"article_id": req.ArticleID},
+			)
 		}
 		// Zero Trust: Always extract text from content (HTML or not)
 		// This ensures we never send raw HTML to downstream services
@@ -112,8 +129,11 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 	}
 
 	if req.Content == "" {
-		h.logger.Warn("empty content provided and not found in DB", "article_id", req.ArticleID)
-		return echo.NewHTTPError(http.StatusBadRequest, "Content cannot be empty")
+		return apperrors.NewValidationContextError(
+			domain.ErrEmptyContent.Error(),
+			"handler", "SummarizeHandler", "HandleSummarize",
+			map[string]interface{}{"article_id": req.ArticleID},
+		)
 	}
 
 	// Zero Trust: Ensure content is extracted text before processing
@@ -135,8 +155,12 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 	// Call summarization service
 	summarized, err := h.apiRepo.SummarizeArticle(ctx, article)
 	if err != nil {
-		h.logger.Error("failed to summarize article", "error", err, "article_id", req.ArticleID)
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate summary")
+		return apperrors.NewExternalAPIContextError(
+			"failed to generate summary",
+			"handler", "SummarizeHandler", "HandleSummarize",
+			err,
+			map[string]interface{}{"article_id": req.ArticleID},
+		)
 	}
 
 	h.logger.Info("article summarized successfully", "article_id", req.ArticleID)
@@ -192,14 +216,20 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 	// Parse request body
 	var req SummarizeRequest
 	if err := c.Bind(&req); err != nil {
-		h.logger.Error("failed to bind request", "error", err)
-		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request format")
+		return apperrors.NewValidationContextError(
+			"invalid request format",
+			"handler", "SummarizeHandler", "HandleStreamSummarize",
+			map[string]interface{}{"bind_error": err.Error()},
+		)
 	}
 
 	// Validate required fields
 	if req.ArticleID == "" {
-		h.logger.Warn("empty article_id provided")
-		return echo.NewHTTPError(http.StatusBadRequest, "Article ID cannot be empty")
+		return apperrors.NewValidationContextError(
+			domain.ErrMissingArticleID.Error(),
+			"handler", "SummarizeHandler", "HandleStreamSummarize",
+			nil,
+		)
 	}
 
 	// If content is empty, try to fetch from DB
@@ -207,12 +237,19 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 		h.logger.Info("content is empty, fetching from DB for stream", "article_id", req.ArticleID)
 		fetchedArticle, err := h.articleRepo.FindByID(ctx, req.ArticleID)
 		if err != nil {
-			h.logger.Error("failed to fetch article from DB", "error", err, "article_id", req.ArticleID)
-			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch article content")
+			return apperrors.NewDatabaseContextError(
+				"failed to fetch article content",
+				"handler", "SummarizeHandler", "HandleStreamSummarize",
+				err,
+				map[string]interface{}{"article_id": req.ArticleID},
+			)
 		}
 		if fetchedArticle == nil {
-			h.logger.Warn("article not found in DB", "article_id", req.ArticleID)
-			return echo.NewHTTPError(http.StatusNotFound, "Article not found")
+			return apperrors.NewNotFoundContextError(
+				domain.ErrArticleNotFound.Error(),
+				"handler", "SummarizeHandler", "HandleStreamSummarize",
+				map[string]interface{}{"article_id": req.ArticleID},
+			)
 		}
 
 		// Zero Trust extraction logic
@@ -230,8 +267,11 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 	}
 
 	if req.Content == "" {
-		h.logger.Warn("empty content provided and not found in DB", "article_id", req.ArticleID)
-		return echo.NewHTTPError(http.StatusBadRequest, "Content cannot be empty")
+		return apperrors.NewValidationContextError(
+			domain.ErrEmptyContent.Error(),
+			"handler", "SummarizeHandler", "HandleStreamSummarize",
+			map[string]interface{}{"article_id": req.ArticleID},
+		)
 	}
 
 	// Zero Trust re-extraction
@@ -250,12 +290,19 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 	stream, err := h.apiRepo.StreamSummarizeArticle(ctx, article)
 	if err != nil {
 		// Check if it's a content too short error
-		if errors.Is(err, driver.ErrContentTooShort) {
-			h.logger.Warn("content too short for streaming summarization", "article_id", req.ArticleID, "content_length", len(req.Content))
-			return echo.NewHTTPError(http.StatusBadRequest, "Content is too short for summarization (minimum 100 characters required)")
+		if errors.Is(err, domain.ErrContentTooShort) {
+			return apperrors.NewValidationContextError(
+				domain.ErrContentTooShort.Error(),
+				"handler", "SummarizeHandler", "HandleStreamSummarize",
+				map[string]interface{}{"article_id": req.ArticleID, "content_length": len(req.Content)},
+			)
 		}
-		h.logger.Error("failed to start streaming summary", "error", err, "article_id", req.ArticleID, "error_type", fmt.Sprintf("%T", err))
-		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to generate summary stream: %v", err))
+		return apperrors.NewExternalAPIContextError(
+			"failed to generate summary stream",
+			"handler", "SummarizeHandler", "HandleStreamSummarize",
+			err,
+			map[string]interface{}{"article_id": req.ArticleID},
+		)
 	}
 	defer func() {
 		if cerr := stream.Close(); cerr != nil {
@@ -333,14 +380,20 @@ func (h *SummarizeHandler) HandleSummarizeQueue(c echo.Context) error {
 	// Parse request body
 	var req SummarizeQueueRequest
 	if err := c.Bind(&req); err != nil {
-		h.logger.Error("failed to bind request", "error", err)
-		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request format")
+		return apperrors.NewValidationContextError(
+			"invalid request format",
+			"handler", "SummarizeHandler", "HandleSummarizeQueue",
+			map[string]interface{}{"bind_error": err.Error()},
+		)
 	}
 
 	// Validate required fields
 	if req.ArticleID == "" {
-		h.logger.Warn("empty article_id provided")
-		return echo.NewHTTPError(http.StatusBadRequest, "Article ID cannot be empty")
+		return apperrors.NewValidationContextError(
+			domain.ErrMissingArticleID.Error(),
+			"handler", "SummarizeHandler", "HandleSummarizeQueue",
+			nil,
+		)
 	}
 
 	h.logger.Info("queueing summarization job", "article_id", req.ArticleID)
@@ -348,8 +401,12 @@ func (h *SummarizeHandler) HandleSummarizeQueue(c echo.Context) error {
 	// Create job in queue
 	jobID, err := h.jobRepo.CreateJob(ctx, req.ArticleID)
 	if err != nil {
-		h.logger.Error("failed to create summarization job", "error", err, "article_id", req.ArticleID)
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to queue summarization job")
+		return apperrors.NewDatabaseContextError(
+			"failed to queue summarization job",
+			"handler", "SummarizeHandler", "HandleSummarizeQueue",
+			err,
+			map[string]interface{}{"article_id": req.ArticleID},
+		)
 	}
 
 	h.logger.Info("summarization job queued successfully", "job_id", jobID, "article_id", req.ArticleID)
@@ -380,8 +437,11 @@ func (h *SummarizeHandler) HandleSummarizeStatus(c echo.Context) error {
 
 	jobID := c.Param("job_id")
 	if jobID == "" {
-		h.logger.Warn("empty job_id provided")
-		return echo.NewHTTPError(http.StatusBadRequest, "Job ID cannot be empty")
+		return apperrors.NewValidationContextError(
+			"job ID is required",
+			"handler", "SummarizeHandler", "HandleSummarizeStatus",
+			nil,
+		)
 	}
 
 	h.logger.Debug("checking summarization job status", "job_id", jobID)
@@ -389,8 +449,11 @@ func (h *SummarizeHandler) HandleSummarizeStatus(c echo.Context) error {
 	// Get job from queue
 	job, err := h.jobRepo.GetJob(ctx, jobID)
 	if err != nil {
-		h.logger.Warn("summarization job not found", "job_id", jobID, "error", err)
-		return echo.NewHTTPError(http.StatusNotFound, "Job not found")
+		return apperrors.NewNotFoundContextError(
+			domain.ErrJobNotFound.Error(),
+			"handler", "SummarizeHandler", "HandleSummarizeStatus",
+			map[string]interface{}{"job_id": jobID},
+		)
 	}
 
 	response := SummarizeStatusResponse{

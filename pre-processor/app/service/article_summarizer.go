@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"pre-processor/driver"
+	"pre-processor/domain"
 	"pre-processor/models"
 	"pre-processor/repository"
 )
@@ -75,7 +75,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 		summarizedContent, err := s.apiRepo.SummarizeArticle(ctx, article)
 		if err != nil {
 			// Handle content too short: Save a placeholder summary to mark as processed
-			if errors.Is(err, driver.ErrContentTooShort) {
+			if errors.Is(err, domain.ErrContentTooShort) {
 				s.logger.Info("article content too short, saving placeholder summary",
 					"article_id", article.ID,
 					"content_length", len(article.Content))
