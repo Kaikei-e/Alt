@@ -3,11 +3,13 @@
 package errorhandler
 
 import (
+	stderrors "errors"
 	"fmt"
 	"log/slog"
 
 	"connectrpc.com/connect"
 
+	"alt/driver/search_indexer"
 	"alt/utils/errors"
 )
 
@@ -37,14 +39,8 @@ func HandleConnectError(logger *slog.Logger, err error, code connect.Code, opera
 			nil,
 		)
 	} else {
-		enrichedErr = errors.NewUnknownContextError(
-			"internal server error",
-			"connect",
-			"ConnectHandler",
-			operation,
-			err,
-			nil,
-		)
+		// Check for specific driver errors before falling back to unknown error
+		enrichedErr = classifyDriverError(err, operation)
 	}
 
 	// Log the full error details (internal only - never sent to client)
@@ -100,4 +96,41 @@ func HandleNotFoundError(logger *slog.Logger, message string, operation string) 
 // HandleUnauthenticatedError is a convenience wrapper for authentication errors
 func HandleUnauthenticatedError(logger *slog.Logger, err error, operation string) *connect.Error {
 	return HandleConnectError(logger, err, connect.CodeUnauthenticated, operation)
+}
+
+// classifyDriverError checks for specific driver errors and returns appropriate AppContextError
+func classifyDriverError(err error, operation string) *errors.AppContextError {
+	// Check for search service unavailable error
+	if stderrors.Is(err, search_indexer.ErrSearchServiceUnavailable) {
+		return errors.NewExternalAPIContextError(
+			"Search service is temporarily unavailable",
+			"connect",
+			"ConnectHandler",
+			operation,
+			err,
+			map[string]interface{}{"service": "search-indexer"},
+		)
+	}
+
+	// Check for search timeout error
+	if stderrors.Is(err, search_indexer.ErrSearchTimeout) {
+		return errors.NewTimeoutContextError(
+			"Search request timed out",
+			"connect",
+			"ConnectHandler",
+			operation,
+			err,
+			map[string]interface{}{"service": "search-indexer"},
+		)
+	}
+
+	// Default to unknown error
+	return errors.NewUnknownContextError(
+		"internal server error",
+		"connect",
+		"ConnectHandler",
+		operation,
+		err,
+		nil,
+	)
 }

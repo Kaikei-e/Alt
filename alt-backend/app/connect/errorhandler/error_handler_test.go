@@ -8,6 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"alt/driver/search_indexer"
 	appErrors "alt/utils/errors"
 )
 
@@ -157,5 +158,96 @@ func TestHandleInternalError_DoesNotLeakSensitiveInfo(t *testing.T) {
 			strings.Contains(msg, "6379") {
 			t.Errorf("error message leaked sensitive info: %s", msg)
 		}
+	}
+}
+
+func TestHandleInternalError_SearchServiceUnavailable(t *testing.T) {
+	logger := slog.Default()
+
+	connectErr := HandleInternalError(logger, search_indexer.ErrSearchServiceUnavailable, "SearchFeeds")
+
+	if connectErr == nil {
+		t.Fatal("expected connect error, got nil")
+	}
+
+	if connectErr.Code() != connect.CodeInternal {
+		t.Errorf("expected CodeInternal, got %v", connectErr.Code())
+	}
+
+	msg := connectErr.Message()
+
+	// Should return a user-friendly message for external API errors
+	if !strings.Contains(msg, "external service") {
+		t.Errorf("expected external service error message, got: %s", msg)
+	}
+
+	// Should contain Error ID for traceability
+	if !strings.Contains(msg, "Error ID:") {
+		t.Error("error message should contain Error ID for traceability")
+	}
+
+	// Should NOT contain internal error details
+	if strings.Contains(msg, "search service unavailable") {
+		t.Error("error message should not contain internal error details")
+	}
+}
+
+func TestHandleInternalError_SearchTimeout(t *testing.T) {
+	logger := slog.Default()
+
+	connectErr := HandleInternalError(logger, search_indexer.ErrSearchTimeout, "SearchFeeds")
+
+	if connectErr == nil {
+		t.Fatal("expected connect error, got nil")
+	}
+
+	if connectErr.Code() != connect.CodeInternal {
+		t.Errorf("expected CodeInternal, got %v", connectErr.Code())
+	}
+
+	msg := connectErr.Message()
+
+	// Should return a user-friendly message for timeout errors
+	if !strings.Contains(msg, "too long") {
+		t.Errorf("expected timeout error message, got: %s", msg)
+	}
+
+	// Should contain Error ID for traceability
+	if !strings.Contains(msg, "Error ID:") {
+		t.Error("error message should contain Error ID for traceability")
+	}
+}
+
+func TestClassifyDriverError_SearchErrors(t *testing.T) {
+	tests := []struct {
+		name         string
+		err          error
+		expectedCode string
+	}{
+		{
+			name:         "search service unavailable",
+			err:          search_indexer.ErrSearchServiceUnavailable,
+			expectedCode: "EXTERNAL_API_ERROR",
+		},
+		{
+			name:         "search timeout",
+			err:          search_indexer.ErrSearchTimeout,
+			expectedCode: "TIMEOUT_ERROR",
+		},
+		{
+			name:         "unknown error",
+			err:          errors.New("some random error"),
+			expectedCode: "UNKNOWN_ERROR",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := classifyDriverError(tt.err, "TestOperation")
+
+			if result.Code != tt.expectedCode {
+				t.Errorf("expected code %s, got %s", tt.expectedCode, result.Code)
+			}
+		})
 	}
 }

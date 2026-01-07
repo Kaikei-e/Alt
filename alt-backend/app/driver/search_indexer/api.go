@@ -4,13 +4,21 @@ import (
 	"alt/driver/models"
 	"alt/utils/logger"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
+)
 
-	"errors"
+// Specific error types for search service failures
+var (
+	// ErrSearchServiceUnavailable is returned when the search-indexer service cannot be reached
+	ErrSearchServiceUnavailable = errors.New("search service unavailable")
+	// ErrSearchTimeout is returned when the search request times out
+	ErrSearchTimeout = errors.New("search request timed out")
 )
 
 func SearchArticles(query string) ([]models.SearchArticlesHit, error) {
@@ -40,7 +48,15 @@ func SearchArticles(query string) ([]models.SearchArticlesHit, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Logger.Error("Failed to send request", "error", err)
-		return nil, errors.New("failed to send request")
+		// Check if it's a timeout error
+		if isTimeoutError(err) {
+			return nil, ErrSearchTimeout
+		}
+		// Check if it's a connection error (service unavailable)
+		if isConnectionError(err) {
+			return nil, ErrSearchServiceUnavailable
+		}
+		return nil, ErrSearchServiceUnavailable
 	}
 
 	defer func() {
@@ -110,7 +126,15 @@ func SearchArticlesWithUserID(query string, userID string) ([]models.SearchArtic
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Logger.Error("Failed to send request", "error", err, "user_id", userID)
-		return nil, errors.New("failed to send request")
+		// Check if it's a timeout error
+		if isTimeoutError(err) {
+			return nil, ErrSearchTimeout
+		}
+		// Check if it's a connection error (service unavailable)
+		if isConnectionError(err) {
+			return nil, ErrSearchServiceUnavailable
+		}
+		return nil, ErrSearchServiceUnavailable
 	}
 
 	defer func() {
@@ -181,4 +205,28 @@ func BuildSearchURLWithUserID(baseURL, path, query, userID string) (string, erro
 	u.RawQuery = vals.Encode()
 
 	return u.String(), nil
+}
+
+// isTimeoutError checks if the error is a timeout error
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "Timeout") ||
+		strings.Contains(errStr, "deadline exceeded")
+}
+
+// isConnectionError checks if the error is a connection error
+func isConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "no such host") ||
+		strings.Contains(errStr, "dial tcp") ||
+		strings.Contains(errStr, "connect:") ||
+		strings.Contains(errStr, "i/o timeout")
 }
