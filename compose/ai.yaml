@@ -6,6 +6,7 @@ include:
 
 services:
   news-creator:
+    container_name: news-creator
     env_file:
       - ../.env
     build:
