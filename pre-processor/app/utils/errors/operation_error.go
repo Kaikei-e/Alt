@@ -134,15 +134,8 @@ func GetTraceID(ctx context.Context) string {
 	return ""
 }
 
-// IsRetryable checks if an error is retryable
-func IsRetryable(err error) bool {
-	if opErr, ok := err.(*OperationError); ok {
-		return opErr.Retryable
-	}
-	return false
-}
-
 // ClassifyError categorizes errors based on their nature
+// Deprecated: Use AppContextError.IsRetryable() or utils/errors.IsRetryable() instead
 func ClassifyError(err error) ErrorType {
 	if err == nil {
 		return ErrorTypeUnknown

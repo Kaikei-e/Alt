@@ -13,6 +13,7 @@ import (
 	"pre-processor/config"
 	"pre-processor/driver"
 	"pre-processor/handler"
+	appmiddleware "pre-processor/middleware"
 	"pre-processor/repository"
 	"pre-processor/service"
 	logger "pre-processor/utils/logger"
@@ -184,6 +185,9 @@ func main() {
 	// Initialize Echo HTTP server
 	e := echo.New()
 	e.HideBanner = true
+
+	// Custom error handler for consistent error responses
+	e.HTTPErrorHandler = appmiddleware.CustomHTTPErrorHandler(logger.Logger)
 
 	// Middleware
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
