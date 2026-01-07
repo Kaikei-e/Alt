@@ -1,9 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { gotoMobileRoute } from "../../helpers/navigation";
-import { fulfillJson } from "../../utils/mockHelpers";
+import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
 import {
 	CONNECT_RPC_PATHS,
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
+	CONNECT_FEEDS_WITHOUT_ARTICLE_ID,
+	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
+	CONNECT_MARK_AS_READ_RESPONSE,
 } from "../../fixtures/mockData";
 
 // Swipe mode uses Connect-RPC for data fetching (SSR disabled)
@@ -50,5 +53,44 @@ test.describe("mobile feeds routes - swipe", () => {
 			page.getByRole("heading", { name: "AI Trends" }),
 		).toBeVisible();
 		await expect(page.getByTestId("action-footer")).toBeVisible();
+	});
+
+	test("swipe marks feed as read even without articleId (404 article)", async ({
+		page,
+	}) => {
+		// Use mock data without articleId (simulates 404 article)
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, CONNECT_FEEDS_WITHOUT_ARTICLE_ID),
+		);
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
+		);
+		// Simulate 404 error when fetching article content
+		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
+			fulfillError(route, "Article not found", 404),
+		);
+
+		// Track markAsRead API call
+		let markAsReadCalled = false;
+		await page.route(CONNECT_RPC_PATHS.markAsRead, (route) => {
+			markAsReadCalled = true;
+			return fulfillJson(route, CONNECT_MARK_AS_READ_RESPONSE);
+		});
+
+		await gotoMobileRoute(page, "feeds/swipe");
+		await expect(page.getByTestId("swipe-card")).toBeVisible();
+
+		// Perform swipe left (dismiss)
+		const card = page.getByTestId("swipe-card");
+		const box = await card.boundingBox();
+		if (!box) throw new Error("Card not found");
+
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(box.x - 200, box.y + box.height / 2, { steps: 10 });
+		await page.mouse.up();
+
+		// Verify markAsRead was called even though articleId is empty
+		await expect.poll(() => markAsReadCalled, { timeout: 5000 }).toBe(true);
 	});
 });

@@ -220,10 +220,7 @@ async function handleDismiss(_direction: number) {
 	readFeeds.add(currentLink);
 	readFeeds = new Set(readFeeds); // Trigger reactivity
 
-	// Check if article exists in database before marking as read
-	const canMarkAsRead = !!activeFeed.articleId;
-
-	liveRegionMessage = canMarkAsRead ? "Feed marked as read" : "Feed skipped (not saved)";
+	liveRegionMessage = "Feed marked as read";
 	setTimeout(() => {
 		liveRegionMessage = "";
 	}, 1000);
@@ -233,16 +230,13 @@ async function handleDismiss(_direction: number) {
 	// Move to next
 	activeIndex++;
 
-	// Server update - only if article exists in database
-	if (canMarkAsRead) {
-		try {
-			await updateFeedReadStatusClient(currentLink);
-		} catch (err) {
-			console.error("Failed to mark as read:", err);
-			// Rollback if needed, but for now we keep moving forward
-		}
-	} else {
-		console.log("Skipping mark as read - article not in database:", currentLink);
+	// Server update - always try to mark as read
+	// Backend uses feed_id (not article_id), so this works even for 404 articles
+	try {
+		await updateFeedReadStatusClient(currentLink);
+	} catch (err) {
+		// Log but don't block - feed might not exist in DB yet
+		console.warn("Failed to mark as read:", currentLink, err);
 	}
 }
 

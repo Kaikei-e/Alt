@@ -360,11 +360,7 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
         class="text-sm mb-2 uppercase tracking-[0.08em] font-semibold"
         style="color: black;"
       >
-        {#if feed.articleId}
-          Swipe to mark as read
-        {:else}
-          <span class="text-amber-600">⚠ Article not saved - swipe to skip</span>
-        {/if}
+        Swipe to mark as read
       </p>
       <div class="flex items-center gap-2">
         <a
