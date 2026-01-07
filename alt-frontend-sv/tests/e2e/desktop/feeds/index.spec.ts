@@ -189,6 +189,20 @@ test.describe("Desktop Feeds", () => {
 		await expect(page.getByRole("button", { name: /mark as read/i })).toBeVisible();
 		await expect(page.getByRole("button", { name: /mark as read/i })).toBeEnabled();
 	});
+
+	test("displays feed grid with 3 columns on large screens", async ({ page }) => {
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		// Ensure viewport is large screen (lg breakpoint: 1024px+)
+		await page.setViewportSize({ width: 1280, height: 800 });
+
+		// Get the feed grid element
+		const feedGrid = page.locator(".grid").first();
+
+		// Verify grid has lg:grid-cols-3 class (not lg:grid-cols-4)
+		await expect(feedGrid).toHaveClass(/lg:grid-cols-3/);
+	});
 });
 
 test.describe("Desktop Feeds - Accessibility", () => {

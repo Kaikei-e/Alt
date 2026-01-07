@@ -129,7 +129,7 @@
 			<p class="text-[var(--text-secondary)] text-sm">No viewed feeds yet</p>
 		</div>
 	{:else}
-		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
 			{#each feeds as feed, index (feed.id)}
 				<DesktopFeedCard {feed} onSelect={(f) => handleSelectFeed(f, index)} isRead={true} />
 			{/each}

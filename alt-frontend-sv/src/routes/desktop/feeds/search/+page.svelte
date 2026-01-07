@@ -146,7 +146,7 @@
 				Found {feeds.length} result{feeds.length === 1 ? "" : "s"} for "{lastSearchedQuery}"
 			</p>
 		</div>
-		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
 			{#each feeds as feed, index (feed.id)}
 				<DesktopFeedCard {feed} onSelect={(f) => handleSelectFeed(f, index)} />
 			{/each}

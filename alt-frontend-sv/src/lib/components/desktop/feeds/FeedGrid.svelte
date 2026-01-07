@@ -141,7 +141,7 @@
 		</div>
 	{:else}
 		<!-- Grid layout -->
-		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
 			{#each visibleFeeds as feed, index (feed.id)}
 				<DesktopFeedCard {feed} onSelect={(f) => onSelectFeed(f, index, visibleFeeds.length)} />
 			{/each}
