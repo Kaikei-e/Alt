@@ -5,7 +5,9 @@ WORKDIR /app
 
 # 依存関係キャッシュ最適化
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs && \
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
+    echo "" > src/lib.rs && \
     cargo build --release && \
     rm -rf src target/release/deps/rask*
 
