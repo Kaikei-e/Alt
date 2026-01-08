@@ -21,6 +21,9 @@
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
+		// Ignore Enter during IME composition (e.g., Japanese input)
+		if (event.isComposing) return;
+
 		// Send on Enter (without Shift)
 		if (event.key === "Enter" && !event.shiftKey) {
 			event.preventDefault();

@@ -133,6 +133,74 @@ test.describe("Desktop Augur Chat", () => {
 	});
 });
 
+test.describe("Desktop Augur Chat - IME Input", () => {
+	test("does not send message when Enter is pressed during IME composition", async ({ page }) => {
+		const augurPage = new DesktopAugurPage(page);
+
+		// Track if any API request was made
+		let apiCalled = false;
+		await page.route(CONNECT_RPC_PATHS.augurStreamChat, async (route) => {
+			apiCalled = true;
+			await fulfillConnectStream(route, CONNECT_AUGUR_SIMPLE_RESPONSE);
+		});
+
+		await augurPage.goto();
+		await augurPage.waitForWelcomeMessage();
+
+		// Fill input with Japanese text
+		await augurPage.chatInput.fill("こんにちは");
+
+		// Simulate IME composition: dispatch keydown with isComposing: true
+		await augurPage.chatInput.evaluate((textarea) => {
+			// Dispatch compositionstart to indicate IME is active
+			textarea.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+
+			// Dispatch Enter keydown with isComposing: true (simulating IME confirmation)
+			const event = new KeyboardEvent("keydown", {
+				key: "Enter",
+				code: "Enter",
+				bubbles: true,
+				cancelable: true,
+			});
+			Object.defineProperty(event, "isComposing", { value: true });
+			textarea.dispatchEvent(event);
+		});
+
+		// Wait a bit to ensure no message is sent
+		await page.waitForTimeout(500);
+
+		// API should NOT have been called
+		expect(apiCalled).toBe(false);
+
+		// Text should still be in the input
+		await expect(augurPage.chatInput).toHaveValue("こんにちは");
+
+		// User message should NOT appear in chat
+		const userMessages = page.locator('[class*="bg-primary"]');
+		await expect(userMessages).toHaveCount(0);
+	});
+
+	test("sends message when Enter is pressed after IME composition ends", async ({ page }) => {
+		const augurPage = new DesktopAugurPage(page);
+
+		await page.route(CONNECT_RPC_PATHS.augurStreamChat, async (route) => {
+			await fulfillConnectStream(route, CONNECT_AUGUR_SIMPLE_RESPONSE);
+		});
+
+		await augurPage.goto();
+		await augurPage.waitForWelcomeMessage();
+
+		// Fill input with Japanese text
+		await augurPage.chatInput.fill("こんにちは");
+
+		// Press Enter normally (after IME composition ends, isComposing is false)
+		await augurPage.chatInput.press("Enter");
+
+		// User message should appear in chat
+		await expect(page.getByText("こんにちは")).toBeVisible();
+	});
+});
+
 test.describe("Desktop Augur Chat - Conversation", () => {
 	test("maintains conversation history", async ({ page }) => {
 		const augurPage = new DesktopAugurPage(page);
