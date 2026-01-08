@@ -165,6 +165,7 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 
 	articleSummary := &models.ArticleSummary{
 		ArticleID:       job.ArticleID,
+		UserID:          article.UserID,
 		ArticleTitle:    articleTitle,
 		SummaryJapanese: summarized.SummaryJapanese,
 	}

@@ -83,6 +83,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 				// Create placeholder summary
 				placeholderSummary := &models.ArticleSummary{
 					ArticleID:       article.ID,
+					UserID:          article.UserID,
 					ArticleTitle:    article.Title,
 					SummaryJapanese: "本文が短すぎるため要約できませんでした。",
 					CreatedAt:       time.Now(),
@@ -112,6 +113,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 		// Create summary model
 		summary := &models.ArticleSummary{
 			ArticleID:       article.ID,
+			UserID:          article.UserID,
 			ArticleTitle:    article.Title,
 			SummaryJapanese: summarizedContent.SummaryJapanese,
 			CreatedAt:       time.Now(),

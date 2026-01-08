@@ -29,16 +29,16 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 	}
 
 	query := `
-		INSERT INTO article_summaries (article_id, article_title, summary_japanese)
-		SELECT $1, $2, $3
+		INSERT INTO article_summaries (article_id, user_id, article_title, summary_japanese)
+		SELECT $1, $2, $3, $4
 		WHERE EXISTS (SELECT 1 FROM articles WHERE id = $1)
-		ON CONFLICT (article_id) DO UPDATE
+		ON CONFLICT (article_id, user_id) DO UPDATE
 		SET article_title = EXCLUDED.article_title,
 		    summary_japanese = EXCLUDED.summary_japanese
 		RETURNING id, created_at
 	`
 
-	logger.Logger.Info("Creating article summary", "article_id", articleSummary.ArticleID)
+	logger.Logger.Info("Creating article summary", "article_id", articleSummary.ArticleID, "user_id", articleSummary.UserID)
 
 	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -46,7 +46,7 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 		return err
 	}
 
-	err = tx.QueryRow(ctx, query, articleSummary.ArticleID, articleSummary.ArticleTitle, articleSummary.SummaryJapanese).Scan(
+	err = tx.QueryRow(ctx, query, articleSummary.ArticleID, articleSummary.UserID, articleSummary.ArticleTitle, articleSummary.SummaryJapanese).Scan(
 		&articleSummary.ID, &articleSummary.CreatedAt,
 	)
 	if err != nil {

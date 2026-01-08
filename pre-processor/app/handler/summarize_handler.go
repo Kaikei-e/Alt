@@ -74,25 +74,27 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 		)
 	}
 
-	// If content is empty, try to fetch from DB
+	// Fetch article to get user_id (always needed for summary storage)
+	fetchedArticle, err := h.articleRepo.FindByID(ctx, req.ArticleID)
+	if err != nil {
+		return apperrors.NewDatabaseContextError(
+			"failed to fetch article",
+			"handler", "SummarizeHandler", "HandleSummarize",
+			err,
+			map[string]interface{}{"article_id": req.ArticleID},
+		)
+	}
+	if fetchedArticle == nil {
+		return apperrors.NewNotFoundContextError(
+			domain.ErrArticleNotFound.Error(),
+			"handler", "SummarizeHandler", "HandleSummarize",
+			map[string]interface{}{"article_id": req.ArticleID},
+		)
+	}
+
+	// If content is empty, use article content from DB
 	if req.Content == "" {
-		h.logger.Info("content is empty, fetching from DB", "article_id", req.ArticleID)
-		fetchedArticle, err := h.articleRepo.FindByID(ctx, req.ArticleID)
-		if err != nil {
-			return apperrors.NewDatabaseContextError(
-				"failed to fetch article content",
-				"handler", "SummarizeHandler", "HandleSummarize",
-				err,
-				map[string]interface{}{"article_id": req.ArticleID},
-			)
-		}
-		if fetchedArticle == nil {
-			return apperrors.NewNotFoundContextError(
-				domain.ErrArticleNotFound.Error(),
-				"handler", "SummarizeHandler", "HandleSummarize",
-				map[string]interface{}{"article_id": req.ArticleID},
-			)
-		}
+		h.logger.Info("content is empty, using content from DB", "article_id", req.ArticleID)
 		if fetchedArticle.Content == "" {
 			return apperrors.NewValidationContextError(
 				domain.ErrArticleContentEmpty.Error(),
@@ -173,6 +175,7 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 
 	articleSummary := &models.ArticleSummary{
 		ArticleID:       req.ArticleID,
+		UserID:          fetchedArticle.UserID,
 		ArticleTitle:    articleTitle,
 		SummaryJapanese: summarized.SummaryJapanese,
 	}

@@ -55,6 +55,14 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 	}{
 		"should successfully summarize article": {
 			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository, a *mocks.MockArticleRepository) {
+				a.EXPECT().
+					FindByID(gomock.Any(), "test-123").
+					Return(&models.Article{
+						ID:      "test-123",
+						UserID:  "user-456",
+						Content: "This is a test article content",
+						Title:   "Test Title",
+					}, nil)
 				m.EXPECT().
 					SummarizeArticle(gomock.Any(), gomock.Any()).
 					Return(&models.SummarizedContent{
@@ -82,6 +90,7 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 					FindByID(gomock.Any(), "test-123").
 					Return(&models.Article{
 						ID:      "test-123",
+						UserID:  "user-456",
 						Content: "Fetched content from DB",
 						Title:   "Fetched Title",
 					}, nil)
@@ -133,6 +142,14 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 		},
 		"should handle summarization API failure": {
 			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository, a *mocks.MockArticleRepository) {
+				a.EXPECT().
+					FindByID(gomock.Any(), "test-123").
+					Return(&models.Article{
+						ID:      "test-123",
+						UserID:  "user-456",
+						Content: "This is a test article content",
+						Title:   "Test Title",
+					}, nil)
 				m.EXPECT().
 					SummarizeArticle(gomock.Any(), gomock.Any()).
 					Return(nil, assert.AnError)

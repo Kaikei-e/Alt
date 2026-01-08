@@ -153,7 +153,7 @@ func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCrea
 		if lastCreatedAt == nil || lastCreatedAt.IsZero() {
 			// First query - no cursor constraint
 			query = `
-				SELECT a.id, a.title, a.content, a.url, a.created_at
+				SELECT a.id, a.title, a.content, a.url, a.created_at, a.user_id
 				FROM   articles a
 				WHERE  NOT EXISTS (
 						SELECT 1
@@ -168,7 +168,7 @@ func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCrea
 			// Subsequent queries - use efficient keyset pagination
 			// :ts と :uuid は前ページ最後のカーソル値
 			query = `
-				SELECT a.id, a.title, a.content, a.url, a.created_at
+				SELECT a.id, a.title, a.content, a.url, a.created_at, a.user_id
 				FROM   articles a
 				WHERE  (a.created_at, a.id) < ($1, $2)
 				  AND  NOT EXISTS (
@@ -193,7 +193,7 @@ func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCrea
 		for rows.Next() {
 			var article models.Article
 
-			err = rows.Scan(&article.ID, &article.Title, &article.Content, &article.URL, &article.CreatedAt)
+			err = rows.Scan(&article.ID, &article.Title, &article.Content, &article.URL, &article.CreatedAt, &article.UserID)
 			if err != nil {
 				return err
 			}
@@ -224,7 +224,7 @@ func GetArticleByID(ctx context.Context, db *pgxpool.Pool, articleID string) (*m
 	}
 
 	query := `
-		SELECT id, title, content, url, created_at
+		SELECT id, title, content, url, created_at, user_id
 		FROM articles
 		WHERE id = $1
 	`
@@ -236,6 +236,7 @@ func GetArticleByID(ctx context.Context, db *pgxpool.Pool, articleID string) (*m
 		&article.Content,
 		&article.URL,
 		&article.CreatedAt,
+		&article.UserID,
 	)
 
 	if err != nil {
