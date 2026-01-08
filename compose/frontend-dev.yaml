@@ -1,0 +1,80 @@
+# compose/frontend-dev.yaml - Frontend-only development stack
+# Minimal configuration for SvelteKit frontend development with mocked backend
+#
+# Usage:
+#   docker compose -f compose/frontend-dev.yaml up
+#   altctl up frontend-dev
+#
+# Services:
+#   - mock-auth: Mock Kratos + AuthHub + Backend with real JWT generation
+#   - alt-frontend-sv: SvelteKit frontend with HMR
+#
+# No database, no real backend - purely for UI development
+
+name: alt-frontend-dev
+
+services:
+  # Mock servers (Kratos + AuthHub + Backend)
+  # Generates real JWT tokens signed with shared secret
+  mock-auth:
+    build:
+      context: ../alt-frontend-sv
+      dockerfile: tests/e2e/infra/Dockerfile.mock-auth
+    environment:
+      - BACKEND_TOKEN_SECRET=${DEV_JWT_SECRET:-dev-secret-for-local}
+    ports:
+      - "4001:4001"  # Mock Kratos
+      - "4002:4002"  # Mock AuthHub
+      - "4003:4003"  # Mock Backend (REST + Connect-RPC)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4001/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    tty: true
+
+  # SvelteKit frontend with HMR (Hot Module Replacement)
+  alt-frontend-sv:
+    build:
+      context: ../alt-frontend-sv
+      dockerfile: Dockerfile.alt-frontend-sv.dev
+    volumes:
+      # Mount source for HMR
+      - ../alt-frontend-sv:/app
+      # Separate node_modules to avoid cross-platform issues
+      - /app/node_modules
+    ports:
+      - "5173:5173"    # Vite dev server (default port)
+      - "24678:24678"  # Vite HMR websocket
+    environment:
+      - NODE_ENV=development
+      - PORT=5173
+      - ORIGIN=http://localhost:5173
+      - BODY_SIZE_LIMIT=Infinity
+      # Point to mock servers (all on mock-auth container)
+      - KRATOS_INTERNAL_URL=http://mock-auth:4001
+      - KRATOS_PUBLIC_URL=http://localhost:4001
+      - AUTH_HUB_INTERNAL_URL=http://mock-auth:4002
+      # Point to mock backend (instead of real backend)
+      - BACKEND_BASE_URL=http://mock-auth:4003
+      - BACKEND_CONNECT_URL=http://mock-auth:4003
+      - PUBLIC_API_BASE_URL=http://localhost:4003
+    depends_on:
+      mock-auth:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173/sv/health | grep -q 'OK' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    tty: true
+
+networks:
+  default:
+    name: alt-frontend-dev-network
