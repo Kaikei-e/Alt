@@ -1,0 +1,173 @@
+# compose/dev.yaml - Development stack with mock auth
+# Minimal configuration for SvelteKit frontend development
+#
+# Usage: altctl up dev
+#
+# Services:
+#   - mock-auth: Mock Kratos + AuthHub with real JWT generation
+#   - alt-frontend-sv: SvelteKit frontend with HMR
+#   - alt-backend: Real backend with JWT validation
+#   - db: PostgreSQL database
+#   - migrate: Database migrations
+
+include:
+  - base.yaml
+
+services:
+  # Mock auth servers (Kratos + AuthHub)
+  # Generates real JWT tokens signed with shared secret
+  mock-auth:
+    build:
+      context: ../alt-frontend-sv
+      dockerfile: tests/e2e/infra/Dockerfile.mock-auth
+    environment:
+      - BACKEND_TOKEN_SECRET=${DEV_JWT_SECRET:-dev-secret-for-local}
+    ports:
+      - "4001:4001"  # Mock Kratos
+      - "4002:4002"  # Mock AuthHub
+    networks:
+      - alt-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4001/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    tty: true
+    labels:
+      - rask.group=dev
+
+  # SvelteKit frontend with HMR (Hot Module Replacement)
+  alt-frontend-sv:
+    build:
+      context: ../alt-frontend-sv
+      dockerfile: Dockerfile.alt-frontend-sv.dev
+    volumes:
+      - ../alt-frontend-sv:/app
+      - /app/node_modules
+    ports:
+      - "4173:4173"
+      - "24678:24678"  # Vite HMR port
+    environment:
+      - NODE_ENV=development
+      - PORT=4173
+      - ORIGIN=http://localhost:4173
+      - BODY_SIZE_LIMIT=Infinity
+      # Point to mock auth servers
+      - KRATOS_INTERNAL_URL=http://mock-auth:4001
+      - KRATOS_PUBLIC_URL=http://localhost:4001
+      - AUTH_HUB_INTERNAL_URL=http://mock-auth:4002
+      # Point to real backend
+      - BACKEND_BASE_URL=http://alt-backend:9000
+      - BACKEND_CONNECT_URL=http://alt-backend:9101
+      - PUBLIC_API_BASE_URL=http://localhost:9000
+    depends_on:
+      mock-auth:
+        condition: service_healthy
+      alt-backend:
+        condition: service_healthy
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4173/sv/health | grep -q 'OK' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    tty: true
+    labels:
+      - rask.group=dev
+
+  # Real backend with JWT validation (uses same secret as mock-auth)
+  alt-backend:
+    env_file:
+      - ../.env
+    build:
+      context: ../alt-backend
+      dockerfile: Dockerfile.backend
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9101:9101"
+    networks:
+      - alt-network
+    environment:
+      - CONNECT_PORT=9101
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-devuser}
+      - DB_PASSWORD=${DB_PASSWORD:-devpassword}
+      - DB_NAME=${POSTGRES_DB:-devdb}
+      - DB_SSL_MODE=disable
+      # Use same secret as mock-auth for JWT validation
+      - BACKEND_TOKEN_SECRET=${DEV_JWT_SECRET:-dev-secret-for-local}
+      - BACKEND_TOKEN_ISSUER=auth-hub
+      - BACKEND_TOKEN_AUDIENCE=alt-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9000/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    tty: true
+    labels:
+      - rask.group=dev
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL database
+  db:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-devdb}
+      POSTGRES_USER: ${POSTGRES_USER:-devuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+    volumes:
+      - dev_db_data:/var/lib/postgresql/data
+      - ../db/init:/docker-entrypoint-initdb.d:rw
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-devuser} -d ${POSTGRES_DB:-devdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - alt-network
+    tty: true
+    labels:
+      - rask.group=dev
+
+  # Database migrations
+  migrate:
+    env_file:
+      - ../.env
+    build:
+      context: ../migrations-atlas
+      dockerfile: docker/Dockerfile
+    container_name: db_migrator_dev
+    command: ["apply"]
+    environment:
+      DATABASE_URL: "postgres://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@db:5432/${POSTGRES_DB:-devdb}?sslmode=disable&search_path=public"
+      MIGRATE_MAX_RETRIES: "12"
+      MIGRATE_RETRY_INTERVAL: "5"
+    networks:
+      - alt-network
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dev_db_data:
