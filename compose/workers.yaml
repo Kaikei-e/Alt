@@ -11,6 +11,9 @@ services:
     build:
       context: ../pre-processor-sidecar
       dockerfile: Dockerfile
+    depends_on:
+      oauth-token-init:
+        condition: service_completed_successfully
     environment:
       - DB_HOST=db
       - DB_PORT=5432
@@ -109,10 +112,22 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  oauth-token-init:
+    image: alpine:latest
+    volumes:
+      - oauth_token_data:/data
+    command: ["sh", "-c", "chown -R 65532:65532 /data && chmod 755 /data"]
+    restart: "no"
+    networks:
+      - alt-network
+
   auth-token-manager:
     build:
       context: ../auth-token-manager
       dockerfile: Dockerfile
+    depends_on:
+      oauth-token-init:
+        condition: service_completed_successfully
     volumes:
       - oauth_token_data:/app/secrets
       - ../secrets/inoreader_client_id.txt:/run/secrets/inoreader_client_id
