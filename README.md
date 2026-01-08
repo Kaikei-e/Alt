@@ -50,7 +50,7 @@ _Last reviewed on January 8, 2026._
 
 ## Platform Snapshot
 
-- Compose-first developer experience: `make up` builds images, runs Atlas migrations, and starts the full stack under Docker Compose v2 profiles.
+- Compose-first developer experience: `altctl up` builds images, runs Atlas migrations, and starts the full stack under Docker Compose v2 profiles.
 - Clean Architecture across languages: Go services follow handler → usecase → port → gateway → driver, while Python, Rust, and TypeScript counterparts mirror the same contract-first approach.
 - Dual frontend architecture: Next.js 16 (React 19) at root path for full-featured desktop/mobile UI, plus SvelteKit 5 (Svelte Runes) at `/sv` for high-performance modern dashboards with Connect-RPC integration.
 - Type-safe API evolution: Connect-RPC (port 9101) runs parallel to REST (port 9000), enabling Protocol Buffers-defined schemas with auto-generated Go/TypeScript clients via `make buf-generate`.
@@ -472,7 +472,7 @@ flowchart LR
 | Identity & Tokens | Ory Kratos 1.3.0, auth-hub (Go 1.25) | - | 5-minute TTL cache; emits `X-Alt-*` headers; auth-token-manager for Inoreader OAuth. |
 | Observability | Rust 1.87 (2024 edition), ClickHouse 25.9 | - | SIMD log forwarder; Axum aggregator; `criterion` benchmarks. |
 | Storage & Search | PostgreSQL 17/18, Meilisearch 1.27.0 | - | Atlas migrations; pgvector for RAG; tuned searchable/filterable attributes; persisted volumes. |
-| Orchestration | Docker Desktop 4.36+, Compose v2.27+, Makefile | - | `make up/down/build`; profiles: `ollama`, `logging`, `recap`, `rag-extension`. |
+| Orchestration | Docker Desktop 4.36+, Compose v2.27+, altctl | - | `altctl up/down`; profiles: `ollama`, `logging`, `recap`, `rag-extension`. |
 
 > **Version cadence:** Go/Rust toolchains track stable releases quarterly, Next.js/SvelteKit updates follow LTS adoption, and Python runtimes are pinned per service to avoid cross-environment drift. Update the matrix whenever upgrade stories land.
 
@@ -491,9 +491,9 @@ flowchart LR
 
 1. **Install dependencies** – run `pnpm -C alt-frontend install`, `uv sync --project tag-generator/app`, `uv sync --project news-creator/app`, and `go mod download ./...`.
 2. **Seed environment** – copy `.env.template` to `.env`; `make up` performs this automatically if the file is missing.
-3. **Start the stack** – execute `make up` to build images, run Atlas migrations, seed Meilisearch, and boot the default profile.
+3. **Start the stack** – execute `altctl up` to build images, run Atlas migrations, seed Meilisearch, and boot the default stacks.
 4. **Verify health** – hit `http://localhost:3000/api/health`, `http://localhost:9000/v1/health`, `http://localhost:7700/health`, and `http://localhost:8888/health`.
-5. **Stop or reset** – use `make down` to stop while retaining volumes or `make down-volumes` to reset data.
+5. **Stop or reset** – use `altctl down` to stop while retaining volumes or `altctl down --volumes` to reset data.
 6. **Configure service secrets & models** – set `SERVICE_SECRET`, `TAG_LABEL_GRAPH_WINDOW`, and `TAG_LABEL_GRAPH_TTL_SECONDS` inside `.env`, place the ONNX assets under `tag-generator/models/onnx`, and let Compose mount them so tag-generator can reuse the ONNX runtime volume without extra downloads.
 
 ### Compose Profiles
@@ -516,7 +516,7 @@ docker compose --profile rag-extension up -d
 1. **Install toolchains** – Docker Desktop/Colima, Go 1.24/1.25, Node.js 24 + `pnpm`, Python 3.12/3.13 with `uv`, and Rust 1.87 should all respond to `--version`.
 2. **Bootstrap dependencies** – Run `pnpm -C alt-frontend install`, `uv sync` for Python services, `go mod download ./...`, and `cargo fetch` to warm caches.
 3. **Prepare environment** – Copy `.env.template` to `.env`, fill local-safe secrets, and confirm `scripts/check-env.js` passes.
-4. **Smoke the stack** – Execute `pnpm -C alt-frontend build`, `go test ./...`, `uv run pytest`, `cargo test`, then `make up`/`make down` to validate orchestration.
+4. **Smoke the stack** – Execute `pnpm -C alt-frontend build`, `go test ./...`, `uv run pytest`, `cargo test`, then `altctl up`/`altctl down` to validate orchestration.
 5. **Align practices** – Read root/service `CLAUDE.md`, enable editor format-on-save, install optional pre-commit hooks, and keep credentials out of git.
 6. **Recap-specific prep** – Run `make recap-migrate` (Atlas-backed) once before bringing up the `recap` profile, and confirm `http://localhost:9005/health/ready` plus `http://localhost:8002/health/ready` respond when testing the new mobile Recap surfaces.
 
@@ -733,7 +733,7 @@ erDiagram
 - **Retention** – Articles stay until explicitly archived; summaries and tags follow cascading rules defined in migrations—avoid manual deletes.
 - **Indices** – Postgres indexes `(feed_id, archived)` and `(published_at DESC)` keep queries snappy; adjust Meilisearch filterable attributes when adding new facets.
 - **Migrations** – Preview drift with Atlas when available; keep changes idempotent and reversible.
-- **Resets** – `make down-volumes` clears state; note any seed scripts so teammates can repopulate fixtures quickly.
+- **Resets** – `altctl down --volumes` clears state; note any seed scripts so teammates can repopulate fixtures quickly.
 - **Recap state** – Use `make recap-migrate` + `docker compose --profile recap run recap-worker sqlx migrate info` after editing `recap-migration-atlas/`; keep JSONB payloads backwards compatible so the public `/v1/recap/7days` API never breaks.
 
 ## Security & Compliance
@@ -791,7 +791,7 @@ erDiagram
 | alt-frontend-sv returns 404 | Wrong base path or SvelteKit not built | Requests must target `/sv` path; run `pnpm -C alt-frontend-sv build`; check svelte.config.js `kit.paths.base`. |
 | pgvector extension missing | rag-db migration not applied | Run `docker compose --profile rag-extension up rag-db-migrator`; verify with `docker compose exec rag-db psql -c "CREATE EXTENSION IF NOT EXISTS vector"`. |
 
-**General tip:** Use `docker compose ps` and `docker compose logs -f <service>` for health checks, `docker compose exec db psql -U $POSTGRES_USER $POSTGRES_DB` for database inspection, and `make down-volumes` to reset state (only when data loss is acceptable).
+**General tip:** Use `docker compose ps` and `docker compose logs -f <service>` for health checks, `docker compose exec db psql -U $POSTGRES_USER $POSTGRES_DB` for database inspection, and `altctl down --volumes` to reset state (only when data loss is acceptable).
 
 ## Glossary
 
@@ -825,12 +825,19 @@ erDiagram
 ### Command Cheat Sheet
 
 ```bash
-# Core stack management
-make up                                              # Build and start full stack
-make down                                            # Stop stack (keep volumes)
-make down-volumes                                    # Stop and reset all data
+# Core stack management (via altctl CLI)
+altctl up                                            # Build and start default stacks (db, auth, core, workers)
+altctl down                                          # Stop all stacks (keep volumes)
+altctl down --volumes                                # Stop and reset all data
 
-# Profile activation
+# Stack-specific operations
+altctl up core workers                               # Start specific stacks (deps auto-resolved)
+altctl up ai                                         # Start AI stack with dependencies
+altctl up recap                                      # Start recap pipeline
+altctl status                                        # View running services
+altctl logs <service> -f                             # Stream service logs
+
+# Profile activation (docker compose)
 docker compose --profile ollama --profile logging up -d    # AI + observability
 docker compose --profile recap --profile ollama up -d      # Recap pipeline
 docker compose --profile rag-extension up -d               # RAG services
