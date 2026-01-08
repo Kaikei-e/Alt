@@ -1,0 +1,32 @@
+# Dockerfile for mock-auth server in development environment
+# This runs the E2E mock server with JWT generation capabilities
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install tsx for running TypeScript directly
+RUN npm install -g tsx
+
+# Copy package files for dependency installation
+COPY package.json bun.lock ./
+
+# Install only the dependencies needed for mock server
+# Using npm since this is a lightweight container
+RUN npm install --production=false
+
+# Copy only the mock server
+COPY tests/e2e/infra/mock-server.ts ./
+
+# Environment variables for JWT generation
+ENV BACKEND_TOKEN_SECRET=""
+ENV NODE_ENV=development
+
+# Expose mock service ports
+# 4001: Mock Kratos
+# 4002: Mock AuthHub
+# 4003: Mock Backend (optional, for full mock mode)
+EXPOSE 4001 4002 4003
+
+# Run the mock server
+CMD ["tsx", "mock-server.ts"]
