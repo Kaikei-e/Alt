@@ -9,7 +9,7 @@
 
 # Alt – Compose-First AI Knowledge Platform
 
-_Last reviewed on December 31, 2025._
+_Last reviewed on January 8, 2026._
 
 > Compose-first knowledge platform that ingests RSS content, enriches it with AI (LLM summaries, tag extraction, RAG-powered Q&A), and serves curated insights with a unified developer workflow across Go, Python, Rust, and TypeScript (Next.js + SvelteKit) services.
 
@@ -464,10 +464,10 @@ flowchart LR
 | --- | --- | --- | --- |
 | Web UI (Next.js) | Next.js 16, React 19.2, TypeScript 5.9, pnpm 10.25 | Node.js 24 LTS | Chakra UI 3.30; App Router; Playwright 1.57 + Vitest 4.0. |
 | Web UI (SvelteKit) | SvelteKit 2.49, Svelte 5.46, TailwindCSS v4, Vite 7.3 | Node.js 24 LTS | Svelte 5 Runes; `/sv` base path; Connect-RPC client; Biome linter. |
-| Go API & RPC | Go 1.24/1.25, Echo 4.14, Connect-RPC | Port 9000 (REST), 9101 (RPC) | Clean Architecture with GoMock; Protocol Buffers via `make buf-generate`. |
+| Go API & RPC | Go 1.24/1.25, Echo 4.14, Connect-RPC 1.19 | Port 9000 (REST), 9101 (RPC) | Clean Architecture with GoMock; Protocol Buffers via `make buf-generate`. |
 | Go Data Pipeline | Go 1.24/1.25, `mercari/go-circuitbreaker`, `singleflight` | - | Pre-processor, scheduler, search-indexer; rate limit ≥5 s; 200-doc Meilisearch batches. |
 | RAG Pipeline | Go 1.25, pgvector, Ollama | Port 9010 | rag-orchestrator + knowledge-augur + knowledge-embedder; chunk-based retrieval with LLM generation. |
-| Python AI Services | Python 3.12/3.13, FastAPI, Ollama, `uv` | Ollama 0.3.x | Clean Architecture; golden prompts; bias detection; Ruff/mypy gates. |
+| Python AI Services | Python 3.11+/3.12/3.13, FastAPI, Ollama, `uv` | Ollama 0.3.x | news-creator (3.11+), recap-subworker (3.12), tag-generator (3.13+); Clean Architecture; Ruff gates. |
 | Recap pipeline | Rust 1.87 (Axum, Tokio, sqlx), FastAPI 0.115, PostgreSQL 18 recap-db | Rust 2024 edition | recap-worker orchestrates fetch→preprocess→dedupe→genre→persist; recap-subworker clusters evidence; news-creator via `ollama` profile. |
 | Identity & Tokens | Ory Kratos 1.3.0, auth-hub (Go 1.25) | - | 5-minute TTL cache; emits `X-Alt-*` headers; auth-token-manager for Inoreader OAuth. |
 | Observability | Rust 1.87 (2024 edition), ClickHouse 25.9 | - | SIMD log forwarder; Axum aggregator; `criterion` benchmarks. |
@@ -546,6 +546,8 @@ Each microservice maintains a `CLAUDE.md` for process guardrails plus a snapshot
 | `rag-db` | [docs/rag-db.md](docs/rag-db.md) | PostgreSQL 18 + pgvector for RAG documents, versions, chunks, and events. |
 | `knowledge-augur/` | – | Ollama LLM variant for knowledge-based question answering with structured JSON output. |
 | `knowledge-embedder/` | – | Embedding service for generating vector representations of article chunks. |
+| `altctl/` | [altctl/CLAUDE.md](altctl/CLAUDE.md) | Go CLI tool for Docker Compose orchestration with stack-based dependency management. |
+| `alt-perf/` | [alt-perf/CLAUDE.md](alt-perf/CLAUDE.md) | Deno E2E performance measurement tool using Astral for Core Web Vitals testing. |
 
 Additional reference docs include `docs/Alt-Architecture-07.md` for historical Kubernetes/Compose topology, the `docs/recap-*` retrospectives (runbooks, investigations, and pipeline notes), and the `docs/recap-7days-pipeline.md` overview for mobile/genre sequencing. Keep `CLAUDE.md` plus the linked snapshot fresh as you edit.
 
