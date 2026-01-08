@@ -27,6 +27,7 @@ var defaultStacks = []Stack{
 		Services:    []string{"db", "meilisearch", "clickhouse"},
 		DependsOn:   []string{"base"},
 		Optional:    false,
+		Provides:    []Feature{FeatureDatabase},
 	},
 	{
 		Name:        "auth",
@@ -35,14 +36,16 @@ var defaultStacks = []Stack{
 		Services:    []string{"kratos-db", "kratos-migrate", "kratos", "auth-hub"},
 		DependsOn:   []string{"base"},
 		Optional:    false,
+		Provides:    []Feature{FeatureAuth},
 	},
 	{
-		Name:        "core",
-		Description: "Core application services (nginx, frontend, backend)",
-		ComposeFile: "core.yaml",
-		Services:    []string{"nginx", "alt-frontend", "alt-frontend-sv", "alt-backend", "migrate"},
-		DependsOn:   []string{"base", "db", "auth"},
-		Optional:    false,
+		Name:             "core",
+		Description:      "Core application services (nginx, frontend, backend)",
+		ComposeFile:      "core.yaml",
+		Services:         []string{"nginx", "alt-frontend", "alt-frontend-sv", "alt-backend", "migrate"},
+		DependsOn:        []string{"base", "db", "auth"},
+		Optional:         false,
+		RequiresFeatures: []Feature{FeatureSearch}, // Search UI requires search-indexer from workers stack
 	},
 	{
 		Name:        "ai",
@@ -54,6 +57,7 @@ var defaultStacks = []Stack{
 		RequiresGPU: true,
 		Optional:    true,
 		Timeout:     10 * time.Minute, // GPU services need more time
+		Provides:    []Feature{FeatureAI},
 	},
 	{
 		Name:        "workers",
@@ -62,6 +66,7 @@ var defaultStacks = []Stack{
 		Services:    []string{"pre-processor-sidecar", "search-indexer", "tag-generator", "auth-token-manager"},
 		DependsOn:   []string{"base", "db", "core"},
 		Optional:    false,
+		Provides:    []Feature{FeatureSearch}, // search-indexer provides search functionality
 	},
 	{
 		Name:        "recap",
@@ -71,6 +76,7 @@ var defaultStacks = []Stack{
 		DependsOn:   []string{"base", "db", "core"},
 		Profile:     "recap",
 		Optional:    true,
+		Provides:    []Feature{FeatureRecap},
 	},
 	{
 		Name:        "logging",
@@ -85,6 +91,7 @@ var defaultStacks = []Stack{
 		DependsOn: []string{"base", "db"},
 		Profile:   "logging",
 		Optional:  true,
+		Provides:  []Feature{FeatureLogging},
 	},
 	{
 		Name:        "rag",
@@ -94,6 +101,7 @@ var defaultStacks = []Stack{
 		DependsOn:   []string{"base", "db", "core", "workers"},
 		Profile:     "rag-extension",
 		Optional:    true,
+		Provides:    []Feature{FeatureRAG},
 	},
 	{
 		Name:        "perf",
@@ -102,6 +110,24 @@ var defaultStacks = []Stack{
 		Services:    []string{"alt-perf"},
 		DependsOn:   []string{"base", "db", "auth", "core"},
 		Profile:     "perf",
+		Optional:    true,
+	},
+	{
+		Name:        "dev",
+		Description: "Development stack (SvelteKit + mock-auth + backend + db)",
+		ComposeFile: "dev.yaml",
+		Services:    []string{"mock-auth", "alt-frontend-sv", "alt-backend", "db", "migrate"},
+		DependsOn:   []string{"base"},
+		Profile:     "dev",
+		Optional:    true,
+	},
+	{
+		Name:        "frontend-dev",
+		Description: "Frontend-only development (mock backend, no database)",
+		ComposeFile: "frontend-dev.yaml",
+		Services:    []string{"mock-auth", "alt-frontend-sv"},
+		DependsOn:   []string{}, // No dependencies - standalone
+		Profile:     "frontend-dev",
 		Optional:    true,
 	},
 }

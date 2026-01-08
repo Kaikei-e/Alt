@@ -2,7 +2,7 @@
 
 ## Overview
 
-Go CLI tool for Alt platform Docker Compose orchestration. Provides stack-based management with automatic dependency resolution.
+Go CLI tool for Alt platform Docker Compose orchestration. Provides stack-based management with automatic dependency resolution and feature-based dependency warnings.
 
 ## Quick Start
 
@@ -25,17 +25,32 @@ altctl status
 
 ## Stack Definitions
 
-| Stack | Services | Dependencies |
-|-------|----------|--------------|
-| base | (shared resources) | - |
-| db | db, meilisearch, clickhouse | base |
-| auth | kratos-db, kratos, auth-hub | base |
-| core | nginx, alt-frontend, alt-backend | base, db, auth |
-| ai | news-creator, pre-processor | base, db, core |
-| workers | search-indexer, tag-generator | base, db, core |
-| recap | recap-worker, recap-subworker | base, db, core |
-| logging | rask-log-aggregator | base, db |
-| rag | rag-orchestrator | base, db, core, workers |
+| Stack | Services | Dependencies | Provides | Requires |
+|-------|----------|--------------|----------|----------|
+| base | (shared resources) | - | - | - |
+| db | db, meilisearch, clickhouse | base | database | - |
+| auth | kratos-db, kratos, auth-hub | base | auth | - |
+| core | nginx, alt-frontend, alt-backend | base, db, auth | - | search |
+| workers | search-indexer, tag-generator | base, db, core | search | - |
+| ai | news-creator, pre-processor | base, db, core | ai | - |
+| recap | recap-worker, recap-subworker | base, db, core | recap | - |
+| logging | rask-log-aggregator | base, db | logging | - |
+| rag | rag-orchestrator | base, db, core, workers | rag | - |
+
+## Feature Dependencies
+
+The `core` stack exposes search UI but requires the `workers` stack for search functionality:
+
+```bash
+$ altctl up core
+
+Feature Warnings
+  Stack 'core' requires feature 'search' which is not available.
+  Suggestion: Also start: workers
+
+# Full functionality
+$ altctl up core workers
+```
 
 ## TDD Workflow
 
@@ -73,6 +88,8 @@ altctl list [--services|--deps]# List stacks
 | Stack dependency errors | Check registry.go definitions |
 | Missing services | Verify compose.yaml mapping |
 | GPU stack fails | Ensure NVIDIA runtime available |
+| Search not working | Start workers stack with core |
+| Feature warning appears | Follow the suggestion to add missing stacks |
 
 ## Appendix: References
 

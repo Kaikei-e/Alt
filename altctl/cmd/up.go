@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -85,6 +86,34 @@ func runUp(cmd *cobra.Command, args []string) error {
 		if s.RequiresGPU {
 			printer.Warning("Stack '%s' requires GPU. Ensure NVIDIA drivers are installed.", s.Name)
 		}
+	}
+
+	// Check for missing feature dependencies
+	featureResolver := stack.NewFeatureResolver(registry)
+	resolvedStackNames := make([]string, len(stacks))
+	for i, s := range stacks {
+		resolvedStackNames[i] = s.Name
+	}
+
+	warnings := featureResolver.CheckMissingFeatures(resolvedStackNames)
+	if len(warnings) > 0 {
+		printer.Header("Feature Warnings")
+		for _, w := range warnings {
+			printer.Warning("Stack '%s' requires feature '%s' which is not available.", w.Stack, w.MissingFeature)
+			if len(w.ProvidedBy) > 0 {
+				printer.Info("  Suggestion: Also start: %s", w.ProvidedBy[0])
+			}
+		}
+
+		// Show command suggestion
+		suggested := featureResolver.SuggestAdditionalStacks(resolvedStackNames)
+		if len(suggested) > 0 {
+			fmt.Println()
+			printer.Info("To include suggested stacks, run:")
+			suggestedArgs := append(stackNames, suggested...)
+			printer.Info("  altctl up %s", strings.Join(suggestedArgs, " "))
+		}
+		fmt.Println()
 	}
 
 	// Collect compose files

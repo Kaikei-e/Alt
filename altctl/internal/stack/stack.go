@@ -16,6 +16,10 @@ type Stack struct {
 	Optional    bool          `json:"optional"`
 	RequiresGPU bool          `json:"requires_gpu"`
 	Timeout     time.Duration `json:"timeout"`
+
+	// Feature-based dependencies
+	Provides         []Feature `json:"provides,omitempty"`          // Features this stack provides
+	RequiresFeatures []Feature `json:"requires_features,omitempty"` // Features this stack needs to function
 }
 
 // IsDefault returns true if this stack should be started by default
@@ -35,4 +39,14 @@ func (s *Stack) GetTimeout() time.Duration {
 	}
 	// Default timeout
 	return 5 * time.Minute
+}
+
+// ProvidesFeature checks if this stack provides a specific feature
+func (s *Stack) ProvidesFeature(f Feature) bool {
+	for _, provided := range s.Provides {
+		if provided == f {
+			return true
+		}
+	}
+	return false
 }
