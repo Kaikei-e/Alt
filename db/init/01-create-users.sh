@@ -3,6 +3,19 @@ set -euo pipefail
 
 echo "Configuring PostgreSQL database and service roles..."
 
+# Helper: Read secret from _FILE env var if available, otherwise use direct env var
+# This follows the same pattern as official postgres docker image
+read_secret() {
+    local var_name="$1"
+    local file_var="${var_name}_FILE"
+
+    if [[ -n "${!file_var:-}" && -f "${!file_var}" ]]; then
+        cat "${!file_var}"
+    else
+        echo "${!var_name:-}"
+    fi
+}
+
 PRIMARY_DB="${POSTGRES_DB:-postgres}"
 
 # Some services reference DB_NAME, fall back to POSTGRES_DB when absent
@@ -17,7 +30,7 @@ TAG_GENERATOR_USER="${DB_TAG_GENERATOR_USER:-tag_generator}"
 TAG_GENERATOR_PASSWORD="${DB_TAG_GENERATOR_PASSWORD:-}"
 
 SEARCH_INDEXER_USER="${SEARCH_INDEXER_DB_USER:-search_indexer_user}"
-SEARCH_INDEXER_PASSWORD="${SEARCH_INDEXER_DB_PASSWORD:-}"
+SEARCH_INDEXER_PASSWORD="$(read_secret SEARCH_INDEXER_DB_PASSWORD)"
 
 PRE_PROCESSOR_SIDECAR_USER="${PRE_PROCESSOR_SIDECAR_DB_USER:-pre_processor_sidecar_user}"
 PRE_PROCESSOR_SIDECAR_PASSWORD="${PRE_PROCESSOR_SIDECAR_DB_PASSWORD:-}"
