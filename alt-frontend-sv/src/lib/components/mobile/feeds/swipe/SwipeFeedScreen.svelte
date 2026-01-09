@@ -141,12 +141,13 @@ async function loadMore() {
 			// 最初のフィードのarticleをバックグラウンドで取得
 			if (filtered.length > 0) {
 				const firstFeed = filtered[0];
-				const feedUrl = firstFeed.link;
+				// Use normalizedUrl for consistent cache key
+				const cacheKey = firstFeed.normalizedUrl;
 
 				// キャッシュに既に存在するかチェック
-				if (!articlePrefetcher.getCachedContent(feedUrl)) {
-					// バックグラウンドでarticle取得を開始
-					getFeedContentOnTheFlyClient(feedUrl)
+				if (!articlePrefetcher.getCachedContent(cacheKey)) {
+					// バックグラウンドでarticle取得を開始（normalizedUrl使用）
+					getFeedContentOnTheFlyClient(cacheKey)
 						.then((articleRes) => {
 							if (articleRes.content) {
 								// articlePrefetcherのキャッシュに直接保存
@@ -156,7 +157,7 @@ async function loadMore() {
 									string,
 									string | "loading"
 								>;
-								cache.set(feedUrl, articleRes.content);
+								cache.set(cacheKey, articleRes.content);
 
 								// キャッシュサイズ制限のチェック
 								if (cache.size > 5) {
@@ -172,12 +173,12 @@ async function loadMore() {
 									string,
 									string
 								>;
-								articleIdCache.set(feedUrl, articleRes.article_id);
+								articleIdCache.set(cacheKey, articleRes.article_id);
 							}
 						})
 						.catch((err) => {
 							console.warn(
-								`[SwipeFeedScreen] Failed to fetch article content for first feed: ${feedUrl}`,
+								`[SwipeFeedScreen] Failed to fetch article content for first feed: ${cacheKey}`,
 								err,
 							);
 						});

@@ -100,17 +100,18 @@ onMount(() => {
 		fullContent = initialArticleContent;
 	}
 
-	const cached = getCachedContent?.(feed.link);
+	// Use normalizedUrl for cache access (consistent with articlePrefetcher)
+	const cached = getCachedContent?.(feed.normalizedUrl);
 	if (cached) {
 		fullContent = cached;
 		// Also check for cached articleId and notify parent
-		const cachedArticleId = getCachedArticleId?.(feed.link);
+		const cachedArticleId = getCachedArticleId?.(feed.normalizedUrl);
 		if (cachedArticleId && onArticleIdResolved) {
 			onArticleIdResolved(feed.link, cachedArticleId);
 		}
 	} else if (!fullContent) {
-		// Background fetch
-		getFeedContentOnTheFlyClient(feed.link)
+		// Background fetch using normalizedUrl
+		getFeedContentOnTheFlyClient(feed.normalizedUrl)
 			.then((res) => {
 				if (res.content) {
 					fullContent = res.content;
@@ -173,7 +174,8 @@ $effect(() => {
 
 async function handleToggleContent() {
 	if (!isContentExpanded && !fullContent) {
-		const cached = getCachedContent?.(feed.link);
+		// Use normalizedUrl for cache access (consistent with articlePrefetcher)
+		const cached = getCachedContent?.(feed.normalizedUrl);
 		if (cached) {
 			fullContent = cached;
 			isContentExpanded = true;
@@ -184,7 +186,8 @@ async function handleToggleContent() {
 		contentError = null;
 
 		try {
-			const res = await getFeedContentOnTheFlyClient(feed.link);
+			// Use normalizedUrl for API call
+			const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
 			if (res.content) {
 				fullContent = res.content;
 			} else {

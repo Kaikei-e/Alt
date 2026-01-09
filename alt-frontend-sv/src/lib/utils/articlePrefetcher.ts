@@ -14,37 +14,38 @@ export class ArticlePrefetcher {
 
 	/**
 	 * Prefetch content for a single article
+	 * Uses normalizedUrl as cache key for consistency with FeedDetailModal
 	 */
 	private async prefetchContent(feed: RenderFeed) {
-		const feedUrl = feed.link;
+		const cacheKey = feed.normalizedUrl;
 
 		// Skip if article is being dismissed
-		if (this.dismissedArticles.has(feedUrl)) {
-			console.log(`[ArticlePrefetcher] Skipping dismissed article: ${feedUrl}`);
+		if (this.dismissedArticles.has(cacheKey)) {
+			console.log(`[ArticlePrefetcher] Skipping dismissed article: ${cacheKey}`);
 			return;
 		}
 
 		// Skip if already in cache
-		if (this.contentCache.has(feedUrl)) {
+		if (this.contentCache.has(cacheKey)) {
 			return;
 		}
 
 		try {
 			// Mark as loading
-			this.contentCache.set(feedUrl, "loading");
+			this.contentCache.set(cacheKey, "loading");
 
-			// Fetch content
-			const response = await getFeedContentOnTheFlyClient(feedUrl);
+			// Fetch content using normalizedUrl for consistent caching
+			const response = await getFeedContentOnTheFlyClient(cacheKey);
 
 			if (response.content) {
-				this.contentCache.set(feedUrl, response.content);
+				this.contentCache.set(cacheKey, response.content);
 			} else {
-				this.contentCache.delete(feedUrl);
+				this.contentCache.delete(cacheKey);
 			}
 
 			// Cache article_id if present
 			if (response.article_id) {
-				this.articleIdCache.set(feedUrl, response.article_id);
+				this.articleIdCache.set(cacheKey, response.article_id);
 			}
 
 			// Clean up old cache entries
@@ -54,9 +55,9 @@ export class ArticlePrefetcher {
 				this.contentCache.delete(oldestKey);
 			}
 		} catch (error) {
-			this.contentCache.delete(feedUrl);
+			this.contentCache.delete(cacheKey);
 			console.warn(
-				`[ArticlePrefetcher] Failed to prefetch content: ${feedUrl}`,
+				`[ArticlePrefetcher] Failed to prefetch content: ${cacheKey}`,
 				error,
 			);
 		}

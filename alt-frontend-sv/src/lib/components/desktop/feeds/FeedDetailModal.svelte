@@ -88,7 +88,7 @@
 
 	// Auto-fetch article content when modal opens
 	$effect(() => {
-		if (open && feed?.link && !articleContent && !isFetchingContent && !contentError) {
+		if (open && feed?.normalizedUrl && !articleContent && !isFetchingContent && !contentError) {
 			handleFetchFullArticle();
 		}
 	});
@@ -134,11 +134,11 @@
 	}
 
 	async function handleFetchFullArticle() {
-		if (!feed?.link || isFetchingContent) return;
+		if (!feed?.normalizedUrl || isFetchingContent) return;
 
-		// Check prefetch cache first
-		const cachedContent = articlePrefetcher.getCachedContent(feed.link);
-		const cachedArticleId = articlePrefetcher.getCachedArticleId(feed.link);
+		// Check prefetch cache first (using normalizedUrl for consistency)
+		const cachedContent = articlePrefetcher.getCachedContent(feed.normalizedUrl);
+		const cachedArticleId = articlePrefetcher.getCachedArticleId(feed.normalizedUrl);
 
 		if (cachedContent) {
 			articleContent = cachedContent;
@@ -150,7 +150,8 @@
 			isFetchingContent = true;
 			contentError = null;
 
-			const response = await getFeedContentOnTheFlyClient(feed.link);
+			// Use normalizedUrl for API call (consistent with prefetcher)
+			const response = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
 
 			articleContent = response.content || null;
 			articleID = response.article_id || null;
