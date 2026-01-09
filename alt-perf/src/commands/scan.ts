@@ -16,16 +16,23 @@ import type {
 } from "../report/types.ts";
 import { printCliReport, printCompactSummary } from "../report/cli-reporter.ts";
 import { saveJsonReport, printJsonReport } from "../report/json-reporter.ts";
-import { info, error, progress, section } from "../utils/logger.ts";
+import { printMarkdownReport, saveMarkdownReport } from "../report/markdown-reporter.ts";
+import { info, error, warn, progress, section, debug } from "../utils/logger.ts";
 import { DEFAULT_THRESHOLDS } from "../config/schema.ts";
+import { calculateMedian, discardOutliers, calculateStats } from "../utils/stats.ts";
+
+export type ReportFormat = "cli" | "json" | "md" | "markdown";
 
 interface ScanOptions {
   device?: string;
   route?: string;
   output?: string;
   json?: boolean;
+  format?: ReportFormat | string;
   headless?: boolean;
   verbose?: boolean;
+  warmup?: number;
+  runs?: number;
 }
 
 /**
@@ -137,13 +144,66 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
 
   let completed = 0;
 
+  // Restart browser every N pages to prevent memory issues
+  const BROWSER_RESTART_INTERVAL = 20;
+  let pageCount = 0;
+
+  // Configuration for multi-run measurement
+  const warmupRuns = options.warmup ?? 1;
+  const measurementRuns = options.runs ?? 1;
+
   try {
     await browser.launch();
+
+    // Warmup phase - visit routes to warm up server/browser caches
+    if (warmupRuns > 0 && authCookies.length > 0) {
+      section("Warmup Phase");
+      info(`Running ${warmupRuns} warmup run(s) to stabilize measurements...`);
+
+      // Select a subset of routes for warmup (first authenticated route from each type)
+      const warmupRoutes = routes.filter((r) => r.requiresAuth).slice(0, 3);
+
+      for (let run = 0; run < warmupRuns; run++) {
+        for (const device of devices) {
+          for (const route of warmupRoutes) {
+            let page = null;
+            try {
+              page = await browser.createPage(device, authCookies);
+              const url = `${config.baseUrl}${route.path}`;
+              await browser.navigateTo(page, url, { waitFor: route.waitFor, timeout: 30000 });
+              debug(`Warmup: ${device} ${route.path}`);
+            } catch {
+              // Ignore warmup errors
+            } finally {
+              if (page) {
+                try {
+                  await page.close();
+                } catch {
+                  // Ignore close errors
+                }
+              }
+            }
+          }
+        }
+      }
+      info("Warmup complete");
+    }
+
+    section("Measurement Phase");
 
     for (const device of devices) {
       for (const route of routes) {
         completed++;
         progress(completed, totalTests, `${device}: ${route.path}`);
+
+        // Restart browser periodically to prevent memory issues
+        pageCount++;
+        if (pageCount > BROWSER_RESTART_INTERVAL) {
+          info("Restarting browser to free memory...");
+          await browser.close();
+          await browser.launch();
+          pageCount = 0;
+        }
 
         // Skip auth routes if not authenticated
         if (route.requiresAuth && authCookies.length === 0) {
@@ -177,18 +237,87 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
         }
 
         try {
-          // Create page with cookies
-          const cookies = route.requiresAuth ? authCookies : [];
-          const page = await browser.createPage(device, cookies);
+          // Multi-run measurement for statistical accuracy
+          const runVitals: Array<Awaited<ReturnType<typeof vitalsCollector.collect>>> = [];
+          const runTimings: Array<Awaited<ReturnType<typeof vitalsCollector.collectNavigationTiming>>> = [];
 
-          // Navigate to URL
-          const url = `${config.baseUrl}${route.path}`;
-          await browser.navigateTo(page, url, { waitFor: route.waitFor });
+          for (let run = 0; run < measurementRuns; run++) {
+            let page = null;
+            try {
+              // Create page with cookies
+              const cookies = route.requiresAuth ? authCookies : [];
+              page = await browser.createPage(device, cookies);
 
-          // Inject and collect vitals
-          await vitalsCollector.inject(page);
-          const vitals = await vitalsCollector.collect(page);
-          const timing = await vitalsCollector.collectNavigationTiming(page);
+              // Navigate to URL with timeout
+              const url = `${config.baseUrl}${route.path}`;
+              await browser.navigateTo(page, url, { waitFor: route.waitFor, timeout: 30000 });
+
+              // Inject and collect vitals
+              await vitalsCollector.inject(page);
+              const vitals = await vitalsCollector.collect(page);
+              const timing = await vitalsCollector.collectNavigationTiming(page);
+
+              runVitals.push(vitals);
+              runTimings.push(timing);
+
+              if (measurementRuns > 1) {
+                debug(`Run ${run + 1}/${measurementRuns}: LCP=${vitals.lcp.value}ms, TTFB=${vitals.ttfb.value}ms`);
+              }
+            } finally {
+              if (page) {
+                try {
+                  await page.close();
+                } catch {
+                  // Ignore close errors
+                }
+              }
+            }
+          }
+
+          // Aggregate results using median (more robust than mean for performance data)
+          const aggregateVitals = (metric: "lcp" | "inp" | "cls" | "fcp" | "ttfb") => {
+            const values = runVitals.map((v) => v[metric].value);
+            const cleanValues = measurementRuns >= 3 ? discardOutliers(values) : values;
+            return calculateMedian(cleanValues);
+          };
+
+          const aggregateTiming = (key: keyof typeof runTimings[0]) => {
+            const values = runTimings.map((t) => t[key] as number);
+            const cleanValues = measurementRuns >= 3 ? discardOutliers(values) : values;
+            return calculateMedian(cleanValues);
+          };
+
+          // Use median values for final vitals
+          const lastVitals = runVitals[runVitals.length - 1];
+          const vitals = {
+            lcp: { value: aggregateVitals("lcp"), rating: lastVitals.lcp.rating },
+            inp: { value: aggregateVitals("inp"), rating: lastVitals.inp.rating },
+            cls: { value: aggregateVitals("cls"), rating: lastVitals.cls.rating },
+            fcp: { value: aggregateVitals("fcp"), rating: lastVitals.fcp.rating },
+            ttfb: { value: aggregateVitals("ttfb"), rating: lastVitals.ttfb.rating },
+            timestamp: Date.now(),
+          };
+
+          // Re-calculate ratings based on aggregated values
+          const getRating = (value: number, good: number, poor: number): "good" | "needs-improvement" | "poor" => {
+            if (value <= good) return "good";
+            if (value <= poor) return "needs-improvement";
+            return "poor";
+          };
+
+          vitals.lcp.rating = getRating(vitals.lcp.value, DEFAULT_THRESHOLDS.vitals.lcp.good, DEFAULT_THRESHOLDS.vitals.lcp.poor);
+          vitals.inp.rating = getRating(vitals.inp.value, DEFAULT_THRESHOLDS.vitals.inp.good, DEFAULT_THRESHOLDS.vitals.inp.poor);
+          vitals.cls.rating = getRating(vitals.cls.value, DEFAULT_THRESHOLDS.vitals.cls.good, DEFAULT_THRESHOLDS.vitals.cls.poor);
+          vitals.fcp.rating = getRating(vitals.fcp.value, DEFAULT_THRESHOLDS.vitals.fcp.good, DEFAULT_THRESHOLDS.vitals.fcp.poor);
+          vitals.ttfb.rating = getRating(vitals.ttfb.value, DEFAULT_THRESHOLDS.vitals.ttfb.good, DEFAULT_THRESHOLDS.vitals.ttfb.poor);
+
+          const timing = {
+            domContentLoaded: aggregateTiming("domContentLoaded"),
+            load: aggregateTiming("load"),
+            firstByte: aggregateTiming("firstByte"),
+            domInteractive: aggregateTiming("domInteractive"),
+            resourceCount: Math.round(aggregateTiming("resourceCount")),
+          };
 
           // Calculate score and identify bottlenecks
           const score = calculateScore(vitals);
@@ -207,9 +336,8 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
             status: passed ? "passed" : "failed",
             bottlenecks,
           });
-
-          await page.close();
         } catch (err) {
+          warn(`Route measurement failed: ${route.path}`, { error: String(err), device });
           measurements.push({
             path: route.path,
             name: route.name,
@@ -278,16 +406,46 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
     recommendations: generateRecommendations(measurements),
   };
 
+  // Determine output format (--format takes precedence over --json)
+  const format = options.format || (options.json ? "json" : "cli");
+
   // Output report
-  if (options.json) {
-    printJsonReport(report);
-  } else {
-    printCliReport(report);
+  switch (format) {
+    case "json":
+      printJsonReport(report);
+      break;
+    case "md":
+    case "markdown":
+      printMarkdownReport(report);
+      break;
+    case "cli":
+    default:
+      printCliReport(report);
+      break;
   }
 
-  // Save to file if specified
-  if (options.output) {
-    await saveJsonReport(report, options.output);
-    info(`Report saved to ${options.output}`);
+  // Auto-generate output path if not specified
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  let outputPath = options.output;
+
+  if (!outputPath) {
+    // Auto-save to reports directory
+    const ext = (format === "md" || format === "markdown") ? "md" : "json";
+    outputPath = `./reports/scan-${timestamp}.${ext}`;
   }
+
+  // Ensure reports directory exists
+  try {
+    await Deno.mkdir("./reports", { recursive: true });
+  } catch {
+    // Directory already exists
+  }
+
+  // Save report
+  if (format === "md" || format === "markdown" || outputPath.endsWith(".md")) {
+    await saveMarkdownReport(report, outputPath);
+  } else {
+    await saveJsonReport(report, outputPath);
+  }
+  info(`Report saved to ${outputPath}`);
 }

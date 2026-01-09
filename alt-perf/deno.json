@@ -13,10 +13,10 @@
     "@astral/astral": "jsr:@astral/astral@^0.5.4"
   },
   "tasks": {
-    "perf": "deno run --allow-all main.ts",
-    "perf:scan": "deno run --allow-all main.ts scan",
-    "perf:flow": "deno run --allow-all main.ts flow",
-    "perf:load": "deno run --allow-all main.ts load",
+    "perf": "deno run --allow-all --env main.ts",
+    "perf:scan": "deno run --allow-all --env main.ts scan",
+    "perf:flow": "deno run --allow-all --env main.ts flow",
+    "perf:load": "deno run --allow-all --env main.ts load",
     "test": "deno test --allow-all tests/",
     "test:unit": "deno test --allow-all tests/unit/",
     "test:integration": "deno test --allow-all tests/integration/",
@@ -27,7 +27,12 @@
   "compilerOptions": {
     "strict": true,
     "noImplicitAny": true,
-    "lib": ["deno.window", "deno.ns", "dom", "dom.iterable"]
+    "lib": [
+      "deno.window",
+      "deno.ns",
+      "dom",
+      "dom.iterable"
+    ]
   },
   "fmt": {
     "useTabs": false,
@@ -37,7 +42,9 @@
   },
   "lint": {
     "rules": {
-      "tags": ["recommended"]
+      "tags": [
+        "recommended"
+      ]
     }
   }
 }

@@ -21,8 +21,12 @@ interface CliOptions {
   device: string;
   route: string;
   json: boolean;
+  format: string;
   verbose: boolean;
   headless: boolean;
+  // Scan measurement options
+  warmup: number;
+  runs: number;
   // Load test specific
   duration: number;
   concurrency: number;
@@ -31,14 +35,17 @@ interface CliOptions {
 // Parse command line arguments
 function parseCliArgs(): { command: string; options: CliOptions } {
   const args = parseArgs(Deno.args, {
-    string: ["config", "output", "device", "route"],
+    string: ["config", "output", "device", "route", "format"],
     boolean: ["help", "version", "json", "verbose", "headless"],
     default: {
       config: "./config",
       headless: true,
       verbose: false,
+      warmup: 1,
+      runs: 1,
       duration: 30,
       concurrency: 10,
+      format: "cli",
     },
     alias: {
       h: "help",
@@ -47,7 +54,10 @@ function parseCliArgs(): { command: string; options: CliOptions } {
       o: "output",
       d: "device",
       r: "route",
+      f: "format",
       V: "verbose",
+      w: "warmup",
+      n: "runs",
     },
   });
 
@@ -60,8 +70,11 @@ function parseCliArgs(): { command: string; options: CliOptions } {
     device: args.device as string,
     route: args.route as string,
     json: args.json as boolean,
+    format: args.format as string,
     verbose: args.verbose as boolean,
     headless: args.headless as boolean,
+    warmup: Number(args.warmup) || 1,
+    runs: Number(args.runs) || 1,
     duration: Number(args.duration) || 30,
     concurrency: Number(args.concurrency) || 10,
   };
@@ -85,14 +98,19 @@ ${bold("COMMANDS:")}
 
 ${bold("OPTIONS:")}
   ${green("-c, --config <path>")}    Path to config directory (default: ./config)
-  ${green("-o, --output <path>")}    Output file for JSON results
+  ${green("-o, --output <path>")}    Output file for results
+  ${green("-f, --format <type>")}    Output format: cli, json, md (default: cli)
   ${green("-d, --device <name>")}    Device profile (desktop-chrome, mobile-chrome, mobile-safari)
   ${green("-r, --route <path>")}     Specific route to test
   ${green("-V, --verbose")}          Enable verbose logging
   ${green("--headless")}             Run browser in headless mode (default: true)
-  ${green("--json")}                 Output results as JSON only
+  ${green("--json")}                 Output results as JSON only (shortcut for --format json)
   ${green("-h, --help")}             Show this help message
   ${green("-v, --version")}          Show version number
+
+${bold("SCAN OPTIONS:")}
+  ${green("-w, --warmup <n>")}       Number of warmup runs before measurement (default: 1)
+  ${green("-n, --runs <n>")}         Number of measurement runs per route (default: 1)
 
 ${bold("LOAD TEST OPTIONS:")}
   ${green("--duration <seconds>")}   Load test duration (default: 30)
@@ -116,6 +134,15 @@ ${bold("EXAMPLES:")}
 
   ${dim("# Output JSON report")}
   alt-perf scan -o reports/scan.json
+
+  ${dim("# Output Markdown report")}
+  alt-perf scan --format md -o reports/scan.md
+
+  ${dim("# High-accuracy scan with 2 warmup runs and 3 measurement runs")}
+  alt-perf scan --warmup 2 --runs 3
+
+  ${dim("# Quick scan with no warmup")}
+  alt-perf scan --warmup 0
 
 ${bold("ENVIRONMENT VARIABLES:")}
   ${yellow("PERF_TEST_EMAIL")}       Email for authenticated tests

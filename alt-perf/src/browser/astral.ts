@@ -60,7 +60,14 @@ export class BrowserManager {
         "--disable-software-rasterizer",
         "--disable-breakpad",
         "--headless=new",
-        "--single-process",
+        // Removed --single-process as it can cause instability
+        "--disable-extensions",
+        "--disable-background-networking",
+        "--disable-sync",
+        "--disable-translate",
+        "--metrics-recording-only",
+        "--no-first-run",
+        "--safebrowsing-disable-auto-update",
       ],
     });
 
@@ -125,16 +132,33 @@ export class BrowserManager {
     options: { waitFor?: string; timeout?: number } = {}
   ): Promise<{ loadTime: number }> {
     const startTime = performance.now();
+    const timeout = options.timeout ?? 30000; // Default 30 second timeout
 
-    debug("Navigating to", { url });
+    debug("Navigating to", { url, timeout });
 
-    await page.goto(url, {
-      waitUntil: "networkidle2",
+    // Create a timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Navigation timeout after ${timeout}ms: ${url}`));
+      }, timeout);
     });
+
+    // Race between navigation and timeout
+    await Promise.race([
+      page.goto(url, {
+        waitUntil: "networkidle2",
+      }),
+      timeoutPromise,
+    ]);
 
     // Wait for specific element if specified
     if (options.waitFor) {
-      await page.waitForSelector(options.waitFor, { timeout: 10000 });
+      await Promise.race([
+        page.waitForSelector(options.waitFor, { timeout: 10000 }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`Selector timeout: ${options.waitFor}`)), 10000);
+        }),
+      ]);
     }
 
     const loadTime = performance.now() - startTime;
