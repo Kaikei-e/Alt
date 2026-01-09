@@ -96,6 +96,8 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:25.9
     restart: unless-stopped
+    entrypoint: ["/entrypoint-wrapper.sh"]
+    command: []
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-rask_logs}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-rask_user}
@@ -107,7 +109,8 @@ services:
       - "8123:8123"
       - "9009:9000"
     volumes:
-      - ../clickhouse/init:/docker-entrypoint-initdb.d
+      - ../clickhouse/entrypoint-wrapper.sh:/entrypoint-wrapper.sh:ro
+      - ../clickhouse/migrations:/migrations:ro
       - ../clickhouse/config/system_tables.xml:/etc/clickhouse-server/config.d/system_tables.xml:ro
       - clickhouse_data:/var/lib/clickhouse
     networks:
