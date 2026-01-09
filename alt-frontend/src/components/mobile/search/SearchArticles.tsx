@@ -218,6 +218,7 @@ export const SearchArticles = ({
             type="submit"
             disabled={isButtonDisabled}
             onClick={handleButtonClick}
+            data-testid="search-button"
             style={{
               background: isButtonDisabled
                 ? "var(--surface-bg)"

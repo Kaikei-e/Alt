@@ -154,6 +154,7 @@ const FeedCard = function FeedCard({
               }}
               transition="all 0.2s ease"
               aria-label={`Mark ${feed.title} as read`}
+              data-testid="mark-as-read-button"
             >
               Mark as read
             </Button>

@@ -53,6 +53,7 @@ export const ArticleSearchResults = ({
         borderRadius="0"
         border="2px solid var(--surface-border)"
         boxShadow="var(--shadow-sm)"
+        data-testid="search-empty-state"
       >
         <VStack gap={3}>
           <Text
@@ -60,6 +61,7 @@ export const ArticleSearchResults = ({
             fontSize="lg"
             fontWeight="600"
             textAlign="center"
+            data-testid="search-empty-heading"
           >
             No articles found
           </Text>
@@ -78,7 +80,7 @@ export const ArticleSearchResults = ({
   }
 
   return (
-    <VStack gap={4} align="stretch">
+    <VStack gap={4} align="stretch" data-testid="search-results">
       {/* Search metadata */}
       <Box
         bg="var(--surface-bg)"
@@ -86,9 +88,10 @@ export const ArticleSearchResults = ({
         borderRadius="0"
         border="2px solid var(--surface-border)"
         boxShadow="var(--shadow-sm)"
+        data-testid="search-metadata"
       >
         <VStack gap={2} align="start">
-          <Text color="var(--text-primary)" fontSize="sm" fontWeight="600">
+          <Text color="var(--text-primary)" fontSize="sm" fontWeight="600" data-testid="search-count">
             Found {results.length} article{results.length !== 1 ? "s" : ""}
           </Text>
           {searchTime !== undefined && (
