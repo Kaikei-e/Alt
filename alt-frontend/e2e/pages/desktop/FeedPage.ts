@@ -1,72 +1,135 @@
 import { type Locator, type Page, expect } from '@playwright/test';
 import { BasePage } from '../BasePage';
 
+/**
+ * Desktop Feed Page Object
+ * Uses data-testid selectors for stability
+ */
 export class FeedPage extends BasePage {
+  // Primary locators using data-testid
   readonly feedCards: Locator;
-  readonly loadMoreButton: Locator;
+  readonly emptyState: Locator;
   readonly loadingIndicator: Locator;
+  readonly timelineContainer: Locator;
+  readonly skeleton: Locator;
+  readonly errorState: Locator;
+  readonly errorMessage: Locator;
+  readonly retryButton: Locator;
 
   constructor(page: Page) {
     super(page);
-    // Match the actual data-testid pattern from DesktopTimeline: desktop-feed-card-${feed.id}
-    this.feedCards = page.locator('[data-testid^="desktop-feed-card-"], article, [role="article"]').or(
-      page.locator('div').filter({ hasText: /React|TypeScript|Next\.js|Go|AI|Database|CSS|Testing|Docker|Security/ })
-    );
-    this.loadMoreButton = page.getByRole('button', { name: /load more|more|続きを読む/i });
-    this.loadingIndicator = page.locator('[data-testid="infinite-scroll-sentinel"]').or(
-      page.locator('[data-testid="loading"], [aria-label="Loading"]').or(
-        page.locator('text=/loading|読み込み中|Loading more/i')
-      )
-    );
+    // Use stable data-testid selectors
+    this.feedCards = page.locator('[data-testid^="desktop-feed-card-"]');
+    this.emptyState = page.getByTestId('empty-state');
+    this.loadingIndicator = page.getByTestId('infinite-scroll-sentinel');
+    this.timelineContainer = page.getByTestId('desktop-timeline-container');
+    this.skeleton = page.getByTestId('desktop-timeline-skeleton');
+    this.errorState = page.getByTestId('error-state');
+    this.errorMessage = page.getByTestId('error-message');
+    this.retryButton = page.getByTestId('retry-button');
   }
 
   /**
    * Navigate to feed page
    */
-  async goto() {
-    await super.goto('/desktop/feeds');
+  async goto(): Promise<void> {
+    await this.navigateTo('/desktop/feeds');
   }
 
   /**
-   * Wait for feeds to be visible
-   * Uses Playwright's automatic waiting (expect().toBeVisible() waits automatically)
+   * Wait for feeds to load and be visible
    */
-  async waitForFeeds() {
-    await expect(this.feedCards.first()).toBeVisible();
+  async waitForFeeds(timeout = 15000): Promise<void> {
+    // Wait for skeleton to disappear (if visible)
+    await expect(this.skeleton).toBeHidden({ timeout }).catch(() => {});
+
+    // Wait for either feed cards, empty state, or error state
+    await expect(
+      this.feedCards.first().or(this.emptyState).or(this.errorState),
+    ).toBeVisible({ timeout });
   }
 
   /**
-   * Scroll to the bottom of the page to trigger infinite scroll
+   * Get number of visible feed cards
    */
-  async scrollToBottom() {
-    await this.page.evaluate(() => {
-      window.scrollTo(0, document.body.scrollHeight);
-    });
+  async getFeedCount(): Promise<number> {
+    // Wait a bit for cards to render
+    await this.page.waitForTimeout(500);
+    return this.feedCards.count();
   }
 
   /**
-   * Wait for loading indicator to appear and disappear
+   * Get first feed card's title
    */
-  async waitForLoading(timeout = 5000) {
+  async getFirstFeedTitle(): Promise<string> {
+    const firstCard = this.feedCards.first();
+    await expect(firstCard).toBeVisible();
+    // Use data-testid for stable selection
+    const titleElement = firstCard.getByTestId('feed-card-title');
+    return (await titleElement.textContent()) ?? '';
+  }
+
+  /**
+   * Click on a specific feed card by index
+   */
+  async clickFeed(index = 0): Promise<void> {
+    const card = this.feedCards.nth(index);
+    await expect(card).toBeVisible();
+    await card.click();
+  }
+
+  /**
+   * Check if empty state is displayed
+   */
+  async hasEmptyState(): Promise<boolean> {
     try {
-      await expect(this.loadingIndicator).toBeVisible({ timeout: 2000 });
-      await expect(this.loadingIndicator).toBeHidden({ timeout });
+      await expect(this.emptyState).toBeVisible({ timeout: 5000 });
+      return true;
     } catch {
-      // Loading indicator might not appear if response is very fast
+      return false;
     }
   }
 
   /**
-   * Get the number of visible feed cards
+   * Check if error state is displayed
    */
-  async getFeedCount(): Promise<number> {
-    return await this.feedCards.count();
+  async hasErrorState(): Promise<boolean> {
+    try {
+      await expect(this.errorState).toBeVisible({ timeout: 5000 });
+      return true;
+    } catch {
+      return false;
+    }
   }
+
   /**
-   * Get the title of the first feed
+   * Click retry button (in error state)
    */
-  async getFirstFeedTitle(): Promise<string> {
-    return await this.feedCards.first().locator('h1, h2, h3, [data-testid="feed-title"]').first().textContent() || '';
+  async clickRetry(): Promise<void> {
+    await expect(this.retryButton).toBeVisible();
+    await this.retryButton.click();
+  }
+
+  /**
+   * Scroll to load more feeds (infinite scroll)
+   */
+  async loadMoreFeeds(): Promise<void> {
+    const initialCount = await this.getFeedCount();
+    await this.scrollToBottom();
+
+    // Wait for new feeds to potentially load
+    await this.page.waitForTimeout(1000);
+
+    // Check if loading indicator appears/disappears
+    await expect(this.loadingIndicator)
+      .toBeVisible({ timeout: 2000 })
+      .catch(() => {});
+  }
+
+  /**
+   * Get feed card by ID
+   */
+  getFeedCardById(feedId: string): Locator {
+    return this.page.getByTestId(`desktop-feed-card-${feedId}`);
   }
 }
-
