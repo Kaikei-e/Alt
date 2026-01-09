@@ -116,8 +116,10 @@ const WEB_VITALS_COLLECTOR_SCRIPT = `
 })();
 `;
 
-// Get rating based on thresholds
-function getRating(
+/**
+ * Get rating based on thresholds
+ */
+export function getRating(
   value: number | null,
   thresholds: { good: number; poor: number }
 ): VitalRating {

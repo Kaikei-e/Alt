@@ -141,7 +141,83 @@ export interface FlowsConfig {
   flows: FlowConfig[];
 }
 
-// Main configuration
+// Retry configuration
+export interface RetryConfig {
+  /** Enable retry mechanism */
+  enabled: boolean;
+  /** Maximum number of retry attempts */
+  maxAttempts: number;
+  /** Base delay in milliseconds before first retry */
+  baseDelayMs: number;
+  /** Backoff multiplier for exponential delay */
+  backoffMultiplier: number;
+}
+
+// Multi-run configuration
+export interface MultiRunConfig {
+  /** Enable multi-run measurements */
+  enabled: boolean;
+  /** Number of measurement runs */
+  runs: number;
+  /** Number of warmup runs (discarded) */
+  warmupRuns: number;
+  /** Cooldown time between runs in milliseconds */
+  cooldownMs: number;
+  /** Discard outliers from statistics */
+  discardOutliers: boolean;
+}
+
+// Debug/artifact configuration
+export interface DebugConfig {
+  /** Screenshot settings */
+  screenshots: {
+    /** Enable screenshot capture */
+    enabled: boolean;
+    /** Capture on test failure */
+    onFailure: boolean;
+    /** Capture on test success */
+    onSuccess: boolean;
+    /** Capture full page */
+    fullPage: boolean;
+  };
+  /** Trace settings */
+  traces: {
+    /** Enable trace capture */
+    enabled: boolean;
+    /** Capture on test failure */
+    onFailure: boolean;
+  };
+  /** Output directory for artifacts */
+  outputDir: string;
+  /** Number of days to retain artifacts */
+  retentionDays: number;
+}
+
+// Network simulation configuration
+export interface NetworkSimulationConfig {
+  /** Enable network simulation */
+  enabled: boolean;
+  /** Network condition preset name */
+  preset?: string;
+  /** Custom network condition */
+  custom?: {
+    downloadThroughput: number;
+    uploadThroughput: number;
+    latency: number;
+  };
+  /** CPU throttling preset */
+  cpuThrottling?: string;
+}
+
+// Cache configuration
+export interface CacheConfig {
+  /** Disable browser cache */
+  disableCache: boolean;
+  /** Clear cache before each test */
+  clearBefore: boolean;
+}
+
+// Main configuration (enhanced)
 export interface PerfConfig {
   baseUrl: string;
   devices: string[];
@@ -149,7 +225,50 @@ export interface PerfConfig {
   routes: RoutesConfig;
   thresholds: ThresholdsConfig;
   flows?: FlowsConfig;
+  /** Retry configuration */
+  retry?: RetryConfig;
+  /** Multi-run configuration */
+  multiRun?: MultiRunConfig;
+  /** Debug/artifact configuration */
+  debug?: DebugConfig;
+  /** Network simulation configuration */
+  network?: NetworkSimulationConfig;
+  /** Cache configuration */
+  cache?: CacheConfig;
 }
+
+// Default retry configuration
+export const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  enabled: true,
+  maxAttempts: 3,
+  baseDelayMs: 1000,
+  backoffMultiplier: 2,
+};
+
+// Default multi-run configuration
+export const DEFAULT_MULTI_RUN_CONFIG: MultiRunConfig = {
+  enabled: true,
+  runs: 5,
+  warmupRuns: 1,
+  cooldownMs: 2000,
+  discardOutliers: true,
+};
+
+// Default debug configuration
+export const DEFAULT_DEBUG_CONFIG: DebugConfig = {
+  screenshots: {
+    enabled: true,
+    onFailure: true,
+    onSuccess: false,
+    fullPage: true,
+  },
+  traces: {
+    enabled: true,
+    onFailure: true,
+  },
+  outputDir: "./artifacts",
+  retentionDays: 7,
+};
 
 // Default thresholds (Core Web Vitals 2025)
 export const DEFAULT_THRESHOLDS: ThresholdsConfig = {

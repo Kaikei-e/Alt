@@ -3,6 +3,29 @@
  */
 import type { WebVitalsResult, NavigationTimingResult } from "../measurement/vitals.ts";
 
+// Statistical metrics for a single vital
+export interface StatisticalMetrics {
+  mean: number;
+  median: number;
+  stdDev: number;
+  p95: number;
+  p99: number;
+  confidenceInterval: {
+    lower: number;
+    upper: number;
+    level: number;
+  };
+  sampleSize: number;
+  isStable: boolean;
+}
+
+// Retry information
+export interface RetryInfo {
+  attempts: number;
+  successfulAttempt: number;
+  errors: string[];
+}
+
 // Route measurement result
 export interface RouteMeasurement {
   path: string;
@@ -15,6 +38,23 @@ export interface RouteMeasurement {
   passed: boolean;
   bottlenecks: string[];
   error?: string;
+  /** Statistical summary for multi-run measurements */
+  statistics?: {
+    lcp: StatisticalMetrics;
+    inp: StatisticalMetrics;
+    cls: StatisticalMetrics;
+    fcp: StatisticalMetrics;
+    ttfb: StatisticalMetrics;
+  };
+  /** Retry information */
+  retryInfo?: RetryInfo;
+  /** Debug artifacts */
+  artifacts?: {
+    screenshot?: string;
+    trace?: string;
+  };
+  /** Network condition used */
+  networkCondition?: string;
 }
 
 // Flow step result
@@ -76,7 +116,34 @@ export interface ReportMetadata {
   devices: string[];
 }
 
-// Full performance report
+// Configuration used for the test
+export interface ReportConfiguration {
+  multiRun: boolean;
+  runs?: number;
+  retryEnabled: boolean;
+  maxAttempts?: number;
+  networkCondition?: string;
+  cacheDisabled: boolean;
+  debugEnabled: boolean;
+}
+
+// Reliability metrics for the test run
+export interface ReliabilityMetrics {
+  totalMeasurements: number;
+  successfulMeasurements: number;
+  retriedMeasurements: number;
+  failedMeasurements: number;
+  overallReliability: number;
+}
+
+// Artifact information
+export interface ArtifactInfo {
+  screenshots: string[];
+  traces: string[];
+  outputDir: string;
+}
+
+// Full performance report (enhanced)
 export interface PerformanceReport {
   metadata: ReportMetadata;
   summary: ReportSummary;
@@ -84,4 +151,10 @@ export interface PerformanceReport {
   flows?: FlowResult[];
   loadTest?: LoadTestResult;
   recommendations: string[];
+  /** Configuration used for the test */
+  configuration?: ReportConfiguration;
+  /** Reliability metrics */
+  reliability?: ReliabilityMetrics;
+  /** Artifacts generated */
+  artifacts?: ArtifactInfo;
 }
