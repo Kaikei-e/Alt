@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	connectv2 "search-indexer/connect/v2"
 	"search-indexer/driver"
 	"search-indexer/gateway"
 	"search-indexer/logger"
@@ -25,6 +26,7 @@ const (
 	INDEX_BATCH_SIZE     = 200
 	INDEX_RETRY_INTERVAL = 1 * time.Minute
 	HTTP_ADDR            = ":9300"
+	CONNECT_ADDR         = ":9301"
 	DB_TIMEOUT           = 10 * time.Second
 	MEILI_TIMEOUT        = 15 * time.Second
 )
@@ -100,8 +102,24 @@ func main() {
 		}
 	}()
 
+	// ──────────── Connect-RPC server ────────────
+	connectServer := connectv2.CreateConnectServer(msClient.Index("articles"))
+	connectSrv := &http.Server{
+		Addr:              CONNECT_ADDR,
+		Handler:           connectServer,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	go func() {
+		logger.Logger.Info("connect-rpc listen", "addr", CONNECT_ADDR)
+		if err := connectSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Logger.Error("connect-rpc", "err", err)
+		}
+	}()
+
 	<-ctx.Done() // Ctrl-C
 	_ = srv.Shutdown(context.Background())
+	_ = connectSrv.Shutdown(context.Background())
 }
 
 // initMeilisearchClient initializes the Meilisearch client with retry logic

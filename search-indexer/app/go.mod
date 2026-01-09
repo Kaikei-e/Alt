@@ -3,6 +3,7 @@ module search-indexer
 go 1.24.3
 
 require (
+	connectrpc.com/connect v1.19.1
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/ikawaha/kagome-dict/ipa v1.2.5
@@ -11,6 +12,8 @@ require (
 	github.com/labstack/echo/v4 v4.14.0
 	github.com/meilisearch/meilisearch-go v0.34.2
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/net v0.48.0
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -30,7 +33,6 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
