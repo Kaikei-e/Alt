@@ -5,6 +5,15 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+interface FeedItem {
+  id: string;
+  title: string;
+  description: string;
+  link: string;
+  published: string;
+  tags?: string[];
+}
+
 // Load JSON fixtures
 const feedsData = JSON.parse(
   readFileSync(join(__dirname, '../fixtures/feeds.json'), 'utf-8'),
@@ -142,13 +151,13 @@ export const handlers = [
     }
 
     const filteredFeeds = feedsData.data.filter(
-      (feed) =>
+      (feed: FeedItem) =>
         feed.title.toLowerCase().includes(query.toLowerCase()) ||
         feed.description.toLowerCase().includes(query.toLowerCase()),
     );
 
     return HttpResponse.json(
-      filteredFeeds.map((feed) => ({
+      filteredFeeds.map((feed: FeedItem) => ({
         id: feed.id,
         title: feed.title,
         content: feed.description,
@@ -164,13 +173,13 @@ export const handlers = [
     const query = url.searchParams.get('q') || '';
 
     const filteredFeeds = feedsData.data.filter(
-      (feed) =>
+      (feed: FeedItem) =>
         feed.title.toLowerCase().includes(query.toLowerCase()) ||
         feed.description.toLowerCase().includes(query.toLowerCase()),
     );
 
     return HttpResponse.json(
-      filteredFeeds.map((feed) => ({
+      filteredFeeds.map((feed: FeedItem) => ({
         id: feed.id,
         title: feed.title,
         content: feed.description,

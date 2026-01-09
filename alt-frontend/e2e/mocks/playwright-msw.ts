@@ -5,6 +5,15 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+interface FeedItem {
+  id: string;
+  title: string;
+  description: string;
+  link: string;
+  published: string;
+  tags?: string[];
+}
+
 // Load JSON fixtures
 const feedsData = JSON.parse(
   readFileSync(join(__dirname, '../fixtures/feeds.json'), 'utf-8'),
@@ -239,13 +248,13 @@ async function setupSearchMocks(
 
       // Filter feeds based on query
       const filteredFeeds = feedsData.data.filter(
-        (feed) =>
+        (feed: FeedItem) =>
           feed.title.toLowerCase().includes(query.toLowerCase()) ||
           feed.description.toLowerCase().includes(query.toLowerCase()),
       );
 
       // Convert to Article format
-      const articles = filteredFeeds.map((feed) => ({
+      const articles = filteredFeeds.map((feed: FeedItem) => ({
         id: feed.id,
         title: feed.title,
         content: feed.description,
