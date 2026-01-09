@@ -26,6 +26,9 @@ export interface RetryInfo {
   errors: string[];
 }
 
+// Route measurement status
+export type RouteStatus = "passed" | "failed" | "skipped";
+
 // Route measurement result
 export interface RouteMeasurement {
   path: string;
@@ -36,6 +39,10 @@ export interface RouteMeasurement {
   timing: NavigationTimingResult;
   score: number;
   passed: boolean;
+  /** Detailed status: passed, failed, or skipped */
+  status: RouteStatus;
+  /** Reason for skipping (when status is 'skipped') */
+  skipReason?: string;
   bottlenecks: string[];
   error?: string;
   /** Statistical summary for multi-run measurements */
@@ -103,6 +110,10 @@ export interface ReportSummary {
   totalRoutes: number;
   passedRoutes: number;
   failedRoutes: number;
+  /** Number of routes skipped (e.g., auth routes without credentials) */
+  skippedRoutes: number;
+  /** Number of routes actually measured (totalRoutes - skippedRoutes) */
+  measuredRoutes: number;
   overallScore: number;
   overallRating: "good" | "needs-improvement" | "poor";
 }

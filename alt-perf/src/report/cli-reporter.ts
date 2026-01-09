@@ -1,7 +1,7 @@
 /**
  * CLI report generator with colored output
  */
-import type { PerformanceReport, RouteMeasurement, FlowResult, LoadTestResult } from "./types.ts";
+import type { PerformanceReport, RouteMeasurement, FlowResult, LoadTestResult, RouteStatus } from "./types.ts";
 import type { VitalRating } from "../measurement/vitals.ts";
 import {
   bold,
@@ -15,6 +15,34 @@ import {
   scoreColor,
   SYMBOLS,
 } from "../utils/colors.ts";
+
+/**
+ * Get status color function
+ */
+function statusColor(status: RouteStatus): (text: string) => string {
+  switch (status) {
+    case "passed":
+      return green;
+    case "failed":
+      return red;
+    case "skipped":
+      return yellow;
+  }
+}
+
+/**
+ * Get status label
+ */
+function statusLabel(status: RouteStatus): string {
+  switch (status) {
+    case "passed":
+      return "PASS";
+    case "failed":
+      return "FAIL";
+    case "skipped":
+      return "SKIP";
+  }
+}
 
 /**
  * Format duration in human-readable form
@@ -57,9 +85,13 @@ function printSummary(report: PerformanceReport): void {
   console.log(`  Devices: ${metadata.devices.join(", ")}`);
   console.log("");
   console.log(`  Total Routes: ${summary.totalRoutes}`);
+  console.log(`  Measured: ${summary.measuredRoutes}`);
   console.log(`  Passed: ${green(summary.passedRoutes.toString())}`);
   console.log(`  Failed: ${red(summary.failedRoutes.toString())}`);
-  console.log(`  Score: ${colorFn(summary.overallScore.toString())}/100`);
+  if (summary.skippedRoutes > 0) {
+    console.log(`  Skipped: ${yellow(summary.skippedRoutes.toString())} (auth routes - no credentials)`);
+  }
+  console.log(`  Score: ${colorFn(summary.overallScore.toString())}/100 (based on measured routes)`);
   console.log("");
 }
 
@@ -67,33 +99,74 @@ function printSummary(report: PerformanceReport): void {
  * Print route details
  */
 function printRouteDetails(routes: RouteMeasurement[]): void {
-  console.log(bold("Route Details:"));
-  console.log(horizontalLine());
+  // Separate measured routes and skipped routes
+  const measuredRoutes = routes.filter((r) => r.status !== "skipped");
+  const skippedRoutes = routes.filter((r) => r.status === "skipped");
 
-  for (const route of routes) {
-    const status = route.passed ? green("PASS") : red("FAIL");
-    const authBadge = route.requiresAuth ? dim("[auth]") : "";
+  // Print measured routes
+  if (measuredRoutes.length > 0) {
+    console.log(bold("Measured Routes:"));
+    console.log(horizontalLine());
 
-    console.log(`${status} ${route.path} ${authBadge}`);
-    console.log(`     Device: ${route.device}`);
-    console.log(`     LCP: ${formatMetric(route.vitals.lcp.value, route.vitals.lcp.rating)}`);
-    console.log(`     INP: ${formatMetric(route.vitals.inp.value, route.vitals.inp.rating)}`);
-    console.log(`     CLS: ${formatMetric(route.vitals.cls.value, route.vitals.cls.rating, "")}`);
-    console.log(`     FCP: ${formatMetric(route.vitals.fcp.value, route.vitals.fcp.rating)}`);
-    console.log(`     TTFB: ${formatMetric(route.vitals.ttfb.value, route.vitals.ttfb.rating)}`);
-    console.log(`     Score: ${scoreColor(route.score)(route.score.toString())}/100`);
+    for (const route of measuredRoutes) {
+      const colorFn = statusColor(route.status);
+      const label = statusLabel(route.status);
+      const authBadge = route.requiresAuth ? dim("[auth]") : "";
 
-    if (route.bottlenecks.length > 0) {
-      console.log(`     Bottlenecks:`);
-      for (const bottleneck of route.bottlenecks) {
-        console.log(`       ${yellow(SYMBOLS.bullet)} ${bottleneck}`);
+      console.log(`${colorFn(label)} ${route.path} ${authBadge}`);
+      console.log(`     Device: ${route.device}`);
+      console.log(`     LCP: ${formatMetric(route.vitals.lcp.value, route.vitals.lcp.rating)}`);
+      console.log(`     INP: ${formatMetric(route.vitals.inp.value, route.vitals.inp.rating)}`);
+      console.log(`     CLS: ${formatMetric(route.vitals.cls.value, route.vitals.cls.rating, "")}`);
+      console.log(`     FCP: ${formatMetric(route.vitals.fcp.value, route.vitals.fcp.rating)}`);
+      console.log(`     TTFB: ${formatMetric(route.vitals.ttfb.value, route.vitals.ttfb.rating)}`);
+      console.log(`     Score: ${scoreColor(route.score)(route.score.toString())}/100`);
+
+      if (route.bottlenecks.length > 0) {
+        console.log(`     Bottlenecks:`);
+        for (const bottleneck of route.bottlenecks) {
+          console.log(`       ${yellow(SYMBOLS.bullet)} ${bottleneck}`);
+        }
+      }
+
+      if (route.error) {
+        console.log(`     Error: ${red(route.error)}`);
+      }
+
+      console.log(horizontalLine());
+    }
+  }
+
+  // Print skipped routes summary (collapsed)
+  if (skippedRoutes.length > 0) {
+    console.log("");
+    console.log(bold("Skipped Routes:"));
+    console.log(dim(`  (${skippedRoutes.length} routes skipped - authentication credentials not configured)`));
+    console.log("");
+
+    // Group by device and list paths compactly
+    const byDevice = new Map<string, string[]>();
+    for (const route of skippedRoutes) {
+      const paths = byDevice.get(route.device) || [];
+      paths.push(route.path);
+      byDevice.set(route.device, paths);
+    }
+
+    for (const [device, paths] of byDevice) {
+      console.log(`  ${yellow(device)}:`);
+      // Show first few routes, then count
+      const maxShow = 5;
+      const shown = paths.slice(0, maxShow);
+      const remaining = paths.length - maxShow;
+      for (const path of shown) {
+        console.log(`    ${dim(SYMBOLS.bullet)} ${path}`);
+      }
+      if (remaining > 0) {
+        console.log(`    ${dim(`... and ${remaining} more`)}`);
       }
     }
-
-    if (route.error) {
-      console.log(`     Error: ${red(route.error)}`);
-    }
-
+    console.log("");
+    console.log(dim("  To measure these routes, set PERF_TEST_EMAIL and PERF_TEST_PASSWORD environment variables."));
     console.log(horizontalLine());
   }
 }

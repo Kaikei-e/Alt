@@ -141,11 +141,11 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
             device,
             requiresAuth: true,
             vitals: {
-              lcp: { value: 0, rating: "poor" },
-              inp: { value: 0, rating: "poor" },
-              cls: { value: 0, rating: "poor" },
-              fcp: { value: 0, rating: "poor" },
-              ttfb: { value: 0, rating: "poor" },
+              lcp: { value: 0, rating: "good" },
+              inp: { value: 0, rating: "good" },
+              cls: { value: 0, rating: "good" },
+              fcp: { value: 0, rating: "good" },
+              ttfb: { value: 0, rating: "good" },
               timestamp: Date.now(),
             },
             timing: {
@@ -157,8 +157,9 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
             },
             score: 0,
             passed: false,
+            status: "skipped",
+            skipReason: "Authentication credentials not configured (PERF_TEST_EMAIL/PERF_TEST_PASSWORD)",
             bottlenecks: [],
-            error: "Authentication required but not available",
           });
           continue;
         }
@@ -191,6 +192,7 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
             timing,
             score,
             passed,
+            status: passed ? "passed" : "failed",
             bottlenecks,
           });
 
@@ -218,6 +220,7 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
             },
             score: 0,
             passed: false,
+            status: "failed",
             bottlenecks: [],
             error: String(err),
           });
@@ -228,17 +231,22 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
     await browser.close();
   }
 
-  // Calculate summary
-  const passedRoutes = measurements.filter((m) => m.passed).length;
+  // Calculate summary (excluding skipped routes from score calculation)
+  const skippedRoutes = measurements.filter((m) => m.status === "skipped").length;
+  const measuredRoutes = measurements.filter((m) => m.status !== "skipped");
+  const passedRoutes = measuredRoutes.filter((m) => m.passed).length;
+  const failedRoutes = measuredRoutes.filter((m) => !m.passed).length;
   const overallScore =
-    measurements.length > 0
-      ? Math.round(measurements.reduce((sum, m) => sum + m.score, 0) / measurements.length)
+    measuredRoutes.length > 0
+      ? Math.round(measuredRoutes.reduce((sum, m) => sum + m.score, 0) / measuredRoutes.length)
       : 0;
 
   const summary: ReportSummary = {
     totalRoutes: measurements.length,
     passedRoutes,
-    failedRoutes: measurements.length - passedRoutes,
+    failedRoutes,
+    skippedRoutes,
+    measuredRoutes: measuredRoutes.length,
     overallScore,
     overallRating:
       overallScore >= 90 ? "good" : overallScore >= 50 ? "needs-improvement" : "poor",
