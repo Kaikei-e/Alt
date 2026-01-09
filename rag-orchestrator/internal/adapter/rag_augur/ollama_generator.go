@@ -17,11 +17,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	generationTemperature = 0.0
-	keepAliveSeconds      = 600
-)
-
 var generationFormat = map[string]interface{}{
 	"type": "object",
 	"properties": map[string]interface{}{
@@ -70,16 +65,6 @@ type chatResponse struct {
 		Content string `json:"content"`
 	} `json:"message"`
 	Done bool `json:"done"`
-}
-
-type streamGenerationRequest struct {
-	Model     string                 `json:"model"`
-	Prompt    string                 `json:"prompt"`
-	Stream    bool                   `json:"stream"`
-	KeepAlive int                    `json:"keep_alive"`
-	Format    map[string]interface{} `json:"format"`
-	Options   map[string]interface{} `json:"options,omitempty"`
-	Think     string                 `json:"think,omitempty"`
 }
 
 // OllamaGenerator sends prompts to Ollama's chat endpoint and returns structured text.

@@ -75,7 +75,7 @@ func getSecret(envKey, fileEnvKey, fallback string) string {
 
 	// 2. Try reading from file specified by fileEnvKey
 	if filePath, ok := os.LookupEnv(fileEnvKey); ok {
-		content, err := os.ReadFile(filePath)
+		content, err := os.ReadFile(filePath) //nolint:gosec // G304: path from trusted env var
 		if err == nil {
 			return strings.TrimSpace(string(content))
 		}

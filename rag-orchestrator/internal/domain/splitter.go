@@ -35,7 +35,6 @@ func splitLongChunks(paragraphs []string) []string {
 			if chunkLen > 0 && chunkLen+spaceLen+sentenceLen > MaxChunkLength {
 				result = append(result, chunk)
 				chunk = ""
-				chunkLen = 0
 			}
 
 			// If sentence itself is too long, strictly split it
@@ -44,7 +43,6 @@ func splitLongChunks(paragraphs []string) []string {
 				if chunk != "" {
 					result = append(result, chunk)
 					chunk = ""
-					chunkLen = 0
 				}
 
 				// Split the long sentence by MaxChunkLength

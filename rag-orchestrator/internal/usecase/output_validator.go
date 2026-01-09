@@ -48,15 +48,18 @@ func (v OutputValidator) Validate(raw string, contexts []ContextItem) (*LLMAnswe
 		for _, ctx := range contexts {
 			allowed[ctx.ChunkID.String()] = struct{}{}
 		}
+		// Validate citations - filter out invalid ones
+		validCitations := make([]LLMCitation, 0, len(answer.Citations))
 		for _, cite := range answer.Citations {
 			if cite.ChunkID == "" {
-				continue // Skip invalid citations instead of erroring
+				continue // Skip empty citations
 			}
-			if _, ok := allowed[cite.ChunkID]; !ok {
-				// Warn or ignore? Let's ignore invalid citations to keep the answer
-				continue
+			if _, exists := allowed[cite.ChunkID]; exists {
+				validCitations = append(validCitations, cite)
 			}
+			// Invalid citations (not in allowed set) are silently dropped
 		}
+		answer.Citations = validCitations
 	}
 
 	// Sanitize output
@@ -101,8 +104,7 @@ func extractAnswerOnly(raw string) string {
 	// Dealing with escaped quotes is tricky with regex, simpler manual loop or smart index finding
 
 	key := "\"answer\":"
-	idx := strings.LastIndex(raw, key) // Use LastIndex? No, Index.
-	idx = strings.Index(raw, key)
+	idx := strings.Index(raw, key)
 	if idx == -1 {
 		return ""
 	}

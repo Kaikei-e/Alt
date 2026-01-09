@@ -165,8 +165,9 @@ func main() {
 	// 13. Start Connect-RPC Server
 	connectHandler := connectserver.CreateConnectServer(articleClient, answerUsecase, log)
 	connectServer := &http.Server{
-		Addr:    fmt.Sprintf(":%s", cfg.ConnectPort),
-		Handler: connectHandler,
+		Addr:              fmt.Sprintf(":%s", cfg.ConnectPort),
+		Handler:           connectHandler,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
 		log.Info("Starting Connect-RPC server", "addr", connectServer.Addr)

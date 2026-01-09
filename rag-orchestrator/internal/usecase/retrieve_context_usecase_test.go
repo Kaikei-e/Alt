@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
-	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -101,8 +100,4 @@ func TestRetrieveContext_Execute_Success(t *testing.T) {
 	assert.Len(t, output.Contexts, 1)
 	assert.Equal(t, "Found content", output.Contexts[0].ChunkText)
 	assert.Equal(t, float32(0.95), output.Contexts[0].Score)
-}
-
-func msgContains(s, substr string) bool {
-	return strings.Contains(s, substr)
 }

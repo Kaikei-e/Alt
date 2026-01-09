@@ -114,10 +114,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		isEscaped := false
 		answerCompletelyStreamed := false
 
-		for {
-			if chunkStream == nil && errStream == nil {
-				break
-			}
+		for chunkStream != nil || errStream != nil {
 			select {
 			case <-ctx.Done():
 				u.sendStreamEvent(ctx, events, StreamEvent{

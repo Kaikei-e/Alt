@@ -115,15 +115,3 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 		{Role: "user", Content: userSb.String()},
 	}, nil
 }
-
-func escape(value string) string {
-	s := strings.TrimSpace(value)
-	replacer := strings.NewReplacer(
-		"&", "&amp;",
-		"<", "&lt;",
-		">", "&gt;",
-		"\"", "&quot;",
-		"'", "&#39;",
-	)
-	return replacer.Replace(s)
-}

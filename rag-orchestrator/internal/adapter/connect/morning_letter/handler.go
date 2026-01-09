@@ -2,7 +2,6 @@ package morning_letter
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"time"
 
@@ -104,7 +103,7 @@ func (h *Handler) StreamChat(
 					Since: since.Format(time.RFC3339),
 					Until: now.Format(time.RFC3339),
 				},
-				ArticlesScanned: int32(len(articles)),
+				ArticlesScanned: int32(min(len(articles), 1<<31-1)), //nolint:gosec // safe: articles count never exceeds int32 max
 			},
 		},
 	}
@@ -256,10 +255,4 @@ func (h *Handler) sendFallbackEvent(stream *connect.ServerStream[morningletterv2
 		return connect.NewError(connect.CodeInternal, err)
 	}
 	return nil
-}
-
-// debugJSON is a helper for debugging
-func debugJSON(v interface{}) string {
-	b, _ := json.Marshal(v)
-	return string(b)
 }
