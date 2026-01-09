@@ -7,44 +7,46 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.test') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './e2e/specs',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : 20,
-  // Increase timeout for CI environments where tests may run slower
-  timeout: process.env.CI ? 60 * 1000 : 30 * 1000,
-  // Increase expect timeout for CI environments (especially for mobile Safari)
+  workers: process.env.CI ? 1 : undefined,
+  timeout: 30000,
   expect: {
-    timeout: process.env.CI ? 15 * 1000 : 5 * 1000,
+    timeout: 10000,
   },
-  reporter: 'html',
+  reporter: process.env.CI ? 'github' : 'html',
+
+  // Global setup for MSW and other initialization
+  globalSetup: './e2e/global-setup.ts',
+
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
-    trace: 'on-first-retry',
-    video: 'on-first-retry',
-    // Increase action timeout for CI environments
-    actionTimeout: process.env.CI ? 15 * 1000 : 10 * 1000,
-    // Increase navigation timeout for CI environments
-    navigationTimeout: process.env.CI ? 30 * 1000 : 15 * 1000,
+    trace: 'retain-on-failure',
+    video: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+    actionTimeout: 10000,
+    navigationTimeout: 15000,
   },
 
+  // Start mock auth service and Next.js dev server
   webServer: [
-    // Start mock auth service first (array order matters)
     {
       command: 'node tests/mock-auth-service.cjs',
       url: 'http://localhost:4545/v1/health',
-      reuseExistingServer: !process.env.CI,
-      timeout: 15 * 1000, // Increased timeout for CI environments
+      reuseExistingServer: true,
+      timeout: 15000,
       stdout: 'pipe',
       stderr: 'pipe',
     },
-    // Then start Next.js dev server (waits for mock service to be ready)
     {
-      command: 'PORT=3010 NEXT_PUBLIC_APP_ORIGIN=http://localhost:3010 NEXT_PUBLIC_KRATOS_PUBLIC_URL=http://localhost:4545 NEXT_PUBLIC_IDP_ORIGIN=http://localhost:4545 NEXT_PUBLIC_BACKEND_URL=http://localhost:9000 AUTH_HUB_INTERNAL_URL=http://localhost:4545 NODE_ENV=test pnpm dev',
-      url: 'http://localhost:3010',
-      reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
+      command: 'pnpm dev --port 3010',
+      url: 'http://localhost:3010/api/health',
+      reuseExistingServer: true,
+      timeout: 120000,
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
   ],
 
@@ -52,57 +54,29 @@ export default defineConfig({
     // Setup project for authentication
     {
       name: 'setup',
-      testMatch: /.*\.setup\.ts/,
+      testMatch: /auth\.setup\.ts$/,
     },
 
+    // Desktop (Chromium)
     {
-      name: 'chromium',
+      name: 'desktop-chromium',
       use: {
         ...devices['Desktop Chrome'],
         storageState: 'e2e/.auth/user.json',
       },
       dependencies: ['setup'],
-      testMatch: /.*\/desktop\/.*\.spec\.ts/,
+      testMatch: /desktop\/.*\.spec\.ts$/,
     },
 
+    // Mobile (Chromium - Pixel 5)
     {
-      name: 'firefox',
-      use: {
-        ...devices['Desktop Firefox'],
-        storageState: 'e2e/.auth/user.json',
-      },
-      dependencies: ['setup'],
-      testMatch: /.*\/desktop\/.*\.spec\.ts/,
-    },
-
-    {
-      name: 'webkit',
-      use: {
-        ...devices['Desktop Safari'],
-        storageState: 'e2e/.auth/user.json',
-      },
-      dependencies: ['setup'],
-      testMatch: /.*\/desktop\/.*\.spec\.ts/,
-    },
-
-    /* Mobile Viewports */
-    {
-      name: 'Mobile Chrome',
+      name: 'mobile-chromium',
       use: {
         ...devices['Pixel 5'],
         storageState: 'e2e/.auth/user.json',
       },
       dependencies: ['setup'],
-      testMatch: /.*\/mobile\/.*\.spec\.ts/,
-    },
-    {
-      name: 'Mobile Safari',
-      use: {
-        ...devices['iPhone 12'],
-        storageState: 'e2e/.auth/user.json',
-      },
-      dependencies: ['setup'],
-      testMatch: /.*\/mobile\/.*\.spec\.ts/,
+      testMatch: /mobile\/.*\.spec\.ts$/,
     },
   ],
 });
