@@ -94,6 +94,12 @@ services:
       - "9200:9200"
     networks:
       - alt-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9200/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     tty: true
     labels:
       - rask.group=pre-processor

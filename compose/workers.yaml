@@ -68,6 +68,12 @@ services:
       - alt-network
     ports:
       - "9300:9300"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9300/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     tty: true
     labels:
       - rask.group=search-indexer
@@ -102,6 +108,12 @@ services:
     volumes:
       - ../scripts:/scripts:ro
       - ../tag-generator/models/onnx:/models/onnx:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9400/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     tty: true
     restart: unless-stopped
     labels:

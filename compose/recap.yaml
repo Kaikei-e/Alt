@@ -99,6 +99,12 @@ services:
     restart: unless-stopped
     ports:
       - "9005:9005"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9005/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     labels:
       - rask.group=recap-worker
     logging:
@@ -153,7 +159,7 @@ services:
       - ../recap-subworker/recap_subworker/learning_machine/artifacts:/app/recap_subworker/learning_machine/artifacts:ro
     depends_on:
       recap-worker:
-        condition: service_started
+        condition: service_healthy
     deploy:
       resources:
         reservations:

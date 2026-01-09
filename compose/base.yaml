@@ -89,3 +89,18 @@ x-logging-config: &logging-config
     options:
       max-size: "10m"
       max-file: "3"
+
+# Healthcheck templates for service startup ordering
+x-healthcheck-http: &healthcheck-http
+  healthcheck:
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 30s
+
+x-healthcheck-db: &healthcheck-db
+  healthcheck:
+    interval: 5s
+    timeout: 5s
+    retries: 10
+    start_period: 10s
