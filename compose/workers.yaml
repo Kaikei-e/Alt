@@ -67,7 +67,8 @@ services:
     networks:
       - alt-network
     ports:
-      - "9300:9300"
+      - "9300:9300"   # REST API
+      - "9301:9301"   # Connect-RPC
     healthcheck:
       test: ["CMD", "/search-indexer", "healthcheck"]
       interval: 10s

@@ -91,7 +91,8 @@ services:
       - pre_processor_db_password
     restart: always
     ports:
-      - "9200:9200"
+      - "9200:9200"   # REST API
+      - "9202:9202"   # Connect-RPC
     networks:
       - alt-network
     healthcheck:
