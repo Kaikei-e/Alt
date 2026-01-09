@@ -1,6 +1,5 @@
 use crate::domain::{EnrichedLogEntry, LogLevel};
 use anyhow::Result;
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use clickhouse::Client;
 use clickhouse::serde::chrono::datetime64::millis;
@@ -63,30 +62,34 @@ impl ClickHouseExporter {
     }
 }
 
-#[async_trait]
 impl super::LogExporter for ClickHouseExporter {
-    async fn export_batch(&self, logs: Vec<EnrichedLogEntry>) -> Result<()> {
-        // 変換時に所有権を奪い clone を削減
-        let rows: Vec<LogRow> = logs.into_iter().map(LogRow::from).collect();
+    fn export_batch(
+        &self,
+        logs: Vec<EnrichedLogEntry>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + '_>> {
+        Box::pin(async move {
+            // 変換時に所有権を奪い clone を削減
+            let rows: Vec<LogRow> = logs.into_iter().map(LogRow::from).collect();
 
-        // バッチを 1000 行単位で送信
-        let mut inserter = self
-            .client
-            .inserter::<LogRow>("logs")?
-            .with_timeouts(Some(Duration::from_secs(10)), Some(Duration::from_secs(10)))
-            .with_max_bytes(50_000_000)
-            .with_max_rows(1000);
+            // バッチを 1000 行単位で送信
+            let mut inserter = self
+                .client
+                .inserter::<LogRow>("logs")?
+                .with_timeouts(Some(Duration::from_secs(10)), Some(Duration::from_secs(10)))
+                .with_max_bytes(50_000_000)
+                .with_max_rows(1000);
 
-        for row in &rows {
-            match inserter.write(row) {
-                Ok(_) => (),
-                Err(e) => {
-                    error!("Failed to write row to ClickHouse: {e}");
+            for row in &rows {
+                match inserter.write(row) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        error!("Failed to write row to ClickHouse: {e}");
+                    }
                 }
             }
-        }
-        inserter.end().await?; // commit 相当
+            inserter.end().await?; // commit 相当
 
-        Ok(())
+            Ok(())
+        })
     }
 }

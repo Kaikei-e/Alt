@@ -1,8 +1,10 @@
 mod config;
 mod domain;
+mod error;
 mod log_exporter;
 
 use crate::domain::EnrichedLogEntry;
+use crate::error::AggregatorError;
 use crate::log_exporter::LogExporter;
 use crate::log_exporter::clickhouse_exporter::ClickHouseExporter;
 use axum::{
@@ -16,13 +18,13 @@ use tracing::{Level, error, info};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), AggregatorError> {
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(EnvFilter::from_default_env().add_directive(Level::INFO.into()))
         .init();
 
-    let settings = config::get_configuration().expect("Failed to read configuration.");
+    let settings = config::get_configuration().map_err(|e| AggregatorError::Config(e.to_string()))?;
     info!("Loaded settings");
 
     let client = Client::default()
@@ -51,10 +53,18 @@ async fn main() {
         .merge(v1_health_router)
         .merge(v1_aggregate_router);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:9600").await.unwrap();
-    let ip_addr = listener.local_addr().unwrap();
+    let bind_addr = "0.0.0.0:9600";
+    let listener = tokio::net::TcpListener::bind(bind_addr)
+        .await
+        .map_err(|e| AggregatorError::Bind {
+            address: bind_addr.to_string(),
+            source: e,
+        })?;
+    let ip_addr = listener.local_addr()?;
     info!("Listening on {}", ip_addr);
-    let _ = axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app).await?;
+
+    Ok(())
 }
 
 // Add handler function for /v1/aggregate
