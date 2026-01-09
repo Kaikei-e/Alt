@@ -13,6 +13,7 @@ import (
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
+	"alt/gen/proto/alt/recap/v2/recapv2connect"
 	"alt/gen/proto/alt/rss/v2/rssv2connect"
 
 	"alt/config"
@@ -21,8 +22,10 @@ import (
 	"alt/connect/v2/feeds"
 	"alt/connect/v2/middleware"
 	"alt/connect/v2/morning_letter"
+	"alt/connect/v2/recap"
 	"alt/connect/v2/rss"
 	"alt/di"
+	recapinternal "alt/internal/recap"
 )
 
 // SetupConnectHandlers registers all Connect-RPC handlers with the HTTP mux.
@@ -62,6 +65,13 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	morningLetterPath, morningLetterServiceHandler := morningletterv2connect.NewMorningLetterServiceHandler(morningLetterHandler, opts)
 	mux.Handle(morningLetterPath, morningLetterServiceHandler)
 	logger.Info("Registered Connect-RPC MorningLetterService", "path", morningLetterPath)
+
+	// Register Recap service
+	clusterDraftLoader := recapinternal.NewClusterDraftLoader(cfg.Recap.ClusterDraftPath)
+	recapHandler := recap.NewHandler(container.RecapUsecase, clusterDraftLoader, logger)
+	recapPath, recapServiceHandler := recapv2connect.NewRecapServiceHandler(recapHandler, opts)
+	mux.Handle(recapPath, recapServiceHandler)
+	logger.Info("Registered Connect-RPC RecapService", "path", recapPath)
 }
 
 // CreateConnectServer creates the Connect-RPC server with HTTP/2 support.

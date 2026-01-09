@@ -4,7 +4,6 @@ import (
 	"alt/config"
 	"alt/di"
 	"alt/domain"
-	recapinternal "alt/internal/recap"
 	middleware_custom "alt/middleware"
 	"alt/usecase/recap_articles_usecase"
 	"alt/utils/logger"
@@ -29,10 +28,7 @@ func registerRecapRoutes(v1 *echo.Group, container *di.ApplicationComponents, cf
 	recap := v1.Group("/recap", serviceAuthMiddleware.RequireServiceAuth())
 	recap.GET("/articles", handleRecapArticles(container, cfg, limiter))
 
-	// 7-day recap endpoint (publicly accessible)
-	clusterDraftLoader := recapinternal.NewClusterDraftLoader(cfg.Recap.ClusterDraftPath)
-	recapHandler := NewRecapHandler(container.RecapUsecase, clusterDraftLoader)
-	v1.GET("/recap/7days", recapHandler.GetSevenDayRecap)
+	// NOTE: 7-day recap endpoint migrated to Connect-RPC (RecapService.GetSevenDayRecap)
 }
 
 func handleRecapArticles(container *di.ApplicationComponents, cfg *config.Config, limiter *recapRateLimiter) echo.HandlerFunc {
