@@ -5,12 +5,16 @@ Deno-based E2E performance measurement CLI for the Alt platform. Measures Core W
 ## Features
 
 - **Automated Web Vitals Measurement**: Measure LCP, INP, CLS, FCP, and TTFB across all routes
+- **Multi-Run Statistical Analysis**: Run multiple measurements with confidence intervals and outlier detection
+- **Retry Mechanism**: Exponential backoff with configurable retry policies for transient failures
+- **Network Simulation**: Simulate slow-3g, fast-3g, 4g network conditions via CDP
+- **Debug Artifacts**: Automatic screenshot and trace capture on failures
 - **Authenticated Testing**: Support for Kratos session management for protected routes
 - **User Flow Tests**: Execute complex user interaction flows
 - **Load Testing**: Simulate concurrent users and measure performance under load
 - **Multiple Output Formats**: JSON reports and colorful CLI output
 - **Docker Support**: Run in containerized environments
-- **TDD-First Development**: Built with comprehensive test coverage
+- **TDD-First Development**: Built with comprehensive test coverage (71+ test cases)
 
 ## Prerequisites
 
@@ -73,8 +77,17 @@ deno task perf:load
 ### Advanced Usage
 
 ```bash
-# Run scan with custom base URL
-PERF_BASE_URL=https://staging.example.com deno task perf:scan
+# Multi-run measurement with 5 iterations
+deno task perf:scan --runs 5
+
+# Simulate slow 3G network
+deno task perf:scan --network slow-3g
+
+# Disable cache for accurate measurements
+deno task perf:scan --no-cache
+
+# Enable debug mode (screenshots on failure)
+deno task perf:scan --debug
 
 # Output to specific JSON file
 deno task perf:scan --output=reports/scan-$(date +%Y%m%d).json
@@ -106,20 +119,68 @@ PERF_REPORTS_DIR=./reports
 
 ### Config Files
 
-Configuration files can be placed in `config/`:
+Configuration files are located in `config/`:
+
+#### routes.yaml
 
 ```yaml
-# config/routes.yml
+baseUrl: "http://localhost"
+
+devices:
+  - desktop-chrome
+  - mobile-chrome
+
 routes:
-  - path: /
-    name: Home
-    authenticated: false
-  - path: /feed
-    name: Feed
-    authenticated: true
-  - path: /settings
-    name: Settings
-    authenticated: true
+  public:
+    - path: "/"
+      name: "Home"
+      requiresAuth: false
+
+  desktop:
+    - path: "/dashboard"
+      name: "Dashboard"
+      requiresAuth: true
+      priority: high
+```
+
+#### thresholds.yaml
+
+```yaml
+vitals:
+  lcp: { good: 2500, poor: 4000 }
+  inp: { good: 200, poor: 500 }
+  cls: { good: 0.1, poor: 0.25 }
+  fcp: { good: 1800, poor: 3000 }
+  ttfb: { good: 800, poor: 1800 }
+
+retry:
+  enabled: true
+  maxAttempts: 3
+  baseDelayMs: 1000
+
+multiRun:
+  enabled: true
+  runs: 5
+  warmupRuns: 1
+  cooldownMs: 2000
+  discardOutliers: true
+
+debug:
+  screenshots:
+    enabled: true
+    onFailure: true
+  traces:
+    enabled: true
+    onFailure: true
+  outputDir: "./artifacts"
+  retentionDays: 7
+
+network:
+  preset: "fast-3g"  # optional
+
+cache:
+  disableCache: true
+  clearBefore: true
 ```
 
 ## Core Web Vitals Thresholds (2025)
@@ -132,34 +193,64 @@ routes:
 | **FCP** | First Contentful Paint | < 1.8s | 1.8s - 3.0s | > 3.0s |
 | **TTFB** | Time to First Byte | < 800ms | 800ms - 1.8s | > 1.8s |
 
+## Network Simulation Presets
+
+| Preset | Download | Upload | Latency |
+|--------|----------|--------|---------|
+| `fast-3g` | 1.5 Mbps | 750 Kbps | 100ms |
+| `slow-3g` | 780 Kbps | 330 Kbps | 400ms |
+| `4g` | 12 Mbps | 2 Mbps | 50ms |
+| `wifi-slow` | 5 Mbps | 1 Mbps | 20ms |
+| `wifi-fast` | 50 Mbps | 10 Mbps | 5ms |
+| `offline` | 0 | 0 | - |
+
 ## Development
 
 ### Project Structure
 
 ```
 alt-perf/
-├── config/           # Configuration files
+├── config/              # Configuration files
+│   ├── routes.yaml      # Route definitions
+│   ├── flows.yaml       # User flow definitions
+│   └── thresholds.yaml  # Performance thresholds
 ├── src/
-│   ├── auth/         # Kratos session management
-│   ├── browser/      # Astral browser automation
-│   ├── commands/     # CLI commands (scan, flow, load)
-│   ├── measurement/  # Web Vitals measurement
-│   ├── report/       # Report generation (JSON, CLI)
-│   ├── utils/        # Utilities (logger, colors)
-│   └── config/       # Config loader and schema
+│   ├── auth/            # Kratos session management
+│   ├── browser/         # Astral browser automation
+│   │   ├── astral.ts           # Browser manager
+│   │   ├── network-conditions.ts # Network throttling (CDP)
+│   │   └── cache-controller.ts   # Cache control (CDP)
+│   ├── commands/        # CLI commands (scan, flow, load)
+│   ├── config/          # Config loader and schema
+│   ├── debugging/       # Debug artifact management
+│   │   ├── screenshot.ts       # Screenshot capture
+│   │   ├── trace.ts            # Performance trace (CDP)
+│   │   └── artifact-manager.ts # Artifact lifecycle
+│   ├── measurement/     # Web Vitals measurement
+│   │   ├── vitals.ts           # Core Web Vitals collection
+│   │   ├── statistics.ts       # Statistical analysis
+│   │   └── multi-run-collector.ts # Multi-run orchestration
+│   ├── report/          # Report generation (JSON, CLI)
+│   ├── retry/           # Retry mechanism
+│   │   └── retry-policy.ts     # Exponential backoff
+│   └── utils/           # Utilities (logger, colors)
 ├── tests/
-│   ├── unit/         # Unit tests
-│   └── integration/  # Integration tests
-├── reports/          # Generated performance reports
-├── main.ts           # CLI entry point
-├── deno.json         # Deno configuration
-└── Dockerfile        # Docker image definition
+│   ├── unit/            # Unit tests (71+ cases)
+│   │   ├── statistics_test.ts
+│   │   ├── retry_policy_test.ts
+│   │   └── vitals_test.ts
+│   └── integration/     # Integration tests
+├── artifacts/           # Debug artifacts (screenshots, traces)
+├── reports/             # Generated performance reports
+├── main.ts              # CLI entry point
+├── deno.json            # Deno configuration
+└── Dockerfile           # Docker image definition
 ```
 
 ### Development Tasks
 
 ```bash
-# Run tests
+# Run all tests
 deno task test
 
 # Run unit tests only
@@ -187,29 +278,54 @@ deno task check
 3. **REFACTOR**: Improve quality, keep tests green
 
 ```bash
-# Example: Add a new command
-# 1. Write failing test in tests/unit/commands/
-deno task test
+# Example: Add a new feature
+# 1. Write failing test in tests/unit/
+deno task test:unit
 
-# 2. Implement in src/commands/
-deno task test  # Should pass now
+# 2. Implement the feature
+deno task test:unit  # Should pass now
 
 # 3. Refactor and verify
-deno task fmt && deno task lint && deno task test
+deno task fmt && deno task lint && deno task check && deno task test
 ```
 
 ### Testing Guidelines
 
 - Use `@std/assert` for assertions
+- Use `@std/testing/bdd` for describe/it syntax
 - Mock Astral browser calls for unit tests
 - Use real browser for integration tests
-- Aim for > 80% code coverage
+- Current coverage: 71+ test cases
 
-### Adding New Routes
+## Statistical Analysis
 
-1. Update `config/routes.yml`
-2. Add route-specific tests in `tests/integration/`
-3. Run scan to verify metrics collection
+Multi-run measurements provide statistical reliability:
+
+```typescript
+interface StatisticalSummary {
+  count: number;
+  mean: number;
+  median: number;
+  stdDev: number;
+  p75: number;
+  p90: number;
+  p95: number;
+  p99: number;
+  confidenceInterval: {
+    lower: number;
+    upper: number;
+    level: number;  // 0.95 for 95% CI
+  };
+  outliers: number[];
+  isStable: boolean;  // CV < 15%
+}
+```
+
+Features:
+- **Welford's Algorithm**: Numerically stable mean/variance calculation
+- **IQR Method**: Outlier detection (values outside Q1 - 1.5×IQR to Q3 + 1.5×IQR)
+- **t-Distribution**: Confidence intervals for small samples
+- **Stability Check**: Coefficient of variation threshold
 
 ## Troubleshooting
 
@@ -218,10 +334,11 @@ deno task fmt && deno task lint && deno task test
 | Issue | Solution |
 |-------|----------|
 | **Chromium not found** | Run `deno install --allow-all npm:puppeteer` or use Docker |
-| **Auth failures** | Verify `PERF_TEST_EMAIL` and `PERF_TEST_PASSWORD` are correct |
-| **Flaky metrics** | Increase measurement iterations or warmup cycles |
-| **Permission denied** | Ensure `--allow-all` flag is used or grant specific permissions |
+| **Auth failures** | Verify test credentials are correct |
+| **Flaky metrics** | Use `--runs 5` for multi-run measurement |
+| **Permission denied** | Ensure `--allow-all` flag is used |
 | **Module not found** | Run `deno cache main.ts` to refresh dependencies |
+| **Network throttling not working** | Requires Chrome with CDP support |
 
 ### Debugging
 
@@ -229,11 +346,14 @@ deno task fmt && deno task lint && deno task test
 # Enable debug logging
 PERF_LOG_LEVEL=debug deno task perf:scan
 
+# Enable screenshot capture on all tests
+deno task perf:scan --debug
+
+# Check artifacts directory for screenshots/traces
+ls -la artifacts/
+
 # Run with inspect flag for debugger
 deno run --inspect-wait --allow-all main.ts scan
-
-# Check browser console logs
-# (Logs are automatically captured and saved to reports/)
 ```
 
 ### Docker Issues
@@ -251,27 +371,38 @@ docker run --rm -v $(pwd)/reports:/app/reports alt-perf scan
 
 ## Architecture
 
-alt-perf follows a modular architecture:
-
 ```
-┌─────────────┐
-│   CLI       │  (main.ts, parseCliArgs)
-└──────┬──────┘
-       │
-┌──────▼──────────────────────────────┐
-│   Commands Layer                    │
-│   (scan, flow, load)                │
-└──────┬──────────────────────────────┘
-       │
-┌──────▼──────────┬──────────┬────────┐
-│   Measurement   │  Browser │  Auth  │
-│   (vitals.ts)   │ (astral) │(kratos)│
-└─────────────────┴──────────┴────────┘
-       │
-┌──────▼──────────────────────────────┐
-│   Reporting Layer                   │
-│   (json-reporter, cli-reporter)     │
-└─────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                        CLI                              │
+│                    (main.ts)                            │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────┐
+│                  Commands Layer                         │
+│              (scan, flow, load)                         │
+└──────┬───────────────┬───────────────┬──────────────────┘
+       │               │               │
+┌──────▼──────┐ ┌──────▼──────┐ ┌──────▼──────┐
+│ Measurement │ │   Browser   │ │    Auth     │
+│  - vitals   │ │  - astral   │ │  - kratos   │
+│  - stats    │ │  - network  │ └─────────────┘
+│  - multi    │ │  - cache    │
+└──────┬──────┘ └──────┬──────┘
+       │               │
+┌──────▼───────────────▼──────────────────────────────────┐
+│                   Retry Layer                           │
+│            (exponential backoff)                        │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────┐
+│                 Debugging Layer                         │
+│         (screenshots, traces, artifacts)                │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────┐
+│                 Reporting Layer                         │
+│          (json-reporter, cli-reporter)                  │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ## Reports
@@ -282,34 +413,76 @@ Performance reports are saved to `reports/` directory:
 reports/
 ├── scan-20250131-143022.json     # JSON report
 └── scan-20250131-143022.log      # Detailed logs
+
+artifacts/
+├── screenshots/                   # Debug screenshots
+│   └── 001_error_Home_TimeoutError_1706712622000.png
+└── traces/                        # Performance traces
+    └── 001_Home_1706712622000.json
 ```
 
-### JSON Report Format
+### Enhanced JSON Report Format
 
 ```json
 {
-  "timestamp": "2025-01-31T14:30:22Z",
-  "baseUrl": "http://localhost",
+  "metadata": {
+    "timestamp": "2025-01-31T14:30:22Z",
+    "duration": 45000,
+    "toolVersion": "1.0.0",
+    "baseUrl": "http://localhost",
+    "devices": ["desktop-chrome", "mobile-chrome"]
+  },
+  "configuration": {
+    "multiRun": true,
+    "runs": 5,
+    "retryEnabled": true,
+    "maxAttempts": 3,
+    "networkCondition": "fast-3g",
+    "cacheDisabled": true
+  },
+  "summary": {
+    "totalRoutes": 10,
+    "passedRoutes": 8,
+    "failedRoutes": 2,
+    "overallScore": 85,
+    "overallRating": "good"
+  },
+  "reliability": {
+    "totalMeasurements": 50,
+    "successfulMeasurements": 48,
+    "retriedMeasurements": 5,
+    "failedMeasurements": 2,
+    "overallReliability": 0.96
+  },
   "routes": [
     {
       "path": "/",
       "name": "Home",
-      "metrics": {
-        "lcp": 1234.5,
-        "inp": 89.2,
-        "cls": 0.05,
-        "fcp": 678.9,
-        "ttfb": 234.1
+      "device": "desktop-chrome",
+      "vitals": {
+        "lcp": { "value": 1234.5, "rating": "good" },
+        "inp": { "value": 89.2, "rating": "good" },
+        "cls": { "value": 0.05, "rating": "good" },
+        "fcp": { "value": 678.9, "rating": "good" },
+        "ttfb": { "value": 234.1, "rating": "good" }
       },
-      "status": "good"
+      "statistics": {
+        "lcp": {
+          "mean": 1234.5,
+          "median": 1220.0,
+          "stdDev": 45.2,
+          "p95": 1310.0,
+          "confidenceInterval": { "lower": 1189.3, "upper": 1279.7, "level": 0.95 },
+          "isStable": true
+        }
+      },
+      "score": 92,
+      "passed": true
     }
   ],
-  "summary": {
-    "total": 10,
-    "good": 8,
-    "needsImprovement": 2,
-    "poor": 0
-  }
+  "recommendations": [
+    "Consider optimizing LCP for /dashboard route"
+  ]
 }
 ```
 
@@ -319,6 +492,7 @@ reports/
 - [Deno Documentation](https://docs.deno.com/)
 - [Deno Testing](https://docs.deno.com/runtime/fundamentals/testing/)
 - [Astral (Puppeteer for Deno)](https://jsr.io/@astral/astral)
+- [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)
 - [web-vitals Library](https://github.com/GoogleChrome/web-vitals)
 
 ### Best Practices
@@ -326,7 +500,6 @@ reports/
 - [Optimize LCP](https://web.dev/optimize-lcp/)
 - [Optimize INP](https://web.dev/optimize-inp/)
 - [Optimize CLS](https://web.dev/optimize-cls/)
-- [Claude Code Best Practices](https://www.anthropic.com/engineering/claude-code-best-practices)
 
 ### Related Projects
 - [Lighthouse CI](https://github.com/GoogleChrome/lighthouse-ci)
@@ -345,3 +518,4 @@ See the main [Alt project CLAUDE.md](../CLAUDE.md) for development guidelines.
 2. **Clean Code**: Follow Deno style guide
 3. **Type Safety**: Use TypeScript strict mode
 4. **Performance**: Optimize for fast test execution
+5. **Statistical Rigor**: Multi-run measurements for reliability
