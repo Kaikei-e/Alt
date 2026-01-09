@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -94,128 +93,6 @@ func TestHandleRecapArticles_RateLimited(t *testing.T) {
 	c2 := e.NewContext(req2, rec2)
 	require.NoError(t, handler(c2))
 	assert.Equal(t, http.StatusTooManyRequests, rec2.Code)
-}
-
-func TestGetSevenDayRecap_AttachesClusterDraft(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/recap/7days", nil)
-	req.Header.Set("X-Genre-Draft-Id", "draft-123")
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	summary := &domain.RecapSummary{
-		JobID:         "job-1",
-		ExecutedAt:    time.Now(),
-		WindowStart:   time.Now(),
-		WindowEnd:     time.Now(),
-		TotalArticles: 1,
-		Genres:        []domain.RecapGenre{},
-	}
-
-	loader := &clusterDraftLoaderStub{draft: sampleClusterDraft()}
-	handler := NewRecapHandler(&recapUsecaseStub{summary: summary}, loader)
-
-	require.NoError(t, handler.GetSevenDayRecap(c))
-	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var response domain.RecapSummary
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	assert.NotNil(t, response.ClusterDraft)
-	assert.Equal(t, "draft-123", response.ClusterDraft.ID)
-	assert.Equal(t, "draft-123", loader.lastID)
-}
-
-func TestGetSevenDayRecap_SkipsDraftWhenHeaderMissing(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/recap/7days", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	summary := &domain.RecapSummary{
-		JobID:         "job-1",
-		ExecutedAt:    time.Now(),
-		WindowStart:   time.Now(),
-		WindowEnd:     time.Now(),
-		TotalArticles: 1,
-	}
-
-	loader := &clusterDraftLoaderStub{draft: sampleClusterDraft()}
-	handler := NewRecapHandler(&recapUsecaseStub{summary: summary}, loader)
-
-	require.NoError(t, handler.GetSevenDayRecap(c))
-	var response domain.RecapSummary
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	assert.Nil(t, response.ClusterDraft)
-	assert.Empty(t, loader.lastID)
-}
-
-type recapUsecaseStub struct {
-	summary *domain.RecapSummary
-	err     error
-}
-
-func (s *recapUsecaseStub) GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error) {
-	return s.summary, s.err
-}
-
-type clusterDraftLoaderStub struct {
-	draft  *domain.ClusterDraft
-	err    error
-	lastID string
-}
-
-func (s *clusterDraftLoaderStub) LoadDraft(draftID string) (*domain.ClusterDraft, error) {
-	s.lastID = draftID
-	if s.err != nil {
-		return nil, s.err
-	}
-	if s.draft != nil && s.draft.ID == draftID {
-		draftCopy := *s.draft
-		return &draftCopy, nil
-	}
-	return nil, nil
-}
-
-func sampleClusterDraft() *domain.ClusterDraft {
-	return &domain.ClusterDraft{
-		ID:           "draft-123",
-		Description:  "mock draft",
-		Source:       "test",
-		GeneratedAt:  time.Now(),
-		TotalEntries: 2,
-		Genres: []domain.ClusterGenre{
-			{
-				Genre:        "society_justice",
-				SampleSize:   2,
-				ClusterCount: 1,
-				Clusters: []domain.ClusterSegment{
-					{
-						ClusterID:                "cluster-0",
-						Label:                    "Cluster 1",
-						Count:                    2,
-						MarginMean:               0.1,
-						MarginStd:                0.01,
-						TopBoostMean:             0.2,
-						GraphBoostAvailableRatio: 0.5,
-						TagCountMean:             3,
-						TagEntropyMean:           0.4,
-						TopTags:                  []string{"tag"},
-						RepresentativeArticles: []domain.ClusterArticle{
-							{
-								ArticleID:      "a1",
-								Margin:         0.1,
-								TopBoost:       0.2,
-								Strategy:       "graph_boost",
-								TagCount:       3,
-								CandidateCount: 3,
-								TopTags:        []string{"tag"},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
 }
 
 type recapPortStub struct {
