@@ -69,6 +69,8 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 	sysSb.WriteString("9. \"citations\": A list of { \"chunk_id\": \"index\", \"reason\": \"...\" } for every chunk used.\n")
 	sysSb.WriteString("10. \"fallback\": Set to true ONLY when the context documents are completely unrelated to the query topic.\n")
 	sysSb.WriteString("    If there is ANY tangentially related information, set fallback to false and provide a partial answer.\n")
+	sysSb.WriteString("11. CRITICAL: In the JSON answer field, use proper JSON escape sequences for newlines (\\n), not literal backslash-n characters.\n")
+	sysSb.WriteString("    For example: \"Line 1\\nLine 2\" is correct. \"Line 1\\\\nLine 2\" is WRONG.\n")
 
 	if len(b.additionalInstructions) > 0 {
 		sysSb.WriteString("\n### Additional Rules\n")

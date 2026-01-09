@@ -32,6 +32,9 @@ func (v OutputValidator) Validate(raw string, contexts []ContextItem) (*LLMAnswe
 			// This is useful if the stream cut off mid-JSON but we have some answer text
 			extractedAnswer := extractAnswerOnly(trimmed)
 			if extractedAnswer != "" {
+				// Apply the same post-processing as the normal path
+				extractedAnswer = strings.TrimSpace(extractedAnswer)
+				extractedAnswer = convertLiteralEscapes(extractedAnswer)
 				return &LLMAnswer{
 					Answer:   extractedAnswer,
 					Fallback: false, // It's technically a fallback, but we retrieved content
@@ -64,6 +67,9 @@ func (v OutputValidator) Validate(raw string, contexts []ContextItem) (*LLMAnswe
 
 	// Sanitize output
 	answer.Answer = strings.TrimSpace(answer.Answer)
+	// Convert any remaining literal escape sequences (for GPT-OSS model quirks)
+	// The model sometimes outputs literal \n instead of proper JSON escapes
+	answer.Answer = convertLiteralEscapes(answer.Answer)
 
 	return &answer, nil
 }
@@ -128,7 +134,21 @@ func extractAnswerOnly(raw string) string {
 	for i := start; i < len(raw); i++ {
 		c := raw[i]
 		if escaped {
-			sb.WriteByte(c)
+			// Properly unescape JSON escape sequences
+			switch c {
+			case 'n':
+				sb.WriteByte('\n')
+			case 'r':
+				sb.WriteByte('\r')
+			case 't':
+				sb.WriteByte('\t')
+			case '"':
+				sb.WriteByte('"')
+			case '\\':
+				sb.WriteByte('\\')
+			default:
+				sb.WriteByte(c)
+			}
 			escaped = false
 			continue
 		}
@@ -160,4 +180,13 @@ type LLMAnswer struct {
 type LLMCitation struct {
 	ChunkID string `json:"chunk_id"`
 	Reason  string `json:"reason,omitempty"`
+}
+
+// convertLiteralEscapes converts literal backslash-n to actual newline characters.
+// This handles cases where the LLM outputs literal \n instead of proper JSON escapes
+// (a known issue with GPT-OSS models).
+// Note: We intentionally only convert \n, not \t or \r, to avoid false positives
+// with paths like C:\temp or C:\readme.txt
+func convertLiteralEscapes(s string) string {
+	return strings.ReplaceAll(s, "\\n", "\n")
 }
