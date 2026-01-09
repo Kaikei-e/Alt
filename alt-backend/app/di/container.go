@@ -7,7 +7,7 @@ import (
 	"alt/config"
 	"alt/driver/alt_db"
 	"alt/driver/csrf_token_driver"
-	"alt/driver/search_indexer"
+	"alt/driver/search_indexer_connect"
 	"alt/gateway/archive_article_gateway"
 	"alt/gateway/article_gateway"
 	"alt/gateway/config_gateway"
@@ -191,7 +191,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	todayUnreadArticlesCountUsecase := fetch_feed_stats_usecase.NewTodayUnreadArticlesCountUsecase(todayUnreadArticlesCountGatewayImpl)
 
 	// Article search (Meilisearch-based via search-indexer)
-	searchIndexerDriver := search_indexer.NewHTTPSearchIndexerDriver()
+	searchIndexerDriver := search_indexer_connect.NewConnectSearchIndexerDriver(cfg.SearchIndexer.ConnectURL)
 	articleSearchUsecase := search_article_usecase.NewSearchArticleUsecase(searchIndexerDriver)
 
 	// Feed search (Meilisearch-based via search-indexer)

@@ -7,16 +7,17 @@ import (
 )
 
 type Config struct {
-	Server       ServerConfig       `json:"server"`
-	Database     DatabaseConfig     `json:"database"`
-	RateLimit    RateLimitConfig    `json:"rate_limit"`
-	Cache        CacheConfig        `json:"cache"`
-	Logging      LoggingConfig      `json:"logging"`
-	HTTP         HTTPConfig         `json:"http"`
-	PreProcessor PreProcessorConfig `json:"pre_processor"`
-	Recap        RecapConfig        `json:"recap"`
-	Auth         AuthConfig         `json:"auth"`
-	Rag          RAGConfig          `json:"rag"`
+	Server        ServerConfig        `json:"server"`
+	Database      DatabaseConfig      `json:"database"`
+	RateLimit     RateLimitConfig     `json:"rate_limit"`
+	Cache         CacheConfig         `json:"cache"`
+	Logging       LoggingConfig       `json:"logging"`
+	HTTP          HTTPConfig          `json:"http"`
+	PreProcessor  PreProcessorConfig  `json:"pre_processor"`
+	SearchIndexer SearchIndexerConfig `json:"search_indexer"`
+	Recap         RecapConfig         `json:"recap"`
+	Auth          AuthConfig          `json:"auth"`
+	Rag           RAGConfig           `json:"rag"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -28,8 +29,13 @@ type Config struct {
 }
 
 type PreProcessorConfig struct {
-	Enabled bool   `json:"enabled" env:"PRE_PROCESSOR_ENABLED" default:"true"`
-	URL     string `json:"url" env:"PRE_PROCESSOR_URL" default:"http://pre-processor:9200"`
+	Enabled    bool   `json:"enabled" env:"PRE_PROCESSOR_ENABLED" default:"true"`
+	URL        string `json:"url" env:"PRE_PROCESSOR_URL" default:"http://pre-processor:9200"`
+	ConnectURL string `json:"connect_url" env:"PRE_PROCESSOR_CONNECT_URL" default:"http://pre-processor:9202"`
+}
+
+type SearchIndexerConfig struct {
+	ConnectURL string `json:"connect_url" env:"SEARCH_INDEXER_CONNECT_URL" default:"http://search-indexer:9301"`
 }
 
 type RecapConfig struct {
