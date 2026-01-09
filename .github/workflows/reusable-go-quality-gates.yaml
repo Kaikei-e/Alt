@@ -122,6 +122,8 @@ jobs:
       # v8 の公式アクション推奨。v2 では out-format が変わったため、注釈はProblem Matcherに任せる。
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
+        env:
+          GOFLAGS: "-buildvcs=false"  # sparse-checkout + shallow clone では VCS 情報取得不可
         with:
           version: v2.1
           install-mode: goinstall
