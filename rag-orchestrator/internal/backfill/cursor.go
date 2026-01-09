@@ -51,7 +51,7 @@ func (m *CursorManager) Lock() error {
 	// Try to acquire exclusive lock (non-blocking)
 	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
 			return fmt.Errorf("cursor is locked by another process")
 		}

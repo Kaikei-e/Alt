@@ -202,11 +202,11 @@ func TestUpsertIndex_PassesUrlToUsecase(t *testing.T) {
 
 	// Prepare request with URL field populated
 	reqBody := openapi.UpsertIndexRequest{
-		ArticleId:   "test-article-123",
-		Title:       "Test Article Title",
-		Url:         "https://example.com/test-article",
-		Body:        "This is test article content for verification.",
-		UserId:      "user-456",
+		ArticleId: "test-article-123",
+		Title:     "Test Article Title",
+		Url:       "https://example.com/test-article",
+		Body:      "This is test article content for verification.",
+		UserId:    "user-456",
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

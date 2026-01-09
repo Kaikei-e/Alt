@@ -79,7 +79,7 @@ func (c *QueryExpanderClient) ExpandQuery(ctx context.Context, query string, jap
 			slog.Int64("elapsed_ms", time.Since(startTime).Milliseconds()))
 		return nil, fmt.Errorf("failed to call expand query endpoint: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

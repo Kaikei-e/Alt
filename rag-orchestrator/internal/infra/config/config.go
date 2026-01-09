@@ -27,32 +27,32 @@ type Config struct {
 	SearchIndexerURL      string
 	SearchIndexerTimeout  int // Seconds
 	AltBackendURL         string
-	AltBackendTimeout     int // Seconds
+	AltBackendTimeout     int    // Seconds
 	QueryExpansionURL     string // news-creator URL for query expansion
 	QueryExpansionTimeout int    // Seconds
 }
 
 func Load() *Config {
 	return &Config{
-		Env:                  getEnv("ENV", "development"),
-		Port:                 getEnv("PORT", "9010"),
-		ConnectPort:          getEnv("CONNECT_PORT", "9011"),
-		DBHost:               getEnv("DB_HOST", "rag-db"),
-		DBPort:               getEnv("DB_PORT", "5432"),
-		DBUser:               getEnv("DB_USER", "rag_user"),
-		DBPassword:           getSecret("DB_PASSWORD", "DB_PASSWORD_FILE", "rag_password"),
-		DBName:               getEnv("DB_NAME", "rag_db"),
-		OllamaURL:            getEnvWithAlt("EMBEDDER_EXTERNAL", "EMBEDDER_EXTERNAL_URL", "http://embedder-external:11436"),
-		EmbeddingModel:       getEnv("EMBEDDING_MODEL", "embeddinggemma"), // Default to gemma3:4b if not specified, assuming it supports embedding
-		PromptVersion:        getEnv("RAG_PROMPT_VERSION", "alpha-v1"),
-		AnswerMaxChunks:      getEnvInt("RAG_DEFAULT_MAX_CHUNKS", 10),
-		AnswerMaxTokens:      getEnvInt("RAG_DEFAULT_MAX_TOKENS", 2560),
-		DefaultLocale:        getEnv("RAG_DEFAULT_LOCALE", "ja"),
-		KnowledgeAugurURL:    getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "http://augur-external:11435"),
-		KnowledgeAugurModel:  getEnv("AUGUR_KNOWLEDGE_MODEL", "gpt-oss20b-cpu"),
-		OllamaTimeout:        getEnvInt("OLLAMA_TIMEOUT", 300),
-		SearchIndexerURL:     getEnv("SEARCH_INDEXER_URL", "http://search-indexer:8080"),
-		SearchIndexerTimeout: getEnvInt("SEARCH_INDEXER_TIMEOUT", 10),
+		Env:                   getEnv("ENV", "development"),
+		Port:                  getEnv("PORT", "9010"),
+		ConnectPort:           getEnv("CONNECT_PORT", "9011"),
+		DBHost:                getEnv("DB_HOST", "rag-db"),
+		DBPort:                getEnv("DB_PORT", "5432"),
+		DBUser:                getEnv("DB_USER", "rag_user"),
+		DBPassword:            getSecret("DB_PASSWORD", "DB_PASSWORD_FILE", "rag_password"),
+		DBName:                getEnv("DB_NAME", "rag_db"),
+		OllamaURL:             getEnvWithAlt("EMBEDDER_EXTERNAL", "EMBEDDER_EXTERNAL_URL", "http://embedder-external:11436"),
+		EmbeddingModel:        getEnv("EMBEDDING_MODEL", "embeddinggemma"), // Default to gemma3:4b if not specified, assuming it supports embedding
+		PromptVersion:         getEnv("RAG_PROMPT_VERSION", "alpha-v1"),
+		AnswerMaxChunks:       getEnvInt("RAG_DEFAULT_MAX_CHUNKS", 10),
+		AnswerMaxTokens:       getEnvInt("RAG_DEFAULT_MAX_TOKENS", 2560),
+		DefaultLocale:         getEnv("RAG_DEFAULT_LOCALE", "ja"),
+		KnowledgeAugurURL:     getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "http://augur-external:11435"),
+		KnowledgeAugurModel:   getEnv("AUGUR_KNOWLEDGE_MODEL", "gpt-oss20b-cpu"),
+		OllamaTimeout:         getEnvInt("OLLAMA_TIMEOUT", 300),
+		SearchIndexerURL:      getEnv("SEARCH_INDEXER_URL", "http://search-indexer:8080"),
+		SearchIndexerTimeout:  getEnvInt("SEARCH_INDEXER_TIMEOUT", 10),
 		AltBackendURL:         getEnv("ALT_BACKEND_URL", "http://alt-backend:9000"),
 		AltBackendTimeout:     getEnvInt("ALT_BACKEND_TIMEOUT", 30),
 		QueryExpansionURL:     getEnv("QUERY_EXPANSION_URL", "http://news-creator:11434"),

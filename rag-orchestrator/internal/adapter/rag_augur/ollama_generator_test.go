@@ -31,9 +31,9 @@ func TestOllamaGeneratorGenerate_StreamAggregatesContent(t *testing.T) {
 		streamFlag = streamValue
 
 		w.Header().Set("Content-Type", "application/x-ndjson")
-		fmt.Fprintln(w, `{"message":{"content":""},"done":false}`)
-		fmt.Fprintln(w, `{"message":{"content":"{\"answer\":\"hi\""},"done":false}`)
-		fmt.Fprintln(w, `{"message":{"content":"}"},"done":true}`)
+		_, _ = fmt.Fprintln(w, `{"message":{"content":""},"done":false}`)
+		_, _ = fmt.Fprintln(w, `{"message":{"content":"{\"answer\":\"hi\""},"done":false}`)
+		_, _ = fmt.Fprintln(w, `{"message":{"content":"}"},"done":true}`)
 	}))
 	defer server.Close()
 

@@ -149,7 +149,7 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 			if stopErr := hb.Stop(context.Background()); stopErr != nil {
 				logger.Warn("failed to stop hyperboost container", slog.String("error", stopErr.Error()))
 			}
-			hb.Close()
+			_ = hb.Close()
 		}()
 
 		if err := hb.Start(ctx); err != nil {
@@ -202,7 +202,7 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("create runner: %w", err)
 	}
-	defer runner.Close()
+	defer func() { _ = runner.Close() }()
 
 	// Setup signal handler for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
@@ -235,7 +235,7 @@ func showStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("create runner: %w", err)
 	}
-	defer runner.Close()
+	defer func() { _ = runner.Close() }()
 
 	cursor, err := runner.GetCursor()
 	if err != nil {
@@ -269,7 +269,7 @@ func resetCursor(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("create runner: %w", err)
 	}
-	defer runner.Close()
+	defer func() { _ = runner.Close() }()
 
 	if err := runner.ResetCursor(); err != nil {
 		return fmt.Errorf("reset cursor: %w", err)

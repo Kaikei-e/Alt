@@ -100,7 +100,7 @@ func (h *HyperBoost) WaitReady(ctx context.Context) error {
 
 		resp, err := client.Get(url)
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				h.logger.Info("hyper-boost is ready")
 				return nil
@@ -125,7 +125,7 @@ func (h *HyperBoost) PullModel(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("pull model request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Drain the response (model pull streams progress)
 	if _, err := io.Copy(io.Discard, resp.Body); err != nil {

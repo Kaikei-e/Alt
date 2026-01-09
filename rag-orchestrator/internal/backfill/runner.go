@@ -132,7 +132,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	if err := r.cursorManager.Lock(); err != nil {
 		return fmt.Errorf("acquire cursor lock: %w", err)
 	}
-	defer r.cursorManager.Unlock()
+	defer func() { _ = r.cursorManager.Unlock() }()
 
 	// Load cursor
 	cursor, err := r.cursorManager.Load()
@@ -281,7 +281,7 @@ func (r *Runner) processBatches(ctx context.Context, query string, args []interf
 	if err != nil {
 		return 0, fmt.Errorf("query articles: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	totalCount := 0
 	sem := make(chan struct{}, r.cfg.Concurrency)
@@ -400,10 +400,10 @@ func (r *Runner) sendArticle(ctx context.Context, a Article) error {
 		}
 		return fmt.Errorf("send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
 

@@ -41,10 +41,10 @@ func (tm *postgresTransactionManager) RunInTx(ctx context.Context, fn func(ctx c
 
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 		} else {
 			err = tx.Commit(ctx)
 		}

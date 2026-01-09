@@ -167,7 +167,7 @@ func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens
 			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to call generation endpoint: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -272,7 +272,7 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, nil, fmt.Errorf("stream endpoint returned %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -280,7 +280,7 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 	errCh := make(chan error, 1)
 
 	go func() {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		defer close(chunkCh)
 		defer close(errCh)
 
@@ -463,7 +463,7 @@ func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, m
 			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to call chat endpoint: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -533,7 +533,7 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, nil, fmt.Errorf("stream endpoint returned %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -541,7 +541,7 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 	errCh := make(chan error, 1)
 
 	go func() {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		defer close(chunkCh)
 		defer close(errCh)
 

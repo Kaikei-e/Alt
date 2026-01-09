@@ -58,7 +58,7 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 	if err != nil {
 		return nil, fmt.Errorf("failed to call ollama: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("ollama returned status: %d", resp.StatusCode)
