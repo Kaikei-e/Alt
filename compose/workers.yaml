@@ -69,7 +69,7 @@ services:
     ports:
       - "9300:9300"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9300/health"]
+      test: ["CMD", "/search-indexer", "healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -109,7 +109,7 @@ services:
       - ../scripts:/scripts:ro
       - ../tag-generator/models/onnx:/models/onnx:ro
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:9400/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9400/health')"]
       interval: 10s
       timeout: 5s
       retries: 5

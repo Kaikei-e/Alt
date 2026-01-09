@@ -100,7 +100,7 @@ services:
     ports:
       - "9005:9005"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:9005/health/ready"]
+      test: ["CMD", "/usr/local/bin/recap-worker", "healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5

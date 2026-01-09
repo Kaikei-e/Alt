@@ -95,7 +95,7 @@ services:
     networks:
       - alt-network
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9200/health"]
+      test: ["CMD", "/pre-processor", "healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5
