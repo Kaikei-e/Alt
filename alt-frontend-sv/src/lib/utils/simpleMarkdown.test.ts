@@ -164,6 +164,25 @@ describe("parseMarkdown", () => {
 		});
 	});
 
+	describe("literal escape sequences", () => {
+		it("converts literal \\n to actual newlines", () => {
+			// This simulates the GPT-OSS model issue where literal \n appears in output
+			const result = parseMarkdown("## Heading\\n\\nParagraph text");
+			expect(result).toContain("<h2");
+			expect(result).toContain("Heading");
+			expect(result).toContain("<p");
+			expect(result).toContain("Paragraph text");
+		});
+
+		it("handles markdown with literal \\n in lists", () => {
+			const result = parseMarkdown("- Item 1\\n- Item 2\\n- Item 3");
+			expect(result).toContain("<ul");
+			expect(result).toContain("<li>Item 1</li>");
+			expect(result).toContain("<li>Item 2</li>");
+			expect(result).toContain("<li>Item 3</li>");
+		});
+	});
+
 	describe("complex content", () => {
 		it("handles mixed content types", () => {
 			const markdown = `# Title

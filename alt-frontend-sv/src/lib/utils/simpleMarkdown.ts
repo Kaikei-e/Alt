@@ -14,6 +14,11 @@
 export function parseMarkdown(text: string): string {
 	if (!text) return "";
 
+	// Safety net: convert any remaining literal \n to actual newlines
+	// This handles cases where the LLM outputs literal backslash-n instead of newlines
+	// (a known issue with some models like GPT-OSS)
+	text = text.replace(/\\n/g, "\n");
+
 	const lines = text.split("\n");
 	let html = "";
 	let inCodeBlock = false;
