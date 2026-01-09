@@ -57,16 +57,12 @@ chrono = { version = "0.4.41", features = ["serde"] }
 
 # Regular expressions
 regex = "1.11.1"
-lazy_static = "1.5.0"
 
 # Memory arena allocation
 bumpalo = "3.19.0"
 
 # Stream utilities
 futures = "0.3.31"
-
-# Async trait support
-async-trait = "0.1.88"
 
 # Compression
 flate2 = "1.1.2"
@@ -95,7 +91,6 @@ tempfile = "3.20.0"
 mockall = "0.13.1"
 wiremock = "0.6"
 httpmock = "0.7.0"
-async-trait = "0.1.88"
 chrono = { version = "0.4.41", features = ["serde"] }
 serial_test = "3.2.0"
 

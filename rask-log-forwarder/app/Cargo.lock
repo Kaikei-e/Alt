@@ -2493,7 +2493,6 @@ name = "rask-log-forwarder"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "bincode",
  "bollard",
  "bumpalo",
@@ -2508,7 +2507,6 @@ dependencies = [
  "httpmock",
  "hyper 1.8.1",
  "hyper-util",
- "lazy_static",
  "mockall",
  "parking_lot 0.12.5",
  "prometheus",

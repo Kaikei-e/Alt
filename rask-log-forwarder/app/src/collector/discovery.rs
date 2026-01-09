@@ -1,6 +1,8 @@
 use bollard::Docker;
 use std::collections::HashMap;
 use std::env;
+use std::future::Future;
+use std::pin::Pin;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -39,12 +41,11 @@ pub struct ContainerInfo {
     pub group: Option<String>,
 }
 
-#[async_trait::async_trait]
-pub trait ServiceDiscoveryTrait {
-    async fn find_container_by_service(
+pub trait ServiceDiscoveryTrait: Send + Sync {
+    fn find_container_by_service(
         &self,
         service_name: &str,
-    ) -> Result<ContainerInfo, DiscoveryError>;
+    ) -> Pin<Box<dyn Future<Output = Result<ContainerInfo, DiscoveryError>> + Send + '_>>;
     fn get_target_service(&self) -> Result<String, DiscoveryError>;
     fn detect_target_service_from_hostname(&self, hostname: &str)
     -> Result<String, DiscoveryError>;
@@ -61,7 +62,6 @@ impl ServiceDiscovery {
     }
 }
 
-#[async_trait::async_trait]
 impl ServiceDiscoveryTrait for ServiceDiscovery {
     fn get_target_service(&self) -> Result<String, DiscoveryError> {
         // Check environment variable first
@@ -96,10 +96,12 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
         }
     }
 
-    async fn find_container_by_service(
+    fn find_container_by_service(
         &self,
         service_name: &str,
-    ) -> Result<ContainerInfo, DiscoveryError> {
+    ) -> Pin<Box<dyn Future<Output = Result<ContainerInfo, DiscoveryError>> + Send + '_>> {
+        let service_name = service_name.to_string();
+        Box::pin(async move {
         let options = bollard::query_parameters::ListContainersOptions {
             all: false, // Only running containers
             ..Default::default()
@@ -148,7 +150,7 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
 
                     // Also check if any part of the name matches the service exactly
                     let parts: Vec<&str> = clean_name.split('-').collect();
-                    if parts.contains(&service_name) {
+                    if parts.contains(&service_name.as_str()) {
                         // Make sure it's not a logs container (double check)
                         if !clean_name.contains("-logs") {
                             best_match = Some(container.clone());
@@ -190,6 +192,7 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
         }
 
         Err(DiscoveryError::ContainerNotFound(service_name.to_string()))
+        })
     }
 }
 
