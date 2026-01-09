@@ -359,8 +359,8 @@ func TestHealthMetricsCollector_ConcurrentAccess(t *testing.T) {
 	collector := NewHealthMetricsCollector(contextLogger)
 
 	ctx := context.Background()
-	numWorkers := 10
-	requestsPerWorker := 100
+	const numWorkers = 10
+	const requestsPerWorker = 100
 
 	done := make(chan bool, numWorkers)
 
@@ -391,8 +391,8 @@ func TestHealthMetricsCollector_ConcurrentAccess(t *testing.T) {
 
 	// Verify final metrics
 	metrics := collector.GetHealthMetrics(ctx)
-	// Convert to uint64 before multiplication to prevent overflow
-	expectedRequests := uint64(numWorkers) * uint64(requestsPerWorker)
+	// #nosec G115 -- numWorkers and requestsPerWorker are compile-time constants
+	expectedRequests := uint64(numWorkers * requestsPerWorker)
 
 	assert.Equal(t, expectedRequests, metrics.RequestCount,
 		"should record all concurrent requests")

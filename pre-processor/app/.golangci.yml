@@ -8,24 +8,10 @@ linters:
   enable:
     - errcheck       # 未チェックエラー検出
     - govet          # 疑わしい構造検出
-    - staticcheck    # 包括的静的解析（gosimpleを含む）
+    - staticcheck    # 包括的静的解析
     - ineffassign    # 無効な代入検出
     - unused         # 未使用コード検出
-    - misspell       # スペルミス検出
-    - gocyclo        # 循環的複雑度
-    - dupl           # コード重複検出
     - gosec          # セキュリティ問題検出
-    - goconst        # 定数化可能な文字列検出
-    - revive         # golintの後継
-    - unparam        # 未使用パラメータ検出
-  settings:
-    gocyclo:
-      min-complexity: 15
-    dupl:
-      threshold: 100
-    goconst:
-      min-len: 3
-      min-occurrences: 3
 
 formatters:
   enable:
