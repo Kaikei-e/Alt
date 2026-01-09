@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"pre-processor/config"
+	connectv2 "pre-processor/connect/v2"
 	"pre-processor/driver"
 	"pre-processor/handler"
 	appmiddleware "pre-processor/middleware"
@@ -26,6 +27,7 @@ const (
 	BATCH_SIZE       = 40
 	NEWS_CREATOR_URL = "http://news-creator:11434"
 	HTTP_PORT        = "9200" // Default HTTP port for API
+	CONNECT_PORT     = "9202" // Default Connect-RPC port (9201 is used by auth-token-manager)
 )
 
 func performHealthCheck() {
@@ -230,6 +232,20 @@ func main() {
 		logger.Logger.Info("Starting HTTP server", "port", port)
 		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
 			logger.Logger.Error("HTTP server error", "error", err)
+		}
+	}()
+
+	// Start Connect-RPC server in goroutine
+	connectServer := connectv2.CreateConnectServer(apiRepo, summaryRepo, articleRepo, jobRepo, logger.Logger)
+	go func() {
+		connectPort := os.Getenv("CONNECT_PORT")
+		if connectPort == "" {
+			connectPort = CONNECT_PORT
+		}
+		addr := fmt.Sprintf(":%s", connectPort)
+		logger.Logger.Info("Starting Connect-RPC server", "port", connectPort)
+		if err := http.ListenAndServe(addr, connectServer); err != nil && err != http.ErrServerClosed {
+			logger.Logger.Error("Connect-RPC server error", "error", err)
 		}
 	}()
 
