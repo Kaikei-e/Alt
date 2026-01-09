@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { goto } from "$app/navigation";
+	import { ConnectError, Code } from "@connectrpc/connect";
 	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 	import RecapGenreList from "$lib/components/desktop/recap/RecapGenreList.svelte";
 	import RecapDetail from "$lib/components/desktop/recap/RecapDetail.svelte";
 	import type { RecapGenre } from "$lib/schema/recap";
-	import { get7DaysRecapClient } from "$lib/api/client/recap";
+	import { createClientTransport, getSevenDayRecap } from "$lib/connect";
 	import { loadingStore } from "$lib/stores/loading.svelte";
 
 	let selectedGenre = $state<RecapGenre | null>(null);
@@ -19,13 +21,19 @@
 		try {
 			isLoading = true;
 			loadingStore.startLoading();
-			const result = await get7DaysRecapClient();
+			const transport = createClientTransport();
+			const result = await getSevenDayRecap(transport);
 			genres = result.genres ?? [];
 			// Auto-select first genre
 			if (genres.length > 0) {
 				selectedGenre = genres[0];
 			}
 		} catch (err) {
+			// Handle authentication error
+			if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
+				goto("/login");
+				return;
+			}
 			error = err as Error;
 		} finally {
 			isLoading = false;

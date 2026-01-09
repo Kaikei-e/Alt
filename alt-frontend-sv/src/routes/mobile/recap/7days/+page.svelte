@@ -1,7 +1,9 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
-import { get7DaysRecapClient } from "$lib/api/client";
+import { goto } from "$app/navigation";
+import { ConnectError, Code } from "@connectrpc/connect";
+import { createClientTransport, getSevenDayRecap } from "$lib/connect";
 import EmptyFeedState from "$lib/components/mobile/EmptyFeedState.svelte";
 import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
 import SwipeRecapScreen from "$lib/components/mobile/recap/SwipeRecapScreen.svelte";
@@ -17,9 +19,15 @@ const fetchData = async () => {
 	try {
 		isInitialLoading = true;
 		error = null;
-		const recap = await get7DaysRecapClient();
+		const transport = createClientTransport();
+		const recap = await getSevenDayRecap(transport);
 		data = recap;
 	} catch (err) {
+		// Handle authentication error
+		if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
+			goto("/login");
+			return;
+		}
 		error = err instanceof Error ? err : new Error("Unknown error");
 		data = null;
 	} finally {

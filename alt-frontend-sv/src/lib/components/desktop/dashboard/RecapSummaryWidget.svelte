@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ArrowRight, Loader2, Tag } from "@lucide/svelte";
-	import { get7DaysRecapClient } from "$lib/api/client/recap";
+	import { ConnectError, Code } from "@connectrpc/connect";
+	import { createClientTransport, getSevenDayRecap } from "$lib/connect";
 	import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
 	import { onMount } from "svelte";
 
@@ -18,8 +19,13 @@
 	onMount(async () => {
 		try {
 			isLoading = true;
-			recapData = await get7DaysRecapClient();
+			const transport = createClientTransport();
+			recapData = await getSevenDayRecap(transport);
 		} catch (err) {
+			// Log authentication errors but don't redirect from widget
+			if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
+				console.warn("[RecapSummaryWidget] Not authenticated");
+			}
 			error = err as Error;
 		} finally {
 			isLoading = false;

@@ -101,3 +101,12 @@ export {
 	type MorningLetterMeta,
 	type MorningLetterStreamResult,
 } from "./morning_letter";
+
+// RecapService client
+export {
+	createRecapClient,
+	getSevenDayRecap,
+	type RecapReference,
+	type RecapGenreWithReferences,
+	type RecapSummaryWithReferences,
+} from "./recap";

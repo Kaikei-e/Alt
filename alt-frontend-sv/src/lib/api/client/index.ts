@@ -31,5 +31,4 @@ export {
 	searchFeedsClient,
 	updateFeedReadStatusClient,
 } from "./feeds";
-// リキャップ関連のAPI
-export { get7DaysRecapClient } from "./recap";
+// NOTE: Recap API migrated to Connect-RPC (see $lib/connect/recap.ts)
