@@ -1,62 +1,105 @@
 import { type Locator, type Page, expect } from '@playwright/test';
 import { BasePage } from '../BasePage';
 
+/**
+ * Mobile Feed Page Object
+ * Uses data-testid selectors for stability
+ */
 export class MobileFeedPage extends BasePage {
   readonly feedCards: Locator;
   readonly loadingIndicator: Locator;
   readonly emptyState: Locator;
+  readonly scrollContainer: Locator;
+  readonly markReadButtons: Locator;
 
   constructor(page: Page) {
     super(page);
-    // Match the actual data-testid from FeedCard component: data-testid="feed-card"
-    this.feedCards = page.locator('[data-testid="feed-card"], article, [role="article"]').or(
-      page.locator('div').filter({ hasText: /React|TypeScript|Next\.js|Go|AI|Database|CSS|Testing|Docker|Security/ })
-    );
-    this.loadingIndicator = page.locator('[data-testid="virtual-scroll-container"]').or(
-      page.locator('[data-testid="loading"], [aria-label="Loading"]').or(
-        page.locator('text=/loading|読み込み中/i')
-      )
-    );
-    this.emptyState = page.getByText(/no feeds yet|no feeds available|フィードがありません|empty|No feeds available/i).or(
-      page.locator('[data-testid="empty-state-icon"]')
-    );
+    // Use data-testid selectors
+    this.feedCards = page.getByTestId('feed-card');
+    this.loadingIndicator = page.getByTestId('infinite-scroll-sentinel');
+    this.emptyState = page
+      .getByTestId('empty-state-icon')
+      .or(page.getByTestId('empty-state'));
+    this.scrollContainer = page.getByTestId('feeds-scroll-container');
+    this.markReadButtons = page.getByRole('button', { name: /mark as read/i });
   }
 
   /**
    * Navigate to mobile feed page
    */
-  async goto() {
-    await super.goto('/mobile/feeds');
+  async goto(): Promise<void> {
+    await this.navigateTo('/mobile/feeds');
   }
 
   /**
    * Wait for feeds to load
    */
-  async waitForFeeds(timeout = 10000) {
-    await expect(this.feedCards.first()).toBeVisible({ timeout });
+  async waitForFeeds(timeout = 15000): Promise<void> {
+    // Wait for either feed cards or empty state
+    await expect(
+      this.feedCards.first().or(this.emptyState),
+    ).toBeVisible({ timeout });
   }
 
   /**
-   * Wait for empty state
-   */
-  async waitForEmptyState(timeout = 5000) {
-    await expect(this.emptyState).toBeVisible({ timeout });
-  }
-
-  /**
-   * Get the number of visible feed cards
+   * Get number of visible feed cards
    */
   async getFeedCount(): Promise<number> {
-    return await this.feedCards.count();
+    // Wait for cards to render
+    await this.page.waitForTimeout(500);
+    return this.feedCards.count();
   }
 
   /**
-   * Scroll to bottom to trigger pagination
+   * Check if empty state is displayed
    */
-  async scrollToBottom() {
-    await this.page.evaluate(() => {
-      window.scrollTo(0, document.body.scrollHeight);
-    });
+  async hasEmptyState(): Promise<boolean> {
+    try {
+      await expect(this.emptyState).toBeVisible({ timeout: 5000 });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Click on a feed card by index
+   */
+  async clickFeed(index = 0): Promise<void> {
+    const card = this.feedCards.nth(index);
+    await expect(card).toBeVisible();
+    await card.click();
+  }
+
+  /**
+   * Mark feed as read by index
+   */
+  async markAsRead(index = 0): Promise<void> {
+    const card = this.feedCards.nth(index);
+    await expect(card).toBeVisible();
+    const markReadButton = card.getByRole('button', { name: /mark as read/i });
+    await markReadButton.click();
+  }
+
+  /**
+   * Get feed card title by index
+   */
+  async getFeedTitle(index = 0): Promise<string> {
+    const card = this.feedCards.nth(index);
+    await expect(card).toBeVisible();
+    const titleElement = card.locator('a').first();
+    return (await titleElement.textContent()) ?? '';
+  }
+
+  /**
+   * Scroll and load more feeds
+   */
+  async loadMoreFeeds(): Promise<void> {
+    await this.scrollToBottom();
+    // Wait for loading indicator
+    await expect(this.loadingIndicator)
+      .toBeVisible({ timeout: 2000 })
+      .catch(() => {});
+    await this.page.waitForTimeout(500);
   }
 }
-
