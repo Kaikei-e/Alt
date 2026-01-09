@@ -64,7 +64,8 @@ func performHealthCheck() {
 }
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "--health-check" {
+	// Support both --health-check flag and healthcheck subcommand
+	if len(os.Args) > 1 && (os.Args[1] == "--health-check" || os.Args[1] == "healthcheck") {
 		performHealthCheck()
 		return
 	}
