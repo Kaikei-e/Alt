@@ -1,23 +1,32 @@
 version: v2
+inputs:
+  - directory: .
+    paths:
+      - alt
 plugins:
-  # Go backend - protobuf messages
+  # ============================================================================
+  # alt-backend (public protos only, clients are generated separately)
+  # ============================================================================
   - local: protoc-gen-go
     out: ../alt-backend/app/gen/proto
     opt: paths=source_relative
-  # Go backend - Connect-RPC handlers/clients
   - local: protoc-gen-connect-go
     out: ../alt-backend/app/gen/proto
     opt: paths=source_relative
-  # rag-orchestrator - protobuf messages
+
+  # ============================================================================
+  # rag-orchestrator (public protos)
+  # ============================================================================
   - local: protoc-gen-go
     out: ../rag-orchestrator/internal/gen/proto
     opt: paths=source_relative
-  # rag-orchestrator - Connect-RPC handlers/clients
   - local: protoc-gen-connect-go
     out: ../rag-orchestrator/internal/gen/proto
     opt: paths=source_relative
-  # TypeScript frontend - protobuf messages and Connect-RPC clients
-  # Connect-ES 2.0: protoc-gen-es generates both messages and services
+
+  # ============================================================================
+  # TypeScript frontend (public protos)
+  # ============================================================================
   - local: ../alt-frontend-sv/node_modules/.bin/protoc-gen-es
     out: ../alt-frontend-sv/src/lib/gen
     opt:

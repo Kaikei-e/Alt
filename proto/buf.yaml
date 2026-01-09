@@ -1,6 +1,7 @@
 version: v2
 modules:
   - path: .
+    name: buf.build/alt/proto
 lint:
   use:
     - STANDARD

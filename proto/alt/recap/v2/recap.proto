@@ -1,0 +1,170 @@
+syntax = "proto3";
+
+package alt.recap.v2;
+
+option go_package = "alt/gen/proto/alt/recap/v2;recapv2";
+
+// =============================================================================
+// RecapService Definition
+// =============================================================================
+
+// RecapService provides recap-related operations
+service RecapService {
+  // GetSevenDayRecap returns 7-day recap summary (authentication required)
+  // Replaces GET /api/v1/recap/7days
+  rpc GetSevenDayRecap(GetSevenDayRecapRequest) returns (GetSevenDayRecapResponse);
+}
+
+// =============================================================================
+// Request/Response Messages
+// =============================================================================
+
+// GetSevenDayRecapRequest is the request for getting 7-day recap
+message GetSevenDayRecapRequest {
+  // Optional draft ID for cluster draft attachment (replaces X-Genre-Draft-Id header)
+  optional string genre_draft_id = 1;
+}
+
+// GetSevenDayRecapResponse contains the 7-day recap summary
+message GetSevenDayRecapResponse {
+  // Recap job ID
+  string job_id = 1;
+  // Execution timestamp (RFC3339)
+  string executed_at = 2;
+  // Window start timestamp (RFC3339)
+  string window_start = 3;
+  // Window end timestamp (RFC3339)
+  string window_end = 4;
+  // Total number of articles in the recap
+  int32 total_articles = 5;
+  // Recap by genre
+  repeated RecapGenre genres = 6;
+  // Optional cluster draft (populated if genre_draft_id provided)
+  optional ClusterDraft cluster_draft = 7;
+}
+
+// =============================================================================
+// Recap Genre Messages
+// =============================================================================
+
+// RecapGenre represents a summary for a specific genre
+message RecapGenre {
+  // Genre name
+  string genre = 1;
+  // Summary text for this genre
+  string summary = 2;
+  // Top terms/keywords for this genre
+  repeated string top_terms = 3;
+  // Number of articles in this genre
+  int32 article_count = 4;
+  // Number of clusters in this genre
+  int32 cluster_count = 5;
+  // Evidence links to source articles
+  repeated EvidenceLink evidence_links = 6;
+  // Bullet points extracted from the summary
+  repeated string bullets = 7;
+  // References with URLs
+  repeated Reference references = 8;
+}
+
+// EvidenceLink represents a link to a source article
+message EvidenceLink {
+  // Article ID
+  string article_id = 1;
+  // Article title
+  string title = 2;
+  // Source URL
+  string source_url = 3;
+  // Published timestamp (RFC3339)
+  string published_at = 4;
+  // Language code
+  string lang = 5;
+}
+
+// Reference represents a URL reference in the summary
+message Reference {
+  // Reference ID (1-indexed)
+  int32 id = 1;
+  // Full URL
+  string url = 2;
+  // Domain extracted from URL
+  string domain = 3;
+  // Optional article ID if linked to an article
+  optional string article_id = 4;
+}
+
+// =============================================================================
+// Cluster Draft Messages
+// =============================================================================
+
+// ClusterDraft contains clustering metadata for recap analysis
+message ClusterDraft {
+  // Draft ID
+  string draft_id = 1;
+  // Description of the draft
+  string description = 2;
+  // Source identifier
+  string source = 3;
+  // Generation timestamp (RFC3339)
+  string generated_at = 4;
+  // Total number of entries
+  int32 total_entries = 5;
+  // Genres with cluster data
+  repeated ClusterGenre genres = 6;
+}
+
+// ClusterGenre contains clustering data for a genre
+message ClusterGenre {
+  // Genre name
+  string genre = 1;
+  // Sample size used for clustering
+  int32 sample_size = 2;
+  // Number of clusters
+  int32 cluster_count = 3;
+  // Individual clusters
+  repeated ClusterSegment clusters = 4;
+}
+
+// ClusterSegment represents a single cluster
+message ClusterSegment {
+  // Cluster ID
+  string cluster_id = 1;
+  // Human-readable label
+  string label = 2;
+  // Number of items in cluster
+  int32 count = 3;
+  // Average margin score
+  double margin_mean = 4;
+  // Margin standard deviation
+  double margin_std = 5;
+  // Average top boost score
+  double top_boost_mean = 6;
+  // Ratio of articles with graph boost available
+  double graph_boost_available_ratio = 7;
+  // Average tag count
+  double tag_count_mean = 8;
+  // Average tag entropy
+  double tag_entropy_mean = 9;
+  // Top tags for this cluster
+  repeated string top_tags = 10;
+  // Representative articles
+  repeated ClusterArticle representative_articles = 11;
+}
+
+// ClusterArticle represents an article in a cluster
+message ClusterArticle {
+  // Article ID
+  string article_id = 1;
+  // Margin score
+  double margin = 2;
+  // Top boost score
+  double top_boost = 3;
+  // Strategy used
+  string strategy = 4;
+  // Number of tags
+  int32 tag_count = 5;
+  // Number of candidates
+  int32 candidate_count = 6;
+  // Top tags for this article
+  repeated string top_tags = 7;
+}

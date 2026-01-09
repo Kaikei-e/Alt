@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package services.search.v2;
+
+option go_package = "search-indexer/gen/proto/services/search/v2;searchv2";
+
+// =============================================================================
+// Search Articles Messages
+// =============================================================================
+
+// SearchArticlesRequest is the request for searching articles
+message SearchArticlesRequest {
+  // Search query string (required)
+  string query = 1;
+  // User ID for filtering results (required)
+  string user_id = 2;
+  // Maximum number of results to return (default: 20, max: 100)
+  int32 limit = 3;
+  // Offset for pagination (default: 0)
+  int32 offset = 4;
+}
+
+// SearchHit represents a single search result
+message SearchHit {
+  // Article ID
+  string id = 1;
+  // Article title
+  string title = 2;
+  // Article content snippet
+  string content = 3;
+  // Tags associated with the article
+  repeated string tags = 4;
+}
+
+// SearchArticlesResponse contains search results
+message SearchArticlesResponse {
+  // Original search query
+  string query = 1;
+  // Search results
+  repeated SearchHit hits = 2;
+}
+
+// =============================================================================
+// SearchService Definition
+// =============================================================================
+
+// SearchService provides article search operations
+service SearchService {
+  // SearchArticles searches for articles matching the query
+  rpc SearchArticles(SearchArticlesRequest) returns (SearchArticlesResponse);
+}

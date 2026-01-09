@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package clients.preprocessor.v2;
+
+option go_package = "alt/gen/proto/clients/preprocessor/v2;preprocessorv2";
+
+// =============================================================================
+// Synchronous Summarize Messages
+// =============================================================================
+
+// SummarizeRequest is the request for synchronous article summarization
+message SummarizeRequest {
+  // Article ID (required)
+  string article_id = 1;
+  // Article title
+  string title = 2;
+  // Article content (optional, will fetch from DB if empty)
+  string content = 3;
+}
+
+// SummarizeResponse contains the summarization result
+message SummarizeResponse {
+  // Whether the summarization was successful
+  bool success = 1;
+  // Generated summary
+  string summary = 2;
+  // Article ID
+  string article_id = 3;
+}
+
+// =============================================================================
+// Streaming Summarize Messages
+// =============================================================================
+
+// StreamSummarizeRequest is the request for streaming article summarization
+message StreamSummarizeRequest {
+  // Article ID (required)
+  string article_id = 1;
+  // Article title
+  string title = 2;
+  // Article content (optional, will fetch from DB if empty)
+  string content = 3;
+}
+
+// StreamSummarizeResponse contains a streaming chunk of the summary
+message StreamSummarizeResponse {
+  // Summary text chunk
+  string chunk = 1;
+  // Whether this is the final chunk
+  bool is_final = 2;
+}
+
+// =============================================================================
+// Async Queue Messages
+// =============================================================================
+
+// SummarizeQueueRequest is the request for async queue submission
+message SummarizeQueueRequest {
+  // Article ID (required)
+  string article_id = 1;
+  // Article title
+  string title = 2;
+}
+
+// SummarizeQueueResponse contains the job creation result
+message SummarizeQueueResponse {
+  // Created job ID
+  string job_id = 1;
+  // Job status (pending)
+  string status = 2;
+  // Status message
+  string message = 3;
+}
+
+// =============================================================================
+// Job Status Messages
+// =============================================================================
+
+// SummarizeStatusRequest is the request for checking job status
+message SummarizeStatusRequest {
+  // Job ID to check (required)
+  string job_id = 1;
+}
+
+// SummarizeStatusResponse contains the job status
+message SummarizeStatusResponse {
+  // Job ID
+  string job_id = 1;
+  // Job status: pending, running, completed, failed
+  string status = 2;
+  // Generated summary (populated when completed)
+  string summary = 3;
+  // Error message (populated when failed)
+  string error_message = 4;
+  // Article ID
+  string article_id = 5;
+}
+
+// =============================================================================
+// PreProcessorService Definition
+// =============================================================================
+
+// PreProcessorService provides article summarization operations
+service PreProcessorService {
+  // Summarize performs synchronous article summarization
+  rpc Summarize(SummarizeRequest) returns (SummarizeResponse);
+
+  // StreamSummarize performs streaming article summarization
+  rpc StreamSummarize(StreamSummarizeRequest) returns (stream StreamSummarizeResponse);
+
+  // QueueSummarize submits an article for async summarization
+  rpc QueueSummarize(SummarizeQueueRequest) returns (SummarizeQueueResponse);
+
+  // GetSummarizeStatus checks the status of a summarization job
+  rpc GetSummarizeStatus(SummarizeStatusRequest) returns (SummarizeStatusResponse);
+}

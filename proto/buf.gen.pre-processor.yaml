@@ -1,0 +1,12 @@
+version: v2
+inputs:
+  - directory: .
+    paths:
+      - services/preprocessor
+plugins:
+  - local: protoc-gen-go
+    out: ../pre-processor/app/gen/proto
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: ../pre-processor/app/gen/proto
+    opt: paths=source_relative
