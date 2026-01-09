@@ -1,0 +1,46 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # 有効なlinter（本質的な問題を検出するもののみ）
+  enable:
+    - errcheck       # 未チェックエラー検出
+    - govet          # 疑わしい構造検出
+    - staticcheck    # 包括的静的解析
+    - ineffassign    # 無効な代入検出
+    - unused         # 未使用コード検出
+    - gosec          # セキュリティ問題検出
+
+  # 生成コードを除外
+  exclusions:
+    # 生成ファイルの自動除外
+    generated: lax
+
+    # パスベースの除外
+    rules:
+      # Proto生成ファイル
+      - path: '\.pb\.go$'
+        linters:
+          - all
+      # Connect-RPC生成ファイル
+      - path: '\.connect\.go$'
+        linters:
+          - all
+      # OpenAPI生成ファイル
+      - path: 'server\.gen\.go$'
+        linters:
+          - all
+
+formatters:
+  enable:
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+severity:
+  default: error

@@ -1,0 +1,41 @@
+name: Rag-orchestrator Quality Gates
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "rag-orchestrator/**"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "rag-orchestrator/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: "rag-orchestrator"
+      go-version: "1.25"
+      coverage-flags: "rag-orchestrator"
+      sparse-checkout: "rag-orchestrator"
+      upload-coverage: true
+    permissions:
+      contents: read
+
+  quality-gates:
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    needs: tests
+    with:
+      working-directory: "rag-orchestrator"
+      go-version: "1.25"
+      upload-sarif: false
+    permissions:
+      contents: read
+      security-events: write
