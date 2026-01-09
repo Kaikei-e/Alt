@@ -9,11 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test constants
-const (
-	testFeedURL = "testFeedURL"
-)
-
 func TestLRUCache(t *testing.T) {
 	tests := []struct {
 		name string

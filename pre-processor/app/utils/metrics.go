@@ -211,12 +211,12 @@ func (d *DurationStats) GetStats() StatsSnapshot {
 	}
 
 	total := d.total.Load()
-	min := d.min.Load()
-	max := d.max.Load()
+	minVal := d.min.Load()
+	maxVal := d.max.Load()
 
 	avgMs := float64(total) / float64(count) / 1000.0
-	minMs := float64(min) / 1000.0
-	maxMs := float64(max) / 1000.0
+	minMs := float64(minVal) / 1000.0
+	maxMs := float64(maxVal) / 1000.0
 
 	// Simple percentile approximation using buckets
 	p50Ms := d.approximatePercentile(0.50)

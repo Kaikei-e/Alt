@@ -216,7 +216,7 @@ func TestConditionalLogger(t *testing.T) {
 
 				logger := NewOptimizedLogger("test", config)
 				conditions := []LogCondition{
-					func(level string, msg string) bool {
+					func(level string, _ string) bool {
 						return level == "error"
 					},
 				}
@@ -240,7 +240,7 @@ func TestConditionalLogger(t *testing.T) {
 
 				// Only allow error level logs
 				conditions := []LogCondition{
-					func(level string, msg string) bool {
+					func(level string, _ string) bool {
 						return level == "error"
 					},
 				}
@@ -265,10 +265,10 @@ func TestConditionalLogger(t *testing.T) {
 				logger := NewOptimizedLogger("test", config)
 
 				conditions := []LogCondition{
-					func(level string, msg string) bool {
+					func(level string, _ string) bool {
 						return level == "error"
 					},
-					func(level string, msg string) bool {
+					func(_ string, msg string) bool {
 						return len(msg) > 5
 					},
 				}
@@ -404,7 +404,7 @@ func TestOptimizedLogger(t *testing.T) {
 		},
 		{
 			name: "should log with proper format and context",
-			test: func(t *testing.T) {
+			test: func(_ *testing.T) {
 				config := LogConfig{
 					Level:           "info",
 					Format:          "json",
@@ -503,7 +503,7 @@ func TestSamplingLoggerSecurityIssues(t *testing.T) {
 		},
 		{
 			name: "should handle zero sampling rate safely",
-			test: func(t *testing.T) {
+			test: func(_ *testing.T) {
 				config := LogConfig{
 					Level:           "info",
 					Format:          "json",

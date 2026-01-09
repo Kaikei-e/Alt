@@ -23,11 +23,11 @@ type ObjectPool[T any] struct {
 }
 
 // NewObjectPool creates a new generic object pool
-func NewObjectPool[T any](new func() *T, reset func(*T)) *ObjectPool[T] {
+func NewObjectPool[T any](newFunc func() *T, reset func(*T)) *ObjectPool[T] {
 	return &ObjectPool[T]{
 		pool: sync.Pool{
 			New: func() interface{} {
-				return new()
+				return newFunc()
 			},
 		},
 		reset:   reset,

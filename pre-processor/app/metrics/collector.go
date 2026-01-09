@@ -180,8 +180,8 @@ func (c *Collector) GetDomainMetrics(domain string) *DomainMetrics {
 	}
 
 	// Return a copy to avoid race conditions
-	copy := *metrics
-	return &copy
+	metricsCopy := *metrics
+	return &metricsCopy
 }
 
 // GetAggregateMetrics returns system-wide aggregate metrics
@@ -229,8 +229,8 @@ func (c *Collector) ExportJSON() ([]byte, error) {
 
 	// Copy domain metrics
 	for domain, metrics := range c.metrics {
-		copy := *metrics
-		exportData.DomainMetrics[domain] = &copy
+		metricsCopy := *metrics
+		exportData.DomainMetrics[domain] = &metricsCopy
 	}
 
 	return json.MarshalIndent(exportData, "", "  ")

@@ -241,8 +241,8 @@ func (al *AdaptiveLimiter) GetMetrics(domain string) *DomainMetrics {
 	}
 
 	// Return a copy to avoid race conditions
-	copy := *metrics
-	return &copy
+	metricsCopy := *metrics
+	return &metricsCopy
 }
 
 // Cleanup removes old domain limiters to prevent memory leaks

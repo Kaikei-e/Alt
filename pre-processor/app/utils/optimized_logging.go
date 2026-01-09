@@ -11,9 +11,10 @@ import (
 	logger "pre-processor/utils/logger"
 )
 
-// Context keys for logging
+// ContextKey is a type for context keys used in logging.
 type ContextKey string
 
+// Context keys for logging request identifiers.
 const (
 	RequestIDKey ContextKey = "request_id"
 	UserIDKey    ContextKey = "user_id"
@@ -148,13 +149,13 @@ func (l *OptimizedLogger) log(level string, msg string, args ...interface{}) {
 
 	// Prepare arguments with context fields while guarding against overflow
 	const maxInt = int(^uint(0) >> 1)
-	cap := uint64(len(args)) + uint64(len(l.contextFields))*2 + 2
-	if cap > uint64(maxInt) {
-		cap = uint64(maxInt)
+	capacity := uint64(len(args)) + uint64(len(l.contextFields))*2 + 2
+	if capacity > uint64(maxInt) {
+		capacity = uint64(maxInt)
 	}
-	// Safe conversion: cap is already bounded by maxInt, so int(cap) is safe
-	// #nosec G115 -- cap is already bounded by maxInt above, so int conversion is safe
-	capInt := int(cap)
+	// Safe conversion: capacity is already bounded by maxInt, so int(capacity) is safe
+	// #nosec G115 -- capacity is already bounded by maxInt above, so int conversion is safe
+	capInt := int(capacity)
 	allArgs := make([]interface{}, 0, capInt)
 	allArgs = append(allArgs, "component", l.component)
 

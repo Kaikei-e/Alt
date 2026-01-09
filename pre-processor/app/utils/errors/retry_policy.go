@@ -149,14 +149,14 @@ func (rp *RetryPolicy) WithMultiplier(multiplier float64) *RetryPolicy {
 	return &newPolicy
 }
 
-// randomFraction returns a random float64 in the range [0, max). It uses
+// randomFraction returns a random float64 in the range [0, maxVal). It uses
 // crypto/rand to comply with security guidelines. If the random generation
 // fails, the function returns 0.
-func randomFraction(max float64) float64 {
+func randomFraction(maxVal float64) float64 {
 	const precision = 1_000_000
 	n, err := crand.Int(crand.Reader, big.NewInt(precision))
 	if err != nil {
 		return 0
 	}
-	return (float64(n.Int64()) / precision) * max
+	return (float64(n.Int64()) / precision) * maxVal
 }

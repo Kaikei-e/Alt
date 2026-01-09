@@ -1,5 +1,7 @@
 // ABOUTME: This file implements enhanced rate limiting with exponential backoff and jitter
 // ABOUTME: Provides rate-limited HTTP client with circuit breaker integration
+
+// Package utils provides utility functions and types for the pre-processor service.
 package utils
 
 import (
@@ -88,15 +90,15 @@ func NewRateLimiter(interval time.Duration) *RateLimiter {
 	}
 }
 
-// randomFraction returns a random float64 in the range [0, max). It uses
+// randomFraction returns a random float64 in the range [0, maxVal). It uses
 // crypto/rand to avoid gosec G404 warnings. If randomness fails, 0 is returned.
-func randomFraction(max float64) float64 {
+func randomFraction(maxVal float64) float64 {
 	const precision = 1_000_000
 	n, err := crand.Int(crand.Reader, big.NewInt(precision))
 	if err != nil {
 		return 0
 	}
-	return (float64(n.Int64()) / precision) * max
+	return (float64(n.Int64()) / precision) * maxVal
 }
 
 // Wait waits for the rate limit interval with jitter

@@ -225,10 +225,3 @@ func TestExtractArticleText_ReadabilityFallback(t *testing.T) {
 		t.Errorf("Result too short: %d chars. Expected > 100.", len(result))
 	}
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

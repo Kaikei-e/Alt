@@ -60,7 +60,7 @@ func TestRateLimitedHTTPClient_BasicRateLimit(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			client := NewRateLimitedHTTPClient(tc.interval, 3, 10*time.Second)
-			client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte("OK"))
 			}, 0)
@@ -97,7 +97,7 @@ func TestRateLimitedHTTPClient_ExponentialBackoff(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			errorCount := 0
 			client := NewRateLimitedHTTPClient(100*time.Millisecond, tc.maxRetries, 5*time.Second)
-			client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, _ *http.Request) {
 				if errorCount < tc.serverErrors {
 					errorCount++
 					w.WriteHeader(http.StatusInternalServerError)
@@ -144,7 +144,7 @@ func TestRateLimitedHTTPClient_CircuitBreakerIntegration(t *testing.T) {
 				tc.failureThreshold,
 				time.Second,
 			)
-			client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
 			}, 0)
 
@@ -167,7 +167,7 @@ func TestRateLimitedHTTPClient_CircuitBreakerIntegration(t *testing.T) {
 func TestRateLimitedHTTPClient_Jitter(t *testing.T) {
 	t.Run("should apply jitter to reduce thundering herd", func(t *testing.T) {
 		client := NewRateLimitedHTTPClient(100*time.Millisecond, 3, 5*time.Second)
-		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}, 0)
 
@@ -198,7 +198,7 @@ func TestRateLimitedHTTPClient_Jitter(t *testing.T) {
 func TestRateLimitedHTTPClient_ContextCancellation(t *testing.T) {
 	t.Run("should respect context cancellation", func(t *testing.T) {
 		client := NewRateLimitedHTTPClient(100*time.Millisecond, 3, 5*time.Second)
-		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}, 100*time.Millisecond)
 
@@ -232,7 +232,7 @@ func TestRateLimitedHTTPClient_UserAgent(t *testing.T) {
 func TestRateLimitedHTTPClient_Timeout(t *testing.T) {
 	t.Run("should enforce request timeout", func(t *testing.T) {
 		client := NewRateLimitedHTTPClient(100*time.Millisecond, 3, 1*time.Second)
-		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}, 2*time.Second)
 
@@ -248,7 +248,7 @@ func TestRateLimitedHTTPClient_Timeout(t *testing.T) {
 func TestRateLimitedHTTPClient_Metrics(t *testing.T) {
 	t.Run("should track request metrics", func(t *testing.T) {
 		client := NewRateLimitedHTTPClient(100*time.Millisecond, 3, 5*time.Second)
-		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+		client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}, 0)
 
@@ -268,7 +268,7 @@ func TestRateLimitedHTTPClient_Metrics(t *testing.T) {
 
 func BenchmarkRateLimitedHTTPClient_Get(b *testing.B) {
 	client := NewRateLimitedHTTPClient(1*time.Millisecond, 3, 5*time.Second)
-	client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+	client.client.Transport = newHandlerTransport(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}, 0)
 
