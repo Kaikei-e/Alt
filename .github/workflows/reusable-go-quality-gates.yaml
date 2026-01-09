@@ -124,6 +124,7 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.1
+          install-mode: goinstall
           working-directory: ${{ inputs.working-directory }}
           only-new-issues: ${{ inputs.lint-only-new }}
           # 追加で引数を渡す場合（例：--timeout=5m）
