@@ -103,7 +103,7 @@ export default function RegisterFeedsPage() {
   };
 
   return (
-    <Box minHeight="100dvh" bg="var(--alt-gradient-bg)" color="white" p={4}>
+    <Box minHeight="100dvh" bg="var(--alt-gradient-bg)" color="white" p={4} data-testid="register-feed-page">
       <VStack gap={6} align="stretch" maxWidth="500px" mx="auto">
         <Text
           fontSize="2xl"
@@ -111,6 +111,7 @@ export default function RegisterFeedsPage() {
           textAlign="center"
           color="var(--text-primary)"
           mt={8}
+          data-testid="register-feed-heading"
         >
           Register RSS Feed
         </Text>
@@ -155,9 +156,10 @@ export default function RegisterFeedsPage() {
                       : "var(--alt-primary)",
                     boxShadow: `0 0 0 1px ${validationError ? "var(--alt-error)" : "var(--alt-primary)"}`,
                   }}
+                  data-testid="feed-url-input"
                 />
                 {validationError && (
-                  <Text color="var(--alt-error)" fontSize="sm" mt={1}>
+                  <Text color="var(--alt-error)" fontSize="sm" mt={1} data-testid="feed-url-error">
                     {validationError}
                   </Text>
                 )}
@@ -183,6 +185,7 @@ export default function RegisterFeedsPage() {
                 border="1px solid var(--alt-glass-border)"
                 width="full"
                 disabled={isLoading || !!validationError}
+                data-testid="register-feed-button"
               >
                 {isLoading ? "Registering..." : "Register Feed"}
               </Button>
@@ -197,6 +200,7 @@ export default function RegisterFeedsPage() {
                   textAlign="center"
                   fontSize="sm"
                   fontWeight="medium"
+                  data-testid={message.type === "success" ? "register-success-message" : "register-error-message"}
                 >
                   {message.text}
                 </Text>

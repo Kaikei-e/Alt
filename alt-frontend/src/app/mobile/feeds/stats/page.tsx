@@ -36,6 +36,7 @@ export default function FeedsStatsPage() {
             color="var(--alt-primary)"
             textShadow="0 0 20px var(--text-primary)"
             mb={2}
+            data-testid="stats-heading"
           >
             Feeds Statistics
           </Text>
@@ -76,12 +77,13 @@ export default function FeedsStatsPage() {
         </Box>
 
         {/* Statistics Cards */}
-        <Flex direction="column" gap={6} overflowY="scroll">
+        <Flex direction="column" gap={6} overflowY="scroll" data-testid="stats-cards">
           <StatCard
             label="TOTAL FEEDS"
             value={feedAmount}
             description="RSS feeds being monitored"
             icon={Rss}
+            data-testid="stat-total-feeds"
           />
 
           <StatCard
@@ -89,6 +91,7 @@ export default function FeedsStatsPage() {
             value={totalArticlesAmount}
             description="All articles across RSS feeds"
             icon={FileText}
+            data-testid="stat-total-articles"
           />
 
           <StatCard
@@ -96,6 +99,7 @@ export default function FeedsStatsPage() {
             value={unsummarizedArticlesAmount}
             description="Articles waiting for AI summarization"
             icon={Layers}
+            data-testid="stat-unsummarized"
           />
         </Flex>
       </Box>
