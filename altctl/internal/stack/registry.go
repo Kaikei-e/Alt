@@ -88,7 +88,7 @@ var defaultStacks = []Stack{
 			"pre-processor-logs", "search-indexer-logs", "news-creator-logs",
 			"meilisearch-logs", "db-logs",
 		},
-		DependsOn: []string{"base", "db"},
+		DependsOn: []string{"base", "db", "core", "workers", "ai"},
 		Profile:   "logging",
 		Optional:  true,
 		Provides:  []Feature{FeatureLogging},
