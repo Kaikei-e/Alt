@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,6 +30,11 @@ const (
 )
 
 func main() {
+	// ──────────── healthcheck subcommand ────────────
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(runHealthcheck())
+	}
+
 	// ──────────── init ────────────
 	logger.Init()
 	tokenizer, err := tokenize.InitTokenizer()
@@ -74,6 +80,12 @@ func main() {
 	// ──────────── HTTP server ────────────
 	http.HandleFunc("/v1/search", func(w http.ResponseWriter, r *http.Request) {
 		rest.SearchArticles(w, r, msClient.Index("articles"))
+	})
+
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"status":"ok"}`)
 	})
 
 	srv := &http.Server{
@@ -234,4 +246,22 @@ func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecas
 
 		time.Sleep(INDEX_INTERVAL)
 	}
+}
+
+// runHealthcheck performs a health check against the local HTTP server.
+// Returns 0 on success, 1 on failure.
+func runHealthcheck() int {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://127.0.0.1" + HTTP_ADDR + "/health")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
+		return 1
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return 0
+	}
+	fmt.Fprintf(os.Stderr, "healthcheck failed: status %d\n", resp.StatusCode)
+	return 1
 }
