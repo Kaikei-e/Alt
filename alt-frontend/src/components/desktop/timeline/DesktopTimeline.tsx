@@ -277,6 +277,7 @@ const DesktopStyledFeedCard = ({
             lineHeight="1.4"
             flex={1}
             onClick={handleViewArticle}
+            data-testid="feed-card-title"
           >
             {feed.title}
           </Text>

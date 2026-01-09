@@ -232,6 +232,7 @@ export const DesktopFeedCard = function DesktopFeedCard({
               lineHeight="1.4"
               _hover={{ color: "var(--accent-primary)" }}
               transition="color var(--transition-speed) ease"
+              data-testid="feed-card-title"
             >
               {feed.title}
             </Text>
