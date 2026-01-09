@@ -25,11 +25,11 @@ export default function DesktopSettingsPage() {
   };
 
   return (
-    <Box p={8}>
-      <Heading size="lg" mb={6}>
+    <Box p={8} data-testid="settings-page">
+      <Heading size="lg" mb={6} data-testid="settings-heading">
         Settings
       </Heading>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} data-testid="settings-form">
         <VStack gap={4} align="flex-start" maxW="md">
           <Box w="100%">
             <label htmlFor="name" style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Name</label>
@@ -37,13 +37,17 @@ export default function DesktopSettingsPage() {
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              data-testid="settings-name-input"
             />
           </Box>
-          <Button type="submit" colorPalette="blue">
+          <Button type="submit" colorPalette="blue" data-testid="settings-save-button">
             Save Changes
           </Button>
           {status === "success" && (
-            <Text color="green.500">Profile updated.</Text>
+            <Text color="green.500" data-testid="settings-success-message">Profile updated.</Text>
+          )}
+          {status === "error" && (
+            <Text color="red.500" data-testid="settings-error-message">Failed to update profile.</Text>
           )}
         </VStack>
       </form>

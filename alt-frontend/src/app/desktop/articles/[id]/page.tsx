@@ -34,34 +34,44 @@ export default function ArticleDetailPage() {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" h="50vh">
-        <Spinner size="xl" />
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        h="50vh"
+        data-testid="article-loading"
+      >
+        <Spinner size="xl" data-testid="article-spinner" />
       </Box>
     );
   }
 
   if (error || !article) {
     return (
-      <Box p={8} textAlign="center">
-        <Text color="red.500" fontSize="lg">{error || "Article not found"}</Text>
+      <Box p={8} textAlign="center" data-testid="article-error">
+        <Text color="red.500" fontSize="lg" data-testid="article-error-message">
+          {error || "Article not found"}
+        </Text>
       </Box>
     );
   }
 
   return (
-    <Container maxW="container.lg" py={8}>
+    <Container maxW="container.lg" py={8} data-testid="article-container">
       <VStack align="stretch" gap={6}>
-        <Heading as="h1" size="2xl">{article.title}</Heading>
+        <Heading as="h1" size="2xl" data-testid="article-title">
+          {article.title}
+        </Heading>
         {article.published_at && (
-          <Text color="gray.500">
+          <Text color="gray.500" data-testid="article-published">
             Published: {new Date(article.published_at).toLocaleDateString()}
           </Text>
         )}
         <Box
           className="article-content"
+          data-testid="article-content"
           dangerouslySetInnerHTML={{ __html: article.content }}
         />
-        {/* Author is not in Article interface, so omitting */}
       </VStack>
     </Container>
   );
