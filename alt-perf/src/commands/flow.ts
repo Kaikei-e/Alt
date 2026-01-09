@@ -234,6 +234,8 @@ export async function runFlow(config: PerfConfig, options: FlowOptions): Promise
       totalRoutes: flows.length,
       passedRoutes: passedFlows,
       failedRoutes: flows.length - passedFlows,
+      skippedRoutes: 0,
+      measuredRoutes: flows.length,
       overallScore: Math.round((passedFlows / flows.length) * 100),
       overallRating: passedFlows === flows.length ? "good" : "poor",
     },

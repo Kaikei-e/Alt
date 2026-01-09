@@ -201,6 +201,8 @@ export async function runLoad(config: PerfConfig, options: LoadOptions): Promise
       totalRoutes: routes.length,
       passedRoutes: results.filter((r) => r.errorRate < 0.01).length,
       failedRoutes: results.filter((r) => r.errorRate >= 0.01).length,
+      skippedRoutes: 0,
+      measuredRoutes: routes.length,
       overallScore: Math.round(
         (results.filter((r) => r.errorRate < 0.01).length / routes.length) * 100
       ),

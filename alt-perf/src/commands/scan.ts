@@ -57,23 +57,35 @@ function filterRoutes(routes: RouteConfig[], pattern?: string): RouteConfig[] {
  */
 function generateRecommendations(routes: RouteMeasurement[]): string[] {
   const recommendations: string[] = [];
-  const poorLcp = routes.filter((r) => r.vitals.lcp.rating === "poor");
-  const poorCls = routes.filter((r) => r.vitals.cls.rating === "poor");
-  const poorInp = routes.filter((r) => r.vitals.inp.rating === "poor");
+
+  // Only consider measured routes (exclude skipped)
+  const measuredRoutes = routes.filter((r) => r.status !== "skipped");
+
+  const poorLcp = measuredRoutes.filter((r) => r.vitals.lcp.rating === "poor");
+  const poorCls = measuredRoutes.filter((r) => r.vitals.cls.rating === "poor");
+  const poorInp = measuredRoutes.filter((r) => r.vitals.inp.rating === "poor");
+
+  // Deduplicate paths (same route may appear with different devices)
+  const uniquePaths = (routes: RouteMeasurement[]): string[] => {
+    return [...new Set(routes.map((r) => r.path))];
+  };
 
   if (poorLcp.length > 0) {
+    const paths = uniquePaths(poorLcp);
     recommendations.push(
-      `Optimize LCP on ${poorLcp.length} route(s): ${poorLcp.map((r) => r.path).join(", ")}`
+      `Optimize LCP on ${paths.length} route(s): ${paths.join(", ")}`
     );
   }
   if (poorCls.length > 0) {
+    const paths = uniquePaths(poorCls);
     recommendations.push(
-      `Fix layout shifts on ${poorCls.length} route(s): ${poorCls.map((r) => r.path).join(", ")}`
+      `Fix layout shifts on ${paths.length} route(s): ${paths.join(", ")}`
     );
   }
   if (poorInp.length > 0) {
+    const paths = uniquePaths(poorInp);
     recommendations.push(
-      `Improve interactivity on ${poorInp.length} route(s): ${poorInp.map((r) => r.path).join(", ")}`
+      `Improve interactivity on ${paths.length} route(s): ${paths.join(", ")}`
     );
   }
 
