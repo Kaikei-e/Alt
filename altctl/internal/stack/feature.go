@@ -4,13 +4,14 @@ package stack
 type Feature string
 
 const (
-	FeatureSearch   Feature = "search"
-	FeatureAI       Feature = "ai"
-	FeatureRecap    Feature = "recap"
-	FeatureRAG      Feature = "rag"
-	FeatureLogging  Feature = "logging"
-	FeatureAuth     Feature = "auth"
-	FeatureDatabase Feature = "database"
+	FeatureSearch       Feature = "search"
+	FeatureAI           Feature = "ai"
+	FeatureRecap        Feature = "recap"
+	FeatureRAG          Feature = "rag"
+	FeatureLogging      Feature = "logging"
+	FeatureAuth         Feature = "auth"
+	FeatureDatabase     Feature = "database"
+	FeatureObservability Feature = "observability"
 )
 
 // WarningSeverity indicates how critical a missing feature is

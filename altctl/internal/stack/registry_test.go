@@ -97,3 +97,114 @@ func TestDevStackProfile(t *testing.T) {
 		t.Errorf("expected profile to be 'dev', got '%s'", dev.Profile)
 	}
 }
+
+func TestObservabilityStackExists(t *testing.T) {
+	registry := NewRegistry()
+	obs, ok := registry.Get("observability")
+
+	if !ok {
+		t.Fatal("expected observability stack to exist in registry")
+	}
+
+	if obs.Name != "observability" {
+		t.Errorf("expected stack name to be 'observability', got '%s'", obs.Name)
+	}
+}
+
+func TestObservabilityStackDependencies(t *testing.T) {
+	registry := NewRegistry()
+	obs, ok := registry.Get("observability")
+
+	if !ok {
+		t.Fatal("expected observability stack to exist")
+	}
+
+	expectedDeps := map[string]bool{"base": false, "db": false, "core": false}
+	for _, dep := range obs.DependsOn {
+		if _, ok := expectedDeps[dep]; ok {
+			expectedDeps[dep] = true
+		}
+	}
+
+	for dep, found := range expectedDeps {
+		if !found {
+			t.Errorf("expected observability stack to depend on '%s'", dep)
+		}
+	}
+}
+
+func TestObservabilityStackIsOptional(t *testing.T) {
+	registry := NewRegistry()
+	obs, ok := registry.Get("observability")
+
+	if !ok {
+		t.Fatal("expected observability stack to exist")
+	}
+
+	if !obs.Optional {
+		t.Error("expected observability stack to be optional")
+	}
+}
+
+func TestObservabilityStackServices(t *testing.T) {
+	registry := NewRegistry()
+	obs, ok := registry.Get("observability")
+
+	if !ok {
+		t.Fatal("expected observability stack to exist")
+	}
+
+	requiredServices := []string{"nginx-exporter", "prometheus", "grafana"}
+
+	for _, svc := range requiredServices {
+		found := false
+		for _, s := range obs.Services {
+			if s == svc {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected observability stack to include service '%s'", svc)
+		}
+	}
+}
+
+func TestObservabilityStackComposeFile(t *testing.T) {
+	registry := NewRegistry()
+	obs, ok := registry.Get("observability")
+
+	if !ok {
+		t.Fatal("expected observability stack to exist")
+	}
+
+	if obs.ComposeFile != "observability.yaml" {
+		t.Errorf("expected compose file to be 'observability.yaml', got '%s'", obs.ComposeFile)
+	}
+}
+
+func TestObservabilityStackProfile(t *testing.T) {
+	registry := NewRegistry()
+	obs, ok := registry.Get("observability")
+
+	if !ok {
+		t.Fatal("expected observability stack to exist")
+	}
+
+	if obs.Profile != "observability" {
+		t.Errorf("expected profile to be 'observability', got '%s'", obs.Profile)
+	}
+}
+
+func TestObservabilityStackProvidesFeature(t *testing.T) {
+	registry := NewRegistry()
+	obs, ok := registry.Get("observability")
+
+	if !ok {
+		t.Fatal("expected observability stack to exist")
+	}
+
+	if !obs.ProvidesFeature(FeatureObservability) {
+		t.Error("expected observability stack to provide observability feature")
+	}
+}

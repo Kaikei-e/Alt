@@ -133,3 +133,26 @@ func TestProvidesFeature(t *testing.T) {
 		t.Error("expected stack to NOT provide AI feature")
 	}
 }
+
+func TestFindFeatureProviders_Observability(t *testing.T) {
+	registry := NewRegistry()
+	resolver := NewFeatureResolver(registry)
+
+	providers := resolver.findFeatureProviders(FeatureObservability)
+
+	if len(providers) == 0 {
+		t.Error("expected at least one provider for observability feature")
+	}
+
+	hasObservability := false
+	for _, p := range providers {
+		if p == "observability" {
+			hasObservability = true
+			break
+		}
+	}
+
+	if !hasObservability {
+		t.Error("expected observability stack to provide observability feature")
+	}
+}
