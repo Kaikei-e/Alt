@@ -14,17 +14,34 @@ import (
 	"auth-hub/client"
 	"auth-hub/config"
 	"auth-hub/handler"
+	"auth-hub/utils/logger"
+	"auth-hub/utils/otel"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
 func main() {
-	// Initialize structured logger
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
-	slog.SetDefault(logger)
+	ctx := context.Background()
+
+	// Initialize OpenTelemetry
+	otelCfg := otel.ConfigFromEnv()
+	otelShutdown, err := otel.InitProvider(ctx, otelCfg)
+	if err != nil {
+		fmt.Printf("Failed to initialize OpenTelemetry: %v\n", err)
+		otelCfg.Enabled = false
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(shutdownCtx); err != nil {
+			fmt.Printf("Failed to shutdown OpenTelemetry: %v\n", err)
+		}
+	}()
+
+	// Initialize structured logger with OTel support
+	logger.Init(otelCfg.Enabled)
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -55,6 +72,11 @@ func main() {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
+
+	// Add OpenTelemetry tracing middleware
+	if otelCfg.Enabled {
+		e.Use(otelecho.Middleware(otelCfg.ServiceName))
+	}
 
 	// Middleware
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
