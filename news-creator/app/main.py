@@ -19,6 +19,7 @@ from fastapi import FastAPI
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.gateway.ollama_gateway import OllamaGateway
+from news_creator.otel import init_otel_provider, instrument_fastapi
 from news_creator.services.model_warmup import ModelWarmupService
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
@@ -31,10 +32,17 @@ from news_creator.handler import (
     create_health_router,
 )
 
+# Initialize OpenTelemetry first (before logging setup)
+otel_shutdown = init_otel_provider()
+
 # Configure logging from environment variable
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 log_level = getattr(logging, LOG_LEVEL, logging.INFO)
-logging.basicConfig(level=log_level)
+logging.basicConfig(
+    level=log_level,
+    format='{"timestamp":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}',
+    datefmt="%Y-%m-%dT%H:%M:%S%z",
+)
 logger = logging.getLogger(__name__)
 
 
@@ -91,6 +99,8 @@ async def lifespan(app: FastAPI):
     await container.initialize()
     yield
     await container.cleanup()
+    # Shutdown OTel providers
+    otel_shutdown()
 
 
 # Create FastAPI application
@@ -100,6 +110,9 @@ app = FastAPI(
     description="LLM-based content generation service with Clean Architecture",
     lifespan=lifespan,
 )
+
+# Instrument FastAPI with OpenTelemetry
+instrument_fastapi(app)
 
 # Register routers with dependency injection
 app.include_router(
