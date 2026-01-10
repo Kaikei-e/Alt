@@ -5,17 +5,17 @@ import (
 	"strings"
 )
 
-// NormalizeURL normalizes a URL by removing tracking parameters, fragments, and trailing slashes.
-// This ensures consistent URL comparison regardless of tracking parameters or formatting variations.
+// NormalizeURL normalizes a URL by removing all query parameters, fragments, and trailing slashes.
+// This ensures consistent URL comparison and storage for feed URLs.
 //
 // Modifications applied:
-//   - Removes common tracking parameters (UTM, fbclid, gclid, etc.)
+//   - Removes ALL query parameters (they are noise for feed URLs)
 //   - Removes URL fragments (#anchor)
 //   - Removes trailing slashes (except for root path "/")
 //
 // Example:
 //
-//	input:  "https://example.com/article?utm_source=rss&utm_campaign=test/"
+//	input:  "https://example.com/article?utm_source=rss&q=test#section"
 //	output: "https://example.com/article"
 func NormalizeURL(rawURL string) (string, error) {
 	parsedURL, err := url.Parse(rawURL)
@@ -23,17 +23,8 @@ func NormalizeURL(rawURL string) (string, error) {
 		return "", err
 	}
 
-	// Remove common tracking parameters
-	query := parsedURL.Query()
-	trackingParams := []string{
-		"utm_source", "utm_medium", "utm_campaign",
-		"utm_term", "utm_content", "utm_id",
-		"fbclid", "gclid", "mc_eid", "msclkid",
-	}
-	for _, param := range trackingParams {
-		query.Del(param)
-	}
-	parsedURL.RawQuery = query.Encode()
+	// Remove ALL query parameters (they are noise for feed URLs)
+	parsedURL.RawQuery = ""
 
 	// Remove fragment
 	parsedURL.Fragment = ""

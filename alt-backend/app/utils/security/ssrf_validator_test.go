@@ -205,6 +205,16 @@ func TestSSRFValidator_PathTraversal(t *testing.T) {
 			url:     "https://93.184.216.34/safe/path/image.jpg",
 			wantErr: false,
 		},
+		{
+			name:    "encoded characters in query parameters (allowed)",
+			url:     "https://example.com/path?redirect=https%3A%2F%2Fother.com",
+			wantErr: false,
+		},
+		{
+			name:    "complex redirect URL in query parameters (allowed)",
+			url:     "https://medium.com/m/global-identity-2?redirectUrl=https%3A%2F%2Fuxplanet.org%2Frobots.txt",
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {

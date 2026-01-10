@@ -174,18 +174,26 @@ func (v *SSRFValidator) validateHost(u *url.URL) error {
 
 // validatePath checks for path traversal attacks
 func (v *SSRFValidator) validatePath(u *url.URL) error {
-	// Check for URL encoding attacks first (before URL parsing decodes them)
-	rawURL := u.String()
+	// Check for URL encoding attacks in path only (exclude query parameters)
+	// Query parameters may legitimately contain encoded characters
+	pathToCheck := u.Path
+	if u.RawPath != "" {
+		pathToCheck = u.RawPath
+	}
+
 	suspiciousPatterns := []string{
+		"%00",        // null byte
+		"%0a", "%0A", // newline
+		"%0d", "%0D", // carriage return
 		"%2e", "%2E", // encoded dot
 		"%2f", "%2F", // encoded forward slash
 		"%5c", "%5C", // encoded backslash
 	}
 
 	for _, pattern := range suspiciousPatterns {
-		if strings.Contains(rawURL, pattern) {
+		if strings.Contains(pathToCheck, pattern) {
 			return &ValidationError{
-				Message: "URL encoding attacks not allowed",
+				Message: "URL encoding attacks not allowed in path",
 				Type:    "URL_ENCODING_BLOCKED",
 			}
 		}

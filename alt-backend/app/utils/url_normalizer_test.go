@@ -48,15 +48,15 @@ func TestNormalizeURL(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "URL with normal query parameters (should be preserved)",
+			name:     "URL with normal query parameters (all removed)",
 			input:    "https://example.com/search?q=golang&page=2",
-			expected: "https://example.com/search?page=2&q=golang",
+			expected: "https://example.com/search",
 			wantErr:  false,
 		},
 		{
-			name:     "URL with mixed parameters",
+			name:     "URL with mixed parameters (all removed)",
 			input:    "https://example.com/search?q=golang&utm_source=rss&page=2",
-			expected: "https://example.com/search?page=2&q=golang",
+			expected: "https://example.com/search",
 			wantErr:  false,
 		},
 		{
