@@ -24,6 +24,11 @@ let config: LoggerConfig = {
   verbose: false,
 };
 
+// OTel-compatible resource attributes
+const SERVICE_NAME = Deno.env.get("OTEL_SERVICE_NAME") || "alt-perf";
+const SERVICE_VERSION = Deno.env.get("SERVICE_VERSION") || "1.0.0";
+const DEPLOYMENT_ENV = Deno.env.get("DEPLOYMENT_ENV") || "development";
+
 // Configure logger
 export function configureLogger(options: Partial<LoggerConfig>): void {
   config = { ...config, ...options };
@@ -49,9 +54,14 @@ function log(
 
   if (config.json) {
     const logEntry = {
+      // OTel-compatible fields
       timestamp: formatTimestamp(),
       level,
-      message,
+      msg: message,
+      // Resource attributes (OTel semantic conventions)
+      "service.name": SERVICE_NAME,
+      "service.version": SERVICE_VERSION,
+      "deployment.environment": DEPLOYMENT_ENV,
       ...data,
     };
     console.log(JSON.stringify(logEntry));
