@@ -10,7 +10,7 @@
     {
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "${DS_CLICKHOUSE}"
+        "uid": "DS_CLICKHOUSE"
       },
       "fieldConfig": {
         "defaults": {
@@ -46,7 +46,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "DS_CLICKHOUSE" },
           "editorType": "sql",
           "format": 1,
           "queryType": "timeseries",
@@ -60,7 +60,7 @@
     {
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "${DS_CLICKHOUSE}"
+        "uid": "DS_CLICKHOUSE"
       },
       "fieldConfig": {
         "defaults": {
@@ -85,7 +85,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "DS_CLICKHOUSE" },
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
@@ -99,7 +99,7 @@
     {
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "${DS_CLICKHOUSE}"
+        "uid": "DS_CLICKHOUSE"
       },
       "fieldConfig": {
         "defaults": {
@@ -129,7 +129,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "DS_CLICKHOUSE" },
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
@@ -143,7 +143,7 @@
     {
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "${DS_CLICKHOUSE}"
+        "uid": "DS_CLICKHOUSE"
       },
       "fieldConfig": {
         "defaults": {
@@ -179,7 +179,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "DS_CLICKHOUSE" },
           "editorType": "sql",
           "format": 1,
           "queryType": "timeseries",
@@ -193,7 +193,7 @@
     {
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "${DS_CLICKHOUSE}"
+        "uid": "DS_CLICKHOUSE"
       },
       "fieldConfig": {
         "defaults": {
@@ -223,7 +223,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "DS_CLICKHOUSE" },
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
@@ -242,7 +242,7 @@
     "list": [
       {
         "current": { "selected": false, "text": "All", "value": "All" },
-        "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+        "datasource": { "type": "grafana-clickhouse-datasource", "uid": "DS_CLICKHOUSE" },
         "definition": "SELECT DISTINCT ServiceName FROM otel_logs WHERE Timestamp > now() - INTERVAL 1 DAY ORDER BY ServiceName",
         "hide": 0,
         "includeAll": true,
