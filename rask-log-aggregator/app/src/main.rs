@@ -24,6 +24,16 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[tokio::main]
 async fn main() -> Result<(), AggregatorError> {
+    // Handle healthcheck subcommand (for Docker healthcheck in distroless image)
+    if std::env::args().nth(1).as_deref() == Some("healthcheck") {
+        match rask::healthcheck().await {
+            Ok(()) => std::process::exit(0),
+            Err(e) => {
+                eprintln!("Healthcheck failed: {}", e);
+                std::process::exit(1)
+            }
+        }
+    }
     // Use JSON format if RUST_LOG_FORMAT=json, otherwise use human-readable format
     let use_json = std::env::var("RUST_LOG_FORMAT")
         .map(|v| v == "json")

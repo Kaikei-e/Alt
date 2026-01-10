@@ -520,7 +520,9 @@ impl ShutdownHandle {
         }
 
         // Wait for service to stop
-        let timeout_duration = Duration::from_secs(10);
+        // Note: 4 seconds is chosen to fit within Docker's stop_grace_period (12s)
+        // while leaving buffer time for cleanup operations
+        let timeout_duration = Duration::from_secs(4);
         let start = Instant::now();
 
         while *self.running.read().await && start.elapsed() < timeout_duration {

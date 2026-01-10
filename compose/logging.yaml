@@ -37,12 +37,22 @@ services:
       HTTP_PORT: 9600
     secrets:
       - clickhouse_password
+    healthcheck:
+      test: ["CMD", "/rask-log-aggregator", "healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   nginx-logs:
     build:
       context: ../rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
-    network_mode: "service:nginx"
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
     environment:
       DOCKER_HOST: "unix:///var/run/docker.sock"
       LOG_LEVEL: "info"
@@ -58,13 +68,17 @@ services:
     group_add:
       - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
-    stop_grace_period: 5s
+    stop_grace_period: 12s
 
   alt-backend-logs:
     build:
       context: ../rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
-    network_mode: "service:alt-backend"
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
     environment:
       DOCKER_HOST: "unix:///var/run/docker.sock"
       LOG_LEVEL: "info"
@@ -80,13 +94,17 @@ services:
     group_add:
       - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
-    stop_grace_period: 5s
+    stop_grace_period: 12s
 
   tag-generator-logs:
     build:
       context: ../rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
-    network_mode: "service:tag-generator"
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
     environment:
       DOCKER_HOST: "unix:///var/run/docker.sock"
       LOG_LEVEL: "info"
@@ -102,13 +120,17 @@ services:
     group_add:
       - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
-    stop_grace_period: 5s
+    stop_grace_period: 12s
 
   pre-processor-logs:
     build:
       context: ../rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
-    network_mode: "service:pre-processor"
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
     environment:
       DOCKER_HOST: "unix:///var/run/docker.sock"
       LOG_LEVEL: "info"
@@ -124,13 +146,17 @@ services:
     group_add:
       - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
-    stop_grace_period: 5s
+    stop_grace_period: 12s
 
   search-indexer-logs:
     build:
       context: ../rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
-    network_mode: "service:search-indexer"
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
     environment:
       DOCKER_HOST: "unix:///var/run/docker.sock"
       LOG_LEVEL: "info"
@@ -146,13 +172,17 @@ services:
     group_add:
       - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
-    stop_grace_period: 5s
+    stop_grace_period: 12s
 
   news-creator-logs:
     build:
       context: ../rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
-    network_mode: "service:news-creator"
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
     environment:
       DOCKER_HOST: "unix:///var/run/docker.sock"
       LOG_LEVEL: "info"
@@ -168,13 +198,17 @@ services:
     group_add:
       - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
-    stop_grace_period: 5s
+    stop_grace_period: 12s
 
   meilisearch-logs:
     build:
       context: ../rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
-    network_mode: "service:meilisearch"
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
     environment:
       DOCKER_HOST: "unix:///var/run/docker.sock"
       LOG_LEVEL: "info"
@@ -188,13 +222,17 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     restart: unless-stopped
-    stop_grace_period: 5s
+    stop_grace_period: 12s
 
   db-logs:
     build:
       context: ../rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
-    network_mode: "service:db"
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
     environment:
       DOCKER_HOST: "unix:///var/run/docker.sock"
       LOG_LEVEL: "info"
@@ -208,4 +246,4 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     restart: unless-stopped
-    stop_grace_period: 5s
+    stop_grace_period: 12s
