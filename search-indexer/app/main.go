@@ -17,6 +17,7 @@ import (
 	"search-indexer/rest"
 	"search-indexer/tokenize"
 	"search-indexer/usecase"
+	"search-indexer/utils/otel"
 
 	"github.com/meilisearch/meilisearch-go"
 )
@@ -37,14 +38,35 @@ func main() {
 		os.Exit(runHealthcheck())
 	}
 
-	// ──────────── init ────────────
-	logger.Init()
+	// ──────────── init OpenTelemetry ────────────
+	ctx := context.Background()
+	otelCfg := otel.ConfigFromEnv()
+	otelShutdown, err := otel.InitProvider(ctx, otelCfg)
+	if err != nil {
+		fmt.Printf("Failed to initialize OpenTelemetry: %v\n", err)
+		otelCfg.Enabled = false
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(shutdownCtx); err != nil {
+			fmt.Printf("Failed to shutdown OpenTelemetry: %v\n", err)
+		}
+	}()
+
+	// ──────────── init logger ────────────
+	logger.InitWithOTel(otelCfg.Enabled)
 	tokenizer, err := tokenize.InitTokenizer()
 	if err != nil {
 		logger.Logger.Error("Failed to initialize tokenizer", "err", err)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	logger.Logger.Info("Starting search-indexer",
+		"service", otelCfg.ServiceName,
+		"otel_enabled", otelCfg.Enabled,
+	)
+
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
 	// Create drivers (infrastructure layer)
