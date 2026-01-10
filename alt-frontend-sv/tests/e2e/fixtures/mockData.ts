@@ -145,6 +145,43 @@ export const AUGUR_RESPONSE_CHUNKS = [
 // RSS Feed Link data
 export const RSS_FEED_LINKS_RESPONSE: unknown[] = [];
 
+// RSS Feed Link mock data for settings/feeds tests
+export const RSS_FEED_LINKS_LIST_RESPONSE = {
+	links: [
+		{
+			id: "feed-link-1",
+			url: "https://example.com/feed.xml",
+		},
+		{
+			id: "feed-link-2",
+			url: "https://blog.example.org/rss",
+		},
+		{
+			id: "feed-link-3",
+			url: "https://news.site.com/atom.xml",
+		},
+	],
+};
+
+export const RSS_FEED_LINKS_EMPTY_RESPONSE = {
+	links: [],
+};
+
+export const RSS_FEED_REGISTER_RESPONSE = {
+	message: "Feed registered successfully",
+};
+
+export const RSS_FEED_DELETE_RESPONSE = {
+	message: "Feed deleted successfully",
+};
+
+// Connect-RPC RSS service paths
+export const CONNECT_RSS_PATHS = {
+	listRSSFeedLinks: "**/api/v2/alt.rss.v2.RSSService/ListRSSFeedLinks",
+	registerRSSFeed: "**/api/v2/alt.rss.v2.RSSService/RegisterRSSFeed",
+	deleteRSSFeedLink: "**/api/v2/alt.rss.v2.RSSService/DeleteRSSFeedLink",
+};
+
 // Mark as read response
 export const MARK_AS_READ_RESPONSE = {
 	ok: true,
