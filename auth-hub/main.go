@@ -23,6 +23,15 @@ import (
 )
 
 func main() {
+	// Handle healthcheck subcommand (for Docker healthcheck in distroless image)
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		if err := runHealthcheck(); err != nil {
+			fmt.Fprintf(os.Stderr, "Healthcheck failed: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	ctx := context.Background()
 
 	// Initialize OpenTelemetry
@@ -139,4 +148,28 @@ func main() {
 	}
 
 	slog.Info("server exited properly")
+}
+
+// runHealthcheck performs a health check against the local server
+func runHealthcheck() error {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8888"
+	}
+
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%s/health", port))
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("health endpoint returned status: %d", resp.StatusCode)
+	}
+
+	return nil
 }
