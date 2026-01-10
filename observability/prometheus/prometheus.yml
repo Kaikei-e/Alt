@@ -1,0 +1,26 @@
+# Prometheus Configuration for Alt Platform
+# Collects metrics from nginx-exporter and other services
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: 'docker'
+    platform: 'alt'
+
+scrape_configs:
+  # Self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # Nginx metrics via nginx-exporter
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+        labels:
+          service: 'nginx'
+    scrape_interval: 10s
+    metrics_path: /metrics
