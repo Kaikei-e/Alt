@@ -10,26 +10,42 @@ var (
 	Logger        *slog.Logger
 	GlobalContext *ContextLogger
 	GlobalPerf    *PerformanceLogger
+	otelEnabled   bool
 )
 
 type LogConfig struct {
-	Level  slog.Level
-	Format string // "text" or "json"
+	Level       slog.Level
+	Format      string // "text" or "json"
+	OTelEnabled bool
 }
 
+// InitLogger initializes the logger (legacy mode - stdout only)
 func InitLogger() *slog.Logger {
+	return InitLoggerWithOTel(false)
+}
+
+// InitLoggerWithOTel initializes the logger with optional OTel support
+func InitLoggerWithOTel(enableOTel bool) *slog.Logger {
 	config := getLogConfig()
+	config.OTelEnabled = enableOTel
+	otelEnabled = enableOTel
 
 	var handler slog.Handler
-	options := &slog.HandlerOptions{
-		Level: config.Level,
-	}
 
-	switch strings.ToLower(config.Format) {
-	case "json":
-		handler = slog.NewJSONHandler(os.Stdout, options)
-	default:
-		handler = slog.NewTextHandler(os.Stdout, options)
+	if enableOTel && strings.ToLower(config.Format) == "json" {
+		// Use MultiHandler for JSON + OTel
+		handler = NewMultiHandler(config.Level)
+	} else {
+		// Fallback to single handler
+		options := &slog.HandlerOptions{
+			Level: config.Level,
+		}
+		switch strings.ToLower(config.Format) {
+		case "json":
+			handler = slog.NewJSONHandler(os.Stdout, options)
+		default:
+			handler = slog.NewTextHandler(os.Stdout, options)
+		}
 	}
 
 	Logger = slog.New(handler)
@@ -42,9 +58,15 @@ func InitLogger() *slog.Logger {
 	Logger.Info("Logger initialized",
 		"level", config.Level.String(),
 		"format", config.Format,
+		"otel_enabled", enableOTel,
 	)
 
 	return Logger
+}
+
+// IsOTelEnabled returns whether OTel is enabled
+func IsOTelEnabled() bool {
+	return otelEnabled
 }
 
 func getLogConfig() LogConfig {

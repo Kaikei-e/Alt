@@ -8,14 +8,17 @@ import (
 	"alt/job"
 	"alt/rest"
 	"alt/utils/logger"
+	altotel "alt/utils/otel"
 	"context"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/labstack/echo/v4"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
 func main() {
@@ -28,8 +31,29 @@ func main() {
 		panic(err)
 	}
 
-	log := logger.InitLogger()
-	log.Info("Starting server", "port", cfg.Server.Port)
+	// Initialize OpenTelemetry
+	otelCfg := altotel.ConfigFromEnv()
+	otelShutdown, err := altotel.InitProvider(ctx, otelCfg)
+	if err != nil {
+		fmt.Printf("Failed to initialize OpenTelemetry: %v\n", err)
+		// Continue without OTel - non-fatal
+		otelCfg.Enabled = false
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(shutdownCtx); err != nil {
+			fmt.Printf("Failed to shutdown OpenTelemetry: %v\n", err)
+		}
+	}()
+
+	// Initialize logger with OTel integration
+	log := logger.InitLoggerWithOTel(otelCfg.Enabled)
+	log.Info("Starting server",
+		"port", cfg.Server.Port,
+		"service", otelCfg.ServiceName,
+		"otel_enabled", otelCfg.Enabled,
+	)
 
 	pool, err := alt_db.InitDBConnectionPool(ctx)
 	if err != nil {
@@ -50,6 +74,11 @@ func main() {
 	// Server optimization settings
 	e.HideBanner = true
 	e.HidePort = false
+
+	// Add OpenTelemetry tracing middleware (creates spans for each request)
+	if otelCfg.Enabled {
+		e.Use(otelecho.Middleware(otelCfg.ServiceName))
+	}
 
 	// Custom HTTPErrorHandler to ensure 401 is always returned as 401 (not 404)
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
