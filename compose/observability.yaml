@@ -14,7 +14,8 @@ services:
     networks:
       - alt-network
     depends_on:
-      - nginx
+      nginx:
+        condition: service_healthy
     labels:
       - rask.group=observability
     logging:
