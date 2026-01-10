@@ -37,9 +37,30 @@ pub struct ParsedLogEntry {
     pub fields: std::collections::HashMap<String, String>,
 }
 
-pub trait ServiceParser {
+/// Trait for service-specific log parsers.
+///
+/// Implementations handle parsing log messages from specific service types
+/// (e.g., nginx, Go applications, PostgreSQL).
+pub trait ServiceParser: Send + Sync {
+    /// Returns the service type identifier (e.g., "nginx", "go", "postgres").
     fn service_type(&self) -> &str;
+
+    /// Parse a log message and extract structured data.
     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError>;
+
+    /// Priority for auto-detection (higher = tried first).
+    /// Default is 50. Range: 0-100.
+    ///
+    /// - 90-100: High priority (specific formats like nginx access logs)
+    /// - 50-89: Medium priority (general formats like JSON)
+    /// - 0-49: Low priority (fallback parsers)
+    fn detection_priority(&self) -> u8 {
+        50
+    }
+
+    /// Check if this parser can handle the given log format.
+    /// Used for auto-detection when service name is unknown.
+    fn can_parse(&self, log: &str) -> bool;
 }
 
 // Nginx Access Log Parser - Now uses memory-safe patterns
@@ -286,6 +307,23 @@ impl ServiceParser for NginxParser {
             fields: std::collections::HashMap::new(),
         })
     }
+
+    fn detection_priority(&self) -> u8 {
+        // High priority - nginx logs have very specific formats
+        80
+    }
+
+    fn can_parse(&self, log: &str) -> bool {
+        // Check for nginx access log pattern (contains HTTP method and "HTTP/")
+        if log.contains("HTTP/") && (log.contains("\"GET") || log.contains("\"POST") || log.contains("\"PUT") || log.contains("\"DELETE") || log.contains("\"PATCH") || log.contains("\"HEAD") || log.contains("\"OPTIONS")) {
+            return true;
+        }
+        // Check for nginx error log pattern
+        if log.contains("[error]") || log.contains("[warn]") || log.contains("[info]") || log.contains("[notice]") || log.contains("[crit]") {
+            return true;
+        }
+        false
+    }
 }
 
 // Go Structured Log Parser
@@ -406,6 +444,27 @@ impl ServiceParser for GoStructuredParser {
             user_agent: None,
             fields: std::collections::HashMap::new(),
         })
+    }
+
+    fn detection_priority(&self) -> u8 {
+        // Medium priority - JSON is common but not as specific as nginx
+        60
+    }
+
+    fn can_parse(&self, log: &str) -> bool {
+        // Check if the log contains JSON with typical Go structured logging fields
+        let trimmed = log.trim();
+
+        // Find JSON object
+        if let Some(start) = trimmed.find('{') {
+            let json_part = &trimmed[start..];
+            // Quick check for common Go log fields before full parse
+            if json_part.contains("\"level\"") || json_part.contains("\"msg\"") || json_part.contains("\"message\"") {
+                // Verify it's valid JSON
+                return serde_json::from_str::<Value>(json_part).is_ok();
+            }
+        }
+        false
     }
 }
 
@@ -530,6 +589,18 @@ impl ServiceParser for PostgresParser {
                 fields: std::collections::HashMap::new(),
             })
         })
+    }
+
+    fn detection_priority(&self) -> u8 {
+        // Medium-high priority - postgres logs have specific format
+        70
+    }
+
+    fn can_parse(&self, log: &str) -> bool {
+        // Check for PostgreSQL log level indicators
+        log.contains("LOG:") || log.contains("ERROR:") || log.contains("WARNING:")
+            || log.contains("NOTICE:") || log.contains("DEBUG:") || log.contains("FATAL:")
+            || log.contains("PANIC:") || log.contains("HINT:")
     }
 }
 

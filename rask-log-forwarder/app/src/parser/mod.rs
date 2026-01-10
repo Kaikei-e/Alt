@@ -2,6 +2,7 @@ pub mod docker;
 pub mod generated;
 pub mod regex_error;
 pub mod regex_patterns;
+pub mod registry;
 pub mod schema;
 pub mod services;
 pub mod simd;
@@ -25,6 +26,9 @@ pub use regex_patterns::{NginxAccessMatch, SimplePatternParser, StaticRegexSet};
 
 // TASK5 exports - Zero-allocation parsing
 pub use zero_alloc_parser::{ImprovedNginxParser, ZeroAllocParser};
+
+// Plugin architecture exports
+pub use registry::ServiceParserRegistry;
 
 #[cfg(test)]
 mod tests {

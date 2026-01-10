@@ -82,23 +82,41 @@ impl LoggingSystem {
             }
         })?;
 
-        let subscriber = tracing_subscriber::registry().with(env_filter).with(
-            fmt::layer()
-                .with_target(true)
-                .with_thread_ids(true)
-                .with_file(true)
-                .with_line_number(true)
-                .with_level(true)
-                .with_ansi(true)
-                .compact(),
-        );
+        // Use JSON format if RUST_LOG_FORMAT=json, otherwise use human-readable format
+        let use_json = std::env::var("RUST_LOG_FORMAT")
+            .map(|v| v == "json")
+            .unwrap_or(true); // Default to JSON for production
 
-        tracing::subscriber::set_global_default(subscriber).map_err(|e| {
-            InitializationError::LoggingInitFailed {
-                details: "Failed to set global tracing subscriber".to_string(),
-                source: Box::new(e),
-            }
-        })?;
+        if use_json {
+            let subscriber = tracing_subscriber::registry()
+                .with(env_filter)
+                .with(fmt::layer().json().flatten_event(true).with_current_span(true));
+
+            tracing::subscriber::set_global_default(subscriber).map_err(|e| {
+                InitializationError::LoggingInitFailed {
+                    details: "Failed to set global tracing subscriber".to_string(),
+                    source: Box::new(e),
+                }
+            })?;
+        } else {
+            let subscriber = tracing_subscriber::registry().with(env_filter).with(
+                fmt::layer()
+                    .with_target(true)
+                    .with_thread_ids(true)
+                    .with_file(true)
+                    .with_line_number(true)
+                    .with_level(true)
+                    .with_ansi(true)
+                    .compact(),
+            );
+
+            tracing::subscriber::set_global_default(subscriber).map_err(|e| {
+                InitializationError::LoggingInitFailed {
+                    details: "Failed to set global tracing subscriber".to_string(),
+                    source: Box::new(e),
+                }
+            })?;
+        }
 
         Ok(())
     }

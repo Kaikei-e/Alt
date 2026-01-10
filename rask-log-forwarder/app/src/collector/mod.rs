@@ -3,6 +3,7 @@ pub mod docker;
 
 use thiserror::Error;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 // Ensure zero-copy processing by using Bytes throughout
 use bytes::Bytes;
 
@@ -90,6 +91,7 @@ impl LogCollector {
     pub async fn start_collection(
         &mut self,
         tx: mpsc::UnboundedSender<LogEntry>,
+        cancel_token: CancellationToken,
     ) -> Result<(), CollectorError> {
         // Discover container
         let container_info = self
@@ -111,7 +113,7 @@ impl LogCollector {
         self.container_info = Some(container_info.clone());
 
         // Start Docker API log streaming
-        self.start_docker_api_streaming(docker_collector, &container_info.id, tx)
+        self.start_docker_api_streaming(docker_collector, &container_info.id, tx, cancel_token)
             .await
     }
 
@@ -120,6 +122,7 @@ impl LogCollector {
         _docker_collector: DockerCollector,
         container_id: &str,
         tx: mpsc::UnboundedSender<LogEntry>,
+        cancel_token: CancellationToken,
     ) -> Result<(), CollectorError> {
         use bollard::Docker;
         use bollard::query_parameters::LogsOptions;
@@ -142,31 +145,45 @@ impl LogCollector {
 
         let mut stream = docker.logs(container_id, Some(options));
 
-        while let Some(log_output) = stream.next().await {
-            match log_output {
-                Ok(log_chunk) => {
-                    // Convert Docker log output to LogEntry
-                    let log_bytes = log_chunk.into_bytes();
-
-                    // Create LogEntry with raw bytes - let the parser handle the actual parsing
-                    let entry = LogEntry {
-                        log: String::new(),                    // Will be filled by the parser
-                        stream: "stdout".to_string(), // Default, will be overridden by parser
-                        time: chrono::Utc::now().to_rfc3339(), // Default timestamp
-                        id: container_id.to_string(),
-                        container_id: container_id.to_string(),
-                        raw_bytes: log_bytes.to_vec(),
-                    };
-
-                    if tx.send(entry).is_err() {
-                        return Err(CollectorError::CollectionStopped);
-                    }
+        loop {
+            tokio::select! {
+                // Check for cancellation signal first
+                _ = cancel_token.cancelled() => {
+                    tracing::info!("Collector received cancellation signal, stopping log collection");
+                    break;
                 }
-                Err(e) => {
-                    tracing::error!("Docker log stream error: {e}");
-                    return Err(CollectorError::DiscoveryError(
-                        discovery::DiscoveryError::DockerError(e),
-                    ));
+                // Process log stream
+                log_output = stream.next() => {
+                    match log_output {
+                        Some(Ok(log_chunk)) => {
+                            // Convert Docker log output to LogEntry
+                            let log_bytes = log_chunk.into_bytes();
+
+                            // Create LogEntry with raw bytes - let the parser handle the actual parsing
+                            let entry = LogEntry {
+                                log: String::new(),                    // Will be filled by the parser
+                                stream: "stdout".to_string(), // Default, will be overridden by parser
+                                time: chrono::Utc::now().to_rfc3339(), // Default timestamp
+                                id: container_id.to_string(),
+                                container_id: container_id.to_string(),
+                                raw_bytes: log_bytes.to_vec(),
+                            };
+
+                            if tx.send(entry).is_err() {
+                                return Err(CollectorError::CollectionStopped);
+                            }
+                        }
+                        Some(Err(e)) => {
+                            tracing::error!("Docker log stream error: {e}");
+                            return Err(CollectorError::DiscoveryError(
+                                discovery::DiscoveryError::DockerError(e),
+                            ));
+                        }
+                        None => {
+                            // Stream ended
+                            break;
+                        }
+                    }
                 }
             }
         }

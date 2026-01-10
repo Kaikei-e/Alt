@@ -24,4 +24,7 @@ COPY --from=builder /app/target/release/rask-log-forwarder /rask-log-forwarder
 # /tmp ディレクトリは distroless に存在するため追加設定不要
 USER nonroot:nonroot
 
+# SIGTERM でグレースフルシャットダウン
+STOPSIGNAL SIGTERM
+
 ENTRYPOINT ["/rask-log-forwarder"]

@@ -12,7 +12,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::signal;
+#[cfg(unix)]
+use tokio::signal::unix::{signal as unix_signal, SignalKind};
 use tokio::sync::{RwLock, mpsc};
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 #[derive(Error, Debug)]
@@ -255,14 +258,18 @@ impl ServiceManager {
     ) {
         info!("Starting main processing loop");
 
+        // Create cancellation token for graceful shutdown of collector
+        let cancel_token = CancellationToken::new();
+
         // Create log collection channel
         let (log_tx, mut log_rx) = tokio::sync::mpsc::unbounded_channel();
 
-        // Start log collection in background
+        // Start log collection in background with cancellation support
         let collector_clone = collector.clone();
+        let collector_cancel_token = cancel_token.clone();
         tokio::spawn(async move {
             let mut collector_guard = collector_clone.lock().await;
-            if let Err(e) = collector_guard.start_collection(log_tx).await {
+            if let Err(e) = collector_guard.start_collection(log_tx, collector_cancel_token).await {
                 error!("Log collection failed: {}", e);
             }
         });
@@ -352,6 +359,8 @@ impl ServiceManager {
                 // Handle shutdown signal
                 _ = shutdown_rx.recv() => {
                     info!("Received shutdown signal, stopping processing loop");
+                    // Cancel the collector to stop log streaming
+                    cancel_token.cancel();
                     // Send any remaining logs before shutting down
                     if !log_batch.is_empty() {
                         Self::send_log_batch(&log_batch, &reliability_manager).await;
@@ -558,15 +567,45 @@ impl SignalHandler {
 
         tokio::spawn(async move {
             if *active.read().await {
-                match signal::ctrl_c().await {
-                    Ok(()) => {
-                        info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
-                        if shutdown_tx.send(()).is_err() {
-                            error!("Failed to send shutdown signal");
+                #[cfg(unix)]
+                {
+                    let mut sigterm = unix_signal(SignalKind::terminate())
+                        .expect("Failed to create SIGTERM handler");
+
+                    tokio::select! {
+                        result = signal::ctrl_c() => {
+                            match result {
+                                Ok(()) => {
+                                    info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
+                                }
+                                Err(err) => {
+                                    error!("Failed to listen for SIGINT: {}", err);
+                                    return;
+                                }
+                            }
+                        }
+                        _ = sigterm.recv() => {
+                            info!("Received SIGTERM, initiating graceful shutdown");
                         }
                     }
-                    Err(err) => {
-                        error!("Failed to listen for SIGINT: {}", err);
+
+                    if shutdown_tx.send(()).is_err() {
+                        error!("Failed to send shutdown signal");
+                    }
+                }
+
+                #[cfg(not(unix))]
+                {
+                    match signal::ctrl_c().await {
+                        Ok(()) => {
+                            info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
+                            if shutdown_tx.send(()).is_err() {
+                                error!("Failed to send shutdown signal");
+                            }
+                        }
+                        Err(err) => {
+                            error!("Failed to listen for SIGINT: {}", err);
+                        }
                     }
                 }
             }

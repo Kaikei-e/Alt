@@ -117,9 +117,7 @@ impl From<std::sync::Arc<dyn std::any::Any + Send + Sync>> for EnrichedLogEntry 
 
 pub struct UniversalParser {
     docker_parser: DockerJsonParser,
-    nginx_parser: NginxParser,
-    go_parser: GoStructuredParser,
-    postgres_parser: PostgresParser,
+    registry: super::registry::ServiceParserRegistry,
 }
 
 impl Default for UniversalParser {
@@ -130,12 +128,48 @@ impl Default for UniversalParser {
 
 impl UniversalParser {
     pub fn new() -> Self {
+        let mut registry = super::registry::ServiceParserRegistry::new();
+
+        // Register built-in parsers
+        registry.register_parser("nginx", NginxParser::new());
+        registry.register_parser("go", GoStructuredParser::new());
+        registry.register_parser("postgres", PostgresParser::new());
+
+        // Default service mappings
+        registry.map_service("nginx", "nginx");
+        registry.map_service("alt-backend", "go");
+        registry.map_service("alt-frontend", "go");
+        registry.map_service("pre-processor", "go");
+        registry.map_service("search-indexer", "go");
+        registry.map_service("tag-generator", "go");
+        registry.map_service("news-creator", "go");
+        registry.map_service("auth-hub", "go");
+        registry.map_service("db", "postgres");
+        registry.map_service("postgres", "postgres");
+        registry.map_service("postgresql", "postgres");
+
+        // Load additional mappings from environment variable
+        registry.load_mappings_from_env("SERVICE_PARSER_MAPPINGS");
+
         Self {
             docker_parser: DockerJsonParser::new(),
-            nginx_parser: NginxParser::new(),
-            go_parser: GoStructuredParser::new(),
-            postgres_parser: PostgresParser::new(),
+            registry,
         }
+    }
+
+    /// Register a custom parser at runtime.
+    pub fn register_parser<P: ServiceParser + 'static>(&mut self, parser_type: &str, parser: P) {
+        self.registry.register_parser(parser_type, parser);
+    }
+
+    /// Map a service name to an existing parser type.
+    pub fn map_service(&mut self, service_name: &str, parser_type: &str) {
+        self.registry.map_service(service_name, parser_type);
+    }
+
+    /// Get access to the internal registry for advanced use cases.
+    pub fn registry(&self) -> &super::registry::ServiceParserRegistry {
+        &self.registry
     }
 
     /// Validate input size to prevent DoS attacks and memory exhaustion
@@ -250,23 +284,16 @@ impl UniversalParser {
         log_content: &str,
         service_name: &str,
     ) -> Result<ParsedLogEntry, ParseError> {
-        let parser: &dyn ServiceParser = match service_name {
-            "nginx" => &self.nginx_parser,
-            "alt-backend" | "alt-frontend" | "pre-processor" | "search-indexer"
-            | "tag-generator" => &self.go_parser,
-            "db" | "postgres" | "postgresql" => &self.postgres_parser,
-            _ => {
-                // Try to auto-detect format
-                return self.auto_detect_format(log_content, service_name);
-            }
-        };
+        // Try to get parser from registry by service name
+        if let Some(parser) = self.registry.get_parser_for_service(service_name) {
+            let mut parsed_entry = parser.parse_log(log_content)?;
+            // Preserve the actual service name
+            parsed_entry.service_type = service_name.to_string();
+            return Ok(parsed_entry);
+        }
 
-        let mut parsed_entry = parser.parse_log(log_content)?;
-
-        // Add service_name to the parsed entry
-        parsed_entry.service_type = service_name.to_string();
-
-        Ok(parsed_entry)
+        // No mapping found - try auto-detection via registry
+        self.auto_detect_format(log_content, service_name)
     }
 
     fn auto_detect_format(
@@ -274,27 +301,15 @@ impl UniversalParser {
         log_content: &str,
         service_name: &str,
     ) -> Result<ParsedLogEntry, ParseError> {
-        // Try JSON first (common for Go services)
-        if log_content.trim_start().starts_with('{')
-            && let Ok(entry) = self.go_parser.parse_log(log_content)
-        {
+        // Use registry's auto-detection (tries parsers by priority)
+        if let Some(parser) = self.registry.detect_parser(log_content) {
+            let mut entry = parser.parse_log(log_content)?;
+            // Preserve the actual service name
+            entry.service_type = service_name.to_string();
             return Ok(entry);
         }
 
-        // Try nginx format
-        if log_content.contains("HTTP/") && log_content.contains("\"")
-            && let Ok(entry) = self.nginx_parser.parse_log(log_content)
-        {
-            return Ok(entry);
-        }
-
-        // Try postgres format
-        if (log_content.contains("LOG:") || log_content.contains("ERROR:"))
-            && let Ok(entry) = self.postgres_parser.parse_log(log_content)
-        {
-            return Ok(entry);
-        }
-
+        // Fallback: return as plain text
         Ok(ParsedLogEntry {
             service_type: service_name.to_string(),
             log_type: "plain".to_string(),

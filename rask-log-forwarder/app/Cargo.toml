@@ -46,7 +46,7 @@ uuid = { version = "1.17.0", features = ["v4"] }
 
 # Logging
 tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }
 
 # Error handling
 thiserror = "2.0.12"
@@ -63,6 +63,9 @@ bumpalo = "3.19.0"
 
 # Stream utilities
 futures = "0.3.31"
+
+# Async cancellation
+tokio-util = "0.7"
 
 # Compression
 flate2 = "1.1.2"
