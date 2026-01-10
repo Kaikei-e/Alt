@@ -113,23 +113,37 @@ interface EnhancedLogRecord extends LogRecord {
 }
 
 /**
- * JSON formatter for structured logging
+ * JSON formatter for structured logging (OTel-compatible)
  */
 class JsonFormatter {
+  private serviceName: string;
+  private serviceVersion: string;
+  private deploymentEnv: string;
+
+  constructor() {
+    this.serviceName = Deno.env.get("OTEL_SERVICE_NAME") || "auth-token-manager";
+    this.serviceVersion = Deno.env.get("SERVICE_VERSION") || "1.0.0";
+    this.deploymentEnv = Deno.env.get("DEPLOYMENT_ENV") || "development";
+  }
+
   format(logRecord: EnhancedLogRecord): string {
     const sanitizedArgs = logRecord.args.map((arg) =>
       DataSanitizer.sanitize(arg)
     );
 
     const logData = {
+      // OTel-compatible fields
       timestamp: logRecord.datetime.toISOString(),
-      level: logRecord.levelName,
-      message: DataSanitizer.sanitize(logRecord.msg),
+      level: logRecord.levelName.toLowerCase(),
+      msg: DataSanitizer.sanitize(logRecord.msg),
       logger: logRecord.loggerName,
+      // Resource attributes (OTel semantic conventions)
+      "service.name": this.serviceName,
+      "service.version": this.serviceVersion,
+      "deployment.environment": this.deploymentEnv,
+      // Legacy fields for compatibility
       component: logRecord.component || 'auth-token-manager',
-      service: 'auth-token-manager',
-      version: '1.0.0',
-      ...sanitizedArgs.reduce((acc, arg, index) => {
+      ...sanitizedArgs.reduce((acc, arg, _index) => {
         if (typeof arg === 'object' && arg !== null) {
           return { ...acc, ...arg };
         }
