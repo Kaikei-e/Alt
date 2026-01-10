@@ -377,6 +377,8 @@ export const CONNECT_RPC_PATHS = {
 	augurStreamChat: "**/api/v2/alt.augur.v2.AugurService/StreamChat",
 	// MorningLetter service
 	morningLetterStreamChat: "**/api/v2/alt.morning_letter.v2.MorningLetterService/StreamChat",
+	// Recap service
+	getSevenDayRecap: "**/alt.recap.v2.RecapService/GetSevenDayRecap",
 };
 
 // Connect-RPC Article Content response
@@ -478,3 +480,75 @@ export const CONNECT_MORNING_LETTER_SIMPLE_RESPONSE = [
 		},
 	},
 ];
+
+// =============================================================================
+// Connect-RPC Recap Mock Data
+// =============================================================================
+
+/**
+ * Connect-RPC format for GetSevenDayRecap response.
+ */
+export const CONNECT_RECAP_RESPONSE = {
+	jobId: "test-job-123",
+	executedAt: "2025-12-20T12:00:00Z",
+	windowStart: "2025-12-13T00:00:00Z",
+	windowEnd: "2025-12-20T00:00:00Z",
+	totalArticles: 3,
+	genres: [
+		{
+			genre: "Technology",
+			summary: "Major developments in technology this week.",
+			topTerms: ["AI", "Web", "Frameworks"],
+			articleCount: 2,
+			clusterCount: 1,
+			evidenceLinks: [
+				{
+					articleId: "art-1",
+					title: "GPT-5 Announced",
+					sourceUrl: "https://example.com/gpt5",
+					publishedAt: "2025-12-20T10:00:00Z",
+					lang: "en",
+				},
+				{
+					articleId: "art-2",
+					title: "Claude Updates",
+					sourceUrl: "https://example.com/claude",
+					publishedAt: "2025-12-20T09:00:00Z",
+					lang: "en",
+				},
+			],
+			bullets: ["AI advances continue"],
+			references: [],
+		},
+		{
+			genre: "AI/ML",
+			summary: "Latest papers and breakthroughs in ML.",
+			topTerms: ["ML", "Research"],
+			articleCount: 1,
+			clusterCount: 1,
+			evidenceLinks: [
+				{
+					articleId: "art-3",
+					title: "New Architecture",
+					sourceUrl: "https://example.com/arch",
+					publishedAt: "2025-12-19T10:00:00Z",
+					lang: "en",
+				},
+			],
+			bullets: ["New architecture proposed"],
+			references: [],
+		},
+	],
+};
+
+/**
+ * Empty Connect-RPC recap response for testing empty state.
+ */
+export const CONNECT_RECAP_EMPTY_RESPONSE = {
+	jobId: "test-job-empty",
+	executedAt: "2025-12-20T12:00:00Z",
+	windowStart: "2025-12-13T00:00:00Z",
+	windowEnd: "2025-12-20T00:00:00Z",
+	totalArticles: 0,
+	genres: [],
+};

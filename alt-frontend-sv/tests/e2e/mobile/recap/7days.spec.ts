@@ -1,21 +1,25 @@
 import { expect, test } from "@playwright/test";
 import { gotoMobileRoute } from "../../helpers/navigation";
 import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
-import { RECAP_RESPONSE, RECAP_EMPTY_RESPONSE } from "../../fixtures/mockData";
+import {
+	CONNECT_RECAP_RESPONSE,
+	CONNECT_RECAP_EMPTY_RESPONSE,
+	CONNECT_RPC_PATHS,
+} from "../../fixtures/mockData";
 
 test.describe("Mobile Recap 7-Days", () => {
 	test.beforeEach(async ({ page }) => {
 		// Default mock for recap endpoint
-		await page.route("**/api/v1/recap/7days", (route) =>
-			fulfillJson(route, RECAP_RESPONSE),
+		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, (route) =>
+			fulfillJson(route, CONNECT_RECAP_RESPONSE),
 		);
 	});
 
 	test("shows loading skeleton initially", async ({ page }) => {
 		// Delay response to observe loading state
-		await page.route("**/api/v1/recap/7days", async (route) => {
+		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, async (route) => {
 			await new Promise((resolve) => setTimeout(resolve, 500));
-			await fulfillJson(route, RECAP_RESPONSE);
+			await fulfillJson(route, CONNECT_RECAP_RESPONSE);
 		});
 
 		await gotoMobileRoute(page, "recap/7days");
@@ -39,8 +43,8 @@ test.describe("Mobile Recap 7-Days", () => {
 	});
 
 	test("shows empty state when no recap data", async ({ page }) => {
-		await page.route("**/api/v1/recap/7days", (route) =>
-			fulfillJson(route, RECAP_EMPTY_RESPONSE),
+		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, (route) =>
+			fulfillJson(route, CONNECT_RECAP_EMPTY_RESPONSE),
 		);
 
 		await gotoMobileRoute(page, "recap/7days");
@@ -58,7 +62,7 @@ test.describe("Mobile Recap 7-Days", () => {
 	});
 
 	test("shows error state on API failure", async ({ page }) => {
-		await page.route("**/api/v1/recap/7days", (route) =>
+		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, (route) =>
 			fulfillError(route, "Server error", 500),
 		);
 
@@ -74,7 +78,7 @@ test.describe("Mobile Recap 7-Days", () => {
 	});
 
 	test("has retry button on error", async ({ page }) => {
-		await page.route("**/api/v1/recap/7days", (route) =>
+		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, (route) =>
 			fulfillError(route, "Server error", 500),
 		);
 
@@ -93,14 +97,14 @@ test.describe("Mobile Recap 7-Days", () => {
 	test("retry button fetches data again", async ({ page }) => {
 		let requestCount = 0;
 
-		await page.route("**/api/v1/recap/7days", async (route) => {
+		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, async (route) => {
 			requestCount++;
 			if (requestCount === 1) {
 				// First request fails
 				await fulfillError(route, "Server error", 500);
 			} else {
 				// Subsequent requests succeed
-				await fulfillJson(route, RECAP_RESPONSE);
+				await fulfillJson(route, CONNECT_RECAP_RESPONSE);
 			}
 		});
 
@@ -144,8 +148,8 @@ test.describe("Mobile Recap 7-Days - Navigation", () => {
 			fulfillJson(route, { data: [], next_cursor: null, has_more: false }),
 		);
 
-		await page.route("**/api/v1/recap/7days", (route) =>
-			fulfillJson(route, RECAP_RESPONSE),
+		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, (route) =>
+			fulfillJson(route, CONNECT_RECAP_RESPONSE),
 		);
 
 		// Start from feeds page

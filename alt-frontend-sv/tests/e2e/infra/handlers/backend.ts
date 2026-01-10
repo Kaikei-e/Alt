@@ -17,7 +17,12 @@ import {
 	CONNECT_UNREAD_COUNT,
 	CONNECT_ARTICLE_CONTENT,
 } from "../data/feeds";
-import { RECAP_RESPONSE, AUGUR_SSE_CHUNKS, AUGUR_CONNECT_MESSAGES } from "../data/recap";
+import {
+	RECAP_RESPONSE,
+	AUGUR_SSE_CHUNKS,
+	AUGUR_CONNECT_MESSAGES,
+	CONNECT_RECAP_RESPONSE,
+} from "../data/recap";
 
 export const BACKEND_PORT = 4003;
 
@@ -193,6 +198,14 @@ export function createBackendServer(): http.Server {
 			res.writeHead(200);
 			// Connect-RPC streaming format: newline-delimited JSON
 			res.end(AUGUR_CONNECT_MESSAGES.map((m) => JSON.stringify(m)).join("\n") + "\n");
+			return;
+		}
+
+		// GetSevenDayRecap (Connect-RPC)
+		if (path === "/alt.recap.v2.RecapService/GetSevenDayRecap") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify(CONNECT_RECAP_RESPONSE));
 			return;
 		}
 

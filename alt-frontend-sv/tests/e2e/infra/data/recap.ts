@@ -57,6 +57,38 @@ export const RECAP_RESPONSE: RecapResponse = {
 };
 
 // =============================================================================
+// Connect-RPC v2 Recap Data (camelCase format)
+// =============================================================================
+
+/**
+ * Connect-RPC format for GetSevenDayRecap response.
+ * Used by tests mocking the alt.recap.v2.RecapService/GetSevenDayRecap endpoint.
+ */
+export const CONNECT_RECAP_RESPONSE = {
+	jobId: "test-job-123",
+	executedAt: "2025-12-20T12:00:00Z",
+	windowStart: "2025-12-13T00:00:00Z",
+	windowEnd: "2025-12-20T00:00:00Z",
+	totalArticles: 3,
+	genres: MOCK_RECAP_GENRES.map((g) => ({
+		...g,
+		references: [], // Connect-RPC requires this field
+	})),
+};
+
+/**
+ * Empty Connect-RPC recap response for testing empty state.
+ */
+export const CONNECT_RECAP_EMPTY_RESPONSE = {
+	jobId: "test-job-empty",
+	executedAt: "2025-12-20T12:00:00Z",
+	windowStart: "2025-12-13T00:00:00Z",
+	windowEnd: "2025-12-20T00:00:00Z",
+	totalArticles: 0,
+	genres: [],
+};
+
+// =============================================================================
 // Augur Streaming Data
 // =============================================================================
 

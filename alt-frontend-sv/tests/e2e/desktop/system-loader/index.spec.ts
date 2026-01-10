@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { DesktopRecapPage } from "../../pages/desktop/DesktopRecapPage";
 import { fulfillJson } from "../../utils/mockHelpers";
-import { RECAP_RESPONSE } from "../../fixtures/mockData";
+import { CONNECT_RECAP_RESPONSE, CONNECT_RPC_PATHS } from "../../fixtures/mockData";
 
 test.describe("System Loader", () => {
 	let recapPage: DesktopRecapPage;
@@ -12,9 +12,9 @@ test.describe("System Loader", () => {
 
 	test("displays loading UI during CSR initialization", async ({ page }) => {
 		// APIを遅延させてローディング状態をテスト
-		await page.route("**/api/v1/recap/7days", async (route) => {
+		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, async (route) => {
 			await new Promise((r) => setTimeout(r, 1000));
-			await fulfillJson(route, RECAP_RESPONSE);
+			await fulfillJson(route, CONNECT_RECAP_RESPONSE);
 		});
 
 		await recapPage.goto();
@@ -27,8 +27,8 @@ test.describe("System Loader", () => {
 	});
 
 	test("hides loader after content loads", async ({ page }) => {
-		await page.route("**/api/v1/recap/7days", async (route) => {
-			await fulfillJson(route, RECAP_RESPONSE);
+		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, async (route) => {
+			await fulfillJson(route, CONNECT_RECAP_RESPONSE);
 		});
 
 		await recapPage.goto();
@@ -38,9 +38,9 @@ test.describe("System Loader", () => {
 	});
 
 	test("displays loader with Alt logo", async ({ page }) => {
-		await page.route("**/api/v1/recap/7days", async (route) => {
+		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, async (route) => {
 			await new Promise((r) => setTimeout(r, 1000));
-			await fulfillJson(route, RECAP_RESPONSE);
+			await fulfillJson(route, CONNECT_RECAP_RESPONSE);
 		});
 
 		await recapPage.goto();
@@ -54,9 +54,9 @@ test.describe("System Loader", () => {
 	});
 
 	test("has correct accessibility attributes", async ({ page }) => {
-		await page.route("**/api/v1/recap/7days", async (route) => {
+		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, async (route) => {
 			await new Promise((r) => setTimeout(r, 1000));
-			await fulfillJson(route, RECAP_RESPONSE);
+			await fulfillJson(route, CONNECT_RECAP_RESPONSE);
 		});
 
 		await recapPage.goto();
