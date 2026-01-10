@@ -1,0 +1,16 @@
+apiVersion: 1
+
+datasources:
+  - name: ClickHouse
+    type: grafana-clickhouse-datasource
+    access: proxy
+    isDefault: true
+    jsonData:
+      host: clickhouse
+      port: 8123
+      protocol: http
+      defaultDatabase: rask_logs
+      username: rask_db_user
+    secureJsonData:
+      password: $__file{/run/secrets/clickhouse_password}
+    editable: false

@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: 'Rask Dashboards'
+    orgId: 1
+    folder: 'Rask'
+    folderUid: 'rask'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

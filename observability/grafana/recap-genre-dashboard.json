@@ -1,0 +1,140 @@
+{
+  "__inputs": [
+    {
+      "name": "PROM_DS",
+      "label": "Prometheus",
+      "description": "Primary Prometheus data source",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "__elements": {},
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "iteration": 1,
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${PROM_DS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "decimals": 2,
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(recap_genre_coarse_tag_matches_total[5m])) / sum(rate(recap_genre_coarse_assignments_total[5m]))",
+          "legendFormat": "All Genres",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(recap_genre_coarse_tag_matches_total{genre!~\"(other)\"}[5m]) / rate(recap_genre_coarse_assignments_total{genre!~\"(other)\"}[5m])",
+          "legendFormat": "{{genre}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Genre Tag Agreement (5m avg)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${PROM_DS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 0.1, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 2,
+      "options": {
+        "legend": { "displayMode": "hidden" },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "expr": "recap_genre_tag_missing_ratio",
+          "legendFormat": "Missing Ratio",
+          "refId": "A"
+        }
+      ],
+      "title": "Tag Payload Missing Ratio",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${PROM_DS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 3,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "rate(recap_genre_graph_hits_total[5m])",
+          "legendFormat": "Graph Boosts",
+          "refId": "A"
+        }
+      ],
+      "title": "Graph Boost Hits",
+      "type": "timeseries"
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": [
+    "recap",
+    "genre"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "timezone": "browser",
+  "title": "Recap Genre Health",
+  "uid": "recap-genre",
+  "version": 1
+}

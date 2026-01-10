@@ -1,0 +1,386 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "${DS_CLICKHOUSE}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Traces/min",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "fillOpacity": 50,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "never",
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "timeseries",
+          "rawSql": "SELECT toStartOfMinute(Timestamp) as time, ServiceName, count() as traces FROM otel_traces WHERE $__timeFilter(Timestamp) AND ParentSpanId = '' GROUP BY time, ServiceName ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Trace Volume by Service (Root Spans)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "${DS_CLICKHOUSE}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Latency (ms)",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "never",
+            "stacking": { "group": "A", "mode": "none" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": {
+        "legend": { "calcs": ["mean", "max", "p95"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "timeseries",
+          "rawSql": "SELECT toStartOfMinute(Timestamp) as time, ServiceName, avg(Duration / 1000000) as latency_ms FROM otel_traces WHERE $__timeFilter(Timestamp) GROUP BY time, ServiceName ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Average Latency by Service",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "${DS_CLICKHOUSE}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "hideFrom": { "legend": false, "tooltip": false, "viz": false } },
+          "mappings": []
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "ERROR" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "OK" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "UNSET" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 8 },
+      "id": 3,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] },
+        "pieType": "donut",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT StatusCode, count() as count FROM otel_traces WHERE $__timeFilter(Timestamp) GROUP BY StatusCode ORDER BY count DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Trace Status Distribution",
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "${DS_CLICKHOUSE}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineWidth": 1,
+            "scaleDistribution": { "type": "linear" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 500 }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 18, "x": 6, "y": 8 },
+      "id": 4,
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": { "exponent": 0.5, "fill": "dark-orange", "mode": "scheme", "scale": "exponential", "scheme": "RdYlGn", "steps": 64, "reverse": true },
+        "exemplars": { "color": "rgba(255,0,255,0.7)" },
+        "filterValues": { "le": 1e-9 },
+        "legend": { "show": true },
+        "rowsFrame": { "layout": "auto" },
+        "tooltip": { "mode": "single", "yHistogram": false },
+        "yAxis": { "axisPlacement": "left", "reverse": false, "unit": "ms" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "timeseries",
+          "rawSql": "SELECT toStartOfMinute(Timestamp) as time, Duration / 1000000 as latency_ms FROM otel_traces WHERE $__timeFilter(Timestamp) ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Latency Heatmap",
+      "type": "heatmap"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "id": 10,
+      "panels": [],
+      "title": "Trace Search",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "${DS_CLICKHOUSE}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "TraceId" }, "properties": [{ "id": "custom.width", "value": 280 }, { "id": "links", "value": [{ "title": "View Trace", "url": "/d/trace-explorer?var-traceId=${__value.text}&from=${__from}&to=${__to}" }] }] },
+          { "matcher": { "id": "byName", "options": "Duration" }, "properties": [{ "id": "unit", "value": "ns" }, { "id": "custom.width", "value": 120 }] },
+          { "matcher": { "id": "byName", "options": "StatusCode" }, "properties": [{ "id": "custom.width", "value": 100 }] }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 17 },
+      "id": 5,
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Timestamp" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT Timestamp, TraceId, ServiceName, SpanName, Duration, StatusCode, StatusMessage FROM otel_traces WHERE $__timeFilter(Timestamp) AND (ServiceName = '$service' OR '$service' = 'All') AND ParentSpanId = '' ORDER BY Timestamp DESC LIMIT 100",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Traces (Root Spans)",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 11,
+      "panels": [],
+      "title": "Trace Detail (by Trace ID)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "${DS_CLICKHOUSE}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Duration" }, "properties": [{ "id": "unit", "value": "ns" }, { "id": "custom.width", "value": 120 }] }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 28 },
+      "id": 6,
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "desc": false, "displayName": "Timestamp" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT Timestamp, SpanId, ParentSpanId, ServiceName, SpanName, SpanKind, Duration, StatusCode, StatusMessage FROM otel_traces WHERE TraceId = '$traceId' ORDER BY Timestamp",
+          "refId": "A"
+        }
+      ],
+      "title": "Spans for Trace: $traceId",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "${DS_CLICKHOUSE}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 38 },
+      "id": 7,
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "desc": false, "displayName": "Timestamp" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT Timestamp, SeverityText, ServiceName, Body, SpanId FROM otel_logs WHERE TraceId = '$traceId' ORDER BY Timestamp",
+          "refId": "A"
+        }
+      ],
+      "title": "Logs for Trace: $traceId",
+      "type": "table"
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["otel", "traces", "observability"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "All", "value": "All" },
+        "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" },
+        "definition": "SELECT DISTINCT ServiceName FROM otel_traces WHERE Timestamp > now() - INTERVAL 1 DAY ORDER BY ServiceName",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Service",
+        "multi": false,
+        "name": "service",
+        "options": [],
+        "query": "SELECT DISTINCT ServiceName FROM otel_traces WHERE Timestamp > now() - INTERVAL 1 DAY ORDER BY ServiceName",
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": { "selected": false, "text": "", "value": "" },
+        "description": "Enter a Trace ID to view its spans and logs",
+        "hide": 0,
+        "label": "Trace ID",
+        "name": "traceId",
+        "options": [{ "selected": true, "text": "", "value": "" }],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "OTel Trace Explorer",
+  "uid": "trace-explorer",
+  "version": 1
+}
