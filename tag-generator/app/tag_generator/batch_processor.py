@@ -137,7 +137,7 @@ class BatchProcessor:
 
                 # Log progress during tag extraction
                 if (i + 1) % self.config.progress_log_interval == 0:
-                    logger.info(f"Extracted tags for {i + 1}/{len(articles)} articles...")
+                    logger.debug(f"Extracted tags for {i + 1}/{len(articles)} articles...")
 
                 # Periodic memory cleanup during batch processing
                 if (i + 1) % self.config.memory_cleanup_interval == 0:
@@ -186,9 +186,16 @@ class BatchProcessor:
 
         return batch_stats
 
-    def process_article_batch_forward(self, conn: Connection, cursor_manager: "CursorManager") -> dict[str, Any]:
+    def process_article_batch_forward(
+        self, conn: Connection, cursor_manager: "CursorManager", _from_backfill: bool = False
+    ) -> dict[str, Any]:
         """Process articles newer than the current forward cursor.
         If no new articles are found and backfill is not completed, fall back to backfill processing.
+
+        Args:
+            conn: Database connection
+            cursor_manager: Cursor manager for position tracking
+            _from_backfill: Internal flag to prevent recursive call back to backfill
         """
         start_created_at, start_id = cursor_manager.get_forward_cursor_position(conn)
 
@@ -207,10 +214,12 @@ class BatchProcessor:
 
         if not articles:
             logger.info("No new articles found for forward processing")
-            # If backfill is not completed, fall back to backfill processing
-            if not self.backfill_completed:
+            # If backfill is not completed and not called from backfill, fall back to backfill processing
+            if not self.backfill_completed and not _from_backfill:
                 logger.info("Backfill not completed, falling back to backfill processing")
                 return self.process_article_batch_backfill(conn, cursor_manager)
+            elif _from_backfill:
+                logger.debug("Called from backfill, skipping backfill fallback to prevent recursion")
             return batch_stats
 
         try:
@@ -270,7 +279,7 @@ class BatchProcessor:
         new_articles_processed = 0
         if cursor_manager.forward_cursor_created_at and cursor_manager.forward_cursor_id:
             try:
-                forward_stats = self.process_article_batch_forward(conn, cursor_manager)
+                forward_stats = self.process_article_batch_forward(conn, cursor_manager, _from_backfill=True)
                 new_articles_processed = cast(int, forward_stats.get("successful", 0))
                 if new_articles_processed > 0:
                     logger.info(f"Hybrid mode: Processed {new_articles_processed} new articles before backfill")
@@ -364,7 +373,7 @@ class BatchProcessor:
                         )
                         break
 
-                logger.info(f"Fetched {len(articles)} articles")
+                logger.debug(f"Fetched {len(articles)} articles")
                 fetch_attempts = 0  # Reset counter on successful fetch
                 self.consecutive_empty_backfill_fetches = 0  # Reset backfill completion counter
 

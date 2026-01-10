@@ -4,10 +4,14 @@ import structlog
 
 from tag_generator.config import TagGeneratorConfig
 from tag_generator.logging_config import setup_logging
+from tag_generator.otel import init_otel_provider
 from tag_generator.service import TagGeneratorService
 
-# Configure logging
-setup_logging()
+# Initialize OpenTelemetry first (before logging setup)
+otel_shutdown = init_otel_provider()
+
+# Configure logging with OTel integration
+setup_logging(enable_otel=True)
 logger = structlog.get_logger(__name__)
 
 
@@ -26,6 +30,9 @@ def main() -> int:
     except Exception as e:
         logger.error("Failed to start service", error=e)
         return 1
+    finally:
+        # Shutdown OTel providers
+        otel_shutdown()
 
     return 0
 

@@ -81,10 +81,13 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(log_record, sort_keys=True, default=str)
 
 
-def setup_logging():
+def setup_logging(enable_otel: bool = True):
     """
     Set up structured logging using structlog, integrated with the standard
-    logging library to output JSON.
+    logging library to output JSON. Optionally enables OpenTelemetry log export.
+
+    Args:
+        enable_otel: Whether to enable OTel log export. Default True.
     """
     import os
 
@@ -128,7 +131,24 @@ def setup_logging():
         root_logger.handlers.clear()
 
     root_logger.addHandler(handler)
-    root_logger.setLevel(logging.INFO)
+
+    # Add OTel logging handler if enabled
+    if enable_otel:
+        otel_enabled = os.getenv("OTEL_ENABLED", "true").lower() == "true"
+        if otel_enabled:
+            try:
+                from tag_generator.otel import get_otel_logging_handler
+
+                otel_handler = get_otel_logging_handler()
+                if otel_handler is not None:
+                    root_logger.addHandler(otel_handler)
+            except ImportError:
+                pass  # OTel dependencies not installed
+
+    # Allow log level override via environment variable (default: INFO)
+    log_level_str = os.getenv("TAG_LOG_LEVEL", "INFO").upper()
+    log_level = getattr(logging, log_level_str, logging.INFO)
+    root_logger.setLevel(log_level)
 
     # Ensure every LogRecord has an 'event' attribute for tests that rely on it.
     class _EnsureEvent(logging.Filter):

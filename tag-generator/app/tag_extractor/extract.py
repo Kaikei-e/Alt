@@ -164,10 +164,10 @@ class TagExtractor:
                 keywords, confidences = self._extract_keywords_english(raw_text)
 
             if keywords:
-                logger.info("Extraction successful", keywords=keywords)
+                logger.debug("Extraction successful", keywords=keywords)
                 return keywords, confidences
 
-            logger.info("Primary extraction yielded no tags, invoking fallback")
+            logger.debug("Primary extraction yielded no tags, invoking fallback")
             try:
                 fallback_keywords = self._fallback_extraction(raw_text, lang)
                 # For fallback, assign default confidence based on position
@@ -177,7 +177,7 @@ class TagExtractor:
                 return [], {}
 
             if fallback_keywords:
-                logger.info("Fallback extraction succeeded", keywords=fallback_keywords)
+                logger.debug("Fallback extraction succeeded", keywords=fallback_keywords)
                 return fallback_keywords, fallback_confidences
 
         except Exception as e:
@@ -191,7 +191,7 @@ class TagExtractor:
                 return [], {}
 
             if fallback_keywords:
-                logger.info("Emergency fallback successful", keywords=fallback_keywords)
+                logger.debug("Emergency fallback successful", keywords=fallback_keywords)
                 return fallback_keywords, fallback_confidences
 
         logger.warning("No tags could be extracted")
@@ -291,7 +291,7 @@ class TagExtractor:
                 embedding_metadata=self._embedding_metadata,
             )
 
-        logger.info(
+        logger.debug(
             "Processing sanitized text",
             char_count=len(raw_text),
             original_length=sanitized_input.original_length,
@@ -299,7 +299,7 @@ class TagExtractor:
         )
 
         lang = self._detect_language(raw_text)
-        logger.info("Detected language", lang=lang)
+        logger.debug("Detected language", lang=lang)
         tags, tag_confidences = self._run_extraction(raw_text, lang)
         inference_ms = (time.perf_counter() - start_time) * 1000
 
@@ -317,9 +317,11 @@ class TagExtractor:
             embedding_metadata=self._embedding_metadata,
         )
 
-        logger.info(
+        logger.debug(
             "Tag extraction metrics",
-            **outcome.__dict__,
+            tag_count=outcome.tag_count,
+            inference_ms=round(outcome.inference_ms, 2),
+            language=outcome.language,
         )
         return outcome
 

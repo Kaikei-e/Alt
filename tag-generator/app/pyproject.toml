@@ -40,6 +40,11 @@ dependencies = [
     "PyJWT>=2.8.0",
     "python-multipart>=0.0.6",
 
+    # OpenTelemetry
+    "opentelemetry-sdk>=1.29.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.29.0",
+    "opentelemetry-instrumentation-logging>=0.50b0",
+
     # NOTE: Heavy ML packages removed for ultra-minimal build
     # keybert, sentence-transformers, transformers must be installed in external models
     # or use runtime installation with lazy loading
