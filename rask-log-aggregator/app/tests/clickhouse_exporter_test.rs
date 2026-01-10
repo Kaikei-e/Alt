@@ -19,6 +19,12 @@ fn test_enriched_log_entry_to_log_row_conversion() {
         service_name: "test_service_name".to_string(),
         service_group: Some("test_service_group".to_string()),
         fields,
+        method: None,
+        path: None,
+        status_code: None,
+        response_size: None,
+        ip_address: None,
+        user_agent: None,
     };
 
     let log_row = rask::log_exporter::clickhouse_exporter::LogRow::from(enriched_log.clone());
@@ -55,10 +61,49 @@ fn test_enriched_log_entry_to_log_row_conversion_no_level() {
         service_name: "test_service_name".to_string(),
         service_group: None,
         fields: HashMap::new(),
+        method: None,
+        path: None,
+        status_code: None,
+        response_size: None,
+        ip_address: None,
+        user_agent: None,
     };
 
     let log_row = rask::log_exporter::clickhouse_exporter::LogRow::from(enriched_log.clone());
 
     assert_eq!(log_row.level, 1); // Default to Info (1) if level is None
     assert_eq!(log_row.service_group, "unknown"); // Default to "unknown" if service_group is None
+}
+
+#[test]
+fn test_http_fields_added_to_fields_map() {
+    let enriched_log = EnrichedLogEntry {
+        service_type: "nginx".to_string(),
+        log_type: "http".to_string(),
+        message: "GET /api/health HTTP/1.1".to_string(),
+        level: Some(LogLevel::Info),
+        timestamp: "2023-01-01T12:34:56.789Z".to_string(),
+        stream: "stdout".to_string(),
+        container_id: "nginx123".to_string(),
+        service_name: "nginx".to_string(),
+        service_group: Some("web".to_string()),
+        fields: HashMap::new(),
+        method: Some("GET".to_string()),
+        path: Some("/api/health".to_string()),
+        status_code: Some(200),
+        response_size: Some(1024),
+        ip_address: Some("192.168.1.1".to_string()),
+        user_agent: Some("curl/7.68.0".to_string()),
+    };
+
+    let log_row = rask::log_exporter::clickhouse_exporter::LogRow::from(enriched_log);
+
+    // Verify HTTP fields are added to fields Map
+    let fields_map: HashMap<String, String> = log_row.fields.into_iter().collect();
+    assert_eq!(fields_map.get("http_method"), Some(&"GET".to_string()));
+    assert_eq!(fields_map.get("http_path"), Some(&"/api/health".to_string()));
+    assert_eq!(fields_map.get("http_status"), Some(&"200".to_string()));
+    assert_eq!(fields_map.get("http_size"), Some(&"1024".to_string()));
+    assert_eq!(fields_map.get("http_ip"), Some(&"192.168.1.1".to_string()));
+    assert_eq!(fields_map.get("http_ua"), Some(&"curl/7.68.0".to_string()));
 }

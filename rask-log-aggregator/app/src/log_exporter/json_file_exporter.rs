@@ -170,6 +170,12 @@ mod tests {
             service_name: "test-svc".to_string(),
             service_group: None,
             fields: HashMap::new(),
+            method: None,
+            path: None,
+            status_code: None,
+            response_size: None,
+            ip_address: None,
+            user_agent: None,
         };
 
         exporter.export(&log).await.unwrap();

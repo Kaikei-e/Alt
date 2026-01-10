@@ -1,3 +1,7 @@
+mod otel_log;
+
+pub use otel_log::{OTelLog, OTelTrace, SpanKind, StatusCode};
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -13,6 +17,20 @@ pub struct EnrichedLogEntry {
     pub service_name: String,
     pub service_group: Option<String>,
     pub fields: HashMap<String, String>,
+
+    // HTTP-specific fields (populated by rask-log-forwarder for HTTP services)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_code: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip_address: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_agent: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

@@ -2,14 +2,19 @@ mod config;
 mod domain;
 mod error;
 mod log_exporter;
+mod otlp;
 
 use crate::domain::EnrichedLogEntry;
 use crate::error::AggregatorError;
 use crate::log_exporter::LogExporter;
 use crate::log_exporter::clickhouse_exporter::ClickHouseExporter;
+use crate::otlp::otlp_routes;
+use crate::otlp::receiver::OTLPState;
 use axum::{
     Router,
     extract::State,
+    http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
 };
 use clickhouse::Client;
@@ -19,10 +24,22 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[tokio::main]
 async fn main() -> Result<(), AggregatorError> {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(EnvFilter::from_default_env().add_directive(Level::INFO.into()))
-        .init();
+    // Use JSON format if RUST_LOG_FORMAT=json, otherwise use human-readable format
+    let use_json = std::env::var("RUST_LOG_FORMAT")
+        .map(|v| v == "json")
+        .unwrap_or(true); // Default to JSON for production
+
+    if use_json {
+        tracing_subscriber::registry()
+            .with(fmt::layer().json().flatten_event(true).with_current_span(true))
+            .with(EnvFilter::from_default_env().add_directive(Level::INFO.into()))
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(fmt::layer())
+            .with(EnvFilter::from_default_env().add_directive(Level::INFO.into()))
+            .init();
+    }
 
     let settings = config::get_configuration().map_err(|e| AggregatorError::Config(e.to_string()))?;
     info!("Loaded settings");
@@ -36,8 +53,16 @@ async fn main() -> Result<(), AggregatorError> {
         .with_password(&settings.clickhouse_password)
         .with_database(&settings.clickhouse_database);
 
-    let exporter: Arc<dyn LogExporter> = Arc::new(ClickHouseExporter::new(client));
+    // Create ClickHouse exporter (shared between legacy and OTLP endpoints)
+    let ch_exporter = Arc::new(ClickHouseExporter::new(client));
+    let exporter: Arc<dyn LogExporter> = ch_exporter.clone();
 
+    // OTLP state
+    let otlp_state = OTLPState {
+        exporter: ch_exporter,
+    };
+
+    // Health check endpoint
     let v1_health_router: Router = Router::new().route(
         "/v1/health",
         get(|| async {
@@ -45,23 +70,39 @@ async fn main() -> Result<(), AggregatorError> {
             "Healthy"
         }),
     );
+
+    // Legacy aggregate endpoint (for rask-log-forwarder)
     let v1_aggregate_router: Router = Router::new()
         .route("/v1/aggregate", post(aggregate_handler))
         .with_state(exporter);
 
+    // OTLP endpoints
+    let otlp_router = otlp_routes(otlp_state);
+
+    // Combined app
     let app = Router::new()
         .merge(v1_health_router)
-        .merge(v1_aggregate_router);
+        .merge(v1_aggregate_router)
+        .merge(otlp_router);
 
-    let bind_addr = "0.0.0.0:9600";
-    let listener = tokio::net::TcpListener::bind(bind_addr)
+    // Get port from environment or default
+    let http_port = std::env::var("HTTP_PORT").unwrap_or_else(|_| "9600".to_string());
+    let bind_addr = format!("0.0.0.0:{}", http_port);
+
+    let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
         .map_err(|e| AggregatorError::Bind {
-            address: bind_addr.to_string(),
+            address: bind_addr.clone(),
             source: e,
         })?;
     let ip_addr = listener.local_addr()?;
-    info!("Listening on {}", ip_addr);
+    info!("Listening on {} (HTTP + OTLP)", ip_addr);
+    info!("Endpoints:");
+    info!("  - GET  /v1/health     (health check)");
+    info!("  - POST /v1/aggregate  (legacy NDJSON logs)");
+    info!("  - POST /v1/logs       (OTLP logs)");
+    info!("  - POST /v1/traces     (OTLP traces)");
+
     axum::serve(listener, app).await?;
 
     Ok(())
@@ -71,11 +112,16 @@ async fn main() -> Result<(), AggregatorError> {
 async fn aggregate_handler(
     State(exporter): State<Arc<dyn LogExporter>>,
     body: String,
-) -> &'static str {
+) -> impl IntoResponse {
     info!(
         "Received aggregate request with body length: {}",
         body.len()
     );
+
+    // Handle empty body
+    if body.is_empty() {
+        return (StatusCode::OK, "No logs to process");
+    }
 
     let logs: Vec<EnrichedLogEntry> = body
         .lines()
@@ -89,14 +135,22 @@ async fn aggregate_handler(
         .collect();
 
     info!("Parsed {} log entries from request", logs.len());
-    let log_count = logs.len();
 
-    if let Err(e) = exporter.export_batch(logs).await {
-        error!("Failed to export logs to ClickHouse: {e}");
-        // ここでリトライやフォールバック処理を検討
-    } else {
-        info!("Successfully exported {log_count} log entries to ClickHouse");
+    // Handle case where no valid logs were parsed
+    if logs.is_empty() {
+        return (StatusCode::OK, "No valid logs to export");
     }
 
-    "OK"
+    let log_count = logs.len();
+
+    match exporter.export_batch(logs).await {
+        Ok(()) => {
+            info!("Successfully exported {log_count} log entries to ClickHouse");
+            (StatusCode::OK, "OK")
+        }
+        Err(e) => {
+            error!("Failed to export logs to ClickHouse: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Export failed")
+        }
+    }
 }

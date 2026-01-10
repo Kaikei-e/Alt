@@ -7,7 +7,7 @@ edition = "2024"
 axum = "0.8.4"
 tokio = { version = "1.45.1", features = ["rt-multi-thread", "net", "time", "fs", "io-util", "sync", "macros"] }
 tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 
@@ -16,6 +16,17 @@ chrono = { version = "0.4.41", features = ["serde"] }
 clickhouse = { version = "0.13.3", features = ["inserter", "time", "chrono"] }
 anyhow = "1.0.98"
 thiserror = "2.0"
+
+# OpenTelemetry Protocol support
+opentelemetry-proto = { version = "0.31", features = ["gen-tonic", "logs", "trace"] }
+prost = "0.14"
+prost-types = "0.14"
+tonic = { version = "0.13", features = ["transport"] }
+hex = "0.4"
+
+# HTTP body handling
+bytes = "1.10"
+http-body-util = "0.1"
 
 [dev-dependencies]
 tracing-test = "0.2.5"
