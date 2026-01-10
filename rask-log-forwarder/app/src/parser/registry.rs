@@ -106,14 +106,14 @@ impl ServiceParserRegistry {
     /// and returns the first one that can parse the log.
     pub fn detect_parser(&self, log: &str) -> Option<Arc<dyn ServiceParser>> {
         for parser_type in &self.detection_order {
-            if let Some(parser) = self.parsers.get(parser_type) {
-                if parser.can_parse(log) {
-                    tracing::trace!(
-                        parser_type = parser_type,
-                        "Auto-detected parser for log"
-                    );
-                    return Some(parser.clone());
-                }
+            if let Some(parser) = self.parsers.get(parser_type)
+                && parser.can_parse(log)
+            {
+                tracing::trace!(
+                    parser_type = parser_type,
+                    "Auto-detected parser for log"
+                );
+                return Some(parser.clone());
             }
         }
         None
