@@ -18,9 +18,11 @@ import (
 	"pre-processor/repository"
 	"pre-processor/service"
 	logger "pre-processor/utils/logger"
+	"pre-processor/utils/otel"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
 const (
@@ -71,21 +73,40 @@ func main() {
 		performHealthCheck()
 		return
 	}
+
+	ctx := context.Background()
+
+	// Initialize OpenTelemetry
+	otelCfg := otel.ConfigFromEnv()
+	otelShutdown, err := otel.InitProvider(ctx, otelCfg)
+	if err != nil {
+		fmt.Printf("Failed to initialize OpenTelemetry: %v\n", err)
+		// Continue without OTel - non-fatal
+		otelCfg.Enabled = false
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(shutdownCtx); err != nil {
+			fmt.Printf("Failed to shutdown OpenTelemetry: %v\n", err)
+		}
+	}()
+
 	// Load logger configuration from environment
 	loggerConfig := logger.LoadLoggerConfigFromEnv()
 
-	// Initialize logger with feature flag support
-	contextLogger := logger.NewContextLoggerWithConfig(loggerConfig)
+	// Initialize logger with OTel support
+	contextLogger := logger.NewContextLoggerWithOTel(loggerConfig, otelCfg.Enabled)
 
 	// Use context logger as primary logger
-	logger.Logger = contextLogger.WithContext(context.Background())
+	logger.Logger = contextLogger.WithContext(ctx)
 	logger.Logger.Info("Starting pre-processor service",
 		"log_level", loggerConfig.Level,
 		"log_format", loggerConfig.Format,
-		"use_rask_logger", loggerConfig.UseRask)
+		"otel_enabled", otelCfg.Enabled,
+		"service", otelCfg.ServiceName)
 
 	// Initialize database
-	ctx := context.Background()
 
 	dbPool, err := driver.Init(ctx)
 	if err != nil {
@@ -191,6 +212,11 @@ func main() {
 
 	// Custom error handler for consistent error responses
 	e.HTTPErrorHandler = appmiddleware.CustomHTTPErrorHandler(logger.Logger)
+
+	// Add OpenTelemetry tracing middleware (creates spans for each request)
+	if otelCfg.Enabled {
+		e.Use(otelecho.Middleware(otelCfg.ServiceName))
+	}
 
 	// Middleware
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{

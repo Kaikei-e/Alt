@@ -65,6 +65,17 @@ func NewContextLoggerWithConfig(config *LoggerConfig) *ContextLogger {
 	}
 }
 
+// NewContextLoggerWithOTel creates a ContextLogger with OTel support
+func NewContextLoggerWithOTel(config *LoggerConfig, enableOTel bool) *ContextLogger {
+	unifiedLogger := NewUnifiedLoggerWithOTel(config.ServiceName, config.Level, enableOTel)
+
+	return &ContextLogger{
+		logger:        unifiedLogger.logger,
+		serviceName:   config.ServiceName,
+		unifiedLogger: unifiedLogger,
+	}
+}
+
 // NewRaskContextLogger creates a ContextLogger that uses UnifiedLogger internally
 // Deprecated: USE_RASK_LOGGER flag is deprecated, always uses UnifiedLogger now
 func NewRaskContextLogger(serviceName string) *ContextLogger {

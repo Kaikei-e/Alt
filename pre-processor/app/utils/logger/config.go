@@ -30,20 +30,13 @@ func InitializeUnifiedLogger(config *UnifiedLoggerConfig) *UnifiedLogger {
 
 // NewUnifiedLoggerWithLevel creates a UnifiedLogger with specific log level
 func NewUnifiedLoggerWithLevel(serviceName, level string) *UnifiedLogger {
+	return NewUnifiedLoggerWithOTel(serviceName, level, false)
+}
+
+// NewUnifiedLoggerWithOTel creates a UnifiedLogger with optional OTel support
+func NewUnifiedLoggerWithOTel(serviceName, level string, enableOTel bool) *UnifiedLogger {
 	// Parse log level string to slog.Level
-	var slogLevel slog.Level
-	switch strings.ToLower(level) {
-	case "debug":
-		slogLevel = slog.LevelDebug
-	case "info":
-		slogLevel = slog.LevelInfo
-	case "warn", "warning":
-		slogLevel = slog.LevelWarn
-	case "error":
-		slogLevel = slog.LevelError
-	default:
-		slogLevel = slog.LevelInfo // Default to info level
-	}
+	slogLevel := parseSlogLevel(level)
 
 	// Configure Alt-backend compatible JSON handler with specified level
 	options := &slog.HandlerOptions{
@@ -70,7 +63,15 @@ func NewUnifiedLoggerWithLevel(serviceName, level string) *UnifiedLogger {
 		},
 	}
 
-	handler := slog.NewJSONHandler(os.Stdout, options)
+	stdoutHandler := slog.NewJSONHandler(os.Stdout, options)
+
+	var handler slog.Handler
+	if enableOTel {
+		// Use MultiHandler for JSON + OTel
+		handler = NewMultiHandler(stdoutHandler, slogLevel)
+	} else {
+		handler = stdoutHandler
+	}
 
 	// Pre-configure with service name and version like Alt-backend
 	logger := slog.New(handler).With("service", serviceName, "version", "1.0.0")
@@ -78,6 +79,22 @@ func NewUnifiedLoggerWithLevel(serviceName, level string) *UnifiedLogger {
 	return &UnifiedLogger{
 		logger:      logger,
 		serviceName: serviceName,
+	}
+}
+
+// parseSlogLevel converts a string level to slog.Level
+func parseSlogLevel(level string) slog.Level {
+	switch strings.ToLower(level) {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo // Default to info level
 	}
 }
 
