@@ -398,12 +398,29 @@ class TagInserter:
                         )
 
                 if skipped_articles:
-                    results["failed_articles"] += len(skipped_articles)
-                    logger.warning(
+                    # Note: skipped articles are not counted as failures.
+                    # They are articles without feed_id that cannot be processed,
+                    # but this should not cause the entire batch to fail.
+                    logger.info(
                         "Skipped articles due to missing feed_id",
                         count=len(skipped_articles),
                         article_ids=skipped_articles[:10],  # Log first 10 to avoid log spam
                     )
+
+                # If all articles were skipped (no feed_id available), return success
+                if not feed_tag_groups:
+                    logger.info(
+                        "All articles skipped due to missing feed_id, no tags to insert",
+                        skipped_count=len(skipped_articles),
+                    )
+                    conn.commit()
+                    return {
+                        "success": True,
+                        "processed_articles": 0,
+                        "failed_articles": 0,
+                        "errors": [],
+                        "message": "All articles skipped due to missing feed_id",
+                    }
 
                 # Step 2: Insert tags for each feed_id with confidences
                 for feed_id, tags in feed_tag_groups.items():
@@ -628,12 +645,28 @@ class TagInserter:
                         )
 
                 if skipped_articles:
-                    results["failed_articles"] += len(skipped_articles)
-                    logger.warning(
+                    # Note: skipped articles are not counted as failures.
+                    # They are articles without feed_id that cannot be processed,
+                    # but this should not cause the entire batch to fail.
+                    logger.info(
                         "Skipped articles due to missing feed_id (no-commit)",
                         count=len(skipped_articles),
                         article_ids=skipped_articles[:10],  # Log first 10 to avoid log spam
                     )
+
+                # If all articles were skipped (no feed_id available), return success
+                if not feed_tag_groups:
+                    logger.info(
+                        "All articles skipped due to missing feed_id, no tags to insert (no-commit)",
+                        skipped_count=len(skipped_articles),
+                    )
+                    return {
+                        "success": True,
+                        "processed_articles": 0,
+                        "failed_articles": 0,
+                        "errors": [],
+                        "message": "All articles skipped due to missing feed_id",
+                    }
 
                 # Step 2: Insert tags for each feed_id with confidences
                 for feed_id, tags in feed_tag_groups.items():
