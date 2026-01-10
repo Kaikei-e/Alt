@@ -391,8 +391,14 @@ class TagGeneratorService:
 
                 # Update batch stats with processing results
                 batch_stats.update(processing_stats)
+                # Success if:
+                # - At least one article was successfully processed, OR
+                # - No articles were processed (nothing to do), OR
+                # - No articles failed (all were skipped or tags couldn't be extracted)
                 batch_stats["success"] = (
-                    processing_stats.get("successful", 0) > 0 or processing_stats.get("total_processed", 0) == 0
+                    processing_stats.get("successful", 0) > 0
+                    or processing_stats.get("total_processed", 0) == 0
+                    or processing_stats.get("failed", 0) == 0
                 )
 
                 logger.info("Article batch processing completed")
