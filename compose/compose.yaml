@@ -10,6 +10,7 @@ include:
   - core.yaml
   - db.yaml
   - logging.yaml
+  - observability.yaml
   - perf.yaml
   - rag.yaml
   - recap.yaml

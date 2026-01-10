@@ -11,7 +11,9 @@ services:
       dockerfile: Dockerfile.rask-log-aggregator
     restart: unless-stopped
     ports:
-      - "9600:9600"
+      - "9600:9600"   # HTTP API (既存)
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
     networks:
       - alt-network
     tty: true
@@ -23,11 +25,16 @@ services:
         max-size: "10m"
         max-file: "3"
     environment:
+      # ClickHouse接続
       APP_CLICKHOUSE_HOST: clickhouse
       APP_CLICKHOUSE_PORT: 8123
       APP_CLICKHOUSE_USER: ${CLICKHOUSE_USER}
       APP_CLICKHOUSE_PASSWORD_FILE: /run/secrets/clickhouse_password
       APP_CLICKHOUSE_DATABASE: ${CLICKHOUSE_DB}
+      # OTLPポート設定
+      OTLP_GRPC_PORT: 4317
+      OTLP_HTTP_PORT: 4318
+      HTTP_PORT: 9600
     secrets:
       - clickhouse_password
 
@@ -51,6 +58,7 @@ services:
     group_add:
       - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
+    stop_grace_period: 5s
 
   alt-backend-logs:
     build:
@@ -72,6 +80,7 @@ services:
     group_add:
       - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
+    stop_grace_period: 5s
 
   tag-generator-logs:
     build:
@@ -93,6 +102,7 @@ services:
     group_add:
       - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
+    stop_grace_period: 5s
 
   pre-processor-logs:
     build:
@@ -114,6 +124,7 @@ services:
     group_add:
       - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
+    stop_grace_period: 5s
 
   search-indexer-logs:
     build:
@@ -135,6 +146,7 @@ services:
     group_add:
       - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
+    stop_grace_period: 5s
 
   news-creator-logs:
     build:
@@ -156,6 +168,7 @@ services:
     group_add:
       - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
+    stop_grace_period: 5s
 
   meilisearch-logs:
     build:
@@ -175,6 +188,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     restart: unless-stopped
+    stop_grace_period: 5s
 
   db-logs:
     build:
@@ -194,3 +208,4 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     restart: unless-stopped
+    stop_grace_period: 5s
