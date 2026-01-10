@@ -14,7 +14,7 @@ use recap_worker::{
 /// Returns exit code 0 on success, 1 on failure.
 fn run_healthcheck() -> i32 {
     let port = env::var("PORT").unwrap_or_else(|_| "9005".to_string());
-    let url = format!("http://127.0.0.1:{}/health/ready", port);
+    let url = format!("http://127.0.0.1:{}/health/live", port);
 
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(5))
