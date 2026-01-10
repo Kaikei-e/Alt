@@ -2,24 +2,14 @@ package otel
 
 import (
 	"context"
-	"os"
 	"testing"
 )
 
 func TestConfigFromEnv(t *testing.T) {
-	originalServiceName := os.Getenv("OTEL_SERVICE_NAME")
-	originalEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	originalEnabled := os.Getenv("OTEL_ENABLED")
-	defer func() {
-		os.Setenv("OTEL_SERVICE_NAME", originalServiceName)
-		os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", originalEndpoint)
-		os.Setenv("OTEL_ENABLED", originalEnabled)
-	}()
-
 	t.Run("default values", func(t *testing.T) {
-		os.Unsetenv("OTEL_SERVICE_NAME")
-		os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-		os.Unsetenv("OTEL_ENABLED")
+		t.Setenv("OTEL_SERVICE_NAME", "")
+		t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+		t.Setenv("OTEL_ENABLED", "")
 
 		cfg := ConfigFromEnv()
 
@@ -35,9 +25,9 @@ func TestConfigFromEnv(t *testing.T) {
 	})
 
 	t.Run("custom values", func(t *testing.T) {
-		os.Setenv("OTEL_SERVICE_NAME", "test-service")
-		os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel:4318")
-		os.Setenv("OTEL_ENABLED", "false")
+		t.Setenv("OTEL_SERVICE_NAME", "test-service")
+		t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel:4318")
+		t.Setenv("OTEL_ENABLED", "false")
 
 		cfg := ConfigFromEnv()
 
