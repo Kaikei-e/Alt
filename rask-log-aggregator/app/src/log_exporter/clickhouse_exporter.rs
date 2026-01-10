@@ -118,16 +118,17 @@ impl super::LogExporter for ClickHouseExporter {
 // =============================================================================
 
 /// ClickHouse row structure for otel_logs table
+/// Uses FixedString-compatible byte arrays for TraceId/SpanId
 #[derive(clickhouse::Row, Serialize, Deserialize, Clone, Debug)]
 pub struct OTelLogRow {
     #[serde(rename = "Timestamp")]
-    pub timestamp: u64,
+    pub timestamp: i64, // DateTime64(9) - nanoseconds since epoch
     #[serde(rename = "ObservedTimestamp")]
-    pub observed_timestamp: u64,
+    pub observed_timestamp: i64,
     #[serde(rename = "TraceId")]
-    pub trace_id: String,
+    pub trace_id: [u8; 32], // FixedString(32)
     #[serde(rename = "SpanId")]
-    pub span_id: String,
+    pub span_id: [u8; 16], // FixedString(16)
     #[serde(rename = "TraceFlags")]
     pub trace_flags: u8,
     #[serde(rename = "SeverityText")]
@@ -155,10 +156,10 @@ pub struct OTelLogRow {
 impl From<OTelLog> for OTelLogRow {
     fn from(log: OTelLog) -> Self {
         Self {
-            timestamp: log.timestamp,
-            observed_timestamp: log.observed_timestamp,
-            trace_id: pad_to_length(&log.trace_id, 32),
-            span_id: pad_to_length(&log.span_id, 16),
+            timestamp: log.timestamp as i64,
+            observed_timestamp: log.observed_timestamp as i64,
+            trace_id: string_to_fixed_bytes::<32>(&log.trace_id),
+            span_id: string_to_fixed_bytes::<16>(&log.span_id),
             trace_flags: log.trace_flags,
             severity_text: log.severity_text,
             severity_number: log.severity_number,
@@ -178,19 +179,19 @@ impl From<OTelLog> for OTelLogRow {
 #[derive(clickhouse::Row, Serialize, Deserialize, Clone, Debug)]
 pub struct OTelTraceRow {
     #[serde(rename = "Timestamp")]
-    pub timestamp: u64,
+    pub timestamp: i64, // DateTime64(9) - nanoseconds since epoch
     #[serde(rename = "TraceId")]
-    pub trace_id: String,
+    pub trace_id: [u8; 32], // FixedString(32)
     #[serde(rename = "SpanId")]
-    pub span_id: String,
+    pub span_id: [u8; 16], // FixedString(16)
     #[serde(rename = "ParentSpanId")]
-    pub parent_span_id: String,
+    pub parent_span_id: [u8; 16], // FixedString(16)
     #[serde(rename = "TraceState")]
     pub trace_state: String,
     #[serde(rename = "SpanName")]
     pub span_name: String,
     #[serde(rename = "SpanKind")]
-    pub span_kind: i8,
+    pub span_kind: i8, // Enum8 as numeric value
     #[serde(rename = "ServiceName")]
     pub service_name: String,
     #[serde(rename = "ResourceAttributes")]
@@ -200,7 +201,7 @@ pub struct OTelTraceRow {
     #[serde(rename = "Duration")]
     pub duration: i64,
     #[serde(rename = "StatusCode")]
-    pub status_code: i8,
+    pub status_code: i8, // Enum8 as numeric value
     #[serde(rename = "StatusMessage")]
     pub status_message: String,
     #[serde(rename = "Events")]
@@ -212,10 +213,10 @@ pub struct OTelTraceRow {
 impl From<OTelTrace> for OTelTraceRow {
     fn from(trace: OTelTrace) -> Self {
         Self {
-            timestamp: trace.timestamp,
-            trace_id: pad_to_length(&trace.trace_id, 32),
-            span_id: pad_to_length(&trace.span_id, 16),
-            parent_span_id: pad_to_length(&trace.parent_span_id, 16),
+            timestamp: trace.timestamp as i64,
+            trace_id: string_to_fixed_bytes::<32>(&trace.trace_id),
+            span_id: string_to_fixed_bytes::<16>(&trace.span_id),
+            parent_span_id: string_to_fixed_bytes::<16>(&trace.parent_span_id),
             trace_state: trace.trace_state,
             span_name: trace.span_name,
             span_kind: trace.span_kind as i8,
@@ -231,14 +232,16 @@ impl From<OTelTrace> for OTelTraceRow {
     }
 }
 
-/// Pad string to specified length with zeros
-fn pad_to_length(s: &str, len: usize) -> String {
-    if s.len() >= len {
-        s[..len].to_string()
-    } else {
-        format!("{:0>width$}", s, width = len)
-    }
+/// Convert string to fixed-size byte array for FixedString columns
+/// Pads with zeros if shorter, truncates if longer
+fn string_to_fixed_bytes<const N: usize>(s: &str) -> [u8; N] {
+    let mut result = [0u8; N];
+    let bytes = s.as_bytes();
+    let len = bytes.len().min(N);
+    result[..len].copy_from_slice(&bytes[..len]);
+    result
 }
+
 
 /// Convert HashMap to Vec for ClickHouse Map type
 fn hashmap_to_vec(map: HashMap<String, String>) -> Vec<(String, String)> {
