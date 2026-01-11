@@ -116,24 +116,21 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
 <div
 	bind:this={swipeElement}
-	class="absolute w-full h-full bg-[var(--alt-glass)] text-[var(--alt-text-primary)] border-2 border-[var(--alt-glass-border)] shadow-[0_12px_40px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.1)] rounded-2xl p-4 backdrop-blur-[20px] select-none"
+	class="absolute w-full h-full p-[2px] rounded-[18px] border-2 select-none"
+	style="border-color: var(--surface-border); {cardStyle}; touch-action: none;"
 	use:swipe={{ threshold: SWIPE_THRESHOLD, restraint: 120, allowedTime: 500 }}
 	aria-busy={isBusy}
 	data-testid="swipe-recap-card"
-	style={`${cardStyle}; touch-action: none;`}
 >
-	<div class="flex flex-col gap-0 h-full">
+	<div
+		class="glass w-full h-full rounded-[16px] flex flex-col"
+		style="background: var(--surface-bg);"
+	>
 		<!-- Header -->
 		<div
-			class="relative z-[2] bg-[rgba(255,255,255,0.03)] backdrop-blur-[20px] border-b border-[var(--alt-glass-border)] px-2 py-2 rounded-t-2xl"
+			class="border-b px-4 py-3 rounded-t-[16px]"
+			style="border-color: var(--surface-border);"
 		>
-			<p
-				class="text-xs uppercase tracking-[0.08em] font-semibold"
-				style="color: black;"
-			>
-				Swipe to navigate
-			</p>
-			<!-- ジャンル名・メトリクス -->
 			<div class="flex justify-between items-center flex-wrap gap-2">
 				<h3
 					class="text-lg font-bold uppercase tracking-wider flex-1 min-w-0 break-words"
@@ -145,8 +142,8 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 					class="flex gap-3 text-xs flex-shrink-0"
 					style="color: var(--text-secondary);"
 				>
-					<span>Clusters: {genre.clusterCount}</span>
-					<span>Articles: {genre.articleCount}</span>
+					<span>{genre.clusterCount} clusters</span>
+					<span>{genre.articleCount} articles</span>
 				</div>
 			</div>
 		</div>
@@ -155,27 +152,21 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 		<div
 			bind:this={scrollAreaRef}
 			style="touch-action: pan-y; overflow-x: hidden;"
-			class="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 bg-transparent scroll-smooth overscroll-contain scrollbar-thin select-none"
+			class="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 bg-transparent scroll-smooth overscroll-contain scrollbar-thin select-none"
 			data-testid="recap-scroll-area"
 		>
-			<div class="flex flex-col gap-4">
+			<div class="flex flex-col gap-5">
 				<!-- トピックChips -->
 				{#if genre.topTerms.length > 0}
-					<div class="flex gap-2 items-start">
-						<div
-							class="w-[6px] h-[6px] rounded-full mt-[6px] flex-shrink-0"
-							style="background: var(--alt-primary);"
-						></div>
-						<div class="flex gap-2 flex-wrap">
-							{#each genre.topTerms.slice(0, 5) as term}
-								<div
-									class="px-3 py-1 rounded-full text-xs border"
-									style="background: rgba(255, 255, 255, 0.1); color: var(--text-primary); border-color: var(--alt-glass-border);"
-								>
-									{term}
-								</div>
-							{/each}
-						</div>
+					<div class="flex gap-2 flex-wrap">
+						{#each genre.topTerms.slice(0, 5) as term}
+							<span
+								class="px-3 py-1.5 rounded-full text-xs font-medium border transition-colors duration-200"
+								style="background: var(--surface-hover); color: var(--text-primary); border-color: var(--surface-border);"
+							>
+								{term}
+							</span>
+						{/each}
 					</div>
 				{/if}
 
@@ -199,48 +190,40 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
 				<!-- 展開時: Evidence -->
 				{#if isExpanded && genre.evidenceLinks.length > 0}
-					<div class="flex flex-col gap-3 pt-2 border-t"
-						style="border-color: var(--alt-glass-border);"
+					<div class="flex flex-col gap-3 pt-4 border-t"
+						style="border-color: var(--surface-border);"
 					>
 						<!-- Evidence Links -->
 						<div>
 							<p
-								class="text-xs font-bold mb-3 uppercase tracking-wider"
+								class="text-xs font-semibold mb-3 uppercase tracking-wider"
 								style="color: var(--text-secondary);"
 							>
 								Evidence ({genre.evidenceLinks.length} articles)
 							</p>
 							<div class="flex flex-col gap-2">
 								{#each genre.evidenceLinks as evidence}
-									<div class="flex gap-2 items-start">
-										<div
-											class="w-[6px] h-[6px] rounded-full mt-[6px] flex-shrink-0"
-											style="background: var(--alt-primary);"
-										></div>
-										<a
-											href={evidence.sourceUrl}
-											target="_blank"
-											rel="noopener noreferrer"
-											class="flex-1 p-2 rounded-lg border flex items-start gap-2 transition-all duration-200 hover:brightness-110"
-											style="background: rgba(255, 255, 255, 0.05); border-color: var(--alt-glass-border); color: var(--text-primary);"
-											onmouseenter={(e) => {
-												e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-												e.currentTarget.style.borderColor = "var(--alt-primary)";
-											}}
-											onmouseleave={(e) => {
-												e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
-												e.currentTarget.style.borderColor = "var(--alt-glass-border)";
-											}}
+									<a
+										href={evidence.sourceUrl}
+										target="_blank"
+										rel="noopener noreferrer"
+										class="flex items-start gap-2 p-3 rounded-xl border transition-all duration-200 hover:-translate-y-[1px]"
+										style="background: var(--surface-hover); border-color: var(--surface-border); color: var(--text-primary);"
+										onmouseenter={(e) => {
+											e.currentTarget.style.borderColor = "var(--alt-primary)";
+										}}
+										onmouseleave={(e) => {
+											e.currentTarget.style.borderColor = "var(--surface-border)";
+										}}
+									>
+										<LinkIcon size={14} class="mt-0.5 flex-shrink-0" style="color: var(--alt-primary);" />
+										<span
+											class="text-sm flex-1 break-words leading-relaxed"
+											style="color: var(--text-primary);"
 										>
-											<LinkIcon size={14} class="mt-0.5 flex-shrink-0" style="color: var(--alt-primary);" />
-											<p
-												class="text-xs flex-1 break-words"
-												style="color: var(--text-primary);"
-											>
-												{evidence.title}
-											</p>
-										</a>
-									</div>
+											{evidence.title}
+										</span>
+									</a>
 								{/each}
 							</div>
 						</div>
@@ -251,13 +234,15 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
 		<!-- Footer -->
 		<div
-			class="relative z-[2] bg-[rgba(0,0,0,0.25)] backdrop-blur-[20px] border-t border-[var(--alt-glass-border)] px-3 py-3 rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
+			class="border-t px-4 py-3 rounded-b-[16px]"
+			style="border-color: var(--surface-border);"
 			data-testid="action-footer"
 		>
 			<Button
 				size="sm"
 				onclick={handleToggle}
-				class="w-full rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg bg-[slate-200] shadow-[var(--alt-primary)]/50"
+				class="w-full rounded-full font-bold min-h-[44px] transition-all duration-200 hover:scale-[1.02] active:scale-95"
+				style="background: var(--alt-primary); color: var(--text-primary);"
 			>
 				<div class="flex items-center justify-center gap-2">
 					{#if isExpanded}

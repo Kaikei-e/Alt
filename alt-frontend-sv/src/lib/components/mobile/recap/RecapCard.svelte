@@ -58,21 +58,15 @@ const visibleItems = $derived(
 
 			<!-- トピックChips -->
 			{#if genre.topTerms.length > 0}
-				<div class="flex gap-2 items-start">
-					<div
-						class="w-[6px] h-[6px] rounded-full mt-[6px] flex-shrink-0"
-						style="background: black;"
-					></div>
-					<div class="flex gap-2 flex-wrap">
-						{#each genre.topTerms.slice(0, 5) as term}
-							<div
-								class="px-3 py-1 rounded-full text-xs border"
-								style="background: rgba(255, 255, 255, 0.1); color: var(--text-primary); border-color: var(--surface-border);"
-							>
-								{term}
-							</div>
-						{/each}
-					</div>
+				<div class="flex gap-2 flex-wrap">
+					{#each genre.topTerms.slice(0, 5) as term}
+						<span
+							class="px-3 py-1.5 rounded-full text-xs font-medium border transition-colors duration-200"
+							style="background: var(--surface-hover); color: var(--text-primary); border-color: var(--surface-border);"
+						>
+							{term}
+						</span>
+					{/each}
 				</div>
 			{/if}
 
@@ -82,7 +76,7 @@ const visibleItems = $derived(
 					<div class="flex gap-2 items-start">
 						<div
 							class="w-[6px] h-[6px] rounded-full mt-[9px] flex-shrink-0"
-							style="background: black;"
+							style="background: var(--alt-primary);"
 						></div>
 						<p
 							class="text-sm leading-relaxed {isExpanded ? '' : 'line-clamp-2'}"
@@ -113,48 +107,40 @@ const visibleItems = $derived(
 
 			<!-- 展開時: Evidence -->
 			{#if isExpanded && genre.evidenceLinks.length > 0}
-				<div class="flex flex-col gap-3 pt-2 border-t"
+				<div class="flex flex-col gap-3 pt-4 border-t"
 					style="border-color: var(--surface-border);"
 				>
 					<!-- Evidence Links -->
 					<div>
 						<p
-							class="text-xs font-bold mb-3 uppercase tracking-wider"
+							class="text-xs font-semibold mb-3 uppercase tracking-wider"
 							style="color: var(--text-secondary);"
 						>
 							Evidence ({genre.evidenceLinks.length} articles)
 						</p>
 						<div class="flex flex-col gap-2">
 							{#each genre.evidenceLinks as evidence}
-								<div class="flex gap-2 items-start">
-									<div
-										class="w-[6px] h-[6px] rounded-full mt-[6px] flex-shrink-0"
-										style="background: var(--alt-primary);"
-									></div>
-									<a
-										href={evidence.sourceUrl}
-										target="_blank"
-										rel="noopener noreferrer"
-										class="flex-1 p-2 rounded-lg border flex items-start gap-2 transition-all duration-200 hover:brightness-110"
-										style="background: rgba(255, 255, 255, 0.05); border-color: var(--surface-border); color: var(--text-primary);"
-										onmouseenter={(e) => {
-											e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-											e.currentTarget.style.borderColor = "var(--alt-primary)";
-										}}
-										onmouseleave={(e) => {
-											e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
-											e.currentTarget.style.borderColor = "var(--surface-border)";
-										}}
+								<a
+									href={evidence.sourceUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="flex items-start gap-2 p-3 rounded-xl border transition-all duration-200 hover:-translate-y-[1px]"
+									style="background: var(--surface-hover); border-color: var(--surface-border); color: var(--text-primary);"
+									onmouseenter={(e) => {
+										e.currentTarget.style.borderColor = "var(--alt-primary)";
+									}}
+									onmouseleave={(e) => {
+										e.currentTarget.style.borderColor = "var(--surface-border)";
+									}}
+								>
+									<LinkIcon size={14} class="mt-0.5 flex-shrink-0" style="color: var(--alt-primary);" />
+									<span
+										class="text-sm flex-1 break-words leading-relaxed"
+										style="color: var(--text-primary);"
 									>
-										<LinkIcon size={14} class="mt-0.5 flex-shrink-0" style="color: var(--alt-primary);" />
-										<p
-											class="text-xs flex-1 break-words"
-											style="color: var(--text-primary);"
-										>
-											{evidence.title}
-										</p>
-									</a>
-								</div>
+										{evidence.title}
+									</span>
+								</a>
 							{/each}
 						</div>
 					</div>

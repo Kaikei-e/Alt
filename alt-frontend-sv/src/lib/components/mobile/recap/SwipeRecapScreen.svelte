@@ -47,54 +47,47 @@ async function handleSwipe(direction: number) {
   {:else if activeGenre}
     <!-- Header Info (Top) -->
     {#if summaryData}
-      <div class="w-full max-w-[30rem] mx-auto px-2 pt-2 pb-2 z-20">
-        <!-- Title and date container: 2 columns -->
+      <div class="w-full max-w-[30rem] mx-auto px-4 pt-3 pb-2 z-20">
         <div
-          class="w-full flex flex-row gap-2 px-2 py-2 rounded-lg backdrop-blur-md border justify-start items-center"
-          style="background: rgba(0, 0, 0, 0.1); border-color: var(--alt-glass-border);"
+          class="flex flex-col gap-1 px-4 py-3 rounded-xl border"
+          style="background: var(--surface-bg); border-color: var(--surface-border);"
         >
           <h1
-            class="flex-1 flex items-center justify-center text-md font-bold text-center"
-            style="color: black;"
+            class="text-xl font-bold tracking-tight"
+            style="color: var(--accent-primary);"
           >
-            7 Days
-            <br />
-            Recap
+            7 Days Recap
           </h1>
-          <div
-            class="flex-1 flex flex-col gap-2 items-center justify-center text-center"
-          >
-            <p class="text-[10px] mb-0.5" style="color: var(--text-secondary);">
-              Executed: {new Date(summaryData.executedAt).toLocaleString(
-                "en-US",
-              )}
-            </p>
-            <p class="text-[10px]" style="color: var(--text-secondary);">
-              {summaryData.totalArticles.toLocaleString()} articles analyzed
-            </p>
-          </div>
+          <p class="text-xs" style="color: var(--text-secondary);">
+            {new Date(summaryData.executedAt).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })} · {summaryData.totalArticles.toLocaleString()} articles
+          </p>
         </div>
       </div>
     {/if}
 
     <!-- Position Indicator (Below Header) -->
-    <div class="w-full max-w-[30rem] px-4 pb-2 z-20 flex justify-center">
+    <div class="w-full max-w-[30rem] px-4 pb-3 z-20 flex justify-center">
       <div
-        class="flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-md border"
-        style="background: rgba(0, 0, 0, 0.3); border-color: var(--alt-glass-border);"
+        class="flex items-center gap-3 px-4 py-2 rounded-full border"
+        style="background: var(--surface-bg); border-color: var(--surface-border);"
       >
         <!-- Counter -->
-        <span class="text-xs font-semibold" style="color: var(--text-primary);">
+        <span class="text-sm font-semibold" style="color: var(--text-primary);">
           {currentPosition} / {totalCount}
         </span>
         <!-- Dot Indicator -->
-        <div class="flex gap-1.5 items-center">
+        <div class="flex gap-2 items-center">
           {#each genres as _, idx}
             <div
-              class="w-1.5 h-1.5 rounded-full transition-all duration-200"
+              class="w-2 h-2 rounded-full transition-all duration-200 {idx === activeIndex ? 'scale-125' : ''}"
               style="background: {idx === activeIndex
                 ? 'var(--alt-primary)'
-                : 'rgba(255, 255, 255, 0.3)'};"
+                : 'var(--text-muted)'};"
               aria-label="Card {idx + 1} of {totalCount}"
             ></div>
           {/each}
@@ -106,11 +99,11 @@ async function handleSwipe(direction: number) {
     <div
       class="relative w-full max-w-[30rem] flex-1 px-2 sm:px-4 overflow-hidden"
     >
-      <!-- Next card (background preview) -->
+      <!-- Next card (background preview - subtle depth indicator) -->
       <div
-        class="absolute w-full h-full bg-[var(--alt-glass)] border-2 border-[var(--alt-glass-border)] rounded-2xl p-4 opacity-50 pointer-events-none"
+        class="absolute w-full h-full rounded-[18px] border opacity-30 pointer-events-none"
         aria-hidden="true"
-        style="max-width: calc(100% - 1rem)"
+        style="max-width: calc(100% - 1rem); background: var(--surface-bg); border-color: var(--surface-border);"
       ></div>
 
       <!-- Active card -->
