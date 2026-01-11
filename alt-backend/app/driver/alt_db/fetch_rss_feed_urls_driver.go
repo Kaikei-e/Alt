@@ -8,7 +8,12 @@ import (
 )
 
 func (r *AltDBRepository) FetchRSSFeedURLs(ctx context.Context) ([]url.URL, error) {
-	rows, err := r.pool.Query(ctx, "SELECT url FROM feed_links")
+	// LEFT JOIN ensures feeds without availability records (new feeds) are still returned
+	query := `
+		SELECT fl.url FROM feed_links fl
+		LEFT JOIN feed_link_availability fla ON fl.id = fla.feed_link_id
+		WHERE fla.is_active IS NULL OR fla.is_active = true`
+	rows, err := r.pool.Query(ctx, query)
 	if err != nil {
 		logger.SafeError("Error fetching RSS links", "error", err)
 		return nil, errors.New("error fetching RSS links")

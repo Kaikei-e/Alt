@@ -25,7 +25,7 @@ func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 
 	go func() {
 		for {
-			feedItems, err := CollectMultipleFeeds(ctx, feedURLs, rateLimiter)
+			feedItems, err := CollectMultipleFeeds(ctx, feedURLs, rateLimiter, r)
 			if err != nil {
 				logger.Logger.Error("Error collecting feeds", "error", err)
 			} else {

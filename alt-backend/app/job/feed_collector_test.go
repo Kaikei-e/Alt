@@ -367,3 +367,120 @@ func containsSuspiciousContent(title, description string) bool {
 		strings.Contains(titleLower, "404") ||
 		strings.Contains(titleLower, "not found")
 }
+
+func TestIsPersistentError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil error returns false",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "400 error is persistent",
+			err:  errorWithMessage("HTTP error: 400 Bad Request"),
+			want: true,
+		},
+		{
+			name: "403 error is persistent",
+			err:  errorWithMessage("HTTP error: 403 Forbidden"),
+			want: true,
+		},
+		{
+			name: "404 error is persistent",
+			err:  errorWithMessage("HTTP error: 404 Not Found"),
+			want: true,
+		},
+		{
+			name: "429 error is NOT persistent",
+			err:  errorWithMessage("HTTP error: 429 Too Many Requests"),
+			want: false,
+		},
+		{
+			name: "500 error is NOT persistent",
+			err:  errorWithMessage("HTTP error: 500 Internal Server Error"),
+			want: false,
+		},
+		{
+			name: "Failed to detect feed type is persistent",
+			err:  errorWithMessage("Failed to detect feed type"),
+			want: true,
+		},
+		{
+			name: "network timeout is NOT persistent",
+			err:  errorWithMessage("context deadline exceeded"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isPersistentError(tt.err); got != tt.want {
+				t.Errorf("isPersistentError() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIs429Error(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil error returns false",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "429 error returns true",
+			err:  errorWithMessage("HTTP error: 429 Too Many Requests"),
+			want: true,
+		},
+		{
+			name: "lowercase 429 returns true",
+			err:  errorWithMessage("http error: 429 too many requests"),
+			want: true,
+		},
+		{
+			name: "400 error returns false",
+			err:  errorWithMessage("HTTP error: 400 Bad Request"),
+			want: false,
+		},
+		{
+			name: "500 error returns false",
+			err:  errorWithMessage("HTTP error: 500 Internal Server Error"),
+			want: false,
+		},
+		{
+			name: "network error returns false",
+			err:  errorWithMessage("connection refused"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := is429Error(tt.err); got != tt.want {
+				t.Errorf("is429Error() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// errorWithMessage creates a simple error with the given message
+type testError struct {
+	msg string
+}
+
+func (e *testError) Error() string {
+	return e.msg
+}
+
+func errorWithMessage(msg string) error {
+	return &testError{msg: msg}
+}

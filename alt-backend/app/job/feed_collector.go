@@ -2,6 +2,7 @@ package job
 
 import (
 	"alt/domain"
+	"alt/port/feed_link_availability_port"
 	"alt/utils"
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
@@ -14,6 +15,8 @@ import (
 
 	rssFeed "github.com/mmcdole/gofeed"
 )
+
+const maxConsecutiveFailures = 5
 
 func CollectSingleFeed(ctx context.Context, feedURL url.URL, rateLimiter *rate_limiter.HostRateLimiter) (*rssFeed.Feed, error) {
 	// Apply rate limiting if rate limiter is configured
@@ -100,7 +103,7 @@ func validateFeedURL(ctx context.Context, feedURL url.URL, rateLimiter *rate_lim
 	return nil
 }
 
-func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *rate_limiter.HostRateLimiter) ([]*domain.FeedItem, error) {
+func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *rate_limiter.HostRateLimiter, availabilityRepo feed_link_availability_port.FeedLinkAvailabilityPort) ([]*domain.FeedItem, error) {
 	// Use unified HTTP client factory for secure RSS feed fetching
 	factory := utils.NewHTTPClientFactory()
 	httpClient := factory.CreateHTTPClient()
@@ -114,6 +117,7 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *
 		if err := validateFeedURL(ctx, feedURL, rateLimiter); err != nil {
 			logger.Logger.Error("Feed URL validation failed", "url", feedURL.String(), "error", err)
 			errors = append(errors, err)
+			handleFeedError(ctx, feedURL, err, rateLimiter, availabilityRepo)
 			continue
 		}
 
@@ -132,11 +136,19 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *
 		if err != nil {
 			logger.Logger.Error("Error parsing feed", "url", feedURL.String(), "error", err)
 			errors = append(errors, err)
+			handleFeedError(ctx, feedURL, err, rateLimiter, availabilityRepo)
 			continue // Continue processing other feeds instead of failing entirely
 		}
 
 		feeds = append(feeds, feed)
 		logger.Logger.Info("Successfully parsed feed", "url", feedURL.String(), "title", feed.Title)
+
+		// Reset failure count on success
+		if availabilityRepo != nil {
+			if err := availabilityRepo.ResetFeedLinkFailures(ctx, feedURL.String()); err != nil {
+				logger.Logger.Warn("Failed to reset feed failures", "url", feedURL.String(), "error", err)
+			}
+		}
 
 		// Note: Rate limiting replaced the hardcoded sleep
 		logger.Logger.Info("Feed collection progress", "current", i+1, "total", len(feedURLs))
@@ -154,6 +166,56 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *
 	feedItems := ConvertFeedToFeedItem(feeds)
 	logger.Logger.Info("Feed items", "feedItems count", len(feedItems))
 	return feedItems, nil
+}
+
+// handleFeedError categorizes the error and takes appropriate action.
+func handleFeedError(ctx context.Context, feedURL url.URL, err error, rateLimiter *rate_limiter.HostRateLimiter, availabilityRepo feed_link_availability_port.FeedLinkAvailabilityPort) {
+	if is429Error(err) {
+		// For rate limiting errors, increase backoff for this host
+		if rateLimiter != nil {
+			rateLimiter.RecordRateLimitHit(feedURL.Host, 0) // 0 means use default backoff
+			logger.Logger.Warn("Rate limited by target site, backing off",
+				"url", feedURL.String())
+		}
+	} else if isPersistentError(err) && availabilityRepo != nil {
+		// For persistent errors, increment failure count
+		availability, dbErr := availabilityRepo.IncrementFeedLinkFailures(ctx, feedURL.String(), err.Error())
+		if dbErr != nil {
+			logger.Logger.Error("Failed to track feed failure", "url", feedURL.String(), "error", dbErr)
+			return
+		}
+
+		// Use domain business logic to determine if feed should be disabled
+		if availability.ShouldDisable(maxConsecutiveFailures) {
+			if disableErr := availabilityRepo.DisableFeedLink(ctx, feedURL.String()); disableErr != nil {
+				logger.Logger.Error("Failed to disable feed", "url", feedURL.String(), "error", disableErr)
+			} else {
+				logger.Logger.Warn("Auto-disabled feed after repeated failures",
+					"url", feedURL.String(),
+					"failures", availability.ConsecutiveFailures)
+			}
+		}
+	}
+}
+
+// isPersistentError returns true for errors that indicate persistent issues with the feed.
+func isPersistentError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "400") ||
+		strings.Contains(errStr, "403") ||
+		strings.Contains(errStr, "404") ||
+		strings.Contains(errStr, "Failed to detect feed type")
+}
+
+// is429Error returns true if the error indicates rate limiting by the target site.
+func is429Error(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "429")
 }
 
 func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {

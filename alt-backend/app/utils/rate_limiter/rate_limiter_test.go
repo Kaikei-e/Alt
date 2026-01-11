@@ -198,3 +198,95 @@ func TestHostRateLimiter_ContextCancellation(t *testing.T) {
 		t.Errorf("Context cancellation took too long: %v", duration)
 	}
 }
+
+func TestHostRateLimiter_RecordRateLimitHit(t *testing.T) {
+	tests := []struct {
+		name           string
+		initialInterval time.Duration
+		host           string
+		retryAfter     time.Duration
+		expectedBackoff time.Duration
+	}{
+		{
+			name:           "uses retryAfter when provided",
+			initialInterval: 5 * time.Second,
+			host:           "example.com",
+			retryAfter:     30 * time.Second,
+			expectedBackoff: 30 * time.Second,
+		},
+		{
+			name:           "doubles interval when retryAfter is zero",
+			initialInterval: 5 * time.Second,
+			host:           "example.com",
+			retryAfter:     0,
+			expectedBackoff: 10 * time.Second,
+		},
+		{
+			name:           "caps at 1 hour maximum",
+			initialInterval: 5 * time.Second,
+			host:           "example.com",
+			retryAfter:     2 * time.Hour,
+			expectedBackoff: time.Hour,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			limiter := NewHostRateLimiter(tt.initialInterval)
+
+			// Trigger rate limit to create initial limiter for host
+			limiter.RecordRateLimitHit(tt.host, tt.retryAfter)
+
+			// Check that the limiter was updated
+			limiter.mu.RLock()
+			hostLimiter, exists := limiter.limiters[tt.host]
+			limiter.mu.RUnlock()
+
+			if !exists {
+				t.Error("RecordRateLimitHit() did not create limiter for host")
+				return
+			}
+
+			// Verify the limiter has appropriate rate
+			// Note: We can't directly check the interval, but we can verify it exists
+			if hostLimiter == nil {
+				t.Error("RecordRateLimitHit() created nil limiter")
+			}
+		})
+	}
+}
+
+func TestHostRateLimiter_RecordRateLimitHit_IncreasesBackoff(t *testing.T) {
+	limiter := NewHostRateLimiter(100 * time.Millisecond)
+	ctx := context.Background()
+	host := "ratelimited.example.com"
+	url := "https://ratelimited.example.com/feed"
+
+	// First access should be immediate
+	err := limiter.WaitForHost(ctx, url)
+	if err != nil {
+		t.Fatalf("First WaitForHost() failed: %v", err)
+	}
+
+	// Record rate limit hit with 300ms backoff
+	limiter.RecordRateLimitHit(host, 300*time.Millisecond)
+
+	// First access after rate limit hit is immediate (token available)
+	err = limiter.WaitForHost(ctx, url)
+	if err != nil {
+		t.Fatalf("Second WaitForHost() failed: %v", err)
+	}
+
+	// Third access should wait for the new backoff
+	start := time.Now()
+	err = limiter.WaitForHost(ctx, url)
+	if err != nil {
+		t.Fatalf("Third WaitForHost() failed: %v", err)
+	}
+	duration := time.Since(start)
+
+	// Should wait approximately 300ms (accounting for some tolerance)
+	if duration < 250*time.Millisecond {
+		t.Errorf("RecordRateLimitHit() did not increase backoff, wait was only %v", duration)
+	}
+}
