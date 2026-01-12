@@ -203,3 +203,90 @@ func TestKratosClient_ContextCancellation(t *testing.T) {
 		assert.Contains(t, err.Error(), "context canceled")
 	})
 }
+
+func TestKratosClient_GetFirstIdentityID(t *testing.T) {
+	t.Run("success - returns first identity ID", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/admin/identities", r.URL.Path)
+			assert.Equal(t, "1", r.URL.Query().Get("page_size"))
+			assert.Equal(t, "GET", r.Method)
+
+			response := []map[string]any{
+				{
+					"id":        "user-123-uuid",
+					"schema_id": "default",
+				},
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		client := NewKratosClientWithAdmin("http://unused", server.URL, 5*time.Second)
+		id, err := client.GetFirstIdentityID(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, "user-123-uuid", id)
+	})
+
+	t.Run("error - admin URL not configured", func(t *testing.T) {
+		client := NewKratosClient("http://kratos:4433", 5*time.Second)
+		_, err := client.GetFirstIdentityID(context.Background())
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "admin base URL not configured")
+	})
+
+	t.Run("error - no identities found", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode([]map[string]any{})
+		}))
+		defer server.Close()
+
+		client := NewKratosClientWithAdmin("http://unused", server.URL, 5*time.Second)
+		_, err := client.GetFirstIdentityID(context.Background())
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no identities found")
+	})
+
+	t.Run("error - server error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer server.Close()
+
+		client := NewKratosClientWithAdmin("http://unused", server.URL, 5*time.Second)
+		_, err := client.GetFirstIdentityID(context.Background())
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to fetch identities: status 500")
+	})
+
+	t.Run("error - invalid JSON response", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`invalid json`))
+		}))
+		defer server.Close()
+
+		client := NewKratosClientWithAdmin("http://unused", server.URL, 5*time.Second)
+		_, err := client.GetFirstIdentityID(context.Background())
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to decode response")
+	})
+
+	t.Run("error - connection failure", func(t *testing.T) {
+		client := NewKratosClientWithAdmin("http://unused", "http://localhost:99999", 5*time.Second)
+		_, err := client.GetFirstIdentityID(context.Background())
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to fetch identities")
+	})
+}

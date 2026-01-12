@@ -9,7 +9,8 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	KratosURL            string        // Kratos internal URL
+	KratosURL            string        // Kratos internal URL (Frontend API - port 4433)
+	KratosAdminURL       string        // Kratos Admin API URL (port 4434)
 	Port                 string        // Service port
 	CacheTTL             time.Duration // Session cache TTL
 	CSRFSecret           string        // CSRF secret for token generation
@@ -24,6 +25,7 @@ type Config struct {
 func Load() (*Config, error) {
 	config := &Config{
 		KratosURL:            getEnv("KRATOS_URL", "http://kratos:4433"),
+		KratosAdminURL:       getEnv("KRATOS_ADMIN_URL", "http://kratos:4434"),
 		Port:                 getEnv("PORT", "8888"),
 		CacheTTL:             5 * time.Minute, // Default 5 minutes
 		CSRFSecret:           getEnv("CSRF_SECRET", ""),

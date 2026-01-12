@@ -68,14 +68,17 @@ func main() {
 	sessionCache := cache.NewSessionCache(cfg.CacheTTL)
 	slog.Info("session cache initialized", "ttl", cfg.CacheTTL)
 
-	kratosClient := client.NewKratosClient(cfg.KratosURL, 5*time.Second)
-	slog.Info("kratos client initialized", "base_url", cfg.KratosURL)
+	kratosClient := client.NewKratosClientWithAdmin(cfg.KratosURL, cfg.KratosAdminURL, 5*time.Second)
+	slog.Info("kratos client initialized",
+		"base_url", cfg.KratosURL,
+		"admin_url", cfg.KratosAdminURL)
 
 	// Initialize handlers
 	validateHandler := handler.NewValidateHandler(kratosClient, sessionCache)
 	sessionHandler := handler.NewSessionHandler(kratosClient, sessionCache, cfg.AuthSharedSecret, cfg)
 	csrfHandler := handler.NewCSRFHandler(kratosClient, cfg)
 	healthHandler := handler.NewHealthHandler()
+	internalHandler := handler.NewInternalHandler(kratosClient)
 
 	// Setup Echo server
 	e := echo.New()
@@ -121,6 +124,9 @@ func main() {
 	e.GET("/session", sessionHandler.Handle)
 	e.POST("/csrf", csrfHandler.Handle)
 	e.GET("/health", healthHandler.Handle)
+
+	// Internal routes for service-to-service communication
+	e.GET("/internal/system-user", internalHandler.HandleSystemUser)
 
 	// Start server
 	address := fmt.Sprintf(":%s", cfg.Port)

@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -19,23 +20,33 @@ type Identity struct {
 
 // KratosClient handles communication with Ory Kratos
 type KratosClient struct {
-	client *kratos.APIClient
+	client       *kratos.APIClient
+	adminBaseURL string
+	httpClient   *http.Client
 }
 
 // NewKratosClient creates a new Kratos API client
 func NewKratosClient(baseURL string, timeout time.Duration) *KratosClient {
+	return NewKratosClientWithAdmin(baseURL, "", timeout)
+}
+
+// NewKratosClientWithAdmin creates a new Kratos API client with Admin API support
+func NewKratosClientWithAdmin(baseURL, adminBaseURL string, timeout time.Duration) *KratosClient {
 	configuration := kratos.NewConfiguration()
 	configuration.Servers = []kratos.ServerConfiguration{
 		{
 			URL: baseURL,
 		},
 	}
-	configuration.HTTPClient = &http.Client{
+	httpClient := &http.Client{
 		Timeout: timeout,
 	}
+	configuration.HTTPClient = httpClient
 
 	return &KratosClient{
-		client: kratos.NewAPIClient(configuration),
+		client:       kratos.NewAPIClient(configuration),
+		adminBaseURL: adminBaseURL,
+		httpClient:   httpClient,
 	}
 }
 
@@ -92,4 +103,45 @@ func (c *KratosClient) Whoami(ctx context.Context, cookie string) (*Identity, er
 		CreatedAt: createdAt,
 		SessionID: sessionID, // KratosのセッションIDを設定
 	}, nil
+}
+
+// adminIdentity represents a Kratos identity from Admin API
+type adminIdentity struct {
+	ID string `json:"id"`
+}
+
+// GetFirstIdentityID fetches the first identity ID from Kratos Admin API.
+// This is used for internal service operations that need a system user.
+func (c *KratosClient) GetFirstIdentityID(ctx context.Context) (string, error) {
+	if c.adminBaseURL == "" {
+		return "", fmt.Errorf("admin base URL not configured")
+	}
+
+	url := fmt.Sprintf("%s/admin/identities?page_size=1", c.adminBaseURL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch identities: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to fetch identities: status %d", resp.StatusCode)
+	}
+
+	var identities []adminIdentity
+	if err := json.NewDecoder(resp.Body).Decode(&identities); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if len(identities) == 0 {
+		return "", fmt.Errorf("no identities found in Kratos")
+	}
+
+	return identities[0].ID, nil
 }
