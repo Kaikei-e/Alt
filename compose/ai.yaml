@@ -1,10 +1,33 @@
 # compose/ai.yaml - AI/LLM services
-# news-creator (Ollama), pre-processor
+# news-creator (Ollama), pre-processor, redis-cache
 
 include:
   - base.yaml
 
 services:
+  # Redis cache for news-creator recap summaries
+  redis-cache:
+    image: redis:8.0.2-alpine
+    container_name: redis-cache
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-cache-data:/data
+    networks:
+      - alt-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    labels:
+      - rask.group=redis-cache
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   news-creator:
     container_name: news-creator
     env_file:
@@ -33,6 +56,10 @@ services:
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
+      # Cache settings
+      - CACHE_ENABLED=${CACHE_ENABLED:-true}
+      - CACHE_REDIS_URL=redis://redis-cache:6379/0
+      - CACHE_TTL_SECONDS=${CACHE_TTL_SECONDS:-86400}
     secrets:
       - service_secret
     volumes:
@@ -45,6 +72,8 @@ services:
     depends_on:
       news-creator-volume-init:
         condition: service_completed_successfully
+      redis-cache:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/health"]
       interval: 30s
@@ -109,3 +138,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  redis-cache-data:
