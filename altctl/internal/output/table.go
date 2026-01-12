@@ -5,11 +5,14 @@ import (
 	"os"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 )
 
 // Table provides table rendering utilities
 type Table struct {
-	table *tablewriter.Table
+	table  *tablewriter.Table
+	header []string
+	rows   [][]string
 }
 
 // NewTable creates a new table with default styling
@@ -19,46 +22,61 @@ func NewTable(headers []string) *Table {
 
 // NewTableWithWriter creates a new table with a custom writer
 func NewTableWithWriter(w io.Writer, headers []string) *Table {
-	table := tablewriter.NewWriter(w)
-	table.SetHeader(headers)
-	table.SetAutoWrapText(false)
-	table.SetAutoFormatHeaders(true)
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.SetCenterSeparator("")
-	table.SetColumnSeparator("")
-	table.SetRowSeparator("")
-	table.SetHeaderLine(false)
-	table.SetBorder(false)
-	table.SetTablePadding("  ")
-	table.SetNoWhiteSpace(true)
+	table := tablewriter.NewTable(w,
+		tablewriter.WithConfig(tablewriter.Config{
+			Row: tw.CellConfig{
+				Formatting: tw.CellFormatting{
+					AutoWrap: tw.WrapNone,
+				},
+				Alignment: tw.CellAlignment{
+					Global: tw.AlignLeft,
+				},
+			},
+			Header: tw.CellConfig{
+				Formatting: tw.CellFormatting{
+					AutoFormat: tw.On,
+				},
+				Alignment: tw.CellAlignment{
+					Global: tw.AlignLeft,
+				},
+			},
+		}),
+		tablewriter.WithRendition(tw.Rendition{
+			Borders: tw.BorderNone,
+			Settings: tw.Settings{
+				Separators: tw.Separators{
+					ShowHeader: tw.Off,
+				},
+			},
+		}),
+	)
 
-	return &Table{table: table}
+	return &Table{table: table, header: headers}
 }
 
 // AddRow adds a row to the table
 func (t *Table) AddRow(row []string) {
-	t.table.Append(row)
+	t.rows = append(t.rows, row)
 }
 
 // AddRows adds multiple rows to the table
 func (t *Table) AddRows(rows [][]string) {
-	for _, row := range rows {
-		t.table.Append(row)
-	}
+	t.rows = append(t.rows, rows...)
 }
 
 // Render outputs the table
 func (t *Table) Render() {
+	t.table.Header(t.header)
+	t.table.Bulk(t.rows)
 	t.table.Render()
 }
 
-// SetColumnColors sets colors for specific columns
-func (t *Table) SetColumnColors(colors ...tablewriter.Colors) {
-	t.table.SetColumnColor(colors...)
+// SetColumnColors sets colors for specific columns (no-op in v1)
+func (t *Table) SetColumnColors(colors ...any) {
+	// Colors are handled differently in v1
 }
 
-// SetHeaderColors sets colors for header columns
-func (t *Table) SetHeaderColors(colors ...tablewriter.Colors) {
-	t.table.SetHeaderColor(colors...)
+// SetHeaderColors sets colors for header columns (no-op in v1)
+func (t *Table) SetHeaderColors(colors ...any) {
+	// Colors are handled differently in v1
 }

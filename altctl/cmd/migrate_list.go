@@ -2,10 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
-	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 
 	"github.com/alt-project/altctl/internal/migrate"
@@ -57,20 +55,10 @@ func runMigrateList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create table
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Name", "Created", "Volumes", "Size"})
-	table.SetBorder(false)
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.SetCenterSeparator("")
-	table.SetColumnSeparator("")
-	table.SetRowSeparator("")
-	table.SetHeaderLine(false)
-	table.SetTablePadding("  ")
-	table.SetNoWhiteSpace(true)
+	table := output.NewTable([]string{"Name", "Created", "Volumes", "Size"})
 
 	for _, b := range backups {
-		table.Append([]string{
+		table.AddRow([]string{
 			b.Name,
 			b.CreatedAt.Format("2006-01-02 15:04:05"),
 			fmt.Sprintf("%d", b.VolumeCount),
