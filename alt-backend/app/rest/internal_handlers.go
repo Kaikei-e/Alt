@@ -18,13 +18,12 @@ func registerInternalRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 	v1.GET("/system-user", func(c echo.Context) error {
 		ctx := c.Request().Context()
 
-		// Query the database directly via pool
-		// We just need any valid user ID to associate system-generated/synced articles with
-		// In a single-user system, getting the first user is sufficient
-		var userID string
-		err := container.AltDBRepository.GetPool().QueryRow(ctx, "SELECT id FROM users LIMIT 1").Scan(&userID)
+		// Fetch system user from Kratos (BFF/Aggregator pattern)
+		// This allows us to get the first identity from the central identity provider
+		// rather than maintaining a separate users table in alt-backend
+		userID, err := container.KratosClient.GetFirstIdentityID(ctx)
 		if err != nil {
-			logger.Logger.Error("Failed to fetch system user", "error", err)
+			logger.Logger.Error("Failed to fetch system user from Kratos", "error", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "Failed to fetch system user",
 			})

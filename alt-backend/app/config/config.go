@@ -18,6 +18,7 @@ type Config struct {
 	Recap         RecapConfig         `json:"recap"`
 	Auth          AuthConfig          `json:"auth"`
 	Rag           RAGConfig           `json:"rag"`
+	AuthHub       AuthHubConfig       `json:"auth_hub"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -52,6 +53,10 @@ type RecapConfig struct {
 type RAGConfig struct {
 	OrchestratorURL        string `json:"orchestrator_url" env:"RAG_ORCHESTRATOR_URL" default:"http://rag-orchestrator:9010"`
 	OrchestratorConnectURL string `json:"orchestrator_connect_url" env:"RAG_ORCHESTRATOR_CONNECT_URL" default:"http://rag-orchestrator:9011"`
+}
+
+type AuthHubConfig struct {
+	URL string `json:"url" env:"AUTH_HUB_URL" default:"http://auth-hub:8888"`
 }
 
 type AuthConfig struct {

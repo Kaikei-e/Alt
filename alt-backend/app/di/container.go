@@ -7,6 +7,7 @@ import (
 	"alt/config"
 	"alt/driver/alt_db"
 	"alt/driver/csrf_token_driver"
+	"alt/driver/kratos_client"
 	"alt/driver/search_indexer_connect"
 	"alt/gateway/archive_article_gateway"
 	"alt/gateway/article_gateway"
@@ -82,6 +83,9 @@ type ApplicationComponents struct {
 
 	// Repository
 	AltDBRepository *alt_db.AltDBRepository
+
+	// Drivers
+	KratosClient kratos_client.KratosClient
 
 	// Gateways
 	RobotsTxtGateway             *robots_txt_gateway.RobotsTxtGateway
@@ -272,6 +276,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	// MorningLetter Connect-RPC gateway (calls rag-orchestrator)
 	morningLetterConnectGateway := morning_letter_connect_gateway.NewGateway(cfg.Rag.OrchestratorConnectURL, slog.Default())
 
+	// Auth-hub client for identity management (abstracts Kratos)
+	kratosClientImpl := kratos_client.NewKratosClient(cfg.AuthHub.URL)
+
 	return &ApplicationComponents{
 		// Ports
 		ConfigPort:       configPort,
@@ -280,6 +287,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 		// Repository
 		AltDBRepository: altDBRepository,
+
+		// Drivers
+		KratosClient: kratosClientImpl,
 
 		// Gateways
 		RobotsTxtGateway:            robotsTxtGatewayImpl,
