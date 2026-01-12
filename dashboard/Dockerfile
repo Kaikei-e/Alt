@@ -15,12 +15,11 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
-COPY requirements.txt .
+COPY pyproject.toml uv.lock ./
 
 # 依存関係をインストール (仮想環境作成)
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv venv /app/.venv && \
-    uv pip install --no-cache -r requirements.txt
+    uv sync --frozen --no-dev
 
 # ==============================================================================
 # ランタイムステージ
