@@ -53,6 +53,7 @@
 		"@vitest/browser-playwright": "^4.0.16",
 		"axe-playwright": "^2.2.2",
 		"concurrently": "^9.1.2",
+		"jsdom": "^27.4.0",
 		"jsonwebtoken": "^9.0.2",
 		"msw": "^2.12.7",
 		"svelte": "^5.46.1",
