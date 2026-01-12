@@ -115,6 +115,11 @@ class NewsCreatorConfig:
         self.warmup_enabled = os.getenv("WARMUP_ENABLED", "true").lower() == "true"
         self.warmup_keep_alive_minutes = self._get_int("WARMUP_KEEP_ALIVE_MINUTES", 30)
 
+        # Cache settings (Redis)
+        self.cache_enabled = os.getenv("CACHE_ENABLED", "false").lower() == "true"
+        self.cache_redis_url = os.getenv("CACHE_REDIS_URL", "redis://localhost:6379/0")
+        self.cache_ttl_seconds = self._get_int("CACHE_TTL_SECONDS", 86400)  # 24 hours
+
         # Build bucket model names set for quick lookup
         self._bucket_model_names = {
             # self.model_8k_name,  # 8kモデルは使用しない

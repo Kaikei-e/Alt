@@ -3,12 +3,15 @@
 import logging
 from fastapi import APIRouter, HTTPException
 
-from news_creator.domain.models import RecapSummaryRequest, RecapSummaryResponse
+from news_creator.domain.models import (
+    BatchRecapSummaryRequest,
+    BatchRecapSummaryResponse,
+    RecapSummaryRequest,
+    RecapSummaryResponse,
+)
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
 
 logger = logging.getLogger(__name__)
-
-router = APIRouter()
 
 
 def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
@@ -21,6 +24,7 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
     Returns:
         Configured APIRouter
     """
+    router = APIRouter()
 
     @router.post("/v1/summary/generate", response_model=RecapSummaryResponse)
     async def recap_summary_endpoint(request: RecapSummaryRequest) -> RecapSummaryResponse:
@@ -55,6 +59,37 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
             logger.exception(
                 "Unexpected error while generating recap summary",
                 extra={"job_id": str(request.job_id)},
+            )
+            raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+    @router.post("/v1/summary/generate/batch", response_model=BatchRecapSummaryResponse)
+    async def batch_recap_summary_endpoint(
+        request: BatchRecapSummaryRequest,
+    ) -> BatchRecapSummaryResponse:
+        """
+        Generate multiple Japanese recap summaries in a single request.
+
+        This endpoint reduces the "chatty microservices" anti-pattern by allowing
+        multiple genres to be processed in a single HTTP request.
+
+        Args:
+            request: Batch request containing multiple individual recap requests
+
+        Returns:
+            Batch response with successful summaries and any errors
+        """
+        logger.info(
+            "Received batch recap summary request",
+            extra={"request_count": len(request.requests)},
+        )
+
+        try:
+            return await usecase.generate_batch_summary(request)
+
+        except Exception as exc:
+            logger.exception(
+                "Unexpected error while processing batch recap summary",
+                extra={"request_count": len(request.requests)},
             )
             raise HTTPException(status_code=500, detail="Internal server error") from exc
 

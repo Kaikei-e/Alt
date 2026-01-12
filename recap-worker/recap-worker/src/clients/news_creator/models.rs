@@ -150,3 +150,30 @@ pub(crate) struct SummaryMetadata {
     #[serde(default)]
     processing_time_ms: Option<usize>,
 }
+
+// ============================================================================
+// Batch Processing Models (to reduce chatty microservices anti-pattern)
+// ============================================================================
+
+/// バッチ要約リクエスト。
+/// 複数のジャンル要約を一度に処理することで、HTTP往復を削減する。
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct BatchSummaryRequest {
+    pub(crate) requests: Vec<SummaryRequest>,
+}
+
+/// バッチ内の個別エラー。
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct BatchSummaryError {
+    pub(crate) job_id: Uuid,
+    pub(crate) genre: String,
+    pub(crate) error: String,
+}
+
+/// バッチ要約レスポンス。
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct BatchSummaryResponse {
+    pub(crate) responses: Vec<SummaryResponse>,
+    pub(crate) errors: Vec<BatchSummaryError>,
+}

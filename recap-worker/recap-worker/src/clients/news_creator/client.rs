@@ -13,8 +13,8 @@ use crate::schema::{news_creator::SUMMARY_RESPONSE_SCHEMA, validate_json};
 
 use super::builder::SummaryRequestBuilder;
 use super::models::{
-    GenreTieBreakRequest, GenreTieBreakResponse, NewsCreatorSummary, SummaryRequest,
-    SummaryResponse, truncate_error_message,
+    BatchSummaryRequest, BatchSummaryResponse, GenreTieBreakRequest, GenreTieBreakResponse,
+    NewsCreatorSummary, SummaryRequest, SummaryResponse, truncate_error_message,
 };
 
 #[derive(Debug, Clone)]
@@ -181,6 +181,68 @@ impl NewsCreatorClient {
         // 検証済みのJSONを構造体にデシリアライズ
         serde_json::from_value(response_json)
             .context("failed to deserialize validated summary response")
+    }
+
+    /// 複数ジャンルの要約をバッチで生成する。
+    ///
+    /// チャッティマイクロサービスアンチパターンを回避するため、
+    /// 複数の要約リクエストを1回のHTTPリクエストで処理する。
+    ///
+    /// # Arguments
+    /// * `requests` - 複数の要約リクエスト
+    ///
+    /// # Returns
+    /// バッチ要約レスポンス（成功した要約とエラーを含む）
+    pub(crate) async fn generate_batch_summary(
+        &self,
+        requests: Vec<SummaryRequest>,
+    ) -> Result<BatchSummaryResponse> {
+        let url = self
+            .base_url
+            .join("v1/summary/generate/batch")
+            .context("failed to build batch summary generation URL")?;
+
+        let request_count = requests.len();
+        debug!(
+            request_count = request_count,
+            "sending batch summary generation request to news-creator"
+        );
+
+        let batch_request = BatchSummaryRequest { requests };
+
+        // バッチリクエストには長めのタイムアウトを設定
+        let batch_timeout = self.summary_timeout * 3;
+
+        let response = self
+            .client
+            .post(url)
+            .json(&batch_request)
+            .timeout(batch_timeout)
+            .send()
+            .await
+            .context("batch summary generation request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            let truncated_body = truncate_error_message(&body);
+            return Err(anyhow!(
+                "batch summary generation endpoint returned error status {status}: {truncated_body}"
+            ));
+        }
+
+        let batch_response: BatchSummaryResponse = response
+            .json()
+            .await
+            .context("failed to deserialize batch summary response")?;
+
+        debug!(
+            successful = batch_response.responses.len(),
+            failed = batch_response.errors.len(),
+            "batch summary generation completed"
+        );
+
+        Ok(batch_response)
     }
 
     /// クラスタリングレスポンスから要約リクエストを構築する。
@@ -518,5 +580,141 @@ mod tests_map_reduce {
 
         assert_eq!(response.summary.title, "Reduce Summary");
         assert_eq!(response.summary.bullets.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod tests_batch {
+    use super::*;
+    use uuid::Uuid;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn generate_batch_summary_succeeds() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "responses": [
+                    {
+                        "job_id": "00000000-0000-0000-0000-000000000001",
+                        "genre": "tech",
+                        "summary": {
+                            "title": "Tech Summary",
+                            "bullets": ["Tech bullet 1"],
+                            "language": "ja"
+                        },
+                        "metadata": {
+                            "model": "gemma3:4b"
+                        }
+                    },
+                    {
+                        "job_id": "00000000-0000-0000-0000-000000000002",
+                        "genre": "politics",
+                        "summary": {
+                            "title": "Politics Summary",
+                            "bullets": ["Politics bullet 1"],
+                            "language": "ja"
+                        },
+                        "metadata": {
+                            "model": "gemma3:4b"
+                        }
+                    }
+                ],
+                "errors": []
+            })))
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+
+        let requests = vec![
+            SummaryRequest {
+                job_id: Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
+                genre: "tech".to_string(),
+                clusters: vec![],
+                genre_highlights: None,
+                options: None,
+            },
+            SummaryRequest {
+                job_id: Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap(),
+                genre: "politics".to_string(),
+                clusters: vec![],
+                genre_highlights: None,
+                options: None,
+            },
+        ];
+
+        let response = client
+            .generate_batch_summary(requests)
+            .await
+            .expect("batch summary succeeds");
+
+        assert_eq!(response.responses.len(), 2);
+        assert_eq!(response.errors.len(), 0);
+        assert_eq!(response.responses[0].genre, "tech");
+        assert_eq!(response.responses[1].genre, "politics");
+    }
+
+    #[tokio::test]
+    async fn generate_batch_summary_handles_partial_failure() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "responses": [
+                    {
+                        "job_id": "00000000-0000-0000-0000-000000000001",
+                        "genre": "tech",
+                        "summary": {
+                            "title": "Tech Summary",
+                            "bullets": ["Tech bullet 1"],
+                            "language": "ja"
+                        },
+                        "metadata": {
+                            "model": "gemma3:4b"
+                        }
+                    }
+                ],
+                "errors": [
+                    {
+                        "job_id": "00000000-0000-0000-0000-000000000002",
+                        "genre": "politics",
+                        "error": "LLM service unavailable"
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+
+        let requests = vec![
+            SummaryRequest {
+                job_id: Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
+                genre: "tech".to_string(),
+                clusters: vec![],
+                genre_highlights: None,
+                options: None,
+            },
+            SummaryRequest {
+                job_id: Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap(),
+                genre: "politics".to_string(),
+                clusters: vec![],
+                genre_highlights: None,
+                options: None,
+            },
+        ];
+
+        let response = client
+            .generate_batch_summary(requests)
+            .await
+            .expect("batch summary succeeds");
+
+        assert_eq!(response.responses.len(), 1);
+        assert_eq!(response.errors.len(), 1);
+        assert_eq!(response.responses[0].genre, "tech");
+        assert_eq!(response.errors[0].genre, "politics");
     }
 }

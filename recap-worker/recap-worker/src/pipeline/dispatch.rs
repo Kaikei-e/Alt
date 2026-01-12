@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::{
     clients::{
         NewsCreatorClient,
+        news_creator::models::{SummaryOptions, SummaryRequest, SummaryResponse},
         subworker::{ClusteringResponse, SubworkerClient},
     },
     config::Config,
@@ -249,6 +250,8 @@ impl MlLlmDispatchStage {
     }
 
     /// 要約生成結果からGenreResultを構築する。
+    /// 後方互換性のため保持（バッチ API ではインライン構築）。
+    #[allow(dead_code)]
     fn build_genre_result(
         genre: &str,
         clustering_response: ClusteringResponse,
@@ -288,6 +291,8 @@ impl MlLlmDispatchStage {
     }
 
     /// メタデータを取得して要約リクエストを構築し、要約を生成する。
+    /// 後方互換性のため保持（バッチ API への移行後は未使用）。
+    #[allow(dead_code)]
     async fn generate_summary_with_metadata(
         &self,
         job_id: Uuid,
@@ -358,6 +363,94 @@ impl MlLlmDispatchStage {
             .generate_summary(&summary_request)
             .await
     }
+
+    /// メタデータを取得して SummaryRequest を構築する（HTTP 呼び出しなし）。
+    /// バッチ処理用にリクエスト構築のみを行う。
+    async fn build_summary_request_for_batch(
+        &self,
+        job_id: Uuid,
+        genre: &str,
+        clustering_response: &ClusteringResponse,
+    ) -> Result<SummaryRequest> {
+        // 記事IDのリストを収集
+        let article_ids: Vec<String> = clustering_response
+            .clusters
+            .iter()
+            .flat_map(|cluster| {
+                cluster
+                    .representatives
+                    .iter()
+                    .map(|rep| rep.article_id.clone())
+            })
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        // メタデータを取得
+        let article_metadata = match self.dao.get_article_metadata(job_id, &article_ids).await {
+            Ok(metadata) => metadata,
+            Err(e) => {
+                warn!(
+                    job_id = %job_id,
+                    genre = %genre,
+                    error = ?e,
+                    "failed to fetch article metadata, proceeding without metadata"
+                );
+                std::collections::HashMap::new()
+            }
+        };
+
+        let news_creator_client = self.news_creator_client.clone();
+        let clustering_response_clone = clustering_response.clone();
+
+        // SummaryRequest 構築（CPU集約的なためブロッキングタスクで実行）
+        let mut summary_request = tokio::task::spawn_blocking(move || {
+            news_creator_client.build_summary_request(
+                job_id,
+                &clustering_response_clone,
+                8, // Plan 9: "5-8 sentences" for actual summary input
+                &article_metadata,
+            )
+        })
+        .await
+        .context("failed to join build_summary_request task")?;
+
+        // 出力フォーマットオプションを設定
+        summary_request.options = Some(SummaryOptions {
+            max_bullets: Some(15), // Plan 9: Max 15 bullets for output
+            temperature: Some(0.7),
+        });
+
+        Ok(summary_request)
+    }
+
+    /// 要約メトリクスを保存するヘルパー。
+    async fn save_summary_metrics(&self, job_id: Uuid, genre: &str, response: &SummaryResponse) {
+        match serde_json::to_value(&response.metadata) {
+            Ok(metadata_value) => {
+                if let Err(e) = self
+                    .dao
+                    .save_system_metrics(job_id, "summarization", &metadata_value)
+                    .await
+                {
+                    warn!(
+                        job_id = %job_id,
+                        genre = %genre,
+                        error = ?e,
+                        "failed to save summarization metrics"
+                    );
+                }
+            }
+            Err(e) => {
+                warn!(
+                    job_id = %job_id,
+                    genre = %genre,
+                    error = ?e,
+                    "failed to serialize summary metadata for metrics"
+                );
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -393,9 +486,9 @@ impl DispatchStage for MlLlmDispatchStage {
             .cluster_all_genres(job, &genres, evidence_arc.clone())
             .await;
 
-        // Phase 2: サマリー生成は完全直列（キュー方式）
+        // Phase 2: サマリー生成はバッチ API で実行（1回の HTTP 呼び出し）
         let mut genre_results = self
-            .generate_summaries_sequentially(job, clustering_results, evidence_arc)
+            .generate_summaries_with_batch(job, clustering_results, evidence_arc)
             .await;
 
         // 証拠がないジャンル（設定されているが処理されていない）を追加
@@ -568,6 +661,8 @@ impl MlLlmDispatchStage {
     }
 
     /// Phase 2: サマリー生成を完全直列（キュー方式）で実行
+    /// 後方互換性のため保持（バッチ API への移行後は未使用）。
+    #[allow(dead_code)]
     async fn generate_summaries_sequentially(
         &self,
         job: &JobContext,
@@ -649,6 +744,223 @@ impl MlLlmDispatchStage {
             job_id = %job.job_id,
             completed_count = genre_results.len(),
             "completed sequential summary generation phase"
+        );
+
+        genre_results
+    }
+
+    /// Phase 2: サマリー生成をバッチ API で実行（1回の HTTP 呼び出しで全ジャンル処理）
+    async fn generate_summaries_with_batch(
+        &self,
+        job: &JobContext,
+        clustering_results: HashMap<String, Result<ClusteringResponse>>,
+        _evidence: Arc<EvidenceBundle>,
+    ) -> HashMap<String, GenreResult> {
+        info!(
+            job_id = %job.job_id,
+            genre_count = clustering_results.len(),
+            "starting batch summary generation"
+        );
+
+        // 1. クラスタリング成功/失敗を分離
+        let mut successful: Vec<(String, ClusteringResponse)> = Vec::new();
+        let mut genre_results: HashMap<String, GenreResult> = HashMap::new();
+
+        for (genre, result) in clustering_results {
+            match result {
+                Ok(clustering_response) => {
+                    successful.push((genre, clustering_response));
+                }
+                Err(e) => {
+                    warn!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        error = ?e,
+                        "skipping summary generation due to clustering failure"
+                    );
+                    genre_results.insert(genre.clone(), Self::clustering_error_result(&genre, e));
+                }
+            }
+        }
+
+        if successful.is_empty() {
+            info!(
+                job_id = %job.job_id,
+                "no successful clustering results, skipping batch summary generation"
+            );
+            return genre_results;
+        }
+
+        // 2. 全リクエストを並列構築
+        info!(
+            job_id = %job.job_id,
+            genre_count = successful.len(),
+            "building summary requests for batch"
+        );
+
+        let request_futures: Vec<_> = successful
+            .iter()
+            .map(|(genre, clustering_response)| {
+                self.build_summary_request_for_batch(job.job_id, genre, clustering_response)
+            })
+            .collect();
+
+        let request_results = futures::future::join_all(request_futures).await;
+
+        // 3. 有効なリクエストを収集し、失敗したものはエラーとして記録
+        let mut valid_requests: Vec<SummaryRequest> = Vec::new();
+        let mut genre_clustering_map: HashMap<String, ClusteringResponse> = HashMap::new();
+
+        for ((genre, clustering_response), req_result) in
+            successful.into_iter().zip(request_results)
+        {
+            match req_result {
+                Ok(request) => {
+                    genre_clustering_map.insert(genre, clustering_response);
+                    valid_requests.push(request);
+                }
+                Err(e) => {
+                    warn!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        error = ?e,
+                        "failed to build summary request"
+                    );
+                    genre_results.insert(
+                        genre.clone(),
+                        GenreResult {
+                            genre,
+                            clustering_response: Some(clustering_response),
+                            summary_response_id: None,
+                            summary_response: None,
+                            error: Some(format!("Failed to build request: {}", e)),
+                        },
+                    );
+                }
+            }
+        }
+
+        if valid_requests.is_empty() {
+            info!(
+                job_id = %job.job_id,
+                "no valid summary requests, skipping batch API call"
+            );
+            return genre_results;
+        }
+
+        // 4. バッチ API 呼び出し
+        info!(
+            job_id = %job.job_id,
+            request_count = valid_requests.len(),
+            "calling batch summary API"
+        );
+
+        let batch_response = self
+            .news_creator_client
+            .generate_batch_summary(valid_requests)
+            .await;
+
+        // 5. レスポンスをマッピング
+        match batch_response {
+            Ok(response) => {
+                info!(
+                    job_id = %job.job_id,
+                    success_count = response.responses.len(),
+                    error_count = response.errors.len(),
+                    "batch summary API completed"
+                );
+
+                // 成功したレスポンスを処理
+                for summary_response in response.responses {
+                    let genre = summary_response.genre.clone();
+                    if let Some(clustering_response) = genre_clustering_map.remove(&genre) {
+                        // メトリクス保存
+                        self.save_summary_metrics(job.job_id, &genre, &summary_response)
+                            .await;
+
+                        let summary_id =
+                            format!("{}-{}", summary_response.job_id, summary_response.genre);
+                        genre_results.insert(
+                            genre.clone(),
+                            GenreResult {
+                                genre,
+                                clustering_response: Some(clustering_response),
+                                summary_response_id: Some(summary_id),
+                                summary_response: Some(summary_response),
+                                error: None,
+                            },
+                        );
+                    }
+                }
+
+                // エラーを処理
+                for error in response.errors {
+                    let genre = error.genre.clone();
+                    if let Some(clustering_response) = genre_clustering_map.remove(&genre) {
+                        warn!(
+                            job_id = %job.job_id,
+                            genre = %genre,
+                            error = %error.error,
+                            "batch summary failed for genre"
+                        );
+                        genre_results.insert(
+                            genre.clone(),
+                            GenreResult {
+                                genre,
+                                clustering_response: Some(clustering_response),
+                                summary_response_id: None,
+                                summary_response: None,
+                                error: Some(error.error),
+                            },
+                        );
+                    }
+                }
+
+                // 残ったジャンル（レスポンスもエラーもない）を処理
+                for (genre, clustering_response) in genre_clustering_map {
+                    warn!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        "genre missing from batch response"
+                    );
+                    genre_results.insert(
+                        genre.clone(),
+                        GenreResult {
+                            genre,
+                            clustering_response: Some(clustering_response),
+                            summary_response_id: None,
+                            summary_response: None,
+                            error: Some("Missing from batch response".to_string()),
+                        },
+                    );
+                }
+            }
+            Err(e) => {
+                // バッチ全体が失敗した場合
+                error!(
+                    job_id = %job.job_id,
+                    error = ?e,
+                    "batch summary API failed completely"
+                );
+                for (genre, clustering_response) in genre_clustering_map {
+                    genre_results.insert(
+                        genre.clone(),
+                        GenreResult {
+                            genre,
+                            clustering_response: Some(clustering_response),
+                            summary_response_id: None,
+                            summary_response: None,
+                            error: Some(format!("Batch API failed: {}", e)),
+                        },
+                    );
+                }
+            }
+        }
+
+        info!(
+            job_id = %job.job_id,
+            completed_count = genre_results.len(),
+            "completed batch summary generation phase"
         );
 
         genre_results

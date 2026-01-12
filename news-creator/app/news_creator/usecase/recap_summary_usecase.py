@@ -1,12 +1,12 @@
 """Recap summary usecase - generates structured summaries from clustering output."""
 
+import asyncio
+import hashlib
 import json
 import logging
-import re
 import textwrap
-import os
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 from jinja2 import Template
@@ -18,12 +18,16 @@ except ImportError:
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import (
+    BatchRecapSummaryError,
+    BatchRecapSummaryRequest,
+    BatchRecapSummaryResponse,
     RecapSummaryRequest,
     RecapSummaryResponse,
     RecapSummary,
     RecapSummaryMetadata,
     IntermediateSummary,
 )
+from news_creator.port.cache_port import CachePort
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
 
@@ -33,9 +37,15 @@ logger = logging.getLogger(__name__)
 class RecapSummaryUsecase:
     """Generate recap summaries from evidence clusters via LLM."""
 
-    def __init__(self, config: NewsCreatorConfig, llm_provider: LLMProviderPort):
+    def __init__(
+        self,
+        config: NewsCreatorConfig,
+        llm_provider: LLMProviderPort,
+        cache: Optional[CachePort] = None,
+    ):
         self.config = config
         self.llm_provider = llm_provider
+        self.cache = cache
 
         # Load prompt template
         template_path = Path(__file__).parent.parent.parent / "prompts" / "recap_summary.jinja"
@@ -46,6 +56,16 @@ class RecapSummaryUsecase:
         """Produce structured summary JSON from clustering evidence."""
         if not request.clusters:
             raise ValueError("clusters must not be empty")
+
+        # Try to get from cache first
+        cache_key = self._generate_cache_key(request)
+        cached_response = await self._get_cached_response(cache_key)
+        if cached_response is not None:
+            logger.info(
+                "Returning cached recap summary",
+                extra={"job_id": str(request.job_id), "genre": request.genre},
+            )
+            return cached_response
 
         max_bullets = self._resolve_max_bullets(request)
         temperature_override = (
@@ -69,10 +89,157 @@ class RecapSummaryUsecase:
                     "cluster_count": len(request.clusters),
                 },
             )
-            return await self._generate_hierarchical_summary(request, max_bullets, temperature_override)
+            response = await self._generate_hierarchical_summary(request, max_bullets, temperature_override)
+            await self._cache_response(cache_key, response)
+            return response
 
         # Single-shot summarization for smaller inputs
-        return await self._generate_single_shot_summary(request, max_bullets, temperature_override)
+        response = await self._generate_single_shot_summary(request, max_bullets, temperature_override)
+        await self._cache_response(cache_key, response)
+        return response
+
+    async def generate_batch_summary(
+        self, batch_request: BatchRecapSummaryRequest
+    ) -> BatchRecapSummaryResponse:
+        """Process multiple recap summary requests in parallel.
+
+        This method reduces the "chatty microservices" anti-pattern by allowing
+        multiple genres to be processed in a single HTTP request.
+
+        Args:
+            batch_request: Contains a list of individual recap summary requests
+
+        Returns:
+            BatchRecapSummaryResponse with successful responses and any errors
+        """
+        logger.info(
+            "Processing batch recap summary request",
+            extra={"request_count": len(batch_request.requests)},
+        )
+
+        # Create tasks for parallel execution
+        tasks = [
+            self._generate_summary_with_error_handling(req)
+            for req in batch_request.requests
+        ]
+
+        # Execute all requests in parallel
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+
+        # Separate successful responses from errors
+        responses: List[RecapSummaryResponse] = []
+        errors: List[BatchRecapSummaryError] = []
+
+        for req, result in zip(batch_request.requests, results):
+            if isinstance(result, BatchRecapSummaryError):
+                errors.append(result)
+            else:
+                responses.append(result)
+
+        logger.info(
+            "Batch recap summary completed",
+            extra={
+                "total_requests": len(batch_request.requests),
+                "successful": len(responses),
+                "failed": len(errors),
+            },
+        )
+
+        return BatchRecapSummaryResponse(responses=responses, errors=errors)
+
+    async def _generate_summary_with_error_handling(
+        self, request: RecapSummaryRequest
+    ) -> Union[RecapSummaryResponse, BatchRecapSummaryError]:
+        """Generate a summary with error handling for batch processing.
+
+        Args:
+            request: Individual recap summary request
+
+        Returns:
+            Either the successful response or an error object
+        """
+        try:
+            return await self.generate_summary(request)
+        except Exception as e:
+            logger.warning(
+                "Failed to generate summary in batch",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "error": str(e),
+                },
+            )
+            return BatchRecapSummaryError(
+                job_id=request.job_id,
+                genre=request.genre,
+                error=str(e),
+            )
+
+    async def _generate_chunk_summary(
+        self,
+        request: RecapSummaryRequest,
+        chunk_idx: int,
+        chunk_clusters: List,
+        json_schema: Dict[str, Any],
+        llm_options: Dict[str, Any],
+        total_chunks: int,
+    ) -> Optional[IntermediateSummary]:
+        """Generate an intermediate summary for a single chunk.
+
+        Args:
+            request: Original recap summary request
+            chunk_idx: Index of the current chunk (0-based)
+            chunk_clusters: Clusters for this chunk
+            json_schema: JSON schema for intermediate summary
+            llm_options: LLM generation options
+            total_chunks: Total number of chunks
+
+        Returns:
+            IntermediateSummary if successful, None otherwise
+        """
+        logger.debug(
+            "Map phase: Processing chunk",
+            extra={
+                "job_id": str(request.job_id),
+                "genre": request.genre,
+                "chunk_index": chunk_idx + 1,
+                "total_chunks": total_chunks,
+                "clusters_in_chunk": len(chunk_clusters),
+            },
+        )
+
+        # Create a temporary request for this chunk
+        chunk_request = RecapSummaryRequest(
+            job_id=request.job_id,
+            genre=request.genre,
+            clusters=chunk_clusters,
+            genre_highlights=None,
+            options=None,
+        )
+        chunk_prompt = self._build_prompt(chunk_request, max_bullets=4, intermediate=True)
+
+        try:
+            llm_response = await self.llm_provider.generate(
+                chunk_prompt,
+                num_predict=self.config.summary_num_predict // 2,
+                format=json_schema,
+                options=llm_options,
+            )
+
+            # Parse intermediate summary
+            parsed = json.loads(llm_response.response)
+            return IntermediateSummary(**parsed)
+        except Exception as e:
+            logger.warning(
+                "Failed to generate intermediate summary for chunk, skipping",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "chunk_index": chunk_idx + 1,
+                    "error": str(e),
+                },
+            )
+            return None
 
     def _estimate_cluster_section_length(self, request: RecapSummaryRequest) -> int:
         """Estimate the character length of cluster section for prompt."""
@@ -95,9 +262,8 @@ class RecapSummaryUsecase:
         temperature_override: Optional[float],
     ) -> RecapSummaryResponse:
         """Generate summary using hierarchical (map-reduce) approach."""
-        # Map phase: Split clusters into chunks and summarize each
+        # Map phase: Split clusters into chunks and summarize each in parallel
         chunks = self._split_clusters_into_chunks(request.clusters)
-        intermediate_summaries: List[IntermediateSummary] = []
 
         json_schema_intermediate = IntermediateSummary.model_json_schema()
         llm_options = {}
@@ -106,51 +272,36 @@ class RecapSummaryUsecase:
         else:
             llm_options["temperature"] = float(self.config.llm_temperature)
 
-        for chunk_idx, chunk_clusters in enumerate(chunks):
-            logger.info(
-                "Map phase: Summarizing chunk",
-                extra={
-                    "job_id": str(request.job_id),
-                    "genre": request.genre,
-                    "chunk_index": chunk_idx + 1,
-                    "total_chunks": len(chunks),
-                    "clusters_in_chunk": len(chunk_clusters),
-                },
+        logger.info(
+            "Map phase: Processing chunks in parallel",
+            extra={
+                "job_id": str(request.job_id),
+                "genre": request.genre,
+                "total_chunks": len(chunks),
+            },
+        )
+
+        # Create tasks for parallel execution of map phase
+        map_tasks = [
+            self._generate_chunk_summary(
+                request=request,
+                chunk_idx=chunk_idx,
+                chunk_clusters=chunk_clusters,
+                json_schema=json_schema_intermediate,
+                llm_options=llm_options,
+                total_chunks=len(chunks),
             )
+            for chunk_idx, chunk_clusters in enumerate(chunks)
+        ]
 
-            # Create a temporary request for this chunk
-            chunk_request = RecapSummaryRequest(
-                job_id=request.job_id,
-                genre=request.genre,
-                clusters=chunk_clusters,
-                genre_highlights=None,
-                options=None,
-            )
-            chunk_prompt = self._build_prompt(chunk_request, max_bullets=4, intermediate=True)  # Short bullets for intermediate
+        # Execute all map tasks in parallel
+        # Note: FIFO semaphore in OllamaGateway controls actual LLM concurrency
+        map_results = await asyncio.gather(*map_tasks, return_exceptions=False)
 
-            try:
-                llm_response = await self.llm_provider.generate(
-                    chunk_prompt,
-                    num_predict=self.config.summary_num_predict // 2,  # Shorter for intermediate
-                    format=json_schema_intermediate,
-                    options=llm_options,
-                )
-
-                # Parse intermediate summary
-                parsed = json.loads(llm_response.response)
-                intermediate = IntermediateSummary(**parsed)
-                intermediate_summaries.append(intermediate)
-            except Exception as e:
-                logger.warning(
-                    "Failed to generate intermediate summary for chunk, skipping",
-                    extra={
-                        "job_id": str(request.job_id),
-                        "genre": request.genre,
-                        "chunk_index": chunk_idx + 1,
-                        "error": str(e),
-                    },
-                )
-                # Continue with other chunks
+        # Collect successful intermediate summaries
+        intermediate_summaries: List[IntermediateSummary] = [
+            result for result in map_results if result is not None
+        ]
 
         if not intermediate_summaries:
             # Fallback if all map phases failed
@@ -743,4 +894,86 @@ class RecapSummaryUsecase:
             return int(value / 1_000_000)
         except (TypeError, ValueError):
             return None
+
+    # ============================================================================
+    # Cache Methods
+    # ============================================================================
+
+    def _generate_cache_key(self, request: RecapSummaryRequest) -> str:
+        """Generate a unique cache key for a recap summary request.
+
+        The key is based on the request content (clusters, genre, options),
+        not the job_id, so identical requests return the same cached result.
+        """
+        # Create a deterministic hash of the request content
+        key_data = {
+            "genre": request.genre,
+            "clusters": [
+                {
+                    "cluster_id": c.cluster_id,
+                    "sentences": [s.text for s in c.representative_sentences],
+                    "top_terms": c.top_terms,
+                }
+                for c in request.clusters
+            ],
+            "max_bullets": request.options.max_bullets if request.options else None,
+        }
+        content_hash = hashlib.sha256(
+            json.dumps(key_data, sort_keys=True, ensure_ascii=False).encode()
+        ).hexdigest()[:16]
+
+        return f"recap:summary:{request.genre}:{content_hash}"
+
+    async def _get_cached_response(
+        self, cache_key: str
+    ) -> Optional[RecapSummaryResponse]:
+        """Try to retrieve a cached response.
+
+        Args:
+            cache_key: The cache key to look up
+
+        Returns:
+            The cached response if found and valid, None otherwise
+        """
+        if self.cache is None:
+            return None
+
+        try:
+            cached_json = await self.cache.get(cache_key)
+            if cached_json is None:
+                return None
+
+            cached_data = json.loads(cached_json)
+            return RecapSummaryResponse(**cached_data)
+        except Exception as e:
+            logger.warning(
+                "Failed to retrieve cached response",
+                extra={"cache_key": cache_key, "error": str(e)},
+            )
+            return None
+
+    async def _cache_response(
+        self, cache_key: str, response: RecapSummaryResponse
+    ) -> None:
+        """Cache a response.
+
+        Args:
+            cache_key: The cache key to store under
+            response: The response to cache
+        """
+        if self.cache is None:
+            return
+
+        try:
+            response_json = response.model_dump_json()
+            await self.cache.set(cache_key, response_json)
+            logger.debug(
+                "Cached recap summary response",
+                extra={"cache_key": cache_key},
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to cache response",
+                extra={"cache_key": cache_key, "error": str(e)},
+            )
 

@@ -231,3 +231,39 @@ class ExpandQueryResponse(BaseModel):
     original_query: str = Field(description="Original input query")
     model: str = Field(description="Model used for generation")
     processing_time_ms: Optional[float] = Field(default=None, description="Processing time in milliseconds")
+
+
+# ============================================================================
+# Batch Processing Models (for chatty microservice anti-pattern fix)
+# ============================================================================
+
+
+class BatchRecapSummaryRequest(BaseModel):
+    """Batch request for multiple recap summaries."""
+
+    requests: List[RecapSummaryRequest] = Field(
+        min_length=1,
+        max_length=50,
+        description="List of individual recap summary requests"
+    )
+
+
+class BatchRecapSummaryError(BaseModel):
+    """Error details for a failed request in a batch."""
+
+    job_id: UUID
+    genre: str
+    error: str = Field(description="Error message describing the failure")
+
+
+class BatchRecapSummaryResponse(BaseModel):
+    """Response for batch recap summary processing."""
+
+    responses: List[RecapSummaryResponse] = Field(
+        default_factory=list,
+        description="List of successful recap summary responses"
+    )
+    errors: List[BatchRecapSummaryError] = Field(
+        default_factory=list,
+        description="List of errors for failed requests"
+    )
