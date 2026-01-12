@@ -50,7 +50,7 @@ func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) e
 		return nil
 	}
 
-	task, err := d.index.DeleteDocuments(ids)
+	task, err := d.index.DeleteDocuments(ids, nil)
 	if err != nil {
 		return &DriverError{
 			Op:  "DeleteDocuments",
@@ -165,7 +165,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		}
 
 		// Delete the dummy document
-		deleteTask, err := d.index.DeleteDocument("init")
+		deleteTask, err := d.index.DeleteDocument("init", nil)
 		if err == nil {
 			_, _ = d.index.WaitForTask(deleteTask.TaskUID, 15*1000)
 		}
