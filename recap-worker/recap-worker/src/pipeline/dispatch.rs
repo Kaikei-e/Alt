@@ -9,7 +9,9 @@ use uuid::Uuid;
 use crate::{
     clients::{
         NewsCreatorClient,
-        news_creator::models::{SummaryOptions, SummaryRequest, SummaryResponse},
+        news_creator::models::{
+            BatchSummaryResponse, SummaryOptions, SummaryRequest, SummaryResponse,
+        },
         subworker::{ClusteringResponse, SubworkerClient},
     },
     config::Config,
@@ -861,7 +863,27 @@ impl MlLlmDispatchStage {
             .await;
 
         // 5. レスポンスをマッピング
-        match batch_response {
+        self.process_batch_response(job, batch_response, genre_clustering_map, &mut genre_results)
+            .await;
+
+        info!(
+            job_id = %job.job_id,
+            completed_count = genre_results.len(),
+            "completed batch summary generation phase"
+        );
+
+        genre_results
+    }
+
+    /// バッチサマリーレスポンスを処理し、ジャンル結果を更新する。
+    async fn process_batch_response(
+        &self,
+        job: &JobContext,
+        batch_result: Result<BatchSummaryResponse>,
+        mut genre_clustering_map: HashMap<String, ClusteringResponse>,
+        genre_results: &mut HashMap<String, GenreResult>,
+    ) {
+        match batch_result {
             Ok(response) => {
                 info!(
                     job_id = %job.job_id,
@@ -874,7 +896,6 @@ impl MlLlmDispatchStage {
                 for summary_response in response.responses {
                     let genre = summary_response.genre.clone();
                     if let Some(clustering_response) = genre_clustering_map.remove(&genre) {
-                        // メトリクス保存
                         self.save_summary_metrics(job.job_id, &genre, &summary_response)
                             .await;
 
@@ -956,14 +977,6 @@ impl MlLlmDispatchStage {
                 }
             }
         }
-
-        info!(
-            job_id = %job.job_id,
-            completed_count = genre_results.len(),
-            "completed batch summary generation phase"
-        );
-
-        genre_results
     }
 }
 
