@@ -1,0 +1,170 @@
+syntax = "proto3";
+
+package services.mqhub.v1;
+
+option go_package = "mq-hub/gen/proto/services/mqhub/v1;mqhubv1";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Event Types
+// =============================================================================
+
+// Event represents a domain event to be published to Redis Streams.
+message Event {
+  // Unique event identifier (UUID v4)
+  string event_id = 1;
+  // Event type (e.g., "ArticleCreated", "SummarizeRequested")
+  string event_type = 2;
+  // Source service that produced the event
+  string source = 3;
+  // Timestamp when the event was created
+  google.protobuf.Timestamp created_at = 4;
+  // Type-specific payload (serialized JSON or protobuf)
+  bytes payload = 5;
+  // Metadata for tracing and correlation
+  map<string, string> metadata = 6;
+}
+
+// =============================================================================
+// Publish Messages
+// =============================================================================
+
+// PublishRequest sends a single event to a Redis Stream.
+message PublishRequest {
+  // Target stream name (e.g., "alt:events:articles")
+  string stream = 1;
+  // Event to publish
+  Event event = 2;
+}
+
+// PublishResponse contains the result of publishing an event.
+message PublishResponse {
+  // Redis Stream message ID (e.g., "1234567890123-0")
+  string message_id = 1;
+  // Whether the publish was successful
+  bool success = 2;
+}
+
+// PublishBatchRequest sends multiple events to a Redis Stream.
+message PublishBatchRequest {
+  // Target stream name
+  string stream = 1;
+  // Events to publish
+  repeated Event events = 2;
+}
+
+// PublishBatchResponse contains the results of batch publishing.
+message PublishBatchResponse {
+  // Message IDs for successfully published events
+  repeated string message_ids = 1;
+  // Number of successfully published events
+  int32 success_count = 2;
+  // Number of failed events
+  int32 failure_count = 3;
+  // Errors for failed events
+  repeated PublishError errors = 4;
+}
+
+// PublishError represents an error for a specific event in a batch.
+message PublishError {
+  // Index of the failed event in the batch
+  int32 index = 1;
+  // Error message
+  string error_message = 2;
+}
+
+// =============================================================================
+// Stream Management
+// =============================================================================
+
+// CreateConsumerGroupRequest creates a consumer group for a stream.
+message CreateConsumerGroupRequest {
+  // Stream name
+  string stream = 1;
+  // Consumer group name
+  string group = 2;
+  // Start ID: "0" for beginning, "$" for new messages only
+  string start_id = 3;
+}
+
+// CreateConsumerGroupResponse contains the result of creating a consumer group.
+message CreateConsumerGroupResponse {
+  // Whether the creation was successful
+  bool success = 1;
+  // Status message
+  string message = 2;
+}
+
+// StreamInfoRequest requests information about a stream.
+message StreamInfoRequest {
+  // Stream name
+  string stream = 1;
+}
+
+// StreamInfoResponse contains stream metadata.
+message StreamInfoResponse {
+  // Number of entries in the stream
+  int64 length = 1;
+  // Radix tree keys
+  int64 radix_tree_keys = 2;
+  // Radix tree nodes
+  int64 radix_tree_nodes = 3;
+  // First entry ID
+  string first_entry_id = 4;
+  // Last entry ID
+  string last_entry_id = 5;
+  // Consumer group information
+  repeated ConsumerGroupInfo groups = 6;
+}
+
+// ConsumerGroupInfo contains consumer group metadata.
+message ConsumerGroupInfo {
+  // Group name
+  string name = 1;
+  // Number of consumers in the group
+  int64 consumers = 2;
+  // Number of pending messages
+  int64 pending = 3;
+  // Last delivered message ID
+  string last_delivered_id = 4;
+}
+
+// =============================================================================
+// Health Check
+// =============================================================================
+
+// HealthCheckRequest is an empty request for health checking.
+message HealthCheckRequest {}
+
+// HealthCheckResponse contains the health status.
+message HealthCheckResponse {
+  // Whether the service is healthy
+  bool healthy = 1;
+  // Redis connection status
+  string redis_status = 2;
+  // Service uptime in seconds
+  int64 uptime_seconds = 3;
+}
+
+// =============================================================================
+// MQHubService Definition
+// =============================================================================
+
+// MQHubService provides message queue operations using Redis Streams.
+service MQHubService {
+  // Publish sends a single event to a Redis Stream.
+  rpc Publish(PublishRequest) returns (PublishResponse);
+
+  // PublishBatch sends multiple events to a Redis Stream.
+  rpc PublishBatch(PublishBatchRequest) returns (PublishBatchResponse);
+
+  // CreateConsumerGroup creates a consumer group for a stream.
+  rpc CreateConsumerGroup(CreateConsumerGroupRequest) returns (CreateConsumerGroupResponse);
+
+  // GetStreamInfo returns information about a stream.
+  rpc GetStreamInfo(StreamInfoRequest) returns (StreamInfoResponse);
+
+  // HealthCheck checks the health of the service.
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}

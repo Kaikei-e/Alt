@@ -1,0 +1,12 @@
+version: v2
+inputs:
+  - directory: .
+    paths:
+      - services/mqhub
+plugins:
+  - local: protoc-gen-go
+    out: ../mq-hub/app/gen/proto
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: ../mq-hub/app/gen/proto
+    opt: paths=source_relative
