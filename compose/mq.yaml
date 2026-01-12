@@ -1,0 +1,72 @@
+# compose/mq.yaml - Message Queue services
+# Redis Streams (8.4) and mq-hub event broker
+
+include:
+  - base.yaml
+
+services:
+  # Redis 8.4 for event streaming with multi-threaded I/O
+  redis-streams:
+    image: redis:8.4-alpine
+    container_name: redis-streams
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy noeviction
+      --appendonly yes
+      --io-threads 4
+      --io-threads-do-reads yes
+    volumes:
+      - redis-streams-data:/data
+    networks:
+      - alt-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    labels:
+      - rask.group=redis-streams
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # mq-hub event broker service
+  mq-hub:
+    build:
+      context: ../mq-hub
+      dockerfile: Dockerfile
+    container_name: mq-hub
+    environment:
+      - REDIS_URL=redis://redis-streams:6379
+      - CONNECT_PORT=9500
+      - LOG_LEVEL=info
+    depends_on:
+      redis-streams:
+        condition: service_healthy
+    networks:
+      - alt-network
+    ports:
+      - "9500:9500"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9500/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    labels:
+      - rask.group=mq-hub
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  redis-streams-data:
