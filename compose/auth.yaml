@@ -123,6 +123,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - KRATOS_URL=http://kratos:4433
+      - KRATOS_ADMIN_URL=http://kratos:4434
       - PORT=8888
       - CACHE_TTL=5m
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret

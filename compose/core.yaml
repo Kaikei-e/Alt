@@ -171,6 +171,7 @@ services:
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
+      - AUTH_HUB_URL=http://auth-hub:8888
     secrets:
       - auth_shared_secret
       - backend_token_secret

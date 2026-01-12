@@ -221,6 +221,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
     stop_grace_period: 12s
 
@@ -245,5 +247,191 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+    stop_grace_period: 12s
+
+  # Recap stack forwarders
+  recap-worker-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "recap-worker"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+    stop_grace_period: 12s
+
+  recap-subworker-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "recap-subworker"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+    stop_grace_period: 12s
+
+  dashboard-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "dashboard"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+    stop_grace_period: 12s
+
+  recap-evaluator-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "recap-evaluator"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+    stop_grace_period: 12s
+
+  recap-db-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "recap-db"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+    stop_grace_period: 12s
+
+  # RAG stack forwarders
+  rag-orchestrator-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "rag-orchestrator"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+    stop_grace_period: 12s
+
+  rag-db-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "rag-db"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
     restart: unless-stopped
     stop_grace_period: 12s
