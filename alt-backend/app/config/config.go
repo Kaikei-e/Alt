@@ -19,6 +19,7 @@ type Config struct {
 	Auth          AuthConfig          `json:"auth"`
 	Rag           RAGConfig           `json:"rag"`
 	AuthHub       AuthHubConfig       `json:"auth_hub"`
+	MQHub         MQHubConfig         `json:"mq_hub"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -57,6 +58,14 @@ type RAGConfig struct {
 
 type AuthHubConfig struct {
 	URL string `json:"url" env:"AUTH_HUB_URL" default:"http://auth-hub:8888"`
+}
+
+// MQHubConfig holds configuration for mq-hub event broker.
+type MQHubConfig struct {
+	// Enabled determines if event publishing via mq-hub is active.
+	Enabled bool `json:"enabled" env:"MQHUB_ENABLED" default:"false"`
+	// ConnectURL is the Connect-RPC URL for mq-hub service.
+	ConnectURL string `json:"connect_url" env:"MQHUB_CONNECT_URL" default:"http://mq-hub:9500"`
 }
 
 type AuthConfig struct {
