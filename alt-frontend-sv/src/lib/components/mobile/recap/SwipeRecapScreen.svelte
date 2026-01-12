@@ -77,7 +77,7 @@ async function handleSwipe(direction: number) {
         style="background: var(--surface-bg); border-color: var(--surface-border);"
       >
         <!-- Counter -->
-        <span class="text-sm font-semibold" style="color: var(--text-primary);">
+        <span class="text-sm font-semibold flex-shrink-0 whitespace-nowrap" style="color: var(--text-primary);">
           {currentPosition} / {totalCount}
         </span>
         <!-- Dot Indicator -->
