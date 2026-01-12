@@ -1,0 +1,51 @@
+# compose/bff.yaml - Backend for Frontend service
+# Transparent proxy between alt-frontend-sv and alt-backend
+
+include:
+  - base.yaml
+
+services:
+  alt-butterfly-facade:
+    build:
+      context: ../alt-butterfly-facade
+      dockerfile: Dockerfile
+    environment:
+      - BFF_PORT=9200
+      - BACKEND_CONNECT_URL=http://alt-backend:9101
+      - AUTH_HUB_INTERNAL_URL=http://auth-hub:8888
+      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_ISSUER=auth-hub
+      - BACKEND_TOKEN_AUDIENCE=alt-backend
+      - BFF_REQUEST_TIMEOUT=30s
+      - BFF_STREAMING_TIMEOUT=5m
+    secrets:
+      - backend_token_secret
+    ports:
+      - "9200:9200"
+    depends_on:
+      alt-backend:
+        condition: service_healthy
+      auth-hub:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/alt-butterfly-facade", "healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    labels:
+      - rask.group=alt-bff
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
