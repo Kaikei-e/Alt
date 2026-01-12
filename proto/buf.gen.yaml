@@ -25,6 +25,14 @@ plugins:
     opt: paths=source_relative
 
   # ============================================================================
+  # alt-butterfly-facade (BFF - proto types only, uses transparent HTTP proxy)
+  # ============================================================================
+  - local: protoc-gen-go
+    out: ../alt-butterfly-facade/internal/gen/proto
+    opt: paths=source_relative
+  # NOTE: connect-go plugin not used because BFF uses transparent HTTP proxy pattern
+
+  # ============================================================================
   # TypeScript frontend (public protos)
   # ============================================================================
   - local: ../alt-frontend-sv/node_modules/.bin/protoc-gen-es
