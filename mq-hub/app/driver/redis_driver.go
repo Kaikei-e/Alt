@@ -136,12 +136,12 @@ func (d *RedisDriver) GetStreamInfo(ctx context.Context, stream domain.StreamKey
 	}
 
 	firstEntryID := ""
-	if info.FirstEntry != nil {
+	if info.FirstEntry.ID != "" {
 		firstEntryID = info.FirstEntry.ID
 	}
 
 	lastEntryID := ""
-	if info.LastEntry != nil {
+	if info.LastEntry.ID != "" {
 		lastEntryID = info.LastEntry.ID
 	}
 
