@@ -19,12 +19,9 @@ func (r *AltDBRepository) FetchRecentArticles(ctx context.Context, since time.Ti
 		return nil, errors.New("database connection not available")
 	}
 
-	// limit=0 means no limit (time constraint only)
-	// negative limit defaults to 100
-	if limit < 0 {
-		limit = 100
-	}
-	if limit > 500 && limit != 0 {
+	// limit <= 0 means no limit (time constraint only)
+	// limit > 500 is capped at 500
+	if limit > 500 {
 		limit = 500
 	}
 
@@ -32,7 +29,7 @@ func (r *AltDBRepository) FetchRecentArticles(ctx context.Context, since time.Ti
 	var rows pgx.Rows
 	var err error
 
-	if limit == 0 {
+	if limit <= 0 {
 		// No limit - return all articles within time window
 		query = `
 			SELECT
