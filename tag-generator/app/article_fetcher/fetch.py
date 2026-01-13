@@ -196,6 +196,44 @@ class ArticleFetcher:
             logger.error("Failed to fetch articles by tag status", error=str(e))
             raise ArticleFetchError("Failed to fetch articles") from e
 
+    def fetch_article_by_id(self, conn: Connection, article_id: str) -> dict[str, Any] | None:
+        """Fetch a single article by ID.
+
+        Args:
+            conn: Database connection
+            article_id: Article UUID string
+
+        Returns:
+            Article dictionary or None if not found
+        """
+        if not article_id or not isinstance(article_id, str):
+            raise ValueError("article_id must be a non-empty string")
+
+        query = """
+            SELECT
+                articles.id::text AS id,
+                articles.title,
+                articles.content,
+                articles.created_at,
+                COALESCE(articles.feed_id::text, NULL) AS feed_id,
+                articles.url
+            FROM articles
+            WHERE articles.id = %s::uuid
+        """
+
+        try:
+            with conn.cursor(cursor_factory=DictCursor) as cursor:
+                cursor.execute(query, (article_id,))
+                row = cursor.fetchone()
+                if row:
+                    logger.info("Fetched article by id", article_id=article_id)
+                    return dict(row)
+                logger.info("Article not found", article_id=article_id)
+                return None
+        except psycopg2.Error as e:
+            logger.error("Failed to fetch article by id", article_id=article_id, error=str(e))
+            raise ArticleFetchError("Failed to fetch article by id") from e
+
     def fetch_new_articles(
         self,
         conn: Connection,

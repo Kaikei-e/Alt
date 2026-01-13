@@ -71,16 +71,36 @@ class TagGeneratorEventHandler(EventHandler):
         """Process a single article for tag generation.
 
         This delegates to the TagGeneratorService for the actual processing.
+        Uses an executor to run the sync method without blocking the event loop.
         """
-        # Note: TagGeneratorService.process_single_article needs to be async
-        # or wrapped in an executor. For now, we assume sync processing.
-        # The actual implementation will depend on the service's interface.
+        import asyncio
 
-        # Placeholder for integration with TagGeneratorService
-        # In the full implementation, this would call:
-        # self.service.process_single_article(article_id)
-
-        logger.info(
-            "article_processed_for_tags",
-            article_id=article_id,
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            self._process_article_sync,
+            article_id,
         )
+
+    def _process_article_sync(self, article_id: str) -> None:
+        """Synchronous wrapper for processing an article."""
+        with self.service.database_manager.get_connection() as conn:
+            # Fetch article by ID
+            article = self.service.article_fetcher.fetch_article_by_id(conn, article_id)
+            if article:
+                success = self.service._process_single_article(conn, article)
+                if success:
+                    logger.info(
+                        "article_processed_for_tags",
+                        article_id=article_id,
+                    )
+                else:
+                    logger.warning(
+                        "article_tag_processing_failed",
+                        article_id=article_id,
+                    )
+            else:
+                logger.warning(
+                    "article_not_found",
+                    article_id=article_id,
+                )
