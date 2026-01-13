@@ -68,8 +68,8 @@ func TestMorningLetterUsecase_Execute_Success(t *testing.T) {
 	articleID := uuid.New()
 	now := time.Now()
 
-	// Mock GetRecentArticles
-	mockArticleClient.On("GetRecentArticles", ctx, 24, 100).Return([]domain.ArticleMetadata{
+	// Mock GetRecentArticles (limit=0 means no limit, relying on time constraint only)
+	mockArticleClient.On("GetRecentArticles", ctx, 24, 0).Return([]domain.ArticleMetadata{
 		{
 			ID:          articleID,
 			Title:       "Test Article",
@@ -158,8 +158,8 @@ func TestMorningLetterUsecase_Execute_NoArticles(t *testing.T) {
 		Query: "What are the important news?",
 	}
 
-	// Mock GetRecentArticles returning empty
-	mockArticleClient.On("GetRecentArticles", ctx, 24, 100).Return([]domain.ArticleMetadata{}, nil)
+	// Mock GetRecentArticles returning empty (limit=0 means no limit)
+	mockArticleClient.On("GetRecentArticles", ctx, 24, 0).Return([]domain.ArticleMetadata{}, nil)
 
 	output, err := uc.Execute(ctx, input)
 	require.NoError(t, err)
@@ -189,8 +189,8 @@ func TestMorningLetterUsecase_Execute_ArticleClientError(t *testing.T) {
 		Query: "What are the important news?",
 	}
 
-	// Mock GetRecentArticles returning error
-	mockArticleClient.On("GetRecentArticles", ctx, 24, 100).Return(nil, errors.New("connection failed"))
+	// Mock GetRecentArticles returning error (limit=0 means no limit)
+	mockArticleClient.On("GetRecentArticles", ctx, 24, 0).Return(nil, errors.New("connection failed"))
 
 	_, err := uc.Execute(ctx, input)
 	require.Error(t, err)
@@ -220,8 +220,8 @@ func TestMorningLetterUsecase_Execute_DefaultValues(t *testing.T) {
 		Locale:      "", // Should default to "ja"
 	}
 
-	// Mock GetRecentArticles - verify default withinHours=24 is used
-	mockArticleClient.On("GetRecentArticles", ctx, 24, 100).Return([]domain.ArticleMetadata{}, nil)
+	// Mock GetRecentArticles - verify default withinHours=24 is used (limit=0 means no limit)
+	mockArticleClient.On("GetRecentArticles", ctx, 24, 0).Return([]domain.ArticleMetadata{}, nil)
 
 	output, err := uc.Execute(ctx, input)
 	require.NoError(t, err)
@@ -252,8 +252,8 @@ func TestMorningLetterUsecase_Execute_MaxLimits(t *testing.T) {
 		TopicLimit:  100, // Should be capped to 20
 	}
 
-	// Mock GetRecentArticles - verify capped withinHours=168 is used
-	mockArticleClient.On("GetRecentArticles", ctx, 168, 100).Return([]domain.ArticleMetadata{}, nil)
+	// Mock GetRecentArticles - verify capped withinHours=168 is used (limit=0 means no limit)
+	mockArticleClient.On("GetRecentArticles", ctx, 168, 0).Return([]domain.ArticleMetadata{}, nil)
 
 	output, err := uc.Execute(ctx, input)
 	require.NoError(t, err)
