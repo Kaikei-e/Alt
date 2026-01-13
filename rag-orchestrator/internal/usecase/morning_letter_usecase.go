@@ -101,8 +101,8 @@ func (u *morningLetterUsecase) Execute(ctx context.Context, input MorningLetterI
 		slog.Int("topic_limit", topicLimit),
 		slog.String("locale", locale))
 
-	// 2. Fetch recent articles from alt-backend
-	articles, err := u.articleClient.GetRecentArticles(ctx, withinHours, 100)
+	// 2. Fetch recent articles from alt-backend (limit=0 means no limit, relying on time constraint only)
+	articles, err := u.articleClient.GetRecentArticles(ctx, withinHours, 0)
 	if err != nil {
 		u.logger.Error("failed to fetch recent articles", slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to fetch recent articles: %w", err)

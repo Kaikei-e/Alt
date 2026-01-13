@@ -73,8 +73,8 @@ func (h *Handler) StreamChat(
 		slog.String("query", query),
 		slog.Int("within_hours", withinHours))
 
-	// 1. Fetch recent articles from alt-backend
-	articles, err := h.articleClient.GetRecentArticles(ctx, withinHours, 100)
+	// 1. Fetch recent articles from alt-backend (limit=0 means no limit, relying on time constraint only)
+	articles, err := h.articleClient.GetRecentArticles(ctx, withinHours, 0)
 	if err != nil {
 		h.logger.Error("failed to fetch recent articles", slog.String("error", err.Error()))
 		return h.sendErrorEvent(stream, "Failed to fetch recent articles")
