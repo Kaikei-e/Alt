@@ -162,3 +162,40 @@ func TestBackendClient_ForwardStreamingRequest(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 }
+
+func TestCopyHeaders_ExcludesAcceptEncoding(t *testing.T) {
+	// Accept-Encoding should NOT be forwarded to backend.
+	// Go's http2.Transport does not auto-decompress when Accept-Encoding is set manually,
+	// which causes gzip-compressed responses to be forwarded without decompression.
+	src := http.Header{}
+	src.Set("Content-Type", "application/proto")
+	src.Set("Accept", "application/proto")
+	src.Set("Accept-Encoding", "gzip, deflate, br") // Should be excluded
+	src.Set("Connect-Protocol-Version", "1")
+
+	dst := http.Header{}
+	copyHeaders(src, dst)
+
+	assert.Equal(t, "application/proto", dst.Get("Content-Type"))
+	assert.Equal(t, "application/proto", dst.Get("Accept"))
+	assert.Equal(t, "1", dst.Get("Connect-Protocol-Version"))
+	assert.Empty(t, dst.Get("Accept-Encoding"), "Accept-Encoding should not be forwarded")
+}
+
+func TestCopyHeaders_ForwardsRequiredHeaders(t *testing.T) {
+	src := http.Header{}
+	src.Set("Content-Type", "application/connect+proto")
+	src.Set("Accept", "application/connect+proto")
+	src.Set("Connect-Protocol-Version", "1")
+	src.Set("Connect-Timeout-Ms", "30000")
+	src.Set("Grpc-Timeout", "30S")
+
+	dst := http.Header{}
+	copyHeaders(src, dst)
+
+	assert.Equal(t, "application/connect+proto", dst.Get("Content-Type"))
+	assert.Equal(t, "application/connect+proto", dst.Get("Accept"))
+	assert.Equal(t, "1", dst.Get("Connect-Protocol-Version"))
+	assert.Equal(t, "30000", dst.Get("Connect-Timeout-Ms"))
+	assert.Equal(t, "30S", dst.Get("Grpc-Timeout"))
+}

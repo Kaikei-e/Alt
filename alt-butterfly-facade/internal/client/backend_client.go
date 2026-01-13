@@ -103,10 +103,13 @@ func (c *BackendClient) BuildBackendURL(path string) string {
 // copyHeaders copies relevant headers from source to destination.
 func copyHeaders(src, dst http.Header) {
 	// Headers to copy for Connect-RPC
+	// Note: Accept-Encoding is intentionally excluded.
+	// Go's http2.Transport does not auto-decompress when Accept-Encoding is set manually,
+	// which causes gzip-compressed responses to be forwarded without decompression.
+	// See: https://github.com/golang/go/issues/13298
 	headersToForward := []string{
 		"Content-Type",
 		"Accept",
-		"Accept-Encoding",
 		"Connect-Protocol-Version",
 		"Connect-Timeout-Ms",
 		"Grpc-Timeout",
