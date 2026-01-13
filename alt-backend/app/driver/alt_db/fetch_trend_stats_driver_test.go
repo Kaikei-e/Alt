@@ -81,8 +81,18 @@ func TestBuildTrendQuery(t *testing.T) {
 		granularity string
 		wantContain []string
 	}{
-		{"hourly", "hourly", []string{"date_trunc('hour'", "a.user_id = $2"}},
-		{"daily", "daily", []string{"date_trunc('day'", "a.user_id = $2"}},
+		{"hourly", "hourly", []string{
+			"date_trunc('hour'",
+			"a.user_id = $2",
+			"LEFT JOIN article_summaries asumm ON a.id = asumm.article_id",
+			"COUNT(DISTINCT asumm.article_id) AS summarized",
+		}},
+		{"daily", "daily", []string{
+			"date_trunc('day'",
+			"a.user_id = $2",
+			"LEFT JOIN article_summaries asumm ON a.id = asumm.article_id",
+			"COUNT(DISTINCT asumm.article_id) AS summarized",
+		}},
 	}
 
 	for _, tt := range tests {

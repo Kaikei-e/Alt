@@ -115,12 +115,14 @@ func buildTrendQuery(granularity string) string {
 	// Query that aggregates articles, summarized articles, and feed activity by time bucket
 	// Uses LEFT JOINs to ensure we get counts even when some data is missing
 	// Note: articles are filtered by user_id for multi-tenant isolation
+	// Note: summarized count is determined by existence of record in article_summaries table
 	return fmt.Sprintf(`
 		WITH time_buckets AS (
 			SELECT date_trunc('%s', a.created_at) AS bucket,
 				   COUNT(DISTINCT a.id) AS articles,
-				   COUNT(DISTINCT CASE WHEN a.summarized = true THEN a.id END) AS summarized
+				   COUNT(DISTINCT asumm.article_id) AS summarized
 			FROM articles a
+			LEFT JOIN article_summaries asumm ON a.id = asumm.article_id
 			WHERE a.created_at >= $1
 			  AND a.deleted_at IS NULL
 			  AND a.user_id = $2
