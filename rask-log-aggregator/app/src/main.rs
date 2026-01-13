@@ -19,6 +19,7 @@ use axum::{
 };
 use clickhouse::Client;
 use std::sync::Arc;
+use tokio::signal;
 use tracing::{Level, error, info};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
@@ -113,9 +114,37 @@ async fn main() -> Result<(), AggregatorError> {
     info!("  - POST /v1/logs       (OTLP logs)");
     info!("  - POST /v1/traces     (OTLP traces)");
 
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
 
+    info!("Server shutdown complete");
     Ok(())
+}
+
+/// Wait for SIGTERM or SIGINT (Ctrl+C) for graceful shutdown
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => info!("Received SIGINT, initiating graceful shutdown"),
+        _ = terminate => info!("Received SIGTERM, initiating graceful shutdown"),
+    }
 }
 
 // Add handler function for /v1/aggregate
