@@ -114,7 +114,7 @@ services:
       - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
       - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL:-http://localhost:9000}
       - BACKEND_BASE_URL=${BACKEND_BASE_URL:-http://alt-backend:9000}
-      - BACKEND_CONNECT_URL=${BACKEND_CONNECT_URL:-http://alt-butterfly-facade:9200}
+      - BACKEND_CONNECT_URL=${BACKEND_CONNECT_URL:-http://alt-butterfly-facade:9250}
       - AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL:-http://auth-hub:8888}
       - PUBLIC_USE_CONNECT_STREAMING=${PUBLIC_USE_CONNECT_STREAMING:-false}
     ports:
@@ -160,6 +160,9 @@ services:
       - alt-network
     volumes:
       - ../.env:/app/.env
+    depends_on:
+      mq-hub:
+        condition: service_healthy
     environment:
       - CONNECT_PORT=9101
       - DB_HOST=db
@@ -175,6 +178,8 @@ services:
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - AUTH_HUB_URL=http://auth-hub:8888
+      - MQHUB_ENABLED=true
+      - MQHUB_CONNECT_URL=http://mq-hub:9500
     secrets:
       - auth_shared_secret
       - backend_token_secret

@@ -10,7 +10,7 @@ services:
       context: ../alt-butterfly-facade
       dockerfile: Dockerfile
     environment:
-      - BFF_PORT=9200
+      - BFF_PORT=9250
       - BACKEND_CONNECT_URL=http://alt-backend:9101
       - AUTH_HUB_INTERNAL_URL=http://auth-hub:8888
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
@@ -21,7 +21,7 @@ services:
     secrets:
       - backend_token_secret
     ports:
-      - "9200:9200"
+      - "9250:9250"
     depends_on:
       alt-backend:
         condition: service_healthy

@@ -90,6 +90,9 @@ services:
     build:
       context: ../tag-generator
       dockerfile: Dockerfile.tag-generator
+    depends_on:
+      redis-streams:
+        condition: service_healthy
     networks:
       - alt-network
     ports:
@@ -103,6 +106,10 @@ services:
       - PORT=9400
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
       - CUDA_VISIBLE_DEVICES=""
+      - REDIS_STREAMS_URL=redis://redis-streams:6379
+      - CONSUMER_ENABLED=true
+      - CONSUMER_GROUP=tag-generator-group
+      - CONSUMER_NAME=tag-generator-1
     secrets:
       - tag_generator_db_password
       - service_secret

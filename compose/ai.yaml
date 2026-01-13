@@ -107,6 +107,9 @@ services:
     build:
       context: ../pre-processor
       dockerfile: Dockerfile
+    depends_on:
+      redis-streams:
+        condition: service_healthy
     environment:
       - DB_HOST=db
       - DB_PORT=5432
@@ -116,6 +119,10 @@ services:
       - DB_SSL_MODE=prefer
       - LOG_LEVEL=info
       - SERVICE_NAME=pre-processor
+      - REDIS_STREAMS_URL=redis://redis-streams:6379
+      - CONSUMER_ENABLED=true
+      - CONSUMER_GROUP=pre-processor-group
+      - CONSUMER_NAME=pre-processor-1
     secrets:
       - pre_processor_db_password
     restart: always
