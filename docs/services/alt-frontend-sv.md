@@ -30,22 +30,42 @@ _Last reviewed: January 13, 2026_
 
 ```mermaid
 flowchart TD
-    Browser -->|"/sv/*"| Frontend["alt-frontend-sv\nSvelteKit :4173"]
+    Browser["Browser"]:::browser -->|"/sv/*"| Frontend["alt-frontend-sv<br/>SvelteKit :4173"]:::frontend
 
     subgraph Auth["Authentication"]
-        Frontend -- "Session Cookie" --> AuthHub["auth-hub :8888"]
-        AuthHub -- "X-Alt-Backend-Token (JWT)" --> Frontend
-        Frontend -- "Ory Session" --> Ory["Ory Kratos :4433"]
+        direction LR
+        Ory["Ory Kratos<br/>:4433"]:::auth
+        AuthHub["auth-hub<br/>:8888"]:::auth
     end
 
     subgraph DataFlow["Data Paths"]
-        Frontend -- "REST API\n(BACKEND_BASE_URL)" --> Backend["alt-backend :9000\nREST"]
-        Frontend -- "Connect-RPC\n(BACKEND_CONNECT_URL)" --> BFF["alt-butterfly-facade :9250\nBFF"]
-        BFF -- "HTTP/2 h2c" --> BackendRPC["alt-backend :9101\nConnect-RPC"]
+        direction TB
+        Backend["alt-backend<br/>REST :9000"]:::backend
+        BFF["alt-butterfly-facade<br/>BFF :9250"]:::bff
+        BackendRPC["alt-backend<br/>Connect-RPC :9101"]:::backend
     end
 
-    Backend -- "SSE Stream" --> Frontend
-    BFF -- "RPC Stream" --> Frontend
+    %% Auth Flow
+    Frontend -. "Session Cookie" .-> Ory
+    Ory -. "Session Valid" .-> Frontend
+    Frontend -- "Exchange Token" --> AuthHub
+    AuthHub -- "X-Alt-Backend-Token<br/>(JWT)" --> Frontend
+
+    %% Data Flow
+    Frontend -- "REST API" --> Backend
+    Frontend -- "Connect-RPC" --> BFF
+    BFF -- "HTTP/2 h2c" --> BackendRPC
+
+    %% Streaming
+    Backend -. "SSE Stream" .-> Frontend
+    BFF -. "RPC Stream" .-> Frontend
+
+    %% Styles
+    classDef browser fill:#6b7280,stroke:#374151,color:#fff
+    classDef frontend fill:#3b82f6,stroke:#1d4ed8,color:#fff
+    classDef auth fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    classDef backend fill:#10b981,stroke:#059669,color:#fff
+    classDef bff fill:#f97316,stroke:#ea580c,color:#fff
 ```
 
 ## Key Directories
