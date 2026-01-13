@@ -12,6 +12,7 @@ import (
 
 	"pre-processor/config"
 	connectv2 "pre-processor/connect/v2"
+	"pre-processor/consumer"
 	"pre-processor/driver"
 	"pre-processor/handler"
 	appmiddleware "pre-processor/middleware"
@@ -65,6 +66,14 @@ func performHealthCheck() {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+// getEnvOrDefault returns the value of an environment variable or a default value.
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
 func main() {
@@ -176,6 +185,35 @@ func main() {
 
 	// Initialize health metrics collector
 	metricsCollector := service.NewHealthMetricsCollector(contextLogger)
+
+	// Initialize Redis Streams consumer (if enabled)
+	consumerCfg := consumer.Config{
+		RedisURL:      getEnvOrDefault("REDIS_STREAMS_URL", "redis://redis-streams:6379"),
+		GroupName:     getEnvOrDefault("CONSUMER_GROUP", "pre-processor-group"),
+		ConsumerName:  getEnvOrDefault("CONSUMER_NAME", "pre-processor-1"),
+		StreamKey:     "alt:events:articles",
+		BatchSize:     10,
+		BlockTimeout:  5 * time.Second,
+		ClaimIdleTime: 30 * time.Second,
+		Enabled:       getEnvOrDefault("CONSUMER_ENABLED", "false") == "true",
+	}
+
+	summarizeServiceAdapter := NewSummarizeServiceAdapter(jobRepo, articleRepo, logger.Logger)
+	eventHandler := consumer.NewPreProcessorEventHandler(summarizeServiceAdapter, logger.Logger)
+	redisConsumer, err := consumer.NewConsumer(consumerCfg, eventHandler, logger.Logger)
+	if err != nil {
+		logger.Logger.Error("Failed to create Redis Streams consumer", "error", err)
+	} else {
+		if err := redisConsumer.Start(ctx); err != nil {
+			logger.Logger.Error("Failed to start Redis Streams consumer", "error", err)
+		} else {
+			logger.Logger.Info("Redis Streams consumer started",
+				"stream", consumerCfg.StreamKey,
+				"group", consumerCfg.GroupName,
+				"enabled", consumerCfg.Enabled)
+		}
+		defer redisConsumer.Stop()
+	}
 
 	// Initialize handlers
 	jobHandler := handler.NewJobHandler(
