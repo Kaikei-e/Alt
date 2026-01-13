@@ -87,7 +87,7 @@ _Last reviewed: January 13, 2026_
 | `LOG_LEVEL`, `LOG_FORMAT`, `HTTP_*` | Controls structured logging and outbound HTTP clients | Defaults in `config/config.go:97` and `config/config.go:102`. |
 
 ## Operational Notes
-- Start the stack with `make up` (Compose builds Go+Python/Rust services) and run `ALt` back end tests with `cd alt-backend/app && go test ./...`.
+- Start the stack with `altctl up` (Compose builds Go+Python/Rust services) and run `ALt` back end tests with `cd alt-backend/app && go test ./...`.
 - The Echo server in `main.go:20` initializes logging, the DB pool, dependency container, the hourly/daily jobs, a custom HTTP error handler, then starts the server with graceful shutdown hooks.
 - Health and CSP probes are available at `/v1/health` and `/security/csp-report`; `/v1/csrf-token` issues CSRF tokens used by the frontend.
 - Service requests (recap articles, queueing from other services) must include `X-Service-Token` matching `SERVICE_SECRET`; frontend-authenticated paths expect `X-Alt-*` headers or JWT tokens forwarded by Auth Hub.
