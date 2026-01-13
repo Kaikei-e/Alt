@@ -10,5 +10,6 @@ import (
 // Used by rag-orchestrator for temporal topics feature
 type FetchRecentArticlesPort interface {
 	// FetchRecentArticles retrieves articles published since the given time
+	// When limit=0, all articles within the time window are returned (no limit)
 	FetchRecentArticles(ctx context.Context, since time.Time, limit int) ([]*domain.Article, error)
 }

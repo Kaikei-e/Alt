@@ -13,18 +13,28 @@ import (
 // FetchRecentArticles retrieves articles published within the specified time window
 // This is used by rag-orchestrator for temporal topics feature
 // Note: This is a system-level query that doesn't filter by user
-// When limit <= 0, no limit is applied (all articles within time window are returned)
+// When limit=0, all articles within the time window are returned (no LIMIT clause)
 func (r *AltDBRepository) FetchRecentArticles(ctx context.Context, since time.Time, limit int) ([]*domain.Article, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
 
+	// limit=0 means no limit (time constraint only)
+	// negative limit defaults to 100
+	if limit < 0 {
+		limit = 100
+	}
+	if limit > 500 && limit != 0 {
+		limit = 500
+	}
+
+	var query string
 	var rows pgx.Rows
 	var err error
 
-	if limit <= 0 {
-		// No limit: fetch all articles within time window (for RAG use case)
-		query := `
+	if limit == 0 {
+		// No limit - return all articles within time window
+		query = `
 			SELECT
 				a.id,
 				a.feed_id,
@@ -43,8 +53,8 @@ func (r *AltDBRepository) FetchRecentArticles(ctx context.Context, since time.Ti
 		`
 		rows, err = r.pool.Query(ctx, query, since)
 	} else {
-		// With limit
-		query := `
+		// Apply limit
+		query = `
 			SELECT
 				a.id,
 				a.feed_id,
@@ -64,6 +74,7 @@ func (r *AltDBRepository) FetchRecentArticles(ctx context.Context, since time.Ti
 		`
 		rows, err = r.pool.Query(ctx, query, since, limit)
 	}
+
 	if err != nil {
 		logger.Logger.Error("error fetching recent articles", "error", err, "since", since, "limit", limit)
 		return nil, errors.New("error fetching recent articles")
