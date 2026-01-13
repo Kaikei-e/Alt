@@ -28,7 +28,7 @@
 			type="button"
 			class="px-3 py-1 text-sm font-medium transition-colors
                    {selected === value
-				? 'bg-[var(--alt-primary)] text-white'
+				? 'bg-primary text-primary-foreground'
 				: 'bg-[var(--surface-bg)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'}
                    border border-[var(--surface-border)]"
 			onclick={() => handleClick(value)}
