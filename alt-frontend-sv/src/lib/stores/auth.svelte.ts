@@ -53,6 +53,6 @@ export function createAuthStore(): AuthStore {
 // Context key for auth store
 export const AUTH_STORE_KEY = Symbol("auth-store");
 
-// Legacy singleton export for backward compatibility
-// WARNING: Not SSR-safe - prefer createAuthStore() with context
+// Singleton export - synced with page.data.user in +layout.svelte
+// For SSR-safe usage with context, use createAuthStore() instead
 export const auth = createAuthStore();
