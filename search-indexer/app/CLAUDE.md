@@ -4,7 +4,7 @@
 
 Search indexing service for the Alt RSS reader platform. Built with **Go 1.24+** and **Meilisearch**. Indexes processed articles for fast full-text search.
 
-> For indexing loop details and Meilisearch config, see `docs/search-indexer.md`.
+> For indexing loop details and Meilisearch config, see `docs/services/search-indexer.md`.
 
 ## Quick Start
 

@@ -4,7 +4,7 @@
 
 Go scheduler orchestrating RSS ingestion via Inoreader API. Runs as Kubernetes CronJob (production) or Deployment (debugging). Manages OAuth2 token rotation and persistence.
 
-> For scheduler status and token rotation details, see `docs/pre-processor-sidecar.md`.
+> For scheduler status and token rotation details, see `docs/services/pre-processor-sidecar.md`.
 
 ## Quick Start
 

@@ -4,7 +4,7 @@
 
 Deno-based OAuth2 token manager for Inoreader API. Handles token refresh and secure storage. Built with **Deno 2.x** and TypeScript.
 
-> For CLI commands and K8s secret workflow, see `docs/auth-token-manager.md`.
+> For CLI commands and K8s secret workflow, see `docs/services/auth-token-manager.md`.
 
 ## Quick Start
 

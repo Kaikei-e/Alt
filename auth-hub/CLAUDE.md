@@ -4,7 +4,7 @@
 
 Identity-Aware Proxy (IAP) service for the Alt platform. Bridges Nginx's `auth_request` with Ory Kratos session validation. Built with **Go 1.24+**.
 
-> For cache TTLs and Nginx integration details, see `docs/auth-hub.md`.
+> For cache TTLs and Nginx integration details, see `docs/services/auth-hub.md`.
 
 ## Quick Start
 

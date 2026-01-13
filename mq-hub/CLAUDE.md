@@ -4,7 +4,7 @@
 
 Message queue hub service for the Alt RSS reader platform. Built with **Go 1.24+** and **Connect-RPC**. Acts as an event broker using Redis 8.4 Streams for event sourcing.
 
-> For stream configuration and consumer group setup, see `docs/mq-hub.md`.
+> For stream configuration and consumer group setup, see `docs/services/mq-hub.md`.
 
 ## Quick Start
 

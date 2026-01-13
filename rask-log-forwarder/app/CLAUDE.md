@@ -4,7 +4,7 @@
 
 Ultra-high-performance log forwarding sidecar for the Alt platform. Built with **Rust 1.87+ (2024 Edition)**. Collects Docker logs with SIMD parsing (>4 GB/s) and guaranteed delivery.
 
-> For buffer tuning and retry strategy, see `docs/rask-log-forwarder.md`.
+> For buffer tuning and retry strategy, see `docs/services/rask-log-forwarder.md`.
 
 ## Quick Start
 

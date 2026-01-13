@@ -4,7 +4,7 @@
 
 Feed processing service for the Alt RSS reader platform. Built with **Go 1.24+** and three-layer architecture. Handles article summarization and quality checking with focus on performance and resilience.
 
-> For configuration knobs and News Creator wiring, see `docs/pre-processor.md`.
+> For configuration knobs and News Creator wiring, see `docs/services/pre-processor.md`.
 
 ## Quick Start
 

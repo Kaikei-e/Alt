@@ -4,7 +4,7 @@
 
 LLM-powered summarization service for the Alt platform. Built with **Python 3.11+**, **FastAPI**, and **Ollama**. Follows Clean Architecture with 5 layers.
 
-> For DI wiring and Ollama integration, see `docs/news-creator.md`.
+> For DI wiring and Ollama integration, see `docs/services/news-creator.md`.
 
 ## Quick Start
 

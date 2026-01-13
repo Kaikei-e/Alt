@@ -4,7 +4,7 @@
 
 High-performance log aggregation service for the Alt platform. Built with **Rust 1.87+ (2024 Edition)**, **Axum**, and **ClickHouse**. Designed for extreme throughput and low-latency processing.
 
-> For ClickHouse wiring and ingestion details, see `docs/rask-log-aggregator.md`.
+> For ClickHouse wiring and ingestion details, see `docs/services/rask-log-aggregator.md`.
 
 ## Quick Start
 

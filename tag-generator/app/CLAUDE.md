@@ -4,7 +4,7 @@
 
 Tag generation service for the Alt RSS reader platform. Built with **Python 3.13+** and **FastAPI**. Uses ML models (KeyBERT, sentence-transformers) for automated tag extraction.
 
-> For batch-loop behavior and structlog config, see `docs/tag-generator.md`.
+> For batch-loop behavior and structlog config, see `docs/services/tag-generator.md`.
 
 ## Quick Start
 
