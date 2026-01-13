@@ -4,7 +4,7 @@
 
 Lightweight Go HTTP proxy deployed alongside alt-backend. Centralizes outbound HTTP policy (timeouts, TLS, allowlist) for consistent egress control.
 
-> For deployment details and config options, see proxy-related sections in `docs/alt-backend.md`.
+> For deployment details and config options, see proxy-related sections in `docs/services/alt-backend.md`.
 
 ## Quick Start
 
