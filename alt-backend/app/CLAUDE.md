@@ -4,7 +4,7 @@
 
 Core backend service for the Alt RSS reader platform. Built with **Go 1.24+**, **Echo framework**, and **Clean Architecture** principles.
 
-> For implementation details (routes, integrations, schemas), see `docs/alt-backend.md`.
+> For implementation details (routes, integrations, schemas), see `docs/services/alt-backend.md`.
 
 ## Quick Start
 
