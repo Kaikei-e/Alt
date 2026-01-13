@@ -54,6 +54,11 @@ export const fallback: RequestHandler = async ({ request, params, cookies }) => 
 	headers.delete("cookie");
 	// Remove host header to avoid issues
 	headers.delete("host");
+	// Remove Accept-Encoding to prevent backend compression
+	// Node.js fetch auto-decompresses but forwards Content-Encoding header,
+	// causing browser to attempt double decompression
+	// See: https://github.com/sveltejs/kit/issues/12197
+	headers.delete("accept-encoding");
 
 	try {
 		// Forward the request to the backend
@@ -81,6 +86,8 @@ export const fallback: RequestHandler = async ({ request, params, cookies }) => 
 		// Copy other relevant headers
 		for (const [key, value] of response.headers.entries()) {
 			// Skip headers that shouldn't be forwarded
+			// content-encoding must be excluded because Node.js fetch auto-decompresses
+			// but the header remains, causing browser to attempt double decompression
 			if (
 				!["content-encoding", "transfer-encoding", "content-length"].includes(
 					key.toLowerCase(),

@@ -1,0 +1,57 @@
+import { json, type RequestHandler } from "@sveltejs/kit";
+import { env } from "$env/dynamic/private";
+import { getBackendToken } from "$lib/api";
+
+const BACKEND_BASE_URL = env.BACKEND_BASE_URL || "http://alt-backend:9000";
+
+export const GET: RequestHandler = async ({ request, url }) => {
+	const cookieHeader = request.headers.get("cookie") || "";
+	const token = await getBackendToken(cookieHeader);
+
+	const window = url.searchParams.get("window") || "24h";
+
+	// Validate window parameter
+	const validWindows = ["4h", "24h", "3d", "7d"];
+	if (!validWindows.includes(window)) {
+		return json(
+			{ error: "Invalid window parameter. Valid values: 4h, 24h, 3d, 7d" },
+			{ status: 400 },
+		);
+	}
+
+	const backendEndpoint = `${BACKEND_BASE_URL}/v1/feeds/stats/trends?window=${window}`;
+
+	try {
+		const headers: HeadersInit = {
+			"Content-Type": "application/json",
+		};
+
+		if (token) {
+			headers["X-Alt-Backend-Token"] = token;
+		}
+
+		const response = await fetch(backendEndpoint, {
+			headers,
+			cache: "no-store",
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => "");
+			console.error("Backend API error:", {
+				status: response.status,
+				statusText: response.statusText,
+				errorBody: errorText.substring(0, 200),
+			});
+			return json(
+				{ error: `Backend API error: ${response.status}` },
+				{ status: response.status },
+			);
+		}
+
+		const data = await response.json();
+		return json(data);
+	} catch (error) {
+		console.error("Error in /api/v1/feeds/stats/trends:", error);
+		return json({ error: "Internal server error" }, { status: 500 });
+	}
+};

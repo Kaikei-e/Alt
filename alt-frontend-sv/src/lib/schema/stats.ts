@@ -20,3 +20,19 @@ export type DetailedFeedStatsSummary = {
 export type UnreadCountResponse = {
 	count: number;
 };
+
+// Trend Stats Types
+export type TrendDataPoint = {
+	timestamp: string;
+	articles: number;
+	summarized: number;
+	feed_activity: number;
+};
+
+export type TrendDataResponse = {
+	data_points: TrendDataPoint[];
+	granularity: "hourly" | "daily";
+	window: string;
+};
+
+export type TimeWindow = "4h" | "24h" | "3d" | "7d";

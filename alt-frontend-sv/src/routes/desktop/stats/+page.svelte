@@ -1,9 +1,14 @@
 <script lang="ts">
 	import { BarChart3, TrendingUp, FileText, CheckCircle } from "@lucide/svelte";
+	import { onMount } from "svelte";
 	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 	import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
+	import { useTrendStats } from "$lib/hooks/useTrendStats.svelte";
+	import TrendChart from "$lib/components/desktop/stats/TrendChart.svelte";
+	import TimeWindowSelector from "$lib/components/desktop/stats/TimeWindowSelector.svelte";
 
 	const stats = useFeedStats();
+	const trendStats = useTrendStats();
 
 	let feedAmount = $derived(stats.feedAmount);
 	let totalArticlesAmount = $derived(stats.totalArticlesAmount);
@@ -31,6 +36,11 @@
 			color: "text-purple-600",
 		},
 	]);
+
+	// Fetch trend data on mount
+	onMount(() => {
+		trendStats.fetchData("24h");
+	});
 </script>
 
 <PageHeader title="Statistics" description="Overview of your RSS feed analytics" />
@@ -53,7 +63,7 @@
 </div>
 
 <!-- Connection status -->
-<div class="border border-[var(--surface-border)] bg-white p-6">
+<div class="border border-[var(--surface-border)] bg-white p-6 mb-8">
 	<div class="flex items-center justify-between">
 		<div class="flex items-center gap-3">
 			<div
@@ -70,10 +80,45 @@
 	</div>
 </div>
 
-<!-- Placeholder for future charts -->
-<div class="mt-8 border border-[var(--surface-border)] bg-white p-12 text-center">
-	<BarChart3 class="h-12 w-12 text-[var(--text-muted)] mx-auto mb-4" />
-	<p class="text-sm text-[var(--text-secondary)]">
-		Trend charts and detailed analytics coming soon
-	</p>
+<!-- Trend Charts Section -->
+<div class="border border-[var(--surface-border)] bg-white p-6">
+	<div class="flex items-center justify-between mb-6">
+		<h2 class="text-lg font-semibold text-[var(--text-primary)]">
+			Trend Charts
+		</h2>
+		<TimeWindowSelector
+			selected={trendStats.currentWindow}
+			onchange={(window) => trendStats.setWindow(window)}
+		/>
+	</div>
+
+	{#if trendStats.error}
+		<div class="p-4 bg-red-50 border border-red-200 text-red-700 rounded mb-6">
+			{trendStats.error}
+		</div>
+	{/if}
+
+	<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+		<TrendChart
+			title="Articles"
+			dataPoints={trendStats.data?.data_points ?? []}
+			dataKey="articles"
+			color="#3b82f6"
+			loading={trendStats.loading}
+		/>
+		<TrendChart
+			title="Summarized"
+			dataPoints={trendStats.data?.data_points ?? []}
+			dataKey="summarized"
+			color="#8b5cf6"
+			loading={trendStats.loading}
+		/>
+		<TrendChart
+			title="Feed Activity"
+			dataPoints={trendStats.data?.data_points ?? []}
+			dataKey="feed_activity"
+			color="#10b981"
+			loading={trendStats.loading}
+		/>
+	</div>
 </div>
