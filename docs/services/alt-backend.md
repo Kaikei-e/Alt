@@ -97,19 +97,68 @@ _Last reviewed: January 13, 2026_
 ## Diagram
 
 ```mermaid
-flowchart LR
-    Browser -->|"X-Alt headers / JWT"| AltBackend["Alt Backend (Echo + clean layers)"]
-    Browser -->|"SSE stats stream"| SSE["/v1/sse/feeds/stats"]
-    AltBackend -->|Reads/Writes| Postgres[(PostgreSQL via alt_db)]
-    AltBackend -->|"Search requests"| SearchIndexer["search-indexer (HTTP 9300)"]
-    SearchIndexer -->|Indexes| Meili[(Meilisearch)]
-    AltBackend -->|"Summarization (sync/stream/queue)"| PreProcessor["pre-processor (api/v1/summarize*)"]
-    AltBackend -->|"Recap bindings"| RecapWorker["recap-worker (metrics, grp, recaps)"]
-    RecapWorker -->|"LLM summaries"| NewsCreator["news-creator"]
-    AltBackend -->|"Morning updates"| RecapWorker
-    AltBackend -->|"Scraping policies"| Postgres
-    HourlyJob["Hourly RSS job"] -->|"CollectMultiple + RegisterMultiple"| Postgres
-    DailyJob["Daily scraping-policy job"] -->|"Refresh robots.txt"| Postgres
-    AltBackend -->|"Batch fetch"| BatchFetcher["BatchArticleFetcher (rate-limited)"]
-    BatchFetcher -->|"Fetch & store"| Postgres
+flowchart TB
+    subgraph Clients ["🌐 Clients"]
+        direction LR
+        Browser["🖥️ Browser"] ~~~ Services["🔗 Services"]
+    end
+
+    subgraph Backend ["⚙️ Alt Backend (Echo)"]
+        direction LR
+        subgraph MW ["Middleware"]
+            M1["ReqID"] --> M2["CORS"] --> M3["DOS"] --> M4["Gzip"]
+        end
+
+        subgraph CA ["Clean Architecture"]
+            REST["📡 REST"] --> UC["💼 Usecase"] --> GW["🔌 Gateway"] --> DR["⚡ Driver"]
+        end
+    end
+
+    subgraph Services_Row ["External Services"]
+        direction LR
+        subgraph Data ["💾 Data Stores"]
+            PG[("PostgreSQL")]
+            MS[("Meilisearch")]
+        end
+
+        subgraph AI ["🤖 AI"]
+            PP["pre-processor"]
+            RW["recap-worker"]
+            RAG["rag-orch"]
+        end
+
+        subgraph Auth ["🔐"]
+            AH["auth-hub"]
+        end
+
+        subgraph Jobs ["⏰"]
+            HJ["Hourly"]
+            DJ["Daily"]
+        end
+    end
+
+    %% Connections
+    Browser & Services --> MW --> REST
+    DR --> PG
+    GW --> PP & RW & RAG
+    GW -->|search| MS
+    REST --> AH
+    HJ & DJ --> PG
+
+    %% Styling
+    classDef client fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
+    classDef mw fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100
+    classDef ca fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef data fill:#fce4ec,stroke:#c2185b,stroke-width:2px,color:#880e4f
+    classDef ai fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#f57f17
+    classDef auth fill:#e0f7fa,stroke:#00838f,stroke-width:2px,color:#006064
+    classDef job fill:#e0f2f1,stroke:#00796b,stroke-width:2px,color:#004d40
+
+    class Browser,Services client
+    class M1,M2,M3,M4 mw
+    class REST,UC,GW,DR ca
+    class PG,MS data
+    class PP,RW,RAG ai
+    class AH auth
+    class HJ,DJ job
 ```
