@@ -13,38 +13,57 @@ import (
 // FetchRecentArticles retrieves articles published within the specified time window
 // This is used by rag-orchestrator for temporal topics feature
 // Note: This is a system-level query that doesn't filter by user
+// When limit <= 0, no limit is applied (all articles within time window are returned)
 func (r *AltDBRepository) FetchRecentArticles(ctx context.Context, since time.Time, limit int) ([]*domain.Article, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
 
+	var rows pgx.Rows
+	var err error
+
 	if limit <= 0 {
-		limit = 100
+		// No limit: fetch all articles within time window (for RAG use case)
+		query := `
+			SELECT
+				a.id,
+				a.feed_id,
+				a.title,
+				a.url,
+				a.content,
+				a.created_at as published_at,
+				a.created_at,
+				COALESCE(ARRAY_AGG(ft.tag_name) FILTER (WHERE ft.tag_name IS NOT NULL), '{}') as tags
+			FROM articles a
+			LEFT JOIN article_tags at ON a.id = at.article_id
+			LEFT JOIN feed_tags ft ON at.feed_tag_id = ft.id
+			WHERE a.created_at >= $1
+			GROUP BY a.id, a.feed_id, a.title, a.url, a.content, a.created_at
+			ORDER BY a.created_at DESC, a.id DESC
+		`
+		rows, err = r.pool.Query(ctx, query, since)
+	} else {
+		// With limit
+		query := `
+			SELECT
+				a.id,
+				a.feed_id,
+				a.title,
+				a.url,
+				a.content,
+				a.created_at as published_at,
+				a.created_at,
+				COALESCE(ARRAY_AGG(ft.tag_name) FILTER (WHERE ft.tag_name IS NOT NULL), '{}') as tags
+			FROM articles a
+			LEFT JOIN article_tags at ON a.id = at.article_id
+			LEFT JOIN feed_tags ft ON at.feed_tag_id = ft.id
+			WHERE a.created_at >= $1
+			GROUP BY a.id, a.feed_id, a.title, a.url, a.content, a.created_at
+			ORDER BY a.created_at DESC, a.id DESC
+			LIMIT $2
+		`
+		rows, err = r.pool.Query(ctx, query, since, limit)
 	}
-	if limit > 500 {
-		limit = 500
-	}
-
-	query := `
-		SELECT
-			a.id,
-			a.feed_id,
-			a.title,
-			a.url,
-			a.content,
-			a.created_at as published_at,
-			a.created_at,
-			COALESCE(ARRAY_AGG(ft.tag_name) FILTER (WHERE ft.tag_name IS NOT NULL), '{}') as tags
-		FROM articles a
-		LEFT JOIN article_tags at ON a.id = at.article_id
-		LEFT JOIN feed_tags ft ON at.feed_tag_id = ft.id
-		WHERE a.created_at >= $1
-		GROUP BY a.id, a.feed_id, a.title, a.url, a.content, a.created_at
-		ORDER BY a.created_at DESC, a.id DESC
-		LIMIT $2
-	`
-
-	rows, err := r.pool.Query(ctx, query, since, limit)
 	if err != nil {
 		logger.Logger.Error("error fetching recent articles", "error", err, "since", since, "limit", limit)
 		return nil, errors.New("error fetching recent articles")

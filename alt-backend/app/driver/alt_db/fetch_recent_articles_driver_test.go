@@ -155,13 +155,14 @@ func TestAltDBRepository_FetchRecentArticles_LimitBounds(t *testing.T) {
 	ctx := context.Background()
 	since := time.Now().Add(-24 * time.Hour)
 
-	t.Run("negative limit defaults to 100", func(t *testing.T) {
+	t.Run("negative limit fetches all articles (no limit)", func(t *testing.T) {
 		articleRows := pgxmock.NewRows([]string{
 			"id", "feed_id", "title", "url", "content", "published_at", "created_at", "tags",
 		})
 
+		// When limit <= 0, no LIMIT clause is applied (only time constraint)
 		mock.ExpectQuery("SELECT").
-			WithArgs(pgxmock.AnyArg(), 100).
+			WithArgs(pgxmock.AnyArg()).
 			WillReturnRows(articleRows)
 
 		_, err := repo.FetchRecentArticles(ctx, since, -1)
@@ -169,13 +170,14 @@ func TestAltDBRepository_FetchRecentArticles_LimitBounds(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("zero limit defaults to 100", func(t *testing.T) {
+	t.Run("zero limit fetches all articles (no limit)", func(t *testing.T) {
 		articleRows := pgxmock.NewRows([]string{
 			"id", "feed_id", "title", "url", "content", "published_at", "created_at", "tags",
 		})
 
+		// When limit <= 0, no LIMIT clause is applied (only time constraint)
 		mock.ExpectQuery("SELECT").
-			WithArgs(pgxmock.AnyArg(), 100).
+			WithArgs(pgxmock.AnyArg()).
 			WillReturnRows(articleRows)
 
 		_, err := repo.FetchRecentArticles(ctx, since, 0)
@@ -183,16 +185,16 @@ func TestAltDBRepository_FetchRecentArticles_LimitBounds(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("limit over 500 capped to 500", func(t *testing.T) {
+	t.Run("positive limit applies LIMIT clause", func(t *testing.T) {
 		articleRows := pgxmock.NewRows([]string{
 			"id", "feed_id", "title", "url", "content", "published_at", "created_at", "tags",
 		})
 
 		mock.ExpectQuery("SELECT").
-			WithArgs(pgxmock.AnyArg(), 500).
+			WithArgs(pgxmock.AnyArg(), 50).
 			WillReturnRows(articleRows)
 
-		_, err := repo.FetchRecentArticles(ctx, since, 1000)
+		_, err := repo.FetchRecentArticles(ctx, since, 50)
 		require.NoError(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
