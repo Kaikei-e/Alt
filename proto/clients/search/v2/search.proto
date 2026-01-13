@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package clients.search.v2;
+package services.search.v2;
 
 option go_package = "alt/gen/proto/clients/search/v2;searchv2";
 
