@@ -29,7 +29,9 @@
 		"@ory/client": "^1.22.15",
 		"@tanstack/svelte-query": "^6.0.14",
 		"bits-ui": "^2.15.4",
+		"chart.js": "^4.5.1",
 		"clsx": "^2.1.1",
+		"svelte-chartjs": "^3.1.5",
 		"tailwind-merge": "^3.4.0",
 		"tailwind-variants": "^3.2.2",
 		"valibot": "^1.2.0"
