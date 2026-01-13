@@ -41,7 +41,7 @@ func registerInternalRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 // handleFetchRecentArticles returns articles published within the specified time window
 // Query params:
 //   - within_hours: Time window in hours (default: 24, max: 168)
-//   - limit: Maximum articles to return (default: 100, max: 500)
+//   - limit: Maximum articles to return (default: 100, max: 500, 0 means no limit - time constraint only)
 func handleFetchRecentArticles(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		// Parse query parameters
@@ -56,10 +56,12 @@ func handleFetchRecentArticles(container *di.ApplicationComponents) echo.Handler
 			withinHours = parsed
 		}
 
+		// limit=0 means no limit (only time constraint applies)
+		// This is useful for RAG use cases where all recent articles are needed
 		limit := 100
 		if limitStr := c.QueryParam("limit"); limitStr != "" {
 			parsed, err := strconv.Atoi(limitStr)
-			if err != nil || parsed <= 0 {
+			if err != nil || parsed < 0 {
 				return c.JSON(http.StatusBadRequest, map[string]string{
 					"error": "Invalid limit parameter",
 				})

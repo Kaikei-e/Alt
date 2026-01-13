@@ -169,13 +169,14 @@ func TestAltDBRepository_FetchRecentArticles_LimitBounds(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("zero limit defaults to 100", func(t *testing.T) {
+	t.Run("zero limit means no limit - only time constraint", func(t *testing.T) {
 		articleRows := pgxmock.NewRows([]string{
 			"id", "feed_id", "title", "url", "content", "published_at", "created_at", "tags",
 		})
 
+		// When limit=0, query should only have 'since' parameter (no LIMIT clause)
 		mock.ExpectQuery("SELECT").
-			WithArgs(pgxmock.AnyArg(), 100).
+			WithArgs(pgxmock.AnyArg()).
 			WillReturnRows(articleRows)
 
 		_, err := repo.FetchRecentArticles(ctx, since, 0)

@@ -44,11 +44,13 @@ func (u *FetchRecentArticlesUsecase) Execute(ctx context.Context, input FetchRec
 		withinHours = 168
 	}
 
+	// limit=0 means no limit (time constraint only for RAG use case)
+	// negative limit defaults to 100
 	limit := input.Limit
-	if limit <= 0 {
+	if limit < 0 {
 		limit = 100
 	}
-	if limit > 500 {
+	if limit > 500 && limit != 0 {
 		limit = 500
 	}
 
