@@ -37,6 +37,7 @@ func RegisterFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	feedsGroup.POST("/fetch/details", RestHandleFetchFeedDetails(container))
 	feedsGroup.GET("/stats", RestHandleFeedStats(container, cfg))
 	feedsGroup.GET("/stats/detailed", RestHandleDetailedFeedStats(container, cfg))
+	feedsGroup.GET("/stats/trends", RestHandleTrendStats(container, cfg))
 	feedsGroup.POST("/tags", RestHandleFetchFeedTags(container))
 	feedsGroup.POST("/fetch/summary/provided", RestHandleFetchInoreaderSummary(container))
 	feedsGroup.POST("/fetch/summary", RestHandleFetchArticleSummary(container, cfg))

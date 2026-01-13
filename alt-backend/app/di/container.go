@@ -17,6 +17,7 @@ import (
 	"alt/gateway/feed_link_gateway"
 	"alt/gateway/feed_search_gateway"
 	"alt/gateway/feed_stats_gateway"
+	"alt/gateway/trend_stats_gateway"
 	"alt/gateway/feed_url_link_gateway"
 	"alt/gateway/feed_url_to_id_gateway"
 	"alt/gateway/fetch_article_gateway"
@@ -52,6 +53,7 @@ import (
 	"alt/gateway/fetch_recent_articles_gateway"
 	"alt/usecase/fetch_feed_details_usecase"
 	"alt/usecase/fetch_feed_stats_usecase"
+	"alt/usecase/fetch_trend_stats_usecase"
 	"alt/usecase/fetch_feed_tags_usecase"
 	"alt/usecase/fetch_feed_usecase"
 	"alt/usecase/fetch_inoreader_summary_usecase"
@@ -112,6 +114,7 @@ type ApplicationComponents struct {
 	SummarizedArticlesCountUsecase      *fetch_feed_stats_usecase.SummarizedArticlesCountUsecase
 	TotalArticlesCountUsecase           *fetch_feed_stats_usecase.TotalArticlesCountUsecase
 	TodayUnreadArticlesCountUsecase     *fetch_feed_stats_usecase.TodayUnreadArticlesCountUsecase
+	TrendStatsUsecase                   *fetch_trend_stats_usecase.FetchTrendStatsUsecase
 	FeedSearchUsecase                   *search_feed_usecase.SearchFeedMeilisearchUsecase
 	ArticleSearchUsecase                *search_article_usecase.SearchArticleUsecase
 	FetchFeedTagsUsecase                *fetch_feed_tags_usecase.FetchFeedTagsUsecase
@@ -193,6 +196,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	todayUnreadArticlesCountGatewayImpl := feed_stats_gateway.NewTodayUnreadArticlesCountGateway(pool)
 	todayUnreadArticlesCountUsecase := fetch_feed_stats_usecase.NewTodayUnreadArticlesCountUsecase(todayUnreadArticlesCountGatewayImpl)
+
+	// Trend stats components
+	trendStatsGatewayImpl := trend_stats_gateway.NewTrendStatsGateway(pool)
+	trendStatsUsecase := fetch_trend_stats_usecase.NewFetchTrendStatsUsecase(trendStatsGatewayImpl)
 
 	// Article search (Meilisearch-based via search-indexer)
 	searchIndexerDriver := search_indexer_connect.NewConnectSearchIndexerDriver(cfg.SearchIndexer.ConnectURL)
@@ -316,6 +323,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		SummarizedArticlesCountUsecase:      summarizedArticlesCountUsecase,
 		TotalArticlesCountUsecase:           totalArticlesCountUsecase,
 		TodayUnreadArticlesCountUsecase:     todayUnreadArticlesCountUsecase,
+		TrendStatsUsecase:                   trendStatsUsecase,
 		FeedSearchUsecase:                   feedSearchUsecase,
 		ArticleSearchUsecase:                articleSearchUsecase,
 		FetchFeedTagsUsecase:                fetchFeedTagsUsecase,
