@@ -21,8 +21,8 @@ type TrendStatsRow struct {
 
 // FetchTrendStats fetches trend statistics for the given time window
 func (r *AltDBRepository) FetchTrendStats(ctx context.Context, window string) (*trend_stats_port.TrendDataResponse, error) {
-	// Validate user context
-	_, err := domain.GetUserFromContext(ctx)
+	// Validate user context and extract user_id for multi-tenant filtering
+	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.SafeError("user context not found for trend stats", "error", err)
 		return nil, errors.New("authentication required")
@@ -43,10 +43,10 @@ func (r *AltDBRepository) FetchTrendStats(ctx context.Context, window string) (*
 	// Calculate since time
 	since := time.Now().Add(-time.Duration(windowSeconds) * time.Second)
 
-	// Build and execute query
-	query := buildTrendQuery(granularity, since)
+	// Build and execute query with user_id filter for multi-tenant isolation
+	query := buildTrendQuery(granularity)
 
-	rows, err := r.pool.Query(ctx, query, since)
+	rows, err := r.pool.Query(ctx, query, since, user.UserID)
 	if err != nil {
 		logger.SafeError("failed to fetch trend stats", "error", err)
 		return nil, errors.New("failed to fetch trend stats")
@@ -105,7 +105,8 @@ func parseWindow(window string) (int, string, error) {
 }
 
 // buildTrendQuery builds the SQL query for trend stats
-func buildTrendQuery(granularity string, since time.Time) string {
+// Parameters: $1 = since (timestamp), $2 = user_id (UUID)
+func buildTrendQuery(granularity string) string {
 	truncFunc := "hour"
 	if granularity == "daily" {
 		truncFunc = "day"
@@ -113,6 +114,7 @@ func buildTrendQuery(granularity string, since time.Time) string {
 
 	// Query that aggregates articles, summarized articles, and feed activity by time bucket
 	// Uses LEFT JOINs to ensure we get counts even when some data is missing
+	// Note: articles are filtered by user_id for multi-tenant isolation
 	return fmt.Sprintf(`
 		WITH time_buckets AS (
 			SELECT date_trunc('%s', a.created_at) AS bucket,
@@ -121,6 +123,7 @@ func buildTrendQuery(granularity string, since time.Time) string {
 			FROM articles a
 			WHERE a.created_at >= $1
 			  AND a.deleted_at IS NULL
+			  AND a.user_id = $2
 			GROUP BY bucket
 		),
 		feed_activity AS (

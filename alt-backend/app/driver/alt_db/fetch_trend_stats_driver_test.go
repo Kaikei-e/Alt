@@ -79,16 +79,18 @@ func TestBuildTrendQuery(t *testing.T) {
 	tests := []struct {
 		name        string
 		granularity string
-		wantContain string
+		wantContain []string
 	}{
-		{"hourly", "hourly", "date_trunc('hour'"},
-		{"daily", "daily", "date_trunc('day'"},
+		{"hourly", "hourly", []string{"date_trunc('hour'", "a.user_id = $2"}},
+		{"daily", "daily", []string{"date_trunc('day'", "a.user_id = $2"}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			query := buildTrendQuery(tt.granularity, time.Now().Add(-24*time.Hour))
-			assert.Contains(t, query, tt.wantContain)
+			query := buildTrendQuery(tt.granularity)
+			for _, want := range tt.wantContain {
+				assert.Contains(t, query, want)
+			}
 		})
 	}
 }
