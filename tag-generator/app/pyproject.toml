@@ -37,6 +37,7 @@ dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.20.0",
     "aiohttp>=3.9.0",
+    "redis>=5.0.0",  # Redis Streams consumer
     "PyJWT>=2.8.0",
     "python-multipart>=0.0.6",
 

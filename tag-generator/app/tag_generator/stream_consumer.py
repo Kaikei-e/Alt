@@ -141,7 +141,7 @@ class StreamConsumer:
         if not streams:
             return
 
-        for stream_name, messages in streams:
+        for _stream_name, messages in streams:
             for message_id, data in messages:
                 event = self._parse_event(message_id, data)
 
