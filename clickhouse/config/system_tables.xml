@@ -1,5 +1,5 @@
 <clickhouse>
-    <!-- TTL 2 days for all system log tables -->
+    <!-- TTL 1 day for all system log tables (updated 2026-01-14) -->
 
     <query_log replace="1">
         <database>system</database>
@@ -8,7 +8,7 @@
             ENGINE = MergeTree
             PARTITION BY (event_date)
             ORDER BY (event_time)
-            TTL event_date + INTERVAL 2 DAY DELETE
+            TTL event_date + INTERVAL 1 DAY DELETE
             SETTINGS ttl_only_drop_parts = 1
         </engine>
     </query_log>
@@ -20,7 +20,7 @@
             ENGINE = MergeTree
             PARTITION BY (event_date)
             ORDER BY (event_time)
-            TTL event_date + INTERVAL 2 DAY DELETE
+            TTL event_date + INTERVAL 1 DAY DELETE
             SETTINGS ttl_only_drop_parts = 1
         </engine>
     </trace_log>
@@ -32,7 +32,7 @@
             ENGINE = MergeTree
             PARTITION BY (event_date)
             ORDER BY (event_time)
-            TTL event_date + INTERVAL 2 DAY DELETE
+            TTL event_date + INTERVAL 1 DAY DELETE
             SETTINGS ttl_only_drop_parts = 1
         </engine>
     </query_thread_log>
@@ -44,7 +44,7 @@
             ENGINE = MergeTree
             PARTITION BY (event_date)
             ORDER BY (event_time)
-            TTL event_date + INTERVAL 2 DAY DELETE
+            TTL event_date + INTERVAL 1 DAY DELETE
             SETTINGS ttl_only_drop_parts = 1
         </engine>
     </asynchronous_metric_log>
@@ -56,7 +56,7 @@
             ENGINE = MergeTree
             PARTITION BY (event_date)
             ORDER BY (event_time)
-            TTL event_date + INTERVAL 2 DAY DELETE
+            TTL event_date + INTERVAL 1 DAY DELETE
             SETTINGS ttl_only_drop_parts = 1
         </engine>
     </metric_log>
@@ -68,7 +68,7 @@
             ENGINE = MergeTree
             PARTITION BY (event_date)
             ORDER BY (event_time)
-            TTL event_date + INTERVAL 2 DAY DELETE
+            TTL event_date + INTERVAL 1 DAY DELETE
             SETTINGS ttl_only_drop_parts = 1
         </engine>
     </part_log>
@@ -80,7 +80,7 @@
             ENGINE = MergeTree
             PARTITION BY (event_date)
             ORDER BY (event_time)
-            TTL event_date + INTERVAL 2 DAY DELETE
+            TTL event_date + INTERVAL 1 DAY DELETE
             SETTINGS ttl_only_drop_parts = 1
         </engine>
     </text_log>
@@ -92,7 +92,7 @@
             ENGINE = MergeTree
             PARTITION BY (event_date)
             ORDER BY (event_time)
-            TTL event_date + INTERVAL 2 DAY DELETE
+            TTL event_date + INTERVAL 1 DAY DELETE
             SETTINGS ttl_only_drop_parts = 1
         </engine>
     </error_log>
