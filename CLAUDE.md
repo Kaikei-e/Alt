@@ -8,18 +8,34 @@ Alt is an AI-augmented RSS knowledge platform. Docker Compose-first orchestratio
 
 ## Quick Reference
 
+> **Note**: `make up/down/build` は廃止。`altctl` を使用してください。
+
 ```bash
-# Start stack
-make up
+# Start default stacks (db, auth, core, workers)
+altctl up
 
-# Stop stack
-make down
+# Start specific stack (dependencies auto-resolved)
+altctl up ai
 
-# Tear down with volumes
-make down-volumes
+# Stop all
+altctl down
 
-# Rebuild
-make build
+# View status
+altctl status
+
+# Stream logs
+altctl logs <service> -f
+```
+
+## Compose Files
+
+Docker Compose ファイルは `./compose/` 配下にあります。
+
+```bash
+# Direct docker compose commands
+docker compose -f compose/compose.yaml logs <service> --tail=100
+docker compose -f compose/compose.yaml build <service>
+docker compose -f compose/compose.yaml up -d <service>
 ```
 
 ## Service Matrix
@@ -71,20 +87,23 @@ Maintain strict boundaries. Update mocks alongside interface changes.
 
 ## Orchestration
 
-### Docker Compose Profiles
+### altctl Stack Management
 
 ```bash
-# Default stack
-make up
+# Default stacks (db, auth, core, workers)
+altctl up
 
 # With AI pipeline (GPU required)
-docker compose --profile ollama up -d
+altctl up ai
 
-# With log forwarders
-docker compose --profile logging up -d
+# With logging
+altctl up logging
 
 # Combined
-docker compose --profile ollama --profile logging up -d
+altctl up ai logging
+
+# View all available stacks
+altctl list
 ```
 
 ### Health Checks
@@ -107,10 +126,11 @@ curl http://localhost:7700/health       # Meilisearch
 
 | Issue | Solution |
 |-------|----------|
-| Stack won't start | Run `make down-volumes` then `make up` |
+| Stack won't start | Run `altctl down` then `altctl up` |
 | Tests failing | Check mock interfaces match implementations |
 | Rate limit errors | Verify 5-second intervals |
 | Import cycles (Go) | Check layer dependencies |
+| Search not working | Ensure workers stack is running: `altctl up workers` |
 
 ## Appendix: References
 

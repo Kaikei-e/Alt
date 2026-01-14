@@ -9,7 +9,7 @@
 
 # Alt – Compose-First AI Knowledge Platform
 
-_Last reviewed on January 8, 2026._
+_Last reviewed on January 13, 2026._
 
 > A Compose-first knowledge platform that ingests RSS content, enriches it with AI (LLM summaries, tag extraction, RAG-powered Q&A), and serves curated insights through Go, Python, Rust, and TypeScript services.
 
@@ -84,13 +84,15 @@ Alt uses Docker Compose as the source of truth for orchestration, maintaining lo
 
 ### Compose Topology
 
-The system consists of core services (always running), plus optional profiles for AI, recap, RAG, and logging capabilities.
+The system consists of core services (always running), plus optional profiles for AI, recap, RAG, messaging, and logging capabilities.
 
 ```mermaid
 flowchart TD
     classDef client fill:#e6f4ff,stroke:#1f5aa5,stroke-width:2px
     classDef edge fill:#f2e4ff,stroke:#8a4bd7,stroke-width:2px
     classDef core fill:#e8f5e9,stroke:#2f855a,stroke-width:2px
+    classDef bff fill:#d1fae5,stroke:#059669,stroke-width:2px
+    classDef mq fill:#fef3c7,stroke:#d97706,stroke-width:2px
     classDef ai fill:#fff4e5,stroke:#f97316,stroke-width:2px,stroke-dasharray:4
     classDef data fill:#fef3c7,stroke:#d97706,stroke-width:2px
     classDef recap fill:#fce7f3,stroke:#db2777,stroke-width:2px,stroke-dasharray:4
@@ -115,18 +117,34 @@ flowchart TD
     end
 
     UI --> API
-    UISv --> API
+    UISv --> BFF
+
+    subgraph BFFLayer["BFF Layer"]
+        BFF[alt-butterfly-facade :9250]:::bff
+        BFF --> API
+    end
 
     subgraph BE["Backend"]
         API[alt-backend :9000/:9101]:::core
         API --> Idx[search-indexer :9300]:::core
         API --> Tag[tag-generator :9400]:::core
+        API --> MQHub
     end
+
+    subgraph MQ["Message Queue"]
+        MQHub[mq-hub :9500]:::mq
+        MQHub --> RedisStreams[(redis-streams :6380)]:::data
+        RedisCache[(redis-cache :6379)]:::data
+    end
+
+    RedisStreams -.-> Tag
+    RedisStreams -.-> Idx
 
     API --> RW
     API --> RO
     Idx --> Meili
     Tag --> DB
+    NC --> RedisCache
 
     subgraph OL["Profile: ollama"]
         PP[pre-processor :9200]:::ai
@@ -167,6 +185,8 @@ flowchart TD
 | Style | Profile | Description |
 |-------|---------|-------------|
 | Green (solid) | default | Core services (always running) |
+| Teal (solid) | default | BFF layer (alt-butterfly-facade) |
+| Orange (solid) | default | Message queue (mq-hub, Redis) |
 | Orange (dashed) | `--profile ollama` | AI/LLM services |
 | Pink (dashed) | `--profile recap` | Summarization pipeline |
 | Blue (dashed) | `--profile rag-extension` | RAG services |
@@ -187,15 +207,25 @@ flowchart TD
 | `clickhouse_data` | clickhouse | Log analytics |
 | `news_creator_models` | news-creator | Ollama LLM models |
 | `oauth_token_data` | auth-token-manager | OAuth2 tokens |
+| `redis-cache-data` | redis-cache | LRU cache persistence |
+| `redis-streams-data` | redis-streams | Event stream AOF persistence |
 
 ### Data Flow Overview
 
-RSS feeds flow through ingestion, enrichment, and delivery stages. Each stage is handled by specialized services that maintain clear boundaries.
+RSS feeds flow through ingestion, enrichment, and delivery stages. Each stage is handled by specialized services that maintain clear boundaries. Event-driven processing via Redis Streams enables asynchronous workflows.
 
 ```mermaid
 flowchart LR
     subgraph Ingestion
         RSS[External RSS / Inoreader] --> PreProc[pre-processor :9200<br/>dedupe + summary]
+    end
+    subgraph "Event-Driven Processing"
+        MQHub[mq-hub :9500]
+        RedisStreams[(redis-streams :6380)]
+        AltBackend -->|Publish| MQHub
+        MQHub --> RedisStreams
+        RedisStreams -.->|ArticleCreated| TagGen
+        RedisStreams -.->|IndexArticle| SearchIdx[search-indexer :9300]
     end
     subgraph Tagging
         PreProc -->|/api/v1/summarize| TagGen[tag-generator<br/>ONNX + cascade]
@@ -256,14 +286,16 @@ flowchart LR
 
 ### Microservice Communication
 
-Direct API calls and data flow between all microservices.
+Direct API calls, event-driven messaging, and data flow between all microservices.
 
 ```mermaid
 flowchart LR
     classDef client fill:#e6f4ff,stroke:#1f5aa5,stroke-width:2px
     classDef edge fill:#f2e4ff,stroke:#8a4bd7,stroke-width:2px
     classDef fe fill:#d4e6f1,stroke:#2874a6,stroke-width:2px
+    classDef bff fill:#d1fae5,stroke:#059669,stroke-width:2px
     classDef be fill:#d5f5e3,stroke:#1e8449,stroke-width:2px
+    classDef mq fill:#fef3c7,stroke:#d97706,stroke-width:2px
     classDef wk fill:#fcf3cf,stroke:#d4ac0d,stroke-width:2px
     classDef db fill:#fef3c7,stroke:#d97706,stroke-width:2px
     classDef rag fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,stroke-dasharray:4
@@ -284,6 +316,11 @@ flowchart LR
         F2[alt-frontend-sv :4173]:::fe
     end
 
+    subgraph BFF["BFF Layer"]
+        direction TB
+        BF[alt-butterfly-facade :9250]:::bff
+    end
+
     subgraph Core["Core"]
         direction TB
         API[alt-backend<br/>:9000/:9101]:::be
@@ -294,11 +331,19 @@ flowchart LR
         Idx --> M[(meilisearch :7700)]:::db
     end
 
+    subgraph MQ["Message Queue"]
+        direction TB
+        MQH[mq-hub :9500]:::mq
+        MQH --> RS2[(redis-streams :6380)]:::db
+        RC[(redis-cache :6379)]:::db
+    end
+
     subgraph AI["AI Pipeline"]
         direction TB
         PP[pre-processor :9200]:::wk
         PP --> NC[news-creator :11434]:::wk
         NC --> DB2[(db)]:::db
+        NC --> RC
     end
 
     subgraph Recap["Recap"]
@@ -325,10 +370,15 @@ flowchart LR
     end
 
     N --> F1 & F2
-    F1 & F2 --> API
+    F1 --> API
+    F2 --> BF
+    BF -->|HTTP/2 h2c| API
     API --> PP
     API --> RW
     API --> RO
+    API -->|Connect-RPC| MQH
+    RS2 -.->|Subscribe| Tag
+    RS2 -.->|Subscribe| Idx
     RW --> NC
     N -.-> LF
     API -.-> LF
@@ -463,6 +513,130 @@ flowchart LR
     end
 ```
 
+### Inter-Service Communication
+
+Alt employs multiple communication protocols optimized for different use cases: synchronous HTTP/REST for simple requests, Connect-RPC for type-safe streaming, and Redis Streams for event-driven async workflows.
+
+**Protocol Summary:**
+
+| Protocol | Usage | Services |
+|----------|-------|----------|
+| HTTP/REST | ~70% | nginx ↔ frontends, backend ↔ workers, external APIs |
+| Connect-RPC | ~20% | backend ↔ pre-processor, mq-hub, search-indexer; frontend-sv ↔ BFF |
+| Redis Streams | ~5% | mq-hub → tag-generator, search-indexer (event-driven) |
+| PostgreSQL | ~5% | All services → respective databases |
+
+**Event-Driven Architecture:**
+
+```mermaid
+flowchart LR
+    classDef producer fill:#d5f5e3,stroke:#1e8449,stroke-width:2px
+    classDef broker fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    classDef consumer fill:#d4e6f1,stroke:#2874a6,stroke-width:2px
+    classDef stream fill:#fcf3cf,stroke:#d4ac0d,stroke-width:2px
+
+    subgraph Producers
+        Backend[alt-backend :9000]:::producer
+        PreProc[pre-processor :9200]:::producer
+    end
+
+    subgraph "Event Broker"
+        MQHub[mq-hub :9500<br/>Connect-RPC]:::broker
+        Redis[(redis-streams :6380<br/>AOF persistence)]:::stream
+    end
+
+    subgraph Consumers["Consumer Groups"]
+        TagGen[tag-generator :9400<br/>ArticleCreated]:::consumer
+        SearchIdx[search-indexer :9300<br/>IndexArticle]:::consumer
+    end
+
+    Backend -->|Publish ArticleCreated| MQHub
+    Backend -->|Publish IndexArticle| MQHub
+    PreProc -->|Publish SummarizeRequested| MQHub
+    MQHub --> Redis
+    Redis -.->|XREADGROUP| TagGen
+    Redis -.->|XREADGROUP| SearchIdx
+```
+
+**Stream Keys:**
+
+| Stream | Event Type | Consumers |
+|--------|------------|-----------|
+| `alt:events:articles` | ArticleCreated | tag-generator |
+| `alt:events:index` | IndexArticle | search-indexer |
+| `alt:events:summaries` | SummarizeRequested | pre-processor |
+| `alt:events:tags` | TagsGenerated | search-indexer |
+
+**BFF Architecture (alt-butterfly-facade):**
+
+The BFF layer provides transparent Connect-RPC proxying with JWT validation for SvelteKit frontend.
+
+```mermaid
+flowchart TD
+    classDef fe fill:#d4e6f1,stroke:#2874a6,stroke-width:2px
+    classDef bff fill:#d1fae5,stroke:#059669,stroke-width:2px
+    classDef auth fill:#f2e4ff,stroke:#8a4bd7,stroke-width:2px
+    classDef be fill:#d5f5e3,stroke:#1e8449,stroke-width:2px
+
+    SvelteKit[alt-frontend-sv :4173<br/>Connect-RPC Client]:::fe
+    BFF[alt-butterfly-facade :9250<br/>HTTP/2 h2c Proxy]:::bff
+    AuthHub[auth-hub :8888<br/>JWT Validation]:::auth
+    Backend[alt-backend :9101<br/>Connect-RPC Server]:::be
+
+    SvelteKit -->|Connect-RPC| BFF
+    BFF -->|Validate X-Alt-Backend-Token| AuthHub
+    AuthHub -->|200 OK| BFF
+    BFF -->|HTTP/2 h2c transparent proxy| Backend
+    Backend -->|Stream Response| BFF
+    BFF -->|Stream Response| SvelteKit
+```
+
+**Key Features:**
+- **HTTP/2 cleartext (h2c)** – Multiplexed connections for Connect-RPC efficiency
+- **JWT validation** – Tokens signed by auth-hub with BACKEND_TOKEN_SECRET
+- **Transparent proxy** – Preserves streaming semantics for real-time UI updates
+
+**Database Access Patterns:**
+
+```mermaid
+flowchart TD
+    classDef shared fill:#ffcccc,stroke:#cc0000,stroke-width:2px
+    classDef dedicated fill:#ccffcc,stroke:#00cc00,stroke-width:2px
+    classDef service fill:#e6f4ff,stroke:#1f5aa5,stroke-width:2px
+
+    subgraph "Shared Database (db :5432)"
+        DB[(PostgreSQL 17)]:::shared
+    end
+
+    subgraph "Dedicated Databases"
+        KratosDB[(kratos-db :5434)]:::dedicated
+        RecapDB[(recap-db :5435)]:::dedicated
+        RagDB[(rag-db :5436)]:::dedicated
+    end
+
+    Backend[alt-backend]:::service --> DB
+    PreProc[pre-processor]:::service --> DB
+    SearchIdx[search-indexer]:::service --> DB
+    TagGen[tag-generator]:::service --> DB
+
+    AuthHub[auth-hub]:::service --> KratosDB
+    Kratos[kratos]:::service --> KratosDB
+
+    RecapWorker[recap-worker]:::service --> RecapDB
+    RecapSub[recap-subworker]:::service --> RecapDB
+
+    RagOrch[rag-orchestrator]:::service --> RagDB
+```
+
+**Database User Segregation:**
+
+| Database | Users | Services |
+|----------|-------|----------|
+| db (shared) | `alt_appuser`, `pre_processor_user`, `search_indexer_user`, `tag_generator` | backend, pre-processor, search-indexer, tag-generator |
+| kratos-db | `kratos_user` | auth-hub, kratos |
+| recap-db | `recap_user` | recap-worker, recap-subworker, dashboard |
+| rag-db | `rag_user` | rag-orchestrator |
+
 ---
 
 ## Technology Stack
@@ -493,8 +667,10 @@ Each service maintains a `CLAUDE.md` for workflow guidelines and a `docs/<servic
 |---------|----------|-------------|-------------|
 | alt-frontend | TypeScript | [docs/alt-frontend.md](docs/alt-frontend.md) | Next.js 16 + React 19 UI with Chakra themes |
 | alt-frontend-sv | TypeScript | [docs/alt-frontend-sv.md](docs/alt-frontend-sv.md) | SvelteKit `/sv` with Runes, TailwindCSS, Connect-RPC |
+| alt-butterfly-facade | Go 1.24+ | [docs/alt-butterfly-facade.md](docs/alt-butterfly-facade.md) | HTTP/2 h2c BFF for SvelteKit with JWT validation |
 | alt-backend | Go 1.24+ | [docs/alt-backend.md](docs/alt-backend.md) | Clean Architecture REST + Connect-RPC API |
 | sidecar-proxy | Go 1.24+ | [docs/sidecar-proxy.md](docs/sidecar-proxy.md) | Egress proxy with HTTPS allowlists |
+| mq-hub | Go 1.24+ | [docs/mq-hub.md](docs/mq-hub.md) | Redis Streams event broker via Connect-RPC |
 | pre-processor | Go 1.24+ | [docs/pre-processor.md](docs/pre-processor.md) | RSS ingestion with dedupe and circuit breakers |
 | pre-processor-sidecar | Go 1.24+ | [docs/pre-processor-sidecar.md](docs/pre-processor-sidecar.md) | Scheduler for Inoreader token refresh |
 | news-creator | Python 3.11+ | [docs/news-creator.md](docs/news-creator.md) | FastAPI Ollama orchestrator for summaries |
