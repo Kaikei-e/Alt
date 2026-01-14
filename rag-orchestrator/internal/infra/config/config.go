@@ -47,6 +47,12 @@ const (
 	defaultHybridBM25Limit     = 50   // Match vector search limit
 )
 
+// Dynamic language allocation default.
+// When enabled, selects top N chunks by score regardless of language (JA/EN).
+const (
+	defaultDynamicLanguageAllocationEnabled = true // Dynamic score-based allocation by default
+)
+
 type Config struct {
 	Env                   string
 	Port                  string
@@ -94,6 +100,9 @@ type Config struct {
 	HybridSearchEnabled bool    // Enable BM25+vector fusion (default: true)
 	HybridAlpha         float64 // Weight: 0.0=BM25, 1.0=vector (default: 0.3)
 	HybridBM25Limit     int     // BM25 candidates to fetch (default: 50)
+
+	// Dynamic Language Allocation Parameter
+	DynamicLanguageAllocationEnabled bool // Enable dynamic JA/EN allocation by score (default: true)
 }
 
 func Load() *Config {
@@ -144,6 +153,9 @@ func Load() *Config {
 		HybridSearchEnabled: getEnvBool("HYBRID_SEARCH_ENABLED", defaultHybridSearchEnabled),
 		HybridAlpha:         getEnvFloat64("HYBRID_ALPHA", defaultHybridAlpha),
 		HybridBM25Limit:     getEnvInt("HYBRID_BM25_LIMIT", defaultHybridBM25Limit),
+
+		// Dynamic Language Allocation Parameter
+		DynamicLanguageAllocationEnabled: getEnvBool("RAG_DYNAMIC_LANGUAGE_ALLOCATION", defaultDynamicLanguageAllocationEnabled),
 	}
 }
 

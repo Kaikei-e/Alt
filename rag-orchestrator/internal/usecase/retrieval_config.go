@@ -78,6 +78,23 @@ func (c HybridSearchConfig) Validate() error {
 	return nil
 }
 
+// LanguageAllocationConfig holds settings for dynamic language allocation.
+// When enabled, selects top N chunks by score regardless of language.
+// When disabled, uses legacy English-first prioritization.
+type LanguageAllocationConfig struct {
+	// Enabled controls whether dynamic score-based allocation is used.
+	// When true: selects top N by score regardless of language (JA/EN ratio varies dynamically)
+	// When false: uses legacy two-pass approach (English first, then Japanese)
+	Enabled bool
+}
+
+// DefaultLanguageAllocationConfig returns the default config.
+func DefaultLanguageAllocationConfig() LanguageAllocationConfig {
+	return LanguageAllocationConfig{
+		Enabled: true, // Use dynamic score-based allocation by default
+	}
+}
+
 // RetrievalConfig holds tunable parameters for RAG retrieval.
 // Default values are based on research findings:
 // - EMNLP 2024: "Searching for Best Practices in RAG"
@@ -105,6 +122,9 @@ type RetrievalConfig struct {
 
 	// HybridSearch holds BM25+vector fusion settings.
 	HybridSearch HybridSearchConfig
+
+	// LanguageAllocation holds settings for dynamic JA/EN language allocation.
+	LanguageAllocation LanguageAllocationConfig
 }
 
 // DefaultRetrievalConfig returns research-backed defaults.
@@ -113,12 +133,13 @@ type RetrievalConfig struct {
 // - Microsoft RAG Guide: 50 for pre-ranking pool, re-rank to top 10
 func DefaultRetrievalConfig() RetrievalConfig {
 	return RetrievalConfig{
-		SearchLimit:   50,                          // Standard for pre-ranking pool
-		QuotaOriginal: 5,                           // 5-10 range optimal
-		QuotaExpanded: 5,                           // 5-10 range optimal
-		RRFK:          60.0,                        // Standard RRF constant
-		Reranking:     DefaultRerankingConfig(),    // Cross-encoder reranking
-		HybridSearch:  DefaultHybridSearchConfig(), // BM25+vector fusion
+		SearchLimit:        50,                               // Standard for pre-ranking pool
+		QuotaOriginal:      5,                                // 5-10 range optimal
+		QuotaExpanded:      5,                                // 5-10 range optimal
+		RRFK:               60.0,                             // Standard RRF constant
+		Reranking:          DefaultRerankingConfig(),         // Cross-encoder reranking
+		HybridSearch:       DefaultHybridSearchConfig(),      // BM25+vector fusion
+		LanguageAllocation: DefaultLanguageAllocationConfig(), // Dynamic JA/EN allocation
 	}
 }
 

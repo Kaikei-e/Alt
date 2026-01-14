@@ -25,6 +25,9 @@ func TestDefaultRetrievalConfig(t *testing.T) {
 	assert.True(t, cfg.HybridSearch.Enabled, "hybrid search should be enabled by default")
 	assert.Equal(t, 0.3, cfg.HybridSearch.Alpha, "hybrid alpha should be 0.3 (EMNLP 2024 optimal)")
 	assert.Equal(t, 50, cfg.HybridSearch.BM25Limit, "hybrid BM25Limit should be 50")
+
+	// Language allocation defaults (dynamic score-based selection)
+	assert.True(t, cfg.LanguageAllocation.Enabled, "dynamic language allocation should be enabled by default")
 }
 
 func TestRetrievalConfig_TotalQuota(t *testing.T) {
@@ -276,4 +279,9 @@ func TestRetrievalConfig_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLanguageAllocationConfig_Default(t *testing.T) {
+	cfg := DefaultLanguageAllocationConfig()
+	assert.True(t, cfg.Enabled, "dynamic language allocation should be enabled by default")
 }

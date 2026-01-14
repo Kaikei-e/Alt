@@ -158,3 +158,20 @@ func TestGetEnvFloat32(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_DynamicLanguageAllocation_Default(t *testing.T) {
+	os.Unsetenv("RAG_DYNAMIC_LANGUAGE_ALLOCATION")
+
+	cfg := Load()
+
+	assert.True(t, cfg.DynamicLanguageAllocationEnabled, "dynamic language allocation should be enabled by default")
+}
+
+func TestLoad_DynamicLanguageAllocation_Disabled(t *testing.T) {
+	os.Setenv("RAG_DYNAMIC_LANGUAGE_ALLOCATION", "false")
+	defer os.Unsetenv("RAG_DYNAMIC_LANGUAGE_ALLOCATION")
+
+	cfg := Load()
+
+	assert.False(t, cfg.DynamicLanguageAllocationEnabled, "dynamic language allocation should be disabled when env var is false")
+}

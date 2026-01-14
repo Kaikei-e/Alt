@@ -447,60 +447,83 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 	}
 
 	// 4. Resolve Metadata & Merge with Quota
-	contexts := make([]ContextItem, 0, quotaOriginal+quotaExpanded)
-	seen := make(map[uuid.UUID]bool)
+	var contexts []ContextItem
 
-	// Add Top N from Original
-	countOriginal := 0
-	for _, res := range hitsOriginal {
-		if countOriginal >= quotaOriginal {
-			break
-		}
-		if !seen[res.Chunk.ID] {
-			contexts = append(contexts, ContextItem{
-				ChunkText:       res.Chunk.Content,
-				URL:             res.URL,
-				Title:           res.Title,
-				PublishedAt:     res.Chunk.CreatedAt.Format(time.RFC3339),
-				Score:           res.Score,
-				DocumentVersion: res.DocumentVersion,
-				ChunkID:         res.Chunk.ID,
-			})
-			seen[res.Chunk.ID] = true
-			countOriginal++
-		}
-	}
+	if u.config.LanguageAllocation.Enabled {
+		// Dynamic allocation: select top N by score regardless of language
+		contexts = SelectContextsDynamic(hitsOriginal, hitsExpanded, quotaOriginal+quotaExpanded)
 
-	// Add Top M from Expanded
-	countExpanded := 0
+		// Log language distribution
+		jaCount, enCount := 0, 0
+		for _, ctx := range contexts {
+			if isJapanese(ctx.Title) {
+				jaCount++
+			} else {
+				enCount++
+			}
+		}
+		u.logger.Info("dynamic_language_allocation_completed",
+			slog.String("retrieval_id", retrievalID),
+			slog.Int("japanese_count", jaCount),
+			slog.Int("english_count", enCount),
+			slog.Int("total_contexts", len(contexts)))
+	} else {
+		// Legacy allocation: original quota + expanded with English priority
+		contexts = make([]ContextItem, 0, quotaOriginal+quotaExpanded)
+		seen := make(map[uuid.UUID]bool)
 
-	// Pass 1: Prioritize English/Non-Japanese documents
-	for _, item := range hitsExpanded {
-		if countExpanded >= quotaExpanded {
-			break
+		// Add Top N from Original
+		countOriginal := 0
+		for _, res := range hitsOriginal {
+			if countOriginal >= quotaOriginal {
+				break
+			}
+			if !seen[res.Chunk.ID] {
+				contexts = append(contexts, ContextItem{
+					ChunkText:       res.Chunk.Content,
+					URL:             res.URL,
+					Title:           res.Title,
+					PublishedAt:     res.Chunk.CreatedAt.Format(time.RFC3339),
+					Score:           res.Score,
+					DocumentVersion: res.DocumentVersion,
+					ChunkID:         res.Chunk.ID,
+				})
+				seen[res.Chunk.ID] = true
+				countOriginal++
+			}
 		}
-		if seen[item.ChunkID] {
-			continue
+
+		// Add Top M from Expanded
+		countExpanded := 0
+
+		// Pass 1: Prioritize English/Non-Japanese documents
+		for _, item := range hitsExpanded {
+			if countExpanded >= quotaExpanded {
+				break
+			}
+			if seen[item.ChunkID] {
+				continue
+			}
+			// If title is NOT Japanese (contains no CJK), prioritize it
+			if !isJapanese(item.Title) {
+				contexts = append(contexts, item)
+				seen[item.ChunkID] = true
+				countExpanded++
+			}
 		}
-		// If title is NOT Japanese (contains no CJK), prioritize it
-		if !isJapanese(item.Title) {
+
+		// Pass 2: Fill remaining quota with other documents (e.g. Japanese)
+		for _, item := range hitsExpanded {
+			if countExpanded >= quotaExpanded {
+				break
+			}
+			if seen[item.ChunkID] {
+				continue
+			}
 			contexts = append(contexts, item)
 			seen[item.ChunkID] = true
 			countExpanded++
 		}
-	}
-
-	// Pass 2: Fill remaining quota with other documents (e.g. Japanese)
-	for _, item := range hitsExpanded {
-		if countExpanded >= quotaExpanded {
-			break
-		}
-		if seen[item.ChunkID] {
-			continue
-		}
-		contexts = append(contexts, item)
-		seen[item.ChunkID] = true
-		countExpanded++
 	}
 
 	u.logger.Info("vector_search_completed",
@@ -585,6 +608,51 @@ func isJapanese(s string) bool {
 		}
 	}
 	return false
+}
+
+// SelectContextsDynamic merges and selects top N contexts from all sources by score.
+// This function is exported for testing purposes.
+func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []ContextItem, totalQuota int) []ContextItem {
+	seen := make(map[uuid.UUID]bool)
+	allCandidates := make([]ContextItem, 0, len(hitsOriginal)+len(hitsExpanded))
+
+	// Add original hits as ContextItem
+	for _, res := range hitsOriginal {
+		if seen[res.Chunk.ID] {
+			continue
+		}
+		allCandidates = append(allCandidates, ContextItem{
+			ChunkText:       res.Chunk.Content,
+			URL:             res.URL,
+			Title:           res.Title,
+			PublishedAt:     res.Chunk.CreatedAt.Format(time.RFC3339),
+			Score:           res.Score,
+			DocumentVersion: res.DocumentVersion,
+			ChunkID:         res.Chunk.ID,
+		})
+		seen[res.Chunk.ID] = true
+	}
+
+	// Add expanded hits (avoiding duplicates)
+	for _, item := range hitsExpanded {
+		if seen[item.ChunkID] {
+			continue
+		}
+		allCandidates = append(allCandidates, item)
+		seen[item.ChunkID] = true
+	}
+
+	// Sort by score descending
+	sort.Slice(allCandidates, func(i, j int) bool {
+		return allCandidates[i].Score > allCandidates[j].Score
+	})
+
+	// Select top N
+	if len(allCandidates) > totalQuota {
+		allCandidates = allCandidates[:totalQuota]
+	}
+
+	return allCandidates
 }
 
 // fuseHybridResults merges vector search results with BM25 results using RRF.

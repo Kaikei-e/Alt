@@ -110,6 +110,9 @@ func main() {
 			Alpha:     cfg.HybridAlpha,
 			BM25Limit: cfg.HybridBM25Limit,
 		},
+		LanguageAllocation: usecase.LanguageAllocationConfig{
+			Enabled: cfg.DynamicLanguageAllocationEnabled,
+		},
 	}
 
 	// Build retrieve usecase with optional reranker and BM25 searcher
@@ -223,7 +226,7 @@ func main() {
 	}()
 
 	// 13. Start Connect-RPC Server
-	connectHandler := connectserver.CreateConnectServer(articleClient, answerUsecase, log)
+	connectHandler := connectserver.CreateConnectServer(articleClient, answerUsecase, retrieveUsecase, log)
 	connectServer := &http.Server{
 		Addr:              fmt.Sprintf(":%s", cfg.ConnectPort),
 		Handler:           connectHandler,
