@@ -8,12 +8,14 @@ import (
 	"alt/driver/alt_db"
 	"alt/driver/csrf_token_driver"
 	"alt/driver/kratos_client"
+	"alt/driver/mqhub_connect"
 	"alt/driver/search_indexer_connect"
 	"alt/gateway/archive_article_gateway"
 	"alt/gateway/article_gateway"
 	"alt/gateway/config_gateway"
 	"alt/gateway/csrf_token_gateway"
 	"alt/gateway/error_handler_gateway"
+	"alt/gateway/event_publisher_gateway"
 	"alt/gateway/feed_link_gateway"
 	"alt/gateway/feed_search_gateway"
 	"alt/gateway/feed_stats_gateway"
@@ -40,6 +42,7 @@ import (
 	"alt/gateway/user_feed_gateway"
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
+	"alt/port/event_publisher_port"
 	"alt/port/morning_letter_port"
 	"alt/port/rag_integration_port"
 	"alt/port/rate_limiter_port"
@@ -94,6 +97,7 @@ type ApplicationComponents struct {
 	FetchArticleGateway          *fetch_article_gateway.FetchArticleGateway
 	RagIntegration               rag_integration_port.RagIntegrationPort
 	MorningLetterConnectGateway  *morning_letter_connect_gateway.Gateway
+	EventPublisher               event_publisher_port.EventPublisherPort
 
 	// Usecases
 	FetchSingleFeedUsecase              *fetch_feed_usecase.FetchSingleFeedUsecase
@@ -283,6 +287,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	// MorningLetter Connect-RPC gateway (calls rag-orchestrator)
 	morningLetterConnectGateway := morning_letter_connect_gateway.NewGateway(cfg.Rag.OrchestratorConnectURL, slog.Default())
 
+	// MQ-Hub event publisher (optional, fail-open if disabled)
+	mqhubClient := mqhub_connect.NewClient(cfg.MQHub.ConnectURL, cfg.MQHub.Enabled)
+	eventPublisherGatewayImpl := event_publisher_gateway.NewEventPublisherGateway(mqhubClient, slog.Default())
+
 	// Auth-hub client for identity management (abstracts Kratos)
 	kratosClientImpl := kratos_client.NewKratosClient(cfg.AuthHub.URL)
 
@@ -303,6 +311,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchArticleGateway:         fetchArticleGatewayImpl,
 		RagIntegration:              ragAdapterImpl,
 		MorningLetterConnectGateway: morningLetterConnectGateway,
+		EventPublisher:              eventPublisherGatewayImpl,
 
 		// Usecases
 		FetchSingleFeedUsecase:              fetchSingleFeedUsecase,

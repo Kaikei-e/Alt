@@ -13,6 +13,7 @@ type ArticleDriver interface {
 	GetArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*driver.ArticleWithTags, *time.Time, string, error)
 	GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]*driver.DeletedArticle, *time.Time, error)
 	GetLatestCreatedAt(ctx context.Context) (*time.Time, error)
+	GetArticleByID(ctx context.Context, articleID string) (*driver.ArticleWithTags, error)
 }
 
 type ArticleRepositoryGateway struct {
@@ -128,4 +129,24 @@ func (g *ArticleRepositoryGateway) GetLatestCreatedAt(ctx context.Context) (*tim
 	}
 
 	return latestCreatedAt, nil
+}
+
+// GetArticleByID retrieves a single article with tags by its ID.
+func (g *ArticleRepositoryGateway) GetArticleByID(ctx context.Context, articleID string) (*domain.Article, error) {
+	driverArticle, err := g.driver.GetArticleByID(ctx, articleID)
+	if err != nil {
+		return nil, &port.RepositoryError{
+			Op:  "GetArticleByID",
+			Err: err.Error(),
+		}
+	}
+
+	if driverArticle == nil {
+		return nil, &port.RepositoryError{
+			Op:  "GetArticleByID",
+			Err: "article not found: " + articleID,
+		}
+	}
+
+	return g.convertToDomain(driverArticle)
 }

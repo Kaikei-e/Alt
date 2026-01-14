@@ -51,6 +51,9 @@ services:
     build:
       context: ../search-indexer
       dockerfile: Dockerfile.search-indexer
+    depends_on:
+      redis-streams:
+        condition: service_healthy
     environment:
       - DB_HOST=db
       - DB_PORT=5432
@@ -61,6 +64,10 @@ services:
       - MEILISEARCH_HOST=${MEILISEARCH_HOST}
       - MEILISEARCH_API_KEY_FILE=/run/secrets/meili_master_key
       - MEILI_MASTER_KEY_FILE=/run/secrets/meili_master_key
+      - REDIS_STREAMS_URL=redis://redis-streams:6379
+      - CONSUMER_ENABLED=true
+      - CONSUMER_GROUP=search-indexer-group
+      - CONSUMER_NAME=search-indexer-1
     secrets:
       - search_indexer_db_password
       - meili_master_key

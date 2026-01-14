@@ -67,6 +67,20 @@ func (m *mockArticleDriver) GetLatestCreatedAt(ctx context.Context) (*time.Time,
 	return &latest, nil
 }
 
+func (m *mockArticleDriver) GetArticleByID(ctx context.Context, articleID string) (*driver.ArticleWithTags, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+
+	for _, article := range m.articles {
+		if article.ID == articleID {
+			return article, nil
+		}
+	}
+
+	return nil, nil
+}
+
 func TestArticleRepositoryGateway_GetArticlesWithTags(t *testing.T) {
 	now := time.Now()
 

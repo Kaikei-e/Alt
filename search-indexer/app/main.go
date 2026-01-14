@@ -11,6 +11,7 @@ import (
 	"time"
 
 	connectv2 "search-indexer/connect/v2"
+	"search-indexer/consumer"
 	"search-indexer/driver"
 	"search-indexer/gateway"
 	"search-indexer/logger"
@@ -98,7 +99,29 @@ func main() {
 	// Create use cases (application layer)
 	indexUsecase := usecase.NewIndexArticlesUsecase(articleRepo, searchEngine, tokenizer)
 
-	// ──────────── batch indexer ────────────
+	// ──────────── Redis Streams Consumer (event-driven indexing) ────────────
+	consumerCfg := consumer.ConfigFromEnv()
+	if consumerCfg.Enabled {
+		eventHandler := consumer.NewIndexEventHandler(indexUsecase, logger.Logger)
+		redisConsumer, err := consumer.NewConsumer(consumerCfg, eventHandler, logger.Logger)
+		if err != nil {
+			logger.Logger.Error("Failed to create Redis Streams consumer", "err", err)
+		} else {
+			if err := redisConsumer.Start(ctx); err != nil {
+				logger.Logger.Error("Failed to start Redis Streams consumer", "err", err)
+			} else {
+				logger.Logger.Info("Redis Streams consumer started",
+					"stream", consumerCfg.StreamKey,
+					"group", consumerCfg.GroupName,
+				)
+				defer redisConsumer.Stop()
+			}
+		}
+	} else {
+		logger.Logger.Info("Redis Streams consumer disabled")
+	}
+
+	// ──────────── batch indexer (polling fallback) ────────────
 	go runIndexLoop(ctx, indexUsecase)
 
 	// ──────────── HTTP server ────────────

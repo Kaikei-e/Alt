@@ -409,3 +409,40 @@ func (d *DatabaseDriver) GetLatestCreatedAt(ctx context.Context) (*time.Time, er
 
 	return latestCreatedAt, nil
 }
+
+// GetArticleByID retrieves a single article with tags by its ID.
+func (d *DatabaseDriver) GetArticleByID(ctx context.Context, articleID string) (*ArticleWithTags, error) {
+	query := `
+		SELECT a.id, a.title, a.content, a.created_at, a.user_id,
+			   COALESCE(
+				   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
+				   '{}'
+			   ) as tag_names
+		FROM articles a
+		LEFT JOIN article_tags at ON a.id = at.article_id
+		LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
+		WHERE a.id = $1 AND a.deleted_at IS NULL
+		GROUP BY a.id, a.title, a.content, a.created_at, a.user_id
+	`
+
+	var article ArticleWithTags
+	var tagNames []string
+
+	err := d.pool.QueryRow(ctx, query, articleID).Scan(
+		&article.ID, &article.Title, &article.Content, &article.CreatedAt, &article.UserID, &tagNames,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert tag names to Tag structs for consistency
+	var tags []TagModel
+	for _, tagName := range tagNames {
+		if tagName != "" {
+			tags = append(tags, TagModel{TagName: tagName})
+		}
+	}
+	article.Tags = tags
+
+	return &article, nil
+}

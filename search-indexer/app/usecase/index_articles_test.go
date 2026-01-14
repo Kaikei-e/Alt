@@ -69,6 +69,20 @@ func (m *mockArticleRepo) GetLatestCreatedAt(ctx context.Context) (*time.Time, e
 	return &latest, nil
 }
 
+func (m *mockArticleRepo) GetArticleByID(ctx context.Context, articleID string) (*domain.Article, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+
+	for _, article := range m.articles {
+		if article.ID() == articleID {
+			return article, nil
+		}
+	}
+
+	return nil, &port.RepositoryError{Op: "GetArticleByID", Err: "not found"}
+}
+
 type mockSearchEngineForIndexing struct {
 	indexedDocs []domain.SearchDocument
 	err         error

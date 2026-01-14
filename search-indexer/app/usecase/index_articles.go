@@ -143,3 +143,32 @@ func (u *IndexArticlesUsecase) ExecuteIncremental(ctx context.Context, increment
 func (u *IndexArticlesUsecase) GetIncrementalMark(ctx context.Context) (*time.Time, error) {
 	return u.articleRepo.GetLatestCreatedAt(ctx)
 }
+
+// ExecuteSingleArticle indexes a single article by its ID (for event-driven indexing)
+func (u *IndexArticlesUsecase) ExecuteSingleArticle(ctx context.Context, articleID string) (*IndexResult, error) {
+	article, err := u.articleRepo.GetArticleByID(ctx, articleID)
+	if err != nil {
+		return nil, err
+	}
+
+	if article == nil {
+		return &IndexResult{
+			IndexedCount: 0,
+		}, nil
+	}
+
+	doc := domain.NewSearchDocument(article)
+	if err := u.searchEngine.IndexDocuments(ctx, []domain.SearchDocument{doc}); err != nil {
+		return nil, err
+	}
+
+	// Process synonyms for tags
+	synonyms := tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags)
+	if len(synonyms) > 0 {
+		_ = u.searchEngine.RegisterSynonyms(ctx, synonyms)
+	}
+
+	return &IndexResult{
+		IndexedCount: 1,
+	}, nil
+}
