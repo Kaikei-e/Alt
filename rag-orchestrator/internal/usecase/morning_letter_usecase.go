@@ -44,27 +44,35 @@ type MorningLetterUsecase interface {
 }
 
 type morningLetterUsecase struct {
-	articleClient domain.ArticleClient
-	retrieveUC    RetrieveContextUsecase
-	promptBuilder MorningLetterPromptBuilder
-	llmClient     domain.LLMClient
-	logger        *slog.Logger
+	articleClient      domain.ArticleClient
+	retrieveUC         RetrieveContextUsecase
+	promptBuilder      MorningLetterPromptBuilder
+	llmClient          domain.LLMClient
+	temporalBoostCfg   TemporalBoostConfig
+	logger             *slog.Logger
 }
 
-// NewMorningLetterUsecase creates a new morning letter usecase
+// NewMorningLetterUsecase creates a new morning letter usecase.
+// If temporalBoostCfg is zero-valued, defaults are used.
 func NewMorningLetterUsecase(
 	articleClient domain.ArticleClient,
 	retrieveUC RetrieveContextUsecase,
 	promptBuilder MorningLetterPromptBuilder,
 	llmClient domain.LLMClient,
+	temporalBoostCfg TemporalBoostConfig,
 	logger *slog.Logger,
 ) MorningLetterUsecase {
+	// Apply defaults if config is zero-valued
+	if temporalBoostCfg.Boost6h == 0 {
+		temporalBoostCfg = DefaultTemporalBoostConfig()
+	}
 	return &morningLetterUsecase{
-		articleClient: articleClient,
-		retrieveUC:    retrieveUC,
-		promptBuilder: promptBuilder,
-		llmClient:     llmClient,
-		logger:        logger,
+		articleClient:    articleClient,
+		retrieveUC:       retrieveUC,
+		promptBuilder:    promptBuilder,
+		llmClient:        llmClient,
+		temporalBoostCfg: temporalBoostCfg,
+		logger:           logger,
 	}
 }
 
@@ -200,6 +208,7 @@ func (u *morningLetterUsecase) Execute(ctx context.Context, input MorningLetterI
 }
 
 // applyTemporalBoost increases scores for more recent articles
+// using configurable boost factors from TemporalBoostConfig.
 func (u *morningLetterUsecase) applyTemporalBoost(contexts []ContextItem, now time.Time) []ContextItem {
 	for i := range contexts {
 		publishedAt, err := time.Parse(time.RFC3339, contexts[i].PublishedAt)
@@ -208,16 +217,8 @@ func (u *morningLetterUsecase) applyTemporalBoost(contexts []ContextItem, now ti
 		}
 		hoursSince := now.Sub(publishedAt).Hours()
 
-		// Temporal boost factor
-		var boost float32 = 1.0
-		switch {
-		case hoursSince <= 6:
-			boost = 1.3 // 30% boost for last 6 hours
-		case hoursSince <= 12:
-			boost = 1.15 // 15% boost for 6-12 hours
-		case hoursSince <= 18:
-			boost = 1.05 // 5% boost for 12-18 hours
-		}
+		// Use configurable temporal boost factors
+		boost := u.temporalBoostCfg.GetBoostFactor(hoursSince)
 		contexts[i].Score *= boost
 	}
 

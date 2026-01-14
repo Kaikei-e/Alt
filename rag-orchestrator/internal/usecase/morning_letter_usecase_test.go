@@ -54,6 +54,7 @@ func TestMorningLetterUsecase_Execute_Success(t *testing.T) {
 		mockRetrieveUC,
 		mockPromptBuilder,
 		mockLLM,
+		usecase.DefaultTemporalBoostConfig(),
 		testLogger,
 	)
 
@@ -150,6 +151,7 @@ func TestMorningLetterUsecase_Execute_NoArticles(t *testing.T) {
 		mockRetrieveUC,
 		mockPromptBuilder,
 		mockLLM,
+		usecase.DefaultTemporalBoostConfig(),
 		testLogger,
 	)
 
@@ -181,6 +183,7 @@ func TestMorningLetterUsecase_Execute_ArticleClientError(t *testing.T) {
 		mockRetrieveUC,
 		mockPromptBuilder,
 		mockLLM,
+		usecase.DefaultTemporalBoostConfig(),
 		testLogger,
 	)
 
@@ -209,6 +212,7 @@ func TestMorningLetterUsecase_Execute_DefaultValues(t *testing.T) {
 		mockRetrieveUC,
 		mockPromptBuilder,
 		mockLLM,
+		usecase.DefaultTemporalBoostConfig(),
 		testLogger,
 	)
 
@@ -242,6 +246,7 @@ func TestMorningLetterUsecase_Execute_MaxLimits(t *testing.T) {
 		mockRetrieveUC,
 		mockPromptBuilder,
 		mockLLM,
+		usecase.DefaultTemporalBoostConfig(),
 		testLogger,
 	)
 

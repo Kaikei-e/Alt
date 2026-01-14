@@ -51,7 +51,7 @@ func TestRetrieveContext_Execute_Success(t *testing.T) {
 	mockQueryExpander := new(MockQueryExpander)
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander, testLogger)
+	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander, usecase.DefaultRetrievalConfig(), testLogger)
 
 	ctx := context.Background()
 	input := usecase.RetrieveContextInput{

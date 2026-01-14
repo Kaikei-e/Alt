@@ -6,6 +6,47 @@ import (
 	"strings"
 )
 
+// Research-backed defaults for RAG retrieval parameters.
+// Sources:
+// - EMNLP 2024: "Searching for Best Practices in RAG"
+// - Microsoft RAG Techniques Guide
+// - Databricks Long Context RAG Performance
+const (
+	defaultRAGSearchLimit   = 50   // Standard for pre-ranking pool
+	defaultRAGQuotaOriginal = 5    // Within 5-10 optimal range
+	defaultRAGQuotaExpanded = 5    // Within 5-10 optimal range
+	defaultRAGRRFK          = 60.0 // Standard RRF constant
+)
+
+// Application-specific defaults for temporal boost.
+// These values should be tuned via A/B testing.
+const (
+	defaultTemporalBoost6h  = float32(1.3)  // 30% boost for 0-6 hours
+	defaultTemporalBoost12h = float32(1.15) // 15% boost for 6-12 hours
+	defaultTemporalBoost18h = float32(1.05) // 5% boost for 12-18 hours
+)
+
+// Re-ranking defaults (research-backed).
+// Sources:
+// - Pinecone: +15-30% NDCG@10 improvement with cross-encoder
+// - ZeroEntropy: -35% LLM hallucinations
+const (
+	defaultRerankEnabled = true                    // Enabled by default per user preference
+	defaultRerankModel   = "bge-reranker-v2-m3"   // BAAI multilingual model
+	defaultRerankTopK    = 10                      // Rerank 50 -> 10
+	defaultRerankTimeout = 30                      // Seconds
+)
+
+// Hybrid search defaults (research-backed).
+// Sources:
+// - EMNLP 2024: Alpha=0.3 optimal
+// - Weaviate/LlamaIndex: RRF fusion with k=60
+const (
+	defaultHybridSearchEnabled = true // Enabled by default per user preference
+	defaultHybridAlpha         = 0.3  // EMNLP 2024 optimal (slightly BM25-heavy)
+	defaultHybridBM25Limit     = 50   // Match vector search limit
+)
+
 type Config struct {
 	Env                   string
 	Port                  string
@@ -30,6 +71,29 @@ type Config struct {
 	AltBackendTimeout     int    // Seconds
 	QueryExpansionURL     string // news-creator URL for query expansion
 	QueryExpansionTimeout int    // Seconds
+
+	// RAG Retrieval Parameters (research-backed defaults)
+	RAGSearchLimit   int     // Vector search initial fetch (default: 50)
+	RAGQuotaOriginal int     // Chunks from original query (default: 5)
+	RAGQuotaExpanded int     // Chunks from expanded queries (default: 5)
+	RAGRRFK          float64 // RRF constant (default: 60.0)
+
+	// Temporal Boost Parameters (application-specific)
+	TemporalBoost6h  float32 // Boost for 0-6 hours (default: 1.3)
+	TemporalBoost12h float32 // Boost for 6-12 hours (default: 1.15)
+	TemporalBoost18h float32 // Boost for 12-18 hours (default: 1.05)
+
+	// Re-ranking Parameters (research-backed)
+	RerankEnabled bool   // Enable cross-encoder reranking (default: true)
+	RerankURL     string // news-creator URL for reranking
+	RerankModel   string // Cross-encoder model name (default: bge-reranker-v2-m3)
+	RerankTopK    int    // Results after reranking (default: 10)
+	RerankTimeout int    // Seconds (default: 30)
+
+	// Hybrid Search Parameters (research-backed)
+	HybridSearchEnabled bool    // Enable BM25+vector fusion (default: true)
+	HybridAlpha         float64 // Weight: 0.0=BM25, 1.0=vector (default: 0.3)
+	HybridBM25Limit     int     // BM25 candidates to fetch (default: 50)
 }
 
 func Load() *Config {
@@ -57,6 +121,29 @@ func Load() *Config {
 		AltBackendTimeout:     getEnvInt("ALT_BACKEND_TIMEOUT", 30),
 		QueryExpansionURL:     getEnv("QUERY_EXPANSION_URL", "http://news-creator:11434"),
 		QueryExpansionTimeout: getEnvInt("QUERY_EXPANSION_TIMEOUT", 30),
+
+		// RAG Retrieval Parameters
+		RAGSearchLimit:   getEnvInt("RAG_SEARCH_LIMIT", defaultRAGSearchLimit),
+		RAGQuotaOriginal: getEnvInt("RAG_QUOTA_ORIGINAL", defaultRAGQuotaOriginal),
+		RAGQuotaExpanded: getEnvInt("RAG_QUOTA_EXPANDED", defaultRAGQuotaExpanded),
+		RAGRRFK:          getEnvFloat64("RAG_RRF_K", defaultRAGRRFK),
+
+		// Temporal Boost Parameters
+		TemporalBoost6h:  getEnvFloat32("TEMPORAL_BOOST_6H", defaultTemporalBoost6h),
+		TemporalBoost12h: getEnvFloat32("TEMPORAL_BOOST_12H", defaultTemporalBoost12h),
+		TemporalBoost18h: getEnvFloat32("TEMPORAL_BOOST_18H", defaultTemporalBoost18h),
+
+		// Re-ranking Parameters
+		RerankEnabled: getEnvBool("RERANK_ENABLED", defaultRerankEnabled),
+		RerankURL:     getEnv("RERANK_URL", "http://news-creator:11434"),
+		RerankModel:   getEnv("RERANK_MODEL", defaultRerankModel),
+		RerankTopK:    getEnvInt("RERANK_TOP_K", defaultRerankTopK),
+		RerankTimeout: getEnvInt("RERANK_TIMEOUT", defaultRerankTimeout),
+
+		// Hybrid Search Parameters
+		HybridSearchEnabled: getEnvBool("HYBRID_SEARCH_ENABLED", defaultHybridSearchEnabled),
+		HybridAlpha:         getEnvFloat64("HYBRID_ALPHA", defaultHybridAlpha),
+		HybridBM25Limit:     getEnvInt("HYBRID_BM25_LIMIT", defaultHybridBM25Limit),
 	}
 }
 
@@ -99,6 +186,33 @@ func getEnvWithAlt(key, altKey, fallback string) string {
 func getEnvInt(key string, fallback int) int {
 	if value, ok := os.LookupEnv(key); ok {
 		if parsed, err := strconv.Atoi(value); err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+func getEnvFloat64(key string, fallback float64) float64 {
+	if value, ok := os.LookupEnv(key); ok {
+		if parsed, err := strconv.ParseFloat(value, 64); err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+func getEnvFloat32(key string, fallback float32) float32 {
+	if value, ok := os.LookupEnv(key); ok {
+		if parsed, err := strconv.ParseFloat(value, 32); err == nil {
+			return float32(parsed)
+		}
+	}
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if value, ok := os.LookupEnv(key); ok {
+		if parsed, err := strconv.ParseBool(value); err == nil {
 			return parsed
 		}
 	}

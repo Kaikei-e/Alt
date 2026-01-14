@@ -48,10 +48,33 @@ type retrieveContextUsecase struct {
 	llmClient     domain.LLMClient
 	searchClient  domain.SearchClient
 	queryExpander domain.QueryExpander
+	reranker      domain.Reranker   // Optional: cross-encoder reranking
+	bm25Searcher  domain.BM25Searcher // Optional: BM25 search for hybrid fusion
+	config        RetrievalConfig
 	logger        *slog.Logger
 }
 
+// RetrieveContextOption is a functional option for configuring the usecase.
+type RetrieveContextOption func(*retrieveContextUsecase)
+
+// WithReranker sets an optional cross-encoder reranker.
+// If not set or nil, reranking is skipped.
+func WithReranker(r domain.Reranker) RetrieveContextOption {
+	return func(u *retrieveContextUsecase) {
+		u.reranker = r
+	}
+}
+
+// WithBM25Searcher sets an optional BM25 searcher for hybrid search fusion.
+// If not set or nil, pure vector search is used.
+func WithBM25Searcher(s domain.BM25Searcher) RetrieveContextOption {
+	return func(u *retrieveContextUsecase) {
+		u.bm25Searcher = s
+	}
+}
+
 // NewRetrieveContextUsecase creates a new RetrieveContextUsecase.
+// If config is zero-valued, defaults are used (research-backed values).
 func NewRetrieveContextUsecase(
 	chunkRepo domain.RagChunkRepository,
 	docRepo domain.RagDocumentRepository,
@@ -59,17 +82,28 @@ func NewRetrieveContextUsecase(
 	llmClient domain.LLMClient,
 	searchClient domain.SearchClient,
 	queryExpander domain.QueryExpander,
+	config RetrievalConfig,
 	logger *slog.Logger,
+	opts ...RetrieveContextOption,
 ) RetrieveContextUsecase {
-	return &retrieveContextUsecase{
+	// Apply defaults if config is zero-valued
+	if config.SearchLimit == 0 {
+		config = DefaultRetrievalConfig()
+	}
+	u := &retrieveContextUsecase{
 		chunkRepo:     chunkRepo,
 		docRepo:       docRepo,
 		encoder:       encoder,
 		llmClient:     llmClient,
 		searchClient:  searchClient,
 		queryExpander: queryExpander,
+		config:        config,
 		logger:        logger,
 	}
+	for _, opt := range opts {
+		opt(u)
+	}
+	return u
 }
 
 func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveContextInput) (*RetrieveContextOutput, error) {
@@ -165,12 +199,11 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		slog.Any("queries", queries))
 
 	// 2. Search & Merge using Quota Strategy with Parallel Vector Search
-	const (
-		searchLimit   = 50
-		rrfK          = 60.0
-		quotaOriginal = 5
-		quotaExpanded = 5
-	)
+	// Use configurable parameters (research-backed defaults from RetrievalConfig)
+	searchLimit := u.config.SearchLimit
+	rrfK := u.config.RRFK
+	quotaOriginal := u.config.QuotaOriginal
+	quotaExpanded := u.config.QuotaExpanded
 
 	// Parallel vector search for all query embeddings
 	type searchResult struct {
@@ -229,6 +262,33 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		slog.String("retrieval_id", retrievalID),
 		slog.Int("query_count", len(embeddings)),
 		slog.Int64("duration_ms", searchDuration.Milliseconds()))
+
+	// 2b. Hybrid Search: Fuse BM25 results with vector results (if enabled)
+	var bm25Results []domain.BM25SearchResult
+	if u.config.HybridSearch.Enabled && u.bm25Searcher != nil {
+		bm25Start := time.Now()
+		var bm25Err error
+		bm25Results, bm25Err = u.bm25Searcher.SearchBM25(ctx, input.Query, u.config.HybridSearch.BM25Limit)
+		bm25Duration := time.Since(bm25Start)
+
+		if bm25Err != nil {
+			u.logger.Warn("hybrid_bm25_search_failed",
+				slog.String("retrieval_id", retrievalID),
+				slog.String("error", bm25Err.Error()),
+				slog.Int64("duration_ms", bm25Duration.Milliseconds()))
+			// Continue with vector-only results
+		} else {
+			u.logger.Info("hybrid_bm25_search_completed",
+				slog.String("retrieval_id", retrievalID),
+				slog.Int("bm25_hits", len(bm25Results)),
+				slog.Int64("duration_ms", bm25Duration.Milliseconds()))
+
+			// Apply RRF fusion to original query results (index 0)
+			if len(allResults) > 0 && len(bm25Results) > 0 {
+				allResults[0] = u.fuseHybridResults(allResults[0], bm25Results, rrfK, retrievalID)
+			}
+		}
+	}
 
 	var hitsOriginal []domain.SearchResult
 
@@ -299,7 +359,94 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 			slog.String("msg", "no hits for expanded queries"))
 	}
 
-	// 3. Resolve Metadata & Merge with Quota
+	// 3. Apply Re-ranking (if enabled and reranker is available)
+	if u.config.Reranking.Enabled && u.reranker != nil {
+		rerankStart := time.Now()
+
+		// Prepare candidates from all unique hits (original + expanded)
+		candidateMap := make(map[uuid.UUID]domain.SearchResult)
+		for _, res := range hitsOriginal {
+			candidateMap[res.Chunk.ID] = res
+		}
+		for id, data := range chunksMapExpanded {
+			if _, exists := candidateMap[id]; !exists {
+				candidateMap[id] = domain.SearchResult{
+					Chunk: domain.RagChunk{
+						ID:        id,
+						Content:   data.Item.ChunkText,
+						CreatedAt: time.Time{}, // Will use data.Item.PublishedAt
+					},
+					Score:           data.Item.Score,
+					Title:           data.Item.Title,
+					URL:             data.Item.URL,
+					DocumentVersion: data.Item.DocumentVersion,
+				}
+			}
+		}
+
+		// Convert to rerank candidates
+		candidates := make([]domain.RerankCandidate, 0, len(candidateMap))
+		for id, res := range candidateMap {
+			candidates = append(candidates, domain.RerankCandidate{
+				ID:      id.String(),
+				Content: res.Chunk.Content,
+				Score:   res.Score,
+			})
+		}
+
+		// Call reranker with timeout from config
+		rerankCtx, cancel := context.WithTimeout(ctx, u.config.Reranking.Timeout)
+		reranked, err := u.reranker.Rerank(rerankCtx, input.Query, candidates)
+		cancel()
+
+		rerankDuration := time.Since(rerankStart)
+
+		if err != nil {
+			// Fallback: log warning and continue with original scores
+			u.logger.Warn("reranking_failed_using_original_scores",
+				slog.String("retrieval_id", retrievalID),
+				slog.String("error", err.Error()),
+				slog.Int64("duration_ms", rerankDuration.Milliseconds()))
+		} else {
+			u.logger.Info("reranking_completed",
+				slog.String("retrieval_id", retrievalID),
+				slog.Int("candidate_count", len(candidates)),
+				slog.Int("reranked_count", len(reranked)),
+				slog.String("model", u.reranker.ModelName()),
+				slog.Int64("duration_ms", rerankDuration.Milliseconds()))
+
+			// Apply reranked scores to hitsOriginal and hitsExpanded
+			rerankScores := make(map[uuid.UUID]float32)
+			for _, r := range reranked {
+				id, _ := uuid.Parse(r.ID)
+				rerankScores[id] = r.Score
+			}
+
+			// Update original hits scores
+			for i := range hitsOriginal {
+				if score, ok := rerankScores[hitsOriginal[i].Chunk.ID]; ok {
+					hitsOriginal[i].Score = score
+				}
+			}
+			// Sort by reranked score
+			sort.Slice(hitsOriginal, func(i, j int) bool {
+				return hitsOriginal[i].Score > hitsOriginal[j].Score
+			})
+
+			// Update expanded hits scores
+			for i := range hitsExpanded {
+				if score, ok := rerankScores[hitsExpanded[i].ChunkID]; ok {
+					hitsExpanded[i].Score = score
+				}
+			}
+			// Sort by reranked score
+			sort.Slice(hitsExpanded, func(i, j int) bool {
+				return hitsExpanded[i].Score > hitsExpanded[j].Score
+			})
+		}
+	}
+
+	// 4. Resolve Metadata & Merge with Quota
 	contexts := make([]ContextItem, 0, quotaOriginal+quotaExpanded)
 	seen := make(map[uuid.UUID]bool)
 
@@ -438,4 +585,78 @@ func isJapanese(s string) bool {
 		}
 	}
 	return false
+}
+
+// fuseHybridResults merges vector search results with BM25 results using RRF.
+// Research basis:
+// - EMNLP 2024: RRF fusion outperforms linear combination for most use cases
+// - Formula: RRF(d) = sum(1 / (k + rank(d))) across both result lists
+func (u *retrieveContextUsecase) fuseHybridResults(
+	vectorResults []domain.SearchResult,
+	bm25Results []domain.BM25SearchResult,
+	rrfK float64,
+	retrievalID string,
+) []domain.SearchResult {
+	// Map to accumulate RRF scores by article ID
+	type fusedResult struct {
+		vectorResult *domain.SearchResult
+		rrfScore     float64
+	}
+	fusedMap := make(map[string]*fusedResult)
+
+	// Process vector search results
+	for i, vr := range vectorResults {
+		articleID := vr.ArticleID
+		if _, exists := fusedMap[articleID]; !exists {
+			vrCopy := vr // Copy to avoid pointer issues
+			fusedMap[articleID] = &fusedResult{
+				vectorResult: &vrCopy,
+				rrfScore:     0,
+			}
+		}
+		// RRF score: 1 / (k + rank), rank is 1-indexed
+		fusedMap[articleID].rrfScore += 1.0 / (rrfK + float64(i+1))
+	}
+
+	// Process BM25 results
+	for _, br := range bm25Results {
+		articleID := br.ArticleID
+		if existing, exists := fusedMap[articleID]; exists {
+			// Article exists in vector results, add BM25 RRF score
+			existing.rrfScore += 1.0 / (rrfK + float64(br.Rank))
+		} else {
+			// Article only in BM25 results - create placeholder
+			// Note: This is less common since we primarily rely on vector search
+			// for chunk-level content, but BM25 can surface articles not in vector results
+			fusedMap[articleID] = &fusedResult{
+				vectorResult: nil, // No vector result for this article
+				rrfScore:     1.0 / (rrfK + float64(br.Rank)),
+			}
+		}
+	}
+
+	// Convert back to slice and sort by fused RRF score
+	results := make([]domain.SearchResult, 0, len(fusedMap))
+	for _, fr := range fusedMap {
+		if fr.vectorResult != nil {
+			// Use vector result but update score to reflect fusion
+			result := *fr.vectorResult
+			result.Score = float32(fr.rrfScore) // Replace with RRF score
+			results = append(results, result)
+		}
+		// Skip BM25-only results as we don't have chunk content for them
+	}
+
+	// Sort by fused RRF score descending
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Score > results[j].Score
+	})
+
+	u.logger.Info("hybrid_rrf_fusion_completed",
+		slog.String("retrieval_id", retrievalID),
+		slog.Int("vector_count", len(vectorResults)),
+		slog.Int("bm25_count", len(bm25Results)),
+		slog.Int("fused_count", len(results)))
+
+	return results
 }

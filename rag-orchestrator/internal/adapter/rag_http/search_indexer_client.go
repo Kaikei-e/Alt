@@ -38,27 +38,9 @@ type dhHit struct {
 }
 
 func (c *SearchIndexerClient) Search(ctx context.Context, query string) ([]domain.SearchHit, error) {
-	// e.g. /search?q=query&user_id=system (or some user)
-	// The search-indexer requires user_id. We'll use "rag-orchestrator" for now or pass it from input?
-	// The domain interface Update: Search(ctx, query string)
-	// We might need to pass UserID if search-indexer enforces it strictly.
-	// Looking at search-indexer/app/rest/handler.go:
-	// userID := r.URL.Query().Get("user_id")
-	// if userID == "" ... return 400
-	// So we need a user_id.
-	// We should probably rely on the fact that this is an internal call.
-	// But let's pass a system user ID for now.
-
 	systemUserID := "rag-orchestrator-system"
 
 	u, err := url.Parse(fmt.Sprintf("%s/v1/search", c.BaseURL))
-	// Wait, search-indexer handler path?
-	// I need to check how search-indexer is exposed.
-	// Assuming it's just /search or similar.
-	// Let's assume /search based on typical patterns, but I should check `search-indexer/app/server/server.go`.
-	// For now I'll implement with a placeholder path and fix it in the next step if wrong.
-	// Actually, `search-indexer/app/rest/handler.go` function `SearchArticles`.
-	// I need to know the route registration.
 	if err != nil {
 		return nil, fmt.Errorf("invalid base url: %w", err)
 	}
@@ -99,4 +81,56 @@ func (c *SearchIndexerClient) Search(ctx context.Context, query string) ([]domai
 	}
 
 	return hits, nil
+}
+
+// SearchBM25 performs BM25 (keyword) search for hybrid search fusion.
+// Implements domain.BM25Searcher interface.
+func (c *SearchIndexerClient) SearchBM25(ctx context.Context, query string, limit int) ([]domain.BM25SearchResult, error) {
+	systemUserID := "rag-orchestrator-system"
+
+	u, err := url.Parse(fmt.Sprintf("%s/v1/search", c.BaseURL))
+	if err != nil {
+		return nil, fmt.Errorf("invalid base url: %w", err)
+	}
+
+	q := u.Query()
+	q.Set("q", query)
+	q.Set("user_id", systemUserID)
+	q.Set("limit", fmt.Sprintf("%d", limit))
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.Client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("bm25 search request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("bm25 search returned status: %d", resp.StatusCode)
+	}
+
+	var sResp searchArticlesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sResp); err != nil {
+		return nil, fmt.Errorf("failed to decode bm25 search response: %w", err)
+	}
+
+	results := make([]domain.BM25SearchResult, len(sResp.Hits))
+	for i, h := range sResp.Hits {
+		results[i] = domain.BM25SearchResult{
+			ArticleID: h.ID,
+			ChunkID:   "", // Meilisearch returns article-level, not chunk-level
+			Content:   h.Content,
+			Title:     h.Title,
+			URL:       "", // Not available from current response
+			Rank:      i + 1,
+			Score:     0, // BM25 score not exposed by search-indexer currently
+		}
+	}
+
+	return results, nil
 }

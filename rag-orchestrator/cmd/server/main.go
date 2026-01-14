@@ -68,7 +68,59 @@ func main() {
 	generator := rag_augur.NewOllamaGenerator(cfg.KnowledgeAugurURL, cfg.KnowledgeAugurModel, cfg.OllamaTimeout, log)
 	searchClient := rag_http.NewSearchIndexerClient(cfg.SearchIndexerURL, cfg.SearchIndexerTimeout)
 	queryExpander := rag_augur.NewQueryExpanderClient(cfg.QueryExpansionURL, cfg.QueryExpansionTimeout, log)
-	retrieveUsecase := usecase.NewRetrieveContextUsecase(chunkRepo, docRepo, embedder, generator, searchClient, queryExpander, log)
+
+	// Initialize optional Reranker (cross-encoder via news-creator)
+	var rerankerOpt usecase.RetrieveContextOption
+	if cfg.RerankEnabled {
+		rerankerClient := rag_augur.NewRerankerClient(
+			cfg.RerankURL,
+			cfg.RerankModel,
+			time.Duration(cfg.RerankTimeout)*time.Second,
+			log,
+		)
+		rerankerOpt = usecase.WithReranker(rerankerClient)
+		log.Info("reranker_enabled",
+			slog.String("url", cfg.RerankURL),
+			slog.String("model", cfg.RerankModel))
+	}
+
+	// Initialize optional BM25Searcher for hybrid search (via search-indexer/Meilisearch)
+	var bm25SearcherOpt usecase.RetrieveContextOption
+	if cfg.HybridSearchEnabled {
+		// SearchIndexerClient implements both SearchClient and BM25Searcher
+		bm25SearcherOpt = usecase.WithBM25Searcher(searchClient)
+		log.Info("hybrid_search_enabled",
+			slog.Float64("alpha", cfg.HybridAlpha),
+			slog.Int("bm25_limit", cfg.HybridBM25Limit))
+	}
+
+	// Build RetrievalConfig from environment variables (research-backed defaults)
+	retrievalConfig := usecase.RetrievalConfig{
+		SearchLimit:   cfg.RAGSearchLimit,
+		QuotaOriginal: cfg.RAGQuotaOriginal,
+		QuotaExpanded: cfg.RAGQuotaExpanded,
+		RRFK:          cfg.RAGRRFK,
+		Reranking: usecase.RerankingConfig{
+			Enabled: cfg.RerankEnabled,
+			TopK:    cfg.RerankTopK,
+			Timeout: time.Duration(cfg.RerankTimeout) * time.Second,
+		},
+		HybridSearch: usecase.HybridSearchConfig{
+			Enabled:   cfg.HybridSearchEnabled,
+			Alpha:     cfg.HybridAlpha,
+			BM25Limit: cfg.HybridBM25Limit,
+		},
+	}
+
+	// Build retrieve usecase with optional reranker and BM25 searcher
+	var opts []usecase.RetrieveContextOption
+	if rerankerOpt != nil {
+		opts = append(opts, rerankerOpt)
+	}
+	if bm25SearcherOpt != nil {
+		opts = append(opts, bm25SearcherOpt)
+	}
+	retrieveUsecase := usecase.NewRetrieveContextUsecase(chunkRepo, docRepo, embedder, generator, searchClient, queryExpander, retrievalConfig, log, opts...)
 	promptBuilder := usecase.NewXMLPromptBuilder("Answer in Japanese.")
 	answerUsecase := usecase.NewAnswerWithRAGUsecase(
 		retrieveUsecase,
@@ -89,11 +141,19 @@ func main() {
 		log,
 	)
 	morningLetterPromptBuilder := usecase.NewMorningLetterPromptBuilder()
+
+	// Build TemporalBoostConfig from environment variables
+	temporalBoostConfig := usecase.TemporalBoostConfig{
+		Boost6h:  cfg.TemporalBoost6h,
+		Boost12h: cfg.TemporalBoost12h,
+		Boost18h: cfg.TemporalBoost18h,
+	}
 	morningLetterUsecase := usecase.NewMorningLetterUsecase(
 		articleClient,
 		retrieveUsecase,
 		morningLetterPromptBuilder,
 		generator,
+		temporalBoostConfig,
 		log,
 	)
 
