@@ -86,6 +86,7 @@ var defaultStacks = []Stack{
 			"rask-log-aggregator",
 			"nginx-logs", "alt-backend-logs", "tag-generator-logs",
 			"pre-processor-logs", "search-indexer-logs", "news-creator-logs",
+			"news-creator-backend-logs", // ADR-091: Ollama分離対応
 			"meilisearch-logs", "db-logs",
 		},
 		DependsOn: []string{"base", "db"},
