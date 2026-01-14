@@ -1,23 +1,35 @@
-FROM rust:1.92-slim AS builder
+# syntax=docker/dockerfile:1
 
+# Stage 1: Chef setup
+FROM rust:1.92-slim AS chef
+RUN cargo install cargo-chef --locked
 WORKDIR /app
 
-# 依存関係キャッシュ最適化 (Cargo.toml/Cargo.lock を先にコピー)
-COPY app/Cargo.toml app/Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
-    rm -rf src target/release/deps/rask*
-
+# Stage 2: Recipe generation
+FROM chef AS planner
 COPY app/ .
+RUN cargo chef prepare --recipe-path recipe.json
 
-# リリースビルド
-RUN cargo build --release --bin rask
+# Stage 3: Dependency build (cached)
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/app/target,sharing=locked \
+    cargo chef cook --release --recipe-path recipe.json
 
-# 最小イメージ (distroless/cc) + 非rootユーザー
-# libc が必要な Rust バイナリ向け
+# Stage 4: Application build
+COPY app/ .
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/app/target,sharing=locked \
+    cargo build --release --bin rask && \
+    cp target/release/rask /app/rask
+
+# Stage 5: Runtime (distroless + nonroot)
 FROM gcr.io/distroless/cc-debian12:nonroot
 
-COPY --from=builder /app/target/release/rask /rask-log-aggregator
+COPY --from=builder /app/rask /rask-log-aggregator
 
 USER nonroot:nonroot
 

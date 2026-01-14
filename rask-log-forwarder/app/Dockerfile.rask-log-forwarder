@@ -1,30 +1,38 @@
-# Dockerfile.rask-log-forwarder
-FROM rust:1.92-slim AS builder
+# syntax=docker/dockerfile:1
 
+# Stage 1: Chef setup
+FROM rust:1.92-slim AS chef
+RUN cargo install cargo-chef --locked
 WORKDIR /app
 
-# 依存関係キャッシュ最適化
-COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && \
-    echo "fn main() {}" > src/main.rs && \
-    echo "" > src/lib.rs && \
-    cargo build --release && \
-    rm -rf src target/release/deps/rask*
-
+# Stage 2: Recipe generation
+FROM chef AS planner
 COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-# リリースビルド
-RUN cargo build --release --bin rask-log-forwarder
+# Stage 3: Dependency build (cached)
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/app/target,sharing=locked \
+    cargo chef cook --release --recipe-path recipe.json
 
-# 最小イメージ (distroless/cc) + 非rootユーザー
+# Stage 4: Application build
+COPY . .
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/app/target,sharing=locked \
+    cargo build --release --bin rask-log-forwarder && \
+    cp target/release/rask-log-forwarder /app/rask-log-forwarder
+
+# Stage 5: Runtime (distroless + nonroot)
 FROM gcr.io/distroless/cc-debian12:nonroot
 
-COPY --from=builder /app/target/release/rask-log-forwarder /rask-log-forwarder
+COPY --from=builder /app/rask-log-forwarder /rask-log-forwarder
 
-# /tmp ディレクトリは distroless に存在するため追加設定不要
 USER nonroot:nonroot
 
-# SIGTERM でグレースフルシャットダウン
 STOPSIGNAL SIGTERM
 
 ENTRYPOINT ["/rask-log-forwarder"]
