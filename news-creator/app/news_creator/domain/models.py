@@ -234,6 +234,58 @@ class ExpandQueryResponse(BaseModel):
 
 
 # ============================================================================
+# Re-ranking Models (for RAG-Orchestrator Cross-Encoder Re-ranking)
+# ============================================================================
+
+
+class RerankRequest(BaseModel):
+    """Request model for cross-encoder re-ranking.
+
+    Research basis:
+    - Pinecone: +15-30% NDCG@10 improvement with cross-encoder
+    - ZeroEntropy: -35% LLM hallucinations with re-ranking
+    - Recommended: Rerank 50 candidates down to 10
+    """
+
+    query: str = Field(min_length=1, description="Query to score candidates against")
+    candidates: List[str] = Field(
+        min_length=1,
+        max_length=100,
+        description="List of candidate texts to re-rank"
+    )
+    model: Optional[str] = Field(
+        default=None,
+        description="Cross-encoder model name (default: bge-reranker-v2-m3)"
+    )
+    top_k: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=100,
+        description="Return only top-k results (default: return all)"
+    )
+
+
+class RerankResultItem(BaseModel):
+    """Single re-ranking result with index and score."""
+
+    index: int = Field(ge=0, description="Original index of the candidate")
+    score: float = Field(description="Cross-encoder relevance score (0.0 to 1.0)")
+
+
+class RerankResponse(BaseModel):
+    """Response model for cross-encoder re-ranking."""
+
+    results: List[RerankResultItem] = Field(
+        description="Re-ranked results sorted by score descending"
+    )
+    model: str = Field(description="Model used for re-ranking")
+    processing_time_ms: Optional[float] = Field(
+        default=None,
+        description="Processing time in milliseconds"
+    )
+
+
+# ============================================================================
 # Batch Processing Models (for chatty microservice anti-pattern fix)
 # ============================================================================
 

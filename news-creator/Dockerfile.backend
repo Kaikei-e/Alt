@@ -1,0 +1,58 @@
+# Dockerfile.backend - Ollama-only service
+# Separated from news-creator for faster deployments and smaller images
+
+FROM ollama/ollama:latest
+
+USER root
+
+# Install minimal dependencies for entrypoint
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+    ca-certificates \
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install gosu for proper user switching (Docker best practice)
+RUN set -eux; \
+    GOSU_VERSION="1.17"; \
+    ARCH="$(dpkg --print-architecture)"; \
+    curl -o /usr/local/bin/gosu -fsSL "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-${ARCH}"; \
+    chmod +x /usr/local/bin/gosu; \
+    gosu --version || exit 1
+
+# Create ollama user if it doesn't exist
+RUN groupadd -f -g 2000 ollama-user \
+    && useradd -u 2000 -g 2000 -m -s /bin/bash ollama-user || true
+
+WORKDIR /home/ollama-user
+
+# Copy Modelfiles for model creation
+COPY --chown=ollama-user:ollama-user Modelfile.gemma3-4b-16k Modelfile.gemma3-4b-60k /home/ollama-user/
+
+# Environment configuration
+ENV OLLAMA_HOST=0.0.0.0:11435
+ENV OLLAMA_ORIGINS=*
+ENV OLLAMA_KEEP_ALIVE=24h
+ENV OLLAMA_MAX_LOADED_MODELS=1
+ENV OLLAMA_LOAD_TIMEOUT=10m
+ENV HOME=/home/ollama-user
+ENV OLLAMA_HOME=/home/ollama-user/.ollama
+
+# Model cache persistence
+VOLUME ["/home/ollama-user/.ollama"]
+
+# Copy entrypoint and set permissions
+COPY --chown=ollama-user:ollama-user entrypoint-backend.sh /usr/local/bin/entrypoint-backend.sh
+RUN chmod +x /usr/local/bin/entrypoint-backend.sh
+
+# Health check - verify Ollama API is responding
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
+    CMD curl -f http://localhost:11435/api/tags || exit 1
+
+EXPOSE 11435
+
+# Runtime user
+USER ollama-user
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-backend.sh"]
