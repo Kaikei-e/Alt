@@ -44,12 +44,12 @@ type MorningLetterUsecase interface {
 }
 
 type morningLetterUsecase struct {
-	articleClient      domain.ArticleClient
-	retrieveUC         RetrieveContextUsecase
-	promptBuilder      MorningLetterPromptBuilder
-	llmClient          domain.LLMClient
-	temporalBoostCfg   TemporalBoostConfig
-	logger             *slog.Logger
+	articleClient    domain.ArticleClient
+	retrieveUC       RetrieveContextUsecase
+	promptBuilder    MorningLetterPromptBuilder
+	llmClient        domain.LLMClient
+	temporalBoostCfg TemporalBoostConfig
+	logger           *slog.Logger
 }
 
 // NewMorningLetterUsecase creates a new morning letter usecase.

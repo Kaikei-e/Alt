@@ -181,7 +181,8 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*morningletterv
 		if !ok {
 			return nil, false
 		}
-		citations := h.convertContextsToCitations(output.Contexts)
+		// Use output.Citations (only citations LLM actually used) instead of output.Contexts (all search results)
+		citations := h.convertCitationsToProtoCitations(output.Citations)
 		return &morningletterv2.StreamChatEvent{
 			Kind: "done",
 			Payload: &morningletterv2.StreamChatEvent_Done{
@@ -227,6 +228,19 @@ func (h *Handler) convertContextsToCitations(contexts []usecase.ContextItem) []*
 		})
 	}
 	return citations
+}
+
+// convertCitationsToProtoCitations converts usecase.Citation slice to morningletterv2.Citation slice
+// Used for Done event to return only the citations that LLM actually used in its response.
+func (h *Handler) convertCitationsToProtoCitations(citations []usecase.Citation) []*morningletterv2.Citation {
+	result := make([]*morningletterv2.Citation, 0, len(citations))
+	for _, c := range citations {
+		result = append(result, &morningletterv2.Citation{
+			Url:   c.URL,
+			Title: c.Title,
+		})
+	}
+	return result
 }
 
 // sendErrorEvent sends an error event to the stream

@@ -48,7 +48,7 @@ type retrieveContextUsecase struct {
 	llmClient     domain.LLMClient
 	searchClient  domain.SearchClient
 	queryExpander domain.QueryExpander
-	reranker      domain.Reranker   // Optional: cross-encoder reranking
+	reranker      domain.Reranker     // Optional: cross-encoder reranking
 	bm25Searcher  domain.BM25Searcher // Optional: BM25 search for hybrid fusion
 	config        RetrievalConfig
 	logger        *slog.Logger
