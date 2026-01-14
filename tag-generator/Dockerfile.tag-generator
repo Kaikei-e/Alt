@@ -16,14 +16,18 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /uvx /bin/
 # キャッシュ設定
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
+# ==============================================================================
+# 依存関係インストール（キャッシュ効率化）
+# pyproject.toml と uv.lock だけをコピーして依存関係を先にインストール
+# ==============================================================================
 COPY app/pyproject.toml app/uv.lock ./
 
-# PyTorch (CPU版) をインストール
+# PyTorch (CPU版) を先にインストール（カスタムインデックス必要）
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system torch torchvision torchaudio \
     --index-url https://download.pytorch.org/whl/cpu
 
-# ML依存関係をインストール
+# ML依存関係をインストール（pyproject.tomlの[ml]グループを使用）
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system \
     sentence-transformers>=3.3.0 \
@@ -33,24 +37,28 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     onnxruntime>=1.21.0 \
     unidic
 
-# unidic 辞書データをダウンロード
-RUN python -m unidic download
+# unidic 辞書データをダウンロード（キャッシュマウント使用）
+RUN --mount=type=cache,target=/root/.cache/unidic \
+    UNIDIC_DOWNLOAD_DIR=/root/.cache/unidic python -m unidic download || \
+    python -m unidic download
 
-# プロジェクト依存関係を同期
+# プロジェクト依存関係を同期（プロジェクト本体は除く = --no-install-project）
+# これにより、ソースコード変更時でもこのレイヤーはキャッシュされる
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
+    uv sync --locked --no-dev --no-install-project
 
-# プロジェクトをインストール
+# ==============================================================================
+# ソースコードコピー & プロジェクトインストール
+# ==============================================================================
+COPY app/ .
+
+# プロジェクトをインストール（依存関係はキャッシュ済み）
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system -e .
 
-# ML パッケージの検証
-RUN python -c "import torch; print(f'PyTorch {torch.__version__}')" && \
-    python -c "import sentence_transformers; print(f'SentenceTransformers {sentence_transformers.__version__}')" && \
-    python -c "import keybert; print('KeyBERT installed')" && \
-    python -c "import transformers; print(f'Transformers {transformers.__version__}')" && \
-    python -c "import onnxruntime; print(f'ONNX Runtime {onnxruntime.__version__}')"
-
+# ==============================================================================
+# モデル & データのプリロード
+# ==============================================================================
 # SBERT モデルと NLTK データをキャッシュ（BuildKit キャッシュマウント使用）
 # キャッシュマウントでダウンロードを高速化し、ランタイム用に別ディレクトリにコピー
 RUN --mount=type=cache,target=/tmp/hf_cache \
@@ -69,6 +77,13 @@ print('NLTK data downloaded')
 SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device='cpu')
 print('SBERT model cached')
 PY
+
+# ML パッケージの検証（最後に実行してキャッシュ効率向上）
+RUN python -c "import torch; print(f'PyTorch {torch.__version__}')" && \
+    python -c "import sentence_transformers; print(f'SentenceTransformers {sentence_transformers.__version__}')" && \
+    python -c "import keybert; print('KeyBERT installed')" && \
+    python -c "import transformers; print(f'Transformers {transformers.__version__}')" && \
+    python -c "import onnxruntime; print(f'ONNX Runtime {onnxruntime.__version__}')"
 
 # ==============================================================================
 # ランタイムステージ
