@@ -77,6 +77,10 @@ func testConfig() *config.Config {
 			Model:   "gemma3:4b",
 			Timeout: 30 * time.Second,
 		},
+		AltService: config.AltServiceConfig{
+			Host:    testServiceURL,
+			Timeout: 10 * time.Second,
+		},
 	}
 }
 
@@ -550,5 +554,113 @@ func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 		err := repo.CheckHealth(context.Background(), testServiceURL)
 		// Should succeed since we only check status code, not response body
 		assert.NoError(t, err)
+	})
+}
+
+func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
+	t.Run("should return user_id on successful response", func(t *testing.T) {
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+
+		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/v1/internal/system-user", r.URL.Path)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"user_id":"test-user-123"}`))
+		}, 0))
+
+		userID, err := repo.GetSystemUserID(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "test-user-123", userID)
+	})
+
+	t.Run("should return error on empty user_id", func(t *testing.T) {
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+
+		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"user_id":""}`))
+		}, 0))
+
+		userID, err := repo.GetSystemUserID(context.Background())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "empty user_id")
+		assert.Empty(t, userID)
+	})
+
+	t.Run("should return error on non-200 status", func(t *testing.T) {
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+
+		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}, 0))
+
+		userID, err := repo.GetSystemUserID(context.Background())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unexpected status code")
+		assert.Empty(t, userID)
+	})
+
+	t.Run("should retry on transient failure and succeed", func(t *testing.T) {
+		// RED PHASE: This test expects retry logic that doesn't exist yet
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+
+		callCount := 0
+		setRepoTransport(repo, roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			callCount++
+			if callCount < 3 {
+				// First 2 calls fail
+				return nil, errors.New("connection refused")
+			}
+			// Third call succeeds
+			recorder := httptest.NewRecorder()
+			recorder.Header().Set("Content-Type", "application/json")
+			recorder.WriteHeader(http.StatusOK)
+			_, _ = recorder.Write([]byte(`{"user_id":"retry-success-user"}`))
+			return recorder.Result(), nil
+		}))
+
+		userID, err := repo.GetSystemUserID(context.Background())
+		require.NoError(t, err, "should succeed after retries")
+		assert.Equal(t, "retry-success-user", userID)
+		assert.Equal(t, 3, callCount, "should have made exactly 3 attempts")
+	})
+
+	t.Run("should fail after max retries exceeded", func(t *testing.T) {
+		// RED PHASE: This test expects retry logic that doesn't exist yet
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+
+		callCount := 0
+		setRepoTransport(repo, roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			callCount++
+			return nil, errors.New("connection refused")
+		}))
+
+		userID, err := repo.GetSystemUserID(context.Background())
+		assert.Error(t, err, "should fail after max retries")
+		assert.Contains(t, err.Error(), "failed after")
+		assert.Empty(t, userID)
+		assert.Equal(t, 3, callCount, "should have made exactly 3 attempts")
+	})
+
+	t.Run("should respect context cancellation during retry", func(t *testing.T) {
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		callCount := 0
+		setRepoTransport(repo, roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			callCount++
+			if callCount == 1 {
+				// First call fails, then cancel context
+				cancel()
+				return nil, errors.New("connection refused")
+			}
+			return nil, errors.New("should not reach here")
+		}))
+
+		userID, err := repo.GetSystemUserID(ctx)
+		assert.Error(t, err, "should fail due to context cancellation")
+		assert.Empty(t, userID)
 	})
 }

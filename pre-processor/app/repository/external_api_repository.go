@@ -167,8 +167,46 @@ func (r *externalAPIRepository) CheckHealth(ctx context.Context, serviceURL stri
 	return nil
 }
 
-// GetSystemUserID retrieves the system user ID from alt-backend.
+// GetSystemUserID retrieves the system user ID from alt-backend with retry logic.
 func (r *externalAPIRepository) GetSystemUserID(ctx context.Context) (string, error) {
+	const maxRetries = 3
+	baseDelay := 2 * time.Second
+
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		userID, err := r.getSystemUserIDOnce(ctx)
+		if err == nil {
+			return userID, nil
+		}
+		lastErr = err
+
+		// Don't retry on context cancellation
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+
+		// Log retry attempt (except for last attempt)
+		if attempt < maxRetries-1 {
+			delay := baseDelay * time.Duration(1<<attempt) // 2s, 4s
+			r.logger.Warn("GetSystemUserID failed, retrying",
+				"attempt", attempt+1,
+				"max_attempts", maxRetries,
+				"delay", delay,
+				"error", err)
+
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+	}
+
+	return "", fmt.Errorf("GetSystemUserID failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+// getSystemUserIDOnce performs a single attempt to retrieve the system user ID.
+func (r *externalAPIRepository) getSystemUserIDOnce(ctx context.Context) (string, error) {
 	targetURL := fmt.Sprintf("%s/v1/internal/system-user", r.config.AltService.Host)
 
 	parsedURL, err := url.Parse(targetURL)
