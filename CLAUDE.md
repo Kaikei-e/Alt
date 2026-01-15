@@ -32,10 +32,10 @@ altctl logs <service> -f
 Docker Compose ファイルは `./compose/` 配下にあります。
 
 ```bash
-# Direct docker compose commands
-docker compose -f compose/compose.yaml logs <service> --tail=100
-docker compose -f compose/compose.yaml build <service>
-docker compose -f compose/compose.yaml up -d <service>
+# Direct docker compose commands (-p alt でプロジェクト名を統一)
+docker compose -f compose/compose.yaml -p alt logs <service> --tail=100
+docker compose -f compose/compose.yaml -p alt build <service>
+docker compose -f compose/compose.yaml -p alt up -d <service>
 ```
 
 ## Service Matrix
