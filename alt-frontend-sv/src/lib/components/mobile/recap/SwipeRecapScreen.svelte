@@ -47,17 +47,25 @@ async function handleSwipe(direction: number) {
   {:else if activeGenre}
     <!-- Header Info (Top) -->
     {#if summaryData}
-      <div class="w-full max-w-[30rem] mx-auto px-4 pt-3 pb-2 z-20">
+      <div class="w-full max-w-[30rem] mx-auto px-4 pt-3 pb-3 z-20">
         <div
           class="flex flex-col gap-1 px-4 py-3 rounded-xl border"
           style="background: var(--surface-bg); border-color: var(--surface-border);"
         >
-          <h1
-            class="text-xl font-bold tracking-tight"
-            style="color: var(--accent-primary);"
-          >
-            7 Days Recap
-          </h1>
+          <div class="flex justify-between items-center">
+            <h1
+              class="text-xl font-bold tracking-tight"
+              style="color: var(--accent-primary);"
+            >
+              7 Days Recap
+            </h1>
+            <span
+              class="text-sm font-semibold"
+              style="color: var(--text-primary);"
+            >
+              {currentPosition} / {totalCount}
+            </span>
+          </div>
           <p class="text-xs" style="color: var(--text-secondary);">
             {new Date(summaryData.executedAt).toLocaleDateString("en-US", {
               month: "short",
@@ -69,31 +77,6 @@ async function handleSwipe(direction: number) {
         </div>
       </div>
     {/if}
-
-    <!-- Position Indicator (Below Header) -->
-    <div class="w-full max-w-[30rem] px-4 pb-3 z-20 flex justify-center">
-      <div
-        class="flex items-center gap-3 px-4 py-2 rounded-full border"
-        style="background: var(--surface-bg); border-color: var(--surface-border);"
-      >
-        <!-- Counter -->
-        <span class="text-sm font-semibold flex-shrink-0 whitespace-nowrap" style="color: var(--text-primary);">
-          {currentPosition} / {totalCount}
-        </span>
-        <!-- Dot Indicator -->
-        <div class="flex gap-2 items-center">
-          {#each genres as _, idx}
-            <div
-              class="w-2 h-2 rounded-full transition-all duration-200 {idx === activeIndex ? 'scale-125' : ''}"
-              style="background: {idx === activeIndex
-                ? 'var(--alt-primary)'
-                : 'var(--text-muted)'};"
-              aria-label="Card {idx + 1} of {totalCount}"
-            ></div>
-          {/each}
-        </div>
-      </div>
-    </div>
 
     <!-- Card Container -->
     <div
