@@ -727,6 +727,156 @@ func TestJudgeArticleQualityTimeoutError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to connect to news-creator service", "Error should indicate connection failure")
 }
 
+// TestJudgeArticleQualityContentTooLong tests that quality check is skipped for oversized content
+func TestJudgeArticleQualityContentTooLong(t *testing.T) {
+	// Create content that exceeds the limit
+	longContent := make([]byte, maxQualityCheckContentLength+1)
+	for i := range longContent {
+		longContent[i] = 'a'
+	}
+
+	article := &driver.ArticleWithSummary{
+		ArticleID:       "test-article-long-content",
+		Content:         string(longContent),
+		SummaryJapanese: "短い要約",
+	}
+
+	// Should skip quality check without error (content too long)
+	err := JudgeArticleQuality(context.Background(), nil, article)
+	require.NoError(t, err, "Should skip quality check for long content without error")
+}
+
+// TestJudgeArticleQualityContentWithinLimit tests that quality check proceeds for normal content
+func TestJudgeArticleQualityContentWithinLimit(t *testing.T) {
+	// Create a server that returns a high score
+	withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := ollamaResponse{
+			Response: "<score>20</score>",
+			Done:     true,
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+
+	originalURL := qualityCheckerAPIURL
+	qualityCheckerAPIURL = testQualityCheckerURL
+	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
+
+	// Content within limit
+	article := &driver.ArticleWithSummary{
+		ArticleID:       "test-article-normal-content",
+		Content:         "Normal sized content",
+		SummaryJapanese: "通常サイズの要約",
+	}
+
+	// Should proceed with quality check
+	err := JudgeArticleQuality(context.Background(), nil, article)
+	require.NoError(t, err, "Should proceed with quality check for normal content")
+}
+
+// TestJudgeArticleQualityContentBoundary tests boundary conditions for content length
+func TestJudgeArticleQualityContentBoundary(t *testing.T) {
+	tests := []struct {
+		name           string
+		contentLen     int
+		summaryLen     int
+		shouldSkip     bool
+		description    string
+	}{
+		{
+			name:        "exactly_at_limit",
+			contentLen:  maxQualityCheckContentLength - 10,
+			summaryLen:  10,
+			shouldSkip:  false,
+			description: "Content exactly at limit should proceed",
+		},
+		{
+			name:        "one_byte_over_limit",
+			contentLen:  maxQualityCheckContentLength,
+			summaryLen:  1,
+			shouldSkip:  true,
+			description: "Content one byte over limit should skip",
+		},
+		{
+			name:        "content_alone_exceeds",
+			contentLen:  maxQualityCheckContentLength + 1,
+			summaryLen:  0,
+			shouldSkip:  true,
+			description: "Content alone exceeding limit should skip",
+		},
+		{
+			name:        "summary_alone_exceeds",
+			contentLen:  0,
+			summaryLen:  maxQualityCheckContentLength + 1,
+			shouldSkip:  true,
+			description: "Summary alone exceeding limit should skip",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.shouldSkip {
+				// For skip cases, we don't need a mock server
+				content := make([]byte, tc.contentLen)
+				summary := make([]byte, tc.summaryLen)
+				for i := range content {
+					content[i] = 'a'
+				}
+				for i := range summary {
+					summary[i] = 'b'
+				}
+
+				article := &driver.ArticleWithSummary{
+					ArticleID:       "test-article-boundary",
+					Content:         string(content),
+					SummaryJapanese: string(summary),
+				}
+
+				err := JudgeArticleQuality(context.Background(), nil, article)
+				require.NoError(t, err, tc.description)
+			} else {
+				// For proceed cases, we need a mock server
+				withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					response := ollamaResponse{
+						Response: "<score>20</score>",
+						Done:     true,
+					}
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(response)
+				}))
+
+				originalURL := qualityCheckerAPIURL
+				qualityCheckerAPIURL = testQualityCheckerURL
+				t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
+
+				content := make([]byte, tc.contentLen)
+				summary := make([]byte, tc.summaryLen)
+				for i := range content {
+					content[i] = 'a'
+				}
+				for i := range summary {
+					summary[i] = 'b'
+				}
+
+				article := &driver.ArticleWithSummary{
+					ArticleID:       "test-article-boundary",
+					Content:         string(content),
+					SummaryJapanese: string(summary),
+				}
+
+				err := JudgeArticleQuality(context.Background(), nil, article)
+				require.NoError(t, err, tc.description)
+			}
+		})
+	}
+}
+
+// TestMaxQualityCheckContentLengthConstant tests the constant value
+func TestMaxQualityCheckContentLengthConstant(t *testing.T) {
+	assert.Equal(t, 50_000, maxQualityCheckContentLength, "maxQualityCheckContentLength should be 50,000")
+	assert.Greater(t, maxQualityCheckContentLength, 0, "maxQualityCheckContentLength should be positive")
+}
+
 // TestJudgeArticleQualityLowScoreStillDeletes tests that low scores from successful responses still trigger deletion
 func TestJudgeArticleQualityLowScoreStillDeletes(t *testing.T) {
 	// Create a server that returns a low score (below threshold)

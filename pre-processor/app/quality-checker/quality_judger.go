@@ -25,7 +25,11 @@ var (
 	// qualityCheckerAPIURL can be overridden in tests
 	qualityCheckerAPIURL = "http://news-creator:11434/api/generate"
 	modelName            = "gemma3-4b-16k"
-	lowScoreThreshold    = 7 // 7 is the lowest score that is acceptable
+	lowScoreThreshold = 7 // 7 is the lowest score that is acceptable
+	// Quality Checker用: 16kコンテキストモデルで安定動作する上限
+	// 記事 + サマリー + プロンプトテンプレート(~1500文字) < 16k トークン
+	// 日本語は約4文字/トークンなので、記事+サマリーは約50,000文字まで
+	maxQualityCheckContentLength = 50_000
 )
 
 type judgePrompt struct {
@@ -448,6 +452,18 @@ func scoreSummaryWithRetry(ctx context.Context, prompt string, maxRetries int) (
 func JudgeArticleQuality(ctx context.Context, dbPool *pgxpool.Pool, articleWithSummary *driver.ArticleWithSummary) error {
 	if articleWithSummary == nil || articleWithSummary.ArticleID == "" {
 		return errors.New("article with summary is invalid")
+	}
+
+	// コンテンツ長チェック: 長すぎる場合はスキップ（サマリーは保持）
+	totalContentLength := len(articleWithSummary.Content) + len(articleWithSummary.SummaryJapanese)
+	if totalContentLength > maxQualityCheckContentLength {
+		logger.Logger.Info("Skipping quality check: content too long",
+			"articleID", articleWithSummary.ArticleID,
+			"content_length", len(articleWithSummary.Content),
+			"summary_length", len(articleWithSummary.SummaryJapanese),
+			"total_length", totalContentLength,
+			"max_allowed", maxQualityCheckContentLength)
+		return nil
 	}
 
 	prompt := fmt.Sprintf(JudgeTemplate, articleWithSummary.Content, articleWithSummary.SummaryJapanese)
