@@ -14,6 +14,10 @@ var (
 
 	// ErrContentTooShort indicates content is below minimum length for summarization
 	ErrContentTooShort = errors.New("content too short for summarization")
+
+	// ErrContentTooLong indicates content exceeds maximum length for summarization
+	// Large content (>100KB) causes timeouts on 8GB VRAM GPUs
+	ErrContentTooLong = errors.New("content too long for summarization")
 )
 
 // Job-related errors

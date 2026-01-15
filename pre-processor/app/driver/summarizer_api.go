@@ -43,6 +43,10 @@ type SummarizeResponse struct {
 // Deprecated: Use domain.ErrContentTooShort directly
 var ErrContentTooShort = domain.ErrContentTooShort
 
+// ErrContentTooLong is an alias for domain.ErrContentTooLong for backward compatibility
+// Deprecated: Use domain.ErrContentTooLong directly
+var ErrContentTooLong = domain.ErrContentTooLong
+
 func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cfg *config.Config, logger *slog.Logger) (*SummarizedContent, error) {
 	// Zero Trust: Always extract text from content before sending to news-creator
 	// This ensures we never send raw HTML, even if it was already extracted upstream
@@ -71,6 +75,9 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 
 	// Check content length after extraction
 	const minContentLength = 100
+	// 100KB = ~25K tokens (Japanese) = fits within 32K context with margin
+	// RTX 4060 (8GB VRAM) can process this stably without timeouts
+	const maxContentLength = 100_000
 	if extractedLength < minContentLength {
 		logger.Info("Skipping summarization: content too short after extraction",
 			"article_id", article.ID,
@@ -78,6 +85,14 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 			"extracted_length", extractedLength,
 			"min_required", minContentLength)
 		return nil, ErrContentTooShort
+	}
+	if extractedLength > maxContentLength {
+		logger.Info("Skipping summarization: content too long after extraction",
+			"article_id", article.ID,
+			"original_length", originalLength,
+			"extracted_length", extractedLength,
+			"max_allowed", maxContentLength)
+		return nil, ErrContentTooLong
 	}
 
 	// Construct API URL from config
@@ -210,6 +225,9 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *models.Artic
 	}
 
 	const minContentLength = 100
+	// 100KB = ~25K tokens (Japanese) = fits within 32K context with margin
+	// RTX 4060 (8GB VRAM) can process this stably without timeouts
+	const maxContentLength = 100_000
 	if extractedLength < minContentLength {
 		logger.Info("Skipping summarization: content too short after extraction",
 			"article_id", article.ID,
@@ -217,6 +235,14 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *models.Artic
 			"extracted_length", extractedLength,
 			"min_required", minContentLength)
 		return nil, ErrContentTooShort
+	}
+	if extractedLength > maxContentLength {
+		logger.Info("Skipping summarization: content too long after extraction",
+			"article_id", article.ID,
+			"original_length", originalLength,
+			"extracted_length", extractedLength,
+			"max_allowed", maxContentLength)
+		return nil, ErrContentTooLong
 	}
 
 	apiURL := cfg.NewsCreator.Host + cfg.NewsCreator.APIPath

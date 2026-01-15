@@ -102,6 +102,34 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 				continue
 			}
 
+			// Handle content too long: Save a placeholder summary to mark as processed
+			if errors.Is(err, domain.ErrContentTooLong) {
+				s.logger.Info("article content too long, saving placeholder summary",
+					"article_id", article.ID,
+					"content_length", len(article.Content))
+
+				// Create placeholder summary
+				placeholderSummary := &models.ArticleSummary{
+					ArticleID:       article.ID,
+					UserID:          article.UserID,
+					ArticleTitle:    article.Title,
+					SummaryJapanese: "本文が長すぎるため要約できませんでした。",
+					CreatedAt:       time.Now(),
+				}
+
+				// Save the placeholder summary
+				if createErr := s.summaryRepo.Create(ctx, placeholderSummary); createErr != nil {
+					s.logger.Error("failed to save placeholder summary", "article_id", article.ID, "error", createErr)
+					result.ErrorCount++
+					result.Errors = append(result.Errors, createErr)
+				} else {
+					result.SuccessCount++ // Count as success since we processed it
+				}
+
+				// Continue to next article
+				continue
+			}
+
 			s.logger.Error("failed to generate summary", "article_id", article.ID, "error", err)
 
 			result.ErrorCount++
