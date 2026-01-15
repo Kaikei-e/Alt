@@ -12,6 +12,31 @@ datasources:
       protocol: http
       defaultDatabase: rask_logs
       username: rask_db_user
+      # OpenTelemetry Traces Configuration
+      traces:
+        defaultDatabase: rask_logs
+        defaultTable: otel_traces
+        otelEnabled: true
+        otelVersion: latest
+        traceIdColumn: TraceId
+        spanIdColumn: SpanId
+        operationNameColumn: SpanName
+        parentSpanIdColumn: ParentSpanId
+        serviceNameColumn: ServiceName
+        durationColumn: Duration
+        durationUnit: nanoseconds
+        startTimeColumn: Timestamp
+        tagsColumn: SpanAttributes
+        serviceTagsColumn: ResourceAttributes
+      # OpenTelemetry Logs Configuration
+      logs:
+        defaultDatabase: rask_logs
+        defaultTable: otel_logs
+        otelEnabled: true
+        otelVersion: latest
+        timeColumn: Timestamp
+        levelColumn: SeverityText
+        messageColumn: Body
     secureJsonData:
       password: $__file{/run/secrets/clickhouse_password}
     editable: false
