@@ -31,10 +31,10 @@ const (
 // - Pinecone: +15-30% NDCG@10 improvement with cross-encoder
 // - ZeroEntropy: -35% LLM hallucinations
 const (
-	defaultRerankEnabled = true                 // Enabled by default per user preference
+	defaultRerankEnabled = true                      // Enabled by default per user preference
 	defaultRerankModel   = "BAAI/bge-reranker-v2-m3" // BAAI multilingual model
-	defaultRerankTopK    = 10                   // Rerank 50 -> 10
-	defaultRerankTimeout = 30                   // Seconds
+	defaultRerankTopK    = 10                        // Rerank 50 -> 10
+	defaultRerankTimeout = 30                        // Seconds
 )
 
 // Hybrid search defaults (research-backed).
