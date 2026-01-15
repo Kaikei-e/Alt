@@ -46,6 +46,9 @@ dependencies = [
   "unidic-lite>=1.0.8",
   "deepeval>=0.21.0",
   "psycopg2-binary>=2.9.9",
+  "bert-score>=0.3.13",
+  "gensim>=4.3.0",
+  "faiss-cpu>=1.7.4",
 ]
 
 [project.optional-dependencies]

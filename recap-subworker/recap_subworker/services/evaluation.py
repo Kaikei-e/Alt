@@ -164,11 +164,15 @@ class EvaluationService:
         if language:
             filtered_items = []
             for item in items:
-                # Check content_ja/content_en or lang field
-                if language == "ja" and (item.get("content_ja") or item.get("lang") == "ja"):
-                    filtered_items.append(item)
-                elif language == "en" and (item.get("content_en") or item.get("lang") == "en"):
-                    filtered_items.append(item)
+                # Check content_ja/content_en - MUST have non-empty content for the language
+                if language == "ja":
+                    content = item.get("content_ja")
+                    if content and isinstance(content, str) and content.strip():
+                        filtered_items.append(item)
+                elif language == "en":
+                    content = item.get("content_en")
+                    if content and isinstance(content, str) and content.strip():
+                        filtered_items.append(item)
             items = filtered_items
             logger.info(f"Filtered to {len(items)} items for language: {language}")
 

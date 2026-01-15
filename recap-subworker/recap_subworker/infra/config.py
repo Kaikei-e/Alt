@@ -249,8 +249,9 @@ class Settings(BaseSettings):
         description="Minimum number of items required to attempt a recursive split",
     )
     use_bayes_opt: bool = Field(
-        False,
-        description="Use Optuna for Bayesian hyperparameter optimization instead of grid search",
+        True,
+        description="Use Optuna (TPE sampler) for Bayesian hyperparameter optimization instead of grid search",
+        validation_alias=AliasChoices("RECAP_USE_BAYES_OPT", "RECAP_SUBWORKER_USE_BAYES_OPT"),
     )
     bayes_opt_trials: int = Field(
         50,
@@ -462,7 +463,27 @@ class Settings(BaseSettings):
     )
     genre_classifier_model_path: str = Field(
         "data/genre_classifier.joblib",
-        description="Path to the trained genre classifier model",
+        description="Path to the trained genre classifier model (deprecated, use JA/EN specific paths)",
+    )
+    genre_classifier_model_path_ja: str = Field(
+        "data/genre_classifier_ja.joblib",
+        description="Path to the trained Japanese genre classifier model",
+        validation_alias=AliasChoices("RECAP_GENRE_CLASSIFIER_MODEL_PATH_JA", "RECAP_SUBWORKER_GENRE_CLASSIFIER_MODEL_PATH_JA"),
+    )
+    genre_classifier_model_path_en: str = Field(
+        "data/genre_classifier_en.joblib",
+        description="Path to the trained English genre classifier model",
+        validation_alias=AliasChoices("RECAP_GENRE_CLASSIFIER_MODEL_PATH_EN", "RECAP_SUBWORKER_GENRE_CLASSIFIER_MODEL_PATH_EN"),
+    )
+    genre_thresholds_path_ja: str = Field(
+        "data/genre_thresholds_ja.json",
+        description="Path to the Japanese genre thresholds file",
+        validation_alias=AliasChoices("RECAP_GENRE_THRESHOLDS_PATH_JA", "RECAP_SUBWORKER_GENRE_THRESHOLDS_PATH_JA"),
+    )
+    genre_thresholds_path_en: str = Field(
+        "data/genre_thresholds_en.json",
+        description="Path to the English genre thresholds file",
+        validation_alias=AliasChoices("RECAP_GENRE_THRESHOLDS_PATH_EN", "RECAP_SUBWORKER_GENRE_THRESHOLDS_PATH_EN"),
     )
     genre_subworker_threshold_overrides: str = Field(
         "{}",

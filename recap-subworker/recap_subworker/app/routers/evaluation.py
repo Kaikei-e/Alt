@@ -112,6 +112,7 @@ class EvaluateResponse(BaseModel):
 @router.post("/genres", response_model=EvaluateResponse)
 async def evaluate_genres(
     request: EvaluateRequest,
+    language: Optional[str] = None,
     settings: Settings = Depends(get_settings_dep),
     session=Depends(get_session),
 ) -> EvaluateResponse:
@@ -155,9 +156,13 @@ async def evaluate_genres(
         weights_path = None
 
     try:
-        # 評価サービスを初期化
+        # 評価サービスを初期化（JA/EN別モデルパスを設定から取得）
         service = EvaluationService(
             weights_path=str(weights_path) if weights_path else None,
+            weights_ja_path=settings.genre_classifier_model_path_ja,
+            weights_en_path=settings.genre_classifier_model_path_en,
+            thresholds_ja_path=settings.genre_thresholds_path_ja,
+            thresholds_en_path=settings.genre_thresholds_path_en,
             use_bootstrap=request.use_bootstrap,
             n_bootstrap=request.n_bootstrap,
             use_cross_validation=request.use_cross_validation,
@@ -165,7 +170,7 @@ async def evaluate_genres(
         )
 
         # 評価を実行
-        results = service.evaluate(str(golden_data_path))
+        results = service.evaluate(str(golden_data_path), language=language)
 
         # データベースに保存
         run_id: UUID | None = None

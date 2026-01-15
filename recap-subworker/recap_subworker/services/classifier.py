@@ -228,35 +228,37 @@ class GenreClassifierService:
 
             if multi_label:
                 # In multi-label mode, return top_k candidates that passed threshold
-                # If no candidates passed, return empty or fallback?
-                # Usually multi-label allows empty.
-                # But for existing consumers, we might want at least one if we fallback to single behavior?
-                # Let's stick to: candidates list.
-
-                # If no candidates, effectively "other" or empty.
-                # But let's fill top_genre for backward compatibility regardless.
                 if candidates:
                     top_match = candidates[0]
                     top_genre = top_match["genre"]
                     confidence = top_match["score"]
                     final_candidates = candidates[:top_k]
+                    below_threshold = False
                 else:
-                    # No genre passed threshold
-                    top_genre = 'other'
-                    confidence = scores.get('other', 0.0)
-                    if 'other' not in scores:
-                         # Fallback if 'other' not in model
-                         idx = np.argmax(probs)
-                         top_genre = classes[idx]
-                         confidence = float(scores[top_genre])
+                    # Improved fallback: Use highest scoring genre instead of 'other'
+                    idx = int(np.argmax(probs))
+                    top_genre = classes[idx]
+                    confidence = float(probs[idx])
+                    # Include the highest scoring genre as a candidate for transparency
+                    final_candidates = [{
+                        "genre": top_genre,
+                        "score": confidence,
+                        "threshold": self.current_thresholds.get(top_genre, 0.5),
+                    }]
+                    below_threshold = True
 
-                    final_candidates = [] # Empty candidates list if nothing passed threshold
+                    logger.debug(
+                        "No genre passed threshold in multi-label mode",
+                        top_genre=top_genre,
+                        confidence=confidence,
+                    )
 
                 results.append({
                     "top_genre": top_genre,
                     "confidence": confidence,
                     "scores": scores,
-                    "candidates": final_candidates
+                    "candidates": final_candidates,
+                    "below_threshold": below_threshold,
                 })
 
             else:
@@ -265,20 +267,29 @@ class GenreClassifierService:
                     top_match = candidates[0]
                     top_genre = top_match["genre"]
                     confidence = top_match["score"]
-                    # If we enforce strictly > threshold, this is it.
+                    below_threshold = False
                 else:
-                    # Fallback
-                    top_genre = 'other'
-                    confidence = scores.get('other', 0.0)
-                    if 'other' not in scores:
-                        top_genre = classes[np.argmax(probs)]
-                        confidence = float(scores[top_genre])
+                    # Improved fallback: Use highest scoring genre instead of 'other'
+                    # This improves recall while maintaining interpretability
+                    idx = int(np.argmax(probs))
+                    top_genre = classes[idx]
+                    confidence = float(probs[idx])
+                    below_threshold = True
+
+                    # Log when falling back to highest score
+                    logger.debug(
+                        "No genre passed threshold, using highest score",
+                        top_genre=top_genre,
+                        confidence=confidence,
+                        threshold=self.current_thresholds.get(top_genre, 0.5),
+                    )
 
                 results.append({
                     "top_genre": top_genre,
                     "confidence": confidence,
                     "scores": scores,
-                    "candidates": candidates[:top_k] # Still provide candidates for debug/info
+                    "candidates": candidates[:top_k],
+                    "below_threshold": below_threshold,  # Flag for downstream handling
                 })
 
         logger.info(

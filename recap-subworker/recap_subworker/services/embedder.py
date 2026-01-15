@@ -271,6 +271,11 @@ class Embedder:
         class OllamaRemoteAdapter:
             """Adapter for Ollama /api/embed endpoint."""
 
+            # Maximum characters per input text to avoid context length errors
+            # Most embedding models have 8K token context; ~4 chars/token gives ~32K chars
+            # Using conservative 8K chars to be safe across different models
+            MAX_INPUT_CHARS = 8000
+
             def __init__(self, url: str, model: str, timeout: float):
                 self.url = url.rstrip("/")
                 self.model = model
@@ -278,8 +283,26 @@ class Embedder:
                 self._client = httpx.Client(timeout=timeout)
                 self._embedding_dim: int | None = None
 
+            def _truncate_texts(self, texts: list[str]) -> list[str]:
+                """Truncate texts that exceed the maximum input length."""
+                truncated = []
+                for text in texts:
+                    if len(text) > self.MAX_INPUT_CHARS:
+                        logger.debug(
+                            "Truncating long text for embedding",
+                            original_length=len(text),
+                            truncated_length=self.MAX_INPUT_CHARS,
+                        )
+                        truncated.append(text[:self.MAX_INPUT_CHARS])
+                    else:
+                        truncated.append(text)
+                return truncated
+
             def _get_embeddings(self, texts: list[str]) -> list[list[float]]:
                 """Call Ollama API to get embeddings."""
+                # Truncate long texts to avoid context length errors
+                texts = self._truncate_texts(texts)
+
                 try:
                     response = self._client.post(
                         f"{self.url}/api/embed",

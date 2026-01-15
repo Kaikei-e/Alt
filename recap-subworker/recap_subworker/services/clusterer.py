@@ -5,11 +5,54 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import structlog
 from sklearn.cluster import HDBSCAN, BisectingKMeans
 from sklearn.metrics import silhouette_score
 
 from ..domain.models import HDBSCANSettings
 from ..infra.config import Settings
+
+_LOGGER = structlog.get_logger(__name__)
+
+
+def compute_knn_faiss(embeddings: np.ndarray, n_neighbors: int) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute k-nearest neighbors using FAISS instead of pynndescent.
+
+    This avoids the integer overflow bug in pynndescent 0.6.0.
+
+    Args:
+        embeddings: (N, D) float32 array of embeddings
+        n_neighbors: Number of neighbors to find
+
+    Returns:
+        (knn_indices, knn_dists): Arrays of shape (N, n_neighbors)
+    """
+    import faiss
+
+    n_samples, dim = embeddings.shape
+
+    # Ensure float32 for FAISS
+    embeddings_f32 = embeddings.astype(np.float32)
+
+    # Copy to avoid modifying original (normalize_L2 is in-place)
+    embeddings_norm = embeddings_f32.copy()
+
+    # L2 normalize for cosine similarity via inner product
+    faiss.normalize_L2(embeddings_norm)
+
+    # Use IndexFlatIP (inner product = cosine similarity after normalization)
+    index = faiss.IndexFlatIP(dim)
+    index.add(embeddings_norm)
+
+    # Search (includes self as nearest neighbor)
+    similarities, indices = index.search(embeddings_norm, n_neighbors)
+
+    # Convert similarity to distance (1 - similarity)
+    # Clip to ensure non-negative distances
+    distances = np.clip(1.0 - similarities, 0.0, 2.0)
+
+    return indices, distances
 
 @dataclass(slots=True)
 class ClusterParams:
@@ -82,23 +125,37 @@ class Clusterer:
 
             n_data_points = embeddings.shape[0]
             requested_n_neighbors = umap_n_neighbors or self.settings.umap_n_neighbors
-            # UMAP requires n_neighbors < N (number of data points)
-            # Adjust n_neighbors to be at most N-1, and at least 2 for meaningful results
-            adjusted_n_neighbors = max(2, min(requested_n_neighbors, n_data_points - 1))
+            # Safety margin: limit n_neighbors to at most N/3 for stability
+            safety_limit = max(2, n_data_points // 3)
+            adjusted_n_neighbors = max(2, min(requested_n_neighbors, safety_limit))
 
             # If we have very few data points, skip UMAP to avoid issues
             if n_data_points < 3:
                 use_umap = False
             else:
-                reducer = UMAP(
-                    n_components=umap_n_components or self.settings.umap_n_components,
-                    n_neighbors=adjusted_n_neighbors,
-                    metric="cosine",
-                    min_dist=umap_min_dist or self.settings.umap_min_dist,
-                    random_state=42,  # reproducible
-                    n_jobs=1,
-                )
-                reduced = reducer.fit_transform(embeddings)
+                # Use FAISS for k-NN computation instead of pynndescent
+                # This avoids the integer overflow bug in pynndescent 0.6.0
+                try:
+                    knn_indices, knn_dists = compute_knn_faiss(embeddings, adjusted_n_neighbors)
+
+                    reducer = UMAP(
+                        n_components=umap_n_components or self.settings.umap_n_components,
+                        n_neighbors=adjusted_n_neighbors,
+                        metric="cosine",
+                        min_dist=umap_min_dist or self.settings.umap_min_dist,
+                        random_state=42,  # reproducible
+                        n_jobs=1,
+                        precomputed_knn=(knn_indices, knn_dists),
+                    )
+                    reduced = reducer.fit_transform(embeddings)
+                except Exception as e:
+                    # Fallback: skip UMAP if FAISS fails
+                    _LOGGER.warning(
+                        "faiss_knn_failed_fallback_no_umap",
+                        error=str(e),
+                        n_samples=n_data_points,
+                    )
+                    use_umap = False
 
         # HDBSCAN (using sklearn.cluster.HDBSCAN)
         clusterer = HDBSCAN(
@@ -577,47 +634,96 @@ class Clusterer:
         if umap_n_components_range is None:
             umap_n_components_range = [8]
 
-        # Determine valid ranges
-        mcs_min = min(mcs for mcs in min_cluster_size_range if mcs < n_data_points)
-        mcs_max = max(mcs for mcs in min_cluster_size_range if mcs < n_data_points)
+        # Determine valid ranges with robust fallback
+        valid_mcs = [mcs for mcs in min_cluster_size_range if mcs < n_data_points]
+        if not valid_mcs:
+            # All candidates are >= data size, use sensible defaults
+            mcs_min = max(2, n_data_points // 10)
+            mcs_max = max(mcs_min, n_data_points // 4)
+            _LOGGER.warning(
+                "min_cluster_size_range_adjusted",
+                original_range=min_cluster_size_range,
+                n_data_points=n_data_points,
+                adjusted_min=mcs_min,
+                adjusted_max=mcs_max,
+            )
+        else:
+            mcs_min = min(valid_mcs)
+            mcs_max = max(valid_mcs)
         ms_max = max(ms if ms is not None else mcs_max for ms in min_samples_range)
 
-        # Convert UMAP ranges to lists for categorical suggestion
-        umap_n_neighbors_list = [n for n in umap_n_neighbors_range if n is not None]
+        # Convert UMAP ranges to lists, limiting n_neighbors for stability
+        # UMAP pynndescent is unstable when n_neighbors is close to dataset size
+        max_safe_neighbors = max(2, n_data_points // 3)
+        umap_n_neighbors_list = [
+            n for n in umap_n_neighbors_range
+            if n is not None and n <= max_safe_neighbors
+        ]
+        # Fallback if all n_neighbors values exceed the safety limit
+        if not umap_n_neighbors_list:
+            umap_n_neighbors_list = [max_safe_neighbors]
+            _LOGGER.info(
+                "umap_n_neighbors_adjusted",
+                original_range=umap_n_neighbors_range,
+                n_data_points=n_data_points,
+                safe_limit=max_safe_neighbors,
+            )
         umap_n_components_list = [n for n in umap_n_components_range if n is not None]
 
         def objective(trial):
-            # Suggest hyperparameters
-            mcs = trial.suggest_int('min_cluster_size', mcs_min, mcs_max)
-            # Ensure min_samples <= min_cluster_size
-            ms_upper = min(ms_max, mcs)
-            ms = trial.suggest_int('min_samples', 1, ms_upper)
+            # Initialize params for error logging
+            mcs = None
+            ms = None
+            n_neighbors = None
+            n_components = None
 
-            # UMAP parameters (categorical if multiple options, otherwise fixed)
-            if len(umap_n_neighbors_list) > 1:
-                n_neighbors = trial.suggest_categorical('umap_n_neighbors', umap_n_neighbors_list)
-            else:
-                n_neighbors = umap_n_neighbors_list[0] if umap_n_neighbors_list else None
+            try:
+                # Suggest hyperparameters
+                mcs = trial.suggest_int('min_cluster_size', mcs_min, mcs_max)
+                # Ensure min_samples <= min_cluster_size
+                ms_upper = min(ms_max, mcs)
+                ms = trial.suggest_int('min_samples', 1, ms_upper)
 
-            if len(umap_n_components_list) > 1:
-                n_components = trial.suggest_categorical('umap_n_components', umap_n_components_list)
-            else:
-                n_components = umap_n_components_list[0] if umap_n_components_list else None
+                # UMAP parameters (categorical if multiple options, otherwise fixed)
+                if len(umap_n_neighbors_list) > 1:
+                    n_neighbors = trial.suggest_categorical('umap_n_neighbors', umap_n_neighbors_list)
+                else:
+                    n_neighbors = umap_n_neighbors_list[0] if umap_n_neighbors_list else None
 
-            # Perform clustering
-            result = self.cluster(
-                embeddings,
-                min_cluster_size=mcs,
-                min_samples=ms,
-                umap_n_neighbors=n_neighbors,
-                umap_n_components=n_components,
-                hdbscan_cluster_selection_epsilon=0.5,
-                hdbscan_cluster_selection_method=hdbscan_cluster_selection_method,
-                hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
-            )
+                if len(umap_n_components_list) > 1:
+                    n_components = trial.suggest_categorical('umap_n_components', umap_n_components_list)
+                else:
+                    n_components = umap_n_components_list[0] if umap_n_components_list else None
 
-            # Return composite score (to maximize)
-            return 0.6 * result.silhouette_score + 0.4 * result.dbcv_score
+                # Perform clustering
+                result = self.cluster(
+                    embeddings,
+                    min_cluster_size=mcs,
+                    min_samples=ms,
+                    umap_n_neighbors=n_neighbors,
+                    umap_n_components=n_components,
+                    hdbscan_cluster_selection_epsilon=0.5,
+                    hdbscan_cluster_selection_method=hdbscan_cluster_selection_method,
+                    hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
+                )
+
+                # Return composite score (to maximize)
+                return 0.6 * result.silhouette_score + 0.4 * result.dbcv_score
+
+            except (IndexError, ValueError, RuntimeError) as e:
+                _LOGGER.warning(
+                    "optuna_trial_failed",
+                    trial_number=trial.number,
+                    params={
+                        'min_cluster_size': mcs,
+                        'min_samples': ms,
+                        'n_neighbors': n_neighbors,
+                        'n_components': n_components,
+                    },
+                    error=str(e),
+                )
+                # Return worst score to discourage this parameter region
+                return float('-inf')
 
         # Create study with TPE sampler and seed for reproducibility
         sampler = TPESampler(seed=42)
