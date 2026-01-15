@@ -32,7 +32,7 @@ const (
 // - ZeroEntropy: -35% LLM hallucinations
 const (
 	defaultRerankEnabled = true                 // Enabled by default per user preference
-	defaultRerankModel   = "bge-reranker-v2-m3" // BAAI multilingual model
+	defaultRerankModel   = "BAAI/bge-reranker-v2-m3" // BAAI multilingual model
 	defaultRerankTopK    = 10                   // Rerank 50 -> 10
 	defaultRerankTimeout = 30                   // Seconds
 )

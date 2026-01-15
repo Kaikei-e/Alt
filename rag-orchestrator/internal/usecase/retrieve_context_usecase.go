@@ -394,6 +394,15 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 			})
 		}
 
+		// Limit candidates to max that rerank endpoint accepts (100)
+		const maxRerankCandidates = 100
+		if len(candidates) > maxRerankCandidates {
+			sort.Slice(candidates, func(i, j int) bool {
+				return candidates[i].Score > candidates[j].Score
+			})
+			candidates = candidates[:maxRerankCandidates]
+		}
+
 		// Call reranker with timeout from config
 		rerankCtx, cancel := context.WithTimeout(ctx, u.config.Reranking.Timeout)
 		reranked, err := u.reranker.Rerank(rerankCtx, input.Query, candidates)

@@ -215,7 +215,7 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 	// 5. Store in Cache
 	u.cache.Store(cacheKey, cacheItem{
 		output:    output,
-		expiresAt: time.Now().Add(1 * time.Hour),
+		expiresAt: time.Now().Add(10 * time.Minute),
 	})
 
 	executionDuration := time.Since(executionStart)

@@ -285,7 +285,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		// Store in Cache
 		u.cache.Store(cacheKey, cacheItem{
 			output:    output,
-			expiresAt: time.Now().Add(1 * time.Hour),
+			expiresAt: time.Now().Add(10 * time.Minute),
 		})
 
 		u.sendStreamEvent(ctx, events, StreamEvent{
