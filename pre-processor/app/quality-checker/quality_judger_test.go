@@ -777,11 +777,11 @@ func TestJudgeArticleQualityContentWithinLimit(t *testing.T) {
 // TestJudgeArticleQualityContentBoundary tests boundary conditions for content length
 func TestJudgeArticleQualityContentBoundary(t *testing.T) {
 	tests := []struct {
-		name           string
-		contentLen     int
-		summaryLen     int
-		shouldSkip     bool
-		description    string
+		name        string
+		contentLen  int
+		summaryLen  int
+		shouldSkip  bool
+		description string
 	}{
 		{
 			name:        "exactly_at_limit",

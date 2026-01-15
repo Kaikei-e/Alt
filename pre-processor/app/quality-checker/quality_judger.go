@@ -25,7 +25,7 @@ var (
 	// qualityCheckerAPIURL can be overridden in tests
 	qualityCheckerAPIURL = "http://news-creator:11434/api/generate"
 	modelName            = "gemma3-4b-16k"
-	lowScoreThreshold = 7 // 7 is the lowest score that is acceptable
+	lowScoreThreshold    = 7 // 7 is the lowest score that is acceptable
 	// Quality Checker用: 16kコンテキストモデルで安定動作する上限
 	// 記事 + サマリー + プロンプトテンプレート(~1500文字) < 16k トークン
 	// 日本語は約4文字/トークンなので、記事+サマリーは約50,000文字まで
