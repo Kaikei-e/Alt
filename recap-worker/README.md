@@ -58,7 +58,7 @@ flowchart TD
 | [`recap-worker/src/store/`](recap-worker/src/store) | `RecapDao`, data models, advisory-lock helpers, persistence logic. |
 | [`recap-migration-atlas/`](../recap-migration-atlas) | Source of truth Atlas migrations, Dockerized runner, and schema definitions. |
 | [`docs/`](recap-worker/docs) | Deep dives (`dedup_analysis.md`, `dedup_optimization_design.md`, `subworker_404_investigation.md`). |
-| [`docs/recap-worker.md`](../docs/recap-worker.md) | High-level service snapshot, runbook, integrations, and LLM notes (recommended entry point). |
+| [`docs/services/recap-worker.md`](../docs/services/recap-worker.md) | High-level service snapshot, runbook, integrations, and LLM notes (recommended entry point). |
 
 ## Control Plane APIs
 | Method & Path | Description |
