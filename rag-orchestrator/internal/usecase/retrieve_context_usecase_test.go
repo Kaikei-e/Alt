@@ -117,17 +117,17 @@ func TestSelectContexts_DynamicAllocation(t *testing.T) {
 				{title: "日本語記事1", score: 0.85, content: "content2"},
 			},
 			hitsExpanded: []testContextItem{
-				{title: "日本語記事2", score: 0.95},    // highest
+				{title: "日本語記事2", score: 0.95}, // highest
 				{title: "EN Article 2", score: 0.80},
 				{title: "日本語記事3", score: 0.75},
 			},
 			totalQuota: 5,
 			expectedTitles: []string{
-				"日本語記事2",   // 0.95
+				"日本語記事2",       // 0.95
 				"EN Article 1", // 0.90
-				"日本語記事1",   // 0.85
+				"日本語記事1",       // 0.85
 				"EN Article 2", // 0.80
-				"日本語記事3",   // 0.75
+				"日本語記事3",       // 0.75
 			},
 		},
 		{
@@ -140,7 +140,7 @@ func TestSelectContexts_DynamicAllocation(t *testing.T) {
 				{title: "日本語記事3", score: 0.97},
 				{title: "EN Article", score: 0.50},
 			},
-			totalQuota: 3,
+			totalQuota:     3,
 			expectedTitles: []string{"日本語記事1", "日本語記事2", "日本語記事3"},
 		},
 		{
@@ -153,7 +153,7 @@ func TestSelectContexts_DynamicAllocation(t *testing.T) {
 				{title: "EN Article 3", score: 0.97},
 				{title: "日本語記事", score: 0.40},
 			},
-			totalQuota: 3,
+			totalQuota:     3,
 			expectedTitles: []string{"EN Article 1", "EN Article 2", "EN Article 3"},
 		},
 		{
@@ -165,7 +165,7 @@ func TestSelectContexts_DynamicAllocation(t *testing.T) {
 				{id: "11111111-1111-1111-1111-111111111111", title: "Same Article", score: 0.85}, // duplicate, should be ignored
 				{title: "Another Article", score: 0.80},
 			},
-			totalQuota: 2,
+			totalQuota:     2,
 			expectedTitles: []string{"Same Article", "Another Article"},
 		},
 	}

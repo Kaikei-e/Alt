@@ -133,12 +133,12 @@ type RetrievalConfig struct {
 // - Microsoft RAG Guide: 50 for pre-ranking pool, re-rank to top 10
 func DefaultRetrievalConfig() RetrievalConfig {
 	return RetrievalConfig{
-		SearchLimit:        50,                               // Standard for pre-ranking pool
-		QuotaOriginal:      5,                                // 5-10 range optimal
-		QuotaExpanded:      5,                                // 5-10 range optimal
-		RRFK:               60.0,                             // Standard RRF constant
-		Reranking:          DefaultRerankingConfig(),         // Cross-encoder reranking
-		HybridSearch:       DefaultHybridSearchConfig(),      // BM25+vector fusion
+		SearchLimit:        50,                                // Standard for pre-ranking pool
+		QuotaOriginal:      5,                                 // 5-10 range optimal
+		QuotaExpanded:      5,                                 // 5-10 range optimal
+		RRFK:               60.0,                              // Standard RRF constant
+		Reranking:          DefaultRerankingConfig(),          // Cross-encoder reranking
+		HybridSearch:       DefaultHybridSearchConfig(),       // BM25+vector fusion
 		LanguageAllocation: DefaultLanguageAllocationConfig(), // Dynamic JA/EN allocation
 	}
 }
