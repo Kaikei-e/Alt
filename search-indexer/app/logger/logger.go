@@ -34,6 +34,10 @@ func InitWithOTel(enableOTel bool) {
 	}
 
 	Logger = slog.New(handler)
+
+	// Initialize ContextLogger for ADR 98/99 business context support
+	GlobalContext = NewContextLogger(Logger)
+
 	Logger.Info("Logger initialized", "otel_enabled", enableOTel)
 }
 
