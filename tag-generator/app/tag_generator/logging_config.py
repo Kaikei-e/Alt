@@ -1,9 +1,41 @@
+"""
+ABOUTME: Structured logging configuration with ADR 98 compliance.
+ABOUTME: Provides JSON output with alt.* prefixed business context attributes.
+"""
+
 import json
 import logging
 import sys
 from datetime import UTC, datetime
 
 import structlog
+from structlog.typing import EventDict, WrappedLogger
+
+
+def add_business_context(
+    _logger: WrappedLogger,
+    _method_name: str,
+    event_dict: EventDict,
+) -> EventDict:
+    """
+    Structlog processor that renames keys to ADR 98 format with alt.* prefix.
+
+    Transforms:
+    - article_id -> alt.article.id
+    - feed_id -> alt.feed.id
+
+    Also adds alt.ai.pipeline = 'tag-extraction' for all logs.
+    """
+    # Rename existing keys to ADR 98 format
+    if "article_id" in event_dict:
+        event_dict["alt.article.id"] = event_dict.pop("article_id")
+    if "feed_id" in event_dict:
+        event_dict["alt.feed.id"] = event_dict.pop("feed_id")
+
+    # Always add AI pipeline identifier
+    event_dict["alt.ai.pipeline"] = "tag-extraction"
+
+    return event_dict
 
 
 class JsonFormatter(logging.Formatter):
@@ -105,6 +137,8 @@ def setup_logging(enable_otel: bool = True):
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             structlog.processors.UnicodeDecoder(),
+            # ADR 98: Add business context with alt.* prefix
+            add_business_context,
             # This processor is the key for integration. It takes the event dict
             # and prepares it as keyword arguments for the standard logger.
             structlog.stdlib.render_to_log_kwargs,
