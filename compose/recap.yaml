@@ -89,6 +89,9 @@ services:
       - TAG_LABEL_GRAPH_WINDOW=${TAG_LABEL_GRAPH_WINDOW}
       - TAG_LABEL_GRAPH_TTL_SECONDS=${TAG_LABEL_GRAPH_TTL_SECONDS}
       - HUGGING_FACE_TOKEN_PATH=/run/secrets/hugging_face_token
+      # HuggingFace cache directory (writable path for model downloads)
+      - HF_HOME=/tmp/huggingface
+      - TRANSFORMERS_CACHE=/tmp/huggingface/transformers
     secrets:
       - recap_db_password
       - service_secret
