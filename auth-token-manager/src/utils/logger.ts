@@ -113,6 +113,44 @@ interface EnhancedLogRecord extends LogRecord {
 }
 
 /**
+ * ADR 98/99 business context support
+ */
+interface BusinessContext {
+  feedId?: string;
+  articleId?: string;
+  jobId?: string;
+  processingStage?: string;
+  aiPipeline?: string;
+}
+
+let businessContext: BusinessContext = {};
+
+// ADR 98/99 business context setters
+export function setFeedId(feedId: string): void {
+  businessContext.feedId = feedId;
+}
+
+export function setArticleId(articleId: string): void {
+  businessContext.articleId = articleId;
+}
+
+export function setJobId(jobId: string): void {
+  businessContext.jobId = jobId;
+}
+
+export function setProcessingStage(stage: string): void {
+  businessContext.processingStage = stage;
+}
+
+export function setAIPipeline(pipeline: string): void {
+  businessContext.aiPipeline = pipeline;
+}
+
+export function clearBusinessContext(): void {
+  businessContext = {};
+}
+
+/**
  * JSON formatter for structured logging (OTel-compatible)
  */
 class JsonFormatter {
@@ -131,7 +169,7 @@ class JsonFormatter {
       DataSanitizer.sanitize(arg)
     );
 
-    const logData = {
+    const logData: Record<string, unknown> = {
       // OTel-compatible fields
       timestamp: logRecord.datetime.toISOString(),
       level: logRecord.levelName.toLowerCase(),
@@ -141,6 +179,12 @@ class JsonFormatter {
       "service.name": this.serviceName,
       "service.version": this.serviceVersion,
       "deployment.environment": this.deploymentEnv,
+      // ADR 98/99 business context keys
+      ...(businessContext.feedId && { "alt.feed.id": businessContext.feedId }),
+      ...(businessContext.articleId && { "alt.article.id": businessContext.articleId }),
+      ...(businessContext.jobId && { "alt.job.id": businessContext.jobId }),
+      ...(businessContext.processingStage && { "alt.processing.stage": businessContext.processingStage }),
+      ...(businessContext.aiPipeline && { "alt.ai.pipeline": businessContext.aiPipeline }),
       // Legacy fields for compatibility
       component: logRecord.component || 'auth-token-manager',
       ...sanitizedArgs.reduce((acc, arg, _index) => {
