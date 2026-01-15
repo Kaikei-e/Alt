@@ -271,10 +271,10 @@ class Embedder:
         class OllamaRemoteAdapter:
             """Adapter for Ollama /api/embed endpoint."""
 
-            # Maximum characters per input text to avoid context length errors
-            # Most embedding models have 8K token context; ~4 chars/token gives ~32K chars
-            # Using conservative 8K chars to be safe across different models
-            MAX_INPUT_CHARS = 8000
+            # Maximum characters per chunk for embedding
+            # mxbai-embed-large has 512 token context; ~4 chars/token gives ~2K chars
+            # Using conservative 800 chars to ensure single texts fit
+            MAX_CHUNK_CHARS = 800
 
             def __init__(self, url: str, model: str, timeout: float):
                 self.url = url.rstrip("/")
@@ -283,26 +283,8 @@ class Embedder:
                 self._client = httpx.Client(timeout=timeout)
                 self._embedding_dim: int | None = None
 
-            def _truncate_texts(self, texts: list[str]) -> list[str]:
-                """Truncate texts that exceed the maximum input length."""
-                truncated = []
-                for text in texts:
-                    if len(text) > self.MAX_INPUT_CHARS:
-                        logger.debug(
-                            "Truncating long text for embedding",
-                            original_length=len(text),
-                            truncated_length=self.MAX_INPUT_CHARS,
-                        )
-                        truncated.append(text[:self.MAX_INPUT_CHARS])
-                    else:
-                        truncated.append(text)
-                return truncated
-
-            def _get_embeddings(self, texts: list[str]) -> list[list[float]]:
-                """Call Ollama API to get embeddings."""
-                # Truncate long texts to avoid context length errors
-                texts = self._truncate_texts(texts)
-
+            def _call_embed_api(self, texts: list[str]) -> list[list[float]]:
+                """Call Ollama /api/embed endpoint for a batch of short texts."""
                 try:
                     response = self._client.post(
                         f"{self.url}/api/embed",
@@ -310,9 +292,6 @@ class Embedder:
                     )
                     response.raise_for_status()
                 except httpx.HTTPStatusError as exc:
-                    # HTTPStatusError is not picklable (keyword-only args issue)
-                    # Re-raise as a simple RuntimeError for multiprocessing compatibility
-                    # See: https://github.com/encode/httpx/discussions/1562
                     raise RuntimeError(
                         f"Ollama API error: {exc.response.status_code} - {exc.response.text[:200]}"
                     ) from None
@@ -320,6 +299,44 @@ class Embedder:
                     raise RuntimeError(f"Ollama API request failed: {exc}") from None
                 data = response.json()
                 return data["embeddings"]
+
+            def _embed_single_text(self, text: str) -> list[float]:
+                """Embed a single text, chunking if necessary."""
+                if len(text) <= self.MAX_CHUNK_CHARS:
+                    # Short text: embed directly
+                    embeddings = self._call_embed_api([text])
+                    return embeddings[0]
+
+                # Long text: split into chunks and average embeddings
+                chunks = []
+                for i in range(0, len(text), self.MAX_CHUNK_CHARS):
+                    chunk = text[i:i + self.MAX_CHUNK_CHARS]
+                    if chunk.strip():
+                        chunks.append(chunk)
+
+                if not chunks:
+                    chunks = [text[:self.MAX_CHUNK_CHARS]]
+
+                logger.debug(
+                    "Chunking long text for embedding",
+                    original_length=len(text),
+                    chunk_count=len(chunks),
+                )
+
+                # Embed all chunks in one API call for efficiency
+                chunk_embeddings = self._call_embed_api(chunks)
+
+                # Average the chunk embeddings
+                avg_embedding = np.mean(chunk_embeddings, axis=0).tolist()
+                return avg_embedding
+
+            def _get_embeddings(self, texts: list[str]) -> list[list[float]]:
+                """Get embeddings for multiple texts with chunking support."""
+                results = []
+                for text in texts:
+                    emb = self._embed_single_text(text)
+                    results.append(emb)
+                return results
 
             def encode(
                 self,
