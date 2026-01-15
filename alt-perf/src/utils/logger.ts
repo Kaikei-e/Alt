@@ -29,9 +29,45 @@ const SERVICE_NAME = Deno.env.get("OTEL_SERVICE_NAME") || "alt-perf";
 const SERVICE_VERSION = Deno.env.get("SERVICE_VERSION") || "1.0.0";
 const DEPLOYMENT_ENV = Deno.env.get("DEPLOYMENT_ENV") || "development";
 
+// ADR 98/99 business context
+interface BusinessContext {
+  feedId?: string;
+  articleId?: string;
+  jobId?: string;
+  processingStage?: string;
+  aiPipeline?: string;
+}
+
+let businessContext: BusinessContext = {};
+
 // Configure logger
 export function configureLogger(options: Partial<LoggerConfig>): void {
   config = { ...config, ...options };
+}
+
+// ADR 98/99 business context setters
+export function setFeedId(feedId: string): void {
+  businessContext.feedId = feedId;
+}
+
+export function setArticleId(articleId: string): void {
+  businessContext.articleId = articleId;
+}
+
+export function setJobId(jobId: string): void {
+  businessContext.jobId = jobId;
+}
+
+export function setProcessingStage(stage: string): void {
+  businessContext.processingStage = stage;
+}
+
+export function setAIPipeline(pipeline: string): void {
+  businessContext.aiPipeline = pipeline;
+}
+
+export function clearBusinessContext(): void {
+  businessContext = {};
 }
 
 // Check if level should be logged
@@ -53,7 +89,7 @@ function log(
   if (!shouldLog(level)) return;
 
   if (config.json) {
-    const logEntry = {
+    const logEntry: Record<string, unknown> = {
       // OTel-compatible fields
       timestamp: formatTimestamp(),
       level,
@@ -62,6 +98,12 @@ function log(
       "service.name": SERVICE_NAME,
       "service.version": SERVICE_VERSION,
       "deployment.environment": DEPLOYMENT_ENV,
+      // ADR 98/99 business context keys
+      ...(businessContext.feedId && { "alt.feed.id": businessContext.feedId }),
+      ...(businessContext.articleId && { "alt.article.id": businessContext.articleId }),
+      ...(businessContext.jobId && { "alt.job.id": businessContext.jobId }),
+      ...(businessContext.processingStage && { "alt.processing.stage": businessContext.processingStage }),
+      ...(businessContext.aiPipeline && { "alt.ai.pipeline": businessContext.aiPipeline }),
       ...data,
     };
     console.log(JSON.stringify(logEntry));
