@@ -115,3 +115,54 @@ def test_ensure_model_updates_thresholds(mock_json_load, mock_open, mock_exists,
     assert service.current_thresholds["new"] == 0.3
     # Base should remain unchanged in the underlying dict if separate, but here we copied it.
     assert service.thresholds["tech"] == 0.5
+
+
+def test_predict_batch_below_threshold_flag_single_label(genre_classifier):
+    """Test that below_threshold flag is set when no genre passes threshold."""
+    # All scores below their thresholds
+    # tech=0.3 (thresh=0.4) -> FAIL
+    # politics=0.3 (thresh=0.4) -> FAIL
+    # other=0.4 (thresh=0.5) -> FAIL
+    genre_classifier.model.predict_proba.return_value = np.array([[0.3, 0.3, 0.4]])
+
+    results = genre_classifier.predict_batch(["test text"], multi_label=False)
+
+    assert len(results) == 1
+    res = results[0]
+    # Should use highest score (other=0.4)
+    assert res["top_genre"] == "other"
+    assert res["confidence"] == 0.4
+    assert res["below_threshold"] is True
+    assert res["candidates"] == []  # No candidates passed threshold
+
+
+def test_predict_batch_below_threshold_flag_multi_label(genre_classifier):
+    """Test below_threshold in multi-label mode when nothing passes."""
+    # All scores below their thresholds
+    genre_classifier.model.predict_proba.return_value = np.array([[0.3, 0.3, 0.4]])
+
+    results = genre_classifier.predict_batch(["test text"], multi_label=True)
+
+    assert len(results) == 1
+    res = results[0]
+    # Should use highest score (other=0.4)
+    assert res["top_genre"] == "other"
+    assert res["confidence"] == 0.4
+    assert res["below_threshold"] is True
+    # In multi-label mode, should include fallback as a candidate
+    assert len(res["candidates"]) == 1
+    assert res["candidates"][0]["genre"] == "other"
+
+
+def test_predict_batch_above_threshold_flag(genre_classifier):
+    """Test that below_threshold is False when a genre passes threshold."""
+    # tech passes threshold
+    genre_classifier.model.predict_proba.return_value = np.array([[0.5, 0.3, 0.2]])
+
+    results = genre_classifier.predict_batch(["test text"], multi_label=False)
+
+    assert len(results) == 1
+    res = results[0]
+    assert res["top_genre"] == "tech"
+    assert res["confidence"] == 0.5
+    assert res["below_threshold"] is False

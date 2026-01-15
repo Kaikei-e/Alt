@@ -17,6 +17,14 @@ def mock_settings():
     settings.umap_n_components = 5
     settings.umap_min_dist = 0.0
     settings.hdbscan_cluster_selection_method = "eom"
+    # Optuna settings (default to grid search for most tests)
+    settings.use_bayes_opt = False
+    settings.bayes_opt_trials = 10
+    settings.bayes_opt_timeout_seconds = None
+    # Noise reclustering settings
+    settings.noise_recluster_enabled = True
+    settings.noise_recluster_min_points = 30
+    settings.noise_recluster_max_clusters = 10
     return settings
 
 @pytest.fixture
