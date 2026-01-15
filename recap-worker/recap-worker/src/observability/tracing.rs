@@ -9,12 +9,18 @@ use opentelemetry_sdk::{
 use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
+use super::structured_log::StructuredLogLayer;
+
 static TRACING_INIT: OnceCell<()> = OnceCell::new();
 
 /// Tracing サブスクライバを一度だけ初期化する。
 ///
-/// OTel設定が提供されている場合、OTLPエクスポーターを使用してトレースを送信します。
+/// OTEL_EXPORTER_OTLP_ENDPOINT環境変数が設定されている場合、
+/// OTLPエクスポーターを使用してトレースを送信します。
 /// 設定がない場合は、標準のfmtレイヤーのみを使用します。
+///
+/// StructuredLogLayerは常に有効化され、ADR 98準拠の
+/// alt.* プレフィックス付きフィールドを出力します。
 ///
 /// # Errors
 /// サブスクライバの初期化に失敗した場合はエラーを返す。
@@ -25,14 +31,59 @@ pub fn init() -> Result<()> {
 
         let fmt_layer = tracing_subscriber::fmt::layer().with_target(false).json();
 
-        // Note: OpenTelemetryは現在バージョンミスマッチのため無効化
-        tracing_subscriber::registry()
-            .with(env_filter)
-            .with(fmt_layer)
-            .try_init()
-            .map_err(|error| Error::msg(error.to_string()))?;
+        // Check if OTel is enabled via environment variable
+        let otel_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
 
-        info!("Standard tracing initialized");
+        if let Some(endpoint) = otel_endpoint {
+            // Initialize with OpenTelemetry
+            // When OTel is enabled, use OTel layer for trace context propagation
+            match init_tracer(&endpoint) {
+                Ok(tracer) => {
+                    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+                    tracing_subscriber::registry()
+                        .with(env_filter)
+                        .with(fmt_layer)
+                        .with(otel_layer)
+                        .try_init()
+                        .map_err(|e: tracing_subscriber::util::TryInitError| {
+                            Error::msg(e.to_string())
+                        })?;
+                    info!(
+                        otel_enabled = true,
+                        endpoint = %endpoint,
+                        "alt.ai.pipeline" = "recap-processing",
+                        "Tracing initialized with OpenTelemetry"
+                    );
+                }
+                Err(e) => {
+                    // Fall back to standard tracing with StructuredLogLayer
+                    let structured_layer = StructuredLogLayer;
+                    tracing_subscriber::registry()
+                        .with(env_filter)
+                        .with(fmt_layer)
+                        .with(structured_layer)
+                        .try_init()
+                        .map_err(|e: tracing_subscriber::util::TryInitError| {
+                            Error::msg(e.to_string())
+                        })?;
+                    info!(
+                        otel_enabled = false,
+                        error = %e,
+                        "Tracing initialized without OpenTelemetry (init failed)"
+                    );
+                }
+            }
+        } else {
+            // Standard tracing with StructuredLogLayer for ADR 98 compliance
+            let structured_layer = StructuredLogLayer;
+            tracing_subscriber::registry()
+                .with(env_filter)
+                .with(fmt_layer)
+                .with(structured_layer)
+                .try_init()
+                .map_err(|e: tracing_subscriber::util::TryInitError| Error::msg(e.to_string()))?;
+            info!(otel_enabled = false, "Standard tracing initialized");
+        }
 
         Ok::<(), Error>(())
     })?;
@@ -45,7 +96,6 @@ pub fn init() -> Result<()> {
 ///
 /// # Errors
 /// トレーサーの初期化に失敗した場合はエラーを返す。
-#[allow(dead_code)]
 fn init_tracer(endpoint: &str) -> Result<SdkTracer> {
     let sampling_ratio = std::env::var("OTEL_SAMPLING_RATIO")
         .ok()

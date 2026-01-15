@@ -48,9 +48,9 @@ tracing-subscriber = { version = "0.3", features = [
   "json",
 ] }
 tracing-opentelemetry = "0.31"
-opentelemetry = { version = "0.31", features = ["trace"] }
-opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.31", features = [
+opentelemetry = { version = "0.30", features = ["trace"] }
+opentelemetry_sdk = { version = "0.30", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.30", features = [
   "grpc-tonic",
   "http-proto",
 ] }

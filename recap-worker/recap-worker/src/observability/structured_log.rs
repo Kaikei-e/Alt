@@ -1,11 +1,25 @@
-/// 構造化JSON形式ログ。
+/// 構造化JSON形式ログ (ADR 98 準拠)。
 use serde_json::json;
 use tracing::{Event, Subscriber};
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context;
 
-/// 重要イベントの構造化ログレイヤー。
-#[allow(dead_code)]
+/// ADR 98 準拠のフィールド名変換
+/// job_id -> alt.job.id, article_id -> alt.article.id, etc.
+fn convert_to_adr98_key(key: &str) -> String {
+    match key {
+        "job_id" => "alt.job.id".to_string(),
+        "article_id" => "alt.article.id".to_string(),
+        "processing_stage" => "alt.processing.stage".to_string(),
+        "ai_pipeline" => "alt.ai.pipeline".to_string(),
+        _ => key.to_string(),
+    }
+}
+
+/// 重要イベントの構造化ログレイヤー (ADR 98 準拠)。
+///
+/// 全てのトレーシングイベントに対してADR 98で定義された
+/// alt.* プレフィックス付きフィールド変換を適用します。
 pub(crate) struct StructuredLogLayer;
 
 impl<S: Subscriber> Layer<S> for StructuredLogLayer {
@@ -18,24 +32,28 @@ impl<S: Subscriber> Layer<S> for StructuredLogLayer {
 
         impl Visit for JsonVisitor {
             fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-                self.values
-                    .insert(field.name().to_string(), json!(format!("{:?}", value)));
+                let key = convert_to_adr98_key(field.name());
+                self.values.insert(key, json!(format!("{:?}", value)));
             }
 
             fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-                self.values.insert(field.name().to_string(), json!(value));
+                let key = convert_to_adr98_key(field.name());
+                self.values.insert(key, json!(value));
             }
 
             fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
-                self.values.insert(field.name().to_string(), json!(value));
+                let key = convert_to_adr98_key(field.name());
+                self.values.insert(key, json!(value));
             }
 
             fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-                self.values.insert(field.name().to_string(), json!(value));
+                let key = convert_to_adr98_key(field.name());
+                self.values.insert(key, json!(value));
             }
 
             fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
-                self.values.insert(field.name().to_string(), json!(value));
+                let key = convert_to_adr98_key(field.name());
+                self.values.insert(key, json!(value));
             }
         }
 
@@ -43,6 +61,9 @@ impl<S: Subscriber> Layer<S> for StructuredLogLayer {
             values: serde_json::Map::new(),
         };
         event.record(&mut visitor);
+
+        // ADR 98: Always include ai_pipeline for recap-worker
+        visitor.values.insert("alt.ai.pipeline".to_string(), json!("recap-processing"));
 
         let log_entry = json!({
             "timestamp": chrono::Utc::now().to_rfc3339(),
