@@ -128,7 +128,7 @@ impl MinHashLSH {
         let (num_bands, rows_per_band) = optimal_lsh_params(num_perm, threshold);
 
         // Generate deterministic seeds for reproducibility
-        let seeds: Vec<u64> = (0..num_perm as u64).map(|i| i.wrapping_mul(0x517cc1b727220a95)).collect();
+        let seeds: Vec<u64> = (0..num_perm as u64).map(|i| i.wrapping_mul(0x517c_c1b7_2722_0a95)).collect();
 
         let buckets = (0..num_bands)
             .map(|_| FxHashMap::default())
@@ -362,7 +362,7 @@ fn optimal_lsh_params(num_perm: usize, threshold: f64) -> (usize, usize) {
     let mut best_score = f64::MAX;
 
     for b in 1..=num_perm {
-        if num_perm % b != 0 {
+        if !num_perm.is_multiple_of(b) {
             continue;
         }
 
