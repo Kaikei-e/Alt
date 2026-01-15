@@ -1,0 +1,202 @@
+# Grafana alerting rules for Rask System Health
+# Note: These rules are designed for Grafana Unified Alerting
+# Import via Grafana UI: Alerting > Alert rules > Import
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: rask-system
+    folder: Rask
+    interval: 1m
+    rules:
+      - uid: rask-service-no-logs
+        title: Service No Logs (5 min)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: clickhouse
+            model:
+              editorType: sql
+              format: 1
+              queryType: table
+              rawSql: |
+                SELECT service_name, count() as log_count
+                FROM logs
+                WHERE timestamp >= now() - INTERVAL 5 MINUTE
+                GROUP BY service_name
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: []
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - B
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: A
+              reducer: count
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: eq
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: Alerting
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Service {{ $labels.service_name }} has not emitted logs for 5 minutes"
+          description: |
+            The service {{ $labels.service_name }} has stopped producing logs.
+            This may indicate the service is down or experiencing issues.
+        labels:
+          severity: warning
+          team: platform
+
+      - uid: rask-high-error-rate
+        title: High Error Rate (> 10%)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: clickhouse
+            model:
+              editorType: sql
+              format: 1
+              queryType: table
+              rawSql: |
+                SELECT
+                  service_name,
+                  countIf(level IN ('Error', 'Fatal')) as error_count,
+                  count() as total_count,
+                  countIf(level IN ('Error', 'Fatal')) / count() as error_rate
+                FROM logs
+                WHERE timestamp >= now() - INTERVAL 5 MINUTE
+                GROUP BY service_name
+                HAVING count() > 10
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0.1
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Service {{ $labels.service_name }} has error rate above 10%"
+          description: |
+            The service {{ $labels.service_name }} has an error rate of {{ $values.B }}%.
+            Check the error logs for details.
+        labels:
+          severity: warning
+          team: platform
+
+      - uid: rask-fatal-log
+        title: Fatal Log Detected
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: clickhouse
+            model:
+              editorType: sql
+              format: 1
+              queryType: table
+              rawSql: |
+                SELECT service_name, count() as fatal_count
+                FROM logs
+                WHERE timestamp >= now() - INTERVAL 1 MINUTE
+                  AND level = 'Fatal'
+                GROUP BY service_name
+          - refId: B
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: A
+              reducer: sum
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "Fatal log detected in {{ $labels.service_name }}"
+          description: |
+            A Fatal level log has been detected in service {{ $labels.service_name }}.
+            Immediate investigation required.
+        labels:
+          severity: critical
+          team: platform

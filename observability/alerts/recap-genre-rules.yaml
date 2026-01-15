@@ -1,0 +1,27 @@
+groups:
+  - name: recap-genre
+    interval: 1m
+    rules:
+      - alert: RecapTagPayloadMissingHigh
+        expr: recap_genre_tag_missing_ratio > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          service: recap-worker
+        annotations:
+          summary: "Recap tag payload missing ratio is above 10%"
+          description: |
+            Recap Worker has reported recap_genre_tag_missing_ratio > 10%% for 5 minutes.
+            Tag Generator feed is likely delayed or failing.
+      - alert: RecapTagGraphInactive
+        expr: increase(recap_genre_graph_hits_total[10m]) == 0
+          and sum(rate(recap_genre_coarse_assignments_total[10m])) > 0
+        for: 10m
+        labels:
+          severity: critical
+          service: recap-worker
+        annotations:
+          summary: "Tag label graph refresh is stale"
+          description: |
+            No graph boosts have been recorded in the last 10 minutes while recap jobs are running.
+            Check recap-worker logs for tag_label_graph load errors or stale cache.

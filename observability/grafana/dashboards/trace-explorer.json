@@ -50,7 +50,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "timeseries",
-          "rawSql": "SELECT toStartOfMinute(Timestamp) as time, ServiceName, count() as traces FROM otel_traces WHERE $__timeFilter(Timestamp) AND ParentSpanId = '' GROUP BY time, ServiceName ORDER BY time",
+          "rawSql": "SELECT toStartOfMinute(Timestamp) as time, ServiceName, count() as traces FROM otel_traces WHERE $__timeFilter(Timestamp) AND ParentSpanId = '0000000000000000' GROUP BY time, ServiceName ORDER BY time",
           "refId": "A"
         }
       ],
@@ -244,7 +244,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT Timestamp, TraceId, ServiceName, SpanName, Duration, StatusCode, StatusMessage FROM otel_traces WHERE $__timeFilter(Timestamp) AND (ServiceName = '$service' OR '$service' = 'All') AND ParentSpanId = '' ORDER BY Timestamp DESC LIMIT 100",
+          "rawSql": "SELECT Timestamp, TraceId, ServiceName, SpanName, Duration, StatusCode, StatusMessage FROM otel_traces WHERE $__timeFilter(Timestamp) AND $__conditionalAll(ServiceName IN (${service:singlequote}), $service) AND ParentSpanId = '0000000000000000' ORDER BY Timestamp DESC LIMIT 100",
           "refId": "A"
         }
       ],

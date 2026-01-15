@@ -1,0 +1,250 @@
+# Grafana alerting rules for AI Pipeline Health
+# Note: These rules are designed for Grafana Unified Alerting
+# Import via Grafana UI: Alerting > Alert rules > Import
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: ai-pipeline
+    folder: AI
+    interval: 1m
+    rules:
+      - uid: ai-pipeline-high-error-rate
+        title: AI Pipeline High Error Rate (> 15%)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: clickhouse
+            model:
+              editorType: sql
+              format: 1
+              queryType: table
+              rawSql: |
+                SELECT
+                  ServiceName,
+                  countIf(SeverityNumber >= 17) as error_count,
+                  count() as total_count,
+                  countIf(SeverityNumber >= 17) / count() as error_rate
+                FROM otel_logs
+                WHERE Timestamp >= now() - INTERVAL 5 MINUTE
+                  AND ServiceName IN ('pre-processor', 'news-creator', 'tag-generator')
+                GROUP BY ServiceName
+                HAVING count() > 10
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0.15
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "AI Pipeline {{ $labels.ServiceName }} has error rate above 15%"
+          description: |
+            The AI service {{ $labels.ServiceName }} has an error rate of {{ $values.B }}.
+            Check logs for rate limit failures, LLM timeouts, or model errors.
+        labels:
+          severity: warning
+          team: ai-platform
+
+      - uid: ai-news-creator-no-activity
+        title: News Creator No Activity (15 min)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: clickhouse
+            model:
+              editorType: sql
+              format: 1
+              queryType: table
+              rawSql: |
+                SELECT count() as log_count
+                FROM otel_logs
+                WHERE Timestamp >= now() - INTERVAL 15 MINUTE
+                  AND ServiceName = 'news-creator'
+          - refId: B
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: Alerting
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: "News Creator has no activity for 15 minutes"
+          description: |
+            The News Creator LLM service has not processed any requests.
+            Check if the Ollama backend is healthy and accessible.
+        labels:
+          severity: warning
+          team: ai-platform
+
+      - uid: ai-pre-processor-no-activity
+        title: Pre-Processor No Activity (30 min)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: clickhouse
+            model:
+              editorType: sql
+              format: 1
+              queryType: table
+              rawSql: |
+                SELECT count() as log_count
+                FROM otel_logs
+                WHERE Timestamp >= now() - INTERVAL 30 MINUTE
+                  AND ServiceName = 'pre-processor'
+          - refId: B
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: Alerting
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: "Pre-Processor has no activity for 30 minutes"
+          description: |
+            The Pre-Processor service has not processed any articles.
+            Feed processing may be stalled. Check service health and database connectivity.
+        labels:
+          severity: warning
+          team: platform
+
+      - uid: ai-rate-limit-errors
+        title: Rate Limit Errors Detected
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: clickhouse
+            model:
+              editorType: sql
+              format: 1
+              queryType: table
+              rawSql: |
+                SELECT count() as rate_limit_errors
+                FROM otel_logs
+                WHERE Timestamp >= now() - INTERVAL 5 MINUTE
+                  AND SeverityNumber >= 17
+                  AND (Body LIKE '%rate limit%' OR Body LIKE '%rate-limit%' OR Body LIKE '%context canceled%')
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 5
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: A
+              reducer: sum
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Rate limit errors detected ({{ $values.A }} in last 5 min)"
+          description: |
+            Multiple rate limit errors have been detected.
+            Consider adjusting rate limit settings or increasing wait intervals.
+        labels:
+          severity: warning
+          team: platform
