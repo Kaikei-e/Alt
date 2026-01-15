@@ -272,9 +272,10 @@ class Embedder:
             """Adapter for Ollama /api/embed endpoint."""
 
             # Maximum characters per chunk for embedding
-            # mxbai-embed-large has 512 token context; ~4 chars/token gives ~2K chars
-            # Using conservative 800 chars to ensure single texts fit
-            MAX_CHUNK_CHARS = 800
+            # mxbai-embed-large has 512 token context
+            # Japanese text uses ~1-3 tokens per character (more than English)
+            # Using conservative 400 chars to ensure texts fit (512 / 1.3 ≈ 400)
+            MAX_CHUNK_CHARS = 400
 
             def __init__(self, url: str, model: str, timeout: float):
                 self.url = url.rstrip("/")
@@ -323,8 +324,11 @@ class Embedder:
                     chunk_count=len(chunks),
                 )
 
-                # Embed all chunks in one API call for efficiency
-                chunk_embeddings = self._call_embed_api(chunks)
+                # Embed each chunk separately to avoid batch context length issues
+                chunk_embeddings = []
+                for chunk in chunks:
+                    emb = self._call_embed_api([chunk])[0]
+                    chunk_embeddings.append(emb)
 
                 # Average the chunk embeddings
                 avg_embedding = np.mean(chunk_embeddings, axis=0).tolist()
