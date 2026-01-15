@@ -3,7 +3,8 @@ use super::{
     generated::{VALIDATED_PATTERNS, pattern_index},
     schema::NginxLogEntry,
     services::{
-        GoStructuredParser, LogLevel, NginxParser, ParsedLogEntry, PostgresParser, ServiceParser,
+        GoStructuredParser, LogLevel, MeilisearchParser, NginxParser, ParsedLogEntry,
+        PostgresParser, ServiceParser,
     },
 };
 use crate::collector::ContainerInfo;
@@ -134,6 +135,7 @@ impl UniversalParser {
         registry.register_parser("nginx", NginxParser::new());
         registry.register_parser("go", GoStructuredParser::new());
         registry.register_parser("postgres", PostgresParser::new());
+        registry.register_parser("meilisearch", MeilisearchParser::new());
 
         // Default service mappings
         registry.map_service("nginx", "nginx");
@@ -147,6 +149,7 @@ impl UniversalParser {
         registry.map_service("db", "postgres");
         registry.map_service("postgres", "postgres");
         registry.map_service("postgresql", "postgres");
+        registry.map_service("meilisearch", "meilisearch");
 
         // Load additional mappings from environment variable
         registry.load_mappings_from_env("SERVICE_PARSER_MAPPINGS");

@@ -468,6 +468,100 @@ impl ServiceParser for GoStructuredParser {
     }
 }
 
+// Meilisearch Log Parser - Strips ANSI escape codes
+pub struct MeilisearchParser;
+
+impl Default for MeilisearchParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MeilisearchParser {
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Strip ANSI escape codes from log messages
+    /// Handles sequences like: \x1b[2m, \x1b[0m, \x1b[32m, etc.
+    fn strip_ansi(input: &str) -> String {
+        let mut result = String::with_capacity(input.len());
+        let mut chars = input.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            if c == '\x1b' {
+                // Skip the escape sequence
+                if chars.peek() == Some(&'[') {
+                    chars.next(); // consume '['
+                    // Skip until we hit a letter (end of escape sequence)
+                    while let Some(&next_c) = chars.peek() {
+                        chars.next();
+                        if next_c.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+            } else {
+                result.push(c);
+            }
+        }
+
+        result
+    }
+
+    /// Extract log level from meilisearch format
+    fn extract_level(log: &str) -> LogLevel {
+        if log.contains(" ERROR ") || log.contains("[ERROR]") {
+            LogLevel::Error
+        } else if log.contains(" WARN ") || log.contains("[WARN]") {
+            LogLevel::Warn
+        } else if log.contains(" DEBUG ") || log.contains("[DEBUG]") {
+            LogLevel::Debug
+        } else {
+            LogLevel::Info
+        }
+    }
+}
+
+impl ServiceParser for MeilisearchParser {
+    fn service_type(&self) -> &str {
+        "meilisearch"
+    }
+
+    fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
+        // Strip ANSI escape codes first
+        let cleaned_log = Self::strip_ansi(log);
+        let level = Self::extract_level(&cleaned_log);
+
+        Ok(ParsedLogEntry {
+            service_type: "meilisearch".to_string(),
+            log_type: "search".to_string(),
+            message: cleaned_log,
+            level: Some(level),
+            timestamp: None,
+            stream: "stdout".to_string(),
+            method: None,
+            path: None,
+            status_code: None,
+            response_size: None,
+            ip_address: None,
+            user_agent: None,
+            fields: std::collections::HashMap::new(),
+        })
+    }
+
+    fn detection_priority(&self) -> u8 {
+        // Medium priority - specific to meilisearch
+        65
+    }
+
+    fn can_parse(&self, log: &str) -> bool {
+        // Meilisearch logs often contain ANSI codes or specific patterns
+        log.contains("meilisearch") || log.contains("HTTP request{") ||
+        (log.contains("\x1b[") && (log.contains("INFO") || log.contains("WARN") || log.contains("ERROR")))
+    }
+}
+
 // PostgreSQL Log Parser - Now uses memory-safe patterns
 pub struct PostgresParser;
 
@@ -730,5 +824,46 @@ mod tests {
         assert_eq!(entry.service_type, "go");
         assert_eq!(entry.message, unknown_log);
         assert_eq!(entry.level, Some(LogLevel::Info)); // Default level
+    }
+
+    #[test]
+    fn test_meilisearch_ansi_stripping() {
+        let parser = MeilisearchParser::new();
+
+        // Real meilisearch log with ANSI escape codes
+        let ansi_log = "\x1b[2m2026-01-14T16:16:10.670962Z\x1b[0m \x1b[32m INFO\x1b[0m \x1b[1mHTTP request\x1b[0m\x1b[1m{\x1b[0m\x1b[3mmethod\x1b[0m\x1b[2m=\x1b[0mGET \x1b[3mhost\x1b[0m\x1b[2m=\x1b[0m\"meilisearch:7700\" \x1b[3mroute\x1b[0m\x1b[2m=\x1b[0m/tasks/463358\x1b[1m}\x1b[0m";
+
+        let entry = parser.parse_log(ansi_log).unwrap();
+
+        assert_eq!(entry.service_type, "meilisearch");
+        assert_eq!(entry.log_type, "search");
+        assert_eq!(entry.level, Some(LogLevel::Info));
+        // Verify ANSI codes are stripped
+        assert!(!entry.message.contains("\x1b["));
+        assert!(entry.message.contains("HTTP request"));
+        assert!(entry.message.contains("meilisearch:7700"));
+    }
+
+    #[test]
+    fn test_meilisearch_error_level() {
+        let parser = MeilisearchParser::new();
+
+        let error_log = "2026-01-14T16:16:10.670962Z ERROR meilisearch: index not found";
+
+        let entry = parser.parse_log(error_log).unwrap();
+
+        assert_eq!(entry.level, Some(LogLevel::Error));
+    }
+
+    #[test]
+    fn test_strip_ansi_function() {
+        // Test the strip_ansi function directly
+        let input = "\x1b[32mgreen\x1b[0m \x1b[1mbold\x1b[0m normal";
+        let output = MeilisearchParser::strip_ansi(input);
+        assert_eq!(output, "green bold normal");
+
+        // Test with no ANSI codes
+        let plain = "plain text without codes";
+        assert_eq!(MeilisearchParser::strip_ansi(plain), plain);
     }
 }

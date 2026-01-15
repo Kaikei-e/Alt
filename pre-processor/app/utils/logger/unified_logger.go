@@ -70,6 +70,28 @@ func (ul *UnifiedLogger) WithContext(ctx context.Context) *slog.Logger {
 		fields = append(fields, "operation", operation)
 	}
 
+	// Business context fields for Alt-specific observability
+	// Keys use 'alt.' prefix following OTel semantic conventions
+	if feedID := ctx.Value(FeedIDKey); feedID != nil {
+		fields = append(fields, string(FeedIDKey), feedID)
+	}
+
+	if articleID := ctx.Value(ArticleIDKey); articleID != nil {
+		fields = append(fields, string(ArticleIDKey), articleID)
+	}
+
+	if jobID := ctx.Value(JobIDKey); jobID != nil {
+		fields = append(fields, string(JobIDKey), jobID)
+	}
+
+	if stage := ctx.Value(ProcessingStageKey); stage != nil {
+		fields = append(fields, string(ProcessingStageKey), stage)
+	}
+
+	if pipeline := ctx.Value(AIPipelineKey); pipeline != nil {
+		fields = append(fields, string(AIPipelineKey), pipeline)
+	}
+
 	// Return slog logger with context fields
 	if len(fields) > 0 {
 		return ul.logger.With(fields...)

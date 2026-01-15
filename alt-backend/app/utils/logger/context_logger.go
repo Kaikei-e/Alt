@@ -12,6 +12,14 @@ const (
 	RequestIDKey ContextKey = "request_id"
 	UserIDKey    ContextKey = "user_id"
 	OperationKey ContextKey = "operation"
+
+	// Business context keys for Alt-specific observability
+	// These follow OpenTelemetry semantic conventions with 'alt.' prefix
+	FeedIDKey          ContextKey = "alt.feed.id"
+	ArticleIDKey       ContextKey = "alt.article.id"
+	JobIDKey           ContextKey = "alt.job.id"
+	ProcessingStageKey ContextKey = "alt.processing.stage"
+	AIPipelineKey      ContextKey = "alt.ai.pipeline"
 )
 
 type ContextLogger struct {
@@ -38,6 +46,27 @@ func (cl *ContextLogger) WithContext(ctx context.Context) *slog.Logger {
 		args = append(args, "operation", operation.(string))
 	}
 
+	// Business context fields for Alt-specific observability
+	if feedID := ctx.Value(FeedIDKey); feedID != nil {
+		args = append(args, string(FeedIDKey), feedID.(string))
+	}
+
+	if articleID := ctx.Value(ArticleIDKey); articleID != nil {
+		args = append(args, string(ArticleIDKey), articleID.(string))
+	}
+
+	if jobID := ctx.Value(JobIDKey); jobID != nil {
+		args = append(args, string(JobIDKey), jobID.(string))
+	}
+
+	if stage := ctx.Value(ProcessingStageKey); stage != nil {
+		args = append(args, string(ProcessingStageKey), stage.(string))
+	}
+
+	if pipeline := ctx.Value(AIPipelineKey); pipeline != nil {
+		args = append(args, string(AIPipelineKey), pipeline.(string))
+	}
+
 	return cl.logger.With(args...)
 }
 
@@ -54,4 +83,31 @@ func (cl *ContextLogger) LogError(ctx context.Context, operation string, err err
 		"operation", operation,
 		"error", err,
 	)
+}
+
+// Context helper functions for business context
+
+// WithFeedID adds feed ID to context for observability
+func WithFeedID(ctx context.Context, feedID string) context.Context {
+	return context.WithValue(ctx, FeedIDKey, feedID)
+}
+
+// WithArticleID adds article ID to context for observability
+func WithArticleID(ctx context.Context, articleID string) context.Context {
+	return context.WithValue(ctx, ArticleIDKey, articleID)
+}
+
+// WithJobID adds job ID to context for observability
+func WithJobID(ctx context.Context, jobID string) context.Context {
+	return context.WithValue(ctx, JobIDKey, jobID)
+}
+
+// WithProcessingStage adds processing stage to context for observability
+func WithProcessingStage(ctx context.Context, stage string) context.Context {
+	return context.WithValue(ctx, ProcessingStageKey, stage)
+}
+
+// WithAIPipeline adds AI pipeline name to context for observability
+func WithAIPipeline(ctx context.Context, pipeline string) context.Context {
+	return context.WithValue(ctx, AIPipelineKey, pipeline)
 }

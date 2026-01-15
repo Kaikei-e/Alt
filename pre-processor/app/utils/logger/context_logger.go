@@ -17,6 +17,14 @@ const (
 	TraceIDKey   ContextKey = "trace_id"
 	OperationKey ContextKey = "operation"
 	ServiceKey   ContextKey = "service"
+
+	// Business context keys for Alt-specific observability
+	// These follow OpenTelemetry semantic conventions with 'alt.' prefix
+	FeedIDKey          ContextKey = "alt.feed.id"
+	ArticleIDKey       ContextKey = "alt.article.id"
+	JobIDKey           ContextKey = "alt.job.id"
+	ProcessingStageKey ContextKey = "alt.processing.stage"
+	AIPipelineKey      ContextKey = "alt.ai.pipeline"
 )
 
 type ContextLogger struct {
@@ -128,6 +136,31 @@ func WithTraceID(ctx context.Context, traceID string) context.Context {
 
 func WithOperation(ctx context.Context, operation string) context.Context {
 	return context.WithValue(ctx, OperationKey, operation)
+}
+
+// WithFeedID adds feed ID to context for observability
+func WithFeedID(ctx context.Context, feedID string) context.Context {
+	return context.WithValue(ctx, FeedIDKey, feedID)
+}
+
+// WithArticleID adds article ID to context for observability
+func WithArticleID(ctx context.Context, articleID string) context.Context {
+	return context.WithValue(ctx, ArticleIDKey, articleID)
+}
+
+// WithJobID adds job ID to context for observability
+func WithJobID(ctx context.Context, jobID string) context.Context {
+	return context.WithValue(ctx, JobIDKey, jobID)
+}
+
+// WithProcessingStage adds processing stage to context for observability
+func WithProcessingStage(ctx context.Context, stage string) context.Context {
+	return context.WithValue(ctx, ProcessingStageKey, stage)
+}
+
+// WithAIPipeline adds AI pipeline name to context for observability
+func WithAIPipeline(ctx context.Context, pipeline string) context.Context {
+	return context.WithValue(ctx, AIPipelineKey, pipeline)
 }
 
 func getEnvOrDefault(key, defaultValue string) string {

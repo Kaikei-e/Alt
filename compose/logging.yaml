@@ -253,33 +253,8 @@ services:
     restart: unless-stopped
     stop_grace_period: 12s
 
-  db-logs:
-    build:
-      context: ../rask-log-forwarder/app
-      dockerfile: Dockerfile.rask-log-forwarder
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
-    environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
-      TARGET_SERVICE: "db"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
-
   # Recap stack forwarders
+  # NOTE: db-logs removed - SQL query fragments provide low observability value (74% of all logs)
   recap-worker-logs:
     build:
       context: ../rask-log-forwarder/app
@@ -384,33 +359,8 @@ services:
     restart: unless-stopped
     stop_grace_period: 12s
 
-  recap-db-logs:
-    build:
-      context: ../rask-log-forwarder/app
-      dockerfile: Dockerfile.rask-log-forwarder
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
-    environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
-      TARGET_SERVICE: "recap-db"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
-
   # RAG stack forwarders
+  # NOTE: recap-db-logs removed - SQL query fragments provide low observability value
   rag-orchestrator-logs:
     build:
       context: ../rask-log-forwarder/app
@@ -437,28 +387,4 @@ services:
     restart: unless-stopped
     stop_grace_period: 12s
 
-  rag-db-logs:
-    build:
-      context: ../rask-log-forwarder/app
-      dockerfile: Dockerfile.rask-log-forwarder
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
-    environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
-      TARGET_SERVICE: "rag-db"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
+  # NOTE: rag-db-logs removed - SQL query fragments provide low observability value
