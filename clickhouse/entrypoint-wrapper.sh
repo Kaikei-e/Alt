@@ -12,6 +12,10 @@ until clickhouse-client --user "${CLICKHOUSE_USER}" --password "$(cat /run/secre
 done
 echo "ClickHouse is ready"
 
+# Create database if not exists
+echo "Creating database ${CLICKHOUSE_DB}..."
+clickhouse-client --user "${CLICKHOUSE_USER}" --password "$(cat /run/secrets/clickhouse_password)" --query "CREATE DATABASE IF NOT EXISTS ${CLICKHOUSE_DB}"
+
 # Run migrations
 echo "Running migrations..."
 for f in /migrations/*.sql; do

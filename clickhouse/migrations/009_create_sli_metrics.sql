@@ -21,24 +21,24 @@ SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 CREATE MATERIALIZED VIEW IF NOT EXISTS sli_error_rate_mv
 TO sli_metrics
 AS SELECT
-    toStartOfMinute(Timestamp) AS Timestamp,
+    toStartOfMinute(src.Timestamp) AS Timestamp,
     ServiceName,
     'error_rate' AS Metric,
     countIf(SeverityNumber >= 17) / count() AS Value,
     map('window', '1m') AS Tags
-FROM otel_logs
-WHERE Timestamp > now() - INTERVAL 1 HOUR
-GROUP BY ServiceName, toStartOfMinute(Timestamp);
+FROM otel_logs AS src
+WHERE src.Timestamp > now() - INTERVAL 1 HOUR
+GROUP BY ServiceName, Timestamp;
 
 -- Log throughput per service (1-minute granularity)
 CREATE MATERIALIZED VIEW IF NOT EXISTS sli_log_throughput_mv
 TO sli_metrics
 AS SELECT
-    toStartOfMinute(Timestamp) AS Timestamp,
+    toStartOfMinute(src.Timestamp) AS Timestamp,
     ServiceName,
     'log_throughput' AS Metric,
     count() AS Value,
     map('window', '1m') AS Tags
-FROM otel_logs
-WHERE Timestamp > now() - INTERVAL 1 HOUR
-GROUP BY ServiceName, toStartOfMinute(Timestamp);
+FROM otel_logs AS src
+WHERE src.Timestamp > now() - INTERVAL 1 HOUR
+GROUP BY ServiceName, Timestamp;
