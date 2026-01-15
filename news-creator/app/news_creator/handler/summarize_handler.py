@@ -8,6 +8,12 @@ from fastapi.responses import StreamingResponse
 
 from news_creator.domain.models import SummarizeRequest, SummarizeResponse
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
+from news_creator.utils.context_logger import (
+    set_article_id,
+    set_ai_pipeline,
+    set_processing_stage,
+    clear_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +44,16 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
         Raises:
             HTTPException: 400 for invalid request, 502 for LLM errors, 500 for unexpected errors
         """
+        # Set ADR 98 business context for logging
+        set_article_id(request.article_id)
+        set_ai_pipeline("summarization")
+        set_processing_stage("handler")
+
         # Zero Trust: Log incoming request details
         incoming_content_length = len(request.content) if request.content else 0
         logger.info(
             "Received summarize request",
             extra={
-                "article_id": request.article_id,
                 "incoming_content_length": incoming_content_length,
             }
         )
@@ -309,5 +319,9 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                 extra={"article_id": request.article_id},
             )
             raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+        finally:
+            # Clear business context after request processing
+            clear_context()
 
     return router

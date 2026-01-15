@@ -13,6 +13,11 @@ from news_creator.domain.models import (
     RerankResultItem,
 )
 from news_creator.usecase.rerank_usecase import RerankUsecase
+from news_creator.utils.context_logger import (
+    set_ai_pipeline,
+    set_processing_stage,
+    clear_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,17 +55,20 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
         Raises:
             HTTPException: 400 for invalid request, 502 for model errors, 500 for unexpected errors
         """
-        logger.info(
-            "Received rerank request",
-            extra={
-                "query_length": len(request.query) if request.query else 0,
-                "candidate_count": len(request.candidates),
-                "model": request.model,
-                "top_k": request.top_k,
-            }
-        )
+        # Set ADR 98 business context for logging
+        set_ai_pipeline("reranking")
+        set_processing_stage("handler")
 
         try:
+            logger.info(
+                "Received rerank request",
+                extra={
+                    "query_length": len(request.query) if request.query else 0,
+                    "candidate_count": len(request.candidates),
+                    "model": request.model,
+                    "top_k": request.top_k,
+                }
+            )
             # Use request model if specified, otherwise usecase default
             if request.model:
                 usecase = RerankUsecase(model_name=request.model)
@@ -107,5 +115,8 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
                 extra={"query": request.query[:100] if request.query else ""},
             )
             raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+        finally:
+            clear_context()
 
     return router

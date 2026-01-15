@@ -10,6 +10,12 @@ from news_creator.domain.models import (
     RecapSummaryResponse,
 )
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
+from news_creator.utils.context_logger import (
+    set_job_id,
+    set_ai_pipeline,
+    set_processing_stage,
+    clear_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +43,10 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
         Returns:
             Structured recap summary response
         """
+        # Set ADR 98 business context for logging
+        set_job_id(str(request.job_id))
+        set_ai_pipeline("recap-summary")
+        set_processing_stage("handler")
 
         try:
             return await usecase.generate_summary(request)
@@ -62,6 +72,9 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
             )
             raise HTTPException(status_code=500, detail="Internal server error") from exc
 
+        finally:
+            clear_context()
+
     @router.post("/v1/summary/generate/batch", response_model=BatchRecapSummaryResponse)
     async def batch_recap_summary_endpoint(
         request: BatchRecapSummaryRequest,
@@ -78,12 +91,16 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
         Returns:
             Batch response with successful summaries and any errors
         """
-        logger.info(
-            "Received batch recap summary request",
-            extra={"request_count": len(request.requests)},
-        )
+        # Set ADR 98 business context for logging
+        set_ai_pipeline("recap-summary-batch")
+        set_processing_stage("handler")
 
         try:
+            logger.info(
+                "Received batch recap summary request",
+                extra={"request_count": len(request.requests)},
+            )
+
             return await usecase.generate_batch_summary(request)
 
         except Exception as exc:
@@ -92,6 +109,9 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
                 extra={"request_count": len(request.requests)},
             )
             raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+        finally:
+            clear_context()
 
     return router
 

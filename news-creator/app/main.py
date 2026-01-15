@@ -33,18 +33,33 @@ from news_creator.handler import (
     create_health_router,
 )
 from news_creator.handler.rerank_handler import create_rerank_router
+from news_creator.utils.context_logger import (
+    BusinessContextFilter,
+    BusinessContextJSONFormatter,
+)
 
 # Initialize OpenTelemetry first (before logging setup)
 otel_shutdown = init_otel_provider()
 
-# Configure logging from environment variable
+# Configure logging with ADR 98 compliant business context
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 log_level = getattr(logging, LOG_LEVEL, logging.INFO)
-logging.basicConfig(
-    level=log_level,
-    format='{"timestamp":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}',
-    datefmt="%Y-%m-%dT%H:%M:%S%z",
-)
+
+# Create root logger with business context support
+root_logger = logging.getLogger()
+root_logger.setLevel(log_level)
+
+# Remove existing handlers to avoid duplicate logs
+for handler in root_logger.handlers[:]:
+    root_logger.removeHandler(handler)
+
+# Create handler with ADR 98 compliant JSON formatter
+handler = logging.StreamHandler()
+handler.setLevel(log_level)
+handler.setFormatter(BusinessContextJSONFormatter(datefmt="%Y-%m-%dT%H:%M:%S%z"))
+handler.addFilter(BusinessContextFilter())
+root_logger.addHandler(handler)
+
 logger = logging.getLogger(__name__)
 
 

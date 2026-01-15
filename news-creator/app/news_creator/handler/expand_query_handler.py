@@ -5,6 +5,11 @@ from fastapi import APIRouter, HTTPException
 
 from news_creator.domain.models import ExpandQueryRequest, ExpandQueryResponse
 from news_creator.usecase.expand_query_usecase import ExpandQueryUsecase
+from news_creator.utils.context_logger import (
+    set_ai_pipeline,
+    set_processing_stage,
+    clear_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +43,19 @@ def create_expand_query_router(expand_query_usecase: ExpandQueryUsecase) -> APIR
         Raises:
             HTTPException: 400 for invalid request, 502 for LLM errors, 500 for unexpected errors
         """
-        logger.info(
-            "Received expand-query request",
-            extra={
-                "query_length": len(request.query) if request.query else 0,
-                "japanese_count": request.japanese_count,
-                "english_count": request.english_count,
-            }
-        )
+        # Set ADR 98 business context for logging
+        set_ai_pipeline("query-expansion")
+        set_processing_stage("handler")
 
         try:
+            logger.info(
+                "Received expand-query request",
+                extra={
+                    "query_length": len(request.query) if request.query else 0,
+                    "japanese_count": request.japanese_count,
+                    "english_count": request.english_count,
+                }
+            )
             expanded_queries, model, processing_time_ms = await expand_query_usecase.expand_query(
                 query=request.query,
                 japanese_count=request.japanese_count,
@@ -85,5 +93,8 @@ def create_expand_query_router(expand_query_usecase: ExpandQueryUsecase) -> APIR
                 extra={"query": request.query[:100] if request.query else ""},
             )
             raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+        finally:
+            clear_context()
 
     return router
