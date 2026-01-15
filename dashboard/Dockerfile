@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # uv を公式イメージからコピー
 COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /uvx /bin/
 
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+ENV UV_COMPILE_BYTECODE=0 UV_LINK_MODE=copy
 
 COPY pyproject.toml uv.lock ./
 
