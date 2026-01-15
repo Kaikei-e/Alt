@@ -148,10 +148,11 @@ impl MlLlmDispatchStage {
         );
 
         let genre_timeout = self.config.clustering_genre_timeout();
+        let stuck_threshold = Some(self.config.clustering_stuck_threshold());
         let mut clustering_response = timeout(
             genre_timeout,
             self.subworker_client
-                .cluster_corpus_with_timeout(job_id, evidence, genre_timeout),
+                .cluster_corpus_with_timeout(job_id, evidence, genre_timeout, stuck_threshold),
         )
         .await
         .context("clustering timeout")?

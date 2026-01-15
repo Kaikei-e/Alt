@@ -25,6 +25,7 @@ pub(crate) mod genre_keywords;
 pub(crate) mod genre_refine;
 pub(crate) mod genre_remote;
 pub(crate) mod graph_override;
+pub mod minhash;
 pub mod morning;
 pub(crate) mod persist;
 pub mod preprocess;

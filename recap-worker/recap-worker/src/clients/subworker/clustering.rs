@@ -74,16 +74,23 @@ impl SubworkerClient {
     ) -> Result<ClusteringResponse> {
         // デフォルトのtimeoutを使用
         let default_timeout = Duration::from_secs(300);
-        self.cluster_corpus_with_timeout(job_id, corpus, default_timeout)
+        self.cluster_corpus_with_timeout(job_id, corpus, default_timeout, None)
             .await
     }
 
     /// 証拠コーパスを送信してクラスタリング結果を取得する（timeout指定付き）。
+    ///
+    /// # Arguments
+    /// * `job_id` - ジョブID
+    /// * `corpus` - 証拠コーパス
+    /// * `genre_timeout` - 全体のタイムアウト
+    /// * `stuck_threshold` - 進捗なしでstuckと判定するまでの時間（None の場合は600秒）
     pub(crate) async fn cluster_corpus_with_timeout(
         &self,
         job_id: Uuid,
         corpus: &EvidenceCorpus,
         genre_timeout: Duration,
+        stuck_threshold: Option<Duration>,
     ) -> Result<ClusteringResponse> {
         let runs_url = build_runs_url(&self.base_url)?;
 
@@ -180,7 +187,7 @@ impl SubworkerClient {
 
         if run.status.is_running() {
             run = self
-                .poll_run_with_timeout(run.run_id, genre_timeout)
+                .poll_run_with_timeout(run.run_id, genre_timeout, stuck_threshold)
                 .await?;
         }
 
@@ -200,6 +207,7 @@ impl SubworkerClient {
         &self,
         run_id: i64,
         deadline: Duration,
+        stuck_threshold: Option<Duration>,
     ) -> Result<ClusteringResponse> {
         let start_time = Instant::now();
         let run_url = build_run_url(&self.base_url, run_id)?;
@@ -216,7 +224,7 @@ impl SubworkerClient {
 
         loop {
             // deadline/stuck検知
-            self.check_polling_constraints(run_id, start_time, deadline, &progress_tracker)?;
+            self.check_polling_constraints(run_id, start_time, deadline, &progress_tracker, stuck_threshold)?;
 
             // 1回のpoll実行（リクエスト送信、検証、デシリアライズ）
             let run = self
@@ -271,6 +279,7 @@ impl SubworkerClient {
         start_time: Instant,
         deadline: Duration,
         progress_tracker: &ProgressTracker,
+        stuck_threshold: Option<Duration>,
     ) -> Result<()> {
         // 経過時間ベースのdeadlineチェック
         let elapsed = start_time.elapsed();
@@ -284,20 +293,24 @@ impl SubworkerClient {
         }
 
         // Stuck検知: 進捗が無い場合（statusやcluster_countが変化しない）
+        // デフォルトは600秒（10分）
+        let stuck_limit = stuck_threshold.unwrap_or_else(|| Duration::from_secs(600));
         let time_since_progress = progress_tracker.time_since_progress();
-        if time_since_progress > Duration::from_secs(300) {
-            // 5分間進捗が無い場合はstuckと判定
+        if time_since_progress > stuck_limit {
             warn!(
                 run_id,
                 elapsed_secs = elapsed.as_secs(),
                 time_since_progress_secs = time_since_progress.as_secs(),
-                "clustering run appears stuck (no progress for {}s)",
-                time_since_progress.as_secs()
+                stuck_threshold_secs = stuck_limit.as_secs(),
+                "clustering run appears stuck (no progress for {}s, threshold: {}s)",
+                time_since_progress.as_secs(),
+                stuck_limit.as_secs()
             );
             return Err(anyhow!(
-                "clustering run {} appears stuck (no progress for {}s)",
+                "clustering run {} appears stuck (no progress for {}s, threshold: {}s)",
                 run_id,
-                time_since_progress.as_secs()
+                time_since_progress.as_secs(),
+                stuck_limit.as_secs()
             ));
         }
 

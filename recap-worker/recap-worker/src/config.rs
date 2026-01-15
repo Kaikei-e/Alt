@@ -118,6 +118,7 @@ pub struct Config {
     clustering_genre_timeout: Duration,
     clustering_job_timeout: Duration,
     clustering_min_success_genres: usize,
+    clustering_stuck_threshold: Duration,
 }
 
 #[derive(Debug, Error)]
@@ -259,6 +260,8 @@ impl Config {
         let clustering_job_timeout =
             parse_duration_secs("RECAP_CLUSTERING_JOB_TIMEOUT_SECS", 1800)?; // 30分
         let clustering_min_success_genres = parse_usize("RECAP_CLUSTERING_MIN_SUCCESS_GENRES", 1)?;
+        let clustering_stuck_threshold =
+            parse_duration_secs("RECAP_CLUSTERING_STUCK_THRESHOLD_SECS", 600)?; // 10分
 
         Ok(Self::from_components(
             basic,
@@ -275,6 +278,7 @@ impl Config {
             clustering_genre_timeout,
             clustering_job_timeout,
             clustering_min_success_genres,
+            clustering_stuck_threshold,
         ))
     }
 
@@ -294,6 +298,7 @@ impl Config {
         clustering_genre_timeout: Duration,
         clustering_job_timeout: Duration,
         clustering_min_success_genres: usize,
+        clustering_stuck_threshold: Duration,
     ) -> Self {
         Self {
             http_bind: basic.http_bind,
@@ -351,6 +356,7 @@ impl Config {
             clustering_genre_timeout,
             clustering_job_timeout,
             clustering_min_success_genres,
+            clustering_stuck_threshold,
         }
     }
 
@@ -661,6 +667,11 @@ impl Config {
     #[must_use]
     pub fn clustering_min_success_genres(&self) -> usize {
         self.clustering_min_success_genres
+    }
+
+    #[must_use]
+    pub fn clustering_stuck_threshold(&self) -> Duration {
+        self.clustering_stuck_threshold
     }
 }
 
