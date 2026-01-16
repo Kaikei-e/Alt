@@ -3,7 +3,7 @@
 	import PipelineProgress from "./PipelineProgress.svelte";
 	import GenreProgressList from "./GenreProgressList.svelte";
 	import StatusBadge from "./StatusBadge.svelte";
-	import { Play, Clock, FileText, User } from "@lucide/svelte";
+	import { Play, Clock, FileText, Server, User } from "@lucide/svelte";
 
 	interface Props {
 		job: ActiveJobInfo;
@@ -45,7 +45,7 @@
 	</div>
 
 	<!-- Meta info -->
-	<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+	<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
 		<div class="flex items-center gap-2">
 			<Clock class="w-4 h-4" style="color: var(--text-muted);" />
 			<div>
@@ -61,6 +61,19 @@
 				<p class="text-xs" style="color: var(--text-muted);">Elapsed</p>
 				<p class="text-sm font-medium" style="color: var(--text-primary);">
 					{elapsedTime()}
+				</p>
+			</div>
+		</div>
+		<div class="flex items-center gap-2">
+			{#if job.trigger_source === "user"}
+				<User class="w-4 h-4" style="color: var(--text-muted);" />
+			{:else}
+				<Server class="w-4 h-4" style="color: var(--text-muted);" />
+			{/if}
+			<div>
+				<p class="text-xs" style="color: var(--text-muted);">Source</p>
+				<p class="text-sm font-medium" style="color: var(--text-primary);">
+					{job.trigger_source === "user" ? "User" : "System"}
 				</p>
 			</div>
 		</div>

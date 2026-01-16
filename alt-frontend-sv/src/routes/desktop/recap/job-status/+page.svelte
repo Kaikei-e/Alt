@@ -97,6 +97,12 @@
 
 	// Check if there's already a running job
 	const hasRunningJob = $derived(!!jobProgress.data?.active_job);
+	const runningJobTooltip = $derived(() => {
+		const activeJob = jobProgress.data?.active_job;
+		if (!activeJob) return "Start a new recap job";
+		const source = activeJob.trigger_source === "user" ? "user" : "system";
+		return `A ${source} job is already running`;
+	});
 </script>
 
 <PageHeader
@@ -169,7 +175,7 @@
 			style="background: var(--alt-primary, #2f4f4f); color: #ffffff;"
 			onclick={handleTriggerJob}
 			disabled={triggering || hasRunningJob}
-			title={hasRunningJob ? "A job is already running" : "Start a new recap job"}
+			title={runningJobTooltip()}
 		>
 			<Rocket class="w-4 h-4 {triggering ? 'animate-pulse' : ''}" />
 			{#if triggering}
