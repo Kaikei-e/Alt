@@ -74,6 +74,14 @@ export interface GenreProgressInfo {
 	article_count: number | null;
 }
 
+export type SubStagePhase = "clustering" | "summarization";
+
+export interface SubStageProgress {
+	phase: SubStagePhase;
+	total_genres: number;
+	completed_genres: number;
+}
+
 export interface ActiveJobInfo {
 	job_id: string;
 	status: JobStatus;
@@ -85,6 +93,7 @@ export interface ActiveJobInfo {
 	user_article_count: number | null;
 	kicked_at: string;
 	trigger_source: TriggerSource;
+	sub_stage_progress: SubStageProgress | null;
 }
 
 export interface StatusTransition {

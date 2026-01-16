@@ -1,0 +1,62 @@
+name: Alt Frontend SV Unit Tests
+
+on:
+  push:
+    branches: [main]
+    paths: ['alt-frontend-sv/**']
+  pull_request:
+    branches: [main]
+    paths: ['alt-frontend-sv/**']
+  workflow_dispatch:
+
+jobs:
+  unit-test:
+    runs-on: self-hosted
+    timeout-minutes: 15
+    env:
+      CI: true
+      FORCE_COLOR: "1"
+    steps:
+      - name: Get workspace parent GID
+        id: get-gid
+        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
+
+      - name: Pre-checkout cleanup
+        uses: docker://alpine:latest
+        env:
+          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
+        with:
+          entrypoint: /bin/sh
+          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
+
+      - uses: actions/checkout@v5
+
+      - name: Mask sensitive paths and git information
+        run: |
+          echo "::add-mask::$(hostname)"
+          echo "::add-mask::$(whoami)"
+          [ -n "$HOME" ] && echo "::add-mask::$HOME"
+          [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
+          [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
+          if command -v git >/dev/null 2>&1; then
+            echo "::add-mask::$(git log -1 --pretty=format:'%an' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ae' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%cn' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: alt-frontend-sv
+        run: bun install
+
+      - name: Run Vitest
+        working-directory: alt-frontend-sv
+        run: bun test

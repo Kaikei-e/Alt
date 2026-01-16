@@ -3,6 +3,7 @@
 		PIPELINE_STAGES,
 		getStageLabel,
 		type PipelineStage,
+		type SubStageProgress,
 	} from "$lib/schema/dashboard";
 	import { Check, Circle, Loader2 } from "@lucide/svelte";
 
@@ -10,9 +11,10 @@
 		currentStage: string | null;
 		stageIndex: number;
 		stagesCompleted: string[];
+		subStageProgress?: SubStageProgress | null;
 	}
 
-	let { currentStage, stageIndex, stagesCompleted }: Props = $props();
+	let { currentStage, stageIndex, stagesCompleted, subStageProgress = null }: Props = $props();
 
 	function getStageStatus(
 		stage: PipelineStage,
@@ -60,6 +62,11 @@
 								: 'text-gray-500'}"
 					>
 						{getStageLabel(stage)}
+						{#if stage === "dispatch" && status === "running" && subStageProgress}
+							<span class="text-blue-600 ml-0.5">
+								({subStageProgress.completed_genres}/{subStageProgress.total_genres})
+							</span>
+						{/if}
 					</span>
 				</div>
 

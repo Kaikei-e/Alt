@@ -97,6 +97,7 @@
 			currentStage={job.current_stage}
 			stageIndex={job.stage_index}
 			stagesCompleted={job.stages_completed}
+			subStageProgress={job.sub_stage_progress}
 		/>
 	</div>
 
