@@ -83,7 +83,7 @@ impl RecapDao {
             SELECT job_id, status, last_stage
             FROM recap_jobs
             WHERE status IN ('pending', 'running', 'failed')
-            ORDER BY created_at DESC
+            ORDER BY kicked_at DESC
             LIMIT 1
             ",
         )

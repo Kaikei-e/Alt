@@ -92,6 +92,10 @@ services:
       # HuggingFace cache directory (writable path for model downloads)
       - HF_HOME=/tmp/huggingface
       - TRANSFORMERS_CACHE=/tmp/huggingface/transformers
+      # rust-bert cache directory (for embedding model)
+      - RUSTBERT_CACHE=/tmp/rustbert
+      # Clustering timeout: relax stuck detection from 600s to 1200s for large genres
+      - RECAP_CLUSTERING_STUCK_THRESHOLD_SECS=${RECAP_CLUSTERING_STUCK_THRESHOLD_SECS:-1200}
     secrets:
       - recap_db_password
       - service_secret
@@ -146,7 +150,14 @@ services:
       # - cuda: Use local NVIDIA GPU (requires workers=1 for CUDA compatibility)
       # - cpu: Use CPU (when using ollama-remote, set to cpu to avoid loading local GPU model)
       - RECAP_SUBWORKER_DEVICE=${RECAP_SUBWORKER_DEVICE:-cuda}
-      - RECAP_SUBWORKER_BATCH_SIZE=8
+      # Increase batch size from 8 to 32 for better GPU utilization
+      - RECAP_SUBWORKER_BATCH_SIZE=${RECAP_SUBWORKER_BATCH_SIZE:-32}
+      # Reduce Optuna trials from 50 to 15 (TPE converges within 15-20 trials)
+      - RECAP_SUBWORKER_BAYES_OPT_TRIALS=${RECAP_SUBWORKER_BAYES_OPT_TRIALS:-15}
+      # Reduce UMAP dimensions from 20 to 8 for faster HDBSCAN
+      - RECAP_SUBWORKER_UMAP_N_COMPONENTS=${RECAP_SUBWORKER_UMAP_N_COMPONENTS:-8}
+      # HDBSCAN timeout before fallback to MiniBatchKMeans (seconds)
+      - RECAP_SUBWORKER_HDBSCAN_TIMEOUT_SECS=${RECAP_SUBWORKER_HDBSCAN_TIMEOUT_SECS:-300}
       # Classification (Learning Machine) - CPU使用でOOM回避
       - RECAP_SUBWORKER_CLASSIFICATION_DEVICE=cpu
     ports:

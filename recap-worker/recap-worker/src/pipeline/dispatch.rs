@@ -10,7 +10,8 @@ use crate::{
     clients::{
         NewsCreatorClient,
         news_creator::models::{
-            BatchSummaryResponse, SummaryOptions, SummaryRequest, SummaryResponse,
+            BatchSummaryError, BatchSummaryResponse, SummaryOptions, SummaryRequest,
+            SummaryResponse,
         },
         subworker::{ClusteringResponse, SubworkerClient},
     },
@@ -851,20 +852,57 @@ impl MlLlmDispatchStage {
             return genre_results;
         }
 
-        // 4. バッチ API 呼び出し
+        // 4. バッチ API 呼び出し（50件ごとにチャンク分割）
+        const BATCH_SUMMARY_CHUNK_SIZE: usize = 50;
+
         info!(
             job_id = %job.job_id,
             request_count = valid_requests.len(),
-            "calling batch summary API"
+            chunk_count = (valid_requests.len() + BATCH_SUMMARY_CHUNK_SIZE - 1) / BATCH_SUMMARY_CHUNK_SIZE,
+            "calling batch summary API in chunks"
         );
 
-        let batch_response = self
-            .news_creator_client
-            .generate_batch_summary(valid_requests)
-            .await;
+        let mut all_responses: Vec<SummaryResponse> = Vec::new();
+        let mut all_errors: Vec<BatchSummaryError> = Vec::new();
+
+        for (chunk_idx, chunk) in valid_requests.chunks(BATCH_SUMMARY_CHUNK_SIZE).enumerate() {
+            info!(
+                job_id = %job.job_id,
+                chunk_idx = chunk_idx,
+                chunk_size = chunk.len(),
+                "processing batch summary chunk"
+            );
+
+            let chunk_vec: Vec<SummaryRequest> = chunk.to_vec();
+            match self
+                .news_creator_client
+                .generate_batch_summary(chunk_vec)
+                .await
+            {
+                Ok(response) => {
+                    all_responses.extend(response.responses);
+                    all_errors.extend(response.errors);
+                }
+                Err(e) => {
+                    // チャンク全体失敗時はエラーメッセージをログに記録
+                    // 個別ジャンルは process_batch_response で "Missing from batch response" として処理される
+                    error!(
+                        job_id = %job.job_id,
+                        chunk_idx = chunk_idx,
+                        error = ?e,
+                        "batch summary chunk failed"
+                    );
+                }
+            }
+        }
+
+        let batch_response = BatchSummaryResponse {
+            responses: all_responses,
+            errors: all_errors,
+        };
 
         // 5. レスポンスをマッピング
-        self.process_batch_response(job, batch_response, genre_clustering_map, &mut genre_results)
+        self.process_batch_response(job, Ok(batch_response), genre_clustering_map, &mut genre_results)
             .await;
 
         info!(
