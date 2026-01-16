@@ -1,5 +1,7 @@
 import type {
 	AdminJob,
+	JobProgressEvent,
+	JobStats,
 	LogError,
 	RecapJob,
 	RecentActivity,
@@ -107,6 +109,74 @@ export async function getRecapJobs(
 	);
 	if (!res.ok) {
 		throw new Error("Failed to fetch recap jobs");
+	}
+	return res.json();
+}
+
+// ============================================================================
+// Job Progress Dashboard API
+// ============================================================================
+
+export async function getJobProgress(
+	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+	options?: {
+		userId?: string;
+		windowSeconds?: number;
+		limit?: number;
+	},
+): Promise<JobProgressEvent> {
+	const params = new URLSearchParams();
+	if (options?.userId) params.set("user_id", options.userId);
+	if (options?.windowSeconds)
+		params.set("window", options.windowSeconds.toString());
+	if (options?.limit) params.set("limit", options.limit.toString());
+
+	const queryString = params.toString();
+	const url = queryString
+		? `${base}/api/v1/dashboard/job-progress?${queryString}`
+		: `${base}/api/v1/dashboard/job-progress`;
+
+	const res = await fetch(url);
+	if (!res.ok) {
+		throw new Error("Failed to fetch job progress");
+	}
+	return res.json();
+}
+
+export async function getJobStats(
+	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+): Promise<JobStats> {
+	const res = await fetch(`${base}/api/v1/dashboard/job-stats`);
+	if (!res.ok) {
+		throw new Error("Failed to fetch job stats");
+	}
+	return res.json();
+}
+
+// ============================================================================
+// Job Trigger API
+// ============================================================================
+
+export interface TriggerJobResponse {
+	job_id: string;
+	genres: string[];
+	status: string;
+}
+
+export async function triggerRecapJob(
+	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+	genres?: string[],
+): Promise<TriggerJobResponse> {
+	const res = await fetch(`${base}/api/v1/generate/recaps/7days`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify(genres ? { genres } : {}),
+	});
+	if (!res.ok) {
+		const error = await res.text();
+		throw new Error(`Failed to trigger job: ${error}`);
 	}
 	return res.json();
 }

@@ -13,6 +13,7 @@
 		LinkIcon,
 		Plus,
 		ChevronDown,
+		Activity,
 	} from "@lucide/svelte";
 	import { page } from "$app/state";
 	import { cn } from "$lib/utils";
@@ -67,6 +68,11 @@
 					label: "Morning Letter",
 					href: `${svBasePath}/desktop/recap/morning-letter`,
 					icon: Newspaper,
+				},
+				{
+					label: "Job Status",
+					href: `${svBasePath}/desktop/recap/job-status`,
+					icon: Activity,
 				},
 			],
 		},
