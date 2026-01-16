@@ -159,11 +159,10 @@ impl StatusTransitionActor {
     #[allow(dead_code)]
     pub fn from_str(s: &str) -> Self {
         match s {
-            "system" => StatusTransitionActor::System,
             "scheduler" => StatusTransitionActor::Scheduler,
             "manual_repair" => StatusTransitionActor::ManualRepair,
             "migration_backfill" => StatusTransitionActor::MigrationBackfill,
-            _ => StatusTransitionActor::System, // Default fallback
+            _ => StatusTransitionActor::System, // Includes "system" and unknown values
         }
     }
 }
