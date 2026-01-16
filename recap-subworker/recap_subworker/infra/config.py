@@ -257,11 +257,18 @@ class Settings(BaseSettings):
         50,
         ge=1,
         description="Number of trials for Optuna Bayesian optimization",
+        validation_alias=AliasChoices("RECAP_BAYES_OPT_TRIALS", "RECAP_SUBWORKER_BAYES_OPT_TRIALS"),
     )
     bayes_opt_timeout_seconds: int | None = Field(
         None,
         ge=1,
         description="Optional timeout in seconds for Optuna optimization (None = no timeout)",
+    )
+    hdbscan_timeout_seconds: int = Field(
+        300,
+        ge=30,
+        description="Timeout in seconds for HDBSCAN clustering before fallback to MiniBatchKMeans",
+        validation_alias=AliasChoices("RECAP_HDBSCAN_TIMEOUT_SECS", "RECAP_SUBWORKER_HDBSCAN_TIMEOUT_SECS"),
     )
     noise_recluster_enabled: bool = Field(
         True,

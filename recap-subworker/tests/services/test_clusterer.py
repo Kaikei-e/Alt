@@ -25,6 +25,8 @@ def mock_settings():
     settings.noise_recluster_enabled = True
     settings.noise_recluster_min_points = 30
     settings.noise_recluster_max_clusters = 10
+    # HDBSCAN timeout for MiniBatchKMeans fallback
+    settings.hdbscan_timeout_seconds = 300
     return settings
 
 @pytest.fixture
@@ -286,3 +288,156 @@ def test_noise_reclustering_creates_new_clusters(clusterer):
                 # New IDs should be > max_original (0 in this case)
                 if len(reclustered) > 0:
                     assert (reclustered > max_original).any() or (reclustered >= 0).all()
+
+
+# ============================================================================
+# MiniBatchKMeans Fallback Tests
+# ============================================================================
+
+class TestMiniBatchKMeansFallback:
+    """Tests for the HDBSCAN timeout and MiniBatchKMeans fallback functionality."""
+
+    def test_fallback_minibatch_kmeans_basic(self, clusterer):
+        """Test that _fallback_minibatch_kmeans produces valid clusters."""
+        embeddings = np.random.rand(100, 10)
+
+        labels, probs = clusterer._fallback_minibatch_kmeans(embeddings)
+
+        # Should return valid arrays
+        assert labels.shape == (100,)
+        assert probs.shape == (100,)
+        # All labels should be non-negative (no noise in KMeans)
+        assert (labels >= 0).all()
+        # Probabilities should be 1.0 (hard clustering)
+        assert (probs == 1.0).all()
+        # Should have multiple clusters
+        assert len(set(labels)) >= 2
+
+    def test_fallback_minibatch_kmeans_small_dataset(self, clusterer):
+        """Test fallback with small dataset."""
+        embeddings = np.random.rand(10, 5)
+
+        labels, probs = clusterer._fallback_minibatch_kmeans(embeddings, n_clusters=3)
+
+        assert labels.shape == (10,)
+        assert len(set(labels)) <= 3
+
+    def test_fallback_minibatch_kmeans_auto_clusters(self, clusterer):
+        """Test that cluster count is auto-estimated when not provided."""
+        embeddings = np.random.rand(200, 10)
+
+        labels, _ = clusterer._fallback_minibatch_kmeans(embeddings)
+
+        # sqrt(200/2) ≈ 10, capped at 50
+        n_clusters = len(set(labels))
+        assert 2 <= n_clusters <= 50
+
+    def test_estimate_optimal_clusters(self, clusterer):
+        """Test cluster estimation heuristics."""
+        # Small dataset
+        assert clusterer._estimate_optimal_clusters(50) == max(2, 50 // 10)
+
+        # Medium dataset
+        est = clusterer._estimate_optimal_clusters(200)
+        assert 2 <= est <= 50
+
+        # Large dataset
+        est = clusterer._estimate_optimal_clusters(5000)
+        assert 2 <= est <= 50
+
+    def test_run_with_timeout_success(self, clusterer):
+        """Test that _run_with_timeout returns result when function completes."""
+        def quick_func():
+            return np.array([0, 1, 0]), np.array([1.0, 1.0, 1.0])
+
+        result = clusterer._run_with_timeout(quick_func, timeout_seconds=5)
+
+        assert result is not None
+        labels, probs = result
+        np.testing.assert_array_equal(labels, [0, 1, 0])
+        np.testing.assert_array_equal(probs, [1.0, 1.0, 1.0])
+
+    def test_run_with_timeout_timeout(self, clusterer):
+        """Test that _run_with_timeout returns None on timeout."""
+        import time
+
+        def slow_func():
+            time.sleep(10)  # Much longer than timeout
+            return np.array([0]), np.array([1.0])
+
+        # Very short timeout
+        result = clusterer._run_with_timeout(slow_func, timeout_seconds=1)
+
+        assert result is None
+
+    def test_cluster_uses_fallback_on_timeout(self, clusterer):
+        """Test that cluster() uses MiniBatchKMeans when HDBSCAN times out."""
+        # Set very short timeout
+        clusterer.settings.hdbscan_timeout_seconds = 1
+        clusterer.settings.noise_recluster_enabled = False
+
+        embeddings = np.random.rand(50, 10)
+
+        # Mock _run_with_timeout to simulate timeout
+        with patch.object(clusterer, '_run_with_timeout', return_value=None):
+            with patch.object(clusterer, '_fallback_minibatch_kmeans') as mock_fallback:
+                mock_fallback.return_value = (
+                    np.array([0] * 25 + [1] * 25),
+                    np.ones(50)
+                )
+
+                result = clusterer.cluster(
+                    embeddings,
+                    min_cluster_size=5,
+                    min_samples=2
+                )
+
+                # Verify fallback was called
+                mock_fallback.assert_called_once()
+                # Verify used_fallback is True
+                assert result.used_fallback is True
+
+    def test_cluster_no_fallback_when_hdbscan_succeeds(self, clusterer):
+        """Test that fallback is not used when HDBSCAN completes in time."""
+        clusterer.settings.hdbscan_timeout_seconds = 300
+        clusterer.settings.noise_recluster_enabled = False
+
+        embeddings = np.random.rand(50, 10)
+
+        # Mock _run_with_timeout to return HDBSCAN result
+        hdbscan_labels = np.array([0] * 20 + [1] * 20 + [-1] * 10)
+        hdbscan_probs = np.ones(50)
+
+        with patch.object(clusterer, '_run_with_timeout', return_value=(hdbscan_labels, hdbscan_probs)):
+            result = clusterer.cluster(
+                embeddings,
+                min_cluster_size=5,
+                min_samples=2
+            )
+
+            # Verify used_fallback is False
+            assert result.used_fallback is False
+
+    def test_cluster_result_has_used_fallback_field(self, clusterer):
+        """Test that ClusterResult includes used_fallback field."""
+        result = ClusterResult(
+            labels=np.array([0, 1]),
+            probabilities=np.array([1.0, 1.0]),
+            used_umap=False,
+            params=HDBSCANSettings(min_cluster_size=5, min_samples=2),
+            dbcv_score=0.5,
+            silhouette_score=0.6,
+            used_fallback=True
+        )
+
+        assert hasattr(result, 'used_fallback')
+        assert result.used_fallback is True
+
+        # Default should be False
+        result2 = ClusterResult(
+            labels=np.array([0, 1]),
+            probabilities=np.array([1.0, 1.0]),
+            used_umap=False,
+            params=HDBSCANSettings(min_cluster_size=5, min_samples=2),
+        )
+        assert result2.used_fallback is False

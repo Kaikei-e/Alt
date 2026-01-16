@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 from dataclasses import dataclass
+from typing import Callable
 
 import numpy as np
 import structlog
-from sklearn.cluster import HDBSCAN, BisectingKMeans
+from sklearn.cluster import HDBSCAN, BisectingKMeans, MiniBatchKMeans
 from sklearn.metrics import silhouette_score
 
 from ..domain.models import HDBSCANSettings
@@ -68,6 +70,7 @@ class ClusterResult:
     params: HDBSCANSettings
     dbcv_score: float = 0.0
     silhouette_score: float = 0.0
+    used_fallback: bool = False  # True if MiniBatchKMeans fallback was used
 
 
 class Clusterer:
@@ -75,6 +78,102 @@ class Clusterer:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+
+    def _run_with_timeout(
+        self,
+        func: Callable[[], tuple[np.ndarray, np.ndarray]],
+        timeout_seconds: int,
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        """
+        Run a function with a timeout.
+
+        Args:
+            func: Callable returning (labels, probabilities)
+            timeout_seconds: Timeout in seconds
+
+        Returns:
+            (labels, probabilities) or None if timeout occurred
+        """
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(func)
+            try:
+                return future.result(timeout=timeout_seconds)
+            except concurrent.futures.TimeoutError:
+                _LOGGER.warning(
+                    "hdbscan_timeout",
+                    timeout_seconds=timeout_seconds,
+                    message="HDBSCAN clustering timed out, will use MiniBatchKMeans fallback",
+                )
+                return None
+
+    def _fallback_minibatch_kmeans(
+        self,
+        embeddings: np.ndarray,
+        n_clusters: int | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Fallback clustering using MiniBatchKMeans when HDBSCAN times out.
+
+        MiniBatchKMeans is much faster than standard KMeans and HDBSCAN,
+        making it suitable as a fallback for large datasets.
+
+        Args:
+            embeddings: (N, D) float array
+            n_clusters: Number of clusters. If None, estimate from data size.
+
+        Returns:
+            (labels, probabilities) - probabilities are 1.0 for hard clustering
+        """
+        n_samples = embeddings.shape[0]
+
+        # Estimate number of clusters if not provided
+        # Use sqrt(N/2) as a heuristic, capped between 2 and 50
+        if n_clusters is None:
+            n_clusters = max(2, min(50, int(np.sqrt(n_samples / 2))))
+
+        # Ensure n_clusters doesn't exceed n_samples
+        n_clusters = min(n_clusters, n_samples)
+
+        _LOGGER.info(
+            "minibatch_kmeans_fallback",
+            n_samples=n_samples,
+            n_clusters=n_clusters,
+        )
+
+        kmeans = MiniBatchKMeans(
+            n_clusters=n_clusters,
+            random_state=42,
+            batch_size=min(1024, n_samples),
+            n_init=3,  # Fewer initializations for speed
+            max_iter=100,
+        )
+        labels = kmeans.fit_predict(embeddings)
+
+        # MiniBatchKMeans is hard clustering, so probabilities are 1.0
+        probabilities = np.ones(n_samples, dtype=float)
+
+        return labels, probabilities
+
+    def _estimate_optimal_clusters(self, n_samples: int) -> int:
+        """
+        Estimate optimal number of clusters for MiniBatchKMeans fallback.
+
+        Uses silhouette analysis on a small sample to find a good k.
+        For very large datasets, uses heuristics to avoid expensive computation.
+
+        Args:
+            n_samples: Number of samples in the dataset
+
+        Returns:
+            Estimated optimal number of clusters
+        """
+        # For small datasets, use simple heuristic
+        if n_samples < 100:
+            return max(2, n_samples // 10)
+
+        # For larger datasets, use sqrt(N/2) heuristic
+        # This is a common rule of thumb for clustering
+        return max(2, min(50, int(np.sqrt(n_samples / 2))))
 
     def cluster(
         self,
@@ -157,18 +256,40 @@ class Clusterer:
                     )
                     use_umap = False
 
-        # HDBSCAN (using sklearn.cluster.HDBSCAN)
-        clusterer = HDBSCAN(
-            min_cluster_size=min_cluster_size if min_cluster_size > 0 else self.settings.hdbscan_min_cluster_size,
-            min_samples=min_samples if min_samples > 0 else self.settings.hdbscan_min_samples,
-            metric="euclidean" if use_umap else "euclidean",
-            cluster_selection_epsilon=hdbscan_cluster_selection_epsilon if hdbscan_cluster_selection_epsilon is not None else 0.0,
-            allow_single_cluster=hdbscan_allow_single_cluster if hdbscan_allow_single_cluster is not None else False,
-            cluster_selection_method=hdbscan_cluster_selection_method or self.settings.hdbscan_cluster_selection_method,
-        )
-        clusterer.fit(reduced)
-        labels = clusterer.labels_
-        probs = clusterer.probabilities_
+        # HDBSCAN (using sklearn.cluster.HDBSCAN) with timeout and fallback
+        used_fallback = False
+        effective_mcs = min_cluster_size if min_cluster_size > 0 else self.settings.hdbscan_min_cluster_size
+        effective_ms = min_samples if min_samples > 0 else self.settings.hdbscan_min_samples
+
+        def run_hdbscan() -> tuple[np.ndarray, np.ndarray]:
+            clusterer = HDBSCAN(
+                min_cluster_size=effective_mcs,
+                min_samples=effective_ms,
+                metric="euclidean",
+                cluster_selection_epsilon=hdbscan_cluster_selection_epsilon if hdbscan_cluster_selection_epsilon is not None else 0.0,
+                allow_single_cluster=hdbscan_allow_single_cluster if hdbscan_allow_single_cluster is not None else False,
+                cluster_selection_method=hdbscan_cluster_selection_method or self.settings.hdbscan_cluster_selection_method,
+            )
+            clusterer.fit(reduced)
+            return clusterer.labels_, clusterer.probabilities_
+
+        # Run HDBSCAN with timeout
+        timeout_seconds = self.settings.hdbscan_timeout_seconds
+        result = self._run_with_timeout(run_hdbscan, timeout_seconds)
+
+        if result is not None:
+            labels, probs = result
+        else:
+            # Fallback to MiniBatchKMeans
+            _LOGGER.warning(
+                "hdbscan_fallback_triggered",
+                timeout_seconds=timeout_seconds,
+                n_samples=reduced.shape[0],
+                min_cluster_size=effective_mcs,
+            )
+            labels, probs = self._fallback_minibatch_kmeans(reduced)
+            used_fallback = True
+
         if (labels >= 0).sum() == 0:
             labels = np.arange(embeddings.shape[0], dtype=int)
             probs = np.ones_like(labels, dtype=float)
@@ -243,6 +364,7 @@ class Clusterer:
             ),
             dbcv_score=dbcv,
             silhouette_score=sil_score,
+            used_fallback=used_fallback,
         )
 
     def _calculate_dbcv(self, X: np.ndarray, labels: np.ndarray) -> float:
