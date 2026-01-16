@@ -145,6 +145,9 @@ impl MlLlmDispatchStage {
             job_id = %job_id,
             genre = %genre,
             article_count = evidence.articles.len(),
+            alt.processing.stage = "dispatch",
+            alt.processing.phase = "clustering",
+            alt.processing.genre = %genre,
             "clustering genre"
         );
 
@@ -217,6 +220,10 @@ impl MlLlmDispatchStage {
             job_id = %job_id,
             genre = %genre,
             cluster_count = clustering_response.clusters.len(),
+            alt.processing.stage = "dispatch",
+            alt.processing.phase = "clustering",
+            alt.processing.genre = %genre,
+            alt.processing.status = "completed",
             "clustering completed successfully"
         );
 
@@ -560,9 +567,13 @@ impl MlLlmDispatchStage {
         genres: &[String],
         evidence: Arc<EvidenceBundle>,
     ) -> HashMap<String, Result<ClusteringResponse>> {
+        let total_genres = genres.len();
         info!(
             job_id = %job.job_id,
-            genre_count = genres.len(),
+            genre_count = total_genres,
+            alt.processing.stage = "dispatch",
+            alt.processing.phase = "clustering",
+            alt.processing.progress.total = total_genres,
             "starting parallel clustering for all genres"
         );
 
@@ -658,6 +669,11 @@ impl MlLlmDispatchStage {
         info!(
             job_id = %job.job_id,
             completed_count = clustering_results.len(),
+            alt.processing.stage = "dispatch",
+            alt.processing.phase = "clustering",
+            alt.processing.progress.current = clustering_results.len(),
+            alt.processing.progress.total = total_genres,
+            alt.processing.status = "completed",
             "completed parallel clustering phase"
         );
 
@@ -761,9 +777,13 @@ impl MlLlmDispatchStage {
         clustering_results: HashMap<String, Result<ClusteringResponse>>,
         _evidence: Arc<EvidenceBundle>,
     ) -> HashMap<String, GenreResult> {
+        let total_genres = clustering_results.len();
         info!(
             job_id = %job.job_id,
-            genre_count = clustering_results.len(),
+            genre_count = total_genres,
+            alt.processing.stage = "dispatch",
+            alt.processing.phase = "summarization",
+            alt.processing.progress.total = total_genres,
             "starting batch summary generation"
         );
 
@@ -909,6 +929,11 @@ impl MlLlmDispatchStage {
         info!(
             job_id = %job.job_id,
             completed_count = genre_results.len(),
+            alt.processing.stage = "dispatch",
+            alt.processing.phase = "summarization",
+            alt.processing.progress.current = genre_results.len(),
+            alt.processing.progress.total = total_genres,
+            alt.processing.status = "completed",
             "completed batch summary generation phase"
         );
 

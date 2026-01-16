@@ -235,7 +235,7 @@ pub(crate) async fn get_recap_jobs(
 use crate::store::dao::{GenreStatus, PipelineStage};
 use crate::store::models::{
     ActiveJobInfo, GenreProgressInfo, JobProgressEvent, JobStats, RecentJobSummary,
-    StatusTransitionResponse, UserJobContext,
+    StatusTransitionResponse, SubStageProgress, UserJobContext,
 };
 use std::collections::HashMap;
 
@@ -305,6 +305,36 @@ pub(crate) async fn get_job_progress(
             None
         };
 
+        // Calculate sub-stage progress for dispatch stage
+        let sub_stage_progress = if job.last_stage.as_deref() == Some("dispatch") {
+            let total_genres = state.config().recap_genres().len();
+            let running_count = genre_progress
+                .values()
+                .filter(|g| g.status == GenreStatus::Running)
+                .count();
+            let succeeded_count = genre_progress
+                .values()
+                .filter(|g| g.status == GenreStatus::Succeeded)
+                .count();
+
+            // Determine phase:
+            // - If any genre is "running" → clustering phase
+            // - If genres have succeeded but dispatch not complete → summarization phase
+            let phase = if running_count > 0 {
+                "clustering".to_string()
+            } else {
+                "summarization".to_string()
+            };
+
+            Some(SubStageProgress {
+                phase,
+                total_genres,
+                completed_genres: succeeded_count,
+            })
+        } else {
+            None
+        };
+
         Some(ActiveJobInfo {
             job_id: job.job_id,
             status: job.status,
@@ -316,6 +346,7 @@ pub(crate) async fn get_job_progress(
             user_article_count,
             kicked_at: job.kicked_at,
             trigger_source: job.trigger_source,
+            sub_stage_progress,
         })
     } else {
         None

@@ -638,6 +638,20 @@ pub struct JobProgressEvent {
     pub user_context: Option<UserJobContext>,
 }
 
+/// サブステージ進捗情報
+///
+/// Dispatch ステージ内の詳細な進捗を追跡するための構造体。
+/// クラスタリング/要約生成のフェーズと、完了したジャンル数を記録。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubStageProgress {
+    /// 現在のフェーズ: "clustering" | "summarization"
+    pub phase: String,
+    /// 合計ジャンル数
+    pub total_genres: usize,
+    /// 完了したジャンル数
+    pub completed_genres: usize,
+}
+
 /// アクティブ（実行中）ジョブの詳細情報
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveJobInfo {
@@ -651,6 +665,9 @@ pub struct ActiveJobInfo {
     pub user_article_count: Option<i32>,
     pub kicked_at: DateTime<Utc>,
     pub trigger_source: TriggerSource,
+    /// Dispatch ステージのサブ進捗（実行中のみ）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub_stage_progress: Option<SubStageProgress>,
 }
 
 /// ジャンルごとの進捗情報
