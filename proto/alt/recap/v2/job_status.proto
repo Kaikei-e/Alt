@@ -1,0 +1,188 @@
+syntax = "proto3";
+
+package alt.recap.v2;
+
+option go_package = "alt/gen/proto/alt/recap/v2;recapv2";
+
+// =============================================================================
+// JobStatusService Definition
+// =============================================================================
+
+// JobStatusService provides real-time job status monitoring for recap jobs
+service JobStatusService {
+  // StreamJobProgress streams real-time job progress updates (authentication required)
+  // Sends updates every 2 seconds while connected
+  rpc StreamJobProgress(StreamJobProgressRequest) returns (stream JobProgressEvent);
+
+  // TriggerUserRecap triggers a new recap job for a specific user
+  rpc TriggerUserRecap(TriggerUserRecapRequest) returns (TriggerUserRecapResponse);
+
+  // RetryJob retries a failed job
+  rpc RetryJob(RetryJobRequest) returns (RetryJobResponse);
+
+  // GetJobProgress returns current job progress (non-streaming)
+  rpc GetJobProgress(GetJobProgressRequest) returns (JobProgressEvent);
+}
+
+// =============================================================================
+// Request Messages
+// =============================================================================
+
+// StreamJobProgressRequest is the request for streaming job progress
+message StreamJobProgressRequest {
+  // User ID for filtering user-specific jobs (required for user context)
+  optional string user_id = 1;
+  // Time window in seconds (default: 86400 = 24h)
+  optional int64 window_seconds = 2;
+}
+
+// TriggerUserRecapRequest is the request to trigger a user-specific recap job
+message TriggerUserRecapRequest {
+  // User ID (required)
+  string user_id = 1;
+  // Optional list of genres to include (empty = all genres)
+  repeated string genres = 2;
+  // Optional note for the job
+  optional string note = 3;
+}
+
+// RetryJobRequest is the request to retry a failed job
+message RetryJobRequest {
+  // Job ID to retry
+  string job_id = 1;
+}
+
+// GetJobProgressRequest is the request for getting current job progress
+message GetJobProgressRequest {
+  // User ID for filtering user-specific jobs
+  optional string user_id = 1;
+  // Time window in seconds (default: 86400 = 24h)
+  optional int64 window_seconds = 2;
+}
+
+// =============================================================================
+// Response Messages
+// =============================================================================
+
+// TriggerUserRecapResponse is the response for triggering a user recap
+message TriggerUserRecapResponse {
+  // New job ID
+  string job_id = 1;
+  // Status message
+  string message = 2;
+}
+
+// RetryJobResponse is the response for retrying a job
+message RetryJobResponse {
+  // Whether the retry was successful
+  bool success = 1;
+  // Status message
+  string message = 2;
+}
+
+// =============================================================================
+// Event Messages
+// =============================================================================
+
+// JobProgressEvent is streamed to clients with current job status
+message JobProgressEvent {
+  // Currently running job (if any)
+  optional ActiveJobInfo active_job = 1;
+  // Recent job history
+  repeated RecentJobSummary recent_jobs = 2;
+  // Statistics for the time window
+  JobStats stats = 3;
+  // User-specific context (populated when user_id provided)
+  optional UserJobContext user_context = 4;
+}
+
+// ActiveJobInfo contains details about a running job
+message ActiveJobInfo {
+  // Job ID
+  string job_id = 1;
+  // Current status (pending, running, completed, failed)
+  string status = 2;
+  // Current pipeline stage
+  optional string current_stage = 3;
+  // Index of current stage (0-7)
+  int32 stage_index = 4;
+  // List of completed stages
+  repeated string stages_completed = 5;
+  // Progress for each genre
+  map<string, GenreProgressInfo> genre_progress = 6;
+  // Total articles in this job
+  optional int32 total_articles = 7;
+  // User's articles in this job (when user_id provided)
+  optional int32 user_article_count = 8;
+  // Job start time (RFC3339)
+  string kicked_at = 9;
+  // Trigger source (system or user)
+  string trigger_source = 10;
+}
+
+// GenreProgressInfo contains progress for a specific genre
+message GenreProgressInfo {
+  // Status (pending, running, succeeded, failed)
+  string status = 1;
+  // Number of clusters generated
+  optional int32 cluster_count = 2;
+  // Number of articles in this genre
+  optional int32 article_count = 3;
+}
+
+// RecentJobSummary is a summary of a recent job
+message RecentJobSummary {
+  // Job ID
+  string job_id = 1;
+  // Status (pending, running, completed, failed)
+  string status = 2;
+  // Last completed stage
+  optional string last_stage = 3;
+  // Job start time (RFC3339)
+  string kicked_at = 4;
+  // Last update time (RFC3339)
+  string updated_at = 5;
+  // Duration in seconds (for completed/failed jobs)
+  optional int64 duration_secs = 6;
+  // Trigger source (system or user)
+  string trigger_source = 7;
+  // User ID (if user-triggered)
+  optional string user_id = 8;
+}
+
+// JobStats contains statistics for the dashboard
+message JobStats {
+  // Success rate in the last 24 hours (0.0 - 1.0)
+  double success_rate_24h = 1;
+  // Average duration in seconds
+  optional int64 avg_duration_secs = 2;
+  // Total jobs in the last 24 hours
+  int32 total_jobs_24h = 3;
+  // Currently running jobs
+  int32 running_jobs = 4;
+  // Failed jobs in the last 24 hours
+  int32 failed_jobs_24h = 5;
+}
+
+// UserJobContext contains user-specific job information
+message UserJobContext {
+  // Number of user's articles across jobs
+  int32 user_article_count = 1;
+  // Number of jobs related to the user
+  int32 user_jobs_count = 2;
+  // User's subscribed feed IDs
+  repeated string user_feed_ids = 3;
+}
+
+// =============================================================================
+// Pipeline Stage Constants (for reference)
+// =============================================================================
+// The 8 pipeline stages are:
+// 0: fetch      - Fetch articles from backend
+// 1: preprocess - Clean and normalize HTML
+// 2: dedup      - Deduplicate similar articles
+// 3: genre      - Classify articles by genre
+// 4: select     - Select representative articles
+// 5: evidence   - Extract evidence links
+// 6: dispatch   - Send to subworkers for summarization
+// 7: persist    - Save results to database
