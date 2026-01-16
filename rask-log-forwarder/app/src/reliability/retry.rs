@@ -150,6 +150,8 @@ impl RetryManager {
     fn apply_jitter(&self, delay: Duration) -> Duration {
         let mut rng = rand::rng();
         let jitter_factor = rng.random_range(0.5..1.5); // ±50% jitter
+        // Safety: delay is bounded by max_delay (60s default), jitter_factor is 0.5-1.5
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let jittered_millis = (delay.as_millis() as f64 * jitter_factor) as u64;
         Duration::from_millis(jittered_millis)
     }

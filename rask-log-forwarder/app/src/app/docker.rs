@@ -18,7 +18,7 @@ impl DockerEnvironment {
                 hostname::get()
                     .map_err(|e| format!("Failed to get hostname: {e}"))?
                     .to_str()
-                    .map(|s| s.to_string())
+                    .map(str::to_string)
                     .ok_or_else(|| "Could not convert hostname to string".to_string())
             })
             .map_err(|e| ConfigError::EnvError(format!("Could not determine hostname: {e}")))?;
@@ -69,8 +69,7 @@ impl DockerEnvironment {
     pub fn is_sidecar_mode(&self) -> bool {
         self.network_mode
             .as_ref()
-            .map(|mode| mode.starts_with("service:"))
-            .unwrap_or(false)
+            .is_some_and(|mode| mode.starts_with("service:"))
     }
 
     pub fn get_target_service_from_network_mode(&self) -> Option<String> {

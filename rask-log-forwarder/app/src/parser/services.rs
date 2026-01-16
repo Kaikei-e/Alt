@@ -211,14 +211,14 @@ impl NginxParser {
         captures: regex::Captures<'_>,
         full_log: &str,
     ) -> Result<ParsedLogEntry, ParseError> {
-        let ip = captures.get(1).map(|m| m.as_str()).unwrap_or("");
-        let method = captures.get(3).map(|m| m.as_str()).unwrap_or("");
-        let path = captures.get(4).map(|m| m.as_str()).unwrap_or("");
+        let ip = captures.get(1).map_or("", |m| m.as_str());
+        let method = captures.get(3).map_or("", |m| m.as_str());
+        let path = captures.get(4).map_or("", |m| m.as_str());
         let status = captures
             .get(5)
             .and_then(|m| m.as_str().parse().ok())
             .unwrap_or(0);
-        let size_str = captures.get(6).map(|m| m.as_str()).unwrap_or("0");
+        let size_str = captures.get(6).map_or("0", |m| m.as_str());
         let size = if size_str == "-" {
             0
         } else {
@@ -248,7 +248,7 @@ impl NginxParser {
         captures: regex::Captures<'_>,
         full_log: &str,
     ) -> Result<ParsedLogEntry, ParseError> {
-        let level_str = captures.get(2).map(|m| m.as_str()).unwrap_or("info");
+        let level_str = captures.get(2).map_or("info", |m| m.as_str());
         let level = match level_str.to_lowercase().as_str() {
             "error" => LogLevel::Error,
             "warn" | "warning" => LogLevel::Warn,
@@ -388,11 +388,12 @@ impl ServiceParser for GoStructuredParser {
                         let method = obj
                             .get("method")
                             .and_then(|v| v.as_str())
-                            .map(|s| s.to_string());
+                            .map(str::to_string);
                         let path = obj
                             .get("path")
                             .and_then(|v| v.as_str())
-                            .map(|s| s.to_string());
+                            .map(str::to_string);
+                        #[allow(clippy::cast_possible_truncation)]
                         let status_code =
                             obj.get("status").and_then(|v| v.as_u64()).map(|n| n as u16);
 
@@ -723,7 +724,7 @@ mod tests {
     fn test_nginx_error_log_parsing() {
         let parser = NginxParser::new();
 
-        let nginx_error = r#"2024/01/01 12:00:00 [error] 123#0: *456 connect() failed (111: Connection refused) while connecting to upstream"#;
+        let nginx_error = r"2024/01/01 12:00:00 [error] 123#0: *456 connect() failed (111: Connection refused) while connecting to upstream";
 
         let entry = parser.parse_log(nginx_error).unwrap();
 
@@ -804,7 +805,7 @@ mod tests {
     fn test_postgres_log_parsing() {
         let parser = PostgresParser::new();
 
-        let pg_log = r#"2024-01-01 12:00:00.123 UTC [123] LOG:  statement: SELECT * FROM users WHERE id = $1"#;
+        let pg_log = r"2024-01-01 12:00:00.123 UTC [123] LOG:  statement: SELECT * FROM users WHERE id = $1";
 
         let entry = parser.parse_log(pg_log).unwrap();
 

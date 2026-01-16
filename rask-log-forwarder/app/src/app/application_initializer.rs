@@ -38,7 +38,9 @@ impl ApplicationInitializer {
 
         // Use microseconds to ensure we capture sub-millisecond durations
         // Convert to milliseconds, ensuring at least 1ms if any time passed
-        let time_ms = elapsed.as_micros() as u64 / 1000;
+        // Safety: truncation is acceptable - initialization time won't exceed u64::MAX milliseconds
+        #[allow(clippy::cast_possible_truncation)]
+        let time_ms = (elapsed.as_micros() / 1000) as u64;
         let initialization_time_ms = if time_ms == 0 && elapsed.as_nanos() > 0 {
             1 // At least 1ms if any time passed
         } else {
@@ -181,7 +183,7 @@ mod tests {
             endpoint: "http://localhost:9600/v1/aggregate".to_string(),
             batch_size: 1000,
             flush_interval_ms: 500,
-            buffer_capacity: 100000,
+            buffer_capacity: 100_000,
             log_level: LogLevel::Info,
             enable_metrics: false,
             metrics_port: 9090,

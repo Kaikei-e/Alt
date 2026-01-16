@@ -111,6 +111,8 @@ impl LogBufferSender {
 
         // Check backpressure
         if self.config.enable_backpressure {
+            // Safety: capacity is bounded by system memory, threshold is 0.0-1.0 fraction
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let threshold =
                 (self.config.capacity as f64 * self.config.backpressure_threshold) as usize;
 

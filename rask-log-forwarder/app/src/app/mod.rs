@@ -80,6 +80,7 @@ impl App {
         Ok(())
     }
 
+    #[must_use]
     pub fn get_target_service(&self) -> &str {
         self.service_manager.get_target_service()
     }
@@ -92,6 +93,7 @@ impl App {
 // Note: setup_logging has been replaced with setup_logging_safe in logging_system.rs
 // This eliminates all expect() calls and provides memory-safe initialization
 
+#[must_use]
 pub fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }

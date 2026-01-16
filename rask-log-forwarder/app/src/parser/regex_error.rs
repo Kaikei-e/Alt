@@ -47,7 +47,7 @@ mod tests {
 
     #[test]
     fn test_compilation_failed_fallback_strategy() {
-        let invalid_pattern = r#"[invalid regex pattern"#;
+        let invalid_pattern = r"[invalid regex pattern";
         let result = Regex::new(invalid_pattern);
         assert!(result.is_err());
 

@@ -1,5 +1,6 @@
 // Build-time regex pattern validation for TASK3
 use regex::Regex;
+use std::fmt::Write as FmtWrite;
 use std::fs::File;
 use std::io::Write;
 
@@ -11,11 +12,11 @@ fn main() {
     let patterns = &[
         // From universal.rs
         (
-            r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s+"#,
+            r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s+",
             "docker_native_timestamp",
         ),
         (
-            r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"#,
+            r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}",
             "iso_timestamp_fallback",
         ),
         // From services.rs
@@ -28,15 +29,15 @@ fn main() {
             "nginx_access_fallback",
         ),
         (
-            r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] \d+#\d+: (.+)"#,
+            r"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] \d+#\d+: (.+)",
             "nginx_error_full",
         ),
         (
-            r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.+)"#,
+            r"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.+)",
             "nginx_error_fallback",
         ),
         (
-            r#"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) .+ (\w+):\s+(.+)"#,
+            r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) .+ (\w+):\s+(.+)",
             "postgres_log",
         ),
         // From simd.rs
@@ -57,11 +58,11 @@ fn main() {
             "simd_nginx_combined_fallback",
         ),
         (
-            r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (\d+)#(\d+): (.*?)(?:\n)?$"#,
+            r"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (\d+)#(\d+): (.*?)(?:\n)?$",
             "simd_nginx_error",
         ),
         (
-            r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.*)$"#,
+            r"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.*)$",
             "simd_nginx_error_fallback",
         ),
     ];
@@ -87,7 +88,7 @@ fn main() {
     if !invalid_patterns.is_empty() {
         let mut error_msg = String::from("❌ Build failed due to invalid regex patterns:\n");
         for (pattern, name, error) in &invalid_patterns {
-            error_msg.push_str(&format!("  - '{name}': {error} (pattern: {pattern})\n"));
+            writeln!(error_msg, "  - '{name}': {error} (pattern: {pattern})").unwrap();
         }
         panic!("{}", error_msg);
     }
@@ -124,7 +125,12 @@ fn generate_validated_regexes(patterns: &[(&str, &str)]) -> Result<(), Box<dyn s
     )?;
 
     for (pattern, name) in patterns {
-        writeln!(file, "    (r#\"{pattern}\"#, \"{name}\"),")?;
+        // Use raw string hashes only when pattern contains double quotes
+        if pattern.contains('"') {
+            writeln!(file, "    (r#\"{pattern}\"#, \"{name}\"),")?;
+        } else {
+            writeln!(file, "    (r\"{pattern}\", \"{name}\"),")?;
+        }
     }
 
     writeln!(file, "]);")?;
@@ -163,7 +169,7 @@ mod tests {
     #[test]
     fn test_all_patterns_compile() {
         let patterns = &[
-            (r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"#, "iso_timestamp"),
+            (r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", "iso_timestamp"),
             (
                 r#"^(\S+) .+ "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)"#,
                 "nginx_access",

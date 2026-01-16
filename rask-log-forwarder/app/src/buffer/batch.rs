@@ -268,11 +268,11 @@ fn estimate_entry_size(entry: &EnrichedLogEntry) -> usize {
         + entry.container_id.len()
         + entry.service_name.len();
 
-    let optional_sizes = entry.method.as_ref().map_or(0, |s| s.len())
-        + entry.path.as_ref().map_or(0, |s| s.len())
-        + entry.ip_address.as_ref().map_or(0, |s| s.len())
-        + entry.user_agent.as_ref().map_or(0, |s| s.len())
-        + entry.service_group.as_ref().map_or(0, |s| s.len());
+    let optional_sizes = entry.method.as_ref().map_or(0, String::len)
+        + entry.path.as_ref().map_or(0, String::len)
+        + entry.ip_address.as_ref().map_or(0, String::len)
+        + entry.user_agent.as_ref().map_or(0, String::len)
+        + entry.service_group.as_ref().map_or(0, String::len);
 
     let fields_size = entry
         .fields

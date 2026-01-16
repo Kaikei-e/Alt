@@ -460,6 +460,8 @@ impl MetricsCollector {
             total_batches_sent: state.total_batches_sent,
             successful_batches: state.successful_batches,
             failed_batches: state.failed_batches,
+            // Safety: Prometheus counters/gauges return f64 but contain non-negative integers
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             total_entries_sent: {
                 #[cfg(feature = "metrics")]
                 {
@@ -470,6 +472,7 @@ impl MetricsCollector {
                     0
                 }
             },
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             disk_fallback_count: {
                 #[cfg(feature = "metrics")]
                 {
@@ -485,6 +488,7 @@ impl MetricsCollector {
             health_check_success: state.health_check_success,
             health_check_failure: state.health_check_failure,
             average_transmission_latency: Duration::ZERO, // Would be calculated from histogram
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             current_memory_usage: {
                 #[cfg(feature = "metrics")]
                 {
@@ -495,6 +499,7 @@ impl MetricsCollector {
                     0
                 }
             },
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             active_connections: {
                 #[cfg(feature = "metrics")]
                 {

@@ -126,13 +126,12 @@ impl ReliabilityManager {
                             self.get_attempt_count(&batch_id).await
                         );
                         return Ok(());
-                    } else {
-                        tracing::warn!(
-                            "Transmission failed with HTTP {}: {}",
-                            result.status_code,
-                            batch_id
-                        );
                     }
+                    tracing::warn!(
+                        "Transmission failed with HTTP {}: {}",
+                        result.status_code,
+                        batch_id
+                    );
                 }
                 Err(e) => {
                     tracing::error!("Transmission error for batch {}: {}", batch_id, e);

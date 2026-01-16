@@ -203,7 +203,7 @@ impl Default for Config {
             endpoint: "http://rask-log-aggregator:9600/v1/aggregate".to_string(),
             batch_size: 10000,
             flush_interval_ms: 500,
-            buffer_capacity: 100000,
+            buffer_capacity: 100_000,
             log_level: LogLevel::Info,
             enable_metrics: false,
             metrics_port: 9090,

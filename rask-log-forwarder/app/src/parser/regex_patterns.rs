@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn test_static_regex_set_compilation() {
         static TEST_PATTERNS: StaticRegexSet = StaticRegexSet::new(&[
-            (r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"#, "iso_timestamp"),
+            (r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", "iso_timestamp"),
             (
                 r#"^(\S+) .+ "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)"#,
                 "nginx_access",
@@ -212,7 +212,7 @@ mod tests {
     #[test]
     fn test_static_regex_set_get_by_name() {
         static TEST_PATTERNS: StaticRegexSet = StaticRegexSet::new(&[
-            (r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"#, "iso_timestamp"),
+            (r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", "iso_timestamp"),
             (
                 r#"^(\S+) .+ "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)"#,
                 "nginx_access",
@@ -230,7 +230,7 @@ mod tests {
         use std::thread;
 
         static REGEX_SET: StaticRegexSet =
-            StaticRegexSet::new(&[(r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"#, "iso_timestamp")]);
+            StaticRegexSet::new(&[(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", "iso_timestamp")]);
 
         let regex_set = Arc::new(&REGEX_SET);
         let handles: Vec<_> = (0..10)
@@ -284,7 +284,7 @@ mod tests {
     #[test]
     fn test_invalid_regex_compilation() {
         static INVALID_PATTERNS: StaticRegexSet =
-            StaticRegexSet::new(&[(r#"[invalid regex pattern"#, "invalid_pattern")]);
+            StaticRegexSet::new(&[(r"[invalid regex pattern", "invalid_pattern")]);
 
         let result = INVALID_PATTERNS.get(0);
         assert!(result.is_err());

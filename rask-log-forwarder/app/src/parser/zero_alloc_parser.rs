@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn test_parse_u64_safe() {
         // Valid cases
-        assert_eq!(ZeroAllocParser::parse_u64_safe("123456789"), Ok(123456789));
+        assert_eq!(ZeroAllocParser::parse_u64_safe("123456789"), Ok(123_456_789));
         assert_eq!(ZeroAllocParser::parse_u64_safe("0"), Ok(0));
         assert_eq!(ZeroAllocParser::parse_u64_safe("-"), Ok(0)); // Special case
 
@@ -188,7 +188,7 @@ mod tests {
 
         assert_eq!(
             ZeroAllocParser::parse_u64_with_fallback("123456", 999),
-            123456
+            123_456
         );
         assert_eq!(
             ZeroAllocParser::parse_u64_with_fallback("invalid", 999),

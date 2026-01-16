@@ -55,13 +55,11 @@ impl ServiceParserRegistry {
             let priority_a = self
                 .parsers
                 .get(a)
-                .map(|p| p.detection_priority())
-                .unwrap_or(0);
+                .map_or(0, |p| p.detection_priority());
             let priority_b = self
                 .parsers
                 .get(b)
-                .map(|p| p.detection_priority())
-                .unwrap_or(0);
+                .map_or(0, |p| p.detection_priority());
             priority_b.cmp(&priority_a) // Higher priority first
         });
 
@@ -161,7 +159,7 @@ impl ServiceParserRegistry {
 
     /// Get all registered parser types.
     pub fn parser_types(&self) -> Vec<&str> {
-        self.parsers.keys().map(|s| s.as_str()).collect()
+        self.parsers.keys().map(String::as_str).collect()
     }
 
     /// Get all service mappings.

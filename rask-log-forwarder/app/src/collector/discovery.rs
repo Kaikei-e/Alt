@@ -72,7 +72,7 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
         // Auto-detect from hostname
         let hostname = hostname::get()
             .ok()
-            .and_then(|h| h.to_str().map(|s| s.to_string()))
+            .and_then(|h| h.to_str().map(str::to_string))
             .ok_or(DiscoveryError::NoTargetService)?;
 
         self.detect_target_service_from_hostname(&hostname)

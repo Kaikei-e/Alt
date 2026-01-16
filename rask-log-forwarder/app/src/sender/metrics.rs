@@ -21,6 +21,8 @@ fn calculate_percentile(sorted_samples: &[Duration], percentile: f64) -> Duratio
     let index_f64 = percentile * (len.saturating_sub(1)) as f64;
 
     // Convert to usize with proper bounds checking
+    // Safety: index_f64 is verified to be finite and non-negative, and is clamped to array bounds
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let index = if index_f64.is_finite() && index_f64 >= 0.0 {
         let index_usize = index_f64.floor() as usize;
         index_usize.min(len.saturating_sub(1))
