@@ -227,3 +227,169 @@ pub(crate) async fn get_recap_jobs(
 
     Ok(Json(result))
 }
+
+// ============================================================================
+// Job Progress Dashboard Endpoints
+// ============================================================================
+
+use crate::store::dao::{GenreStatus, PipelineStage};
+use crate::store::models::{
+    ActiveJobInfo, GenreProgressInfo, JobProgressEvent, JobStats, RecentJobSummary,
+    StatusTransitionResponse, UserJobContext,
+};
+use std::collections::HashMap;
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct JobProgressQuery {
+    user_id: Option<Uuid>,
+    window: Option<i64>,
+    limit: Option<i64>,
+}
+
+/// Get comprehensive job progress for dashboard
+pub(crate) async fn get_job_progress(
+    State(state): State<AppState>,
+    Query(params): Query<JobProgressQuery>,
+) -> Result<Json<JobProgressEvent>, (StatusCode, String)> {
+    let window_seconds = params.window.unwrap_or(86400); // デフォルト24時間
+    let limit = params.limit.unwrap_or(50);
+    let dao = state.dao();
+
+    // Get running job (if any)
+    let running_job = dao.get_running_job().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to fetch running job");
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
+
+    // Build active job info if there's a running job
+    let active_job = if let Some(job) = running_job {
+        let completed_stages = dao.get_completed_stages(job.job_id).await.unwrap_or_default();
+        let genre_progress_raw = dao.get_genre_progress(job.job_id).await.unwrap_or_default();
+        let total_articles = dao
+            .get_total_article_count_for_job(job.job_id)
+            .await
+            .ok();
+
+        // Build genre progress map
+        let mut genre_progress: HashMap<String, GenreProgressInfo> = HashMap::new();
+        for (genre, status_str, cluster_count) in genre_progress_raw {
+            let status = match status_str.as_str() {
+                "running" => GenreStatus::Running,
+                "succeeded" => GenreStatus::Succeeded,
+                "failed" => GenreStatus::Failed,
+                _ => GenreStatus::Pending,
+            };
+            genre_progress.insert(
+                genre,
+                GenreProgressInfo {
+                    status,
+                    cluster_count,
+                    article_count: None,
+                },
+            );
+        }
+
+        // Calculate current stage index
+        let stage_index = job
+            .last_stage
+            .as_ref()
+            .and_then(|s| PipelineStage::from_str(s))
+            .map_or(0, PipelineStage::index);
+
+        // Get user article count if user_id provided
+        let user_article_count = if let Some(user_id) = params.user_id {
+            dao.get_user_article_count_for_job(job.job_id, user_id)
+                .await
+                .ok()
+        } else {
+            None
+        };
+
+        Some(ActiveJobInfo {
+            job_id: job.job_id,
+            status: job.status,
+            current_stage: job.last_stage.clone(),
+            stage_index,
+            stages_completed: completed_stages,
+            genre_progress,
+            total_articles,
+            user_article_count,
+            kicked_at: job.kicked_at,
+            trigger_source: job.trigger_source,
+        })
+    } else {
+        None
+    };
+
+    // Get recent jobs
+    let recent_jobs_data = if let Some(user_id) = params.user_id {
+        dao.get_user_jobs(user_id, window_seconds, limit).await
+    } else {
+        dao.get_extended_jobs(window_seconds, limit).await
+    }
+    .map_err(|e| {
+        tracing::error!(error = %e, "failed to fetch recent jobs");
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
+
+    let mut recent_jobs: Vec<RecentJobSummary> =
+        recent_jobs_data.into_iter().map(|j| j.to_summary()).collect();
+
+    // Fetch status history for each recent job
+    for job in &mut recent_jobs {
+        if let Ok(history) = dao.get_status_history(job.job_id).await {
+            job.status_history = history
+                .into_iter()
+                .map(|t| StatusTransitionResponse {
+                    id: t.id,
+                    status: t.status,
+                    stage: t.stage,
+                    transitioned_at: t.transitioned_at,
+                    reason: t.reason,
+                    actor: t.actor.as_ref().to_string(),
+                })
+                .collect();
+        }
+    }
+
+    // Get job stats
+    let job_stats = dao.get_job_stats().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to fetch job stats");
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
+
+    // Build user context if user_id provided
+    let user_context = if let Some(user_id) = params.user_id {
+        let user_jobs_count = dao
+            .get_user_jobs_count(user_id, window_seconds)
+            .await
+            .unwrap_or(0);
+
+        Some(UserJobContext {
+            user_article_count: 0, // TODO: Calculate from favorite_feeds
+            user_jobs_count,
+            user_feed_ids: Vec::new(), // TODO: Fetch from alt-backend
+        })
+    } else {
+        None
+    };
+
+    Ok(Json(JobProgressEvent {
+        active_job,
+        recent_jobs,
+        stats: job_stats,
+        user_context,
+    }))
+}
+
+/// Get job statistics
+pub(crate) async fn get_job_stats(
+    State(state): State<AppState>,
+) -> Result<Json<JobStats>, (StatusCode, String)> {
+    let job_stats = state.dao().get_job_stats().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to fetch job stats");
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
+
+    Ok(Json(job_stats))
+}

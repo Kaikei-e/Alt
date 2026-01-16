@@ -754,6 +754,7 @@ impl MlLlmDispatchStage {
     }
 
     /// Phase 2: サマリー生成をバッチ API で実行（1回の HTTP 呼び出しで全ジャンル処理）
+    #[allow(clippy::too_many_lines)]
     async fn generate_summaries_with_batch(
         &self,
         job: &JobContext,
@@ -858,7 +859,7 @@ impl MlLlmDispatchStage {
         info!(
             job_id = %job.job_id,
             request_count = valid_requests.len(),
-            chunk_count = (valid_requests.len() + BATCH_SUMMARY_CHUNK_SIZE - 1) / BATCH_SUMMARY_CHUNK_SIZE,
+            chunk_count = valid_requests.len().div_ceil(BATCH_SUMMARY_CHUNK_SIZE),
             "calling batch summary API in chunks"
         );
 

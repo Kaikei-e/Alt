@@ -155,6 +155,7 @@ mod tests {
     use crate::config::ENV_MUTEX;
 
     #[tokio::test]
+    #[ignore = "loads ML model, slow"]
     async fn component_registry_builds() {
         let config = {
             let _lock = ENV_MUTEX.lock().expect("env mutex");

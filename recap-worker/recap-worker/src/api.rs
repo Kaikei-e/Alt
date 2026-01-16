@@ -41,5 +41,7 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/v1/dashboard/logs", get(dashboard::get_logs))
         .route("/v1/dashboard/jobs", get(dashboard::get_jobs))
         .route("/v1/dashboard/recap_jobs", get(dashboard::get_recap_jobs))
+        .route("/v1/dashboard/job-progress", get(dashboard::get_job_progress))
+        .route("/v1/dashboard/job-stats", get(dashboard::get_job_stats))
         .with_state(state)
 }

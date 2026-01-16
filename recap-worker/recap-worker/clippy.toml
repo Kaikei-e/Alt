@@ -1,0 +1,11 @@
+# Clippy configuration for recap-worker DAO refactoring
+# Based on Rust 2024 edition best practices
+
+# Maximum lines per function before warning
+too-many-lines-threshold = 100
+
+# Maximum number of function arguments
+too-many-arguments-threshold = 7
+
+# Cognitive complexity threshold
+cognitive-complexity-threshold = 25

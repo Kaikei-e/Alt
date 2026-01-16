@@ -286,14 +286,39 @@ impl StageExecutor<'_> {
     ) -> Result<()> {
         let state_json =
             serde_json::to_value(state_data).context("failed to serialize stage state")?;
+
+        tracing::debug!(
+            %job_id,
+            %stage,
+            "saving stage state to recap_stage_state"
+        );
+
         self.orchestrator
             .recap_dao()
             .save_stage_state(job_id, stage, &state_json)
             .await?;
+
+        tracing::debug!(
+            %job_id,
+            %stage,
+            "updating job status in recap_jobs"
+        );
+
         self.orchestrator
             .recap_dao()
-            .update_job_status(job_id, crate::store::dao::JobStatus::Running, Some(stage))
+            .update_job_status_with_history(
+                job_id,
+                crate::store::dao::JobStatus::Running,
+                Some(stage),
+                None,
+            )
             .await?;
+
+        tracing::debug!(
+            %job_id,
+            %stage,
+            "stage state saved and job status updated successfully"
+        );
 
         // Log stage completion
         if let Err(e) = self
