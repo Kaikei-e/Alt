@@ -1,38 +1,38 @@
 <script lang="ts">
-	import type { RecentJobSummary } from "$lib/schema/dashboard";
-	import { formatDuration } from "$lib/schema/dashboard";
-	import StatusBadge from "./StatusBadge.svelte";
-	import StatusTransitionTimeline from "./StatusTransitionTimeline.svelte";
-	import { Clock, User, Server, ChevronDown, ChevronRight } from "@lucide/svelte";
+import { ChevronDown, ChevronRight, Clock, Server, User } from "@lucide/svelte";
+import type { RecentJobSummary } from "$lib/schema/dashboard";
+import { formatDuration } from "$lib/schema/dashboard";
+import StatusBadge from "./StatusBadge.svelte";
+import StatusTransitionTimeline from "./StatusTransitionTimeline.svelte";
 
-	interface Props {
-		jobs: RecentJobSummary[];
-	}
+interface Props {
+	jobs: RecentJobSummary[];
+}
 
-	let { jobs }: Props = $props();
-	let expandedJobId = $state<string | null>(null);
+let { jobs }: Props = $props();
+let expandedJobId = $state<string | null>(null);
 
-	function toggleExpand(jobId: string) {
-		expandedJobId = expandedJobId === jobId ? null : jobId;
-	}
+function toggleExpand(jobId: string) {
+	expandedJobId = expandedJobId === jobId ? null : jobId;
+}
 
-	function formatTime(isoString: string): string {
-		return new Date(isoString).toLocaleString();
-	}
+function formatTime(isoString: string): string {
+	return new Date(isoString).toLocaleString();
+}
 
-	function formatRelativeTime(isoString: string): string {
-		const date = new Date(isoString);
-		const now = new Date();
-		const diffMs = now.getTime() - date.getTime();
-		const diffMins = Math.floor(diffMs / 60000);
+function formatRelativeTime(isoString: string): string {
+	const date = new Date(isoString);
+	const now = new Date();
+	const diffMs = now.getTime() - date.getTime();
+	const diffMins = Math.floor(diffMs / 60000);
 
-		if (diffMins < 1) return "just now";
-		if (diffMins < 60) return `${diffMins}m ago`;
-		const diffHours = Math.floor(diffMins / 60);
-		if (diffHours < 24) return `${diffHours}h ago`;
-		const diffDays = Math.floor(diffHours / 24);
-		return `${diffDays}d ago`;
-	}
+	if (diffMins < 1) return "just now";
+	if (diffMins < 60) return `${diffMins}m ago`;
+	const diffHours = Math.floor(diffMins / 60);
+	if (diffHours < 24) return `${diffHours}h ago`;
+	const diffDays = Math.floor(diffHours / 24);
+	return `${diffDays}d ago`;
+}
 </script>
 
 <div

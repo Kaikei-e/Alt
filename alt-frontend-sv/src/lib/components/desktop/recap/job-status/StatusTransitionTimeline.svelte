@@ -1,26 +1,26 @@
 <script lang="ts">
-	import type { StatusTransition, JobStatus } from "$lib/schema/dashboard";
+import type { JobStatus, StatusTransition } from "$lib/schema/dashboard";
 
-	interface Props {
-		transitions: StatusTransition[];
-	}
+interface Props {
+	transitions: StatusTransition[];
+}
 
-	let { transitions }: Props = $props();
+let { transitions }: Props = $props();
 
-	function formatTime(isoString: string): string {
-		return new Date(isoString).toLocaleTimeString("ja-JP", {
-			hour: "2-digit",
-			minute: "2-digit",
-			second: "2-digit",
-		});
-	}
+function formatTime(isoString: string): string {
+	return new Date(isoString).toLocaleTimeString("ja-JP", {
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+	});
+}
 
-	const statusColors: Record<JobStatus, { text: string; bg: string }> = {
-		completed: { text: "text-green-600", bg: "bg-green-500" },
-		failed: { text: "text-red-600", bg: "bg-red-500" },
-		running: { text: "text-blue-600", bg: "bg-blue-500" },
-		pending: { text: "text-gray-500", bg: "bg-gray-400" },
-	};
+const statusColors: Record<JobStatus, { text: string; bg: string }> = {
+	completed: { text: "text-green-600", bg: "bg-green-500" },
+	failed: { text: "text-red-600", bg: "bg-red-500" },
+	running: { text: "text-blue-600", bg: "bg-blue-500" },
+	pending: { text: "text-gray-500", bg: "bg-gray-400" },
+};
 </script>
 
 <div class="py-2">
