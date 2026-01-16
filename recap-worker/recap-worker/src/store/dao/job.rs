@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use super::types::{JobStatusTransition, StatusTransitionActor};
 use super::JobStatus;
 use crate::util::idempotency::try_acquire_job_lock;
 
@@ -110,13 +111,22 @@ impl RecapDao {
     }
 
     /// ジョブのステータスと最終ステージを更新する。
+    ///
+    /// # Warning
+    /// この関数は、ジョブが存在しない場合でも成功を返しますが、
+    /// 警告ログを出力します。これは既存の動作との互換性を保つためです。
+    ///
+    /// # Note
+    /// 新しいコードでは `update_job_status_with_history` を使用してください。
+    /// この関数は後方互換性のために残されています。
+    #[allow(dead_code)]
     pub async fn update_job_status(
         pool: &PgPool,
         job_id: Uuid,
         status: JobStatus,
         last_stage: Option<&str>,
     ) -> Result<()> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             UPDATE recap_jobs
             SET status = $2,
@@ -131,6 +141,15 @@ impl RecapDao {
         .execute(pool)
         .await
         .context("failed to update job status")?;
+
+        if result.rows_affected() == 0 {
+            tracing::warn!(
+                %job_id,
+                ?status,
+                ?last_stage,
+                "update_job_status affected 0 rows - job may not exist or was deleted"
+            );
+        }
 
         Ok(())
     }
@@ -200,5 +219,136 @@ impl RecapDao {
         .context("failed to delete old jobs")?;
 
         Ok(result.rows_affected())
+    }
+
+    /// ステータス遷移をイミュータブルな履歴テーブルに記録する。
+    ///
+    /// # Returns
+    /// 作成されたレコードのID
+    #[allow(dead_code)]
+    pub async fn record_status_transition(
+        pool: &PgPool,
+        job_id: Uuid,
+        status: JobStatus,
+        stage: Option<&str>,
+        reason: Option<&str>,
+        actor: StatusTransitionActor,
+    ) -> Result<i64> {
+        let row = sqlx::query(
+            r"
+            INSERT INTO recap_job_status_history (job_id, status, stage, reason, actor)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
+            ",
+        )
+        .bind(job_id)
+        .bind(status.as_ref())
+        .bind(stage)
+        .bind(reason)
+        .bind(actor.as_ref())
+        .fetch_one(pool)
+        .await
+        .context("failed to record status transition")?;
+
+        let id: i64 = row.try_get("id").context("failed to get transition id")?;
+        Ok(id)
+    }
+
+    /// ジョブのステータスを更新し、同時に履歴テーブルにも記録する。
+    /// トランザクションを使用してアトミック性を保証する。
+    pub async fn update_job_status_with_history(
+        pool: &PgPool,
+        job_id: Uuid,
+        status: JobStatus,
+        last_stage: Option<&str>,
+        reason: Option<&str>,
+    ) -> Result<()> {
+        let mut tx = pool.begin().await.context("failed to begin transaction")?;
+
+        // 1. Insert to immutable history table
+        sqlx::query(
+            r"
+            INSERT INTO recap_job_status_history (job_id, status, stage, reason, actor)
+            VALUES ($1, $2, $3, $4, 'system')
+            ",
+        )
+        .bind(job_id)
+        .bind(status.as_ref())
+        .bind(last_stage)
+        .bind(reason)
+        .execute(&mut *tx)
+        .await
+        .context("failed to record status transition in history")?;
+
+        // 2. Update denormalized status on recap_jobs (for backward compatibility)
+        let result = sqlx::query(
+            r"
+            UPDATE recap_jobs
+            SET status = $2,
+                last_stage = COALESCE($3, last_stage),
+                updated_at = NOW()
+            WHERE job_id = $1
+            ",
+        )
+        .bind(job_id)
+        .bind(status.as_ref())
+        .bind(last_stage)
+        .execute(&mut *tx)
+        .await
+        .context("failed to update job status")?;
+
+        if result.rows_affected() == 0 {
+            tracing::warn!(
+                %job_id,
+                ?status,
+                ?last_stage,
+                "update_job_status_with_history affected 0 rows - job may not exist"
+            );
+        }
+
+        tx.commit().await.context("failed to commit transaction")?;
+        Ok(())
+    }
+
+    /// 指定されたジョブのステータス履歴を取得する。
+    #[allow(dead_code)]
+    pub async fn get_status_history(pool: &PgPool, job_id: Uuid) -> Result<Vec<JobStatusTransition>> {
+        let rows = sqlx::query(
+            r"
+            SELECT id, job_id, status, stage, transitioned_at, reason, actor
+            FROM recap_job_status_history
+            WHERE job_id = $1
+            ORDER BY id ASC
+            ",
+        )
+        .bind(job_id)
+        .fetch_all(pool)
+        .await
+        .context("failed to fetch status history")?;
+
+        let mut history = Vec::with_capacity(rows.len());
+        for row in rows {
+            let status_str: String = row.try_get("status")?;
+            let actor_str: String = row.try_get("actor")?;
+
+            let status = match status_str.as_str() {
+                "pending" => JobStatus::Pending,
+                "running" => JobStatus::Running,
+                "completed" => JobStatus::Completed,
+                _ => JobStatus::Failed,
+            };
+
+            history.push(JobStatusTransition {
+                id: row.try_get("id")?,
+                job_id: row.try_get("job_id")?,
+                status,
+                stage: row.try_get("stage")?,
+                transitioned_at: row.try_get("transitioned_at")?,
+                reason: row.try_get("reason")?,
+                actor: StatusTransitionActor::from_str(&actor_str),
+            });
+        }
+
+        Ok(history)
     }
 }

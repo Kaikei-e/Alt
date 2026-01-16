@@ -102,6 +102,13 @@ impl RecapDao {
         Ok(())
     }
 
+    /// Insert clusters and their sentences using batch operations.
+    ///
+    /// Uses two-phase batch insert:
+    /// 1. Batch upsert all clusters, returning their row IDs
+    /// 2. Batch upsert all sentences with mapped cluster_row_ids
+    ///
+    /// This reduces N+M queries to 2 queries for better performance.
     #[allow(dead_code)]
     pub(crate) async fn insert_clusters(
         pool: &PgPool,
@@ -117,58 +124,98 @@ impl RecapDao {
             .await
             .context("failed to begin transaction for cluster insert")?;
 
-        for cluster in clusters {
-            let row = sqlx::query(
-                r"
-                INSERT INTO recap_subworker_clusters
-                    (run_id, cluster_id, size, label, top_terms, stats)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                ON CONFLICT (run_id, cluster_id) DO UPDATE SET
-                    size = EXCLUDED.size,
-                    label = EXCLUDED.label,
-                    top_terms = EXCLUDED.top_terms,
-                    stats = EXCLUDED.stats
-                RETURNING id
-                ",
-            )
-            .bind(run_id)
-            .bind(cluster.cluster_id)
-            .bind(cluster.size)
-            .bind(&cluster.label)
-            .bind(Json(cluster.top_terms.clone()))
-            .bind(Json(cluster.stats.clone()))
-            .fetch_one(&mut *tx)
-            .await
-            .context("failed to insert recap_subworker_cluster")?;
+        // Phase 1: Batch upsert clusters using UNNEST
+        let cluster_ids: Vec<i32> = clusters.iter().map(|c| c.cluster_id).collect();
+        let sizes: Vec<i32> = clusters.iter().map(|c| c.size).collect();
+        let labels: Vec<Option<String>> = clusters.iter().map(|c| c.label.clone()).collect();
+        let top_terms: Vec<serde_json::Value> =
+            clusters.iter().map(|c| c.top_terms.clone()).collect();
+        let stats: Vec<serde_json::Value> = clusters.iter().map(|c| c.stats.clone()).collect();
 
-            let cluster_row_id: i64 = row
-                .try_get("id")
-                .context("cluster insert missing id column")?;
+        let cluster_rows = sqlx::query(
+            r"
+            INSERT INTO recap_subworker_clusters (run_id, cluster_id, size, label, top_terms, stats)
+            SELECT $1, cluster_id, size, label, top_terms, stats
+            FROM UNNEST($2::int[], $3::int[], $4::text[], $5::jsonb[], $6::jsonb[])
+                AS t(cluster_id, size, label, top_terms, stats)
+            ON CONFLICT (run_id, cluster_id) DO UPDATE SET
+                size = EXCLUDED.size,
+                label = EXCLUDED.label,
+                top_terms = EXCLUDED.top_terms,
+                stats = EXCLUDED.stats
+            RETURNING id, cluster_id
+            ",
+        )
+        .bind(run_id)
+        .bind(&cluster_ids)
+        .bind(&sizes)
+        .bind(&labels)
+        .bind(&top_terms)
+        .bind(&stats)
+        .fetch_all(&mut *tx)
+        .await
+        .context("failed to batch insert recap_subworker_clusters")?;
+
+        // Build cluster_id -> row_id mapping
+        let cluster_id_to_row_id: std::collections::HashMap<i32, i64> = cluster_rows
+            .iter()
+            .map(|row| {
+                let cluster_id: i32 = row.try_get("cluster_id").unwrap_or(0);
+                let row_id: i64 = row.try_get("id").unwrap_or(0);
+                (cluster_id, row_id)
+            })
+            .collect();
+
+        // Phase 2: Batch upsert sentences using UNNEST
+        let mut sentence_cluster_row_ids: Vec<i64> = Vec::new();
+        let mut sentence_article_ids: Vec<String> = Vec::new();
+        let mut sentence_paragraph_idxs: Vec<Option<i32>> = Vec::new();
+        let mut sentence_ids: Vec<i32> = Vec::new();
+        let mut sentence_texts: Vec<String> = Vec::new();
+        let mut sentence_langs: Vec<String> = Vec::new();
+        let mut sentence_scores: Vec<f32> = Vec::new();
+
+        for cluster in clusters {
+            let cluster_row_id = *cluster_id_to_row_id
+                .get(&cluster.cluster_id)
+                .context("missing cluster_row_id mapping")?;
 
             for sentence in &cluster.sentences {
-                sqlx::query(
-                    r"
-                    INSERT INTO recap_subworker_sentences
-                        (cluster_row_id, source_article_id, paragraph_idx, sentence_id, sentence_text, lang, score)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    ON CONFLICT (cluster_row_id, source_article_id, sentence_id) DO UPDATE
-                    SET sentence_text = EXCLUDED.sentence_text,
-                        lang = EXCLUDED.lang,
-                        score = EXCLUDED.score,
-                        paragraph_idx = EXCLUDED.paragraph_idx
-                    ",
-                )
-                .bind(cluster_row_id)
-                .bind(&sentence.article_id)
-                .bind(sentence.paragraph_idx)
-                .bind(sentence.sentence_id)
-                .bind(&sentence.text)
-                .bind(&sentence.lang)
-                .bind(sentence.score)
-                .execute(&mut *tx)
-                .await
-                .context("failed to insert recap_subworker_sentence")?;
+                sentence_cluster_row_ids.push(cluster_row_id);
+                sentence_article_ids.push(sentence.article_id.clone());
+                sentence_paragraph_idxs.push(sentence.paragraph_idx);
+                sentence_ids.push(sentence.sentence_id);
+                sentence_texts.push(sentence.text.clone());
+                sentence_langs.push(sentence.lang.clone());
+                sentence_scores.push(sentence.score);
             }
+        }
+
+        if !sentence_cluster_row_ids.is_empty() {
+            sqlx::query(
+                r"
+                INSERT INTO recap_subworker_sentences
+                    (cluster_row_id, source_article_id, paragraph_idx, sentence_id, sentence_text, lang, score)
+                SELECT cluster_row_id, source_article_id, paragraph_idx, sentence_id, sentence_text, lang, score
+                FROM UNNEST($1::bigint[], $2::text[], $3::int[], $4::int[], $5::text[], $6::text[], $7::real[])
+                    AS t(cluster_row_id, source_article_id, paragraph_idx, sentence_id, sentence_text, lang, score)
+                ON CONFLICT (cluster_row_id, source_article_id, sentence_id) DO UPDATE
+                SET sentence_text = EXCLUDED.sentence_text,
+                    lang = EXCLUDED.lang,
+                    score = EXCLUDED.score,
+                    paragraph_idx = EXCLUDED.paragraph_idx
+                ",
+            )
+            .bind(&sentence_cluster_row_ids)
+            .bind(&sentence_article_ids)
+            .bind(&sentence_paragraph_idxs)
+            .bind(&sentence_ids)
+            .bind(&sentence_texts)
+            .bind(&sentence_langs)
+            .bind(&sentence_scores)
+            .execute(&mut *tx)
+            .await
+            .context("failed to batch insert recap_subworker_sentences")?;
         }
 
         tx.commit()

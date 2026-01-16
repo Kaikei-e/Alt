@@ -11,12 +11,12 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::article;
-use super::dao_trait::RecapDao;
-use super::types::JobStatus;
+use super::compat::RecapDao;
+use super::types::{JobStatus, JobStatusTransition, StatusTransitionActor};
 use crate::store::models::{
-    ClusterWithEvidence, DiagnosticEntry, GenreEvaluationMetric, GenreEvaluationRun,
-    GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, NewSubworkerRun, PersistedCluster,
-    PersistedGenre, RawArticle, RecapJob, SubworkerRunStatus,
+    ClusterWithEvidence, DiagnosticEntry, ExtendedRecapJob, GenreEvaluationMetric,
+    GenreEvaluationRun, GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, JobStats,
+    NewSubworkerRun, PersistedCluster, PersistedGenre, RawArticle, RecapJob, SubworkerRunStatus,
 };
 
 #[cfg(test)]
@@ -87,6 +87,31 @@ impl RecapDao for MockRecapDao {
 
     async fn delete_old_jobs(&self, _retention_days: i64) -> Result<u64> {
         Ok(0)
+    }
+
+    async fn record_status_transition(
+        &self,
+        _job_id: Uuid,
+        _status: JobStatus,
+        _stage: Option<&str>,
+        _reason: Option<&str>,
+        _actor: StatusTransitionActor,
+    ) -> Result<i64> {
+        Ok(1)
+    }
+
+    async fn update_job_status_with_history(
+        &self,
+        _job_id: Uuid,
+        _status: JobStatus,
+        _last_stage: Option<&str>,
+        _reason: Option<&str>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn get_status_history(&self, _job_id: Uuid) -> Result<Vec<JobStatusTransition>> {
+        Ok(vec![])
     }
 
     // Stage management
@@ -374,5 +399,77 @@ impl RecapDao for MockRecapDao {
         _since: chrono::DateTime<chrono::Utc>,
     ) -> Result<Vec<(Uuid, Uuid, bool, chrono::DateTime<chrono::Utc>)>> {
         Ok(vec![])
+    }
+
+    // Job Status Dashboard
+    async fn get_extended_jobs(
+        &self,
+        _window_seconds: i64,
+        _limit: i64,
+    ) -> Result<Vec<ExtendedRecapJob>> {
+        Ok(vec![])
+    }
+
+    async fn get_user_jobs(
+        &self,
+        _user_id: Uuid,
+        _window_seconds: i64,
+        _limit: i64,
+    ) -> Result<Vec<ExtendedRecapJob>> {
+        Ok(vec![])
+    }
+
+    async fn get_running_job(&self) -> Result<Option<ExtendedRecapJob>> {
+        Ok(None)
+    }
+
+    async fn get_job_stats(&self) -> Result<JobStats> {
+        Ok(JobStats {
+            success_rate_24h: 0.0,
+            avg_duration_secs: None,
+            total_jobs_24h: 0,
+            running_jobs: 0,
+            failed_jobs_24h: 0,
+        })
+    }
+
+    async fn get_user_article_count_for_job(
+        &self,
+        _job_id: Uuid,
+        _user_id: Uuid,
+    ) -> Result<i32> {
+        Ok(0)
+    }
+
+    async fn get_total_article_count_for_job(&self, _job_id: Uuid) -> Result<i32> {
+        Ok(0)
+    }
+
+    async fn get_genre_progress(
+        &self,
+        _job_id: Uuid,
+    ) -> Result<Vec<(String, String, Option<i32>)>> {
+        Ok(vec![])
+    }
+
+    async fn get_completed_stages(&self, _job_id: Uuid) -> Result<Vec<String>> {
+        Ok(vec![])
+    }
+
+    async fn create_user_triggered_job(
+        &self,
+        _job_id: Uuid,
+        _user_id: Uuid,
+        _note: Option<&str>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn get_user_jobs_count(
+        &self,
+        _user_id: Uuid,
+        _window_seconds: i64,
+    ) -> Result<i32> {
+        Ok(0)
     }
 }

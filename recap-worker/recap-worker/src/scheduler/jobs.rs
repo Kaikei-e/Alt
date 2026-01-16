@@ -75,7 +75,7 @@ impl Scheduler {
         match self.pipeline.execute(&context).await {
             Ok(_) => {
                 self.recap_dao
-                    .update_job_status(context.job_id, JobStatus::Completed, None)
+                    .update_job_status_with_history(context.job_id, JobStatus::Completed, None, None)
                     .await?;
 
                 // Run classification evaluation after successful job completion
@@ -93,10 +93,16 @@ impl Scheduler {
             }
             Err(e) => {
                 tracing::error!(job_id = %context.job_id, error = %e, "job execution failed");
-                // Attempt to record failure status, but preserve original error
+                // Attempt to record failure status with error reason, but preserve original error
+                let error_reason = format!("{:#}", e);
                 if let Err(dao_err) = self
                     .recap_dao
-                    .update_job_status(context.job_id, JobStatus::Failed, None)
+                    .update_job_status_with_history(
+                        context.job_id,
+                        JobStatus::Failed,
+                        None,
+                        Some(&error_reason),
+                    )
                     .await
                 {
                     tracing::error!(job_id = %context.job_id, error = %dao_err, "failed to update job status to failed");

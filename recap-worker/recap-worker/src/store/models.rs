@@ -621,3 +621,124 @@ impl GenreEvaluationMetric {
         }
     }
 }
+
+// ============================================================
+// Job Status Dashboard models
+// ============================================================
+
+use crate::store::dao::{GenreStatus, JobStatus, TriggerSource};
+use std::collections::HashMap;
+
+/// ジョブ進捗イベント - ストリーミングで送信されるペイロード
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobProgressEvent {
+    pub active_job: Option<ActiveJobInfo>,
+    pub recent_jobs: Vec<RecentJobSummary>,
+    pub stats: JobStats,
+    pub user_context: Option<UserJobContext>,
+}
+
+/// アクティブ（実行中）ジョブの詳細情報
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveJobInfo {
+    pub job_id: Uuid,
+    pub status: JobStatus,
+    pub current_stage: Option<String>,
+    pub stage_index: usize,
+    pub stages_completed: Vec<String>,
+    pub genre_progress: HashMap<String, GenreProgressInfo>,
+    pub total_articles: Option<i32>,
+    pub user_article_count: Option<i32>,
+    pub kicked_at: DateTime<Utc>,
+    pub trigger_source: TriggerSource,
+}
+
+/// ジャンルごとの進捗情報
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenreProgressInfo {
+    pub status: GenreStatus,
+    pub cluster_count: Option<i32>,
+    pub article_count: Option<i32>,
+}
+
+/// ステータス遷移レスポンス
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusTransitionResponse {
+    pub id: i64,
+    pub status: JobStatus,
+    pub stage: Option<String>,
+    pub transitioned_at: DateTime<Utc>,
+    pub reason: Option<String>,
+    pub actor: String,
+}
+
+/// 最近のジョブサマリー
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentJobSummary {
+    pub job_id: Uuid,
+    pub status: JobStatus,
+    pub last_stage: Option<String>,
+    pub kicked_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub duration_secs: Option<i64>,
+    pub trigger_source: TriggerSource,
+    pub user_id: Option<Uuid>,
+    pub status_history: Vec<StatusTransitionResponse>,
+}
+
+/// ジョブ統計情報
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobStats {
+    pub success_rate_24h: f64,
+    pub avg_duration_secs: Option<i64>,
+    pub total_jobs_24h: i32,
+    pub running_jobs: i32,
+    pub failed_jobs_24h: i32,
+}
+
+/// ユーザー固有のジョブコンテキスト
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_field_names)]
+pub struct UserJobContext {
+    pub user_article_count: i32,
+    pub user_jobs_count: i32,
+    pub user_feed_ids: Vec<Uuid>,
+}
+
+/// 拡張されたジョブ情報（user_idとtrigger_source含む）
+#[derive(Debug, Clone)]
+pub struct ExtendedRecapJob {
+    pub job_id: Uuid,
+    pub status: JobStatus,
+    pub last_stage: Option<String>,
+    pub kicked_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub user_id: Option<Uuid>,
+    pub trigger_source: TriggerSource,
+    #[allow(dead_code)]
+    pub note: Option<String>,
+}
+
+impl ExtendedRecapJob {
+    pub fn duration_secs(&self) -> Option<i64> {
+        if self.status == JobStatus::Completed || self.status == JobStatus::Failed {
+            Some((self.updated_at - self.kicked_at).num_seconds())
+        } else {
+            None
+        }
+    }
+
+    pub fn to_summary(&self) -> RecentJobSummary {
+        RecentJobSummary {
+            job_id: self.job_id,
+            status: self.status.clone(),
+            last_stage: self.last_stage.clone(),
+            kicked_at: self.kicked_at,
+            updated_at: self.updated_at,
+            duration_secs: self.duration_secs(),
+            trigger_source: self.trigger_source.clone(),
+            user_id: self.user_id,
+            status_history: Vec::new(), // Populated by the API handler
+        }
+    }
+}
