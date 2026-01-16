@@ -6,6 +6,7 @@
 // Currently not wired into main.rs but implemented for future use.
 
 use crate::domain::EnrichedLogEntry;
+use crate::error::AggregatorError;
 use anyhow::Result;
 use chrono::{DateTime, Duration as ChronoDuration, Local};
 use std::path::{Path, PathBuf};
@@ -44,13 +45,16 @@ impl JsonFileExporter {
     }
 
     /// Create with custom max size (MB) and max age (hours)
-    pub async fn with_rotation(file_path: &str, max_size_mb: u64, max_age_hours: i64) -> Result<Self> {
+    pub async fn with_rotation(
+        file_path: &str,
+        max_size_mb: u64,
+        max_age_hours: i64,
+    ) -> Result<Self> {
         let path = Path::new(file_path);
         let directory = path.parent().unwrap_or(Path::new(".")).to_path_buf();
         let base_name = path
             .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "logs".to_string());
+            .map_or_else(|| "logs".to_string(), |s| s.to_string_lossy().to_string());
 
         // Create directory if it doesn't exist
         tokio::fs::create_dir_all(&directory).await.ok();
@@ -71,7 +75,7 @@ impl JsonFileExporter {
 
     async fn open_new_log_file(dir: &Path, base_name: &str) -> Result<File> {
         let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-        let filename = format!("{}_{}.json", base_name, timestamp);
+        let filename = format!("{base_name}_{timestamp}.json");
         let full_path = dir.join(filename);
 
         let file = OpenOptions::new()
@@ -114,7 +118,9 @@ impl JsonFileExporter {
 
     async fn write_line(&self, line: &str) -> Result<()> {
         let mut guard = self.inner.lock().await;
-        let inner = guard.as_mut().ok_or_else(|| anyhow::anyhow!("Exporter closed"))?;
+        let inner = guard
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("Exporter closed"))?;
 
         inner.file.write_all(line.as_bytes()).await?;
         inner.file.write_all(b"\n").await?;
@@ -131,7 +137,8 @@ impl super::LogExporter for JsonFileExporter {
     fn export_batch(
         &self,
         logs: Vec<EnrichedLogEntry>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + '_>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), AggregatorError>> + Send + '_>>
+    {
         Box::pin(async move {
             for log in &logs {
                 if let Err(e) = self.export(log).await {
@@ -183,7 +190,7 @@ mod tests {
         // Verify file was created and contains content
         let files: Vec<_> = std::fs::read_dir(temp_dir.path())
             .unwrap()
-            .filter_map(|e| e.ok())
+            .filter_map(std::result::Result::ok)
             .collect();
         assert_eq!(files.len(), 1);
     }

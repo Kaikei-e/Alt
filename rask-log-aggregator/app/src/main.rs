@@ -42,7 +42,12 @@ async fn main() -> Result<(), AggregatorError> {
 
     if use_json {
         tracing_subscriber::registry()
-            .with(fmt::layer().json().flatten_event(true).with_current_span(true))
+            .with(
+                fmt::layer()
+                    .json()
+                    .flatten_event(true)
+                    .with_current_span(true),
+            )
             .with(EnvFilter::from_default_env().add_directive(Level::INFO.into()))
             .init();
     } else {
@@ -52,7 +57,8 @@ async fn main() -> Result<(), AggregatorError> {
             .init();
     }
 
-    let settings = config::get_configuration().map_err(|e| AggregatorError::Config(e.to_string()))?;
+    let settings =
+        config::get_configuration().map_err(|e| AggregatorError::Config(e.to_string()))?;
     info!("Loaded settings");
 
     let client = Client::default()

@@ -7,12 +7,12 @@
 use std::sync::Arc;
 
 use axum::{
+    Router,
     body::Bytes,
     extract::State,
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::IntoResponse,
     routing::post,
-    Router,
 };
 use opentelemetry_proto::tonic::collector::{
     logs::v1::{ExportLogsServiceRequest, ExportLogsServiceResponse},
@@ -43,10 +43,7 @@ pub fn otlp_routes(state: OTLPState) -> Router {
 /// Accepts: application/x-protobuf
 /// Returns: application/x-protobuf
 #[instrument(skip(state, body), fields(body_size = body.len()))]
-async fn receive_logs_http(
-    State(state): State<OTLPState>,
-    body: Bytes,
-) -> impl IntoResponse {
+async fn receive_logs_http(State(state): State<OTLPState>, body: Bytes) -> impl IntoResponse {
     // Decode protobuf request
     let request = match ExportLogsServiceRequest::decode(body) {
         Ok(req) => req,
@@ -101,10 +98,7 @@ async fn receive_logs_http(
 
 /// OTLP HTTP traces receiver
 #[instrument(skip(state, body), fields(body_size = body.len()))]
-async fn receive_traces_http(
-    State(state): State<OTLPState>,
-    body: Bytes,
-) -> impl IntoResponse {
+async fn receive_traces_http(State(state): State<OTLPState>, body: Bytes) -> impl IntoResponse {
     let request = match ExportTraceServiceRequest::decode(body) {
         Ok(req) => req,
         Err(e) => {

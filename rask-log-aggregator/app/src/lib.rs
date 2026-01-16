@@ -1,4 +1,9 @@
-#![warn(rust_2018_idioms)]
+#![deny(warnings)]
+#![deny(rust_2018_idioms)]
+#![warn(clippy::pedantic)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::doc_markdown)]
 
 pub mod config;
 pub mod domain;

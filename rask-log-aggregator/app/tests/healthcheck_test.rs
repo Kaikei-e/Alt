@@ -12,10 +12,8 @@ async fn test_healthcheck_succeeds_when_server_running() {
 
     // Start a minimal mock server that responds to /v1/health
     let mock_server = tokio::spawn(async move {
-        let app = axum::Router::new().route(
-            "/v1/health",
-            axum::routing::get(|| async { "Healthy" }),
-        );
+        let app =
+            axum::Router::new().route("/v1/health", axum::routing::get(|| async { "Healthy" }));
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port))
             .await
             .unwrap();
@@ -27,7 +25,10 @@ async fn test_healthcheck_succeeds_when_server_running() {
 
     // Run healthcheck
     let result = rask::healthcheck_with_port(port).await;
-    assert!(result.is_ok(), "Healthcheck should succeed when server is running");
+    assert!(
+        result.is_ok(),
+        "Healthcheck should succeed when server is running"
+    );
 
     mock_server.abort();
 }
@@ -42,7 +43,10 @@ async fn test_healthcheck_fails_when_server_not_running() {
 
     // Run healthcheck without starting server
     let result = rask::healthcheck_with_port(port).await;
-    assert!(result.is_err(), "Healthcheck should fail when server is not running");
+    assert!(
+        result.is_err(),
+        "Healthcheck should fail when server is not running"
+    );
 }
 
 /// Test that healthcheck fails when server returns non-2xx status

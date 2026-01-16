@@ -101,7 +101,10 @@ fn test_http_fields_added_to_fields_map() {
     // Verify HTTP fields are added to fields Map
     let fields_map: HashMap<String, String> = log_row.fields.into_iter().collect();
     assert_eq!(fields_map.get("http_method"), Some(&"GET".to_string()));
-    assert_eq!(fields_map.get("http_path"), Some(&"/api/health".to_string()));
+    assert_eq!(
+        fields_map.get("http_path"),
+        Some(&"/api/health".to_string())
+    );
     assert_eq!(fields_map.get("http_status"), Some(&"200".to_string()));
     assert_eq!(fields_map.get("http_size"), Some(&"1024".to_string()));
     assert_eq!(fields_map.get("http_ip"), Some(&"192.168.1.1".to_string()));

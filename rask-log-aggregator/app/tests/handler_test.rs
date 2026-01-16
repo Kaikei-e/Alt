@@ -5,6 +5,7 @@ use axum::{
 };
 use axum_test::TestServer;
 use rask::domain::EnrichedLogEntry;
+use rask::error::AggregatorError;
 use rask::log_exporter::LogExporter;
 use std::future::Future;
 use std::pin::Pin;
@@ -31,7 +32,7 @@ impl LogExporter for MockExporter {
     fn export_batch(
         &self,
         logs: Vec<EnrichedLogEntry>,
-    ) -> Pin<Box<dyn Future<Output = Result<(), anyhow::Error>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(), AggregatorError>> + Send + '_>> {
         let exported_logs = self.exported_logs.clone();
         Box::pin(async move {
             let mut guard = exported_logs.lock().unwrap();
@@ -42,18 +43,13 @@ impl LogExporter for MockExporter {
 }
 
 fn create_test_app(exporter: Arc<dyn LogExporter>) -> Router {
-    let health_router = Router::new().route(
-        "/v1/health",
-        get(|| async { "Healthy" }),
-    );
+    let health_router = Router::new().route("/v1/health", get(|| async { "Healthy" }));
 
     let aggregate_router = Router::new()
         .route("/v1/aggregate", post(aggregate_handler))
         .with_state(exporter);
 
-    Router::new()
-        .merge(health_router)
-        .merge(aggregate_router)
+    Router::new().merge(health_router).merge(aggregate_router)
 }
 
 async fn aggregate_handler(
@@ -125,7 +121,7 @@ async fn test_aggregate_endpoint_handles_multiple_logs() {
     let app = create_test_app(exporter);
     let server = TestServer::new(app).unwrap();
 
-    let logs = vec![
+    let logs = [
         serde_json::json!({
             "service_type": "svc1",
             "log_type": "app",

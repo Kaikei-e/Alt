@@ -1,7 +1,9 @@
 pub mod clickhouse_exporter;
+pub mod disk_cleaner;
 pub mod json_file_exporter;
 
 use crate::domain::EnrichedLogEntry;
+use crate::error::AggregatorError;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -12,5 +14,5 @@ pub trait LogExporter: Send + Sync {
     fn export_batch(
         &self,
         logs: Vec<EnrichedLogEntry>,
-    ) -> Pin<Box<dyn Future<Output = Result<(), anyhow::Error>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<(), AggregatorError>> + Send + '_>>;
 }

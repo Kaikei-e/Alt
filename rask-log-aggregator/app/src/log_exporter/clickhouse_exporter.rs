@@ -1,5 +1,9 @@
+// Nanosecond timestamps (u64) intentionally cast to i64 for ClickHouse.
+// This won't overflow until year 2262.
+#![allow(clippy::cast_possible_wrap)]
+
 use crate::domain::{EnrichedLogEntry, LogLevel, OTelLog, OTelTrace};
-use anyhow::Result;
+use crate::error::AggregatorError;
 use chrono::{DateTime, Utc};
 use clickhouse::Client;
 use clickhouse::serde::chrono::datetime64::millis;
@@ -76,6 +80,7 @@ pub struct ClickHouseExporter {
 }
 
 impl ClickHouseExporter {
+    #[must_use]
     pub fn new(client: Client) -> Self {
         Self { client }
     }
@@ -85,7 +90,8 @@ impl super::LogExporter for ClickHouseExporter {
     fn export_batch(
         &self,
         logs: Vec<EnrichedLogEntry>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + '_>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), AggregatorError>> + Send + '_>>
+    {
         Box::pin(async move {
             // 変換時に所有権を奪い clone を削減
             let rows: Vec<LogRow> = logs.into_iter().map(LogRow::from).collect();
@@ -100,7 +106,7 @@ impl super::LogExporter for ClickHouseExporter {
 
             for row in &rows {
                 match inserter.write(row) {
-                    Ok(_) => (),
+                    Ok(()) => (),
                     Err(e) => {
                         error!("Failed to write row to ClickHouse: {e}");
                     }
@@ -242,7 +248,6 @@ fn string_to_fixed_bytes<const N: usize>(s: &str) -> [u8; N] {
     result
 }
 
-
 /// Convert HashMap to Vec for ClickHouse Map type
 fn hashmap_to_vec(map: HashMap<String, String>) -> Vec<(String, String)> {
     map.into_iter().collect()
@@ -250,7 +255,7 @@ fn hashmap_to_vec(map: HashMap<String, String>) -> Vec<(String, String)> {
 
 impl ClickHouseExporter {
     /// Export OpenTelemetry logs to ClickHouse
-    pub async fn export_otel_logs(&self, logs: Vec<OTelLog>) -> Result<()> {
+    pub async fn export_otel_logs(&self, logs: Vec<OTelLog>) -> Result<(), AggregatorError> {
         if logs.is_empty() {
             return Ok(());
         }
@@ -275,7 +280,7 @@ impl ClickHouseExporter {
     }
 
     /// Export OpenTelemetry traces to ClickHouse
-    pub async fn export_otel_traces(&self, traces: Vec<OTelTrace>) -> Result<()> {
+    pub async fn export_otel_traces(&self, traces: Vec<OTelTrace>) -> Result<(), AggregatorError> {
         if traces.is_empty() {
             return Ok(());
         }

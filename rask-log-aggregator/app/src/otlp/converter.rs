@@ -3,11 +3,8 @@
 use std::collections::HashMap;
 
 use opentelemetry_proto::tonic::{
-    collector::{
-        logs::v1::ExportLogsServiceRequest,
-        trace::v1::ExportTraceServiceRequest,
-    },
-    common::v1::{any_value, AnyValue, KeyValue},
+    collector::{logs::v1::ExportLogsServiceRequest, trace::v1::ExportTraceServiceRequest},
+    common::v1::{AnyValue, KeyValue, any_value},
     logs::v1::LogRecord,
 };
 
@@ -127,7 +124,9 @@ fn convert_single_span(
         service_name: service_name.to_string(),
         resource_attributes: resource_attrs.clone(),
         span_attributes: convert_attributes(&span.attributes),
-        duration: (span.end_time_unix_nano.saturating_sub(span.start_time_unix_nano)) as i64,
+        duration: (span
+            .end_time_unix_nano
+            .saturating_sub(span.start_time_unix_nano)) as i64,
         status_code: span
             .status
             .as_ref()
@@ -163,11 +162,7 @@ fn extract_string_value(value: &AnyValue) -> Option<String> {
         Some(any_value::Value::BoolValue(b)) => Some(b.to_string()),
         Some(any_value::Value::BytesValue(b)) => Some(hex::encode(b)),
         Some(any_value::Value::ArrayValue(arr)) => {
-            let items: Vec<String> = arr
-                .values
-                .iter()
-                .filter_map(extract_string_value)
-                .collect();
+            let items: Vec<String> = arr.values.iter().filter_map(extract_string_value).collect();
             Some(format!("[{}]", items.join(", ")))
         }
         Some(any_value::Value::KvlistValue(kv)) => {
@@ -224,13 +219,10 @@ mod tests {
     #[test]
     fn test_encode_trace_id() {
         let bytes = vec![
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-            0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+            0x0f, 0x10,
         ];
-        assert_eq!(
-            encode_trace_id(&bytes),
-            "0102030405060708090a0b0c0d0e0f10"
-        );
+        assert_eq!(encode_trace_id(&bytes), "0102030405060708090a0b0c0d0e0f10");
     }
 
     #[test]

@@ -25,15 +25,15 @@ pub async fn healthcheck_with_port(port: u16) -> Result<(), HealthcheckError> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(2))
         .build()
-        .map_err(|e| HealthcheckError(format!("Failed to create HTTP client: {}", e)))?;
+        .map_err(|e| HealthcheckError(format!("Failed to create HTTP client: {e}")))?;
 
-    let url = format!("http://127.0.0.1:{}/v1/health", port);
+    let url = format!("http://127.0.0.1:{port}/v1/health");
 
     let resp = client
         .get(&url)
         .send()
         .await
-        .map_err(|e| HealthcheckError(format!("Request failed: {}", e)))?;
+        .map_err(|e| HealthcheckError(format!("Request failed: {e}")))?;
 
     if resp.status().is_success() {
         Ok(())
