@@ -1,4 +1,4 @@
-h1:jTfnxsthEDgVd6+dnuWolzamjFrPrlP1v7aH0JLB2SY=
+h1:cElGvInPxv+x4DJA6r/DzMyZGNdrgkanEuqN7Q7ICOk=
 20240101000000_create_recap_subworker_tables.sql h1:+6xgDONWHNmxnO9fpHkciX6pKuvzuwGYlp68GIO+rxw=
 20240101000100_create_recap_job_tables.sql h1:hGr/YECmSltZD0SmwSXcfoRJWQoUTIvpx7DygDCpZMA=
 20240101000200_create_recap_final_sections.sql h1:Rk51k37W+Txj8k5Ux8ZynZNOpPyNXFDhOiXMV+f52xQ=
@@ -18,3 +18,6 @@ h1:jTfnxsthEDgVd6+dnuWolzamjFrPrlP1v7aH0JLB2SY=
 20251212000000_add_job_state_tracking.sql h1:Yzzd5kmGY39py89Idblzjt14WqUkfLLIOKKjwpcbT0Q=
 20251212000001_add_recap_run_diagnostics.sql h1:vUF3uHAWYZ2CxSVuKYEF1b9nVwvNDtkJHYmVyqdN+Ec=
 20260101000000_add_data_retention.sql h1:SLfpDjxUabFoxd0iyRqzdKBO0PuosWai7TZfPauooRE=
+20260116000000_add_user_id_to_recap_jobs.sql h1:/Rgdf8TF4PMb7V7vTUlVNpiVjnDWpTuUlvYvygtJvvM=
+20260116100000_repair_stuck_pending_jobs.sql h1:NZylK9NYEFnBf84dD8FlJMWFOgrMRjo3qEzYNSY7Ri0=
+20260118000000_add_job_status_history.sql h1:otEiuSMy+MvVDblyJvZ0iNTDxkC//OhVBdLwFbqru6U=
