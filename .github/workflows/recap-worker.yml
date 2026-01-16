@@ -90,7 +90,7 @@ jobs:
           rm -rf ~/.rustup || true
           rm -rf ~/.cargo || true
           # Use official rustup (actions-rs is deprecated)
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=stable --no-modify-path
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=stable --profile=minimal --no-modify-path
           # Add cargo to PATH
           export PATH="$HOME/.cargo/bin:$PATH"
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH

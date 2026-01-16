@@ -74,7 +74,7 @@ jobs:
           rm -rf ~/.rustup || true
           rm -rf ~/.cargo || true
           # 公式のRustupを使用（actions-rs は非推奨）
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=${{ inputs.toolchain }} --no-modify-path
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=${{ inputs.toolchain }} --profile=minimal --no-modify-path
           # PATH に cargo を追加
           export PATH="$HOME/.cargo/bin:$PATH"
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
