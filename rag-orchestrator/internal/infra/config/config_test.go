@@ -16,7 +16,7 @@ func TestLoad_RAGRetrievalParameters_Defaults(t *testing.T) {
 		"RAG_RRF_K",
 	}
 	for _, key := range envVars {
-		os.Unsetenv(key)
+		_ = os.Unsetenv(key)
 	}
 
 	cfg := Load()
@@ -30,16 +30,10 @@ func TestLoad_RAGRetrievalParameters_Defaults(t *testing.T) {
 
 func TestLoad_RAGRetrievalParameters_FromEnv(t *testing.T) {
 	// Set custom values
-	os.Setenv("RAG_SEARCH_LIMIT", "100")
-	os.Setenv("RAG_QUOTA_ORIGINAL", "7")
-	os.Setenv("RAG_QUOTA_EXPANDED", "3")
-	os.Setenv("RAG_RRF_K", "50.0")
-	defer func() {
-		os.Unsetenv("RAG_SEARCH_LIMIT")
-		os.Unsetenv("RAG_QUOTA_ORIGINAL")
-		os.Unsetenv("RAG_QUOTA_EXPANDED")
-		os.Unsetenv("RAG_RRF_K")
-	}()
+	t.Setenv("RAG_SEARCH_LIMIT", "100")
+	t.Setenv("RAG_QUOTA_ORIGINAL", "7")
+	t.Setenv("RAG_QUOTA_EXPANDED", "3")
+	t.Setenv("RAG_RRF_K", "50.0")
 
 	cfg := Load()
 
@@ -57,7 +51,7 @@ func TestLoad_TemporalBoostParameters_Defaults(t *testing.T) {
 		"TEMPORAL_BOOST_18H",
 	}
 	for _, key := range envVars {
-		os.Unsetenv(key)
+		_ = os.Unsetenv(key)
 	}
 
 	cfg := Load()
@@ -69,14 +63,9 @@ func TestLoad_TemporalBoostParameters_Defaults(t *testing.T) {
 }
 
 func TestLoad_TemporalBoostParameters_FromEnv(t *testing.T) {
-	os.Setenv("TEMPORAL_BOOST_6H", "1.5")
-	os.Setenv("TEMPORAL_BOOST_12H", "1.25")
-	os.Setenv("TEMPORAL_BOOST_18H", "1.1")
-	defer func() {
-		os.Unsetenv("TEMPORAL_BOOST_6H")
-		os.Unsetenv("TEMPORAL_BOOST_12H")
-		os.Unsetenv("TEMPORAL_BOOST_18H")
-	}()
+	t.Setenv("TEMPORAL_BOOST_6H", "1.5")
+	t.Setenv("TEMPORAL_BOOST_12H", "1.25")
+	t.Setenv("TEMPORAL_BOOST_18H", "1.1")
 
 	cfg := Load()
 
@@ -115,10 +104,9 @@ func TestGetEnvFloat64(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envValue != "" {
-				os.Setenv("TEST_FLOAT", tt.envValue)
-				defer os.Unsetenv("TEST_FLOAT")
+				t.Setenv("TEST_FLOAT", tt.envValue)
 			} else {
-				os.Unsetenv("TEST_FLOAT")
+				_ = os.Unsetenv("TEST_FLOAT")
 			}
 
 			result := getEnvFloat64("TEST_FLOAT", tt.fallback)
@@ -150,8 +138,7 @@ func TestGetEnvFloat32(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Setenv("TEST_FLOAT32", tt.envValue)
-			defer os.Unsetenv("TEST_FLOAT32")
+			t.Setenv("TEST_FLOAT32", tt.envValue)
 
 			result := getEnvFloat32("TEST_FLOAT32", tt.fallback)
 			assert.Equal(t, tt.expected, result)
@@ -160,7 +147,7 @@ func TestGetEnvFloat32(t *testing.T) {
 }
 
 func TestLoad_DynamicLanguageAllocation_Default(t *testing.T) {
-	os.Unsetenv("RAG_DYNAMIC_LANGUAGE_ALLOCATION")
+	_ = os.Unsetenv("RAG_DYNAMIC_LANGUAGE_ALLOCATION")
 
 	cfg := Load()
 
@@ -168,8 +155,7 @@ func TestLoad_DynamicLanguageAllocation_Default(t *testing.T) {
 }
 
 func TestLoad_DynamicLanguageAllocation_Disabled(t *testing.T) {
-	os.Setenv("RAG_DYNAMIC_LANGUAGE_ALLOCATION", "false")
-	defer os.Unsetenv("RAG_DYNAMIC_LANGUAGE_ALLOCATION")
+	t.Setenv("RAG_DYNAMIC_LANGUAGE_ALLOCATION", "false")
 
 	cfg := Load()
 
