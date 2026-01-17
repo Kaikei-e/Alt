@@ -119,6 +119,7 @@ pub struct Config {
     clustering_job_timeout: Duration,
     clustering_min_success_genres: usize,
     clustering_stuck_threshold: Duration,
+    batch_summary_chunk_size: usize,
 }
 
 #[derive(Debug, Error)]
@@ -139,6 +140,7 @@ struct BasicConfig {
     llm_prompt_version: String,
     llm_max_concurrency: NonZeroUsize,
     llm_summary_timeout: Duration,
+    batch_summary_chunk_size: usize,
 }
 
 struct ExternalServiceConfig {
@@ -357,6 +359,7 @@ impl Config {
             clustering_job_timeout,
             clustering_min_success_genres,
             clustering_stuck_threshold,
+            batch_summary_chunk_size: basic.batch_summary_chunk_size,
         }
     }
 
@@ -673,6 +676,11 @@ impl Config {
     pub fn clustering_stuck_threshold(&self) -> Duration {
         self.clustering_stuck_threshold
     }
+
+    #[must_use]
+    pub fn batch_summary_chunk_size(&self) -> usize {
+        self.batch_summary_chunk_size
+    }
 }
 
 fn load_basic_config() -> Result<BasicConfig, ConfigError> {
@@ -682,6 +690,7 @@ fn load_basic_config() -> Result<BasicConfig, ConfigError> {
         env::var("LLM_PROMPT_VERSION").unwrap_or_else(|_| "recap-ja-v2".to_string());
     let llm_max_concurrency = parse_non_zero_usize("LLM_MAX_CONCURRENCY", 1)?;
     let llm_summary_timeout = parse_duration_secs("LLM_SUMMARY_TIMEOUT_SECS", 600)?;
+    let batch_summary_chunk_size = parse_usize("RECAP_BATCH_SUMMARY_CHUNK_SIZE", 25)?;
 
     Ok(BasicConfig {
         recap_db_dsn,
@@ -689,6 +698,7 @@ fn load_basic_config() -> Result<BasicConfig, ConfigError> {
         llm_prompt_version,
         llm_max_concurrency,
         llm_summary_timeout,
+        batch_summary_chunk_size,
     })
 }
 

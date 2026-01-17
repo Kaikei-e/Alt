@@ -873,20 +873,20 @@ impl MlLlmDispatchStage {
             return genre_results;
         }
 
-        // 4. バッチ API 呼び出し（50件ごとにチャンク分割）
-        const BATCH_SUMMARY_CHUNK_SIZE: usize = 50;
+        // 4. バッチ API 呼び出し（設定可能なチャンクサイズで分割）
+        let batch_summary_chunk_size = self.config.batch_summary_chunk_size();
 
         info!(
             job_id = %job.job_id,
             request_count = valid_requests.len(),
-            chunk_count = valid_requests.len().div_ceil(BATCH_SUMMARY_CHUNK_SIZE),
+            chunk_count = valid_requests.len().div_ceil(batch_summary_chunk_size),
             "calling batch summary API in chunks"
         );
 
         let mut all_responses: Vec<SummaryResponse> = Vec::new();
         let mut all_errors: Vec<BatchSummaryError> = Vec::new();
 
-        for (chunk_idx, chunk) in valid_requests.chunks(BATCH_SUMMARY_CHUNK_SIZE).enumerate() {
+        for (chunk_idx, chunk) in valid_requests.chunks(batch_summary_chunk_size).enumerate() {
             info!(
                 job_id = %job.job_id,
                 chunk_idx = chunk_idx,
