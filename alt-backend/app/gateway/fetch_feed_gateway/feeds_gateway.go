@@ -41,12 +41,12 @@ func NewFetchFeedsGatewayWithRateLimiter(pool *pgxpool.Pool, rateLimiter *rate_l
 func (g *FetchFeedsGateway) FetchFeeds(ctx context.Context, link string) ([]*domain.FeedItem, error) {
 	// Apply rate limiting if rate limiter is configured
 	if g.rateLimiter != nil {
-		slog.Info("Applying rate limiting for external feed request", "url", link)
+		slog.InfoContext(ctx, "Applying rate limiting for external feed request", "url", link)
 		if err := g.rateLimiter.WaitForHost(ctx, link); err != nil {
-			slog.Error("Rate limiting failed", "url", link, "error", err)
+			slog.ErrorContext(ctx, "Rate limiting failed", "url", link, "error", err)
 			return nil, errors.New("rate limiting failed")
 		}
-		slog.Info("Rate limiting passed, proceeding with feed request", "url", link)
+		slog.InfoContext(ctx, "Rate limiting passed, proceeding with feed request", "url", link)
 	}
 
 	// Use provided HTTP client if available, otherwise create a secure one

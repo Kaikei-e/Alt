@@ -9,7 +9,7 @@ import (
 
 func (a *AltDBRepository) GetFeedURLsByArticleIDs(ctx context.Context, articleIDs []string) ([]models.FeedAndArticle, error) {
 	if len(articleIDs) == 0 {
-		slog.Info("no article IDs provided, returning empty map")
+		slog.InfoContext(ctx, "no article IDs provided, returning empty map")
 		return nil, nil
 	}
 
@@ -20,12 +20,12 @@ func (a *AltDBRepository) GetFeedURLsByArticleIDs(ctx context.Context, articleID
 		WHERE a.id = ANY($1)
 	`
 
-	slog.Info("querying feed URLs by article IDs",
+	slog.InfoContext(ctx, "querying feed URLs by article IDs",
 		"article_count", len(articleIDs))
 
 	rows, err := a.pool.Query(ctx, queryString, articleIDs)
 	if err != nil {
-		slog.Error("failed to query feed URLs by article IDs",
+		slog.ErrorContext(ctx, "failed to query feed URLs by article IDs",
 			"error", err,
 			"article_count", len(articleIDs))
 		return nil, err
@@ -38,7 +38,7 @@ func (a *AltDBRepository) GetFeedURLsByArticleIDs(ctx context.Context, articleID
 		var feedAndArticle models.FeedAndArticle
 		err := rows.Scan(&feedAndArticle.FeedID, &feedAndArticle.ArticleID, &feedAndArticle.URL, &feedAndArticle.FeedTitle, &feedAndArticle.ArticleTitle)
 		if err != nil {
-			slog.Error("failed to scan feed URL row",
+			slog.ErrorContext(ctx, "failed to scan feed URL row",
 				"error", err)
 			return nil, err
 		}
@@ -46,7 +46,7 @@ func (a *AltDBRepository) GetFeedURLsByArticleIDs(ctx context.Context, articleID
 	}
 
 	if err := rows.Err(); err != nil {
-		slog.Error("error iterating feed URL rows",
+		slog.ErrorContext(ctx, "error iterating feed URL rows",
 			"error", err)
 		return nil, err
 	}

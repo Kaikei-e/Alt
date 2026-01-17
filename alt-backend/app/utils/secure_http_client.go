@@ -136,7 +136,7 @@ func (t *EnvoyProxyTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	// Add required X-Target-Domain header for Envoy Dynamic Forward Proxy
 	clonedReq.Header.Set("X-Target-Domain", originalHost)
 
-	slog.Info("Envoy proxy request transformation",
+	slog.InfoContext(req.Context(), "Envoy proxy request transformation",
 		"original_url", req.URL.String(),
 		"transformed_url", clonedReq.URL.String(),
 		"target_domain", originalHost)
@@ -206,7 +206,7 @@ func (t *SidecarProxyTransport) RoundTrip(req *http.Request) (*http.Response, er
 	// Add trace header for debugging
 	clonedReq.Header.Set("X-Proxy-Via", "sidecar-proxy")
 
-	slog.Info("Sidecar proxy request transformation",
+	slog.InfoContext(req.Context(), "Sidecar proxy request transformation",
 		"original_url", originalURL,
 		"transformed_url", clonedReq.URL.String(),
 		"sidecar_proxy", t.SidecarProxyURL)

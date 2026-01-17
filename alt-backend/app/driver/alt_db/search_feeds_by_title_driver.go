@@ -15,7 +15,7 @@ import (
 func (a *AltDBRepository) SearchFeedsByTitle(ctx context.Context, query string, userID string) ([]*domain.FeedItem, error) {
 	// Return empty result for empty query
 	if strings.TrimSpace(query) == "" {
-		slog.Info("empty query provided, returning empty results")
+		slog.InfoContext(ctx, "empty query provided, returning empty results")
 		return []*domain.FeedItem{}, nil
 	}
 
@@ -32,13 +32,13 @@ func (a *AltDBRepository) SearchFeedsByTitle(ctx context.Context, query string, 
 		LIMIT 50
 	`
 
-	slog.Info("searching feeds by title",
+	slog.InfoContext(ctx, "searching feeds by title",
 		"query", query,
 		"user_id", userID)
 
 	rows, err := a.pool.Query(ctx, queryString, userID, searchPattern)
 	if err != nil {
-		slog.Error("failed to search feeds by title",
+		slog.ErrorContext(ctx, "failed to search feeds by title",
 			"error", err,
 			"query", query,
 			"user_id", userID)
@@ -63,7 +63,7 @@ func (a *AltDBRepository) SearchFeedsByTitle(ctx context.Context, query string, 
 			&createdAt,
 		)
 		if err != nil {
-			slog.Error("failed to scan feed row",
+			slog.ErrorContext(ctx, "failed to scan feed row",
 				"error", err)
 			return nil, err
 		}
@@ -82,12 +82,12 @@ func (a *AltDBRepository) SearchFeedsByTitle(ctx context.Context, query string, 
 	}
 
 	if err := rows.Err(); err != nil {
-		slog.Error("error iterating feed rows",
+		slog.ErrorContext(ctx, "error iterating feed rows",
 			"error", err)
 		return nil, err
 	}
 
-	slog.Info("feed search completed",
+	slog.InfoContext(ctx, "feed search completed",
 		"query", query,
 		"user_id", userID,
 		"results_count", len(feeds))

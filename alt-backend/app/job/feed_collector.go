@@ -21,12 +21,12 @@ const maxConsecutiveFailures = 5
 func CollectSingleFeed(ctx context.Context, feedURL url.URL, rateLimiter *rate_limiter.HostRateLimiter) (*rssFeed.Feed, error) {
 	// Apply rate limiting if rate limiter is configured
 	if rateLimiter != nil {
-		slog.Info("Applying rate limiting for single feed collection", "url", feedURL.String())
+		slog.InfoContext(ctx, "Applying rate limiting for single feed collection", "url", feedURL.String())
 		if err := rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
-			slog.Error("Rate limiting failed for single feed collection", "url", feedURL.String(), "error", err)
+			slog.ErrorContext(ctx, "Rate limiting failed for single feed collection", "url", feedURL.String(), "error", err)
 			return nil, fmt.Errorf("rate limiting failed: %w", err)
 		}
-		slog.Info("Rate limiting passed, proceeding with single feed collection", "url", feedURL.String())
+		slog.InfoContext(ctx, "Rate limiting passed, proceeding with single feed collection", "url", feedURL.String())
 	}
 
 	// Use unified HTTP client factory for secure RSS feed fetching
@@ -36,11 +36,11 @@ func CollectSingleFeed(ctx context.Context, feedURL url.URL, rateLimiter *rate_l
 	fp.Client = httpClient
 	feed, err := fp.ParseURL(feedURL.String())
 	if err != nil {
-		logger.Logger.Error("Error parsing feed", "error", err)
+		logger.Logger.ErrorContext(ctx, "Error parsing feed", "error", err)
 		return nil, err
 	}
 
-	logger.Logger.Info("Feed collected", "feed title", feed.Title)
+	logger.Logger.InfoContext(ctx, "Feed collected", "feed title", feed.Title)
 
 	return feed, nil
 }
@@ -59,12 +59,12 @@ func validateFeedURL(ctx context.Context, feedURL url.URL, rateLimiter *rate_lim
 
 	// Apply rate limiting if rate limiter is configured
 	if rateLimiter != nil {
-		slog.Info("Applying rate limiting for feed URL validation", "url", feedURL.String())
+		slog.InfoContext(ctx, "Applying rate limiting for feed URL validation", "url", feedURL.String())
 		if err := rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
-			slog.Error("Rate limiting failed for feed URL validation", "url", feedURL.String(), "error", err)
+			slog.ErrorContext(ctx, "Rate limiting failed for feed URL validation", "url", feedURL.String(), "error", err)
 			return fmt.Errorf("rate limiting failed for validation: %w", err)
 		}
-		slog.Info("Rate limiting passed, proceeding with feed URL validation", "url", feedURL.String())
+		slog.InfoContext(ctx, "Rate limiting passed, proceeding with feed URL validation", "url", feedURL.String())
 	}
 
 	// Try to make a HEAD request to check if URL is accessible using unified HTTP client factory
@@ -77,12 +77,12 @@ func validateFeedURL(ctx context.Context, feedURL url.URL, rateLimiter *rate_lim
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.Logger.Debug("Failed to close response body", "error", closeErr)
+			logger.Logger.DebugContext(ctx, "Failed to close response body", "error", closeErr)
 		}
 	}()
 
 	// Log response details for debugging
-	logger.Logger.Info("Feed URL validation response",
+	logger.Logger.InfoContext(ctx, "Feed URL validation response",
 		"url", feedURL.String(),
 		"status_code", resp.StatusCode,
 		"content_type", resp.Header.Get("Content-Type"),
@@ -115,7 +115,7 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *
 	for i, feedURL := range feedURLs {
 		// First validate the URL
 		if err := validateFeedURL(ctx, feedURL, rateLimiter); err != nil {
-			logger.Logger.Error("Feed URL validation failed", "url", feedURL.String(), "error", err)
+			logger.Logger.ErrorContext(ctx, "Feed URL validation failed", "url", feedURL.String(), "error", err)
 			errors = append(errors, err)
 			handleFeedError(ctx, feedURL, err, rateLimiter, availabilityRepo)
 			continue
@@ -123,48 +123,48 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *
 
 		// Apply rate limiting before parsing (separate from validation rate limiting)
 		if rateLimiter != nil {
-			slog.Info("Applying rate limiting for multiple feed collection", "url", feedURL.String())
+			slog.InfoContext(ctx, "Applying rate limiting for multiple feed collection", "url", feedURL.String())
 			if err := rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
-				slog.Error("Rate limiting failed for multiple feed collection", "url", feedURL.String(), "error", err)
+				slog.ErrorContext(ctx, "Rate limiting failed for multiple feed collection", "url", feedURL.String(), "error", err)
 				errors = append(errors, fmt.Errorf("rate limiting failed: %w", err))
 				continue
 			}
-			slog.Info("Rate limiting passed, proceeding with multiple feed collection", "url", feedURL.String())
+			slog.InfoContext(ctx, "Rate limiting passed, proceeding with multiple feed collection", "url", feedURL.String())
 		}
 
 		feed, err := fp.ParseURL(feedURL.String())
 		if err != nil {
-			logger.Logger.Error("Error parsing feed", "url", feedURL.String(), "error", err)
+			logger.Logger.ErrorContext(ctx, "Error parsing feed", "url", feedURL.String(), "error", err)
 			errors = append(errors, err)
 			handleFeedError(ctx, feedURL, err, rateLimiter, availabilityRepo)
 			continue // Continue processing other feeds instead of failing entirely
 		}
 
 		feeds = append(feeds, feed)
-		logger.Logger.Info("Successfully parsed feed", "url", feedURL.String(), "title", feed.Title)
+		logger.Logger.InfoContext(ctx, "Successfully parsed feed", "url", feedURL.String(), "title", feed.Title)
 
 		// Reset failure count on success
 		if availabilityRepo != nil {
 			if err := availabilityRepo.ResetFeedLinkFailures(ctx, feedURL.String()); err != nil {
-				logger.Logger.Warn("Failed to reset feed failures", "url", feedURL.String(), "error", err)
+				logger.Logger.WarnContext(ctx, "Failed to reset feed failures", "url", feedURL.String(), "error", err)
 			}
 		}
 
 		// Note: Rate limiting replaced the hardcoded sleep
-		logger.Logger.Info("Feed collection progress", "current", i+1, "total", len(feedURLs))
+		logger.Logger.InfoContext(ctx, "Feed collection progress", "current", i+1, "total", len(feedURLs))
 	}
 
 	// Log summary of collection results
-	logger.Logger.Info("Feed collection summary", "successful", len(feeds), "failed", len(errors), "total", len(feedURLs))
+	logger.Logger.InfoContext(ctx, "Feed collection summary", "successful", len(feeds), "failed", len(errors), "total", len(feedURLs))
 
 	// Only return error if all feeds failed
 	if len(feeds) == 0 && len(errors) > 0 {
-		logger.Logger.Error("All feeds failed to parse", "total_errors", len(errors))
+		logger.Logger.ErrorContext(ctx, "All feeds failed to parse", "total_errors", len(errors))
 		return nil, errors[0] // Return the first error
 	}
 
 	feedItems := ConvertFeedToFeedItem(feeds)
-	logger.Logger.Info("Feed items", "feedItems count", len(feedItems))
+	logger.Logger.InfoContext(ctx, "Feed items", "feedItems count", len(feedItems))
 	return feedItems, nil
 }
 
@@ -174,23 +174,23 @@ func handleFeedError(ctx context.Context, feedURL url.URL, err error, rateLimite
 		// For rate limiting errors, increase backoff for this host
 		if rateLimiter != nil {
 			rateLimiter.RecordRateLimitHit(feedURL.Host, 0) // 0 means use default backoff
-			logger.Logger.Warn("Rate limited by target site, backing off",
+			logger.Logger.WarnContext(ctx, "Rate limited by target site, backing off",
 				"url", feedURL.String())
 		}
 	} else if isPersistentError(err) && availabilityRepo != nil {
 		// For persistent errors, increment failure count
 		availability, dbErr := availabilityRepo.IncrementFeedLinkFailures(ctx, feedURL.String(), err.Error())
 		if dbErr != nil {
-			logger.Logger.Error("Failed to track feed failure", "url", feedURL.String(), "error", dbErr)
+			logger.Logger.ErrorContext(ctx, "Failed to track feed failure", "url", feedURL.String(), "error", dbErr)
 			return
 		}
 
 		// Use domain business logic to determine if feed should be disabled
 		if availability.ShouldDisable(maxConsecutiveFailures) {
 			if disableErr := availabilityRepo.DisableFeedLink(ctx, feedURL.String()); disableErr != nil {
-				logger.Logger.Error("Failed to disable feed", "url", feedURL.String(), "error", disableErr)
+				logger.Logger.ErrorContext(ctx, "Failed to disable feed", "url", feedURL.String(), "error", disableErr)
 			} else {
-				logger.Logger.Warn("Auto-disabled feed after repeated failures",
+				logger.Logger.WarnContext(ctx, "Auto-disabled feed after repeated failures",
 					"url", feedURL.String(),
 					"failures", availability.ConsecutiveFailures)
 			}
