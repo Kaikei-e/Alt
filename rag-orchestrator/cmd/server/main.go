@@ -23,19 +23,35 @@ import (
 	"rag-orchestrator/internal/infra"
 	"rag-orchestrator/internal/infra/config"
 	"rag-orchestrator/internal/infra/logger"
+	"rag-orchestrator/internal/infra/otel"
 	"rag-orchestrator/internal/usecase"
 	"rag-orchestrator/internal/worker"
 )
 
 func main() {
+	ctx := context.Background()
+
 	// 1. Load Config
 	cfg := config.Load()
 
-	// 2. Initialize Logger
-	log := logger.New()
+	// 2. Initialize OpenTelemetry
+	otelCfg := otel.ConfigFromEnv()
+	shutdown, err := otel.InitProvider(ctx, otelCfg)
+	if err != nil {
+		slog.Error("failed to initialize OTel provider", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := shutdown(ctx); err != nil {
+			slog.Error("failed to shutdown OTel provider", "error", err)
+		}
+	}()
+
+	// 3. Initialize Logger with OTel support
+	log := logger.NewWithOTel(otelCfg.Enabled)
 	slog.SetDefault(log)
 
-	// 3. Initialize DB
+	// 4. Initialize DB
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName)
 	dbPool, err := infra.NewPostgresDB(context.Background(), dsn)
