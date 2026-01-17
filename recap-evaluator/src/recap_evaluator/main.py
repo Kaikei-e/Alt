@@ -10,7 +10,8 @@ from recap_evaluator.api.routes import router
 from recap_evaluator.config import settings
 from recap_evaluator.infra.database import db
 from recap_evaluator.infra.ollama import ollama_client
-from recap_evaluator.utils.logging import configure_logging
+from recap_evaluator.utils.logging import configure_logging, shutdown_logging
+from recap_evaluator.utils.otel import instrument_fastapi
 
 # Configure logging on module load
 configure_logging()
@@ -47,6 +48,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down recap-evaluator")
     await db.disconnect()
+    shutdown_logging()
     logger.info("recap-evaluator stopped")
 
 
@@ -69,6 +71,9 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(router)
+
+# Instrument FastAPI with OpenTelemetry
+instrument_fastapi(app)
 
 
 @app.get("/health")
