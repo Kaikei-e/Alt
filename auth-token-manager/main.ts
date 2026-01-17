@@ -9,6 +9,7 @@ import { EnvFileSecretManager } from "./src/file/secret-manager-env-file.ts";
 import type { SecretManager } from "./src/auth/types.ts";
 import {
   StructuredLogger,
+  shutdownOTel,
 } from "./src/utils/logger.ts";
 
 // Initialize structured logging with sanitization
@@ -670,6 +671,7 @@ function setupSignalHandlers() {
   for (const signal of signals) {
     Deno.addSignalListener(signal, () => {
       logger.info("Received termination signal", { signal });
+      shutdownOTel();
       Deno.exit(0);
     });
   }

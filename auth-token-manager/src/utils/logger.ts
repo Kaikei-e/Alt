@@ -10,6 +10,7 @@ import {
   LevelName,
   getLogger
 } from "@std/log";
+import { emitOTelLog, initOTelProvider, isOTelEnabled } from "./otel.ts";
 
 // Basic OAuth token patterns for sanitization
 const OAUTH_TOKEN_PATTERNS = [
@@ -210,15 +211,25 @@ class JsonFileHandler extends FileHandler {
   }
 }
 
+// Global OTel shutdown function
+let otelShutdown: (() => void) | null = null;
+
 /**
- * Structured logger with OAuth token sanitization
+ * Structured logger with OAuth token sanitization and OTel integration
  */
 export class StructuredLogger {
   private logger: any;
   private component: string;
+  private jsonFormatter: JsonFormatter;
 
   constructor(component: string) {
     this.component = component;
+    this.jsonFormatter = new JsonFormatter();
+
+    // Initialize OTel provider on first logger creation
+    if (!otelShutdown) {
+      otelShutdown = initOTelProvider();
+    }
 
     // Create log directory if it doesn't exist
     try {
@@ -256,23 +267,68 @@ export class StructuredLogger {
     this.logger = getLogger(component);
   }
 
+  private emitToOTel(level: string, message: string, args: any[]) {
+    if (!isOTelEnabled()) return;
+
+    // Build attributes from args
+    const attributes: Record<string, string | number | boolean> = {
+      component: this.component,
+      "service.name": Deno.env.get("OTEL_SERVICE_NAME") || "auth-token-manager",
+    };
+
+    // ADR 98/99 business context
+    if (businessContext.feedId) attributes["alt.feed.id"] = businessContext.feedId;
+    if (businessContext.articleId) attributes["alt.article.id"] = businessContext.articleId;
+    if (businessContext.jobId) attributes["alt.job.id"] = businessContext.jobId;
+    if (businessContext.processingStage) attributes["alt.processing.stage"] = businessContext.processingStage;
+    if (businessContext.aiPipeline) attributes["alt.ai.pipeline"] = businessContext.aiPipeline;
+
+    // Merge object args into attributes (only primitive values)
+    for (const arg of args) {
+      if (typeof arg === 'object' && arg !== null) {
+        const sanitized = DataSanitizer.sanitize(arg);
+        for (const [key, value] of Object.entries(sanitized)) {
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            attributes[key] = value;
+          }
+        }
+      }
+    }
+
+    emitOTelLog(level, DataSanitizer.sanitize(message) as string, attributes);
+  }
+
   info(message: string, ...args: any[]) {
     this.logger.info(message, ...args);
+    this.emitToOTel("info", message, args);
   }
 
   warn(message: string, ...args: any[]) {
     this.logger.warn(message, ...args);
+    this.emitToOTel("warn", message, args);
   }
 
   error(message: string, ...args: any[]) {
     this.logger.error(message, ...args);
+    this.emitToOTel("error", message, args);
   }
 
   debug(message: string, ...args: any[]) {
     // Only debug in development
     if (Deno.env.get('NODE_ENV') === 'development') {
       this.logger.debug(message, ...args);
+      this.emitToOTel("debug", message, args);
     }
+  }
+}
+
+/**
+ * Shutdown OTel provider - call during graceful shutdown
+ */
+export function shutdownOTel(): void {
+  if (otelShutdown) {
+    otelShutdown();
+    otelShutdown = null;
   }
 }
 
