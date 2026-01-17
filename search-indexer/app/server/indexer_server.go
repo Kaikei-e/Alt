@@ -98,24 +98,24 @@ func (s *IndexerServer) runIndexLoop(ctx context.Context, config Config) {
 	var lastID string
 	var incrementalMark *time.Time
 
-	slog.Info("starting Phase 1: Backfill")
+	slog.InfoContext(ctx, "starting Phase 1: Backfill")
 
 	// Get incrementalMark (latest created_at) at the start
 	mark, err := s.indexUsecase.GetIncrementalMark(ctx)
 	if err != nil {
-		slog.Error("failed to get incremental mark", "err", err)
+		slog.ErrorContext(ctx, "failed to get incremental mark", "err", err)
 		// Use current time as fallback
 		now := time.Now()
 		incrementalMark = &now
-		slog.Info("using current time as incremental mark fallback", "mark", incrementalMark)
+		slog.InfoContext(ctx, "using current time as incremental mark fallback", "mark", incrementalMark)
 	} else if mark == nil {
 		// No articles exist yet, use current time as fallback
 		now := time.Now()
 		incrementalMark = &now
-		slog.Info("no articles found, using current time as incremental mark", "mark", incrementalMark)
+		slog.InfoContext(ctx, "no articles found, using current time as incremental mark", "mark", incrementalMark)
 	} else {
 		incrementalMark = mark
-		slog.Info("incremental mark set", "mark", incrementalMark)
+		slog.InfoContext(ctx, "incremental mark set", "mark", incrementalMark)
 	}
 
 	// Phase 1: Backfill loop (past direction)
@@ -128,23 +128,23 @@ func (s *IndexerServer) runIndexLoop(ctx context.Context, config Config) {
 
 		result, err := s.indexUsecase.ExecuteBackfill(ctx, lastCreatedAt, lastID, config.IndexBatchSize)
 		if err != nil {
-			slog.Error("backfill error", "err", err)
+			slog.ErrorContext(ctx, "backfill error", "err", err)
 			time.Sleep(config.IndexRetryDelay)
 			continue
 		}
 
 		if result.IndexedCount == 0 {
-			slog.Info("Phase 1 complete: backfill done")
+			slog.InfoContext(ctx, "Phase 1 complete: backfill done")
 			break
 		}
 
-		slog.Info("backfill indexed", "count", result.IndexedCount)
+		slog.InfoContext(ctx, "backfill indexed", "count", result.IndexedCount)
 		lastCreatedAt = result.LastCreatedAt
 		lastID = result.LastID
 	}
 
 	// Phase 2: Incremental loop (future direction + deletion sync)
-	slog.Info("starting Phase 2: Incremental")
+	slog.InfoContext(ctx, "starting Phase 2: Incremental")
 
 	// Reset cursor for incremental phase
 	lastCreatedAt = nil
@@ -160,24 +160,24 @@ func (s *IndexerServer) runIndexLoop(ctx context.Context, config Config) {
 
 		result, err := s.indexUsecase.ExecuteIncremental(ctx, incrementalMark, lastCreatedAt, lastID, lastDeletedAt, config.IndexBatchSize)
 		if err != nil {
-			slog.Error("incremental indexing error", "err", err)
+			slog.ErrorContext(ctx, "incremental indexing error", "err", err)
 			time.Sleep(config.IndexRetryDelay)
 			continue
 		}
 
 		if result.IndexedCount > 0 {
-			slog.Info("incremental indexed", "count", result.IndexedCount)
+			slog.InfoContext(ctx, "incremental indexed", "count", result.IndexedCount)
 			lastCreatedAt = result.LastCreatedAt
 			lastID = result.LastID
 		}
 
 		if result.DeletedCount > 0 {
-			slog.Info("deleted from index", "count", result.DeletedCount)
+			slog.InfoContext(ctx, "deleted from index", "count", result.DeletedCount)
 			lastDeletedAt = result.LastDeletedAt
 		}
 
 		if result.IndexedCount == 0 && result.DeletedCount == 0 {
-			slog.Info("no new articles or deletions")
+			slog.InfoContext(ctx, "no new articles or deletions")
 		}
 
 		time.Sleep(config.IndexInterval)

@@ -60,14 +60,14 @@ func initDatabasePool(ctx context.Context) (*pgxpool.Pool, error) {
 
 		// SSL設定の検証
 		if err := dbConfig.ValidateSSLConfig(); err != nil {
-			slog.Error("invalid SSL configuration", "error", err)
+			slog.ErrorContext(ctx, "invalid SSL configuration", "error", err)
 			return nil, &DriverError{
 				Op:  "initDatabasePool",
 				Err: fmt.Sprintf("SSL configuration error: %v", err),
 			}
 		}
 
-		slog.Info("database configuration",
+		slog.InfoContext(ctx, "database configuration",
 			"host", dbConfig.Host,
 			"database", dbConfig.Name,
 			"sslmode", dbConfig.SSL.Mode,
@@ -98,7 +98,7 @@ func initDatabasePool(ctx context.Context) (*pgxpool.Pool, error) {
 		pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
 		if err != nil {
 			lastErr = err
-			slog.Warn("database connection failed, retrying", "attempt", attempt, "max", dbMaxRetries, "err", err)
+			slog.WarnContext(ctx, "database connection failed, retrying", "attempt", attempt, "max", dbMaxRetries, "err", err)
 			if attempt < dbMaxRetries {
 				time.Sleep(dbRetryDelay)
 			}
@@ -108,7 +108,7 @@ func initDatabasePool(ctx context.Context) (*pgxpool.Pool, error) {
 		if err := pool.Ping(ctx); err != nil {
 			pool.Close()
 			lastErr = err
-			slog.Warn("database ping failed, retrying", "attempt", attempt, "max", dbMaxRetries, "err", err)
+			slog.WarnContext(ctx, "database ping failed, retrying", "attempt", attempt, "max", dbMaxRetries, "err", err)
 			if attempt < dbMaxRetries {
 				time.Sleep(dbRetryDelay)
 			}
@@ -129,22 +129,22 @@ func initDatabasePool(ctx context.Context) (*pgxpool.Pool, error) {
 	// SSL接続状況確認
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
-		slog.Warn("Could not acquire connection to check SSL status", "error", err)
+		slog.WarnContext(ctx, "Could not acquire connection to check SSL status", "error", err)
 	} else {
 		defer conn.Release()
 
 		var sslUsed bool
 		err := conn.QueryRow(ctx, "SELECT ssl_is_used()").Scan(&sslUsed)
 		if err != nil {
-			slog.Warn("Could not check SSL status", "error", err)
+			slog.WarnContext(ctx, "Could not check SSL status", "error", err)
 		} else {
-			slog.Info("Database connection established",
+			slog.InfoContext(ctx, "Database connection established",
 				"ssl_enabled", sslUsed,
 			)
 		}
 	}
 
-	logger.Logger.Info("Database connected successfully")
+	logger.Logger.InfoContext(ctx, "Database connected successfully")
 	return pool, nil
 }
 
