@@ -141,7 +141,6 @@ func (h *Handler) StreamSummarize(
 	stream *connect.ServerStream[preprocessorv2.StreamSummarizeResponse],
 ) error {
 	articleID := req.Msg.ArticleId
-	title := req.Msg.Title
 	content := req.Msg.Content
 
 	// Validate required fields
@@ -163,9 +162,6 @@ func (h *Handler) StreamSummarize(
 		content = html_parser.ExtractArticleText(fetchedArticle.Content)
 		if content == "" {
 			content = fetchedArticle.Content
-		}
-		if title == "" {
-			title = fetchedArticle.Title
 		}
 	}
 
@@ -194,7 +190,7 @@ func (h *Handler) StreamSummarize(
 		h.logger.Error("failed to generate summary stream", "error", err, "article_id", articleID)
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to generate summary stream"))
 	}
-	defer ioStream.Close()
+	defer func() { _ = ioStream.Close() }()
 
 	h.logger.Info("stream obtained from news-creator", "article_id", articleID)
 

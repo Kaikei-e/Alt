@@ -131,7 +131,7 @@ func (c *Consumer) Stop() {
 		close(c.shutdownChan)
 	}
 	if c.client != nil {
-		c.client.Close()
+		_ = c.client.Close()
 	}
 }
 
@@ -237,7 +237,7 @@ func (c *Consumer) parseEvent(message redis.XMessage) Event {
 		event.Payload = json.RawMessage(v)
 	}
 	if v, ok := message.Values["metadata"].(string); ok {
-		json.Unmarshal([]byte(v), &event.Metadata)
+		_ = json.Unmarshal([]byte(v), &event.Metadata)
 	}
 
 	return event

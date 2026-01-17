@@ -308,7 +308,14 @@ func main() {
 		}
 		addr := fmt.Sprintf(":%s", connectPort)
 		logger.Logger.Info("Starting Connect-RPC server", "port", connectPort)
-		if err := http.ListenAndServe(addr, connectServer); err != nil && err != http.ErrServerClosed {
+		server := &http.Server{
+			Addr:         addr,
+			Handler:      connectServer,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			IdleTimeout:  120 * time.Second,
+		}
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Logger.Error("Connect-RPC server error", "error", err)
 		}
 	}()
