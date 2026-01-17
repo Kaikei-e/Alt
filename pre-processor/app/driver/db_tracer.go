@@ -27,13 +27,13 @@ func (t *QueryTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx
 func (t *QueryTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryEndData) {
 	queryStart, ok := ctx.Value(queryStartKey).(time.Time)
 	if !ok {
-		logger.Logger.Error("query start not found")
+		logger.Logger.ErrorContext(ctx, "query start not found")
 		return
 	}
 
 	duration := time.Since(queryStart)
 
 	if duration > queryDurationThreshold {
-		logger.Logger.Info("query executed", "duration", duration)
+		logger.Logger.InfoContext(ctx, "query executed", "duration", duration)
 	}
 }

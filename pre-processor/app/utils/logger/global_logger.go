@@ -12,14 +12,14 @@ var Logger *slog.Logger
 // it. Production code still overrides this value in main.go.
 func init() {
 	if Logger == nil {
-		// Use UnifiedLogger for consistent Alt-backend compatible output
-		unifiedLogger := NewUnifiedLogger("pre-processor")
+		// Use UnifiedLogger with OTel enabled for trace context propagation
+		unifiedLogger := NewUnifiedLoggerWithOTel("pre-processor", "info", true)
 		Logger = unifiedLogger.logger
 	}
 }
 
-// InitGlobalLogger updates the global Logger with UnifiedLogger
+// InitGlobalLogger updates the global Logger with UnifiedLogger (OTel enabled)
 func InitGlobalLogger(config *UnifiedLoggerConfig) {
-	unifiedLogger := NewUnifiedLoggerWithLevel(config.ServiceName, config.Level)
+	unifiedLogger := NewUnifiedLoggerWithOTel(config.ServiceName, config.Level, true)
 	Logger = unifiedLogger.logger
 }

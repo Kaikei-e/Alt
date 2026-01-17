@@ -147,7 +147,7 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
-		logger.Logger.Error("Failed to marshal payload", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to marshal payload", "error", err)
 		return nil, err
 	}
 
@@ -157,7 +157,7 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 
 	req, err := http.NewRequestWithContext(ctx, "POST", qualityCheckerAPIURL, strings.NewReader(string(jsonPayload)))
 	if err != nil {
-		logger.Logger.Error("Failed to create HTTP request", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to create HTTP request", "error", err)
 		return nil, err
 	}
 
@@ -165,31 +165,31 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 
 	response, err := client.Do(req)
 	if err != nil {
-		logger.Logger.Error("Failed to send HTTP request", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to send HTTP request", "error", err)
 		return nil, err
 	}
 	defer func() {
 		if err := response.Body.Close(); err != nil {
-			logger.Logger.Error("failed to close response body", "error", err)
+			logger.Logger.ErrorContext(ctx, "failed to close response body", "error", err)
 		}
 	}()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		logger.Logger.Error("Failed to read response body", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to read response body", "error", err)
 		return nil, err
 	}
 
 	var ollamaResp ollamaResponse
 	if err = json.Unmarshal(body, &ollamaResp); err != nil {
-		logger.Logger.Error("Failed to unmarshal response", "error", err, "body", string(body))
+		logger.Logger.ErrorContext(ctx, "Failed to unmarshal response", "error", err, "body", string(body))
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	logger.Logger.Info("Received ollama response", "done", ollamaResp.Done, "response", ollamaResp.Response)
+	logger.Logger.InfoContext(ctx, "Received ollama response", "done", ollamaResp.Done, "response", ollamaResp.Response)
 
 	if !ollamaResp.Done {
-		logger.Logger.Error("Ollama response not completed", "response", ollamaResp.Response)
+		logger.Logger.ErrorContext(ctx, "Ollama response not completed", "response", ollamaResp.Response)
 		return nil, errors.New("ollama response not completed")
 	}
 
@@ -198,23 +198,23 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 
 	score, err := parseScore(responseText)
 	if err != nil {
-		logger.Logger.Error("Failed to parse score, attempting fallback", "error", err, "response", responseText)
+		logger.Logger.ErrorContext(ctx, "Failed to parse score, attempting fallback", "error", err, "response", responseText)
 
 		// Try emergency fallback parsing strategies
 		fallbackScore := attemptEmergencyParsing(responseText)
 		if fallbackScore != nil {
-			logger.Logger.Info("Successfully parsed score using emergency fallback", "score", fallbackScore)
+			logger.Logger.InfoContext(ctx, "Successfully parsed score using emergency fallback", "score", fallbackScore)
 			return fallbackScore, nil
 		}
 
 		// Final fallback: if the model is consistently failing, assign low score
 		finalFallbackScore := &Score{Overall: 1}
-		logger.Logger.Warn("Using final fallback score due to parsing failure", "score", finalFallbackScore)
+		logger.Logger.WarnContext(ctx, "Using final fallback score due to parsing failure", "score", finalFallbackScore)
 
 		return finalFallbackScore, nil
 	}
 
-	logger.Logger.Info("Successfully parsed score", "score", score)
+	logger.Logger.InfoContext(ctx, "Successfully parsed score", "score", score)
 	return &score, nil
 }
 
@@ -305,7 +305,7 @@ func attemptEmergencyParsing(response string) *Score {
 func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWithSummary *driver.ArticleWithSummary, score *Score) error {
 	// Score is now passed from caller (JudgeArticleQuality) to avoid redundant LLM calls
 	if score == nil {
-		logger.Logger.Error("Received nil score", "articleID", articleWithSummary.ArticleID)
+		logger.Logger.ErrorContext(ctx, "Received nil score", "articleID", articleWithSummary.ArticleID)
 		return errors.New("received nil score for article " + articleWithSummary.ArticleID)
 	}
 
@@ -314,7 +314,7 @@ func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWit
 		return errors.New("database pool is nil, cannot delete summary")
 	}
 
-	logger.Logger.Info("Removing low quality summary",
+	logger.Logger.InfoContext(ctx, "Removing low quality summary",
 		"articleID", articleWithSummary.ArticleID,
 		"score", score.Overall,
 		"threshold", lowScoreThreshold)
@@ -326,39 +326,39 @@ func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWit
 
 	tx, err := dbPool.BeginTx(ctx, txOptions)
 	if err != nil {
-		logger.Logger.Error("Failed to begin transaction", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to begin transaction", "error", err)
 		return errors.New("failed to begin transaction")
 	}
 
 	_, err = tx.Exec(ctx, "DELETE FROM article_summaries WHERE article_id = $1", articleWithSummary.ArticleID)
 	if err != nil {
 		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
-			logger.Logger.Error("Failed to rollback transaction", "error", rollbackErr)
+			logger.Logger.ErrorContext(ctx, "Failed to rollback transaction", "error", rollbackErr)
 		}
-		logger.Logger.Error("Failed to delete article summary", "error", err, "articleID", articleWithSummary.ArticleID)
+		logger.Logger.ErrorContext(ctx, "Failed to delete article summary", "error", err, "articleID", articleWithSummary.ArticleID)
 		return errors.New("failed to delete article summary")
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to commit transaction", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to commit transaction", "error", err)
 		return errors.New("failed to commit transaction")
 	}
 
-	logger.Logger.Info("Deleted low quality article summary", "articleID", articleWithSummary.ArticleID)
+	logger.Logger.InfoContext(ctx, "Deleted low quality article summary", "articleID", articleWithSummary.ArticleID)
 
 	// Re-fetch article from web after deletion (same mechanism as alt-backend)
 	// First, get article from database to obtain URL
 	article, fetchErr := driver.GetArticleByID(ctx, dbPool, articleWithSummary.ArticleID)
 	if fetchErr != nil {
-		logger.Logger.Warn("Failed to get article for re-fetch after summary deletion",
+		logger.Logger.WarnContext(ctx, "Failed to get article for re-fetch after summary deletion",
 			"articleID", articleWithSummary.ArticleID,
 			"error", fetchErr)
 	} else if article == nil {
-		logger.Logger.Warn("Article not found for re-fetch after summary deletion",
+		logger.Logger.WarnContext(ctx, "Article not found for re-fetch after summary deletion",
 			"articleID", articleWithSummary.ArticleID)
 	} else if article.URL == "" {
-		logger.Logger.Warn("Article URL is empty, cannot re-fetch from web",
+		logger.Logger.WarnContext(ctx, "Article URL is empty, cannot re-fetch from web",
 			"articleID", articleWithSummary.ArticleID)
 	} else {
 		// Re-fetch article from web using HTTP request
@@ -367,7 +367,7 @@ func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWit
 		}
 		req, err := http.NewRequestWithContext(ctx, "GET", article.URL, nil)
 		if err != nil {
-			logger.Logger.Warn("Failed to create HTTP request for article re-fetch",
+			logger.Logger.WarnContext(ctx, "Failed to create HTTP request for article re-fetch",
 				"articleID", articleWithSummary.ArticleID,
 				"url", article.URL,
 				"error", err)
@@ -375,17 +375,17 @@ func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWit
 			req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; AltBot/1.0; +https://alt.example.com/bot)")
 			resp, err := client.Do(req)
 			if err != nil {
-				logger.Logger.Warn("Failed to re-fetch article from web after summary deletion",
+				logger.Logger.WarnContext(ctx, "Failed to re-fetch article from web after summary deletion",
 					"articleID", articleWithSummary.ArticleID,
 					"url", article.URL,
 					"error", err)
 			} else {
 				defer func() {
 					if closeErr := resp.Body.Close(); closeErr != nil {
-						logger.Logger.Error("Failed to close response body", "error", closeErr)
+						logger.Logger.ErrorContext(ctx, "Failed to close response body", "error", closeErr)
 					}
 				}()
-				logger.Logger.Info("Successfully re-fetched article from web after summary deletion",
+				logger.Logger.InfoContext(ctx, "Successfully re-fetched article from web after summary deletion",
 					"articleID", articleWithSummary.ArticleID,
 					"url", article.URL,
 					"status_code", resp.StatusCode)
@@ -442,7 +442,7 @@ func scoreSummaryWithRetry(ctx context.Context, prompt string, maxRetries int) (
 			return score, nil
 		}
 		lastErr = err
-		logger.Logger.Warn("Failed to score summary, retrying...", "attempt", attempt+1, "max_retries", maxRetries, "error", err)
+		logger.Logger.WarnContext(ctx, "Failed to score summary, retrying...", "attempt", attempt+1, "max_retries", maxRetries, "error", err)
 		time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond) // Simple exponential backoff
 	}
 	return nil, lastErr
@@ -457,7 +457,7 @@ func JudgeArticleQuality(ctx context.Context, dbPool *pgxpool.Pool, articleWithS
 	// コンテンツ長チェック: 長すぎる場合はスキップ（サマリーは保持）
 	totalContentLength := len(articleWithSummary.Content) + len(articleWithSummary.SummaryJapanese)
 	if totalContentLength > maxQualityCheckContentLength {
-		logger.Logger.Info("Skipping quality check: content too long",
+		logger.Logger.InfoContext(ctx, "Skipping quality check: content too long",
 			"articleID", articleWithSummary.ArticleID,
 			"content_length", len(articleWithSummary.Content),
 			"summary_length", len(articleWithSummary.SummaryJapanese),
@@ -471,7 +471,7 @@ func JudgeArticleQuality(ctx context.Context, dbPool *pgxpool.Pool, articleWithS
 	if err != nil {
 		// Check if this is a connection error (service unavailable)
 		if isConnectionError(err) {
-			logger.Logger.Warn("Connection error while scoring summary, skipping quality check to prevent data loss",
+			logger.Logger.WarnContext(ctx, "Connection error while scoring summary, skipping quality check to prevent data loss",
 				"articleID", articleWithSummary.ArticleID,
 				"error", err)
 			// Return error without deleting data - this indicates service unavailability, not low quality
@@ -480,7 +480,7 @@ func JudgeArticleQuality(ctx context.Context, dbPool *pgxpool.Pool, articleWithS
 
 		// For non-connection errors (e.g., parsing errors, invalid responses), we still need to handle them
 		// However, we should not delete data based on connection failures
-		logger.Logger.Error("Failed to get summary score after retries (non-connection error)",
+		logger.Logger.ErrorContext(ctx, "Failed to get summary score after retries (non-connection error)",
 			"articleID", articleWithSummary.ArticleID,
 			"error", err)
 		// For non-connection errors, we skip the quality check rather than deleting data
@@ -497,6 +497,6 @@ func JudgeArticleQuality(ctx context.Context, dbPool *pgxpool.Pool, articleWithS
 		return RemoveLowScoreSummary(ctx, dbPool, articleWithSummary, score)
 	}
 
-	logger.Logger.Info("Summary quality is acceptable", "articleID", articleWithSummary.ArticleID, "score", score.Overall)
+	logger.Logger.InfoContext(ctx, "Summary quality is acceptable", "articleID", articleWithSummary.ArticleID, "score", score.Overall)
 	return nil
 }

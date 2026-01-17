@@ -64,17 +64,17 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 	// Validate content (already extracted text, should be meaningful)
 	const minContentLength = 100
 	if len(strings.TrimSpace(article.Content)) < minContentLength {
-		logger.Logger.Warn("article content is very short, may indicate extraction issue",
+		logger.Logger.WarnContext(ctx, "article content is very short, may indicate extraction issue",
 			"url", article.URL,
 			"content_length", len(article.Content))
 		// Still allow saving, but log warning
 	}
 
-	logger.Logger.Info("Creating article", "article link", article.URL)
+	logger.Logger.InfoContext(ctx, "Creating article", "article link", article.URL)
 
 	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		logger.Logger.Error("Failed to begin transaction", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to begin transaction", "error", err)
 		return err
 	}
 
@@ -82,20 +82,20 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 	if err != nil {
 		err = tx.Rollback(ctx)
 		if err != nil {
-			logger.Logger.Error("Failed to rollback transaction", "error", err)
+			logger.Logger.ErrorContext(ctx, "Failed to rollback transaction", "error", err)
 		}
-		logger.Logger.Error("Failed to create article", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to create article", "error", err)
 
 		return err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to commit transaction", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to commit transaction", "error", err)
 		return err
 	}
 
-	logger.Logger.Info("Article created", "article", article.Title)
+	logger.Logger.InfoContext(ctx, "Article created", "article", article.Title)
 
 	return nil
 }
@@ -124,11 +124,11 @@ func HasUnsummarizedArticles(ctx context.Context, db *pgxpool.Pool) (bool, error
 
 	err := db.QueryRow(ctx, query).Scan(&hasUnsummarized)
 	if err != nil {
-		logger.Logger.Error("Failed to check for unsummarized articles", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to check for unsummarized articles", "error", err)
 		return false, err
 	}
 
-	logger.Logger.Info("Checked for unsummarized articles", "has_unsummarized", hasUnsummarized)
+	logger.Logger.InfoContext(ctx, "Checked for unsummarized articles", "has_unsummarized", hasUnsummarized)
 
 	return hasUnsummarized, nil
 }
@@ -208,11 +208,11 @@ func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCrea
 	}, "GetArticlesForSummarization")
 
 	if err != nil {
-		logger.Logger.Error("Failed to get articles for summarization", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to get articles for summarization", "error", err)
 		return nil, nil, "", err
 	}
 
-	logger.Logger.Info("Got articles for summarization", "count", len(articles), "limit", limit, "has_cursor", lastCreatedAt != nil)
+	logger.Logger.InfoContext(ctx, "Got articles for summarization", "count", len(articles), "limit", limit, "has_cursor", lastCreatedAt != nil)
 
 	return articles, finalCreatedAt, finalID, nil
 }
@@ -243,7 +243,7 @@ func GetArticleByID(ctx context.Context, db *pgxpool.Pool, articleID string) (*m
 		if err == pgx.ErrNoRows {
 			return nil, nil // Not found
 		}
-		logger.Logger.Error("Failed to get article by ID", "error", err, "article_id", articleID)
+		logger.Logger.ErrorContext(ctx, "Failed to get article by ID", "error", err, "article_id", articleID)
 		return nil, err
 	}
 

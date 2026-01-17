@@ -139,21 +139,21 @@ func (m *ConnectionPoolManager) InitOptimizedPool(ctx context.Context) (*pgxpool
 	// Create the pool with optimized configuration
 	pool, err := pgxpool.NewWithConfig(ctx, config.Config)
 	if err != nil {
-		logger.Logger.Error("Failed to create optimized database pool", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to create optimized database pool", "error", err)
 		return nil, fmt.Errorf("failed to create optimized pool: %w", err)
 	}
 
 	// Test the connection
 	err = pool.Ping(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to ping optimized database", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to ping optimized database", "error", err)
 		pool.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	m.pool = pool
 
-	logger.Logger.Info("Initialized optimized database connection pool",
+	logger.Logger.InfoContext(ctx, "Initialized optimized database connection pool",
 		"max_conns", config.MaxConns,
 		"min_conns", config.MinConns)
 

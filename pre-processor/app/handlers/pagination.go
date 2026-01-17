@@ -52,7 +52,7 @@ func (fp *FeedProcessor) GetNextUnprocessedFeeds(ctx context.Context) ([]url.URL
 	// Use the new cursor-based driver function that returns cursor information
 	feedUrls, lastCreatedAt, lastID, err := driver.GetSourceURLs(fp.cursor.LastCreatedAt, fp.cursor.LastID, ctx, fp.db)
 	if err != nil {
-		logger.Logger.Error("Failed to get source URLs", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to get source URLs", "error", err)
 		return nil, false, err
 	}
 
@@ -64,7 +64,7 @@ func (fp *FeedProcessor) GetNextUnprocessedFeeds(ctx context.Context) ([]url.URL
 		fp.cursor.LastID = lastID
 	}
 
-	logger.Logger.Info("Got unprocessed feeds", "count", len(feedUrls), "has_more", hasMore)
+	logger.Logger.InfoContext(ctx, "Got unprocessed feeds", "count", len(feedUrls), "has_more", hasMore)
 
 	return feedUrls, hasMore, nil
 }
@@ -111,7 +111,7 @@ func (as *ArticleSummarizer) GetNextArticlesForSummarization(ctx context.Context
 	// Use the new cursor-based driver function that returns cursor information
 	articles, lastCreatedAt, lastID, err := driver.GetArticlesForSummarization(ctx, as.db, as.cursor.LastCreatedAt, as.cursor.LastID, as.batchSize)
 	if err != nil {
-		logger.Logger.Error("Failed to get articles for summarization", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to get articles for summarization", "error", err)
 		return nil, false, err
 	}
 
@@ -123,7 +123,7 @@ func (as *ArticleSummarizer) GetNextArticlesForSummarization(ctx context.Context
 		as.cursor.LastID = lastID
 	}
 
-	logger.Logger.Info("Got articles for summarization", "count", len(articles), "has_more", hasMore)
+	logger.Logger.InfoContext(ctx, "Got articles for summarization", "count", len(articles), "has_more", hasMore)
 
 	return articles, hasMore, nil
 }
@@ -162,7 +162,7 @@ func (qc *QualityChecker) GetNextArticlesForQualityCheck(ctx context.Context) ([
 	// Use the new consolidated cursor-based driver function
 	articles, lastCreatedAt, lastID, err := driver.GetArticlesWithSummaries(ctx, qc.db, qc.cursor.LastCreatedAt, qc.cursor.LastID, qc.batchSize)
 	if err != nil {
-		logger.Logger.Error("Failed to get articles for quality check", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to get articles for quality check", "error", err)
 		return nil, false, err
 	}
 
@@ -174,7 +174,7 @@ func (qc *QualityChecker) GetNextArticlesForQualityCheck(ctx context.Context) ([
 		qc.cursor.LastID = lastID
 	}
 
-	logger.Logger.Info("Got articles for quality check", "count", len(articles), "has_more", hasMore)
+	logger.Logger.InfoContext(ctx, "Got articles for quality check", "count", len(articles), "has_more", hasMore)
 
 	return articles, hasMore, nil
 }

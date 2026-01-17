@@ -77,26 +77,26 @@ func BatchInsertArticles(ctx context.Context, db interface{}, articles []models.
 	// Execute batch insert
 	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		logger.Logger.Error("Failed to begin transaction", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to begin transaction", "error", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	_, err = tx.Exec(ctx, query, values...)
 	if err != nil {
 		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
-			logger.Logger.Error("Failed to rollback transaction", "error", rollbackErr)
+			logger.Logger.ErrorContext(ctx, "Failed to rollback transaction", "error", rollbackErr)
 		}
-		logger.Logger.Error("Failed to batch insert articles", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to batch insert articles", "error", err)
 		return fmt.Errorf("failed to batch insert articles: %w", err)
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to commit transaction", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to commit transaction", "error", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	logger.Logger.Info("Batch inserted articles", "count", len(articles))
+	logger.Logger.InfoContext(ctx, "Batch inserted articles", "count", len(articles))
 	return nil
 }
 
@@ -162,26 +162,26 @@ func BatchUpdateArticles(ctx context.Context, db interface{}, articles []models.
 	// Execute batch update
 	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		logger.Logger.Error("Failed to begin transaction", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to begin transaction", "error", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	_, err = tx.Exec(ctx, query, values...)
 	if err != nil {
 		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
-			logger.Logger.Error("Failed to rollback transaction", "error", rollbackErr)
+			logger.Logger.ErrorContext(ctx, "Failed to rollback transaction", "error", rollbackErr)
 		}
-		logger.Logger.Error("Failed to batch update articles", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to batch update articles", "error", err)
 		return fmt.Errorf("failed to batch update articles: %w", err)
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to commit transaction", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to commit transaction", "error", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	logger.Logger.Info("Batch updated articles", "count", len(articles))
+	logger.Logger.InfoContext(ctx, "Batch updated articles", "count", len(articles))
 	return nil
 }
 

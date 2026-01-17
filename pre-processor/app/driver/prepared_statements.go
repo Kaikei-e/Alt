@@ -37,7 +37,7 @@ func (p *PreparedStatementsManager) PrepareStatement(ctx context.Context, db int
 
 	// Check if statement already exists
 	if _, exists := p.statements[name]; exists {
-		logger.Logger.Info("Statement already prepared", "name", name)
+		logger.Logger.InfoContext(ctx, "Statement already prepared", "name", name)
 		return nil
 	}
 
@@ -59,14 +59,14 @@ func (p *PreparedStatementsManager) PrepareStatement(ctx context.Context, db int
 	// Prepare the statement
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to acquire connection", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to acquire connection", "error", err)
 		return fmt.Errorf("failed to acquire connection: %w", err)
 	}
 	defer conn.Release()
 
 	stmt, err := conn.Conn().Prepare(ctx, name, query)
 	if err != nil {
-		logger.Logger.Error("Failed to prepare statement", "name", name, "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to prepare statement", "name", name, "error", err)
 		return fmt.Errorf("failed to prepare statement %s: %w", name, err)
 	}
 
@@ -77,7 +77,7 @@ func (p *PreparedStatementsManager) PrepareStatement(ctx context.Context, db int
 		Name:      name,
 	}
 
-	logger.Logger.Info("Statement prepared successfully", "name", name)
+	logger.Logger.InfoContext(ctx, "Statement prepared successfully", "name", name)
 	return nil
 }
 
@@ -103,21 +103,21 @@ func (p *PreparedStatementsManager) CloseAll(ctx context.Context) error {
 	for name, stmt := range p.statements {
 		// For mock statements, we don't need to close anything
 		if _, ok := stmt.Statement.(*MockPreparedStatement); ok {
-			logger.Logger.Info("Mock statement closed", "name", name)
+			logger.Logger.InfoContext(ctx, "Mock statement closed", "name", name)
 			continue
 		}
 
 		// For real statements, we would close them here
 		// Note: pgx v5 doesn't expose Close method on prepared statements
 		// They are automatically cleaned up when connection is closed
-		logger.Logger.Info("Statement marked for cleanup", "name", name)
+		logger.Logger.InfoContext(ctx, "Statement marked for cleanup", "name", name)
 	}
 
 	if len(errors) > 0 {
 		return fmt.Errorf("failed to close some statements: %v", errors)
 	}
 
-	logger.Logger.Info("All prepared statements closed", "count", len(p.statements))
+	logger.Logger.InfoContext(ctx, "All prepared statements closed", "count", len(p.statements))
 	return nil
 }
 

@@ -38,11 +38,11 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 		RETURNING id, created_at
 	`
 
-	logger.Logger.Info("Creating article summary", "article_id", articleSummary.ArticleID, "user_id", articleSummary.UserID)
+	logger.Logger.InfoContext(ctx, "Creating article summary", "article_id", articleSummary.ArticleID, "user_id", articleSummary.UserID)
 
 	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		logger.Logger.Error("Failed to begin transaction", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to begin transaction", "error", err)
 		return err
 	}
 
@@ -52,26 +52,26 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 	if err != nil {
 		rollbackErr := tx.Rollback(ctx)
 		if rollbackErr != nil {
-			logger.Logger.Error("Failed to rollback transaction", "error", rollbackErr)
+			logger.Logger.ErrorContext(ctx, "Failed to rollback transaction", "error", rollbackErr)
 		}
 
 		// Check if it's because the article doesn't exist (no rows returned)
 		if err == pgx.ErrNoRows {
-			logger.Logger.Error("Article does not exist, cannot create summary", "article_id", articleSummary.ArticleID)
+			logger.Logger.ErrorContext(ctx, "Article does not exist, cannot create summary", "article_id", articleSummary.ArticleID)
 			return fmt.Errorf("article with ID %s does not exist", articleSummary.ArticleID)
 		}
 
-		logger.Logger.Error("Failed to create article summary", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to create article summary", "error", err)
 		return err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to commit transaction", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to commit transaction", "error", err)
 		return err
 	}
 
-	logger.Logger.Info("Article summary created", "summary_id", articleSummary.ID)
+	logger.Logger.InfoContext(ctx, "Article summary created", "summary_id", articleSummary.ID)
 
 	return nil
 }
@@ -95,7 +95,7 @@ func GetArticleSummaryByArticleID(ctx context.Context, db *pgxpool.Pool, article
 		&summary.SummaryJapanese, &summary.CreatedAt,
 	)
 	if err != nil {
-		logger.Logger.Error("Failed to get article summary", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to get article summary", "error", err)
 		return nil, err
 	}
 
@@ -174,11 +174,11 @@ func GetArticlesWithSummaries(ctx context.Context, db *pgxpool.Pool, lastCreated
 	}, "GetArticlesWithSummaries")
 
 	if err != nil {
-		logger.Logger.Error("Failed to get articles with summaries", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to get articles with summaries", "error", err)
 		return nil, nil, "", err
 	}
 
-	logger.Logger.Info("Got articles with summaries", "count", len(articlesWithSummaries), "limit", limit, "has_cursor", lastCreatedAt != nil)
+	logger.Logger.InfoContext(ctx, "Got articles with summaries", "count", len(articlesWithSummaries), "limit", limit, "has_cursor", lastCreatedAt != nil)
 
 	return articlesWithSummaries, finalCreatedAt, finalID, nil
 }
