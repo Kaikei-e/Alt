@@ -1,6 +1,7 @@
 """
 ABOUTME: Logging configuration with ADR 98/99 business context compliance.
 ABOUTME: Provides structured logging with alt.* prefixed attributes for observability.
+ABOUTME: Integrates with OpenTelemetry for distributed tracing and log correlation.
 
 This module implements the logging requirements defined in ADR 98 and ADR 99:
 - alt.article.id: Article tracking
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Callable
 from contextvars import ContextVar
 
 import structlog
@@ -22,6 +24,10 @@ from sqlalchemy import create_engine, text
 from structlog.typing import EventDict, WrappedLogger
 
 from .config import get_settings
+from .otel import OTelConfig, init_otel_provider
+
+# Global shutdown function for OTel provider
+_otel_shutdown: Callable[[], None] = lambda: None
 
 # Context variables for ADR 98 business context (thread-safe for async)
 _alt_job_id: ContextVar[str | None] = ContextVar("alt.job.id", default=None)
@@ -172,9 +178,27 @@ def configure_logging(level: str) -> None:
     """
     Configure structured logging with ADR 98/99 business context support.
 
+    Initializes OpenTelemetry provider and LoggingInstrumentor for distributed
+    tracing and log correlation.
+
     Args:
         level: Log level string (DEBUG, INFO, WARN, ERROR)
     """
+    global _otel_shutdown
+
+    # Initialize OpenTelemetry provider first
+    otel_config = OTelConfig()
+    _otel_shutdown = init_otel_provider(otel_config)
+
+    # Instrument stdlib logging with OTel (set_logging_format=False preserves structlog formatting)
+    if otel_config.enabled:
+        try:
+            from opentelemetry.instrumentation.logging import LoggingInstrumentor
+
+            LoggingInstrumentor().instrument(set_logging_format=False)
+        except Exception as e:
+            sys.stderr.write(f"Failed to initialize OTel LoggingInstrumentor: {e}\n")
+
     logging.basicConfig(level=getattr(logging, level.upper(), logging.INFO))
 
     # Add DB Handler for ERROR+
@@ -204,3 +228,10 @@ def configure_logging(level: str) -> None:
 
     # Bind service name to context for all logs
     structlog.contextvars.bind_contextvars(service="recap-subworker")
+
+
+def shutdown_logging() -> None:
+    """Shutdown OTel provider and cleanup resources."""
+    global _otel_shutdown
+    if _otel_shutdown:
+        _otel_shutdown()
