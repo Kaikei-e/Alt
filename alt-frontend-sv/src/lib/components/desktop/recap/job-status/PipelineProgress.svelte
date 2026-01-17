@@ -1,33 +1,43 @@
 <script lang="ts">
-	import {
-		PIPELINE_STAGES,
-		getStageLabel,
-		type PipelineStage,
-		type SubStageProgress,
-	} from "$lib/schema/dashboard";
-	import { Check, Circle, Loader2 } from "@lucide/svelte";
+import {
+	PIPELINE_STAGES,
+	getStageLabel,
+	type PipelineStage,
+	type SubStageProgress,
+} from "$lib/schema/dashboard";
+import {
+	shouldShowSubStageProgress,
+	formatSubStageProgress,
+	inferStageCompletion,
+} from "$lib/utils/pipelineProgress";
+import { Check, Circle, Loader2 } from "@lucide/svelte";
 
-	interface Props {
-		currentStage: string | null;
-		stageIndex: number;
-		stagesCompleted: string[];
-		subStageProgress?: SubStageProgress | null;
-	}
+interface Props {
+	currentStage: string | null;
+	stageIndex: number;
+	stagesCompleted: string[];
+	subStageProgress?: SubStageProgress | null;
+}
 
-	let { currentStage, stageIndex, stagesCompleted, subStageProgress = null }: Props = $props();
+let {
+	currentStage,
+	stageIndex,
+	stagesCompleted,
+	subStageProgress = null,
+}: Props = $props();
 
-	function getStageStatus(
-		stage: PipelineStage,
-		index: number
-	): "completed" | "running" | "pending" {
-		if (stagesCompleted.includes(stage)) {
-			return "completed";
-		}
-		if (currentStage === stage || index === stageIndex) {
-			return "running";
-		}
-		return "pending";
-	}
+function getStageStatus(
+	stage: PipelineStage,
+	index: number,
+): "completed" | "running" | "pending" {
+	return inferStageCompletion(
+		stage,
+		index,
+		stagesCompleted,
+		currentStage,
+		stageIndex,
+	);
+}
 </script>
 
 <div class="w-full overflow-x-auto">
@@ -62,9 +72,9 @@
 								: 'text-gray-500'}"
 					>
 						{getStageLabel(stage)}
-						{#if stage === "dispatch" && status === "running" && subStageProgress}
+						{#if shouldShowSubStageProgress(stage, status, subStageProgress)}
 							<span class="text-blue-600 ml-0.5">
-								({subStageProgress.completed_genres}/{subStageProgress.total_genres})
+								({formatSubStageProgress(subStageProgress!)})
 							</span>
 						{/if}
 					</span>

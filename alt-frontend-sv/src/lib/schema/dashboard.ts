@@ -74,7 +74,7 @@ export interface GenreProgressInfo {
 	article_count: number | null;
 }
 
-export type SubStagePhase = "clustering" | "summarization";
+export type SubStagePhase = "evidence_building" | "clustering" | "summarization";
 
 export interface SubStageProgress {
 	phase: SubStagePhase;

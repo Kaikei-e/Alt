@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { GenreProgressInfo } from "$lib/schema/dashboard";
+	import { filterGenreProgress } from "$lib/utils/genreProgress";
 	import StatusBadge from "./StatusBadge.svelte";
 	import { Folder, Layers } from "@lucide/svelte";
 
@@ -9,7 +10,7 @@
 
 	let { genreProgress }: Props = $props();
 
-	const genres = $derived(Object.entries(genreProgress).sort(([a], [b]) => a.localeCompare(b)));
+	const genres = $derived(filterGenreProgress(genreProgress));
 </script>
 
 {#if genres.length > 0}
