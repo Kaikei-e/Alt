@@ -227,7 +227,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT Timestamp, SeverityText, ServiceName, Body, TraceId, SpanId FROM otel_logs WHERE $__timeFilter(Timestamp) AND (ServiceName = '$service' OR '$service' = 'All') ORDER BY Timestamp DESC LIMIT 100",
+          "rawSql": "SELECT Timestamp, SeverityText, ServiceName, Body, TraceId, SpanId FROM otel_logs WHERE $__timeFilter(Timestamp) AND $__conditionalAll(ServiceName = '$service', $service) ORDER BY Timestamp DESC LIMIT 100",
           "refId": "A"
         }
       ],
