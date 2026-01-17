@@ -87,12 +87,6 @@ struct ScoredAssignment<'a> {
 impl EvidenceBundle {
     /// GenreBundleから証拠コーパスを構築する。
     pub(crate) fn from_genre_bundle(job_id: Uuid, bundle: GenreBundle) -> Self {
-        info!(
-            job_id = %job_id,
-            total_assignments = bundle.assignments.len(),
-            "building evidence corpora from genre assignments"
-        );
-
         // ジャンルごとに記事をグループ化
         let mut genre_groups: HashMap<String, Vec<&GenreAssignment>> = HashMap::new();
 
@@ -105,10 +99,22 @@ impl EvidenceBundle {
             }
         }
 
+        let total_genres = genre_groups.len();
+        info!(
+            job_id = %job_id,
+            total_assignments = bundle.assignments.len(),
+            alt.processing.stage = "evidence",
+            alt.processing.phase = "evidence_building",
+            alt.processing.progress.total = total_genres,
+            alt.processing.progress.current = 0,
+            "starting evidence corpus construction for all genres"
+        );
+
         let mut corpora = HashMap::new();
         let now = Utc::now();
+        let mut completed_genres = 0usize;
 
-        for (genre, assignments) in genre_groups {
+        for (genre, assignments) in &genre_groups {
             let n_g = assignments.len();
 
             // 記事スコアリングとランキング
@@ -166,36 +172,39 @@ impl EvidenceBundle {
 
             let corpus = build_corpus_for_genre(&genre, &selected);
 
-            debug!(
-                genre = %genre,
+            completed_genres += 1;
+            info!(
+                job_id = %job_id,
+                alt.processing.stage = "evidence",
+                alt.processing.phase = "evidence_building",
+                alt.processing.genre = %genre,
+                alt.processing.progress.current = completed_genres,
+                alt.processing.progress.total = total_genres,
                 article_count = corpus.articles.len(),
                 sentence_count = corpus.total_sentences,
                 character_count = corpus.metadata.character_count,
                 "built evidence corpus for genre"
             );
 
-            corpora.insert(genre, corpus);
+            corpora.insert(genre.clone(), corpus);
         }
 
         let evidence_bundle = Self { job_id, corpora };
 
         let genres_with_articles = evidence_bundle.genres().len();
-        let genres_without_articles: Vec<String> = Vec::new();
 
         info!(
             job_id = %job_id,
-            genre_count = evidence_bundle.genres().len(),
+            alt.processing.stage = "evidence",
+            alt.processing.phase = "evidence_building",
+            alt.processing.status = "completed",
+            alt.processing.progress.current = total_genres,
+            alt.processing.progress.total = total_genres,
+            genre_count = genres_with_articles,
             total_articles = evidence_bundle.total_articles(),
             total_sentences = evidence_bundle.total_sentences(),
             total_characters = evidence_bundle.total_characters(),
             "completed evidence corpus construction"
-        );
-
-        tracing::info!(
-            "Evidence corpus construction: genre_count={}, genres_with_articles={}, genres_without_articles={:?}",
-            evidence_bundle.genres().len(),
-            genres_with_articles,
-            genres_without_articles
         );
 
         evidence_bundle

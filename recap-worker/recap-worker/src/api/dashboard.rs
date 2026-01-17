@@ -292,43 +292,52 @@ async fn build_active_job_info(
         None
     };
 
-    // Calculate sub-stage progress for dispatch stage
-    let dispatch_running = is_dispatch_running(job.last_stage.as_deref(), !genre_progress.is_empty());
+    // Calculate sub-stage progress for evidence/dispatch stages
+    let total_genres = calculate_total_genres(genre_progress.len(), config.recap_genres().len());
+    let running_count = genre_progress
+        .values()
+        .filter(|g| g.status == GenreStatus::Running)
+        .count();
+    let succeeded_count = genre_progress
+        .values()
+        .filter(|g| g.status == GenreStatus::Succeeded)
+        .count();
 
-    let sub_stage_progress = if dispatch_running {
-        let total_genres = config.recap_genres().len();
-        let running_count = genre_progress
-            .values()
-            .filter(|g| g.status == GenreStatus::Running)
-            .count();
-        let succeeded_count = genre_progress
-            .values()
-            .filter(|g| g.status == GenreStatus::Succeeded)
-            .count();
+    let sub_stage_phase = get_sub_stage_phase(
+        job.last_stage.as_deref(),
+        !genre_progress.is_empty(),
+        running_count > 0,
+    );
 
-        // Determine phase:
-        // - If any genre is "running" → clustering phase
-        // - If genres have succeeded but dispatch not complete → summarization phase
-        let phase = if running_count > 0 {
-            "clustering".to_string()
+    let sub_stage_progress = sub_stage_phase.map(|phase| SubStageProgress {
+        phase: phase.to_string(),
+        total_genres,
+        // For evidence_building, we don't have per-genre progress tracking in the database,
+        // so completed_genres will be 0. The actual progress is logged via OTel.
+        // For clustering/summarization, we use the succeeded count.
+        completed_genres: if phase == "evidence_building" {
+            0
         } else {
-            "summarization".to_string()
-        };
+            succeeded_count
+        },
+    });
 
-        Some(SubStageProgress {
-            phase,
-            total_genres,
-            completed_genres: succeeded_count,
-        })
-    } else {
-        None
+    // Derive current_stage and stage_index from actual execution state.
+    // The database last_stage is only updated AFTER a stage completes, so during
+    // evidence/dispatch execution, we need to infer the actual current stage.
+    let (current_stage, effective_stage_index) = match sub_stage_phase {
+        Some("evidence_building") => (Some("evidence".to_string()), PipelineStage::Evidence.index()),
+        Some("clustering") | Some("summarization") => {
+            (Some("dispatch".to_string()), PipelineStage::Dispatch.index())
+        }
+        _ => (job.last_stage.clone(), stage_index),
     };
 
     ActiveJobInfo {
         job_id: job.job_id,
         status: job.status,
-        current_stage: job.last_stage.clone(),
-        stage_index,
+        current_stage,
+        stage_index: effective_stage_index,
         stages_completed: completed_stages,
         genre_progress,
         total_articles,
@@ -443,15 +452,61 @@ pub(crate) async fn get_job_stats(
 // Helper Functions for Testing
 // ============================================================================
 
-/// Determines if the dispatch stage is currently running.
-///
-/// This logic is extracted for testability. The `last_stage` is only updated
-/// AFTER a stage completes, so during dispatch execution it may still show
-/// "evidence". We detect dispatch is running by checking if genre_progress
-/// has data (which is populated during dispatch).
+/// Calculate total genres for sub-stage progress.
+/// Uses actual genre progress count when available (includes subgenres),
+/// falls back to config count during evidence stage when no progress yet.
 #[inline]
-pub(crate) fn is_dispatch_running(last_stage: Option<&str>, has_genre_progress: bool) -> bool {
-    last_stage == Some("dispatch") || (last_stage == Some("evidence") && has_genre_progress)
+pub(crate) fn calculate_total_genres(genre_progress_len: usize, config_genres_len: usize) -> usize {
+    if genre_progress_len == 0 {
+        config_genres_len
+    } else {
+        genre_progress_len
+    }
+}
+
+/// Determines if the evidence stage is currently running.
+///
+/// Evidence building is synchronous and fast, so this is unlikely to be caught
+/// in progress through the dashboard API. However, we detect it by:
+/// - `last_stage == "select"` → evidence stage is starting/running
+///
+/// Note: In practice, evidence building completes too quickly to observe.
+/// Progress is primarily visible through OTel-compliant structured logs.
+#[inline]
+pub(crate) fn is_evidence_running(last_stage: Option<&str>) -> bool {
+    last_stage == Some("select")
+}
+
+/// Gets the sub-stage phase based on current stage and progress.
+///
+/// Returns:
+/// - "evidence_building" when evidence stage is active (and no genre progress yet)
+/// - "clustering" when dispatch is active with running genres
+/// - "summarization" when dispatch is active with no running genres
+///
+/// Note: Genre progress takes priority over last_stage for phase detection.
+/// When genre_progress exists, dispatch is confirmed running even if last_stage
+/// hasn't been updated yet.
+#[inline]
+pub(crate) fn get_sub_stage_phase(
+    last_stage: Option<&str>,
+    has_genre_progress: bool,
+    has_running_genres: bool,
+) -> Option<&'static str> {
+    // Genre progress existence confirms dispatch is running,
+    // regardless of last_stage value (which may not be updated yet)
+    if has_genre_progress {
+        if has_running_genres {
+            Some("clustering")
+        } else {
+            Some("summarization")
+        }
+    } else if is_evidence_running(last_stage) {
+        // Evidence building only when no genre progress exists
+        Some("evidence_building")
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -459,34 +514,93 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_dispatch_running_when_last_stage_is_dispatch() {
-        // When last_stage is "dispatch", dispatch is running regardless of genre_progress
-        assert!(is_dispatch_running(Some("dispatch"), false));
-        assert!(is_dispatch_running(Some("dispatch"), true));
+    fn test_is_evidence_running_when_last_stage_is_select() {
+        // When last_stage is "select", evidence stage is starting/running
+        assert!(is_evidence_running(Some("select")));
     }
 
     #[test]
-    fn test_is_dispatch_running_when_last_stage_is_evidence_with_genre_progress() {
-        // When last_stage is "evidence" but genre_progress exists,
-        // dispatch is actually running (last_stage not yet updated)
-        assert!(is_dispatch_running(Some("evidence"), true));
+    fn test_is_evidence_not_running_for_other_stages() {
+        // Other stages should not trigger evidence running detection
+        assert!(!is_evidence_running(Some("evidence")));
+        assert!(!is_evidence_running(Some("dispatch")));
+        assert!(!is_evidence_running(Some("fetch")));
+        assert!(!is_evidence_running(None));
     }
 
     #[test]
-    fn test_is_dispatch_not_running_when_last_stage_is_evidence_without_genre_progress() {
-        // When last_stage is "evidence" and no genre_progress,
-        // dispatch hasn't started yet
-        assert!(!is_dispatch_running(Some("evidence"), false));
+    fn test_get_sub_stage_phase_evidence_building_only_without_genre_progress() {
+        // Evidence building should only be returned when no genre progress exists
+        assert_eq!(
+            get_sub_stage_phase(Some("select"), false, false),
+            Some("evidence_building")
+        );
     }
 
     #[test]
-    fn test_is_dispatch_not_running_for_other_stages() {
-        // Other stages should not trigger dispatch running detection
-        assert!(!is_dispatch_running(Some("fetch"), false));
-        assert!(!is_dispatch_running(Some("fetch"), true));
-        assert!(!is_dispatch_running(Some("preprocess"), false));
-        assert!(!is_dispatch_running(Some("persist"), false));
-        assert!(!is_dispatch_running(None, false));
-        assert!(!is_dispatch_running(None, true));
+    fn test_get_sub_stage_phase_dispatch_takes_priority_over_evidence() {
+        // When last_stage is "select" but genre_progress exists,
+        // dispatch should take priority over evidence_building
+        // (This happens when last_stage hasn't been updated yet but dispatch has started)
+        assert_eq!(
+            get_sub_stage_phase(Some("select"), true, true),
+            Some("clustering")
+        );
+        assert_eq!(
+            get_sub_stage_phase(Some("select"), true, false),
+            Some("summarization")
+        );
+    }
+
+    #[test]
+    fn test_get_sub_stage_phase_clustering() {
+        // When dispatch is running with running genres, phase should be clustering
+        assert_eq!(
+            get_sub_stage_phase(Some("dispatch"), true, true),
+            Some("clustering")
+        );
+        assert_eq!(
+            get_sub_stage_phase(Some("evidence"), true, true),
+            Some("clustering")
+        );
+    }
+
+    #[test]
+    fn test_get_sub_stage_phase_summarization() {
+        // When dispatch is running with no running genres, phase should be summarization
+        assert_eq!(
+            get_sub_stage_phase(Some("dispatch"), true, false),
+            Some("summarization")
+        );
+        assert_eq!(
+            get_sub_stage_phase(Some("evidence"), true, false),
+            Some("summarization")
+        );
+    }
+
+    #[test]
+    fn test_get_sub_stage_phase_none() {
+        // When no sub-stage is active, phase should be None
+        assert_eq!(get_sub_stage_phase(Some("fetch"), false, false), None);
+        assert_eq!(get_sub_stage_phase(Some("persist"), false, false), None);
+        assert_eq!(get_sub_stage_phase(Some("evidence"), false, false), None);
+        assert_eq!(get_sub_stage_phase(None, false, false), None);
+    }
+
+    #[test]
+    fn test_calculate_total_genres_uses_genre_progress_count_when_available() {
+        // When genre_progress has entries (including subgenres),
+        // total_genres should use genre_progress.len()
+        // This ensures "69/69" instead of "69/30"
+        assert_eq!(calculate_total_genres(69, 30), 69);
+        assert_eq!(calculate_total_genres(45, 30), 45);
+        assert_eq!(calculate_total_genres(30, 30), 30);
+    }
+
+    #[test]
+    fn test_calculate_total_genres_falls_back_to_config_when_no_progress() {
+        // When no genre progress exists (e.g., during evidence stage),
+        // fall back to config count
+        assert_eq!(calculate_total_genres(0, 30), 30);
     }
 }

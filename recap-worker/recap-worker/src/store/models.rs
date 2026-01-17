@@ -640,11 +640,11 @@ pub struct JobProgressEvent {
 
 /// サブステージ進捗情報
 ///
-/// Dispatch ステージ内の詳細な進捗を追跡するための構造体。
-/// クラスタリング/要約生成のフェーズと、完了したジャンル数を記録。
+/// Evidence および Dispatch ステージ内の詳細な進捗を追跡するための構造体。
+/// 証拠コーパス構築/クラスタリング/要約生成のフェーズと、完了したジャンル数を記録。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubStageProgress {
-    /// 現在のフェーズ: "clustering" | "summarization"
+    /// 現在のフェーズ: "evidence_building" | "clustering" | "summarization"
     pub phase: String,
     /// 合計ジャンル数
     pub total_genres: usize,

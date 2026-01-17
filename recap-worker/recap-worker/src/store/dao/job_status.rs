@@ -175,6 +175,9 @@ impl JobStatusDao {
     }
 
     /// Get genre progress for a job from subworker runs.
+    ///
+    /// Note: Excludes 'classification' pseudo-genre which is an internal aggregate marker,
+    /// not an actual genre for display.
     pub async fn get_genre_progress(
         pool: &PgPool,
         job_id: Uuid,
@@ -183,7 +186,7 @@ impl JobStatusDao {
             r"
             SELECT genre, status, cluster_count
             FROM recap_subworker_runs
-            WHERE job_id = $1
+            WHERE job_id = $1 AND genre != 'classification'
             ORDER BY started_at
             ",
         )
