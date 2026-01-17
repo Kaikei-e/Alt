@@ -33,7 +33,7 @@ func (h *InternalHandler) HandleSystemUser(c echo.Context) error {
 
 	userID, err := h.kratosClient.GetFirstIdentityID(ctx)
 	if err != nil {
-		slog.Error("failed to fetch system user from Kratos",
+		slog.ErrorContext(ctx, "failed to fetch system user from Kratos",
 			"error", err,
 			"remote_addr", c.RealIP())
 		return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -41,7 +41,7 @@ func (h *InternalHandler) HandleSystemUser(c echo.Context) error {
 		})
 	}
 
-	slog.Info("system user fetched successfully",
+	slog.InfoContext(ctx, "system user fetched successfully",
 		"user_id", userID,
 		"remote_addr", c.RealIP())
 

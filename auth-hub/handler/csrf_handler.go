@@ -71,19 +71,21 @@ func extractSessionID(cookie string) string {
 
 // Handle processes CSRF token requests
 func (h *CSRFHandler) Handle(c echo.Context) error {
+	ctx := c.Request().Context()
+
 	// Extract session cookie
 	sessionCookie := c.Request().Header.Get("Cookie")
 	if sessionCookie == "" {
-		slog.Warn("csrf token request without session cookie")
+		slog.WarnContext(ctx, "csrf token request without session cookie")
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"error": "session cookie required",
 		})
 	}
 
 	// Validate session with Kratos (existing logic)
-	_, err := h.kratosClient.Whoami(c.Request().Context(), sessionCookie)
+	_, err := h.kratosClient.Whoami(ctx, sessionCookie)
 	if err != nil {
-		slog.Error("failed to validate session", "error", err)
+		slog.ErrorContext(ctx, "failed to validate session", "error", err)
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"error": "invalid session",
 		})
@@ -92,7 +94,7 @@ func (h *CSRFHandler) Handle(c echo.Context) error {
 	// Extract session ID from cookie
 	sessionID := extractSessionID(sessionCookie)
 	if sessionID == "" {
-		slog.Error("failed to extract session ID from cookie")
+		slog.ErrorContext(ctx, "failed to extract session ID from cookie")
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "invalid session cookie format",
 		})
@@ -110,6 +112,6 @@ func (h *CSRFHandler) Handle(c echo.Context) error {
 	if len(sessionID) > 8 {
 		sessionIDPrefix = sessionID[:8]
 	}
-	slog.Info("csrf token generated successfully", "session_id_hash", sessionIDPrefix)
+	slog.InfoContext(ctx, "csrf token generated successfully", "session_id_hash", sessionIDPrefix)
 	return c.JSON(http.StatusOK, response)
 }

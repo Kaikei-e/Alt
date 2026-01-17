@@ -99,14 +99,15 @@ func main() {
 		LogLatency:  true,
 		HandleError: true,
 		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			ctx := c.Request().Context()
 			if v.Error == nil {
-				slog.Info("request completed",
+				slog.InfoContext(ctx, "request completed",
 					"method", v.Method,
 					"uri", v.URI,
 					"status", v.Status,
 					"latency_ms", v.Latency.Milliseconds())
 			} else {
-				slog.Error("request failed",
+				slog.ErrorContext(ctx, "request failed",
 					"method", v.Method,
 					"uri", v.URI,
 					"status", v.Status,

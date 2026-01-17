@@ -58,6 +58,8 @@ type SessionResponse struct {
 
 // Handle processes the /session endpoint and returns JSON
 func (h *SessionHandler) Handle(c echo.Context) error {
+	ctx := c.Request().Context()
+
 	// Extract session cookie
 	cookie, err := c.Cookie("ory_kratos_session")
 	if err != nil {
@@ -82,7 +84,7 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 		// Generate backend token
 		backendToken, err := token.IssueBackendToken(h.config, identity, sessionID)
 		if err != nil {
-			slog.Error("failed to issue backend token", "error", err)
+			slog.ErrorContext(ctx, "failed to issue backend token", "error", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to issue backend token")
 		}
 
@@ -114,7 +116,7 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 
 	// Cache miss - validate with Kratos
 	fullCookie := fmt.Sprintf("ory_kratos_session=%s", sessionID)
-	identity, err := h.kratosClient.Whoami(c.Request().Context(), fullCookie)
+	identity, err := h.kratosClient.Whoami(ctx, fullCookie)
 	if err != nil {
 		// Check if it's an authentication error (401) or service error (502)
 		if strings.Contains(err.Error(), "authentication failed") {
@@ -130,7 +132,7 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 	// Generate backend token
 	backendToken, err := token.IssueBackendToken(h.config, identity, identity.SessionID)
 	if err != nil {
-		slog.Error("failed to issue backend token", "error", err)
+		slog.ErrorContext(ctx, "failed to issue backend token", "error", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to issue backend token")
 	}
 
