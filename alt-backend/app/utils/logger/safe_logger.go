@@ -17,7 +17,7 @@ func SafeLogError(ctx context.Context, operation string, err error) {
 // SafeLogInfo safely logs info with context using nil check for GlobalContext
 func SafeLogInfo(ctx context.Context, msg string, args ...interface{}) {
 	if GlobalContext != nil {
-		GlobalContext.WithContext(ctx).Info(msg, args...)
+		GlobalContext.WithContext(ctx).InfoContext(ctx, msg, args...)
 	} else {
 		SafeInfo(msg, args...)
 	}

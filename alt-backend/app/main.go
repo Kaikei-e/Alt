@@ -49,7 +49,7 @@ func main() {
 
 	// Initialize logger with OTel integration
 	log := logger.InitLoggerWithOTel(otelCfg.Enabled)
-	log.Info("Starting server",
+	log.InfoContext(ctx, "Starting server",
 		"port", cfg.Server.Port,
 		"service", otelCfg.ServiceName,
 		"otel_enabled", otelCfg.Enabled,
@@ -57,7 +57,7 @@ func main() {
 
 	pool, err := alt_db.InitDBConnectionPool(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to connect to database", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to connect to database", "error", err)
 		panic(err)
 	}
 	defer pool.Close()
@@ -106,9 +106,9 @@ func main() {
 
 	// Start REST server in a goroutine
 	go func() {
-		logger.Logger.Info("REST server starting", "port", cfg.Server.Port)
+		logger.Logger.InfoContext(ctx, "REST server starting", "port", cfg.Server.Port)
 		if err := e.StartServer(server); err != nil && err != http.ErrServerClosed {
-			logger.Logger.Error("Error starting REST server", "error", err)
+			logger.Logger.ErrorContext(ctx, "Error starting REST server", "error", err)
 			panic(err)
 		}
 	}()
@@ -117,9 +117,9 @@ func main() {
 	connectPort := 9101
 	connectServer := connectv2.CreateConnectServer(container, cfg, log)
 	go func() {
-		logger.Logger.Info("Connect-RPC server starting", "port", connectPort)
+		logger.Logger.InfoContext(ctx, "Connect-RPC server starting", "port", connectPort)
 		if err := http.ListenAndServe(fmt.Sprintf(":%d", connectPort), connectServer); err != nil && err != http.ErrServerClosed {
-			logger.Logger.Error("Error starting Connect-RPC server", "error", err)
+			logger.Logger.ErrorContext(ctx, "Error starting Connect-RPC server", "error", err)
 		}
 	}()
 
@@ -128,15 +128,15 @@ func main() {
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
 
-	logger.Logger.Info("Shutting down server...")
+	logger.Logger.InfoContext(ctx, "Shutting down server...")
 
 	// Graceful shutdown with timeout (use server timeout configuration)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.WriteTimeout)
 	defer cancel()
 
 	if err := e.Shutdown(shutdownCtx); err != nil {
-		logger.Logger.Error("Error during server shutdown", "error", err)
+		logger.Logger.ErrorContext(shutdownCtx, "Error during server shutdown", "error", err)
 	}
 
-	logger.Logger.Info("Server stopped")
+	logger.Logger.InfoContext(ctx, "Server stopped")
 }

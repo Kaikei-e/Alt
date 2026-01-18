@@ -46,8 +46,8 @@ func (t *Timer) EndWithError(err error) {
 	// Log the error first
 	t.perfLogger.contextLogger.LogError(t.ctx, t.operation, err)
 
-	// Then log the duration
-	t.perfLogger.contextLogger.WithContext(t.ctx).Info("operation failed after duration",
+	// Then log the duration (use InfoContext to propagate trace context)
+	t.perfLogger.contextLogger.WithContext(t.ctx).InfoContext(t.ctx, "operation failed after duration",
 		"operation", t.operation,
 		"duration_ms", duration.Milliseconds(),
 		"error", err,
@@ -57,7 +57,7 @@ func (t *Timer) EndWithError(err error) {
 // LogSlowOperation logs a warning when an operation exceeds a threshold
 func (pl *PerformanceLogger) LogSlowOperation(ctx context.Context, operation string, duration, threshold time.Duration) {
 	if duration > threshold {
-		pl.contextLogger.WithContext(ctx).Warn("slow operation detected",
+		pl.contextLogger.WithContext(ctx).WarnContext(ctx, "slow operation detected",
 			"operation", operation,
 			"duration_ms", duration.Milliseconds(),
 			"threshold_ms", threshold.Milliseconds(),
@@ -76,5 +76,5 @@ func (pl *PerformanceLogger) LogOperationMetrics(ctx context.Context, operation 
 		args = append(args, key, value)
 	}
 
-	pl.contextLogger.WithContext(ctx).Info("operation metrics", args...)
+	pl.contextLogger.WithContext(ctx).InfoContext(ctx, "operation metrics", args...)
 }

@@ -72,14 +72,14 @@ func (cl *ContextLogger) WithContext(ctx context.Context) *slog.Logger {
 
 // Performance logging helpers
 func (cl *ContextLogger) LogDuration(ctx context.Context, operation string, duration time.Duration) {
-	cl.WithContext(ctx).Info("operation completed",
+	cl.WithContext(ctx).InfoContext(ctx, "operation completed",
 		"operation", operation,
 		"duration_ms", duration.Milliseconds(),
 	)
 }
 
 func (cl *ContextLogger) LogError(ctx context.Context, operation string, err error) {
-	cl.WithContext(ctx).Error("operation failed",
+	cl.WithContext(ctx).ErrorContext(ctx, "operation failed",
 		"operation", operation,
 		"error", err,
 	)

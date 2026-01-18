@@ -3,9 +3,14 @@ package logger
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestContextLogger_WithContext(t *testing.T) {
@@ -117,6 +122,96 @@ func TestContextLogger_LogError(t *testing.T) {
 	}
 }
 
+func TestContextLogger_LogDuration_WithTraceContext(t *testing.T) {
+	// Setup in-memory span exporter
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(
+		sdktrace.WithSyncer(exporter),
+	)
+	otel.SetTracerProvider(provider)
+	defer func() { _ = provider.Shutdown(context.Background()) }()
+
+	// Create a buffer to capture JSON output
+	var buf bytes.Buffer
+	jsonHandler := slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})
+	handler := NewTraceContextHandler(jsonHandler)
+	baseLogger := slog.New(handler)
+	contextLogger := NewContextLogger(baseLogger)
+
+	// Create a span and log within its context
+	tracer := otel.Tracer("test")
+	ctx, span := tracer.Start(context.Background(), "test-span")
+	defer span.End()
+
+	ctx = context.WithValue(ctx, RequestIDKey, "req-123")
+	contextLogger.LogDuration(ctx, "test_operation", 150*time.Millisecond)
+
+	// Parse the JSON output
+	var logEntry map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
+		t.Fatalf("Failed to parse JSON log output: %v", err)
+	}
+
+	// Verify trace_id and span_id are present
+	traceID, ok := logEntry["trace_id"].(string)
+	if !ok || traceID == "" {
+		t.Error("Expected trace_id to be present and non-empty")
+	}
+	if traceID == "00000000000000000000000000000000" {
+		t.Error("Expected trace_id to be a valid ID, not all zeros")
+	}
+
+	spanID, ok := logEntry["span_id"].(string)
+	if !ok || spanID == "" {
+		t.Error("Expected span_id to be present and non-empty")
+	}
+}
+
+func TestContextLogger_LogError_WithTraceContext(t *testing.T) {
+	// Setup in-memory span exporter
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(
+		sdktrace.WithSyncer(exporter),
+	)
+	otel.SetTracerProvider(provider)
+	defer func() { _ = provider.Shutdown(context.Background()) }()
+
+	// Create a buffer to capture JSON output
+	var buf bytes.Buffer
+	jsonHandler := slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelError})
+	handler := NewTraceContextHandler(jsonHandler)
+	baseLogger := slog.New(handler)
+	contextLogger := NewContextLogger(baseLogger)
+
+	// Create a span and log within its context
+	tracer := otel.Tracer("test")
+	ctx, span := tracer.Start(context.Background(), "test-span")
+	defer span.End()
+
+	ctx = context.WithValue(ctx, RequestIDKey, "error-req")
+	contextLogger.LogError(ctx, "test_operation", &TestError{msg: "test error"})
+
+	// Parse the JSON output
+	var logEntry map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
+		t.Fatalf("Failed to parse JSON log output: %v", err)
+	}
+
+	// Verify trace_id and span_id are present
+	traceID, ok := logEntry["trace_id"].(string)
+	if !ok || traceID == "" {
+		t.Error("Expected trace_id to be present and non-empty")
+	}
+	if traceID == "00000000000000000000000000000000" {
+		t.Error("Expected trace_id to be a valid ID, not all zeros")
+	}
+
+	spanID, ok := logEntry["span_id"].(string)
+	if !ok || spanID == "" {
+		t.Error("Expected span_id to be present and non-empty")
+	}
+}
+
 func TestPerformanceLogger_MeasureOperation(t *testing.T) {
 	var buf bytes.Buffer
 	baseLogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -206,4 +301,112 @@ type TestError struct {
 
 func (e *TestError) Error() string {
 	return e.msg
+}
+
+func TestInfoContext_WithNilLogger(t *testing.T) {
+	// Save and restore Logger
+	originalLogger := Logger
+	Logger = nil
+	defer func() { Logger = originalLogger }()
+
+	// Should not panic
+	InfoContext(context.Background(), "test message")
+}
+
+func TestInfoContext_WithValidLogger(t *testing.T) {
+	var buf bytes.Buffer
+	originalLogger := Logger
+	Logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	defer func() { Logger = originalLogger }()
+
+	InfoContext(context.Background(), "test info message", "key", "value")
+
+	output := buf.String()
+	if !bytes.Contains(buf.Bytes(), []byte("test info message")) {
+		t.Errorf("expected output to contain message, got %q", output)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("key=value")) {
+		t.Errorf("expected output to contain key=value, got %q", output)
+	}
+}
+
+func TestErrorContext_WithNilLogger(t *testing.T) {
+	// Save and restore Logger
+	originalLogger := Logger
+	Logger = nil
+	defer func() { Logger = originalLogger }()
+
+	// Should not panic
+	ErrorContext(context.Background(), "test error")
+}
+
+func TestErrorContext_WithValidLogger(t *testing.T) {
+	var buf bytes.Buffer
+	originalLogger := Logger
+	Logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelError}))
+	defer func() { Logger = originalLogger }()
+
+	ErrorContext(context.Background(), "test error message", "key", "value")
+
+	output := buf.String()
+	if !bytes.Contains(buf.Bytes(), []byte("test error message")) {
+		t.Errorf("expected output to contain message, got %q", output)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("key=value")) {
+		t.Errorf("expected output to contain key=value, got %q", output)
+	}
+}
+
+func TestWarnContext_WithNilLogger(t *testing.T) {
+	// Save and restore Logger
+	originalLogger := Logger
+	Logger = nil
+	defer func() { Logger = originalLogger }()
+
+	// Should not panic
+	WarnContext(context.Background(), "test warn")
+}
+
+func TestWarnContext_WithValidLogger(t *testing.T) {
+	var buf bytes.Buffer
+	originalLogger := Logger
+	Logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	defer func() { Logger = originalLogger }()
+
+	WarnContext(context.Background(), "test warn message", "key", "value")
+
+	output := buf.String()
+	if !bytes.Contains(buf.Bytes(), []byte("test warn message")) {
+		t.Errorf("expected output to contain message, got %q", output)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("key=value")) {
+		t.Errorf("expected output to contain key=value, got %q", output)
+	}
+}
+
+func TestDebugContext_WithNilLogger(t *testing.T) {
+	// Save and restore Logger
+	originalLogger := Logger
+	Logger = nil
+	defer func() { Logger = originalLogger }()
+
+	// Should not panic
+	DebugContext(context.Background(), "test debug")
+}
+
+func TestDebugContext_WithValidLogger(t *testing.T) {
+	var buf bytes.Buffer
+	originalLogger := Logger
+	Logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	defer func() { Logger = originalLogger }()
+
+	DebugContext(context.Background(), "test debug message", "key", "value")
+
+	output := buf.String()
+	if !bytes.Contains(buf.Bytes(), []byte("test debug message")) {
+		t.Errorf("expected output to contain message, got %q", output)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("key=value")) {
+		t.Errorf("expected output to contain key=value, got %q", output)
+	}
 }

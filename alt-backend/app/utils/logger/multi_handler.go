@@ -4,6 +4,9 @@ import (
 	"context"
 	"log/slog"
 	"os"
+
+	"go.opentelemetry.io/contrib/bridges/otelslog"
+	"go.opentelemetry.io/otel/log/global"
 )
 
 // MultiHandler sends logs to multiple handlers
@@ -12,28 +15,42 @@ type MultiHandler struct {
 }
 
 // NewMultiHandler creates a handler that writes to both stdout and OTel
+// Uses the official otelslog bridge for proper trace context propagation
 func NewMultiHandler(level slog.Level) *MultiHandler {
+	// Wrap JSONHandler with TraceContextHandler to add trace_id/span_id to stdout logs
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level:     level,
+		AddSource: false,
+	})
+
+	// Use official otelslog bridge for OTel export
+	// This properly propagates trace context from the Go context
+	otelHandler := otelslog.NewHandler(
+		"alt-backend",
+		otelslog.WithLoggerProvider(global.GetLoggerProvider()),
+	)
+
 	return &MultiHandler{
 		handlers: []slog.Handler{
-			// JSON output to stdout (for Docker log driver / rask-log-forwarder)
-			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-				Level:     level,
-				AddSource: false,
-			}),
-			// OTel export
-			NewOTelHandler(WithOTelLevel(level)),
+			// JSON output to stdout with trace context (for Docker log driver / rask-log-forwarder)
+			NewTraceContextHandler(jsonHandler),
+			// OTel export via official bridge (properly handles trace context)
+			otelHandler,
 		},
 	}
 }
 
 // NewMultiHandlerStdoutOnly creates a handler that writes only to stdout (OTel disabled)
 func NewMultiHandlerStdoutOnly(level slog.Level) *MultiHandler {
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level:     level,
+		AddSource: false,
+	})
+
 	return &MultiHandler{
 		handlers: []slog.Handler{
-			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-				Level:     level,
-				AddSource: false,
-			}),
+			// JSON output to stdout with trace context
+			NewTraceContextHandler(jsonHandler),
 		},
 	}
 }

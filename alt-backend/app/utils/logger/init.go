@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"strings"
@@ -42,7 +43,9 @@ func InitLoggerWithOTel(enableOTel bool) *slog.Logger {
 		}
 		switch strings.ToLower(config.Format) {
 		case "json":
-			handler = slog.NewJSONHandler(os.Stdout, options)
+			jsonHandler := slog.NewJSONHandler(os.Stdout, options)
+			// Always wrap with TraceContextHandler to add trace_id/span_id to stdout logs
+			handler = NewTraceContextHandler(jsonHandler)
 		default:
 			handler = slog.NewTextHandler(os.Stdout, options)
 		}
@@ -115,5 +118,61 @@ func SafeError(msg string, args ...any) {
 func SafeWarn(msg string, args ...any) {
 	if Logger != nil {
 		Logger.Warn(msg, args...)
+	}
+}
+
+// InfoContext logs at INFO level with trace context
+func InfoContext(ctx context.Context, msg string, args ...any) {
+	if Logger != nil {
+		Logger.InfoContext(ctx, msg, args...)
+	}
+}
+
+// ErrorContext logs at ERROR level with trace context
+func ErrorContext(ctx context.Context, msg string, args ...any) {
+	if Logger != nil {
+		Logger.ErrorContext(ctx, msg, args...)
+	}
+}
+
+// WarnContext logs at WARN level with trace context
+func WarnContext(ctx context.Context, msg string, args ...any) {
+	if Logger != nil {
+		Logger.WarnContext(ctx, msg, args...)
+	}
+}
+
+// DebugContext logs at DEBUG level with trace context
+func DebugContext(ctx context.Context, msg string, args ...any) {
+	if Logger != nil {
+		Logger.DebugContext(ctx, msg, args...)
+	}
+}
+
+// SafeInfoContext logs at INFO level with trace context (nil-safe)
+func SafeInfoContext(ctx context.Context, msg string, args ...any) {
+	if Logger != nil {
+		Logger.InfoContext(ctx, msg, args...)
+	}
+}
+
+// SafeErrorContext logs at ERROR level with trace context (nil-safe)
+func SafeErrorContext(ctx context.Context, msg string, args ...any) {
+	if Logger != nil {
+		Logger.ErrorContext(ctx, msg, args...)
+	}
+}
+
+// SafeWarnContext logs at WARN level with trace context (nil-safe)
+func SafeWarnContext(ctx context.Context, msg string, args ...any) {
+	if Logger != nil {
+		Logger.WarnContext(ctx, msg, args...)
+	}
+}
+
+// SafeDebugContext logs at DEBUG level with trace context (nil-safe)
+func SafeDebugContext(ctx context.Context, msg string, args ...any) {
+	if Logger != nil {
+		Logger.DebugContext(ctx, msg, args...)
 	}
 }
