@@ -57,18 +57,18 @@ func (u *FetchRecentArticlesUsecase) Execute(ctx context.Context, input FetchRec
 	now := time.Now()
 	since := now.Add(-time.Duration(withinHours) * time.Hour)
 
-	logger.Logger.Info("fetching recent articles",
+	logger.Logger.InfoContext(ctx, "fetching recent articles",
 		"within_hours", withinHours,
 		"limit", limit,
 		"since", since.Format(time.RFC3339))
 
 	articles, err := u.gateway.FetchRecentArticles(ctx, since, limit)
 	if err != nil {
-		logger.Logger.Error("failed to fetch recent articles", "error", err)
+		logger.Logger.ErrorContext(ctx, "failed to fetch recent articles", "error", err)
 		return nil, errors.New("failed to fetch recent articles")
 	}
 
-	logger.Logger.Info("successfully fetched recent articles", "count", len(articles))
+	logger.Logger.InfoContext(ctx, "successfully fetched recent articles", "count", len(articles))
 
 	return &FetchRecentArticlesOutput{
 		Articles: articles,

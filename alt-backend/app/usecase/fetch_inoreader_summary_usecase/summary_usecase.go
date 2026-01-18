@@ -29,43 +29,43 @@ func NewFetchInoreaderSummaryUsecase(port fetch_inoreader_summary_port.FetchInor
 
 // Execute fetches inoreader summaries for the provided URLs
 func (u *fetchInoreaderSummaryUsecase) Execute(ctx context.Context, urls []string) ([]*domain.InoreaderSummary, error) {
-	logger.Logger.Info("Usecase: fetching inoreader summaries",
+	logger.Logger.InfoContext(ctx, "Usecase: fetching inoreader summaries",
 		"url_count", len(urls),
 		"urls", urls)
 
 	// Validation: Check URL count limits (as per schema validation max=50)
 	if len(urls) > 50 {
-		logger.Logger.Error("Too many URLs provided", "count", len(urls), "max", 50)
+		logger.Logger.ErrorContext(ctx, "Too many URLs provided", "count", len(urls), "max", 50)
 		return nil, fmt.Errorf("too many URLs: maximum 50 allowed, got %d", len(urls))
 	}
 
 	// Handle empty input
 	if len(urls) == 0 {
-		logger.Logger.Info("No URLs provided, returning empty result")
+		logger.Logger.InfoContext(ctx, "No URLs provided, returning empty result")
 		return []*domain.InoreaderSummary{}, nil
 	}
 
 	// SSRF Protection: Validate all URLs for security
 	if err := u.validateURLsForSecurity(urls); err != nil {
-		logger.Logger.Error("URL security validation failed", "error", err, "url_count", len(urls))
+		logger.Logger.ErrorContext(ctx, "URL security validation failed", "error", err, "url_count", len(urls))
 		return nil, fmt.Errorf("URL validation failed: %w", err)
 	}
 
 	// Remove duplicates while preserving order
 	uniqueURLs := u.removeDuplicateURLs(urls)
 
-	logger.Logger.Info("URLs processed",
+	logger.Logger.InfoContext(ctx, "URLs processed",
 		"original_count", len(urls),
 		"unique_count", len(uniqueURLs))
 
 	// Call port (gateway layer)
 	summaries, err := u.port.FetchSummariesByURLs(ctx, uniqueURLs)
 	if err != nil {
-		logger.Logger.Error("Port layer failed", "error", err, "url_count", len(uniqueURLs))
+		logger.Logger.ErrorContext(ctx, "Port layer failed", "error", err, "url_count", len(uniqueURLs))
 		return nil, fmt.Errorf("failed to fetch summaries: %w", err)
 	}
 
-	logger.Logger.Info("Usecase: successfully fetched summaries",
+	logger.Logger.InfoContext(ctx, "Usecase: successfully fetched summaries",
 		"matched_count", len(summaries),
 		"requested_count", len(uniqueURLs))
 

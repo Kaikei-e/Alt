@@ -18,10 +18,10 @@ func NewUnsummarizedArticlesCountUsecase(unsummarizedArticlesCountPort feed_stat
 func (u *UnsummarizedArticlesCountUsecase) Execute(ctx context.Context) (int, error) {
 	count, err := u.unsummarizedArticlesCountPort.Execute(ctx)
 	if err != nil {
-		logger.Logger.Error("failed to fetch unsummarized articles count", "error", err)
+		logger.Logger.ErrorContext(ctx, "failed to fetch unsummarized articles count", "error", err)
 		return 0, errors.New("failed to fetch unsummarized articles count")
 	}
 
-	logger.Logger.Info("unsummarized articles count fetched successfully", "count", count)
+	logger.Logger.InfoContext(ctx, "unsummarized articles count fetched successfully", "count", count)
 	return count, nil
 }

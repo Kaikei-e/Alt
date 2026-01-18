@@ -22,13 +22,13 @@ func NewFetchTrendStatsUsecase(port trend_stats_port.TrendStatsPort) *FetchTrend
 func (u *FetchTrendStatsUsecase) Execute(ctx context.Context, window string) (*trend_stats_port.TrendDataResponse, error) {
 	result, err := u.trendStatsPort.Execute(ctx, window)
 	if err != nil {
-		logger.Logger.Error("failed to fetch trend stats",
+		logger.Logger.ErrorContext(ctx, "failed to fetch trend stats",
 			"error", err,
 			"window", window)
 		return nil, errors.New("failed to fetch trend stats")
 	}
 
-	logger.Logger.Info("trend stats fetched successfully",
+	logger.Logger.InfoContext(ctx, "trend stats fetched successfully",
 		"window", window,
 		"data_points", len(result.DataPoints),
 		"granularity", result.Granularity)

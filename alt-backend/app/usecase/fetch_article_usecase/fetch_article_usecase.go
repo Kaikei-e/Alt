@@ -80,19 +80,19 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 	}
 
 	if existingArticle != nil {
-		logger.Logger.Info("Article found in database", "url", urlStr, "id", existingArticle.ID)
+		logger.Logger.InfoContext(ctx, "Article found in database", "url", urlStr, "id", existingArticle.ID)
 		return existingArticle.Content, existingArticle.ID, nil
 	}
 
 	// 2. Check if the domain is in the declined_domains table for this user
 	isDeclined, err := u.repo.IsDomainDeclined(ctx, userContext.UserID.String(), domainStr)
 	if err != nil {
-		logger.Logger.Error("Failed to check if domain is declined", "error", err, "domain", domainStr, "user_id", userContext.UserID)
+		logger.Logger.ErrorContext(ctx, "Failed to check if domain is declined", "error", err, "domain", domainStr, "user_id", userContext.UserID)
 		return "", "", fmt.Errorf("failed to check declined status: %w", err)
 	}
 
 	if isDeclined {
-		logger.Logger.Info("Domain is in declined list for user", "domain", domainStr, "user_id", userContext.UserID)
+		logger.Logger.InfoContext(ctx, "Domain is in declined list for user", "domain", domainStr, "user_id", userContext.UserID)
 		return "", "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
 	}
 
@@ -100,23 +100,23 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 	userAgent := "Alt-RSS-Reader/1.0 (+https://alt.example.com)"
 	isAllowed, err := u.robotsTxt.IsPathAllowed(ctx, targetURL, userAgent)
 	if err != nil {
-		logger.Logger.Warn("Failed to check robots.txt, defaulting to ALLOWED", "error", err, "url", urlStr)
+		logger.Logger.WarnContext(ctx, "Failed to check robots.txt, defaulting to ALLOWED", "error", err, "url", urlStr)
 		isAllowed = true
 	}
 
 	if !isAllowed {
-		logger.Logger.Info("Access denied by robots.txt", "url", urlStr)
+		logger.Logger.InfoContext(ctx, "Access denied by robots.txt", "url", urlStr)
 		if err := u.repo.SaveDeclinedDomain(ctx, userContext.UserID.String(), domainStr); err != nil {
-			logger.Logger.Error("Failed to save declined domain", "error", err, "domain", domainStr)
+			logger.Logger.ErrorContext(ctx, "Failed to save declined domain", "error", err, "domain", domainStr)
 		}
 		return "", "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
 	}
 
 	// 4. Fetch from Web
-	logger.Logger.Info("Fetching article from Web", "url", urlStr)
+	logger.Logger.InfoContext(ctx, "Fetching article from Web", "url", urlStr)
 	contentPtr, err := u.articleFetcher.FetchArticleContents(ctx, urlStr)
 	if err != nil {
-		logger.Logger.Error("Failed to fetch article content", "error", err, "url", urlStr)
+		logger.Logger.ErrorContext(ctx, "Failed to fetch article content", "error", err, "url", urlStr)
 		return "", "", fmt.Errorf("fetch failed: %w", err)
 	}
 	if contentPtr == nil || *contentPtr == "" {
@@ -129,7 +129,7 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 	contentStr := html_parser.ExtractArticleText(htmlContent)
 
 	if contentStr == "" {
-		logger.Logger.Warn("failed to extract article text from HTML, falling back to sanitized HTML",
+		logger.Logger.WarnContext(ctx, "failed to extract article text from HTML, falling back to sanitized HTML",
 			"url", urlStr, "html_size_bytes", len(htmlContent))
 		contentStr = html_parser.SanitizeHTML(htmlContent)
 	}
@@ -137,9 +137,9 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 	// 6. Save to Database
 	newID, saveErr := u.repo.SaveArticle(ctx, urlStr, fetchedTitle, contentStr)
 	if saveErr != nil {
-		logger.Logger.Error("Failed to save article to database", "error", saveErr, "url", urlStr)
+		logger.Logger.ErrorContext(ctx, "Failed to save article to database", "error", saveErr, "url", urlStr)
 	} else {
-		logger.Logger.Info("Article content saved", "url", urlStr, "new_id", newID)
+		logger.Logger.InfoContext(ctx, "Article content saved", "url", urlStr, "new_id", newID)
 
 		// 7. Upsert to RAG (Step A: Direct Call)
 		// Using time.Now() for PublishedAt as a temporary measure until HTML parser supports date extraction
@@ -155,9 +155,9 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 		}
 		if err := u.ragIntegration.UpsertArticle(ctx, upsertInput); err != nil {
 			// Log error but do not fail the request, as Article is already saved
-			logger.Logger.Error("Failed to upsert article to RAG", "error", err, "article_id", newID)
+			logger.Logger.ErrorContext(ctx, "Failed to upsert article to RAG", "error", err, "article_id", newID)
 		} else {
-			logger.Logger.Info("Article upserted to RAG", "article_id", newID)
+			logger.Logger.InfoContext(ctx, "Article upserted to RAG", "article_id", newID)
 		}
 	}
 

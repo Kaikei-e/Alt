@@ -18,13 +18,13 @@ func NewTotalArticlesCountUsecase(totalArticlesCountPort feed_stats_port.TotalAr
 func (u *TotalArticlesCountUsecase) Execute(ctx context.Context) (int, error) {
 	totalArticlesCount, err := u.totalArticlesCountPort.Execute(ctx)
 	if err != nil {
-		logger.Logger.Error("failed to fetch total articles count from port",
+		logger.Logger.ErrorContext(ctx, "failed to fetch total articles count from port",
 			"error", err,
 			"usecase", "TotalArticlesCountUsecase")
 		return 0, fmt.Errorf("failed to fetch total articles count: %w", err)
 	}
 
-	logger.Logger.Info("total articles count fetched successfully",
+	logger.Logger.InfoContext(ctx, "total articles count fetched successfully",
 		"count", totalArticlesCount,
 		"usecase", "TotalArticlesCountUsecase")
 	return totalArticlesCount, nil

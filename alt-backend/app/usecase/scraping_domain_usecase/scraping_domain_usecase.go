@@ -132,7 +132,7 @@ func (u *ScrapingDomainUsecase) RefreshAllRobotsTxt(ctx context.Context) error {
 			if err := u.RefreshRobotsTxt(ctx, domain.ID); err != nil {
 				totalErrors++
 				// Log error but continue processing other domains
-				logger.Logger.Error("Failed to refresh robots.txt for domain", "domain", domain.Domain, "error", err)
+				logger.Logger.ErrorContext(ctx, "Failed to refresh robots.txt for domain", "domain", domain.Domain, "error", err)
 				continue
 			}
 			totalProcessed++
@@ -167,7 +167,7 @@ func (u *ScrapingDomainUsecase) EnsureDomainsFromFeedLinks(ctx context.Context) 
 		return fmt.Errorf("failed to list feed link domains: %w", err)
 	}
 
-	logger.Logger.Info("Found domains from feed_links", "count", len(feedLinkDomains))
+	logger.Logger.InfoContext(ctx, "Found domains from feed_links", "count", len(feedLinkDomains))
 
 	createdCount := 0
 	existingCount := 0
@@ -177,7 +177,7 @@ func (u *ScrapingDomainUsecase) EnsureDomainsFromFeedLinks(ctx context.Context) 
 		// Check if domain already exists
 		existing, err := u.scrapingDomainPort.GetByDomain(ctx, feedLinkDomain.Domain)
 		if err != nil {
-			logger.Logger.Error("Error checking existing domain", "domain", feedLinkDomain.Domain, "error", err)
+			logger.Logger.ErrorContext(ctx, "Error checking existing domain", "domain", feedLinkDomain.Domain, "error", err)
 			continue
 		}
 
@@ -201,14 +201,14 @@ func (u *ScrapingDomainUsecase) EnsureDomainsFromFeedLinks(ctx context.Context) 
 		}
 
 		if err := u.scrapingDomainPort.Save(ctx, newDomain); err != nil {
-			logger.Logger.Error("Error creating scraping domain", "domain", feedLinkDomain.Domain, "error", err)
+			logger.Logger.ErrorContext(ctx, "Error creating scraping domain", "domain", feedLinkDomain.Domain, "error", err)
 			continue
 		}
 
 		createdCount++
-		logger.Logger.Info("Created new scraping domain from feed_links", "domain", feedLinkDomain.Domain, "scheme", feedLinkDomain.Scheme)
+		logger.Logger.InfoContext(ctx, "Created new scraping domain from feed_links", "domain", feedLinkDomain.Domain, "scheme", feedLinkDomain.Scheme)
 	}
 
-	logger.Logger.Info("Ensured domains from feed_links", "total", len(feedLinkDomains), "created", createdCount, "existing", existingCount)
+	logger.Logger.InfoContext(ctx, "Ensured domains from feed_links", "total", len(feedLinkDomains), "created", createdCount, "existing", existingCount)
 	return nil
 }

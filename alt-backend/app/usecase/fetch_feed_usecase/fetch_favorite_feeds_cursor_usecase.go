@@ -19,22 +19,22 @@ func NewFetchFavoriteFeedsListCursorUsecase(fetchFeedsListGateway fetch_feed_por
 
 func (u *FetchFavoriteFeedsListCursorUsecase) Execute(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
 	if limit <= 0 {
-		logger.Logger.Error("invalid limit: must be greater than 0", "limit", limit)
+		logger.Logger.ErrorContext(ctx, "invalid limit: must be greater than 0", "limit", limit)
 		return nil, errors.New("limit must be greater than 0")
 	}
 	if limit > 100 {
-		logger.Logger.Error("invalid limit: cannot exceed 100", "limit", limit)
+		logger.Logger.ErrorContext(ctx, "invalid limit: cannot exceed 100", "limit", limit)
 		return nil, errors.New("limit cannot exceed 100")
 	}
 
-	logger.Logger.Info("fetching favorite feeds with cursor", "cursor", cursor, "limit", limit)
+	logger.Logger.InfoContext(ctx, "fetching favorite feeds with cursor", "cursor", cursor, "limit", limit)
 
 	feeds, err := u.fetchFeedsListGateway.FetchFavoriteFeedsListCursor(ctx, cursor, limit)
 	if err != nil {
-		logger.Logger.Error("failed to fetch favorite feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
+		logger.Logger.ErrorContext(ctx, "failed to fetch favorite feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
 		return nil, err
 	}
 
-	logger.Logger.Info("successfully fetched favorite feeds with cursor", "count", len(feeds))
+	logger.Logger.InfoContext(ctx, "successfully fetched favorite feeds with cursor", "count", len(feeds))
 	return feeds, nil
 }

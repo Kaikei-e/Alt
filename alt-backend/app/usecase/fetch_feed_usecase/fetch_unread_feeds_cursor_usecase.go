@@ -20,21 +20,21 @@ func NewFetchUnreadFeedsListCursorUsecase(fetchFeedsListGateway fetch_feed_port.
 func (u *FetchUnreadFeedsListCursorUsecase) Execute(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, bool, error) {
 	// ビジネスルール検証
 	if limit <= 0 {
-		logger.Logger.Error("invalid limit: must be greater than 0", "limit", limit)
+		logger.Logger.ErrorContext(ctx, "invalid limit: must be greater than 0", "limit", limit)
 		return nil, false, errors.New("limit must be greater than 0")
 	}
 	if limit > 100 {
-		logger.Logger.Error("invalid limit: cannot exceed 100", "limit", limit)
+		logger.Logger.ErrorContext(ctx, "invalid limit: cannot exceed 100", "limit", limit)
 		return nil, false, errors.New("limit cannot exceed 100")
 	}
 
-	logger.Logger.Info("fetching unread feeds with cursor", "cursor", cursor, "limit", limit)
+	logger.Logger.InfoContext(ctx, "fetching unread feeds with cursor", "cursor", cursor, "limit", limit)
 
 	// Fetch limit+1 to detect whether more data exists.
 	fetchLimit := limit + 1
 	feeds, err := u.fetchFeedsListGateway.FetchUnreadFeedsListCursor(ctx, cursor, fetchLimit)
 	if err != nil {
-		logger.Logger.Error("failed to fetch unread feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
+		logger.Logger.ErrorContext(ctx, "failed to fetch unread feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
 		return nil, false, err
 	}
 
@@ -43,7 +43,7 @@ func (u *FetchUnreadFeedsListCursorUsecase) Execute(ctx context.Context, cursor 
 		feeds = feeds[:limit]
 	}
 
-	logger.Logger.Info(
+	logger.Logger.InfoContext(ctx,
 		"successfully fetched unread feeds with cursor",
 		"count", len(feeds),
 		"has_more", hasMore,

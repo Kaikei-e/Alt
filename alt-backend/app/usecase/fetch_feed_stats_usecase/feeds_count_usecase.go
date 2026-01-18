@@ -18,10 +18,10 @@ func NewFeedsCountUsecase(feedsCountPort feed_stats_port.FeedAmountPort) *FeedsC
 func (u *FeedsCountUsecase) Execute(ctx context.Context) (int, error) {
 	amount, err := u.feedsCountPort.Execute(ctx)
 	if err != nil {
-		logger.Logger.Error("failed to fetch feeds count", "error", err)
+		logger.Logger.ErrorContext(ctx, "failed to fetch feeds count", "error", err)
 		return 0, errors.New("failed to fetch feeds count")
 	}
 
-	logger.Logger.Info("feeds count fetched successfully", "amount", amount)
+	logger.Logger.InfoContext(ctx, "feeds count fetched successfully", "amount", amount)
 	return amount, nil
 }
