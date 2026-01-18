@@ -387,6 +387,11 @@ impl ServiceManager {
         // Convert ParsedLogEntry to EnrichedLogEntry format expected by rask-log-aggregator
         let mut ndjson_lines = Vec::new();
         for entry in log_batch {
+            // Extract trace context from fields (if present from Go structured logs)
+            let mut fields = entry.fields.clone();
+            let trace_id = fields.remove("trace_id");
+            let span_id = fields.remove("span_id");
+
             // Convert ParsedLogEntry to EnrichedLogEntry
             let enriched_entry = crate::parser::universal::EnrichedLogEntry {
                 service_type: entry.service_type.clone(),
@@ -407,7 +412,9 @@ impl ServiceManager {
                 container_id: "unknown".to_string(), // TODO: Pass real container ID
                 service_name: entry.service_type.clone(), // Use service_type as service_name
                 service_group: None,
-                fields: entry.fields.clone(),
+                trace_id,
+                span_id,
+                fields,
             };
 
             match serde_json::to_string(&enriched_entry) {

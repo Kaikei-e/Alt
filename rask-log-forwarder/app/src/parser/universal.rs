@@ -40,6 +40,12 @@ pub struct EnrichedLogEntry {
     pub service_name: String,
     pub service_group: Option<String>,
 
+    // Trace context (OpenTelemetry)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span_id: Option<String>,
+
     // Additional fields
     pub fields: HashMap<String, String>,
 }
@@ -73,6 +79,8 @@ impl From<NginxLogEntry> for EnrichedLogEntry {
                 .unwrap_or_else(|| "unknown".to_string()),
             service_name: "nginx".to_string(),
             service_group: Some("alt-frontend".to_string()),
+            trace_id: None,
+            span_id: None,
             fields: HashMap::new(),
         }
     }
@@ -110,6 +118,8 @@ impl From<std::sync::Arc<dyn std::any::Any + Send + Sync>> for EnrichedLogEntry 
                 container_id: "unknown".to_string(),
                 service_name: "unknown".to_string(),
                 service_group: None,
+                trace_id: None,
+                span_id: None,
                 fields: HashMap::new(),
             }
         }
@@ -261,6 +271,11 @@ impl UniversalParser {
         // Now parse the actual log content
         let parsed_entry = self.parse_service_log(&log_content, &container_info.service_name)?;
 
+        // Extract trace context from fields (if present from Go structured logs)
+        let mut fields = parsed_entry.fields;
+        let trace_id = fields.remove("trace_id");
+        let span_id = fields.remove("span_id");
+
         // Enrich with container metadata
         Ok(EnrichedLogEntry {
             service_type: parsed_entry.service_type,
@@ -278,7 +293,9 @@ impl UniversalParser {
             container_id: container_info.id.clone(),
             service_name: container_info.service_name.clone(),
             service_group: container_info.group.clone(),
-            fields: parsed_entry.fields,
+            trace_id,
+            span_id,
+            fields,
         })
     }
 
@@ -589,5 +606,30 @@ mod tests {
         // Should return results for all lines
         assert_eq!(results.len(), 10);
         assert!(results.iter().all(|r| r.is_ok()));
+    }
+
+    #[tokio::test]
+    async fn test_trace_context_extraction() {
+        let container_info = create_go_backend_container_info();
+        let parser = UniversalParser::new();
+
+        // Log with trace_id and span_id from Go service using TraceContextHandler
+        let docker_log = r#"{"log":"{\"level\":\"info\",\"msg\":\"Processing request\",\"trace_id\":\"4bf92f3577b34da6a3ce929d0e0e4736\",\"span_id\":\"00f067aa0ba902b7\"}\n","stream":"stdout","time":"2024-01-01T00:00:00Z"}"#;
+
+        let entry = parser
+            .parse_docker_log(docker_log.as_bytes(), &container_info)
+            .await
+            .expect("Failed to parse docker log with trace context");
+
+        // Verify trace context is extracted to dedicated fields
+        assert_eq!(
+            entry.trace_id,
+            Some("4bf92f3577b34da6a3ce929d0e0e4736".to_string())
+        );
+        assert_eq!(entry.span_id, Some("00f067aa0ba902b7".to_string()));
+
+        // Verify trace_id and span_id are NOT in the fields map (removed during extraction)
+        assert!(entry.fields.get("trace_id").is_none());
+        assert!(entry.fields.get("span_id").is_none());
     }
 }
