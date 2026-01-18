@@ -32,20 +32,6 @@ func TestParseLevel(t *testing.T) {
 	}
 }
 
-func TestOTelHandler_Enabled(t *testing.T) {
-	h := NewOTelHandler(slog.LevelInfo)
-
-	if h.Enabled(context.Background(), slog.LevelDebug) {
-		t.Error("expected DEBUG to be disabled")
-	}
-	if !h.Enabled(context.Background(), slog.LevelInfo) {
-		t.Error("expected INFO to be enabled")
-	}
-	if !h.Enabled(context.Background(), slog.LevelError) {
-		t.Error("expected ERROR to be enabled")
-	}
-}
-
 func TestMultiHandler_Enabled(t *testing.T) {
 	h := NewMultiHandler(slog.LevelInfo)
 
@@ -54,5 +40,34 @@ func TestMultiHandler_Enabled(t *testing.T) {
 	}
 	if !h.Enabled(context.Background(), slog.LevelInfo) {
 		t.Error("expected INFO to be enabled")
+	}
+}
+
+func TestMultiHandler_WithAttrs(t *testing.T) {
+	h := NewMultiHandler(slog.LevelInfo)
+	attrs := []slog.Attr{slog.String("key", "value")}
+
+	newHandler := h.WithAttrs(attrs)
+
+	if newHandler == h {
+		t.Error("WithAttrs should return a new handler instance")
+	}
+
+	if _, ok := newHandler.(*MultiHandler); !ok {
+		t.Error("WithAttrs should return a MultiHandler")
+	}
+}
+
+func TestMultiHandler_WithGroup(t *testing.T) {
+	h := NewMultiHandler(slog.LevelInfo)
+
+	newHandler := h.WithGroup("testgroup")
+
+	if newHandler == h {
+		t.Error("WithGroup should return a new handler instance")
+	}
+
+	if _, ok := newHandler.(*MultiHandler); !ok {
+		t.Error("WithGroup should return a MultiHandler")
 	}
 }
