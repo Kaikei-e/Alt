@@ -29,7 +29,7 @@ func (g *FetchArticlesGateway) FetchArticlesWithCursor(ctx context.Context, curs
 
 	articles, err := g.alt_db.FetchArticlesWithCursor(ctx, cursor, limit)
 	if err != nil {
-		logger.SafeError("Error fetching articles with cursor", "error", err)
+		logger.SafeErrorContext(ctx, "Error fetching articles with cursor", "error", err)
 		return nil, errors.New("error fetching articles with cursor")
 	}
 

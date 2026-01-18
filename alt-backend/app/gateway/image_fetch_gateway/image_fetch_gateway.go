@@ -51,7 +51,7 @@ func getProxyStrategy() *ProxyStrategy {
 		if baseURL == "" {
 			baseURL = "http://envoy-proxy.alt-apps.svc.cluster.local:8085"
 		}
-		logger.SafeInfo("Image proxy strategy: SIDECAR mode selected",
+		logger.SafeInfoContext(context.Background(), "Image proxy strategy: SIDECAR mode selected",
 			"base_url", baseURL,
 			"path_template", "/proxy/{scheme}://{host}{path}")
 		return &ProxyStrategy{
@@ -67,7 +67,7 @@ func getProxyStrategy() *ProxyStrategy {
 		if baseURL == "" {
 			baseURL = "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
 		}
-		logger.SafeInfo("Image proxy strategy: ENVOY mode selected",
+		logger.SafeInfoContext(context.Background(), "Image proxy strategy: ENVOY mode selected",
 			"base_url", baseURL,
 			"path_template", "/proxy/{scheme}://{host}{path}")
 		return &ProxyStrategy{
@@ -78,7 +78,7 @@ func getProxyStrategy() *ProxyStrategy {
 		}
 	}
 
-	logger.SafeInfo("Image proxy strategy: DISABLED mode - direct connection will be used")
+	logger.SafeInfoContext(context.Background(), "Image proxy strategy: DISABLED mode - direct connection will be used")
 	return &ProxyStrategy{
 		Mode:         ProxyModeDisabled,
 		BaseURL:      "",
@@ -106,7 +106,7 @@ func (ert *EnvoyProxyRoundTripper) RoundTrip(req *http.Request) (*http.Response,
 				req.Header.Set("Host", parsedTarget.Host)
 				// CRITICAL FIX: Add X-Target-Domain header required by Envoy proxy route matching
 				req.Header.Set("X-Target-Domain", parsedTarget.Host)
-				logger.SafeInfo("Fixed Host header for Envoy Dynamic Forward Proxy (image fetch)",
+				logger.SafeInfoContext(req.Context(), "Fixed Host header for Envoy Dynamic Forward Proxy (image fetch)",
 					"original_host", req.URL.Host,
 					"target_host", parsedTarget.Host,
 					"request_url", req.URL.String())
@@ -125,7 +125,7 @@ func convertToProxyURL(originalURL string, strategy *ProxyStrategy) string {
 	// Parse original URL using net/url to prevent injection attacks
 	u, err := url.Parse(originalURL)
 	if err != nil {
-		logger.SafeError("Failed to parse original URL for proxy conversion (image fetch)",
+		logger.SafeErrorContext(context.Background(), "Failed to parse original URL for proxy conversion (image fetch)",
 			"url", originalURL,
 			"strategy_mode", string(strategy.Mode),
 			"error", err.Error())
@@ -134,7 +134,7 @@ func convertToProxyURL(originalURL string, strategy *ProxyStrategy) string {
 
 	// Validate URL components to prevent malicious inputs
 	if u.Scheme == "" || u.Host == "" {
-		logger.SafeError("Invalid URL components detected (image fetch)",
+		logger.SafeErrorContext(context.Background(), "Invalid URL components detected (image fetch)",
 			"url", originalURL,
 			"scheme", u.Scheme,
 			"host", u.Host)
@@ -144,7 +144,7 @@ func convertToProxyURL(originalURL string, strategy *ProxyStrategy) string {
 	// Parse base URL for proxy strategy
 	baseURL, err := url.Parse(strategy.BaseURL)
 	if err != nil {
-		logger.SafeError("Failed to parse base URL for proxy strategy (image fetch)",
+		logger.SafeErrorContext(context.Background(), "Failed to parse base URL for proxy strategy (image fetch)",
 			"base_url", strategy.BaseURL,
 			"error", err.Error())
 		return originalURL
@@ -163,14 +163,14 @@ func convertToProxyURL(originalURL string, strategy *ProxyStrategy) string {
 	// Parse the complete proxy URL to ensure proper validation
 	proxyURL, err := url.Parse(baseURL.String() + proxyPath)
 	if err != nil {
-		logger.SafeError("Failed to parse constructed proxy URL (image fetch)",
+		logger.SafeErrorContext(context.Background(), "Failed to parse constructed proxy URL (image fetch)",
 			"base_url", strategy.BaseURL,
 			"proxy_path", proxyPath,
 			"error", err.Error())
 		return originalURL
 	}
 
-	logger.SafeInfo("Image URL converted using secure proxy strategy",
+	logger.SafeInfoContext(context.Background(), "Image URL converted using secure proxy strategy",
 		"strategy_mode", string(strategy.Mode),
 		"original_url", originalURL,
 		"proxy_url", proxyURL.String(),
@@ -415,12 +415,12 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 	requestURL := imageURL.String()
 	if g.proxyStrategy != nil && g.proxyStrategy.Enabled {
 		requestURL = convertToProxyURL(imageURL.String(), g.proxyStrategy)
-		logger.SafeInfo("Using proxy strategy for image fetch",
+		logger.SafeInfoContext(ctx, "Using proxy strategy for image fetch",
 			"strategy_mode", string(g.proxyStrategy.Mode),
 			"original_url", imageURL.String(),
 			"proxy_url", requestURL)
 	} else {
-		logger.SafeInfo("Using direct connection for image fetch (no proxy configured)",
+		logger.SafeInfoContext(ctx, "Using direct connection for image fetch (no proxy configured)",
 			"original_url", imageURL.String())
 	}
 

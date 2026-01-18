@@ -36,19 +36,19 @@ func NewInoreaderSummaryGateway(db Database) fetch_inoreader_summary_port.FetchI
 
 // FetchSummariesByURLs implements the port interface
 func (g *inoreaderSummaryGateway) FetchSummariesByURLs(ctx context.Context, urls []string) ([]*domain.InoreaderSummary, error) {
-	logger.Logger.Info("Gateway: fetching inoreader summaries",
+	logger.Logger.InfoContext(ctx, "Gateway: fetching inoreader summaries",
 		"url_count", len(urls),
 		"urls", urls)
 
 	// Apply rate limiting as per CLAUDE.md requirements (5 second intervals)
 	if err := g.limiter.Wait(ctx); err != nil {
-		logger.Logger.Error("Rate limit wait failed", "error", err)
+		logger.Logger.ErrorContext(ctx, "Rate limit wait failed", "error", err)
 		return nil, fmt.Errorf("rate limit exceeded: %w", err)
 	}
 
 	// Handle empty input
 	if len(urls) == 0 {
-		logger.Logger.Info("No URLs provided, returning empty result")
+		logger.Logger.InfoContext(ctx, "No URLs provided, returning empty result")
 		return []*domain.InoreaderSummary{}, nil
 	}
 
@@ -60,7 +60,7 @@ func (g *inoreaderSummaryGateway) FetchSummariesByURLs(ctx context.Context, urls
 		allURLs[rawURL] = true
 		normalized, err := utils.NormalizeURL(rawURL)
 		if err != nil {
-			logger.Logger.Warn("Failed to normalize URL, using original", "url", rawURL, "error", err)
+			logger.Logger.WarnContext(ctx, "Failed to normalize URL, using original", "url", rawURL, "error", err)
 			normalized = rawURL
 		}
 		originalToNormalized[rawURL] = normalized
@@ -75,14 +75,14 @@ func (g *inoreaderSummaryGateway) FetchSummariesByURLs(ctx context.Context, urls
 		allURLsSlice = append(allURLsSlice, url)
 	}
 
-	logger.Logger.Info("Gateway: normalized URLs for matching",
+	logger.Logger.InfoContext(ctx, "Gateway: normalized URLs for matching",
 		"original_count", len(urls),
 		"all_urls_count", len(allURLsSlice))
 
 	// Call database driver with both original and normalized URLs
 	modelSummaries, err := g.db.FetchInoreaderSummariesByURLs(ctx, allURLsSlice)
 	if err != nil {
-		logger.Logger.Error("Database query failed", "error", err, "url_count", len(allURLsSlice))
+		logger.Logger.ErrorContext(ctx, "Database query failed", "error", err, "url_count", len(allURLsSlice))
 		return nil, fmt.Errorf("database query failed: %w", err)
 	}
 
@@ -92,7 +92,7 @@ func (g *inoreaderSummaryGateway) FetchSummariesByURLs(ctx context.Context, urls
 		// Normalize database URL
 		normalizedDBURL, err := utils.NormalizeURL(modelSummary.ArticleURL)
 		if err != nil {
-			logger.Logger.Warn("Failed to normalize DB URL, using original", "url", modelSummary.ArticleURL, "error", err)
+			logger.Logger.WarnContext(ctx, "Failed to normalize DB URL, using original", "url", modelSummary.ArticleURL, "error", err)
 			normalizedDBURL = modelSummary.ArticleURL
 		}
 
@@ -122,7 +122,7 @@ func (g *inoreaderSummaryGateway) FetchSummariesByURLs(ctx context.Context, urls
 		}
 	}
 
-	logger.Logger.Info("Gateway: successfully converted summaries",
+	logger.Logger.InfoContext(ctx, "Gateway: successfully converted summaries",
 		"matched_count", len(domainSummaries),
 		"requested_count", len(urls))
 

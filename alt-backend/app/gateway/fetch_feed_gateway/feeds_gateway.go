@@ -60,7 +60,7 @@ func (g *FetchFeedsGateway) FetchFeeds(ctx context.Context, link string) ([]*dom
 	fp.Client = httpClient
 	feed, err := fp.ParseURL(link)
 	if err != nil {
-		logger.SafeError("Error parsing feed", "error", err)
+		logger.SafeErrorContext(ctx, "Error parsing feed", "error", err)
 		return nil, errors.New("error parsing feed")
 	}
 
@@ -103,7 +103,7 @@ func (g *FetchFeedsGateway) FetchFeedsList(ctx context.Context) ([]*domain.FeedI
 	}
 	feeds, err := g.alt_db.FetchFeedsList(ctx)
 	if err != nil {
-		logger.SafeError("Error fetching feeds list", "error", err)
+		logger.SafeErrorContext(ctx, "Error fetching feeds list", "error", err)
 		return nil, errors.New("error fetching feeds list")
 	}
 
@@ -127,7 +127,7 @@ func (g *FetchFeedsGateway) FetchFeedsListLimit(ctx context.Context, offset int)
 	}
 	feeds, err := g.alt_db.FetchFeedsListLimit(ctx, offset)
 	if err != nil {
-		logger.SafeError("Error fetching feeds list offset", "error", err)
+		logger.SafeErrorContext(ctx, "Error fetching feeds list offset", "error", err)
 		return nil, errors.New("error fetching feeds list offset")
 	}
 
@@ -154,7 +154,7 @@ func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([
 	// TDD Fix: No dangerous fallback! Only fetch unread feeds
 	feeds, err := g.alt_db.FetchUnreadFeedsListPage(ctx, page)
 	if err != nil {
-		logger.SafeError("Error fetching unread feeds", "error", err)
+		logger.SafeErrorContext(ctx, "Error fetching unread feeds", "error", err)
 		return nil, errors.New("error fetching unread feeds list page")
 	}
 
@@ -180,7 +180,7 @@ func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *ti
 
 	feeds, err := g.alt_db.FetchUnreadFeedsListCursor(ctx, cursor, limit)
 	if err != nil {
-		logger.SafeError("Error fetching feeds with cursor", "error", err)
+		logger.SafeErrorContext(ctx, "Error fetching feeds with cursor", "error", err)
 		return nil, errors.New("error fetching feeds with cursor")
 	}
 
@@ -206,7 +206,7 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 
 	feeds, err := g.alt_db.FetchUnreadFeedsListCursor(ctx, cursor, limit)
 	if err != nil {
-		logger.SafeError("Error fetching unread feeds with cursor", "error", err)
+		logger.SafeErrorContext(ctx, "Error fetching unread feeds with cursor", "error", err)
 		return nil, errors.New("error fetching unread feeds with cursor")
 	}
 
@@ -221,7 +221,7 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 
 		// Log first and last feed details for debugging
 		if i == 0 || i == len(feeds)-1 {
-			logger.Logger.Info(
+			logger.Logger.InfoContext(ctx,
 				"feed date mapping for cursor pagination",
 				"index", i,
 				"total", len(feeds),
@@ -258,7 +258,7 @@ func (g *FetchFeedsGateway) FetchReadFeedsListCursor(ctx context.Context, cursor
 
 	feeds, err := g.alt_db.FetchReadFeedsListCursor(ctx, cursor, limit)
 	if err != nil {
-		logger.SafeError("Error fetching read feeds with cursor", "error", err)
+		logger.SafeErrorContext(ctx, "Error fetching read feeds with cursor", "error", err)
 		return nil, errors.New("error fetching read feeds with cursor")
 	}
 
@@ -284,7 +284,7 @@ func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cu
 
 	feeds, err := g.alt_db.FetchFavoriteFeedsListCursor(ctx, cursor, limit)
 	if err != nil {
-		logger.SafeError("Error fetching favorite feeds with cursor", "error", err)
+		logger.SafeErrorContext(ctx, "Error fetching favorite feeds with cursor", "error", err)
 		return nil, errors.New("error fetching favorite feeds with cursor")
 	}
 

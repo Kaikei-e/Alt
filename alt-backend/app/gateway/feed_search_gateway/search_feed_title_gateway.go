@@ -19,20 +19,20 @@ func NewSearchByTitleGateway(pool *pgxpool.Pool) *SearchByTitleGateway {
 }
 
 func (g *SearchByTitleGateway) SearchFeedsByTitle(ctx context.Context, query string, userID string) ([]*domain.FeedItem, error) {
-	logger.GlobalContext.WithContext(ctx).Info("gateway: searching feeds by title",
+	logger.GlobalContext.WithContext(ctx).InfoContext(ctx, "gateway: searching feeds by title",
 		"query", query,
 		"user_id", userID)
 
 	feeds, err := g.alt_db.SearchFeedsByTitle(ctx, query, userID)
 	if err != nil {
-		logger.GlobalContext.WithContext(ctx).Error("gateway: failed to search feeds by title",
+		logger.GlobalContext.WithContext(ctx).ErrorContext(ctx, "gateway: failed to search feeds by title",
 			"error", err,
 			"query", query,
 			"user_id", userID)
 		return nil, err
 	}
 
-	logger.GlobalContext.WithContext(ctx).Info("gateway: feed search completed",
+	logger.GlobalContext.WithContext(ctx).InfoContext(ctx, "gateway: feed search completed",
 		"query", query,
 		"user_id", userID,
 		"results_count", len(feeds))

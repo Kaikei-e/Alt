@@ -47,28 +47,28 @@ type MorningArticleGroupResponse struct {
 func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time.Time) ([]*domain.MorningArticleGroup, error) {
 	// 1. Fetch groups from recap-worker
 	url := fmt.Sprintf("%s/v1/morning/updates?since=%s", g.recapWorkerURL, since.Format(time.RFC3339))
-	logger.Logger.Info("Fetching morning updates from recap-worker", "url", url, "since", since)
+	logger.Logger.InfoContext(ctx, "Fetching morning updates from recap-worker", "url", url, "since", since)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		logger.Logger.Error("Failed to create request to recap-worker", "error", err, "url", url)
+		logger.Logger.ErrorContext(ctx, "Failed to create request to recap-worker", "error", err, "url", url)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
-		logger.Logger.Error("Failed to fetch morning updates from recap-worker", "error", err, "url", url)
+		logger.Logger.ErrorContext(ctx, "Failed to fetch morning updates from recap-worker", "error", err, "url", url)
 		return nil, fmt.Errorf("failed to fetch morning updates: %w", err)
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.Logger.Debug("Failed to close response body", "error", closeErr)
+			logger.Logger.DebugContext(ctx, "Failed to close response body", "error", closeErr)
 		}
 	}()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		logger.Logger.Error("recap-worker returned non-OK status",
+		logger.Logger.ErrorContext(ctx, "recap-worker returned non-OK status",
 			"status", resp.StatusCode,
 			"url", url,
 			"response_body", string(bodyBytes))
@@ -77,11 +77,11 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 
 	var groupResps []MorningArticleGroupResponse
 	if err := json.NewDecoder(resp.Body).Decode(&groupResps); err != nil {
-		logger.Logger.Error("Failed to decode recap-worker response", "error", err, "url", url)
+		logger.Logger.ErrorContext(ctx, "Failed to decode recap-worker response", "error", err, "url", url)
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	logger.Logger.Info("Fetched morning article groups from recap-worker", "count", len(groupResps))
+	logger.Logger.InfoContext(ctx, "Fetched morning article groups from recap-worker", "count", len(groupResps))
 
 	if len(groupResps) == 0 {
 		return []*domain.MorningArticleGroup{}, nil
@@ -94,16 +94,16 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 	}
 
 	if len(articleIDs) == 0 {
-		logger.Logger.Info("No article IDs to fetch from database")
+		logger.Logger.InfoContext(ctx, "No article IDs to fetch from database")
 		return []*domain.MorningArticleGroup{}, nil
 	}
 
-	logger.Logger.Info("Fetching articles from database", "article_count", len(articleIDs))
+	logger.Logger.InfoContext(ctx, "Fetching articles from database", "article_count", len(articleIDs))
 
 	// 3. Fetch Articles from DB using Driver layer
 	articles, err := g.altDBRepository.FetchArticlesByIDs(ctx, articleIDs)
 	if err != nil {
-		logger.Logger.Error("Failed to fetch articles from database", "error", err, "article_count", len(articleIDs))
+		logger.Logger.ErrorContext(ctx, "Failed to fetch articles from database", "error", err, "article_count", len(articleIDs))
 		return nil, fmt.Errorf("failed to fetch articles: %w", err)
 	}
 
@@ -120,7 +120,7 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 		article, ok := articleMap[gr.ArticleID]
 		if !ok {
 			missingArticles++
-			logger.Logger.Warn("Article not found in database", "article_id", gr.ArticleID, "group_id", gr.GroupID)
+			logger.Logger.WarnContext(ctx, "Article not found in database", "article_id", gr.ArticleID, "group_id", gr.GroupID)
 			continue // Article might have been deleted or not found
 		}
 
@@ -134,9 +134,9 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 	}
 
 	if missingArticles > 0 {
-		logger.Logger.Warn("Some articles were not found in database", "missing_count", missingArticles, "total_groups", len(groupResps))
+		logger.Logger.WarnContext(ctx, "Some articles were not found in database", "missing_count", missingArticles, "total_groups", len(groupResps))
 	}
 
-	logger.Logger.Info("Successfully fetched morning article groups", "result_count", len(result), "total_groups", len(groupResps))
+	logger.Logger.InfoContext(ctx, "Successfully fetched morning article groups", "result_count", len(result), "total_groups", len(groupResps))
 	return result, nil
 }

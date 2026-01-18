@@ -31,7 +31,7 @@ func (g *FetchRecentArticlesGateway) FetchRecentArticles(ctx context.Context, si
 
 	articles, err := g.altDB.FetchRecentArticles(ctx, since, limit)
 	if err != nil {
-		logger.SafeError("Error fetching recent articles", "error", err, "since", since)
+		logger.SafeErrorContext(ctx, "Error fetching recent articles", "error", err, "since", since)
 		return nil, errors.New("error fetching recent articles")
 	}
 

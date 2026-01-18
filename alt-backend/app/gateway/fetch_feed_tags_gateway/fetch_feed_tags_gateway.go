@@ -24,15 +24,15 @@ func (g *FetchFeedTagsGateway) FetchFeedTags(ctx context.Context, feedID string,
 		return nil, errors.New("database connection not available")
 	}
 
-	logger.Logger.Info("fetching feed tags", "feedID", feedID, "cursor", cursor, "limit", limit)
+	logger.Logger.InfoContext(ctx, "fetching feed tags", "feedID", feedID, "cursor", cursor, "limit", limit)
 
 	// Call driver layer to fetch tags
 	tags, err := g.alt_db.FetchFeedTags(ctx, feedID, cursor, limit)
 	if err != nil {
-		logger.Logger.Error("failed to fetch feed tags", "error", err, "feedID", feedID)
+		logger.Logger.ErrorContext(ctx, "failed to fetch feed tags", "error", err, "feedID", feedID)
 		return nil, errors.New("error fetching feed tags")
 	}
 
-	logger.Logger.Info("successfully fetched feed tags", "count", len(tags))
+	logger.Logger.InfoContext(ctx, "successfully fetched feed tags", "count", len(tags))
 	return tags, nil
 }

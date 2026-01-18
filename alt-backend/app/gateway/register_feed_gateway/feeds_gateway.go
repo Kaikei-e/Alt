@@ -30,7 +30,7 @@ func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domai
 	for _, feedItem := range feeds {
 		// Additional validation: Skip feeds with empty titles as a safety net
 		if strings.TrimSpace(feedItem.Title) == "" {
-			logger.Logger.Warn("Skipping feed registration with empty title",
+			logger.Logger.WarnContext(ctx, "Skipping feed registration with empty title",
 				"link", feedItem.Link,
 				"description", feedItem.Description)
 			continue
@@ -39,7 +39,7 @@ func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domai
 		// Zero-trust: Normalize URL to remove tracking parameters (UTM, etc.)
 		normalizedLink, err := utils.NormalizeURL(feedItem.Link)
 		if err != nil {
-			logger.Logger.Warn("Failed to normalize feed link, using original",
+			logger.Logger.WarnContext(ctx, "Failed to normalize feed link, using original",
 				"link", feedItem.Link,
 				"error", err)
 			normalizedLink = feedItem.Link
@@ -54,17 +54,17 @@ func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domai
 			UpdatedAt:   time.Now(),
 		}
 
-		logger.SafeInfo("Feed model link", "feedModel", feedModel.Link)
+		logger.SafeInfoContext(ctx, "Feed model link", "feedModel", feedModel.Link)
 		items = append(items, *feedModel)
 	}
 
 	err := g.alt_db.RegisterMultipleFeeds(ctx, items)
 	if err != nil {
-		logger.SafeError("Error registering multiple feeds", "error", err)
+		logger.SafeErrorContext(ctx, "Error registering multiple feeds", "error", err)
 		return err
 	}
 
-	logger.SafeInfo("Feeds registered", "number of feeds", len(items))
+	logger.SafeInfoContext(ctx, "Feeds registered", "number of feeds", len(items))
 
 	return nil
 }

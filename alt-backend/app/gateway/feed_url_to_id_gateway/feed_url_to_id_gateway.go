@@ -22,15 +22,15 @@ func (g *FeedURLToIDGateway) GetFeedIDByURL(ctx context.Context, feedURL string)
 		return "", errors.New("database connection not available")
 	}
 
-	logger.Logger.Info("getting feed ID by URL", "feedURL", feedURL)
+	logger.Logger.InfoContext(ctx, "getting feed ID by URL", "feedURL", feedURL)
 
 	// Call driver layer to get feed ID
 	feedID, err := g.alt_db.GetFeedIDByURL(ctx, feedURL)
 	if err != nil {
-		logger.Logger.Error("failed to get feed ID by URL", "error", err, "feedURL", feedURL)
+		logger.Logger.ErrorContext(ctx, "failed to get feed ID by URL", "error", err, "feedURL", feedURL)
 		return "", errors.New("error getting feed ID by URL")
 	}
 
-	logger.Logger.Info("successfully retrieved feed ID", "feedID", feedID)
+	logger.Logger.InfoContext(ctx, "successfully retrieved feed ID", "feedID", feedID)
 	return feedID, nil
 }

@@ -34,13 +34,13 @@ func (g *RegisterFavoriteFeedGateway) RegisterFavoriteFeed(ctx context.Context, 
 		case errors.Is(err, pgx.ErrNoRows):
 			return errors.New("feed not found")
 		case errors.Is(err, pgx.ErrTxClosed):
-			logger.SafeError("failed to register favorite feed", "error", err)
+			logger.SafeErrorContext(ctx, "failed to register favorite feed", "error", err)
 			return errors.New("failed to register favorite feed")
 		default:
-			logger.SafeError("error inserting favorite feed", "error", err)
+			logger.SafeErrorContext(ctx, "error inserting favorite feed", "error", err)
 			return err
 		}
 	}
-	logger.SafeInfo("favorite feed registered", "url", url)
+	logger.SafeInfoContext(ctx, "favorite feed registered", "url", url)
 	return nil
 }

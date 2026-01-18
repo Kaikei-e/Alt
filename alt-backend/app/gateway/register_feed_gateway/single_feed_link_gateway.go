@@ -79,7 +79,7 @@ func getProxyStrategy() *ProxyStrategy {
 		if baseURL == "" {
 			baseURL = "http://envoy-proxy.alt-apps.svc.cluster.local:8085"
 		}
-		logger.SafeInfo("Proxy strategy: SIDECAR mode selected",
+		logger.SafeInfoContext(context.Background(), "Proxy strategy: SIDECAR mode selected",
 			"base_url", baseURL,
 			"path_template", "/proxy/{scheme}://{host}{path}")
 		return &ProxyStrategy{
@@ -95,7 +95,7 @@ func getProxyStrategy() *ProxyStrategy {
 		if baseURL == "" {
 			baseURL = "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
 		}
-		logger.SafeInfo("Proxy strategy: ENVOY mode selected",
+		logger.SafeInfoContext(context.Background(), "Proxy strategy: ENVOY mode selected",
 			"base_url", baseURL,
 			"path_template", "/proxy/{scheme}://{host}{path}")
 		return &ProxyStrategy{
@@ -111,7 +111,7 @@ func getProxyStrategy() *ProxyStrategy {
 		if baseURL == "" {
 			baseURL = "http://nginx-external.alt-ingress.svc.cluster.local:8889"
 		}
-		logger.SafeInfo("Proxy strategy: NGINX mode selected",
+		logger.SafeInfoContext(context.Background(), "Proxy strategy: NGINX mode selected",
 			"base_url", baseURL,
 			"path_template", "/rss-proxy/{scheme}://{host}{path}")
 		return &ProxyStrategy{
@@ -122,7 +122,7 @@ func getProxyStrategy() *ProxyStrategy {
 		}
 	}
 
-	logger.SafeInfo("Proxy strategy: DISABLED mode - direct connection will be used")
+	logger.SafeInfoContext(context.Background(), "Proxy strategy: DISABLED mode - direct connection will be used")
 	return &ProxyStrategy{
 		Mode:         ProxyModeDisabled,
 		BaseURL:      "",
@@ -191,7 +191,7 @@ func (ert *EnvoyProxyRoundTripper) RoundTrip(req *http.Request) (*http.Response,
 				req.Header.Set("Host", parsedTarget.Host)
 				// CRITICAL FIX: Add X-Target-Domain header required by Envoy proxy route matching
 				req.Header.Set("X-Target-Domain", parsedTarget.Host)
-				logger.SafeInfo("Fixed Host header for Envoy Dynamic Forward Proxy",
+				logger.SafeInfoContext(req.Context(), "Fixed Host header for Envoy Dynamic Forward Proxy",
 					"original_host", req.URL.Host,
 					"target_host", parsedTarget.Host,
 					"request_url", req.URL.String())
@@ -220,7 +220,7 @@ func (f *DefaultRSSFeedFetcher) createHTTPClient() *http.Client {
 
 	// ULTRATHINK ROOT FIX: nginx-external proxyがCONNECTメソッド未サポートのため直接HTTPS接続使用
 	if f.proxyConfig != nil && f.proxyConfig.Enabled && f.proxyConfig.ProxyURL != "" {
-		logger.SafeInfo("Using direct HTTPS connection due to proxy CONNECT method limitation",
+		logger.SafeInfoContext(context.Background(), "Using direct HTTPS connection due to proxy CONNECT method limitation",
 			"proxy_enabled", f.proxyConfig.Enabled,
 			"proxy_url", f.proxyConfig.ProxyURL,
 			"reason", "nginx-external does not support CONNECT method for HTTPS tunneling")
@@ -245,11 +245,11 @@ func (f *DefaultRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (
 
 	// Safety check to prevent panic in tests with incomplete initialization
 	if f.proxyStrategy == nil {
-		logger.SafeWarn("Proxy strategy not initialized, using direct connection")
+		logger.SafeWarnContext(ctx, "Proxy strategy not initialized, using direct connection")
 		return f.fetchRSSFeedWithRetry(ctx, link)
 	}
 
-	logger.SafeInfo("DEBUG: Proxy strategy configuration check",
+	logger.SafeInfoContext(ctx, "DEBUG: Proxy strategy configuration check",
 		"strategy_mode", string(f.proxyStrategy.Mode),
 		"strategy_enabled", f.proxyStrategy.Enabled,
 		"strategy_base_url", f.proxyStrategy.BaseURL,
@@ -263,7 +263,7 @@ func (f *DefaultRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (
 		u, _ := url.Parse(link)
 		expectedUpstream := u.Host
 
-		logger.SafeInfo("Using strategic proxy for RSS fetching",
+		logger.SafeInfoContext(ctx, "Using strategic proxy for RSS fetching",
 			"strategy_mode", string(f.proxyStrategy.Mode),
 			"original_url", link,
 			"proxy_url", proxyURL,
@@ -273,7 +273,7 @@ func (f *DefaultRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (
 	}
 
 	// Fallback: Direct connection when no proxy is configured
-	logger.SafeInfo("Using direct RSS feed connection (no proxy configured)",
+	logger.SafeInfoContext(ctx, "Using direct RSS feed connection (no proxy configured)",
 		"original_url", link)
 
 	return f.fetchRSSFeedWithRetry(ctx, link)
@@ -286,7 +286,7 @@ func (f *DefaultRSSFeedFetcher) convertToProxyURL(originalURL string, strategy *
 	// SECURITY: Parse original URL using net/url to prevent injection attacks
 	u, err := url.Parse(originalURL)
 	if err != nil {
-		logger.SafeError("Failed to parse original URL for proxy conversion",
+		logger.SafeErrorContext(context.Background(), "Failed to parse original URL for proxy conversion",
 			"url", originalURL,
 			"strategy_mode", string(strategy.Mode),
 			"error", err.Error())
@@ -295,7 +295,7 @@ func (f *DefaultRSSFeedFetcher) convertToProxyURL(originalURL string, strategy *
 
 	// SECURITY: Validate URL components to prevent malicious inputs
 	if u.Scheme == "" || u.Host == "" {
-		logger.SafeError("Invalid URL components detected",
+		logger.SafeErrorContext(context.Background(), "Invalid URL components detected",
 			"url", originalURL,
 			"scheme", u.Scheme,
 			"host", u.Host)
@@ -306,7 +306,7 @@ func (f *DefaultRSSFeedFetcher) convertToProxyURL(originalURL string, strategy *
 	// Following Go security best practices for URL manipulation
 	baseURL, err := url.Parse(strategy.BaseURL)
 	if err != nil {
-		logger.SafeError("Failed to parse base URL for proxy strategy",
+		logger.SafeErrorContext(context.Background(), "Failed to parse base URL for proxy strategy",
 			"base_url", strategy.BaseURL,
 			"error", err.Error())
 		return originalURL
@@ -326,14 +326,14 @@ func (f *DefaultRSSFeedFetcher) convertToProxyURL(originalURL string, strategy *
 	// SECURITY: Parse the complete proxy URL to ensure proper validation
 	proxyURL, err := url.Parse(baseURL.String() + proxyPath)
 	if err != nil {
-		logger.SafeError("Failed to parse constructed proxy URL",
+		logger.SafeErrorContext(context.Background(), "Failed to parse constructed proxy URL",
 			"base_url", strategy.BaseURL,
 			"proxy_path", proxyPath,
 			"error", err.Error())
 		return originalURL
 	}
 
-	logger.SafeInfo("RSS URL converted using secure proxy strategy",
+	logger.SafeInfoContext(context.Background(), "RSS URL converted using secure proxy strategy",
 		"strategy_mode", string(strategy.Mode),
 		"original_url", originalURL,
 		"proxy_url", proxyURL.String(),
@@ -349,7 +349,7 @@ func (f *DefaultRSSFeedFetcher) convertToEgressGatewayURL(originalURL string) st
 	// Parse original URL
 	u, err := url.Parse(originalURL)
 	if err != nil {
-		logger.SafeWarn("Failed to parse RSS URL, using original",
+		logger.SafeWarnContext(context.Background(), "Failed to parse RSS URL, using original",
 			"url", originalURL,
 			"error", err.Error())
 		return originalURL
@@ -357,7 +357,7 @@ func (f *DefaultRSSFeedFetcher) convertToEgressGatewayURL(originalURL string) st
 
 	// Only convert HTTP/HTTPS URLs (security requirement)
 	if u.Scheme != "https" && u.Scheme != "http" {
-		logger.SafeWarn("Non-HTTP(S) RSS URL detected, using original",
+		logger.SafeWarnContext(context.Background(), "Non-HTTP(S) RSS URL detected, using original",
 			"url", originalURL,
 			"scheme", u.Scheme)
 		return originalURL
@@ -376,7 +376,7 @@ func (f *DefaultRSSFeedFetcher) convertToEgressGatewayURL(originalURL string) st
 
 	egressURL := egressGatewayBase + egressPath
 
-	logger.SafeInfo("RSS URL converted to egress gateway route",
+	logger.SafeInfoContext(context.Background(), "RSS URL converted to egress gateway route",
 		"original_url", originalURL,
 		"egress_url", egressURL,
 		"target_host", u.Host,
@@ -390,7 +390,7 @@ func (f *DefaultRSSFeedFetcher) convertToEnvoyProxyURL(originalURL string) strin
 	// Parse original URL
 	u, err := url.Parse(originalURL)
 	if err != nil {
-		logger.SafeWarn("Failed to parse RSS URL for Envoy proxy, using original",
+		logger.SafeWarnContext(context.Background(), "Failed to parse RSS URL for Envoy proxy, using original",
 			"url", originalURL,
 			"error", err.Error())
 		return originalURL
@@ -398,7 +398,7 @@ func (f *DefaultRSSFeedFetcher) convertToEnvoyProxyURL(originalURL string) strin
 
 	// Only convert HTTP/HTTPS URLs (security requirement)
 	if u.Scheme != "https" && u.Scheme != "http" {
-		logger.SafeWarn("Non-HTTP(S) RSS URL detected for Envoy proxy, using original",
+		logger.SafeWarnContext(context.Background(), "Non-HTTP(S) RSS URL detected for Envoy proxy, using original",
 			"url", originalURL,
 			"scheme", u.Scheme)
 		return originalURL
@@ -415,7 +415,7 @@ func (f *DefaultRSSFeedFetcher) convertToEnvoyProxyURL(originalURL string) strin
 
 	envoyURL := envoyProxyBase + envoyPath
 
-	logger.SafeInfo("RSS URL converted to Envoy proxy route",
+	logger.SafeInfoContext(context.Background(), "RSS URL converted to Envoy proxy route",
 		"original_url", originalURL,
 		"envoy_url", envoyURL,
 		"target_host", u.Host,
@@ -461,7 +461,7 @@ func (f *DefaultRSSFeedFetcher) fetchRSSFeedWithRetry(ctx context.Context, link 
 				delay = maxDelay
 			}
 
-			logger.SafeInfo("Retrying RSS feed fetch",
+			logger.SafeInfoContext(feedCtx, "Retrying RSS feed fetch",
 				"url", link,
 				"attempt", attempt+1,
 				"delay_seconds", delay.Seconds())
@@ -476,7 +476,7 @@ func (f *DefaultRSSFeedFetcher) fetchRSSFeedWithRetry(ctx context.Context, link 
 		feed, err := fp.ParseURLWithContext(link, feedCtx)
 		if err == nil {
 			if attempt > 0 {
-				logger.SafeInfo("RSS feed fetch succeeded after retry",
+				logger.SafeInfoContext(feedCtx, "RSS feed fetch succeeded after retry",
 					"url", link,
 					"attempts", attempt+1)
 			}
@@ -485,13 +485,13 @@ func (f *DefaultRSSFeedFetcher) fetchRSSFeedWithRetry(ctx context.Context, link 
 
 		lastErr = err
 		if !isRetryableError(err) {
-			logger.SafeWarn("Non-retryable error, not retrying",
+			logger.SafeWarnContext(feedCtx, "Non-retryable error, not retrying",
 				"url", link,
 				"error", err.Error())
 			break
 		}
 
-		logger.SafeWarn("RSS feed fetch failed, will retry",
+		logger.SafeWarnContext(feedCtx, "RSS feed fetch failed, will retry",
 			"url", link,
 			"attempt", attempt+1,
 			"error", err.Error())
@@ -537,7 +537,7 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 		if err := g.urlValidator.ValidateRSSURL(link); err != nil {
 			g.metricsCollector.RecordFailure()
 			g.metricsCollector.RecordResponseTime(time.Since(start))
-			logger.SafeWarn("URL security validation failed", "url", link, "error", err.Error())
+			logger.SafeWarnContext(ctx, "URL security validation failed", "url", link, "error", err.Error())
 			return err
 		}
 
@@ -545,7 +545,7 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 		if err := g.urlValidator.ValidateForRSSFeed(link); err != nil {
 			g.metricsCollector.RecordFailure()
 			g.metricsCollector.RecordResponseTime(time.Since(start))
-			logger.SafeWarn("RSS-specific validation failed", "url", link, "error", err.Error())
+			logger.SafeWarnContext(ctx, "RSS-specific validation failed", "url", link, "error", err.Error())
 			return err
 		}
 	}
@@ -569,32 +569,32 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 			errStr := err.Error()
 			// Check for connection errors
 			if strings.Contains(errStr, "no such host") || strings.Contains(errStr, "connection refused") {
-				logger.SafeError("RSS feed connection error", "url", link, "error", errStr, "error_type", "connection_error")
+				logger.SafeErrorContext(ctx, "RSS feed connection error", "url", link, "error", errStr, "error_type", "connection_error")
 				return stderrors.New("could not reach the RSS feed URL")
 			}
 			// Check for timeout errors
 			if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded") {
-				logger.SafeError("RSS feed timeout error", "url", link, "error", errStr, "error_type", "timeout")
+				logger.SafeErrorContext(ctx, "RSS feed timeout error", "url", link, "error", errStr, "error_type", "timeout")
 				return stderrors.New("RSS feed fetch timeout - server took too long to respond")
 			}
 			// Check for 404 Not Found errors
 			if strings.Contains(errStr, "404") || strings.Contains(errStr, "Not Found") || strings.Contains(errStr, "not found") {
-				logger.SafeError("RSS feed not found (404)", "url", link, "error", errStr, "error_type", "http_404", "http_status_code", 404)
+				logger.SafeErrorContext(ctx, "RSS feed not found (404)", "url", link, "error", errStr, "error_type", "http_404", "http_status_code", 404)
 				return stderrors.New("RSS feed not found (404)")
 			}
 			// Check for 403 Forbidden errors
 			if strings.Contains(errStr, "403") || strings.Contains(errStr, "Forbidden") || strings.Contains(errStr, "forbidden") {
-				logger.SafeError("RSS feed access forbidden (403)", "url", link, "error", errStr, "error_type", "http_403", "http_status_code", 403)
+				logger.SafeErrorContext(ctx, "RSS feed access forbidden (403)", "url", link, "error", errStr, "error_type", "http_403", "http_status_code", 403)
 				return stderrors.New("RSS feed access forbidden (403)")
 			}
 			// Check for 400 Bad Request errors
 			if strings.Contains(errStr, "400") || strings.Contains(errStr, "Bad request") || strings.Contains(errStr, "bad request") {
-				logger.SafeError("RSS feed bad request (400)", "url", link, "error", errStr, "error_type", "http_400", "http_status_code", 400)
+				logger.SafeErrorContext(ctx, "RSS feed bad request (400)", "url", link, "error", errStr, "error_type", "http_400", "http_status_code", 400)
 				return stderrors.New("RSS feed URL returned bad request (400)")
 			}
 			// Check for redirect loop errors
 			if strings.Contains(errStr, "stopped after") && strings.Contains(errStr, "redirects") {
-				logger.SafeError("RSS feed redirect loop", "url", link, "error", errStr, "error_type", "redirect_loop")
+				logger.SafeErrorContext(ctx, "RSS feed redirect loop", "url", link, "error", errStr, "error_type", "redirect_loop")
 				return stderrors.New("RSS feed URL redirects too many times")
 			}
 			// Check for TLS certificate errors
@@ -617,17 +617,17 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 				)
 			}
 			// Default error for unrecognized errors
-			logger.SafeError("RSS feed format error", "url", link, "error", errStr, "error_type", "format_error")
+			logger.SafeErrorContext(ctx, "RSS feed format error", "url", link, "error", errStr, "error_type", "format_error")
 			return stderrors.New("invalid RSS feed format")
 		}
 
 		if feed.Link == "" {
-			logger.SafeWarn("RSS feed link is empty, using the link from the RSS feed", "link", link)
+			logger.SafeWarnContext(ctx, "RSS feed link is empty, using the link from the RSS feed", "link", link)
 			feed.Link = link
 		}
 
 		if feed.FeedLink == "" {
-			logger.SafeWarn("RSS feed feed link is empty, using the link from the RSS feed", "link", feed.Link)
+			logger.SafeWarnContext(ctx, "RSS feed feed link is empty, using the link from the RSS feed", "link", feed.Link)
 			feed.FeedLink = link
 		}
 
@@ -639,13 +639,13 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 		err = g.alt_db.RegisterRSSFeedLink(ctx, feed.FeedLink)
 		if err != nil {
 			if stderrors.Is(err, pgx.ErrTxClosed) {
-				logger.SafeError("Failed to register RSS feed link", "error", err)
+				logger.SafeErrorContext(ctx, "Failed to register RSS feed link", "error", err)
 				return stderrors.New("failed to register RSS feed link")
 			}
-			logger.SafeError("Error registering RSS feed link", "error", err)
+			logger.SafeErrorContext(ctx, "Error registering RSS feed link", "error", err)
 			return stderrors.New("failed to register RSS feed link")
 		}
-		logger.SafeInfo("RSS feed link registered", "link", link)
+		logger.SafeInfoContext(ctx, "RSS feed link registered", "link", link)
 		return nil
 	})
 
@@ -655,12 +655,12 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 
 	if err != nil {
 		g.metricsCollector.RecordFailure()
-		logger.SafeError("RSS feed registration failed", "url", link, "error", err.Error(), "response_time", responseTime)
+		logger.SafeErrorContext(ctx, "RSS feed registration failed", "url", link, "error", err.Error(), "response_time", responseTime)
 		return err
 	}
 
 	g.metricsCollector.RecordSuccess()
-	logger.SafeInfo("RSS feed registration successful", "url", link, "response_time", responseTime)
+	logger.SafeInfoContext(ctx, "RSS feed registration successful", "url", link, "response_time", responseTime)
 	return nil
 }
 
