@@ -7,7 +7,8 @@ require (
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/google/uuid v1.6.0
 	github.com/redis/go-redis/v9 v9.17.2
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
+	go.opentelemetry.io/otel/trace v1.39.0
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -19,5 +20,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
+	go.opentelemetry.io/otel v1.39.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

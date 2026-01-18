@@ -13,13 +13,15 @@ var Logger *slog.Logger
 // GlobalContext is the global ContextLogger instance for ADR 98/99 business context support
 var GlobalContext *ContextLogger
 
-// Init initializes a JSON logger
+// Init initializes a JSON logger with trace context support
 func Init() *slog.Logger {
 	level := parseLevel(os.Getenv("LOG_LEVEL"))
 
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
 	})
+	// Wrap with TraceContextHandler to include trace_id/span_id in stdout logs
+	handler := NewTraceContextHandler(jsonHandler)
 
 	Logger = slog.New(handler)
 	slog.SetDefault(Logger)
