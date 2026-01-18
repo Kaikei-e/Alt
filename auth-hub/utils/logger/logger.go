@@ -19,9 +19,11 @@ func Init(enableOTel bool) *slog.Logger {
 	if enableOTel {
 		handler = NewMultiHandler(level)
 	} else {
-		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 			Level: level,
 		})
+		// Wrap with TraceContextHandler even without OTel for trace_id/span_id in stdout
+		handler = NewTraceContextHandler(jsonHandler)
 	}
 
 	logger := slog.New(handler)
@@ -149,9 +151,12 @@ type MultiHandler struct {
 }
 
 func NewMultiHandler(level slog.Level) *MultiHandler {
+	// Wrap JSONHandler with TraceContextHandler to add trace_id/span_id to stdout logs
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+
 	return &MultiHandler{
 		handlers: []slog.Handler{
-			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}),
+			NewTraceContextHandler(jsonHandler),
 			NewOTelHandler(level),
 		},
 	}
