@@ -12,17 +12,18 @@ import (
 // RestHandleSummarizeFeedStatus returns the current state of an async summarization job.
 func RestHandleSummarizeFeedStatus(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		jobID := c.Param("job_id")
 		if jobID == "" {
-			logger.Logger.Warn("Empty job_id provided")
+			logger.Logger.WarnContext(ctx, "Empty job_id provided")
 			return echo.NewHTTPError(http.StatusBadRequest, "job_id is required")
 		}
 
-		logger.Logger.Debug("Checking summarization job status", "job_id", jobID)
+		logger.Logger.DebugContext(ctx, "Checking summarization job status", "job_id", jobID)
 
-		status, err := callPreProcessorSummarizeStatus(c.Request().Context(), jobID, cfg.PreProcessor.URL)
+		status, err := callPreProcessorSummarizeStatus(ctx, jobID, cfg.PreProcessor.URL)
 		if err != nil {
-			logger.Logger.Error("Failed to get summarization job status", "error", err, "job_id", jobID)
+			logger.Logger.ErrorContext(ctx, "Failed to get summarization job status", "error", err, "job_id", jobID)
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to get job status")
 		}
 

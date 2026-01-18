@@ -17,10 +17,11 @@ func registerSSERoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg 
 
 func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		// Log SSE connection attempt for monitoring
 		origin := c.Request().Header.Get("Origin")
 		remoteAddr := c.RealIP()
-		logger.Logger.Info("SSE connection attempt",
+		logger.Logger.InfoContext(ctx, "SSE connection attempt",
 			"path", c.Path(),
 			"origin", origin,
 			"remote_addr", remoteAddr,
@@ -75,26 +76,26 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 		w := c.Response().Writer
 		flusher, canFlush := w.(http.Flusher)
 		if !canFlush {
-			logger.Logger.Error("Response writer doesn't support flushing")
+			logger.Logger.ErrorContext(ctx, "Response writer doesn't support flushing")
 			return c.String(http.StatusInternalServerError, "Streaming not supported")
 		}
 
 		// Send initial data
-		amount, err := container.FeedAmountUsecase.Execute(c.Request().Context())
+		amount, err := container.FeedAmountUsecase.Execute(ctx)
 		if err != nil {
-			logger.Logger.Error("Error fetching initial feed amount", "error", err)
+			logger.Logger.ErrorContext(ctx, "Error fetching initial feed amount", "error", err)
 			amount = 0
 		}
 
-		unsummarizedCount, err := container.UnsummarizedArticlesCountUsecase.Execute(c.Request().Context())
+		unsummarizedCount, err := container.UnsummarizedArticlesCountUsecase.Execute(ctx)
 		if err != nil {
-			logger.Logger.Error("Error fetching initial unsummarized articles count", "error", err)
+			logger.Logger.ErrorContext(ctx, "Error fetching initial unsummarized articles count", "error", err)
 			unsummarizedCount = 0
 		}
 
-		totalArticlesCount, err := container.TotalArticlesCountUsecase.Execute(c.Request().Context())
+		totalArticlesCount, err := container.TotalArticlesCountUsecase.Execute(ctx)
 		if err != nil {
-			logger.Logger.Error("Error fetching initial total articles count", "error", err)
+			logger.Logger.ErrorContext(ctx, "Error fetching initial total articles count", "error", err)
 			totalArticlesCount = 0
 		}
 
@@ -107,7 +108,7 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 		// Send initial data
 		if jsonData, err := json.Marshal(initialStats); err == nil {
 			if _, writeErr := c.Response().Write([]byte("data: " + string(jsonData) + "\n\n")); writeErr != nil {
-				logger.Logger.Debug("Failed to send initial SSE data", "error", writeErr)
+				logger.Logger.DebugContext(ctx, "Failed to send initial SSE data", "error", writeErr)
 				return nil
 			}
 			flusher.Flush()
@@ -132,7 +133,7 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 				_, err := c.Response().Write([]byte(": heartbeat\n\n"))
 				if err != nil {
 					duration := time.Since(connectionStartTime)
-					logger.Logger.Info("Client disconnected during heartbeat",
+					logger.Logger.InfoContext(ctx, "Client disconnected during heartbeat",
 						"error", err,
 						"duration", duration,
 						"remote_addr", remoteAddr,
@@ -143,21 +144,21 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 
 			case <-ticker.C:
 				// Fetch fresh data
-				amount, err := container.FeedAmountUsecase.Execute(c.Request().Context())
+				amount, err := container.FeedAmountUsecase.Execute(ctx)
 				if err != nil {
-					logger.Logger.Error("Error fetching feed amount", "error", err)
+					logger.Logger.ErrorContext(ctx, "Error fetching feed amount", "error", err)
 					continue
 				}
 
-				unsummarizedCount, err := container.UnsummarizedArticlesCountUsecase.Execute(c.Request().Context())
+				unsummarizedCount, err := container.UnsummarizedArticlesCountUsecase.Execute(ctx)
 				if err != nil {
-					logger.Logger.Error("Error fetching unsummarized articles count", "error", err)
+					logger.Logger.ErrorContext(ctx, "Error fetching unsummarized articles count", "error", err)
 					continue
 				}
 
-				totalArticlesCount, err := container.TotalArticlesCountUsecase.Execute(c.Request().Context())
+				totalArticlesCount, err := container.TotalArticlesCountUsecase.Execute(ctx)
 				if err != nil {
-					logger.Logger.Error("Error fetching total articles count", "error", err)
+					logger.Logger.ErrorContext(ctx, "Error fetching total articles count", "error", err)
 					continue
 				}
 
@@ -170,7 +171,7 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 				// Convert to JSON and send
 				jsonData, err := json.Marshal(stats)
 				if err != nil {
-					logger.Logger.Error("Error marshaling stats", "error", err)
+					logger.Logger.ErrorContext(ctx, "Error marshaling stats", "error", err)
 					continue
 				}
 
@@ -178,7 +179,7 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 				_, err = c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
 				if err != nil {
 					duration := time.Since(connectionStartTime)
-					logger.Logger.Info("Client disconnected during data send",
+					logger.Logger.InfoContext(ctx, "Client disconnected during data send",
 						"error", err,
 						"duration", duration,
 						"remote_addr", remoteAddr,
@@ -189,9 +190,9 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 				// Flush the data
 				flusher.Flush()
 
-			case <-c.Request().Context().Done():
+			case <-ctx.Done():
 				duration := time.Since(connectionStartTime)
-				logger.Logger.Info("SSE connection closed by client",
+				logger.Logger.InfoContext(ctx, "SSE connection closed by client",
 					"duration", duration,
 					"remote_addr", remoteAddr,
 				)

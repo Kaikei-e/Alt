@@ -158,7 +158,7 @@ func streamPreProcessorSummarize(ctx context.Context, content, articleID, title,
 			errorBody = fmt.Sprintf("(failed to read error body: %v)", readErr)
 		}
 
-		logger.Logger.Error("Pre-processor stream returned non-200 status",
+		logger.Logger.ErrorContext(ctx, "Pre-processor stream returned non-200 status",
 			"status_code", resp.StatusCode,
 			"status", resp.Status,
 			"error_body", errorBody,
@@ -166,7 +166,7 @@ func streamPreProcessorSummarize(ctx context.Context, content, articleID, title,
 		return nil, fmt.Errorf("pre-processor stream returned status %d: %s", resp.StatusCode, errorBody)
 	}
 
-	logger.Logger.Info("Pre-processor stream response received successfully",
+	logger.Logger.InfoContext(ctx, "Pre-processor stream response received successfully",
 		"article_id", articleID,
 		"status", resp.Status,
 		"content_type", resp.Header.Get("Content-Type"))
@@ -285,6 +285,7 @@ func callPreProcessorSummarizeStatus(ctx context.Context, jobID, preProcessorURL
 }
 
 func handleError(c echo.Context, err error, operation string) error {
+	ctx := c.Request().Context()
 	var enrichedErr *errors.AppContextError
 
 	if appContextErr, ok := err.(*errors.AppContextError); ok {
@@ -329,7 +330,7 @@ func handleError(c echo.Context, err error, operation string) error {
 		)
 	}
 
-	logger.Logger.Error("REST API Error", "error", enrichedErr.Error(), "code", enrichedErr.Code, "operation", operation, "path", c.Request().URL.Path)
+	logger.Logger.ErrorContext(ctx, "REST API Error", "error", enrichedErr.Error(), "code", enrichedErr.Code, "operation", operation, "path", c.Request().URL.Path)
 
 	return c.JSON(enrichedErr.HTTPStatusCode(), map[string]interface{}{
 		"error": map[string]interface{}{
@@ -340,7 +341,8 @@ func handleError(c echo.Context, err error, operation string) error {
 }
 
 func handleValidationError(c echo.Context, message, field string, value interface{}) error {
-	logger.Logger.Warn("Validation error", "message", message, "field", field, "value", value)
+	ctx := c.Request().Context()
+	logger.Logger.WarnContext(ctx, "Validation error", "message", message, "field", field, "value", value)
 	return c.JSON(http.StatusBadRequest, map[string]interface{}{
 		"error": message,
 		"field": field,
@@ -400,14 +402,14 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 	extractedLength := len(extractedText)
 	reductionRatio := (1.0 - float64(extractedLength)/float64(htmlLength)) * 100.0
 
-	logger.Logger.Info("Text extraction completed in fetchArticleContent",
+	logger.Logger.InfoContext(ctx, "Text extraction completed in fetchArticleContent",
 		"url", urlStr,
 		"html_length", htmlLength,
 		"extracted_length", extractedLength,
 		"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
 
 	if extractedText == "" {
-		logger.Logger.Warn("failed to extract article text from HTML, falling back to raw HTML",
+		logger.Logger.WarnContext(ctx, "failed to extract article text from HTML, falling back to raw HTML",
 			"url", urlStr,
 			"html_size_bytes", len(htmlContent))
 		return htmlContent, generateArticleID(urlStr), title, nil
@@ -417,7 +419,7 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 	extractedSize := len(extractedText)
 	if originalSize > 0 {
 		reductionRatio := float64(extractedSize) / float64(originalSize) * 100
-		logger.Logger.Info("text extraction completed",
+		logger.Logger.InfoContext(ctx, "text extraction completed",
 			"url", urlStr,
 			"original_size_bytes", originalSize,
 			"extracted_size_bytes", extractedSize,

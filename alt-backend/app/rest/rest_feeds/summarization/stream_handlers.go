@@ -20,13 +20,13 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 	return func(c echo.Context) error {
 		startTime := time.Now()
 		var req FeedSummarizePayload
+		ctx := c.Request().Context()
 		if err := c.Bind(&req); err != nil {
-			logger.Logger.Warn("Failed to bind request body for stream summarization", "error", err)
+			logger.Logger.WarnContext(ctx, "Failed to bind request body for stream summarization", "error", err)
 			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
 		}
 
-		ctx := c.Request().Context()
-		logger.Logger.Info("Stream summarization request received", "article_id", req.ArticleID, "feed_url", req.FeedURL, "has_content", req.Content != "", "content_length", len(req.Content))
+		logger.Logger.InfoContext(ctx, "Stream summarization request received", "article_id", req.ArticleID, "feed_url", req.FeedURL, "has_content", req.Content != "", "content_length", len(req.Content))
 
 		if req.ArticleID != "" && req.Content == "" {
 			article, err := container.AltDBRepository.FetchArticleByID(ctx, req.ArticleID)
@@ -34,13 +34,13 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 				return handleError(c, err, "fetch_article_by_id")
 			}
 			if article != nil {
-				logger.Logger.Info("Fetched article content from DB", "article_id", req.ArticleID, "content_length", len(article.Content))
+				logger.Logger.InfoContext(ctx, "Fetched article content from DB", "article_id", req.ArticleID, "content_length", len(article.Content))
 				req.Content = article.Content
 				if req.Title == "" {
 					req.Title = article.Title
 				}
 			} else {
-				logger.Logger.Warn("Article ID provided but not found in DB", "article_id", req.ArticleID)
+				logger.Logger.WarnContext(ctx, "Article ID provided but not found in DB", "article_id", req.ArticleID)
 			}
 		}
 
@@ -87,33 +87,33 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 		}
 
 		if req.Content == "" {
-			logger.Logger.Warn("Empty content provided for streaming", "article_id", req.ArticleID, "feed_url", req.FeedURL)
+			logger.Logger.WarnContext(ctx, "Empty content provided for streaming", "article_id", req.ArticleID, "feed_url", req.FeedURL)
 			return handleValidationError(c, "Content cannot be empty for streaming", "content", "empty")
 		}
 
 		existingSummary, err := container.AltDBRepository.FetchArticleSummaryByArticleID(ctx, req.ArticleID)
 		if err == nil && existingSummary != nil && existingSummary.Summary != "" {
-			logger.Logger.Info("Found existing summary in database for streaming", "article_id", req.ArticleID)
-			return streamCachedSummary(c, existingSummary.Summary, req.ArticleID)
+			logger.Logger.InfoContext(ctx, "Found existing summary in database for streaming", "article_id", req.ArticleID)
+			return streamCachedSummary(ctx, c, existingSummary.Summary, req.ArticleID)
 		}
 
-		logger.Logger.Info("Starting stream summarization", "article_id", req.ArticleID, "content_length", len(req.Content))
+		logger.Logger.InfoContext(ctx, "Starting stream summarization", "article_id", req.ArticleID, "content_length", len(req.Content))
 
 		stream, err := streamPreProcessorSummarize(ctx, req.Content, req.ArticleID, req.Title, cfg.PreProcessor.URL)
 		if err != nil {
-			logger.Logger.Error("Failed to start stream summarization", "error", err, "article_id", req.ArticleID)
+			logger.Logger.ErrorContext(ctx, "Failed to start stream summarization", "error", err, "article_id", req.ArticleID)
 			return handleError(c, err, "summarize_feed_stream")
 		}
 		defer func() {
 			if closeErr := stream.Close(); closeErr != nil {
-				logger.Logger.Debug("Failed to close stream", "error", closeErr)
+				logger.Logger.DebugContext(ctx, "Failed to close stream", "error", closeErr)
 			}
 		}()
 
-		logger.Logger.Info("Stream obtained from pre-processor", "article_id", req.ArticleID)
+		logger.Logger.InfoContext(ctx, "Stream obtained from pre-processor", "article_id", req.ArticleID)
 		setStreamingHeaders(c)
 
-		summary, err := streamAndCapture(c, req.ArticleID, stream)
+		summary, err := streamAndCapture(ctx, c, req.ArticleID, stream)
 		if err != nil {
 			return err
 		}
@@ -121,13 +121,13 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 		duration := time.Since(startTime)
 		if summary != "" && req.ArticleID != "" {
 			if err := container.AltDBRepository.SaveArticleSummary(context.Background(), req.ArticleID, req.Title, summary); err != nil {
-				logger.Logger.Error("Failed to save streamed summary to database", "error", err, "article_id", req.ArticleID)
+				logger.Logger.ErrorContext(ctx, "Failed to save streamed summary to database", "error", err, "article_id", req.ArticleID)
 			} else {
-				logger.Logger.Info("Streamed summary saved to database", "article_id", req.ArticleID, "summary_length", len(summary))
+				logger.Logger.InfoContext(ctx, "Streamed summary saved to database", "article_id", req.ArticleID, "summary_length", len(summary))
 			}
 		}
 
-		logger.Logger.Info("Stream summarization request completed", "article_id", req.ArticleID, "total_duration_ms", duration.Milliseconds())
+		logger.Logger.InfoContext(ctx, "Stream summarization request completed", "article_id", req.ArticleID, "total_duration_ms", duration.Milliseconds())
 		return nil
 	}
 }
@@ -140,27 +140,27 @@ func setStreamingHeaders(c echo.Context) {
 	c.Response().WriteHeader(http.StatusOK)
 }
 
-func streamCachedSummary(c echo.Context, summary, articleID string) error {
+func streamCachedSummary(ctx context.Context, c echo.Context, summary, articleID string) error {
 	setStreamingHeaders(c)
 
 	cleanSummary := parseSSESummary(summary)
 	jsonSummary, err := json.Marshal(cleanSummary)
 	if err != nil {
-		logger.Logger.Error("Failed to marshal existing summary", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to marshal existing summary", "error", err)
 		return err
 	}
 
 	if _, err := fmt.Fprintf(c.Response().Writer, "data: %s\n\n", jsonSummary); err != nil {
-		logger.Logger.Error("Failed to write existing summary to stream", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to write existing summary to stream", "error", err)
 		return err
 	}
 	c.Response().Flush()
 
-	logger.Logger.Info("Existing summary streamed from cache", "article_id", articleID)
+	logger.Logger.InfoContext(ctx, "Existing summary streamed from cache", "article_id", articleID)
 	return nil
 }
 
-func streamAndCapture(c echo.Context, articleID string, stream io.Reader) (string, error) {
+func streamAndCapture(ctx context.Context, c echo.Context, articleID string, stream io.Reader) (string, error) {
 	var buf bytes.Buffer
 	tee := io.TeeReader(stream, &buf)
 
@@ -176,13 +176,13 @@ func streamAndCapture(c echo.Context, articleID string, stream io.Reader) (strin
 			hasData = true
 			bytesWritten += n
 			if readAttempts <= 3 || bytesWritten%5120 == 0 {
-				logger.Logger.Info("Stream data received and flushed", "article_id", articleID, "bytes_written", bytesWritten, "chunk_size", n, "read_attempts", readAttempts)
+				logger.Logger.InfoContext(ctx, "Stream data received and flushed", "article_id", articleID, "bytes_written", bytesWritten, "chunk_size", n, "read_attempts", readAttempts)
 			} else if readAttempts <= 10 {
-				logger.Logger.Debug("Stream chunk flushed", "article_id", articleID, "chunk_size", n, "read_attempts", readAttempts)
+				logger.Logger.DebugContext(ctx, "Stream chunk flushed", "article_id", articleID, "chunk_size", n, "read_attempts", readAttempts)
 			}
 
 			if _, wErr := c.Response().Writer.Write(responseBuf[:n]); wErr != nil {
-				logger.Logger.Error("Failed to write to response stream", "error", wErr, "article_id", articleID, "bytes_written", bytesWritten)
+				logger.Logger.ErrorContext(ctx, "Failed to write to response stream", "error", wErr, "article_id", articleID, "bytes_written", bytesWritten)
 				return "", wErr
 			}
 			c.Response().Flush()
@@ -190,21 +190,21 @@ func streamAndCapture(c echo.Context, articleID string, stream io.Reader) (strin
 
 		if err != nil {
 			if err == io.EOF {
-				logger.Logger.Info("Stream reached EOF", "article_id", articleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
+				logger.Logger.InfoContext(ctx, "Stream reached EOF", "article_id", articleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
 				break
 			}
-			logger.Logger.Error("Failed to read from stream", "error", err, "article_id", articleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
+			logger.Logger.ErrorContext(ctx, "Failed to read from stream", "error", err, "article_id", articleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
 			return "", err
 		}
 		if n == 0 && readAttempts > 1 {
-			logger.Logger.Warn("No data read from stream", "article_id", articleID, "read_attempts", readAttempts)
+			logger.Logger.WarnContext(ctx, "No data read from stream", "article_id", articleID, "read_attempts", readAttempts)
 		}
 	}
 
 	if hasData {
-		logger.Logger.Info("Stream completed successfully", "article_id", articleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
+		logger.Logger.InfoContext(ctx, "Stream completed successfully", "article_id", articleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
 	} else {
-		logger.Logger.Warn("Stream completed but no data was sent", "article_id", articleID, "read_attempts", readAttempts)
+		logger.Logger.WarnContext(ctx, "Stream completed but no data was sent", "article_id", articleID, "read_attempts", readAttempts)
 	}
 
 	return parseSSESummary(buf.String()), nil

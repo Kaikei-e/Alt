@@ -14,6 +14,7 @@ import (
 
 func RestHandleRegisterRSSFeed(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		var rssFeedLink RssFeedLink
 		err := c.Bind(&rssFeedLink)
 		if err != nil {
@@ -47,11 +48,11 @@ func RestHandleRegisterRSSFeed(container *di.ApplicationComponents) echo.Handler
 					"request_id":  c.Response().Header().Get("X-Request-ID"),
 				},
 			)
-			logger.Logger.Error("URL validation failed", "error", securityErr.Error(), "url", rssFeedLink.URL)
+			logger.Logger.ErrorContext(ctx, "URL validation failed", "error", securityErr.Error(), "url", rssFeedLink.URL)
 			return c.JSON(securityErr.HTTPStatusCode(), securityErr.ToHTTPResponse())
 		}
 
-		err = container.RegisterFeedsUsecase.Execute(c.Request().Context(), rssFeedLink.URL)
+		err = container.RegisterFeedsUsecase.Execute(ctx, rssFeedLink.URL)
 		if err != nil {
 			return HandleError(c, err, "register_feed")
 		}

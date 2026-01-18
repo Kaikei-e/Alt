@@ -72,15 +72,16 @@ func RestHandleFetchFeedsLimit(container *di.ApplicationComponents, cfg *config.
 
 func RestHandleFetchFeedsPage(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		page, err := strconv.Atoi(c.Param("page"))
 		if err != nil {
-			logger.Logger.Error("Invalid page parameter", "error", err, "page", c.Param("page"))
+			logger.Logger.ErrorContext(ctx, "Invalid page parameter", "error", err, "page", c.Param("page"))
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid page parameter"})
 		}
 
 		// Validate page parameter
 		if page < 0 {
-			logger.Logger.Error("Negative page parameter", "page", page)
+			logger.Logger.ErrorContext(ctx, "Negative page parameter", "page", page)
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Page parameter must be non-negative"})
 		}
 
@@ -88,9 +89,9 @@ func RestHandleFetchFeedsPage(container *di.ApplicationComponents) echo.HandlerF
 		c.Response().Header().Set("Cache-Control", "public, max-age=600") // 10 minutes
 		c.Response().Header().Set("ETag", `"feeds-page-`+strconv.Itoa(page)+`"`)
 
-		feeds, err := container.FetchFeedsListUsecase.ExecutePage(c.Request().Context(), page)
+		feeds, err := container.FetchFeedsListUsecase.ExecutePage(ctx, page)
 		if err != nil {
-			logger.Logger.Error("Error fetching feeds page", "error", err, "page", page)
+			logger.Logger.ErrorContext(ctx, "Error fetching feeds page", "error", err, "page", page)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feeds page"})
 		}
 
@@ -101,13 +102,14 @@ func RestHandleFetchFeedsPage(container *di.ApplicationComponents) echo.HandlerF
 
 func RestHandleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		// Parse query parameters
 		limitStr := c.QueryParam("limit")
 		cursorStr := c.QueryParam("cursor")
 		view := c.QueryParam("view") // "swipe" mode for optimized single-card response
 
 		// Log incoming request parameters for debugging
-		logger.Logger.Info(
+		logger.Logger.InfoContext(ctx,
 			"received unread feeds cursor request",
 			"cursor_param", cursorStr,
 			"limit_param", limitStr,
@@ -123,7 +125,7 @@ func RestHandleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.
 		if limitStr != "" {
 			parsedLimit, err := strconv.Atoi(limitStr)
 			if err != nil {
-				logger.Logger.Error("Invalid limit parameter", "error", err, "limit", limitStr)
+				logger.Logger.ErrorContext(ctx, "Invalid limit parameter", "error", err, "limit", limitStr)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid limit parameter"})
 			}
 			if parsedLimit > 0 && parsedLimit <= 100 {
@@ -131,7 +133,7 @@ func RestHandleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.
 			} else if parsedLimit > 100 {
 				limit = 100
 			} else {
-				logger.Logger.Error("Invalid limit value", "limit", parsedLimit)
+				logger.Logger.ErrorContext(ctx, "Invalid limit value", "limit", parsedLimit)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Limit must be between 1 and 100"})
 			}
 		}
@@ -141,7 +143,7 @@ func RestHandleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.
 		if cursorStr != "" {
 			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
 			if err != nil {
-				logger.Logger.Error("Invalid cursor parameter", "error", err, "cursor", cursorStr)
+				logger.Logger.ErrorContext(ctx, "Invalid cursor parameter", "error", err, "cursor", cursorStr)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid cursor format. Use RFC3339 format"})
 			}
 			cursor = &parsedCursor
@@ -157,10 +159,10 @@ func RestHandleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.
 			c.Response().Header().Set("Cache-Control", "public, max-age=900") // 15 minutes for other pages
 		}
 
-		logger.Logger.Info("Fetching unread feeds with cursor", "cursor", cursor, "cursor_str", cursorStr, "limit", limit)
-		feeds, hasMore, err := container.FetchUnreadFeedsListCursorUsecase.Execute(c.Request().Context(), cursor, limit)
+		logger.Logger.InfoContext(ctx, "Fetching unread feeds with cursor", "cursor", cursor, "cursor_str", cursorStr, "limit", limit)
+		feeds, hasMore, err := container.FetchUnreadFeedsListCursorUsecase.Execute(ctx, cursor, limit)
 		if err != nil {
-			logger.Logger.Error("Error fetching feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
+			logger.Logger.ErrorContext(ctx, "Error fetching feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feeds with cursor"})
 		}
 
@@ -179,7 +181,7 @@ func RestHandleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.
 				nextCursor = derivedCursor
 				response["next_cursor"] = derivedCursor
 			} else {
-				logger.Logger.Warn(
+				logger.Logger.WarnContext(ctx,
 					"unable to derive next cursor despite has_more flag",
 					"count",
 					len(optimizedFeeds),
@@ -187,7 +189,7 @@ func RestHandleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.
 			}
 		}
 
-		logger.Logger.Info(
+		logger.Logger.InfoContext(ctx,
 			"responding to unread feeds cursor",
 			"cursor", cursor,
 			"limit", limit,
@@ -202,6 +204,7 @@ func RestHandleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.
 
 func RestHandleFetchReadFeedsCursor(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		// Parse query parameters - 既存パターンと同じ
 		limitStr := c.QueryParam("limit")
 		cursorStr := c.QueryParam("cursor")
@@ -211,7 +214,7 @@ func RestHandleFetchReadFeedsCursor(container *di.ApplicationComponents) echo.Ha
 		if limitStr != "" {
 			parsedLimit, err := strconv.Atoi(limitStr)
 			if err != nil {
-				logger.Logger.Error("Invalid limit parameter", "error", err, "limit", limitStr)
+				logger.Logger.ErrorContext(ctx, "Invalid limit parameter", "error", err, "limit", limitStr)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid limit parameter"})
 			}
 			if parsedLimit > 0 && parsedLimit <= 100 {
@@ -219,7 +222,7 @@ func RestHandleFetchReadFeedsCursor(container *di.ApplicationComponents) echo.Ha
 			} else if parsedLimit > 100 {
 				limit = 100
 			} else {
-				logger.Logger.Error("Invalid limit value", "limit", parsedLimit)
+				logger.Logger.ErrorContext(ctx, "Invalid limit value", "limit", parsedLimit)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Limit must be between 1 and 100"})
 			}
 		}
@@ -229,7 +232,7 @@ func RestHandleFetchReadFeedsCursor(container *di.ApplicationComponents) echo.Ha
 		if cursorStr != "" {
 			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
 			if err != nil {
-				logger.Logger.Error("Invalid cursor parameter", "error", err, "cursor", cursorStr)
+				logger.Logger.ErrorContext(ctx, "Invalid cursor parameter", "error", err, "cursor", cursorStr)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid cursor format. Use RFC3339 format"})
 			}
 			cursor = &parsedCursor
@@ -242,10 +245,10 @@ func RestHandleFetchReadFeedsCursor(container *di.ApplicationComponents) echo.Ha
 			c.Response().Header().Set("Cache-Control", "public, max-age=3600") // 60分（他ページ）
 		}
 
-		logger.Logger.Info("Fetching read feeds with cursor", "cursor", cursor, "limit", limit)
-		feeds, err := container.FetchReadFeedsListCursorUsecase.Execute(c.Request().Context(), cursor, limit)
+		logger.Logger.InfoContext(ctx, "Fetching read feeds with cursor", "cursor", cursor, "limit", limit)
+		feeds, err := container.FetchReadFeedsListCursorUsecase.Execute(ctx, cursor, limit)
 		if err != nil {
-			logger.Logger.Error("Error fetching read feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
+			logger.Logger.ErrorContext(ctx, "Error fetching read feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch read feeds with cursor"})
 		}
 
@@ -269,6 +272,7 @@ func RestHandleFetchReadFeedsCursor(container *di.ApplicationComponents) echo.Ha
 
 func RestHandleFetchFavoriteFeedsCursor(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		limitStr := c.QueryParam("limit")
 		cursorStr := c.QueryParam("cursor")
 
@@ -276,7 +280,7 @@ func RestHandleFetchFavoriteFeedsCursor(container *di.ApplicationComponents) ech
 		if limitStr != "" {
 			parsedLimit, err := strconv.Atoi(limitStr)
 			if err != nil {
-				logger.Logger.Error("Invalid limit parameter", "error", err, "limit", limitStr)
+				logger.Logger.ErrorContext(ctx, "Invalid limit parameter", "error", err, "limit", limitStr)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid limit parameter"})
 			}
 			if parsedLimit > 0 && parsedLimit <= 100 {
@@ -284,7 +288,7 @@ func RestHandleFetchFavoriteFeedsCursor(container *di.ApplicationComponents) ech
 			} else if parsedLimit > 100 {
 				limit = 100
 			} else {
-				logger.Logger.Error("Invalid limit value", "limit", parsedLimit)
+				logger.Logger.ErrorContext(ctx, "Invalid limit value", "limit", parsedLimit)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Limit must be between 1 and 100"})
 			}
 		}
@@ -293,7 +297,7 @@ func RestHandleFetchFavoriteFeedsCursor(container *di.ApplicationComponents) ech
 		if cursorStr != "" {
 			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
 			if err != nil {
-				logger.Logger.Error("Invalid cursor parameter", "error", err, "cursor", cursorStr)
+				logger.Logger.ErrorContext(ctx, "Invalid cursor parameter", "error", err, "cursor", cursorStr)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid cursor format. Use RFC3339 format"})
 			}
 			cursor = &parsedCursor
@@ -305,10 +309,10 @@ func RestHandleFetchFavoriteFeedsCursor(container *di.ApplicationComponents) ech
 			c.Response().Header().Set("Cache-Control", "public, max-age=3600")
 		}
 
-		logger.Logger.Info("Fetching favorite feeds with cursor", "cursor", cursor, "limit", limit)
-		feeds, err := container.FetchFavoriteFeedsListCursorUsecase.Execute(c.Request().Context(), cursor, limit)
+		logger.Logger.InfoContext(ctx, "Fetching favorite feeds with cursor", "cursor", cursor, "limit", limit)
+		feeds, err := container.FetchFavoriteFeedsListCursorUsecase.Execute(ctx, cursor, limit)
 		if err != nil {
-			logger.Logger.Error("Error fetching favorite feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
+			logger.Logger.ErrorContext(ctx, "Error fetching favorite feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch favorite feeds with cursor"})
 		}
 

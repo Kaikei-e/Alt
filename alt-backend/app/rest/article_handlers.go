@@ -64,20 +64,21 @@ func handleArchiveArticle(container *di.ApplicationComponents) echo.HandlerFunc 
 
 func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		targetURL := c.QueryParam("url")
 		parsedURL, err := validateFetchRequest(c, targetURL)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
 
-		user, err := domain.GetUserFromContext(c.Request().Context())
+		user, err := domain.GetUserFromContext(ctx)
 		if err != nil {
-			logger.Logger.Warn("No user context for fetch article, proceeding as anonymous", "error", err)
+			logger.Logger.WarnContext(ctx, "No user context for fetch article, proceeding as anonymous", "error", err)
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 		}
 
 		// Call the usecase
-		content, articleID, err := container.ArticleUsecase.FetchCompliantArticle(c.Request().Context(), parsedURL, *user)
+		content, articleID, err := container.ArticleUsecase.FetchCompliantArticle(ctx, parsedURL, *user)
 		if err != nil {
 			var complianceErr *domain.ComplianceError
 			if errors.As(err, &complianceErr) {
@@ -87,7 +88,7 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 			if errors.Is(err, context.DeadlineExceeded) {
 				return c.JSON(http.StatusGatewayTimeout, map[string]string{"error": "Request timeout"})
 			}
-			logger.Logger.Error("Failed to fetch compliant article", "error", err, "url", targetURL)
+			logger.Logger.ErrorContext(ctx, "Failed to fetch compliant article", "error", err, "url", targetURL)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch article"})
 		}
 
@@ -129,9 +130,10 @@ func registerArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, 
 
 func handleSearchArticles(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		_, err := domain.GetUserFromContext(c.Request().Context())
+		ctx := c.Request().Context()
+		_, err := domain.GetUserFromContext(ctx)
 		if err != nil {
-			logger.Logger.Error("user context not found", "error", err)
+			logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication required"})
 		}
 
@@ -140,7 +142,7 @@ func handleSearchArticles(container *di.ApplicationComponents) echo.HandlerFunc 
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "search query must not be empty"})
 		}
 
-		results, err := container.ArticleSearchUsecase.Execute(c.Request().Context(), query)
+		results, err := container.ArticleSearchUsecase.Execute(ctx, query)
 		if err != nil {
 			return HandleError(c, err, "search_articles")
 		}
@@ -151,9 +153,10 @@ func handleSearchArticles(container *di.ApplicationComponents) echo.HandlerFunc 
 
 func handleFetchArticlesCursor(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		_, err := domain.GetUserFromContext(c.Request().Context())
+		ctx := c.Request().Context()
+		_, err := domain.GetUserFromContext(ctx)
 		if err != nil {
-			logger.Logger.Error("user context not found", "error", err)
+			logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication required"})
 		}
 
@@ -178,7 +181,7 @@ func handleFetchArticlesCursor(container *di.ApplicationComponents) echo.Handler
 			cursor = &parsedCursor
 		}
 
-		articles, err := container.FetchArticlesCursorUsecase.Execute(c.Request().Context(), cursor, limit+1)
+		articles, err := container.FetchArticlesCursorUsecase.Execute(ctx, cursor, limit+1)
 		if err != nil {
 			return HandleError(c, err, "fetch_articles_cursor")
 		}

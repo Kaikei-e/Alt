@@ -10,10 +10,11 @@ import (
 
 func RestHandleSearchFeeds(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		var payload FeedSearchPayload
 		err := c.Bind(&payload)
 		if err != nil {
-			logger.Logger.Error("Error binding search payload", "error", err)
+			logger.Logger.ErrorContext(ctx, "Error binding search payload", "error", err)
 			return HandleValidationError(c, "Invalid request format", "body", nil)
 		}
 
@@ -44,17 +45,17 @@ func RestHandleSearchFeeds(container *di.ApplicationComponents) echo.HandlerFunc
 		// Check if pagination is requested
 		if payload.Cursor != nil || payload.Limit != nil {
 			// Use pagination-aware usecase
-			logger.Logger.Info("Executing feed search with pagination",
+			logger.Logger.InfoContext(ctx, "Executing feed search with pagination",
 				"query", payload.Query,
 				"offset", offset,
 				"limit", limit)
-			results, hasMore, err := container.FeedSearchUsecase.ExecuteWithPagination(c.Request().Context(), payload.Query, offset, limit)
+			results, hasMore, err := container.FeedSearchUsecase.ExecuteWithPagination(ctx, payload.Query, offset, limit)
 			if err != nil {
-				logger.Logger.Error("Error executing feed search with pagination", "error", err, "query", payload.Query)
+				logger.Logger.ErrorContext(ctx, "Error executing feed search with pagination", "error", err, "query", payload.Query)
 				return HandleError(c, err, "SearchFeedsWithPagination")
 			}
 
-			logger.Logger.Info("Feed search with pagination completed successfully",
+			logger.Logger.InfoContext(ctx, "Feed search with pagination completed successfully",
 				"query", payload.Query,
 				"results_count", len(results),
 				"has_more", hasMore)
@@ -82,14 +83,14 @@ func RestHandleSearchFeeds(container *di.ApplicationComponents) echo.HandlerFunc
 		}
 
 		// Fallback to non-paginated search for backward compatibility
-		logger.Logger.Info("Executing feed search", "query", payload.Query)
-		results, err := container.FeedSearchUsecase.Execute(c.Request().Context(), payload.Query)
+		logger.Logger.InfoContext(ctx, "Executing feed search", "query", payload.Query)
+		results, err := container.FeedSearchUsecase.Execute(ctx, payload.Query)
 		if err != nil {
-			logger.Logger.Error("Error executing feed search", "error", err, "query", payload.Query)
+			logger.Logger.ErrorContext(ctx, "Error executing feed search", "error", err, "query", payload.Query)
 			return HandleError(c, err, "SearchFeeds")
 		}
 
-		logger.Logger.Info("Feed search completed successfully", "query", payload.Query, "results_count", len(results))
+		logger.Logger.InfoContext(ctx, "Feed search completed successfully", "query", payload.Query, "results_count", len(results))
 
 		// Optimize response size for search results (200 chars for description)
 		optimizedFeeds := OptimizeFeedsResponseForSearch(results)

@@ -23,7 +23,7 @@ func registerInternalRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		// rather than maintaining a separate users table in alt-backend
 		userID, err := container.KratosClient.GetFirstIdentityID(ctx)
 		if err != nil {
-			logger.Logger.Error("Failed to fetch system user from Kratos", "error", err)
+			logger.Logger.ErrorContext(ctx, "Failed to fetch system user from Kratos", "error", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "Failed to fetch system user",
 			})
@@ -44,6 +44,8 @@ func registerInternalRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 //   - limit: Maximum articles to return (default: 100, max: 500, 0 means no limit - time constraint only)
 func handleFetchRecentArticles(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
+
 		// Parse query parameters
 		withinHours := 24
 		if withinHoursStr := c.QueryParam("within_hours"); withinHoursStr != "" {
@@ -74,9 +76,9 @@ func handleFetchRecentArticles(container *di.ApplicationComponents) echo.Handler
 			Limit:       limit,
 		}
 
-		output, err := container.FetchRecentArticlesUsecase.Execute(c.Request().Context(), input)
+		output, err := container.FetchRecentArticlesUsecase.Execute(ctx, input)
 		if err != nil {
-			logger.Logger.Error("Failed to fetch recent articles", "error", err)
+			logger.Logger.ErrorContext(ctx, "Failed to fetch recent articles", "error", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "Failed to fetch recent articles",
 			})

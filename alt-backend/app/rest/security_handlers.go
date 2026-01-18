@@ -33,28 +33,29 @@ func registerSecurityRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 
 	// CSP report endpoint
 	e.POST("/security/csp-report", func(c echo.Context) error {
+		ctx := c.Request().Context()
 		// Read raw body for debugging
 		body, err := io.ReadAll(c.Request().Body)
 		if err != nil {
-			logger.Logger.Error("Failed to read request body", "error", err)
+			logger.Logger.ErrorContext(ctx, "Failed to read request body", "error", err)
 			return echo.NewHTTPError(http.StatusBadRequest, "Failed to read request body")
 		}
 
 		// Log raw body for debugging
-		logger.Logger.Info("CSP Report Raw Body", "body", string(body))
+		logger.Logger.InfoContext(ctx, "CSP Report Raw Body", "body", string(body))
 
 		// Try to parse as JSON
 		var report map[string]interface{}
 		if len(body) > 0 {
 			if err := json.Unmarshal(body, &report); err != nil {
-				logger.Logger.Warn("CSP Report - Invalid JSON", "body", string(body), "error", err)
+				logger.Logger.WarnContext(ctx, "CSP Report - Invalid JSON", "body", string(body), "error", err)
 				// Return 204 even for invalid JSON to prevent browser retries
 				return c.NoContent(http.StatusNoContent)
 			}
 		}
 
 		// Log CSP violation report
-		logger.Logger.Warn("CSP Violation Report",
+		logger.Logger.WarnContext(ctx, "CSP Violation Report",
 			"timestamp", time.Now().Format(time.RFC3339),
 			"report", report,
 			"user_agent", c.Request().UserAgent(),

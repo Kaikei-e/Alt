@@ -14,24 +14,25 @@ import (
 
 func RestHandleMarkFeedAsRead(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		var readStatus ReadStatus
 		err := c.Bind(&readStatus)
 		if err != nil {
-			logger.Logger.Error("Error binding read status", "error", err)
+			logger.Logger.ErrorContext(ctx, "Error binding read status", "error", err)
 			return HandleValidationError(c, "Invalid request format", "body", nil)
 		}
 		feedURL, err := url.Parse(readStatus.FeedURL)
 		if err != nil {
-			logger.Logger.Error("Error parsing feed URL", "error", err)
+			logger.Logger.ErrorContext(ctx, "Error parsing feed URL", "error", err)
 			return HandleValidationError(c, "Invalid URL format", "feed_url", readStatus.FeedURL)
 		}
-		err = container.FeedsReadingStatusUsecase.Execute(c.Request().Context(), *feedURL)
+		err = container.FeedsReadingStatusUsecase.Execute(ctx, *feedURL)
 		if err != nil {
-			logger.Logger.Error("Error updating feed read status", "error", err)
+			logger.Logger.ErrorContext(ctx, "Error updating feed read status", "error", err)
 			return HandleError(c, err, "MarkFeedAsRead")
 		}
 
-		logger.Logger.Info("Feed read status updated", "feedURL", feedURL)
+		logger.Logger.InfoContext(ctx, "Feed read status updated", "feedURL", feedURL)
 
 		// Invalidate cache after update
 		c.Response().Header().Set("Cache-Control", "no-cache")
@@ -41,6 +42,7 @@ func RestHandleMarkFeedAsRead(container *di.ApplicationComponents) echo.HandlerF
 
 func RestHandleRegisterFavoriteFeed(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		var payload RssFeedLink
 		if err := c.Bind(&payload); err != nil {
 			return HandleValidationError(c, "Invalid request format", "body", "malformed JSON")
@@ -70,11 +72,11 @@ func RestHandleRegisterFavoriteFeed(container *di.ApplicationComponents) echo.Ha
 					"request_id":  c.Response().Header().Get("X-Request-ID"),
 				},
 			)
-			logger.Logger.Error("URL validation failed", "error", securityErr.Error(), "url", payload.URL)
+			logger.Logger.ErrorContext(ctx, "URL validation failed", "error", securityErr.Error(), "url", payload.URL)
 			return c.JSON(securityErr.HTTPStatusCode(), securityErr.ToHTTPResponse())
 		}
 
-		if err = container.RegisterFavoriteFeedUsecase.Execute(c.Request().Context(), payload.URL); err != nil {
+		if err = container.RegisterFavoriteFeedUsecase.Execute(ctx, payload.URL); err != nil {
 			return HandleError(c, err, "register_favorite_feed")
 		}
 
@@ -85,13 +87,14 @@ func RestHandleRegisterFavoriteFeed(container *di.ApplicationComponents) echo.Ha
 
 func RestHandleUnreadCount(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		sinceStr := c.QueryParam("since")
 		var since time.Time
 		var err error
 		if sinceStr != "" {
 			since, err = time.Parse(time.RFC3339, sinceStr)
 			if err != nil {
-				logger.Logger.Error("Invalid since parameter", "error", err)
+				logger.Logger.ErrorContext(ctx, "Invalid since parameter", "error", err)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid since parameter"})
 			}
 		} else {
@@ -99,9 +102,9 @@ func RestHandleUnreadCount(container *di.ApplicationComponents) echo.HandlerFunc
 			since = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 		}
 
-		count, err := container.TodayUnreadArticlesCountUsecase.Execute(c.Request().Context(), since)
+		count, err := container.TodayUnreadArticlesCountUsecase.Execute(ctx, since)
 		if err != nil {
-			logger.Logger.Error("Error fetching unread count", "error", err)
+			logger.Logger.ErrorContext(ctx, "Error fetching unread count", "error", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch unread count"})
 		}
 

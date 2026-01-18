@@ -28,7 +28,7 @@ func handleMorningUpdates(container *di.ApplicationComponents) echo.HandlerFunc 
 		// Retrieve user from context
 		user, err := domain.GetUserFromContext(ctx)
 		if err != nil {
-			logger.Logger.Error("user context not found", "error", err)
+			logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication required"})
 		}
 		// Call usecase

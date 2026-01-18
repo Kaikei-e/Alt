@@ -43,8 +43,11 @@ func RestHandleTrendStats(container *di.ApplicationComponents, cfg *config.Confi
 			"3d":  true,
 			"7d":  true,
 		}
+		// Get context early for logging
+		ctx := c.Request().Context()
+
 		if !validWindows[window] {
-			logger.Logger.Warn("Invalid window parameter",
+			logger.Logger.WarnContext(ctx, "Invalid window parameter",
 				"window", window)
 			return c.JSON(http.StatusBadRequest, map[string]string{
 				"error": "Invalid window parameter. Valid values: 4h, 24h, 3d, 7d",
@@ -54,12 +57,10 @@ func RestHandleTrendStats(container *di.ApplicationComponents, cfg *config.Confi
 		// Add caching headers
 		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.FeedCacheExpiry.Seconds())))
 		c.Response().Header().Set("ETag", fmt.Sprintf(`"trends-%s"`, window))
-
 		// Fetch trend stats
-		ctx := c.Request().Context()
 		result, err := container.TrendStatsUsecase.Execute(ctx, window)
 		if err != nil {
-			logger.Logger.Error("Error fetching trend stats",
+			logger.Logger.ErrorContext(ctx, "Error fetching trend stats",
 				"error", err,
 				"window", window)
 			return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -84,7 +85,7 @@ func RestHandleTrendStats(container *di.ApplicationComponents, cfg *config.Confi
 			Window:      result.Window,
 		}
 
-		logger.Logger.Info("Trend stats retrieved successfully",
+		logger.Logger.InfoContext(ctx, "Trend stats retrieved successfully",
 			"window", window,
 			"data_points_count", len(dataPoints),
 			"granularity", result.Granularity)

@@ -82,7 +82,8 @@ func HandleError(c echo.Context, err error, operation string) error {
 	}
 
 	// Log the full error details (internal only - never sent to client)
-	logger.Logger.Error(
+	ctx := c.Request().Context()
+	logger.Logger.ErrorContext(ctx,
 		"REST API Error",
 		"error_id", enrichedErr.ErrorID,
 		"error", enrichedErr.Error(),
@@ -97,7 +98,8 @@ func HandleError(c echo.Context, err error, operation string) error {
 
 // HandleValidationError handles validation errors
 func HandleValidationError(c echo.Context, message string, field string, value interface{}) error {
-	logger.Logger.Warn("Validation error", "message", message, "field", field, "value", value)
+	ctx := c.Request().Context()
+	logger.Logger.WarnContext(ctx, "Validation error", "message", message, "field", field, "value", value)
 	return c.JSON(http.StatusBadRequest, map[string]interface{}{
 		"error": message,
 		"field": field,
@@ -324,7 +326,7 @@ func FetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 	extractedLength := len(extractedText)
 	reductionRatio := (1.0 - float64(extractedLength)/float64(htmlLength)) * 100.0
 
-	logger.Logger.Info("Text extraction completed in fetchArticleContent",
+	logger.Logger.InfoContext(ctx, "Text extraction completed in fetchArticleContent",
 		"url", urlStr,
 		"html_length", htmlLength,
 		"extracted_length", extractedLength,
@@ -332,7 +334,7 @@ func FetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 
 	if extractedText == "" {
 		// Log warning and use raw HTML if extraction fails
-		logger.Logger.Warn("failed to extract article text from HTML, falling back to raw HTML",
+		logger.Logger.WarnContext(ctx, "failed to extract article text from HTML, falling back to raw HTML",
 			"url", urlStr,
 			"html_size_bytes", len(htmlContent))
 		// Fallback to htmlContent (or a portion of it if it's too huge, but 2MB is manageable)
@@ -344,7 +346,7 @@ func FetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 	extractedSize := len(extractedText)
 	if originalSize > 0 {
 		reductionRatio := float64(extractedSize) / float64(originalSize) * 100
-		logger.Logger.Info("text extraction completed",
+		logger.Logger.InfoContext(ctx, "text extraction completed",
 			"url", urlStr,
 			"original_size_bytes", originalSize,
 			"extracted_size_bytes", extractedSize,
@@ -502,7 +504,7 @@ func StreamPreProcessorSummarize(ctx context.Context, content string, articleID 
 			errorBody = fmt.Sprintf("(failed to read error body: %v)", readErr)
 		}
 
-		logger.Logger.Error("Pre-processor stream returned non-200 status",
+		logger.Logger.ErrorContext(ctx, "Pre-processor stream returned non-200 status",
 			"status_code", resp.StatusCode,
 			"status", resp.Status,
 			"error_body", errorBody,
@@ -510,7 +512,7 @@ func StreamPreProcessorSummarize(ctx context.Context, content string, articleID 
 		return nil, fmt.Errorf("pre-processor stream returned status %d: %s", resp.StatusCode, errorBody)
 	}
 
-	logger.Logger.Info("Pre-processor stream response received successfully",
+	logger.Logger.InfoContext(ctx, "Pre-processor stream response received successfully",
 		"article_id", articleID,
 		"status", resp.Status,
 		"content_type", resp.Header.Get("Content-Type"))
