@@ -23,8 +23,8 @@ func LoggingMiddleware(baseLogger *slog.Logger) echo.MiddlewareFunc {
 			}
 			ctx := req.Context()
 
-			// Log request start
-			contextLogger.WithContext(ctx).Info("request started",
+			// Log request start (use InfoContext to propagate trace context)
+			contextLogger.WithContext(ctx).InfoContext(ctx, "request started",
 				"method", req.Method,
 				"path", req.URL.Path,
 				"remote_addr", c.RealIP(),
@@ -42,26 +42,25 @@ func LoggingMiddleware(baseLogger *slog.Logger) echo.MiddlewareFunc {
 			status := res.Status
 			size := res.Size
 
-			// Determine log level based on status code
-			logFunc := contextLogger.WithContext(ctx).Info
-			if status >= 400 && status < 500 {
-				logFunc = contextLogger.WithContext(ctx).Warn
-			} else if status >= 500 {
-				logFunc = contextLogger.WithContext(ctx).Error
-			}
-
-			// Log request completion
-			logFunc("request completed",
+			// Log request completion with appropriate level (use *Context to propagate trace context)
+			logAttrs := []any{
 				"method", req.Method,
 				"path", req.URL.Path,
 				"status", status,
 				"duration_ms", duration.Milliseconds(),
 				"response_size", size,
-			)
+			}
+			if status >= 500 {
+				contextLogger.WithContext(ctx).ErrorContext(ctx, "request completed", logAttrs...)
+			} else if status >= 400 {
+				contextLogger.WithContext(ctx).WarnContext(ctx, "request completed", logAttrs...)
+			} else {
+				contextLogger.WithContext(ctx).InfoContext(ctx, "request completed", logAttrs...)
+			}
 
-			// Log error if present
+			// Log error if present (use ErrorContext to propagate trace context)
 			if err != nil {
-				contextLogger.WithContext(ctx).Error("request error",
+				contextLogger.WithContext(ctx).ErrorContext(ctx, "request error",
 					"method", req.Method,
 					"path", req.URL.Path,
 					"error", err,

@@ -114,12 +114,14 @@ func DOSProtectionMiddleware(config DOSProtectionConfig) echo.MiddlewareFunc {
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			ctx := c.Request().Context()
+
 			// Skip whitelisted paths
 			path := c.Request().URL.Path
 			if isWhitelistedPath(path, config.WhitelistedPaths) {
 				// Log whitelist hits for SSE endpoints for debugging
 				if strings.Contains(path, "/stream") || strings.Contains(path, "/sse") {
-					logger.Logger.Debug("DoS protection: SSE endpoint whitelisted", "path", path)
+					logger.Logger.DebugContext(ctx, "DoS protection: SSE endpoint whitelisted", "path", path)
 				}
 				return next(c)
 			}
