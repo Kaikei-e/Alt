@@ -63,11 +63,13 @@ func NewUnifiedLoggerWithOTel(serviceName, level string, enableOTel bool) *Unifi
 		},
 	}
 
-	stdoutHandler := slog.NewJSONHandler(os.Stdout, options)
+	jsonHandler := slog.NewJSONHandler(os.Stdout, options)
+	// Wrap JSONHandler with TraceContextHandler to add trace_id/span_id to stdout logs
+	stdoutHandler := NewTraceContextHandler(jsonHandler)
 
 	var handler slog.Handler
 	if enableOTel {
-		// Use MultiHandler for JSON + OTel
+		// Use MultiHandler for JSON (with trace context) + OTel
 		handler = NewMultiHandler(stdoutHandler, slogLevel)
 	} else {
 		handler = stdoutHandler
