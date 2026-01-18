@@ -27,7 +27,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		if val, ok := u.cache.Load(cacheKey); ok {
 			item := val.(cacheItem)
 			if time.Now().Before(item.expiresAt) {
-				slog.Info("streaming cached answer", slog.String("key", cacheKey))
+				slog.InfoContext(ctx, "streaming cached answer", slog.String("key", cacheKey))
 				// Emit Meta
 				u.sendStreamEvent(ctx, events, StreamEvent{
 					Kind: StreamEventKindMeta,

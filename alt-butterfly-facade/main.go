@@ -25,17 +25,19 @@ func main() {
 		os.Exit(0)
 	}
 
+	ctx := context.Background()
+
 	// Initialize structured logger with trace context support
 	appLogger := logger.Init()
 
 	// Load configuration
 	cfg := config.NewConfig()
 	if err := cfg.Validate(); err != nil {
-		slog.Error("invalid configuration", "error", err)
+		slog.ErrorContext(ctx, "invalid configuration", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("configuration loaded",
+	slog.InfoContext(ctx, "configuration loaded",
 		"port", cfg.Port,
 		"backend_url", cfg.BackendConnectURL,
 		"issuer", cfg.BackendTokenIssuer,
@@ -44,7 +46,7 @@ func main() {
 	// Load backend token secret
 	secret, err := cfg.LoadBackendTokenSecret()
 	if err != nil {
-		slog.Error("failed to load backend token secret", "error", err)
+		slog.ErrorContext(ctx, "failed to load backend token secret", "error", err)
 		os.Exit(1)
 	}
 
@@ -72,9 +74,9 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		slog.Info("starting alt-butterfly-facade server", "address", address)
+		slog.InfoContext(ctx, "starting alt-butterfly-facade server", "address", address)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server failed to start", "error", err)
+			slog.ErrorContext(ctx, "server failed to start", "error", err)
 			os.Exit(1)
 		}
 	}()
@@ -83,16 +85,16 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
-	slog.Info("shutting down server...")
+	slog.InfoContext(ctx, "shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		slog.Error("server forced to shutdown", "error", err)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.ErrorContext(ctx, "server forced to shutdown", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("server exited properly")
+	slog.InfoContext(ctx, "server exited properly")
 }
 
 // runHealthcheck performs a health check against the local server

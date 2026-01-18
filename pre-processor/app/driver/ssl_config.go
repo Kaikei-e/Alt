@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -79,7 +80,7 @@ func (dc *DatabaseConfig) BuildConnectionString() string {
 		if dc.SSL.Key != "" {
 			baseConn += fmt.Sprintf(" sslkey=%s", dc.SSL.Key)
 		}
-		slog.Info("SSL require mode: using SSL with certificate files")
+		slog.InfoContext(context.Background(), "SSL require mode: using SSL with certificate files")
 	case "prefer", "allow":
 		// 任意で証明書ファイルを指定
 		if dc.SSL.RootCert != "" {
@@ -103,13 +104,14 @@ func (dc *DatabaseConfig) BuildConnectionString() string {
 }
 
 func (dc *DatabaseConfig) ValidateSSLConfig() error {
+	ctx := context.Background()
 	switch dc.SSL.Mode {
 	case "disable":
-		slog.Warn("SSL is disabled - this is not recommended for production")
+		slog.WarnContext(ctx, "SSL is disabled - this is not recommended for production")
 	case "allow", "prefer":
-		slog.Info("SSL mode allows fallback to non-encrypted connections")
+		slog.InfoContext(ctx, "SSL mode allows fallback to non-encrypted connections")
 	case "require":
-		slog.Info("SSL required but certificate validation disabled")
+		slog.InfoContext(ctx, "SSL required but certificate validation disabled")
 	case "verify-ca", "verify-full":
 		if dc.SSL.RootCert == "" {
 			return fmt.Errorf("SSL root certificate required for mode %s", dc.SSL.Mode)
@@ -118,7 +120,7 @@ func (dc *DatabaseConfig) ValidateSSLConfig() error {
 		if _, err := os.Stat(dc.SSL.RootCert); err != nil {
 			return fmt.Errorf("SSL root certificate file not found: %s", dc.SSL.RootCert)
 		}
-		slog.Info("SSL with certificate validation enabled", "mode", dc.SSL.Mode, "root_cert", dc.SSL.RootCert)
+		slog.InfoContext(ctx, "SSL with certificate validation enabled", "mode", dc.SSL.Mode, "root_cert", dc.SSL.RootCert)
 	default:
 		return fmt.Errorf("invalid SSL mode: %s", dc.SSL.Mode)
 	}

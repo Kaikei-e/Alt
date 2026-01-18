@@ -49,7 +49,7 @@ func NewHTTPClientFactory() *HTTPClientFactory {
 		sidecarProxyURL = "http://sidecar-proxy.alt-apps.svc.cluster.local:8085"
 	}
 
-	slog.Info("HTTP client factory initialized",
+	slog.InfoContext(context.Background(), "HTTP client factory initialized",
 		"proxy_strategy", strategy,
 		"envoy_base_url", envoyBaseURL,
 		"sidecar_proxy_url", sidecarProxyURL)

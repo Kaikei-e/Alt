@@ -54,7 +54,7 @@ func (s *IndexerServer) Start(ctx context.Context, config Config) error {
 
 	go func() {
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("http server error", "err", err)
+			slog.ErrorContext(ctx, "http server error", "err", err)
 		}
 	}()
 

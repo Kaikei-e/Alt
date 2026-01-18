@@ -55,21 +55,21 @@ func main() {
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("failed to load configuration", "error", err)
+		slog.ErrorContext(ctx, "failed to load configuration", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("configuration loaded",
+	slog.InfoContext(ctx, "configuration loaded",
 		"kratos_url", cfg.KratosURL,
 		"port", cfg.Port,
 		"cache_ttl", cfg.CacheTTL)
 
 	// Initialize dependencies
 	sessionCache := cache.NewSessionCache(cfg.CacheTTL)
-	slog.Info("session cache initialized", "ttl", cfg.CacheTTL)
+	slog.InfoContext(ctx, "session cache initialized", "ttl", cfg.CacheTTL)
 
 	kratosClient := client.NewKratosClientWithAdmin(cfg.KratosURL, cfg.KratosAdminURL, 5*time.Second)
-	slog.Info("kratos client initialized",
+	slog.InfoContext(ctx, "kratos client initialized",
 		"base_url", cfg.KratosURL,
 		"admin_url", cfg.KratosAdminURL)
 
@@ -134,9 +134,9 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		slog.Info("starting auth-hub server", "address", address)
+		slog.InfoContext(ctx, "starting auth-hub server", "address", address)
 		if err := e.Start(address); err != nil && err != http.ErrServerClosed {
-			slog.Error("server failed to start", "error", err)
+			slog.ErrorContext(ctx, "server failed to start", "error", err)
 			os.Exit(1)
 		}
 	}()
@@ -145,16 +145,16 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
-	slog.Info("shutting down server...")
+	slog.InfoContext(ctx, "shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := e.Shutdown(ctx); err != nil {
-		slog.Error("server forced to shutdown", "error", err)
+	if err := e.Shutdown(shutdownCtx); err != nil {
+		slog.ErrorContext(ctx, "server forced to shutdown", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("server exited properly")
+	slog.InfoContext(ctx, "server exited properly")
 }
 
 // runHealthcheck performs a health check against the local server

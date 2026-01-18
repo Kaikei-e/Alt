@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -91,8 +92,9 @@ func Load() (*Config, error) {
 	}
 
 	// SSL設定の検証
+	ctx := context.Background()
 	if err := dbConfig.ValidateSSLConfig(); err != nil {
-		slog.Error("invalid SSL configuration", "error", err)
+		slog.ErrorContext(ctx, "invalid SSL configuration", "error", err)
 		return nil, fmt.Errorf("SSL configuration error: %w", err)
 	}
 
@@ -116,7 +118,7 @@ func Load() (*Config, error) {
 		},
 	}
 
-	slog.Info("configuration loaded",
+	slog.InfoContext(ctx, "configuration loaded",
 		"db_host", cfg.Database.Host,
 		"db_sslmode", cfg.Database.SSL.Mode,
 		"meilisearch_host", cfg.Meilisearch.Host,
@@ -127,7 +129,7 @@ func Load() (*Config, error) {
 
 // 後方互換性のためのメソッド（deprecated）
 func (c *DatabaseConfig) ConnectionString() string {
-	slog.Warn("ConnectionString is deprecated, use GetDatabaseConnectionString()")
+	slog.WarnContext(context.Background(), "ConnectionString is deprecated, use GetDatabaseConnectionString()")
 	return c.GetDatabaseConnectionString()
 }
 

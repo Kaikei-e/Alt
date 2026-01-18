@@ -38,12 +38,12 @@ func main() {
 	otelCfg := otel.ConfigFromEnv()
 	shutdown, err := otel.InitProvider(ctx, otelCfg)
 	if err != nil {
-		slog.Error("failed to initialize OTel provider", "error", err)
+		slog.ErrorContext(ctx, "failed to initialize OTel provider", "error", err)
 		os.Exit(1)
 	}
 	defer func() {
 		if err := shutdown(ctx); err != nil {
-			slog.Error("failed to shutdown OTel provider", "error", err)
+			slog.ErrorContext(ctx, "failed to shutdown OTel provider", "error", err)
 		}
 	}()
 

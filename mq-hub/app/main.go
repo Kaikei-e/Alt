@@ -16,14 +16,14 @@ import (
 	"mq-hub/gateway"
 	mqhubv1connect "mq-hub/gen/proto/services/mqhub/v1/mqhubv1connect"
 	"mq-hub/usecase"
+	"mq-hub/utils/logger"
 )
 
 func main() {
-	// Initialize logger
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
-	slog.SetDefault(logger)
+	ctx := context.Background()
+
+	// Initialize logger with TraceContextHandler for trace_id/span_id propagation
+	logger.Init()
 
 	// Load configuration
 	cfg := config.NewConfig()
@@ -31,7 +31,7 @@ func main() {
 	// Initialize Redis driver
 	redisDriver, err := driver.NewRedisDriverWithURL(cfg.RedisURL)
 	if err != nil {
-		slog.Error("failed to connect to Redis", "error", err)
+		slog.ErrorContext(ctx, "failed to connect to Redis", "error", err)
 		os.Exit(1)
 	}
 	defer redisDriver.Close()
@@ -68,10 +68,10 @@ func main() {
 
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.ConnectPort)
-	slog.Info("starting mq-hub server", "addr", addr)
+	slog.InfoContext(ctx, "starting mq-hub server", "addr", addr)
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
-		slog.Error("server failed", "error", err)
+		slog.ErrorContext(ctx, "server failed", "error", err)
 		os.Exit(1)
 	}
 }
@@ -80,7 +80,7 @@ func main() {
 func loggingInterceptor() connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			slog.Info("request received",
+			slog.InfoContext(ctx, "request received",
 				"procedure", req.Spec().Procedure,
 				"peer", req.Peer().Addr,
 			)
@@ -88,12 +88,12 @@ func loggingInterceptor() connect.UnaryInterceptorFunc {
 			resp, err := next(ctx, req)
 
 			if err != nil {
-				slog.Error("request failed",
+				slog.ErrorContext(ctx, "request failed",
 					"procedure", req.Spec().Procedure,
 					"error", err,
 				)
 			} else {
-				slog.Info("request completed",
+				slog.InfoContext(ctx, "request completed",
 					"procedure", req.Spec().Procedure,
 				)
 			}
