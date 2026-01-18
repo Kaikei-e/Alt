@@ -11,7 +11,7 @@ import (
 // Modifications applied:
 //   - Removes ALL query parameters (they are noise for feed URLs)
 //   - Removes URL fragments (#anchor)
-//   - Removes trailing slashes (except for root path "/")
+//   - Removes trailing slashes (including root path "/" for consistency)
 //
 // Example:
 //
@@ -29,8 +29,10 @@ func NormalizeURL(rawURL string) (string, error) {
 	// Remove fragment
 	parsedURL.Fragment = ""
 
-	// Remove trailing slash (except for root path)
-	if parsedURL.Path != "/" && strings.HasSuffix(parsedURL.Path, "/") {
+	// Remove trailing slash (including root path for consistency)
+	if parsedURL.Path == "/" {
+		parsedURL.Path = ""
+	} else if strings.HasSuffix(parsedURL.Path, "/") {
 		parsedURL.Path = strings.TrimRight(parsedURL.Path, "/")
 	}
 

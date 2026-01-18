@@ -60,9 +60,9 @@ func TestNormalizeURL(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "Root path with trailing slash (should keep slash)",
+			name:     "Root path with trailing slash (should remove slash)",
 			input:    "https://example.com/",
-			expected: "https://example.com/",
+			expected: "https://example.com",
 			wantErr:  false,
 		},
 		{
