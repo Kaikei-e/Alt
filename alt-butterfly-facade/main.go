@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"alt-butterfly-facade/config"
+	"alt-butterfly-facade/internal/logger"
 	"alt-butterfly-facade/internal/server"
 )
 
@@ -24,11 +25,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Initialize structured logger
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
-	slog.SetDefault(logger)
+	// Initialize structured logger with trace context support
+	appLogger := logger.Init()
 
 	// Load configuration
 	cfg := config.NewConfig()
@@ -61,7 +59,7 @@ func main() {
 	}
 
 	// Create HTTP server
-	handler := server.NewServer(serverCfg, logger)
+	handler := server.NewServer(serverCfg, appLogger)
 
 	address := fmt.Sprintf(":%s", cfg.Port)
 	srv := &http.Server{
