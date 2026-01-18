@@ -48,7 +48,7 @@ func (r *AltDBRepository) FetchFeedTags(ctx context.Context, feedID string, curs
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		logger.Logger.Error("error fetching feed tags", "error", err, "feedID", feedID)
+		logger.Logger.ErrorContext(ctx, "error fetching feed tags", "error", err, "feedID", feedID)
 		return nil, errors.New("error fetching feed tags")
 	}
 	defer rows.Close()
@@ -58,12 +58,12 @@ func (r *AltDBRepository) FetchFeedTags(ctx context.Context, feedID string, curs
 		var tag domain.FeedTag
 		err := rows.Scan(&tag.ID, &tag.TagName, &tag.CreatedAt)
 		if err != nil {
-			logger.Logger.Error("error scanning feed tag", "error", err)
+			logger.Logger.ErrorContext(ctx, "error scanning feed tag", "error", err)
 			return nil, errors.New("error scanning feed tags")
 		}
 		tags = append(tags, &tag)
 	}
 
-	logger.Logger.Info("fetched feed tags from database", "feedID", feedID, "count", len(tags))
+	logger.Logger.InfoContext(ctx, "fetched feed tags from database", "feedID", feedID, "count", len(tags))
 	return tags, nil
 }

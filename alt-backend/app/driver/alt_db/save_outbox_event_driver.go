@@ -20,7 +20,7 @@ func (r *AltDBRepository) SaveOutboxEventWithTx(ctx context.Context, tx pgx.Tx, 
 	if _, err := tx.Exec(ctx, insertOutboxQuery, eventType, payload); err != nil {
 		err = fmt.Errorf("failed to insert outbox event: %w", err)
 		// We can't log article_id easily here without parsing payload, so general error log
-		logger.SafeError("failed to save outbox event", "event_type", eventType, "error", err)
+		logger.SafeErrorContext(ctx, "failed to save outbox event", "event_type", eventType, "error", err)
 		return err
 	}
 	return nil

@@ -19,11 +19,11 @@ func (r *AltDBRepository) FetchUserFeedIDs(ctx context.Context) ([]uuid.UUID, er
 	// Get user from context (same pattern as cursor-based endpoints)
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		logger.Logger.Error("user context not found", "error", err)
+		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
 
-	logger.Logger.Info("Fetching user feed IDs", "user_id", user.UserID)
+	logger.Logger.InfoContext(ctx, "Fetching user feed IDs", "user_id", user.UserID)
 
 	// Get feed IDs from read_status table where user has interacted with articles
 	// This represents feeds that the user has subscribed to or has read articles from
@@ -36,7 +36,7 @@ func (r *AltDBRepository) FetchUserFeedIDs(ctx context.Context) ([]uuid.UUID, er
 
 	rows, err := r.pool.Query(ctx, query, user.UserID)
 	if err != nil {
-		logger.Logger.Error("Failed to query user feed IDs", "error", err, "user_id", user.UserID)
+		logger.Logger.ErrorContext(ctx, "Failed to query user feed IDs", "error", err, "user_id", user.UserID)
 		return nil, errors.New("error fetching user feed IDs")
 	}
 	defer rows.Close()
@@ -45,17 +45,17 @@ func (r *AltDBRepository) FetchUserFeedIDs(ctx context.Context) ([]uuid.UUID, er
 	for rows.Next() {
 		var feedID uuid.UUID
 		if err := rows.Scan(&feedID); err != nil {
-			logger.Logger.Error("Failed to scan feed ID", "error", err)
+			logger.Logger.ErrorContext(ctx, "Failed to scan feed ID", "error", err)
 			return nil, errors.New("error scanning feed ID")
 		}
 		feedIDs = append(feedIDs, feedID)
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.Logger.Error("Error iterating feed ID rows", "error", err)
+		logger.Logger.ErrorContext(ctx, "Error iterating feed ID rows", "error", err)
 		return nil, errors.New("error iterating feed ID rows")
 	}
 
-	logger.Logger.Info("Successfully fetched user feed IDs", "count", len(feedIDs), "user_id", user.UserID)
+	logger.Logger.InfoContext(ctx, "Successfully fetched user feed IDs", "count", len(feedIDs), "user_id", user.UserID)
 	return feedIDs, nil
 }

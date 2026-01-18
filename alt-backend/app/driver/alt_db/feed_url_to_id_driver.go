@@ -18,10 +18,10 @@ func (r *AltDBRepository) GetFeedIDByURL(ctx context.Context, feedURL string) (s
 	var feedID string
 	err := r.pool.QueryRow(ctx, query, feedURL).Scan(&feedID)
 	if err != nil {
-		logger.SafeError("error getting feed ID by URL", "error", err, "feedURL", feedURL)
+		logger.SafeErrorContext(ctx, "error getting feed ID by URL", "error", err, "feedURL", feedURL)
 		return "", errors.New("error getting feed ID by URL")
 	}
 
-	logger.SafeInfo("retrieved feed ID from database", "feedURL", feedURL, "feedID", feedID)
+	logger.SafeInfoContext(ctx, "retrieved feed ID from database", "feedURL", feedURL, "feedID", feedID)
 	return feedID, nil
 }

@@ -10,11 +10,11 @@ import (
 // FetchInoreaderSummariesByURLs retrieves inoreader article summaries for the given URLs
 func (r *AltDBRepository) FetchInoreaderSummariesByURLs(ctx context.Context, urls []string) ([]*models.InoreaderSummary, error) {
 	if len(urls) == 0 {
-		logger.Logger.Info("No URLs provided for inoreader summaries fetch")
+		logger.Logger.InfoContext(ctx, "No URLs provided for inoreader summaries fetch")
 		return []*models.InoreaderSummary{}, nil
 	}
 
-	logger.Logger.Info("Fetching inoreader summaries", "url_count", len(urls), "urls", urls)
+	logger.Logger.InfoContext(ctx, "Fetching inoreader summaries", "url_count", len(urls), "urls", urls)
 
 	query := `
 		SELECT
@@ -35,7 +35,7 @@ func (r *AltDBRepository) FetchInoreaderSummariesByURLs(ctx context.Context, url
 
 	rows, err := r.pool.Query(ctx, query, urls)
 	if err != nil {
-		logger.Logger.Error("Failed to query inoreader summaries", "error", err, "url_count", len(urls))
+		logger.Logger.ErrorContext(ctx, "Failed to query inoreader summaries", "error", err, "url_count", len(urls))
 		return nil, fmt.Errorf("failed to query inoreader summaries: %w", err)
 	}
 	defer rows.Close()
@@ -54,18 +54,18 @@ func (r *AltDBRepository) FetchInoreaderSummariesByURLs(ctx context.Context, url
 			&summary.InoreaderID,
 		)
 		if err != nil {
-			logger.Logger.Error("Failed to scan inoreader summary row", "error", err)
+			logger.Logger.ErrorContext(ctx, "Failed to scan inoreader summary row", "error", err)
 			return nil, fmt.Errorf("failed to scan inoreader summary: %w", err)
 		}
 		summaries = append(summaries, &summary)
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.Logger.Error("Error iterating inoreader summary rows", "error", err)
+		logger.Logger.ErrorContext(ctx, "Error iterating inoreader summary rows", "error", err)
 		return nil, fmt.Errorf("error iterating rows: %w", err)
 	}
 
-	logger.Logger.Info("Successfully fetched inoreader summaries",
+	logger.Logger.InfoContext(ctx, "Successfully fetched inoreader summaries",
 		"requested_count", len(urls),
 		"matched_count", len(summaries))
 

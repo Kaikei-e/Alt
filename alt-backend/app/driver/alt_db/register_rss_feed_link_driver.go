@@ -13,20 +13,20 @@ import (
 func (r *AltDBRepository) RegisterRSSFeedLink(ctx context.Context, link string) error {
 	// Validate that the link is not empty or whitespace-only
 	if strings.TrimSpace(link) == "" {
-		logger.Logger.Error("Cannot register empty RSS feed link")
+		logger.Logger.ErrorContext(ctx, "Cannot register empty RSS feed link")
 		return errors.New("RSS feed link cannot be empty")
 	}
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		logger.Logger.Error("Error starting transaction", "error", err)
+		logger.Logger.ErrorContext(ctx, "Error starting transaction", "error", err)
 		return pgx.ErrTxClosed
 	}
 
 	// Ensure transaction is always cleaned up
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
-			logger.Logger.Warn("Error rolling back transaction", "error", err)
+			logger.Logger.WarnContext(ctx, "Error rolling back transaction", "error", err)
 		}
 	}()
 
@@ -36,22 +36,22 @@ func (r *AltDBRepository) RegisterRSSFeedLink(ctx context.Context, link string) 
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			// Duplicate key error - this is a normal case, feed link already exists
-			logger.Logger.Info("RSS feed link already exists (duplicate)", "link", link, "sqlstate", pgErr.Code)
+			logger.Logger.InfoContext(ctx, "RSS feed link already exists (duplicate)", "link", link, "sqlstate", pgErr.Code)
 			// Do not commit, as the transaction is aborted. Rollback is handled by defer or we can just return.
 			return nil // Return nil to indicate success (feed already registered)
 		}
 		// Other database errors
-		logger.Logger.Error("Error registering RSS feed link", "error", err, "link", link)
+		logger.Logger.ErrorContext(ctx, "Error registering RSS feed link", "error", err, "link", link)
 		return errors.New("failed to register RSS feed link: " + err.Error())
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		logger.Logger.Error("Error committing transaction", "error", err)
+		logger.Logger.ErrorContext(ctx, "Error committing transaction", "error", err)
 		return pgx.ErrTxClosed
 	}
 
-	logger.Logger.Info("RSS feed link registered", "link", link)
+	logger.Logger.InfoContext(ctx, "RSS feed link registered", "link", link)
 
 	return nil
 }

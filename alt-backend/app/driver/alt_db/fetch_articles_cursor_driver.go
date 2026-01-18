@@ -27,7 +27,7 @@ type ArticleWithTags struct {
 func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.Article, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		logger.Logger.Error("user context not found", "error", err)
+		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
 
@@ -79,7 +79,7 @@ func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *t
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		logger.Logger.Error("error fetching articles with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
+		logger.Logger.ErrorContext(ctx, "error fetching articles with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
 		return nil, errors.New("error fetching articles list")
 	}
 	defer rows.Close()
@@ -100,10 +100,10 @@ func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *t
 		)
 		if err != nil {
 			if err == pgx.ErrNoRows {
-				logger.Logger.Info("no articles found", "user_id", user.UserID)
+				logger.Logger.InfoContext(ctx, "no articles found", "user_id", user.UserID)
 				return articles, nil
 			}
-			logger.Logger.Error("error scanning article with cursor", "error", err)
+			logger.Logger.ErrorContext(ctx, "error scanning article with cursor", "error", err)
 			return nil, errors.New("error scanning articles list")
 		}
 
@@ -112,10 +112,10 @@ func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *t
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.Logger.Error("error iterating articles rows", "error", err)
+		logger.Logger.ErrorContext(ctx, "error iterating articles rows", "error", err)
 		return nil, errors.New("error processing articles list")
 	}
 
-	logger.Logger.Info("fetched articles with cursor", "count", len(articles), "user_id", user.UserID)
+	logger.Logger.InfoContext(ctx, "fetched articles with cursor", "count", len(articles), "user_id", user.UserID)
 	return articles, nil
 }

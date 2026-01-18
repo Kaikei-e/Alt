@@ -76,7 +76,7 @@ func (r *AltDBRepository) GetScrapingDomainByDomain(ctx context.Context, domainN
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
-		logger.SafeError("Error fetching scraping domain", "error", err, "domain", domainName)
+		logger.SafeErrorContext(ctx, "Error fetching scraping domain", "error", err, "domain", domainName)
 		return nil, errors.New("error fetching scraping domain")
 	}
 
@@ -138,7 +138,7 @@ func (r *AltDBRepository) GetScrapingDomainByID(ctx context.Context, id uuid.UUI
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
-		logger.SafeError("Error fetching scraping domain by ID", "error", err, "id", id)
+		logger.SafeErrorContext(ctx, "Error fetching scraping domain by ID", "error", err, "id", id)
 		return nil, errors.New("error fetching scraping domain")
 	}
 
@@ -207,7 +207,7 @@ func (r *AltDBRepository) SaveScrapingDomain(ctx context.Context, sd *domain.Scr
 	// Convert to JSONB for robots_disallow_paths
 	disallowPathsJSON, err := json.Marshal(sd.RobotsDisallowPaths)
 	if err != nil {
-		logger.SafeError("Error marshaling robots_disallow_paths", "error", err)
+		logger.SafeErrorContext(ctx, "Error marshaling robots_disallow_paths", "error", err)
 		return errors.New("error marshaling robots_disallow_paths")
 	}
 
@@ -220,11 +220,11 @@ func (r *AltDBRepository) SaveScrapingDomain(ctx context.Context, sd *domain.Scr
 	)
 
 	if err != nil {
-		logger.SafeError("Error saving scraping domain", "error", err, "domain_name", sd.Domain)
+		logger.SafeErrorContext(ctx, "Error saving scraping domain", "error", err, "domain_name", sd.Domain)
 		return errors.New("error saving scraping domain")
 	}
 
-	logger.SafeInfo("Scraping domain saved", "id", sd.ID, "domain_name", sd.Domain)
+	logger.SafeInfoContext(ctx, "Scraping domain saved", "id", sd.ID, "domain_name", sd.Domain)
 	return nil
 }
 
@@ -242,7 +242,7 @@ func (r *AltDBRepository) ListScrapingDomains(ctx context.Context, offset, limit
 
 	rows, err := r.pool.Query(ctx, query, limit, offset)
 	if err != nil {
-		logger.SafeError("Error listing scraping domains", "error", err)
+		logger.SafeErrorContext(ctx, "Error listing scraping domains", "error", err)
 		return nil, errors.New("error listing scraping domains")
 	}
 	defer rows.Close()
@@ -264,7 +264,7 @@ func (r *AltDBRepository) ListScrapingDomains(ctx context.Context, offset, limit
 			&robotsDisallowPaths, &sd.CreatedAt, &sd.UpdatedAt,
 		)
 		if err != nil {
-			logger.SafeError("Error scanning scraping domain", "error", err)
+			logger.SafeErrorContext(ctx, "Error scanning scraping domain", "error", err)
 			return nil, errors.New("error scanning scraping domains")
 		}
 
@@ -296,7 +296,7 @@ func (r *AltDBRepository) ListScrapingDomains(ctx context.Context, offset, limit
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.SafeError("Row iteration error", "error", err)
+		logger.SafeErrorContext(ctx, "Row iteration error", "error", err)
 		return nil, errors.New("error iterating scraping domains")
 	}
 
@@ -325,15 +325,15 @@ func (r *AltDBRepository) UpdateScrapingDomainPolicy(ctx context.Context, id uui
 	)
 
 	if err != nil {
-		logger.SafeError("Error updating scraping domain policy", "error", err, "id", id)
+		logger.SafeErrorContext(ctx, "Error updating scraping domain policy", "error", err, "id", id)
 		return errors.New("error updating scraping domain policy")
 	}
 
 	if result.RowsAffected() == 0 {
-		logger.SafeWarn("Scraping domain not found for update", "id", id)
+		logger.SafeWarnContext(ctx, "Scraping domain not found for update", "id", id)
 		return errors.New("scraping domain not found")
 	}
 
-	logger.SafeInfo("Scraping domain policy updated", "id", id)
+	logger.SafeInfoContext(ctx, "Scraping domain policy updated", "id", id)
 	return nil
 }

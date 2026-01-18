@@ -38,15 +38,15 @@ func (r *AltDBRepository) FetchArticleByURL(ctx context.Context, articleURL stri
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			logger.SafeInfo("article not found in database", "url", cleanURL)
+			logger.SafeInfoContext(ctx, "article not found in database", "url", cleanURL)
 			return nil, nil // Return nil without error to indicate not found
 		}
 		err = fmt.Errorf("fetch article by url: %w", err)
-		logger.SafeError("failed to fetch article", "url", cleanURL, "error", err)
+		logger.SafeErrorContext(ctx, "failed to fetch article", "url", cleanURL, "error", err)
 		return nil, err
 	}
 
-	logger.SafeInfo("article retrieved from database", "url", cleanURL, "article_id", article.ID)
+	logger.SafeInfoContext(ctx, "article retrieved from database", "url", cleanURL, "article_id", article.ID)
 	return &article, nil
 }
 
@@ -77,14 +77,14 @@ func (r *AltDBRepository) FetchArticleByID(ctx context.Context, articleID string
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			logger.SafeInfo("article not found in database", "id", cleanID)
+			logger.SafeInfoContext(ctx, "article not found in database", "id", cleanID)
 			return nil, nil // Return nil without error to indicate not found
 		}
 		err = fmt.Errorf("fetch article by id: %w", err)
-		logger.SafeError("failed to fetch article", "id", cleanID, "error", err)
+		logger.SafeErrorContext(ctx, "failed to fetch article", "id", cleanID, "error", err)
 		return nil, err
 	}
 
-	logger.SafeInfo("article retrieved from database", "id", cleanID)
+	logger.SafeInfoContext(ctx, "article retrieved from database", "id", cleanID)
 	return &article, nil
 }

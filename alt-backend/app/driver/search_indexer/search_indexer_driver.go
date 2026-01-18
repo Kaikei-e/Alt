@@ -13,7 +13,7 @@ func NewHTTPSearchIndexerDriver() search_indexer_port.SearchIndexerPort {
 }
 
 func (d *HTTPSearchIndexerDriver) SearchArticles(ctx context.Context, query string, userID string) ([]domain.SearchIndexerArticleHit, error) {
-	hits, err := SearchArticlesWithUserID(query, userID)
+	hits, err := SearchArticlesWithUserID(ctx, query, userID)
 	if err != nil {
 		return nil, err
 	}

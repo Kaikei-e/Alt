@@ -28,14 +28,14 @@ func (r *AltDBRepository) SaveArticleSummary(ctx context.Context, articleID stri
 
 	commandTag, err := r.pool.Exec(ctx, query, articleID, articleTitle, summary)
 	if err != nil {
-		logger.Logger.Error("Failed to save article summary", "error", err, "article_id", articleID)
+		logger.Logger.ErrorContext(ctx, "Failed to save article summary", "error", err, "article_id", articleID)
 		return fmt.Errorf("failed to save article summary: %w", err)
 	}
 
 	if commandTag.RowsAffected() == 0 {
-		logger.Logger.Warn("No rows affected when saving article summary", "article_id", articleID)
+		logger.Logger.WarnContext(ctx, "No rows affected when saving article summary", "article_id", articleID)
 	} else {
-		logger.Logger.Info("Article summary saved successfully", "article_id", articleID, "rows_affected", commandTag.RowsAffected())
+		logger.Logger.InfoContext(ctx, "Article summary saved successfully", "article_id", articleID, "rows_affected", commandTag.RowsAffected())
 	}
 
 	return nil

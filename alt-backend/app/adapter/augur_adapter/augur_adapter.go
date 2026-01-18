@@ -47,7 +47,7 @@ func (a *AugurAdapter) UpsertArticle(ctx context.Context, input rag_integration_
 	}
 
 	if resp.StatusCode() != http.StatusOK {
-		logger.Logger.Error("RAG UpsertIndex failed", "status", resp.StatusCode(), "body", string(resp.Body))
+		logger.Logger.ErrorContext(ctx, "RAG UpsertIndex failed", "status", resp.StatusCode(), "body", string(resp.Body))
 		return fmt.Errorf("RAG UpsertIndex returned non-OK status: %d", resp.StatusCode())
 	}
 

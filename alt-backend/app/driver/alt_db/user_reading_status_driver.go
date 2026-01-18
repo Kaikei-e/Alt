@@ -19,7 +19,7 @@ import (
 func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		logger.SafeError("user context not found", "error", err)
+		logger.SafeErrorContext(ctx, "user context not found", "error", err)
 		return errors.New("authentication required")
 	}
 
@@ -27,7 +27,7 @@ func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.
 	originalURL := articleURL.String()
 	normalizedURL, err := utils.NormalizeURL(originalURL)
 	if err != nil {
-		logger.SafeError("Error normalizing feed URL", "error", err, "feedURL", originalURL)
+		logger.SafeErrorContext(ctx, "Error normalizing feed URL", "error", err, "feedURL", originalURL)
 		return err
 	}
 
@@ -39,30 +39,30 @@ func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			logger.SafeError("Feed not found",
+			logger.SafeErrorContext(ctx, "Feed not found",
 				"normalizedURL", normalizedURL,
 				"originalURL", originalURL,
 				"user_id", user.UserID)
 			return domain.ErrFeedNotFound
 		}
-		logger.SafeError("Error querying feed", "error", err, "normalizedURL", normalizedURL)
+		logger.SafeErrorContext(ctx, "Error querying feed", "error", err, "normalizedURL", normalizedURL)
 		return fmt.Errorf("failed to query feed: %w", err)
 	}
 
-	logger.SafeInfo("Found matching feed",
+	logger.SafeInfoContext(ctx, "Found matching feed",
 		"feedID", feedID,
 		"normalizedURL", normalizedURL)
 
 	// Start transaction for upsert
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		logger.SafeError("Error beginning transaction", "error", err)
+		logger.SafeErrorContext(ctx, "Error beginning transaction", "error", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	defer func() {
 		if err := tx.Rollback(context.Background()); err != nil && err.Error() != "tx is closed" {
-			logger.SafeWarn("Error rolling back transaction", "error", err)
+			logger.SafeWarnContext(ctx, "Error rolling back transaction", "error", err)
 		}
 	}()
 
@@ -75,7 +75,7 @@ func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.
 	`
 
 	if _, err = tx.Exec(ctx, upsertQuery, feedID, user.UserID); err != nil {
-		logger.SafeError("Error updating feed read status",
+		logger.SafeErrorContext(ctx, "Error updating feed read status",
 			"error", err,
 			"user_id", user.UserID,
 			"feed_id", feedID)
@@ -83,11 +83,11 @@ func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.
 	}
 
 	if err = tx.Commit(context.Background()); err != nil {
-		logger.SafeError("Error committing transaction", "error", err)
+		logger.SafeErrorContext(ctx, "Error committing transaction", "error", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	logger.SafeInfo("feed read status updated successfully",
+	logger.SafeInfoContext(ctx, "feed read status updated successfully",
 		"user_id", user.UserID,
 		"feed_id", feedID,
 		"is_read", true)

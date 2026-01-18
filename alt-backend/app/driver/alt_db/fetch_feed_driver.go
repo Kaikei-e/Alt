@@ -18,7 +18,7 @@ func (r *AltDBRepository) GetSingleFeed(ctx context.Context) (*models.Feed, erro
 	var feed models.Feed
 	err := r.pool.QueryRow(ctx, query).Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 	if err != nil {
-		logger.Logger.Error("error fetching single feed", "error", err)
+		logger.Logger.ErrorContext(ctx, "error fetching single feed", "error", err)
 		return nil, errors.New("error fetching single feed")
 	}
 
@@ -41,7 +41,7 @@ func (r *AltDBRepository) FetchFeedsList(ctx context.Context) ([]*models.Feed, e
 		var feed models.Feed
 		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
-			logger.Logger.Error("error scanning feeds list", "error", err)
+			logger.Logger.ErrorContext(ctx, "error scanning feeds list", "error", err)
 			return nil, errors.New("error scanning feeds list")
 		}
 		feeds = append(feeds, &feed)
@@ -58,7 +58,7 @@ func (r *AltDBRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([
 	var feeds []*models.Feed
 	rows, err := r.pool.Query(ctx, query, limit)
 	if err != nil {
-		logger.Logger.Error("error fetching feeds list limit", "error", err)
+		logger.Logger.ErrorContext(ctx, "error fetching feeds list limit", "error", err)
 		return nil, errors.New("error fetching feeds list limit")
 	}
 	defer rows.Close()
@@ -67,7 +67,7 @@ func (r *AltDBRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([
 		var feed models.Feed
 		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
-			logger.Logger.Error("error scanning feeds list offset", "error", err)
+			logger.Logger.ErrorContext(ctx, "error scanning feeds list offset", "error", err)
 			return nil, errors.New("error scanning feeds list offset")
 		}
 		feeds = append(feeds, &feed)
@@ -86,7 +86,7 @@ func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*
 	var feeds []*models.Feed
 	rows, err := r.pool.Query(ctx, query, pageSize, pageSize*page)
 	if err != nil {
-		logger.Logger.Error("error fetching feeds list page", "error", err)
+		logger.Logger.ErrorContext(ctx, "error fetching feeds list page", "error", err)
 		return nil, errors.New("error fetching feeds list page")
 	}
 	defer rows.Close()
@@ -95,7 +95,7 @@ func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*
 		var feed models.Feed
 		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
-			logger.Logger.Error("error scanning feeds list page", "error", err)
+			logger.Logger.ErrorContext(ctx, "error scanning feeds list page", "error", err)
 			return nil, errors.New("error scanning feeds list page")
 		}
 		feeds = append(feeds, &feed)
@@ -107,7 +107,7 @@ func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*
 func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		logger.Logger.Error("user context not found", "error", err)
+		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
 
@@ -131,7 +131,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 
 	rows, err := r.pool.Query(ctx, query, pageSize, pageSize*page, user.UserID)
 	if err != nil {
-		logger.Logger.Error("error fetching unread feeds list page", "error", err, "user_id", user.UserID)
+		logger.Logger.ErrorContext(ctx, "error fetching unread feeds list page", "error", err, "user_id", user.UserID)
 		return nil, errors.New("error fetching feeds list page")
 	}
 	defer rows.Close()
@@ -141,7 +141,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 		var feed models.Feed
 		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
-			logger.Logger.Error("error scanning unread feeds list page", "error", err)
+			logger.Logger.ErrorContext(ctx, "error scanning unread feeds list page", "error", err)
 			return nil, errors.New("error scanning feeds list page")
 		}
 		feeds = append(feeds, &feed)
@@ -153,7 +153,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		logger.Logger.Error("user context not found", "error", err)
+		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
 
@@ -207,7 +207,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		logger.Logger.Error("error fetching unread feeds with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
+		logger.Logger.ErrorContext(ctx, "error fetching unread feeds with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
 		return nil, errors.New("error fetching feeds list")
 	}
 	defer rows.Close()
@@ -217,7 +217,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 		var feed models.Feed
 		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID)
 		if err != nil {
-			logger.Logger.Error("error scanning unread feeds with cursor", "error", err)
+			logger.Logger.ErrorContext(ctx, "error scanning unread feeds with cursor", "error", err)
 			return nil, errors.New("error scanning feeds list")
 		}
 		feeds = append(feeds, &feed)
@@ -231,7 +231,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		logger.Logger.Error("user context not found", "error", err)
+		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
 
@@ -268,7 +268,7 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		logger.Logger.Error("error fetching read feeds with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
+		logger.Logger.ErrorContext(ctx, "error fetching read feeds with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
 		return nil, errors.New("error fetching read feeds list")
 	}
 	defer rows.Close()
@@ -278,7 +278,7 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 		var feed models.Feed
 		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
-			logger.Logger.Error("error scanning read feeds with cursor", "error", err)
+			logger.Logger.ErrorContext(ctx, "error scanning read feeds with cursor", "error", err)
 			return nil, errors.New("error scanning read feeds list")
 		}
 		feeds = append(feeds, &feed)
@@ -290,7 +290,7 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		logger.Logger.Error("user context not found", "error", err)
+		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
 
@@ -323,7 +323,7 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		logger.Logger.Error("error fetching favorite feeds with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
+		logger.Logger.ErrorContext(ctx, "error fetching favorite feeds with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
 		return nil, errors.New("error fetching favorite feeds list")
 	}
 	defer rows.Close()
@@ -333,7 +333,7 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
 		var feed models.Feed
 		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
-			logger.Logger.Error("error scanning favorite feeds with cursor", "error", err)
+			logger.Logger.ErrorContext(ctx, "error scanning favorite feeds with cursor", "error", err)
 			return nil, errors.New("error scanning favorite feeds list")
 		}
 		feeds = append(feeds, &feed)

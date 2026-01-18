@@ -24,14 +24,14 @@ func (r *AltDBRepository) FetchTrendStats(ctx context.Context, window string) (*
 	// Validate user context and extract user_id for multi-tenant filtering
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		logger.SafeError("user context not found for trend stats", "error", err)
+		logger.SafeErrorContext(ctx, "user context not found for trend stats", "error", err)
 		return nil, errors.New("authentication required")
 	}
 
 	// Parse window
 	windowSeconds, granularity, err := parseWindow(window)
 	if err != nil {
-		logger.SafeError("invalid window parameter", "window", window, "error", err)
+		logger.SafeErrorContext(ctx, "invalid window parameter", "window", window, "error", err)
 		return nil, fmt.Errorf("invalid window: %w", err)
 	}
 
@@ -48,7 +48,7 @@ func (r *AltDBRepository) FetchTrendStats(ctx context.Context, window string) (*
 
 	rows, err := r.pool.Query(ctx, query, since, user.UserID)
 	if err != nil {
-		logger.SafeError("failed to fetch trend stats", "error", err)
+		logger.SafeErrorContext(ctx, "failed to fetch trend stats", "error", err)
 		return nil, errors.New("failed to fetch trend stats")
 	}
 	defer rows.Close()
@@ -59,7 +59,7 @@ func (r *AltDBRepository) FetchTrendStats(ctx context.Context, window string) (*
 		var articles, summarized, feedActivity int
 
 		if err := rows.Scan(&bucket, &articles, &summarized, &feedActivity); err != nil {
-			logger.SafeError("failed to scan trend stats row", "error", err)
+			logger.SafeErrorContext(ctx, "failed to scan trend stats row", "error", err)
 			continue
 		}
 
@@ -72,11 +72,11 @@ func (r *AltDBRepository) FetchTrendStats(ctx context.Context, window string) (*
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.SafeError("error iterating trend stats rows", "error", err)
+		logger.SafeErrorContext(ctx, "error iterating trend stats rows", "error", err)
 		return nil, errors.New("failed to fetch trend stats")
 	}
 
-	logger.SafeInfo("trend stats fetched successfully",
+	logger.SafeInfoContext(ctx, "trend stats fetched successfully",
 		"window", window,
 		"granularity", granularity,
 		"data_points", len(dataPoints))

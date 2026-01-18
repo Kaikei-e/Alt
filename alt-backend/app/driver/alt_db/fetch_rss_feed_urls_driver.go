@@ -15,7 +15,7 @@ func (r *AltDBRepository) FetchRSSFeedURLs(ctx context.Context) ([]url.URL, erro
 		WHERE fla.is_active IS NULL OR fla.is_active = true`
 	rows, err := r.pool.Query(ctx, query)
 	if err != nil {
-		logger.SafeError("Error fetching RSS links", "error", err)
+		logger.SafeErrorContext(ctx, "Error fetching RSS links", "error", err)
 		return nil, errors.New("error fetching RSS links")
 	}
 	defer rows.Close()
@@ -25,18 +25,18 @@ func (r *AltDBRepository) FetchRSSFeedURLs(ctx context.Context) ([]url.URL, erro
 		var link string
 		err := rows.Scan(&link)
 		if err != nil {
-			logger.SafeError("Error scanning RSS link", "error", err)
+			logger.SafeErrorContext(ctx, "Error scanning RSS link", "error", err)
 			return nil, errors.New("error scanning RSS link")
 		}
 
 		linkURL, err := url.Parse(link)
 		if err != nil {
-			logger.SafeError("Error parsing RSS link - invalid URL format", "url", link, "error", err)
+			logger.SafeErrorContext(ctx, "Error parsing RSS link - invalid URL format", "url", link, "error", err)
 			continue // Skip invalid URLs instead of failing entirely
 		}
 
 		// Log detailed information about each URL for debugging
-		logger.SafeInfo("Found RSS link in database",
+		logger.SafeInfoContext(ctx, "Found RSS link in database",
 			"url", linkURL.String(),
 			"scheme", linkURL.Scheme,
 			"host", linkURL.Host,
@@ -45,6 +45,6 @@ func (r *AltDBRepository) FetchRSSFeedURLs(ctx context.Context) ([]url.URL, erro
 		links = append(links, *linkURL)
 	}
 
-	logger.SafeInfo("RSS feed URL fetch summary", "total_found", len(links))
+	logger.SafeInfoContext(ctx, "RSS feed URL fetch summary", "total_found", len(links))
 	return links, nil
 }

@@ -15,14 +15,14 @@ import (
 func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		logger.SafeError("user context not found", "error", err)
+		logger.SafeErrorContext(ctx, "user context not found", "error", err)
 		return errors.New("authentication required")
 	}
 
 	// Normalize the input URL
 	normalizedInputURL, err := utils.NormalizeURL(feedURL.String())
 	if err != nil {
-		logger.SafeError("Error normalizing input URL", "error", err, "feedURL", feedURL.String())
+		logger.SafeErrorContext(ctx, "Error normalizing input URL", "error", err, "feedURL", feedURL.String())
 		return err
 	}
 
@@ -36,30 +36,30 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Return domain error instead of database error
-			logger.SafeError("Feed not found",
+			logger.SafeErrorContext(ctx, "Feed not found",
 				"normalizedURL", normalizedInputURL,
 				"originalURL", feedURL.String(),
 				"user_id", user.UserID)
 			return domain.ErrFeedNotFound
 		}
-		logger.SafeError("Error querying feed", "error", err, "normalizedURL", normalizedInputURL)
+		logger.SafeErrorContext(ctx, "Error querying feed", "error", err, "normalizedURL", normalizedInputURL)
 		return fmt.Errorf("failed to query feed: %w", err)
 	}
 
-	logger.SafeInfo("Found matching feed",
+	logger.SafeInfoContext(ctx, "Found matching feed",
 		"feedID", feedID,
 		"normalizedURL", normalizedInputURL)
 
 	// Start transaction for upsert
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		logger.SafeError("Error beginning transaction", "error", err)
+		logger.SafeErrorContext(ctx, "Error beginning transaction", "error", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	defer func() {
 		if err := tx.Rollback(context.Background()); err != nil && err.Error() != "tx is closed" {
-			logger.SafeWarn("Error rolling back transaction", "error", err)
+			logger.SafeWarnContext(ctx, "Error rolling back transaction", "error", err)
 		}
 	}()
 
@@ -72,7 +72,7 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
     `
 
 	if _, err = tx.Exec(ctx, updateFeedStatusQuery, feedID, user.UserID); err != nil {
-		logger.SafeError("Error updating feed status",
+		logger.SafeErrorContext(ctx, "Error updating feed status",
 			"error", err,
 			"user_id", user.UserID,
 			"feed_id", feedID)
@@ -80,11 +80,11 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 	}
 
 	if err = tx.Commit(context.Background()); err != nil {
-		logger.SafeError("Error committing transaction", "error", err)
+		logger.SafeErrorContext(ctx, "Error committing transaction", "error", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	logger.SafeInfo("feed status updated successfully",
+	logger.SafeInfoContext(ctx, "feed status updated successfully",
 		"user_id", user.UserID,
 		"feed_id", feedID,
 		"is_read", true)

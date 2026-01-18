@@ -3,6 +3,7 @@ package search_indexer
 import (
 	"alt/driver/models"
 	"alt/utils/logger"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,7 +22,7 @@ var (
 	ErrSearchTimeout = errors.New("search request timed out")
 )
 
-func SearchArticles(query string) ([]models.SearchArticlesHit, error) {
+func SearchArticles(ctx context.Context, query string) ([]models.SearchArticlesHit, error) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -37,7 +38,7 @@ func SearchArticles(query string) ([]models.SearchArticlesHit, error) {
 
 	req, err := http.NewRequest("GET", targetEndpoint, nil)
 	if err != nil {
-		logger.Logger.Error("Failed to create request", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to create request", "error", err)
 		return nil, errors.New("failed to create request")
 	}
 
@@ -47,7 +48,7 @@ func SearchArticles(query string) ([]models.SearchArticlesHit, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.Logger.Error("Failed to send request", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to send request", "error", err)
 		// Check if it's a timeout error
 		if isTimeoutError(err) {
 			return nil, ErrSearchTimeout
@@ -61,27 +62,27 @@ func SearchArticles(query string) ([]models.SearchArticlesHit, error) {
 
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.Logger.Debug("Failed to close response body", "error", closeErr)
+			logger.Logger.DebugContext(ctx, "Failed to close response body", "error", closeErr)
 		}
 	}()
 
-	logger.Logger.Info("Search response received", "status", resp.StatusCode, "content-type", resp.Header.Get("Content-Type"))
+	logger.Logger.InfoContext(ctx, "Search response received", "status", resp.StatusCode, "content-type", resp.Header.Get("Content-Type"))
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Logger.Error("Failed to read response body", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to read response body", "error", err)
 		return nil, errors.New("failed to read response body")
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		logger.Logger.Error("Search request failed", "status", resp.StatusCode, "body", string(body))
+		logger.Logger.ErrorContext(ctx, "Search request failed", "status", resp.StatusCode, "body", string(body))
 		return nil, fmt.Errorf("search request failed with status %d", resp.StatusCode)
 	}
 
 	var response models.SearchArticlesAPIResponse
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		logger.Logger.Error("Failed to unmarshal response body", "error", err, "body_preview", string(body))
+		logger.Logger.ErrorContext(ctx, "Failed to unmarshal response body", "error", err, "body_preview", string(body))
 		return nil, errors.New("failed to unmarshal response body")
 	}
 
@@ -99,7 +100,7 @@ func SearchArticles(query string) ([]models.SearchArticlesHit, error) {
 }
 
 // SearchArticlesWithUserID searches articles with user_id parameter
-func SearchArticlesWithUserID(query string, userID string) ([]models.SearchArticlesHit, error) {
+func SearchArticlesWithUserID(ctx context.Context, query string, userID string) ([]models.SearchArticlesHit, error) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -115,7 +116,7 @@ func SearchArticlesWithUserID(query string, userID string) ([]models.SearchArtic
 
 	req, err := http.NewRequest("GET", targetEndpoint, nil)
 	if err != nil {
-		logger.Logger.Error("Failed to create request", "error", err, "user_id", userID)
+		logger.Logger.ErrorContext(ctx, "Failed to create request", "error", err, "user_id", userID)
 		return nil, errors.New("failed to create request")
 	}
 
@@ -125,7 +126,7 @@ func SearchArticlesWithUserID(query string, userID string) ([]models.SearchArtic
 
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.Logger.Error("Failed to send request", "error", err, "user_id", userID)
+		logger.Logger.ErrorContext(ctx, "Failed to send request", "error", err, "user_id", userID)
 		// Check if it's a timeout error
 		if isTimeoutError(err) {
 			return nil, ErrSearchTimeout
@@ -139,27 +140,27 @@ func SearchArticlesWithUserID(query string, userID string) ([]models.SearchArtic
 
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.Logger.Debug("Failed to close response body", "error", closeErr)
+			logger.Logger.DebugContext(ctx, "Failed to close response body", "error", closeErr)
 		}
 	}()
 
-	logger.Logger.Info("Search response received", "status", resp.StatusCode, "user_id", userID)
+	logger.Logger.InfoContext(ctx, "Search response received", "status", resp.StatusCode, "user_id", userID)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Logger.Error("Failed to read response body", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to read response body", "error", err)
 		return nil, errors.New("failed to read response body")
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		logger.Logger.Error("Search request failed", "status", resp.StatusCode, "body", string(body), "user_id", userID)
+		logger.Logger.ErrorContext(ctx, "Search request failed", "status", resp.StatusCode, "body", string(body), "user_id", userID)
 		return nil, fmt.Errorf("search request failed with status %d", resp.StatusCode)
 	}
 
 	var response models.SearchArticlesAPIResponse
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		logger.Logger.Error("Failed to unmarshal response body", "error", err, "body_preview", string(body))
+		logger.Logger.ErrorContext(ctx, "Failed to unmarshal response body", "error", err, "body_preview", string(body))
 		return nil, errors.New("failed to unmarshal response body")
 	}
 

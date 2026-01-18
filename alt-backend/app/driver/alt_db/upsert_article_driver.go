@@ -26,7 +26,7 @@ func (r *AltDBRepository) UpsertArticleWithTx(ctx context.Context, tx pgx.Tx, ti
 
 	if err := tx.QueryRow(ctx, upsertArticleQuery, cleanTitle, cleanContent, cleanURL, userID, feedIDValue).Scan(&articleID); err != nil {
 		err = fmt.Errorf("upsert article content: %w", err)
-		logger.SafeError("failed to save article", "url", cleanURL, "error", err)
+		logger.SafeErrorContext(ctx, "failed to save article", "url", cleanURL, "error", err)
 		return uuid.Nil, err
 	}
 

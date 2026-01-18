@@ -19,7 +19,7 @@ type FeedLinkDomain struct {
 func (r *AltDBRepository) ListFeedLinkDomains(ctx context.Context) ([]FeedLinkDomain, error) {
 	rows, err := r.pool.Query(ctx, "SELECT DISTINCT url FROM feed_links WHERE url IS NOT NULL AND url != ''")
 	if err != nil {
-		logger.SafeError("Error fetching feed link URLs", "error", err)
+		logger.SafeErrorContext(ctx, "Error fetching feed link URLs", "error", err)
 		return nil, errors.New("error fetching feed link URLs")
 	}
 	defer rows.Close()
@@ -29,19 +29,19 @@ func (r *AltDBRepository) ListFeedLinkDomains(ctx context.Context) ([]FeedLinkDo
 	for rows.Next() {
 		var feedURL string
 		if err := rows.Scan(&feedURL); err != nil {
-			logger.SafeError("Error scanning feed link URL", "error", err)
+			logger.SafeErrorContext(ctx, "Error scanning feed link URL", "error", err)
 			continue // Skip invalid rows
 		}
 
 		parsedURL, err := url.Parse(feedURL)
 		if err != nil {
-			logger.SafeError("Error parsing feed link URL", "url", feedURL, "error", err)
+			logger.SafeErrorContext(ctx, "Error parsing feed link URL", "url", feedURL, "error", err)
 			continue // Skip invalid URLs
 		}
 
 		domain := parsedURL.Hostname()
 		if domain == "" {
-			logger.SafeWarn("Empty hostname in feed link URL", "url", feedURL)
+			logger.SafeWarnContext(ctx, "Empty hostname in feed link URL", "url", feedURL)
 			continue
 		}
 
@@ -74,7 +74,7 @@ func (r *AltDBRepository) ListFeedLinkDomains(ctx context.Context) ([]FeedLinkDo
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.SafeError("Row iteration error", "error", err)
+		logger.SafeErrorContext(ctx, "Row iteration error", "error", err)
 		return nil, errors.New("error iterating feed link URLs")
 	}
 
@@ -84,6 +84,6 @@ func (r *AltDBRepository) ListFeedLinkDomains(ctx context.Context) ([]FeedLinkDo
 		domains = append(domains, d)
 	}
 
-	logger.SafeInfo("Extracted unique domains from feed_links", "count", len(domains))
+	logger.SafeInfoContext(ctx, "Extracted unique domains from feed_links", "count", len(domains))
 	return domains, nil
 }

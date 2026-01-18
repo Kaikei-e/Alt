@@ -27,7 +27,7 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 	// プール設定を明示的に設定（bounds checking付き）
 	maxConns := getEnvIntOrDefault("DB_MAX_CONNS", 20)
 	if maxConns > math.MaxInt32 {
-		logger.Logger.Warn("DB_MAX_CONNS value too large, using maximum allowed value",
+		logger.Logger.WarnContext(ctx, "DB_MAX_CONNS value too large, using maximum allowed value",
 			"provided", maxConns, "max_allowed", math.MaxInt32)
 		maxConns = math.MaxInt32
 	}
@@ -35,7 +35,7 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 
 	minConns := getEnvIntOrDefault("DB_MIN_CONNS", 5)
 	if minConns > math.MaxInt32 {
-		logger.Logger.Warn("DB_MIN_CONNS value too large, using maximum allowed value",
+		logger.Logger.WarnContext(ctx, "DB_MIN_CONNS value too large, using maximum allowed value",
 			"provided", minConns, "max_allowed", math.MaxInt32)
 		minConns = math.MaxInt32
 	}
@@ -52,7 +52,7 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 	for i := 0; i < maxRetries; i++ {
 		pool, err := pgxpool.NewWithConfig(ctx, config)
 		if err != nil {
-			logger.Logger.Warn("Database connection pool creation failed",
+			logger.Logger.WarnContext(ctx, "Database connection pool creation failed",
 				"attempt", i+1, "error", err, "connection_string_valid", true)
 			if i < maxRetries-1 {
 				time.Sleep(retryDelay * time.Duration(i+1))
@@ -66,7 +66,7 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 		if err = pool.Ping(pingCtx); err != nil {
 			cancel()
 			pool.Close()
-			logger.Logger.Warn("Database ping failed",
+			logger.Logger.WarnContext(ctx, "Database ping failed",
 				"attempt", i+1, "error", err)
 			if i < maxRetries-1 {
 				time.Sleep(retryDelay * time.Duration(i+1))
@@ -77,7 +77,7 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 		cancel()
 
 		// 成功ログ（SSL情報削除）
-		logger.Logger.Info("Database connection established via Linkerd mTLS",
+		logger.Logger.InfoContext(ctx, "Database connection established via Linkerd mTLS",
 			"database", os.Getenv("DB_NAME"),
 			"attempt", i+1,
 			"max_conns", pool.Config().MaxConns,
@@ -93,7 +93,7 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 func getDBConnectionString() (string, error) {
 	config := NewDatabaseConfigFromEnv()
 
-	logger.Logger.Info("Database configuration for Linkerd",
+	logger.Logger.InfoContext(context.Background(), "Database configuration for Linkerd",
 		"host", config.Host,
 		"port", config.Port,
 		"database", config.DBName,
@@ -105,7 +105,7 @@ func getDBConnectionString() (string, error) {
 
 func envChecker(env string, variable string) (string, error) {
 	if env == "" {
-		logger.Logger.Error("Environment variable is not set", "variable", variable)
+		logger.Logger.ErrorContext(context.Background(), "Environment variable is not set", "variable", variable)
 		return "", fmt.Errorf("environment variable is not set: %s", variable)
 	}
 	return env, nil

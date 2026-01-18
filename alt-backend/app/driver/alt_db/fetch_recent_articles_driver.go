@@ -73,7 +73,7 @@ func (r *AltDBRepository) FetchRecentArticles(ctx context.Context, since time.Ti
 	}
 
 	if err != nil {
-		logger.Logger.Error("error fetching recent articles", "error", err, "since", since, "limit", limit)
+		logger.Logger.ErrorContext(ctx, "error fetching recent articles", "error", err, "since", since, "limit", limit)
 		return nil, errors.New("error fetching recent articles")
 	}
 	defer rows.Close()
@@ -95,10 +95,10 @@ func (r *AltDBRepository) FetchRecentArticles(ctx context.Context, since time.Ti
 		)
 		if err != nil {
 			if err == pgx.ErrNoRows {
-				logger.Logger.Info("no recent articles found", "since", since)
+				logger.Logger.InfoContext(ctx, "no recent articles found", "since", since)
 				return articles, nil
 			}
-			logger.Logger.Error("error scanning recent article", "error", err)
+			logger.Logger.ErrorContext(ctx, "error scanning recent article", "error", err)
 			return nil, errors.New("error scanning recent articles")
 		}
 
@@ -108,10 +108,10 @@ func (r *AltDBRepository) FetchRecentArticles(ctx context.Context, since time.Ti
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.Logger.Error("error iterating recent articles rows", "error", err)
+		logger.Logger.ErrorContext(ctx, "error iterating recent articles rows", "error", err)
 		return nil, errors.New("error processing recent articles")
 	}
 
-	logger.Logger.Info("fetched recent articles", "count", len(articles), "since", since)
+	logger.Logger.InfoContext(ctx, "fetched recent articles", "count", len(articles), "since", since)
 	return articles, nil
 }

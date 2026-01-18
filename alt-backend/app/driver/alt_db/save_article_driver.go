@@ -43,7 +43,7 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 	// Validate minimum content length (already extracted text, should be meaningful)
 	const minContentLength = 100
 	if len(cleanContent) < minContentLength {
-		logger.SafeWarn("article content is very short, may indicate extraction issue",
+		logger.SafeWarnContext(ctx, "article content is very short, may indicate extraction issue",
 			"url", cleanURL,
 			"content_length", len(cleanContent))
 		// Still allow saving, but log warning
@@ -56,7 +56,7 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 
 	// Validate that title is not a URL (this would indicate a bug)
 	if strings.HasPrefix(cleanTitle, "http://") || strings.HasPrefix(cleanTitle, "https://") {
-		logger.SafeWarn("article title appears to be a URL, this may indicate a bug", "url", cleanURL, "title", cleanTitle)
+		logger.SafeWarnContext(ctx, "article title appears to be a URL, this may indicate a bug", "url", cleanURL, "title", cleanTitle)
 	}
 
 	// Extract user_id from context
@@ -70,7 +70,7 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 	feedIDStr, err := r.GetFeedIDByURL(ctx, cleanURL)
 	if err != nil {
 		// If feed not found, log warning but continue (feed_id will be NULL)
-		logger.SafeWarn("feed not found for article URL, article will be saved without feed_id", "url", cleanURL, "error", err)
+		logger.SafeWarnContext(ctx, "feed not found for article URL, article will be saved without feed_id", "url", cleanURL, "error", err)
 	} else {
 		parsedFeedID, err := uuid.Parse(feedIDStr)
 		if err == nil {
@@ -86,7 +86,7 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 	defer func() {
 		if err != nil {
 			if rbErr := tx.Rollback(ctx); rbErr != nil {
-				logger.SafeError("failed to rollback transaction", "error", rbErr, "original_error", err)
+				logger.SafeErrorContext(ctx, "failed to rollback transaction", "error", rbErr, "original_error", err)
 			}
 		}
 	}()
@@ -120,6 +120,6 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 		return "", fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	logger.SafeInfo("article content saved and outbox event created", "url", cleanURL, "article_id", articleID.String(), "user_id", userContext.UserID)
+	logger.SafeInfoContext(ctx, "article content saved and outbox event created", "url", cleanURL, "article_id", articleID.String(), "user_id", userContext.UserID)
 	return articleID.String(), nil
 }

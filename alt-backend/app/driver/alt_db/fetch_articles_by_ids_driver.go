@@ -17,11 +17,11 @@ func (r *AltDBRepository) FetchArticlesByIDs(ctx context.Context, articleIDs []u
 	}
 
 	if len(articleIDs) == 0 {
-		logger.Logger.Info("No article IDs provided for fetch")
+		logger.Logger.InfoContext(ctx, "No article IDs provided for fetch")
 		return []*domain.Article{}, nil
 	}
 
-	logger.Logger.Info("Fetching articles by IDs", "article_count", len(articleIDs))
+	logger.Logger.InfoContext(ctx, "Fetching articles by IDs", "article_count", len(articleIDs))
 
 	query := `
 		SELECT
@@ -41,7 +41,7 @@ func (r *AltDBRepository) FetchArticlesByIDs(ctx context.Context, articleIDs []u
 
 	rows, err := r.pool.Query(ctx, query, articleIDs)
 	if err != nil {
-		logger.Logger.Error("Failed to query articles by IDs", "error", err, "article_count", len(articleIDs))
+		logger.Logger.ErrorContext(ctx, "Failed to query articles by IDs", "error", err, "article_count", len(articleIDs))
 		return nil, errors.New("error fetching articles by IDs")
 	}
 	defer rows.Close()
@@ -56,7 +56,7 @@ func (r *AltDBRepository) FetchArticlesByIDs(ctx context.Context, articleIDs []u
 			&a.ID, &a.FeedID, &a.Title, &a.Content, &a.URL, &a.CreatedAt, &tags,
 		)
 		if err != nil {
-			logger.Logger.Error("Failed to scan article row", "error", err)
+			logger.Logger.ErrorContext(ctx, "Failed to scan article row", "error", err)
 			return nil, errors.New("error scanning article")
 		}
 
@@ -70,7 +70,7 @@ func (r *AltDBRepository) FetchArticlesByIDs(ctx context.Context, articleIDs []u
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.Logger.Error("Error iterating article rows", "error", err)
+		logger.Logger.ErrorContext(ctx, "Error iterating article rows", "error", err)
 		return nil, errors.New("error iterating article rows")
 	}
 
@@ -82,14 +82,14 @@ func (r *AltDBRepository) FetchArticlesByIDs(ctx context.Context, articleIDs []u
 			articles = append(articles, article)
 		} else {
 			missingCount++
-			logger.Logger.Warn("Article not found in database", "article_id", id)
+			logger.Logger.WarnContext(ctx, "Article not found in database", "article_id", id)
 		}
 	}
 
 	if missingCount > 0 {
-		logger.Logger.Warn("Some articles were not found", "missing_count", missingCount, "total_requested", len(articleIDs))
+		logger.Logger.WarnContext(ctx, "Some articles were not found", "missing_count", missingCount, "total_requested", len(articleIDs))
 	}
 
-	logger.Logger.Info("Successfully fetched articles by IDs", "found_count", len(articles), "requested_count", len(articleIDs))
+	logger.Logger.InfoContext(ctx, "Successfully fetched articles by IDs", "found_count", len(articles), "requested_count", len(articleIDs))
 	return articles, nil
 }

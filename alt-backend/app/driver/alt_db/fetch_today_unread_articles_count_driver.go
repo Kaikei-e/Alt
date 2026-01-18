@@ -12,7 +12,7 @@ func (r *AltDBRepository) FetchTodayUnreadArticlesCount(ctx context.Context, sin
 	// コンテキストからユーザー情報を取得
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		logger.SafeError("user context not found", "error", err)
+		logger.SafeErrorContext(ctx, "user context not found", "error", err)
 		return 0, errors.New("authentication required")
 	}
 
@@ -26,13 +26,13 @@ func (r *AltDBRepository) FetchTodayUnreadArticlesCount(ctx context.Context, sin
 
 	var count int
 	if err := r.pool.QueryRow(ctx, query, since, user.UserID).Scan(&count); err != nil {
-		logger.SafeError("failed to fetch today's unread articles count",
+		logger.SafeErrorContext(ctx, "failed to fetch today's unread articles count",
 			"error", err,
 			"user_id", user.UserID)
 		return 0, errors.New("failed to fetch today's unread articles count")
 	}
 
-	logger.SafeInfo("today's unread articles count fetched successfully",
+	logger.SafeInfoContext(ctx, "today's unread articles count fetched successfully",
 		"count", count,
 		"user_id", user.UserID)
 	return count, nil

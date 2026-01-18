@@ -14,10 +14,10 @@ func (r *AltDBRepository) FetchSummarizedArticlesCount(ctx context.Context) (int
 	var count int
 	err := r.pool.QueryRow(ctx, query).Scan(&count)
 	if err != nil {
-		logger.SafeError("failed to fetch summarized articles count", "error", err)
+		logger.SafeErrorContext(ctx, "failed to fetch summarized articles count", "error", err)
 		return 0, errors.New("failed to fetch summarized articles count")
 	}
 
-	logger.SafeInfo("summarized articles count fetched successfully", "count", count)
+	logger.SafeInfoContext(ctx, "summarized articles count fetched successfully", "count", count)
 	return count, nil
 }

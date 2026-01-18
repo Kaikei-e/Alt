@@ -48,7 +48,7 @@ func (r *AltDBRepository) FetchRecapArticles(ctx context.Context, query domain.R
 
 	rows, err := r.pool.Query(ctx, recapArticlesQuery, query.From, query.To, offset, query.PageSize)
 	if err != nil {
-		logger.SafeError("recap articles query failed", "error", err, "from", query.From, "to", query.To)
+		logger.SafeErrorContext(ctx, "recap articles query failed", "error", err, "from", query.From, "to", query.To)
 		return nil, fmt.Errorf("fetch recap articles: %w", err)
 	}
 	defer rows.Close()
@@ -68,7 +68,7 @@ func (r *AltDBRepository) FetchRecapArticles(ctx context.Context, query domain.R
 		)
 
 		if err := rows.Scan(&rowTotal, &articleID, &title, &fulltext, &sourceURL, &published, &langHint); err != nil {
-			logger.SafeError("recap articles scan failed", "error", err)
+			logger.SafeErrorContext(ctx, "recap articles scan failed", "error", err)
 			return nil, fmt.Errorf("scan recap articles: %w", err)
 		}
 
@@ -77,7 +77,7 @@ func (r *AltDBRepository) FetchRecapArticles(ctx context.Context, query domain.R
 		article := domain.RecapArticle{
 			ID:          articleID,
 			Title:       nullStringPtr(title),
-			FullText:    clampFullText(articleID, fulltext),
+			FullText:    clampFullText(ctx, articleID, fulltext),
 			SourceURL:   nullStringPtr(sourceURL),
 			LangHint:    nullLowerTrimStringPtr(langHint),
 			PublishedAt: nullTimePtr(published),
@@ -87,7 +87,7 @@ func (r *AltDBRepository) FetchRecapArticles(ctx context.Context, query domain.R
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.SafeError("iteration over recap articles failed", "error", err)
+		logger.SafeErrorContext(ctx, "iteration over recap articles failed", "error", err)
 		return nil, fmt.Errorf("iterate recap articles: %w", err)
 	}
 
@@ -101,7 +101,7 @@ func (r *AltDBRepository) FetchRecapArticles(ctx context.Context, query domain.R
 		Articles: articles,
 	}
 
-	logger.SafeInfo("fetched recap articles",
+	logger.SafeInfoContext(ctx, "fetched recap articles",
 		"count", len(articles),
 		"total", totalCount,
 		"page", query.Page,
@@ -140,11 +140,11 @@ func nullTimePtr(value sql.NullTime) *time.Time {
 	return nil
 }
 
-func clampFullText(articleID uuid.UUID, body string) string {
+func clampFullText(ctx context.Context, articleID uuid.UUID, body string) string {
 	if len(body) <= maxRecapArticleBytes {
 		return body
 	}
-	logger.SafeWarn("recap article truncated to max bytes",
+	logger.SafeWarnContext(ctx, "recap article truncated to max bytes",
 		"article_id", articleID.String(),
 		"original_bytes", len(body),
 		"max_bytes", maxRecapArticleBytes,
