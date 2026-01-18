@@ -25,6 +25,8 @@ fn test_enriched_log_entry_to_log_row_conversion() {
         response_size: None,
         ip_address: None,
         user_agent: None,
+        trace_id: Some("4bf92f3577b34da6a3ce929d0e0e4736".to_string()),
+        span_id: Some("00f067aa0ba902b7".to_string()),
     };
 
     let log_row = rask::log_exporter::clickhouse_exporter::LogRow::from(enriched_log.clone());
@@ -67,6 +69,8 @@ fn test_enriched_log_entry_to_log_row_conversion_no_level() {
         response_size: None,
         ip_address: None,
         user_agent: None,
+        trace_id: None,
+        span_id: None,
     };
 
     let log_row = rask::log_exporter::clickhouse_exporter::LogRow::from(enriched_log.clone());
@@ -94,6 +98,8 @@ fn test_http_fields_added_to_fields_map() {
         response_size: Some(1024),
         ip_address: Some("192.168.1.1".to_string()),
         user_agent: Some("curl/7.68.0".to_string()),
+        trace_id: None,
+        span_id: None,
     };
 
     let log_row = rask::log_exporter::clickhouse_exporter::LogRow::from(enriched_log);
@@ -109,4 +115,70 @@ fn test_http_fields_added_to_fields_map() {
     assert_eq!(fields_map.get("http_size"), Some(&"1024".to_string()));
     assert_eq!(fields_map.get("http_ip"), Some(&"192.168.1.1".to_string()));
     assert_eq!(fields_map.get("http_ua"), Some(&"curl/7.68.0".to_string()));
+}
+
+#[test]
+fn test_trace_context_conversion_to_fixed_bytes() {
+    let enriched_log = EnrichedLogEntry {
+        service_type: "alt-backend".to_string(),
+        log_type: "structured".to_string(),
+        message: "test message".to_string(),
+        level: Some(LogLevel::Info),
+        timestamp: "2023-01-01T12:34:56.789Z".to_string(),
+        stream: "stdout".to_string(),
+        container_id: "container123".to_string(),
+        service_name: "alt-backend".to_string(),
+        service_group: Some("backend".to_string()),
+        fields: HashMap::new(),
+        method: None,
+        path: None,
+        status_code: None,
+        response_size: None,
+        ip_address: None,
+        user_agent: None,
+        trace_id: Some("4bf92f3577b34da6a3ce929d0e0e4736".to_string()),
+        span_id: Some("00f067aa0ba902b7".to_string()),
+    };
+
+    let log_row = rask::log_exporter::clickhouse_exporter::LogRow::from(enriched_log);
+
+    // Verify trace_id is converted to [u8; 32]
+    let expected_trace_id: [u8; 32] = *b"4bf92f3577b34da6a3ce929d0e0e4736";
+    assert_eq!(log_row.trace_id, expected_trace_id);
+
+    // Verify span_id is converted to [u8; 16]
+    let expected_span_id: [u8; 16] = *b"00f067aa0ba902b7";
+    assert_eq!(log_row.span_id, expected_span_id);
+}
+
+#[test]
+fn test_trace_context_empty_when_none() {
+    let enriched_log = EnrichedLogEntry {
+        service_type: "alt-backend".to_string(),
+        log_type: "structured".to_string(),
+        message: "test message".to_string(),
+        level: Some(LogLevel::Info),
+        timestamp: "2023-01-01T12:34:56.789Z".to_string(),
+        stream: "stdout".to_string(),
+        container_id: "container123".to_string(),
+        service_name: "alt-backend".to_string(),
+        service_group: Some("backend".to_string()),
+        fields: HashMap::new(),
+        method: None,
+        path: None,
+        status_code: None,
+        response_size: None,
+        ip_address: None,
+        user_agent: None,
+        trace_id: None,
+        span_id: None,
+    };
+
+    let log_row = rask::log_exporter::clickhouse_exporter::LogRow::from(enriched_log);
+
+    // Verify trace_id is all zeros when None
+    assert_eq!(log_row.trace_id, [0u8; 32]);
+
+    // Verify span_id is all zeros when None
+    assert_eq!(log_row.span_id, [0u8; 16]);
 }

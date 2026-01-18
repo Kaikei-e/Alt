@@ -8,7 +8,7 @@ use opentelemetry_proto::tonic::{
     logs::v1::LogRecord,
 };
 
-use crate::domain::{OTelLog, OTelTrace, SpanKind, StatusCode};
+use crate::domain::{OTelLog, OTelTrace, SpanEvent, SpanKind, SpanLink, StatusCode};
 
 /// Convert OTLP log request to internal log structures
 pub fn convert_log_records(request: &ExportLogsServiceRequest) -> Vec<OTelLog> {
@@ -57,6 +57,27 @@ fn convert_single_log(
     scope_attrs: &HashMap<String, String>,
     scope_schema_url: &str,
 ) -> OTelLog {
+    let log_attrs = convert_attributes(&record.attributes);
+
+    // Protocol fields first, then fallback to attributes (for otelslog bridge compatibility)
+    let trace_id = if record.trace_id.is_empty() || record.trace_id.iter().all(|&b| b == 0) {
+        log_attrs
+            .get("trace_id")
+            .cloned()
+            .unwrap_or_else(|| "0".repeat(32))
+    } else {
+        encode_trace_id(&record.trace_id)
+    };
+
+    let span_id = if record.span_id.is_empty() || record.span_id.iter().all(|&b| b == 0) {
+        log_attrs
+            .get("span_id")
+            .cloned()
+            .unwrap_or_else(|| "0".repeat(16))
+    } else {
+        encode_span_id(&record.span_id)
+    };
+
     let service_name = resource_attrs
         .get("service.name")
         .cloned()
@@ -65,8 +86,8 @@ fn convert_single_log(
     OTelLog {
         timestamp: record.time_unix_nano,
         observed_timestamp: record.observed_time_unix_nano,
-        trace_id: encode_trace_id(&record.trace_id),
-        span_id: encode_span_id(&record.span_id),
+        trace_id,
+        span_id,
         trace_flags: record.flags as u8,
         severity_text: record.severity_text.clone(),
         severity_number: record.severity_number as u8,
@@ -77,7 +98,7 @@ fn convert_single_log(
         scope_name: scope_name.to_string(),
         scope_version: scope_version.to_string(),
         scope_attributes: scope_attrs.clone(),
-        log_attributes: convert_attributes(&record.attributes),
+        log_attributes: log_attrs,
         service_name,
     }
 }
@@ -113,6 +134,29 @@ fn convert_single_span(
     resource_attrs: &HashMap<String, String>,
     service_name: &str,
 ) -> OTelTrace {
+    // Convert events to nested format for Grafana compatibility
+    let events_nested: Vec<SpanEvent> = span
+        .events
+        .iter()
+        .map(|e| SpanEvent {
+            timestamp: e.time_unix_nano,
+            name: e.name.clone(),
+            attributes: convert_attributes(&e.attributes),
+        })
+        .collect();
+
+    // Convert links to nested format for Grafana compatibility
+    let links_nested: Vec<SpanLink> = span
+        .links
+        .iter()
+        .map(|l| SpanLink {
+            trace_id: encode_trace_id(&l.trace_id),
+            span_id: encode_span_id(&l.span_id),
+            trace_state: l.trace_state.clone(),
+            attributes: convert_attributes(&l.attributes),
+        })
+        .collect();
+
     OTelTrace {
         timestamp: span.start_time_unix_nano,
         trace_id: encode_trace_id(&span.trace_id),
@@ -137,8 +181,12 @@ fn convert_single_span(
             .as_ref()
             .map(|s| s.message.clone())
             .unwrap_or_default(),
+        // Keep JSON serialized for backward compatibility
         events: serde_json::to_string(&span.events).unwrap_or_else(|_| "[]".to_string()),
         links: serde_json::to_string(&span.links).unwrap_or_else(|_| "[]".to_string()),
+        // Nested arrays for Grafana compatibility
+        events_nested,
+        links_nested,
     }
 }
 
@@ -272,5 +320,144 @@ mod tests {
         assert_eq!(result.get("string_key"), Some(&"hello".to_string()));
         assert_eq!(result.get("int_key"), Some(&"42".to_string()));
         assert_eq!(result.get("bool_key"), Some(&"true".to_string()));
+    }
+
+    #[test]
+    fn test_convert_single_log_fallback_to_attributes() {
+        // Empty protocol fields but valid attributes (otelslog bridge scenario)
+        let record = LogRecord {
+            trace_id: vec![], // empty
+            span_id: vec![],  // empty
+            attributes: vec![
+                KeyValue {
+                    key: "trace_id".to_string(),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue(
+                            "0102030405060708090a0b0c0d0e0f10".to_string(),
+                        )),
+                    }),
+                },
+                KeyValue {
+                    key: "span_id".to_string(),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue(
+                            "0102030405060708".to_string(),
+                        )),
+                    }),
+                },
+            ],
+            ..Default::default()
+        };
+
+        let log = convert_single_log(
+            &record,
+            &HashMap::new(),
+            "",
+            "",
+            "",
+            &HashMap::new(),
+            "",
+        );
+
+        assert_eq!(log.trace_id, "0102030405060708090a0b0c0d0e0f10");
+        assert_eq!(log.span_id, "0102030405060708");
+    }
+
+    #[test]
+    fn test_convert_single_log_prefers_protocol_fields() {
+        // Both protocol fields and attributes present - protocol fields should win
+        let record = LogRecord {
+            trace_id: vec![
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+                0x0f, 0x10,
+            ],
+            span_id: vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
+            attributes: vec![KeyValue {
+                key: "trace_id".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue("different_trace".to_string())),
+                }),
+            }],
+            ..Default::default()
+        };
+
+        let log = convert_single_log(
+            &record,
+            &HashMap::new(),
+            "",
+            "",
+            "",
+            &HashMap::new(),
+            "",
+        );
+
+        // Should use protocol fields, not attributes
+        assert_eq!(log.trace_id, "0102030405060708090a0b0c0d0e0f10");
+        assert_eq!(log.span_id, "0102030405060708");
+    }
+
+    #[test]
+    fn test_convert_single_log_zero_protocol_fields_fallback() {
+        // Protocol fields are all zeros - should fallback to attributes
+        let record = LogRecord {
+            trace_id: vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            span_id: vec![0, 0, 0, 0, 0, 0, 0, 0],
+            attributes: vec![
+                KeyValue {
+                    key: "trace_id".to_string(),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue(
+                            "abcdef0123456789abcdef0123456789".to_string(),
+                        )),
+                    }),
+                },
+                KeyValue {
+                    key: "span_id".to_string(),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue(
+                            "fedcba9876543210".to_string(),
+                        )),
+                    }),
+                },
+            ],
+            ..Default::default()
+        };
+
+        let log = convert_single_log(
+            &record,
+            &HashMap::new(),
+            "",
+            "",
+            "",
+            &HashMap::new(),
+            "",
+        );
+
+        assert_eq!(log.trace_id, "abcdef0123456789abcdef0123456789");
+        assert_eq!(log.span_id, "fedcba9876543210");
+    }
+
+    #[test]
+    fn test_convert_single_log_no_trace_context() {
+        // Neither protocol fields nor attributes - should return zeros
+        let record = LogRecord {
+            trace_id: vec![],
+            span_id: vec![],
+            attributes: vec![],
+            ..Default::default()
+        };
+
+        let log = convert_single_log(
+            &record,
+            &HashMap::new(),
+            "",
+            "",
+            "",
+            &HashMap::new(),
+            "",
+        );
+
+        assert_eq!(log.trace_id, "00000000000000000000000000000000");
+        assert_eq!(log.span_id, "0000000000000000");
     }
 }

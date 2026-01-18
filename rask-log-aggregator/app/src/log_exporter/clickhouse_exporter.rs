@@ -24,6 +24,10 @@ pub struct LogRow {
     pub container_id: String, // String
     pub service_name: String, // LowCardinality(String)
     pub service_group: String, // LowCardinality(String)
+    #[serde(rename = "TraceId")]
+    pub trace_id: [u8; 32],   // FixedString(32) for trace correlation
+    #[serde(rename = "SpanId")]
+    pub span_id: [u8; 16],    // FixedString(16) for span correlation
     pub fields: Vec<(String, String)>, // Map(String,String)
 }
 
@@ -51,6 +55,10 @@ impl From<EnrichedLogEntry> for LogRow {
             fields.push(("http_ua".to_string(), ua));
         }
 
+        // Convert trace context to FixedString format
+        let trace_id = string_to_fixed_bytes::<32>(log.trace_id.as_deref().unwrap_or(""));
+        let span_id = string_to_fixed_bytes::<16>(log.span_id.as_deref().unwrap_or(""));
+
         Self {
             service_type: log.service_type,
             log_type: log.log_type,
@@ -70,6 +78,8 @@ impl From<EnrichedLogEntry> for LogRow {
             container_id: log.container_id,
             service_name: log.service_name,
             service_group: log.service_group.unwrap_or_else(|| "unknown".into()),
+            trace_id,
+            span_id,
             fields,
         }
     }
@@ -214,10 +224,64 @@ pub struct OTelTraceRow {
     pub events: String,
     #[serde(rename = "Links")]
     pub links: String,
+    // Nested arrays for Grafana ClickHouse datasource compatibility
+    #[serde(rename = "Events.Timestamp")]
+    pub events_timestamp: Vec<i64>, // Array(DateTime64(9))
+    #[serde(rename = "Events.Name")]
+    pub events_name: Vec<String>, // Array(LowCardinality(String))
+    #[serde(rename = "Events.Attributes")]
+    pub events_attributes: Vec<Vec<(String, String)>>, // Array(Map(String, String))
+    #[serde(rename = "Links.TraceId")]
+    pub links_trace_id: Vec<String>, // Array(String)
+    #[serde(rename = "Links.SpanId")]
+    pub links_span_id: Vec<String>, // Array(String)
+    #[serde(rename = "Links.TraceState")]
+    pub links_trace_state: Vec<String>, // Array(String)
+    #[serde(rename = "Links.Attributes")]
+    pub links_attributes: Vec<Vec<(String, String)>>, // Array(Map(String, String))
 }
 
 impl From<OTelTrace> for OTelTraceRow {
     fn from(trace: OTelTrace) -> Self {
+        // Extract nested event arrays
+        let events_timestamp: Vec<i64> = trace
+            .events_nested
+            .iter()
+            .map(|e| e.timestamp as i64)
+            .collect();
+        let events_name: Vec<String> = trace
+            .events_nested
+            .iter()
+            .map(|e| e.name.clone())
+            .collect();
+        let events_attributes: Vec<Vec<(String, String)>> = trace
+            .events_nested
+            .iter()
+            .map(|e| hashmap_to_vec(e.attributes.clone()))
+            .collect();
+
+        // Extract nested link arrays
+        let links_trace_id: Vec<String> = trace
+            .links_nested
+            .iter()
+            .map(|l| l.trace_id.clone())
+            .collect();
+        let links_span_id: Vec<String> = trace
+            .links_nested
+            .iter()
+            .map(|l| l.span_id.clone())
+            .collect();
+        let links_trace_state: Vec<String> = trace
+            .links_nested
+            .iter()
+            .map(|l| l.trace_state.clone())
+            .collect();
+        let links_attributes: Vec<Vec<(String, String)>> = trace
+            .links_nested
+            .iter()
+            .map(|l| hashmap_to_vec(l.attributes.clone()))
+            .collect();
+
         Self {
             timestamp: trace.timestamp as i64,
             trace_id: string_to_fixed_bytes::<32>(&trace.trace_id),
@@ -234,6 +298,14 @@ impl From<OTelTrace> for OTelTraceRow {
             status_message: trace.status_message,
             events: trace.events,
             links: trace.links,
+            // Nested arrays for Grafana
+            events_timestamp,
+            events_name,
+            events_attributes,
+            links_trace_id,
+            links_span_id,
+            links_trace_state,
+            links_attributes,
         }
     }
 }

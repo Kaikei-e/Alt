@@ -1,6 +1,6 @@
 mod otel_log;
 
-pub use otel_log::{OTelLog, OTelTrace, SpanKind, StatusCode};
+pub use otel_log::{OTelLog, OTelTrace, SpanEvent, SpanKind, SpanLink, StatusCode};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -31,6 +31,12 @@ pub struct EnrichedLogEntry {
     pub ip_address: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_agent: Option<String>,
+
+    // Trace context (OpenTelemetry)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

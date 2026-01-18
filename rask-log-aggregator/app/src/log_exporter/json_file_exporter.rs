@@ -183,6 +183,8 @@ mod tests {
             response_size: None,
             ip_address: None,
             user_agent: None,
+            trace_id: None,
+            span_id: None,
         };
 
         exporter.export(&log).await.unwrap();

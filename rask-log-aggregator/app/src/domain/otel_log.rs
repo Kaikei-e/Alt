@@ -61,6 +61,30 @@ pub struct OTelLog {
     pub service_name: String,
 }
 
+/// Span Event for nested array storage
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpanEvent {
+    /// Event timestamp (nanoseconds since Unix epoch)
+    pub timestamp: u64,
+    /// Event name
+    pub name: String,
+    /// Event attributes
+    pub attributes: HashMap<String, String>,
+}
+
+/// Span Link for nested array storage
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpanLink {
+    /// Linked trace ID
+    pub trace_id: String,
+    /// Linked span ID
+    pub span_id: String,
+    /// Trace state
+    pub trace_state: String,
+    /// Link attributes
+    pub attributes: HashMap<String, String>,
+}
+
 /// OpenTelemetry Trace Span
 ///
 /// Represents a single span following the OTel Trace Data Model.
@@ -106,11 +130,17 @@ pub struct OTelTrace {
     /// Status message (for error status)
     pub status_message: String,
 
-    /// Span events (JSON serialized)
+    /// Span events (JSON serialized) - kept for backward compatibility
     pub events: String,
 
-    /// Span links (JSON serialized)
+    /// Span links (JSON serialized) - kept for backward compatibility
     pub links: String,
+
+    /// Span events (nested array for Grafana compatibility)
+    pub events_nested: Vec<SpanEvent>,
+
+    /// Span links (nested array for Grafana compatibility)
+    pub links_nested: Vec<SpanLink>,
 }
 
 /// OpenTelemetry Span Kind
