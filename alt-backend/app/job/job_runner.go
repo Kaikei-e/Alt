@@ -14,11 +14,11 @@ import (
 func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 	feedURLs, err := r.FetchRSSFeedURLs(ctx)
 	if err != nil {
-		logger.Logger.Error("Error fetching RSS feed URLs", "error", err)
+		logger.Logger.ErrorContext(ctx, "Error fetching RSS feed URLs", "error", err)
 		return
 	}
 
-	logger.Logger.Info("Found RSS feed URLs", "count", len(feedURLs))
+	logger.Logger.InfoContext(ctx, "Found RSS feed URLs", "count", len(feedURLs))
 
 	// Create rate limiter with 5-second minimum interval for external API calls
 	rateLimiter := rate_limiter.NewHostRateLimiter(5 * time.Second)
@@ -27,9 +27,9 @@ func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 		for {
 			feedItems, err := CollectMultipleFeeds(ctx, feedURLs, rateLimiter, r)
 			if err != nil {
-				logger.Logger.Error("Error collecting feeds", "error", err)
+				logger.Logger.ErrorContext(ctx, "Error collecting feeds", "error", err)
 			} else {
-				logger.Logger.Info("Feed collection completed", "feed count", len(feedItems))
+				logger.Logger.InfoContext(ctx, "Feed collection completed", "feed count", len(feedItems))
 
 				feedModels := make([]models.Feed, len(feedItems))
 				for i, feedItem := range feedItems {
@@ -41,7 +41,7 @@ func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 					// Zero-trust: Normalize URL to remove tracking parameters (UTM, etc.)
 					normalizedLink, err := utils.NormalizeURL(feedItem.Link)
 					if err != nil {
-						logger.Logger.Warn("Failed to normalize feed link, using original",
+						logger.Logger.WarnContext(ctx, "Failed to normalize feed link, using original",
 							"link", feedItem.Link,
 							"error", err)
 						normalizedLink = feedItem.Link
@@ -58,11 +58,11 @@ func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 				}
 
 				if err := r.RegisterMultipleFeeds(ctx, feedModels); err != nil {
-					logger.Logger.Error("Error registering feeds", "error", err, "feed_count", len(feedModels))
+					logger.Logger.ErrorContext(ctx, "Error registering feeds", "error", err, "feed_count", len(feedModels))
 				}
 			}
 
-			logger.Logger.Info("Sleeping for 1 hour until next feed collection cycle")
+			logger.Logger.InfoContext(ctx, "Sleeping for 1 hour until next feed collection cycle")
 			time.Sleep(1 * time.Hour)
 		}
 	}()

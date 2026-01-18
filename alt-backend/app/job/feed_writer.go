@@ -2,6 +2,7 @@ package job
 
 import (
 	"alt/utils/logger"
+	"context"
 	"encoding/json"
 	"os"
 
@@ -13,6 +14,7 @@ const (
 )
 
 func WriteFeedsToFile(feeds []*rssFeed.Feed) error {
+	ctx := context.Background()
 	jsonData, err := json.Marshal(feeds)
 	if err != nil {
 		return err
@@ -23,7 +25,7 @@ func WriteFeedsToFile(feeds []*rssFeed.Feed) error {
 	if err != nil {
 		return err
 	}
-	logger.Logger.Info("Feeds written to file", "file", cleanedPath)
+	logger.Logger.InfoContext(ctx, "Feeds written to file", "file", cleanedPath)
 
 	return nil
 }

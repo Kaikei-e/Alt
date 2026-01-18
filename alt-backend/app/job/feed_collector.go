@@ -95,7 +95,7 @@ func validateFeedURL(ctx context.Context, feedURL url.URL, rateLimiter *rate_lim
 	// Check if content type suggests this might be an RSS/XML feed
 	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
 	if contentType != "" && !strings.Contains(contentType, "xml") && !strings.Contains(contentType, "rss") && !strings.Contains(contentType, "atom") {
-		logger.SafeWarn("Content type may not be RSS/XML",
+		logger.SafeWarnContext(ctx, "Content type may not be RSS/XML",
 			"url", feedURL.String(),
 			"content_type", contentType)
 	}

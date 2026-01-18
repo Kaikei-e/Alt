@@ -21,33 +21,33 @@ func DailyScrapingPolicyJobRunner(ctx context.Context, usecase *scraping_domain_
 
 	// Run immediately on startup
 	// First, ensure domains from feed_links exist in scraping_domains
-	logger.Logger.Info("Ensuring domains from feed_links exist in scraping_domains")
+	logger.Logger.InfoContext(ctx, "Ensuring domains from feed_links exist in scraping_domains")
 	if err := usecase.EnsureDomainsFromFeedLinks(ctx); err != nil {
-		logger.Logger.Error("Error ensuring domains from feed_links", "error", err)
+		logger.Logger.ErrorContext(ctx, "Error ensuring domains from feed_links", "error", err)
 	} else {
-		logger.Logger.Info("Domains from feed_links ensured")
+		logger.Logger.InfoContext(ctx, "Domains from feed_links ensured")
 	}
 
 	// Then refresh robots.txt for all domains
-	logger.Logger.Info("Starting initial scraping policy refresh")
+	logger.Logger.InfoContext(ctx, "Starting initial scraping policy refresh")
 	if err := usecase.RefreshAllRobotsTxt(ctx); err != nil {
-		logger.Logger.Error("Error refreshing scraping policies on startup", "error", err)
+		logger.Logger.ErrorContext(ctx, "Error refreshing scraping policies on startup", "error", err)
 	} else {
-		logger.Logger.Info("Initial scraping policy refresh completed")
+		logger.Logger.InfoContext(ctx, "Initial scraping policy refresh completed")
 	}
 
 	// Then run every 24 hours
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Logger.Info("Stopping daily scraping policy job")
+			logger.Logger.InfoContext(ctx, "Stopping daily scraping policy job")
 			return
 		case <-ticker.C:
-			logger.Logger.Info("Starting scheduled scraping policy refresh")
+			logger.Logger.InfoContext(ctx, "Starting scheduled scraping policy refresh")
 			if err := usecase.RefreshAllRobotsTxt(ctx); err != nil {
-				logger.Logger.Error("Error refreshing scraping policies", "error", err)
+				logger.Logger.ErrorContext(ctx, "Error refreshing scraping policies", "error", err)
 			} else {
-				logger.Logger.Info("Scheduled scraping policy refresh completed")
+				logger.Logger.InfoContext(ctx, "Scheduled scraping policy refresh completed")
 			}
 		}
 	}

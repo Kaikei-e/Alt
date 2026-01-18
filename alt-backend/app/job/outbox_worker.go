@@ -13,12 +13,12 @@ func OutboxWorkerRunner(ctx context.Context, repo *alt_db.AltDBRepository, ragIn
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	logger.Logger.Info("Outbox worker started")
+	logger.Logger.InfoContext(ctx, "Outbox worker started")
 
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Logger.Info("Outbox worker stopping")
+			logger.Logger.InfoContext(ctx, "Outbox worker stopping")
 			return
 		case <-ticker.C:
 			processOutboxEvents(ctx, repo, ragIntegration)
@@ -29,7 +29,7 @@ func OutboxWorkerRunner(ctx context.Context, repo *alt_db.AltDBRepository, ragIn
 func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort) {
 	events, err := repo.FetchPendingOutboxEvents(ctx, 10)
 	if err != nil {
-		logger.Logger.Error("Failed to fetch pending outbox events", "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to fetch pending outbox events", "error", err)
 		return
 	}
 
@@ -37,13 +37,13 @@ func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragI
 		return
 	}
 
-	logger.Logger.Info("Processing outbox events", "count", len(events))
+	logger.Logger.InfoContext(ctx, "Processing outbox events", "count", len(events))
 
 	for _, event := range events {
 		if event.EventType == "ARTICLE_UPSERT" {
 			var upsertInput rag_integration_port.UpsertArticleInput
 			if err := json.Unmarshal(event.Payload, &upsertInput); err != nil {
-				logger.Logger.Error("Failed to unmarshal outbox event payload", "event_id", event.ID, "error", err)
+				logger.Logger.ErrorContext(ctx, "Failed to unmarshal outbox event payload", "event_id", event.ID, "error", err)
 				updateStatus(ctx, repo, event.ID, "FAILED", err.Error())
 				continue
 			}
@@ -52,14 +52,14 @@ func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragI
 			// Step A (direct call) is kept for now, but this worker ensures reliability.
 			// It might be redundant if Step A succeeded, but RAG upsert should be idempotent.
 			if err := ragIntegration.UpsertArticle(ctx, upsertInput); err != nil {
-				logger.Logger.Error("Failed to upsert article to RAG from outbox", "event_id", event.ID, "error", err)
+				logger.Logger.ErrorContext(ctx, "Failed to upsert article to RAG from outbox", "event_id", event.ID, "error", err)
 				updateStatus(ctx, repo, event.ID, "FAILED", err.Error())
 			} else {
-				logger.Logger.Info("Successfully processed outbox event", "event_id", event.ID)
+				logger.Logger.InfoContext(ctx, "Successfully processed outbox event", "event_id", event.ID)
 				updateStatus(ctx, repo, event.ID, "PROCESSED", "")
 			}
 		} else {
-			logger.Logger.Warn("Unknown event type", "event_type", event.EventType, "event_id", event.ID)
+			logger.Logger.WarnContext(ctx, "Unknown event type", "event_type", event.EventType, "event_id", event.ID)
 			updateStatus(ctx, repo, event.ID, "FAILED", "Unknown event type")
 		}
 	}
@@ -71,6 +71,6 @@ func updateStatus(ctx context.Context, repo *alt_db.AltDBRepository, id string, 
 		errPtr = &errMsg
 	}
 	if err := repo.UpdateOutboxEventStatus(ctx, id, status, errPtr); err != nil {
-		logger.Logger.Error("Failed to update outbox event status", "event_id", id, "status", status, "error", err)
+		logger.Logger.ErrorContext(ctx, "Failed to update outbox event status", "event_id", id, "status", status, "error", err)
 	}
 }

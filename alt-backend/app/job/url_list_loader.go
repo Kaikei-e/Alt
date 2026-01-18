@@ -2,6 +2,7 @@ package job
 
 import (
 	"alt/utils/logger"
+	"context"
 	"encoding/csv"
 	"net/url"
 	"os"
@@ -13,17 +14,19 @@ const (
 )
 
 func PathCleaner(csvPath string) string {
+	ctx := context.Background()
 	wd, err := os.Getwd()
 	if err != nil {
-		logger.Logger.Error("Error getting working directory", "error", err)
+		logger.Logger.ErrorContext(ctx, "Error getting working directory", "error", err)
 		return ""
 	}
 	cleanedPath := filepath.Join(wd, csvPath)
-	logger.Logger.Info("Cleaned path", "path", cleanedPath)
+	logger.Logger.InfoContext(ctx, "Cleaned path", "path", cleanedPath)
 	return cleanedPath
 }
 
 func CSVToURLList(csvPath string) ([]url.URL, error) {
+	ctx := context.Background()
 	csvFile, err := os.Open(csvPath)
 	if err != nil {
 		return nil, err
@@ -52,7 +55,7 @@ func CSVToURLList(csvPath string) ([]url.URL, error) {
 		urlStr := record[0]
 		parsedURL, err := url.Parse(urlStr)
 		if err != nil {
-			logger.Logger.Error("Error parsing URL", "url", urlStr, "error", err)
+			logger.Logger.ErrorContext(ctx, "Error parsing URL", "url", urlStr, "error", err)
 			continue // Skip invalid URLs
 		}
 
