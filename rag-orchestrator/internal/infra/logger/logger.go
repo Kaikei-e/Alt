@@ -5,9 +5,8 @@ import (
 	"log/slog"
 	"os"
 
-	"go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel/log/global"
-	"go.opentelemetry.io/otel/trace"
 )
 
 var Logger *slog.Logger
@@ -25,9 +24,10 @@ func NewWithOTel(enableOTel bool) *slog.Logger {
 	if enableOTel {
 		handler = NewMultiHandler(level)
 	} else {
-		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 			Level: level,
 		})
+		handler = NewTraceContextHandler(jsonHandler)
 	}
 
 	Logger = slog.New(handler)
@@ -35,117 +35,29 @@ func NewWithOTel(enableOTel bool) *slog.Logger {
 	return Logger
 }
 
-// parseLevel is defined in context_logger.go
-
-// OTelHandler is a slog.Handler that exports logs via OpenTelemetry
-type OTelHandler struct {
-	logger log.Logger
-	attrs  []slog.Attr
-	groups []string
-	level  slog.Level
-}
-
-// NewOTelHandler creates a new OTelHandler
-func NewOTelHandler(level slog.Level) *OTelHandler {
-	return &OTelHandler{
-		logger: global.GetLoggerProvider().Logger("slog-otel-bridge"),
-		level:  level,
-	}
-}
-
-func (h *OTelHandler) Enabled(_ context.Context, level slog.Level) bool {
-	return level >= h.level
-}
-
-func (h *OTelHandler) Handle(ctx context.Context, r slog.Record) error {
-	rec := log.Record{}
-	rec.SetTimestamp(r.Time)
-	rec.SetBody(log.StringValue(r.Message))
-	rec.SetSeverity(slogLevelToOTel(r.Level))
-	rec.SetSeverityText(r.Level.String())
-
-	// Add trace context if available
-	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
-		sc := span.SpanContext()
-		rec.AddAttributes(
-			log.String("trace_id", sc.TraceID().String()),
-			log.String("span_id", sc.SpanID().String()),
-		)
-	}
-
-	for _, attr := range h.attrs {
-		rec.AddAttributes(slogAttrToOTel(h.groups, attr))
-	}
-
-	r.Attrs(func(a slog.Attr) bool {
-		rec.AddAttributes(slogAttrToOTel(h.groups, a))
-		return true
-	})
-
-	h.logger.Emit(ctx, rec)
-	return nil
-}
-
-func (h *OTelHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	newAttrs := make([]slog.Attr, len(h.attrs)+len(attrs))
-	copy(newAttrs, h.attrs)
-	copy(newAttrs[len(h.attrs):], attrs)
-	return &OTelHandler{logger: h.logger, attrs: newAttrs, groups: h.groups, level: h.level}
-}
-
-func (h *OTelHandler) WithGroup(name string) slog.Handler {
-	if name == "" {
-		return h
-	}
-	newGroups := make([]string, len(h.groups)+1)
-	copy(newGroups, h.groups)
-	newGroups[len(h.groups)] = name
-	return &OTelHandler{logger: h.logger, attrs: h.attrs, groups: newGroups, level: h.level}
-}
-
-func slogLevelToOTel(level slog.Level) log.Severity {
-	switch {
-	case level >= slog.LevelError:
-		return log.SeverityError
-	case level >= slog.LevelWarn:
-		return log.SeverityWarn
-	case level >= slog.LevelInfo:
-		return log.SeverityInfo
-	default:
-		return log.SeverityDebug
-	}
-}
-
-func slogAttrToOTel(groups []string, a slog.Attr) log.KeyValue {
-	key := a.Key
-	for _, g := range groups {
-		key = g + "." + key
-	}
-
-	switch a.Value.Kind() {
-	case slog.KindString:
-		return log.String(key, a.Value.String())
-	case slog.KindInt64:
-		return log.Int64(key, a.Value.Int64())
-	case slog.KindFloat64:
-		return log.Float64(key, a.Value.Float64())
-	case slog.KindBool:
-		return log.Bool(key, a.Value.Bool())
-	default:
-		return log.String(key, a.Value.String())
-	}
-}
-
 // MultiHandler sends logs to multiple handlers
 type MultiHandler struct {
 	handlers []slog.Handler
 }
 
+// NewMultiHandler creates a handler that writes to both stdout and OTel
+// Uses the official otelslog bridge for proper trace context propagation
 func NewMultiHandler(level slog.Level) *MultiHandler {
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+	// Wrap jsonHandler with TraceContextHandler to include trace_id/span_id in stdout logs
+	stdoutHandler := NewTraceContextHandler(jsonHandler)
+
+	// Use official otelslog bridge for OTel export
+	// This properly propagates trace context from the Go context
+	otelHandler := otelslog.NewHandler(
+		"rag-orchestrator",
+		otelslog.WithLoggerProvider(global.GetLoggerProvider()),
+	)
+
 	return &MultiHandler{
 		handlers: []slog.Handler{
-			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}),
-			NewOTelHandler(level),
+			stdoutHandler,
+			otelHandler,
 		},
 	}
 }
