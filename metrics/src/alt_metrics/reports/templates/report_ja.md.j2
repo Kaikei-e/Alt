@@ -1,0 +1,183 @@
+# Alt システム健全性レポート
+
+**生成日時**: {{ result.generated_at.strftime('%Y-%m-%d %H:%M:%S') }}
+**分析期間**: 過去{{ result.hours_analyzed }}時間
+
+## 全体の健全性スコア: {{ result.overall_health_score }}/100 [{{ status }}] {{ emoji }}
+
+### サマリー
+- **総ログエントリ数**: {{ "{:,}".format(total_logs) }}
+- **総エラー数**: {{ "{:,}".format(total_errors) }}
+- **監視サービス数**: {{ result.service_health|length }}
+- **健全なサービス**: {{ healthy_count }}
+- **劣化・危険状態のサービス**: {{ degraded_count }}
+
+{% if result.critical_issues %}
+## 重大な問題
+
+{% for issue in result.critical_issues %}
+- {{ issue }}
+{% endfor %}
+
+{% endif %}
+{% if result.warnings %}
+## 警告
+
+{% for warning in result.warnings %}
+- {{ warning }}
+{% endfor %}
+
+{% endif %}
+{% if result.recommendations %}
+## 推奨事項
+
+{% for rec in result.recommendations %}
+- {{ rec }}
+{% endfor %}
+
+{% endif %}
+## サービス健全性ダッシュボード
+
+{{ format_table(service_health_data, ["service", "score", "status", "error_rate", "p95_ms", "logs"]) }}
+
+## APIパフォーマンス（p95レイテンシ上位）
+
+{% if result.api_performance %}
+{{ format_table(result.api_performance[:15], ["service", "endpoint", "request_count", "avg_ms", "p95_ms", "p99_ms"]) }}
+{% else %}
+_トレースデータがありません_
+
+{% endif %}
+
+## パフォーマンスボトルネック（1秒超の操作）
+
+{% if result.bottlenecks %}
+{{ format_table(result.bottlenecks, ["service", "operation", "occurrences", "avg_ms", "p95_ms", "total_time_sec"]) }}
+{% else %}
+_重大なボトルネックは検出されませんでした_
+
+{% endif %}
+
+## エラー分析（種類別）
+
+{% if result.error_types %}
+{{ format_table(result.error_types, ["service", "error_type", "error_count", "sample_message"]) }}
+{% else %}
+_エラーデータがありません_
+
+{% endif %}
+
+## 最新エラー（直近25件）
+
+{% if result.recent_errors %}
+{{ format_table(result.recent_errors, ["timestamp", "service", "level", "error_type", "message"]) }}
+{% else %}
+_最新エラーはありません_
+
+{% endif %}
+
+## エラートレンド（過去6時間）
+
+{% if result.error_trends %}
+{% set recent_trends = result.error_trends | selectattr("error_count", "gt", 0) | list %}
+{% if recent_trends %}
+{{ format_table(recent_trends[:30], ["hour", "service_name", "error_count", "total_count", "error_rate"]) }}
+{% else %}
+_エラートレンドデータがありません_
+{% endif %}
+{% else %}
+_エラートレンドデータがありません_
+
+{% endif %}
+
+## HTTPエンドポイントパフォーマンス
+
+{% if result.http_endpoint_stats %}
+{{ format_table(result.http_endpoint_stats[:20], ["service", "route", "request_count", "avg_duration_ms", "p95_duration_ms", "error_rate"]) }}
+{% else %}
+_HTTPエンドポイントデータがありません_
+
+{% endif %}
+
+## HTTPステータス分布（サービス別）
+
+{% if result.http_status_distribution %}
+{{ format_table(result.http_status_distribution, ["service", "total_requests", "status_2xx", "status_4xx", "status_5xx", "error_5xx_rate"]) }}
+{% else %}
+_HTTPステータスデータがありません_
+
+{% endif %}
+
+## トレーススパン分析
+
+{% if result.span_type_stats %}
+{{ format_table(result.span_type_stats[:20], ["service", "span_kind", "span_count", "avg_duration_ms", "p95_duration_ms", "error_count"]) }}
+{% else %}
+_トレーススパンデータがありません_
+
+{% endif %}
+
+## エラースパン（トレースエラー）
+
+{% if result.error_spans %}
+{{ format_table(result.error_spans[:15], ["service", "operation", "error_count", "avg_duration_ms", "last_occurrence"]) }}
+{% else %}
+_エラースパンは検出されませんでした_
+
+{% endif %}
+
+## サービス依存関係
+
+{% if result.service_dependencies %}
+{{ format_table(result.service_dependencies, ["caller", "callee", "call_count", "avg_duration_ms", "p95_duration_ms", "error_count"]) }}
+{% else %}
+_サービス依存関係は検出されませんでした_
+
+{% endif %}
+
+## ログ重要度分布
+
+{% if result.log_severity_distribution %}
+{{ format_table(result.log_severity_distribution, ["service", "total_logs", "debug_count", "info_count", "warn_count", "error_count", "error_rate"]) }}
+{% else %}
+_ログ重要度データがありません_
+
+{% endif %}
+
+## ログ量トレンド（時間別）
+
+{% if result.log_volume_trends %}
+{{ format_table(result.log_volume_trends[:24], ["hour", "service", "log_count", "error_count", "error_rate"]) }}
+{% else %}
+_ログ量トレンドデータがありません_
+
+{% endif %}
+
+## SLO違反（エラー率 > 1%）
+
+{% if result.slo_violations %}
+{{ format_table(result.slo_violations[:20], ["service", "time_bucket", "error_rate_pct", "sample_count"]) }}
+{% else %}
+_SLO違反は検出されませんでした_
+
+{% endif %}
+
+## SLIトレンドサマリー
+
+{% if result.sli_trends %}
+{% set latest_sli = {} %}
+{% for trend in result.sli_trends %}
+{% set key = trend.get('service', '') ~ '-' ~ trend.get('metric', '') %}
+{% if key not in latest_sli %}
+{% set _ = latest_sli.update({key: trend}) %}
+{% endif %}
+{% endfor %}
+{{ format_table((latest_sli.values()|list)[:20], ["service", "metric", "value", "time_bucket"]) }}
+{% else %}
+_SLIトレンドデータがありません_
+
+{% endif %}
+
+---
+
+*Alt システム健全性アナライザー（改良版）によるレポート*
