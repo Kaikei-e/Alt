@@ -121,7 +121,7 @@ impl EvidenceBundle {
             let mut scored_assignments: Vec<ScoredAssignment> = assignments
                 .iter()
                 .map(|&a| {
-                    let score = calculate_score(a, &genre, now, &assignments);
+                    let score = calculate_score(a, genre, now, assignments);
                     ScoredAssignment {
                         assignment: a,
                         score,
@@ -170,7 +170,7 @@ impl EvidenceBundle {
                 );
             }
 
-            let corpus = build_corpus_for_genre(&genre, &selected);
+            let corpus = build_corpus_for_genre(genre, &selected);
 
             completed_genres += 1;
             info!(

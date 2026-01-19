@@ -327,7 +327,7 @@ async fn build_active_job_info(
     // evidence/dispatch execution, we need to infer the actual current stage.
     let (current_stage, effective_stage_index) = match sub_stage_phase {
         Some("evidence_building") => (Some("evidence".to_string()), PipelineStage::Evidence.index()),
-        Some("clustering") | Some("summarization") => {
+        Some("clustering" | "summarization") => {
             (Some("dispatch".to_string()), PipelineStage::Dispatch.index())
         }
         _ => (job.last_stage.clone(), stage_index),
