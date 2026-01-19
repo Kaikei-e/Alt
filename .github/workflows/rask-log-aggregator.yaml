@@ -1,0 +1,43 @@
+name: Rask Log Aggregator
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'rask-log-aggregator/**'
+      - '.github/workflows/rask-log-aggregator.yaml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'rask-log-aggregator/**'
+      - '.github/workflows/rask-log-aggregator.yaml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        working-directory: rask-log-aggregator/app
+        run: cargo fmt --all -- --check
+
+  test:
+    needs: fmt
+    uses: ./.github/workflows/reusable-test-rust.yaml
+    with:
+      working-directory: 'rask-log-aggregator/app'
+      toolchain: 'stable'
+      coverage-flags: 'rask-log-aggregator'
+      runner: 'ubuntu-latest'
