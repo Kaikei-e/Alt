@@ -41,9 +41,10 @@ pub struct EnrichedLogEntry {
     pub service_group: Option<String>,
 
     // Trace context (OpenTelemetry)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    // Note: skip_serializing_if is intentionally omitted for bincode compatibility
+    #[serde(default)]
     pub trace_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub span_id: Option<String>,
 
     // Additional fields
