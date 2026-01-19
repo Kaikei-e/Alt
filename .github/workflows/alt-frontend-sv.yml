@@ -55,13 +55,10 @@ on:
 jobs:
   test:
     timeout-minutes: 60
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     container:
       image: mcr.microsoft.com/playwright:v1.57.0-jammy
-      # Run as root to fix permission issues with files from previous runs
-      # See: https://github.com/actions/checkout/issues/1203
-      options: --user root
 
     env:
       CI: true

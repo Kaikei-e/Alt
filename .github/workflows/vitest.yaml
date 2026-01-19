@@ -18,6 +18,11 @@ on:
         required: false
         type: string
         default: "vitest"
+      runner:
+        description: "Runner label (ubuntu-latest or self-hosted)"
+        required: false
+        type: string
+        default: "ubuntu-latest"
   workflow_dispatch:
     inputs:
       working-directory:
@@ -46,7 +51,7 @@ permissions:
 
 jobs:
   vitest:
-    runs-on: self-hosted
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
 
     env:

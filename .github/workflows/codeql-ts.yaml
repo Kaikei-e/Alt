@@ -21,7 +21,7 @@ permissions:
 jobs:
   analyze-ts:
     name: Analyze (TypeScript)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - name: Get workspace parent GID

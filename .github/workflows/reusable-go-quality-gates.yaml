@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: true
+      runner:
+        description: "Runner label (ubuntu-latest or self-hosted)"
+        required: false
+        type: string
+        default: "ubuntu-latest"
 
 # 最小権限 + SARIF アップロード用の権限
 permissions:
@@ -30,7 +35,7 @@ permissions:
 
 jobs:
   quality:
-    runs-on: self-hosted
+    runs-on: ${{ inputs.runner }}
 
     defaults:
       run:

@@ -1,0 +1,193 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      has_changes: ${{ steps.set-matrix.outputs.has_changes }}
+
+    steps:
+      - name: Get workspace parent GID
+        if: runner.environment == 'self-hosted'
+        id: get-gid
+        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
+
+      - name: Pre-checkout cleanup
+        if: runner.environment == 'self-hosted'
+        uses: docker://alpine:latest
+        env:
+          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
+        with:
+          entrypoint: /bin/sh
+          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Configure logging (mask)
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::add-mask::$(hostname)"
+          echo "::add-mask::$(whoami)"
+          [ -n "$HOME" ] && echo "::add-mask::$HOME"
+
+      - name: Detect changed services
+        id: set-matrix
+        run: |
+          # Service directories with Dockerfiles
+          SERVICES=(
+            "alt-backend"
+            "alt-frontend"
+            "alt-frontend-sv"
+            "pre-processor"
+            "pre-processor-sidecar"
+            "search-indexer"
+            "tag-generator"
+            "news-creator"
+            "auth-hub"
+            "auth-token-manager"
+            "rask-log-aggregator"
+            "rask-log-forwarder"
+            "recap-worker"
+            "recap-subworker"
+            "rag-orchestrator"
+          )
+
+          CHANGED=""
+
+          # For tags, build all services
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            for svc in "${SERVICES[@]}"; do
+              CHANGED="$CHANGED\"$svc\","
+            done
+          else
+            # For push/PR, detect changed services
+            for svc in "${SERVICES[@]}"; do
+              if git diff --name-only HEAD~1 2>/dev/null | grep -q "^$svc/"; then
+                CHANGED="$CHANGED\"$svc\","
+              fi
+            done
+          fi
+
+          if [ -n "$CHANGED" ]; then
+            MATRIX="{\"service\":[${CHANGED%,}]}"
+            echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changed services: ${CHANGED%,}"
+          else
+            echo "matrix={\"service\":[]}" >> $GITHUB_OUTPUT
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No service changes detected"
+          fi
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.changes.outputs.matrix) }}
+
+    steps:
+      - name: Get workspace parent GID
+        if: runner.environment == 'self-hosted'
+        id: get-gid
+        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
+
+      - name: Pre-checkout cleanup
+        if: runner.environment == 'self-hosted'
+        uses: docker://alpine:latest
+        env:
+          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
+        with:
+          entrypoint: /bin/sh
+          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          clean: false
+          sparse-checkout: |
+            ${{ matrix.service }}
+            docker
+          sparse-checkout-cone-mode: true
+
+      - name: Configure logging (mask)
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::add-mask::$(hostname)"
+          echo "::add-mask::$(whoami)"
+          [ -n "$HOME" ] && echo "::add-mask::$HOME"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/alt-${{ matrix.service }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Find Dockerfile
+        id: dockerfile
+        run: |
+          # Try to find the Dockerfile in the service directory
+          if [ -f "${{ matrix.service }}/Dockerfile" ]; then
+            echo "path=${{ matrix.service }}/Dockerfile" >> $GITHUB_OUTPUT
+          elif [ -f "${{ matrix.service }}/Dockerfile.${{ matrix.service }}" ]; then
+            echo "path=${{ matrix.service }}/Dockerfile.${{ matrix.service }}" >> $GITHUB_OUTPUT
+          else
+            # Find any Dockerfile in the directory
+            DOCKERFILE=$(find ${{ matrix.service }} -maxdepth 1 -name 'Dockerfile*' | head -1)
+            if [ -n "$DOCKERFILE" ]; then
+              echo "path=$DOCKERFILE" >> $GITHUB_OUTPUT
+            else
+              echo "::error::No Dockerfile found for ${{ matrix.service }}"
+              exit 1
+            fi
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service }}
+          file: ${{ steps.dockerfile.outputs.path }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Registry cache: サイズ制限なし、マルチステージビルドの中間レイヤーもキャッシュ
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/alt-${{ matrix.service }}:buildcache
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache,mode=max', github.repository_owner, matrix.service) || '' }}
+

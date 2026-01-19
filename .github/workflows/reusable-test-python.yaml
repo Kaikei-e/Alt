@@ -42,10 +42,15 @@ on:
         type: string
         default: "test"
         description: "Job type: test, lint, security, typecheck"
+      runner:
+        description: "Runner label (ubuntu-latest or self-hosted)"
+        required: false
+        type: string
+        default: "ubuntu-latest"
 
 jobs:
   python-job:
-    runs-on: self-hosted
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
 
     defaults:

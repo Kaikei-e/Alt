@@ -33,7 +33,7 @@ jobs:
       coverage-flags: 'tag-generator'
       upload-coverage: true
       use-oidc: true
-      use-local-persistent-cache: true
+      use-local-persistent-cache: false
 
   lint:
     name: Linting & Formatting
@@ -44,7 +44,7 @@ jobs:
       job-type: 'lint'
       sparse-checkout: 'tag-generator'
       upload-coverage: false
-      use-local-persistent-cache: true
+      use-local-persistent-cache: false
 
   security:
     name: Security Scan
@@ -55,7 +55,7 @@ jobs:
       job-type: 'security'
       sparse-checkout: 'tag-generator'
       upload-coverage: false
-      use-local-persistent-cache: true
+      use-local-persistent-cache: false
 
   typecheck:
     name: Type Checking
@@ -66,4 +66,4 @@ jobs:
       job-type: 'typecheck'
       sparse-checkout: 'tag-generator'
       upload-coverage: false
-      use-local-persistent-cache: true
+      use-local-persistent-cache: false

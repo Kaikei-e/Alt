@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
       run:
@@ -83,7 +83,17 @@ jobs:
           rm -rf recap-worker/recap-worker/target || true
           echo "::endgroup::"
 
-      - name: Install Rust toolchain
+      # GitHub-hosted runner: dtolnay/rust-toolchain を使用
+      - name: Install Rust toolchain (GitHub-hosted)
+        if: runner.environment != 'self-hosted'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: clippy
+
+      # Self-hosted runner: 既存のスクリプトでインストール
+      - name: Install Rust toolchain (self-hosted)
+        if: runner.environment == 'self-hosted'
         run: |
           set -e  # Exit on error
           # Clean rustup directory to avoid download/rename issues
@@ -100,6 +110,15 @@ jobs:
           # Set default toolchain and add clippy
           "$HOME/.cargo/bin/rustup" default stable
           "$HOME/.cargo/bin/rustup" component add clippy
+
+      # GitHub-hosted runner: Swatinem/rust-cache を使用
+      - name: Cache Rust dependencies (GitHub-hosted)
+        if: runner.environment != 'self-hosted'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: recap-worker/recap-worker
+          shared-key: recap-worker
+          cache-on-failure: true
 
       - name: Rust version info
         run: |

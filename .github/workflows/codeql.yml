@@ -5,7 +5,7 @@ on:
 
 jobs:
   info:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Show CodeQL workflows
         run: |

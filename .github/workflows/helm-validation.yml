@@ -23,7 +23,7 @@ env:
 
 jobs:
   helm-lint:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     name: Helm Lint and Template Validation
 
     steps:

@@ -25,5 +25,5 @@ jobs:
       working-directory: 'alt-backend/app'
       # 固定したいなら明示。go.modに従うなら空でOK
       coverage-flags: 'alt-backend'
-      # self-hostedでローカル永続キャッシュを使うなら true
-      use-local-persistent-cache: true
+      # GitHub-hosted runner では GitHub Actions Cache を使用
+      use-local-persistent-cache: false

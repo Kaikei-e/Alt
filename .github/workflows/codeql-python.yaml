@@ -27,7 +27,7 @@ permissions:
 jobs:
   analyze-python:
     name: Analyze (Python)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - name: Get workspace parent GID

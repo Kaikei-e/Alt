@@ -1,0 +1,106 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      stacks:
+        description: 'Stacks to deploy (comma-separated or "all")'
+        required: false
+        default: 'all'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    timeout-minutes: 15
+
+    steps:
+      - name: Get workspace parent GID
+        if: runner.environment == 'self-hosted'
+        id: get-gid
+        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
+
+      - name: Pre-checkout cleanup
+        if: runner.environment == 'self-hosted'
+        uses: docker://alpine:latest
+        env:
+          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
+        with:
+          entrypoint: /bin/sh
+          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
+
+      - name: Configure logging (mask)
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::add-mask::$(hostname)"
+          echo "::add-mask::$(whoami)"
+          [ -n "$HOME" ] && echo "::add-mask::$HOME"
+          echo "::add-mask::${{ secrets.DEPLOY_HOST }}"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd ~/alt
+
+            echo "=== Recording previous version ==="
+            echo "PREV_COMMIT=$(git rev-parse HEAD)" > .deploy-prev
+            echo "PREV_TIME=$(date -Iseconds)" >> .deploy-prev
+
+            echo "=== Pulling latest changes ==="
+            git pull origin main
+
+            echo "=== Pulling new images ==="
+            docker compose -f compose/compose.yaml pull
+
+            echo "=== Starting services ==="
+            docker compose -f compose/compose.yaml up -d --remove-orphans
+
+            echo "=== Waiting for services to become healthy (60s) ==="
+            sleep 60
+
+            echo "=== Running health checks ==="
+            # Backend health check
+            if ! curl -sf http://localhost:9000/v1/health; then
+              echo "Backend health check failed"
+              exit 1
+            fi
+            echo "Backend: OK"
+
+            # Frontend health check
+            if ! curl -sf http://localhost:3000/api/health; then
+              echo "Frontend health check failed"
+              exit 1
+            fi
+            echo "Frontend: OK"
+
+            echo "=== Cleaning up old images ==="
+            docker system prune -f
+
+            echo "=== Recording deployment info ==="
+            cat > .deploy-current <<EOF
+            DEPLOY_COMMIT=$(git rev-parse HEAD)
+            DEPLOY_TIME=$(date -Iseconds)
+            DEPLOY_TRIGGER=workflow_dispatch
+            DEPLOY_STACKS=${{ inputs.stacks }}
+            EOF
+
+            echo "=== Deployment complete ==="
+            cat .deploy-current
+
+      - name: Notify success
+        if: success()
+        run: |
+          echo "::notice title=Deployment Successful::Production deployment completed successfully"
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "::error title=Deployment Failed::Production deployment failed - check server logs"

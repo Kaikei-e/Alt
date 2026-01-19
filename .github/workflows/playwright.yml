@@ -18,6 +18,11 @@ on:
         required: false
         type: string
         default: "playwright"
+      runner:
+        description: "Runner label (ubuntu-latest or self-hosted)"
+        required: false
+        type: string
+        default: "ubuntu-latest"
   workflow_dispatch:
     inputs:
       working-directory:
@@ -46,12 +51,12 @@ permissions:
 
 jobs:
   e2e:
-    runs-on: self-hosted
+    runs-on: ${{ inputs.runner }}
     container:
       image: mcr.microsoft.com/playwright:v1.57.0-jammy
-      # Run as root to fix permission issues with files from previous runs
-      # See: https://github.com/actions/checkout/issues/1203
-      options: --user root
+      # self-hosted では --user root が必要（前回実行のファイル権限問題）
+      # GitHub-hosted (ephemeral) では不要
+      options: ${{ inputs.runner == 'self-hosted' && '--user root' || '' }}
     timeout-minutes: 60
 
     env:

@@ -18,10 +18,15 @@ on:
       coverage-flags:
         required: false
         type: string
+      runner:
+        description: "Runner label (ubuntu-latest or self-hosted)"
+        required: false
+        type: string
+        default: "ubuntu-latest"
 
 jobs:
   test:
-    runs-on: self-hosted
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     steps:
       - name: Get workspace parent GID
@@ -67,7 +72,17 @@ jobs:
 
           echo "::endgroup::"
 
-      - name: Install Rust toolchain
+      # GitHub-hosted runner: dtolnay/rust-toolchain を使用
+      - name: Install Rust toolchain (GitHub-hosted)
+        if: runner.environment != 'self-hosted'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: clippy
+
+      # Self-hosted runner: 既存のスクリプトでインストール
+      - name: Install Rust toolchain (self-hosted)
+        if: runner.environment == 'self-hosted'
         run: |
           set -e  # Exit on error
           # 既存の rustup/cargo をクリーンアップして、バイナリ衝突を避ける
@@ -91,8 +106,19 @@ jobs:
           cargo --version
           cargo clippy --version
 
-      - name: Cache cargo registry and build
-        uses: actions/cache@v3
+      # GitHub-hosted runner: Swatinem/rust-cache を使用（推奨）
+      - name: Cache Rust dependencies (GitHub-hosted)
+        if: runner.environment != 'self-hosted'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ inputs.working-directory }}
+          shared-key: ${{ inputs.coverage-flags }}
+          cache-on-failure: true
+
+      # Self-hosted runner: 従来の actions/cache を使用
+      - name: Cache cargo registry and build (self-hosted)
+        if: runner.environment == 'self-hosted'
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry/index/
@@ -103,8 +129,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ hashFiles(format('{0}/Cargo.lock', inputs.working-directory)) }}-
             ${{ runner.os }}-cargo-
-        env:
-          ACTIONS_STEP_DEBUG: false
         continue-on-error: true
 
       - name: Ensure target directory exists
@@ -150,7 +174,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: inputs.upload-coverage && success()
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           file: ${{ inputs.working-directory }}/tarpaulin-report.xml
           flags: ${{ inputs.coverage-flags }}
