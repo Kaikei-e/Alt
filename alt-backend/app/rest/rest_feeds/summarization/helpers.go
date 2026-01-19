@@ -374,6 +374,9 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; AltBot/1.0; +http://alt.com/bot)")
 
+	// SSRF protection: URL validated by isAllowedURL() (line 360) and SSRFValidator.ValidateURL() (line 365).
+	// secureClient created via SSRFValidator.CreateSecureHTTPClient() validates IPs at connection time.
+	// codeql[go/request-forgery]
 	resp, err := secureClient.Do(req)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to fetch URL: %w", err)

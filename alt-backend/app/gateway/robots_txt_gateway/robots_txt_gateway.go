@@ -74,6 +74,9 @@ func (g *RobotsTxtGateway) FetchRobotsTxt(ctx context.Context, domainName, schem
 	req.Header.Set("User-Agent", "Alt-RSS-Reader/1.0 (+https://alt.example.com)")
 	req.Header.Set("Accept", "text/plain")
 
+	// SSRF protection: URL validated by SSRFValidator.ValidateURL() above (line 65).
+	// httpClient created via SSRFValidator.CreateSecureHTTPClient() validates IPs at connection time.
+	// codeql[go/request-forgery]
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch robots.txt: %w", err)
