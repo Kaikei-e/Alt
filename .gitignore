@@ -82,3 +82,4 @@ alt-frontend-sv/mock-server.log
 # Claude Code local files
 .claude/
 .agent/
+metrics/scripts/reports/
