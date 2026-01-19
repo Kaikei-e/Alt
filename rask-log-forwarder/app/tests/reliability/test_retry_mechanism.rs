@@ -137,6 +137,8 @@ fn create_test_entry(message: &str) -> rask_log_forwarder::parser::EnrichedLogEn
         container_id: "test123".to_string(),
         service_name: "test-service".to_string(),
         service_group: Some("test-group".to_string()),
+        trace_id: None,
+        span_id: None,
         fields: std::collections::HashMap::new(),
     }
 }

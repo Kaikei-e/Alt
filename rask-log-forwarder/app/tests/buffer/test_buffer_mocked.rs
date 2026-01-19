@@ -140,6 +140,8 @@ fn create_test_enriched_log(id: usize) -> EnrichedLogEntry {
         container_id: format!("container-{id}"),
         service_name: "test-service".to_string(),
         service_group: Some("test-group".to_string()),
+        trace_id: None,
+        span_id: None,
         fields: std::collections::HashMap::new(),
     }
 }

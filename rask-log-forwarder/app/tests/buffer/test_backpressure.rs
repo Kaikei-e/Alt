@@ -398,6 +398,8 @@ fn create_test_enriched_log(id: usize) -> EnrichedLogEntry {
         container_id: format!("container_{}", id % 10),
         service_name: "test-service".to_string(),
         service_group: None,
+        trace_id: None,
+        span_id: None,
         fields: HashMap::new(),
     }
 }

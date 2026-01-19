@@ -22,6 +22,8 @@ fn create_test_entry(message: &str) -> EnrichedLogEntry {
         container_id: "test-container".to_string(),
         service_name: "test".to_string(),
         service_group: None,
+        trace_id: None,
+        span_id: None,
         fields: std::collections::HashMap::new(),
     }
 }

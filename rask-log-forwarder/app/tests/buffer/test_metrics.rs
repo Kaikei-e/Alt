@@ -200,6 +200,8 @@ fn create_test_nginx_log(id: usize) -> Arc<dyn std::any::Any + Send + Sync> {
         response_size: Some(1024),
         user_agent: Some("test-agent".to_string()),
         level: None,
+        trace_id: None,
+        span_id: None,
         fields: std::collections::HashMap::new(),
     })
 }
@@ -455,6 +457,8 @@ fn create_test_enriched_log(id: usize) -> EnrichedLogEntry {
         container_id: format!("container_{}", id % 10),
         service_name: "test-service".to_string(),
         service_group: Some("test".to_string()),
+        trace_id: None,
+        span_id: None,
         fields: HashMap::new(),
     }
 }

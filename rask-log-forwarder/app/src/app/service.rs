@@ -297,6 +297,15 @@ impl ServiceManager {
                     match parser.parse_docker_log(log_entry.raw_bytes.as_ref(), &container_info).await {
                         Ok(enriched_entry) => {
                             // Convert EnrichedLogEntry to format expected by send_log_batch
+                            // Preserve trace_id/span_id by inserting them back into fields
+                            let mut fields = enriched_entry.fields;
+                            if let Some(ref trace_id) = enriched_entry.trace_id {
+                                fields.insert("trace_id".to_string(), trace_id.clone());
+                            }
+                            if let Some(ref span_id) = enriched_entry.span_id {
+                                fields.insert("span_id".to_string(), span_id.clone());
+                            }
+
                             let parsed_entry = crate::parser::services::ParsedLogEntry {
                                 service_type: enriched_entry.service_type,
                                 log_type: enriched_entry.log_type,
@@ -312,7 +321,7 @@ impl ServiceManager {
                                 response_size: enriched_entry.response_size,
                                 ip_address: enriched_entry.ip_address,
                                 user_agent: enriched_entry.user_agent,
-                                fields: enriched_entry.fields,
+                                fields,
                             };
 
                             log_batch.push(parsed_entry);
