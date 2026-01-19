@@ -286,6 +286,8 @@ fn create_test_enriched_log(id: usize) -> rask_log_forwarder::parser::EnrichedLo
         container_id: format!("container_{}", id % 10),
         service_name: "test-service".to_string(),
         service_group: Some("test".to_string()),
+        trace_id: None,
+        span_id: None,
         fields: HashMap::new(),
     }
 }

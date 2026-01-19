@@ -629,7 +629,7 @@ mod tests {
         assert_eq!(entry.span_id, Some("00f067aa0ba902b7".to_string()));
 
         // Verify trace_id and span_id are NOT in the fields map (removed during extraction)
-        assert!(entry.fields.get("trace_id").is_none());
-        assert!(entry.fields.get("span_id").is_none());
+        assert!(!entry.fields.contains_key("trace_id"));
+        assert!(!entry.fields.contains_key("span_id"));
     }
 }
