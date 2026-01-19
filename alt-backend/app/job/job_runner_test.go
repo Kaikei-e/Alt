@@ -42,10 +42,10 @@ func TestFeedModelURLNormalization(t *testing.T) {
 			description: "Both trailing slash and UTM params should be removed",
 		},
 		{
-			name:        "root path should keep trailing slash",
+			name:        "root path trailing slash should be removed",
 			inputURL:    "https://example.com/",
-			expectedURL: "https://example.com/",
-			description: "Root path is the only exception for trailing slash",
+			expectedURL: "https://example.com",
+			description: "Root path trailing slash is removed for consistency",
 		},
 		{
 			name:        "fragment should be removed",
