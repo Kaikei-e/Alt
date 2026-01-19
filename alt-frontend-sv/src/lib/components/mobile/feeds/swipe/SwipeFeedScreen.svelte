@@ -1,6 +1,5 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { fade, fly } from "svelte/transition";
 import { browser } from "$app/environment";
 import {
 	getFeedContentOnTheFlyClient,
@@ -300,23 +299,18 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
 
       <!-- Active card -->
       {#key activeFeed.id}
-        <div
-          in:fly={{ x: 0, y: 0, duration: 300 }}
-          out:fly={{ x: 0, y: 0, duration: 300 }}
-        >
-          <SwipeFeedCard
-            feed={activeFeed}
-            statusMessage={liveRegionMessage}
-            onDismiss={handleDismiss}
-            {getCachedContent}
-            {getCachedArticleId}
-            isBusy={isLoading}
-            initialArticleContent={activeIndex === 0
-              ? initialArticleContent
-              : undefined}
-            onArticleIdResolved={handleArticleIdResolved}
-          />
-        </div>
+        <SwipeFeedCard
+          feed={activeFeed}
+          statusMessage={liveRegionMessage}
+          onDismiss={handleDismiss}
+          {getCachedContent}
+          {getCachedArticleId}
+          isBusy={isLoading}
+          initialArticleContent={activeIndex === 0
+            ? initialArticleContent
+            : undefined}
+          onArticleIdResolved={handleArticleIdResolved}
+        />
       {/key}
     </div>
   {:else}

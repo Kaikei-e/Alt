@@ -61,16 +61,14 @@ let hasSwiped = $state(false);
 let swipeElement: HTMLDivElement | null = $state(null);
 let scrollAreaRef: HTMLDivElement | null = $state(null);
 
-// Derived styles
+// Derived styles - Note: max-width is set via CSS class to avoid layout recalculation during animations
 const cardStyle = $derived.by(() => {
 	const translate = x.current;
 	const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
 
 	return [
-		"max-width: calc(100% - 1rem)",
 		`transform: translate3d(${translate}px, 0, 0)`,
 		`opacity: ${opacity}`,
-		"will-change: transform, opacity",
 	].join("; ");
 });
 
@@ -352,7 +350,7 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
   use:swipe={{ threshold: SWIPE_THRESHOLD, restraint: 120, allowedTime: 500 }}
   aria-busy={isBusy}
   data-testid="swipe-card"
-  style={`${cardStyle}; touch-action: none;`}
+  style={`${cardStyle}; touch-action: none; max-width: calc(100% - 1rem);`}
 >
   <div class="flex flex-col gap-0 h-full">
     <!-- Header -->
