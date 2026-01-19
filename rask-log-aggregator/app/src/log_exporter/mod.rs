@@ -1,11 +1,14 @@
 pub mod clickhouse_exporter;
 pub mod disk_cleaner;
 pub mod json_file_exporter;
+pub mod otel_exporter;
 
 use crate::domain::EnrichedLogEntry;
 use crate::error::AggregatorError;
 use std::future::Future;
 use std::pin::Pin;
+
+pub use otel_exporter::OTelExporter;
 
 /// Log exporter trait for various backends (ClickHouse, JSON file, etc.)
 ///

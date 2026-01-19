@@ -6,8 +6,8 @@ mod otlp;
 
 use crate::domain::EnrichedLogEntry;
 use crate::error::AggregatorError;
-use crate::log_exporter::LogExporter;
 use crate::log_exporter::clickhouse_exporter::ClickHouseExporter;
+use crate::log_exporter::{LogExporter, OTelExporter};
 use crate::otlp::otlp_routes;
 use crate::otlp::receiver::OTLPState;
 use axum::{
@@ -74,10 +74,11 @@ async fn main() -> Result<(), AggregatorError> {
     // Create ClickHouse exporter (shared between legacy and OTLP endpoints)
     let ch_exporter = Arc::new(ClickHouseExporter::new(client));
     let exporter: Arc<dyn LogExporter> = ch_exporter.clone();
+    let otel_exporter: Arc<dyn OTelExporter> = ch_exporter;
 
     // OTLP state
     let otlp_state = OTLPState {
-        exporter: ch_exporter,
+        exporter: otel_exporter,
     };
 
     // Health check endpoint

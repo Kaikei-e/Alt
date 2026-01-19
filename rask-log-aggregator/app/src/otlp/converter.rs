@@ -346,15 +346,7 @@ mod tests {
             ..Default::default()
         };
 
-        let log = convert_single_log(
-            &record,
-            &HashMap::new(),
-            "",
-            "",
-            "",
-            &HashMap::new(),
-            "",
-        );
+        let log = convert_single_log(&record, &HashMap::new(), "", "", "", &HashMap::new(), "");
 
         assert_eq!(log.trace_id, "0102030405060708090a0b0c0d0e0f10");
         assert_eq!(log.span_id, "0102030405060708");
@@ -378,15 +370,7 @@ mod tests {
             ..Default::default()
         };
 
-        let log = convert_single_log(
-            &record,
-            &HashMap::new(),
-            "",
-            "",
-            "",
-            &HashMap::new(),
-            "",
-        );
+        let log = convert_single_log(&record, &HashMap::new(), "", "", "", &HashMap::new(), "");
 
         // Should use protocol fields, not attributes
         assert_eq!(log.trace_id, "0102030405060708090a0b0c0d0e0f10");
@@ -420,15 +404,7 @@ mod tests {
             ..Default::default()
         };
 
-        let log = convert_single_log(
-            &record,
-            &HashMap::new(),
-            "",
-            "",
-            "",
-            &HashMap::new(),
-            "",
-        );
+        let log = convert_single_log(&record, &HashMap::new(), "", "", "", &HashMap::new(), "");
 
         assert_eq!(log.trace_id, "abcdef0123456789abcdef0123456789");
         assert_eq!(log.span_id, "fedcba9876543210");
@@ -444,15 +420,7 @@ mod tests {
             ..Default::default()
         };
 
-        let log = convert_single_log(
-            &record,
-            &HashMap::new(),
-            "",
-            "",
-            "",
-            &HashMap::new(),
-            "",
-        );
+        let log = convert_single_log(&record, &HashMap::new(), "", "", "", &HashMap::new(), "");
 
         assert_eq!(log.trace_id, "00000000000000000000000000000000");
         assert_eq!(log.span_id, "0000000000000000");
