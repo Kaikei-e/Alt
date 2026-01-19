@@ -47,3 +47,27 @@ async def test_evaluate_summary_with_deepeval_mock(mock_test_case, mock_faithful
 
     mock_faithfulness.assert_called_once()
     mock_metric_instance.measure.assert_called_once()
+
+
+class TestEvaluatePathValidation:
+    """Tests for path validation in evaluate() method - defense in depth."""
+
+    def test_evaluate_rejects_path_traversal(self, evaluation_service):
+        """Path traversal attempts should be rejected with ValueError."""
+        with pytest.raises(ValueError, match="not within allowed directories"):
+            evaluation_service.evaluate("../../../etc/passwd")
+
+    def test_evaluate_rejects_absolute_path_outside_allowed(self, evaluation_service):
+        """Absolute paths outside allowed directories should be rejected."""
+        with pytest.raises(ValueError, match="not within allowed directories"):
+            evaluation_service.evaluate("/etc/passwd")
+
+    def test_evaluate_by_language_rejects_path_traversal(self, evaluation_service):
+        """evaluate_by_language should also reject path traversal attempts."""
+        # evaluate_by_language catches exceptions per-language and returns error dict
+        results = evaluation_service.evaluate_by_language("../../../etc/passwd")
+        # Both ja and en should have error containing the validation message
+        assert "error" in results["ja"]
+        assert "not within allowed directories" in results["ja"]["error"]
+        assert "error" in results["en"]
+        assert "not within allowed directories" in results["en"]["error"]

@@ -17,6 +17,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.base import clone
 
 from ..infra.config import get_settings
+from ..infra.path_validation import validate_path
 from .classifier import GenreClassifierService, SudachiTokenizer
 from .embedder import Embedder, EmbedderConfig
 
@@ -146,9 +147,10 @@ class EvaluationService:
             golden_data_path: Path to golden classification JSON file
             language: Optional language filter ("ja" or "en"). If None, evaluates all languages.
         """
-        golden_path = Path(golden_data_path)
+        # Validate path to prevent path traversal attacks
+        golden_path = validate_path(golden_data_path)
         if not golden_path.exists():
-             raise FileNotFoundError(f"Golden data not found: {golden_path}")
+            raise FileNotFoundError(f"Golden data not found: {golden_path}")
 
         # Load Golden Data
         with open(golden_path, "r") as f:
