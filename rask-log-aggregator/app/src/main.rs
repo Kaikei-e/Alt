@@ -20,6 +20,7 @@ use axum::{
 use clickhouse::Client;
 use std::sync::Arc;
 use tokio::signal;
+use tokio_util::sync::CancellationToken;
 use tracing::{Level, error, info};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
@@ -93,36 +94,66 @@ async fn main() -> Result<(), AggregatorError> {
         .route("/v1/aggregate", post(aggregate_handler))
         .with_state(exporter);
 
-    // OTLP endpoints
+    // OTLP endpoints router
     let otlp_router = otlp_routes(otlp_state);
 
-    // Combined app
-    let app = Router::new()
+    // Main app (health + aggregate) - port 9600
+    let main_app = Router::new()
         .merge(v1_health_router)
-        .merge(v1_aggregate_router)
-        .merge(otlp_router);
+        .merge(v1_aggregate_router);
 
-    // Get port from environment or default
-    let http_port = std::env::var("HTTP_PORT").unwrap_or_else(|_| "9600".to_string());
-    let bind_addr = format!("0.0.0.0:{}", http_port);
-
-    let listener = tokio::net::TcpListener::bind(&bind_addr)
+    // Bind main server
+    let main_bind_addr = format!("0.0.0.0:{}", settings.http_port);
+    let main_listener = tokio::net::TcpListener::bind(&main_bind_addr)
         .await
         .map_err(|e| AggregatorError::Bind {
-            address: bind_addr.clone(),
+            address: main_bind_addr.clone(),
             source: e,
         })?;
-    let ip_addr = listener.local_addr()?;
-    info!("Listening on {} (HTTP + OTLP)", ip_addr);
-    info!("Endpoints:");
+    info!("Main server listening on {}", main_listener.local_addr()?);
     info!("  - GET  /v1/health     (health check)");
     info!("  - POST /v1/aggregate  (legacy NDJSON logs)");
+
+    // Bind OTLP server - port 4318
+    let otlp_bind_addr = format!("0.0.0.0:{}", settings.otlp_http_port);
+    let otlp_listener = tokio::net::TcpListener::bind(&otlp_bind_addr)
+        .await
+        .map_err(|e| AggregatorError::Bind {
+            address: otlp_bind_addr.clone(),
+            source: e,
+        })?;
+    info!(
+        "OTLP HTTP server listening on {}",
+        otlp_listener.local_addr()?
+    );
     info!("  - POST /v1/logs       (OTLP logs)");
     info!("  - POST /v1/traces     (OTLP traces)");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+    // CancellationToken for graceful shutdown coordination
+    let shutdown_token = CancellationToken::new();
+
+    // Spawn OTLP server task
+    let otlp_shutdown = shutdown_token.child_token();
+    let otlp_handle = tokio::spawn(async move {
+        axum::serve(otlp_listener, otlp_router)
+            .with_graceful_shutdown(otlp_shutdown.cancelled_owned())
+            .await
+    });
+
+    // Run main server
+    let main_shutdown = shutdown_token.clone();
+    axum::serve(main_listener, main_app)
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            // Signal OTLP server to shutdown
+            main_shutdown.cancel();
+        })
         .await?;
+
+    // Wait for OTLP server to finish
+    if let Err(e) = otlp_handle.await {
+        error!("OTLP server task failed: {}", e);
+    }
 
     info!("Server shutdown complete");
     Ok(())

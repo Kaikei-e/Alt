@@ -10,6 +10,10 @@ pub struct Settings {
     pub clickhouse_user: String,
     pub clickhouse_password: String,
     pub clickhouse_database: String,
+    /// Main HTTP server port (legacy aggregate + health)
+    pub http_port: u16,
+    /// OTLP HTTP server port (traces/logs)
+    pub otlp_http_port: u16,
 }
 
 impl Settings {
@@ -17,6 +21,8 @@ impl Settings {
     pub fn validate(&self) -> Result<(), AggregatorError> {
         validate_host(&self.clickhouse_host)?;
         validate_port(self.clickhouse_port)?;
+        validate_port(self.http_port)?;
+        validate_port(self.otlp_http_port)?;
         Ok(())
     }
 }
@@ -61,12 +67,22 @@ pub fn get_configuration() -> Result<Settings, Box<dyn std::error::Error>> {
     let clickhouse_password = get_env_or_file("APP_CLICKHOUSE_PASSWORD")?;
     let clickhouse_database = env::var("APP_CLICKHOUSE_DATABASE")?;
 
+    // Server ports with defaults
+    let http_port = env::var("HTTP_PORT")
+        .unwrap_or_else(|_| "9600".to_string())
+        .parse::<u16>()?;
+    let otlp_http_port = env::var("OTLP_HTTP_PORT")
+        .unwrap_or_else(|_| "4318".to_string())
+        .parse::<u16>()?;
+
     let settings = Settings {
         clickhouse_host,
         clickhouse_port,
         clickhouse_user,
         clickhouse_password,
         clickhouse_database,
+        http_port,
+        otlp_http_port,
     };
 
     // Validate settings before returning
@@ -128,6 +144,8 @@ mod tests {
             clickhouse_user: "default".into(),
             clickhouse_password: String::new(),
             clickhouse_database: "default".into(),
+            http_port: 9600,
+            otlp_http_port: 4318,
         };
         assert!(settings.validate().is_ok());
     }
@@ -140,6 +158,8 @@ mod tests {
             clickhouse_user: "default".into(),
             clickhouse_password: String::new(),
             clickhouse_database: "default".into(),
+            http_port: 9600,
+            otlp_http_port: 4318,
         };
         assert!(settings.validate().is_err());
     }
@@ -152,6 +172,36 @@ mod tests {
             clickhouse_user: "default".into(),
             clickhouse_password: String::new(),
             clickhouse_database: "default".into(),
+            http_port: 9600,
+            otlp_http_port: 4318,
+        };
+        assert!(settings.validate().is_err());
+    }
+
+    #[test]
+    fn test_settings_validate_zero_http_port_fails() {
+        let settings = Settings {
+            clickhouse_host: "localhost".into(),
+            clickhouse_port: 8123,
+            clickhouse_user: "default".into(),
+            clickhouse_password: String::new(),
+            clickhouse_database: "default".into(),
+            http_port: 0,
+            otlp_http_port: 4318,
+        };
+        assert!(settings.validate().is_err());
+    }
+
+    #[test]
+    fn test_settings_validate_zero_otlp_http_port_fails() {
+        let settings = Settings {
+            clickhouse_host: "localhost".into(),
+            clickhouse_port: 8123,
+            clickhouse_user: "default".into(),
+            clickhouse_password: String::new(),
+            clickhouse_database: "default".into(),
+            http_port: 9600,
+            otlp_http_port: 0,
         };
         assert!(settings.validate().is_err());
     }

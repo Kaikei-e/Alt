@@ -220,11 +220,8 @@ pub struct OTelTraceRow {
     pub status_code: i8, // Enum8 as numeric value
     #[serde(rename = "StatusMessage")]
     pub status_message: String,
-    #[serde(rename = "Events")]
-    pub events: String,
-    #[serde(rename = "Links")]
-    pub links: String,
     // Nested arrays for Grafana ClickHouse datasource compatibility
+    // Note: Events and Links String columns removed to avoid conflict with Events.* nested arrays
     #[serde(rename = "Events.Timestamp")]
     pub events_timestamp: Vec<i64>, // Array(DateTime64(9))
     #[serde(rename = "Events.Name")]
@@ -296,8 +293,6 @@ impl From<OTelTrace> for OTelTraceRow {
             duration: trace.duration,
             status_code: trace.status_code as i8,
             status_message: trace.status_message,
-            events: trace.events,
-            links: trace.links,
             // Nested arrays for Grafana
             events_timestamp,
             events_name,

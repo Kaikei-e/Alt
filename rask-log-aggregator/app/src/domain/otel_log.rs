@@ -130,12 +130,6 @@ pub struct OTelTrace {
     /// Status message (for error status)
     pub status_message: String,
 
-    /// Span events (JSON serialized) - kept for backward compatibility
-    pub events: String,
-
-    /// Span links (JSON serialized) - kept for backward compatibility
-    pub links: String,
-
     /// Span events (nested array for Grafana compatibility)
     pub events_nested: Vec<SpanEvent>,
 

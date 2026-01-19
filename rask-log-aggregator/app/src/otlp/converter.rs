@@ -181,9 +181,6 @@ fn convert_single_span(
             .as_ref()
             .map(|s| s.message.clone())
             .unwrap_or_default(),
-        // Keep JSON serialized for backward compatibility
-        events: serde_json::to_string(&span.events).unwrap_or_else(|_| "[]".to_string()),
-        links: serde_json::to_string(&span.links).unwrap_or_else(|_| "[]".to_string()),
         // Nested arrays for Grafana compatibility
         events_nested,
         links_nested,
