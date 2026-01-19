@@ -96,6 +96,32 @@ services:
     restart: unless-stopped
     stop_grace_period: 12s
 
+  auth-hub-logs:
+    build:
+      context: ../rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    networks:
+      - alt-network
+    depends_on:
+      rask-log-aggregator:
+        condition: service_healthy
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
+      TARGET_SERVICE: "auth-hub"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"
+    restart: unless-stopped
+    stop_grace_period: 12s
+
   tag-generator-logs:
     build:
       context: ../rask-log-forwarder/app
