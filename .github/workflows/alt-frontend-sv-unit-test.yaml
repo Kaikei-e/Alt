@@ -62,4 +62,4 @@ jobs:
 
       - name: Run Vitest
         working-directory: alt-frontend-sv
-        run: bun test
+        run: bun run test
