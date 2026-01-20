@@ -1,16 +1,26 @@
 <script lang="ts">
-import { ChevronDown, ChevronRight, Clock, Server, User } from "@lucide/svelte";
-import type { RecentJobSummary } from "$lib/schema/dashboard";
+import { ChevronDown, ChevronRight, Clock, Server, User, BarChart3 } from "@lucide/svelte";
+import type { RecentJobSummary, JobStats } from "$lib/schema/dashboard";
 import { formatDuration } from "$lib/schema/dashboard";
 import StatusBadge from "./StatusBadge.svelte";
-import StatusTransitionTimeline from "./StatusTransitionTimeline.svelte";
+import JobDetailMetrics from "./JobDetailMetrics.svelte";
+import { calculateStageDurations, formatDurationWithUnits } from "$lib/utils/stageMetrics";
 
 interface Props {
 	jobs: RecentJobSummary[];
+	/** Job statistics for performance comparison */
+	stats?: JobStats;
 }
 
-let { jobs }: Props = $props();
+let { jobs, stats }: Props = $props();
 let expandedJobId = $state<string | null>(null);
+
+// Pre-calculate stage completion count for mini indicator
+function getStageCompletionCount(job: RecentJobSummary): { completed: number; total: number } {
+	const durations = calculateStageDurations(job.status_history, job.kicked_at, job.status);
+	const completed = durations.filter(s => s.status === "completed").length;
+	return { completed, total: durations.length };
+}
 
 function toggleExpand(jobId: string) {
 	expandedJobId = expandedJobId === jobId ? null : jobId;
@@ -59,7 +69,7 @@ function formatRelativeTime(isoString: string): string {
 						class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
 						style="color: var(--text-muted);"
 					>
-						Last Stage
+						Stages
 					</th>
 					<th
 						class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
@@ -83,6 +93,7 @@ function formatRelativeTime(isoString: string): string {
 			</thead>
 			<tbody class="divide-y" style="border-color: var(--surface-border);">
 				{#each jobs as job}
+					{@const stageCount = getStageCompletionCount(job)}
 					<tr
 						class="hover:bg-gray-50 transition-colors cursor-pointer"
 						style="background: var(--bg);"
@@ -112,16 +123,24 @@ function formatRelativeTime(isoString: string): string {
 							<StatusBadge status={job.status} size="sm" />
 						</td>
 						<td class="px-4 py-3">
-							{#if job.last_stage}
-								<span
-									class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100"
-									style="color: var(--text-muted);"
-								>
-									{job.last_stage}
-								</span>
-							{:else}
-								<span style="color: var(--text-muted);">-</span>
-							{/if}
+							<div class="flex items-center gap-2">
+								<BarChart3 class="w-3.5 h-3.5" style="color: var(--text-muted);" />
+								<div class="flex items-center gap-1">
+									<!-- Mini progress bar -->
+									<div class="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+										<div
+											class="h-full rounded-full transition-all {job.status === 'completed' ? 'bg-green-500' : job.status === 'failed' ? 'bg-red-400' : 'bg-blue-500'}"
+											style="width: {(stageCount.completed / stageCount.total) * 100}%"
+										></div>
+									</div>
+									<span
+										class="text-xs font-medium tabular-nums"
+										style="color: var(--text-muted);"
+									>
+										{stageCount.completed}/{stageCount.total}
+									</span>
+								</div>
+							</div>
 						</td>
 						<td class="px-4 py-3">
 							{#if job.trigger_source === "user"}
@@ -163,13 +182,8 @@ function formatRelativeTime(isoString: string): string {
 					</tr>
 					{#if expandedJobId === job.job_id}
 						<tr style="background: var(--surface-bg);">
-							<td colspan="6" class="px-4 py-2">
-								<div class="pl-6 border-l-2 border-gray-200 ml-2">
-									<p class="text-xs font-semibold mb-2" style="color: var(--text-muted);">
-										Status History
-									</p>
-									<StatusTransitionTimeline transitions={job.status_history} />
-								</div>
+							<td colspan="6" class="px-4 py-4">
+								<JobDetailMetrics job={job} {stats} />
 							</td>
 						</tr>
 					{/if}
