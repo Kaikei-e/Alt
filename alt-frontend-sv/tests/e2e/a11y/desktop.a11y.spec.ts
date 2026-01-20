@@ -177,7 +177,9 @@ test.describe("Desktop Pages Accessibility", () => {
 			);
 
 			await gotoDesktopRoute(page, "stats");
-			await page.waitForLoadState("networkidle");
+			await expect(
+				page.getByRole("heading", { name: "Statistics" }),
+			).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
@@ -192,7 +194,9 @@ test.describe("Desktop Pages Accessibility", () => {
 			);
 
 			await gotoDesktopRoute(page, "stats");
-			await page.waitForLoadState("networkidle");
+			await expect(
+				page.getByRole("heading", { name: "Statistics" }),
+			).toBeVisible();
 
 			// Charts should have aria-labels or be supplemented with text
 			const violations = await getAccessibilityViolations(page, {
