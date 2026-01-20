@@ -269,7 +269,7 @@
 		>
 			Recent Jobs
 		</h2>
-		<JobHistoryTable jobs={jobProgress.data.recent_jobs} />
+		<JobHistoryTable jobs={jobProgress.data.recent_jobs} stats={jobProgress.data.stats} />
 	</div>
 {:else if jobProgress.loading}
 	<!-- Loading state handled by SystemLoader -->
