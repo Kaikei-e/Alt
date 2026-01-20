@@ -88,19 +88,28 @@ test.describe("Desktop Pages Accessibility", () => {
 		await page.route("**/api/v2/recap*", (route) =>
 			fulfillJson(route, MOCK_RECAP),
 		);
+		// Mock SSE endpoints to prevent networkidle timeout
+		await page.route("**/api/v1/sse/**", (route) => {
+			route.fulfill({
+				status: 200,
+				contentType: "text/event-stream",
+				body: "event: message\ndata: {}\n\n",
+			});
+		});
 	});
 
 	test.describe("Desktop Feeds Page (/desktop/feeds)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoDesktopRoute(page, "feeds");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByText("Desktop Test Article")).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
 
 		test("feed cards have accessible content", async ({ page }) => {
 			await gotoDesktopRoute(page, "feeds");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
 
 			// Check that feed titles are in headings or links
 			const feedTitle = page.getByText("Desktop Test Article");
@@ -109,7 +118,8 @@ test.describe("Desktop Pages Accessibility", () => {
 
 		test("sidebar navigation is keyboard accessible", async ({ page }) => {
 			await gotoDesktopRoute(page, "feeds");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByText("Desktop Test Article")).toBeVisible();
 
 			// Check for navigation links
 			const navLinks = page.getByRole("navigation").getByRole("link");
@@ -135,14 +145,16 @@ test.describe("Desktop Pages Accessibility", () => {
 			);
 
 			await gotoDesktopRoute(page, "feeds/search");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			// Wait for search input to be visible
+			await expect(page.getByRole("searchbox").or(page.getByPlaceholder(/search/i)).first()).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
 
 		test("search form has proper labels", async ({ page }) => {
 			await gotoDesktopRoute(page, "feeds/search");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
 
 			// Search input should have accessible label
 			const searchInput = page.getByRole("searchbox").or(
@@ -160,7 +172,9 @@ test.describe("Desktop Pages Accessibility", () => {
 	test.describe("Desktop Recap Page (/desktop/recap)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoDesktopRoute(page, "recap");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			// Wait for recap content or heading to be visible
+			await expect(page.getByRole("heading").first()).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
@@ -223,7 +237,9 @@ test.describe("Desktop Pages Accessibility", () => {
 			);
 
 			await gotoDesktopRoute(page, "augur");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			// Wait for chat input to be visible
+			await expect(page.getByRole("textbox").first()).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
@@ -235,7 +251,9 @@ test.describe("Desktop Pages Accessibility", () => {
 			);
 
 			await gotoDesktopRoute(page, "augur");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			// Wait for chat input to be visible
+			await expect(page.getByRole("textbox").first()).toBeVisible();
 
 			// Find chat input
 			const chatInput = page.getByRole("textbox");
@@ -259,11 +277,20 @@ test.describe("Desktop Layout Accessibility", () => {
 		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
 			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
 		);
+		// Mock SSE endpoints to prevent networkidle timeout
+		await page.route("**/api/v1/sse/**", (route) => {
+			route.fulfill({
+				status: 200,
+				contentType: "text/event-stream",
+				body: "event: message\ndata: {}\n\n",
+			});
+		});
 	});
 
 	test("sidebar can be navigated with keyboard", async ({ page }) => {
 		await gotoDesktopRoute(page, "feeds");
-		await page.waitForLoadState("networkidle");
+		await page.waitForLoadState("domcontentloaded");
+		await expect(page.getByText("Desktop Test Article")).toBeVisible();
 
 		// Tab through the page
 		await page.keyboard.press("Tab");
@@ -293,7 +320,8 @@ test.describe("Desktop Layout Accessibility", () => {
 
 	test("skip link is available for keyboard users", async ({ page }) => {
 		await gotoDesktopRoute(page, "feeds");
-		await page.waitForLoadState("networkidle");
+		await page.waitForLoadState("domcontentloaded");
+		await expect(page.getByText("Desktop Test Article")).toBeVisible();
 
 		// Check for skip link (common accessibility pattern)
 		const skipLink = page.getByRole("link", { name: /skip to/i });

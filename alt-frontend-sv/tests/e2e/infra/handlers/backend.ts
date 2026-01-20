@@ -23,6 +23,7 @@ import {
 	AUGUR_CONNECT_MESSAGES,
 	CONNECT_RECAP_RESPONSE,
 } from "../data/recap";
+import { JOB_PROGRESS_RESPONSE } from "../../fixtures/mockData";
 
 export const BACKEND_PORT = 4003;
 
@@ -109,6 +110,13 @@ export function createBackendServer(): http.Server {
 		if (path === "/api/v1/recap/7days" || path === "/v1/recap/7days") {
 			res.writeHead(200);
 			res.end(JSON.stringify(RECAP_RESPONSE));
+			return;
+		}
+
+		// Job progress dashboard
+		if (path === "/api/v1/dashboard/job-progress" || path.startsWith("/api/v1/dashboard/job-progress")) {
+			res.writeHead(200);
+			res.end(JSON.stringify(JOB_PROGRESS_RESPONSE));
 			return;
 		}
 

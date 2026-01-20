@@ -144,8 +144,10 @@ test.describe("Desktop Recap Job Status", () => {
 		// Click on 7d time window
 		await page.getByRole("button", { name: "7d" }).click();
 
-		// Verify API was called (we can't easily verify the params, but we can verify UI responds)
-		await expect(page.getByRole("button", { name: "7d" })).toHaveAttribute("style", /alt-primary/);
+		// Verify the button is now pressed (selected state)
+		await expect(page.getByRole("button", { name: "7d" })).toHaveAttribute("aria-pressed", "true");
+		// Verify the previously selected button is no longer pressed
+		await expect(page.getByRole("button", { name: "24h" })).toHaveAttribute("aria-pressed", "false");
 	});
 
 	test("refresh button reloads data", async ({ page }) => {
@@ -164,9 +166,11 @@ test.describe("Desktop Recap Job Status", () => {
 
 		// Click refresh button
 		await page.getByRole("button", { name: "Refresh" }).click();
-		await page.waitForTimeout(500);
 
-		expect(callCount).toBeGreaterThan(initialCallCount);
+		// Wait for API call to complete using Playwright's retry mechanism
+		await expect(async () => {
+			expect(callCount).toBeGreaterThan(initialCallCount);
+		}).toPass({ timeout: 5000 });
 	});
 
 	test("shows error state on API failure", async ({ page }) => {
@@ -176,11 +180,8 @@ test.describe("Desktop Recap Job Status", () => {
 
 		await page.goto("/desktop/recap/job-status");
 
-		// Wait for a reasonable time for error to appear
-		await page.waitForTimeout(1000);
-
-		// Verify error message
-		await expect(page.getByText(/Error loading job data/)).toBeVisible();
+		// Wait for error message to appear with extended timeout
+		await expect(page.getByText(/Error loading job data/)).toBeVisible({ timeout: 5000 });
 	});
 
 	test("failed job shows correct status and stage count", async ({ page }) => {

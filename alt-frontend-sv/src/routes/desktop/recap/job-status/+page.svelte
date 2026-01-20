@@ -131,6 +131,7 @@
 					style={jobProgress.currentWindow === tw.value
 						? "background: var(--alt-primary, #2f4f4f); color: #ffffff;"
 						: "background: var(--surface-bg, #f9fafb); color: var(--text-primary, #1a1a1a);"}
+					aria-pressed={jobProgress.currentWindow === tw.value}
 					onmouseenter={(e) => {
 						if (jobProgress.currentWindow !== tw.value) {
 							e.currentTarget.style.background = 'var(--surface-hover, #f3f4f6)';

@@ -74,12 +74,21 @@ test.describe("Mobile Pages Accessibility", () => {
 		await page.route(CONNECT_RPC_PATHS.getDetailedFeedStats, (route) =>
 			fulfillJson(route, MOCK_STATS),
 		);
+		// Mock SSE endpoints to prevent networkidle timeout
+		await page.route("**/api/v1/sse/**", (route) => {
+			route.fulfill({
+				status: 200,
+				contentType: "text/event-stream",
+				body: "event: message\ndata: {}\n\n",
+			});
+		});
 	});
 
 	test.describe("Mobile Feeds Page (/mobile/feeds)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoMobileRoute(page, "feeds");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByText("Test Article for A11y")).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
@@ -88,7 +97,8 @@ test.describe("Mobile Pages Accessibility", () => {
 			page,
 		}) => {
 			await gotoMobileRoute(page, "feeds");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByText("Test Article for A11y")).toBeVisible();
 
 			const violations = await getAccessibilityViolations(page, {
 				tags: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"],
@@ -114,14 +124,16 @@ test.describe("Mobile Pages Accessibility", () => {
 	test.describe("Mobile Swipe Page (/mobile/feeds/swipe)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoMobileRoute(page, "feeds/swipe");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByTestId("swipe-card")).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
 
 		test("swipe card has proper ARIA attributes", async ({ page }) => {
 			await gotoMobileRoute(page, "feeds/swipe");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByTestId("swipe-card")).toBeVisible();
 
 			const swipeCard = page.getByTestId("swipe-card");
 			await expect(swipeCard).toBeVisible();
@@ -132,12 +144,14 @@ test.describe("Mobile Pages Accessibility", () => {
 
 		test("buttons have accessible names", async ({ page }) => {
 			await gotoMobileRoute(page, "feeds/swipe");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByTestId("swipe-card")).toBeVisible();
 
 			// Article button - using getByRole with name ensures it has an accessible name
-			const articleButton = page.getByRole("button", { name: /article/i });
+			// Button text may change: "Article" -> "Loading..." -> "Hide"
+			const articleButton = page.getByRole("button", { name: /article|loading|hide/i });
 			await expect(articleButton).toBeVisible();
-			await expect(articleButton).toHaveAccessibleName(/article/i);
+			await expect(articleButton).toHaveAccessibleName(/article|loading|hide/i);
 
 			// Summary button
 			const summaryButton = page.getByRole("button", { name: /summary/i });
@@ -149,7 +163,8 @@ test.describe("Mobile Pages Accessibility", () => {
 			page,
 		}) => {
 			await gotoMobileRoute(page, "feeds/swipe");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByTestId("swipe-card")).toBeVisible();
 
 			const externalLink = page.getByRole("link", {
 				name: /open article|external/i,
@@ -167,14 +182,16 @@ test.describe("Mobile Pages Accessibility", () => {
 			);
 
 			await gotoMobileRoute(page, "feeds/search");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			// Wait for search input to be visible
+			await expect(page.getByRole("searchbox").or(page.getByRole("textbox")).first()).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
 
 		test("search input has proper labels", async ({ page }) => {
 			await gotoMobileRoute(page, "feeds/search");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
 
 			// Search input should have an accessible name
 			const searchInput = page.getByRole("searchbox").or(
@@ -192,7 +209,9 @@ test.describe("Mobile Pages Accessibility", () => {
 	test.describe("Mobile Viewed Page (/mobile/feeds/viewed)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoMobileRoute(page, "feeds/viewed");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			// Wait for page heading or content
+			await expect(page.getByRole("heading").first()).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
@@ -209,7 +228,9 @@ test.describe("Mobile Pages Accessibility", () => {
 			);
 
 			await gotoMobileRoute(page, "feeds/stats");
-			await page.waitForLoadState("networkidle");
+			await page.waitForLoadState("domcontentloaded");
+			// Wait for page heading or content
+			await expect(page.getByRole("heading").first()).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
@@ -227,11 +248,20 @@ test.describe("Keyboard Navigation", () => {
 		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
 			fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE),
 		);
+		// Mock SSE endpoints to prevent networkidle timeout
+		await page.route("**/api/v1/sse/**", (route) => {
+			route.fulfill({
+				status: 200,
+				contentType: "text/event-stream",
+				body: "event: message\ndata: {}\n\n",
+			});
+		});
 	});
 
 	test("swipe page buttons are keyboard accessible", async ({ page }) => {
 		await gotoMobileRoute(page, "feeds/swipe");
-		await page.waitForLoadState("networkidle");
+		await page.waitForLoadState("domcontentloaded");
+		await expect(page.getByTestId("swipe-card")).toBeVisible();
 
 		// Tab to Article button
 		await page.keyboard.press("Tab");
@@ -250,10 +280,11 @@ test.describe("Keyboard Navigation", () => {
 
 	test("buttons can be activated with keyboard", async ({ page }) => {
 		await gotoMobileRoute(page, "feeds/swipe");
-		await page.waitForLoadState("networkidle");
+		await page.waitForLoadState("domcontentloaded");
+		await expect(page.getByTestId("swipe-card")).toBeVisible();
 
-		// Focus on a button using Tab
-		const articleButton = page.getByRole("button", { name: /article/i });
+		// Focus on a button using Tab - button text may change: "Article" -> "Loading..." -> "Hide"
+		const articleButton = page.getByRole("button", { name: /article|loading|hide/i });
 		await articleButton.focus();
 
 		// Activate with Enter
