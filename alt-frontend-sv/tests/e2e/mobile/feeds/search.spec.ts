@@ -45,4 +45,77 @@ test.describe("mobile feeds routes - search", () => {
 			page.getByText("Search query must be at least 2 characters"),
 		).toBeVisible();
 	});
+
+	test("search page loads more results on scroll", async ({ page }) => {
+		// Create mock data for pagination
+		const firstPageResponse = {
+			data: [
+				{
+					id: "search-1",
+					title: "AI Weekly Issue 1",
+					description: "First page result",
+					link: "https://example.com/ai-weekly-1",
+					published: "3 days ago",
+					createdAt: new Date().toISOString(),
+					author: "Casey",
+				},
+			],
+			nextCursor: 1, // offset for next page
+			hasMore: true,
+		};
+
+		const secondPageResponse = {
+			data: [
+				{
+					id: "search-2",
+					title: "AI Weekly Issue 2",
+					description: "Second page result",
+					link: "https://example.com/ai-weekly-2",
+					published: "4 days ago",
+					createdAt: new Date().toISOString(),
+					author: "Casey",
+				},
+			],
+			nextCursor: null,
+			hasMore: false,
+		};
+
+		let requestCount = 0;
+		await page.route(CONNECT_RPC_PATHS.searchFeeds, (route) => {
+			requestCount++;
+			if (requestCount === 1) {
+				fulfillJson(route, firstPageResponse);
+			} else {
+				fulfillJson(route, secondPageResponse);
+			}
+		});
+
+		await gotoMobileRoute(page, "feeds/search");
+
+		// Perform search
+		const searchInput = page.getByTestId("search-input");
+		await searchInput.click();
+		await searchInput.pressSequentially("AI", { delay: 50 });
+
+		const searchButton = page.getByRole("button", { name: "Search" });
+		await expect(searchButton).toBeEnabled();
+		await searchButton.click();
+
+		// Wait for first page results
+		await expect(page.getByText("AI Weekly Issue 1")).toBeVisible();
+		await expect(page.getByTestId("search-result-item")).toHaveCount(1);
+
+		// Scroll to bottom to trigger infinite scroll
+		await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+
+		// Wait for second page to load
+		await expect(page.getByText("AI Weekly Issue 2")).toBeVisible();
+		await expect(page.getByTestId("search-result-item")).toHaveCount(2);
+
+		// Verify "Loading more..." appears during loading
+		// Note: This might be hard to catch due to timing, so we skip this assertion
+
+		// Verify "No more results" message appears
+		await expect(page.getByText("No more results to load")).toBeVisible();
+	});
 });

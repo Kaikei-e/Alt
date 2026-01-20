@@ -33,11 +33,9 @@ const {
 	setIsLoading,
 }: Props = $props();
 
-let scrollContainerRef: HTMLDivElement | null = $state(null);
-
-// Use the scroll container as root for IntersectionObserver
-// Use $derived() instead of $derived.by() to ensure reference stability
-const getScrollRoot = $derived(browser ? scrollContainerRef : null);
+// Use viewport as root for IntersectionObserver (no container reference needed)
+// This allows infinite scroll to work with page-level scrolling
+const getScrollRoot = $derived(browser ? null : null);
 
 // Load more results for infinite scroll
 const loadMore = async () => {
@@ -143,9 +141,7 @@ const loadMore = async () => {
 {:else}
 	<!-- Results List -->
 	<div
-		bind:this={scrollContainerRef}
-		class="flex flex-col gap-4 overflow-y-auto overflow-x-hidden"
-		style="max-height: 60vh;"
+		class="flex flex-col gap-4"
 	>
 		<!-- Search Stats -->
 		<div class="flex justify-between items-center mb-4">
@@ -163,7 +159,7 @@ const loadMore = async () => {
 		</div>
 
 		<!-- Results -->
-		<ul class="flex flex-col gap-4" role="list" aria-label="Search results">
+		<ul class="flex flex-col gap-6" role="list" aria-label="Search results">
 			{#each results as result (result.link || result.title)}
 				<li>
 					<SearchResultItem {result} />
@@ -197,7 +193,7 @@ const loadMore = async () => {
 				use:infiniteScroll={{
 					callback: loadMore,
 					root: getScrollRoot,
-					disabled: isLoading || !getScrollRoot,
+					disabled: isLoading,
 					rootMargin: "0px 0px 200px 0px",
 					threshold: 0.1,
 				}}
