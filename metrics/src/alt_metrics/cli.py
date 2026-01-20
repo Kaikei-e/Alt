@@ -24,7 +24,9 @@ from alt_metrics.collectors import (
     collect_http_status_distribution,
     collect_log_severity_distribution,
     collect_log_volume_trends,
+    collect_queue_saturation,
     collect_recent_errors,
+    collect_resource_utilization,
     collect_service_dependencies,
     collect_service_stats,
     collect_sli_trends,
@@ -113,6 +115,8 @@ def run_analysis(
         ("ログ重要度分布", "log_severity_distribution", collect_log_severity_distribution),
         ("ログ量トレンド", "log_volume_trends", collect_log_volume_trends),
         ("SLIトレンド", "sli_trends", collect_sli_trends),
+        ("リソース使用率", "resource_utilization", collect_resource_utilization),
+        ("キュー飽和度", "queue_saturation", collect_queue_saturation),
     ]
 
     collectors = [

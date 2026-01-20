@@ -27,6 +27,10 @@ from alt_metrics.collectors.traces import (
     collect_service_latency,
     collect_span_type_stats,
 )
+from alt_metrics.collectors.saturation import (
+    collect_queue_saturation,
+    collect_resource_utilization,
+)
 
 __all__ = [
     # Base collectors
@@ -50,4 +54,7 @@ __all__ = [
     # SLI collectors
     "collect_sli_trends",
     "collect_slo_violations",
+    # Saturation collectors (Golden Signals)
+    "collect_resource_utilization",
+    "collect_queue_saturation",
 ]

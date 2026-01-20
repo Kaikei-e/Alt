@@ -37,6 +37,7 @@ class HealthThresholds:
 
     # SLO閾値
     slo_error_rate_threshold: float = 1.0  # エラー率 > 1% で違反
+    slo_availability_target: float = 99.9  # SLO目標（%）- エラーバジェット計算に使用
 
     @classmethod
     def from_env(cls) -> HealthThresholds:
@@ -63,6 +64,7 @@ class HealthThresholds:
             log_gap_critical_min=get_float("LOG_GAP_CRITICAL_MIN", 10),
             log_gap_warning_min=get_float("LOG_GAP_WARNING_MIN", 5),
             slo_error_rate_threshold=get_float("SLO_ERROR_RATE", 1.0),
+            slo_availability_target=get_float("SLO_AVAILABILITY_TARGET", 99.9),
         )
 
 
