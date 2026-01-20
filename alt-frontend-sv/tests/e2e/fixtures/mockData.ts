@@ -554,11 +554,11 @@ export const CONNECT_RECAP_EMPTY_RESPONSE = {
 };
 
 // =============================================================================
-// Job Progress Dashboard Mock Data
+// Job Dashboard Mock Data
 // =============================================================================
 
 /**
- * Mock data for job progress dashboard endpoint
+ * Job progress response with completed and failed jobs
  */
 export const JOB_PROGRESS_RESPONSE = {
 	active_job: null,
@@ -617,33 +617,31 @@ export const JOB_PROGRESS_RESPONSE = {
 		running_jobs: 0,
 		failed_jobs_24h: 2,
 	},
-	user_context: null,
+	user_context: {
+		user_article_count: 12,
+		user_jobs_count: 5,
+		user_feed_ids: ["feed-1", "feed-2", "feed-3"],
+	},
 };
 
 /**
- * Mock data for job progress with active job
+ * Job progress response with an active running job
  */
 export const JOB_PROGRESS_WITH_ACTIVE_JOB = {
 	active_job: {
 		job_id: "job-active-xyz789",
 		status: "running",
-		current_stage: "evidence",
-		stage_index: 5,
-		stages_completed: ["fetch", "preprocess", "dedup", "genre", "select"],
-		genre_progress: {
-			Technology: { status: "succeeded", cluster_count: 3, article_count: 15 },
-			"AI/ML": { status: "running", cluster_count: 2, article_count: 8 },
-			Business: { status: "pending", cluster_count: null, article_count: null },
-		},
-		total_articles: 42,
-		user_article_count: 12,
-		kicked_at: "2025-12-20T11:00:00Z",
-		trigger_source: "user",
-		sub_stage_progress: {
-			phase: "evidence_building",
-			total_genres: 3,
-			completed_genres: 1,
-		},
+		last_stage: "evidence",
+		kicked_at: "2025-12-20T12:00:00Z",
+		updated_at: "2025-12-20T12:03:00Z",
+		duration_secs: 180,
+		trigger_source: "system",
+		user_id: null,
+		status_history: [
+			{ id: 1, status: "running", stage: "fetch", transitioned_at: "2025-12-20T12:00:00Z", reason: null, actor: "system" },
+			{ id: 2, status: "completed", stage: "fetch", transitioned_at: "2025-12-20T12:00:45Z", reason: null, actor: "system" },
+			{ id: 3, status: "running", stage: "evidence", transitioned_at: "2025-12-20T12:00:45Z", reason: null, actor: "system" },
+		],
 	},
 	recent_jobs: JOB_PROGRESS_RESPONSE.recent_jobs,
 	stats: {
@@ -674,17 +672,6 @@ export const JOB_PROGRESS_EMPTY = {
 		failed_jobs_24h: 0,
 	},
 	user_context: null,
-};
-
-/**
- * Job stats response
- */
-export const JOB_STATS_RESPONSE = {
-	success_rate_24h: 0.85,
-	avg_duration_secs: 280,
-	total_jobs_24h: 12,
-	running_jobs: 0,
-	failed_jobs_24h: 2,
 };
 
 /**

@@ -17,9 +17,8 @@ test.describe("Desktop Recap Job Status", () => {
 
 	test("renders page title and stats cards", async ({ page }) => {
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
 
-		// Verify page title
+		// Wait for page title to be visible instead of networkidle
 		await expect(page.getByRole("heading", { name: "Recap Job Status" })).toBeVisible();
 
 		// Verify stats cards
@@ -31,9 +30,8 @@ test.describe("Desktop Recap Job Status", () => {
 
 	test("displays recent jobs in table", async ({ page }) => {
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
 
-		// Verify recent jobs section
+		// Wait for heading to be visible
 		await expect(page.getByRole("heading", { name: "Recent Jobs" })).toBeVisible();
 
 		// Verify table headers
@@ -48,7 +46,9 @@ test.describe("Desktop Recap Job Status", () => {
 
 	test("shows stage progress indicator in table", async ({ page }) => {
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
+
+		// Wait for table to be loaded
+		await expect(page.getByText("job-001-")).toBeVisible();
 
 		// Verify stage progress indicators are visible (8/8 for completed job)
 		await expect(page.getByText("8/8")).toBeVisible();
@@ -56,10 +56,12 @@ test.describe("Desktop Recap Job Status", () => {
 
 	test("expands job row to show detailed metrics", async ({ page }) => {
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
+
+		// Wait for first job to be visible
+		const firstJobRow = page.locator("tr").filter({ hasText: "job-001-" }).first();
+		await expect(firstJobRow).toBeVisible();
 
 		// Click on the first job row to expand
-		const firstJobRow = page.locator("tr").filter({ hasText: "job-001-" }).first();
 		await firstJobRow.click();
 
 		// Verify detailed metrics panel appears
@@ -74,10 +76,12 @@ test.describe("Desktop Recap Job Status", () => {
 
 	test("shows performance metrics summary cards in expanded view", async ({ page }) => {
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
+
+		// Wait for first job to be visible
+		const firstJobRow = page.locator("tr").filter({ hasText: "job-001-" }).first();
+		await expect(firstJobRow).toBeVisible();
 
 		// Click on the first job row to expand
-		const firstJobRow = page.locator("tr").filter({ hasText: "job-001-" }).first();
 		await firstJobRow.click();
 
 		// Verify performance summary cards
@@ -94,17 +98,20 @@ test.describe("Desktop Recap Job Status", () => {
 		);
 
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
 
-		// Verify currently running section appears
+		// Wait for heading to be visible
 		await expect(page.getByRole("heading", { name: "Currently Running" })).toBeVisible();
+
+		// Verify active job details
 		await expect(page.getByText("Active Job")).toBeVisible();
 		await expect(page.getByText("Running")).toBeVisible();
 	});
 
 	test("shows no job running message when no active job", async ({ page }) => {
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
+
+		// Wait for page to be loaded by checking for a key element
+		await expect(page.getByRole("heading", { name: "Recap Job Status" })).toBeVisible();
 
 		// Verify no job running message
 		await expect(page.getByText("No job currently running")).toBeVisible();
@@ -116,7 +123,9 @@ test.describe("Desktop Recap Job Status", () => {
 		);
 
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
+
+		// Wait for page title
+		await expect(page.getByRole("heading", { name: "Recap Job Status" })).toBeVisible();
 
 		// Verify empty state message
 		await expect(page.getByText("No jobs found in the selected time window")).toBeVisible();
@@ -124,10 +133,11 @@ test.describe("Desktop Recap Job Status", () => {
 
 	test("time window selector changes data", async ({ page }) => {
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
 
-		// Verify time window selector
+		// Wait for time window selector
 		await expect(page.getByText("Time Window:")).toBeVisible();
+
+		// Verify time window buttons
 		await expect(page.getByRole("button", { name: "24h" })).toBeVisible();
 		await expect(page.getByRole("button", { name: "7d" })).toBeVisible();
 
@@ -146,7 +156,9 @@ test.describe("Desktop Recap Job Status", () => {
 		});
 
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
+
+		// Wait for page to load
+		await expect(page.getByRole("heading", { name: "Recap Job Status" })).toBeVisible();
 
 		const initialCallCount = callCount;
 
@@ -163,7 +175,9 @@ test.describe("Desktop Recap Job Status", () => {
 		);
 
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
+
+		// Wait for a reasonable time for error to appear
+		await page.waitForTimeout(1000);
 
 		// Verify error message
 		await expect(page.getByText(/Error loading job data/)).toBeVisible();
@@ -171,7 +185,9 @@ test.describe("Desktop Recap Job Status", () => {
 
 	test("failed job shows correct status and stage count", async ({ page }) => {
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
+
+		// Wait for table to load
+		await expect(page.getByText("job-001-")).toBeVisible();
 
 		// Find the failed job row
 		const failedJobRow = page.locator("tr").filter({ hasText: "job-002-" }).first();
@@ -189,7 +205,9 @@ test.describe("Desktop Job Status - Accessibility", () => {
 		);
 
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
+
+		// Wait for table to load
+		await expect(page.getByText("job-001-")).toBeVisible();
 
 		// Tab to first job row
 		const firstJobRow = page.locator("tr[role='button']").first();
@@ -217,9 +235,10 @@ test.describe("Desktop Job Status - Accessibility", () => {
 		);
 
 		await page.goto("/desktop/recap/job-status");
-		await page.waitForLoadState("networkidle");
 
+		// Wait for table to load
 		const firstJobRow = page.locator("tr[role='button']").first();
+		await expect(firstJobRow).toBeVisible();
 
 		// Verify aria-expanded is false initially
 		await expect(firstJobRow).toHaveAttribute("aria-expanded", "false");
