@@ -83,3 +83,10 @@ alt-frontend-sv/mock-server.log
 .claude/
 .agent/
 metrics/scripts/reports/
+
+# Python test/development artifacts
+.coverage
+.pytest_cache/
+.venv/
+*.egg-info/
+htmlcov/

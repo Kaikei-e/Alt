@@ -12,6 +12,23 @@
 - **健全なサービス**: {{ healthy_count }}
 - **劣化・危険状態のサービス**: {{ degraded_count }}
 
+{% if result.error_budget %}
+## エラーバジェット状況
+
+| 項目 | 値 |
+|------|------|
+| **SLO目標** | {{ result.error_budget.slo_target }}% |
+| **バジェット合計** | {{ "%.3f"|format(result.error_budget.budget_total) }}% |
+| **消費済み** | {{ "%.3f"|format(result.error_budget.budget_consumed) }}% |
+| **残りバジェット** | {{ "%.3f"|format(result.error_budget.budget_remaining) }}% |
+| **消費率** | {{ result.error_budget.consumption_pct }}% {% if result.error_budget.consumption_pct > 100 %}🔴{% elif result.error_budget.consumption_pct >= 80 %}⚠️{% elif result.error_budget.consumption_pct >= 50 %}🟡{% else %}✅{% endif %} |
+| **ステータス** | {% if result.error_budget.status == 'healthy' %}✅ 健全{% elif result.error_budget.status == 'warning' %}🟡 警告{% elif result.error_budget.status == 'critical' %}⚠️ 危険{% else %}🔴 超過{% endif %} |
+
+{% if result.error_budget.is_exceeded %}
+> ⚠️ **エラーバジェットを超過しています！** SLO目標 {{ result.error_budget.slo_target }}% に対し、現在のエラー率は {{ "%.3f"|format(result.error_budget.budget_consumed) }}% です。
+{% endif %}
+
+{% endif %}
 {% if result.critical_issues %}
 ## 重大な問題
 
@@ -175,6 +192,24 @@ _SLO違反は検出されませんでした_
 {{ format_table((latest_sli.values()|list)[:20], ["service", "metric", "value", "time_bucket"]) }}
 {% else %}
 _SLIトレンドデータがありません_
+
+{% endif %}
+
+## リソース使用率（Saturation）
+
+{% if result.resource_utilization %}
+{{ format_table(result.resource_utilization, ["service", "resource_type", "avg_utilization", "max_utilization", "p95_utilization", "sample_count"]) }}
+{% else %}
+_リソース使用率データがありません_
+
+{% endif %}
+
+## キュー飽和度
+
+{% if result.queue_saturation %}
+{{ format_table(result.queue_saturation, ["service", "queue_name", "avg_depth", "max_depth", "avg_wait_time_ms", "p95_wait_time_ms"]) }}
+{% else %}
+_キュー飽和度データがありません_
 
 {% endif %}
 

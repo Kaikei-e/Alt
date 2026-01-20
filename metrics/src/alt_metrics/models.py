@@ -6,9 +6,26 @@ Pydanticを使用した型安全なデータモデルを定義します。
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+class ErrorBudgetResult(BaseModel):
+    """エラーバジェット計算結果
+
+    SLO目標に基づくエラーバジェットの状態を表します。
+    Google SREのエラーバジェット概念に基づいています。
+    """
+
+    slo_target: float  # SLO目標 (例: 99.9%)
+    budget_total: float  # 合計バジェット (100 - SLO)
+    budget_consumed: float  # 消費済みバジェット (実際のエラー率)
+    budget_remaining: float  # 残りバジェット
+    consumption_pct: float  # 消費率 (%)
+    is_exceeded: bool  # バジェット超過フラグ
+    status: Literal["healthy", "warning", "critical", "exceeded"]  # ステータス
+    hours_analyzed: int  # 分析期間
 
 
 class ServiceHealth(BaseModel):
@@ -100,6 +117,13 @@ class AnalysisResult(BaseModel):
     # SLI/SLO分析
     sli_trends: list[dict[str, Any]] = Field(default_factory=list)
     slo_violations: list[dict[str, Any]] = Field(default_factory=list)
+
+    # Saturation (Golden Signals)
+    resource_utilization: list[dict[str, Any]] = Field(default_factory=list)
+    queue_saturation: list[dict[str, Any]] = Field(default_factory=list)
+
+    # エラーバジェット
+    error_budget: ErrorBudgetResult | None = None
 
     # 推奨事項
     critical_issues: list[str] = Field(default_factory=list)

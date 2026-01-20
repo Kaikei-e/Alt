@@ -5,8 +5,10 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from alt_metrics.config import HealthThresholds
-from alt_metrics.models import AnalysisResult, ServiceHealth
+from alt_metrics.models import AnalysisResult, ErrorBudgetResult, ServiceHealth
 
 
 def calculate_health_score(
@@ -88,6 +90,59 @@ def get_health_status_emoji(status: str) -> str:
     return emoji_map.get(status, "")
 
 
+def calculate_error_budget(
+    error_rate: float,
+    slo_target: float,
+    hours_analyzed: int,
+) -> ErrorBudgetResult:
+    """エラーバジェットを計算
+
+    Google SREのエラーバジェット概念に基づいて計算します。
+    エラーバジェット = 100% - SLO目標
+    消費率 = 実際のエラー率 / エラーバジェット * 100
+
+    Args:
+        error_rate: 実際のエラー率 (%)
+        slo_target: SLO目標 (例: 99.9)
+        hours_analyzed: 分析期間（時間）
+
+    Returns:
+        エラーバジェット計算結果
+    """
+    budget_total = 100.0 - slo_target
+    budget_consumed = error_rate
+    budget_remaining = max(0.0, budget_total - budget_consumed)
+    is_exceeded = budget_consumed > budget_total
+
+    # 消費率を計算（ゼロ除算防止）
+    if budget_total > 0:
+        consumption_pct = round((budget_consumed / budget_total) * 100, 1)
+    else:
+        consumption_pct = 100.0 if budget_consumed > 0 else 0.0
+
+    # ステータスを決定
+    status: Literal["healthy", "warning", "critical", "exceeded"]
+    if consumption_pct > 100:
+        status = "exceeded"
+    elif consumption_pct >= 80:
+        status = "critical"
+    elif consumption_pct >= 50:
+        status = "warning"
+    else:
+        status = "healthy"
+
+    return ErrorBudgetResult(
+        slo_target=slo_target,
+        budget_total=budget_total,
+        budget_consumed=budget_consumed,
+        budget_remaining=budget_remaining,
+        consumption_pct=consumption_pct,
+        is_exceeded=is_exceeded,
+        status=status,
+        hours_analyzed=hours_analyzed,
+    )
+
+
 def analyze_health(
     result: AnalysisResult,
     thresholds: HealthThresholds | None = None,
@@ -129,6 +184,17 @@ def analyze_health(
     # 全体の健全性スコアを計算
     if result.service_health:
         result.overall_health_score = sum(s.health_score for s in result.service_health) // len(result.service_health)
+
+        # 全体のエラー率を計算してエラーバジェットを算出
+        total_logs = sum(s.total_logs for s in result.service_health)
+        total_errors = sum(s.error_count for s in result.service_health)
+        if total_logs > 0:
+            overall_error_rate = (total_errors / total_logs) * 100
+            result.error_budget = calculate_error_budget(
+                error_rate=overall_error_rate,
+                slo_target=thresholds.slo_availability_target,
+                hours_analyzed=result.hours_analyzed,
+            )
 
     # 重大な問題を生成
     for svc in result.service_health:
