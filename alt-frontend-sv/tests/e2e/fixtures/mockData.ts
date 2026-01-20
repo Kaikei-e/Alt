@@ -552,3 +552,133 @@ export const CONNECT_RECAP_EMPTY_RESPONSE = {
 	totalArticles: 0,
 	genres: [],
 };
+
+// =============================================================================
+// Job Dashboard Mock Data
+// =============================================================================
+
+/**
+ * Job progress response with completed and failed jobs
+ */
+export const JOB_PROGRESS_RESPONSE = {
+	active_job: null,
+	recent_jobs: [
+		{
+			job_id: "job-001-test-abc123",
+			status: "completed",
+			last_stage: "persist",
+			kicked_at: "2025-12-20T10:00:00Z",
+			updated_at: "2025-12-20T10:05:30Z",
+			duration_secs: 330,
+			trigger_source: "system",
+			user_id: null,
+			status_history: [
+				{ id: 1, status: "running", stage: "fetch", transitioned_at: "2025-12-20T10:00:00Z", reason: null, actor: "system" },
+				{ id: 2, status: "completed", stage: "fetch", transitioned_at: "2025-12-20T10:00:45Z", reason: null, actor: "system" },
+				{ id: 3, status: "running", stage: "preprocess", transitioned_at: "2025-12-20T10:00:45Z", reason: null, actor: "system" },
+				{ id: 4, status: "completed", stage: "preprocess", transitioned_at: "2025-12-20T10:01:30Z", reason: null, actor: "system" },
+				{ id: 5, status: "running", stage: "dedup", transitioned_at: "2025-12-20T10:01:30Z", reason: null, actor: "system" },
+				{ id: 6, status: "completed", stage: "dedup", transitioned_at: "2025-12-20T10:02:00Z", reason: null, actor: "system" },
+				{ id: 7, status: "running", stage: "genre", transitioned_at: "2025-12-20T10:02:00Z", reason: null, actor: "system" },
+				{ id: 8, status: "completed", stage: "genre", transitioned_at: "2025-12-20T10:02:30Z", reason: null, actor: "system" },
+				{ id: 9, status: "running", stage: "select", transitioned_at: "2025-12-20T10:02:30Z", reason: null, actor: "system" },
+				{ id: 10, status: "completed", stage: "select", transitioned_at: "2025-12-20T10:03:00Z", reason: null, actor: "system" },
+				{ id: 11, status: "running", stage: "evidence", transitioned_at: "2025-12-20T10:03:00Z", reason: null, actor: "system" },
+				{ id: 12, status: "completed", stage: "evidence", transitioned_at: "2025-12-20T10:04:00Z", reason: null, actor: "system" },
+				{ id: 13, status: "running", stage: "dispatch", transitioned_at: "2025-12-20T10:04:00Z", reason: null, actor: "system" },
+				{ id: 14, status: "completed", stage: "dispatch", transitioned_at: "2025-12-20T10:05:00Z", reason: null, actor: "system" },
+				{ id: 15, status: "running", stage: "persist", transitioned_at: "2025-12-20T10:05:00Z", reason: null, actor: "system" },
+				{ id: 16, status: "completed", stage: "persist", transitioned_at: "2025-12-20T10:05:30Z", reason: null, actor: "system" },
+			],
+		},
+		{
+			job_id: "job-002-test-def456",
+			status: "failed",
+			last_stage: "genre",
+			kicked_at: "2025-12-20T08:00:00Z",
+			updated_at: "2025-12-20T08:02:15Z",
+			duration_secs: 135,
+			trigger_source: "user",
+			user_id: "user-123",
+			status_history: [
+				{ id: 1, status: "running", stage: "fetch", transitioned_at: "2025-12-20T08:00:00Z", reason: null, actor: "system" },
+				{ id: 2, status: "completed", stage: "fetch", transitioned_at: "2025-12-20T08:00:30Z", reason: null, actor: "system" },
+				{ id: 3, status: "running", stage: "preprocess", transitioned_at: "2025-12-20T08:00:30Z", reason: null, actor: "system" },
+				{ id: 4, status: "completed", stage: "preprocess", transitioned_at: "2025-12-20T08:01:15Z", reason: null, actor: "system" },
+				{ id: 5, status: "running", stage: "genre", transitioned_at: "2025-12-20T08:01:15Z", reason: null, actor: "system" },
+				{ id: 6, status: "failed", stage: "genre", transitioned_at: "2025-12-20T08:02:15Z", reason: "Genre classification timeout", actor: "system" },
+			],
+		},
+	],
+	stats: {
+		success_rate_24h: 0.85,
+		avg_duration_secs: 280,
+		total_jobs_24h: 12,
+		running_jobs: 0,
+		failed_jobs_24h: 2,
+	},
+	user_context: {
+		user_article_count: 12,
+		user_jobs_count: 5,
+		user_feed_ids: ["feed-1", "feed-2", "feed-3"],
+	},
+};
+
+/**
+ * Job progress response with an active running job
+ */
+export const JOB_PROGRESS_WITH_ACTIVE_JOB = {
+	active_job: {
+		job_id: "job-active-xyz789",
+		status: "running",
+		last_stage: "evidence",
+		kicked_at: "2025-12-20T12:00:00Z",
+		updated_at: "2025-12-20T12:03:00Z",
+		duration_secs: 180,
+		trigger_source: "system",
+		user_id: null,
+		status_history: [
+			{ id: 1, status: "running", stage: "fetch", transitioned_at: "2025-12-20T12:00:00Z", reason: null, actor: "system" },
+			{ id: 2, status: "completed", stage: "fetch", transitioned_at: "2025-12-20T12:00:45Z", reason: null, actor: "system" },
+			{ id: 3, status: "running", stage: "evidence", transitioned_at: "2025-12-20T12:00:45Z", reason: null, actor: "system" },
+		],
+	},
+	recent_jobs: JOB_PROGRESS_RESPONSE.recent_jobs,
+	stats: {
+		success_rate_24h: 0.85,
+		avg_duration_secs: 280,
+		total_jobs_24h: 13,
+		running_jobs: 1,
+		failed_jobs_24h: 2,
+	},
+	user_context: {
+		user_article_count: 12,
+		user_jobs_count: 5,
+		user_feed_ids: ["feed-1", "feed-2", "feed-3"],
+	},
+};
+
+/**
+ * Empty job progress response
+ */
+export const JOB_PROGRESS_EMPTY = {
+	active_job: null,
+	recent_jobs: [],
+	stats: {
+		success_rate_24h: 0,
+		avg_duration_secs: null,
+		total_jobs_24h: 0,
+		running_jobs: 0,
+		failed_jobs_24h: 0,
+	},
+	user_context: null,
+};
+
+/**
+ * API paths for job dashboard
+ */
+export const JOB_DASHBOARD_PATHS = {
+	jobProgress: "**/api/v1/dashboard/job-progress*",
+	jobStats: "**/api/v1/dashboard/job-stats",
+	triggerJob: "**/api/v1/generate/recaps/7days",
+};
