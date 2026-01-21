@@ -48,6 +48,7 @@ test.describe("mobile feeds routes - search", () => {
 
 	test("search page loads more results on scroll", async ({ page }) => {
 		// Create mock data for pagination
+		// Multiple items ensure the sentinel is below the viewport initially
 		const firstPageResponse = {
 			data: [
 				{
@@ -59,19 +60,37 @@ test.describe("mobile feeds routes - search", () => {
 					createdAt: new Date().toISOString(),
 					author: "Casey",
 				},
+				{
+					id: "search-2",
+					title: "AI Weekly Issue 2",
+					description: "First page second result",
+					link: "https://example.com/ai-weekly-2",
+					published: "4 days ago",
+					createdAt: new Date().toISOString(),
+					author: "Casey",
+				},
+				{
+					id: "search-3",
+					title: "AI Weekly Issue 3",
+					description: "First page third result",
+					link: "https://example.com/ai-weekly-3",
+					published: "5 days ago",
+					createdAt: new Date().toISOString(),
+					author: "Casey",
+				},
 			],
-			nextCursor: 1, // offset for next page
+			nextCursor: 3, // offset for next page
 			hasMore: true,
 		};
 
 		const secondPageResponse = {
 			data: [
 				{
-					id: "search-2",
-					title: "AI Weekly Issue 2",
+					id: "search-4",
+					title: "AI Weekly Issue 4",
 					description: "Second page result",
-					link: "https://example.com/ai-weekly-2",
-					published: "4 days ago",
+					link: "https://example.com/ai-weekly-4",
+					published: "6 days ago",
 					createdAt: new Date().toISOString(),
 					author: "Casey",
 				},
@@ -103,14 +122,14 @@ test.describe("mobile feeds routes - search", () => {
 
 		// Wait for first page results
 		await expect(page.getByText("AI Weekly Issue 1")).toBeVisible();
-		await expect(page.getByTestId("search-result-item")).toHaveCount(1);
+		await expect(page.getByTestId("search-result-item")).toHaveCount(3);
 
-		// Scroll to bottom to trigger infinite scroll
-		await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+		// Scroll sentinel into view to trigger infinite scroll
+		await page.getByTestId("infinite-scroll-sentinel").scrollIntoViewIfNeeded();
 
 		// Wait for second page to load
-		await expect(page.getByText("AI Weekly Issue 2")).toBeVisible();
-		await expect(page.getByTestId("search-result-item")).toHaveCount(2);
+		await expect(page.getByText("AI Weekly Issue 4")).toBeVisible();
+		await expect(page.getByTestId("search-result-item")).toHaveCount(4);
 
 		// Verify "Loading more..." appears during loading
 		// Note: This might be hard to catch due to timing, so we skip this assertion
