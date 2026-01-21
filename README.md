@@ -897,14 +897,93 @@ erDiagram
 
 ### Observability
 
-Enable the `logging` profile to run rask-log-forwarder sidecars that stream logs to ClickHouse:
+Alt provides comprehensive observability through OpenTelemetry instrumentation,
+centralized log aggregation, and metrics collection.
+
+#### Observability Stack
+
+| Component | Port | Purpose |
+|-----------|------|---------|
+| rask-log-aggregator | 9600, 4317, 4318 | OTLP receiver (HTTP/gRPC) + ClickHouse writer |
+| Grafana | 3001 | Dashboards and visualization |
+| Prometheus | 9090 | Metrics collection and alerting |
+| ClickHouse | 8123 | Log and trace storage |
+
+#### OpenTelemetry Instrumentation
+
+All services are instrumented with OpenTelemetry SDKs:
+
+| Language | Services | Key Libraries |
+|----------|----------|---------------|
+| Go | alt-backend, pre-processor, search-indexer, auth-hub, mq-hub, rag-orchestrator | go.opentelemetry.io/otel |
+| Python | tag-generator, news-creator, recap-subworker | opentelemetry-sdk |
+| Rust | recap-worker, rask-log-aggregator, rask-log-forwarder | opentelemetry, tracing-opentelemetry |
+| TypeScript/Deno | alt-perf, auth-token-manager | @opentelemetry/sdk-node |
+
+#### Business Context Logging (ADR 98/99/100)
+
+Standardized `alt.*` prefixed attributes across all services:
+
+| Attribute | Purpose |
+|-----------|---------|
+| `alt.feed.id` | RSS feed tracking |
+| `alt.article.id` | Article processing tracking |
+| `alt.job.id` | Background job tracking |
+| `alt.processing.stage` | Pipeline stage identification |
+| `alt.ai.pipeline` | AI pipeline identifier |
+
+#### Configuration
+
+Key environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| OTEL_ENABLED | true | Enable/disable OTel export |
+| OTEL_EXPORTER_OTLP_ENDPOINT | http://rask-log-aggregator:4318 | OTLP HTTP endpoint |
+| OTEL_SERVICE_NAME | (per service) | Service identifier |
+
+#### Running the Observability Stack
 
 ```bash
+# Start observability services
+docker compose -f compose/observability.yaml up -d
+
+# Start log forwarders
 docker compose --profile logging up -d
-docker compose exec clickhouse clickhouse-client
+
+# Access dashboards
+open http://localhost:3001  # Grafana (admin/admin)
+open http://localhost:9090  # Prometheus
 ```
 
-Key metrics to monitor:
+#### Available Dashboards
+
+| Dashboard | Location | Metrics |
+|-----------|----------|---------|
+| OTel Overview | Grafana | Service health, request rates, error rates |
+| Trace Explorer | Grafana | Distributed tracing visualization |
+| AI Pipeline Health | Grafana | Summarization pipeline metrics |
+| Nginx Logs/Metrics | Grafana | Edge traffic analysis |
+
+#### ClickHouse Queries
+
+```sql
+-- View logs with business context
+SELECT Timestamp, ServiceName, Body,
+       LogAttributes['alt.job.id'] AS JobId
+FROM otel_logs
+WHERE Timestamp > now() - INTERVAL 1 HOUR
+ORDER BY Timestamp DESC LIMIT 100;
+
+-- Trace lookup
+SELECT * FROM otel_traces
+WHERE TraceId = 'abc123...'
+ORDER BY Timestamp;
+```
+
+#### Key Metrics
+
+Monitor these metrics for system health:
 - `recap_genre_refine_*` counters
 - `recap_api_evidence_duplicates_total`
 - `recap_api_latest_fetch_duration_seconds`
