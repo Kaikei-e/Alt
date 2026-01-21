@@ -340,6 +340,48 @@ impl StageExecutor<'_> {
 }
 
 impl StageExecutor<'_> {
+    /// ステージの状態遷移をStatus Historyに記録する（状態データの保存なし）
+    ///
+    /// evidenceステージのように実際の状態保存は不要だが、
+    /// フロントエンドでの表示一貫性のためにStatus Historyへの記録が必要な場合に使用
+    pub(crate) async fn record_stage_transition(
+        &self,
+        job_id: Uuid,
+        stage: &str,
+    ) -> Result<()> {
+        tracing::debug!(
+            %job_id,
+            %stage,
+            "recording stage transition to status history"
+        );
+
+        self.orchestrator
+            .recap_dao()
+            .update_job_status_with_history(
+                job_id,
+                crate::store::dao::JobStatus::Running,
+                Some(stage),
+                None,
+            )
+            .await?;
+
+        if let Err(e) = self
+            .orchestrator
+            .recap_dao()
+            .insert_stage_log(job_id, stage, "completed", None)
+            .await
+        {
+            tracing::warn!(
+                error = ?e,
+                job_id = %job_id,
+                stage = %stage,
+                "failed to insert stage log for transition"
+            );
+        }
+
+        Ok(())
+    }
+
     /// SelectedSummaryからEvidenceBundleを構築
     pub(crate) fn build_evidence_bundle(
         job: &JobContext,
