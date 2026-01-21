@@ -36,17 +36,17 @@ func NewArticleSyncService(
 
 // SyncArticles synchronizes articles from Inoreader source to articles table.
 func (s *articleSyncService) SyncArticles(ctx context.Context) error {
-	s.logger.Info("starting article synchronization")
+	s.logger.InfoContext(ctx, "starting article synchronization")
 
 	// Ensure system UserID is available
 	if s.userID == "" {
 		userID, err := s.externalAPIRepo.GetSystemUserID(ctx)
 		if err != nil {
-			s.logger.Error("failed to get system user id", "error", err)
+			s.logger.ErrorContext(ctx, "failed to get system user id", "error", err)
 			return fmt.Errorf("failed to get system user id: %w", err)
 		}
 		s.userID = userID
-		s.logger.Info("retrieved system user id", "user_id", s.userID)
+		s.logger.InfoContext(ctx, "retrieved system user id", "user_id", s.userID)
 	}
 
 	// Fetch articles from the last 24 hours (or configurable)
@@ -55,16 +55,16 @@ func (s *articleSyncService) SyncArticles(ctx context.Context) error {
 
 	articles, err := s.articleRepo.FetchInoreaderArticles(ctx, since)
 	if err != nil {
-		s.logger.Error("failed to fetch Inoreader articles", "error", err)
+		s.logger.ErrorContext(ctx, "failed to fetch Inoreader articles", "error", err)
 		return fmt.Errorf("failed to fetch Inoreader articles: %w", err)
 	}
 
 	if len(articles) == 0 {
-		s.logger.Info("no new articles to sync")
+		s.logger.InfoContext(ctx, "no new articles to sync")
 		return nil
 	}
 
-	s.logger.Info("processing articles for sync", "count", len(articles))
+	s.logger.InfoContext(ctx, "processing articles for sync", "count", len(articles))
 
 	var validArticles []*models.Article
 	for _, article := range articles {
@@ -73,7 +73,7 @@ func (s *articleSyncService) SyncArticles(ctx context.Context) error {
 
 		// 2. Check validation (Empty content safeguard)
 		if sanitizedContent == "" {
-			s.logger.Warn("skipping article with empty content after sanitization", "url", article.URL)
+			s.logger.WarnContext(ctx, "skipping article with empty content after sanitization", "url", article.URL)
 			continue
 		}
 
@@ -83,7 +83,7 @@ func (s *articleSyncService) SyncArticles(ctx context.Context) error {
 
 		// Ensure other required fields if missing
 		if article.Title == "" {
-			s.logger.Warn("skipping article with empty title", "url", article.URL)
+			s.logger.WarnContext(ctx, "skipping article with empty title", "url", article.URL)
 			continue
 		}
 
@@ -93,12 +93,12 @@ func (s *articleSyncService) SyncArticles(ctx context.Context) error {
 	// 3. Upsert
 	if len(validArticles) > 0 {
 		if err := s.articleRepo.UpsertArticles(ctx, validArticles); err != nil {
-			s.logger.Error("failed to upsert articles", "error", err)
+			s.logger.ErrorContext(ctx, "failed to upsert articles", "error", err)
 			return fmt.Errorf("failed to upsert articles: %w", err)
 		}
-		s.logger.Info("successfully synced articles", "count", len(validArticles))
+		s.logger.InfoContext(ctx, "successfully synced articles", "count", len(validArticles))
 	} else {
-		s.logger.Info("no valid articles to upsert after validation")
+		s.logger.InfoContext(ctx, "no valid articles to upsert after validation")
 	}
 
 	return nil

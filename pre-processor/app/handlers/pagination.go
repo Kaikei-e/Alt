@@ -71,9 +71,10 @@ func (fp *FeedProcessor) GetNextUnprocessedFeeds(ctx context.Context) ([]url.URL
 
 // ResetPagination resets the pagination to start from the beginning.
 func (fp *FeedProcessor) ResetPagination() {
+	ctx := context.Background()
 	fp.cursor = &FeedCursor{}
 
-	logger.Logger.Info("Feed processor pagination reset")
+	logger.Logger.InfoContext(ctx, "Feed processor pagination reset")
 }
 
 // GetProcessingStats gets current processing statistics.
@@ -130,9 +131,10 @@ func (as *ArticleSummarizer) GetNextArticlesForSummarization(ctx context.Context
 
 // ResetPagination resets the pagination to start from the beginning.
 func (as *ArticleSummarizer) ResetPagination() {
+	ctx := context.Background()
 	as.cursor = &ArticleCursor{}
 
-	logger.Logger.Info("Article summarizer pagination reset")
+	logger.Logger.InfoContext(ctx, "Article summarizer pagination reset")
 }
 
 // HasUnsummarizedArticles checks if there are articles without summaries.
@@ -181,7 +183,8 @@ func (qc *QualityChecker) GetNextArticlesForQualityCheck(ctx context.Context) ([
 
 // ResetPagination resets the pagination to start from the beginning.
 func (qc *QualityChecker) ResetPagination() {
+	ctx := context.Background()
 	qc.cursor = &ArticleCursor{}
 
-	logger.Logger.Info("Quality checker pagination reset")
+	logger.Logger.InfoContext(ctx, "Quality checker pagination reset")
 }

@@ -40,31 +40,31 @@ func NewExternalAPIRepository(cfg *config.Config, logger *slog.Logger) ExternalA
 func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *models.Article) (*models.SummarizedContent, error) {
 	// Input validation
 	if article == nil {
-		r.logger.Error("article cannot be nil")
+		r.logger.ErrorContext(ctx, "article cannot be nil")
 		return nil, fmt.Errorf("article cannot be nil")
 	}
 
 	if article.ID == "" {
-		r.logger.Error("article ID cannot be empty")
+		r.logger.ErrorContext(ctx, "article ID cannot be empty")
 		return nil, fmt.Errorf("article ID cannot be empty")
 	}
 
 	if article.Content == "" {
-		r.logger.Error("article content cannot be empty", "article_id", article.ID)
+		r.logger.ErrorContext(ctx, "article content cannot be empty", "article_id", article.ID)
 		return nil, fmt.Errorf("article content cannot be empty")
 	}
 
-	r.logger.Info("summarizing article", "article_id", article.ID)
+	r.logger.InfoContext(ctx, "summarizing article", "article_id", article.ID)
 
 	// Use existing driver function
 	driverSummary, err := driver.ArticleSummarizerAPIClient(ctx, article, r.config, r.logger)
 	if err != nil {
 		// Handle content too short as a normal case, not an error
 		if errors.Is(err, domain.ErrContentTooShort) {
-			r.logger.Info("skipping summarization: content too short", "article_id", article.ID)
+			r.logger.InfoContext(ctx, "skipping summarization: content too short", "article_id", article.ID)
 			return nil, domain.ErrContentTooShort
 		}
-		r.logger.Error("failed to summarize article", "error", err, "article_id", article.ID)
+		r.logger.ErrorContext(ctx, "failed to summarize article", "error", err, "article_id", article.ID)
 		return nil, fmt.Errorf("failed to summarize article: %w", err)
 	}
 
@@ -74,7 +74,7 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 		SummaryJapanese: driverSummary.SummaryJapanese,
 	}
 
-	r.logger.Info("article summarized successfully", "article_id", article.ID)
+	r.logger.InfoContext(ctx, "article summarized successfully", "article_id", article.ID)
 
 	return summarizedContent, nil
 }
@@ -83,34 +83,34 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 func (r *externalAPIRepository) StreamSummarizeArticle(ctx context.Context, article *models.Article) (io.ReadCloser, error) {
 	// Input validation
 	if article == nil {
-		r.logger.Error("article cannot be nil")
+		r.logger.ErrorContext(ctx, "article cannot be nil")
 		return nil, fmt.Errorf("article cannot be nil")
 	}
 
 	if article.ID == "" {
-		r.logger.Error("article ID cannot be empty")
+		r.logger.ErrorContext(ctx, "article ID cannot be empty")
 		return nil, fmt.Errorf("article ID cannot be empty")
 	}
 
 	if article.Content == "" {
-		r.logger.Error("article content cannot be empty", "article_id", article.ID)
+		r.logger.ErrorContext(ctx, "article content cannot be empty", "article_id", article.ID)
 		return nil, fmt.Errorf("article content cannot be empty")
 	}
 
-	r.logger.Info("streaming summary for article", "article_id", article.ID)
+	r.logger.InfoContext(ctx, "streaming summary for article", "article_id", article.ID)
 
 	// Use driver function for streaming
 	streamBody, err := driver.StreamArticleSummarizerAPIClient(ctx, article, r.config, r.logger)
 	if err != nil {
 		if errors.Is(err, domain.ErrContentTooShort) {
-			r.logger.Info("skipping summarization: content too short", "article_id", article.ID)
+			r.logger.InfoContext(ctx, "skipping summarization: content too short", "article_id", article.ID)
 			return nil, domain.ErrContentTooShort
 		}
-		r.logger.Error("failed to start streaming summary", "error", err, "article_id", article.ID)
+		r.logger.ErrorContext(ctx, "failed to start streaming summary", "error", err, "article_id", article.ID)
 		return nil, fmt.Errorf("failed to start streaming summary: %w", err)
 	}
 
-	r.logger.Info("streaming started successfully", "article_id", article.ID)
+	r.logger.InfoContext(ctx, "streaming started successfully", "article_id", article.ID)
 	return streamBody, nil
 }
 
@@ -118,51 +118,51 @@ func (r *externalAPIRepository) StreamSummarizeArticle(ctx context.Context, arti
 func (r *externalAPIRepository) CheckHealth(ctx context.Context, serviceURL string) error {
 	// Input validation
 	if serviceURL == "" {
-		r.logger.Error("service URL cannot be empty")
+		r.logger.ErrorContext(ctx, "service URL cannot be empty")
 		return fmt.Errorf("service URL cannot be empty")
 	}
 
 	// Validate URL format
 	if !strings.HasPrefix(serviceURL, "http://") && !strings.HasPrefix(serviceURL, "https://") {
-		r.logger.Error("invalid service URL", "url", serviceURL)
+		r.logger.ErrorContext(ctx, "invalid service URL", "url", serviceURL)
 		return fmt.Errorf("invalid service URL: must start with http:// or https://")
 	}
 
 	// Parse URL to ensure it's valid
 	parsedURL, err := url.Parse(serviceURL)
 	if err != nil {
-		r.logger.Error("invalid service URL format", "url", serviceURL, "error", err)
+		r.logger.ErrorContext(ctx, "invalid service URL format", "url", serviceURL, "error", err)
 		return fmt.Errorf("invalid service URL: %w", err)
 	}
 
-	r.logger.Info("checking service health", "url", serviceURL)
+	r.logger.InfoContext(ctx, "checking service health", "url", serviceURL)
 
 	// GREEN PHASE: Basic health check implementation
 	healthEndpoint := parsedURL.String() + "/health"
 
 	req, err := http.NewRequestWithContext(ctx, "GET", healthEndpoint, http.NoBody)
 	if err != nil {
-		r.logger.Error("failed to create health check request", "error", err)
+		r.logger.ErrorContext(ctx, "failed to create health check request", "error", err)
 		return fmt.Errorf("failed to create health check request: %w", err)
 	}
 
 	resp, err := r.client.Do(req)
 	if err != nil {
-		r.logger.Error("health check request failed", "error", err)
+		r.logger.ErrorContext(ctx, "health check request failed", "error", err)
 		return fmt.Errorf("health check request failed: %w", err)
 	}
 	defer func() {
 		if cerr := resp.Body.Close(); cerr != nil {
-			r.logger.Warn("failed to close health check response body", "error", cerr, "url", healthEndpoint)
+			r.logger.WarnContext(ctx, "failed to close health check response body", "error", cerr, "url", healthEndpoint)
 		}
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		r.logger.Error("service not healthy", "status", resp.StatusCode)
+		r.logger.ErrorContext(ctx, "service not healthy", "status", resp.StatusCode)
 		return fmt.Errorf("service not healthy: status %d", resp.StatusCode)
 	}
 
-	r.logger.Info("service is healthy")
+	r.logger.InfoContext(ctx, "service is healthy")
 
 	return nil
 }
@@ -188,7 +188,7 @@ func (r *externalAPIRepository) GetSystemUserID(ctx context.Context) (string, er
 		// Log retry attempt (except for last attempt)
 		if attempt < maxRetries-1 {
 			delay := baseDelay * time.Duration(1<<attempt) // 2s, 4s
-			r.logger.Warn("GetSystemUserID failed, retrying",
+			r.logger.WarnContext(ctx, "GetSystemUserID failed, retrying",
 				"attempt", attempt+1,
 				"max_attempts", maxRetries,
 				"delay", delay,
@@ -225,7 +225,7 @@ func (r *externalAPIRepository) getSystemUserIDOnce(ctx context.Context) (string
 	}
 	defer func() {
 		if cerr := resp.Body.Close(); cerr != nil {
-			r.logger.Warn("failed to close system user response body", "error", cerr, "url", parsedURL.String())
+			r.logger.WarnContext(ctx, "failed to close system user response body", "error", cerr, "url", parsedURL.String())
 		}
 	}()
 

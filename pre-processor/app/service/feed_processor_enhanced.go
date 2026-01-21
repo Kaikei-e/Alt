@@ -92,12 +92,12 @@ func (s *FeedsProcessorService) ProcessFeedsWithRetry(ctx context.Context, batch
 	urls, cursor, err := s.feedRepo.GetUnprocessedFeeds(ctx, s.cursor, batchSize)
 	if err != nil {
 		opErr := operrors.NewOperationError("get_unprocessed_feeds", err, false).WithContext(ctx)
-		s.logger.Error("Failed to get unprocessed feeds", "error", opErr)
+		s.logger.ErrorContext(ctx, "Failed to get unprocessed feeds", "error", opErr)
 		return nil, opErr
 	}
 
 	if len(urls) == 0 {
-		s.logger.Info("No unprocessed feeds found")
+		s.logger.InfoContext(ctx, "No unprocessed feeds found")
 		return &ProcessingResult{
 			ProcessedCount: 0,
 			SuccessCount:   0,
@@ -120,12 +120,12 @@ func (s *FeedsProcessorService) ProcessFeedsWithRetry(ctx context.Context, batch
 	exists, err := s.articleRepo.CheckExists(ctx, urlStrings)
 	if err != nil {
 		opErr := operrors.NewOperationError("check_article_existence", err, false).WithContext(ctx)
-		s.logger.Error("Failed to check article existence", "error", opErr)
+		s.logger.ErrorContext(ctx, "Failed to check article existence", "error", opErr)
 		return nil, opErr
 	}
 
 	if exists {
-		s.logger.Info("Articles already exist for this batch")
+		s.logger.InfoContext(ctx, "Articles already exist for this batch")
 		return &ProcessingResult{
 			ProcessedCount: 0,
 			SuccessCount:   0,
@@ -145,7 +145,7 @@ func (s *FeedsProcessorService) ProcessFeedsWithRetry(ctx context.Context, batch
 		// Add URL-specific context
 		urlCtx := operrors.WithRequestID(ctx, fmt.Sprintf("url-%d", i))
 
-		s.logger.Info("Processing feed with retry", "url", urlStr)
+		s.logger.InfoContext(ctx, "Processing feed with retry", "url", urlStr)
 
 		// Process single URL with circuit breaker protection
 		err := s.circuitBreaker.Call(func() error {
@@ -159,7 +159,7 @@ func (s *FeedsProcessorService) ProcessFeedsWithRetry(ctx context.Context, batch
 			if err.Error() == "circuit breaker open" {
 				opErr := operrors.NewOperationError("circuit_breaker_open", err, false).WithContext(urlCtx)
 				errors = append(errors, opErr)
-				s.logger.Warn("Circuit breaker open, skipping remaining feeds", "url", urlStr)
+				s.logger.WarnContext(ctx, "Circuit breaker open, skipping remaining feeds", "url", urlStr)
 				break
 			}
 
@@ -186,7 +186,7 @@ func (s *FeedsProcessorService) ProcessFeedsWithRetry(ctx context.Context, batch
 		}
 
 		successCount++
-		s.logger.Info("Successfully processed article", "url", urlStr)
+		s.logger.InfoContext(ctx, "Successfully processed article", "url", urlStr)
 	}
 
 	result := &ProcessingResult{
@@ -219,7 +219,7 @@ func (s *FeedsProcessorService) processSingleFeedWithRetry(ctx context.Context, 
 		}
 
 		if article == nil {
-			s.logger.Info("Article was skipped", "url", url)
+			s.logger.InfoContext(ctx, "Article was skipped", "url", url)
 			return nil
 		}
 
@@ -265,12 +265,12 @@ func (s *FeedsProcessorService) ProcessFeeds(ctx context.Context, batchSize int)
 
 // GetProcessingStats returns current processing statistics
 func (s *FeedsProcessorService) GetProcessingStats(ctx context.Context) (*ProcessingStats, error) {
-	s.logger.Info("Getting processing statistics")
+	s.logger.InfoContext(ctx, "Getting processing statistics")
 
 	repoStats, err := s.feedRepo.GetProcessingStats(ctx)
 	if err != nil {
 		opErr := operrors.NewOperationError("get_processing_stats", err, false).WithContext(ctx)
-		s.logger.Error("Failed to get processing statistics", "error", opErr)
+		s.logger.ErrorContext(ctx, "Failed to get processing statistics", "error", opErr)
 		return nil, opErr
 	}
 

@@ -138,7 +138,7 @@ func NewArticleFetcherServiceWithFactoryAndDLQ(cfg *config.Config, logger *slog.
 // FetchArticle fetches an article from the given URL - DISABLED FOR ETHICAL COMPLIANCE
 func (s *articleFetcherService) FetchArticle(ctx context.Context, urlStr string) (*models.Article, error) {
 	// Article fetching temporarily disabled for ethical compliance
-	s.logger.Info("Article fetching temporarily disabled for ethical compliance", "url", urlStr)
+	s.logger.InfoContext(ctx, "Article fetching temporarily disabled for ethical compliance", "url", urlStr)
 
 	// Return nil to indicate skipped article (maintains interface compatibility)
 	return nil, nil

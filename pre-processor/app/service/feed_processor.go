@@ -61,7 +61,7 @@ func NewFeedProcessorService(
 // ProcessFeeds processes a batch of feeds - DISABLED FOR ETHICAL COMPLIANCE
 func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) (*ProcessingResult, error) {
 	// Feed processing temporarily disabled for ethical compliance
-	s.logger.Info("Feed processing temporarily disabled for ethical compliance")
+	s.logger.InfoContext(ctx, "Feed processing temporarily disabled for ethical compliance")
 
 	// Return empty result to maintain interface compatibility
 	return &ProcessingResult{
@@ -200,11 +200,11 @@ func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) 
 
 // GetProcessingStats returns current processing statistics.
 func (s *feedProcessorService) GetProcessingStats(ctx context.Context) (*ProcessingStats, error) {
-	s.logger.Info("Getting processing statistics")
+	s.logger.InfoContext(ctx, "Getting processing statistics")
 
 	repoStats, err := s.feedRepo.GetProcessingStats(ctx)
 	if err != nil {
-		s.logger.Error("Failed to get processing statistics", "error", err)
+		s.logger.ErrorContext(ctx, "Failed to get processing statistics", "error", err)
 		return nil, fmt.Errorf("failed to get processing statistics: %w", err)
 	}
 
@@ -214,7 +214,7 @@ func (s *feedProcessorService) GetProcessingStats(ctx context.Context) (*Process
 		RemainingFeeds: repoStats.RemainingFeeds,
 	}
 
-	s.logger.Info("Processing statistics retrieved",
+	s.logger.InfoContext(ctx, "Processing statistics retrieved",
 		"total", stats.TotalFeeds,
 		"processed", stats.ProcessedFeeds,
 		"remaining", stats.RemainingFeeds)

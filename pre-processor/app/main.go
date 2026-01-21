@@ -254,6 +254,8 @@ func main() {
 	// Add OpenTelemetry tracing middleware (creates spans for each request)
 	if otelCfg.Enabled {
 		e.Use(otelecho.Middleware(otelCfg.ServiceName))
+		// Add OTel status middleware to set span status based on HTTP response code
+		e.Use(appmiddleware.OTelStatusMiddleware())
 	}
 
 	// Middleware
@@ -264,7 +266,8 @@ func main() {
 		LogLatency: true,
 		LogError:   true,
 		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
-			logger.Logger.Info("HTTP request completed",
+			ctx := c.Request().Context()
+			logger.Logger.InfoContext(ctx, "HTTP request completed",
 				"method", v.Method,
 				"uri", v.URI,
 				"status", v.Status,

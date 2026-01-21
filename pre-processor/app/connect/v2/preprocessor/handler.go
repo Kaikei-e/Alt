@@ -63,7 +63,7 @@ func (h *Handler) Summarize(
 	// Fetch article to get user_id (always needed for summary storage)
 	fetchedArticle, err := h.articleRepo.FindByID(ctx, articleID)
 	if err != nil {
-		h.logger.Error("failed to fetch article", "error", err, "article_id", articleID)
+		h.logger.ErrorContext(ctx, "failed to fetch article", "error", err, "article_id", articleID)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch article"))
 	}
 	if fetchedArticle == nil {
@@ -72,7 +72,7 @@ func (h *Handler) Summarize(
 
 	// If content is empty, use article content from DB
 	if content == "" {
-		h.logger.Info("content is empty, using content from DB", "article_id", articleID)
+		h.logger.InfoContext(ctx, "content is empty, using content from DB", "article_id", articleID)
 		if fetchedArticle.Content == "" {
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("article content is empty"))
 		}
@@ -90,7 +90,7 @@ func (h *Handler) Summarize(
 		content = html_parser.ExtractArticleText(content)
 	}
 
-	h.logger.Info("processing summarization request", "article_id", articleID, "content_length", len(content))
+	h.logger.InfoContext(ctx, "processing summarization request", "article_id", articleID, "content_length", len(content))
 
 	// Create article model for summarization
 	article := &models.Article{
@@ -101,11 +101,11 @@ func (h *Handler) Summarize(
 	// Call summarization service
 	summarized, err := h.apiRepo.SummarizeArticle(ctx, article)
 	if err != nil {
-		h.logger.Error("failed to generate summary", "error", err, "article_id", articleID)
+		h.logger.ErrorContext(ctx, "failed to generate summary", "error", err, "article_id", articleID)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to generate summary"))
 	}
 
-	h.logger.Info("article summarized successfully", "article_id", articleID)
+	h.logger.InfoContext(ctx, "article summarized successfully", "article_id", articleID)
 
 	// Save summary to database
 	articleTitle := title
@@ -121,10 +121,10 @@ func (h *Handler) Summarize(
 	}
 
 	if err := h.summaryRepo.Create(ctx, articleSummary); err != nil {
-		h.logger.Error("failed to save summary to database", "error", err, "article_id", articleID)
+		h.logger.ErrorContext(ctx, "failed to save summary to database", "error", err, "article_id", articleID)
 		// Don't fail the request if DB save fails
 	} else {
-		h.logger.Info("summary saved to database successfully", "article_id", articleID)
+		h.logger.InfoContext(ctx, "summary saved to database successfully", "article_id", articleID)
 	}
 
 	return connect.NewResponse(&preprocessorv2.SummarizeResponse{
@@ -150,7 +150,7 @@ func (h *Handler) StreamSummarize(
 
 	// If content is empty, fetch from DB
 	if content == "" {
-		h.logger.Info("content is empty, fetching from DB for stream", "article_id", articleID)
+		h.logger.InfoContext(ctx, "content is empty, fetching from DB for stream", "article_id", articleID)
 		fetchedArticle, err := h.articleRepo.FindByID(ctx, articleID)
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch article"))
@@ -174,7 +174,7 @@ func (h *Handler) StreamSummarize(
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("content is empty"))
 	}
 
-	h.logger.Info("processing streaming summarization request", "article_id", articleID, "content_length", len(content))
+	h.logger.InfoContext(ctx, "processing streaming summarization request", "article_id", articleID, "content_length", len(content))
 
 	article := &models.Article{
 		ID:      articleID,
@@ -187,12 +187,12 @@ func (h *Handler) StreamSummarize(
 		if err == domain.ErrContentTooShort {
 			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("content too short"))
 		}
-		h.logger.Error("failed to generate summary stream", "error", err, "article_id", articleID)
+		h.logger.ErrorContext(ctx, "failed to generate summary stream", "error", err, "article_id", articleID)
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to generate summary stream"))
 	}
 	defer func() { _ = ioStream.Close() }()
 
-	h.logger.Info("stream obtained from news-creator", "article_id", articleID)
+	h.logger.InfoContext(ctx, "stream obtained from news-creator", "article_id", articleID)
 
 	// Stream response
 	buf := make([]byte, 128)
@@ -203,7 +203,7 @@ func (h *Handler) StreamSummarize(
 				Chunk:   string(buf[:n]),
 				IsFinal: false,
 			}); sendErr != nil {
-				h.logger.Error("error sending stream chunk", "error", sendErr, "article_id", articleID)
+				h.logger.ErrorContext(ctx, "error sending stream chunk", "error", sendErr, "article_id", articleID)
 				return sendErr
 			}
 		}
@@ -218,12 +218,12 @@ func (h *Handler) StreamSummarize(
 				}
 				break
 			}
-			h.logger.Error("error reading from stream", "error", err, "article_id", articleID)
+			h.logger.ErrorContext(ctx, "error reading from stream", "error", err, "article_id", articleID)
 			return err
 		}
 	}
 
-	h.logger.Info("stream completed successfully", "article_id", articleID)
+	h.logger.InfoContext(ctx, "stream completed successfully", "article_id", articleID)
 	return nil
 }
 
@@ -239,16 +239,16 @@ func (h *Handler) QueueSummarize(
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("article_id is required"))
 	}
 
-	h.logger.Info("queueing summarization job", "article_id", articleID)
+	h.logger.InfoContext(ctx, "queueing summarization job", "article_id", articleID)
 
 	// Create job in queue
 	jobID, err := h.jobRepo.CreateJob(ctx, articleID)
 	if err != nil {
-		h.logger.Error("failed to queue summarization job", "error", err, "article_id", articleID)
+		h.logger.ErrorContext(ctx, "failed to queue summarization job", "error", err, "article_id", articleID)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to queue summarization job"))
 	}
 
-	h.logger.Info("summarization job queued successfully", "job_id", jobID, "article_id", articleID)
+	h.logger.InfoContext(ctx, "summarization job queued successfully", "job_id", jobID, "article_id", articleID)
 
 	return connect.NewResponse(&preprocessorv2.SummarizeQueueResponse{
 		JobId:   jobID,
@@ -269,7 +269,7 @@ func (h *Handler) GetSummarizeStatus(
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("job_id is required"))
 	}
 
-	h.logger.Debug("checking summarization job status", "job_id", jobID)
+	h.logger.DebugContext(ctx, "checking summarization job status", "job_id", jobID)
 
 	// Get job from queue
 	job, err := h.jobRepo.GetJob(ctx, jobID)
@@ -293,6 +293,6 @@ func (h *Handler) GetSummarizeStatus(
 		response.ErrorMessage = *job.ErrorMessage
 	}
 
-	h.logger.Debug("summarization job status retrieved", "job_id", jobID, "status", job.Status)
+	h.logger.DebugContext(ctx, "summarization job status retrieved", "job_id", jobID, "status", job.Status)
 	return connect.NewResponse(response), nil
 }

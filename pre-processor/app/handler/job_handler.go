@@ -56,7 +56,7 @@ func NewJobHandler(
 
 // StartFeedProcessingJob starts the feed processing job.
 func (h *jobHandler) StartFeedProcessingJob(ctx context.Context) error {
-	h.logger.Info("starting feed processing job")
+	h.logger.InfoContext(ctx, "starting feed processing job")
 
 	h.wg.Add(1)
 
@@ -70,11 +70,11 @@ func (h *jobHandler) StartFeedProcessingJob(ctx context.Context) error {
 
 // StartSummarizationJob starts the article summarization job.
 func (h *jobHandler) StartSummarizationJob(ctx context.Context) error {
-	h.logger.Info("starting summarization job")
+	h.logger.InfoContext(ctx, "starting summarization job")
 
 	// Wait for news creator to be healthy
 	if err := h.healthChecker.WaitForHealthy(ctx); err != nil {
-		h.logger.Error("failed to wait for news creator health", "error", err)
+		h.logger.ErrorContext(ctx, "failed to wait for news creator health", "error", err)
 		return fmt.Errorf("failed to wait for news creator health: %w", err)
 	}
 
@@ -90,11 +90,11 @@ func (h *jobHandler) StartSummarizationJob(ctx context.Context) error {
 
 // StartQualityCheckJob starts the quality check job.
 func (h *jobHandler) StartQualityCheckJob(ctx context.Context) error {
-	h.logger.Info("starting quality check job")
+	h.logger.InfoContext(ctx, "starting quality check job")
 
 	// Wait for news creator to be healthy
 	if err := h.healthChecker.WaitForHealthy(ctx); err != nil {
-		h.logger.Error("failed to wait for news creator health", "error", err)
+		h.logger.ErrorContext(ctx, "failed to wait for news creator health", "error", err)
 		return fmt.Errorf("failed to wait for news creator health: %w", err)
 	}
 
@@ -110,7 +110,7 @@ func (h *jobHandler) StartQualityCheckJob(ctx context.Context) error {
 
 // StartArticleSyncJob starts the article synchronization job.
 func (h *jobHandler) StartArticleSyncJob(ctx context.Context) error {
-	h.logger.Info("starting article sync job")
+	h.logger.InfoContext(ctx, "starting article sync job")
 
 	h.wg.Add(1)
 
@@ -126,13 +126,13 @@ func (h *jobHandler) StartArticleSyncJob(ctx context.Context) error {
 func (h *jobHandler) runArticleSyncLoop() {
 	defer func() {
 		if r := recover(); r != nil {
-			h.logger.Error("panic in runArticleSyncLoop", "panic", r)
+			h.logger.ErrorContext(h.ctx, "panic in runArticleSyncLoop", "panic", r)
 		}
 	}()
 
 	// Run initially
 	if err := h.articleSync.SyncArticles(h.ctx); err != nil {
-		h.logger.Error("initial article sync failed", "error", err)
+		h.logger.ErrorContext(h.ctx, "initial article sync failed", "error", err)
 	}
 
 	ticker := time.NewTicker(1 * time.Hour)
@@ -141,11 +141,11 @@ func (h *jobHandler) runArticleSyncLoop() {
 	for {
 		select {
 		case <-h.ctx.Done():
-			h.logger.Info("article sync job stopped")
+			h.logger.InfoContext(h.ctx, "article sync job stopped")
 			return
 		case <-ticker.C:
 			if err := h.articleSync.SyncArticles(h.ctx); err != nil {
-				h.logger.Error("article sync failed", "error", err)
+				h.logger.ErrorContext(h.ctx, "article sync failed", "error", err)
 			}
 		}
 	}
@@ -154,15 +154,15 @@ func (h *jobHandler) runArticleSyncLoop() {
 // StartSummarizeQueueWorker starts the summarize queue worker job.
 func (h *jobHandler) StartSummarizeQueueWorker(ctx context.Context) error {
 	if h.queueWorker == nil {
-		h.logger.Warn("queue worker is nil, skipping start")
+		h.logger.WarnContext(ctx, "queue worker is nil, skipping start")
 		return nil
 	}
 
-	h.logger.Info("starting summarize queue worker")
+	h.logger.InfoContext(ctx, "starting summarize queue worker")
 
 	// Wait for news creator to be healthy
 	if err := h.healthChecker.WaitForHealthy(ctx); err != nil {
-		h.logger.Error("failed to wait for news creator health", "error", err)
+		h.logger.ErrorContext(ctx, "failed to wait for news creator health", "error", err)
 		return fmt.Errorf("failed to wait for news creator health: %w", err)
 	}
 
@@ -184,11 +184,11 @@ func (h *jobHandler) runSummarizeQueueLoop() {
 	for {
 		select {
 		case <-h.ctx.Done():
-			h.logger.Info("summarize queue worker stopped")
+			h.logger.InfoContext(h.ctx, "summarize queue worker stopped")
 			return
 		case <-ticker.C:
 			if err := h.queueWorker.ProcessQueue(h.ctx); err != nil {
-				h.logger.Error("summarize queue processing failed", "error", err)
+				h.logger.ErrorContext(h.ctx, "summarize queue processing failed", "error", err)
 			}
 		}
 	}
@@ -196,30 +196,30 @@ func (h *jobHandler) runSummarizeQueueLoop() {
 
 // Stop stops all jobs.
 func (h *jobHandler) Stop() error {
-	h.logger.Info("stopping all jobs")
+	h.logger.InfoContext(h.ctx, "stopping all jobs")
 	h.cancel()
 	h.wg.Wait()
-	h.logger.Info("all jobs stopped")
+	h.logger.InfoContext(h.ctx, "all jobs stopped")
 
 	return nil
 }
 
 // runFeedProcessingLoop runs the feed processing loop.
 func (h *jobHandler) runFeedProcessingLoop() {
-	h.logger.Info("runFeedProcessingLoop: Starting feed processing loop goroutine")
+	h.logger.InfoContext(h.ctx, "runFeedProcessingLoop: Starting feed processing loop goroutine")
 
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	h.logger.Info("runFeedProcessingLoop: Ticker created, waiting for first tick in 5 minutes")
+	h.logger.InfoContext(h.ctx, "runFeedProcessingLoop: Ticker created, waiting for first tick in 5 minutes")
 
 	for {
 		select {
 		case <-h.ctx.Done():
-			h.logger.Info("feed processing job stopped")
+			h.logger.InfoContext(h.ctx, "feed processing job stopped")
 			return
 		case <-ticker.C:
-			h.logger.Info("runFeedProcessingLoop: Ticker fired, calling processFeedsBatch")
+			h.logger.InfoContext(h.ctx, "runFeedProcessingLoop: Ticker fired, calling processFeedsBatch")
 			h.processFeedsBatch()
 		}
 	}
@@ -233,7 +233,7 @@ func (h *jobHandler) runSummarizationLoop() {
 	for {
 		select {
 		case <-h.ctx.Done():
-			h.logger.Info("summarization job stopped")
+			h.logger.InfoContext(h.ctx, "summarization job stopped")
 			return
 		case <-ticker.C:
 			h.processSummarizationBatch()
@@ -245,7 +245,7 @@ func (h *jobHandler) runSummarizationLoop() {
 func (h *jobHandler) runQualityCheckLoop() {
 	defer func() {
 		if r := recover(); r != nil {
-			h.logger.Error("panic in runQualityCheckLoop", "panic", r)
+			h.logger.ErrorContext(h.ctx, "panic in runQualityCheckLoop", "panic", r)
 		}
 	}()
 
@@ -255,7 +255,7 @@ func (h *jobHandler) runQualityCheckLoop() {
 	for {
 		select {
 		case <-h.ctx.Done():
-			h.logger.Info("quality check job stopped")
+			h.logger.InfoContext(h.ctx, "quality check job stopped")
 			return
 		case <-ticker.C:
 			h.processQualityCheckBatch()
@@ -267,12 +267,12 @@ func (h *jobHandler) runQualityCheckLoop() {
 func (h *jobHandler) processFeedsBatch() {
 	defer func() {
 		if r := recover(); r != nil {
-			h.logger.Error("panic in processFeedsBatch", "panic", r)
+			h.logger.ErrorContext(h.ctx, "panic in processFeedsBatch", "panic", r)
 		}
 	}()
 
 	// Feed processing temporarily disabled for ethical compliance
-	h.logger.Info("Feed processing temporarily disabled for ethical compliance")
+	h.logger.InfoContext(h.ctx, "Feed processing temporarily disabled for ethical compliance")
 
 	/*
 		h.logger.Info("Starting feed processing batch", "batch_size", h.batchSize)
@@ -305,11 +305,11 @@ func (h *jobHandler) processFeedsBatch() {
 func (h *jobHandler) processSummarizationBatch() {
 	result, err := h.articleSummarizer.SummarizeArticles(h.ctx, h.batchSize)
 	if err != nil {
-		h.logger.Error("summarization failed", "error", err)
+		h.logger.ErrorContext(h.ctx, "summarization failed", "error", err)
 		return
 	}
 
-	h.logger.Info("summarization completed",
+	h.logger.InfoContext(h.ctx, "summarization completed",
 		"processed", result.ProcessedCount,
 		"success", result.SuccessCount,
 		"errors", result.ErrorCount,
@@ -318,10 +318,10 @@ func (h *jobHandler) processSummarizationBatch() {
 	// Only reset pagination if we actually processed articles and reached the end
 	// Don't reset if there were simply no articles to process (ProcessedCount == 0)
 	if !result.HasMore && result.ProcessedCount > 0 {
-		h.logger.Info("reached end of articles, resetting pagination cursor")
+		h.logger.InfoContext(h.ctx, "reached end of articles, resetting pagination cursor")
 
 		if err := h.articleSummarizer.ResetPagination(); err != nil {
-			h.logger.Error("failed to reset summarizer pagination", "error", err)
+			h.logger.ErrorContext(h.ctx, "failed to reset summarizer pagination", "error", err)
 		}
 	}
 }
@@ -330,17 +330,17 @@ func (h *jobHandler) processSummarizationBatch() {
 func (h *jobHandler) processQualityCheckBatch() {
 	defer func() {
 		if r := recover(); r != nil {
-			h.logger.Error("panic in processQualityCheckBatch", "panic", r)
+			h.logger.ErrorContext(h.ctx, "panic in processQualityCheckBatch", "panic", r)
 		}
 	}()
 
 	result, err := h.qualityChecker.CheckQuality(h.ctx, h.batchSize)
 	if err != nil {
-		h.logger.Error("quality check failed", "error", err)
+		h.logger.ErrorContext(h.ctx, "quality check failed", "error", err)
 		return
 	}
 
-	h.logger.Info("quality check completed",
+	h.logger.InfoContext(h.ctx, "quality check completed",
 		"processed", result.ProcessedCount,
 		"success", result.SuccessCount,
 		"errors", result.ErrorCount,
@@ -351,10 +351,10 @@ func (h *jobHandler) processQualityCheckBatch() {
 	// Only reset pagination if we actually processed articles and reached the end
 	// Don't reset if there were simply no articles to process (ProcessedCount == 0)
 	if !result.HasMore && result.ProcessedCount > 0 {
-		h.logger.Info("reached end of articles, resetting pagination cursor")
+		h.logger.InfoContext(h.ctx, "reached end of articles, resetting pagination cursor")
 
 		if err := h.qualityChecker.ResetPagination(); err != nil {
-			h.logger.Error("failed to reset quality checker pagination", "error", err)
+			h.logger.ErrorContext(h.ctx, "failed to reset quality checker pagination", "error", err)
 		}
 	}
 }

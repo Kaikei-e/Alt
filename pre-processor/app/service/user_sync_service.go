@@ -34,11 +34,11 @@ func (s *userSyncService) SyncUserSubscriptions(ctx context.Context) error {
 	// コンテキストからユーザー情報を取得
 	user, ok := ctx.Value(middleware.UserContextKey).(*auth.UserContext)
 	if !ok || user == nil {
-		s.logger.Error("user context not found")
+		s.logger.ErrorContext(ctx, "user context not found")
 		return fmt.Errorf("authentication required: user context not found")
 	}
 
-	s.logger.Info("starting user subscription sync",
+	s.logger.InfoContext(ctx, "starting user subscription sync",
 		"user_id", user.UserID,
 		"tenant_id", user.TenantID,
 		"email", user.Email)
@@ -46,13 +46,13 @@ func (s *userSyncService) SyncUserSubscriptions(ctx context.Context) error {
 	// ユーザー固有のサブスクリプション同期
 	subscriptions, err := s.inoreaderClient.GetUserSubscriptions(ctx, user.UserID.String())
 	if err != nil {
-		s.logger.Error("failed to get user subscriptions",
+		s.logger.ErrorContext(ctx, "failed to get user subscriptions",
 			"error", err,
 			"user_id", user.UserID)
 		return fmt.Errorf("failed to get user subscriptions: %w", err)
 	}
 
-	s.logger.Info("retrieved user subscriptions",
+	s.logger.InfoContext(ctx, "retrieved user subscriptions",
 		"user_id", user.UserID,
 		"subscription_count", len(subscriptions))
 
@@ -64,14 +64,14 @@ func (s *userSyncService) SyncUserSubscriptions(ctx context.Context) error {
 		subscriptions,
 	)
 	if err != nil {
-		s.logger.Error("failed to save user subscriptions",
+		s.logger.ErrorContext(ctx, "failed to save user subscriptions",
 			"error", err,
 			"user_id", user.UserID,
 			"tenant_id", user.TenantID)
 		return fmt.Errorf("failed to save user subscriptions: %w", err)
 	}
 
-	s.logger.Info("user subscription sync completed successfully",
+	s.logger.InfoContext(ctx, "user subscription sync completed successfully",
 		"user_id", user.UserID,
 		"tenant_id", user.TenantID,
 		"subscriptions_synced", len(subscriptions))
@@ -83,24 +83,24 @@ func (s *userSyncService) GetUserSubscriptions(ctx context.Context) ([]Subscript
 	// コンテキストからユーザー情報を取得
 	user, ok := ctx.Value(middleware.UserContextKey).(*auth.UserContext)
 	if !ok || user == nil {
-		s.logger.Error("user context not found")
+		s.logger.ErrorContext(ctx, "user context not found")
 		return nil, fmt.Errorf("authentication required: user context not found")
 	}
 
-	s.logger.Info("retrieving user subscriptions",
+	s.logger.InfoContext(ctx, "retrieving user subscriptions",
 		"user_id", user.UserID,
 		"tenant_id", user.TenantID)
 
 	// ユーザー固有のサブスクリプションを取得
 	subscriptions, err := s.inoreaderClient.GetUserSubscriptions(ctx, user.UserID.String())
 	if err != nil {
-		s.logger.Error("failed to get user subscriptions",
+		s.logger.ErrorContext(ctx, "failed to get user subscriptions",
 			"error", err,
 			"user_id", user.UserID)
 		return nil, fmt.Errorf("failed to get user subscriptions: %w", err)
 	}
 
-	s.logger.Info("user subscriptions retrieved successfully",
+	s.logger.InfoContext(ctx, "user subscriptions retrieved successfully",
 		"user_id", user.UserID,
 		"subscription_count", len(subscriptions))
 

@@ -28,7 +28,7 @@ func NewFeedRepository(db *pgxpool.Pool, logger *slog.Logger) FeedRepository {
 
 // GetUnprocessedFeeds gets unprocessed feeds using cursor-based pagination.
 func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *Cursor, limit int) ([]*url.URL, *Cursor, error) {
-	r.logger.Info("getting unprocessed feeds", "limit", limit)
+	r.logger.InfoContext(ctx, "getting unprocessed feeds", "limit", limit)
 
 	var lastCreatedAt *time.Time
 
@@ -42,7 +42,7 @@ func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *Cursor
 	// Use existing driver function
 	urls, finalCreatedAt, finalID, err := driver.GetSourceURLs(lastCreatedAt, lastID, ctx, r.db)
 	if err != nil {
-		r.logger.Error("failed to get unprocessed feeds", "error", err)
+		r.logger.ErrorContext(ctx, "failed to get unprocessed feeds", "error", err)
 		return nil, nil, fmt.Errorf("failed to get unprocessed feeds: %w", err)
 	}
 
@@ -58,19 +58,19 @@ func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *Cursor
 		LastID:        finalID,
 	}
 
-	r.logger.Info("got unprocessed feeds", "count", len(urlPtrs))
+	r.logger.InfoContext(ctx, "got unprocessed feeds", "count", len(urlPtrs))
 
 	return urlPtrs, newCursor, nil
 }
 
 // GetProcessingStats returns feed processing statistics.
 func (r *feedRepository) GetProcessingStats(ctx context.Context) (*ProcessingStats, error) {
-	r.logger.Info("getting processing statistics")
+	r.logger.InfoContext(ctx, "getting processing statistics")
 
 	// Use existing driver function
 	totalFeeds, processedFeeds, err := driver.GetFeedStatistics(ctx, r.db)
 	if err != nil {
-		r.logger.Error("failed to get processing statistics", "error", err)
+		r.logger.ErrorContext(ctx, "failed to get processing statistics", "error", err)
 		return nil, fmt.Errorf("failed to get processing statistics: %w", err)
 	}
 
@@ -80,7 +80,7 @@ func (r *feedRepository) GetProcessingStats(ctx context.Context) (*ProcessingSta
 		RemainingFeeds: totalFeeds - processedFeeds,
 	}
 
-	r.logger.Info("got processing statistics", "total", stats.TotalFeeds, "processed", stats.ProcessedFeeds, "remaining", stats.RemainingFeeds)
+	r.logger.InfoContext(ctx, "got processing statistics", "total", stats.TotalFeeds, "processed", stats.ProcessedFeeds, "remaining", stats.RemainingFeeds)
 
 	return stats, nil
 }

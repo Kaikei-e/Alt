@@ -31,16 +31,16 @@ func NewSummarizeJobRepository(db *pgxpool.Pool, logger *slog.Logger) SummarizeJ
 // CreateJob creates a new summarization job in the queue.
 func (r *summarizeJobRepository) CreateJob(ctx context.Context, articleID string) (string, error) {
 	if articleID == "" {
-		r.logger.Error("article ID cannot be empty")
+		r.logger.ErrorContext(ctx, "article ID cannot be empty")
 		return "", fmt.Errorf("article ID cannot be empty")
 	}
 
 	if r.db == nil {
-		r.logger.Error("database connection is nil")
+		r.logger.ErrorContext(ctx, "database connection is nil")
 		return "", fmt.Errorf("database connection is nil")
 	}
 
-	r.logger.Info("creating summarization job", "article_id", articleID)
+	r.logger.InfoContext(ctx, "creating summarization job", "article_id", articleID)
 
 	query := `
 		INSERT INTO summarize_job_queue (article_id, status)
@@ -51,28 +51,28 @@ func (r *summarizeJobRepository) CreateJob(ctx context.Context, articleID string
 	var jobID uuid.UUID
 	err := r.db.QueryRow(ctx, query, articleID).Scan(&jobID)
 	if err != nil {
-		r.logger.Error("failed to create summarization job", "error", err, "article_id", articleID)
+		r.logger.ErrorContext(ctx, "failed to create summarization job", "error", err, "article_id", articleID)
 		return "", fmt.Errorf("failed to create summarization job: %w", err)
 	}
 
-	r.logger.Info("summarization job created successfully", "job_id", jobID, "article_id", articleID)
+	r.logger.InfoContext(ctx, "summarization job created successfully", "job_id", jobID, "article_id", articleID)
 	return jobID.String(), nil
 }
 
 // GetJob retrieves a summarization job by job ID.
 func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*models.SummarizeJob, error) {
 	if jobID == "" {
-		r.logger.Error("job ID cannot be empty")
+		r.logger.ErrorContext(ctx, "job ID cannot be empty")
 		return nil, fmt.Errorf("job ID cannot be empty")
 	}
 
 	if r.db == nil {
-		r.logger.Error("database connection is nil")
+		r.logger.ErrorContext(ctx, "database connection is nil")
 		return nil, fmt.Errorf("database connection is nil")
 	}
 
 	startTime := time.Now()
-	r.logger.Debug("getting summarization job", "job_id", jobID)
+	r.logger.DebugContext(ctx, "getting summarization job", "job_id", jobID)
 
 	// Read with Read Committed isolation level to ensure we see latest committed data
 	// This helps prevent stale reads when checking job status immediately after updates
@@ -102,10 +102,10 @@ func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*mod
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			r.logger.Warn("summarization job not found", "job_id", jobID)
+			r.logger.WarnContext(ctx, "summarization job not found", "job_id", jobID)
 			return nil, fmt.Errorf("summarization job not found: %w", err)
 		}
-		r.logger.Error("failed to get summarization job", "error", err, "job_id", jobID)
+		r.logger.ErrorContext(ctx, "failed to get summarization job", "error", err, "job_id", jobID)
 		return nil, fmt.Errorf("failed to get summarization job: %w", err)
 	}
 
@@ -119,7 +119,7 @@ func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*mod
 
 	// Log timing information for debugging latency issues
 	queryDuration := time.Since(startTime)
-	r.logger.Debug("summarization job retrieved successfully",
+	r.logger.DebugContext(ctx, "summarization job retrieved successfully",
 		"job_id", jobID,
 		"status", job.Status,
 		"query_duration_ms", queryDuration.Milliseconds(),
@@ -130,16 +130,16 @@ func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*mod
 // UpdateJobStatus updates the status of a summarization job.
 func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID string, status models.SummarizeJobStatus, summary string, errorMessage string) error {
 	if jobID == "" {
-		r.logger.Error("job ID cannot be empty")
+		r.logger.ErrorContext(ctx, "job ID cannot be empty")
 		return fmt.Errorf("job ID cannot be empty")
 	}
 
 	if r.db == nil {
-		r.logger.Error("database connection is nil")
+		r.logger.ErrorContext(ctx, "database connection is nil")
 		return fmt.Errorf("database connection is nil")
 	}
 
-	r.logger.Info("updating summarization job status", "job_id", jobID, "status", status)
+	r.logger.InfoContext(ctx, "updating summarization job status", "job_id", jobID, "status", status)
 
 	now := time.Now()
 	var query string
@@ -182,35 +182,35 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 		IsoLevel: pgx.ReadCommitted,
 	})
 	if err != nil {
-		r.logger.Error("failed to begin transaction", "error", err)
+		r.logger.ErrorContext(ctx, "failed to begin transaction", "error", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	result, err := tx.Exec(ctx, query, args...)
 	if err != nil {
 		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
-			r.logger.Error("failed to rollback transaction", "error", rollbackErr)
+			r.logger.ErrorContext(ctx, "failed to rollback transaction", "error", rollbackErr)
 		}
-		r.logger.Error("failed to update summarization job status", "error", err, "job_id", jobID)
+		r.logger.ErrorContext(ctx, "failed to update summarization job status", "error", err, "job_id", jobID)
 		return fmt.Errorf("failed to update summarization job status: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
 		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
-			r.logger.Error("failed to rollback transaction", "error", rollbackErr)
+			r.logger.ErrorContext(ctx, "failed to rollback transaction", "error", rollbackErr)
 		}
-		r.logger.Warn("no rows affected when updating job status", "job_id", jobID)
+		r.logger.WarnContext(ctx, "no rows affected when updating job status", "job_id", jobID)
 		return fmt.Errorf("summarization job not found")
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		r.logger.Error("failed to commit transaction", "error", err)
+		r.logger.ErrorContext(ctx, "failed to commit transaction", "error", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	// Log timing information for debugging latency issues
-	r.logger.Info("summarization job status updated successfully",
+	r.logger.InfoContext(ctx, "summarization job status updated successfully",
 		"job_id", jobID,
 		"status", status,
 		"timestamp", now.UnixNano(),
@@ -221,16 +221,16 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 // GetPendingJobs retrieves pending jobs from the queue.
 func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) ([]*models.SummarizeJob, error) {
 	if limit <= 0 {
-		r.logger.Error("limit must be positive", "limit", limit)
+		r.logger.ErrorContext(ctx, "limit must be positive", "limit", limit)
 		return nil, fmt.Errorf("limit must be positive")
 	}
 
 	if r.db == nil {
-		r.logger.Error("database connection is nil")
+		r.logger.ErrorContext(ctx, "database connection is nil")
 		return nil, fmt.Errorf("database connection is nil")
 	}
 
-	r.logger.Debug("getting pending summarization jobs", "limit", limit)
+	r.logger.DebugContext(ctx, "getting pending summarization jobs", "limit", limit)
 
 	query := `
 		SELECT id, job_id, article_id, status, summary, error_message,
@@ -244,7 +244,7 @@ func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) 
 
 	rows, err := r.db.Query(ctx, query, limit)
 	if err != nil {
-		r.logger.Error("failed to get pending jobs", "error", err)
+		r.logger.ErrorContext(ctx, "failed to get pending jobs", "error", err)
 		return nil, fmt.Errorf("failed to get pending jobs: %w", err)
 	}
 	defer rows.Close()
@@ -269,7 +269,7 @@ func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) 
 			&job.CompletedAt,
 		)
 		if err != nil {
-			r.logger.Error("failed to scan job row", "error", err)
+			r.logger.ErrorContext(ctx, "failed to scan job row", "error", err)
 			return nil, fmt.Errorf("failed to scan job row: %w", err)
 		}
 		job.JobID = jobIDUUID
@@ -283,10 +283,10 @@ func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) 
 	}
 
 	if err := rows.Err(); err != nil {
-		r.logger.Error("error iterating job rows", "error", err)
+		r.logger.ErrorContext(ctx, "error iterating job rows", "error", err)
 		return nil, fmt.Errorf("error iterating job rows: %w", err)
 	}
 
-	r.logger.Info("retrieved pending summarization jobs", "count", len(jobs))
+	r.logger.InfoContext(ctx, "retrieved pending summarization jobs", "count", len(jobs))
 	return jobs, nil
 }

@@ -38,12 +38,12 @@ func NewArticleSummarizerService(
 
 // SummarizeArticles processes a batch of articles for summarization.
 func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchSize int) (*SummarizationResult, error) {
-	s.logger.Info("starting article summarization", "batch_size", batchSize)
+	s.logger.InfoContext(ctx, "starting article summarization", "batch_size", batchSize)
 
 	// REFACTOR PHASE: Proper implementation
 	// Safety check for testing with nil repositories
 	if s.articleRepo == nil {
-		s.logger.Warn("articleRepo is nil, returning empty result for testing")
+		s.logger.WarnContext(ctx, "articleRepo is nil, returning empty result for testing")
 
 		return &SummarizationResult{
 			ProcessedCount: 0,
@@ -57,7 +57,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 	// Get articles that need summarization
 	articles, newCursor, err := s.articleRepo.FindForSummarization(ctx, s.cursor, batchSize)
 	if err != nil {
-		s.logger.Error("failed to find articles for summarization", "error", err)
+		s.logger.ErrorContext(ctx, "failed to find articles for summarization", "error", err)
 		return nil, err
 	}
 
@@ -76,7 +76,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 		if err != nil {
 			// Handle content too short: Save a placeholder summary to mark as processed
 			if errors.Is(err, domain.ErrContentTooShort) {
-				s.logger.Info("article content too short, saving placeholder summary",
+				s.logger.InfoContext(ctx, "article content too short, saving placeholder summary",
 					"article_id", article.ID,
 					"content_length", len(article.Content))
 
@@ -91,7 +91,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 
 				// Save the placeholder summary
 				if createErr := s.summaryRepo.Create(ctx, placeholderSummary); createErr != nil {
-					s.logger.Error("failed to save placeholder summary", "article_id", article.ID, "error", createErr)
+					s.logger.ErrorContext(ctx, "failed to save placeholder summary", "article_id", article.ID, "error", createErr)
 					result.ErrorCount++
 					result.Errors = append(result.Errors, createErr)
 				} else {
@@ -104,7 +104,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 
 			// Handle content too long: Save a placeholder summary to mark as processed
 			if errors.Is(err, domain.ErrContentTooLong) {
-				s.logger.Info("article content too long, saving placeholder summary",
+				s.logger.InfoContext(ctx, "article content too long, saving placeholder summary",
 					"article_id", article.ID,
 					"content_length", len(article.Content))
 
@@ -119,7 +119,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 
 				// Save the placeholder summary
 				if createErr := s.summaryRepo.Create(ctx, placeholderSummary); createErr != nil {
-					s.logger.Error("failed to save placeholder summary", "article_id", article.ID, "error", createErr)
+					s.logger.ErrorContext(ctx, "failed to save placeholder summary", "article_id", article.ID, "error", createErr)
 					result.ErrorCount++
 					result.Errors = append(result.Errors, createErr)
 				} else {
@@ -130,7 +130,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 				continue
 			}
 
-			s.logger.Error("failed to generate summary", "article_id", article.ID, "error", err)
+			s.logger.ErrorContext(ctx, "failed to generate summary", "article_id", article.ID, "error", err)
 
 			result.ErrorCount++
 			result.Errors = append(result.Errors, err)
@@ -149,7 +149,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 
 		// Save the summary
 		if err := s.summaryRepo.Create(ctx, summary); err != nil {
-			s.logger.Error("failed to save summary", "article_id", article.ID, "error", err)
+			s.logger.ErrorContext(ctx, "failed to save summary", "article_id", article.ID, "error", err)
 
 			result.ErrorCount++
 			result.Errors = append(result.Errors, err)
@@ -159,7 +159,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 
 		result.SuccessCount++
 
-		s.logger.Debug("successfully summarized article", "article_id", article.ID)
+		s.logger.DebugContext(ctx, "successfully summarized article", "article_id", article.ID)
 	}
 
 	// Update cursor for pagination
@@ -167,7 +167,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 		s.cursor = newCursor
 	}
 
-	s.logger.Info("article summarization completed",
+	s.logger.InfoContext(ctx, "article summarization completed",
 		"processed", result.ProcessedCount,
 		"success", result.SuccessCount,
 		"errors", result.ErrorCount,
@@ -178,22 +178,22 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 
 // HasUnsummarizedArticles checks if there are articles that need summarization.
 func (s *articleSummarizerService) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
-	s.logger.Info("checking for unsummarized articles")
+	s.logger.InfoContext(ctx, "checking for unsummarized articles")
 
 	// REFACTOR PHASE: Proper implementation
 	// Safety check for testing with nil repositories
 	if s.articleRepo == nil {
-		s.logger.Warn("articleRepo is nil, returning false for testing")
+		s.logger.WarnContext(ctx, "articleRepo is nil, returning false for testing")
 		return false, nil
 	}
 
 	hasArticles, err := s.articleRepo.HasUnsummarizedArticles(ctx)
 	if err != nil {
-		s.logger.Error("failed to check for unsummarized articles", "error", err)
+		s.logger.ErrorContext(ctx, "failed to check for unsummarized articles", "error", err)
 		return false, err
 	}
 
-	s.logger.Info("unsummarized articles check completed", "has_articles", hasArticles)
+	s.logger.InfoContext(ctx, "unsummarized articles check completed", "has_articles", hasArticles)
 
 	return hasArticles, nil
 }

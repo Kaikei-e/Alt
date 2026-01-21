@@ -16,6 +16,11 @@ func LoggingMiddleware(contextLogger *logger.ContextLogger) echo.MiddlewareFunc 
 			req := c.Request()
 			res := c.Response()
 
+			// Skip logging for health check endpoint to reduce noise
+			if req.URL.Path == "/health" || req.URL.Path == "/api/v1/health" {
+				return next(c)
+			}
+
 			start := time.Now()
 
 			// Add operation context for this request

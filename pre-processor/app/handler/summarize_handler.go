@@ -94,7 +94,7 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 
 	// If content is empty, use article content from DB
 	if req.Content == "" {
-		h.logger.Info("content is empty, using content from DB", "article_id", req.ArticleID)
+		h.logger.InfoContext(ctx, "content is empty, using content from DB", "article_id", req.ArticleID)
 		if fetchedArticle.Content == "" {
 			return apperrors.NewValidationContextError(
 				domain.ErrArticleContentEmpty.Error(),
@@ -106,7 +106,7 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 		// This ensures we never send raw HTML to downstream services
 		content := fetchedArticle.Content
 		originalLength := len(content)
-		h.logger.Info("extracting text from content (Zero Trust validation)", "article_id", req.ArticleID, "original_length", originalLength)
+		h.logger.InfoContext(ctx, "extracting text from content (Zero Trust validation)", "article_id", req.ArticleID, "original_length", originalLength)
 
 		extractedText := html_parser.ExtractArticleText(content)
 		extractedLength := len(extractedText)
@@ -114,20 +114,20 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 		if extractedText != "" {
 			content = extractedText
 			reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
-			h.logger.Info("text extraction completed",
+			h.logger.InfoContext(ctx, "text extraction completed",
 				"article_id", req.ArticleID,
 				"original_length", originalLength,
 				"extracted_length", extractedLength,
 				"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
 		} else {
-			h.logger.Warn("text extraction returned empty, using original content", "article_id", req.ArticleID, "original_length", originalLength)
+			h.logger.WarnContext(ctx, "text extraction returned empty, using original content", "article_id", req.ArticleID, "original_length", originalLength)
 		}
 		req.Content = content
 		// Also update title if missing
 		if req.Title == "" {
 			req.Title = fetchedArticle.Title
 		}
-		h.logger.Info("content fetched from DB successfully", "article_id", req.ArticleID, "content_length", len(req.Content))
+		h.logger.InfoContext(ctx, "content fetched from DB successfully", "article_id", req.ArticleID, "content_length", len(req.Content))
 	}
 
 	if req.Content == "" {
@@ -141,12 +141,12 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 	// Zero Trust: Ensure content is extracted text before processing
 	// If content still contains HTML-like patterns, extract again
 	if strings.Contains(req.Content, "<") && strings.Contains(req.Content, ">") {
-		h.logger.Warn("content still contains HTML after extraction, re-extracting", "article_id", req.ArticleID, "content_length", len(req.Content))
+		h.logger.WarnContext(ctx, "content still contains HTML after extraction, re-extracting", "article_id", req.ArticleID, "content_length", len(req.Content))
 		req.Content = html_parser.ExtractArticleText(req.Content)
-		h.logger.Info("re-extraction completed", "article_id", req.ArticleID, "final_length", len(req.Content))
+		h.logger.InfoContext(ctx, "re-extraction completed", "article_id", req.ArticleID, "final_length", len(req.Content))
 	}
 
-	h.logger.Info("processing summarization request", "article_id", req.ArticleID, "content_length", len(req.Content))
+	h.logger.InfoContext(ctx, "processing summarization request", "article_id", req.ArticleID, "content_length", len(req.Content))
 
 	// Create article model for summarization
 	article := &models.Article{
@@ -165,7 +165,7 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 		)
 	}
 
-	h.logger.Info("article summarized successfully", "article_id", req.ArticleID)
+	h.logger.InfoContext(ctx, "article summarized successfully", "article_id", req.ArticleID)
 
 	// Save summary to database
 	articleTitle := req.Title
@@ -181,12 +181,12 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 	}
 
 	if err := h.summaryRepo.Create(ctx, articleSummary); err != nil {
-		h.logger.Error("failed to save summary to database", "error", err, "article_id", req.ArticleID)
+		h.logger.ErrorContext(ctx, "failed to save summary to database", "error", err, "article_id", req.ArticleID)
 		// Don't fail the request if DB save fails - still return the summary
 		// This ensures the user gets the summary even if DB has issues
-		h.logger.Warn("continuing despite DB save failure", "article_id", req.ArticleID)
+		h.logger.WarnContext(ctx, "continuing despite DB save failure", "article_id", req.ArticleID)
 	} else {
-		h.logger.Info("summary saved to database successfully", "article_id", req.ArticleID)
+		h.logger.InfoContext(ctx, "summary saved to database successfully", "article_id", req.ArticleID)
 	}
 
 	// Return response
@@ -237,7 +237,7 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 
 	// If content is empty, try to fetch from DB
 	if req.Content == "" {
-		h.logger.Info("content is empty, fetching from DB for stream", "article_id", req.ArticleID)
+		h.logger.InfoContext(ctx, "content is empty, fetching from DB for stream", "article_id", req.ArticleID)
 		fetchedArticle, err := h.articleRepo.FindByID(ctx, req.ArticleID)
 		if err != nil {
 			return apperrors.NewDatabaseContextError(
@@ -282,7 +282,7 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 		req.Content = html_parser.ExtractArticleText(req.Content)
 	}
 
-	h.logger.Info("processing streaming summarization request", "article_id", req.ArticleID, "content_length", len(req.Content))
+	h.logger.InfoContext(ctx, "processing streaming summarization request", "article_id", req.ArticleID, "content_length", len(req.Content))
 
 	article := &models.Article{
 		ID:      req.ArticleID,
@@ -309,11 +309,11 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 	}
 	defer func() {
 		if cerr := stream.Close(); cerr != nil {
-			h.logger.Warn("failed to close summary stream", "error", cerr, "article_id", req.ArticleID)
+			h.logger.WarnContext(ctx, "failed to close summary stream", "error", cerr, "article_id", req.ArticleID)
 		}
 	}()
 
-	h.logger.Info("stream obtained from news-creator", "article_id", req.ArticleID)
+	h.logger.InfoContext(ctx, "stream obtained from news-creator", "article_id", req.ArticleID)
 
 	// Set headers for SSE streaming
 	c.Response().Header().Set(echo.HeaderContentType, "text/event-stream; charset=utf-8")
@@ -322,7 +322,7 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 	c.Response().Header().Set("X-Accel-Buffering", "no") // Disable Nginx buffering for SSE
 	c.Response().WriteHeader(http.StatusOK)
 
-	h.logger.Info("response headers set, starting to read stream", "article_id", req.ArticleID)
+	h.logger.InfoContext(ctx, "response headers set, starting to read stream", "article_id", req.ArticleID)
 
 	// Stream response with smaller buffer for incremental rendering
 	buf := make([]byte, 128) // Reduced to 128 bytes for faster incremental rendering
@@ -337,14 +337,14 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 			bytesWritten += n
 			// Log first few chunks and periodically for debugging incremental rendering
 			if readAttempts <= 3 || bytesWritten%5120 == 0 {
-				h.logger.Info("stream data received and flushed", "article_id", req.ArticleID, "bytes_written", bytesWritten, "chunk_size", n, "read_attempts", readAttempts)
+				h.logger.InfoContext(ctx, "stream data received and flushed", "article_id", req.ArticleID, "bytes_written", bytesWritten, "chunk_size", n, "read_attempts", readAttempts)
 			} else if readAttempts <= 10 {
 				// Log more frequently for first 10 chunks to verify incremental rendering
-				h.logger.Debug("stream chunk flushed", "article_id", req.ArticleID, "chunk_size", n, "read_attempts", readAttempts)
+				h.logger.DebugContext(ctx, "stream chunk flushed", "article_id", req.ArticleID, "chunk_size", n, "read_attempts", readAttempts)
 			}
 			// Write immediately and flush for incremental rendering
 			if _, wErr := c.Response().Write(buf[:n]); wErr != nil {
-				h.logger.Error("error writing to response stream", "error", wErr, "article_id", req.ArticleID, "bytes_written", bytesWritten)
+				h.logger.ErrorContext(ctx, "error writing to response stream", "error", wErr, "article_id", req.ArticleID, "bytes_written", bytesWritten)
 				return wErr
 			}
 			// Flush immediately after each chunk for incremental rendering
@@ -352,24 +352,24 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 		}
 		if err != nil {
 			if err == io.EOF {
-				h.logger.Info("stream reached EOF", "article_id", req.ArticleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
+				h.logger.InfoContext(ctx, "stream reached EOF", "article_id", req.ArticleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
 				break
 			}
-			h.logger.Error("error reading from stream", "error", err, "article_id", req.ArticleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
+			h.logger.ErrorContext(ctx, "error reading from stream", "error", err, "article_id", req.ArticleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
 			return err
 		}
 		if n == 0 && readAttempts > 1 {
 			// No data read but no error - might be a timeout or empty stream
-			h.logger.Warn("no data read from stream", "article_id", req.ArticleID, "read_attempts", readAttempts)
+			h.logger.WarnContext(ctx, "no data read from stream", "article_id", req.ArticleID, "read_attempts", readAttempts)
 		}
 	}
 
 	// Check if any data was actually streamed
 	if !hasData {
-		h.logger.Warn("stream completed but no data was sent", "article_id", req.ArticleID)
+		h.logger.WarnContext(ctx, "stream completed but no data was sent", "article_id", req.ArticleID)
 		// Still return success, but log the warning
 	} else {
-		h.logger.Info("stream completed successfully", "article_id", req.ArticleID, "bytes_written", bytesWritten)
+		h.logger.InfoContext(ctx, "stream completed successfully", "article_id", req.ArticleID, "bytes_written", bytesWritten)
 	}
 
 	return nil
@@ -399,7 +399,7 @@ func (h *SummarizeHandler) HandleSummarizeQueue(c echo.Context) error {
 		)
 	}
 
-	h.logger.Info("queueing summarization job", "article_id", req.ArticleID)
+	h.logger.InfoContext(ctx, "queueing summarization job", "article_id", req.ArticleID)
 
 	// Create job in queue
 	jobID, err := h.jobRepo.CreateJob(ctx, req.ArticleID)
@@ -412,7 +412,7 @@ func (h *SummarizeHandler) HandleSummarizeQueue(c echo.Context) error {
 		)
 	}
 
-	h.logger.Info("summarization job queued successfully", "job_id", jobID, "article_id", req.ArticleID)
+	h.logger.InfoContext(ctx, "summarization job queued successfully", "job_id", jobID, "article_id", req.ArticleID)
 
 	// Return 202 Accepted with job ID
 	response := SummarizeQueueResponse{
@@ -447,7 +447,7 @@ func (h *SummarizeHandler) HandleSummarizeStatus(c echo.Context) error {
 		)
 	}
 
-	h.logger.Debug("checking summarization job status", "job_id", jobID)
+	h.logger.DebugContext(ctx, "checking summarization job status", "job_id", jobID)
 
 	// Get job from queue
 	job, err := h.jobRepo.GetJob(ctx, jobID)
@@ -475,6 +475,6 @@ func (h *SummarizeHandler) HandleSummarizeStatus(c echo.Context) error {
 		response.ErrorMessage = *job.ErrorMessage
 	}
 
-	h.logger.Debug("summarization job status retrieved", "job_id", jobID, "status", job.Status)
+	h.logger.DebugContext(ctx, "summarization job status retrieved", "job_id", jobID, "status", job.Status)
 	return c.JSON(http.StatusOK, response)
 }

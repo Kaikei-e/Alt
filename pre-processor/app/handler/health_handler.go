@@ -26,36 +26,36 @@ func NewHealthHandler(healthChecker service.HealthCheckerService, metricsCollect
 
 // CheckHealth checks the health of the service.
 func (h *healthHandler) CheckHealth(ctx context.Context) error {
-	h.logger.Info("performing health check")
+	h.logger.InfoContext(ctx, "performing health check")
 
 	// Check if we can perform basic operations
 	// This is a simple implementation - in a real system you might check database connectivity, etc.
-	h.logger.Info("health check completed - service is healthy")
+	h.logger.InfoContext(ctx, "health check completed - service is healthy")
 
 	return nil
 }
 
 // CheckDependencies checks the health of external dependencies.
 func (h *healthHandler) CheckDependencies(ctx context.Context) error {
-	h.logger.Info("checking dependencies health")
+	h.logger.InfoContext(ctx, "checking dependencies health")
 
 	// Check news creator health
 	if err := h.healthChecker.CheckNewsCreatorHealth(ctx); err != nil {
-		h.logger.Error("news creator health check failed", "error", err)
+		h.logger.ErrorContext(ctx, "news creator health check failed", "error", err)
 		return fmt.Errorf("news creator health check failed: %w", err)
 	}
 
-	h.logger.Info("all dependencies are healthy")
+	h.logger.InfoContext(ctx, "all dependencies are healthy")
 
 	return nil
 }
 
 // GetHealthMetrics returns current health metrics for monitoring
 func (h *healthHandler) GetHealthMetrics(ctx context.Context) (map[string]interface{}, error) {
-	h.logger.Info("retrieving health metrics")
+	h.logger.InfoContext(ctx, "retrieving health metrics")
 
 	if h.metricsCollector == nil {
-		h.logger.Error("metrics collector not available")
+		h.logger.ErrorContext(ctx, "metrics collector not available")
 		return nil, fmt.Errorf("metrics collector not configured")
 	}
 
@@ -75,7 +75,7 @@ func (h *healthHandler) GetHealthMetrics(ctx context.Context) (map[string]interf
 		"goroutine_count": metrics.GoroutineCount,
 	}
 
-	h.logger.Info("health metrics retrieved successfully",
+	h.logger.InfoContext(ctx, "health metrics retrieved successfully",
 		"metrics_count", len(result),
 		"service_status", metrics.ServiceStatus)
 
@@ -84,10 +84,10 @@ func (h *healthHandler) GetHealthMetrics(ctx context.Context) (map[string]interf
 
 // GetExtendedHealthMetrics returns comprehensive health metrics for detailed monitoring
 func (h *healthHandler) GetExtendedHealthMetrics(ctx context.Context) (map[string]interface{}, error) {
-	h.logger.Info("retrieving extended health metrics")
+	h.logger.InfoContext(ctx, "retrieving extended health metrics")
 
 	if h.metricsCollector == nil {
-		h.logger.Error("metrics collector not available")
+		h.logger.ErrorContext(ctx, "metrics collector not available")
 		return nil, fmt.Errorf("metrics collector not configured")
 	}
 
@@ -119,7 +119,7 @@ func (h *healthHandler) GetExtendedHealthMetrics(ctx context.Context) (map[strin
 		"timestamp":            extendedMetrics.Timestamp,
 	}
 
-	h.logger.Info("extended health metrics retrieved successfully",
+	h.logger.InfoContext(ctx, "extended health metrics retrieved successfully",
 		"component_count", len(extendedMetrics.ComponentHealth),
 		"external_apis", len(extendedMetrics.ExternalAPIStatus))
 
@@ -128,10 +128,10 @@ func (h *healthHandler) GetExtendedHealthMetrics(ctx context.Context) (map[strin
 
 // CheckSLACompliance checks and returns SLA compliance status
 func (h *healthHandler) CheckSLACompliance(ctx context.Context) (map[string]interface{}, error) {
-	h.logger.Info("checking SLA compliance")
+	h.logger.InfoContext(ctx, "checking SLA compliance")
 
 	if h.metricsCollector == nil {
-		h.logger.Error("metrics collector not available")
+		h.logger.ErrorContext(ctx, "metrics collector not available")
 		return nil, fmt.Errorf("metrics collector not configured")
 	}
 
@@ -162,7 +162,7 @@ func (h *healthHandler) CheckSLACompliance(ctx context.Context) (map[string]inte
 		}(),
 	}
 
-	h.logger.Info("SLA compliance check completed",
+	h.logger.InfoContext(ctx, "SLA compliance check completed",
 		"meets_sla", meetsSLA,
 		"availability", availability,
 		"target", 99.9)
@@ -172,10 +172,10 @@ func (h *healthHandler) CheckSLACompliance(ctx context.Context) (map[string]inte
 
 // GetHealthAlerts returns current health alerts
 func (h *healthHandler) GetHealthAlerts(ctx context.Context) ([]map[string]interface{}, error) {
-	h.logger.Info("retrieving health alerts")
+	h.logger.InfoContext(ctx, "retrieving health alerts")
 
 	if h.metricsCollector == nil {
-		h.logger.Error("metrics collector not available")
+		h.logger.ErrorContext(ctx, "metrics collector not available")
 		return nil, fmt.Errorf("metrics collector not configured")
 	}
 
@@ -194,7 +194,7 @@ func (h *healthHandler) GetHealthAlerts(ctx context.Context) ([]map[string]inter
 		result = append(result, alertMap)
 	}
 
-	h.logger.Info("health alerts retrieved",
+	h.logger.InfoContext(ctx, "health alerts retrieved",
 		"alert_count", len(result),
 		"critical_alerts", countAlertsByLevel(alerts, "critical"),
 		"warning_alerts", countAlertsByLevel(alerts, "warning"))

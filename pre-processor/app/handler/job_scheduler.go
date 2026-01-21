@@ -39,11 +39,11 @@ func NewJobScheduler(logger *slog.Logger) JobScheduler {
 
 // Schedule schedules a job to run at the specified interval.
 func (s *jobScheduler) Schedule(ctx context.Context, jobName string, intervalStr string, jobFunc func() error) error {
-	s.logger.Info("scheduling job", "name", jobName, "interval", intervalStr)
+	s.logger.InfoContext(ctx, "scheduling job", "name", jobName, "interval", intervalStr)
 
 	interval, err := time.ParseDuration(intervalStr)
 	if err != nil {
-		s.logger.Error("failed to parse interval", "error", err, "interval", intervalStr)
+		s.logger.ErrorContext(ctx, "failed to parse interval", "error", err, "interval", intervalStr)
 		return fmt.Errorf("failed to parse interval %s: %w", intervalStr, err)
 	}
 
@@ -75,14 +75,15 @@ func (s *jobScheduler) Schedule(ctx context.Context, jobName string, intervalStr
 	// Start the job
 	go s.runJob(job)
 
-	s.logger.Info("job scheduled successfully", "name", jobName)
+	s.logger.InfoContext(ctx, "job scheduled successfully", "name", jobName)
 
 	return nil
 }
 
 // Stop stops a specific job.
 func (s *jobScheduler) Stop(jobName string) error {
-	s.logger.Info("stopping job", "name", jobName)
+	ctx := context.Background()
+	s.logger.InfoContext(ctx, "stopping job", "name", jobName)
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -95,25 +96,26 @@ func (s *jobScheduler) Stop(jobName string) error {
 	s.stopJobLocked(job)
 	delete(s.jobs, jobName)
 
-	s.logger.Info("job stopped", "name", jobName)
+	s.logger.InfoContext(ctx, "job stopped", "name", jobName)
 
 	return nil
 }
 
 // StopAll stops all scheduled jobs.
 func (s *jobScheduler) StopAll() error {
-	s.logger.Info("stopping all jobs")
+	ctx := context.Background()
+	s.logger.InfoContext(ctx, "stopping all jobs")
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	for name, job := range s.jobs {
 		s.stopJobLocked(job)
-		s.logger.Info("job stopped", "name", name)
+		s.logger.InfoContext(ctx, "job stopped", "name", name)
 	}
 
 	s.jobs = make(map[string]*scheduledJob)
-	s.logger.Info("all jobs stopped")
+	s.logger.InfoContext(ctx, "all jobs stopped")
 
 	return nil
 }
@@ -165,8 +167,8 @@ func (s *jobScheduler) stopJobLocked(job *scheduledJob) {
 
 // runJob runs a scheduled job.
 func (s *jobScheduler) runJob(job *scheduledJob) {
-	s.logger.Info("starting job execution loop", "name", job.name)
-	defer s.logger.Info("job execution loop ended", "name", job.name)
+	s.logger.InfoContext(job.ctx, "starting job execution loop", "name", job.name)
+	defer s.logger.InfoContext(job.ctx, "job execution loop ended", "name", job.name)
 
 	for {
 		select {
@@ -180,7 +182,7 @@ func (s *jobScheduler) runJob(job *scheduledJob) {
 
 // executeJob executes a single job run.
 func (s *jobScheduler) executeJob(job *scheduledJob) {
-	s.logger.Info("executing job", "name", job.name)
+	s.logger.InfoContext(job.ctx, "executing job", "name", job.name)
 
 	s.mutex.Lock()
 	job.isRunning = true
@@ -198,9 +200,9 @@ func (s *jobScheduler) executeJob(job *scheduledJob) {
 	if err != nil {
 		job.errorCount++
 		job.lastError = err
-		s.logger.Error("job execution failed", "name", job.name, "error", err, "error_count", job.errorCount)
+		s.logger.ErrorContext(job.ctx, "job execution failed", "name", job.name, "error", err, "error_count", job.errorCount)
 	} else {
-		s.logger.Info("job execution completed", "name", job.name, "duration", time.Since(start))
+		s.logger.InfoContext(job.ctx, "job execution completed", "name", job.name, "duration", time.Since(start))
 	}
 	s.mutex.Unlock()
 }
