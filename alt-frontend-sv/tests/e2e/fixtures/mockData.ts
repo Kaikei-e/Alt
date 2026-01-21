@@ -631,17 +631,18 @@ export const JOB_PROGRESS_WITH_ACTIVE_JOB = {
 	active_job: {
 		job_id: "job-active-xyz789",
 		status: "running",
-		last_stage: "evidence",
+		current_stage: "evidence",
+		stage_index: 5, // evidence is the 6th stage (0-indexed: 5)
+		stages_completed: ["fetch", "preprocess", "dedup", "genre", "select"],
+		genre_progress: {
+			tech: { status: "running", cluster_count: 5, article_count: 25 },
+			business: { status: "pending", cluster_count: null, article_count: null },
+		},
+		total_articles: 150,
+		user_article_count: 12,
 		kicked_at: "2025-12-20T12:00:00Z",
-		updated_at: "2025-12-20T12:03:00Z",
-		duration_secs: 180,
 		trigger_source: "system",
-		user_id: null,
-		status_history: [
-			{ id: 1, status: "running", stage: "fetch", transitioned_at: "2025-12-20T12:00:00Z", reason: null, actor: "system" },
-			{ id: 2, status: "completed", stage: "fetch", transitioned_at: "2025-12-20T12:00:45Z", reason: null, actor: "system" },
-			{ id: 3, status: "running", stage: "evidence", transitioned_at: "2025-12-20T12:00:45Z", reason: null, actor: "system" },
-		],
+		sub_stage_progress: null,
 	},
 	recent_jobs: JOB_PROGRESS_RESPONSE.recent_jobs,
 	stats: {

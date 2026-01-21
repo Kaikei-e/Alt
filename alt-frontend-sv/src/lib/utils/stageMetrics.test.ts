@@ -110,6 +110,173 @@ describe("stageMetrics", () => {
 			expect(fetchStage?.durationSecs).toBe(120); // 2 minutes (inferred from next stage)
 			expect(fetchStage?.status).toBe("completed");
 		});
+
+		it("infers timing for missing stages when job is completed", () => {
+			// This tests the scenario where a stage (like "evidence") doesn't have
+			// explicit status history entries, but the job completed successfully.
+			// The function should infer timing from surrounding stages.
+			const history: StatusTransition[] = [
+				{
+					id: 1,
+					status: "running",
+					stage: "fetch",
+					transitioned_at: "2025-01-20T10:00:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 2,
+					status: "running",
+					stage: "preprocess",
+					transitioned_at: "2025-01-20T10:01:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 3,
+					status: "running",
+					stage: "dedup",
+					transitioned_at: "2025-01-20T10:02:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 4,
+					status: "running",
+					stage: "genre",
+					transitioned_at: "2025-01-20T10:03:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 5,
+					status: "running",
+					stage: "select",
+					transitioned_at: "2025-01-20T10:04:00Z",
+					reason: null,
+					actor: "system",
+				},
+				// NOTE: No "evidence" stage entry - simulating the bug scenario
+				{
+					id: 6,
+					status: "running",
+					stage: "dispatch",
+					transitioned_at: "2025-01-20T10:05:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 7,
+					status: "running",
+					stage: "persist",
+					transitioned_at: "2025-01-20T10:06:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 8,
+					status: "completed",
+					stage: "persist",
+					transitioned_at: "2025-01-20T10:07:00Z",
+					reason: null,
+					actor: "system",
+				},
+			];
+
+			const result = calculateStageDurations(history, "2025-01-20T10:00:00Z", "completed");
+
+			// All stages should be marked as completed for a completed job
+			const completedStages = result.filter((s) => s.status === "completed");
+			expect(completedStages).toHaveLength(8);
+
+			// Evidence stage should have inferred timing from select (end) and dispatch (start)
+			const evidenceStage = result.find((s) => s.stage === "evidence");
+			expect(evidenceStage?.status).toBe("completed");
+			// Evidence should infer: start from select's end, end from dispatch's start
+			// Since select doesn't have explicit end, select's end is inferred from dispatch's start
+			// So evidence start = select's end = dispatch's start = 10:05:00
+			// And evidence end = dispatch's start = 10:05:00
+			// This means duration = 0 for evidence (which is expected since it's instantaneous)
+			expect(evidenceStage?.durationSecs).toBe(0);
+		});
+
+		it("correctly counts all stages as completed when job is completed", () => {
+			// Test that verifies the Stages "5/8" vs "8/8" fix
+			const history: StatusTransition[] = [
+				{
+					id: 1,
+					status: "running",
+					stage: "fetch",
+					transitioned_at: "2025-01-20T10:00:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 2,
+					status: "running",
+					stage: "preprocess",
+					transitioned_at: "2025-01-20T10:01:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 3,
+					status: "running",
+					stage: "dedup",
+					transitioned_at: "2025-01-20T10:02:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 4,
+					status: "running",
+					stage: "genre",
+					transitioned_at: "2025-01-20T10:03:00Z",
+					reason: null,
+					actor: "system",
+				},
+				// Missing: select, evidence (simulating incomplete status history)
+				{
+					id: 5,
+					status: "running",
+					stage: "dispatch",
+					transitioned_at: "2025-01-20T10:05:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 6,
+					status: "running",
+					stage: "persist",
+					transitioned_at: "2025-01-20T10:06:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 7,
+					status: "completed",
+					stage: "persist",
+					transitioned_at: "2025-01-20T10:07:00Z",
+					reason: null,
+					actor: "system",
+				},
+			];
+
+			const result = calculateStageDurations(history, "2025-01-20T10:00:00Z", "completed");
+
+			// Even with missing status history for select and evidence,
+			// all 8 stages should be marked as completed when job is completed
+			const completedCount = result.filter((s) => s.status === "completed").length;
+			expect(completedCount).toBe(8);
+
+			// Verify select stage is marked as completed even without explicit history
+			const selectStage = result.find((s) => s.stage === "select");
+			expect(selectStage?.status).toBe("completed");
+
+			// Verify evidence stage is marked as completed even without explicit history
+			const evidenceStage = result.find((s) => s.stage === "evidence");
+			expect(evidenceStage?.status).toBe("completed");
+		});
 	});
 
 	describe("calculateJobMetrics", () => {

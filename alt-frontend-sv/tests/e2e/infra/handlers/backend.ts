@@ -113,8 +113,9 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
-		// Job progress dashboard
-		if (path === "/api/v1/dashboard/job-progress" || path.startsWith("/api/v1/dashboard/job-progress")) {
+		// Job progress dashboard (handles both /api/v1 and /v1 paths for recap-worker)
+		if (path === "/api/v1/dashboard/job-progress" || path.startsWith("/api/v1/dashboard/job-progress") ||
+			path === "/v1/dashboard/job-progress" || path.startsWith("/v1/dashboard/job-progress")) {
 			res.writeHead(200);
 			res.end(JSON.stringify(JOB_PROGRESS_RESPONSE));
 			return;

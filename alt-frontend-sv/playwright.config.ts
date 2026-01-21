@@ -119,6 +119,7 @@ export default defineConfig({
 			AUTH_HUB_INTERNAL_URL: "http://127.0.0.1:4002",
 			BACKEND_BASE_URL: "http://127.0.0.1:4003",
 			BACKEND_CONNECT_URL: "http://127.0.0.1:4003",
+			RECAP_WORKER_BASE_URL: "http://127.0.0.1:4003",
 		},
 	},
 });

@@ -1,5 +1,6 @@
 <script lang="ts">
 import {
+	Activity,
 	BirdIcon,
 	CalendarRange,
 	ChartBar,
@@ -131,6 +132,13 @@ const menuItems = [
 		category: "recap",
 		icon: Newspaper,
 		description: "Today's overnight updates",
+	},
+	{
+		label: "Job Status",
+		href: `${svBasePath}/mobile/recap/job-status`,
+		category: "recap",
+		icon: Activity,
+		description: "Monitor recap job progress",
 	},
 	{
 		label: "View Articles",

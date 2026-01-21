@@ -129,6 +129,65 @@ export function calculateStageDurations(
 		}
 	}
 
+	// When job is completed, infer timing for stages that have no Status History entries
+	// This handles stages like "evidence" that may not record status transitions
+	if (jobStatus === "completed") {
+		for (let i = 0; i < stageOrder.length; i++) {
+			const stage = stageOrder[i];
+			const timing = stageTiming.get(stage);
+
+			// Skip stages that already have complete timing data (both start and end)
+			if (timing && timing.start && timing.end) {
+				continue;
+			}
+
+			// Infer timing from surrounding stages
+			let inferredStart: string | null = timing?.start ?? null;
+			let inferredEnd: string | null = timing?.end ?? null;
+
+			// Use previous stage's end time as start
+			if (!inferredStart && i > 0) {
+				const prevTiming = stageTiming.get(stageOrder[i - 1]);
+				if (prevTiming?.end) {
+					inferredStart = prevTiming.end;
+				}
+			}
+
+			// Use next stage's start time as end
+			if (!inferredEnd && i < stageOrder.length - 1) {
+				const nextTiming = stageTiming.get(stageOrder[i + 1]);
+				if (nextTiming?.start) {
+					inferredEnd = nextTiming.start;
+				}
+			}
+
+			// For stages with no timing at all (like evidence), use next stage's start for both
+			// since the stage is effectively instantaneous
+			if (!inferredStart && inferredEnd) {
+				inferredStart = inferredEnd;
+			}
+
+			// Update the previous stage's end if it's missing (this completes the chain)
+			if (i > 0) {
+				const prevStage = stageOrder[i - 1];
+				const prevTiming = stageTiming.get(prevStage);
+				if (prevTiming && prevTiming.start && !prevTiming.end && inferredStart) {
+					prevTiming.end = inferredStart;
+					if (prevTiming.status === "running") {
+						prevTiming.status = "completed";
+					}
+				}
+			}
+
+			// Set inferred timing - mark as completed since job completed successfully
+			stageTiming.set(stage, {
+				start: inferredStart,
+				end: inferredEnd,
+				status: "completed",
+			});
+		}
+	}
+
 	// Build the result
 	return stageOrder.map((stage): StageDuration => {
 		const timing = stageTiming.get(stage);

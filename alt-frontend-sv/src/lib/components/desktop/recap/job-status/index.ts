@@ -6,3 +6,4 @@ export { default as ActiveJobCard } from "./ActiveJobCard.svelte";
 export { default as JobHistoryTable } from "./JobHistoryTable.svelte";
 export { default as StageDurationBar } from "./StageDurationBar.svelte";
 export { default as JobDetailMetrics } from "./JobDetailMetrics.svelte";
+export { default as StatusTransitionTimeline } from "./StatusTransitionTimeline.svelte";

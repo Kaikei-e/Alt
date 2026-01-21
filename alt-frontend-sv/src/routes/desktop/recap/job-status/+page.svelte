@@ -35,6 +35,7 @@
 	let triggering = $state(false);
 	let triggerError = $state<string | null>(null);
 	let triggerSuccess = $state<string | null>(null);
+	let justStartedJobId = $state<string | null>(null);
 
 	onMount(async () => {
 		loadingStore.startLoading();
@@ -56,7 +57,7 @@
 	}
 
 	async function handleTriggerJob() {
-		if (triggering) return;
+		if (triggering || justStartedJobId) return;
 
 		triggering = true;
 		triggerError = null;
@@ -64,17 +65,30 @@
 
 		try {
 			const result = await triggerRecapJob(fetch);
+			justStartedJobId = result.job_id;
 			triggerSuccess = `Job ${result.job_id.slice(0, 8)}... started with ${result.genres.length} genres`;
+
 			// Refresh data after triggering
-			setTimeout(() => {
-				jobProgress.refresh();
+			setTimeout(async () => {
+				await jobProgress.refresh();
+				// Clear optimistic lock if active_job is now present
+				if (jobProgress.data?.active_job) {
+					justStartedJobId = null;
+				}
 			}, 1000);
+
+			// Fallback: force clear optimistic lock after 10 seconds
+			setTimeout(() => {
+				justStartedJobId = null;
+			}, 10000);
+
 			// Clear success message after 5 seconds
 			setTimeout(() => {
 				triggerSuccess = null;
 			}, 5000);
 		} catch (e) {
 			triggerError = e instanceof Error ? e.message : "Failed to trigger job";
+			justStartedJobId = null;
 		} finally {
 			triggering = false;
 		}
@@ -102,6 +116,7 @@
 		return d?.active_job != null;
 	});
 	const runningJobTooltip = $derived.by(() => {
+		if (justStartedJobId) return "Job is starting...";
 		const activeJob = jobProgress.data?.active_job;
 		if (!activeJob) return "Start a new recap job";
 		const source = activeJob.trigger_source === "user" ? "user" : "system";
@@ -179,7 +194,7 @@
 			class="flex items-center gap-2 px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 			style="background: var(--alt-primary, #2f4f4f); color: #ffffff;"
 			onclick={handleTriggerJob}
-			disabled={triggering || hasRunningJob}
+			disabled={triggering || hasRunningJob || justStartedJobId !== null}
 			title={runningJobTooltip}
 		>
 			<Rocket class="w-4 h-4 {triggering ? 'animate-pulse' : ''}" />
