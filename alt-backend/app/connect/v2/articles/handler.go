@@ -86,7 +86,7 @@ func (h *Handler) FetchArticleContent(
 				fmt.Errorf("request timeout"))
 		}
 
-		return nil, errorhandler.HandleInternalError(h.logger, err, "FetchArticleContent")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticleContent")
 	}
 
 	// Strip HTML tags from content
@@ -139,7 +139,7 @@ func (h *Handler) ArchiveArticle(
 
 	// Call usecase
 	if err := h.container.ArchiveArticleUsecase.Execute(ctx, input); err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "ArchiveArticle")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ArchiveArticle")
 	}
 
 	return connect.NewResponse(&articlesv2.ArchiveArticleResponse{
@@ -181,7 +181,7 @@ func (h *Handler) FetchArticlesCursor(
 	// Call usecase (request limit+1 to determine hasMore)
 	articles, err := h.container.FetchArticlesCursorUsecase.Execute(ctx, cursor, limit+1)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "FetchArticlesCursor")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticlesCursor")
 	}
 
 	// Determine hasMore and trim result
@@ -250,7 +250,7 @@ func (h *Handler) FetchArticleSummary(
 	// Fetch summaries using existing usecase
 	summaries, err := h.container.FetchInoreaderSummaryUsecase.Execute(ctx, feedUrls)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "FetchArticleSummary")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticleSummary")
 	}
 
 	// Convert to proto response

@@ -53,15 +53,15 @@ func (h *Handler) GetSevenDayRecap(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
-	h.logger.Info("GetSevenDayRecap called", "user_id", userCtx.UserID)
+	h.logger.InfoContext(ctx, "GetSevenDayRecap called", "user_id", userCtx.UserID)
 
 	// Call usecase
 	recap, err := h.recapUsecase.GetSevenDayRecap(ctx)
 	if err != nil {
 		if errors.Is(err, domain.ErrRecapNotFound) {
-			return nil, errorhandler.HandleNotFoundError(h.logger, "No 7-day recap available yet", "GetSevenDayRecap")
+			return nil, errorhandler.HandleNotFoundError(ctx, h.logger, "No 7-day recap available yet", "GetSevenDayRecap")
 		}
-		return nil, errorhandler.HandleInternalError(h.logger, err, "GetSevenDayRecap")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetSevenDayRecap")
 	}
 
 	// Convert domain to proto
@@ -71,7 +71,7 @@ func (h *Handler) GetSevenDayRecap(
 	if req.Msg.GenreDraftId != nil && *req.Msg.GenreDraftId != "" && h.clusterDraftLoader != nil {
 		draft, err := h.clusterDraftLoader.LoadDraft(*req.Msg.GenreDraftId)
 		if err != nil {
-			h.logger.Warn("cluster draft loader failed", "error", err, "draft_id", *req.Msg.GenreDraftId)
+			h.logger.WarnContext(ctx, "cluster draft loader failed", "error", err, "draft_id", *req.Msg.GenreDraftId)
 		} else if draft != nil {
 			resp.ClusterDraft = clusterDraftToProto(draft)
 		}

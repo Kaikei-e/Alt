@@ -49,7 +49,7 @@ func (h *Handler) StreamChat(
 	// Authentication check (handled by interceptor, but double-check)
 	_, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		h.logger.Error("authentication failed", "error", err)
+		h.logger.ErrorContext(ctx, "authentication failed", "error", err)
 		return connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
@@ -63,11 +63,11 @@ func (h *Handler) StreamChat(
 	}
 
 	if query == "" {
-		h.logger.Warn("no user message found in request")
+		h.logger.WarnContext(ctx, "no user message found in request")
 		return connect.NewError(connect.CodeInvalidArgument, nil)
 	}
 
-	h.logger.Info("starting stream chat", "query_length", len(query))
+	h.logger.InfoContext(ctx, "starting stream chat", "query_length", len(query))
 
 	// Call usecase to get SSE stream
 	input := rag_integration_port.AnswerInput{
@@ -77,7 +77,7 @@ func (h *Handler) StreamChat(
 
 	answerChan, err := h.answerChatUsecase.Execute(ctx, input)
 	if err != nil {
-		return errorhandler.HandleInternalError(h.logger, err, "StreamChat.ExecuteAnswerChat")
+		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.ExecuteAnswerChat")
 	}
 
 	// Process SSE stream and convert to Connect-RPC events
@@ -87,7 +87,7 @@ func (h *Handler) StreamChat(
 		// Check for context cancellation
 		select {
 		case <-ctx.Done():
-			h.logger.Info("stream chat cancelled by client")
+			h.logger.InfoContext(ctx, "stream chat cancelled by client")
 			return nil
 		default:
 		}
@@ -108,18 +108,18 @@ func (h *Handler) StreamChat(
 			// Parse SSE event
 			event, err := h.parseSSEEvent(eventStr)
 			if err != nil {
-				h.logger.Warn("failed to parse SSE event", "error", err, "event", eventStr)
+				h.logger.WarnContext(ctx, "failed to parse SSE event", "error", err, "event", eventStr)
 				continue
 			}
 
 			// Send to stream
 			if err := stream.Send(event); err != nil {
-				return errorhandler.HandleInternalError(h.logger, err, "StreamChat.SendEvent")
+				return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.SendEvent")
 			}
 		}
 	}
 
-	h.logger.Info("stream chat completed")
+	h.logger.InfoContext(ctx, "stream chat completed")
 	return nil
 }
 
@@ -153,7 +153,7 @@ func (h *Handler) parseSSEEvent(eventStr string) (*augurv2.StreamChatEvent, erro
 		// Parse and sanitize meta event
 		meta, err := h.sanitizeMetaPayload(dataPayload)
 		if err != nil {
-			h.logger.Warn("failed to sanitize meta payload", "error", err)
+			h.logger.Warn("failed to sanitize meta payload (no context available)", "error", err)
 			// Return empty meta on error
 			meta = &augurv2.MetaPayload{Citations: []*augurv2.Citation{}}
 		}
@@ -165,7 +165,7 @@ func (h *Handler) parseSSEEvent(eventStr string) (*augurv2.StreamChatEvent, erro
 		// Parse done payload
 		done, err := h.parseDonePayload(dataPayload)
 		if err != nil {
-			h.logger.Warn("failed to parse done payload", "error", err)
+			h.logger.Warn("failed to parse done payload (no context available)", "error", err)
 			done = &augurv2.DonePayload{Answer: "", Citations: []*augurv2.Citation{}}
 		}
 		event.Payload = &augurv2.StreamChatEvent_Done{
@@ -274,7 +274,7 @@ func (h *Handler) RetrieveContext(
 	// Authentication check (handled by interceptor, but double-check)
 	_, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		h.logger.Error("authentication failed", "error", err)
+		h.logger.ErrorContext(ctx, "authentication failed", "error", err)
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
@@ -283,12 +283,12 @@ func (h *Handler) RetrieveContext(
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
 
-	h.logger.Info("retrieving context", "query", query)
+	h.logger.InfoContext(ctx, "retrieving context", "query", query)
 
 	// Call usecase
 	contexts, err := h.retrieveContextUsecase.Execute(ctx, query)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "RetrieveContext")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "RetrieveContext")
 	}
 
 	// Convert to protobuf response

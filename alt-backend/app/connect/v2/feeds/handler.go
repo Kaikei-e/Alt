@@ -59,12 +59,12 @@ func (h *Handler) GetFeedStats(
 
 	feedCount, err := h.container.FeedAmountUsecase.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "GetFeedStats.FeedAmount")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetFeedStats.FeedAmount")
 	}
 
 	summarizedCount, err := h.container.SummarizedArticlesCountUsecase.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "GetFeedStats.SummarizedCount")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetFeedStats.SummarizedCount")
 	}
 
 	return connect.NewResponse(&feedsv2.GetFeedStatsResponse{
@@ -85,17 +85,17 @@ func (h *Handler) GetDetailedFeedStats(
 
 	feedCount, err := h.container.FeedAmountUsecase.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "GetDetailedFeedStats.FeedAmount")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetDetailedFeedStats.FeedAmount")
 	}
 
 	articleCount, err := h.container.TotalArticlesCountUsecase.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "GetDetailedFeedStats.ArticleCount")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetDetailedFeedStats.ArticleCount")
 	}
 
 	unsummarizedCount, err := h.container.UnsummarizedArticlesCountUsecase.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "GetDetailedFeedStats.UnsummarizedCount")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetDetailedFeedStats.UnsummarizedCount")
 	}
 
 	return connect.NewResponse(&feedsv2.GetDetailedFeedStatsResponse{
@@ -121,7 +121,7 @@ func (h *Handler) GetUnreadCount(
 
 	count, err := h.container.TodayUnreadArticlesCountUsecase.Execute(ctx, since)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "GetUnreadCount")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetUnreadCount")
 	}
 
 	return connect.NewResponse(&feedsv2.GetUnreadCountResponse{
@@ -149,7 +149,7 @@ func (h *Handler) StreamFeedStats(
 	}
 	heartbeatInterval := 10 * time.Second
 
-	h.logger.Info("starting feed stats stream",
+	h.logger.InfoContext(ctx, "starting feed stats stream",
 		"update_interval", updateInterval,
 		"heartbeat_interval", heartbeatInterval)
 
@@ -162,7 +162,7 @@ func (h *Handler) StreamFeedStats(
 
 	// Send initial data immediately
 	if err := h.sendStatsUpdate(ctx, stream, false); err != nil {
-		h.logger.Error("failed to send initial stats", "error", err)
+		h.logger.ErrorContext(ctx, "failed to send initial stats", "error", err)
 		return err
 	}
 
@@ -171,20 +171,20 @@ func (h *Handler) StreamFeedStats(
 		select {
 		case <-ctx.Done():
 			// Client disconnected or context cancelled
-			h.logger.Info("feed stats stream cancelled", "reason", ctx.Err())
+			h.logger.InfoContext(ctx, "feed stats stream cancelled", "reason", ctx.Err())
 			return nil
 
 		case <-updateTicker.C:
 			// Send periodic data update
 			if err := h.sendStatsUpdate(ctx, stream, false); err != nil {
-				h.logger.Error("failed to send stats update", "error", err)
+				h.logger.ErrorContext(ctx, "failed to send stats update", "error", err)
 				return err
 			}
 
 		case <-heartbeatTicker.C:
 			// Send heartbeat to keep connection alive
 			if err := h.sendStatsUpdate(ctx, stream, true); err != nil {
-				h.logger.Error("failed to send heartbeat", "error", err)
+				h.logger.ErrorContext(ctx, "failed to send heartbeat", "error", err)
 				return err
 			}
 		}
@@ -208,19 +208,19 @@ func (h *Handler) sendStatsUpdate(
 		// Fetch actual stats from usecases
 		feedCount, err := h.container.FeedAmountUsecase.Execute(ctx)
 		if err != nil {
-			h.logger.Error("failed to get feed count", "error", err)
+			h.logger.ErrorContext(ctx, "failed to get feed count", "error", err)
 			return err
 		}
 
 		unsummarized, err := h.container.UnsummarizedArticlesCountUsecase.Execute(ctx)
 		if err != nil {
-			h.logger.Error("failed to get unsummarized count", "error", err)
+			h.logger.ErrorContext(ctx, "failed to get unsummarized count", "error", err)
 			return err
 		}
 
 		totalArticles, err := h.container.TotalArticlesCountUsecase.Execute(ctx)
 		if err != nil {
-			h.logger.Error("failed to get total articles", "error", err)
+			h.logger.ErrorContext(ctx, "failed to get total articles", "error", err)
 			return err
 		}
 
@@ -273,7 +273,7 @@ func (h *Handler) GetUnreadFeeds(
 	// Call usecase
 	feeds, hasMore, err := h.container.FetchUnreadFeedsListCursorUsecase.Execute(ctx, cursor, limit)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "GetUnreadFeeds")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetUnreadFeeds")
 	}
 
 	return connect.NewResponse(&feedsv2.GetUnreadFeedsResponse{
@@ -317,7 +317,7 @@ func (h *Handler) GetReadFeeds(
 	// Call usecase
 	feeds, err := h.container.FetchReadFeedsListCursorUsecase.Execute(ctx, cursor, limit)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "GetReadFeeds")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetReadFeeds")
 	}
 
 	// Determine hasMore based on result count vs requested limit
@@ -364,7 +364,7 @@ func (h *Handler) GetFavoriteFeeds(
 	// Call usecase
 	feeds, err := h.container.FetchFavoriteFeedsListCursorUsecase.Execute(ctx, cursor, limit)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "GetFavoriteFeeds")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetFavoriteFeeds")
 	}
 
 	// Determine hasMore based on result count vs requested limit
@@ -422,7 +422,7 @@ func (h *Handler) SearchFeeds(
 	results, hasMore, err := h.container.FeedSearchUsecase.ExecuteWithPagination(
 		ctx, req.Msg.Query, offset, limit)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "SearchFeeds")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "SearchFeeds")
 	}
 
 	// Compute next cursor
@@ -483,7 +483,7 @@ func (h *Handler) StreamSummarize(
 	// Resolve article ID and content
 	resolvedArticleID, resolvedTitle, resolvedContent, err := h.resolveArticle(ctx, feedURL, articleID, content, title)
 	if err != nil {
-		return errorhandler.HandleInternalError(h.logger, err, "StreamSummarize.ResolveArticle")
+		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamSummarize.ResolveArticle")
 	}
 
 	if resolvedContent == "" {
@@ -494,7 +494,7 @@ func (h *Handler) StreamSummarize(
 	// Check cache for existing summary
 	existingSummary, err := h.container.AltDBRepository.FetchArticleSummaryByArticleID(ctx, resolvedArticleID)
 	if err == nil && existingSummary != nil && existingSummary.Summary != "" {
-		h.logger.Info("returning cached summary", "article_id", resolvedArticleID)
+		h.logger.InfoContext(ctx, "returning cached summary", "article_id", resolvedArticleID)
 		// Return cached summary immediately
 		return stream.Send(&feedsv2.StreamSummarizeResponse{
 			Chunk:       "",
@@ -505,34 +505,34 @@ func (h *Handler) StreamSummarize(
 		})
 	}
 
-	h.logger.Info("starting stream summarization",
+	h.logger.InfoContext(ctx, "starting stream summarization",
 		"article_id", resolvedArticleID,
 		"content_length", len(resolvedContent))
 
 	// Stream from pre-processor
 	preProcessorStream, err := h.streamPreProcessorSummarize(ctx, resolvedContent, resolvedArticleID, resolvedTitle)
 	if err != nil {
-		return errorhandler.HandleInternalError(h.logger, err, "StreamSummarize.StartStream")
+		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamSummarize.StartStream")
 	}
 	defer func() {
 		if closeErr := preProcessorStream.Close(); closeErr != nil {
-			h.logger.Debug("failed to close pre-processor stream", "error", closeErr)
+			h.logger.DebugContext(ctx, "failed to close pre-processor stream", "error", closeErr)
 		}
 	}()
 
 	// Stream chunks to client and capture full summary
 	fullSummary, err := h.streamAndCapture(ctx, stream, preProcessorStream, resolvedArticleID)
 	if err != nil {
-		return errorhandler.HandleInternalError(h.logger, err, "StreamSummarize.Streaming")
+		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamSummarize.Streaming")
 	}
 
 	// Save summary to database
 	if fullSummary != "" && resolvedArticleID != "" {
 		if err := h.container.AltDBRepository.SaveArticleSummary(ctx, resolvedArticleID, resolvedTitle, fullSummary); err != nil {
-			h.logger.Error("failed to save summary", "error", err, "article_id", resolvedArticleID)
+			h.logger.ErrorContext(ctx, "failed to save summary", "error", err, "article_id", resolvedArticleID)
 			// Don't return error, streaming was successful
 		} else {
-			h.logger.Info("summary saved", "article_id", resolvedArticleID, "summary_length", len(fullSummary))
+			h.logger.InfoContext(ctx, "summary saved", "article_id", resolvedArticleID, "summary_length", len(fullSummary))
 		}
 	}
 
@@ -677,7 +677,7 @@ func (h *Handler) fetchArticleContent(ctx context.Context, urlStr string) (strin
 	extractedText := html_parser.ExtractArticleText(htmlContent)
 
 	if extractedText == "" {
-		h.logger.Warn("failed to extract article text, using raw HTML", "url", urlStr)
+		h.logger.WarnContext(ctx, "failed to extract article text, using raw HTML", "url", urlStr)
 		return htmlContent, title, nil
 	}
 
@@ -727,7 +727,7 @@ func (h *Handler) streamPreProcessorSummarize(ctx context.Context, content, arti
 		return nil, fmt.Errorf("pre-processor returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	h.logger.Info("pre-processor stream response received",
+	h.logger.InfoContext(ctx, "pre-processor stream response received",
 		"article_id", articleID,
 		"status", resp.Status,
 		"content_type", resp.Header.Get("Content-Type"))
@@ -751,7 +751,7 @@ func (h *Handler) streamAndCapture(
 	for {
 		select {
 		case <-ctx.Done():
-			h.logger.Info("stream cancelled", "article_id", articleID)
+			h.logger.InfoContext(ctx, "stream cancelled", "article_id", articleID)
 			return summaryBuf.String(), ctx.Err()
 		default:
 		}
@@ -786,7 +786,7 @@ func (h *Handler) streamAndCapture(
 						ArticleId: articleID,
 						IsCached:  false,
 					}); sendErr != nil {
-						h.logger.Error("failed to send chunk", "error", sendErr, "article_id", articleID)
+						h.logger.ErrorContext(ctx, "failed to send chunk", "error", sendErr, "article_id", articleID)
 						return "", sendErr
 					}
 				}
@@ -808,10 +808,10 @@ func (h *Handler) streamAndCapture(
 						})
 					}
 				}
-				h.logger.Info("stream completed", "article_id", articleID, "bytes_written", bytesWritten)
+				h.logger.InfoContext(ctx, "stream completed", "article_id", articleID, "bytes_written", bytesWritten)
 				break
 			}
-			h.logger.Error("failed to read from stream", "error", err, "article_id", articleID)
+			h.logger.ErrorContext(ctx, "failed to read from stream", "error", err, "article_id", articleID)
 			return "", err
 		}
 	}
@@ -873,7 +873,7 @@ func (h *Handler) MarkAsRead(
 	if err := h.container.ArticlesReadingStatusUsecase.Execute(ctx, *articleURL); err != nil {
 		// Map domain errors to appropriate HTTP status codes
 		if errors.Is(err, domain.ErrFeedNotFound) {
-			h.logger.Info("feed not found for mark as read",
+			h.logger.InfoContext(ctx, "feed not found for mark as read",
 				"article_url", req.Msg.ArticleUrl,
 				"error", err)
 			return nil, connect.NewError(connect.CodeNotFound,
@@ -881,10 +881,10 @@ func (h *Handler) MarkAsRead(
 		}
 
 		// All other errors are internal server errors
-		return nil, errorhandler.HandleInternalError(h.logger, err, "MarkAsRead")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "MarkAsRead")
 	}
 
-	h.logger.Info("feed marked as read", "article_url", req.Msg.ArticleUrl)
+	h.logger.InfoContext(ctx, "feed marked as read", "article_url", req.Msg.ArticleUrl)
 
 	return connect.NewResponse(&feedsv2.MarkAsReadResponse{
 		Message: "Feed read status updated",

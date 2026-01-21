@@ -6,6 +6,7 @@ import (
 	"alt/di"
 	"alt/driver/alt_db"
 	"alt/job"
+	"alt/middleware"
 	"alt/rest"
 	"alt/utils/logger"
 	altotel "alt/utils/otel"
@@ -78,6 +79,8 @@ func main() {
 	// Add OpenTelemetry tracing middleware (creates spans for each request)
 	if otelCfg.Enabled {
 		e.Use(otelecho.Middleware(otelCfg.ServiceName))
+		// Add OTel status middleware to set span status based on HTTP response code
+		e.Use(middleware.OTelStatusMiddleware())
 	}
 
 	// Custom HTTPErrorHandler to ensure 401 is always returned as 401 (not 404)

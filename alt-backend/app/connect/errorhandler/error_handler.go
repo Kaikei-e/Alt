@@ -3,6 +3,7 @@
 package errorhandler
 
 import (
+	"context"
 	stderrors "errors"
 	"fmt"
 	"log/slog"
@@ -16,7 +17,7 @@ import (
 // HandleConnectError converts internal errors to safe Connect-RPC errors.
 // IMPORTANT: This function ensures internal error details are NEVER exposed to clients.
 // All error messages are sanitized before being returned.
-func HandleConnectError(logger *slog.Logger, err error, code connect.Code, operation string) *connect.Error {
+func HandleConnectError(ctx context.Context, logger *slog.Logger, err error, code connect.Code, operation string) *connect.Error {
 	// Convert to AppContextError for consistent handling
 	var enrichedErr *errors.AppContextError
 
@@ -44,7 +45,7 @@ func HandleConnectError(logger *slog.Logger, err error, code connect.Code, opera
 	}
 
 	// Log the full error details (internal only - never sent to client)
-	logger.Error(
+	logger.ErrorContext(ctx,
 		"Connect-RPC Error",
 		"error_id", enrichedErr.ErrorID,
 		"error", enrichedErr.Error(),
@@ -63,12 +64,12 @@ func HandleConnectError(logger *slog.Logger, err error, code connect.Code, opera
 }
 
 // HandleInternalError is a convenience wrapper for internal server errors
-func HandleInternalError(logger *slog.Logger, err error, operation string) *connect.Error {
-	return HandleConnectError(logger, err, connect.CodeInternal, operation)
+func HandleInternalError(ctx context.Context, logger *slog.Logger, err error, operation string) *connect.Error {
+	return HandleConnectError(ctx, logger, err, connect.CodeInternal, operation)
 }
 
 // HandleValidationError is a convenience wrapper for validation errors
-func HandleValidationError(logger *slog.Logger, message string, operation string) *connect.Error {
+func HandleValidationError(ctx context.Context, logger *slog.Logger, message string, operation string) *connect.Error {
 	validationErr := errors.NewValidationContextError(
 		message,
 		"connect",
@@ -76,11 +77,11 @@ func HandleValidationError(logger *slog.Logger, message string, operation string
 		operation,
 		nil,
 	)
-	return HandleConnectError(logger, validationErr, connect.CodeInvalidArgument, operation)
+	return HandleConnectError(ctx, logger, validationErr, connect.CodeInvalidArgument, operation)
 }
 
 // HandleNotFoundError is a convenience wrapper for not found errors
-func HandleNotFoundError(logger *slog.Logger, message string, operation string) *connect.Error {
+func HandleNotFoundError(ctx context.Context, logger *slog.Logger, message string, operation string) *connect.Error {
 	notFoundErr := errors.NewAppContextError(
 		"NOT_FOUND",
 		message,
@@ -90,12 +91,12 @@ func HandleNotFoundError(logger *slog.Logger, message string, operation string) 
 		nil,
 		nil,
 	)
-	return HandleConnectError(logger, notFoundErr, connect.CodeNotFound, operation)
+	return HandleConnectError(ctx, logger, notFoundErr, connect.CodeNotFound, operation)
 }
 
 // HandleUnauthenticatedError is a convenience wrapper for authentication errors
-func HandleUnauthenticatedError(logger *slog.Logger, err error, operation string) *connect.Error {
-	return HandleConnectError(logger, err, connect.CodeUnauthenticated, operation)
+func HandleUnauthenticatedError(ctx context.Context, logger *slog.Logger, err error, operation string) *connect.Error {
+	return HandleConnectError(ctx, logger, err, connect.CodeUnauthenticated, operation)
 }
 
 // classifyDriverError checks for specific driver errors and returns appropriate AppContextError

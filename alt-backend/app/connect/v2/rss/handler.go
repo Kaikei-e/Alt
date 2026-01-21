@@ -71,7 +71,7 @@ func (h *Handler) RegisterRSSFeed(
 
 	// Call usecase
 	if err := h.container.RegisterFeedsUsecase.Execute(ctx, req.Msg.Url); err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "RegisterRSSFeed")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "RegisterRSSFeed")
 	}
 
 	return connect.NewResponse(&rssv2.RegisterRSSFeedResponse{
@@ -93,7 +93,7 @@ func (h *Handler) ListRSSFeedLinks(
 	// Call usecase
 	links, err := h.container.ListFeedLinksUsecase.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "ListRSSFeedLinks")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ListRSSFeedLinks")
 	}
 
 	// Convert to proto
@@ -135,7 +135,7 @@ func (h *Handler) DeleteRSSFeedLink(
 
 	// Call usecase
 	if err := h.container.DeleteFeedLinkUsecase.Execute(ctx, linkID); err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "DeleteRSSFeedLink")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "DeleteRSSFeedLink")
 	}
 
 	return connect.NewResponse(&rssv2.DeleteRSSFeedLinkResponse{
@@ -174,7 +174,7 @@ func (h *Handler) RegisterFavoriteFeed(
 
 	// Call usecase
 	if err := h.container.RegisterFavoriteFeedUsecase.Execute(ctx, req.Msg.Url); err != nil {
-		return nil, errorhandler.HandleInternalError(h.logger, err, "RegisterFavoriteFeed")
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "RegisterFavoriteFeed")
 	}
 
 	return connect.NewResponse(&rssv2.RegisterFavoriteFeedResponse{

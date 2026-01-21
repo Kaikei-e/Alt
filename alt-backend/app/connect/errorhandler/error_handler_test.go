@@ -1,6 +1,7 @@
 package errorhandler
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"strings"
@@ -13,10 +14,11 @@ import (
 )
 
 func TestHandleInternalError_ReturnsErrorWithMessage(t *testing.T) {
+	ctx := context.Background()
 	logger := slog.Default()
 	originalErr := errors.New("database connection failed")
 
-	connectErr := HandleInternalError(logger, originalErr, "TestOperation")
+	connectErr := HandleInternalError(ctx, logger, originalErr, "TestOperation")
 
 	if connectErr == nil {
 		t.Fatal("expected connect error, got nil")
@@ -44,6 +46,7 @@ func TestHandleInternalError_ReturnsErrorWithMessage(t *testing.T) {
 }
 
 func TestHandleInternalError_WithAppContextError(t *testing.T) {
+	ctx := context.Background()
 	logger := slog.Default()
 	appErr := appErrors.NewDatabaseContextError(
 		"failed to query users",
@@ -54,7 +57,7 @@ func TestHandleInternalError_WithAppContextError(t *testing.T) {
 		nil,
 	)
 
-	connectErr := HandleInternalError(logger, appErr, "TestOperation")
+	connectErr := HandleInternalError(ctx, logger, appErr, "TestOperation")
 
 	if connectErr == nil {
 		t.Fatal("expected connect error, got nil")
@@ -74,6 +77,7 @@ func TestHandleInternalError_WithAppContextError(t *testing.T) {
 }
 
 func TestHandleConnectError_DifferentCodes(t *testing.T) {
+	ctx := context.Background()
 	logger := slog.Default()
 	originalErr := errors.New("some error")
 
@@ -90,7 +94,7 @@ func TestHandleConnectError_DifferentCodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			connectErr := HandleConnectError(logger, originalErr, tt.code, "TestOperation")
+			connectErr := HandleConnectError(ctx, logger, originalErr, tt.code, "TestOperation")
 
 			if connectErr.Code() != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, connectErr.Code())
@@ -100,9 +104,10 @@ func TestHandleConnectError_DifferentCodes(t *testing.T) {
 }
 
 func TestHandleValidationError_ReturnsValidationMessage(t *testing.T) {
+	ctx := context.Background()
 	logger := slog.Default()
 
-	connectErr := HandleValidationError(logger, "email is required", "CreateUser")
+	connectErr := HandleValidationError(ctx, logger, "email is required", "CreateUser")
 
 	if connectErr == nil {
 		t.Fatal("expected connect error, got nil")
@@ -120,9 +125,10 @@ func TestHandleValidationError_ReturnsValidationMessage(t *testing.T) {
 }
 
 func TestHandleNotFoundError_ReturnsNotFoundMessage(t *testing.T) {
+	ctx := context.Background()
 	logger := slog.Default()
 
-	connectErr := HandleNotFoundError(logger, "user not found", "GetUser")
+	connectErr := HandleNotFoundError(ctx, logger, "user not found", "GetUser")
 
 	if connectErr == nil {
 		t.Fatal("expected connect error, got nil")
@@ -134,6 +140,7 @@ func TestHandleNotFoundError_ReturnsNotFoundMessage(t *testing.T) {
 }
 
 func TestHandleInternalError_DoesNotLeakSensitiveInfo(t *testing.T) {
+	ctx := context.Background()
 	logger := slog.Default()
 
 	sensitiveErrors := []error{
@@ -144,7 +151,7 @@ func TestHandleInternalError_DoesNotLeakSensitiveInfo(t *testing.T) {
 	}
 
 	for _, sensitiveErr := range sensitiveErrors {
-		connectErr := HandleInternalError(logger, sensitiveErr, "TestOperation")
+		connectErr := HandleInternalError(ctx, logger, sensitiveErr, "TestOperation")
 		msg := connectErr.Message()
 
 		// Should not contain any of the sensitive info
@@ -162,9 +169,10 @@ func TestHandleInternalError_DoesNotLeakSensitiveInfo(t *testing.T) {
 }
 
 func TestHandleInternalError_SearchServiceUnavailable(t *testing.T) {
+	ctx := context.Background()
 	logger := slog.Default()
 
-	connectErr := HandleInternalError(logger, search_indexer.ErrSearchServiceUnavailable, "SearchFeeds")
+	connectErr := HandleInternalError(ctx, logger, search_indexer.ErrSearchServiceUnavailable, "SearchFeeds")
 
 	if connectErr == nil {
 		t.Fatal("expected connect error, got nil")
@@ -193,9 +201,10 @@ func TestHandleInternalError_SearchServiceUnavailable(t *testing.T) {
 }
 
 func TestHandleInternalError_SearchTimeout(t *testing.T) {
+	ctx := context.Background()
 	logger := slog.Default()
 
-	connectErr := HandleInternalError(logger, search_indexer.ErrSearchTimeout, "SearchFeeds")
+	connectErr := HandleInternalError(ctx, logger, search_indexer.ErrSearchTimeout, "SearchFeeds")
 
 	if connectErr == nil {
 		t.Fatal("expected connect error, got nil")

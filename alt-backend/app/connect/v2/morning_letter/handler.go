@@ -42,13 +42,13 @@ func (h *Handler) StreamChat(
 	// Authentication check (handled by interceptor, but double-check)
 	_, err := domain.GetUserFromContext(ctx)
 	if err != nil {
-		h.logger.Error("authentication failed", slog.String("error", err.Error()))
+		h.logger.ErrorContext(ctx, "authentication failed", slog.String("error", err.Error()))
 		return connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
 	// Validate request
 	if len(req.Msg.Messages) == 0 {
-		h.logger.Warn("no messages in request")
+		h.logger.WarnContext(ctx, "no messages in request")
 		return connect.NewError(connect.CodeInvalidArgument, nil)
 	}
 
@@ -60,18 +60,18 @@ func (h *Handler) StreamChat(
 		withinHours = 168 // Max 7 days
 	}
 
-	h.logger.Info("proxying MorningLetter.StreamChat to rag-orchestrator",
+	h.logger.InfoContext(ctx, "proxying MorningLetter.StreamChat to rag-orchestrator",
 		slog.Int("message_count", len(req.Msg.Messages)),
 		slog.Int("within_hours", int(withinHours)))
 
 	// Call rag-orchestrator via gateway
 	upstreamStream, err := h.gateway.StreamChat(ctx, req.Msg.Messages, withinHours)
 	if err != nil {
-		return errorhandler.HandleInternalError(h.logger, err, "StreamChat.ConnectUpstream")
+		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.ConnectUpstream")
 	}
 	defer func() {
 		if closeErr := upstreamStream.Close(); closeErr != nil {
-			h.logger.Debug("failed to close upstream stream", slog.String("error", closeErr.Error()))
+			h.logger.DebugContext(ctx, "failed to close upstream stream", slog.String("error", closeErr.Error()))
 		}
 	}()
 
@@ -82,17 +82,17 @@ func (h *Handler) StreamChat(
 
 		// Send to downstream client
 		if err := stream.Send(event); err != nil {
-			return errorhandler.HandleInternalError(h.logger, err, "StreamChat.SendEvent")
+			return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.SendEvent")
 		}
 		eventCount++
 	}
 
 	// Check for upstream errors
 	if err := upstreamStream.Err(); err != nil {
-		return errorhandler.HandleInternalError(h.logger, err, "StreamChat.UpstreamError")
+		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.UpstreamError")
 	}
 
-	h.logger.Info("MorningLetter.StreamChat completed",
+	h.logger.InfoContext(ctx, "MorningLetter.StreamChat completed",
 		slog.Int("events_sent", eventCount))
 
 	return nil
