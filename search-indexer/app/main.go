@@ -15,6 +15,7 @@ import (
 	"search-indexer/driver"
 	"search-indexer/gateway"
 	"search-indexer/logger"
+	"search-indexer/middleware"
 	"search-indexer/rest"
 	"search-indexer/tokenize"
 	"search-indexer/usecase"
@@ -125,15 +126,28 @@ func main() {
 	go runIndexLoop(ctx, indexUsecase)
 
 	// ──────────── HTTP server ────────────
-	http.HandleFunc("/v1/search", func(w http.ResponseWriter, r *http.Request) {
-		rest.SearchArticles(w, r, msClient.Index("articles"))
-	})
+	// Wrap handlers with OTel tracing if enabled
+	if otelCfg.Enabled {
+		http.Handle("/v1/search", middleware.OTelStatusHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rest.SearchArticles(w, r, msClient.Index("articles"))
+		}, "GET /v1/search"))
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, `{"status":"ok"}`)
-	})
+		http.Handle("/health", middleware.OTelStatusHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, `{"status":"ok"}`)
+		}, "GET /health"))
+	} else {
+		http.HandleFunc("/v1/search", func(w http.ResponseWriter, r *http.Request) {
+			rest.SearchArticles(w, r, msClient.Index("articles"))
+		})
+
+		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, `{"status":"ok"}`)
+		})
+	}
 
 	srv := &http.Server{
 		Addr:              HTTP_ADDR,
