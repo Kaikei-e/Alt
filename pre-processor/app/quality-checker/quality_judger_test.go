@@ -873,7 +873,7 @@ func TestJudgeArticleQualityContentBoundary(t *testing.T) {
 
 // TestMaxQualityCheckContentLengthConstant tests the constant value
 func TestMaxQualityCheckContentLengthConstant(t *testing.T) {
-	assert.Equal(t, 50_000, maxQualityCheckContentLength, "maxQualityCheckContentLength should be 50,000")
+	assert.Equal(t, 30_000, maxQualityCheckContentLength, "maxQualityCheckContentLength should be 30,000")
 	assert.Greater(t, maxQualityCheckContentLength, 0, "maxQualityCheckContentLength should be positive")
 }
 
