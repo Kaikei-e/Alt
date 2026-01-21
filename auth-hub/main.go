@@ -14,6 +14,7 @@ import (
 	"auth-hub/client"
 	"auth-hub/config"
 	"auth-hub/handler"
+	appmiddleware "auth-hub/middleware"
 	"auth-hub/utils/logger"
 	"auth-hub/utils/otel"
 
@@ -88,10 +89,16 @@ func main() {
 	// Add OpenTelemetry tracing middleware
 	if otelCfg.Enabled {
 		e.Use(otelecho.Middleware(otelCfg.ServiceName))
+		// Add OTel status middleware to set span status based on HTTP response code
+		e.Use(appmiddleware.OTelStatusMiddleware())
 	}
 
 	// Middleware
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		Skipper: func(c echo.Context) bool {
+			// Skip logging for health check endpoint to reduce noise
+			return c.Request().URL.Path == "/health"
+		},
 		LogStatus:   true,
 		LogURI:      true,
 		LogError:    true,
