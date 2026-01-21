@@ -1,0 +1,2 @@
+FROM gemma3:4b-it-qat
+PARAMETER num_ctx 12288

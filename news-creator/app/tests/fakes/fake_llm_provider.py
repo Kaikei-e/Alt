@@ -56,7 +56,7 @@ class FakeLLMProvider(LLMProviderPort):
     def __init__(
         self,
         default_response: Optional[str] = None,
-        default_model: str = "gemma3-4b-16k",
+        default_model: str = "gemma3-4b-12k",
     ):
         """
         Initialize the fake provider.

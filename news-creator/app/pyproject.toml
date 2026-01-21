@@ -18,6 +18,8 @@ dependencies = [
     "opentelemetry-instrumentation-logging>=0.50b0",
     "opentelemetry-instrumentation-fastapi>=0.50b0",
     "sentence-transformers>=3.0.0",  # Cross-encoder for re-ranking
+    "psycopg2-binary>=2.9.0",  # PostgreSQL driver for analysis scripts
+    "numpy>=1.26.0",  # Percentile calculations
 ]
 
 [dependency-groups]

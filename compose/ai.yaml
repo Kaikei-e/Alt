@@ -53,6 +53,9 @@ services:
       - OLLAMA_HOME=/home/ollama-user/.ollama
       - OLLAMA_MODELS=/home/ollama-user/.ollama
       - OLLAMA_HOST=0.0.0.0:11435
+      # QAT model for improved quantization quality (54% less perplexity drop)
+      # Set OLLAMA_BASE_MODEL=gemma3:4b for rollback
+      - OLLAMA_BASE_MODEL=${OLLAMA_BASE_MODEL:-gemma3:4b-it-qat}
     volumes:
       - news_creator_models:/home/ollama-user/.ollama
     restart: unless-stopped
@@ -87,9 +90,9 @@ services:
       dockerfile: Dockerfile.app
     environment:
       - LLM_SERVICE_URL=http://news-creator-backend:11435
-      - LLM_MODEL=${LLM_MODEL:-gemma3-4b-16k}
+      - LLM_MODEL=${LLM_MODEL:-gemma3-4b-12k}
       - MODEL_ROUTING_ENABLED=true
-      - LLM_KEEP_ALIVE_16K=24h
+      - LLM_KEEP_ALIVE_12K=24h
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
       - SERVICE_SECRET_FILE=/run/secrets/service_secret

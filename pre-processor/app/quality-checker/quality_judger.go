@@ -24,12 +24,12 @@ import (
 var (
 	// qualityCheckerAPIURL can be overridden in tests
 	qualityCheckerAPIURL = "http://news-creator:11434/api/generate"
-	modelName            = "gemma3-4b-16k"
+	modelName            = "gemma3-4b-12k"
 	lowScoreThreshold    = 7 // 7 is the lowest score that is acceptable
-	// Quality Checker用: 16kコンテキストモデルで安定動作する上限
-	// 記事 + サマリー + プロンプトテンプレート(~1500文字) < 16k トークン
-	// 日本語は約4文字/トークンなので、記事+サマリーは約50,000文字まで
-	maxQualityCheckContentLength = 50_000
+	// Quality Checker用: 12kコンテキストモデルで安定動作する上限
+	// 記事 + サマリー + プロンプトテンプレート(~1500文字) < 12k トークン
+	// 日本語は約2文字/トークン（実測値）なので、記事+サマリーは約30,000文字まで
+	maxQualityCheckContentLength = 30_000
 )
 
 type judgePrompt struct {
@@ -134,7 +134,7 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 		Temperature: 0.0,  // Very low temperature for more deterministic output
 		TopP:        0.5,  // More restrictive sampling
 		NumPredict:  60,   // Shorter to force concise responses
-		NumCtx:      2048, // Smaller context to focus on the task
+		NumCtx:      12288, // Match news-creator 12K model to prevent Ollama model reloads
 		Stop:        []string{"</score>", "\n\n", "ARTICLE:", "SUMMARY:", "<|user|>", "<|assistant|>"},
 	}
 

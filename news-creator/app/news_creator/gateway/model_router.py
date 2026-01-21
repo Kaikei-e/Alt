@@ -11,11 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 class ModelRouter:
-    """Routes requests to appropriate model bucket (16K, 60K) based on token count."""
+    """Routes requests to appropriate model bucket (12K, 60K) based on token count."""
 
     # Bucket definitions (context window sizes)
     # BUCKET_8K = 8192  # 8kモデルは使用しない
-    BUCKET_16K = 16384
+    BUCKET_12K = 12288
     BUCKET_60K = 61440
 
     def __init__(
@@ -62,13 +62,13 @@ class ModelRouter:
         if self.oom_detector.two_model_mode:
             return self._select_model_3mode(prompt, max_new_tokens)
 
-        # Normal 2-model mode (16K, 60K)
+        # Normal 2-model mode (12K, 60K)
         return self._select_model_3mode(prompt, max_new_tokens)
 
     def _select_model_3mode(
         self, prompt: str, max_new_tokens: Optional[int] = None
     ) -> Tuple[str, int]:
-        """Select model in 2-model mode (16K, 60K)."""
+        """Select model in 2-model mode (12K, 60K)."""
         # Calculate token count
         prompt_tokens = count_tokens(prompt)
         max_new = max_new_tokens or self.config.llm_num_predict
@@ -103,13 +103,13 @@ class ModelRouter:
             },
         )
 
-        # Select bucket (16K, or 60K)
+        # Select bucket (12K, or 60K)
         # if needed_tokens <= self.BUCKET_8K:  # 8kモデルは使用しない
         #     selected_bucket = self.BUCKET_8K
         #     selected_model = self.config.model_8k_name
-        if needed_tokens <= self.BUCKET_16K:
-            selected_bucket = self.BUCKET_16K
-            selected_model = self.config.model_16k_name
+        if needed_tokens <= self.BUCKET_12K:
+            selected_bucket = self.BUCKET_12K
+            selected_model = self.config.model_12k_name
         elif needed_tokens <= self.BUCKET_60K:
             selected_bucket = self.BUCKET_60K
             selected_model = self.config.model_60k_name
@@ -151,8 +151,8 @@ class ModelRouter:
                     # Find model for current bucket
                     # if self._current_bucket == self.BUCKET_8K:  # 8kモデルは使用しない
                     #     selected_model = self.config.model_8k_name
-                    if self._current_bucket == self.BUCKET_16K:
-                        selected_model = self.config.model_16k_name
+                    if self._current_bucket == self.BUCKET_12K:
+                        selected_model = self.config.model_12k_name
                     else:
                         selected_model = self.config.model_60k_name
                     selected_bucket = self._current_bucket

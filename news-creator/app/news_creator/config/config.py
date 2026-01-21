@@ -35,14 +35,14 @@ class NewsCreatorConfig:
 
         # LLM service settings
         self.llm_service_url = os.getenv("LLM_SERVICE_URL", "http://localhost:11435")
-        self.model_name = os.getenv("LLM_MODEL", "gemma3:4b")
+        self.model_name = os.getenv("LLM_MODEL", "gemma3:4b-it-qat")
         self.llm_timeout_seconds = self._get_int("LLM_TIMEOUT_SECONDS", 300)  # 5分に増加（1000トークン生成 + 続き生成に対応）
         self.llm_keep_alive = self._get_int("LLM_KEEP_ALIVE_SECONDS", "24h")
-        # Model-specific keep_alive settings (best practice: 16K/60K on-demand)
-        # 16K model: 24h to allow unloading after use to save VRAM
+        # Model-specific keep_alive settings (best practice: 12K/60K on-demand)
+        # 12K model: 24h to allow unloading after use to save VRAM
         # 60K model: 15m to allow quick unloading after use to save VRAM
         # self.llm_keep_alive_8k = os.getenv("LLM_KEEP_ALIVE_8K", "0")  # 8kモデルは使用しない
-        self.llm_keep_alive_16k = os.getenv("LLM_KEEP_ALIVE_16K", "24h")
+        self.llm_keep_alive_12k = os.getenv("LLM_KEEP_ALIVE_12K", "24h")
         self.llm_keep_alive_60k = os.getenv("LLM_KEEP_ALIVE_60K", "15m")
 
         # Concurrency settings:
@@ -61,8 +61,8 @@ class NewsCreatorConfig:
             self._ollama_concurrency_source = "OLLAMA_NUM_PARALLEL"
 
         # ---- Generation parameters (Gemma3 + Ollama options) ----
-        # Default: 16K context for normal AI Summary (60K is used only for Recap)
-        self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 16384)
+        # Default: 12K context for normal AI Summary (60K is used only for Recap)
+        self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 12288)
         # RTX 4060最適化: バッチサイズ1024（entrypoint.shのOLLAMA_NUM_BATCHと統一）
         self.llm_num_batch = self._get_int("LLM_NUM_BATCH", 1024)
         self.llm_num_predict = self._get_int("LLM_NUM_PREDICT", 1200)  # 復活
@@ -102,12 +102,12 @@ class NewsCreatorConfig:
         self.hierarchical_single_article_threshold = self._get_int("HIERARCHICAL_SINGLE_ARTICLE_THRESHOLD", 25_000)
         self.hierarchical_single_article_chunk_size = self._get_int("HIERARCHICAL_SINGLE_ARTICLE_CHUNK_SIZE", 10_000)
 
-        # Model routing settings (2-model bucket system: 16K, 60K)
+        # Model routing settings (2-model bucket system: 12K, 60K)
         self.model_routing_enabled = os.getenv("MODEL_ROUTING_ENABLED", "true").lower() == "true"
         # Base model name (e.g., "gemma3:4b") - will be auto-mapped to bucket models
-        self.model_base_name = os.getenv("MODEL_BASE_NAME", "gemma3:4b")
+        self.model_base_name = os.getenv("MODEL_BASE_NAME", "gemma3:4b-it-qat")
         # self.model_8k_name = os.getenv("MODEL_8K_NAME", "gemma3-4b-8k")  # 8kモデルは使用しない
-        self.model_16k_name = os.getenv("MODEL_16K_NAME", "gemma3-4b-16k")
+        self.model_12k_name = os.getenv("MODEL_12K_NAME", "gemma3-4b-12k")
         self.model_60k_name = os.getenv("MODEL_60K_NAME", "gemma3-4b-60k")
         self.token_safety_margin_percent = self._get_int("TOKEN_SAFETY_MARGIN_PERCENT", 10)
         self.token_safety_margin_fixed = self._get_int("TOKEN_SAFETY_MARGIN_FIXED", 512)
@@ -123,7 +123,7 @@ class NewsCreatorConfig:
         # Build bucket model names set for quick lookup
         self._bucket_model_names = {
             # self.model_8k_name,  # 8kモデルは使用しない
-            self.model_16k_name,
+            self.model_12k_name,
             self.model_60k_name,
         }
 
@@ -177,9 +177,9 @@ class NewsCreatorConfig:
         # if model_name == self.model_8k_name:  # 8kモデルは使用しない
         #     # 8K model: always loaded, use 24h or -1 (forever)
         #     return self.llm_keep_alive_8k
-        if model_name == self.model_16k_name:
-            # 16K model: on-demand, use 30m to allow unloading after use
-            return self.llm_keep_alive_16k
+        if model_name == self.model_12k_name:
+            # 12K model: on-demand, use 30m to allow unloading after use
+            return self.llm_keep_alive_12k
         elif model_name == self.model_60k_name:
             # 60K model: on-demand, use 15m to allow quick unloading after use
             return self.llm_keep_alive_60k

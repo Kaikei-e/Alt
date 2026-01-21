@@ -28,7 +28,7 @@ export NVIDIA_VISIBLE_DEVICES="${NVIDIA_VISIBLE_DEVICES:-all}"
 export NVIDIA_DRIVER_CAPABILITIES="${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}"
 export LD_LIBRARY_PATH="/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH:-}"
 export OLLAMA_HOST="${OLLAMA_HOST:-0.0.0.0:11435}"
-export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-16384}"
+export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-12288}"
 export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-2}"
 export OLLAMA_MAX_LOADED_MODELS_FORCE="${OLLAMA_MAX_LOADED_MODELS_FORCE:-1}"
 export OLLAMA_MAX_LOADED_MODELS="$OLLAMA_MAX_LOADED_MODELS_FORCE"
@@ -88,28 +88,31 @@ if ! curl -fs "http://localhost:11435/api/tags" >/dev/null 2>&1; then
 fi
 
 # --- ensure base model ----------------------------------------
-echo "Ensuring gemma3:4b model is up to date..."
-if ! ollama list 2>/dev/null | grep -q "gemma3:4b"; then
-  echo "Pulling gemma3:4b model (this may take a few minutes)..."
-  if ! ollama pull gemma3:4b; then
+# Using QAT model for improved quantization quality (54% less perplexity drop)
+# See: https://developers.googleblog.com/en/gemma-3-quantized-aware-trained-state-of-the-art-ai-to-consumer-gpus/
+BASE_MODEL="${OLLAMA_BASE_MODEL:-gemma3:4b-it-qat}"
+echo "Ensuring ${BASE_MODEL} model is up to date..."
+if ! ollama list 2>/dev/null | grep -q "${BASE_MODEL}"; then
+  echo "Pulling ${BASE_MODEL} model (this may take a few minutes)..."
+  if ! ollama pull "${BASE_MODEL}"; then
     echo "Warning: Failed to pull model"
   else
-    echo "  Model gemma3:4b pulled successfully"
+    echo "  Model ${BASE_MODEL} pulled successfully"
   fi
 else
-  echo "  Model gemma3:4b exists, pulling latest version..."
-  if ! ollama pull gemma3:4b; then
+  echo "  Model ${BASE_MODEL} exists, pulling latest version..."
+  if ! ollama pull "${BASE_MODEL}"; then
     echo "Warning: Failed to update model (using existing version)"
   else
-    echo "  Model gemma3:4b updated to latest version"
+    echo "  Model ${BASE_MODEL} updated to latest version"
   fi
 fi
 
 # --- create model variants with fixed num_ctx ----------------------------------------
-echo "Creating model variants with fixed num_ctx (16K, 60K)..."
+echo "Creating model variants with fixed num_ctx (12K, 60K)..."
 
 MODELFILE_DIR="$(dirname "$0")"
-if [ ! -f "$MODELFILE_DIR/Modelfile.gemma3-4b-16k" ]; then
+if [ ! -f "$MODELFILE_DIR/Modelfile.gemma3-4b-12k" ]; then
   MODELFILE_DIR="/home/ollama-user"
 fi
 
@@ -132,29 +135,29 @@ create_model() {
   fi
 }
 
-create_model "gemma3-4b-16k" "$MODELFILE_DIR/Modelfile.gemma3-4b-16k"
+create_model "gemma3-4b-12k" "$MODELFILE_DIR/Modelfile.gemma3-4b-12k"
 create_model "gemma3-4b-60k" "$MODELFILE_DIR/Modelfile.gemma3-4b-60k"
 
 echo "Model variants created (if needed)."
 
-# --- preload 16K model only ------------------------
-echo "Preloading 16K model only (60K will be loaded on-demand)..."
-echo "  Loading 16K model (attempt 1/3)..."
+# --- preload 12K model only ------------------------
+echo "Preloading 12K model only (60K will be loaded on-demand)..."
+echo "  Loading 12K model (attempt 1/3)..."
 if curl -s -X POST http://localhost:11435/api/generate \
-  -d '{"model":"gemma3-4b-16k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
+  -d '{"model":"gemma3-4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
   >/dev/null 2>&1; then
-  echo "  16K model preloaded successfully (will be kept in GPU memory)"
+  echo "  12K model preloaded successfully (will be kept in GPU memory)"
   sleep 2
-  echo "  Verifying 16K model is loaded (attempt 2/3)..."
+  echo "  Verifying 12K model is loaded (attempt 2/3)..."
   if curl -s -X POST http://localhost:11435/api/generate \
-    -d '{"model":"gemma3-4b-16k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
+    -d '{"model":"gemma3-4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
     >/dev/null 2>&1; then
-    echo "  16K model confirmed to be loaded in GPU memory (keep_alive: 24h)"
+    echo "  12K model confirmed to be loaded in GPU memory (keep_alive: 24h)"
   else
-    echo "  Warning: 16K model second preload check failed"
+    echo "  Warning: 12K model second preload check failed"
   fi
 else
-  echo "  Warning: Failed to preload 16K model (will load on first request)"
+  echo "  Warning: Failed to preload 12K model (will load on first request)"
 fi
 
 # --- GPU usage verification ---

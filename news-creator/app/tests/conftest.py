@@ -26,13 +26,13 @@ def mock_config() -> Mock:
     """
     config = Mock(spec=NewsCreatorConfig)
     config.llm_service_url = "http://localhost:11435"
-    config.model_name = "gemma3-4b-16k"
+    config.model_name = "gemma3-4b-12k"
     config.llm_timeout_seconds = 60
     config.llm_keep_alive = -1
     config.ollama_request_concurrency = 1
     config.oom_detection_enabled = False
     config.model_routing_enabled = False
-    config.llm_num_ctx = 16384
+    config.llm_num_ctx = 12288
     config.summary_num_predict = 1200
     config.llm_temperature = 0.25
     config.max_repetition_retries = 2
@@ -47,7 +47,7 @@ def mock_config() -> Mock:
     config.is_bucket_model_name = Mock(return_value=False)
     config.get_keep_alive_for_model = Mock(return_value=-1)
     config.get_llm_options = Mock(return_value={
-        "num_ctx": 16384,
+        "num_ctx": 12288,
         "num_predict": 1200,
         "temperature": 0.25,
     })
@@ -66,7 +66,7 @@ def mock_llm_provider() -> AsyncMock:
         def test_summarize(mock_llm_provider):
             mock_llm_provider.generate.return_value = LLMGenerateResponse(
                 response='{"title": "Test", "bullets": ["Point 1"]}',
-                model="gemma3-4b-16k",
+                model="gemma3-4b-12k",
             )
             # ... test code
     """
@@ -75,7 +75,7 @@ def mock_llm_provider() -> AsyncMock:
     provider.cleanup = AsyncMock()
     provider.generate = AsyncMock(return_value=LLMGenerateResponse(
         response="Default mock response",
-        model="gemma3-4b-16k",
+        model="gemma3-4b-12k",
         done=True,
         prompt_eval_count=100,
         eval_count=50,
@@ -98,7 +98,7 @@ def mock_llm_response_success() -> LLMGenerateResponse:
             ],
             "language": "en"
         }),
-        model="gemma3-4b-16k",
+        model="gemma3-4b-12k",
         done=True,
         prompt_eval_count=512,
         eval_count=256,

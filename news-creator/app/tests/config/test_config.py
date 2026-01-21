@@ -14,7 +14,7 @@ def test_config_loads_defaults():
     config = NewsCreatorConfig()
 
     assert config.llm_service_url == "http://localhost:11435"
-    assert config.model_name == "gemma3:4b"
+    assert config.model_name == "gemma3:4b-it-qat"
 
     # Cleanup
     os.environ.pop("SERVICE_SECRET", None)
