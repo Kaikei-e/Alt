@@ -8,23 +8,21 @@ Alt is an AI-augmented RSS knowledge platform. Docker Compose-first orchestratio
 
 ## Quick Reference
 
-> **Note**: `make up/down/build` は廃止。`altctl` を使用してください。
-
 ```bash
-# Start default stacks (db, auth, core, workers)
-altctl up
+# Start all services
+docker compose -f compose/compose.yaml up -d
 
-# Start specific stack (dependencies auto-resolved)
-altctl up ai
+# Start specific service
+docker compose -f compose/compose.yaml up -d <service>
 
 # Stop all
-altctl down
+docker compose -f compose/compose.yaml down
 
 # View status
-altctl status
+docker compose -f compose/compose.yaml ps
 
 # Stream logs
-altctl logs <service> -f
+docker compose -f compose/compose.yaml logs <service> -f
 ```
 
 ## Compose Files
@@ -87,23 +85,20 @@ Maintain strict boundaries. Update mocks alongside interface changes.
 
 ## Orchestration
 
-### altctl Stack Management
+### Docker Compose Management
 
 ```bash
-# Default stacks (db, auth, core, workers)
-altctl up
+# Start all services
+docker compose -f compose/compose.yaml up -d
 
 # With AI pipeline (GPU required)
-altctl up ai
+docker compose -f compose/ai.yaml up -d
 
 # With logging
-altctl up logging
+docker compose -f compose/logging.yaml up -d
 
-# Combined
-altctl up ai logging
-
-# View all available stacks
-altctl list
+# View all available compose files
+ls compose/*.yaml
 ```
 
 ### Health Checks
@@ -126,11 +121,11 @@ curl http://localhost:7700/health       # Meilisearch
 
 | Issue | Solution |
 |-------|----------|
-| Stack won't start | Run `altctl down` then `altctl up` |
+| Stack won't start | Run `docker compose -f compose/compose.yaml down` then `up -d` |
 | Tests failing | Check mock interfaces match implementations |
 | Rate limit errors | Verify 5-second intervals |
 | Import cycles (Go) | Check layer dependencies |
-| Search not working | Ensure workers stack is running: `altctl up workers` |
+| Search not working | Ensure workers are running: `docker compose -f compose/compose.yaml up -d` |
 
 ## Appendix: References
 
