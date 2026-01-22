@@ -3,6 +3,7 @@ package rest_feeds
 import (
 	"alt/config"
 	"alt/di"
+	"alt/domain"
 	"alt/utils/errors"
 	"alt/utils/logger"
 	"net/http"
@@ -105,6 +106,14 @@ func RestHandleFetchInoreaderSummary(container *di.ApplicationComponents) echo.H
 func RestHandleFetchArticleSummary(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx := c.Request().Context()
+
+		// Get user context for saving summary
+		userCtx, err := domain.GetUserFromContext(ctx)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "Failed to get user context for article summary fetch", "error", err)
+			return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+		}
+
 		var req FeedSummaryRequest
 		if err := c.Bind(&req); err != nil {
 			return HandleValidationError(c, "Invalid request format", "body", "malformed JSON")
@@ -254,7 +263,7 @@ func RestHandleFetchArticleSummary(container *di.ApplicationComponents, cfg *con
 				}
 
 				// Save the generated summary to database
-				if err := container.AltDBRepository.SaveArticleSummary(ctx, articleID, articleTitle, summary); err != nil {
+				if err := container.AltDBRepository.SaveArticleSummary(ctx, articleID, userCtx.UserID.String(), articleTitle, summary); err != nil {
 					logger.Logger.ErrorContext(ctx, "Failed to save article summary to database", "error", err, "article_id", articleID, "feed_url", feedURL)
 					// Continue even if save fails - we still have the summary to return
 				} else {

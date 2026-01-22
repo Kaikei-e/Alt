@@ -9,17 +9,18 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
+	pgxmock "github.com/pashagolub/pgxmock/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	feedsv2 "alt/gen/proto/alt/feeds/v2"
-	"alt/usecase/fetch_feed_stats_usecase"
-	"alt/usecase/reading_status"
-	"alt/utils/logger"
 
 	"alt/config"
 	"alt/di"
 	"alt/domain"
+	"alt/driver/alt_db"
+	feedsv2 "alt/gen/proto/alt/feeds/v2"
+	"alt/usecase/fetch_feed_stats_usecase"
+	"alt/usecase/reading_status"
+	"alt/utils/logger"
 )
 
 // Mock ports for testing
@@ -758,4 +759,205 @@ func TestHandler_MarkAsRead_DatabaseError_Returns500(t *testing.T) {
 	// Should NOT leak internal error details to client - now uses safe message with error ID
 	assert.Contains(t, connectErr.Message(), "An unexpected error occurred", "Error message should be generic and user-friendly")
 	assert.Contains(t, connectErr.Message(), "Error ID:", "Error message should contain Error ID for traceability")
+}
+
+// =============================================================================
+// resolveArticle: DB Content Priority Tests
+// =============================================================================
+
+func TestResolveArticle_DBContentPrioritizedOverRequestContent(t *testing.T) {
+	// Initialize logger
+	logger.InitLogger()
+
+	// Create pgxmock pool
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	// Create repository with mock pool
+	repo := alt_db.NewAltDBRepository(mock)
+
+	// Create container with mock repository
+	container := &di.ApplicationComponents{
+		AltDBRepository: repo,
+	}
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			SSEInterval: 5 * time.Second,
+		},
+	}
+
+	handler := NewHandler(container, cfg, slog.Default())
+	ctx := createAuthContext()
+
+	// Setup mock: FetchArticleByID should return article with DB content
+	articleID := "test-article-id-123"
+	dbTitle := "DB Title"
+	dbContent := "This is clean content from database"
+	dbURL := "https://example.com/article"
+
+	// Expected query for FetchArticleByID
+	mock.ExpectQuery(`SELECT id, title, content, url FROM articles WHERE id = \$1`).
+		WithArgs(articleID).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url"}).
+			AddRow(articleID, dbTitle, dbContent, dbURL))
+
+	// Call resolveArticle with both articleID and request content (which should be ignored)
+	requestContent := "<html><body>This is raw HTML content from request that should be IGNORED</body></html>"
+	resolvedArticleID, resolvedTitle, resolvedContent, err := handler.resolveArticle(ctx, "", articleID, requestContent, "")
+
+	require.NoError(t, err)
+	assert.Equal(t, articleID, resolvedArticleID)
+	assert.Equal(t, dbTitle, resolvedTitle, "Title should come from DB")
+	assert.Equal(t, dbContent, resolvedContent, "Content should come from DB, not request content")
+	assert.NotEqual(t, requestContent, resolvedContent, "Request content should be ignored when DB has content")
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestResolveArticle_FallbackToRequestContentWhenDBEmpty(t *testing.T) {
+	// Initialize logger
+	logger.InitLogger()
+
+	// Create pgxmock pool
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	// Create repository with mock pool
+	repo := alt_db.NewAltDBRepository(mock)
+
+	// Create container with mock repository
+	container := &di.ApplicationComponents{
+		AltDBRepository: repo,
+	}
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			SSEInterval: 5 * time.Second,
+		},
+	}
+
+	handler := NewHandler(container, cfg, slog.Default())
+	ctx := createAuthContext()
+
+	// Setup mock: FetchArticleByID returns article with empty content
+	articleID := "test-article-id-456"
+	dbTitle := "DB Title"
+	dbContent := "" // Empty content in DB
+	dbURL := "https://example.com/article"
+
+	// Expected query for FetchArticleByID
+	mock.ExpectQuery(`SELECT id, title, content, url FROM articles WHERE id = \$1`).
+		WithArgs(articleID).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url"}).
+			AddRow(articleID, dbTitle, dbContent, dbURL))
+
+	// Call resolveArticle with both articleID and request content
+	requestContent := "Request content as fallback"
+	resolvedArticleID, resolvedTitle, resolvedContent, err := handler.resolveArticle(ctx, "", articleID, requestContent, "Request Title")
+
+	require.NoError(t, err)
+	assert.Equal(t, articleID, resolvedArticleID)
+	assert.Equal(t, "Request Title", resolvedTitle, "Should use provided title when DB title would be overwritten by empty string")
+	assert.Equal(t, requestContent, resolvedContent, "Should fallback to request content when DB content is empty")
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestResolveArticle_ErrorWhenDBEmptyAndNoRequestContent(t *testing.T) {
+	// Initialize logger
+	logger.InitLogger()
+
+	// Create pgxmock pool
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	// Create repository with mock pool
+	repo := alt_db.NewAltDBRepository(mock)
+
+	// Create container with mock repository
+	container := &di.ApplicationComponents{
+		AltDBRepository: repo,
+	}
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			SSEInterval: 5 * time.Second,
+		},
+	}
+
+	handler := NewHandler(container, cfg, slog.Default())
+	ctx := createAuthContext()
+
+	// Setup mock: FetchArticleByID returns article with empty content
+	articleID := "test-article-id-789"
+	dbTitle := "DB Title"
+	dbContent := "" // Empty content in DB
+	dbURL := "https://example.com/article"
+
+	// Expected query for FetchArticleByID
+	mock.ExpectQuery(`SELECT id, title, content, url FROM articles WHERE id = \$1`).
+		WithArgs(articleID).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url"}).
+			AddRow(articleID, dbTitle, dbContent, dbURL))
+
+	// Call resolveArticle with articleID but no request content
+	resolvedArticleID, resolvedTitle, resolvedContent, err := handler.resolveArticle(ctx, "", articleID, "", "")
+
+	require.Error(t, err, "Should return error when both DB and request content are empty")
+	assert.Contains(t, err.Error(), "content is empty")
+	assert.Empty(t, resolvedArticleID)
+	assert.Empty(t, resolvedTitle)
+	assert.Empty(t, resolvedContent)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestResolveArticle_FallbackToRequestContentWhenArticleNotInDB(t *testing.T) {
+	// Initialize logger
+	logger.InitLogger()
+
+	// Create pgxmock pool
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	// Create repository with mock pool
+	repo := alt_db.NewAltDBRepository(mock)
+
+	// Create container with mock repository
+	container := &di.ApplicationComponents{
+		AltDBRepository: repo,
+	}
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			SSEInterval: 5 * time.Second,
+		},
+	}
+
+	handler := NewHandler(container, cfg, slog.Default())
+	ctx := createAuthContext()
+
+	// Setup mock: FetchArticleByID returns no rows (article not found)
+	articleID := "non-existent-article-id"
+
+	// Expected query for FetchArticleByID - returns empty result
+	mock.ExpectQuery(`SELECT id, title, content, url FROM articles WHERE id = \$1`).
+		WithArgs(articleID).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url"}))
+
+	// Call resolveArticle with articleID and request content
+	requestContent := "Fallback content when article not in DB"
+	resolvedArticleID, resolvedTitle, resolvedContent, err := handler.resolveArticle(ctx, "", articleID, requestContent, "Request Title")
+
+	require.NoError(t, err)
+	assert.Equal(t, articleID, resolvedArticleID)
+	assert.Equal(t, "Request Title", resolvedTitle)
+	assert.Equal(t, requestContent, resolvedContent, "Should use request content when article not found in DB")
+
+	require.NoError(t, mock.ExpectationsWereMet())
 }

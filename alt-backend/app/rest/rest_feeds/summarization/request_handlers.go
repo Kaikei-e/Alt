@@ -3,6 +3,7 @@ package summarization
 import (
 	"alt/config"
 	"alt/di"
+	"alt/domain"
 	"alt/utils/logger"
 	"fmt"
 	"net/http"
@@ -16,6 +17,14 @@ import (
 func RestHandleSummarizeFeed(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx := c.Request().Context()
+
+		// Get user context for saving summary
+		userCtx, err := domain.GetUserFromContext(ctx)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "Failed to get user context for summarization", "error", err)
+			return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+		}
+
 		var req struct {
 			FeedURL string `json:"feed_url" validate:"required"`
 		}
@@ -65,7 +74,7 @@ func RestHandleSummarizeFeed(container *di.ApplicationComponents, cfg *config.Co
 				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate summary")
 			}
 
-			if err := container.AltDBRepository.SaveArticleSummary(ctx, articleID, articleTitle, summary); err != nil {
+			if err := container.AltDBRepository.SaveArticleSummary(ctx, articleID, userCtx.UserID.String(), articleTitle, summary); err != nil {
 				logger.Logger.ErrorContext(ctx, "Failed to save article summary to database", "error", err, "article_id", articleID, "feed_url", req.FeedURL)
 			} else {
 				logger.Logger.InfoContext(ctx, "Article summary saved to database", "article_id", articleID, "feed_url", req.FeedURL)

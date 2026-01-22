@@ -450,7 +450,7 @@ func (h *Handler) StreamSummarize(
 	req *connect.Request[feedsv2.StreamSummarizeRequest],
 	stream *connect.ServerStream[feedsv2.StreamSummarizeResponse],
 ) error {
-	_, err := middleware.GetUserContext(ctx)
+	userCtx, err := middleware.GetUserContext(ctx)
 	if err != nil {
 		return connect.NewError(connect.CodeUnauthenticated, nil)
 	}
@@ -528,7 +528,7 @@ func (h *Handler) StreamSummarize(
 
 	// Save summary to database
 	if fullSummary != "" && resolvedArticleID != "" {
-		if err := h.container.AltDBRepository.SaveArticleSummary(ctx, resolvedArticleID, resolvedTitle, fullSummary); err != nil {
+		if err := h.container.AltDBRepository.SaveArticleSummary(ctx, resolvedArticleID, userCtx.UserID.String(), resolvedTitle, fullSummary); err != nil {
 			h.logger.ErrorContext(ctx, "failed to save summary", "error", err, "article_id", resolvedArticleID)
 			// Don't return error, streaming was successful
 		} else {
@@ -552,26 +552,29 @@ func (h *Handler) StreamSummarize(
 
 // resolveArticle resolves the article ID and content from the request parameters.
 // It handles the following cases:
-// 1. article_id provided with content -> use as-is
-// 2. article_id provided without content -> fetch content from DB
+// 1. article_id provided -> always fetch from DB (DB content is authoritative)
+// 2. article_id provided but DB content empty -> fallback to request content
 // 3. feed_url provided -> check DB or fetch from URL
 func (h *Handler) resolveArticle(ctx context.Context, feedURL, articleID, content, title string) (string, string, string, error) {
-	// Case 1 & 2: article_id provided
+	// Case 1 & 2: article_id provided - always fetch from DB first (DB content is authoritative)
 	if articleID != "" {
-		if content == "" {
-			// Fetch content from DB
-			article, err := h.container.AltDBRepository.FetchArticleByID(ctx, articleID)
-			if err != nil {
-				return "", "", "", fmt.Errorf("failed to fetch article by ID: %w", err)
-			}
-			if article != nil {
-				if title == "" {
-					title = article.Title
-				}
-				return articleID, title, article.Content, nil
-			}
+		article, err := h.container.AltDBRepository.FetchArticleByID(ctx, articleID)
+		if err != nil {
+			return "", "", "", fmt.Errorf("failed to fetch article by ID: %w", err)
 		}
-		return articleID, title, content, nil
+		if article != nil && article.Content != "" {
+			// DB has content - use it (authoritative source)
+			if title == "" {
+				title = article.Title
+			}
+			return articleID, title, article.Content, nil
+		}
+		// DB content is empty - fallback to provided content
+		if content != "" {
+			return articleID, title, content, nil
+		}
+		// Neither DB nor request has content
+		return "", "", "", fmt.Errorf("article not found or content is empty")
 	}
 
 	// Case 3: feed_url provided

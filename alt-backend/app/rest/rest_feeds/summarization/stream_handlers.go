@@ -3,6 +3,7 @@ package summarization
 import (
 	"alt/config"
 	"alt/di"
+	"alt/domain"
 	"alt/utils/logger"
 	"bytes"
 	"context"
@@ -24,6 +25,13 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 		if err := c.Bind(&req); err != nil {
 			logger.Logger.WarnContext(ctx, "Failed to bind request body for stream summarization", "error", err)
 			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
+		}
+
+		// Get user context for saving summary
+		userCtx, err := domain.GetUserFromContext(ctx)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "Failed to get user context for stream summarization", "error", err)
+			return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 		}
 
 		logger.Logger.InfoContext(ctx, "Stream summarization request received", "article_id", req.ArticleID, "feed_url", req.FeedURL, "has_content", req.Content != "", "content_length", len(req.Content))
@@ -120,7 +128,7 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 
 		duration := time.Since(startTime)
 		if summary != "" && req.ArticleID != "" {
-			if err := container.AltDBRepository.SaveArticleSummary(context.Background(), req.ArticleID, req.Title, summary); err != nil {
+			if err := container.AltDBRepository.SaveArticleSummary(context.Background(), req.ArticleID, userCtx.UserID.String(), req.Title, summary); err != nil {
 				logger.Logger.ErrorContext(ctx, "Failed to save streamed summary to database", "error", err, "article_id", req.ArticleID)
 			} else {
 				logger.Logger.InfoContext(ctx, "Streamed summary saved to database", "article_id", req.ArticleID, "summary_length", len(summary))
