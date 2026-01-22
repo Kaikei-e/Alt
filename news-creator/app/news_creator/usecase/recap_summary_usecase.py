@@ -21,11 +21,13 @@ from news_creator.domain.models import (
     BatchRecapSummaryError,
     BatchRecapSummaryRequest,
     BatchRecapSummaryResponse,
+    RecapClusterInput,
     RecapSummaryRequest,
     RecapSummaryResponse,
     RecapSummary,
     RecapSummaryMetadata,
     IntermediateSummary,
+    RepresentativeSentence,
 )
 from news_creator.port.cache_port import CachePort
 from news_creator.port.llm_provider_port import LLMProviderPort
@@ -261,7 +263,7 @@ class RecapSummaryUsecase:
         max_bullets: int,
         temperature_override: Optional[float],
     ) -> RecapSummaryResponse:
-        """Generate summary using hierarchical (map-reduce) approach."""
+        """Generate summary using hierarchical (map-reduce) approach with recursive reduce."""
         # Map phase: Split clusters into chunks and summarize each in parallel
         chunks = self._split_clusters_into_chunks(request.clusters)
 
@@ -307,21 +309,195 @@ class RecapSummaryUsecase:
             # Fallback if all map phases failed
             return self._create_fallback_from_clusters(request)
 
-        # Reduce phase: Combine intermediate summaries into final summary
+        # Reduce phase: Combine intermediate summaries into final summary (recursive if needed)
+        return await self._recursive_reduce_phase(
+            intermediate_summaries, request, max_bullets, temperature_override, llm_options
+        )
+
+    async def _recursive_reduce_phase(
+        self,
+        summaries: List[IntermediateSummary],
+        request: RecapSummaryRequest,
+        max_bullets: int,
+        temperature_override: Optional[float],
+        llm_options: Dict[str, Any],
+        depth: int = 0,
+    ) -> RecapSummaryResponse:
+        """Recursively reduce summaries until they fit in 12K context.
+
+        Args:
+            summaries: List of intermediate summaries to reduce
+            request: Original recap summary request
+            max_bullets: Maximum number of bullets in final summary
+            temperature_override: Optional temperature override
+            llm_options: LLM generation options
+            depth: Current recursion depth
+
+        Returns:
+            Final RecapSummaryResponse
+        """
+        max_reduce_chars = getattr(self.config, 'recursive_reduce_max_chars', 10_000)
+        max_recursion_depth = getattr(self.config, 'recursive_reduce_max_depth', 3)
+
+        # Combine all bullets from intermediate summaries
+        combined_bullets = []
+        for s in summaries:
+            combined_bullets.extend(s.bullets)
+        combined_text = "\n".join(combined_bullets)
+
         logger.info(
-            "Reduce phase: Combining intermediate summaries",
+            "Reduce phase: Evaluating intermediate summaries",
             extra={
                 "job_id": str(request.job_id),
                 "genre": request.genre,
-                "intermediate_count": len(intermediate_summaries),
+                "intermediate_count": len(summaries),
+                "combined_length": len(combined_text),
+                "max_reduce_chars": max_reduce_chars,
+                "depth": depth,
+            },
+        )
+
+        # If combined text fits within limit or max depth reached, do final reduce
+        if len(combined_text) <= max_reduce_chars or depth >= max_recursion_depth:
+            return await self._final_reduce(
+                summaries, request, max_bullets, temperature_override
+            )
+
+        # Recursive reduce: Split summaries into groups and reduce each
+        logger.info(
+            "Recursive reduce: Intermediate summaries too large, splitting",
+            extra={
+                "job_id": str(request.job_id),
+                "genre": request.genre,
+                "combined_length": len(combined_text),
+                "depth": depth,
+            },
+        )
+
+        # Split summaries into 2-3 groups
+        num_groups = min(3, max(2, len(summaries) // 2))
+        chunk_size = len(summaries) // num_groups + (1 if len(summaries) % num_groups else 0)
+        summary_groups = [
+            summaries[i:i + chunk_size]
+            for i in range(0, len(summaries), chunk_size)
+        ]
+
+        # Reduce each group in parallel
+        json_schema_intermediate = IntermediateSummary.model_json_schema()
+        reduce_tasks = [
+            self._reduce_group(group, request, llm_options, json_schema_intermediate)
+            for group in summary_groups
+        ]
+
+        reduced_results = await asyncio.gather(*reduce_tasks, return_exceptions=False)
+
+        # Collect successful reduced summaries
+        reduced_summaries: List[IntermediateSummary] = [
+            result for result in reduced_results
+            if result is not None and isinstance(result, IntermediateSummary)
+        ]
+
+        if not reduced_summaries:
+            # Fallback: use original summaries and do final reduce anyway
+            logger.warning(
+                "Recursive reduce failed, falling back to final reduce",
+                extra={"job_id": str(request.job_id), "genre": request.genre},
+            )
+            return await self._final_reduce(
+                summaries, request, max_bullets, temperature_override
+            )
+
+        # Recurse with reduced summaries
+        return await self._recursive_reduce_phase(
+            reduced_summaries, request, max_bullets, temperature_override,
+            llm_options, depth + 1
+        )
+
+    async def _reduce_group(
+        self,
+        group: List[IntermediateSummary],
+        request: RecapSummaryRequest,
+        llm_options: Dict[str, Any],
+        json_schema: Dict[str, Any],
+    ) -> Optional[IntermediateSummary]:
+        """Reduce a group of intermediate summaries into one.
+
+        Args:
+            group: List of intermediate summaries in this group
+            request: Original recap summary request
+            llm_options: LLM generation options
+            json_schema: JSON schema for intermediate summary
+
+        Returns:
+            Reduced IntermediateSummary or None if failed
+        """
+        # Combine bullets from group
+        combined_bullets = []
+        for s in group:
+            combined_bullets.extend(s.bullets)
+
+        # Create a minimal prompt for reducing this group
+        bullets_text = "\n".join(f"- {bullet}" for bullet in combined_bullets)
+        reduce_prompt = f"""以下の要点リストを3-4項目に要約してください。重要な情報を保持し、冗長な内容を統合してください。
+
+# 入力要点
+{bullets_text}
+
+# 出力形式
+JSONで bullets フィールドに要約した要点リストを返してください。"""
+
+        try:
+            llm_response = await self.llm_provider.generate(
+                reduce_prompt,
+                num_predict=self.config.summary_num_predict // 2,
+                format=json_schema,
+                options=llm_options,
+            )
+
+            parsed = json.loads(llm_response.response)
+            return IntermediateSummary(**parsed)
+        except Exception as e:
+            logger.warning(
+                "Failed to reduce group in recursive reduce",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "error": str(e),
+                },
+            )
+            return None
+
+    async def _final_reduce(
+        self,
+        summaries: List[IntermediateSummary],
+        request: RecapSummaryRequest,
+        max_bullets: int,
+        temperature_override: Optional[float],
+    ) -> RecapSummaryResponse:
+        """Perform final reduce to create the summary response.
+
+        Args:
+            summaries: Intermediate summaries to combine
+            request: Original recap summary request
+            max_bullets: Maximum number of bullets
+            temperature_override: Optional temperature override
+
+        Returns:
+            Final RecapSummaryResponse
+        """
+        logger.info(
+            "Final reduce phase: Combining intermediate summaries",
+            extra={
+                "job_id": str(request.job_id),
+                "genre": request.genre,
+                "intermediate_count": len(summaries),
             },
         )
 
         # Convert intermediate summaries to highlights format
         reduce_highlights = []
-        for inter_summary in intermediate_summaries:
+        for inter_summary in summaries:
             for bullet in inter_summary.bullets:
-                from news_creator.domain.models import RepresentativeSentence
                 reduce_highlights.append(
                     RepresentativeSentence(
                         text=bullet,
@@ -332,34 +508,81 @@ class RecapSummaryUsecase:
                     )
                 )
 
+        # Create a dummy cluster to satisfy Pydantic validation
+        # The genre_highlights will be used for the actual summarization
+        dummy_cluster = RecapClusterInput(
+            cluster_id=0,
+            representative_sentences=[
+                RepresentativeSentence(
+                    text="(Hierarchical reduce - see genre_highlights)",
+                    is_centroid=True,
+                )
+            ],
+            top_terms=[],
+        )
+
         # Create reduce request with highlights
         reduce_request = RecapSummaryRequest(
             job_id=request.job_id,
             genre=request.genre,
-            clusters=[],  # Empty clusters, use highlights only
+            clusters=[dummy_cluster],  # Dummy cluster to satisfy validation
             genre_highlights=reduce_highlights,
             options=request.options,
         )
 
-        # Use single-shot path for reduce phase (it's smaller)
-        return await self._generate_single_shot_summary(reduce_request, max_bullets, temperature_override)
+        # Use single-shot path for final reduce
+        return await self._generate_single_shot_summary(
+            reduce_request, max_bullets, temperature_override
+        )
 
     def _split_clusters_into_chunks(self, clusters: List) -> List[List]:
-        """Split clusters into chunks that fit within max_chunk_chars."""
+        """Split clusters into chunks that fit within max_chunk_chars with overlap.
+
+        Uses overlap to preserve context between chunks, preventing information
+        loss at chunk boundaries. The overlap ratio is configured via
+        hierarchical_chunk_overlap_ratio (default 15%).
+        """
         if not clusters:
             return []
+
+        max_chars = self.config.hierarchical_chunk_max_chars
+        overlap_ratio = getattr(self.config, 'hierarchical_chunk_overlap_ratio', 0.15)
+
+        # Calculate cluster lengths
+        cluster_lengths = []
+        for cluster in clusters:
+            length = sum(len(s.text) for s in cluster.representative_sentences) + 200  # Overhead
+            cluster_lengths.append(length)
 
         chunks: List[List] = []
         current_chunk: List = []
         current_length = 0
+        chunk_start_idx = 0
 
-        for cluster in clusters:
-            cluster_length = sum(len(s.text) for s in cluster.representative_sentences) + 200  # Overhead
+        for idx, cluster in enumerate(clusters):
+            cluster_length = cluster_lengths[idx]
 
-            if current_length + cluster_length > self.config.hierarchical_chunk_max_chars and current_chunk:
+            if current_length + cluster_length > max_chars and current_chunk:
                 chunks.append(current_chunk)
-                current_chunk = [cluster]
-                current_length = cluster_length
+
+                # Calculate overlap: include trailing clusters from previous chunk
+                overlap_chars = int(max_chars * overlap_ratio)
+                overlap_clusters: List = []
+                overlap_length = 0
+
+                # Add clusters from end of previous chunk for overlap
+                for j in range(len(current_chunk) - 1, -1, -1):
+                    overlap_idx = chunk_start_idx + j
+                    if overlap_length + cluster_lengths[overlap_idx] <= overlap_chars:
+                        overlap_clusters.insert(0, current_chunk[j])
+                        overlap_length += cluster_lengths[overlap_idx]
+                    else:
+                        break
+
+                # Start new chunk with overlap clusters
+                current_chunk = overlap_clusters + [cluster]
+                current_length = overlap_length + cluster_length
+                chunk_start_idx = idx - len(overlap_clusters)
             else:
                 current_chunk.append(cluster)
                 current_length += cluster_length
@@ -577,11 +800,12 @@ class RecapSummaryUsecase:
 
     def _build_prompt(self, request: RecapSummaryRequest, max_bullets: int, intermediate: bool = False) -> str:
         # Truncate cluster section to fit within context window
-        # Context window is 16K (default) or 60K tokens (61440), configured in entrypoint.sh and config.py
-        # Model routing automatically selects 16K or 60K based on input size
+        # Context window is 12K (default) or 60K tokens, configured in entrypoint.sh and config.py
+        # Model routing automatically selects 12K or 60K based on input size
         # Reserve ~1K tokens for prompt template and safety margin
-        # Using conservative 50K chars (~12K tokens) for cluster_section to fit in 16K context
-        MAX_CLUSTER_SECTION_LENGTH = 50_000  # characters (conservative estimate for ~12K tokens in 16K context)
+        # Using conservative 12K chars (~3K tokens) for faster LLM inference
+        # Larger inputs will trigger hierarchical (map-reduce) summarization
+        MAX_CLUSTER_SECTION_LENGTH = 12_000  # characters (~3K tokens, reduced from 50K for faster processing)
 
         max_clusters = max(3, min(len(request.clusters), max_bullets + 2))
         cluster_lines: List[str] = []

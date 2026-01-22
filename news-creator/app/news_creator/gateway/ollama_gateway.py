@@ -1,6 +1,5 @@
 """Ollama Gateway - implements LLMProviderPort."""
 
-import asyncio
 import logging
 from typing import Dict, Any, Optional, Union, AsyncIterator
 
@@ -8,7 +7,7 @@ from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.driver.ollama_driver import OllamaDriver
 from news_creator.driver.ollama_stream_driver import OllamaStreamDriver
-from news_creator.gateway.fifo_semaphore import FIFOSemaphore
+from news_creator.gateway.priority_semaphore import PrioritySemaphore
 from news_creator.gateway.model_router import ModelRouter
 from news_creator.gateway.oom_detector import OOMDetector
 from news_creator.port.llm_provider_port import LLMProviderPort
@@ -24,9 +23,9 @@ class OllamaGateway(LLMProviderPort):
         self.config = config
         self.driver = OllamaDriver(config)
         self.stream_driver = OllamaStreamDriver(config)
-        # FIFO semaphore for controlling concurrent requests to Ollama
-        # FIFO ordering ensures requests are processed in the order they arrive
-        self._semaphore = FIFOSemaphore(config.ollama_request_concurrency)
+        # Priority semaphore for controlling concurrent requests to Ollama
+        # High-priority (streaming) requests bypass low-priority (batch) queue
+        self._semaphore = PrioritySemaphore(config.ollama_request_concurrency)
         # OOM detector and model router
         self.oom_detector = OOMDetector(enabled=config.oom_detection_enabled)
         self.model_router = ModelRouter(config, self.oom_detector)
@@ -53,6 +52,7 @@ class OllamaGateway(LLMProviderPort):
         keep_alive: Optional[Union[int, str]] = None,
         format: Optional[Union[str, Dict[str, Any]]] = None,
         options: Optional[Dict[str, Any]] = None,
+        priority: str = "low",
     ) -> Union[LLMGenerateResponse, AsyncIterator[LLMGenerateResponse]]:
         """
         Generate text using Ollama.
@@ -65,6 +65,8 @@ class OllamaGateway(LLMProviderPort):
             keep_alive: Keep-alive duration
             format: Optional output format (e.g., "json" for structured output)
             options: Additional generation options
+            priority: Request priority ("high" or "low"). High priority requests
+                      (or streaming requests) bypass the low priority queue.
 
         Returns:
             LLMGenerateResponse with generated text
@@ -220,17 +222,26 @@ class OllamaGateway(LLMProviderPort):
             f"usage_percent={round((estimated_tokens / context_window) * 100, 1) if context_window > 0 else 0}%"
         )
 
+        # Determine if this request should be HIGH PRIORITY
+        # HIGH PRIORITY: streaming OR explicit priority="high"
+        is_high_priority = stream or priority == "high"
+
         # Handle streaming requests
         if stream:
             async def response_generator():
-                # Acquire semaphore during the actual streaming process
-                async with self._semaphore:
+                # Acquire semaphore with HIGH PRIORITY for streaming (on-time) requests
+                wait_time = await self._semaphore.acquire(high_priority=is_high_priority)
+                try:
+                    priority_label = "HIGH PRIORITY" if is_high_priority else "LOW PRIORITY"
                     logger.info(
-                        "Acquired semaphore, processing Ollama request (streaming)",
+                        f"Acquired semaphore ({priority_label}), processing Ollama request (streaming)",
                         extra={
                             "model": payload["model"],
                             "prompt_length": len(prompt),
                             "stream": True,
+                            "priority": priority,
+                            "is_high_priority": is_high_priority,
+                            "queue_wait_time_seconds": round(wait_time, 4),
                         }
                     )
                     # Use stream driver for streaming requests
@@ -250,19 +261,26 @@ class OllamaGateway(LLMProviderPort):
                             prompt_eval_duration=chunk.get("prompt_eval_duration"),
                             eval_duration=chunk.get("eval_duration"),
                         )
+                finally:
+                    self._semaphore.release()
 
             # Return the generator (not awaited yet)
             return response_generator()
 
         # Handle non-streaming requests
-        # Acquire semaphore to queue requests (global queue for all services)
-        async with self._semaphore:
+        # Acquire semaphore based on priority
+        wait_time = await self._semaphore.acquire(high_priority=is_high_priority)
+        priority_label = "HIGH PRIORITY" if is_high_priority else "LOW PRIORITY"
+        try:
             logger.info(
-                "Acquired semaphore, processing Ollama request (non-streaming)",
+                f"Acquired semaphore ({priority_label}), processing Ollama request (non-streaming)",
                 extra={
                     "model": payload["model"],
                     "prompt_length": len(prompt),
                     "stream": False,
+                    "priority": priority,
+                    "is_high_priority": is_high_priority,
+                    "queue_wait_time_seconds": round(wait_time, 4),
                 }
             )
             # Call appropriate driver based on stream flag
@@ -314,6 +332,8 @@ class OllamaGateway(LLMProviderPort):
                         raise
                 else:
                     raise
+        finally:
+            self._semaphore.release()
 
         # Validate response (Non-streaming only)
         if "response" not in response_data:
@@ -364,6 +384,55 @@ class OllamaGateway(LLMProviderPort):
         decode_tokens_per_second = round(
             eval_count / (eval_duration / 1_000_000_000), 2
         ) if eval_count and eval_duration else None
+
+        # TTFT (Time To First Token) Breakdown Logging
+        # TTFT = queue_wait_time + load_duration + prompt_eval_duration
+        # Get queue wait time from semaphore
+        queue_wait_time_seconds = round(self._semaphore.last_wait_time, 4)
+
+        # Calculate TTFT (in seconds)
+        ttft_seconds = queue_wait_time_seconds
+        if load_duration_seconds:
+            ttft_seconds += load_duration_seconds
+        if prompt_eval_duration_seconds:
+            ttft_seconds += prompt_eval_duration_seconds
+        ttft_seconds = round(ttft_seconds, 2)
+
+        # Log TTFT breakdown for diagnostics
+        logger.info(
+            f"TTFT breakdown: ttft={ttft_seconds}s "
+            f"(queue_wait={queue_wait_time_seconds}s + "
+            f"load_duration={load_duration_seconds}s + "
+            f"prompt_eval_duration={prompt_eval_duration_seconds}s), "
+            f"model={actual_model}, prompt_tokens={prompt_eval_count}",
+            extra={
+                "ttft_seconds": ttft_seconds,
+                "queue_wait_time_seconds": queue_wait_time_seconds,
+                "load_duration_seconds": load_duration_seconds,
+                "prompt_eval_duration_seconds": prompt_eval_duration_seconds,
+                "model": actual_model,
+                "prompt_eval_count": prompt_eval_count,
+            },
+        )
+
+        # Cold start detection: warn if load_duration > 0.1s (100ms)
+        # load_duration > 0.1s indicates model was not in VRAM (cold start)
+        COLD_START_THRESHOLD_SECONDS = 0.1
+        if load_duration_seconds and load_duration_seconds > COLD_START_THRESHOLD_SECONDS:
+            logger.warning(
+                f"COLD_START detected: load_duration={load_duration_seconds}s > {COLD_START_THRESHOLD_SECONDS}s. "
+                f"Model '{actual_model}' was not in VRAM and required disk-to-VRAM loading. "
+                f"This adds {load_duration_seconds}s to TTFT. "
+                f"Consider: (1) increasing OLLAMA_MAX_LOADED_MODELS, "
+                f"(2) extending keep_alive duration, or "
+                f"(3) ensuring warmup runs on startup.",
+                extra={
+                    "load_duration_seconds": load_duration_seconds,
+                    "cold_start_threshold": COLD_START_THRESHOLD_SECONDS,
+                    "model": actual_model,
+                    "ttft_seconds": ttft_seconds,
+                },
+            )
 
         logger.info(
             f"Ollama generation completed: requested_model={requested_model}, actual_model={actual_model}, "

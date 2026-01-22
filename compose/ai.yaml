@@ -56,6 +56,15 @@ services:
       # QAT model for improved quantization quality (54% less perplexity drop)
       # Set OLLAMA_BASE_MODEL=gemma3:4b for rollback
       - OLLAMA_BASE_MODEL=${OLLAMA_BASE_MODEL:-gemma3:4b-it-qat}
+      # Performance optimization: Single request processing for VRAM efficiency
+      # RTX 4060 (8GB VRAM): 2 parallel causes VRAM thrashing, use 1 for stable speed
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+      # Limit to 1 loaded model to conserve VRAM on 8GB GPU
+      - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
+      # Flash Attention 2.0: ~30% memory reduction, especially for long contexts
+      - OLLAMA_FLASH_ATTENTION=${OLLAMA_FLASH_ATTENTION:-1}
+      # KV Cache quantization: q8_0 reduces VRAM usage while maintaining quality
+      - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
     volumes:
       - news_creator_models:/home/ollama-user/.ollama
     restart: unless-stopped
@@ -96,6 +105,13 @@ services:
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
+      # Concurrency: sync with OLLAMA_NUM_PARALLEL in news-creator-backend
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+      # 12K-only mode: disable 60K model, use hierarchical map-reduce for large documents
+      - MODEL_60K_ENABLED=${MODEL_60K_ENABLED:-false}
+      # Hierarchical summarization thresholds (optimized for 12K-only mode)
+      - HIERARCHICAL_THRESHOLD_CHARS=${HIERARCHICAL_THRESHOLD_CHARS:-12000}
+      - HIERARCHICAL_CHUNK_MAX_CHARS=${HIERARCHICAL_CHUNK_MAX_CHARS:-10000}
       # Cache settings
       - CACHE_ENABLED=${CACHE_ENABLED:-true}
       - CACHE_REDIS_URL=redis://redis-cache:6379/0

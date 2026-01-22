@@ -25,7 +25,7 @@ class SummarizeUsecase:
         self.config = config
         self.llm_provider = llm_provider
 
-    async def generate_summary(self, article_id: str, content: str) -> Tuple[str, Dict[str, Any]]:
+    async def generate_summary(self, article_id: str, content: str, priority: str = "low") -> Tuple[str, Dict[str, Any]]:
         """
         Generate a Japanese summary for an article.
 
@@ -265,6 +265,7 @@ class SummarizeUsecase:
                 prompt,
                 num_predict=self.config.summary_num_predict,
                 options=llm_options,
+                priority=priority,
             )
 
             elapsed_time = time.time() - start_time
@@ -579,7 +580,7 @@ class SummarizeUsecase:
 
         return truncated_summary, metadata
 
-    async def generate_summary_stream(self, article_id: str, content: str) -> AsyncIterator[str]:
+    async def generate_summary_stream(self, article_id: str, content: str, priority: str = "low") -> AsyncIterator[str]:
         """
         Generate a Japanese summary for an article as a stream of tokens.
 
@@ -687,6 +688,7 @@ class SummarizeUsecase:
                 num_predict=self.config.summary_num_predict,
                 stream=True,
                 options=llm_options,
+                priority=priority,
             )
 
             logger.info(

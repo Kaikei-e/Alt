@@ -37,7 +37,7 @@ class NewsCreatorConfig:
         self.llm_service_url = os.getenv("LLM_SERVICE_URL", "http://localhost:11435")
         self.model_name = os.getenv("LLM_MODEL", "gemma3:4b-it-qat")
         self.llm_timeout_seconds = self._get_int("LLM_TIMEOUT_SECONDS", 300)  # 5分に増加（1000トークン生成 + 続き生成に対応）
-        self.llm_keep_alive = self._get_int("LLM_KEEP_ALIVE_SECONDS", "24h")
+        self.llm_keep_alive = os.getenv("LLM_KEEP_ALIVE_SECONDS", "24h")
         # Model-specific keep_alive settings (best practice: 12K/60K on-demand)
         # 12K model: 24h to allow unloading after use to save VRAM
         # 60K model: 15m to allow quick unloading after use to save VRAM
@@ -66,8 +66,8 @@ class NewsCreatorConfig:
         # RTX 4060最適化: バッチサイズ1024（entrypoint.shのOLLAMA_NUM_BATCHと統一）
         self.llm_num_batch = self._get_int("LLM_NUM_BATCH", 1024)
         self.llm_num_predict = self._get_int("LLM_NUM_PREDICT", 1200)  # 復活
-        # 調査に基づく推奨値に更新: 繰り返し問題対策
-        self.llm_temperature = self._get_float("LLM_TEMPERATURE", 0.15)  # 0.2 → 0.15
+        # Gemma3 QAT最適化: 繰り返し問題対策（CJKテキストでは高めのtemperatureが必要）
+        self.llm_temperature = self._get_float("LLM_TEMPERATURE", 0.7)  # 0.15 → 0.7 (Gemma3推奨)
         self.llm_top_p = self._get_float("LLM_TOP_P", 0.85)             # 0.9 → 0.85
         self.llm_top_k = self._get_int("LLM_TOP_K", 40)                 # 50 → 40
         self.llm_repeat_penalty = self._get_float("LLM_REPEAT_PENALTY", 1.15)  # 1.07 → 1.15
@@ -86,17 +86,29 @@ class NewsCreatorConfig:
         # Increased from 500 to 1000 tokens to support 1000-1500 character summaries with safety margin
         # Japanese text: 1 character ≈ 1 token, so 1500 chars needs ~1500 tokens + safety margin
         self.summary_num_predict = self._get_int("SUMMARY_NUM_PREDICT", 1000)
-        self.summary_temperature = self._get_float("SUMMARY_TEMPERATURE", 0.1)  # サマリー生成専用の低い温度
+        self.summary_temperature = self._get_float("SUMMARY_TEMPERATURE", 0.5)  # 0.1 → 0.5 (Gemma3 CJK対応)
 
         # Repetition detection and retry settings
         self.max_repetition_retries = self._get_int("MAX_REPETITION_RETRIES", 3)
         self.repetition_threshold = self._get_float("REPETITION_THRESHOLD", 0.3)
 
-        # Hierarchical summarization settings
-        # Threshold for switching to hierarchical (map-reduce) summarization
-        self.hierarchical_threshold_chars = self._get_int("HIERARCHICAL_THRESHOLD_CHARS", 200_000)  # ~50K tokens
-        self.hierarchical_threshold_clusters = self._get_int("HIERARCHICAL_THRESHOLD_CLUSTERS", 15)
-        self.hierarchical_chunk_max_chars = self._get_int("HIERARCHICAL_CHUNK_MAX_CHARS", 100_000)  # ~25K tokens per chunk
+        # 60K model enable/disable flag (12K-only mode by default)
+        # When disabled, hierarchical map-reduce is used for large documents
+        self.model_60k_enabled = os.getenv("MODEL_60K_ENABLED", "false").lower() == "true"
+
+        # Hierarchical summarization settings (12K-only mode)
+        # With 12K context window, we need aggressive hierarchical summarization
+        # Best practice: 1,500-3,000 tokens per chunk with 10-20% overlap
+        # Reference: https://www.pinecone.io/learn/chunking-strategies/
+        self.hierarchical_threshold_chars = self._get_int("HIERARCHICAL_THRESHOLD_CHARS", 12_000)  # ~3K tokens - trigger map-reduce for larger inputs (reduced for 12K-only)
+        self.hierarchical_threshold_clusters = self._get_int("HIERARCHICAL_THRESHOLD_CLUSTERS", 5)  # trigger map-reduce for many clusters (reduced for 12K-only)
+        self.hierarchical_chunk_max_chars = self._get_int("HIERARCHICAL_CHUNK_MAX_CHARS", 10_000)  # ~2.5K tokens per chunk (optimized for fewer LLM calls)
+        self.hierarchical_chunk_overlap_ratio = self._get_float("HIERARCHICAL_CHUNK_OVERLAP_RATIO", 0.15)  # 15% overlap for context preservation
+
+        # Recursive reduce settings for hierarchical summarization
+        # When intermediate summaries exceed this limit, recursively reduce them
+        self.recursive_reduce_max_chars = self._get_int("RECURSIVE_REDUCE_MAX_CHARS", 10_000)  # ~2.5K tokens, safe for 12K context
+        self.recursive_reduce_max_depth = self._get_int("RECURSIVE_REDUCE_MAX_DEPTH", 3)  # Max recursion depth
 
         # Hierarchical summarization settings for single large articles
         self.hierarchical_single_article_threshold = self._get_int("HIERARCHICAL_SINGLE_ARTICLE_THRESHOLD", 25_000)

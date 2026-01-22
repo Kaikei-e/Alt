@@ -53,7 +53,7 @@ def test_config_handles_invalid_numeric_values():
 
     # Should fall back to defaults
     assert config.llm_timeout_seconds == 300
-    assert config.llm_temperature == 0.15
+    assert config.llm_temperature == 0.7  # Gemma3 QAT optimized default
 
     # Cleanup
     del os.environ["LLM_TIMEOUT_SECONDS"]
@@ -158,3 +158,82 @@ def test_concurrency_prefers_request_concurrency_over_num_parallel(monkeypatch):
 
     assert config.ollama_request_concurrency == 1
     assert getattr(config, "_ollama_concurrency_source") == "OLLAMA_REQUEST_CONCURRENCY"
+
+
+# ============================================================================
+# 12K-only Mode Configuration Tests
+# ============================================================================
+
+
+def test_model_60k_enabled_defaults_to_false(monkeypatch):
+    """Test that model_60k_enabled defaults to False for 12K-only operation."""
+    monkeypatch.delenv("MODEL_60K_ENABLED", raising=False)
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
+
+    config = NewsCreatorConfig()
+
+    assert config.model_60k_enabled is False
+
+
+def test_model_60k_enabled_can_be_set_true(monkeypatch):
+    """Test that model_60k_enabled can be enabled via environment variable."""
+    monkeypatch.setenv("MODEL_60K_ENABLED", "true")
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
+
+    config = NewsCreatorConfig()
+
+    assert config.model_60k_enabled is True
+
+
+def test_model_60k_enabled_case_insensitive(monkeypatch):
+    """Test that MODEL_60K_ENABLED is case-insensitive."""
+    monkeypatch.setenv("MODEL_60K_ENABLED", "TRUE")
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
+
+    config = NewsCreatorConfig()
+
+    assert config.model_60k_enabled is True
+
+
+def test_hierarchical_threshold_chars_default_12000(monkeypatch):
+    """Test that hierarchical_threshold_chars defaults to 12000 for 12K-only mode."""
+    monkeypatch.delenv("HIERARCHICAL_THRESHOLD_CHARS", raising=False)
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
+
+    config = NewsCreatorConfig()
+
+    assert config.hierarchical_threshold_chars == 12_000
+
+
+def test_hierarchical_threshold_clusters_default_5(monkeypatch):
+    """Test that hierarchical_threshold_clusters defaults to 5 for 12K-only mode."""
+    monkeypatch.delenv("HIERARCHICAL_THRESHOLD_CLUSTERS", raising=False)
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
+
+    config = NewsCreatorConfig()
+
+    assert config.hierarchical_threshold_clusters == 5
+
+
+def test_hierarchical_chunk_max_chars_default_10000(monkeypatch):
+    """Test that hierarchical_chunk_max_chars defaults to 10000 (~2.5K tokens) for fewer LLM calls."""
+    monkeypatch.delenv("HIERARCHICAL_CHUNK_MAX_CHARS", raising=False)
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
+
+    config = NewsCreatorConfig()
+
+    assert config.hierarchical_chunk_max_chars == 10_000
+
+
+def test_hierarchical_thresholds_can_be_customized(monkeypatch):
+    """Test that all hierarchical thresholds can be customized via environment."""
+    monkeypatch.setenv("HIERARCHICAL_THRESHOLD_CHARS", "20000")
+    monkeypatch.setenv("HIERARCHICAL_THRESHOLD_CLUSTERS", "10")
+    monkeypatch.setenv("HIERARCHICAL_CHUNK_MAX_CHARS", "10000")
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
+
+    config = NewsCreatorConfig()
+
+    assert config.hierarchical_threshold_chars == 20_000
+    assert config.hierarchical_threshold_clusters == 10
+    assert config.hierarchical_chunk_max_chars == 10_000

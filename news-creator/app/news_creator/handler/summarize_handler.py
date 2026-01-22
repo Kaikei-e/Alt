@@ -95,6 +95,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                     original_stream = summarize_usecase.generate_summary_stream(
                         article_id=request.article_id,
                         content=request.content,
+                        priority=request.priority,
                     )
                     logger.info(
                         "Stream generator created, creating StreamingResponse with heartbeat",
@@ -283,6 +284,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
             summary, metadata = await summarize_usecase.generate_summary(
                 article_id=request.article_id,
                 content=request.content,
+                priority=request.priority,
             )
 
             return SummarizeResponse(

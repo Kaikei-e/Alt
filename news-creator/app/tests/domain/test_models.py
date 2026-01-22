@@ -20,6 +20,36 @@ def test_summarize_request_validation():
     )
     assert request.article_id == "test-123"
     assert request.content == "This is test content"
+    assert request.priority == "low"  # Default value
+
+
+def test_summarize_request_priority_field():
+    """Test SummarizeRequest priority field validation."""
+    # Valid high priority
+    request_high = SummarizeRequest(
+        article_id="test-123",
+        content="This is test content",
+        priority="high"
+    )
+    assert request_high.priority == "high"
+
+    # Valid low priority
+    request_low = SummarizeRequest(
+        article_id="test-123",
+        content="This is test content",
+        priority="low"
+    )
+    assert request_low.priority == "low"
+
+
+def test_summarize_request_rejects_invalid_priority():
+    """Test SummarizeRequest rejects invalid priority values."""
+    with pytest.raises(ValueError):
+        SummarizeRequest(
+            article_id="test-123",
+            content="This is test content",
+            priority="invalid"
+        )
 
 
 def test_summarize_request_rejects_empty_article_id():

@@ -7,7 +7,7 @@ arrive, which is important for fairness and predictability.
 
 import asyncio
 import logging
-from typing import Optional
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +44,21 @@ class FIFOSemaphore:
         self._max_value = value
         self._waiters: asyncio.Queue[asyncio.Future] = asyncio.Queue()
         self._lock = asyncio.Lock()
+        self._last_wait_time: float = 0.0  # Track last wait time for diagnostics
 
     def __repr__(self):
         """String representation of the semaphore."""
         return f"<FIFOSemaphore value={self._value}/{self._max_value}, waiters={self._waiters.qsize()}>"
+
+    @property
+    def last_wait_time(self) -> float:
+        """
+        Get the wait time from the last acquire operation.
+
+        Returns:
+            Wait time in seconds from the most recent acquire call.
+        """
+        return self._last_wait_time
 
     def locked(self) -> bool:
         """
@@ -58,22 +69,25 @@ class FIFOSemaphore:
         """
         return self._value == 0 or not self._waiters.empty()
 
-    async def acquire(self) -> bool:
+    async def acquire(self) -> float:
         """
         Acquire the semaphore.
 
-        If the internal counter is larger than zero, decrement it and return True immediately.
+        If the internal counter is larger than zero, decrement it and return immediately.
         If it is zero, block and wait until a slot becomes available, maintaining FIFO order.
 
         Returns:
-            True when semaphore is acquired
+            Wait time in seconds (0.0 for immediate acquire, positive value for waited acquire)
         """
+        start_time = time.monotonic()
+
         # Check if slot is available (atomic check)
         async with self._lock:
             if self._value > 0:
                 # Slot available, acquire immediately
                 self._value -= 1
-                return True
+                self._last_wait_time = 0.0
+                return 0.0
 
             # No slot available, create future and add to queue
             future = asyncio.get_event_loop().create_future()
@@ -83,7 +97,9 @@ class FIFOSemaphore:
         # Wait for a slot to become available
         try:
             await future
-            return True
+            wait_time = time.monotonic() - start_time
+            self._last_wait_time = wait_time
+            return wait_time
         except asyncio.CancelledError:
             # If cancelled, try to remove from queue
             # Note: The future may have already been processed, so we just cancel it

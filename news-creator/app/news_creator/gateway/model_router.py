@@ -68,7 +68,7 @@ class ModelRouter:
     def _select_model_3mode(
         self, prompt: str, max_new_tokens: Optional[int] = None
     ) -> Tuple[str, int]:
-        """Select model in 2-model mode (12K, 60K)."""
+        """Select model in 2-model mode (12K, 60K) or 12K-only mode."""
         # Calculate token count
         prompt_tokens = count_tokens(prompt)
         max_new = max_new_tokens or self.config.llm_num_predict
@@ -103,11 +103,25 @@ class ModelRouter:
             },
         )
 
-        # Select bucket (12K, or 60K)
+        # Check if 60K model is disabled (12K-only mode)
+        model_60k_enabled = getattr(self.config, 'model_60k_enabled', True)
+
+        if not model_60k_enabled:
+            # 12K-only mode: always use 12K model
+            # Hierarchical summarization should handle large inputs upstream
+            if needed_tokens > self.BUCKET_12K:
+                logger.warning(
+                    f"Token count ({needed_tokens}) exceeds 12K bucket but 60K is disabled. "
+                    f"Hierarchical summarization should handle this.",
+                    extra={"needed_tokens": needed_tokens, "prompt_tokens": prompt_tokens},
+                )
+            selected_bucket = self.BUCKET_12K
+            selected_model = self.config.model_12k_name
+        # Select bucket (12K, or 60K) - only when 60K is enabled
         # if needed_tokens <= self.BUCKET_8K:  # 8kモデルは使用しない
         #     selected_bucket = self.BUCKET_8K
         #     selected_model = self.config.model_8k_name
-        if needed_tokens <= self.BUCKET_12K:
+        elif needed_tokens <= self.BUCKET_12K:
             selected_bucket = self.BUCKET_12K
             selected_model = self.config.model_12k_name
         elif needed_tokens <= self.BUCKET_60K:

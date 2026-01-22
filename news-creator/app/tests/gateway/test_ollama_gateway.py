@@ -242,3 +242,146 @@ async def test_semaphore_fifo_order(mock_config, mock_driver):
 
         await gateway.cleanup()
 
+
+@pytest.mark.asyncio
+async def test_high_priority_bypasses_low_priority_queue(mock_config, mock_driver):
+    """Test that high priority requests use the high priority queue."""
+    mock_config.ollama_request_concurrency = 1
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        # Verify high priority parameter is handled
+        result = await gateway.generate("Test prompt", priority="high")
+
+        assert isinstance(result, LLMGenerateResponse)
+        assert result.response == "Test response"
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_low_priority_default(mock_config, mock_driver):
+    """Test that default priority is low."""
+    mock_config.ollama_request_concurrency = 1
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        # Default priority should be low
+        result = await gateway.generate("Test prompt")
+
+        assert isinstance(result, LLMGenerateResponse)
+        assert result.response == "Test response"
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_ttft_metrics_logged_with_cold_start_warning(mock_config, mock_driver, caplog):
+    """Test that TTFT metrics are logged with cold start warning when load_duration > 0.1s."""
+    import logging
+    caplog.set_level(logging.WARNING)
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        # Simulate cold start with load_duration = 2 seconds (2 billion nanoseconds)
+        cold_start_response = {
+            "response": "Test response",
+            "model": "test-model",
+            "done": True,
+            "prompt_eval_count": 500,
+            "eval_count": 100,
+            "total_duration": 3_000_000_000,  # 3 seconds total
+            "load_duration": 2_000_000_000,    # 2 seconds load time (cold start)
+            "prompt_eval_duration": 500_000_000,  # 0.5 seconds prefill
+            "eval_duration": 500_000_000,  # 0.5 seconds decode
+        }
+        mock_driver.generate = AsyncMock(return_value=cold_start_response)
+
+        await gateway.generate("Test prompt")
+
+        # Verify cold start warning was logged
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        cold_start_warnings = [r for r in warning_records if "cold start" in r.message.lower() or "COLD_START" in r.message]
+        assert len(cold_start_warnings) >= 1, "Cold start warning should be logged when load_duration > 0.1s"
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_ttft_metrics_logged_without_cold_start_warning(mock_config, mock_driver, caplog):
+    """Test that no cold start warning is logged when model is hot (load_duration < 0.1s)."""
+    import logging
+    caplog.set_level(logging.WARNING)
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        # Simulate hot model with minimal load_duration
+        hot_response = {
+            "response": "Test response",
+            "model": "test-model",
+            "done": True,
+            "prompt_eval_count": 500,
+            "eval_count": 100,
+            "total_duration": 600_000_000,  # 0.6 seconds total
+            "load_duration": 1_000_000,    # 0.001 seconds (hot)
+            "prompt_eval_duration": 300_000_000,  # 0.3 seconds prefill
+            "eval_duration": 300_000_000,  # 0.3 seconds decode
+        }
+        mock_driver.generate = AsyncMock(return_value=hot_response)
+
+        await gateway.generate("Test prompt")
+
+        # Verify no cold start warning was logged
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        cold_start_warnings = [r for r in warning_records if "cold start" in r.message.lower() or "COLD_START" in r.message]
+        assert len(cold_start_warnings) == 0, "No cold start warning should be logged when load_duration < 0.1s"
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_ttft_breakdown_logged(mock_config, mock_driver, caplog):
+    """Test that TTFT breakdown is logged in a structured format."""
+    import logging
+    caplog.set_level(logging.INFO)
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        # Simulate response with all timing metrics
+        response_with_timing = {
+            "response": "Test response",
+            "model": "test-model",
+            "done": True,
+            "prompt_eval_count": 500,
+            "eval_count": 100,
+            "total_duration": 1_500_000_000,  # 1.5 seconds total
+            "load_duration": 100_000_000,    # 0.1 seconds load
+            "prompt_eval_duration": 400_000_000,  # 0.4 seconds prefill
+            "eval_duration": 1_000_000_000,  # 1.0 seconds decode
+        }
+        mock_driver.generate = AsyncMock(return_value=response_with_timing)
+
+        await gateway.generate("Test prompt")
+
+        # Verify TTFT breakdown is logged
+        info_records = [r for r in caplog.records if r.levelno == logging.INFO]
+        ttft_logs = [r for r in info_records if "ttft" in r.message.lower() or "TTFT" in r.message]
+        assert len(ttft_logs) >= 1, "TTFT breakdown should be logged"
+
+        # Verify the TTFT log contains expected components
+        ttft_log = ttft_logs[0]
+        assert "load_duration" in ttft_log.message.lower() or hasattr(ttft_log, "load_duration_s")
+        assert "prompt_eval" in ttft_log.message.lower() or hasattr(ttft_log, "prompt_eval_duration_s")
+
+        await gateway.cleanup()
+

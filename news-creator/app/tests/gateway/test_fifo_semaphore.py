@@ -140,3 +140,71 @@ async def test_fifo_semaphore_cancellation(fifo_semaphore_module):
     # Verify: 1 ran, 2 cancelled, 3 ran (skipped 2)
     assert processing_order == [1, "2_cancelled", 3]
 
+
+@pytest.mark.asyncio
+async def test_fifo_semaphore_tracks_queue_wait_time(fifo_semaphore_module):
+    """Test that FIFO semaphore tracks queue wait time."""
+    FIFOSemaphore = fifo_semaphore_module
+    semaphore = FIFOSemaphore(1)
+
+    # First acquire immediately - should have minimal wait time
+    wait_time = await semaphore.acquire()
+    assert wait_time >= 0  # Should return wait time in seconds
+    assert wait_time < 0.1  # Immediate acquire should be very fast
+    semaphore.release()
+
+
+@pytest.mark.asyncio
+async def test_fifo_semaphore_queue_wait_time_when_waiting(fifo_semaphore_module):
+    """Test that queue wait time is tracked when actually waiting."""
+    FIFOSemaphore = fifo_semaphore_module
+    semaphore = FIFOSemaphore(1)
+
+    wait_times = []
+
+    async def worker(task_id: int):
+        """Worker that tracks wait time."""
+        wait_time = await semaphore.acquire()
+        try:
+            wait_times.append((task_id, wait_time))
+            await asyncio.sleep(0.05)  # Hold semaphore for 50ms
+        finally:
+            semaphore.release()
+
+    # Start 3 tasks concurrently
+    await asyncio.gather(
+        worker(1),
+        worker(2),
+        worker(3),
+    )
+
+    # First task should have minimal wait time
+    # Second task should wait ~50ms (while first is processing)
+    # Third task should wait ~100ms (while first and second are processing)
+    assert len(wait_times) == 3
+
+    # Sort by task_id to ensure predictable order for assertions
+    wait_times.sort(key=lambda x: x[0])
+
+    # First task should have minimal wait
+    assert wait_times[0][1] < 0.02
+
+    # Second task should have waited ~50ms (first task's processing time)
+    assert wait_times[1][1] >= 0.04  # Allow some margin
+
+    # Third task should have waited ~100ms (first + second processing time)
+    assert wait_times[2][1] >= 0.08  # Allow some margin
+
+
+@pytest.mark.asyncio
+async def test_fifo_semaphore_context_manager_returns_wait_time(fifo_semaphore_module):
+    """Test that context manager can provide wait time."""
+    FIFOSemaphore = fifo_semaphore_module
+    semaphore = FIFOSemaphore(1)
+
+    # Context manager should work and we can get wait time via property
+    async with semaphore:
+        # After entering context, last_wait_time should be available
+        assert semaphore.last_wait_time >= 0
+        assert semaphore.last_wait_time < 0.1  # Immediate acquire
+

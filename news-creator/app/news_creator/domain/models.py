@@ -12,6 +12,7 @@ class SummarizeRequest(BaseModel):
     article_id: str = Field(min_length=1)
     content: str = Field(min_length=1)
     stream: bool = False
+    priority: str = Field(default="low", pattern="^(high|low)$")
 
 
 class SummarizeResponse(BaseModel):

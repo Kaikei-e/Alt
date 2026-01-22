@@ -19,6 +19,7 @@ class LLMProviderPort(ABC):
         keep_alive: Optional[Union[int, str]] = None,
         format: Optional[Union[str, Dict[str, Any]]] = None,
         options: Optional[Dict[str, Any]] = None,
+        priority: str = "low",
     ) -> Union[LLMGenerateResponse, AsyncIterator[LLMGenerateResponse]]:
         """
         Generate text using the LLM.
@@ -31,6 +32,8 @@ class LLMProviderPort(ABC):
             keep_alive: Keep-alive duration
             format: Optional output format (e.g., "json" for structured output)
             options: Additional generation options
+            priority: Request priority ("high" or "low"). High priority requests
+                      bypass the low priority queue for faster processing.
 
         Returns:
             LLMGenerateResponse with generated text and metadata
