@@ -161,12 +161,25 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 		`
 		args = []interface{}{string(status), summary, now, jobID}
 	case models.SummarizeJobStatusFailed:
+		// When a job fails:
+		// - If retry_count + 1 >= max_retries: move to dead_letter (permanent failure)
+		// - Otherwise: set status to pending (will be retried)
 		query = `
 			UPDATE summarize_job_queue
-			SET status = $1, error_message = $2, completed_at = $3, retry_count = retry_count + 1
-			WHERE job_id = $4
+			SET
+				status = CASE
+					WHEN retry_count + 1 >= max_retries THEN 'dead_letter'
+					ELSE 'pending'
+				END,
+				error_message = $1,
+				completed_at = CASE
+					WHEN retry_count + 1 >= max_retries THEN $2
+					ELSE completed_at
+				END,
+				retry_count = retry_count + 1
+			WHERE job_id = $3
 		`
-		args = []interface{}{string(status), errorMessage, now, jobID}
+		args = []interface{}{errorMessage, now, jobID}
 	default:
 		query = `
 			UPDATE summarize_job_queue

@@ -137,13 +137,27 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 		w.logger.ErrorContext(ctx, "failed to summarize article",
 			"error", err,
 			"article_id", job.ArticleID,
-			"duration_ms", summarizeDuration.Milliseconds())
+			"duration_ms", summarizeDuration.Milliseconds(),
+			"retry_count", job.RetryCount,
+			"max_retries", job.MaxRetries)
 
-		// Check if job can be retried
-		if job.CanRetry() {
-			w.logger.InfoContext(ctx, "job will be retried", "job_id", job.JobID, "retry_count", job.RetryCount+1)
-			// Update status back to pending for retry (or keep as failed and let retry logic handle it)
-			// For now, mark as failed and let the retry logic handle it
+		// Log whether this will be retried or moved to dead_letter
+		// Note: The repository handles the status transition:
+		// - If retry_count + 1 >= max_retries -> dead_letter
+		// - Otherwise -> pending (will be retried)
+		nextRetryCount := job.RetryCount + 1
+		if nextRetryCount >= job.MaxRetries {
+			w.logger.WarnContext(ctx, "job exceeded max retries, moving to dead_letter",
+				"job_id", job.JobID,
+				"article_id", job.ArticleID,
+				"retry_count", nextRetryCount,
+				"max_retries", job.MaxRetries)
+		} else {
+			w.logger.InfoContext(ctx, "job will be retried",
+				"job_id", job.JobID,
+				"article_id", job.ArticleID,
+				"retry_count", nextRetryCount,
+				"max_retries", job.MaxRetries)
 		}
 
 		if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), models.SummarizeJobStatusFailed, "", errorMsg); updateErr != nil {

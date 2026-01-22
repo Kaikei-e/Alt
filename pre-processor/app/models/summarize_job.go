@@ -10,10 +10,11 @@ import (
 type SummarizeJobStatus string
 
 const (
-	SummarizeJobStatusPending   SummarizeJobStatus = "pending"
-	SummarizeJobStatusRunning   SummarizeJobStatus = "running"
-	SummarizeJobStatusCompleted SummarizeJobStatus = "completed"
-	SummarizeJobStatusFailed    SummarizeJobStatus = "failed"
+	SummarizeJobStatusPending    SummarizeJobStatus = "pending"
+	SummarizeJobStatusRunning    SummarizeJobStatus = "running"
+	SummarizeJobStatusCompleted  SummarizeJobStatus = "completed"
+	SummarizeJobStatusFailed     SummarizeJobStatus = "failed"
+	SummarizeJobStatusDeadLetter SummarizeJobStatus = "dead_letter"
 )
 
 // SummarizeJob represents a job in the summarization queue
@@ -31,9 +32,9 @@ type SummarizeJob struct {
 	CompletedAt  *time.Time         `db:"completed_at"`
 }
 
-// IsTerminal returns true if the job status is terminal (completed or failed)
+// IsTerminal returns true if the job status is terminal (completed, failed, or dead_letter)
 func (j *SummarizeJob) IsTerminal() bool {
-	return j.Status == SummarizeJobStatusCompleted || j.Status == SummarizeJobStatusFailed
+	return j.Status == SummarizeJobStatusCompleted || j.Status == SummarizeJobStatusFailed || j.Status == SummarizeJobStatusDeadLetter
 }
 
 // CanRetry returns true if the job can be retried
