@@ -1,6 +1,6 @@
 # Recap Worker
 
-_Last reviewed: January 13, 2026_
+_Last reviewed: January 22, 2026_
 
 **Location:** `recap-worker` (Crate: `recap-worker/recap-worker`)
 
@@ -17,11 +17,45 @@ It delegates **heavy ML tasks** (embedding generation, coarse classification, cl
 
 | Layer | Responsibilities |
 | --- | --- |
-| **Control Plane** | Axum router exposing: <br>- **Ops**: `/health/ready`, `/metrics` (Prometheus) <br>- **Triggers**: `/v1/generate/recaps/7days` <br>- **Admin**: `/admin/jobs/retry`, `/admin/genre-learning` <br>- **Dashboard**: `/v1/dashboard/*` (Metrics, Overview, Logs, Jobs) <br>- **Eval**: `/v1/evaluation/*` (Genre classification stats) |
+| **Control Plane** | Axum router exposing: <br>- **Ops**: `/health/ready`, `/metrics` (Prometheus) <br>- **Triggers**: `/v1/generate/recaps/7days` <br>- **Admin**: `/admin/jobs/retry`, `/admin/genre-learning` <br>- **Dashboard**: `/v1/dashboard/*` (Metrics, Overview, Logs, Jobs, recap_jobs, job-progress, job-stats) <br>- **Eval**: `/v1/evaluation/*` (Genre classification stats) |
 | **Pipeline Core** | `src/pipeline/`: Modular stages for Fetch, Preprocess, Dedup, Genre, Select, Evidence, Dispatch, Persist. |
 | **Clients** | `src/clients/`: Strongly-typed HTTP clients for: <br>- **`recap-subworker`**: Coarse classification, clustering, graph refresh. <br>- **`news-creator`**: LLM summarization. <br>- **`alt-backend`**: Article fetching. <br>- **`tag-generator`**: Optional tag enrichment. |
 | **Classification** | **Remote Coarse**: Calls `recap-subworker` (`/v1/classify`) for initial genre assignment. <br>**Local Refine**: Optional Graph Label Propagation stage (`src/pipeline/genre_refine.rs`) using cached graph data. |
 | **Store** | `src/store/`: SQLx DAO managing `recap_jobs`, `recap_cluster_evidence`, `recap_genre_learning_results`, and `tag_label_graph` (cached from DB). |
+
+## API Endpoints
+
+### Dashboard Endpoints
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v1/dashboard/recap_jobs` | GET | Get recap job details |
+| `/v1/dashboard/job-progress` | GET | Get job progress |
+| `/v1/dashboard/job-stats` | GET | Get job statistics |
+
+## Module Architecture
+
+### Core Modules
+
+| Module | Description |
+|--------|-------------|
+| `queue/` | Classification job queue with persistent storage, retry logic, and worker pool |
+| `replay/` | Pipeline replay functionality |
+| `classifier/` | Graph-based classification workflow |
+| `analysis/` | Analysis module |
+| `language_detection/` | Language detection using lingua (English/Japanese) |
+| `pipeline/executor.rs` | Resume-capable stage execution |
+| `pipeline/embedding.rs` | Embedding service integration |
+| `pipeline/minhash.rs` | MinHash-based similarity detection |
+| `pipeline/graph_override.rs` | Dynamic graph override settings |
+
+### Evaluation Module (`evaluation/`)
+
+| File | Description |
+|------|-------------|
+| `genre.rs` | Genre classification evaluation |
+| `golden.rs` | Golden dataset management |
+| `metrics.rs` | Evaluation metrics calculation |
+| `rouge.rs` | ROUGE score computation |
 
 ## Pipeline Flow
 
@@ -119,6 +153,14 @@ The genre classification is a hybrid **Remote + Local** process:
 *   Saves the final `Recap` and `RecapGenre` results to `recap_db`.
 *   Stores cluster evidence in `recap_cluster_evidence` for transparency.
 
+## Pipeline Resume Support
+
+The pipeline supports resume capability for fault tolerance:
+
+*   **Stage State Persistence**: Stage execution state is persisted to the `recap_stage_state` table.
+*   **Lightweight Checkpoints**: The fetch stage uses lightweight checkpoints to track progress.
+*   **Automatic Resume**: On restart, the pipeline automatically resumes from the last successful stage.
+
 ## Data Flow Overview
 
 ```mermaid
@@ -162,16 +204,74 @@ flowchart LR
 Configuration is handled via `src/config.rs` (env vars) and dynamic DB overrides.
 
 ### Key Environment Variables
+
+#### Core Settings
 *   `RECAP_WINDOW_DAYS`: Number of days to include in the recap (default 7).
 *   `GENRE_CLASSIFIER_THRESHOLD`: Confidence threshold for remote classification.
 *   `RECAP_GENRE_REFINE_ENABLED`: Enable/disable local graph refinement.
 *   `RECAP_GENRE_REFINE_ROLLOUT_PERCENT`: Gradual rollout control for refinement.
 *   `MIN_DOCUMENTS_PER_GENRE`: Minimum articles required to generate a recap for a genre.
 
+#### LLM Configuration
+*   `LLM_SUMMARY_TIMEOUT_SECS`: Timeout for LLM summarization requests (default: 600).
+*   `RECAP_BATCH_SUMMARY_CHUNK_SIZE`: Batch size for summary processing (default: 25).
+
+#### Classification Queue
+*   `CLASSIFICATION_QUEUE_CONCURRENCY`: Number of concurrent classification workers (default: 8).
+*   `CLASSIFICATION_QUEUE_CHUNK_SIZE`: Chunk size for classification batches.
+*   `CLASSIFICATION_QUEUE_MAX_RETRIES`: Maximum retry attempts (default: 3).
+*   `CLASSIFICATION_QUEUE_RETRY_DELAY_MS`: Delay between retries in milliseconds (default: 5000).
+
+#### Job Management
+*   `RECAP_JOB_RETENTION_DAYS`: Number of days to retain job data (default: 14).
+
+#### Classification Evaluation
+*   `RECAP_CLASSIFICATION_EVAL_ENABLED`: Enable classification evaluation (default: true).
+*   `RECAP_CLASSIFICATION_EVAL_USE_BOOTSTRAP`: Use bootstrap sampling for evaluation (default: true).
+*   `RECAP_CLASSIFICATION_EVAL_N_BOOTSTRAP`: Number of bootstrap iterations (default: 200).
+*   `RECAP_CLASSIFICATION_EVAL_USE_CV`: Use cross-validation (default: false).
+
+#### Clustering Timeouts
+*   `RECAP_CLUSTERING_GENRE_TIMEOUT_SECS`: Timeout per genre clustering (default: 1500).
+*   `RECAP_CLUSTERING_JOB_TIMEOUT_SECS`: Total job timeout (default: 1800).
+*   `RECAP_CLUSTERING_MIN_SUCCESS_GENRES`: Minimum genres required for success (default: 1).
+*   `RECAP_CLUSTERING_STUCK_THRESHOLD_SECS`: Threshold to detect stuck jobs (default: 600).
+
+#### Language-specific Model Weights
+*   `RECAP_GENRE_MODEL_WEIGHTS_JA`: Path to Japanese genre model weights.
+*   `RECAP_GENRE_MODEL_WEIGHTS_EN`: Path to English genre model weights.
+
+#### Language Detection
+*   `RECAP_LANG_DETECT_MIN_CHARS`: Minimum characters for detection (default: 50).
+*   `RECAP_LANG_DETECT_MIN_CONFIDENCE`: Minimum confidence threshold (default: 0.65).
+
 ### Graph & Learning
 *   **Tag Label Graph**: Cached locally for `TAG_LABEL_GRAPH_TTL_SECONDS`. Loaded from `tag_label_graph` table.
 *   **Graph Overrides**: Dynamic thresholds and weights can be loaded from `recap_worker_config` table at runtime.
 *   **Refresh**: The pipeline can trigger a graph refresh on `recap-subworker` before execution (`RECAP_PRE_REFRESH_GRAPH_ENABLED`).
+
+## DAO Architecture
+
+The store layer uses a modular trait-based DAO architecture:
+
+### Traits
+| Trait | Description |
+|-------|-------------|
+| `ArticleDao` | Article storage and retrieval |
+| `ConfigDao` | Configuration management |
+| `EvaluationDao` | Evaluation data access |
+| `GenreLearningDao` | Genre learning results |
+| `JobDao` | Job management |
+| `JobStatusDao` | Job status tracking |
+| `MetricsDao` | Metrics persistence |
+| `MorningDao` | Morning pipeline data |
+| `OutputDao` | Output storage |
+| `StageDao` | Stage state persistence |
+| `SubworkerDao` | Subworker communication |
+
+### Implementation
+*   **`UnifiedDao`**: Unified implementation of all DAO traits.
+*   **Backward Compatibility**: `RecapDao` remains available via compat module for legacy code.
 
 ## Development & Testing
 
@@ -199,3 +299,17 @@ curl http://localhost:9005/health/ready
     *   `recap_outputs` / `recap_genres`: Final recap content.
     *   `recap_cluster_evidence`: Articles used for each cluster.
     *   `recap_worker_config`: Dynamic configuration store.
+    *   `recap_stage_state`: Pipeline stage state for resume support.
+
+## Dependencies
+
+Key dependencies (Rust Edition 2024):
+
+| Crate | Version | Purpose |
+|-------|---------|---------|
+| `rust-bert` | 0.23.0 | Transformer models |
+| `lingua` | 1.4 | Language detection (English/Japanese) |
+| `lindera` | 0.21 | Japanese tokenization |
+| `ndarray` | 0.16 | Numerical arrays |
+| `petgraph` | 0.6 | Graph data structures |
+| `sprs` | 0.11 | Sparse matrices |

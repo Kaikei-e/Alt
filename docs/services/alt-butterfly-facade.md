@@ -1,6 +1,6 @@
 # Alt Butterfly Facade
 
-_Last reviewed: January 13, 2026_
+_Last reviewed: January 22, 2026_
 
 **Location:** `alt-butterfly-facade`
 
@@ -23,7 +23,7 @@ _Last reviewed: January 13, 2026_
 ```mermaid
 flowchart LR
     FE[alt-frontend-sv :4173]
-    BFF[alt-butterfly-facade :9250]
+    BFF[alt-butterfly-facade :9200]
     BE[alt-backend :9101]
     AH[auth-hub]
 
@@ -48,7 +48,7 @@ flowchart LR
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BFF_PORT` | 9250 | サービスポート |
+| `BFF_PORT` | 9200 | サービスポート |
 | `BACKEND_CONNECT_URL` | http://alt-backend:9101 | バックエンド URL |
 | `BACKEND_TOKEN_SECRET_FILE` | - | JWT シークレットファイルパス |
 | `BACKEND_TOKEN_SECRET` | - | JWT シークレット (フォールバック) |
@@ -57,6 +57,34 @@ flowchart LR
 | `BFF_REQUEST_TIMEOUT` | 30s | 単発リクエストタイムアウト |
 | `BFF_STREAMING_TIMEOUT` | 5m | ストリーミングタイムアウト |
 | `AUTH_HUB_INTERNAL_URL` | http://auth-hub:8888 | Auth Hub 内部 URL |
+| `LOG_LEVEL` | info | ログレベル (debug, info, warn, error) |
+
+### JWT Claims Structure
+
+`BackendClaims` (from `internal/middleware/auth_interceptor.go:33-38`):
+
+```go
+type BackendClaims struct {
+    Email string `json:"email"`
+    Role  string `json:"role"`
+    Sid   string `json:"sid"`
+    jwt.RegisteredClaims
+}
+```
+
+### UserContext Fields
+
+`UserContext` (from `internal/domain/user_context.go:20-28`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `UserID` | uuid.UUID | ユーザー ID (JWT subject から取得) |
+| `Email` | string | メールアドレス |
+| `Role` | string | ユーザーロール |
+| `TenantID` | uuid.UUID | テナント ID (single-tenant では UserID と同値) |
+| `SessionID` | string | セッション ID (JWT sid claim) |
+| `LoginAt` | time.Time | ログイン日時 (JWT iat から取得) |
+| `ExpiresAt` | time.Time | 有効期限 (JWT exp から取得) |
 
 ## Testing & Tooling
 ```bash
@@ -76,7 +104,7 @@ go build -o alt-butterfly-facade .
 
 ## Operational Runbook
 1. `docker compose -f compose/bff.yaml up -d` でサービス起動
-2. `curl http://localhost:9250/health` でヘルスチェック
+2. `curl http://localhost:9200/health` でヘルスチェック
 3. ログ確認: `docker compose logs -f alt-butterfly-facade`
 4. JWT 検証エラー時は issuer/audience/expiration を確認
 

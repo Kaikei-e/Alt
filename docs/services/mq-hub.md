@@ -1,6 +1,6 @@
 # MQ Hub
 
-_Last reviewed: January 13, 2026_
+_Last reviewed: January 22, 2026_
 
 **Location:** `mq-hub`
 
@@ -38,6 +38,7 @@ flowchart TB
         S1[alt:events:articles]
         S2[alt:events:summaries]
         S3[alt:events:tags]
+        S4[alt:events:index]
     end
 
     subgraph Consumers
@@ -63,6 +64,20 @@ flowchart TB
 | SummarizeRequested | alt-backend | pre-processor |
 | ArticleSummarized | pre-processor | search-indexer |
 | TagsGenerated | tag-generator | search-indexer |
+| IndexArticle | search-indexer | search-indexer |
+
+## Event Structure
+
+イベントは以下のフィールドを持つ:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `EventID` | string | UUID v4 (自動生成) |
+| `EventType` | string | イベント種別 (上記参照) |
+| `Source` | string | イベント発行元サービス名 |
+| `CreatedAt` | time.Time | イベント作成時刻 |
+| `Payload` | []byte | イベント固有データ (JSON or protobuf) |
+| `Metadata` | map[string]string | 追加コンテキスト (トレースID, correlation ID 等) |
 
 ## Stream Keys
 
@@ -71,12 +86,33 @@ flowchart TB
 | `alt:events:articles` | 記事ライフサイクルイベント |
 | `alt:events:summaries` | 要約イベント |
 | `alt:events:tags` | タグ生成イベント |
+| `alt:events:index` | インデックスコマンド |
 
-## Endpoints & Behavior
-- `GET /health` - ヘルスチェック
-- Connect-RPC API (port 9500):
-  - イベント発行
-  - ストリーム状態クエリ
+## Consumer Groups
+
+| Group | Service | Purpose |
+|-------|---------|---------|
+| `pre-processor-group` | pre-processor | 記事前処理・要約 |
+| `tag-generator-group` | tag-generator | タグ生成 |
+| `search-indexer-group` | search-indexer | 検索インデックス更新 |
+
+## Connect-RPC API
+
+Port 9500 で Connect-RPC API を提供。
+
+### RPC Methods
+
+| Method | Request | Response | Description |
+|--------|---------|----------|-------------|
+| `Publish` | PublishRequest | PublishResponse | 単一イベント発行 |
+| `PublishBatch` | PublishBatchRequest | PublishBatchResponse | 複数イベント一括発行 |
+| `CreateConsumerGroup` | CreateConsumerGroupRequest | CreateConsumerGroupResponse | コンシューマーグループ作成 |
+| `GetStreamInfo` | StreamInfoRequest | StreamInfoResponse | ストリーム情報取得 |
+| `HealthCheck` | HealthCheckRequest | HealthCheckResponse | ヘルスチェック |
+
+### Endpoints
+- `GET /health` - HTTP ヘルスチェック
+- Connect-RPC (port 9500): 上記 RPC メソッド
 
 ## Configuration & Env
 
@@ -85,6 +121,17 @@ flowchart TB
 | `REDIS_URL` | redis://redis-streams:6379 | Redis Streams URL |
 | `CONNECT_PORT` | 9500 | Connect-RPC ポート |
 | `LOG_LEVEL` | info | ログレベル |
+
+## Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| Go | 1.24+ | 言語ランタイム |
+| connectrpc.com/connect | v1.19.1 | Connect-RPC フレームワーク |
+| github.com/redis/go-redis/v9 | v9.17.2 | Redis クライアント |
+| github.com/alicebob/miniredis/v2 | v2.34.0 | テスト用 Redis モック |
+| go.opentelemetry.io/otel/trace | v1.39.0 | 分散トレーシング |
+| google.golang.org/protobuf | v1.36.11 | Protocol Buffers |
 
 ## Redis 8.4 Features
 - `XREADGROUP CLAIM` オプションによる効率的なメッセージ処理

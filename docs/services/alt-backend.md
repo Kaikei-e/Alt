@@ -1,6 +1,6 @@
 # Alt Backend
 
-_Last reviewed: January 13, 2026_
+_Last reviewed: January 22, 2026_
 
 **Location:** `alt-backend/app`
 
@@ -13,7 +13,12 @@ _Last reviewed: January 13, 2026_
 
 ### Clean Architecture Layers
 - `rest/` owns HTTP handlers, `usecase/` contains business orchestrators, `port/` defines stable contracts, `gateway/` adapts to external APIs, `driver/` handles Postgres/search/recap clients, and `job/` runs background loops—wiring happens in `di/container.go:1`.
-- Domain entities live in `domain/`, infrastructure helpers in `utils/`, dependency wiring in `di/`, and `main.go:20` bootstraps all components, starts the Echo server, and launches the hourly + daily jobs.
+- Domain entities live in `domain/`, infrastructure helpers in `utils/`, dependency wiring in `di/`, and `main.go:25` bootstraps all components, starts the Echo server (port 9000), the Connect-RPC server (port 9101), and launches the background jobs.
+
+### Dual Server Architecture
+- The backend exposes two server interfaces: a REST/Echo server on port 9000 for browser clients and legacy integrations, and a Connect-RPC server on port 9101 for efficient service-to-service communication.
+- Connect-RPC handlers live in `connect/v2/` and share the same usecases, gateways, and drivers as the REST layer via `di/container.go`.
+- Both servers start in `main.go:110-127` with graceful shutdown handling.
 
 ### Request Pipeline
 - `rest/routes.go:15` configures Echo middleware (request ID → secure headers → CORS → DOS → timeout → validation → logging → gzip) and registers route families for security, feeds, articles, images, SSE, recaps, scraping-domain admin, dashboards, and internal helpers.
@@ -58,9 +63,44 @@ _Last reviewed: January 13, 2026_
 ### Internal Helpers
 - `/v1/internal/system-user` reads the first user from Postgres via `container.AltDBRepository` for system tasks that need a user context (`rest/internal_handlers.go:11`).
 
+## Connect-RPC Services (Port 9101)
+
+Connect-RPC provides a modern, type-safe RPC layer for service-to-service communication. All services are registered in `connect/v2/server.go:32` with authentication via `connect/v2/middleware/auth_interceptor.go`.
+
+### FeedService
+- **Handler**: `connect/v2/feeds/handler.go`
+- **Proto**: `gen/proto/alt/feeds/v2`
+- Operations: `ListFeeds`, `GetFeed`, `CreateFeed`, `UpdateFeed`, `DeleteFeed`, `SubscribeFeed`, `UnsubscribeFeed`
+
+### ArticleService
+- **Handler**: `connect/v2/articles/handler.go`
+- **Proto**: `gen/proto/alt/articles/v2`
+- Operations: `ListArticles`, `GetArticle`, `SearchArticles`, `MarkAsRead`, `MarkAsUnread`
+
+### RSSService
+- **Handler**: `connect/v2/rss/handler.go`
+- **Proto**: `gen/proto/alt/rss/v2`
+- Operations: `ValidateRSS`, `PreviewFeed` - validates RSS/Atom URLs and returns feed metadata
+
+### AugurService
+- **Handler**: `connect/v2/augur/handler.go`
+- **Proto**: `gen/proto/alt/augur/v2`
+- Operations: `RetrieveContext`, `AnswerChat` - RAG-based Q&A over user's article corpus
+
+### MorningLetterService
+- **Handler**: `connect/v2/morning_letter/handler.go`
+- **Proto**: `gen/proto/alt/morning_letter/v2`
+- Operations: `GenerateMorningLetter` - generates personalized daily digest
+
+### RecapService
+- **Handler**: `connect/v2/recap/handler.go`
+- **Proto**: `gen/proto/alt/recap/v2`
+- Operations: `GetWeeklyRecap`, `GetRecapArticles` - weekly summary and article aggregation with optional cluster draft headers
+
 ## Background Jobs
 - `job.HourlyJobRunner` (`job/job_runner.go:13`) loads RSS URLs from Postgres, spins a host-aware rate limiter (5s per host), and loops every hour, calling `CollectMultipleFeeds` (`job/feed_collector.go:18`) to validate, rate-limit, and parse feeds before persisting them through `AltDBRepository`.
 - `job.DailyScrapingPolicyJobRunner` (`job/daily_scraping_policy_job.go:16`) immediately materializes domains from `feed_links`, refreshes robots.txt, and repeats every 24 hours to keep scraping rules up to date.
+- `job.OutboxWorkerRunner` (`job/outbox_worker.go:12`) polls the `outbox_events` table every 5 seconds, processing `ARTICLE_UPSERT` events by upserting articles to the RAG Orchestrator via `RagIntegrationPort`. This ensures eventual consistency for RAG indexing even if the initial direct call fails.
 
 ## Integrations & Data Flow
 - PostgreSQL (constructed via `driver/alt_db` and exposed through `AltDBRepository` in `di/container.go:110`) stores feeds, articles, summaries, summaries, and policy metadata consumed by every usecase.
@@ -84,7 +124,16 @@ _Last reviewed: January 13, 2026_
 | `AUTH_SHARED_SECRET`, `AUTH_SHARED_SECRET_FILE`, `BACKEND_TOKEN_*` | Headers consumed by `middleware/auth_middleware.go:17` / JWT fallback | Config lines `45–52`. |
 | `SERVICE_SECRET` / `SERVICE_SECRET_FILE` | Protects service routes (`middleware/service_auth_middleware.go:12`) | No default; absence logs a warning and rejects requests. |
 | `DB_MAX_CONNECTIONS`, `DB_CONNECTION_TIMEOUT` | Controls the `pgxpool` connection pool used by `AltDBRepository` | Defaults in `config/config.go:87`. |
-| `LOG_LEVEL`, `LOG_FORMAT`, `HTTP_*` | Controls structured logging and outbound HTTP clients | Defaults in `config/config.go:97` and `config/config.go:102`. |
+| `LOG_LEVEL`, `LOG_FORMAT`, `HTTP_*` | Controls structured logging and outbound HTTP clients | Defaults in `config/config.go:123` and `config/config.go:128`. |
+| `RAG_ORCHESTRATOR_URL` | RAG Orchestrator HTTP URL for article indexing | `http://rag-orchestrator:9010` (`config/config.go:55`). |
+| `RAG_ORCHESTRATOR_CONNECT_URL` | RAG Orchestrator Connect-RPC URL | `http://rag-orchestrator:9011` (`config/config.go:56`). |
+| `AUTH_HUB_URL` | Auth Hub URL for authentication | `http://auth-hub:8888` (`config/config.go:60`). |
+| `MQHUB_ENABLED`, `MQHUB_CONNECT_URL` | MQ-Hub event publishing toggle and Connect-RPC URL | `false`, `http://mq-hub:9500` (`config/config.go:64-68`). |
+| `PRE_PROCESSOR_CONNECT_URL` | Pre-processor Connect-RPC URL | `http://pre-processor:9202` (`config/config.go:36`). |
+| `SEARCH_INDEXER_CONNECT_URL` | Search Indexer Connect-RPC URL | `http://search-indexer:9301` (`config/config.go:40`). |
+| `RECAP_MAX_ARTICLE_BYTES` | Maximum article size for recap processing | `2097152` (2MB) (`config/config.go:49`). |
+| `RECAP_MAX_RANGE_DAYS` | Maximum range in days for recap queries | `8` (`config/config.go:46`). |
+| `CIRCUIT_BREAKER_*` | Circuit breaker settings for DOS protection (`ENABLED`, `FAILURE_THRESHOLD`, `TIMEOUT_DURATION`, `RECOVERY_TIMEOUT`) | Various defaults in `config/config.go:106-111`. |
 
 ## Operational Notes
 - Start the stack with `altctl up` (Compose builds Go+Python/Rust services) and run `ALt` back end tests with `cd alt-backend/app && go test ./...`.
@@ -103,14 +152,22 @@ flowchart TB
         Browser["🖥️ Browser"] ~~~ Services["🔗 Services"]
     end
 
-    subgraph Backend ["⚙️ Alt Backend (Echo)"]
-        direction LR
-        subgraph MW ["Middleware"]
-            M1["ReqID"] --> M2["CORS"] --> M3["DOS"] --> M4["Gzip"]
+    subgraph Backend ["⚙️ Alt Backend"]
+        direction TB
+        subgraph REST_Server ["REST Server (port 9000)"]
+            direction LR
+            subgraph MW ["Middleware"]
+                M1["ReqID"] --> M2["CORS"] --> M3["DOS"] --> M4["Gzip"]
+            end
+            REST["📡 REST"]
+        end
+
+        subgraph Connect_Server ["Connect-RPC Server (port 9101)"]
+            CRPC["📡 Connect-RPC"]
         end
 
         subgraph CA ["Clean Architecture"]
-            REST["📡 REST"] --> UC["💼 Usecase"] --> GW["🔌 Gateway"] --> DR["⚡ Driver"]
+            UC["💼 Usecase"] --> GW["🔌 Gateway"] --> DR["⚡ Driver"]
         end
     end
 
@@ -134,16 +191,21 @@ flowchart TB
         subgraph Jobs ["⏰"]
             HJ["Hourly"]
             DJ["Daily"]
+            OW["Outbox"]
         end
     end
 
     %% Connections
-    Browser & Services --> MW --> REST
+    Browser --> MW --> REST
+    Services --> CRPC
+    REST --> UC
+    CRPC --> UC
     DR --> PG
     GW --> PP & RW & RAG
     GW -->|search| MS
     REST --> AH
     HJ & DJ --> PG
+    OW --> RAG
 
     %% Styling
     classDef client fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
@@ -153,6 +215,7 @@ flowchart TB
     classDef ai fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#f57f17
     classDef auth fill:#e0f7fa,stroke:#00838f,stroke-width:2px,color:#006064
     classDef job fill:#e0f2f1,stroke:#00796b,stroke-width:2px,color:#004d40
+    classDef connect fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
 
     class Browser,Services client
     class M1,M2,M3,M4 mw
@@ -160,5 +223,6 @@ flowchart TB
     class PG,MS data
     class PP,RW,RAG ai
     class AH auth
-    class HJ,DJ job
+    class HJ,DJ,OW job
+    class CRPC connect
 ```
