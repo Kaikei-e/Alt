@@ -3,14 +3,18 @@ package rest
 import (
 	"alt/config"
 	"alt/di"
+	"alt/domain"
 	summarization "alt/rest/rest_feeds/summarization"
 	"alt/utils/logger"
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -76,7 +80,20 @@ func TestHandleSummarizeFeed(t *testing.T) {
 			jsonBody, err := json.Marshal(tc.requestBody)
 			require.NoError(t, err)
 
+			// Create authenticated context
+			userCtx := &domain.UserContext{
+				UserID:    uuid.New(),
+				Email:     "test@example.com",
+				Role:      domain.UserRoleUser,
+				TenantID:  uuid.New(),
+				SessionID: "test-session",
+				LoginAt:   time.Now(),
+				ExpiresAt: time.Now().Add(time.Hour),
+			}
+			ctx := domain.SetUserContext(context.Background(), userCtx)
+
 			req := httptest.NewRequest(http.MethodPost, "/v1/feeds/summarize", bytes.NewReader(jsonBody))
+			req = req.WithContext(ctx)
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
