@@ -21,8 +21,6 @@ func TestSummarizeJobRepository_InterfaceCompliance(t *testing.T) {
 	t.Run("should implement SummarizeJobRepository interface", func(t *testing.T) {
 		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
 
-		var _ SummarizeJobRepository = repo
-
 		assert.NotNil(t, repo)
 	})
 }
