@@ -38,8 +38,8 @@ type SummaryRepository interface {
 
 // ExternalAPIRepository handles external API calls.
 type ExternalAPIRepository interface {
-	SummarizeArticle(ctx context.Context, article *models.Article) (*models.SummarizedContent, error)
-	StreamSummarizeArticle(ctx context.Context, article *models.Article) (io.ReadCloser, error)
+	SummarizeArticle(ctx context.Context, article *models.Article, priority string) (*models.SummarizedContent, error)
+	StreamSummarizeArticle(ctx context.Context, article *models.Article, priority string) (io.ReadCloser, error)
 	CheckHealth(ctx context.Context, serviceURL string) error
 	GetSystemUserID(ctx context.Context) (string, error)
 }

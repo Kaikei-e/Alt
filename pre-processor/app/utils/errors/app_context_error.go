@@ -47,6 +47,8 @@ func (e *AppContextError) HTTPStatusCode() int {
 		return http.StatusBadRequest
 	case "NOT_FOUND_ERROR":
 		return http.StatusNotFound
+	case "CONFLICT_ERROR":
+		return http.StatusConflict
 	case "RATE_LIMIT_ERROR":
 		return http.StatusTooManyRequests
 	case "EXTERNAL_API_ERROR":
@@ -80,6 +82,7 @@ var safeMessages = map[string]string{
 	"EXTERNAL_API_ERROR": "Unable to connect to external service. Please try again.",
 	"VALIDATION_ERROR":   "", // Use original message (safe by design)
 	"NOT_FOUND_ERROR":    "", // Use original message (safe by design)
+	"CONFLICT_ERROR":     "", // Use original message (safe by design)
 	"RATE_LIMIT_ERROR":   "Too many requests. Please wait before trying again.",
 	"TIMEOUT_ERROR":      "The request took too long. Please try again.",
 	"INTERNAL_ERROR":     "An unexpected error occurred. Please try again later.",
@@ -87,14 +90,14 @@ var safeMessages = map[string]string{
 }
 
 // SafeMessage returns a user-friendly message that does not leak internal details.
-// For VALIDATION_ERROR and NOT_FOUND_ERROR, the original message is returned as it is designed to be safe.
+// For VALIDATION_ERROR, NOT_FOUND_ERROR, and CONFLICT_ERROR, the original message is returned as it is designed to be safe.
 // For other error types, a generic safe message is returned.
 func (e *AppContextError) SafeMessage() string {
 	if msg, ok := safeMessages[e.Code]; ok && msg != "" {
 		return msg
 	}
-	// VALIDATION_ERROR and NOT_FOUND_ERROR use original message (safe by design)
-	if e.Code == "VALIDATION_ERROR" || e.Code == "NOT_FOUND_ERROR" {
+	// VALIDATION_ERROR, NOT_FOUND_ERROR, and CONFLICT_ERROR use original message (safe by design)
+	if e.Code == "VALIDATION_ERROR" || e.Code == "NOT_FOUND_ERROR" || e.Code == "CONFLICT_ERROR" {
 		return e.Message
 	}
 	return "An error occurred."
@@ -221,4 +224,14 @@ func NewRateLimitContextError(message, layer, component, operation string, cause
 	}
 	context["error_type"] = "rate_limit"
 	return NewAppContextError("RATE_LIMIT_ERROR", message, layer, component, operation, cause, context)
+}
+
+// NewConflictContextError creates a conflict error with context (HTTP 409)
+// Used when a resource is already being processed or in a conflicting state
+func NewConflictContextError(message, layer, component, operation string, context map[string]interface{}) *AppContextError {
+	if context == nil {
+		context = make(map[string]interface{})
+	}
+	context["error_type"] = "conflict"
+	return NewAppContextError("CONFLICT_ERROR", message, layer, component, operation, nil, context)
 }

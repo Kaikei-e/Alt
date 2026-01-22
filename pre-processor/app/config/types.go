@@ -87,7 +87,7 @@ type NewsCreatorConfig struct {
 	Host    string        `json:"host" env:"NEWS_CREATOR_HOST" default:"http://news-creator:11434"`
 	APIPath string        `json:"api_path" env:"NEWS_CREATOR_API_PATH" default:"/api/v1/summarize"`
 	Model   string        `json:"model" env:"NEWS_CREATOR_MODEL" default:"gemma3:4b"`
-	Timeout time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"300s"`
+	Timeout time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"600s"`
 }
 
 type SummarizeQueueConfig struct {
@@ -155,7 +155,7 @@ func defaultConfig() *Config {
 			Host:    "http://news-creator:11434",
 			APIPath: "/api/v1/summarize",
 			Model:   "gemma3:4b",
-			Timeout: 300 * time.Second,
+			Timeout: 600 * time.Second,
 		},
 		SummarizeQueue: SummarizeQueueConfig{
 			WorkerInterval:  10 * time.Second,

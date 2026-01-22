@@ -37,7 +37,7 @@ func NewExternalAPIRepository(cfg *config.Config, logger *slog.Logger) ExternalA
 }
 
 // SummarizeArticle summarizes an article using external API.
-func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *models.Article) (*models.SummarizedContent, error) {
+func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *models.Article, priority string) (*models.SummarizedContent, error) {
 	// Input validation
 	if article == nil {
 		r.logger.ErrorContext(ctx, "article cannot be nil")
@@ -57,7 +57,7 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 	r.logger.InfoContext(ctx, "summarizing article", "article_id", article.ID)
 
 	// Use existing driver function
-	driverSummary, err := driver.ArticleSummarizerAPIClient(ctx, article, r.config, r.logger)
+	driverSummary, err := driver.ArticleSummarizerAPIClient(ctx, article, r.config, r.logger, priority)
 	if err != nil {
 		// Handle content too short as a normal case, not an error
 		if errors.Is(err, domain.ErrContentTooShort) {
@@ -80,7 +80,7 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 }
 
 // StreamSummarizeArticle streams the summary for an article using external API.
-func (r *externalAPIRepository) StreamSummarizeArticle(ctx context.Context, article *models.Article) (io.ReadCloser, error) {
+func (r *externalAPIRepository) StreamSummarizeArticle(ctx context.Context, article *models.Article, priority string) (io.ReadCloser, error) {
 	// Input validation
 	if article == nil {
 		r.logger.ErrorContext(ctx, "article cannot be nil")
@@ -100,7 +100,7 @@ func (r *externalAPIRepository) StreamSummarizeArticle(ctx context.Context, arti
 	r.logger.InfoContext(ctx, "streaming summary for article", "article_id", article.ID)
 
 	// Use driver function for streaming
-	streamBody, err := driver.StreamArticleSummarizerAPIClient(ctx, article, r.config, r.logger)
+	streamBody, err := driver.StreamArticleSummarizerAPIClient(ctx, article, r.config, r.logger, priority)
 	if err != nil {
 		if errors.Is(err, domain.ErrContentTooShort) {
 			r.logger.InfoContext(ctx, "skipping summarization: content too short", "article_id", article.ID)

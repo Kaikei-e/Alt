@@ -64,7 +64,7 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 						Title:   "Test Title",
 					}, nil)
 				m.EXPECT().
-					SummarizeArticle(gomock.Any(), gomock.Any()).
+					SummarizeArticle(gomock.Any(), gomock.Any(), "high").
 					Return(&models.SummarizedContent{
 						ArticleID:       "test-123",
 						SummaryJapanese: "これはテスト記事の要約です。",
@@ -95,8 +95,8 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 						Title:   "Fetched Title",
 					}, nil)
 				m.EXPECT().
-					SummarizeArticle(gomock.Any(), gomock.Any()).
-					DoAndReturn(func(_ context.Context, article *models.Article) (*models.SummarizedContent, error) {
+					SummarizeArticle(gomock.Any(), gomock.Any(), "high").
+					DoAndReturn(func(_ context.Context, article *models.Article, _ string) (*models.SummarizedContent, error) {
 						assert.Equal(t, "Fetched content from DB", article.Content)
 						return &models.SummarizedContent{
 							ArticleID:       "test-123",
@@ -151,7 +151,7 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 						Title:   "Test Title",
 					}, nil)
 				m.EXPECT().
-					SummarizeArticle(gomock.Any(), gomock.Any()).
+					SummarizeArticle(gomock.Any(), gomock.Any(), "high").
 					Return(nil, assert.AnError)
 			},
 			requestBody: map[string]interface{}{
@@ -227,4 +227,99 @@ func TestSummarizeHandler_InvalidJSON(t *testing.T) {
 
 	err := h.HandleSummarize(c)
 	assert.Error(t, err)
+}
+
+// TestSummarizeHandler_DuplicateRequestPrevention tests that duplicate requests are rejected
+func TestSummarizeHandler_DuplicateRequestPrevention(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
+	mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+	h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, nil, testLoggerSummarize())
+
+	// Use a unique article ID for this test to avoid conflicts with other tests
+	articleID := "duplicate-test-" + t.Name()
+
+	// Set up mocks for the first request - it will block in SummarizeArticle
+	// Note: The duplicate check happens BEFORE FindByID, so second request won't call any mocks
+	mockArticleRepo.EXPECT().
+		FindByID(gomock.Any(), articleID).
+		Return(&models.Article{
+			ID:      articleID,
+			UserID:  "user-456",
+			Content: "Test content for duplicate test",
+			Title:   "Test Title",
+		}, nil).
+		Times(1) // Only called once by first request
+
+	// First request will be slow
+	firstRequestStarted := make(chan struct{})
+	firstRequestDone := make(chan struct{})
+
+	mockAPIRepo.EXPECT().
+		SummarizeArticle(gomock.Any(), gomock.Any(), "high").
+		DoAndReturn(func(_ context.Context, _ *models.Article, _ string) (*models.SummarizedContent, error) {
+			close(firstRequestStarted)
+			<-firstRequestDone // Block until we signal completion
+			return &models.SummarizedContent{
+				ArticleID:       articleID,
+				SummaryJapanese: "要約",
+			}, nil
+		}).
+		Times(1)
+
+	mockSummaryRepo.EXPECT().
+		Create(gomock.Any(), gomock.Any()).
+		Return(nil).
+		Times(1)
+
+	e := echo.New()
+
+	// Start first request in goroutine
+	var firstErr error
+	firstDone := make(chan struct{})
+	go func() {
+		jsonBody, _ := json.Marshal(map[string]interface{}{
+			"content":    "Test content for duplicate test",
+			"article_id": articleID,
+		})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/summarize", bytes.NewReader(jsonBody))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		firstErr = h.HandleSummarize(c)
+		close(firstDone)
+	}()
+
+	// Wait for first request to start processing
+	<-firstRequestStarted
+
+	// Send second request while first is still processing
+	jsonBody, _ := json.Marshal(map[string]interface{}{
+		"content":    "Test content for duplicate test",
+		"article_id": articleID,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/summarize", bytes.NewReader(jsonBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	// Second request should get 409 Conflict
+	secondErr := h.HandleSummarize(c)
+
+	// Verify second request got conflict error
+	require.Error(t, secondErr, "second request should have returned an error")
+	assert.Contains(t, secondErr.Error(), "already being processed",
+		"second request should indicate article is already being processed")
+
+	// Signal first request to complete
+	close(firstRequestDone)
+
+	// Wait for first request to complete
+	<-firstDone
+
+	// Verify first request completed successfully
+	assert.NoError(t, firstErr, "first request should complete successfully")
 }

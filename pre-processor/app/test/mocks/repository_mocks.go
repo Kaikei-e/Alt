@@ -341,33 +341,33 @@ func (mr *MockExternalAPIRepositoryMockRecorder) GetSystemUserID(ctx any) *gomoc
 }
 
 // StreamSummarizeArticle mocks base method.
-func (m *MockExternalAPIRepository) StreamSummarizeArticle(ctx context.Context, article *models.Article) (io.ReadCloser, error) {
+func (m *MockExternalAPIRepository) StreamSummarizeArticle(ctx context.Context, article *models.Article, priority string) (io.ReadCloser, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StreamSummarizeArticle", ctx, article)
+	ret := m.ctrl.Call(m, "StreamSummarizeArticle", ctx, article, priority)
 	ret0, _ := ret[0].(io.ReadCloser)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // StreamSummarizeArticle indicates an expected call of StreamSummarizeArticle.
-func (mr *MockExternalAPIRepositoryMockRecorder) StreamSummarizeArticle(ctx, article any) *gomock.Call {
+func (mr *MockExternalAPIRepositoryMockRecorder) StreamSummarizeArticle(ctx, article, priority any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StreamSummarizeArticle", reflect.TypeOf((*MockExternalAPIRepository)(nil).StreamSummarizeArticle), ctx, article)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StreamSummarizeArticle", reflect.TypeOf((*MockExternalAPIRepository)(nil).StreamSummarizeArticle), ctx, article, priority)
 }
 
 // SummarizeArticle mocks base method.
-func (m *MockExternalAPIRepository) SummarizeArticle(ctx context.Context, article *models.Article) (*models.SummarizedContent, error) {
+func (m *MockExternalAPIRepository) SummarizeArticle(ctx context.Context, article *models.Article, priority string) (*models.SummarizedContent, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SummarizeArticle", ctx, article)
+	ret := m.ctrl.Call(m, "SummarizeArticle", ctx, article, priority)
 	ret0, _ := ret[0].(*models.SummarizedContent)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SummarizeArticle indicates an expected call of SummarizeArticle.
-func (mr *MockExternalAPIRepositoryMockRecorder) SummarizeArticle(ctx, article any) *gomock.Call {
+func (mr *MockExternalAPIRepositoryMockRecorder) SummarizeArticle(ctx, article, priority any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SummarizeArticle", reflect.TypeOf((*MockExternalAPIRepository)(nil).SummarizeArticle), ctx, article)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SummarizeArticle", reflect.TypeOf((*MockExternalAPIRepository)(nil).SummarizeArticle), ctx, article, priority)
 }
 
 // MockSummarizeJobRepository is a mock of SummarizeJobRepository interface.

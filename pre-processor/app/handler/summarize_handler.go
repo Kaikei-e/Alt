@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 
 	"pre-processor/domain"
 	"pre-processor/models"
@@ -16,6 +17,10 @@ import (
 
 	"github.com/labstack/echo/v4"
 )
+
+// processingArticles tracks article IDs currently being processed to prevent duplicate requests.
+// This prevents the retry loop issue where timeout causes immediate retry which fills the queue.
+var processingArticles sync.Map
 
 // SummarizeRequest represents the request body for article summarization
 type SummarizeRequest struct {
@@ -73,6 +78,20 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 			nil,
 		)
 	}
+
+	// Check if this article is already being processed to prevent duplicate requests.
+	// This prevents the retry loop issue where timeout causes immediate retry which fills the queue.
+	if _, loaded := processingArticles.LoadOrStore(req.ArticleID, true); loaded {
+		h.logger.WarnContext(ctx, "article is already being processed, rejecting duplicate request",
+			"article_id", req.ArticleID)
+		return apperrors.NewConflictContextError(
+			"article is already being processed",
+			"handler", "SummarizeHandler", "HandleSummarize",
+			map[string]interface{}{"article_id": req.ArticleID},
+		)
+	}
+	// Ensure we clean up the tracking entry when done
+	defer processingArticles.Delete(req.ArticleID)
 
 	// Fetch article to get user_id (always needed for summary storage)
 	fetchedArticle, err := h.articleRepo.FindByID(ctx, req.ArticleID)
@@ -154,8 +173,8 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 		Content: req.Content,
 	}
 
-	// Call summarization service
-	summarized, err := h.apiRepo.SummarizeArticle(ctx, article)
+	// Call summarization service with HIGH priority for UI-triggered requests
+	summarized, err := h.apiRepo.SummarizeArticle(ctx, article, "high")
 	if err != nil {
 		return apperrors.NewExternalAPIContextError(
 			"failed to generate summary",
@@ -235,6 +254,20 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 		)
 	}
 
+	// Check if this article is already being processed to prevent duplicate requests.
+	// This prevents the retry loop issue where timeout causes immediate retry which fills the queue.
+	if _, loaded := processingArticles.LoadOrStore(req.ArticleID, true); loaded {
+		h.logger.WarnContext(ctx, "article is already being processed (stream), rejecting duplicate request",
+			"article_id", req.ArticleID)
+		return apperrors.NewConflictContextError(
+			"article is already being processed",
+			"handler", "SummarizeHandler", "HandleStreamSummarize",
+			map[string]interface{}{"article_id": req.ArticleID},
+		)
+	}
+	// Ensure we clean up the tracking entry when done
+	defer processingArticles.Delete(req.ArticleID)
+
 	// If content is empty, try to fetch from DB
 	if req.Content == "" {
 		h.logger.InfoContext(ctx, "content is empty, fetching from DB for stream", "article_id", req.ArticleID)
@@ -289,8 +322,8 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 		Content: req.Content,
 	}
 
-	// Call streaming service
-	stream, err := h.apiRepo.StreamSummarizeArticle(ctx, article)
+	// Call streaming service with HIGH priority for UI-triggered requests
+	stream, err := h.apiRepo.StreamSummarizeArticle(ctx, article, "high")
 	if err != nil {
 		// Check if it's a content too short error
 		if errors.Is(err, domain.ErrContentTooShort) {

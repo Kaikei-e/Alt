@@ -150,7 +150,7 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 
 			repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
-			summary, err := repo.SummarizeArticle(context.Background(), tc.article)
+			summary, err := repo.SummarizeArticle(context.Background(), tc.article, "low")
 
 			if tc.wantErr {
 				require.Error(t, err)
@@ -271,7 +271,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 			URL:     "http://example.com",
 		}
 
-		summary, err := repo.SummarizeArticle(ctx, article)
+		summary, err := repo.SummarizeArticle(ctx, article, "low")
 		assert.Error(t, err)
 		assert.Nil(t, summary)
 	})
@@ -325,7 +325,7 @@ func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 			URL:     "http://example.com",
 		}
 
-		summary, err := repo.SummarizeArticle(context.Background(), article)
+		summary, err := repo.SummarizeArticle(context.Background(), article, "low")
 		// Should handle gracefully (actual behavior depends on driver implementation)
 		assert.Error(t, err)
 		assert.Nil(t, summary)
@@ -459,7 +459,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 
 			switch tc.operation {
 			case "summarize":
-				result, err = repo.SummarizeArticle(context.Background(), input.(*models.Article))
+				result, err = repo.SummarizeArticle(context.Background(), input.(*models.Article), "low")
 			case "health":
 				err = repo.CheckHealth(context.Background(), input.(string))
 			}
@@ -485,7 +485,7 @@ func BenchmarkExternalAPIRepository_SummarizeArticle(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// This will fail but we're measuring the validation overhead
-		_, _ = repo.SummarizeArticle(context.Background(), article)
+		_, _ = repo.SummarizeArticle(context.Background(), article, "low")
 	}
 }
 

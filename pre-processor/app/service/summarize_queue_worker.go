@@ -127,9 +127,9 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 		Content: content,
 	}
 
-	// Call summarization service
+	// Call summarization service with LOW priority (queue worker is a background job)
 	summarizeStartTime := time.Now()
-	summarized, err := w.apiRepo.SummarizeArticle(ctx, articleModel)
+	summarized, err := w.apiRepo.SummarizeArticle(ctx, articleModel, "low")
 	summarizeDuration := time.Since(summarizeStartTime)
 
 	if err != nil {

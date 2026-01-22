@@ -71,8 +71,8 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 
 	// Process each article
 	for _, article := range articles {
-		// Generate summary using external API
-		summarizedContent, err := s.apiRepo.SummarizeArticle(ctx, article)
+		// Generate summary using external API with LOW priority (batch operation)
+		summarizedContent, err := s.apiRepo.SummarizeArticle(ctx, article, "low")
 		if err != nil {
 			// Handle content too short: Save a placeholder summary to mark as processed
 			if errors.Is(err, domain.ErrContentTooShort) {

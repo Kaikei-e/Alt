@@ -98,8 +98,8 @@ func (h *Handler) Summarize(
 		Content: content,
 	}
 
-	// Call summarization service
-	summarized, err := h.apiRepo.SummarizeArticle(ctx, article)
+	// Call summarization service with HIGH priority for UI-triggered requests
+	summarized, err := h.apiRepo.SummarizeArticle(ctx, article, "high")
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to generate summary", "error", err, "article_id", articleID)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to generate summary"))
@@ -181,8 +181,8 @@ func (h *Handler) StreamSummarize(
 		Content: content,
 	}
 
-	// Call streaming service
-	ioStream, err := h.apiRepo.StreamSummarizeArticle(ctx, article)
+	// Call streaming service with HIGH priority for UI-triggered requests
+	ioStream, err := h.apiRepo.StreamSummarizeArticle(ctx, article, "high")
 	if err != nil {
 		if err == domain.ErrContentTooShort {
 			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("content too short"))
