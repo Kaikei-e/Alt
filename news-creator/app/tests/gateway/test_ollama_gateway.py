@@ -19,6 +19,10 @@ def mock_config():
     config.ollama_request_concurrency = 1
     config.oom_detection_enabled = False
     config.model_routing_enabled = False
+    # Hybrid scheduling config
+    config.scheduling_rt_reserved_slots = 1
+    config.scheduling_aging_threshold_seconds = 60.0
+    config.scheduling_aging_boost = 0.5
     config.llm_num_ctx = 4096
     config.is_base_model_name = Mock(return_value=False)
     config.is_bucket_model_name = Mock(return_value=False)
@@ -100,6 +104,8 @@ async def test_semaphore_queues_requests(mock_config, mock_driver):
 async def test_semaphore_allows_concurrent_requests_when_configured(mock_config, mock_driver):
     """Test that semaphore allows concurrent requests when concurrency > 1."""
     mock_config.ollama_request_concurrency = 2
+    # Set RT reserved to 0 so all slots are available for BE (low priority) requests
+    mock_config.scheduling_rt_reserved_slots = 0
 
     with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
         gateway = OllamaGateway(mock_config)
@@ -152,9 +158,9 @@ async def test_semaphore_defaults_to_one(mock_config, mock_driver):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
-        # Verify semaphore is created with value 1
-        assert gateway._semaphore._value == 1
-        assert gateway._semaphore._max_value == 1
+        # Verify HybridPrioritySemaphore is created with total_slots=1
+        assert gateway._semaphore._total_slots == 1
+        assert gateway._semaphore._rt_reserved == 1  # RT reserved from config
 
         await gateway.cleanup()
 

@@ -7,7 +7,7 @@ from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.driver.ollama_driver import OllamaDriver
 from news_creator.driver.ollama_stream_driver import OllamaStreamDriver
-from news_creator.gateway.priority_semaphore import PrioritySemaphore
+from news_creator.gateway.hybrid_priority_semaphore import HybridPrioritySemaphore
 from news_creator.gateway.model_router import ModelRouter
 from news_creator.gateway.oom_detector import OOMDetector
 from news_creator.port.llm_provider_port import LLMProviderPort
@@ -23,9 +23,15 @@ class OllamaGateway(LLMProviderPort):
         self.config = config
         self.driver = OllamaDriver(config)
         self.stream_driver = OllamaStreamDriver(config)
-        # Priority semaphore for controlling concurrent requests to Ollama
-        # High-priority (streaming) requests bypass low-priority (batch) queue
-        self._semaphore = PrioritySemaphore(config.ollama_request_concurrency)
+        # Hybrid RT/BE semaphore for controlling concurrent requests to Ollama
+        # RT (streaming) requests get reserved slots; BE (batch) uses remaining slots
+        # Aging mechanism prevents starvation of low-priority batch requests
+        self._semaphore = HybridPrioritySemaphore(
+            total_slots=config.ollama_request_concurrency,
+            rt_reserved_slots=config.scheduling_rt_reserved_slots,
+            aging_threshold_seconds=config.scheduling_aging_threshold_seconds,
+            aging_boost=config.scheduling_aging_boost,
+        )
         # OOM detector and model router
         self.oom_detector = OOMDetector(enabled=config.oom_detection_enabled)
         self.model_router = ModelRouter(config, self.oom_detector)
@@ -262,7 +268,7 @@ class OllamaGateway(LLMProviderPort):
                             eval_duration=chunk.get("eval_duration"),
                         )
                 finally:
-                    self._semaphore.release()
+                    self._semaphore.release(was_high_priority=is_high_priority)
 
             # Return the generator (not awaited yet)
             return response_generator()
@@ -333,7 +339,7 @@ class OllamaGateway(LLMProviderPort):
                 else:
                     raise
         finally:
-            self._semaphore.release()
+            self._semaphore.release(was_high_priority=is_high_priority)
 
         # Validate response (Non-streaming only)
         if "response" not in response_data:

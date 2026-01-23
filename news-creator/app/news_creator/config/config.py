@@ -132,6 +132,14 @@ class NewsCreatorConfig:
         self.cache_redis_url = os.getenv("CACHE_REDIS_URL", "redis://localhost:6379/0")
         self.cache_ttl_seconds = self._get_int("CACHE_TTL_SECONDS", 86400)  # 24 hours
 
+        # Hybrid Scheduling Configuration (RT/BE with reserved slots and aging)
+        # See: https://arxiv.org/html/2504.09590v1 (Hybrid RT/BE Scheduling)
+        self.scheduling_rt_reserved_slots = self._get_int("SCHEDULING_RT_RESERVED_SLOTS", 1)
+        self.scheduling_aging_threshold_seconds = self._get_float(
+            "SCHEDULING_AGING_THRESHOLD_SECONDS", 60.0
+        )
+        self.scheduling_aging_boost = self._get_float("SCHEDULING_AGING_BOOST", 0.5)
+
         # Build bucket model names set for quick lookup
         self._bucket_model_names = {
             # self.model_8k_name,  # 8kモデルは使用しない
@@ -149,6 +157,8 @@ class NewsCreatorConfig:
                 "ollama_request_concurrency": self.ollama_request_concurrency,
                 "ollama_concurrency_source": self._ollama_concurrency_source,
                 "ollama_num_parallel": os.getenv("OLLAMA_NUM_PARALLEL"),
+                "scheduling_rt_reserved_slots": self.scheduling_rt_reserved_slots,
+                "scheduling_aging_threshold_seconds": self.scheduling_aging_threshold_seconds,
             },
         )
 
