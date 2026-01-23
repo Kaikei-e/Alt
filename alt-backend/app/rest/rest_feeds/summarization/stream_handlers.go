@@ -172,7 +172,8 @@ func streamAndCapture(ctx context.Context, c echo.Context, articleID string, str
 	var buf bytes.Buffer
 	tee := io.TeeReader(stream, &buf)
 
-	responseBuf := make([]byte, 128)
+	// 4KB buffer for reduced syscall overhead (TTFT optimization)
+	responseBuf := make([]byte, 4096)
 	bytesWritten := 0
 	hasData := false
 	readAttempts := 0

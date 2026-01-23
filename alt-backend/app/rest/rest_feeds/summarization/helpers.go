@@ -129,9 +129,8 @@ func streamPreProcessorSummarize(ctx context.Context, content, articleID, title,
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	client := &http.Client{
-		Timeout: 0,
-	}
+	// Use shared HTTP client for connection pooling (TTFT optimization)
+	client := GetStreamClient()
 
 	apiURL := fmt.Sprintf("%s/api/v1/summarize/stream", preProcessorURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(jsonData))
