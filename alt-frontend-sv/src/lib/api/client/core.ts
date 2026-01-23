@@ -48,7 +48,7 @@ export async function callClientAPI<T>(
 	// V-004: Include CSRF token for state-changing methods
 	const method = options?.method?.toUpperCase() || "GET";
 	const needsCSRF = ["POST", "PUT", "DELETE", "PATCH"].includes(method);
-	let headers = { ...((options?.headers as Record<string, string>) || {}) };
+	const headers = { ...((options?.headers as Record<string, string>) || {}) };
 
 	if (needsCSRF) {
 		const csrfToken = await fetchCSRFToken();

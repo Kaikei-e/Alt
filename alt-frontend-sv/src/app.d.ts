@@ -6,6 +6,8 @@ declare global {
 		interface Locals {
 			user: import("@ory/client").Identity | null;
 			session: import("@ory/client").Session | null;
+			/** Cached backend token from auth-hub (request-scoped) */
+			backendToken: string | null;
 		}
 		interface PageData {
 			user: import("@ory/client").Identity | null;

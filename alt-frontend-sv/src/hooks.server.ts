@@ -3,6 +3,26 @@ import { redirect } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 import { ory } from "$lib/ory";
 
+const AUTH_HUB_URL = env.AUTH_HUB_INTERNAL_URL || "http://auth-hub:8888";
+
+/**
+ * Fetch backend token from auth-hub (request-scoped caching).
+ * This is called once per request in hooks.server.ts and cached in event.locals.
+ */
+async function fetchBackendToken(cookie: string): Promise<string | null> {
+	try {
+		const response = await fetch(`${AUTH_HUB_URL}/session`, {
+			headers: { cookie },
+		});
+		if (!response.ok) {
+			return null;
+		}
+		return response.headers.get("X-Alt-Backend-Token");
+	} catch {
+		return null;
+	}
+}
+
 const PUBLIC_ROUTES = [
 	/\/auth(\/|$)/,
 	/\/health(\/|$)/,
@@ -51,6 +71,9 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	const isStreamEndpoint =
 		pathname.includes("/stream") || pathname.includes("/sse");
 
+	// Initialize locals
+	event.locals.backendToken = null;
+
 	// Validate session
 	try {
 		const cookie = event.request.headers.get("cookie");
@@ -58,6 +81,8 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 			const { data: session } = await ory.toSession({ cookie });
 			event.locals.session = session;
 			event.locals.user = session.identity ?? null;
+			// Cache backend token for this request (TTFT optimization)
+			event.locals.backendToken = await fetchBackendToken(cookie);
 		} else {
 			event.locals.session = null;
 			event.locals.user = null;

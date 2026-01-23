@@ -2,12 +2,11 @@
  * Connect-RPC proxy route for /api/v2/[...path]
  *
  * This route forwards Connect-RPC requests from the browser to the backend.
- * It handles authentication by getting the backend token from auth-hub.
+ * Authentication is handled by hooks.server.ts which caches the token in locals.
  */
 
 import type { RequestHandler } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
-import { getBackendToken } from "$lib/api";
 
 const BACKEND_CONNECT_URL =
 	env.BACKEND_CONNECT_URL || "http://alt-backend:9101";
@@ -15,16 +14,18 @@ const BACKEND_CONNECT_URL =
 /**
  * Fallback handler for all HTTP methods (GET, POST, etc.)
  * Connect-RPC primarily uses POST requests.
+ *
+ * Note: Backend token is cached in event.locals by hooks.server.ts (TTFT optimization).
  */
-export const fallback: RequestHandler = async ({ request, params, cookies }) => {
+export const fallback: RequestHandler = async ({ request, params, locals }) => {
 	console.log("[Connect-RPC Proxy] Request received:", {
 		method: request.method,
 		path: params.path,
 		url: request.url,
 	});
 
-	const cookieHeader = request.headers.get("cookie");
-	const token = await getBackendToken(cookieHeader);
+	// Use cached token from hooks.server.ts (request-scoped caching)
+	const token = locals.backendToken;
 
 	if (!token) {
 		console.error("[Connect-RPC Proxy] Authentication failed: no backend token");
