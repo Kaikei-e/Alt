@@ -30,8 +30,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 非rootユーザー作成
-RUN groupadd -r evaluator && useradd -r -g evaluator evaluator
+# 非rootユーザー作成とHuggingFaceキャッシュディレクトリ
+RUN groupadd -r evaluator && useradd -r -g evaluator evaluator \
+    && mkdir -p /app/.cache/huggingface \
+    && chown -R evaluator:evaluator /app/.cache
 
 # 仮想環境をコピー
 COPY --from=builder /app/.venv /app/.venv
@@ -40,7 +42,9 @@ COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH="/app/src"
+    PYTHONPATH="/app/src" \
+    HF_HOME="/app/.cache/huggingface" \
+    TRANSFORMERS_CACHE="/app/.cache/huggingface"
 
 # アプリケーションコードをコピー
 COPY --chown=evaluator:evaluator src/ ./src/

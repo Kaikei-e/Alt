@@ -1482,6 +1482,7 @@ dependencies = [
     { name = "rouge-score" },
     { name = "scikit-learn" },
     { name = "structlog" },
+    { name = "transformers" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1515,6 +1516,7 @@ requires-dist = [
     { name = "rouge-score", specifier = ">=0.1.2" },
     { name = "scikit-learn", specifier = ">=1.6.0" },
     { name = "structlog", specifier = ">=25.1.0" },
+    { name = "transformers", specifier = ">=4.40.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
 ]
 

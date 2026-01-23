@@ -106,13 +106,42 @@ class ClusterMetricsResponse(BaseModel):
 
 
 class SummaryMetricsResponse(BaseModel):
-    """Summary (G-Eval) metrics response."""
+    """Summary quality metrics response (multi-dimensional evaluation)."""
 
+    # G-Eval metrics (1-5 scale)
     coherence: float
     consistency: float
     fluency: float
     relevance: float
-    overall: float
+    geval_overall: float = Field(default=0.0, description="G-Eval average score")
+
+    # ROUGE metrics (0-1 scale)
+    rouge_1_f1: float = Field(default=0.0, description="ROUGE-1 F1 score")
+    rouge_2_f1: float = Field(default=0.0, description="ROUGE-2 F1 score")
+    rouge_l_f1: float = Field(default=0.0, description="ROUGE-L F1 score")
+
+    # BERTScore metrics (0-1 scale)
+    bertscore_precision: float = Field(default=0.0, description="BERTScore precision")
+    bertscore_recall: float = Field(default=0.0, description="BERTScore recall")
+    bertscore_f1: float = Field(default=0.0, description="BERTScore F1 score")
+
+    # Faithfulness metrics (0-1 scale)
+    faithfulness_score: float = Field(
+        default=0.0, description="Faithfulness score (higher is better)"
+    )
+    hallucination_rate: float = Field(
+        default=0.0, description="Hallucination rate (lower is better)"
+    )
+
+    # Composite score (0-1 scale)
+    overall_quality_score: float = Field(
+        default=0.0, description="Weighted composite quality score"
+    )
+
+    # Legacy field for backward compatibility
+    overall: float = Field(default=0.0, description="Legacy: same as geval_overall")
+
+    # Metadata
     sample_count: int
     success_count: int
     alert_level: str

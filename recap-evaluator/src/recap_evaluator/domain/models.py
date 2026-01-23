@@ -152,13 +152,40 @@ class ClusterMetrics:
 
 @dataclass
 class SummaryMetrics:
-    """Summary quality metrics from G-Eval."""
+    """Summary quality metrics from multi-dimensional evaluation.
 
+    Combines G-Eval, ROUGE, BERTScore, and Faithfulness metrics
+    for comprehensive summary quality assessment.
+    """
+
+    # G-Eval metrics (1-5 scale, existing)
     coherence: float = 0.0
     consistency: float = 0.0
     fluency: float = 0.0
     relevance: float = 0.0
+    geval_overall: float = 0.0
+
+    # ROUGE metrics (0-1 scale)
+    rouge_1_f1: float = 0.0
+    rouge_2_f1: float = 0.0
+    rouge_l_f1: float = 0.0
+
+    # BERTScore metrics (0-1 scale)
+    bertscore_precision: float = 0.0
+    bertscore_recall: float = 0.0
+    bertscore_f1: float = 0.0
+
+    # Faithfulness metrics (0-1 scale)
+    faithfulness_score: float = 0.0
+    hallucination_rate: float = 0.0
+
+    # Composite score (0-1 scale, weighted combination)
+    overall_quality_score: float = 0.0
+
+    # Legacy field for backward compatibility
     overall: float = 0.0
+
+    # Metadata
     sample_count: int = 0
     success_count: int = 0
     alert_level: AlertLevel = AlertLevel.OK
@@ -166,11 +193,28 @@ class SummaryMetrics:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
+            # G-Eval
             "coherence": round(self.coherence, 3),
             "consistency": round(self.consistency, 3),
             "fluency": round(self.fluency, 3),
             "relevance": round(self.relevance, 3),
+            "geval_overall": round(self.geval_overall, 3),
+            # ROUGE
+            "rouge_1_f1": round(self.rouge_1_f1, 4),
+            "rouge_2_f1": round(self.rouge_2_f1, 4),
+            "rouge_l_f1": round(self.rouge_l_f1, 4),
+            # BERTScore
+            "bertscore_precision": round(self.bertscore_precision, 4),
+            "bertscore_recall": round(self.bertscore_recall, 4),
+            "bertscore_f1": round(self.bertscore_f1, 4),
+            # Faithfulness
+            "faithfulness_score": round(self.faithfulness_score, 4),
+            "hallucination_rate": round(self.hallucination_rate, 4),
+            # Composite
+            "overall_quality_score": round(self.overall_quality_score, 4),
+            # Legacy (backward compatibility)
             "overall": round(self.overall, 3),
+            # Metadata
             "sample_count": self.sample_count,
             "success_count": self.success_count,
             "alert_level": self.alert_level.value,

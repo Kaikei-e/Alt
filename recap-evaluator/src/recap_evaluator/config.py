@@ -90,7 +90,7 @@ class AlertThresholds(BaseSettings):
     clustering_silhouette_warn: float = Field(default=0.25)
     clustering_silhouette_critical: float = Field(default=0.15)
 
-    # G-Eval Summary Quality
+    # G-Eval Summary Quality (1-5 scale)
     geval_coherence_warn: float = Field(default=3.5)
     geval_coherence_critical: float = Field(default=3.0)
     geval_consistency_warn: float = Field(default=3.5)
@@ -99,6 +99,26 @@ class AlertThresholds(BaseSettings):
     geval_fluency_critical: float = Field(default=3.0)
     geval_relevance_warn: float = Field(default=3.5)
     geval_relevance_critical: float = Field(default=3.0)
+
+    # ROUGE Metrics (0-1 scale)
+    rouge_l_f1_warn: float = Field(default=0.30)
+    rouge_l_f1_critical: float = Field(default=0.20)
+
+    # BERTScore Metrics (0-1 scale)
+    bertscore_f1_warn: float = Field(default=0.60)
+    bertscore_f1_critical: float = Field(default=0.40)
+
+    # Faithfulness Metrics (0-1 scale, higher is better)
+    faithfulness_score_warn: float = Field(default=0.60)
+    faithfulness_score_critical: float = Field(default=0.40)
+
+    # Hallucination Rate (0-1 scale, lower is better)
+    hallucination_rate_warn: float = Field(default=0.30)
+    hallucination_rate_critical: float = Field(default=0.50)
+
+    # Overall Quality Score (0-1 scale)
+    overall_quality_score_warn: float = Field(default=0.50)
+    overall_quality_score_critical: float = Field(default=0.30)
 
     # Pipeline Health
     pipeline_success_rate_warn: float = Field(default=0.95)

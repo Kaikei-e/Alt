@@ -97,9 +97,6 @@ async def run_full_evaluation(request: EvaluationRequest):
         if genre_result:
             response.genre_metrics = GenreEvaluationResponse(
                 **genre_result.to_dict(),
-                per_genre=[
-                    GenreMetricsResponse(**m.to_dict()) for m in genre_result.per_genre_metrics
-                ],
             )
 
     # Run cluster evaluation
@@ -170,7 +167,6 @@ async def run_genre_evaluation(request: GenreEvaluationRequest):
 
     return GenreEvaluationResponse(
         **genre_result.to_dict(),
-        per_genre=[GenreMetricsResponse(**m.to_dict()) for m in genre_result.per_genre_metrics],
     )
 
 

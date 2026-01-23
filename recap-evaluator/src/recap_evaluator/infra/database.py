@@ -91,7 +91,7 @@ class Database:
     async def fetch_subworker_runs(self, job_id: UUID) -> list[dict[str, Any]]:
         """Fetch subworker run results for a job."""
         query = """
-            SELECT run_id, genre, status, cluster_count, started_at, finished_at,
+            SELECT id as run_id, genre, status, cluster_count, started_at, finished_at,
                    request_payload, response_payload, error_message
             FROM recap_subworker_runs
             WHERE job_id = $1
