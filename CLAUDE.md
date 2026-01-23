@@ -1,110 +1,51 @@
----
-description: 
-alwaysApply: true
----
+# Alt - AI-Augmented RSS Knowledge Platform
 
-# CLAUDE.md - The Alt Project
+Docker Compose-first orchestration with TDD-first development.
 
-## Overview
+## WHAT
 
-Alt is an AI-augmented RSS knowledge platform. Docker Compose-first orchestration with TDD-first development.
+### Tech Stack
 
-> Service-specific details live in `docs/<service>.md` snapshots. Each service's `CLAUDE.md` focuses on workflow guidelines.
+| Language | Services | Test Command |
+|----------|----------|--------------|
+| Go 1.24+ | alt-backend, auth-hub, pre-processor, search-indexer, mq-hub, altctl | `go test ./...` |
+| Python 3.11+ | news-creator, tag-generator, metrics, recap-subworker, recap-evaluator | `uv run pytest` |
+| Rust 1.87+ | rask-log-aggregator, rask-log-forwarder, recap-worker | `cargo test` |
+| TypeScript | alt-frontend, alt-frontend-sv | `pnpm test` / `bun test` |
+| Deno 2.x | auth-token-manager, alt-perf | `deno test` |
 
-## Quick Reference
+### Project Map
 
-```bash
-# Start all services
-docker compose -f compose/compose.yaml up -d
+- `compose/` - Docker Compose files (16 profiles)
+- `alt-backend/` - Core API (Go/Echo)
+- `alt-frontend-sv/` - Primary frontend (SvelteKit)
+- `docs/services/MICROSERVICES.md` - Full service reference
 
-# Start specific service
-docker compose -f compose/compose.yaml up -d <service>
+## WHY
 
-# Stop all
-docker compose -f compose/compose.yaml down
+- **TDD-first**: Quality through test-driven development
+- **Compose-first**: Docker Compose as single source of truth (not K8s)
 
-# View status
-docker compose -f compose/compose.yaml ps
+## HOW
 
-# Stream logs
-docker compose -f compose/compose.yaml logs <service> -f
-```
-
-## Compose Files
-
-Docker Compose ファイルは `./compose/` 配下にあります。
+### Docker Compose
 
 ```bash
-# Direct docker compose commands (-p alt でプロジェクト名を統一)
-docker compose -f compose/compose.yaml -p alt logs <service> --tail=100
-docker compose -f compose/compose.yaml -p alt build <service>
-docker compose -f compose/compose.yaml -p alt up -d <service>
+docker compose -f compose/compose.yaml -p alt up -d           # Start all
+docker compose -f compose/compose.yaml -p alt up -d <service> # Start one
+docker compose -f compose/compose.yaml -p alt logs <service> -f
+docker compose -f compose/compose.yaml -p alt down
 ```
 
-## Service Matrix
+Profiles: `db` | `auth` | `core` | `workers` | `ai` | `rag` | `recap` | `logging` | `observability`
 
-| Service | Language | Framework | CLAUDE.md |
-|---------|----------|-----------|-----------|
-| alt-backend | Go 1.24+ | Echo | `alt-backend/app/CLAUDE.md` |
-| alt-frontend | TypeScript | Next.js 15 | `alt-frontend/CLAUDE.md` |
-| pre-processor | Go 1.24+ | Custom | `pre-processor/app/CLAUDE.md` |
-| search-indexer | Go 1.24+ | Meilisearch | `search-indexer/app/CLAUDE.md` |
-| tag-generator | Python 3.13+ | FastAPI | `tag-generator/app/CLAUDE.md` |
-| news-creator | Python 3.11+ | FastAPI + Ollama | `news-creator/app/CLAUDE.md` |
-| auth-hub | Go 1.24+ | Echo | `auth-hub/CLAUDE.md` |
-| rask-log-aggregator | Rust 1.87+ | Axum | `rask-log-aggregator/app/CLAUDE.md` |
-| rask-log-forwarder | Rust 1.87+ | Custom | `rask-log-forwarder/app/CLAUDE.md` |
-| auth-token-manager | Deno 2.x | Custom | `auth-token-manager/CLAUDE.md` |
-| alt-perf | Deno 2.x | Astral | `alt-perf/CLAUDE.md` |
-| altctl | Go 1.24+ | Cobra | `altctl/CLAUDE.md` |
-
-## Development Principles
-
-### TDD First
-
-**IMPORTANT**: Always write failing tests BEFORE implementation.
-
-1. **RED**: Write a failing test
-2. **GREEN**: Write minimal code to pass
-3. **REFACTOR**: Improve quality, keep tests green
-
-### Testing Commands by Language
-
-| Language | Command |
-|----------|---------|
-| Go | `go test ./...` |
-| Python | `uv run pytest` |
-| Rust | `cargo test` |
-| TypeScript | `pnpm test` |
-| Deno | `deno test` |
-
-### Clean Architecture
-
-Most services follow layered architecture:
+### Architecture
 
 ```
-Handler → Usecase → Port → Gateway → Driver
+Handler -> Usecase -> Port -> Gateway -> Driver
 ```
 
-Maintain strict boundaries. Update mocks alongside interface changes.
-
-## Orchestration
-
-### Docker Compose Management
-
-```bash
-# Start all services
-docker compose -f compose/compose.yaml up -d
-
-# With AI pipeline (GPU required)
-docker compose -f compose/ai.yaml up -d
-
-# With logging
-docker compose -f compose/logging.yaml up -d
-
-# View all available compose files
-ls compose/*.yaml
-```
+Each service follows Clean Architecture. See `<service>/CLAUDE.md` for details.
 
 ### Health Checks
 
@@ -114,42 +55,19 @@ curl http://localhost:9000/v1/health    # Backend
 curl http://localhost:7700/health       # Meilisearch
 ```
 
-## Critical Guidelines
+## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **Compose-First**: Docker Compose is source of truth (not K8s)
-3. **Rate Limiting**: External APIs require 5-second minimum intervals
-4. **Secrets in .env**: Never commit credentials
-5. **docs/*.md for Details**: Keep CLAUDE.md files concise
+1. **TDD First**: Write failing test before implementation (RED -> GREEN -> REFACTOR)
+2. **Compose-First**: Docker Compose is source of truth
+3. **Rate Limiting**: 5-second minimum intervals for external APIs
+4. **No Secrets in Code**: Use `.env` and Docker secrets
+5. **Service Docs**: See `<service>/CLAUDE.md` for service-specific guidance
 
 ## Common Pitfalls
 
 | Issue | Solution |
 |-------|----------|
-| Stack won't start | Run `docker compose -f compose/compose.yaml down` then `up -d` |
+| Stack won't start | `docker compose down` then `up -d` |
 | Tests failing | Check mock interfaces match implementations |
 | Rate limit errors | Verify 5-second intervals |
 | Import cycles (Go) | Check layer dependencies |
-| Search not working | Ensure workers are running: `docker compose -f compose/compose.yaml up -d` |
-
-## Appendix: References
-
-### Claude Code
-- [Claude Code Best Practices](https://www.anthropic.com/engineering/claude-code-best-practices)
-- [Using CLAUDE.md Files](https://claude.com/blog/using-claude-md-files)
-
-### Architecture
-- [Clean Architecture - Uncle Bob](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
-- [Clean Architecture in Go](https://threedots.tech/post/introducing-clean-architecture/)
-
-### TDD
-- [Learn Go with Tests](https://quii.gitbook.io/learn-go-with-tests/)
-- [Learn TDD in Next.js](https://learntdd.in/next/)
-- [Testing ML Systems](https://www.eugeneyan.com/writing/testing-ml/)
-
-### Language-Specific
-- [Effective Go](https://go.dev/doc/effective_go)
-- [The Rust Performance Book](https://nnethercote.github.io/perf-book/)
-- [FastAPI Documentation](https://fastapi.tiangolo.com/)
-- [Next.js 15 Documentation](https://nextjs.org/docs)
-- [Deno Documentation](https://docs.deno.com/)
