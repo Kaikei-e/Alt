@@ -39,8 +39,21 @@ const getScrollRoot = $derived(browser ? null : null);
 
 // Load more results for infinite scroll
 const loadMore = async () => {
-	if (isLoading) return;
-	if (!hasMore) return;
+	console.log('[SearchResults:loadMore] called', {
+		isLoading,
+		hasMore,
+		cursor,
+		resultsCount: results.length,
+	});
+
+	if (isLoading) {
+		console.log('[SearchResults:loadMore] skipped: isLoading=true');
+		return;
+	}
+	if (!hasMore) {
+		console.log('[SearchResults:loadMore] skipped: hasMore=false');
+		return;
+	}
 
 	const currentCursor = cursor;
 	setIsLoading(true);
@@ -58,6 +71,13 @@ const loadMore = async () => {
 		}
 
 		const searchResult = await searchFeedsClient(searchQuery, cursorOffset, 20);
+
+		console.log('[SearchResults:loadMore] API response', {
+			resultsCount: searchResult.results?.length,
+			nextCursor: searchResult.next_cursor,
+			hasMore: searchResult.has_more,
+			error: searchResult.error,
+		});
 
 		if (searchResult.error) {
 			console.error("Error loading more results:", searchResult.error);
@@ -159,7 +179,7 @@ const loadMore = async () => {
 		</div>
 
 		<!-- Results -->
-		<ul class="flex flex-col gap-6" role="list" aria-label="Search results">
+		<ul class="flex flex-col gap-4" role="list" aria-label="Search results">
 			{#each results as result (result.link || result.title)}
 				<li>
 					<SearchResultItem {result} />
@@ -198,9 +218,22 @@ const loadMore = async () => {
 					threshold: 0.1,
 				}}
 				aria-hidden="true"
-				style="height: 10px; min-height: 10px; width: 100%;"
+				style="height: 50px; min-height: 50px; width: 100%;"
 				data-testid="infinite-scroll-sentinel"
 			></div>
+		{/if}
+
+		<!-- Load More button as fallback -->
+		{#if hasMore && !isLoading}
+			<div class="flex justify-center mt-4">
+				<button
+					onclick={loadMore}
+					class="px-6 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-gray-50"
+					style="border-color: var(--alt-primary); color: var(--alt-primary);"
+				>
+					Load More Results
+				</button>
+			</div>
 		{/if}
 	</div>
 {/if}

@@ -74,11 +74,11 @@ const publishedDate = $derived(
 </script>
 
 <div
-	class="glass p-5 rounded-[24px] transition-all duration-300 hover:-translate-y-[2px] hover:shadow-lg"
+	class="p-5 rounded-2xl transition-all duration-300 hover:-translate-y-[2px]"
 	style="
-		background: var(--alt-glass);
-		border: 1px solid var(--alt-glass-border);
-		box-shadow: var(--alt-glass-shadow);
+		background: #ffffff;
+		border: 2px solid #d0d0d0;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
 	"
 	data-testid="search-result-item"
 >

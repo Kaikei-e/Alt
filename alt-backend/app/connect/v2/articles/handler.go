@@ -226,6 +226,9 @@ func convertArticlesToProto(articles []*domain.Article) []*articlesv2.ArticleIte
 
 // FetchArticleSummary fetches article summaries for multiple URLs.
 // Replaces POST /v1/articles/summary
+// Priority: 1) AI-generated summaries from article_summaries table
+//
+//	2) Inoreader feed excerpts from inoreader_summaries table
 func (h *Handler) FetchArticleSummary(
 	ctx context.Context,
 	req *connect.Request[articlesv2.FetchArticleSummaryRequest],
@@ -247,14 +250,59 @@ func (h *Handler) FetchArticleSummary(
 			fmt.Errorf("maximum 50 URLs allowed"))
 	}
 
-	// Fetch summaries using existing usecase
+	items := make([]*articlesv2.ArticleSummaryItem, 0, len(feedUrls))
+
+	// First, try to get AI-generated summaries from article_summaries table
+	// Only if AltDBRepository is available (may be nil in tests)
+	if h.container.AltDBRepository != nil {
+		for _, feedURL := range feedUrls {
+			parsedURL, parseErr := url.Parse(feedURL)
+			if parseErr != nil {
+				h.logger.WarnContext(ctx, "Failed to parse URL for AI summary lookup",
+					"url", feedURL,
+					"error", parseErr)
+				continue
+			}
+
+			// Check for allowed URLs (SSRF protection)
+			if ssrfErr := rest.IsAllowedURL(parsedURL); ssrfErr != nil {
+				h.logger.WarnContext(ctx, "URL not allowed for AI summary lookup",
+					"url", feedURL,
+					"error", ssrfErr)
+				continue
+			}
+
+			aiSummary, aiErr := h.container.AltDBRepository.FetchFeedSummary(ctx, parsedURL)
+			if aiErr == nil && aiSummary != nil && aiSummary.Summary != "" {
+				// Found AI-generated summary
+				items = append(items, &articlesv2.ArticleSummaryItem{
+					Title:       "AI Summary",
+					Content:     aiSummary.Summary,
+					Author:      "",
+					PublishedAt: time.Now().Format(time.RFC3339),
+					FetchedAt:   time.Now().Format(time.RFC3339),
+					SourceId:    "",
+				})
+			}
+		}
+
+		// If we found AI summaries, return them
+		if len(items) > 0 {
+			return connect.NewResponse(&articlesv2.FetchArticleSummaryResponse{
+				MatchedArticles: items,
+				TotalMatched:    int32(len(items)),
+				RequestedCount:  int32(len(feedUrls)),
+			}), nil
+		}
+	}
+
+	// Fallback: Fetch summaries from inoreader_summaries using existing usecase
 	summaries, err := h.container.FetchInoreaderSummaryUsecase.Execute(ctx, feedUrls)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticleSummary")
 	}
 
 	// Convert to proto response
-	items := make([]*articlesv2.ArticleSummaryItem, 0, len(summaries))
 	for _, s := range summaries {
 		author := ""
 		if s.Author != nil {

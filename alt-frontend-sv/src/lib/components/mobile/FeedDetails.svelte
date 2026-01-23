@@ -385,8 +385,8 @@ const handleShowDetails = async () => {
 					summaryError = null;
 					summary = ""; // Reset summary
 
-					// Cloudflare WAF workaround: Debounce request to prevent 403 blocked by bot detection causes by rapid request cancellation and creation
-					await new Promise((resolve) => setTimeout(resolve, 500));
+					// NOTE: 500ms debounce removed for TTFT optimization.
+					// If Cloudflare WAF 403 errors occur, consider request batching instead.
 
 					try {
 						const transport = createClientTransport();
