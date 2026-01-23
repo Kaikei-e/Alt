@@ -72,9 +72,8 @@ func (g *SearchFeedMeilisearchGateway) SearchFeedsWithPagination(ctx context.Con
 		"offset", offset,
 		"limit", limit)
 
-	// Get all results first (temporary implementation)
-	// TODO: Extend search-indexer API to support offset/limit for better performance
-	hits, err := g.searchIndexerPort.SearchArticles(ctx, query, user.UserID.String())
+	// Use pagination-aware search method
+	hits, estimatedTotal, err := g.searchIndexerPort.SearchArticlesWithPagination(ctx, query, user.UserID.String(), offset, limit)
 	if err != nil {
 		logger.GlobalContext.WithContext(ctx).ErrorContext(ctx, "failed to search articles",
 			"error", err,
@@ -83,27 +82,11 @@ func (g *SearchFeedMeilisearchGateway) SearchFeedsWithPagination(ctx context.Con
 		return nil, 0, err
 	}
 
-	totalCount := len(hits)
+	// Use estimated total from Meilisearch for proper pagination
+	totalCount := int(estimatedTotal)
 
-	// Apply pagination by slicing
-	start := offset
-	if start > totalCount {
-		start = totalCount
-	}
-	end := start + limit
-	if end > totalCount {
-		end = totalCount
-	}
-
-	var paginatedHits []domain.SearchIndexerArticleHit
-	if start < totalCount {
-		paginatedHits = hits[start:end]
-	} else {
-		paginatedHits = []domain.SearchIndexerArticleHit{}
-	}
-
-	results := make([]domain.SearchArticleHit, len(paginatedHits))
-	for i, hit := range paginatedHits {
+	results := make([]domain.SearchArticleHit, len(hits))
+	for i, hit := range hits {
 		results[i] = domain.SearchArticleHit{
 			ID:      hit.ID,
 			Title:   hit.Title,

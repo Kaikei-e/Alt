@@ -26,6 +26,14 @@ func (m *MockSearchIndexerPort) SearchArticles(ctx context.Context, query string
 	return args.Get(0).([]domain.SearchIndexerArticleHit), args.Error(1)
 }
 
+func (m *MockSearchIndexerPort) SearchArticlesWithPagination(ctx context.Context, query string, userID string, offset int, limit int) ([]domain.SearchIndexerArticleHit, int64, error) {
+	args := m.Called(ctx, query, userID, offset, limit)
+	if args.Get(0) == nil {
+		return nil, args.Get(1).(int64), args.Error(2)
+	}
+	return args.Get(0).([]domain.SearchIndexerArticleHit), args.Get(1).(int64), args.Error(2)
+}
+
 func TestSearchArticleUsecase_Execute_Success(t *testing.T) {
 	// Arrange
 	mockPort := new(MockSearchIndexerPort)

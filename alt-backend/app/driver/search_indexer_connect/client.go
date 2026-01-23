@@ -51,3 +51,29 @@ func (d *ConnectSearchIndexerDriver) SearchArticles(ctx context.Context, query s
 
 	return hits, nil
 }
+
+// SearchArticlesWithPagination searches for articles with pagination support via Connect-RPC.
+func (d *ConnectSearchIndexerDriver) SearchArticlesWithPagination(ctx context.Context, query string, userID string, offset int, limit int) ([]domain.SearchIndexerArticleHit, int64, error) {
+	resp, err := d.client.SearchArticles(ctx, connect.NewRequest(&searchv2.SearchArticlesRequest{
+		Query:  query,
+		UserId: userID,
+		Offset: int32(offset),
+		Limit:  int32(limit),
+	}))
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Convert to domain model
+	hits := make([]domain.SearchIndexerArticleHit, len(resp.Msg.Hits))
+	for i, hit := range resp.Msg.Hits {
+		hits[i] = domain.SearchIndexerArticleHit{
+			ID:      hit.Id,
+			Title:   hit.Title,
+			Content: hit.Content,
+			Tags:    hit.Tags,
+		}
+	}
+
+	return hits, resp.Msg.EstimatedTotalHits, nil
+}

@@ -164,3 +164,117 @@ func TestSearchFeedMeilisearchGateway_SearchFeeds_EmptyQuery(t *testing.T) {
 		t.Fatalf("Expected 0 results, got %d", len(results))
 	}
 }
+
+func TestSearchFeedMeilisearchGateway_SearchFeedsWithPagination(t *testing.T) {
+	logger.InitLogger()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tests := []struct {
+		name               string
+		query              string
+		offset             int
+		limit              int
+		driverHits         []domain.SearchIndexerArticleHit
+		driverEstimated    int64
+		driverError        error
+		expectedCount      int
+		expectedTotalCount int
+		expectError        bool
+	}{
+		{
+			name:   "should return paginated results with correct total",
+			query:  "test query",
+			offset: 0,
+			limit:  20,
+			driverHits: []domain.SearchIndexerArticleHit{
+				{ID: "article-1", Title: "Article 1", Content: "Content 1", Tags: []string{"tag1"}},
+				{ID: "article-2", Title: "Article 2", Content: "Content 2", Tags: []string{"tag2"}},
+			},
+			driverEstimated:    100, // Meilisearch reports 100 total hits
+			driverError:        nil,
+			expectedCount:      2,
+			expectedTotalCount: 100, // Should use estimated total, not returned count
+			expectError:        false,
+		},
+		{
+			name:               "should handle empty results",
+			query:              "nonexistent",
+			offset:             0,
+			limit:              20,
+			driverHits:         []domain.SearchIndexerArticleHit{},
+			driverEstimated:    0,
+			driverError:        nil,
+			expectedCount:      0,
+			expectedTotalCount: 0,
+			expectError:        false,
+		},
+		{
+			name:               "should return error when driver fails",
+			query:              "test",
+			offset:             0,
+			limit:              20,
+			driverHits:         nil,
+			driverEstimated:    0,
+			driverError:        errors.New("search service unavailable"),
+			expectedCount:      0,
+			expectedTotalCount: 0,
+			expectError:        true,
+		},
+		{
+			name:   "should handle second page pagination",
+			query:  "paginated",
+			offset: 20,
+			limit:  20,
+			driverHits: []domain.SearchIndexerArticleHit{
+				{ID: "article-21", Title: "Article 21", Content: "Content 21", Tags: []string{"tag21"}},
+			},
+			driverEstimated:    50, // Total is 50, we're on page 2
+			driverError:        nil,
+			expectedCount:      1,
+			expectedTotalCount: 50,
+			expectError:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockDriver := mocks.NewMockSearchIndexerPort(ctrl)
+
+			userID := uuid.New()
+			ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
+				UserID:    userID,
+				Email:     "user@example.com",
+				Role:      domain.UserRoleUser,
+				TenantID:  uuid.New(),
+				SessionID: "session-pagination",
+				LoginAt:   time.Now().Add(-time.Minute),
+				ExpiresAt: time.Now().Add(time.Hour),
+			})
+
+			mockDriver.EXPECT().SearchArticlesWithPagination(ctx, tt.query, userID.String(), tt.offset, tt.limit).
+				Return(tt.driverHits, tt.driverEstimated, tt.driverError)
+
+			gateway := NewSearchFeedMeilisearchGateway(mockDriver)
+			results, totalCount, err := gateway.SearchFeedsWithPagination(ctx, tt.query, tt.offset, tt.limit)
+
+			if tt.expectError {
+				if err == nil {
+					t.Fatalf("Expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+			if len(results) != tt.expectedCount {
+				t.Fatalf("Expected %d results, got %d", tt.expectedCount, len(results))
+			}
+			if totalCount != tt.expectedTotalCount {
+				t.Fatalf("Expected total count %d, got %d", tt.expectedTotalCount, totalCount)
+			}
+		})
+	}
+}
