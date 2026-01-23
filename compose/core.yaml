@@ -222,12 +222,19 @@ services:
     container_name: db_migrator
     command: ["apply"]
     environment:
-      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable&search_path=public"
+      # Database credentials - password read from secret file
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER}
+      DB_NAME: ${POSTGRES_DB}
+      DB_PASSWORD_FILE: /run/secrets/postgres_password
       MIGRATE_MAX_RETRIES: "12"
       MIGRATE_RETRY_INTERVAL: "5"
       MIGRATE_BASELINE_VERSION: ${MIGRATE_BASELINE_VERSION:-}
       ATLAS_ENV: ${ATLAS_ENV:-kubernetes}
       ATLAS_REVISIONS_SCHEMA: "public"
+    secrets:
+      - postgres_password
     volumes:
       - ../migrations-atlas/migrations:/migrations:ro
     networks:

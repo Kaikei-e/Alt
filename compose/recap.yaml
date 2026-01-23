@@ -54,10 +54,17 @@ services:
     container_name: recap_db_migrator
     command: ["apply"]
     environment:
-      DATABASE_URL: "postgres://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:${RECAP_DB_PORT}/${RECAP_DB_NAME}?sslmode=disable&search_path=public"
+      # Database credentials - password read from secret file
+      RECAP_DB_HOST: recap-db
+      RECAP_DB_PORT: ${RECAP_DB_PORT}
+      RECAP_DB_USER: ${RECAP_DB_USER}
+      RECAP_DB_NAME: ${RECAP_DB_NAME}
+      RECAP_DB_PASSWORD_FILE: /run/secrets/recap_db_password
       ATLAS_ENV: ${ATLAS_ENV:-kubernetes}
       ATLAS_REVISIONS_SCHEMA: "public"
       MIGRATE_BASELINE_VERSION: ${RECAP_MIGRATE_BASELINE_VERSION:-}
+    secrets:
+      - recap_db_password
     volumes:
       - ../recap-migration-atlas/migrations:/migrations:ro
     depends_on:
@@ -75,8 +82,7 @@ services:
     networks:
       - alt-network
     environment:
-      - DATABASE_URL=postgres://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:${RECAP_DB_PORT}/${RECAP_DB_NAME}
-      - RECAP_DB_DSN=${RECAP_DB_DSN}
+      # Database credentials - password read from secret file (app constructs DSN)
       - RECAP_DB_HOST=recap-db
       - RECAP_DB_PORT=${RECAP_DB_PORT}
       - RECAP_DB_USER=${RECAP_DB_USER}
@@ -207,8 +213,15 @@ services:
       - "8501:8501"
       - "8502:8000"
     environment:
-      - RECAP_DB_DSN=postgresql://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:5432/${RECAP_DB_NAME}
+      # Database credentials - password read from secret file (app constructs DSN)
+      - RECAP_DB_HOST=recap-db
+      - RECAP_DB_PORT=5432
+      - RECAP_DB_USER=${RECAP_DB_USER}
+      - RECAP_DB_PASSWORD_FILE=/run/secrets/recap_db_password
+      - RECAP_DB_NAME=${RECAP_DB_NAME}
       - SSE_PORT=8000
+    secrets:
+      - recap_db_password
     depends_on:
       recap-db:
         condition: service_healthy
@@ -228,12 +241,19 @@ services:
       context: ../recap-evaluator
       dockerfile: Dockerfile
     environment:
-      - RECAP_DB_DSN=postgres://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:5432/${RECAP_DB_NAME}
+      # Database credentials - password read from secret file (app constructs DSN)
+      - RECAP_DB_HOST=recap-db
+      - RECAP_DB_PORT=5432
+      - RECAP_DB_USER=${RECAP_DB_USER}
+      - RECAP_DB_PASSWORD_FILE=/run/secrets/recap_db_password
+      - RECAP_DB_NAME=${RECAP_DB_NAME}
       - OLLAMA_URL=http://news-creator:11434
       - RECAP_WORKER_URL=http://recap-worker:9005
       - EVALUATION_SCHEDULE=0 6 * * *
       - LOG_LEVEL=INFO
       - LOG_FORMAT=json
+    secrets:
+      - recap_db_password
     ports:
       - "8085:8080"
     depends_on:

@@ -20,19 +20,21 @@ services:
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
       DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PASSWORD_FILE: /run/secrets/db_password
       DB_NAME: ${DB_NAME}
       PRE_PROCESSOR_DB_USER: ${PRE_PROCESSOR_DB_USER}
-      PRE_PROCESSOR_DB_PASSWORD: ${PRE_PROCESSOR_DB_PASSWORD}
+      PRE_PROCESSOR_DB_PASSWORD_FILE: /run/secrets/pre_processor_db_password
       PRE_PROCESSOR_SIDECAR_DB_USER: ${PRE_PROCESSOR_SIDECAR_DB_USER}
-      PRE_PROCESSOR_SIDECAR_DB_PASSWORD: ${PRE_PROCESSOR_SIDECAR_DB_PASSWORD}
+      PRE_PROCESSOR_SIDECAR_DB_PASSWORD_FILE: /run/secrets/pre_processor_sidecar_db_password
       DB_TAG_GENERATOR_USER: ${DB_TAG_GENERATOR_USER}
-      DB_TAG_GENERATOR_PASSWORD: ${DB_TAG_GENERATOR_PASSWORD}
+      DB_TAG_GENERATOR_PASSWORD_FILE: /run/secrets/tag_generator_db_password
       SEARCH_INDEXER_DB_USER: ${SEARCH_INDEXER_DB_USER}
       SEARCH_INDEXER_DB_PASSWORD_FILE: /run/secrets/search_indexer_db_password
     secrets:
       - postgres_password
+      - db_password
       - pre_processor_db_password
+      - pre_processor_sidecar_db_password
       - tag_generator_db_password
       - search_indexer_db_password
     volumes:
