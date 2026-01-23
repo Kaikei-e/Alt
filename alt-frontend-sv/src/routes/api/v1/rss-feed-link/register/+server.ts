@@ -1,8 +1,16 @@
 import { json, type RequestHandler } from "@sveltejs/kit";
-import { registerRssFeed } from "$lib/api";
+import { registerRssFeed, getCSRFToken } from "$lib/api";
 
 export const POST: RequestHandler = async ({ request }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
+
+	// V-004: CSRF validation for state-changing operations
+	const expectedCSRF = await getCSRFToken(cookieHeader);
+	const providedCSRF = request.headers.get("X-CSRF-Token");
+
+	if (!expectedCSRF || expectedCSRF !== providedCSRF) {
+		return json({ error: "CSRF validation failed" }, { status: 403 });
+	}
 
 	try {
 		const body = await request.json().catch(() => null);

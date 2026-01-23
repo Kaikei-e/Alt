@@ -1,5 +1,33 @@
 import { browser } from "$app/environment";
 
+// V-004: Cache for CSRF token to avoid repeated fetches
+let cachedCSRFToken: string | null = null;
+let csrfTokenExpiry = 0;
+
+/**
+ * Fetch CSRF token from the auth endpoint
+ * V-004: CSRF protection for state-changing operations
+ */
+async function fetchCSRFToken(): Promise<string | null> {
+	// Return cached token if still valid (cache for 5 minutes)
+	if (cachedCSRFToken && Date.now() < csrfTokenExpiry) {
+		return cachedCSRFToken;
+	}
+
+	try {
+		const response = await fetch("/sv/api/auth/csrf", {
+			credentials: "include",
+		});
+		if (!response.ok) return null;
+		const data = await response.json();
+		cachedCSRFToken = data.csrf_token;
+		csrfTokenExpiry = Date.now() + 5 * 60 * 1000; // Cache for 5 minutes
+		return cachedCSRFToken;
+	} catch {
+		return null;
+	}
+}
+
 /**
  * クライアントサイドからバックエンドAPIを呼び出す共通関数
  */
@@ -16,9 +44,23 @@ export async function callClientAPI<T>(
 	// since resolve() only works with static route paths
 	const base = "/sv";
 	const url = `${base}/api${endpoint}`;
+
+	// V-004: Include CSRF token for state-changing methods
+	const method = options?.method?.toUpperCase() || "GET";
+	const needsCSRF = ["POST", "PUT", "DELETE", "PATCH"].includes(method);
+	let headers = { ...((options?.headers as Record<string, string>) || {}) };
+
+	if (needsCSRF) {
+		const csrfToken = await fetchCSRFToken();
+		if (csrfToken) {
+			headers["X-CSRF-Token"] = csrfToken;
+		}
+	}
+
 	try {
 		const response = await fetch(url, {
 			...options,
+			headers,
 			credentials: "include",
 		});
 

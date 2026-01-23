@@ -11,6 +11,30 @@ import {
 const BACKEND_BASE_URL = env.BACKEND_BASE_URL || "http://alt-backend:9000";
 const AUTH_HUB_URL = env.AUTH_HUB_INTERNAL_URL || "http://auth-hub:8888";
 
+/**
+ * Get CSRF token from auth-hub session
+ * V-004: CSRF protection for state-changing operations
+ */
+export async function getCSRFToken(
+	cookieHeader: string | null,
+): Promise<string | null> {
+	if (!cookieHeader) return null;
+
+	try {
+		const response = await fetch(`${AUTH_HUB_URL}/session`, {
+			headers: { Cookie: cookieHeader },
+			cache: "no-store",
+		});
+
+		if (!response.ok) return null;
+
+		const data = await response.json();
+		return data.csrf_token ?? null;
+	} catch {
+		return null;
+	}
+}
+
 export interface DetailedFeedStats {
 	feed_amount: { amount: number };
 	total_articles: { amount: number };
