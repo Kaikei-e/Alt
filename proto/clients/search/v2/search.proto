@@ -38,6 +38,8 @@ message SearchArticlesResponse {
   string query = 1;
   // Search results
   repeated SearchHit hits = 2;
+  // Estimated total number of hits (from Meilisearch)
+  int64 estimated_total_hits = 3;
 }
 
 // =============================================================================
