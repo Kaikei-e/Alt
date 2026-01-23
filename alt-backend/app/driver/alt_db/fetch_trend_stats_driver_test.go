@@ -80,27 +80,54 @@ func TestBuildTrendQuery(t *testing.T) {
 		name        string
 		granularity string
 		wantContain []string
+		wantErr     bool
 	}{
 		{"hourly", "hourly", []string{
 			"date_trunc('hour'",
 			"a.user_id = $2",
 			"LEFT JOIN article_summaries asumm ON a.id = asumm.article_id",
 			"COUNT(DISTINCT asumm.article_id) AS summarized",
-		}},
+		}, false},
 		{"daily", "daily", []string{
 			"date_trunc('day'",
 			"a.user_id = $2",
 			"LEFT JOIN article_summaries asumm ON a.id = asumm.article_id",
 			"COUNT(DISTINCT asumm.article_id) AS summarized",
-		}},
+		}, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			query := buildTrendQuery(tt.granularity)
+			query, err := buildTrendQuery(tt.granularity)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
 			for _, want := range tt.wantContain {
 				assert.Contains(t, query, want)
 			}
+		})
+	}
+}
+
+func TestBuildTrendQuery_InvalidGranularity(t *testing.T) {
+	tests := []struct {
+		name        string
+		granularity string
+	}{
+		{"empty string", ""},
+		{"sql injection attempt", "'; DROP TABLE articles; --"},
+		{"invalid value", "weekly"},
+		{"case sensitive", "HOURLY"},
+		{"numeric", "123"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := buildTrendQuery(tt.granularity)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid granularity")
 		})
 	}
 }

@@ -266,3 +266,36 @@ func validateCircuitBreakerConfig(config *CircuitBreakerConfig) error {
 
 	return nil
 }
+
+// validateAuthConfig validates authentication configuration.
+// This is called after secrets are loaded from files/env.
+// Production environment requires secrets with minimum lengths.
+// Development environment is more lenient but still validates lengths if secrets are provided.
+func validateAuthConfig(config *AuthConfig, env string) error {
+	// Production environment requires strict validation
+	if env == "production" {
+		if config.SharedSecret == "" {
+			return fmt.Errorf("AUTH_SHARED_SECRET is required in production")
+		}
+		if len(config.SharedSecret) < 32 {
+			return fmt.Errorf("AUTH_SHARED_SECRET must be at least 32 characters")
+		}
+
+		if config.BackendTokenSecret == "" {
+			return fmt.Errorf("BACKEND_TOKEN_SECRET is required in production")
+		}
+		if len(config.BackendTokenSecret) < 32 {
+			return fmt.Errorf("BACKEND_TOKEN_SECRET must be at least 32 characters")
+		}
+	}
+
+	// In any environment, if secrets are provided they must meet minimum length
+	if config.SharedSecret != "" && len(config.SharedSecret) < 16 {
+		return fmt.Errorf("AUTH_SHARED_SECRET is too short (minimum 16 characters)")
+	}
+	if config.BackendTokenSecret != "" && len(config.BackendTokenSecret) < 16 {
+		return fmt.Errorf("BACKEND_TOKEN_SECRET is too short (minimum 16 characters)")
+	}
+
+	return nil
+}

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -169,6 +170,16 @@ func NewConfig() (*Config, error) {
 	}
 	if config.Auth.BackendTokenAudience == "" {
 		config.Auth.BackendTokenAudience = "alt-backend"
+	}
+
+	// Validate auth configuration after secrets are loaded
+	// This ensures fail-fast behavior for misconfigured production deployments
+	env := os.Getenv("APP_ENV")
+	if env == "" {
+		env = "development"
+	}
+	if err := validateAuthConfig(&config.Auth, env); err != nil {
+		return nil, fmt.Errorf("auth config validation failed: %w", err)
 	}
 
 	return config, nil

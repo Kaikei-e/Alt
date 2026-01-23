@@ -116,46 +116,43 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 
 // OptionalAuth attaches a user context only when identity headers are present.
 // Requests without headers continue unauthenticated.
+// V-005 Security: If authentication headers are present, the shared secret MUST be valid.
+// This prevents attackers from injecting fake identity headers without going through the proxy.
 func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// Verify shared secret first if headers are present?
-			// Or always?
-			// If we want to prevent direct access even for public endpoints that MIGHT have auth,
-			// we should probably enforce it if we want to trust the headers.
-			// But OptionalAuth is often used for "if you are logged in, good; if not, also good".
-			// If the request comes from Nginx, it should have the secret.
-			// If it comes from attacker directly, it won't.
-			// If attacker sends no headers, they are anonymous. That's fine for OptionalAuth endpoints (assuming they are public).
-			// If attacker sends headers but no secret, we MUST ignore the headers (or reject).
-			// If we reject, we protect against "I am admin" lies.
-			// So yes, if headers are present, secret MUST be present and valid.
-			// If headers are NOT present, secret is optional?
-			// Nginx will always send the secret if we configure it globally for /api/backend.
-			// So we can enforce secret always.
-
-			if !m.validateSharedSecret(c) {
-				// If secret is missing/invalid, we treat as unauthenticated (anonymous)
-				// BUT, if they tried to send auth headers, we should probably warn.
-				// For safety, let's just return next(c) without context, effectively anonymous.
-				// This is safe because extractUserContext won't be called or its result won't be used if we return here.
-				// Wait, if we return next(c) here, we skip extractUserContext.
-				return next(c)
-			}
-
-			userContext, err := m.extractUserContext(c)
-			if err != nil {
-				if errors.Is(err, errMissingHeaders) {
+			// V-005: Check if auth headers are present
+			// If headers exist, shared secret validation is required to prevent spoofing
+			if m.hasAuthHeaders(c) {
+				if !m.validateSharedSecret(c) {
+					// Security: Auth headers present but no valid secret
+					// Log warning for security monitoring, then continue as anonymous
+					if m.logger != nil {
+						m.logger.Warn("auth headers present without valid shared secret",
+							"path", c.Request().URL.Path,
+							"remote_addr", c.RealIP(),
+						)
+					}
+					// Continue as anonymous - do NOT trust the headers
 					return next(c)
 				}
 
-				if m.logger != nil {
-					m.logger.Debug("optional auth rejected identity headers", "error", err)
+				// Valid secret - extract and attach user context
+				userContext, err := m.extractUserContext(c)
+				if err != nil {
+					if errors.Is(err, errMissingHeaders) {
+						return next(c)
+					}
+					if m.logger != nil {
+						m.logger.Debug("optional auth rejected identity headers", "error", err)
+					}
+					return echo.NewHTTPError(http.StatusUnauthorized, "invalid authentication headers")
 				}
-				return echo.NewHTTPError(http.StatusUnauthorized, "invalid authentication headers")
+				m.attachContext(c, userContext)
+				return next(c)
 			}
 
-			m.attachContext(c, userContext)
+			// No auth headers - anonymous request, continue without context
 			return next(c)
 		}
 	}
@@ -243,4 +240,14 @@ func (m *AuthMiddleware) validateSharedSecret(c echo.Context) bool {
 
 	providedSecret := c.Request().Header.Get(sharedSecretHeader)
 	return providedSecret == m.sharedSecret
+}
+
+// hasAuthHeaders checks if any authentication identity headers are present.
+// V-005: This is used to detect if someone is trying to inject identity headers.
+func (m *AuthMiddleware) hasAuthHeaders(c echo.Context) bool {
+	h := c.Request().Header
+	return h.Get(userIDHeader) != "" ||
+		h.Get(tenantIDHeader) != "" ||
+		h.Get(userEmailHeader) != "" ||
+		h.Get(userRoleHeader) != ""
 }

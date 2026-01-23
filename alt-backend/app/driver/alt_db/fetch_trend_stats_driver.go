@@ -44,7 +44,11 @@ func (r *AltDBRepository) FetchTrendStats(ctx context.Context, window string) (*
 	since := time.Now().Add(-time.Duration(windowSeconds) * time.Second)
 
 	// Build and execute query with user_id filter for multi-tenant isolation
-	query := buildTrendQuery(granularity)
+	query, err := buildTrendQuery(granularity)
+	if err != nil {
+		logger.SafeErrorContext(ctx, "invalid granularity", "granularity", granularity, "error", err)
+		return nil, fmt.Errorf("invalid granularity: %w", err)
+	}
 
 	rows, err := r.pool.Query(ctx, query, since, user.UserID)
 	if err != nil {
@@ -106,10 +110,18 @@ func parseWindow(window string) (int, string, error) {
 
 // buildTrendQuery builds the SQL query for trend stats
 // Parameters: $1 = since (timestamp), $2 = user_id (UUID)
-func buildTrendQuery(granularity string) string {
-	truncFunc := "hour"
-	if granularity == "daily" {
-		truncFunc = "day"
+// Returns error for invalid granularity values to prevent SQL injection via format string
+func buildTrendQuery(granularity string) (string, error) {
+	// Defensive validation: whitelist valid granularity values
+	// This prevents SQL injection even though parseWindow already validates
+	validGranularities := map[string]string{
+		"hourly": "hour",
+		"daily":  "day",
+	}
+
+	truncFunc, ok := validGranularities[granularity]
+	if !ok {
+		return "", fmt.Errorf("invalid granularity: %s", granularity)
 	}
 
 	// Query that aggregates articles, summarized articles, and feed activity by time bucket
@@ -142,5 +154,5 @@ func buildTrendQuery(granularity string) string {
 		FROM time_buckets tb
 		FULL OUTER JOIN feed_activity fa ON tb.bucket = fa.bucket
 		ORDER BY bucket ASC
-	`, truncFunc, truncFunc)
+	`, truncFunc, truncFunc), nil
 }
