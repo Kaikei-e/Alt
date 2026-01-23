@@ -76,6 +76,14 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("CACHE_TTL must be positive")
 	}
 
+	// CSRF_SECRET is required for security - no fallback to hardcoded values
+	if c.CSRFSecret == "" {
+		return fmt.Errorf("CSRF_SECRET is required")
+	}
+	if len(c.CSRFSecret) < 32 {
+		return fmt.Errorf("CSRF_SECRET must be at least 32 characters")
+	}
+
 	return nil
 }
 

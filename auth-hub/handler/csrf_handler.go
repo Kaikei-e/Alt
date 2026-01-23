@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -35,12 +36,12 @@ type CSRFResponse struct {
 }
 
 // generateCSRFToken generates a CSRF token from session ID using HMAC-SHA256
-func (h *CSRFHandler) generateCSRFToken(sessionID string) string {
-	// Use a server-side secret (from env or config)
+// Returns error if CSRF_SECRET is not configured (security requirement)
+func (h *CSRFHandler) generateCSRFToken(sessionID string) (string, error) {
 	secret := []byte(h.config.CSRFSecret)
 	if len(secret) == 0 {
-		// Fallback to a default secret (for development only)
-		secret = []byte("development-csrf-secret-change-in-production")
+		// No fallback - CSRF_SECRET must be configured via environment
+		return "", errors.New("CSRF_SECRET is not configured")
 	}
 
 	mac := hmac.New(sha256.New, secret)
@@ -48,7 +49,7 @@ func (h *CSRFHandler) generateCSRFToken(sessionID string) string {
 	hash := mac.Sum(nil)
 
 	// Return base64-encoded HMAC
-	return base64.URLEncoding.EncodeToString(hash)
+	return base64.URLEncoding.EncodeToString(hash), nil
 }
 
 // extractSessionID extracts session ID from cookie string
@@ -101,7 +102,13 @@ func (h *CSRFHandler) Handle(c echo.Context) error {
 	}
 
 	// Generate CSRF token from session ID
-	csrfToken := h.generateCSRFToken(sessionID)
+	csrfToken, err := h.generateCSRFToken(sessionID)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to generate CSRF token", "error", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "CSRF token generation failed",
+		})
+	}
 
 	// Return successful response
 	response := CSRFResponse{}

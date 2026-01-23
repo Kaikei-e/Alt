@@ -18,20 +18,18 @@ func TestLoad(t *testing.T) {
 		errContains string
 	}{
 		{
-			name: "default configuration when no env vars set",
+			name: "default configuration when no env vars set (missing CSRF_SECRET)",
 			setupEnv: func() {
 				// Clear all relevant env vars
 				os.Unsetenv("KRATOS_URL")
 				os.Unsetenv("PORT")
 				os.Unsetenv("CACHE_TTL")
+				os.Unsetenv("CSRF_SECRET")
 			},
 			cleanupEnv: func() {},
-			expected: &Config{
-				KratosURL: "http://kratos:4433",
-				Port:      "8888",
-				CacheTTL:  5 * time.Minute,
-			},
-			wantErr: false,
+			expected:   nil,
+			wantErr:    true,
+			errContains: "CSRF_SECRET is required",
 		},
 		{
 			name: "custom configuration from environment variables",
@@ -39,16 +37,19 @@ func TestLoad(t *testing.T) {
 				os.Setenv("KRATOS_URL", "http://custom-kratos:4444")
 				os.Setenv("PORT", "9999")
 				os.Setenv("CACHE_TTL", "10m")
+				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 			},
 			cleanupEnv: func() {
 				os.Unsetenv("KRATOS_URL")
 				os.Unsetenv("PORT")
 				os.Unsetenv("CACHE_TTL")
+				os.Unsetenv("CSRF_SECRET")
 			},
 			expected: &Config{
-				KratosURL: "http://custom-kratos:4444",
-				Port:      "9999",
-				CacheTTL:  10 * time.Minute,
+				KratosURL:  "http://custom-kratos:4444",
+				Port:       "9999",
+				CacheTTL:   10 * time.Minute,
+				CSRFSecret: "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 			},
 			wantErr: false,
 		},
@@ -68,16 +69,19 @@ func TestLoad(t *testing.T) {
 			name: "partial configuration with defaults",
 			setupEnv: func() {
 				os.Setenv("KRATOS_URL", "http://localhost:4433")
+				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 				os.Unsetenv("PORT")
 				os.Unsetenv("CACHE_TTL")
 			},
 			cleanupEnv: func() {
 				os.Unsetenv("KRATOS_URL")
+				os.Unsetenv("CSRF_SECRET")
 			},
 			expected: &Config{
-				KratosURL: "http://localhost:4433",
-				Port:      "8888",
-				CacheTTL:  5 * time.Minute,
+				KratosURL:  "http://localhost:4433",
+				Port:       "8888",
+				CacheTTL:   5 * time.Minute,
+				CSRFSecret: "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 			},
 			wantErr: false,
 		},
@@ -120,9 +124,10 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "valid configuration",
 			config: &Config{
-				KratosURL: "http://kratos:4433",
-				Port:      "8888",
-				CacheTTL:  5 * time.Minute,
+				KratosURL:  "http://kratos:4433",
+				Port:       "8888",
+				CacheTTL:   5 * time.Minute,
+				CSRFSecret: "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 			},
 			wantErr: false,
 		},
@@ -165,6 +170,38 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			wantErr:     true,
 			errContains: "CACHE_TTL",
+		},
+		{
+			name: "missing CSRF secret",
+			config: &Config{
+				KratosURL:  "http://kratos:4433",
+				Port:       "8888",
+				CacheTTL:   5 * time.Minute,
+				CSRFSecret: "",
+			},
+			wantErr:     true,
+			errContains: "CSRF_SECRET",
+		},
+		{
+			name: "CSRF secret too short",
+			config: &Config{
+				KratosURL:  "http://kratos:4433",
+				Port:       "8888",
+				CacheTTL:   5 * time.Minute,
+				CSRFSecret: "short-secret",
+			},
+			wantErr:     true,
+			errContains: "CSRF_SECRET must be at least 32 characters",
+		},
+		{
+			name: "valid CSRF secret",
+			config: &Config{
+				KratosURL:  "http://kratos:4433",
+				Port:       "8888",
+				CacheTTL:   5 * time.Minute,
+				CSRFSecret: "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+			},
+			wantErr: false,
 		},
 	}
 
