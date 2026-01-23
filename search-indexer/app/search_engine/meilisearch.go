@@ -45,6 +45,29 @@ func SearchArticlesWithFilter(idxArticles meilisearch.IndexManager, query string
 	return results, nil
 }
 
+// SearchArticlesWithPagination searches articles with pagination support
+func SearchArticlesWithPagination(idxArticles meilisearch.IndexManager, query string, filter string, offset int64, limit int64) (*meilisearch.SearchResponse, error) {
+	// Apply default and max limits
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	results, err := idxArticles.Search(query, &meilisearch.SearchRequest{
+		Offset: offset,
+		Limit:  limit,
+		Filter: filter,
+	})
+	if err != nil {
+		logger.Logger.Error("Failed to search articles with pagination", "error", err, "filter", filter, "offset", offset, "limit", limit)
+		return nil, err
+	}
+
+	return results, nil
+}
+
 // MakeSecureSearchFilter creates a secure Meilisearch filter from tags
 func MakeSecureSearchFilter(tags []string) string {
 	if len(tags) == 0 {

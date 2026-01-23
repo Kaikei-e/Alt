@@ -35,6 +35,8 @@ func (h *Handler) SearchArticles(
 ) (*connect.Response[searchv2.SearchArticlesResponse], error) {
 	query := req.Msg.Query
 	userID := req.Msg.UserId
+	offset := int64(req.Msg.Offset)
+	limit := int64(req.Msg.Limit)
 
 	// Validate required parameters
 	if query == "" {
@@ -47,9 +49,9 @@ func (h *Handler) SearchArticles(
 	// Build filter for user_id using secure escaping
 	filter := fmt.Sprintf("user_id = \"%s\"", search_engine.EscapeMeilisearchValue(userID))
 
-	raw, err := search_engine.SearchArticlesWithFilter(h.idx, query, filter)
+	raw, err := search_engine.SearchArticlesWithPagination(h.idx, query, filter, offset, limit)
 	if err != nil {
-		logger.Logger.Error("search failed", "err", err, "user_id", userID)
+		logger.Logger.Error("search failed", "err", err, "user_id", userID, "offset", offset, "limit", limit)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("search failed"))
 	}
 
@@ -63,11 +65,12 @@ func (h *Handler) SearchArticles(
 		hits = append(hits, searchHit)
 	}
 
-	logger.Logger.Info("search ok", "query", query, "user_id", userID, "count", len(hits))
+	logger.Logger.Info("search ok", "query", query, "user_id", userID, "count", len(hits), "estimated_total", raw.EstimatedTotalHits)
 
 	return connect.NewResponse(&searchv2.SearchArticlesResponse{
-		Query: query,
-		Hits:  hits,
+		Query:              query,
+		Hits:               hits,
+		EstimatedTotalHits: raw.EstimatedTotalHits,
 	}), nil
 }
 
