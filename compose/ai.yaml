@@ -49,22 +49,21 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - LD_LIBRARY_PATH=/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
       # Ollama 0.13.x CUDA ライブラリ選択バグの回避策 (GitHub Issue #13169)
-      - OLLAMA_LLM_LIBRARY=cuda_v12
+      # OLLAMA_LLM_LIBRARY=cuda_v12 # Removed potentially conflicting override
       - OLLAMA_HOME=/home/ollama-user/.ollama
       - OLLAMA_MODELS=/home/ollama-user/.ollama
       - OLLAMA_HOST=0.0.0.0:11435
       # QAT model for improved quantization quality (54% less perplexity drop)
       # Set OLLAMA_BASE_MODEL=gemma3:4b for rollback
       - OLLAMA_BASE_MODEL=${OLLAMA_BASE_MODEL:-gemma3:4b-it-qat}
-      # Performance optimization: Single request processing for VRAM efficiency
-      # RTX 4060 (8GB VRAM): 2 parallel causes VRAM thrashing, use 1 for stable speed
-      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
-      # Limit to 1 loaded model to conserve VRAM on 8GB GPU
+      # Optimization: Enable 2x Concurrency with 8k Context (Fits in 8GB VRAM)
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-2}
+      # Strict limit to 1 model to prevent VRAM fragmentation/swapping
       - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
-      # Flash Attention 2.0: ~30% memory reduction, especially for long contexts
-      - OLLAMA_FLASH_ATTENTION=${OLLAMA_FLASH_ATTENTION:-1}
-      # KV Cache quantization: q8_0 reduces VRAM usage while maintaining quality
-      - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
+      # Flash Attention 2.0: Disabled for stability
+      # - OLLAMA_FLASH_ATTENTION=${OLLAMA_FLASH_ATTENTION:-1}
+      # KV Cache quantization: Disabled (default f16) for stability
+      # - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
     volumes:
       - news_creator_models:/home/ollama-user/.ollama
     restart: unless-stopped
@@ -99,19 +98,21 @@ services:
       dockerfile: Dockerfile.app
     environment:
       - LLM_SERVICE_URL=http://news-creator-backend:11435
-      - LLM_MODEL=${LLM_MODEL:-gemma3-4b-12k}
+      - LLM_MODEL=${LLM_MODEL:-gemma3-4b-8k}
       - MODEL_ROUTING_ENABLED=true
-      - LLM_KEEP_ALIVE_12K=24h
+      - LLM_KEEP_ALIVE_8K=24h
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
       # Concurrency: sync with OLLAMA_NUM_PARALLEL in news-creator-backend
-      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
-      # 12K-only mode: disable 60K model, use hierarchical map-reduce for large documents
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-2}
+      # LLM context window size (8k tokens)
+      - LLM_NUM_CTX=${LLM_NUM_CTX:-8192}
+      # 8K-only mode: disable 60K model, use hierarchical map-reduce for large documents
       - MODEL_60K_ENABLED=${MODEL_60K_ENABLED:-false}
-      # Hierarchical summarization thresholds (optimized for 12K-only mode)
-      - HIERARCHICAL_THRESHOLD_CHARS=${HIERARCHICAL_THRESHOLD_CHARS:-12000}
-      - HIERARCHICAL_CHUNK_MAX_CHARS=${HIERARCHICAL_CHUNK_MAX_CHARS:-10000}
+      # Hierarchical summarization thresholds (optimized for 8k mode)
+      - HIERARCHICAL_MAX_TOKENS=${HIERARCHICAL_MAX_TOKENS:-7000}
+      - HIERARCHICAL_CHUNK_SIZE=${HIERARCHICAL_CHUNK_SIZE:-6000}
       # Cache settings
       - CACHE_ENABLED=${CACHE_ENABLED:-true}
       - CACHE_REDIS_URL=redis://redis-cache:6379/0
@@ -185,8 +186,8 @@ services:
       - pre_processor_db_password
     restart: always
     ports:
-      - "9200:9200"   # REST API
-      - "9202:9202"   # Connect-RPC
+      - "9200:9200" # REST API
+      - "9202:9202" # Connect-RPC
     networks:
       - alt-network
     healthcheck:
