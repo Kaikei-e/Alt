@@ -17,7 +17,7 @@ async def test_expand_query_success():
 AI technology trends 2025
 machine learning advances
 generative AI development""",
-        model="gemma3-4b-12k",
+        model="gemma3-4b-8k",
         prompt_eval_count=256,
         eval_count=64,
         total_duration=500_000_000,
@@ -32,13 +32,13 @@ generative AI development""",
     )
 
     assert len(expanded_queries) == 4
-    assert model == "gemma3-4b-12k"
+    assert model == "gemma3-4b-8k"
     assert elapsed_ms > 0
 
     # Verify LLM was called with correct model
     llm_provider.generate.assert_called_once()
     call_args = llm_provider.generate.call_args
-    assert call_args.kwargs.get("model") == "gemma3-4b-12k"
+    assert call_args.kwargs.get("model") == "gemma3-4b-8k"
 
 
 @pytest.mark.asyncio
@@ -55,7 +55,7 @@ English:
 2. machine learning advances
 - generative AI development
 • neural network research""",
-        model="gemma3-4b-12k",
+        model="gemma3-4b-8k",
         prompt_eval_count=256,
         eval_count=64,
         total_duration=500_000_000,
@@ -111,12 +111,12 @@ async def test_expand_query_llm_failure():
 
 @pytest.mark.asyncio
 async def test_expand_query_uses_correct_model():
-    """Test that query expansion uses gemma3-4b-12k model specifically."""
+    """Test that query expansion uses gemma3-4b-8k model specifically."""
     config = Mock()
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
         response="test query result",
-        model="gemma3-4b-12k",
+        model="gemma3-4b-8k",
         prompt_eval_count=100,
         eval_count=20,
         total_duration=100_000_000,
@@ -127,9 +127,9 @@ async def test_expand_query_uses_correct_model():
     await usecase.expand_query(query="test", japanese_count=1, english_count=1)
 
     # Verify the EXPANSION_MODEL constant is used
-    assert usecase.EXPANSION_MODEL == "gemma3-4b-12k"
+    assert usecase.EXPANSION_MODEL == "gemma3-4b-8k"
     call_args = llm_provider.generate.call_args
-    assert call_args.kwargs.get("model") == "gemma3-4b-12k"
+    assert call_args.kwargs.get("model") == "gemma3-4b-8k"
 
 
 @pytest.mark.asyncio
@@ -139,7 +139,7 @@ async def test_expand_query_low_temperature():
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
         response="test query",
-        model="gemma3-4b-12k",
+        model="gemma3-4b-8k",
         prompt_eval_count=100,
         eval_count=20,
         total_duration=100_000_000,

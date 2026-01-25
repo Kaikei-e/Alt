@@ -195,18 +195,18 @@ def test_model_60k_enabled_case_insensitive(monkeypatch):
     assert config.model_60k_enabled is True
 
 
-def test_hierarchical_threshold_chars_default_12000(monkeypatch):
-    """Test that hierarchical_threshold_chars defaults to 12000 for 12K-only mode."""
+def test_hierarchical_threshold_chars_default_8000(monkeypatch):
+    """Test that hierarchical_threshold_chars defaults to 8000 for 8K-only mode."""
     monkeypatch.delenv("HIERARCHICAL_THRESHOLD_CHARS", raising=False)
     monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
-    assert config.hierarchical_threshold_chars == 12_000
+    assert config.hierarchical_threshold_chars == 8_000
 
 
 def test_hierarchical_threshold_clusters_default_5(monkeypatch):
-    """Test that hierarchical_threshold_clusters defaults to 5 for 12K-only mode."""
+    """Test that hierarchical_threshold_clusters defaults to 5 for 8K-only mode."""
     monkeypatch.delenv("HIERARCHICAL_THRESHOLD_CLUSTERS", raising=False)
     monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
@@ -215,14 +215,14 @@ def test_hierarchical_threshold_clusters_default_5(monkeypatch):
     assert config.hierarchical_threshold_clusters == 5
 
 
-def test_hierarchical_chunk_max_chars_default_10000(monkeypatch):
-    """Test that hierarchical_chunk_max_chars defaults to 10000 (~2.5K tokens) for fewer LLM calls."""
+def test_hierarchical_chunk_max_chars_default_6000(monkeypatch):
+    """Test that hierarchical_chunk_max_chars defaults to 6000 (~1.5K tokens) for 8K context."""
     monkeypatch.delenv("HIERARCHICAL_CHUNK_MAX_CHARS", raising=False)
     monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
-    assert config.hierarchical_chunk_max_chars == 10_000
+    assert config.hierarchical_chunk_max_chars == 6_000
 
 
 def test_hierarchical_thresholds_can_be_customized(monkeypatch):

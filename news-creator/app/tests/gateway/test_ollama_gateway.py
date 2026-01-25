@@ -391,3 +391,152 @@ async def test_ttft_breakdown_logged(mock_config, mock_driver, caplog):
 
         await gateway.cleanup()
 
+
+@pytest.mark.asyncio
+async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_driver):
+    """Test that semaphore is acquired BEFORE generator iteration starts (eager acquisition)."""
+    mock_config.ollama_request_concurrency = 1
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        # Create a mock stream driver
+        mock_stream_driver = AsyncMock()
+
+        async def mock_generate_stream(payload):
+            """Simulate streaming response."""
+            for i in range(3):
+                yield {
+                    "response": f"chunk{i}",
+                    "model": "test-model",
+                    "done": i == 2,
+                }
+
+        mock_stream_driver.generate_stream = mock_generate_stream
+        mock_stream_driver.initialize = AsyncMock()
+        mock_stream_driver.cleanup = AsyncMock()
+
+        with patch("news_creator.gateway.ollama_gateway.OllamaStreamDriver", return_value=mock_stream_driver):
+            gateway = OllamaGateway(mock_config)
+            await gateway.initialize()
+
+            # Get initial semaphore state (streaming uses RT slots)
+            initial_rt_available = gateway._semaphore._rt_available
+
+            # Call generate with stream=True
+            # This should acquire the semaphore IMMEDIATELY (before iteration)
+            generator = await gateway.generate("Test prompt", stream=True)
+
+            # Verify semaphore was acquired (RT slots decreased since stream=True is high priority)
+            assert gateway._semaphore._rt_available < initial_rt_available, \
+                "Semaphore should be acquired before generator iteration"
+
+            # Consume the generator
+            chunks = []
+            async for chunk in generator:
+                chunks.append(chunk)
+
+            # Verify semaphore was released after iteration
+            assert gateway._semaphore._rt_available == initial_rt_available, \
+                "Semaphore should be released after generator completes"
+
+            # Verify we got all chunks
+            assert len(chunks) == 3
+
+            await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_streaming_semaphore_released_on_early_termination(mock_config, mock_driver):
+    """Test that semaphore is released when generator is terminated early."""
+    mock_config.ollama_request_concurrency = 1
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        # Create a mock stream driver
+        mock_stream_driver = AsyncMock()
+
+        async def mock_generate_stream(payload):
+            """Simulate streaming response with many chunks."""
+            for i in range(100):
+                yield {
+                    "response": f"chunk{i}",
+                    "model": "test-model",
+                    "done": False,
+                }
+
+        mock_stream_driver.generate_stream = mock_generate_stream
+        mock_stream_driver.initialize = AsyncMock()
+        mock_stream_driver.cleanup = AsyncMock()
+
+        with patch("news_creator.gateway.ollama_gateway.OllamaStreamDriver", return_value=mock_stream_driver):
+            gateway = OllamaGateway(mock_config)
+            await gateway.initialize()
+
+            # Get initial semaphore state (streaming uses RT slots)
+            initial_rt_available = gateway._semaphore._rt_available
+
+            # Call generate with stream=True
+            generator = await gateway.generate("Test prompt", stream=True)
+
+            # Verify semaphore was acquired
+            assert gateway._semaphore._rt_available < initial_rt_available
+
+            # Consume only first 3 chunks then break (early termination)
+            chunks = []
+            async for chunk in generator:
+                chunks.append(chunk)
+                if len(chunks) >= 3:
+                    break
+
+            # Close the generator explicitly (simulate early termination)
+            # AsyncIterator has aclose() for cleanup
+            if hasattr(generator, "aclose"):
+                await generator.aclose()
+
+            # Verify semaphore was released after early termination
+            assert gateway._semaphore._rt_available == initial_rt_available, \
+                "Semaphore should be released after early termination"
+
+            await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_streaming_high_priority_immediate_acquisition(mock_config, mock_driver, caplog):
+    """Test that streaming (high priority) requests acquire semaphore immediately."""
+    import logging
+    caplog.set_level(logging.INFO)
+
+    mock_config.ollama_request_concurrency = 2
+    mock_config.scheduling_rt_reserved_slots = 1  # 1 slot reserved for RT
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        mock_stream_driver = AsyncMock()
+
+        async def mock_generate_stream(payload):
+            await asyncio.sleep(0.1)  # Simulate some latency
+            yield {"response": "done", "model": "test-model", "done": True}
+
+        mock_stream_driver.generate_stream = mock_generate_stream
+        mock_stream_driver.initialize = AsyncMock()
+        mock_stream_driver.cleanup = AsyncMock()
+
+        with patch("news_creator.gateway.ollama_gateway.OllamaStreamDriver", return_value=mock_stream_driver):
+            gateway = OllamaGateway(mock_config)
+            await gateway.initialize()
+
+            # Call generate with stream=True
+            generator = await gateway.generate("Test prompt", stream=True)
+
+            # Verify log shows HIGH PRIORITY acquisition
+            info_records = [r for r in caplog.records if r.levelno == logging.INFO]
+            high_priority_logs = [
+                r for r in info_records
+                if "HIGH PRIORITY" in r.message and "streaming generator" in r.message
+            ]
+            assert len(high_priority_logs) >= 1, \
+                "Streaming requests should log HIGH PRIORITY semaphore acquisition"
+
+            # Consume the generator
+            async for _ in generator:
+                pass
+
+            await gateway.cleanup()
+
