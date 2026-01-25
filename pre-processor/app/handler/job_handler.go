@@ -227,6 +227,12 @@ func (h *jobHandler) runFeedProcessingLoop() {
 
 // runSummarizationLoop runs the summarization loop.
 func (h *jobHandler) runSummarizationLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logger.ErrorContext(h.ctx, "panic in runSummarizationLoop", "panic", r)
+		}
+	}()
+
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 

@@ -67,7 +67,7 @@ func TestHTTPClientManager_GetSummaryClient(t *testing.T) {
 			want: struct {
 				timeout time.Duration
 			}{
-				timeout: 120 * time.Second, // Reduced to fail fast when news-creator/Ollama is unresponsive
+				timeout: 0, // Delegate timeout control to context.WithTimeout (NEWS_CREATOR_TIMEOUT)
 			},
 		},
 	}

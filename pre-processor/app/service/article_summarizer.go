@@ -71,6 +71,14 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 
 	// Process each article
 	for _, article := range articles {
+		// Check if context was canceled before processing the next article
+		if ctx.Err() != nil {
+			s.logger.WarnContext(ctx, "context canceled, skipping remaining articles",
+				"remaining", len(articles)-result.SuccessCount-result.ErrorCount,
+				"reason", ctx.Err())
+			break
+		}
+
 		// Generate summary using external API with LOW priority (batch operation)
 		summarizedContent, err := s.apiRepo.SummarizeArticle(ctx, article, "low")
 		if err != nil {

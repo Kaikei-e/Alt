@@ -152,7 +152,7 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 	}
 
 	client := &http.Client{
-		Timeout: 120 * time.Second,
+		Timeout: 300 * time.Second, // セマフォ待ち(160s) + 生成(60s) + マージン
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", qualityCheckerAPIURL, strings.NewReader(string(jsonPayload)))

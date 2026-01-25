@@ -58,7 +58,13 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 	w.logger.InfoContext(ctx, "processing queued summarization jobs", "count", len(jobs))
 
 	// Process each job
-	for _, job := range jobs {
+	for i, job := range jobs {
+		if ctx.Err() != nil {
+			w.logger.WarnContext(ctx, "context canceled, skipping remaining jobs",
+				"remaining", len(jobs)-i)
+			break
+		}
+
 		if err := w.processJob(ctx, job); err != nil {
 			w.logger.ErrorContext(ctx, "failed to process job", "error", err, "job_id", job.JobID, "article_id", job.ArticleID)
 			// Continue processing other jobs even if one fails
