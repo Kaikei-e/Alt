@@ -234,21 +234,30 @@ class OllamaGateway(LLMProviderPort):
 
         # Handle streaming requests
         if stream:
+            # EAGER SEMAPHORE ACQUISITION (TTFT optimization)
+            # Acquire semaphore BEFORE returning the generator to ensure:
+            # 1. RT requests get priority slots immediately (not delayed until iteration)
+            # 2. ADR 140's Hybrid RT/BE Priority Semaphore works as designed
+            # 3. Predictable queue ordering for streaming requests
+            wait_time = await self._semaphore.acquire(high_priority=is_high_priority)
+            priority_label = "HIGH PRIORITY" if is_high_priority else "LOW PRIORITY"
+            logger.info(
+                f"Acquired semaphore ({priority_label}), returning streaming generator",
+                extra={
+                    "model": payload["model"],
+                    "prompt_length": len(prompt),
+                    "stream": True,
+                    "priority": priority,
+                    "is_high_priority": is_high_priority,
+                    "queue_wait_time_seconds": round(wait_time, 4),
+                }
+            )
+
             async def response_generator():
-                # Acquire semaphore with HIGH PRIORITY for streaming (on-time) requests
-                wait_time = await self._semaphore.acquire(high_priority=is_high_priority)
                 try:
-                    priority_label = "HIGH PRIORITY" if is_high_priority else "LOW PRIORITY"
-                    logger.info(
-                        f"Acquired semaphore ({priority_label}), processing Ollama request (streaming)",
-                        extra={
-                            "model": payload["model"],
-                            "prompt_length": len(prompt),
-                            "stream": True,
-                            "priority": priority,
-                            "is_high_priority": is_high_priority,
-                            "queue_wait_time_seconds": round(wait_time, 4),
-                        }
+                    logger.debug(
+                        "Starting stream iteration (semaphore pre-acquired)",
+                        extra={"model": payload["model"], "is_high_priority": is_high_priority}
                     )
                     # Use stream driver for streaming requests
                     stream_iterator = self.stream_driver.generate_stream(payload)
@@ -268,9 +277,14 @@ class OllamaGateway(LLMProviderPort):
                             eval_duration=chunk.get("eval_duration"),
                         )
                 finally:
+                    # Release semaphore when generator completes (normal, abort, or GC)
                     self._semaphore.release(was_high_priority=is_high_priority)
+                    logger.debug(
+                        "Released semaphore after streaming completion",
+                        extra={"model": payload["model"], "is_high_priority": is_high_priority}
+                    )
 
-            # Return the generator (not awaited yet)
+            # Return the generator (semaphore already acquired)
             return response_generator()
 
         # Handle non-streaming requests

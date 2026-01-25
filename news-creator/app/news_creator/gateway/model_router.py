@@ -11,11 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class ModelRouter:
-    """Routes requests to appropriate model bucket (12K, 60K) based on token count."""
+    """Routes requests to appropriate model bucket (8K, 60K) based on token count."""
 
     # Bucket definitions (context window sizes)
-    # BUCKET_8K = 8192  # 8kモデルは使用しない
-    BUCKET_12K = 12288
+    BUCKET_8K = 8192
     BUCKET_60K = 61440
 
     def __init__(
@@ -62,13 +61,13 @@ class ModelRouter:
         if self.oom_detector.two_model_mode:
             return self._select_model_3mode(prompt, max_new_tokens)
 
-        # Normal 2-model mode (12K, 60K)
+        # Normal 2-model mode (8K, 60K)
         return self._select_model_3mode(prompt, max_new_tokens)
 
     def _select_model_3mode(
         self, prompt: str, max_new_tokens: Optional[int] = None
     ) -> Tuple[str, int]:
-        """Select model in 2-model mode (12K, 60K) or 12K-only mode."""
+        """Select model in 2-model mode (8K, 60K) or 8K-only mode."""
         # Calculate token count
         prompt_tokens = count_tokens(prompt)
         max_new = max_new_tokens or self.config.llm_num_predict
@@ -103,27 +102,24 @@ class ModelRouter:
             },
         )
 
-        # Check if 60K model is disabled (12K-only mode)
+        # Check if 60K model is disabled (8K-only mode)
         model_60k_enabled = getattr(self.config, 'model_60k_enabled', True)
 
         if not model_60k_enabled:
-            # 12K-only mode: always use 12K model
+            # 8K-only mode: always use 8K model
             # Hierarchical summarization should handle large inputs upstream
-            if needed_tokens > self.BUCKET_12K:
+            if needed_tokens > self.BUCKET_8K:
                 logger.warning(
-                    f"Token count ({needed_tokens}) exceeds 12K bucket but 60K is disabled. "
+                    f"Token count ({needed_tokens}) exceeds 8K bucket but 60K is disabled. "
                     f"Hierarchical summarization should handle this.",
                     extra={"needed_tokens": needed_tokens, "prompt_tokens": prompt_tokens},
                 )
-            selected_bucket = self.BUCKET_12K
-            selected_model = self.config.model_12k_name
-        # Select bucket (12K, or 60K) - only when 60K is enabled
-        # if needed_tokens <= self.BUCKET_8K:  # 8kモデルは使用しない
-        #     selected_bucket = self.BUCKET_8K
-        #     selected_model = self.config.model_8k_name
-        elif needed_tokens <= self.BUCKET_12K:
-            selected_bucket = self.BUCKET_12K
-            selected_model = self.config.model_12k_name
+            selected_bucket = self.BUCKET_8K
+            selected_model = self.config.model_8k_name
+        # Select bucket (8K, or 60K) - only when 60K is enabled
+        elif needed_tokens <= self.BUCKET_8K:
+            selected_bucket = self.BUCKET_8K
+            selected_model = self.config.model_8k_name
         elif needed_tokens <= self.BUCKET_60K:
             selected_bucket = self.BUCKET_60K
             selected_model = self.config.model_60k_name
@@ -163,10 +159,8 @@ class ModelRouter:
                         },
                     )
                     # Find model for current bucket
-                    # if self._current_bucket == self.BUCKET_8K:  # 8kモデルは使用しない
-                    #     selected_model = self.config.model_8k_name
-                    if self._current_bucket == self.BUCKET_12K:
-                        selected_model = self.config.model_12k_name
+                    if self._current_bucket == self.BUCKET_8K:
+                        selected_model = self.config.model_8k_name
                     else:
                         selected_model = self.config.model_60k_name
                     selected_bucket = self._current_bucket
@@ -197,8 +191,7 @@ class ModelRouter:
             # First selection
             self._current_bucket = selected_bucket
 
-        # Log model loading strategy (16K/60K on-demand)
-        # loading_strategy = "always-loaded" if selected_model == self.config.model_8k_name else "on-demand"  # 8kモデルは使用しない
+        # Log model loading strategy (8K/60K on-demand)
         loading_strategy = "on-demand"
         logger.info(
             f"Selected model: {selected_model} (bucket: {selected_bucket}, "

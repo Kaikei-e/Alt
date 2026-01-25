@@ -33,8 +33,8 @@ User Input: {query}"""
 class ExpandQueryUsecase:
     """Usecase for generating expanded search queries for RAG retrieval."""
 
-    # Model to use for query expansion (gemma3-4b-12k is lightweight and fast)
-    EXPANSION_MODEL = "gemma3-4b-12k"
+    # Model to use for query expansion (gemma3-4b-8k is lightweight and fast)
+    EXPANSION_MODEL = "gemma3-4b-8k"
 
     def __init__(self, config: NewsCreatorConfig, llm_provider: LLMProviderPort):
         """Initialize expand query usecase."""
