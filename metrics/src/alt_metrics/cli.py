@@ -119,30 +119,25 @@ def run_analysis(
         ("キュー飽和度", "queue_saturation", collect_queue_saturation),
     ]
 
-    collectors = [
-        (name, lambda attr=attr, fn=fn: setattr(result, attr, fn(client, db, hours)))
-        for name, attr, fn in collector_defs
-    ]
-
-    # SLO違反は追加パラメータが必要
-    collectors.append(
-        (
-            "SLO違反",
-            lambda: setattr(
-                result, "slo_violations", collect_slo_violations(client, db, hours, thresholds.slo_error_rate_threshold)
-            ),
-        )
-    )
-
-    for name, collector_fn in collectors:
+    for name, attr, fn in collector_defs:
         if verbose:
             print(f"{name}を収集中...")
         try:
-            collector_fn()
+            setattr(result, attr, fn(client, db, hours))
         except CollectorError as e:
             log.warning("コレクターエラー（続行）", collector=name, error=str(e))
             if verbose:
                 print(f"  警告: {name}の収集に失敗しました - {e}")
+
+    # SLO違反は追加パラメータが必要
+    if verbose:
+        print("SLO違反を収集中...")
+    try:
+        result.slo_violations = collect_slo_violations(client, db, hours, thresholds.slo_error_rate_threshold)
+    except CollectorError as e:
+        log.warning("コレクターエラー（続行）", collector="SLO違反", error=str(e))
+        if verbose:
+            print(f"  警告: SLO違反の収集に失敗しました - {e}")
 
     if verbose:
         print("健全性分析と推奨事項を生成中...")

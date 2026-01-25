@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from alt_metrics.collectors.saturation import (
-    collect_resource_utilization,
     collect_queue_saturation,
+    collect_resource_utilization,
 )
 from alt_metrics.exceptions import CollectorError
 

@@ -15,6 +15,10 @@ from alt_metrics.collectors.logs import (
     collect_log_volume_trends,
     collect_recent_errors,
 )
+from alt_metrics.collectors.saturation import (
+    collect_queue_saturation,
+    collect_resource_utilization,
+)
 from alt_metrics.collectors.sli import (
     collect_sli_trends,
     collect_slo_violations,
@@ -26,10 +30,6 @@ from alt_metrics.collectors.traces import (
     collect_service_dependencies,
     collect_service_latency,
     collect_span_type_stats,
-)
-from alt_metrics.collectors.saturation import (
-    collect_queue_saturation,
-    collect_resource_utilization,
 )
 
 __all__ = [
