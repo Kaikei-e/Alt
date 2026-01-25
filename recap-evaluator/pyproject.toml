@@ -59,6 +59,9 @@ dev = [
     "pyrefly>=0.17.0",
 ]
 
+[tool.uv]
+constraint-dependencies = ["protobuf>=6.33.4"]
+
 [tool.ruff]
 target-version = "py313"
 line-length = 100
