@@ -28,7 +28,7 @@ RUN groupadd -f -g 2000 ollama-user \
 WORKDIR /home/ollama-user
 
 # Copy Modelfiles for model creation
-COPY --chown=ollama-user:ollama-user Modelfile.gemma3-4b-12k Modelfile.gemma3-4b-60k /home/ollama-user/
+COPY --chown=ollama-user:ollama-user Modelfile.gemma3-4b-8k Modelfile.gemma3-4b-60k /home/ollama-user/
 
 # Environment configuration
 ENV OLLAMA_HOST=0.0.0.0:11435

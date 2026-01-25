@@ -28,7 +28,7 @@ export NVIDIA_VISIBLE_DEVICES="${NVIDIA_VISIBLE_DEVICES:-all}"
 export NVIDIA_DRIVER_CAPABILITIES="${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}"
 export LD_LIBRARY_PATH="/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH:-}"
 export OLLAMA_HOST="${OLLAMA_HOST:-0.0.0.0:11435}"
-export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-12288}"
+export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-8192}"
 export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-2}"
 export OLLAMA_MAX_LOADED_MODELS_FORCE="${OLLAMA_MAX_LOADED_MODELS_FORCE:-1}"
 export OLLAMA_MAX_LOADED_MODELS="$OLLAMA_MAX_LOADED_MODELS_FORCE"
@@ -109,10 +109,10 @@ else
 fi
 
 # --- create model variants with fixed num_ctx ----------------------------------------
-echo "Creating model variants with fixed num_ctx (12K, 60K)..."
+echo "Creating model variants with fixed num_ctx (8K, 60K)..."
 
 MODELFILE_DIR="$(dirname "$0")"
-if [ ! -f "$MODELFILE_DIR/Modelfile.gemma3-4b-12k" ]; then
+if [ ! -f "$MODELFILE_DIR/Modelfile.gemma3-4b-8k" ]; then
   MODELFILE_DIR="/home/ollama-user"
 fi
 
@@ -135,29 +135,29 @@ create_model() {
   fi
 }
 
-create_model "gemma3-4b-12k" "$MODELFILE_DIR/Modelfile.gemma3-4b-12k"
+create_model "gemma3-4b-8k" "$MODELFILE_DIR/Modelfile.gemma3-4b-8k"
 create_model "gemma3-4b-60k" "$MODELFILE_DIR/Modelfile.gemma3-4b-60k"
 
 echo "Model variants created (if needed)."
 
-# --- preload 12K model only ------------------------
-echo "Preloading 12K model only (60K will be loaded on-demand)..."
-echo "  Loading 12K model (attempt 1/3)..."
+# --- preload 8K model only ------------------------
+echo "Preloading 8K model only (60K will be loaded on-demand)..."
+echo "  Loading 8K model (attempt 1/3)..."
 if curl -s -X POST http://localhost:11435/api/generate \
-  -d '{"model":"gemma3-4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
+  -d '{"model":"gemma3-4b-8k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
   >/dev/null 2>&1; then
-  echo "  12K model preloaded successfully (will be kept in GPU memory)"
+  echo "  8K model preloaded successfully (will be kept in GPU memory)"
   sleep 2
-  echo "  Verifying 12K model is loaded (attempt 2/3)..."
+  echo "  Verifying 8K model is loaded (attempt 2/3)..."
   if curl -s -X POST http://localhost:11435/api/generate \
-    -d '{"model":"gemma3-4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
+    -d '{"model":"gemma3-4b-8k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
     >/dev/null 2>&1; then
-    echo "  12K model confirmed to be loaded in GPU memory (keep_alive: 24h)"
+    echo "  8K model confirmed to be loaded in GPU memory (keep_alive: 24h)"
   else
-    echo "  Warning: 12K model second preload check failed"
+    echo "  Warning: 8K model second preload check failed"
   fi
 else
-  echo "  Warning: Failed to preload 12K model (will load on first request)"
+  echo "  Warning: Failed to preload 8K model (will load on first request)"
 fi
 
 # --- GPU usage verification ---
