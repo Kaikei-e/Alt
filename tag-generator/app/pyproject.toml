@@ -88,6 +88,9 @@ ml = [
 # In Dockerfile: Install PyTorch from custom index first, then other ML deps
 # For development: uv sync --group ml
 
+[tool.uv]
+constraint-dependencies = ["protobuf>=6.33.4"]
+
 [tool.setuptools.packages]
 find = { include = [
     "tag_generator",
