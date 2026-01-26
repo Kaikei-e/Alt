@@ -257,19 +257,20 @@ func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time
 	}
 
 	// Fetch articles from inoreader_articles
-	// Note: inoreader_articles has (id, article_url, title, content, published_at, feed_url, fetched_at, ...)
+	// Note: feed_url is retrieved via JOIN with inoreader_subscriptions
 	query := `
 		SELECT
-			id,
-			article_url,
-			title,
-			content,
-			published_at,
-			feed_url,
-			fetched_at
-		FROM inoreader_articles
-		WHERE fetched_at > $1
-		ORDER BY fetched_at ASC
+			a.id,
+			a.article_url,
+			a.title,
+			a.content,
+			a.published_at,
+			COALESCE(s.feed_url, '') AS feed_url,
+			a.fetched_at
+		FROM inoreader_articles a
+		LEFT JOIN inoreader_subscriptions s ON a.subscription_id = s.id
+		WHERE a.fetched_at > $1
+		ORDER BY a.fetched_at ASC
 	`
 
 	rows, err := db.Query(ctx, query, since)

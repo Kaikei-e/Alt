@@ -19,7 +19,7 @@ type Config struct {
 }
 
 type AltServiceConfig struct {
-	Host    string        `json:"host" env:"ALT_BACKEND_HOST" default:"http://alt-backend:8080"`
+	Host    string        `json:"host" env:"ALT_BACKEND_HOST" default:"http://alt-backend:9000"`
 	Timeout time.Duration `json:"timeout" env:"ALT_BACKEND_TIMEOUT" default:"10s"`
 }
 
@@ -163,7 +163,7 @@ func defaultConfig() *Config {
 			PollingInterval: 5 * time.Second,
 		},
 		AltService: AltServiceConfig{
-			Host:    "http://alt-backend:8080",
+			Host:    "http://alt-backend:9000",
 			Timeout: 10 * time.Second,
 		},
 	}
