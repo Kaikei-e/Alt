@@ -124,12 +124,12 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 	}
 	htmlContent := *contentPtr
 
-	// 5. Extract Title and Text
+	// 5. Extract Title and Rich HTML Content
 	fetchedTitle := html_parser.ExtractTitle(htmlContent)
-	contentStr := html_parser.ExtractArticleText(htmlContent)
+	contentStr := html_parser.ExtractArticleHTML(htmlContent)
 
 	if contentStr == "" {
-		logger.Logger.WarnContext(ctx, "failed to extract article text from HTML, falling back to sanitized HTML",
+		logger.Logger.WarnContext(ctx, "failed to extract article HTML from content, falling back to sanitized HTML",
 			"url", urlStr, "html_size_bytes", len(htmlContent))
 		contentStr = html_parser.SanitizeHTML(htmlContent)
 	}

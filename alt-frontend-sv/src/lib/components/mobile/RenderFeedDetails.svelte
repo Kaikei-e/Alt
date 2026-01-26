@@ -3,6 +3,7 @@ import type {
 	FeedContentOnTheFlyResponse,
 	FetchArticleSummaryResponse,
 } from "$lib/api/client";
+import { sanitizeHtml } from "$lib/utils/sanitizeHtml";
 
 interface Props {
 	feedDetails?:
@@ -14,6 +15,19 @@ interface Props {
 }
 
 const { feedDetails, isLoading = false, error = null }: Props = $props();
+
+// Sanitize content for safe rendering with @html
+const safeArticleContent = $derived(
+	feedDetails && "matched_articles" in feedDetails && feedDetails.matched_articles?.[0]?.content
+		? sanitizeHtml(feedDetails.matched_articles[0].content)
+		: ""
+);
+
+const safeOnTheFlyContent = $derived(
+	feedDetails && "content" in feedDetails && feedDetails.content
+		? sanitizeHtml(feedDetails.content)
+		: ""
+);
 </script>
 
 {#if isLoading}
@@ -73,18 +87,18 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 				class="article-content max-h-[50vh] overflow-auto"
 				style="color: #1a1a1a;"
 			>
-				{@html article.content}
+				{@html safeArticleContent}
 			</div>
 		</div>
 	</div>
 {:else if "content" in feedDetails && feedDetails.content}
-	<!-- FeedContentOnTheFlyResponse - Simple content display -->
+	<!-- FeedContentOnTheFlyResponse - Rich content display with sanitization -->
 	<div class="px-4 py-4">
 		<div
-			class="text-base leading-relaxed break-words"
+			class="article-content text-base leading-relaxed break-words"
 			style="color: var(--alt-text-primary);"
 		>
-			{@html feedDetails.content}
+			{@html safeOnTheFlyContent}
 		</div>
 	</div>
 {:else}
@@ -97,6 +111,8 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 	:global(.article-content) {
 		word-break: break-word;
 		overflow-wrap: anywhere;
+		font-size: clamp(0.95rem, 2.5vw, 1.1rem);
+		line-height: 1.75;
 	}
 
 	:global(.article-content p) {
@@ -107,28 +123,38 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 	:global(.article-content h1),
 	:global(.article-content h2),
 	:global(.article-content h3),
+	:global(.article-content h4),
+	:global(.article-content h5),
+	:global(.article-content h6),
 	:global(.article-content p),
 	:global(.article-content li) {
 		color: #1a1a1a;
 	}
 
 	:global(.article-content h1) {
-		font-size: 1.5em;
+		font-size: clamp(1.5rem, 4vw, 2rem);
 		margin-top: 1.5em;
-		margin-bottom: 0.5em;
+		margin-bottom: 0.75em;
 		font-weight: bold;
 	}
 
 	:global(.article-content h2) {
-		font-size: 1.3em;
+		font-size: clamp(1.3rem, 3.5vw, 1.7rem);
 		margin-top: 1.5em;
 		margin-bottom: 0.5em;
 		font-weight: bold;
 	}
 
 	:global(.article-content h3) {
-		font-size: 1.1em;
+		font-size: clamp(1.1rem, 3vw, 1.4rem);
 		margin-top: 1.5em;
+		margin-bottom: 0.5em;
+		font-weight: bold;
+	}
+
+	:global(.article-content h4) {
+		font-size: clamp(1rem, 2.5vw, 1.2rem);
+		margin-top: 1.25em;
 		margin-bottom: 0.5em;
 		font-weight: bold;
 	}
@@ -152,13 +178,7 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 		color: #1d4ed8;
 	}
 
-	:global(.article-content img) {
-		max-width: 100%;
-		height: auto;
-		border-radius: 8px;
-		margin-top: 1em;
-		margin-bottom: 1em;
-	}
+	/* NOTE: img styles removed - images are stripped for security (XSS via onerror/onload) */
 
 	:global(.article-content blockquote) {
 		border-left: 3px solid #2563eb;
@@ -176,8 +196,9 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 		color: #e5e5e5;
 		padding: 1em;
 		border-radius: 8px;
-		overflow: auto;
-		font-size: 0.9em;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+		font-size: clamp(0.8rem, 2vw, 0.9rem);
 	}
 
 	:global(.article-content code) {
@@ -231,5 +252,18 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 
 	:global(.article-content::-webkit-scrollbar-thumb:hover) {
 		background: rgba(0, 0, 0, 0.3);
+	}
+
+	/* Mobile optimization */
+	@media (max-width: 640px) {
+		:global(.article-content) {
+			font-size: 1rem;
+			line-height: 1.8;
+		}
+
+		:global(.article-content pre) {
+			font-size: 0.85rem;
+			padding: 0.75em;
+		}
 	}
 </style>

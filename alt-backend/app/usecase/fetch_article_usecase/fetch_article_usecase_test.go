@@ -278,7 +278,8 @@ func TestFetchArticleUsecase_FetchCompliantArticle_UpsertsToRAG(t *testing.T) {
 	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 	userContext := domain.UserContext{UserID: userID}
 	rawHTML := "<html><body><p>Article content needs to be very long. We are adding more text to satisfy the 100 char limit. This is a very interesting article about testing Go code with mocks and sanitization logic.</p></body></html>"
-	contentStr := "Article content needs to be very long. We are adding more text to satisfy the 100 char limit. This is a very interesting article about testing Go code with mocks and sanitization logic."
+	// ExtractArticleHTML returns sanitized HTML, not plain text
+	expectedContentHTML := "<div><p>Article content needs to be very long. We are adding more text to satisfy the 100 char limit. This is a very interesting article about testing Go code with mocks and sanitization logic.</p></div>"
 	articleID := "article-123"
 
 	// Mock expectations
@@ -286,12 +287,12 @@ func TestFetchArticleUsecase_FetchCompliantArticle_UpsertsToRAG(t *testing.T) {
 	mockRepo.EXPECT().IsDomainDeclined(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
 	mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
 	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).Return(&rawHTML, nil)
-	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), contentStr).Return(articleID, nil)
+	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), expectedContentHTML).Return(articleID, nil)
 
 	// Expect UpsertArticle to be called
 	mockRag.EXPECT().UpsertArticle(gomock.Any(), upsertMatcher{
 		check: func(input rag_integration_port.UpsertArticleInput) bool {
-			return input.ArticleID == articleID && input.Body == contentStr && input.URL == articleURLStr
+			return input.ArticleID == articleID && input.Body == expectedContentHTML && input.URL == articleURLStr
 		},
 	}).Return(nil)
 
@@ -302,8 +303,8 @@ func TestFetchArticleUsecase_FetchCompliantArticle_UpsertsToRAG(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
-	if content != contentStr {
-		t.Errorf("Expected content %s, got %s", contentStr, content)
+	if content != expectedContentHTML {
+		t.Errorf("Expected content %s, got %s", expectedContentHTML, content)
 	}
 	if articleID == "" {
 		t.Errorf("Expected non-empty article ID")

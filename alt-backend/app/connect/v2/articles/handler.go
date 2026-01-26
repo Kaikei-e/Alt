@@ -21,7 +21,6 @@ import (
 	"alt/domain"
 	"alt/rest"
 	"alt/usecase/archive_article_usecase"
-	"alt/utils/html_parser"
 )
 
 // Handler implements the ArticleService Connect-RPC service.
@@ -89,12 +88,10 @@ func (h *Handler) FetchArticleContent(
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticleContent")
 	}
 
-	// Strip HTML tags from content
-	escapedContent := html_parser.StripTags(content)
-
+	// Content is already sanitized by usecase (ExtractArticleHTML)
 	return connect.NewResponse(&articlesv2.FetchArticleContentResponse{
 		Url:       parsedURL.String(),
-		Content:   escapedContent,
+		Content:   content,
 		ArticleId: articleID,
 	}), nil
 }
