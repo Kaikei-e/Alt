@@ -68,16 +68,26 @@ function handleMarkAsRead(feedUrl: string) {
 
 	isProcessingMarkAsRead = true;
 
-	// Synchronously get navigation info BEFORE any async operations
-	const { nextFeedUrl } = feedGridApi.removeFeedByUrl(feedUrl);
+	// Check current position BEFORE removal
+	const currentFeeds = feedGridApi.getVisibleFeeds();
+	const currentIdx = currentFeeds.findIndex((f) => f.normalizedUrl === feedUrl);
+	const isLastFeed = currentIdx === currentFeeds.length - 1;
 
-	// Navigate based on pre-calculated info (no async dependency)
-	// nextFeedUrl is null when: no feeds left OR was viewing last feed
-	if (nextFeedUrl === null) {
+	// Remove the feed
+	const { nextFeedUrl, totalCount } = feedGridApi.removeFeedByUrl(feedUrl);
+
+	// Decide navigation: close if last feed or no feeds left
+	if (totalCount === 0 || isLastFeed) {
+		// Close modal when marking the last feed as read
 		isModalOpen = false;
 		selectedFeedUrl = null;
-	} else {
+	} else if (nextFeedUrl !== null) {
+		// Navigate to next feed
 		selectedFeedUrl = nextFeedUrl;
+	} else {
+		// Fallback: close modal
+		isModalOpen = false;
+		selectedFeedUrl = null;
 	}
 
 	// Fire-and-forget: fetch replacement feed in the background

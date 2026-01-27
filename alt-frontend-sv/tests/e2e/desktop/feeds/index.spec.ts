@@ -115,6 +115,15 @@ test.describe("Desktop Feeds", () => {
 	});
 
 	test("marks last feed as read and closes modal", async ({ page }) => {
+		// Override the feeds mock to prevent infinite scroll from fetching more
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, {
+				...CONNECT_FEEDS_RESPONSE,
+				hasMore: false,  // Prevent infinite scroll from loading more
+				nextCursor: "",
+			}),
+		);
+
 		// Mock mark as read endpoint (Connect-RPC)
 		await page.route(CONNECT_RPC_PATHS.markAsRead, (route) =>
 			fulfillJson(route, CONNECT_MARK_AS_READ_RESPONSE),

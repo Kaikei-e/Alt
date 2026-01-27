@@ -288,7 +288,8 @@ async function handleSummarize() {
 }
 </script>
 
-<Dialog.Root {open} onOpenChange={onOpenChange}>
+{#if open}
+<Dialog.Root open={true} onOpenChange={(value) => { if (!value) { open = false; onOpenChange(false); } }}>
 	<Dialog.Portal>
 		<Dialog.Overlay class="fixed inset-0 bg-black/50 z-50" />
 		<Dialog.Content
@@ -458,3 +459,4 @@ async function handleSummarize() {
 		</Dialog.Content>
 	</Dialog.Portal>
 </Dialog.Root>
+{/if}

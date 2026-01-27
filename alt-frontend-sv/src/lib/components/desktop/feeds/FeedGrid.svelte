@@ -55,6 +55,12 @@ export type FeedGridApi = {
 	function removeFeedByUrl(url: string): RemoveFeedResult {
 		// Find the index of the feed being removed BEFORE mutation
 		const currentIndex = visibleFeeds.findIndex((f) => f.normalizedUrl === url);
+
+		// If URL not found, return null to close modal (defensive)
+		if (currentIndex === -1) {
+			return { nextFeedUrl: null, totalCount: visibleFeeds.length };
+		}
+
 		const wasLastItem = currentIndex === visibleFeeds.length - 1;
 
 		// Synchronously update removed URLs
@@ -75,6 +81,11 @@ export type FeedGridApi = {
 		}
 
 		// Return the item at the same index (which is now the "next" item)
+		// Safety check: ensure index is within bounds
+		if (currentIndex >= newVisibleFeeds.length) {
+			return { nextFeedUrl: null, totalCount };
+		}
+
 		return {
 			nextFeedUrl: newVisibleFeeds[currentIndex].normalizedUrl,
 			totalCount,
