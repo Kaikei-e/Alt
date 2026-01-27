@@ -121,19 +121,19 @@ func TestFetchArticlesCursorResponse_Empty(t *testing.T) {
 
 func TestFetchArticleContentRequest_Validation(t *testing.T) {
 	tests := []struct {
-		name     string
-		url      string
-		wantErr  bool
+		name    string
+		url     string
+		wantErr bool
 	}{
 		{
-			name:     "valid URL",
-			url:      "https://example.com/article",
-			wantErr:  false,
+			name:    "valid URL",
+			url:     "https://example.com/article",
+			wantErr: false,
 		},
 		{
-			name:     "empty URL should fail",
-			url:      "",
-			wantErr:  true,
+			name:    "empty URL should fail",
+			url:     "",
+			wantErr: true,
 		},
 	}
 
@@ -155,28 +155,28 @@ func TestFetchArticleContentRequest_Validation(t *testing.T) {
 func TestArchiveArticleRequest_Validation(t *testing.T) {
 	title := "Test Title"
 	tests := []struct {
-		name     string
-		feedUrl  string
-		title    *string
-		wantErr  bool
+		name    string
+		feedUrl string
+		title   *string
+		wantErr bool
 	}{
 		{
-			name:     "valid request with title",
-			feedUrl:  "https://example.com/article",
-			title:    &title,
-			wantErr:  false,
+			name:    "valid request with title",
+			feedUrl: "https://example.com/article",
+			title:   &title,
+			wantErr: false,
 		},
 		{
-			name:     "valid request without title",
-			feedUrl:  "https://example.com/article",
-			title:    nil,
-			wantErr:  false,
+			name:    "valid request without title",
+			feedUrl: "https://example.com/article",
+			title:   nil,
+			wantErr: false,
 		},
 		{
-			name:     "empty URL should fail",
-			feedUrl:  "",
-			title:    nil,
-			wantErr:  true,
+			name:    "empty URL should fail",
+			feedUrl: "",
+			title:   nil,
+			wantErr: true,
 		},
 	}
 

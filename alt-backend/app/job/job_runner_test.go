@@ -12,10 +12,10 @@ import (
 // when creating feed models. This tests the normalization behavior that is used in HourlyJobRunner.
 func TestFeedModelURLNormalization(t *testing.T) {
 	tests := []struct {
-		name         string
-		inputURL     string
-		expectedURL  string
-		description  string
+		name        string
+		inputURL    string
+		expectedURL string
+		description string
 	}{
 		{
 			name:        "trailing slash should be removed",

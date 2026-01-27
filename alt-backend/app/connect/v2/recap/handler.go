@@ -164,17 +164,17 @@ func clusterSegmentsToProto(segments []domain.ClusterSegment) []*recapv2.Cluster
 	result := make([]*recapv2.ClusterSegment, len(segments))
 	for i, s := range segments {
 		result[i] = &recapv2.ClusterSegment{
-			ClusterId:               s.ClusterID,
-			Label:                   s.Label,
-			Count:                   int32(s.Count),
-			MarginMean:              s.MarginMean,
-			MarginStd:               s.MarginStd,
-			TopBoostMean:            s.TopBoostMean,
+			ClusterId:                s.ClusterID,
+			Label:                    s.Label,
+			Count:                    int32(s.Count),
+			MarginMean:               s.MarginMean,
+			MarginStd:                s.MarginStd,
+			TopBoostMean:             s.TopBoostMean,
 			GraphBoostAvailableRatio: s.GraphBoostAvailableRatio,
-			TagCountMean:            s.TagCountMean,
-			TagEntropyMean:          s.TagEntropyMean,
-			TopTags:                 s.TopTags,
-			RepresentativeArticles:  clusterArticlesToProto(s.RepresentativeArticles),
+			TagCountMean:             s.TagCountMean,
+			TagEntropyMean:           s.TagEntropyMean,
+			TopTags:                  s.TopTags,
+			RepresentativeArticles:   clusterArticlesToProto(s.RepresentativeArticles),
 		}
 	}
 	return result

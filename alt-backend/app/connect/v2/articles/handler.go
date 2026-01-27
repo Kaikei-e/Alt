@@ -225,7 +225,7 @@ func convertArticlesToProto(articles []*domain.Article) []*articlesv2.ArticleIte
 // Replaces POST /v1/articles/summary
 // Priority: 1) AI-generated summaries from article_summaries table
 //
-//	2) Inoreader feed excerpts from inoreader_summaries table
+//  2. Inoreader feed excerpts from inoreader_summaries table
 func (h *Handler) FetchArticleSummary(
 	ctx context.Context,
 	req *connect.Request[articlesv2.FetchArticleSummaryRequest],

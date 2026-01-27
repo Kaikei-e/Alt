@@ -13,10 +13,10 @@ import (
 
 // streamingProcedures lists Connect-RPC procedures that use server streaming
 var streamingProcedures = map[string]bool{
-	"/alt.feeds.v2.FeedService/StreamFeedStats":                    true,
-	"/alt.feeds.v2.FeedService/StreamSummarize":                    true,
-	"/alt.augur.v2.AugurService/StreamChat":                        true,
-	"/alt.morning_letter.v2.MorningLetterService/StreamChat":       true,
+	"/alt.feeds.v2.FeedService/StreamFeedStats":              true,
+	"/alt.feeds.v2.FeedService/StreamSummarize":              true,
+	"/alt.augur.v2.AugurService/StreamChat":                  true,
+	"/alt.morning_letter.v2.MorningLetterService/StreamChat": true,
 }
 
 // ProxyHandler proxies Connect-RPC requests to the backend.

@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"strings"
 
-	augurv2 "alt/gen/proto/alt/augur/v2"
-	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/connect/errorhandler"
 	"alt/domain"
+	augurv2 "alt/gen/proto/alt/augur/v2"
+	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/port/rag_integration_port"
 	"alt/usecase/answer_chat_usecase"
 	"alt/usecase/retrieve_context_usecase"

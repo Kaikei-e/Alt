@@ -19,7 +19,6 @@ import (
 	"alt/gateway/feed_link_gateway"
 	"alt/gateway/feed_search_gateway"
 	"alt/gateway/feed_stats_gateway"
-	"alt/gateway/trend_stats_gateway"
 	"alt/gateway/feed_url_link_gateway"
 	"alt/gateway/feed_url_to_id_gateway"
 	"alt/gateway/fetch_article_gateway"
@@ -27,6 +26,7 @@ import (
 	"alt/gateway/fetch_feed_gateway"
 	"alt/gateway/fetch_feed_tags_gateway"
 	"alt/gateway/fetch_inoreader_summary_gateway"
+	"alt/gateway/fetch_recent_articles_gateway"
 	"alt/gateway/image_fetch_gateway"
 	"alt/gateway/morning_gateway"
 	"alt/gateway/morning_letter_connect_gateway"
@@ -38,6 +38,7 @@ import (
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/robots_txt_gateway"
 	"alt/gateway/scraping_domain_gateway"
+	"alt/gateway/trend_stats_gateway"
 	"alt/gateway/update_feed_status_gateway"
 	"alt/gateway/user_feed_gateway"
 	"alt/port/config_port"
@@ -52,14 +53,13 @@ import (
 	"alt/usecase/feed_link_usecase"
 	"alt/usecase/fetch_article_usecase"
 	"alt/usecase/fetch_articles_usecase"
-	"alt/usecase/fetch_recent_articles_usecase"
-	"alt/gateway/fetch_recent_articles_gateway"
 	"alt/usecase/fetch_feed_details_usecase"
 	"alt/usecase/fetch_feed_stats_usecase"
-	"alt/usecase/fetch_trend_stats_usecase"
 	"alt/usecase/fetch_feed_tags_usecase"
 	"alt/usecase/fetch_feed_usecase"
 	"alt/usecase/fetch_inoreader_summary_usecase"
+	"alt/usecase/fetch_recent_articles_usecase"
+	"alt/usecase/fetch_trend_stats_usecase"
 	"alt/usecase/image_fetch_usecase"
 	"alt/usecase/morning_usecase"
 	"alt/usecase/reading_status"
@@ -93,11 +93,11 @@ type ApplicationComponents struct {
 	KratosClient kratos_client.KratosClient
 
 	// Gateways
-	RobotsTxtGateway             *robots_txt_gateway.RobotsTxtGateway
-	FetchArticleGateway          *fetch_article_gateway.FetchArticleGateway
-	RagIntegration               rag_integration_port.RagIntegrationPort
-	MorningLetterConnectGateway  *morning_letter_connect_gateway.Gateway
-	EventPublisher               event_publisher_port.EventPublisherPort
+	RobotsTxtGateway            *robots_txt_gateway.RobotsTxtGateway
+	FetchArticleGateway         *fetch_article_gateway.FetchArticleGateway
+	RagIntegration              rag_integration_port.RagIntegrationPort
+	MorningLetterConnectGateway *morning_letter_connect_gateway.Gateway
+	EventPublisher              event_publisher_port.EventPublisherPort
 
 	// Usecases
 	FetchSingleFeedUsecase              *fetch_feed_usecase.FetchSingleFeedUsecase

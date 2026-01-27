@@ -173,9 +173,9 @@ func TestStreamFeedStats_DataConstruction(t *testing.T) {
 
 	// Construct response message (as done in sendStatsUpdate)
 	resp := &feedsv2.StreamFeedStatsResponse{
-		FeedAmount:              int64(feedCount),
-		UnsummarizedFeedAmount:  int64(unsummarized),
-		TotalArticles:           int64(totalArticles),
+		FeedAmount:             int64(feedCount),
+		UnsummarizedFeedAmount: int64(unsummarized),
+		TotalArticles:          int64(totalArticles),
 		Metadata: &feedsv2.ResponseMetadata{
 			Timestamp:   time.Now().Unix(),
 			IsHeartbeat: false,

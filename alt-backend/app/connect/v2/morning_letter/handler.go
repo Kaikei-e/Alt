@@ -6,11 +6,11 @@ import (
 
 	"connectrpc.com/connect"
 
-	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
-	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/connect/errorhandler"
 	"alt/domain"
 	"alt/gateway/morning_letter_connect_gateway"
+	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
+	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 )
 
 // Handler implements morningletterv2connect.MorningLetterServiceHandler

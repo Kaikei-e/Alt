@@ -12,10 +12,10 @@ func TestFeedLinkAvailability_ShouldDisable(t *testing.T) {
 	reason := "test error"
 
 	tests := []struct {
-		name        string
+		name         string
 		availability FeedLinkAvailability
-		maxFailures int
-		want        bool
+		maxFailures  int
+		want         bool
 	}{
 		{
 			name: "returns false when failures below threshold",

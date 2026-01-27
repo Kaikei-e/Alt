@@ -201,31 +201,31 @@ func TestHostRateLimiter_ContextCancellation(t *testing.T) {
 
 func TestHostRateLimiter_RecordRateLimitHit(t *testing.T) {
 	tests := []struct {
-		name           string
+		name            string
 		initialInterval time.Duration
-		host           string
-		retryAfter     time.Duration
+		host            string
+		retryAfter      time.Duration
 		expectedBackoff time.Duration
 	}{
 		{
-			name:           "uses retryAfter when provided",
+			name:            "uses retryAfter when provided",
 			initialInterval: 5 * time.Second,
-			host:           "example.com",
-			retryAfter:     30 * time.Second,
+			host:            "example.com",
+			retryAfter:      30 * time.Second,
 			expectedBackoff: 30 * time.Second,
 		},
 		{
-			name:           "doubles interval when retryAfter is zero",
+			name:            "doubles interval when retryAfter is zero",
 			initialInterval: 5 * time.Second,
-			host:           "example.com",
-			retryAfter:     0,
+			host:            "example.com",
+			retryAfter:      0,
 			expectedBackoff: 10 * time.Second,
 		},
 		{
-			name:           "caps at 1 hour maximum",
+			name:            "caps at 1 hour maximum",
 			initialInterval: 5 * time.Second,
-			host:           "example.com",
-			retryAfter:     2 * time.Hour,
+			host:            "example.com",
+			retryAfter:      2 * time.Hour,
 			expectedBackoff: time.Hour,
 		},
 	}

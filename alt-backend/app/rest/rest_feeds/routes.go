@@ -4,8 +4,8 @@ import (
 	"alt/config"
 	"alt/di"
 	middleware_custom "alt/middleware"
-	"alt/utils/logger"
 	summarizationpkg "alt/rest/rest_feeds/summarization"
+	"alt/utils/logger"
 
 	"github.com/labstack/echo/v4"
 )
