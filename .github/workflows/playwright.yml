@@ -14,15 +14,6 @@ on:
         required: false
         type: string
         default: "10"
-      test-type:
-        required: false
-        type: string
-        default: "playwright"
-      runner:
-        description: "Runner label (ubuntu-latest or self-hosted)"
-        required: false
-        type: string
-        default: "ubuntu-latest"
   workflow_dispatch:
     inputs:
       working-directory:
@@ -40,142 +31,63 @@ on:
         required: false
         type: string
         default: "10"
-      test-type:
-        description: "Type of test to run"
-        required: false
-        type: string
-        default: "playwright"
 
 permissions:
   contents: read
 
 jobs:
   e2e:
-    runs-on: ${{ inputs.runner }}
-    container:
-      image: mcr.microsoft.com/playwright:v1.57.0-jammy
-      # self-hosted では --user root が必要（前回実行のファイル権限問題）
-      # GitHub-hosted (ephemeral) では不要
-      options: ${{ inputs.runner == 'self-hosted' && '--user root' || '' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 60
 
     env:
       CI: true
       FORCE_COLOR: "1"
-      # Disable git information collection in Playwright reporters
       PLAYWRIGHT_SKIP_GIT_INFO: "1"
 
     steps:
-      - name: Pre-checkout cleanup
-        run: |
-          # Clean workspace - running as root in container so we can remove any files
-          if [ -d "$GITHUB_WORKSPACE" ]; then
-            rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* 2>/dev/null || true
-          fi
-
       - uses: actions/checkout@v5
 
       - name: Mask sensitive paths and git information
         run: |
           echo "::group::Masking Configuration"
-
-          # Mask Runner Identity
           echo "::add-mask::$(hostname)"
           echo "::add-mask::$(whoami)"
-
-          # Mask Absolute Paths
           [ -n "$HOME" ] && echo "::add-mask::$HOME"
           [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
           [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
-
-          # Mask Git PII (now available after checkout)
           if command -v git >/dev/null 2>&1; then
             echo "::add-mask::$(git log -1 --pretty=format:'%an' 2>/dev/null || echo '')"
             echo "::add-mask::$(git log -1 --pretty=format:'%ae' 2>/dev/null || echo '')"
             echo "::add-mask::$(git log -1 --pretty=format:'%cn' 2>/dev/null || echo '')"
             echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
           fi
-
           echo "::endgroup::"
 
-      - name: Enable pnpm via Corepack
-        run: |
-          mkdir -p "$HOME/.local/bin"
-          corepack enable --install-directory "$HOME/.local/bin"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          corepack prepare pnpm@${{ inputs.pnpm-version }} --activate
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ inputs.node-version }}
           cache: pnpm
           cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
 
-      - name: Clean pnpm store (if corrupted)
-        run: |
-          echo "Checking disk space..."
-          df -h
-          echo "Cleaning pnpm store if needed..."
-          pnpm store prune || true
-          pnpm store status || true
-
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
-        run: |
-          for attempt in 1 2 3; do
-            echo "Attempt $attempt to install dependencies..."
-            if pnpm install --frozen-lockfile; then
-              echo "Successfully installed dependencies"
-              break
-            else
-              if [ $attempt -eq 3 ]; then
-                echo "Failed to install after 3 attempts"
-                # Clean store before final failure
-                pnpm store prune || true
-                exit 1
-              fi
-              echo "Installation failed, cleaning store and retrying..."
-              pnpm store prune || true
-              sleep 5
-            fi
-          done
+        run: pnpm install --frozen-lockfile
 
-
+      - name: Install Playwright browsers
+        working-directory: ${{ inputs.working-directory }}
+        run: pnpm exec playwright install --with-deps
 
       - name: Run Playwright tests
         working-directory: ${{ inputs.working-directory }}
-        run: |
-          echo "Running Playwright E2E tests..."
-          pnpm exec playwright test --reporter=html,json,list
+        run: pnpm exec playwright test --reporter=html,list
 
-      - name: Sanitize test results (remove git information)
-        if: always()
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          echo "Sanitizing test results to remove git information..."
-          # Remove git information from JSON test results
-          if [ -f "test-results/results.json" ]; then
-            # Use jq to remove gitCommit field if it exists
-            if command -v jq >/dev/null 2>&1; then
-              jq 'del(.gitCommit)' test-results/results.json > test-results/results.json.tmp && \
-              mv test-results/results.json.tmp test-results/results.json || true
-            else
-              # Fallback: use sed to remove gitCommit field (less precise but works)
-              sed -i '/"gitCommit"/,/},/d' test-results/results.json || true
-            fi
-          fi
-          # Also check for git info in any other JSON files in test-results
-          find test-results -name "*.json" -type f | while read -r file; do
-            if command -v jq >/dev/null 2>&1; then
-              jq 'del(.gitCommit)' "$file" > "${file}.tmp" && \
-              mv "${file}.tmp" "$file" || true
-            else
-              sed -i '/"gitCommit"/,/},/d' "$file" || true
-            fi
-          done
-
-      - name: Upload test results
-        if: always()
+      - name: Upload test report
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-${{ github.run_id }}
@@ -183,8 +95,8 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Upload test artifacts
-        if: always()
+      - name: Upload test results
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-results-${{ github.run_id }}
