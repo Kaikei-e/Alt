@@ -10,8 +10,8 @@ require (
 	github.com/ikawaha/kagome/v2 v2.10.3
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/labstack/echo/v4 v4.15.0
-	github.com/meilisearch/meilisearch-go v0.35.1
-	github.com/redis/go-redis/v9 v9.17.2
+	github.com/meilisearch/meilisearch-go v0.36.0
+	github.com/redis/go-redis/v9 v9.17.3
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/bridges/otelslog v0.14.0
 	go.opentelemetry.io/otel v1.39.0
@@ -34,7 +34,7 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.4 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.5 // indirect
 	github.com/ikawaha/kagome-dict v1.1.7 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -53,8 +53,8 @@ require (
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20251222181119-0a764e51fe1b // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260126211449-d11affda4bed // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260126211449-d11affda4bed // indirect
 	google.golang.org/grpc v1.78.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

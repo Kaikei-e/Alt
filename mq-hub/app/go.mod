@@ -6,7 +6,7 @@ require (
 	connectrpc.com/connect v1.19.1
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/google/uuid v1.6.0
-	github.com/redis/go-redis/v9 v9.17.2
+	github.com/redis/go-redis/v9 v9.17.3
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel/trace v1.39.0
 	google.golang.org/protobuf v1.36.11
