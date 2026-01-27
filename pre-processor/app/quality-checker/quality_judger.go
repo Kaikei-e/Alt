@@ -131,10 +131,10 @@ Respond with only:
 func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 	// Use more restrictive parameters to encourage format compliance
 	opts := optionsModel{
-		Temperature: 0.0,   // Very low temperature for more deterministic output
-		TopP:        0.5,   // More restrictive sampling
-		NumPredict:  60,    // Shorter to force concise responses
-		NumCtx:      8192,  // Match news-creator 8K model to prevent Ollama model reloads
+		Temperature: 0.0,  // Very low temperature for more deterministic output
+		TopP:        0.5,  // More restrictive sampling
+		NumPredict:  60,   // Shorter to force concise responses
+		NumCtx:      8192, // Match news-creator 8K model to prevent Ollama model reloads
 		Stop:        []string{"</score>", "\n\n", "ARTICLE:", "SUMMARY:", "<|user|>", "<|assistant|>"},
 	}
 
