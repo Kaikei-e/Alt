@@ -1,82 +1,81 @@
 <script lang="ts">
-	import { ExternalLink, Loader2, FileText, Sparkles, Check, ChevronLeft, ChevronRight } from "@lucide/svelte";
-	import type { RenderFeed } from "$lib/schema/feed";
-	import { Button } from "$lib/components/ui/button";
-	import * as Dialog from "$lib/components/ui/dialog";
-	import { updateFeedReadStatusClient } from "$lib/api/client/feeds";
-	import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
-	import { createClientTransport, streamSummarizeWithAbortAdapter } from "$lib/connect";
-	import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
-	import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
+import {
+	Check,
+	ChevronLeft,
+	ChevronRight,
+	ExternalLink,
+	FileText,
+	Loader2,
+	Sparkles,
+} from "@lucide/svelte";
+import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
+import { updateFeedReadStatusClient } from "$lib/api/client/feeds";
+import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
+import { Button } from "$lib/components/ui/button";
+import * as Dialog from "$lib/components/ui/dialog";
+import {
+	createClientTransport,
+	streamSummarizeWithAbortAdapter,
+} from "$lib/connect";
+import type { RenderFeed } from "$lib/schema/feed";
+import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 
-	interface Props {
-		open: boolean;
-		feed: RenderFeed | null;
-		onOpenChange: (open: boolean) => void;
-		onMarkAsRead?: (feedUrl: string) => void;
-		hasPrevious?: boolean;
-		hasNext?: boolean;
-		onPrevious?: () => void;
-		onNext?: () => void;
-		feeds?: RenderFeed[];
-		currentIndex?: number;
-	}
+interface Props {
+	open: boolean;
+	feed: RenderFeed | null;
+	onOpenChange: (open: boolean) => void;
+	onMarkAsRead?: (feedUrl: string) => void;
+	hasPrevious?: boolean;
+	hasNext?: boolean;
+	onPrevious?: () => void;
+	onNext?: () => void;
+	feeds?: RenderFeed[];
+	currentIndex?: number;
+	/** Disable mark as read button (e.g., while parent is processing) */
+	disableMarkAsRead?: boolean;
+}
 
-	let { open = $bindable(), feed, onOpenChange, onMarkAsRead, hasPrevious = false, hasNext = false, onPrevious, onNext, feeds, currentIndex }: Props = $props();
+let {
+	open = $bindable(),
+	feed,
+	onOpenChange,
+	onMarkAsRead,
+	hasPrevious = false,
+	hasNext = false,
+	onPrevious,
+	onNext,
+	feeds,
+	currentIndex,
+	disableMarkAsRead = false,
+}: Props = $props();
 
-	// Mark as read state
-	let isMarkingAsRead = $state(false);
+// Mark as read state
+let isMarkingAsRead = $state(false);
 
-	// Content fetching state
-	let isFetchingContent = $state(false);
-	let articleContent = $state<string | null>(null);
-	let articleID = $state<string | null>(null);
-	let contentError = $state<string | null>(null);
+// Content fetching state
+let isFetchingContent = $state(false);
+let articleContent = $state<string | null>(null);
+let articleID = $state<string | null>(null);
+let contentError = $state<string | null>(null);
 
-	// AI summary state
-	let isSummarizing = $state(false);
-	let summary = $state<string | null>(null);
-	let summaryError = $state<string | null>(null);
-	let abortController = $state<AbortController | null>(null);
+// AI summary state
+let isSummarizing = $state(false);
+let summary = $state<string | null>(null);
+let summaryError = $state<string | null>(null);
+let abortController = $state<AbortController | null>(null);
 
-	// Track previous feed URL to detect actual feed changes
-	let previousFeedUrl = $state<string | null>(null);
+// Track previous feed URL to detect actual feed changes
+let previousFeedUrl = $state<string | null>(null);
 
-	// Cleanup on modal close
-	$effect(() => {
-		if (!open) {
-			// Cancel any ongoing summary request
-			if (abortController) {
-				abortController.abort();
-				abortController = null;
-			}
-			// Reset states
-			articleContent = null;
-			articleID = null;
-			summary = null;
-			isFetchingContent = false;
-			isSummarizing = false;
-			contentError = null;
-			summaryError = null;
-			previousFeedUrl = null;
-		}
-	});
-
-	// Reset content states when feed changes (for arrow navigation)
-	$effect(() => {
-		const currentFeedUrl = feed?.normalizedUrl ?? null;
-
-		// Only reset when feed actually changes
-		if (currentFeedUrl === previousFeedUrl) return;
-
-		previousFeedUrl = currentFeedUrl;
-
+// Cleanup on modal close
+$effect(() => {
+	if (!open) {
 		// Cancel any ongoing summary request
 		if (abortController) {
 			abortController.abort();
 			abortController = null;
 		}
-		// Reset content states
+		// Reset states
 		articleContent = null;
 		articleID = null;
 		summary = null;
@@ -84,133 +83,169 @@
 		isSummarizing = false;
 		contentError = null;
 		summaryError = null;
-	});
+		previousFeedUrl = null;
+	}
+});
 
-	// Auto-fetch article content when modal opens
-	$effect(() => {
-		if (open && feed?.normalizedUrl && !articleContent && !isFetchingContent && !contentError) {
-			handleFetchFullArticle();
-		}
-	});
+// Reset content states when feed changes (for arrow navigation)
+$effect(() => {
+	const currentFeedUrl = feed?.normalizedUrl ?? null;
 
-	// Keyboard navigation
-	$effect(() => {
-		if (!open) return;
+	// Only reset when feed actually changes
+	if (currentFeedUrl === previousFeedUrl) return;
 
-		function handleKeyDown(event: KeyboardEvent) {
-			if (event.key === "ArrowLeft" && hasPrevious) {
-				event.preventDefault();
-				onPrevious?.();
-			} else if (event.key === "ArrowRight" && hasNext) {
-				event.preventDefault();
-				onNext?.();
-			}
-		}
+	previousFeedUrl = currentFeedUrl;
 
-		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
-	});
+	// Cancel any ongoing summary request
+	if (abortController) {
+		abortController.abort();
+		abortController = null;
+	}
+	// Reset content states
+	articleContent = null;
+	articleID = null;
+	summary = null;
+	isFetchingContent = false;
+	isSummarizing = false;
+	contentError = null;
+	summaryError = null;
+});
 
-	// Prefetch next 2 articles when modal opens or feed changes
-	$effect(() => {
-		if (open && feeds && currentIndex !== undefined && currentIndex >= 0) {
-			articlePrefetcher.triggerPrefetch(feeds, currentIndex, 2);
-		}
-	});
+// Auto-fetch article content when modal opens
+$effect(() => {
+	if (
+		open &&
+		feed?.normalizedUrl &&
+		!articleContent &&
+		!isFetchingContent &&
+		!contentError
+	) {
+		handleFetchFullArticle();
+	}
+});
 
-	async function handleMarkAsRead() {
-		if (!feed || isMarkingAsRead) return;
+// Keyboard navigation
+$effect(() => {
+	if (!open) return;
 
-		try {
-			isMarkingAsRead = true;
-			await updateFeedReadStatusClient(feed.normalizedUrl);
-			onMarkAsRead?.(feed.normalizedUrl);
-			// Parent handles navigation/closing after removing the feed
-		} catch (error) {
-			console.error("Failed to mark feed as read:", error);
-		} finally {
-			isMarkingAsRead = false;
+	function handleKeyDown(event: KeyboardEvent) {
+		if (event.key === "ArrowLeft" && hasPrevious) {
+			event.preventDefault();
+			onPrevious?.();
+		} else if (event.key === "ArrowRight" && hasNext) {
+			event.preventDefault();
+			onNext?.();
 		}
 	}
 
-	async function handleFetchFullArticle() {
-		if (!feed?.normalizedUrl || isFetchingContent) return;
+	window.addEventListener("keydown", handleKeyDown);
+	return () => window.removeEventListener("keydown", handleKeyDown);
+});
 
-		// Check prefetch cache first (using normalizedUrl for consistency)
-		const cachedContent = articlePrefetcher.getCachedContent(feed.normalizedUrl);
-		const cachedArticleId = articlePrefetcher.getCachedArticleId(feed.normalizedUrl);
+// Prefetch next 2 articles when modal opens or feed changes
+$effect(() => {
+	if (open && feeds && currentIndex !== undefined && currentIndex >= 0) {
+		articlePrefetcher.triggerPrefetch(feeds, currentIndex, 2);
+	}
+});
 
-		if (cachedContent) {
-			articleContent = cachedContent;
-			articleID = cachedArticleId;
+async function handleMarkAsRead() {
+	if (!feed || isMarkingAsRead) return;
+
+	try {
+		isMarkingAsRead = true;
+		await updateFeedReadStatusClient(feed.normalizedUrl);
+		onMarkAsRead?.(feed.normalizedUrl);
+		// Parent handles navigation/closing after removing the feed
+	} catch (error) {
+		console.error("Failed to mark feed as read:", error);
+	} finally {
+		isMarkingAsRead = false;
+	}
+}
+
+async function handleFetchFullArticle() {
+	if (!feed?.normalizedUrl || isFetchingContent) return;
+
+	// Check prefetch cache first (using normalizedUrl for consistency)
+	const cachedContent = articlePrefetcher.getCachedContent(feed.normalizedUrl);
+	const cachedArticleId = articlePrefetcher.getCachedArticleId(
+		feed.normalizedUrl,
+	);
+
+	if (cachedContent) {
+		articleContent = cachedContent;
+		articleID = cachedArticleId;
+		return;
+	}
+
+	try {
+		isFetchingContent = true;
+		contentError = null;
+
+		// Use normalizedUrl for API call (consistent with prefetcher)
+		const response = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
+
+		articleContent = response.content || null;
+		articleID = response.article_id || null;
+	} catch (err) {
+		contentError =
+			err instanceof Error ? err.message : "Failed to fetch article";
+	} finally {
+		isFetchingContent = false;
+	}
+}
+
+async function handleSummarize() {
+	if (!feed?.link || isSummarizing) return;
+
+	// Cancel previous request
+	if (abortController) {
+		abortController.abort();
+	}
+
+	isSummarizing = true;
+	summaryError = null;
+	summary = "";
+
+	try {
+		const transport = createClientTransport();
+		abortController = streamSummarizeWithAbortAdapter(
+			transport,
+			{
+				feedUrl: feed.link,
+				articleId: articleID || undefined,
+				title: feed.title,
+			},
+			(chunk: string) => {
+				summary = (summary || "") + chunk;
+			},
+			{}, // No typewriter effect for desktop
+			(result) => {
+				// onComplete
+				isSummarizing = false;
+				abortController = null;
+			},
+			(error) => {
+				// onError
+				if (error.name !== "AbortError") {
+					summaryError = error.message || "Failed to generate summary";
+				}
+				isSummarizing = false;
+				abortController = null;
+			},
+		);
+	} catch (err) {
+		if (err instanceof Error && err.name === "AbortError") {
+			// User cancelled, ignore
 			return;
 		}
-
-		try {
-			isFetchingContent = true;
-			contentError = null;
-
-			// Use normalizedUrl for API call (consistent with prefetcher)
-			const response = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
-
-			articleContent = response.content || null;
-			articleID = response.article_id || null;
-		} catch (err) {
-			contentError = err instanceof Error ? err.message : "Failed to fetch article";
-		} finally {
-			isFetchingContent = false;
-		}
+		summaryError =
+			err instanceof Error ? err.message : "Failed to generate summary";
+		isSummarizing = false;
+		abortController = null;
 	}
-
-	async function handleSummarize() {
-		if (!feed?.link || isSummarizing) return;
-
-		// Cancel previous request
-		if (abortController) {
-			abortController.abort();
-		}
-
-		isSummarizing = true;
-		summaryError = null;
-		summary = "";
-
-		try {
-			const transport = createClientTransport();
-			abortController = streamSummarizeWithAbortAdapter(
-				transport,
-				{
-					feedUrl: feed.link,
-					articleId: articleID || undefined,
-					title: feed.title,
-				},
-				(chunk: string) => {
-					summary = (summary || "") + chunk;
-				},
-				{}, // No typewriter effect for desktop
-				(result) => {
-					// onComplete
-					isSummarizing = false;
-					abortController = null;
-				},
-				(error) => {
-					// onError
-					if (error.name !== 'AbortError') {
-						summaryError = error.message || "Failed to generate summary";
-					}
-					isSummarizing = false;
-					abortController = null;
-				}
-			);
-		} catch (err) {
-			if (err instanceof Error && err.name === 'AbortError') {
-				// User cancelled, ignore
-				return;
-			}
-			summaryError = err instanceof Error ? err.message : "Failed to generate summary";
-			isSummarizing = false;
-			abortController = null;
-		}
-	}
+}
 </script>
 
 <Dialog.Root {open} onOpenChange={onOpenChange}>
@@ -368,7 +403,7 @@
 						<Button
 							onclick={handleMarkAsRead}
 							variant="outline"
-							disabled={isMarkingAsRead}
+							disabled={isMarkingAsRead || disableMarkAsRead}
 						>
 							{isMarkingAsRead ? "Marking..." : "Mark as Read"}
 						</Button>

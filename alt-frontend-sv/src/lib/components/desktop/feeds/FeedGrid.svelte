@@ -1,9 +1,21 @@
 <script lang="ts" module>
-	import type { RenderFeed } from "$lib/schema/feed";
-	export type FeedGridApi = {
-		removeFeedByUrl: (url: string) => Promise<void>;
-		getVisibleFeeds: () => RenderFeed[];
-	};
+import type { RenderFeed } from "$lib/schema/feed";
+
+export type RemoveFeedResult = {
+	nextFeedUrl: string | null;
+	totalCount: number;
+};
+
+export type FeedGridApi = {
+	/** Synchronously removes a feed and returns navigation info */
+	removeFeedByUrl: (url: string) => RemoveFeedResult;
+	/** Get all currently visible feeds */
+	getVisibleFeeds: () => RenderFeed[];
+	/** Get a specific feed by URL */
+	getFeedByUrl: (url: string) => RenderFeed | null;
+	/** Fetch a replacement feed in the background (fire-and-forget) */
+	fetchReplacementFeed: () => void;
+};
 </script>
 
 <script lang="ts">
@@ -32,28 +44,82 @@
 		feeds.filter(feed => !removedUrls.has(feed.normalizedUrl))
 	);
 
-	// Remove a feed by URL (for marking as read) and fetch replacement
-	async function removeFeedByUrl(url: string) {
+	/**
+	 * Synchronously removes a feed by URL and returns navigation info.
+	 * This is the key fix for the race condition - no async operations here.
+	 */
+	function removeFeedByUrl(url: string): RemoveFeedResult {
+		// Find the index of the feed being removed BEFORE mutation
+		const currentIndex = visibleFeeds.findIndex((f) => f.normalizedUrl === url);
+
+		// Synchronously update removed URLs
 		removedUrls = new Set(removedUrls).add(url);
 
-		// Fetch one more feed to replace the removed one
-		if (hasNextPage && nextCursor) {
-			try {
-				const result = await getFeedsWithCursorClient(nextCursor, 1);
+		// Calculate the new visible feeds (after removal)
+		const newVisibleFeeds = feeds.filter((f) => !removedUrls.has(f.normalizedUrl));
+		const totalCount = newVisibleFeeds.length;
+
+		if (totalCount === 0) {
+			return { nextFeedUrl: null, totalCount: 0 };
+		}
+
+		// If the removed item was the last one, return the new last item
+		if (currentIndex >= newVisibleFeeds.length) {
+			return {
+				nextFeedUrl: newVisibleFeeds[newVisibleFeeds.length - 1].normalizedUrl,
+				totalCount,
+			};
+		}
+
+		// Return the item at the same index (which is now the "next" item)
+		return {
+			nextFeedUrl: newVisibleFeeds[currentIndex].normalizedUrl,
+			totalCount,
+		};
+	}
+
+	/**
+	 * Get a feed by its URL.
+	 */
+	function getFeedByUrl(url: string): RenderFeed | null {
+		return visibleFeeds.find((f) => f.normalizedUrl === url) ?? null;
+	}
+
+	/**
+	 * Fetch a replacement feed in the background (fire-and-forget).
+	 * Separated from removeFeedByUrl to avoid race conditions.
+	 */
+	function fetchReplacementFeed(): void {
+		if (!hasNextPage || !nextCursor) return;
+
+		// Fire-and-forget: don't await, let it complete in the background
+		getFeedsWithCursorClient(nextCursor, 1)
+			.then((result) => {
 				if (result.data?.length > 0) {
 					feeds = [...feeds, ...result.data];
 					nextCursor = result.next_cursor ?? undefined;
 					hasNextPage = result.has_more ?? false;
 				}
-			} catch (err) {
+			})
+			.catch((err) => {
 				console.error("Failed to fetch replacement feed:", err);
-			}
-		}
+			});
 	}
 
-	// Expose API to parent
+	// Track if onReady has been called
+	let onReadyCalled = false;
+
+	// Expose API to parent - only on initial mount
 	$effect(() => {
-		onReady?.({ removeFeedByUrl, getVisibleFeeds: () => visibleFeeds });
+		if (onReadyCalled || isLoading) return;
+
+		onReadyCalled = true;
+		onReady?.({
+			removeFeedByUrl,
+			getVisibleFeeds: () => visibleFeeds,
+			getFeedByUrl,
+			fetchReplacementFeed,
+		});
 	});
 	let isLoading = $state(true);
 	let isFetchingNextPage = $state(false);
