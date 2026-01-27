@@ -34,7 +34,7 @@ class Settings(BaseSettings):
         description="Ollama API base URL",
     )
     ollama_model: str = Field(
-        default="gemma3-4b-16k",
+        default="gemma3-4b-8k",
         description="Ollama model to use for G-Eval (shares with news-creator)",
     )
     ollama_timeout: int = Field(
