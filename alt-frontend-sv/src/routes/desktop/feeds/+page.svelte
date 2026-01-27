@@ -69,11 +69,11 @@ function handleMarkAsRead(feedUrl: string) {
 	isProcessingMarkAsRead = true;
 
 	// Synchronously get navigation info BEFORE any async operations
-	const { nextFeedUrl, totalCount: newTotalCount } =
-		feedGridApi.removeFeedByUrl(feedUrl);
+	const { nextFeedUrl } = feedGridApi.removeFeedByUrl(feedUrl);
 
 	// Navigate based on pre-calculated info (no async dependency)
-	if (newTotalCount === 0) {
+	// nextFeedUrl is null when: no feeds left OR was viewing last feed
+	if (nextFeedUrl === null) {
 		isModalOpen = false;
 		selectedFeedUrl = null;
 	} else {

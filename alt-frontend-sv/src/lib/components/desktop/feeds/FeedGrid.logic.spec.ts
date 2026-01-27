@@ -15,6 +15,7 @@ function calculateNextFeedUrl(
 ): { nextFeedUrl: string | null; totalCount: number } {
 	// Find the index of the feed being removed
 	const currentIndex = feeds.findIndex((f) => f.normalizedUrl === removedUrl);
+	const wasLastItem = currentIndex === feeds.length - 1;
 
 	if (currentIndex === -1) {
 		return { nextFeedUrl: null, totalCount: feeds.length };
@@ -28,12 +29,10 @@ function calculateNextFeedUrl(
 		return { nextFeedUrl: null, totalCount: 0 };
 	}
 
-	// If we removed the last item, return the new last item (which is the previous one)
-	if (currentIndex >= remainingFeeds.length) {
-		return {
-			nextFeedUrl: remainingFeeds[remainingFeeds.length - 1].normalizedUrl,
-			totalCount,
-		};
+	// If we removed the last item, return null to signal "close modal"
+	// (Don't navigate to previous - this matches expected UX)
+	if (wasLastItem) {
+		return { nextFeedUrl: null, totalCount };
 	}
 
 	// Otherwise, return the item at the same index (which was the next item)
@@ -71,14 +70,14 @@ describe("FeedGrid Logic", () => {
 			expect(result.totalCount).toBe(4);
 		});
 
-		it("returns previous feed URL when last item is removed", () => {
+		it("returns null when last item is removed (to close modal)", () => {
 			const result = calculateNextFeedUrl(
 				renderFeedsFixture,
 				"https://example.com/feed-5", // index 4, last item
 			);
 
-			// After removing feed-5, feed-4 is the new last item
-			expect(result.nextFeedUrl).toBe("https://example.com/feed-4");
+			// After removing feed-5 (last item), return null to signal "close modal"
+			expect(result.nextFeedUrl).toBeNull();
 			expect(result.totalCount).toBe(4);
 		});
 
@@ -116,9 +115,10 @@ describe("FeedGrid Logic", () => {
 			expect(result.nextFeedUrl).toBe("https://example.com/feed-5");
 			feeds = feeds.filter((f) => f.normalizedUrl !== "https://example.com/feed-4");
 
-			// Remove feed-5 (now last, should go to previous)
+			// Remove feed-5 (now last, should return null to close modal)
 			result = calculateNextFeedUrl(feeds, "https://example.com/feed-5");
-			expect(result.nextFeedUrl).toBe("https://example.com/feed-1");
+			expect(result.nextFeedUrl).toBeNull(); // Close modal when removing last item
+			expect(result.totalCount).toBe(1);
 			feeds = feeds.filter((f) => f.normalizedUrl !== "https://example.com/feed-5");
 
 			// Remove last remaining feed

@@ -88,10 +88,15 @@ export async function getArticleSummaryClient(
  */
 export async function getFeedContentOnTheFlyClient(
 	feedUrl: string,
+	options?: { signal?: AbortSignal },
 ): Promise<FeedContentOnTheFlyResponse> {
 	const transport = createClientTransport();
 	const { fetchArticleContent } = await import("$lib/connect/articles");
-	const response = await fetchArticleContent(transport, feedUrl);
+	const response = await fetchArticleContent(
+		transport,
+		feedUrl,
+		options?.signal,
+	);
 
 	return {
 		content: response.content,

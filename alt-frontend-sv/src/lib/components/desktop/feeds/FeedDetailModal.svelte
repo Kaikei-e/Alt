@@ -64,12 +64,20 @@ let summary = $state<string | null>(null);
 let summaryError = $state<string | null>(null);
 let abortController = $state<AbortController | null>(null);
 
+// Content fetch abort controller
+let contentAbortController = $state<AbortController | null>(null);
+
 // Track previous feed URL to detect actual feed changes
 let previousFeedUrl = $state<string | null>(null);
 
 // Cleanup on modal close
 $effect(() => {
 	if (!open) {
+		// Cancel any ongoing content fetch request
+		if (contentAbortController) {
+			contentAbortController.abort();
+			contentAbortController = null;
+		}
 		// Cancel any ongoing summary request
 		if (abortController) {
 			abortController.abort();
@@ -96,6 +104,11 @@ $effect(() => {
 
 	previousFeedUrl = currentFeedUrl;
 
+	// Cancel any ongoing content fetch request
+	if (contentAbortController) {
+		contentAbortController.abort();
+		contentAbortController = null;
+	}
 	// Cancel any ongoing summary request
 	if (abortController) {
 		abortController.abort();
@@ -167,32 +180,59 @@ async function handleMarkAsRead() {
 async function handleFetchFullArticle() {
 	if (!feed?.normalizedUrl || isFetchingContent) return;
 
+	const targetFeedUrl = feed.normalizedUrl; // Capture for stale response validation
+
 	// Check prefetch cache first (using normalizedUrl for consistency)
-	const cachedContent = articlePrefetcher.getCachedContent(feed.normalizedUrl);
-	const cachedArticleId = articlePrefetcher.getCachedArticleId(
-		feed.normalizedUrl,
-	);
+	const cachedContent = articlePrefetcher.getCachedContent(targetFeedUrl);
+	const cachedArticleId = articlePrefetcher.getCachedArticleId(targetFeedUrl);
 
 	if (cachedContent) {
+		// Validate feed hasn't changed before applying cached content
+		if (feed.normalizedUrl !== targetFeedUrl) return;
 		articleContent = cachedContent;
 		articleID = cachedArticleId;
 		return;
 	}
+
+	// Cancel previous content fetch request
+	if (contentAbortController) {
+		contentAbortController.abort();
+	}
+	contentAbortController = new AbortController();
+	const currentController = contentAbortController;
 
 	try {
 		isFetchingContent = true;
 		contentError = null;
 
 		// Use normalizedUrl for API call (consistent with prefetcher)
-		const response = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
+		const response = await getFeedContentOnTheFlyClient(targetFeedUrl, {
+			signal: currentController.signal,
+		});
+
+		// Defensive validation: discard stale response if feed changed
+		if (feed.normalizedUrl !== targetFeedUrl) {
+			console.log("[FeedDetailModal] Feed changed, discarding stale response");
+			return;
+		}
 
 		articleContent = response.content || null;
 		articleID = response.article_id || null;
 	} catch (err) {
-		contentError =
-			err instanceof Error ? err.message : "Failed to fetch article";
+		// Ignore AbortError (user cancelled)
+		if (err instanceof Error && err.name === "AbortError") return;
+
+		// Only set error if feed hasn't changed
+		if (feed.normalizedUrl === targetFeedUrl) {
+			contentError =
+				err instanceof Error ? err.message : "Failed to fetch article";
+		}
 	} finally {
-		isFetchingContent = false;
+		// Only update state if this is still the current controller
+		if (contentAbortController === currentController) {
+			isFetchingContent = false;
+			contentAbortController = null;
+		}
 	}
 }
 

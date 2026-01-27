@@ -90,14 +90,19 @@ export function createArticleClient(transport: Transport) {
  *
  * @param transport - The Connect transport to use
  * @param url - The article URL to fetch
+ * @param signal - Optional AbortSignal to cancel the request
  * @returns The fetched article content
  */
 export async function fetchArticleContent(
 	transport: Transport,
 	url: string,
+	signal?: AbortSignal,
 ): Promise<FetchArticleContentResult> {
 	const client = createArticleClient(transport);
-	const response = await client.fetchArticleContent({ url });
+	const response = await client.fetchArticleContent(
+		{ url },
+		signal ? { signal } : undefined,
+	);
 
 	return {
 		url: response.url,

@@ -46,6 +46,7 @@ class PageStateManager {
 		return {
 			removeFeedByUrl: (url: string): RemoveFeedResult => {
 				const currentIndex = this.visibleFeeds.findIndex((f) => f.normalizedUrl === url);
+				const wasLastItem = currentIndex === this.visibleFeeds.length - 1;
 				this.removedUrls.add(url);
 				const newFeeds = this.visibleFeeds;
 				const totalCount = newFeeds.length;
@@ -54,12 +55,9 @@ class PageStateManager {
 					return { nextFeedUrl: null, totalCount: 0 };
 				}
 
-				// If removed last item, return previous
-				if (currentIndex >= newFeeds.length) {
-					return {
-						nextFeedUrl: newFeeds[newFeeds.length - 1].normalizedUrl,
-						totalCount,
-					};
+				// If removed last item, return null to close modal
+				if (wasLastItem) {
+					return { nextFeedUrl: null, totalCount };
 				}
 
 				// Return item at same index (next item)
@@ -82,13 +80,14 @@ class PageStateManager {
 
 		try {
 			// Synchronously get navigation info BEFORE any async operations
-			const { nextFeedUrl, totalCount } = api.removeFeedByUrl(feedUrl);
+			const { nextFeedUrl } = api.removeFeedByUrl(feedUrl);
 
 			// Simulate API call (async)
 			await new Promise((resolve) => setTimeout(resolve, 10));
 
 			// Navigate based on pre-calculated info
-			if (totalCount === 0) {
+			// nextFeedUrl is null when: no feeds left OR was viewing last feed
+			if (nextFeedUrl === null) {
 				this.isModalOpen = false;
 				this.selectedFeedUrl = null;
 			} else {
@@ -153,14 +152,14 @@ describe("Desktop Feeds Page State Management", () => {
 			expect(state.selectedFeed?.id).toBe("feed-3");
 		});
 
-		it("navigates to previous when last feed is marked as read", async () => {
+		it("closes modal when last feed is marked as read", async () => {
 			state.openModal("https://example.com/feed-5");
 
 			await state.handleMarkAsRead("https://example.com/feed-5", api);
 
-			// Should navigate to feed-4 (previous, since there's no next)
-			expect(state.selectedFeedUrl).toBe("https://example.com/feed-4");
-			expect(state.selectedFeed?.id).toBe("feed-4");
+			// Should close modal (not navigate to previous)
+			expect(state.isModalOpen).toBe(false);
+			expect(state.selectedFeedUrl).toBeNull();
 		});
 
 		it("closes modal when only remaining feed is marked as read", async () => {

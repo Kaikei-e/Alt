@@ -47,10 +47,15 @@ export type FeedGridApi = {
 	/**
 	 * Synchronously removes a feed by URL and returns navigation info.
 	 * This is the key fix for the race condition - no async operations here.
+	 *
+	 * Navigation behavior:
+	 * - If there's a next feed, return its URL (navigate forward)
+	 * - If no next feed (was viewing last item), return null (close modal)
 	 */
 	function removeFeedByUrl(url: string): RemoveFeedResult {
 		// Find the index of the feed being removed BEFORE mutation
 		const currentIndex = visibleFeeds.findIndex((f) => f.normalizedUrl === url);
+		const wasLastItem = currentIndex === visibleFeeds.length - 1;
 
 		// Synchronously update removed URLs
 		removedUrls = new Set(removedUrls).add(url);
@@ -63,12 +68,10 @@ export type FeedGridApi = {
 			return { nextFeedUrl: null, totalCount: 0 };
 		}
 
-		// If the removed item was the last one, return the new last item
-		if (currentIndex >= newVisibleFeeds.length) {
-			return {
-				nextFeedUrl: newVisibleFeeds[newVisibleFeeds.length - 1].normalizedUrl,
-				totalCount,
-			};
+		// If the removed item was the last one, return null to signal "close modal"
+		// (Don't navigate to previous - this matches expected UX)
+		if (wasLastItem) {
+			return { nextFeedUrl: null, totalCount };
 		}
 
 		// Return the item at the same index (which is now the "next" item)
