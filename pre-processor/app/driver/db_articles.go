@@ -325,12 +325,11 @@ func UpsertArticlesBatch(ctx context.Context, db *pgxpool.Pool, articles []*mode
 
 	batch := &pgx.Batch{}
 	query := `
-		INSERT INTO articles (title, content, url, feed_id, user_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		INSERT INTO articles (title, content, url, feed_id, user_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (url) DO UPDATE SET
 			title = EXCLUDED.title,
-			content = EXCLUDED.content,
-			updated_at = NOW()
+			content = EXCLUDED.content
 	`
 
 	for _, a := range articles {

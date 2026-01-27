@@ -43,16 +43,16 @@ func BatchInsertArticles(ctx context.Context, db interface{}, articles []models.
 	// Build bulk insert query
 	query := `
 		INSERT INTO articles (
-			title, content, url, feed_id, created_at, updated_at
+			title, content, url, feed_id, created_at
 		) VALUES `
 
-	values := make([]interface{}, 0, len(articles)*6)
+	values := make([]interface{}, 0, len(articles)*5)
 	placeholders := make([]string, 0, len(articles))
 
 	for i, article := range articles {
 		placeholder := fmt.Sprintf(
-			"($%d, $%d, $%d, $%d, $%d, $%d)",
-			i*6+1, i*6+2, i*6+3, i*6+4, i*6+5, i*6+6,
+			"($%d, $%d, $%d, $%d, $%d)",
+			i*5+1, i*5+2, i*5+3, i*5+4, i*5+5,
 		)
 		placeholders = append(placeholders, placeholder)
 
@@ -63,7 +63,6 @@ func BatchInsertArticles(ctx context.Context, db interface{}, articles []models.
 			article.URL,
 			article.FeedID,
 			now,
-			now,
 		)
 	}
 
@@ -71,8 +70,7 @@ func BatchInsertArticles(ctx context.Context, db interface{}, articles []models.
 	query += ` ON CONFLICT (url) DO UPDATE SET
 		title = EXCLUDED.title,
 		content = EXCLUDED.content,
-		feed_id = EXCLUDED.feed_id,
-		updated_at = EXCLUDED.updated_at`
+		feed_id = EXCLUDED.feed_id`
 
 	// Execute batch insert
 	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
@@ -131,7 +129,7 @@ func BatchUpdateArticles(ctx context.Context, db interface{}, articles []models.
 	var ids []string
 
 	for i, article := range articles {
-		query += fmt.Sprintf(" WHEN id = $%d THEN $%d", i*4+1, i*4+2)
+		query += fmt.Sprintf(" WHEN id = $%d THEN $%d", i*3+1, i*3+2)
 		values = append(values, article.ID, article.Title)
 		ids = append(ids, article.ID)
 	}
@@ -139,16 +137,8 @@ func BatchUpdateArticles(ctx context.Context, db interface{}, articles []models.
 	query += " END, content = CASE"
 
 	for i, article := range articles {
-		query += fmt.Sprintf(" WHEN id = $%d THEN $%d", i*4+1, i*4+3)
+		query += fmt.Sprintf(" WHEN id = $%d THEN $%d", i*3+1, i*3+3)
 		values = append(values, article.Content)
-	}
-
-	query += " END, updated_at = CASE"
-
-	now := time.Now()
-	for i := range articles {
-		query += fmt.Sprintf(" WHEN id = $%d THEN $%d", i*4+1, len(values)+1)
-		values = append(values, now)
 	}
 
 	query += " END WHERE id IN ("
