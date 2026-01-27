@@ -98,8 +98,8 @@ services:
       dockerfile: Dockerfile.app
     environment:
       - LLM_SERVICE_URL=http://news-creator-backend:11435
-      - LLM_MODEL=${LLM_MODEL:-gemma3-4b-8k}
-      - MODEL_ROUTING_ENABLED=true
+      - LLM_MODEL=gemma3-4b-8k
+      - MODEL_ROUTING_ENABLED=false
       - LLM_KEEP_ALIVE_8K=24h
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}

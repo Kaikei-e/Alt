@@ -102,6 +102,8 @@ services:
       - RUSTBERT_CACHE=/tmp/rustbert
       # Clustering timeout: relax stuck detection from 600s to 1200s for large genres
       - RECAP_CLUSTERING_STUCK_THRESHOLD_SECS=${RECAP_CLUSTERING_STUCK_THRESHOLD_SECS:-1200}
+      # Batch summary chunk size: reduced from 25 to 10 to prevent timeout with slow LLM
+      - RECAP_BATCH_SUMMARY_CHUNK_SIZE=${RECAP_BATCH_SUMMARY_CHUNK_SIZE:-10}
     secrets:
       - recap_db_password
       - service_secret
@@ -248,6 +250,7 @@ services:
       - RECAP_DB_PASSWORD_FILE=/run/secrets/recap_db_password
       - RECAP_DB_NAME=${RECAP_DB_NAME}
       - OLLAMA_URL=http://news-creator:11434
+      - OLLAMA_MODEL=gemma3-4b-8k
       - RECAP_WORKER_URL=http://recap-worker:9005
       - EVALUATION_SCHEDULE=0 6 * * *
       - LOG_LEVEL=INFO

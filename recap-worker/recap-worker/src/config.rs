@@ -690,7 +690,7 @@ fn load_basic_config() -> Result<BasicConfig, ConfigError> {
         env::var("LLM_PROMPT_VERSION").unwrap_or_else(|_| "recap-ja-v2".to_string());
     let llm_max_concurrency = parse_non_zero_usize("LLM_MAX_CONCURRENCY", 1)?;
     let llm_summary_timeout = parse_duration_secs("LLM_SUMMARY_TIMEOUT_SECS", 600)?;
-    let batch_summary_chunk_size = parse_usize("RECAP_BATCH_SUMMARY_CHUNK_SIZE", 25)?;
+    let batch_summary_chunk_size = parse_usize("RECAP_BATCH_SUMMARY_CHUNK_SIZE", 10)?;
 
     Ok(BasicConfig {
         recap_db_dsn,
