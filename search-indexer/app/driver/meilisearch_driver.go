@@ -193,12 +193,12 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 
 	// Set ranking rules (default + custom)
 	rankingRules := []string{
-		"words",      // Number of matching query terms
-		"typo",       // Number of typos
-		"proximity",  // Proximity of query terms in document
-		"attribute",  // Attribute ranking order
-		"sort",       // User-defined sort parameter
-		"exactness",  // Similarity of matched vs. query words
+		"words",     // Number of matching query terms
+		"typo",      // Number of typos
+		"proximity", // Proximity of query terms in document
+		"attribute", // Attribute ranking order
+		"sort",      // User-defined sort parameter
+		"exactness", // Similarity of matched vs. query words
 	}
 	if _, err := d.index.UpdateRankingRules(&rankingRules); err != nil {
 		return &DriverError{
