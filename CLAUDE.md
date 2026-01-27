@@ -57,9 +57,9 @@ curl http://localhost:7700/health       # Meilisearch
 
 ## Critical Rules
 
-1. **TDD First**: Write failing test before implementation (RED -> GREEN -> REFACTOR)
-2. **Compose-First**: Docker Compose is source of truth
-3. **Rate Limiting**: 5-second minimum intervals for external APIs
+1. **IMPORTANT: TDD First** - Write failing test BEFORE implementation (RED -> GREEN -> REFACTOR)
+2. **IMPORTANT: Rate Limiting** - 5-second minimum intervals for external APIs
+3. **Compose-First**: Docker Compose is source of truth
 4. **No Secrets in Code**: Use `.env` and Docker secrets
 5. **Service Docs**: See `<service>/CLAUDE.md` for service-specific guidance
 
