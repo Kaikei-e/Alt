@@ -52,22 +52,22 @@ type HealthCheckConfig struct {
 
 // InoreaderUserInfo represents user info from Inoreader API
 type InoreaderUserInfo struct {
-	UserID   string `json:"userId"`
-	UserName string `json:"userName"`
+	UserID    string `json:"userId"`
+	UserName  string `json:"userName"`
 	UserEmail string `json:"userEmail"`
 }
 
 func main() {
 	var (
-		namespace         = flag.String("namespace", "alt-processing", "Kubernetes namespace")
-		oauth2SecretName  = flag.String("oauth2-secret", "pre-processor-sidecar-oauth2-token", "OAuth2 token secret name")
-		legacySecretName  = flag.String("legacy-secret", "pre-processor-sidecar-secrets", "Legacy secret name")
-		outputFormat      = flag.String("format", "text", "Output format: text, json, prometheus")
+		namespace           = flag.String("namespace", "alt-processing", "Kubernetes namespace")
+		oauth2SecretName    = flag.String("oauth2-secret", "pre-processor-sidecar-oauth2-token", "OAuth2 token secret name")
+		legacySecretName    = flag.String("legacy-secret", "pre-processor-sidecar-secrets", "Legacy secret name")
+		outputFormat        = flag.String("format", "text", "Output format: text, json, prometheus")
 		enableAPIValidation = flag.Bool("api-validation", true, "Enable API validation checks")
-		enableConnCheck   = flag.Bool("connectivity", true, "Enable connectivity checks")
-		healthCheckMode   = flag.Bool("health-check", false, "Run as health check (exit 0 for healthy, 1 for unhealthy)")
-		verbose           = flag.Bool("verbose", false, "Enable verbose logging")
-		timeout           = flag.Duration("timeout", 30*time.Second, "Health check timeout")
+		enableConnCheck     = flag.Bool("connectivity", true, "Enable connectivity checks")
+		healthCheckMode     = flag.Bool("health-check", false, "Run as health check (exit 0 for healthy, 1 for unhealthy)")
+		verbose             = flag.Bool("verbose", false, "Enable verbose logging")
+		timeout             = flag.Duration("timeout", 30*time.Second, "Health check timeout")
 	)
 	flag.Parse()
 
@@ -347,7 +347,7 @@ func (c *CredentialHealthChecker) checkInoreaderConnectivity(ctx context.Context
 		if resp.Body != nil {
 			resp.Body.Close()
 		}
-		
+
 		if resp.StatusCode == 401 {
 			// 401 is expected without authentication, but confirms API is reachable
 			result.Status = "healthy"
@@ -463,9 +463,9 @@ func (c *CredentialHealthChecker) validateOAuth2TokenWithAPI(ctx context.Context
 
 func outputJSON(results []HealthCheckResult) {
 	output := map[string]interface{}{
-		"timestamp":     time.Now(),
+		"timestamp":      time.Now(),
 		"overall_status": getOverallStatus(results),
-		"checks":        results,
+		"checks":         results,
 	}
 	json.NewEncoder(os.Stdout).Encode(output)
 }
@@ -473,7 +473,7 @@ func outputJSON(results []HealthCheckResult) {
 func outputPrometheus(results []HealthCheckResult) {
 	fmt.Println("# HELP credential_health_check_status Health check status (0=healthy, 1=warning, 2=critical, 3=unknown)")
 	fmt.Println("# TYPE credential_health_check_status gauge")
-	
+
 	for _, result := range results {
 		status := 3 // unknown
 		switch result.Status {
@@ -484,12 +484,12 @@ func outputPrometheus(results []HealthCheckResult) {
 		case "critical":
 			status = 2
 		}
-		
+
 		fmt.Printf("credential_health_check_status{component=\"%s\"} %d\n", result.Component, status)
-		fmt.Printf("credential_health_check_response_time_ms{component=\"%s\"} %.2f\n", 
+		fmt.Printf("credential_health_check_response_time_ms{component=\"%s\"} %.2f\n",
 			result.Component, float64(result.ResponseTime.Nanoseconds())/1000000.0)
 	}
-	
+
 	overallStatus := 3
 	switch getOverallStatus(results) {
 	case "healthy":
@@ -504,7 +504,7 @@ func outputPrometheus(results []HealthCheckResult) {
 
 func outputText(results []HealthCheckResult, verbose bool) {
 	overallStatus := getOverallStatus(results)
-	
+
 	// Status indicators
 	indicators := map[string]string{
 		"healthy":  "✅",
@@ -512,17 +512,17 @@ func outputText(results []HealthCheckResult, verbose bool) {
 		"critical": "❌",
 		"unknown":  "❓",
 	}
-	
+
 	fmt.Printf("%s Overall Status: %s\n\n", indicators[overallStatus], strings.ToUpper(overallStatus))
-	
+
 	for _, result := range results {
 		indicator := indicators[result.Status]
 		fmt.Printf("%s %s: %s\n", indicator, result.Component, result.Message)
-		
+
 		if verbose {
 			fmt.Printf("   Response Time: %v\n", result.ResponseTime)
 			fmt.Printf("   Timestamp: %s\n", result.Timestamp.Format(time.RFC3339))
-			
+
 			if len(result.Details) > 0 {
 				fmt.Printf("   Details:\n")
 				for key, value := range result.Details {
@@ -537,7 +537,7 @@ func outputText(results []HealthCheckResult, verbose bool) {
 func getOverallStatus(results []HealthCheckResult) string {
 	hasCritical := false
 	hasWarning := false
-	
+
 	for _, result := range results {
 		switch result.Status {
 		case "critical":
@@ -546,7 +546,7 @@ func getOverallStatus(results []HealthCheckResult) string {
 			hasWarning = true
 		}
 	}
-	
+
 	if hasCritical {
 		return "critical"
 	}
