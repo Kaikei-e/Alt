@@ -13,8 +13,10 @@ import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
-  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
 } from "@opentelemetry/semantic-conventions";
+
+// deployment.environment is not yet stable in semantic-conventions
+const ATTR_DEPLOYMENT_ENVIRONMENT = "deployment.environment";
 
 /**
  * OTel configuration from environment variables
@@ -57,7 +59,7 @@ export function initOTelProvider(config?: OTelConfig): () => void {
   const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: cfg.serviceName,
     [ATTR_SERVICE_VERSION]: cfg.serviceVersion,
-    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: cfg.environment,
+    [ATTR_DEPLOYMENT_ENVIRONMENT]: cfg.environment,
   });
 
   // Create OTLP log exporter
@@ -68,7 +70,7 @@ export function initOTelProvider(config?: OTelConfig): () => void {
   // Create logger provider (SDK v2: processors passed in constructor)
   loggerProvider = new LoggerProvider({
     resource,
-    logRecordProcessors: [new BatchLogRecordProcessor(logExporter)],
+    processors: [new BatchLogRecordProcessor(logExporter)],
   });
 
   // Set as global provider
