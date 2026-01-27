@@ -26,9 +26,9 @@ func TestLoad(t *testing.T) {
 				os.Unsetenv("CACHE_TTL")
 				os.Unsetenv("CSRF_SECRET")
 			},
-			cleanupEnv: func() {},
-			expected:   nil,
-			wantErr:    true,
+			cleanupEnv:  func() {},
+			expected:    nil,
+			wantErr:     true,
 			errContains: "CSRF_SECRET is required",
 		},
 		{
