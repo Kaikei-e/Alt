@@ -142,6 +142,7 @@
 		<div class="flex rounded-lg overflow-hidden border" style="border-color: var(--surface-border, #e5e7eb);">
 			{#each timeWindows as tw}
 				<button
+					data-testid="time-window-{tw.value}"
 					class="px-3 py-1.5 text-sm font-medium transition-colors"
 					style={jobProgress.currentWindow === tw.value
 						? "background: var(--alt-primary, #2f4f4f); color: #ffffff;"

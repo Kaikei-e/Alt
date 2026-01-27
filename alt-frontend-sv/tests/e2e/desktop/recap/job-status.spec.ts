@@ -149,17 +149,17 @@ test.describe("Desktop Recap Job Status", () => {
 		// Wait for time window selector
 		await expect(page.getByText("Time Window:")).toBeVisible();
 
-		// Verify time window buttons
-		await expect(page.getByRole("button", { name: "24h" })).toBeVisible();
-		await expect(page.getByRole("button", { name: "7d" })).toBeVisible();
+		// Verify time window buttons using data-testid
+		await expect(page.locator('[data-testid="time-window-24h"]')).toBeVisible();
+		await expect(page.locator('[data-testid="time-window-7d"]')).toBeVisible();
 
 		// Click on 7d time window
-		await page.getByRole("button", { name: "7d" }).click();
+		await page.locator('[data-testid="time-window-7d"]').click();
 
 		// Verify the button is now pressed (selected state)
-		await expect(page.getByRole("button", { name: "7d" })).toHaveAttribute("aria-pressed", "true");
+		await expect(page.locator('[data-testid="time-window-7d"]')).toHaveAttribute("aria-pressed", "true");
 		// Verify the previously selected button is no longer pressed
-		await expect(page.getByRole("button", { name: "24h" })).toHaveAttribute("aria-pressed", "false");
+		await expect(page.locator('[data-testid="time-window-24h"]')).toHaveAttribute("aria-pressed", "false");
 	});
 
 	test("refresh button reloads data", async ({ page }) => {
