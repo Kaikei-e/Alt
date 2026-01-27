@@ -14,10 +14,10 @@ type OAuth2Token struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
 	TokenType    string    `json:"token_type"`
-	ExpiresIn    int       `json:"expires_in"`    // Seconds until expiration
-	ExpiresAt    time.Time `json:"expires_at"`    // Calculated expiration time
+	ExpiresIn    int       `json:"expires_in"` // Seconds until expiration
+	ExpiresAt    time.Time `json:"expires_at"` // Calculated expiration time
 	Scope        string    `json:"scope"`
-	IssuedAt     time.Time `json:"issued_at"`     // When token was issued
+	IssuedAt     time.Time `json:"issued_at"` // When token was issued
 }
 
 // getClockSkewTolerance returns the clock skew tolerance from environment variable or default
@@ -90,7 +90,7 @@ func (t *OAuth2Token) IsValid() bool {
 // UpdateFromRefresh updates the token with new access token information
 func (t *OAuth2Token) UpdateFromRefresh(response InoreaderTokenResponse) {
 	now := time.Now()
-	
+
 	t.AccessToken = response.AccessToken
 	t.TokenType = response.TokenType
 	t.ExpiresIn = response.ExpiresIn

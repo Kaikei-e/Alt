@@ -105,7 +105,7 @@ func (r *EnvVarTokenRepository) Exists(ctx context.Context) bool {
 	refreshToken := os.Getenv("INOREADER_REFRESH_TOKEN")
 
 	exists := clientID != "" && clientSecret != "" && refreshToken != ""
-	
+
 	r.logger.Debug("Checking OAuth2 token existence in environment variables",
 		"exists", exists,
 		"has_client_id", clientID != "",
@@ -124,7 +124,7 @@ func (r *EnvVarTokenRepository) GetStoragePath() string {
 func (r *EnvVarTokenRepository) UpdateFromRefreshResponse(ctx context.Context, response *models.InoreaderTokenResponse) error {
 	// For environment variable approach, we create an in-memory representation
 	// The base credentials (client_id, client_secret, refresh_token) remain in environment variables
-	
+
 	expiresIn := 3600 // Default to 1 hour if not provided
 	if response.ExpiresIn > 0 {
 		expiresIn = response.ExpiresIn

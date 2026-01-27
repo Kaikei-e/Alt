@@ -5,15 +5,15 @@ package service
 
 import (
 	"context"
-	"testing"
-	"time"
 	"log/slog"
 	"os"
+	"testing"
+	"time"
 
-	"pre-processor-sidecar/models"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"pre-processor-sidecar/models"
 )
 
 // TestValidateAndRecoverToken_SkipsAPICallWhenTokenValid tests that API validation is skipped when token has sufficient time
@@ -21,39 +21,39 @@ func TestValidateAndRecoverToken_SkipsAPICallWhenTokenValid(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	tests := map[string]struct {
-		tokenExpiresIn    time.Duration
-		shouldCallAPI     bool
-		description       string
+		tokenExpiresIn time.Duration
+		shouldCallAPI  bool
+		description    string
 	}{
 		"token_valid_for_2_hours": {
-			tokenExpiresIn:    2 * time.Hour,
-			shouldCallAPI:     false, // Should skip API call
-			description:       "Token valid for 2 hours should not trigger API validation",
+			tokenExpiresIn: 2 * time.Hour,
+			shouldCallAPI:  false, // Should skip API call
+			description:    "Token valid for 2 hours should not trigger API validation",
 		},
 		"token_valid_for_1_hour": {
-			tokenExpiresIn:    1 * time.Hour,
-			shouldCallAPI:     false, // Should skip API call
-			description:       "Token valid for 1 hour should not trigger API validation",
+			tokenExpiresIn: 1 * time.Hour,
+			shouldCallAPI:  false, // Should skip API call
+			description:    "Token valid for 1 hour should not trigger API validation",
 		},
 		"token_valid_for_30_minutes": {
-			tokenExpiresIn:    30 * time.Minute,
-			shouldCallAPI:     false, // Should skip API call when > 15 minutes
-			description:       "Token valid for 30 minutes should not trigger API validation",
+			tokenExpiresIn: 30 * time.Minute,
+			shouldCallAPI:  false, // Should skip API call when > 15 minutes
+			description:    "Token valid for 30 minutes should not trigger API validation",
 		},
 		"token_valid_for_10_minutes": {
-			tokenExpiresIn:    10 * time.Minute,
-			shouldCallAPI:     true, // Should call API when close to expiry
-			description:       "Token valid for 10 minutes should trigger API validation",
+			tokenExpiresIn: 10 * time.Minute,
+			shouldCallAPI:  true, // Should call API when close to expiry
+			description:    "Token valid for 10 minutes should trigger API validation",
 		},
 		"token_valid_for_5_minutes": {
-			tokenExpiresIn:    5 * time.Minute,
-			shouldCallAPI:     true, // Should call API when very close to expiry
-			description:       "Token valid for 5 minutes should trigger API validation",
+			tokenExpiresIn: 5 * time.Minute,
+			shouldCallAPI:  true, // Should call API when very close to expiry
+			description:    "Token valid for 5 minutes should trigger API validation",
 		},
 		"token_expired": {
-			tokenExpiresIn:    -5 * time.Minute,
-			shouldCallAPI:     false, // Expired tokens skip API validation and go straight to refresh
-			description:       "Expired token should skip validation and go directly to refresh",
+			tokenExpiresIn: -5 * time.Minute,
+			shouldCallAPI:  false, // Expired tokens skip API validation and go straight to refresh
+			description:    "Expired token should skip validation and go directly to refresh",
 		},
 	}
 
@@ -78,10 +78,10 @@ func TestValidateAndRecoverToken_SkipsAPICallWhenTokenValid(t *testing.T) {
 			// Setup refresh mock for expired tokens (regardless of shouldCallAPI)
 			if tc.tokenExpiresIn < 0 {
 				refreshResponse := &models.InoreaderTokenResponse{
-					AccessToken:  "new_token",
-					TokenType:    "Bearer",
-					ExpiresIn:    3600,
-					Scope:        "read",
+					AccessToken: "new_token",
+					TokenType:   "Bearer",
+					ExpiresIn:   3600,
+					Scope:       "read",
 				}
 				mockClient.On("RefreshToken", mock.Anything, "test_refresh_token").Return(refreshResponse, nil).Maybe()
 				mockRepo.On("UpdateToken", mock.Anything, mock.AnythingOfType("*models.OAuth2Token")).Return(nil).Maybe()
@@ -157,7 +157,7 @@ func TestAPICallLimit_DailyLimit(t *testing.T) {
 	// Simulate a day's worth of operations
 	// With 30-minute health checks: 48 checks/day
 	// With proper token validation threshold: should only validate when necessary
-	
+
 	mockRepo := &MockTokenRepository{}
 	mockClient := &MockOAuth2Driver{}
 
@@ -199,8 +199,7 @@ func TestAPICallLimit_DailyLimit(t *testing.T) {
 
 	// Assert that we stayed well under the 100 API calls/day limit
 	assert.Less(t, apiCallCount, 20, "Should make far fewer than 20 API calls per day with proper thresholds")
-	
+
 	mockRepo.AssertExpectations(t)
 	mockClient.AssertExpectations(t)
 }
-

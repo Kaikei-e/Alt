@@ -103,10 +103,10 @@ func (r *PostgreSQLSubscriptionRepository) SaveSubscriptions(ctx context.Context
 			id,
 			sub.InoreaderID, // Inoreader ID
 			sub.Title,
-			category,     // Extracted from Categories
+			category,      // Extracted from Categories
 			normalizedURL, // Feed URL (normalized)
-			now,          // synced_at
-			now,          // created_at
+			now,           // synced_at
+			now,           // created_at
 		)
 		if err != nil {
 			r.logger.Error("Failed to save subscription",

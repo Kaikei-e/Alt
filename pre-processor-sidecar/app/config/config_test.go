@@ -20,15 +20,15 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		"valid_full_config": {
 			envVars: map[string]string{
-				"SERVICE_NAME":                         "test-sidecar",
-				"LOG_LEVEL":                           "debug",
-				"PRE_PROCESSOR_SIDECAR_DB_PASSWORD":   "test_password",
-				"INOREADER_CLIENT_ID":                 "test_client_id",
-				"INOREADER_CLIENT_SECRET":             "test_client_secret",
-				"INOREADER_REFRESH_TOKEN":             "test_refresh_token",
-				"MAX_ARTICLES_PER_REQUEST":            "50",
-				"SYNC_INTERVAL":                       "15m",
-				"OAUTH2_TOKEN_REFRESH_BUFFER":         "300",
+				"SERVICE_NAME":                      "test-sidecar",
+				"LOG_LEVEL":                         "debug",
+				"PRE_PROCESSOR_SIDECAR_DB_PASSWORD": "test_password",
+				"INOREADER_CLIENT_ID":               "test_client_id",
+				"INOREADER_CLIENT_SECRET":           "test_client_secret",
+				"INOREADER_REFRESH_TOKEN":           "test_refresh_token",
+				"MAX_ARTICLES_PER_REQUEST":          "50",
+				"SYNC_INTERVAL":                     "15m",
+				"OAUTH2_TOKEN_REFRESH_BUFFER":       "300",
 			},
 			expectError: false,
 			validate: func(t *testing.T, cfg *Config) {
@@ -57,19 +57,19 @@ func TestLoadConfig(t *testing.T) {
 			},
 			expectError: true,
 		},
-                "default_values": {
-                        envVars: map[string]string{
-                                "PRE_PROCESSOR_SIDECAR_DB_PASSWORD": "test_password",
-                                "INOREADER_CLIENT_ID":               "test_client_id",
-                                "INOREADER_CLIENT_SECRET":           "test_client_secret",
-                                "INOREADER_REFRESH_TOKEN":           "test_refresh_token",
-                                // Ensure global HTTPS_PROXY doesn't override default
-                                "HTTPS_PROXY":                        "",
-                        },
-                        expectError: false,
-                        validate: func(t *testing.T, cfg *Config) {
-                                assert.Equal(t, "pre-processor-sidecar", cfg.ServiceName)
-                                assert.Equal(t, "info", cfg.LogLevel)
+		"default_values": {
+			envVars: map[string]string{
+				"PRE_PROCESSOR_SIDECAR_DB_PASSWORD": "test_password",
+				"INOREADER_CLIENT_ID":               "test_client_id",
+				"INOREADER_CLIENT_SECRET":           "test_client_secret",
+				"INOREADER_REFRESH_TOKEN":           "test_refresh_token",
+				// Ensure global HTTPS_PROXY doesn't override default
+				"HTTPS_PROXY": "",
+			},
+			expectError: false,
+			validate: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, "pre-processor-sidecar", cfg.ServiceName)
+				assert.Equal(t, "info", cfg.LogLevel)
 				assert.Equal(t, 100, cfg.Inoreader.MaxArticlesPerRequest)
 				assert.Equal(t, 30*time.Minute, cfg.RateLimit.SyncInterval)
 				assert.Equal(t, 10*time.Minute, cfg.Inoreader.TokenRefreshBuffer)
@@ -371,23 +371,23 @@ func TestEnhancedConfigurationManagement(t *testing.T) {
 	}{
 		"enhanced_config_with_all_features": {
 			envVars: map[string]string{
-				"SERVICE_NAME":                            "test-sidecar",
-				"SERVICE_VERSION":                         "2.0.0",
-				"ENVIRONMENT":                             "production",
-				"HTTP_PORT":                               "9090",
-				"PRE_PROCESSOR_SIDECAR_DB_PASSWORD":       "test_password",
-				"INOREADER_CLIENT_ID":                     "test_client_id",
-				"INOREADER_CLIENT_SECRET":                 "test_client_secret",
-				"INOREADER_REFRESH_TOKEN":                 "test_refresh_token",
-				"HTTP_CLIENT_TIMEOUT":                     "90s",
-				"RETRY_MAX_RETRIES":                       "5",
-				"RETRY_INITIAL_DELAY":                     "10s",
-				"CIRCUIT_BREAKER_FAILURE_THRESHOLD":       "5",
-				"CIRCUIT_BREAKER_SUCCESS_THRESHOLD":       "3",
-				"MONITORING_ENABLE_METRICS":               "false",
-				"MONITORING_ENABLE_TRACING":               "false",
-				"ENABLE_SCHEDULE_MODE":                    "true",
-				"ENABLE_DEBUG_MODE":                       "true",
+				"SERVICE_NAME":                      "test-sidecar",
+				"SERVICE_VERSION":                   "2.0.0",
+				"ENVIRONMENT":                       "production",
+				"HTTP_PORT":                         "9090",
+				"PRE_PROCESSOR_SIDECAR_DB_PASSWORD": "test_password",
+				"INOREADER_CLIENT_ID":               "test_client_id",
+				"INOREADER_CLIENT_SECRET":           "test_client_secret",
+				"INOREADER_REFRESH_TOKEN":           "test_refresh_token",
+				"HTTP_CLIENT_TIMEOUT":               "90s",
+				"RETRY_MAX_RETRIES":                 "5",
+				"RETRY_INITIAL_DELAY":               "10s",
+				"CIRCUIT_BREAKER_FAILURE_THRESHOLD": "5",
+				"CIRCUIT_BREAKER_SUCCESS_THRESHOLD": "3",
+				"MONITORING_ENABLE_METRICS":         "false",
+				"MONITORING_ENABLE_TRACING":         "false",
+				"ENABLE_SCHEDULE_MODE":              "true",
+				"ENABLE_DEBUG_MODE":                 "true",
 			},
 			expectError: false,
 			validate: func(t *testing.T, cfg *Config) {
@@ -410,15 +410,15 @@ func TestEnhancedConfigurationManagement(t *testing.T) {
 		},
 		"invalid_configuration_validation": {
 			envVars: map[string]string{
-				"SERVICE_NAME":                            "", // Invalid: empty service name
-				"SERVICE_VERSION":                         "1.0.0",
-				"HTTP_PORT":                               "99999", // Invalid: port out of range
-				"PRE_PROCESSOR_SIDECAR_DB_PASSWORD":       "test_password",
-				"INOREADER_CLIENT_ID":                     "test_client_id",
-				"INOREADER_CLIENT_SECRET":                 "test_client_secret",
-				"INOREADER_REFRESH_TOKEN":                 "test_refresh_token",
-				"RETRY_MULTIPLIER":                        "0.5", // Invalid: multiplier <= 1.0
-				"CIRCUIT_BREAKER_FAILURE_THRESHOLD":       "-1",  // Invalid: negative threshold
+				"SERVICE_NAME":                      "", // Invalid: empty service name
+				"SERVICE_VERSION":                   "1.0.0",
+				"HTTP_PORT":                         "99999", // Invalid: port out of range
+				"PRE_PROCESSOR_SIDECAR_DB_PASSWORD": "test_password",
+				"INOREADER_CLIENT_ID":               "test_client_id",
+				"INOREADER_CLIENT_SECRET":           "test_client_secret",
+				"INOREADER_REFRESH_TOKEN":           "test_refresh_token",
+				"RETRY_MULTIPLIER":                  "0.5", // Invalid: multiplier <= 1.0
+				"CIRCUIT_BREAKER_FAILURE_THRESHOLD": "-1",  // Invalid: negative threshold
 			},
 			expectError: true,
 		},
@@ -569,6 +569,6 @@ func TestConfigDatabaseConnectionString(t *testing.T) {
 
 	expected := "host=localhost port=5432 dbname=testdb user=testuser password=testpass sslmode=disable"
 	actual := cfg.GetDatabaseConnectionString()
-	
+
 	assert.Equal(t, expected, actual)
 }

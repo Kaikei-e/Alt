@@ -15,21 +15,21 @@ import (
 
 // TokenRotationManager manages token rotation monitoring and health checks
 type TokenRotationManager struct {
-	tokenRepo       repository.OAuth2TokenRepository
-	tokenService    *TokenManagementService
-	logger          *slog.Logger
-	
+	tokenRepo    repository.OAuth2TokenRepository
+	tokenService *TokenManagementService
+	logger       *slog.Logger
+
 	// Configuration
 	monitorInterval   time.Duration
 	healthCheckPeriod time.Duration
 	alertThreshold    time.Duration // Alert if token expires within this time
-	
+
 	// State
-	mu                sync.RWMutex
-	lastRotationTime  time.Time
-	rotationCount     int64
-	healthStatus      RotationHealthStatus
-	
+	mu               sync.RWMutex
+	lastRotationTime time.Time
+	rotationCount    int64
+	healthStatus     RotationHealthStatus
+
 	// Control
 	stopCh    chan struct{}
 	isRunning bool
@@ -37,14 +37,14 @@ type TokenRotationManager struct {
 
 // RotationHealthStatus represents the health status of token rotation
 type RotationHealthStatus struct {
-	LastCheck          time.Time     `json:"last_check"`
-	TokenExists        bool          `json:"token_exists"`
-	TokenValid         bool          `json:"token_valid"`
-	TimeToExpiry       time.Duration `json:"time_to_expiry"`
-	NeedsAttention     bool          `json:"needs_attention"`
-	LastRotationTime   time.Time     `json:"last_rotation_time,omitempty"`
-	RotationCount      int64         `json:"rotation_count"`
-	ErrorMessage       string        `json:"error_message,omitempty"`
+	LastCheck        time.Time     `json:"last_check"`
+	TokenExists      bool          `json:"token_exists"`
+	TokenValid       bool          `json:"token_valid"`
+	TimeToExpiry     time.Duration `json:"time_to_expiry"`
+	NeedsAttention   bool          `json:"needs_attention"`
+	LastRotationTime time.Time     `json:"last_rotation_time,omitempty"`
+	RotationCount    int64         `json:"rotation_count"`
+	ErrorMessage     string        `json:"error_message,omitempty"`
 }
 
 // NewTokenRotationManager creates a new token rotation manager
@@ -61,9 +61,9 @@ func NewTokenRotationManager(
 		tokenRepo:         tokenRepo,
 		tokenService:      tokenService,
 		logger:            logger,
-		monitorInterval:   10 * time.Minute,  // Check every 10 minutes
-		healthCheckPeriod: 30 * time.Minute,  // Health check every 30 minutes (reduced from 5 min)
-		alertThreshold:    30 * time.Minute,  // Alert if expires within 30 minutes
+		monitorInterval:   10 * time.Minute, // Check every 10 minutes
+		healthCheckPeriod: 30 * time.Minute, // Health check every 30 minutes (reduced from 5 min)
+		alertThreshold:    30 * time.Minute, // Alert if expires within 30 minutes
 		stopCh:            make(chan struct{}),
 		healthStatus: RotationHealthStatus{
 			LastCheck: time.Now(),
@@ -193,9 +193,9 @@ func (m *TokenRotationManager) performHealthCheck(ctx context.Context) {
 
 // updateHealthStatus updates the internal health status
 func (m *TokenRotationManager) updateHealthStatus(
-	exists, valid bool, 
-	timeToExpiry time.Duration, 
-	needsAttention bool, 
+	exists, valid bool,
+	timeToExpiry time.Duration,
+	needsAttention bool,
 	errorMsg string,
 ) {
 	m.mu.Lock()

@@ -18,12 +18,12 @@ type OWASPInputValidator struct {
 	refreshTokenPattern *regexp.Regexp
 	clientIDPattern     *regexp.Regexp
 	clientSecretPattern *regexp.Regexp
-	
+
 	// 危険な文字列パターン
 	sqlInjectionPatterns []*regexp.Regexp
-	xssPatterns         []*regexp.Regexp
+	xssPatterns          []*regexp.Regexp
 	pathTraversalPattern *regexp.Regexp
-	
+
 	// ホワイトリスト
 	safeCharacters *regexp.Regexp
 }
@@ -44,16 +44,16 @@ func NewOWASPInputValidator() *OWASPInputValidator {
 	validator := &OWASPInputValidator{
 		// Inoreaderリフレッシュトークン: 32-512文字、英数字とアンダースコア
 		refreshTokenPattern: regexp.MustCompile(`^[a-zA-Z0-9_]{32,512}$`),
-		
+
 		// InoreaderクライアントID: 数字10桁
 		clientIDPattern: regexp.MustCompile(`^[0-9]{10}$`),
-		
+
 		// Inoreaderクライアントシークレット: 32-128文字、安全な文字セット
 		clientSecretPattern: regexp.MustCompile(`^[a-zA-Z0-9_\-]{32,128}$`),
-		
+
 		// 安全な文字セット（英数字、ハイフン、アンダースコア）
 		safeCharacters: regexp.MustCompile(`^[a-zA-Z0-9_\-]*$`),
-		
+
 		// パストラバーサル対策
 		pathTraversalPattern: regexp.MustCompile(`\.\.[\\/]|[\\/]\.\.|^\.\.[\\/]|[\\/]\.\.$`),
 	}
@@ -216,9 +216,9 @@ func (v *OWASPInputValidator) validateClientSecret(secret string) error {
 func (v *OWASPInputValidator) validateSecurityThreats(req *models.TokenUpdateRequest) error {
 	// 全フィールドをチェック
 	fields := map[string]string{
-		"refresh_token":  req.RefreshToken,
-		"client_id":      req.ClientID,
-		"client_secret":  req.ClientSecret,
+		"refresh_token": req.RefreshToken,
+		"client_id":     req.ClientID,
+		"client_secret": req.ClientSecret,
 	}
 
 	for fieldName, value := range fields {
@@ -366,7 +366,7 @@ func containsControlCharacters(s string) bool {
 func (v *OWASPInputValidator) ValidateAndSanitizeInput(input string, fieldName string) (string, error) {
 	// まず基本的なサニタイゼーション
 	sanitized := v.SanitizeString(input)
-	
+
 	// 長さ制限（一般的な制限）
 	if len(sanitized) > 1024 {
 		return "", &ValidationError{
@@ -381,7 +381,7 @@ func (v *OWASPInputValidator) ValidateAndSanitizeInput(input string, fieldName s
 	case "refresh_token":
 		tempReq.RefreshToken = sanitized
 	case "client_id":
-		tempReq.ClientID = sanitized  
+		tempReq.ClientID = sanitized
 	case "client_secret":
 		tempReq.ClientSecret = sanitized
 	}

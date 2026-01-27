@@ -13,13 +13,13 @@ import (
 type OAuth2TokenRepository interface {
 	// GetCurrentToken retrieves the current OAuth2 token from storage
 	GetCurrentToken(ctx context.Context) (*models.OAuth2Token, error)
-	
+
 	// SaveToken stores a new OAuth2 token
 	SaveToken(ctx context.Context, token *models.OAuth2Token) error
-	
+
 	// UpdateToken updates an existing OAuth2 token
 	UpdateToken(ctx context.Context, token *models.OAuth2Token) error
-	
+
 	// DeleteToken removes the current OAuth2 token from storage
 	DeleteToken(ctx context.Context) error
 }

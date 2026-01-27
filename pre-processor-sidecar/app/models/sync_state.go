@@ -19,12 +19,12 @@ type SyncState struct {
 
 // APIUsageTracking represents daily API usage tracking for rate limiting
 type APIUsageTracking struct {
-	ID                uuid.UUID              `json:"id" db:"id"`
-	Date              time.Time              `json:"date" db:"date"`
-	Zone1Requests     int                    `json:"zone1_requests" db:"zone1_requests"`
-	Zone2Requests     int                    `json:"zone2_requests" db:"zone2_requests"`
-	LastReset         time.Time              `json:"last_reset" db:"last_reset"`
-	RateLimitHeaders  map[string]interface{} `json:"rate_limit_headers" db:"rate_limit_headers"`
+	ID               uuid.UUID              `json:"id" db:"id"`
+	Date             time.Time              `json:"date" db:"date"`
+	Zone1Requests    int                    `json:"zone1_requests" db:"zone1_requests"`
+	Zone2Requests    int                    `json:"zone2_requests" db:"zone2_requests"`
+	LastReset        time.Time              `json:"last_reset" db:"last_reset"`
+	RateLimitHeaders map[string]interface{} `json:"rate_limit_headers" db:"rate_limit_headers"`
 }
 
 // APIUsageInfo represents current API usage information for logging
@@ -66,14 +66,14 @@ func (s *SyncState) UpdateContinuationToken(token string) {
 func NewAPIUsageTracking() *APIUsageTracking {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	
+
 	return &APIUsageTracking{
-		ID:                uuid.New(),
-		Date:              today,
-		Zone1Requests:     0,
-		Zone2Requests:     0,
-		LastReset:         now,
-		RateLimitHeaders:  make(map[string]interface{}),
+		ID:               uuid.New(),
+		Date:             today,
+		Zone1Requests:    0,
+		Zone2Requests:    0,
+		LastReset:        now,
+		RateLimitHeaders: make(map[string]interface{}),
 	}
 }
 
@@ -96,7 +96,7 @@ func (u *APIUsageTracking) UpdateRateLimitHeaders(headers map[string]interface{}
 // GetUsageInfo returns current usage information for logging
 func (u *APIUsageTracking) GetUsageInfo() *APIUsageInfo {
 	const dailyLimit = 100 // Zone 1 daily limit
-	
+
 	return &APIUsageInfo{
 		Zone1Requests: u.Zone1Requests,
 		DailyLimit:    dailyLimit,
@@ -114,7 +114,7 @@ func (u *APIUsageTracking) ExceedsLimit() bool {
 func (u *APIUsageTracking) ShouldResetUsage() bool {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	
+
 	return u.Date.Before(today)
 }
 
@@ -122,7 +122,7 @@ func (u *APIUsageTracking) ShouldResetUsage() bool {
 func (u *APIUsageTracking) ResetUsage() {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	
+
 	u.Date = today
 	u.Zone1Requests = 0
 	u.Zone2Requests = 0

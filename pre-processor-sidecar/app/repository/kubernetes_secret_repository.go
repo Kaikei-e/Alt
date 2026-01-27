@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"pre-processor-sidecar/models"
-	
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -141,7 +141,7 @@ func (r *KubernetesSecretRepository) SaveToken(ctx context.Context, token *model
 	// Try to get existing secret first
 	_, err = r.clientset.CoreV1().Secrets(r.namespace).Get(
 		ctx, r.secretName, metav1.GetOptions{})
-	
+
 	if err != nil {
 		// Secret doesn't exist, create it
 		return r.createSecret(ctx, secretData)
@@ -168,7 +168,7 @@ func (r *KubernetesSecretRepository) UpdateToken(ctx context.Context, token *mod
 
 // UpdateWithRefreshRotation specifically handles refresh token rotation
 func (r *KubernetesSecretRepository) UpdateWithRefreshRotation(
-	ctx context.Context, 
+	ctx context.Context,
 	newToken *models.OAuth2Token,
 	oldRefreshToken string,
 ) error {
@@ -180,10 +180,10 @@ func (r *KubernetesSecretRepository) UpdateWithRefreshRotation(
 
 	// Add rotation metadata for auditing
 	rotationData := map[string]interface{}{
-		"rotation_timestamp": time.Now().Format(time.RFC3339),
+		"rotation_timestamp":     time.Now().Format(time.RFC3339),
 		"old_refresh_token_hash": hashToken(oldRefreshToken),
 		"new_refresh_token_hash": hashToken(newToken.RefreshToken),
-		"rotation_detected": oldRefreshToken != newToken.RefreshToken,
+		"rotation_detected":      oldRefreshToken != newToken.RefreshToken,
 	}
 
 	// Serialize rotation metadata
@@ -234,7 +234,7 @@ func (r *KubernetesSecretRepository) createSecret(ctx context.Context, data map[
 				"app.kubernetes.io/managed-by": "pre-processor-sidecar",
 			},
 			Annotations: map[string]string{
-				"pre-processor-sidecar/last-updated": time.Now().Format(time.RFC3339),
+				"pre-processor-sidecar/last-updated":  time.Now().Format(time.RFC3339),
 				"pre-processor-sidecar/token-version": "1",
 			},
 		},
@@ -267,7 +267,7 @@ func (r *KubernetesSecretRepository) updateSecret(ctx context.Context, data map[
 		currentSecret.Annotations = make(map[string]string)
 	}
 	currentSecret.Annotations["pre-processor-sidecar/last-updated"] = time.Now().Format(time.RFC3339)
-	
+
 	// Increment token version for tracking
 	currentVersion := currentSecret.Annotations["pre-processor-sidecar/token-version"]
 	if currentVersion == "" {
@@ -293,7 +293,7 @@ func (r *KubernetesSecretRepository) IsHealthy(ctx context.Context) error {
 	// Test connectivity by trying to get the secret (or check if it doesn't exist)
 	_, err := r.clientset.CoreV1().Secrets(r.namespace).Get(
 		ctx, r.secretName, metav1.GetOptions{})
-	
+
 	if err != nil {
 		// If secret doesn't exist, that's fine - we can create it
 		// If it's an auth or connectivity error, that's a problem
@@ -322,8 +322,7 @@ func hashToken(token string) string {
 // Helper function to check if error is NotFound
 func isNotFoundError(err error) bool {
 	// Simple check - in production might want more sophisticated error type checking
-	return err != nil && (
-		err.Error() == "not found" || 
+	return err != nil && (err.Error() == "not found" ||
 		strings.Contains(err.Error(), "not found") ||
 		strings.Contains(err.Error(), "NotFound"))
 }

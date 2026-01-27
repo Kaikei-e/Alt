@@ -1,24 +1,24 @@
 package handler
 
 import (
+	"github.com/stretchr/testify/assert"
+	"log/slog"
 	"testing"
 	"time"
-	"log/slog"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestScheduleHandler_NewScheduleHandler(t *testing.T) {
 	logger := slog.Default()
-	
+
 	// Test with nil handlers since we're focusing on basic functionality
 	handler := NewScheduleHandler(nil, nil, logger)
-	
+
 	assert.NotNil(t, handler)
 	assert.NotNil(t, handler.config)
 	assert.NotNil(t, handler.status)
 	assert.NotNil(t, handler.subscriptionScheduler)
 	assert.NotNil(t, handler.articleFetchScheduler)
-	
+
 	// Check default configuration
 	config := handler.GetConfig()
 	assert.Equal(t, 12*time.Hour, config.SubscriptionSyncInterval)
@@ -31,24 +31,24 @@ func TestScheduleHandler_NewScheduleHandler(t *testing.T) {
 
 func TestScheduleHandler_BatchProcessingConfiguration(t *testing.T) {
 	logger := slog.Default()
-	
+
 	handler := NewScheduleHandler(nil, nil, logger)
-	
+
 	// バッチ処理の設定値を検証
 	config := handler.GetConfig()
-	
+
 	// 30分間隔での記事取得
 	assert.Equal(t, 30*time.Minute, config.ArticleFetchInterval)
-	
+
 	// 12時間間隔での購読同期
 	assert.Equal(t, 12*time.Hour, config.SubscriptionSyncInterval)
-	
+
 	// ランダムスタートが有効
 	assert.True(t, config.EnableRandomStart)
-	
+
 	// 同時実行数
 	assert.Equal(t, 2, config.MaxConcurrentJobs)
-	
+
 	// 両方のスケジュールが有効
 	assert.True(t, config.EnableArticleFetch)
 	assert.True(t, config.EnableSubscriptionSync)
@@ -57,28 +57,28 @@ func TestScheduleHandler_BatchProcessingConfiguration(t *testing.T) {
 func TestScheduleHandler_DailyCycleSimulation(t *testing.T) {
 	// 1日のサイクルをシミュレーション
 	_ = slog.Default()
-	
+
 	// 24時間 = 48回の30分間隔
 	// 2個/回 × 48回 = 96回処理
 	// 46サブスクリプション × 2回/日 = 92回必要
-	
-	totalIntervals := 48     // 24時間 ÷ 30分
+
+	totalIntervals := 48 // 24時間 ÷ 30分
 	batchSize := 2
 	totalSubscriptions := 46
-	
-	expectedDailyProcessing := totalSubscriptions * 2  // 92回
+
+	expectedDailyProcessing := totalSubscriptions * 2   // 92回
 	actualDailyProcessing := totalIntervals * batchSize // 96回
-	
+
 	// 実際の処理回数が必要回数を満たすことを確認
 	assert.GreaterOrEqual(t, actualDailyProcessing, expectedDailyProcessing)
-	
+
 	// 1回転に必要な時間を計算
-	cycleIntervals := (totalSubscriptions + batchSize - 1) / batchSize  // 23回
-	cycleHours := float64(cycleIntervals) * 0.5  // 11.5時間
-	dailyCycles := 24.0 / cycleHours  // 約2.09回/日
-	
-	assert.InDelta(t, 2.0, dailyCycles, 0.2)  // 約2回/日
-	
+	cycleIntervals := (totalSubscriptions + batchSize - 1) / batchSize // 23回
+	cycleHours := float64(cycleIntervals) * 0.5                        // 11.5時間
+	dailyCycles := 24.0 / cycleHours                                   // 約2.09回/日
+
+	assert.InDelta(t, 2.0, dailyCycles, 0.2) // 約2回/日
+
 	t.Logf("Daily processing simulation:")
 	t.Logf("  Total intervals per day: %d", totalIntervals)
 	t.Logf("  Batch size: %d", batchSize)
@@ -155,7 +155,7 @@ func TestScheduleHandler_UpdateConfig_Batch(t *testing.T) {
 				assert.Contains(t, err.Error(), tc.errorMsg)
 			} else {
 				assert.NoError(t, err)
-				
+
 				// Verify configuration was updated
 				updatedConfig := handler.GetConfig()
 				assert.Equal(t, tc.config.SubscriptionSyncInterval, updatedConfig.SubscriptionSyncInterval)

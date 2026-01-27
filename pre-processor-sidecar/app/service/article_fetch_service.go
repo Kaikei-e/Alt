@@ -55,17 +55,17 @@ type SubscriptionMapping struct {
 
 // ArticleFetchService handles fetching articles from Inoreader API with continuation tokens
 type ArticleFetchService struct {
-	inoreaderService     *InoreaderService
-	articleRepo          ArticleRepository
-	syncStateRepo        SyncStateRepository
-	subscriptionRepo     repository.SubscriptionRepository // Added for UUID resolution
+	inoreaderService      *InoreaderService
+	articleRepo           ArticleRepository
+	syncStateRepo         SyncStateRepository
+	subscriptionRepo      repository.SubscriptionRepository     // Added for UUID resolution
 	uuidResolutionUseCase *usecase.ArticleUUIDResolutionUseCase // Clean Architecture UUID resolution
-	logger               *slog.Logger
-	mu                   sync.RWMutex
-	
+	logger                *slog.Logger
+	mu                    sync.RWMutex
+
 	// Phase 3: Rotation processing components
-	subscriptionRotator  *SubscriptionRotator  // 40 subscriptions rotation processor
-	rotationEnabled      bool                  // Enable rotation mode
+	subscriptionRotator *SubscriptionRotator // 40 subscriptions rotation processor
+	rotationEnabled     bool                 // Enable rotation mode
 }
 
 // SlogAdapter adapts slog.Logger to domain.LoggerInterface
@@ -120,8 +120,8 @@ func NewArticleFetchService(
 		uuidResolutionUseCase: uuidResolutionUseCase,
 		logger:                logger,
 		// Phase 3: Rotation processing initialization
-		subscriptionRotator:   subscriptionRotator,
-		rotationEnabled:       false, // Will be enabled by ScheduleHandler on startup
+		subscriptionRotator: subscriptionRotator,
+		rotationEnabled:     false, // Will be enabled by ScheduleHandler on startup
 	}
 }
 
@@ -172,7 +172,7 @@ func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string
 	// Step 4: Resolve subscription UUIDs using Clean Architecture use case
 	s.logger.Info("Starting Clean Architecture UUID resolution",
 		"total_articles", len(articles))
-	
+
 	uuidResult, err := s.uuidResolutionUseCase.ResolveArticleUUIDs(ctx, articles)
 	if err != nil {
 		s.logger.Error("Failed to resolve article UUIDs with Clean Architecture", "error", err)
@@ -229,17 +229,17 @@ func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string
 // DEPRECATED: buildSubscriptionMapping is now handled by ArticleUUIDResolutionUseCase
 // Keeping the old SubscriptionMapping struct for backward compatibility in other methods
 
-// DEPRECATED: autoCreateSubscription, extractFeedURLFromInoreaderID, generateAutoTitle 
+// DEPRECATED: autoCreateSubscription, extractFeedURLFromInoreaderID, generateAutoTitle
 // are now handled by SubscriptionAutoCreatorAdapter in the use case layer
 
 // ProcessArticleBatch processes a batch of articles with auto-subscription creation
 func (s *ArticleFetchService) ProcessArticleBatch(ctx context.Context, articles []*models.Article) (processed, skipped int, err error) {
-	s.logger.Info("Starting resilient article batch processing", 
+	s.logger.Info("Starting resilient article batch processing",
 		"total_articles", len(articles))
 
 	processed = 0
 	skipped = 0
-	
+
 	// Use CreateBatch for resilient processing (individual transactions)
 	createdCount, batchErr := s.articleRepo.CreateBatch(ctx, articles)
 	if batchErr != nil {
@@ -397,10 +397,10 @@ func (s *ArticleFetchService) EnableRotationModeWithOptions(ctx context.Context,
 	}
 
 	s.rotationEnabled = true
-	
+
 	// Get initial rotation stats for logging
 	initialStats := s.subscriptionRotator.GetStats()
-	
+
 	s.logger.Info("Rotation mode enabled successfully",
 		"total_subscriptions", len(subscriptionIDs),
 		"interval_minutes", s.subscriptionRotator.GetInterval(),
@@ -423,7 +423,7 @@ func (s *ArticleFetchService) StartRotationProcessor(ctx context.Context) error 
 	ticker := time.NewTicker(time.Duration(intervalMinutes) * time.Minute)
 	defer ticker.Stop()
 
-	s.logger.Info("Started subscription rotation processor", 
+	s.logger.Info("Started subscription rotation processor",
 		"interval_minutes", intervalMinutes,
 		"rotation_enabled", s.rotationEnabled)
 
@@ -461,8 +461,8 @@ func (s *ArticleFetchService) ProcessNextSubscriptionRotation(ctx context.Contex
 	// Get subscription details
 	subscription, err := s.subscriptionRepo.FindByID(ctx, subID)
 	if err != nil {
-		s.logger.Error("Subscription not found in rotation", 
-			"subscription_id", subID, 
+		s.logger.Error("Subscription not found in rotation",
+			"subscription_id", subID,
 			"error", err)
 		return fmt.Errorf("subscription not found: %w", err)
 	}
@@ -470,7 +470,7 @@ func (s *ArticleFetchService) ProcessNextSubscriptionRotation(ctx context.Contex
 	// Process this specific subscription
 	streamID := subscription.InoreaderID
 	startTime := time.Now()
-	
+
 	s.logger.Info("Processing subscription in rotation",
 		"subscription_id", subID,
 		"stream_id", streamID,
@@ -480,7 +480,7 @@ func (s *ArticleFetchService) ProcessNextSubscriptionRotation(ctx context.Contex
 	// Fetch articles for this subscription (max 100 articles)
 	result, err := s.FetchArticles(ctx, streamID, 100)
 	if err != nil {
-		s.logger.Error("Failed to fetch articles for rotated subscription", 
+		s.logger.Error("Failed to fetch articles for rotated subscription",
 			"subscription_id", subID,
 			"stream_id", streamID,
 			"error", err)
@@ -488,7 +488,7 @@ func (s *ArticleFetchService) ProcessNextSubscriptionRotation(ctx context.Contex
 	}
 
 	duration := time.Since(startTime)
-	
+
 	s.logger.Info("Completed subscription rotation processing",
 		"subscription_id", subID,
 		"title", subscription.Title,
@@ -505,7 +505,7 @@ func (s *ArticleFetchService) GetRotationStats() RotationStats {
 	if !s.rotationEnabled {
 		return RotationStats{}
 	}
-	
+
 	return s.subscriptionRotator.GetStats()
 }
 
@@ -540,7 +540,7 @@ func (s *ArticleFetchService) FetchSingleSubscriptionArticles(ctx context.Contex
 func (s *ArticleFetchService) GetNextSubscriptionBatch(batchSize int) []uuid.UUID {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if !s.rotationEnabled || s.subscriptionRotator == nil {
 		s.logger.Warn("Rotator not enabled for batch processing")
 		return []uuid.UUID{}
@@ -606,11 +606,11 @@ func (s *ArticleFetchService) ProcessSubscriptionBatch(ctx context.Context, subs
 func (s *ArticleFetchService) GetRotatorTimezoneInfo() map[string]interface{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.subscriptionRotator != nil {
 		return s.subscriptionRotator.GetTimezoneInfo()
 	}
-	
+
 	return map[string]interface{}{
 		"error": "subscription rotator not initialized",
 	}

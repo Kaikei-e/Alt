@@ -26,26 +26,26 @@ type RecoveryManager struct {
 	config BackoffConfig
 
 	// 状態管理
-	mutex                sync.RWMutex
-	consecutiveFailures  int
-	lastFailureTime      time.Time
-	lastSuccessTime      time.Time
-	isInRecoveryMode     bool
+	mutex                 sync.RWMutex
+	consecutiveFailures   int
+	lastFailureTime       time.Time
+	lastSuccessTime       time.Time
+	isInRecoveryMode      bool
 	totalRecoveryAttempts int
 
 	// 緊急時フォールバック
 	fallbackTokenSource FallbackTokenSource
-	
+
 	// 制御チャンネル
-	stopChan      chan struct{}
-	recoveryChan  chan recoveryRequest
-	isRunning     bool
+	stopChan     chan struct{}
+	recoveryChan chan recoveryRequest
+	isRunning    bool
 }
 
 // BackoffConfig は指数バックオフの設定
 type BackoffConfig struct {
 	MaxRetries          int           // 最大リトライ回数: 5
-	InitialInterval     time.Duration // 初期間隔: 30秒  
+	InitialInterval     time.Duration // 初期間隔: 30秒
 	Multiplier          float64       // 倍率: 2.0
 	MaxInterval         time.Duration // 最大間隔: 10分
 	Jitter              bool          // ランダム要素: true
@@ -54,7 +54,7 @@ type BackoffConfig struct {
 	HealthCheckInterval time.Duration // ヘルスチェック間隔: 1分
 }
 
-// RecoveryMetricsCollector は回復システムのメトリクス収集インターフェース  
+// RecoveryMetricsCollector は回復システムのメトリクス収集インターフェース
 type RecoveryMetricsCollector interface {
 	IncrementRecoveryAttempt(success bool)
 	RecordRecoveryDuration(duration time.Duration)
@@ -85,22 +85,22 @@ type recoveryResponse struct {
 
 // RecoveryStats は回復統計情報
 type RecoveryStats struct {
-	ConsecutiveFailures   int       `json:"consecutive_failures"`
-	LastFailureTime       time.Time `json:"last_failure_time,omitempty"`
-	LastSuccessTime       time.Time `json:"last_success_time,omitempty"`
-	IsInRecoveryMode      bool      `json:"is_in_recovery_mode"`
-	TotalRecoveryAttempts int       `json:"total_recovery_attempts"`
+	ConsecutiveFailures   int           `json:"consecutive_failures"`
+	LastFailureTime       time.Time     `json:"last_failure_time,omitempty"`
+	LastSuccessTime       time.Time     `json:"last_success_time,omitempty"`
+	IsInRecoveryMode      bool          `json:"is_in_recovery_mode"`
+	TotalRecoveryAttempts int           `json:"total_recovery_attempts"`
 	NextRetryInterval     time.Duration `json:"next_retry_interval_seconds"`
 }
 
 // NoOpRecoveryMetrics はデフォルトのメトリクス実装
 type NoOpRecoveryMetrics struct{}
 
-func (n *NoOpRecoveryMetrics) IncrementRecoveryAttempt(success bool)      {}
+func (n *NoOpRecoveryMetrics) IncrementRecoveryAttempt(success bool)         {}
 func (n *NoOpRecoveryMetrics) RecordRecoveryDuration(duration time.Duration) {}
-func (n *NoOpRecoveryMetrics) RecordConsecutiveFailures(count int)        {}
-func (n *NoOpRecoveryMetrics) IncrementFallbackActivation()               {}
-func (n *NoOpRecoveryMetrics) RecordBackoffInterval(interval time.Duration) {}
+func (n *NoOpRecoveryMetrics) RecordConsecutiveFailures(count int)           {}
+func (n *NoOpRecoveryMetrics) IncrementFallbackActivation()                  {}
+func (n *NoOpRecoveryMetrics) RecordBackoffInterval(interval time.Duration)  {}
 
 // NewRecoveryManager は新しい回復マネージャーを作成
 func NewRecoveryManager(
@@ -239,7 +239,7 @@ func (rm *RecoveryManager) healthCheckLoop() {
 // handleRecoveryRequest は回復要求を処理
 func (rm *RecoveryManager) handleRecoveryRequest(request recoveryRequest) {
 	start := time.Now()
-	
+
 	rm.logger.Info("Recovery request received",
 		"reason", request.reason,
 		"error_type", request.errorType,
@@ -301,7 +301,7 @@ func (rm *RecoveryManager) attemptRecoveryWithBackoff(request recoveryRequest) b
 		if attempt < rm.config.MaxRetries {
 			interval := rm.calculateBackoffInterval(attempt)
 			rm.metricsCollector.RecordBackoffInterval(interval)
-			
+
 			rm.logger.Info("Recovery attempt failed, waiting before retry",
 				"attempt", attempt,
 				"next_retry_in_seconds", interval.Seconds(),
@@ -390,7 +390,7 @@ func (rm *RecoveryManager) attemptFallbackRecovery() bool {
 func (rm *RecoveryManager) calculateBackoffInterval(attempt int) time.Duration {
 	// 指数バックオフ計算: initial * (multiplier ^ (attempt-1))
 	interval := float64(rm.config.InitialInterval) * math.Pow(rm.config.Multiplier, float64(attempt-1))
-	
+
 	// 最大間隔制限
 	if time.Duration(interval) > rm.config.MaxInterval {
 		interval = float64(rm.config.MaxInterval)
@@ -401,7 +401,7 @@ func (rm *RecoveryManager) calculateBackoffInterval(attempt int) time.Duration {
 		jitter := interval * rm.config.JitterRange
 		randomOffset := (rand.Float64() - 0.5) * 2 * jitter // -jitter ~ +jitter
 		interval += randomOffset
-		
+
 		// 負の値にならないよう制限
 		if interval < 0 {
 			interval = float64(rm.config.InitialInterval)

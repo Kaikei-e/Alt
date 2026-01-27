@@ -313,7 +313,7 @@ func (m *Monitor) storeMetric(metric *Metric) {
 	defer m.mu.Unlock()
 
 	key := m.generateMetricKey(metric)
-	
+
 	// For counters, accumulate values
 	if existing, exists := m.metrics[key]; exists && metric.Type == MetricTypeCounter {
 		existing.Value += metric.Value
@@ -326,12 +326,12 @@ func (m *Monitor) storeMetric(metric *Metric) {
 // generateMetricKey generates a unique key for a metric
 func (m *Monitor) generateMetricKey(metric *Metric) string {
 	key := metric.Name + ":" + string(metric.Type)
-	
+
 	// Add labels to key for uniqueness
 	for k, v := range metric.Labels {
 		key += ":" + k + "=" + v
 	}
-	
+
 	return key
 }
 
@@ -359,13 +359,13 @@ func (m *Monitor) HealthCheck() map[string]interface{} {
 	defer m.mu.RUnlock()
 
 	return map[string]interface{}{
-		"status":            "healthy",
-		"metrics_enabled":   m.config.EnableMetrics,
-		"tracing_enabled":   m.config.EnableTracing,
-		"metrics_count":     len(m.metrics),
-		"queue_length":      len(m.metricsChan),
-		"queue_capacity":    cap(m.metricsChan),
-		"flush_interval":    m.config.FlushInterval.String(),
+		"status":             "healthy",
+		"metrics_enabled":    m.config.EnableMetrics,
+		"tracing_enabled":    m.config.EnableTracing,
+		"metrics_count":      len(m.metrics),
+		"queue_length":       len(m.metricsChan),
+		"queue_capacity":     cap(m.metricsChan),
+		"flush_interval":     m.config.FlushInterval.String(),
 		"retention_duration": m.config.RetentionDuration.String(),
 	}
 }

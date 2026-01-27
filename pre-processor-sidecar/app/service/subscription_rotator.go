@@ -18,27 +18,27 @@ import (
 
 // SubscriptionRotator manages round-robin processing of subscriptions
 type SubscriptionRotator struct {
-	subscriptions    []uuid.UUID
-	currentIndex     int
-	lastProcessed    map[uuid.UUID]time.Time
-	intervalMinutes  int    // 20分間隔
-	maxDaily         int    // 40サブスクリプション/日
-	mu               sync.RWMutex
-	logger           *slog.Logger
-	lastResetDate    time.Time
-	randomStartEnabled bool  // Enable random starting position
-	startingIndex     int    // Random starting index for rotation
-	timezone          *time.Location // タイムゾーン設定を追加
+	subscriptions      []uuid.UUID
+	currentIndex       int
+	lastProcessed      map[uuid.UUID]time.Time
+	intervalMinutes    int // 20分間隔
+	maxDaily           int // 40サブスクリプション/日
+	mu                 sync.RWMutex
+	logger             *slog.Logger
+	lastResetDate      time.Time
+	randomStartEnabled bool           // Enable random starting position
+	startingIndex      int            // Random starting index for rotation
+	timezone           *time.Location // タイムゾーン設定を追加
 }
 
 // RotationStats provides statistics about rotation processing
 type RotationStats struct {
 	TotalSubscriptions      int       `json:"total_subscriptions"`
-	ProcessedToday         int       `json:"processed_today"`
-	RemainingToday         int       `json:"remaining_today"`
-	CurrentIndex           int       `json:"current_index"`
-	LastProcessedTime      time.Time `json:"last_processed_time"`
-	NextProcessingTime     time.Time `json:"next_processing_time"`
+	ProcessedToday          int       `json:"processed_today"`
+	RemainingToday          int       `json:"remaining_today"`
+	CurrentIndex            int       `json:"current_index"`
+	LastProcessedTime       time.Time `json:"last_processed_time"`
+	NextProcessingTime      time.Time `json:"next_processing_time"`
 	EstimatedCompletionTime time.Time `json:"estimated_completion_time"`
 }
 
@@ -87,28 +87,28 @@ func NewSubscriptionRotator(logger *slog.Logger) *SubscriptionRotator {
 	}
 
 	now := time.Now().In(timezone)
-	
+
 	// 正しい0時に切り捨て（year, month, dayのみを使用）
 	year, month, day := now.Date()
 	todayInTimezone := time.Date(year, month, day, 0, 0, 0, 0, timezone)
-	
+
 	logger.Info("Initializing SubscriptionRotator",
 		"max_daily_rotations", maxDailyRotations,
 		"interval_minutes", intervalMinutes,
 		"timezone", timezone.String(),
 		"today_reset_date", todayInTimezone.Format(time.RFC3339))
-	
+
 	return &SubscriptionRotator{
 		subscriptions:      make([]uuid.UUID, 0),
 		lastProcessed:      make(map[uuid.UUID]time.Time),
-		intervalMinutes:    intervalMinutes, // 環境変数で設定可能（デフォルト30分）
+		intervalMinutes:    intervalMinutes,   // 環境変数で設定可能（デフォルト30分）
 		maxDaily:           maxDailyRotations, // 環境変数で制御可能（デフォルト1回/日）
 		currentIndex:       0,
-		logger:            logger,
-		lastResetDate:     todayInTimezone, // タイムゾーン対応
-		randomStartEnabled: false, // Default: maintain existing behavior
+		logger:             logger,
+		lastResetDate:      todayInTimezone, // タイムゾーン対応
+		randomStartEnabled: false,           // Default: maintain existing behavior
 		startingIndex:      0,
-		timezone:          timezone,
+		timezone:           timezone,
 	}
 }
 
@@ -186,18 +186,18 @@ func (sr *SubscriptionRotator) GetNextSubscription() (uuid.UUID, bool) {
 func (sr *SubscriptionRotator) shouldResetDaily(now time.Time) bool {
 	// タイムゾーンを考慮した日付比較
 	nowInTimezone := now.In(sr.timezone)
-	
+
 	// 正しい0時に切り捨て（year, month, dayのみを使用）
 	year, month, day := nowInTimezone.Date()
 	todayInTimezone := time.Date(year, month, day, 0, 0, 0, 0, sr.timezone)
-	
+
 	sr.logger.Debug("Daily reset check",
 		"current_time_utc", now.Format(time.RFC3339),
 		"current_time_local", nowInTimezone.Format(time.RFC3339),
 		"today_local", todayInTimezone.Format(time.RFC3339),
 		"last_reset_date", sr.lastResetDate.Format(time.RFC3339),
 		"timezone", sr.timezone.String())
-	
+
 	return !sr.lastResetDate.Equal(todayInTimezone)
 }
 
@@ -205,11 +205,11 @@ func (sr *SubscriptionRotator) shouldResetDaily(now time.Time) bool {
 func (sr *SubscriptionRotator) resetDailyRotation(now time.Time) {
 	// タイムゾーンを考慮した日付処理
 	nowInTimezone := now.In(sr.timezone)
-	
+
 	// 正しい0時に切り捨て（year, month, dayのみを使用）
 	year, month, day := nowInTimezone.Date()
 	todayInTimezone := time.Date(year, month, day, 0, 0, 0, 0, sr.timezone)
-	
+
 	sr.logger.Info("Resetting daily rotation",
 		"previous_date", sr.lastResetDate.Format("2006-01-02"),
 		"new_date_utc", now.Format("2006-01-02"),
@@ -274,11 +274,11 @@ func (sr *SubscriptionRotator) GetStats() RotationStats {
 
 	return RotationStats{
 		TotalSubscriptions:      len(sr.subscriptions),
-		ProcessedToday:         sr.currentIndex,
-		RemainingToday:         remaining,
-		CurrentIndex:           sr.currentIndex,
-		LastProcessedTime:      lastProcessedTime,
-		NextProcessingTime:     nextProcessingTime,
+		ProcessedToday:          sr.currentIndex,
+		RemainingToday:          remaining,
+		CurrentIndex:            sr.currentIndex,
+		LastProcessedTime:       lastProcessedTime,
+		NextProcessingTime:      nextProcessingTime,
 		EstimatedCompletionTime: estimatedCompletion,
 	}
 }
@@ -300,11 +300,11 @@ func (sr *SubscriptionRotator) getEstimatedCompletionTime() time.Time {
 // getNextResetTime returns the next daily reset time (midnight in local timezone)
 func (sr *SubscriptionRotator) getNextResetTime() time.Time {
 	nowInTimezone := time.Now().In(sr.timezone)
-	
+
 	// 明日の0時を正確に計算
 	year, month, day := nowInTimezone.Date()
 	tomorrow := time.Date(year, month, day+1, 0, 0, 0, 0, sr.timezone)
-	
+
 	return tomorrow
 }
 
@@ -381,7 +381,7 @@ func (sr *SubscriptionRotator) generateRandomStartingIndex() {
 		sr.startingIndex = 0
 		return
 	}
-	
+
 	sr.startingIndex = rand.Intn(len(sr.subscriptions))
 	sr.logger.Info("Generated random starting index",
 		"starting_index", sr.startingIndex,
@@ -398,14 +398,14 @@ func (sr *SubscriptionRotator) hasCompletedDailyRotation() bool {
 	// maxDaily = 1: each subscription processed once per day (original behavior)
 	// maxDaily = 2: each subscription processed 2 times per day (batch processing)
 	maxProcessingToday := len(sr.subscriptions) * sr.maxDaily
-	
+
 	completionStatus := sr.currentIndex >= maxProcessingToday
-	
+
 	// Log at INFO level when completion status changes or for debugging
 	if completionStatus {
 		sr.logger.Info("Daily rotation completion check - COMPLETED",
 			"current_index", sr.currentIndex,
-			"total_subscriptions", len(sr.subscriptions), 
+			"total_subscriptions", len(sr.subscriptions),
 			"max_daily_rotations", sr.maxDaily,
 			"max_processing_today", maxProcessingToday,
 			"completed", completionStatus,
@@ -413,13 +413,13 @@ func (sr *SubscriptionRotator) hasCompletedDailyRotation() bool {
 	} else {
 		sr.logger.Debug("Daily rotation completion check - IN PROGRESS",
 			"current_index", sr.currentIndex,
-			"total_subscriptions", len(sr.subscriptions), 
+			"total_subscriptions", len(sr.subscriptions),
 			"max_daily_rotations", sr.maxDaily,
 			"max_processing_today", maxProcessingToday,
-			"remaining", maxProcessingToday - sr.currentIndex,
+			"remaining", maxProcessingToday-sr.currentIndex,
 			"completion_percentage", fmt.Sprintf("%.1f%%", float64(sr.currentIndex)/float64(maxProcessingToday)*100))
 	}
-	
+
 	return completionStatus
 }
 
@@ -427,7 +427,7 @@ func (sr *SubscriptionRotator) hasCompletedDailyRotation() bool {
 func (sr *SubscriptionRotator) EnableRandomStart() {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
-	
+
 	sr.randomStartEnabled = true
 	sr.logger.Info("Random start enabled",
 		"current_subscriptions", len(sr.subscriptions))
@@ -437,7 +437,7 @@ func (sr *SubscriptionRotator) EnableRandomStart() {
 func (sr *SubscriptionRotator) DisableRandomStart() {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
-	
+
 	sr.randomStartEnabled = false
 	sr.logger.Info("Random start disabled - using sequential rotation")
 }
@@ -533,16 +533,16 @@ func (sr *SubscriptionRotator) GetBatchProcessingStatus(batchSize int) string {
 func (sr *SubscriptionRotator) GetTimezoneInfo() map[string]interface{} {
 	sr.mu.RLock()
 	defer sr.mu.RUnlock()
-	
+
 	now := time.Now()
 	nowInTimezone := now.In(sr.timezone)
-	
+
 	return map[string]interface{}{
-		"timezone_name":       sr.timezone.String(),
-		"current_time_utc":    now.Format(time.RFC3339),
-		"current_time_local":  nowInTimezone.Format(time.RFC3339),
-		"last_reset_date":     sr.lastResetDate.Format(time.RFC3339),
-		"next_reset_time":     sr.getNextResetTime().Format(time.RFC3339),
-		"hours_until_reset":   sr.getNextResetTime().Sub(nowInTimezone).Hours(),
+		"timezone_name":      sr.timezone.String(),
+		"current_time_utc":   now.Format(time.RFC3339),
+		"current_time_local": nowInTimezone.Format(time.RFC3339),
+		"last_reset_date":    sr.lastResetDate.Format(time.RFC3339),
+		"next_reset_time":    sr.getNextResetTime().Format(time.RFC3339),
+		"hours_until_reset":  sr.getNextResetTime().Sub(nowInTimezone).Hours(),
 	}
 }

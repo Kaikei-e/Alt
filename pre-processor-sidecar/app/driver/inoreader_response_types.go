@@ -15,31 +15,31 @@ type StreamContentsResponse struct {
 	Self        struct {
 		Href string `json:"href"`
 	} `json:"self"`
-	Updated      int64  `json:"updated"`
-	UpdatedUsec  string `json:"updatedUsec"`
+	Updated      int64                  `json:"updated"`
+	UpdatedUsec  string                 `json:"updatedUsec"`
 	Items        []InoreaderArticleItem `json:"items"`
-	Continuation string `json:"continuation"`
+	Continuation string                 `json:"continuation"`
 }
 
 // InoreaderArticleItem represents individual article item from Inoreader API response
 type InoreaderArticleItem struct {
-	CrawlTimeMsec string   `json:"crawlTimeMsec"`
-	TimestampUsec string   `json:"timestampUsec"`
-	ID            string   `json:"id"`
-	Categories    []string `json:"categories"`
-	Title         string   `json:"title"`
-	Published     int64    `json:"published"`
-	Updated       int64    `json:"updated"`
-	Canonical     []InoreaderLink `json:"canonical"`
-	Alternate     []InoreaderLink `json:"alternate"`
-	Summary       InoreaderSummary `json:"summary"`
-	Author        string   `json:"author"`
-	Origin        InoreaderOrigin `json:"origin"`
+	CrawlTimeMsec string                `json:"crawlTimeMsec"`
+	TimestampUsec string                `json:"timestampUsec"`
+	ID            string                `json:"id"`
+	Categories    []string              `json:"categories"`
+	Title         string                `json:"title"`
+	Published     int64                 `json:"published"`
+	Updated       int64                 `json:"updated"`
+	Canonical     []InoreaderLink       `json:"canonical"`
+	Alternate     []InoreaderLink       `json:"alternate"`
+	Summary       InoreaderSummary      `json:"summary"`
+	Author        string                `json:"author"`
+	Origin        InoreaderOrigin       `json:"origin"`
 	Annotations   []InoreaderAnnotation `json:"annotations,omitempty"`
 	// Additional fields that might be present
-	LikingUsers  []interface{} `json:"likingUsers,omitempty"`
-	Comments     []interface{} `json:"comments,omitempty"`
-	CommentsNum  int           `json:"commentsNum,omitempty"`
+	LikingUsers []interface{} `json:"likingUsers,omitempty"`
+	Comments    []interface{} `json:"comments,omitempty"`
+	CommentsNum int           `json:"commentsNum,omitempty"`
 }
 
 // InoreaderLink represents canonical/alternate links in article
@@ -79,12 +79,12 @@ type SubscriptionListResponse struct {
 
 // InoreaderSubscriptionItem represents individual subscription from subscription list API
 type InoreaderSubscriptionItem struct {
-	ID         string                   `json:"id"`         // e.g., "feed/http://example.com/rss"
-	Title      string                   `json:"title"`      // Feed title
-	Categories []InoreaderCategory      `json:"categories"` // Folder/label information
-	URL        string                   `json:"url"`        // XML feed URL
-	HtmlUrl    string                   `json:"htmlUrl"`    // Website URL
-	IconUrl    string                   `json:"iconUrl"`    // Favicon URL
+	ID         string              `json:"id"`         // e.g., "feed/http://example.com/rss"
+	Title      string              `json:"title"`      // Feed title
+	Categories []InoreaderCategory `json:"categories"` // Folder/label information
+	URL        string              `json:"url"`        // XML feed URL
+	HtmlUrl    string              `json:"htmlUrl"`    // Website URL
+	IconUrl    string              `json:"iconUrl"`    // Favicon URL
 }
 
 // InoreaderCategory represents a category/folder in Inoreader

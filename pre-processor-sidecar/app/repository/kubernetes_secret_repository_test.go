@@ -22,7 +22,7 @@ func TestKubernetesSecretRepository_GetCurrentToken_Success(t *testing.T) {
 	// Setup
 	namespace := "test-namespace"
 	secretName := "test-secret"
-	
+
 	token := &models.OAuth2Token{
 		AccessToken:  "test-access-token",
 		RefreshToken: "test-refresh-token",
@@ -33,7 +33,7 @@ func TestKubernetesSecretRepository_GetCurrentToken_Success(t *testing.T) {
 
 	// Create fake Kubernetes client with pre-existing secret
 	fakeClient := fake.NewSimpleClientset(createTestSecret(namespace, secretName, token))
-	
+
 	repo := NewKubernetesSecretRepositoryWithClientset(fakeClient, namespace, secretName, nil)
 
 	// Test
@@ -50,10 +50,10 @@ func TestKubernetesSecretRepository_GetCurrentToken_NotFound(t *testing.T) {
 	// Setup
 	namespace := "test-namespace"
 	secretName := "test-secret"
-	
+
 	// Create fake Kubernetes client with no secrets
 	fakeClient := fake.NewSimpleClientset()
-	
+
 	repo := NewKubernetesSecretRepositoryWithClientset(fakeClient, namespace, secretName, nil)
 
 	// Test
@@ -68,7 +68,7 @@ func TestKubernetesSecretRepository_SaveToken_NewSecret(t *testing.T) {
 	// Setup
 	namespace := "test-namespace"
 	secretName := "test-secret"
-	
+
 	token := &models.OAuth2Token{
 		AccessToken:  "test-access-token",
 		RefreshToken: "test-refresh-token",
@@ -79,7 +79,7 @@ func TestKubernetesSecretRepository_SaveToken_NewSecret(t *testing.T) {
 
 	// Create fake Kubernetes client with no secrets
 	fakeClient := fake.NewSimpleClientset()
-	
+
 	repo := NewKubernetesSecretRepositoryWithClientset(fakeClient, namespace, secretName, nil)
 
 	// Test
@@ -87,7 +87,7 @@ func TestKubernetesSecretRepository_SaveToken_NewSecret(t *testing.T) {
 
 	// Assertions
 	require.NoError(t, err)
-	
+
 	// Verify secret was created
 	secret, err := fakeClient.CoreV1().Secrets(namespace).Get(
 		context.Background(), secretName, metav1.GetOptions{})
@@ -101,7 +101,7 @@ func TestKubernetesSecretRepository_UpdateToken_ExistingSecret(t *testing.T) {
 	// Setup
 	namespace := "test-namespace"
 	secretName := "test-secret"
-	
+
 	oldToken := &models.OAuth2Token{
 		AccessToken:  "old-access-token",
 		RefreshToken: "old-refresh-token",
@@ -120,7 +120,7 @@ func TestKubernetesSecretRepository_UpdateToken_ExistingSecret(t *testing.T) {
 
 	// Create fake Kubernetes client with existing secret
 	fakeClient := fake.NewSimpleClientset(createTestSecret(namespace, secretName, oldToken))
-	
+
 	repo := NewKubernetesSecretRepositoryWithClientset(fakeClient, namespace, secretName, nil)
 
 	// Test
@@ -128,12 +128,12 @@ func TestKubernetesSecretRepository_UpdateToken_ExistingSecret(t *testing.T) {
 
 	// Assertions
 	require.NoError(t, err)
-	
+
 	// Verify secret was updated
 	_, err = fakeClient.CoreV1().Secrets(namespace).Get(
 		context.Background(), secretName, metav1.GetOptions{})
 	require.NoError(t, err)
-	
+
 	// Verify updated token data
 	retrievedToken, err := repo.GetCurrentToken(context.Background())
 	require.NoError(t, err)
@@ -145,7 +145,7 @@ func TestKubernetesSecretRepository_UpdateWithRefreshRotation(t *testing.T) {
 	// Setup
 	namespace := "test-namespace"
 	secretName := "test-secret"
-	
+
 	oldRefreshToken := "old-refresh-token"
 	newToken := &models.OAuth2Token{
 		AccessToken:  "new-access-token",
@@ -163,9 +163,9 @@ func TestKubernetesSecretRepository_UpdateWithRefreshRotation(t *testing.T) {
 		ExpiresAt:    time.Now().Add(30 * time.Minute),
 		IssuedAt:     time.Now().Add(-30 * time.Minute),
 	}
-	
+
 	fakeClient := fake.NewSimpleClientset(createTestSecret(namespace, secretName, initialToken))
-	
+
 	repo := NewKubernetesSecretRepositoryWithClientset(fakeClient, namespace, secretName, nil)
 
 	// Test
@@ -173,14 +173,14 @@ func TestKubernetesSecretRepository_UpdateWithRefreshRotation(t *testing.T) {
 
 	// Assertions
 	require.NoError(t, err)
-	
+
 	// Verify secret was updated with rotation metadata
 	secret, err := fakeClient.CoreV1().Secrets(namespace).Get(
 		context.Background(), secretName, metav1.GetOptions{})
 	require.NoError(t, err)
-	
+
 	assert.NotNil(t, secret.Data["rotation_metadata"])
-	
+
 	// Verify updated token data
 	retrievedToken, err := repo.GetCurrentToken(context.Background())
 	require.NoError(t, err)
@@ -192,7 +192,7 @@ func TestKubernetesSecretRepository_DeleteToken(t *testing.T) {
 	// Setup
 	namespace := "test-namespace"
 	secretName := "test-secret"
-	
+
 	token := &models.OAuth2Token{
 		AccessToken:  "test-access-token",
 		RefreshToken: "test-refresh-token",
@@ -203,7 +203,7 @@ func TestKubernetesSecretRepository_DeleteToken(t *testing.T) {
 
 	// Create fake Kubernetes client with existing secret
 	fakeClient := fake.NewSimpleClientset(createTestSecret(namespace, secretName, token))
-	
+
 	repo := NewKubernetesSecretRepositoryWithClientset(fakeClient, namespace, secretName, nil)
 
 	// Test
@@ -211,7 +211,7 @@ func TestKubernetesSecretRepository_DeleteToken(t *testing.T) {
 
 	// Assertions
 	require.NoError(t, err)
-	
+
 	// Verify secret was deleted
 	_, err = fakeClient.CoreV1().Secrets(namespace).Get(
 		context.Background(), secretName, metav1.GetOptions{})
@@ -222,9 +222,9 @@ func TestKubernetesSecretRepository_SaveToken_InvalidToken(t *testing.T) {
 	// Setup
 	namespace := "test-namespace"
 	secretName := "test-secret"
-	
+
 	fakeClient := fake.NewSimpleClientset()
-	
+
 	repo := NewKubernetesSecretRepositoryWithClientset(fakeClient, namespace, secretName, nil)
 
 	// Test cases
@@ -257,7 +257,7 @@ func TestKubernetesSecretRepository_SaveToken_InvalidToken(t *testing.T) {
 // Helper function to create test secret
 func createTestSecret(namespace, secretName string, token *models.OAuth2Token) *corev1.Secret {
 	tokenBytes, _ := json.Marshal(token)
-	
+
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,

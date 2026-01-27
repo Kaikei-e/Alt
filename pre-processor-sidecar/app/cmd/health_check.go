@@ -13,31 +13,31 @@ import (
 
 // HealthCheckService provides health check functionality for the pre-processor-sidecar
 type HealthCheckService struct {
-	config               *config.Config
-	logger               *slog.Logger
-	databaseHealthCheck  func(*config.Config) bool
+	config                  *config.Config
+	logger                  *slog.Logger
+	databaseHealthCheck     func(*config.Config) bool
 	tokenManagerHealthCheck func(string) (bool, error)
-	oauth2HealthCheck    func(*config.Config) (bool, error)
+	oauth2HealthCheck       func(*config.Config) (bool, error)
 }
 
 // NewHealthCheckService creates a new health check service with defaults
 func NewHealthCheckService() *HealthCheckService {
 	return &HealthCheckService{
-		logger: slog.Default(),
-		databaseHealthCheck: defaultDatabaseHealthCheck,
+		logger:                  slog.Default(),
+		databaseHealthCheck:     defaultDatabaseHealthCheck,
 		tokenManagerHealthCheck: defaultTokenManagerHealthCheck,
-		oauth2HealthCheck: defaultOAuth2HealthCheck,
+		oauth2HealthCheck:       defaultOAuth2HealthCheck,
 	}
 }
 
 // NewHealthCheckServiceWithConfig creates a new health check service with configuration
 func NewHealthCheckServiceWithConfig(cfg *config.Config) *HealthCheckService {
 	return &HealthCheckService{
-		config: cfg,
-		logger: slog.Default(),
-		databaseHealthCheck: defaultDatabaseHealthCheck,
+		config:                  cfg,
+		logger:                  slog.Default(),
+		databaseHealthCheck:     defaultDatabaseHealthCheck,
 		tokenManagerHealthCheck: defaultTokenManagerHealthCheck,
-		oauth2HealthCheck: defaultOAuth2HealthCheck,
+		oauth2HealthCheck:       defaultOAuth2HealthCheck,
 	}
 }
 
@@ -141,7 +141,7 @@ func performComprehensiveHealthCheck() map[string]interface{} {
 	// Load configuration if available
 	cfg, err := config.LoadConfig()
 	var healthService *HealthCheckService
-	
+
 	if err != nil {
 		// Create without config if loading fails
 		healthService = NewHealthCheckService()
@@ -158,15 +158,15 @@ func performComprehensiveHealthCheck() map[string]interface{} {
 // performHealthCheckWithOutput performs health check and outputs JSON
 func performHealthCheckWithOutput() {
 	result := performComprehensiveHealthCheck()
-	
+
 	output, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		fmt.Printf(`{"status": "error", "error": "failed to marshal health check result: %v"}`, err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Println(string(output))
-	
+
 	// Exit with error code if not healthy
 	if status, ok := result["status"]; ok && status != "healthy" {
 		os.Exit(1)

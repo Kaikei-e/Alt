@@ -7,8 +7,8 @@ import (
 	"context"
 	"time"
 
-	"pre-processor-sidecar/models"
 	"github.com/google/uuid"
+	"pre-processor-sidecar/models"
 )
 
 // InMemoryTokenRepository is an in-memory implementation for OAuth2TokenRepository

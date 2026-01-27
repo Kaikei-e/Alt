@@ -12,15 +12,15 @@ import (
 func TestArticleFetchResult_Structure(t *testing.T) {
 	// Test ArticleFetchResult structure
 	result := &ArticleFetchResult{
-		SubscriptionID:     "test-sub-id",
-		StreamID:           "feed/http://example.com/rss",
-		ArticlesFetched:    10,
-		ArticlesSaved:      8,
-		ArticlesSkipped:    2,
-		ContinuationToken:  "abc123",
-		HasMorePages:       true,
-		ProcessingTime:     0,
-		Errors:             []string{"test error"},
+		SubscriptionID:    "test-sub-id",
+		StreamID:          "feed/http://example.com/rss",
+		ArticlesFetched:   10,
+		ArticlesSaved:     8,
+		ArticlesSkipped:   2,
+		ContinuationToken: "abc123",
+		HasMorePages:      true,
+		ProcessingTime:    0,
+		Errors:            []string{"test error"},
 	}
 
 	assert.Equal(t, "test-sub-id", result.SubscriptionID)

@@ -49,13 +49,13 @@ func TestUUIDResolutionPipeline(t *testing.T) {
 		// Test UUID generation and validation
 		testUUID := uuid.New()
 		assert.NotEqual(t, uuid.Nil, testUUID)
-		
+
 		// Test UUID parsing
 		uuidStr := testUUID.String()
 		parsedUUID, err := uuid.Parse(uuidStr)
 		assert.NoError(t, err)
 		assert.Equal(t, testUUID, parsedUUID)
-		
+
 		t.Logf("UUID処理テスト成功: %s", testUUID)
 	})
 

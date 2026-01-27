@@ -3,17 +3,17 @@ package models
 
 // TokenUpdateRequest はトークン更新リクエスト
 type TokenUpdateRequest struct {
-	RefreshToken  string `json:"refresh_token"`
-	ClientID      string `json:"client_id,omitempty"`
-	ClientSecret  string `json:"client_secret,omitempty"`
+	RefreshToken string `json:"refresh_token"`
+	ClientID     string `json:"client_id,omitempty"`
+	ClientSecret string `json:"client_secret,omitempty"`
 }
 
 // TokenStatusResponse はトークン状態レスポンス
 type TokenStatusResponse struct {
-	IsValid    bool      `json:"is_valid"`
-	ExpiresAt  string    `json:"expires_at,omitempty"`
-	LastUpdate string    `json:"last_update,omitempty"`
-	Status     string    `json:"status"`
+	IsValid    bool   `json:"is_valid"`
+	ExpiresAt  string `json:"expires_at,omitempty"`
+	LastUpdate string `json:"last_update,omitempty"`
+	Status     string `json:"status"`
 }
 
 // AdminAPIResponse は管理API標準レスポンス

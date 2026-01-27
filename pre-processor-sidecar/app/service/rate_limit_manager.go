@@ -44,24 +44,24 @@ type RateLimitStatus struct {
 
 // RateLimitAlert represents a rate limit alert
 type RateLimitAlert struct {
-	AlertType    string    `json:"alert_type"`    // "warning", "critical", "blocked"
+	AlertType    string    `json:"alert_type"` // "warning", "critical", "blocked"
 	Message      string    `json:"message"`
-	Threshold    int       `json:"threshold"`     // Percentage threshold that triggered alert
+	Threshold    int       `json:"threshold"` // Percentage threshold that triggered alert
 	CurrentUsage int       `json:"current_usage"`
 	DailyLimit   int       `json:"daily_limit"`
-	Zone         int       `json:"zone"`          // 1 or 2
+	Zone         int       `json:"zone"` // 1 or 2
 	Timestamp    time.Time `json:"timestamp"`
 }
 
 // RateLimitManager manages API rate limiting and usage monitoring
 type RateLimitManager struct {
-	config          *RateLimitConfig
-	apiUsageRepo    APIUsageRepository
-	logger          *slog.Logger
-	currentStatus   *RateLimitStatus
-	lastUsageCheck  time.Time
-	alertCallbacks  []func(*RateLimitAlert)
-	mu              sync.RWMutex
+	config         *RateLimitConfig
+	apiUsageRepo   APIUsageRepository
+	logger         *slog.Logger
+	currentStatus  *RateLimitStatus
+	lastUsageCheck time.Time
+	alertCallbacks []func(*RateLimitAlert)
+	mu             sync.RWMutex
 }
 
 // NewRateLimitManager creates a new rate limit manager
@@ -75,12 +75,12 @@ func NewRateLimitManager(
 
 	// Default configuration based on Inoreader API limits
 	config := &RateLimitConfig{
-		Zone1DailyLimit:       100,                // Read operations daily limit
-		Zone2DailyLimit:       100,                // Write operations daily limit
-		SafetyBufferPercent:   10,                 // 10% safety buffer
-		UsageCheckInterval:    15 * time.Minute,   // Check every 15 minutes
-		HeaderRefreshInterval: 5 * time.Minute,    // Refresh from headers every 5 minutes
-		AlertThresholds:       []int{50, 75, 90},  // Alert at 50%, 75%, 90%
+		Zone1DailyLimit:       100,               // Read operations daily limit
+		Zone2DailyLimit:       100,               // Write operations daily limit
+		SafetyBufferPercent:   10,                // 10% safety buffer
+		UsageCheckInterval:    15 * time.Minute,  // Check every 15 minutes
+		HeaderRefreshInterval: 5 * time.Minute,   // Refresh from headers every 5 minutes
+		AlertThresholds:       []int{50, 75, 90}, // Alert at 50%, 75%, 90%
 	}
 
 	return &RateLimitManager{
@@ -181,7 +181,7 @@ func (r *RateLimitManager) CheckAllowed(endpoint string) (allowed bool, reason s
 
 	// Determine which zone this endpoint belongs to
 	isZone1 := r.isReadOnlyEndpoint(endpoint)
-	
+
 	var usage, limit int
 	if isZone1 {
 		usage = r.currentStatus.Zone1Usage
@@ -344,8 +344,8 @@ func (r *RateLimitManager) isReadOnlyEndpoint(endpoint string) bool {
 	}
 
 	for _, readOnly := range readOnlyEndpoints {
-		if endpoint == readOnly || (readOnly[len(readOnly)-1] == '/' && 
-			len(endpoint) > len(readOnly) && 
+		if endpoint == readOnly || (readOnly[len(readOnly)-1] == '/' &&
+			len(endpoint) > len(readOnly) &&
 			endpoint[:len(readOnly)] == readOnly) {
 			return true
 		}
@@ -405,15 +405,15 @@ func (r *RateLimitManager) GetUsageStats() map[string]interface{} {
 	defer r.mu.RUnlock()
 
 	return map[string]interface{}{
-		"zone1_usage_percent": r.GetUsagePercentage(1),
-		"zone2_usage_percent": r.GetUsagePercentage(2),
+		"zone1_usage_percent":  r.GetUsagePercentage(1),
+		"zone2_usage_percent":  r.GetUsagePercentage(2),
 		"safety_buffer_active": r.currentStatus.SafetyBufferActive,
-		"is_blocked": r.currentStatus.IsBlocked,
-		"blocked_reason": r.currentStatus.BlockedReason,
-		"daily_reset_time": r.currentStatus.DailyResetTime,
-		"last_updated": r.currentStatus.LastUpdated,
-		"zone1_remaining": r.currentStatus.Zone1Remaining,
-		"zone2_remaining": r.currentStatus.Zone2Remaining,
+		"is_blocked":           r.currentStatus.IsBlocked,
+		"blocked_reason":       r.currentStatus.BlockedReason,
+		"daily_reset_time":     r.currentStatus.DailyResetTime,
+		"last_updated":         r.currentStatus.LastUpdated,
+		"zone1_remaining":      r.currentStatus.Zone1Remaining,
+		"zone2_remaining":      r.currentStatus.Zone2Remaining,
 	}
 }
 

@@ -211,7 +211,7 @@ func (r *EnvFileTokenRepository) readNonTokenLines() []string {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
-		
+
 		// Skip OAuth2 token lines
 		if strings.HasPrefix(line, "OAUTH2_ACCESS_TOKEN=") ||
 			strings.HasPrefix(line, "OAUTH2_REFRESH_TOKEN=") ||

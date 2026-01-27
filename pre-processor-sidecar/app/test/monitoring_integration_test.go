@@ -20,11 +20,11 @@ type MockMonitorInoreaderClient struct {
 
 func (m *MockMonitorInoreaderClient) FetchSubscriptionList(ctx context.Context, accessToken string) (map[string]interface{}, error) {
 	m.callCount++
-	
+
 	if m.shouldFail {
 		return nil, fmt.Errorf("simulated API failure")
 	}
-	
+
 	return map[string]interface{}{
 		"subscriptions": []interface{}{
 			map[string]interface{}{
@@ -82,7 +82,7 @@ func (m *MockMonitorInoreaderClient) ParseStreamContentsResponse(response map[st
 // TestInoreaderService_MonitoringIntegration tests monitoring integration
 func TestInoreaderService_MonitoringIntegration(t *testing.T) {
 	mockClient := &MockMonitorInoreaderClient{shouldFail: false}
-	
+
 	// Create service with monitoring enabled
 	inoreaderService := service.NewInoreaderService(
 		mockClient,
@@ -106,7 +106,7 @@ func TestInoreaderService_MonitoringIntegration(t *testing.T) {
 
 	// Note: This test demonstrates the monitoring integration structure
 	// Full functionality testing requires proper token service mocking
-	
+
 	t.Logf("Monitoring integration structure validated successfully")
 	t.Logf("Health check status: %v", healthCheck["status"])
 	t.Logf("Metrics enabled: %v", healthCheck["metrics_enabled"])
@@ -116,7 +116,7 @@ func TestInoreaderService_MonitoringIntegration(t *testing.T) {
 // TestInoreaderService_MetricsCollection tests basic metrics collection
 func TestInoreaderService_MetricsCollection(t *testing.T) {
 	mockClient := &MockMonitorInoreaderClient{shouldFail: false}
-	
+
 	inoreaderService := service.NewInoreaderService(
 		mockClient,
 		nil,
@@ -133,12 +133,12 @@ func TestInoreaderService_MetricsCollection(t *testing.T) {
 
 	// Test monitoring health check fields
 	healthCheck := inoreaderService.GetMonitoringHealthCheck()
-	
+
 	expectedFields := []string{
-		"status", "metrics_enabled", "tracing_enabled", 
+		"status", "metrics_enabled", "tracing_enabled",
 		"metrics_count", "queue_length", "queue_capacity",
 	}
-	
+
 	for _, field := range expectedFields {
 		if _, exists := healthCheck[field]; !exists {
 			t.Errorf("Expected health check field: %s", field)
@@ -152,7 +152,7 @@ func TestInoreaderService_MetricsCollection(t *testing.T) {
 // TestInoreaderService_MonitoringCleanup tests proper resource cleanup
 func TestInoreaderService_MonitoringCleanup(t *testing.T) {
 	mockClient := &MockMonitorInoreaderClient{shouldFail: false}
-	
+
 	inoreaderService := service.NewInoreaderService(
 		mockClient,
 		nil,
@@ -168,7 +168,7 @@ func TestInoreaderService_MonitoringCleanup(t *testing.T) {
 
 	// Test proper cleanup
 	inoreaderService.Close()
-	
+
 	// Note: After Close(), the monitoring system should gracefully shutdown
 	// In a full implementation, we might check that background goroutines have stopped
 	t.Logf("Monitoring cleanup completed successfully")

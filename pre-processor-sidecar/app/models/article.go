@@ -11,48 +11,48 @@ import (
 
 // Article represents an article metadata from Inoreader
 type Article struct {
-	ID               uuid.UUID  `json:"id" db:"id"`
-	InoreaderID      string     `json:"inoreader_id" db:"inoreader_id"`
-	SubscriptionID   uuid.UUID  `json:"subscription_id" db:"subscription_id"`
-	ArticleURL       string     `json:"article_url" db:"article_url"`
-	Title            string     `json:"title" db:"title"`
-	Author           string     `json:"author" db:"author"`
-	PublishedAt      *time.Time `json:"published_at" db:"published_at"`
-	FetchedAt        time.Time  `json:"fetched_at" db:"fetched_at"`
-	Processed        bool       `json:"processed" db:"processed"`
-	
+	ID             uuid.UUID  `json:"id" db:"id"`
+	InoreaderID    string     `json:"inoreader_id" db:"inoreader_id"`
+	SubscriptionID uuid.UUID  `json:"subscription_id" db:"subscription_id"`
+	ArticleURL     string     `json:"article_url" db:"article_url"`
+	Title          string     `json:"title" db:"title"`
+	Author         string     `json:"author" db:"author"`
+	PublishedAt    *time.Time `json:"published_at" db:"published_at"`
+	FetchedAt      time.Time  `json:"fetched_at" db:"fetched_at"`
+	Processed      bool       `json:"processed" db:"processed"`
+
 	// Phase 1: Article content fields for storing full content from summary.content
-	Content          string     `json:"content" db:"content"`
-	ContentLength    int        `json:"content_length" db:"content_length"`
-	ContentType      string     `json:"content_type" db:"content_type"`
-	
+	Content       string `json:"content" db:"content"`
+	ContentLength int    `json:"content_length" db:"content_length"`
+	ContentType   string `json:"content_type" db:"content_type"`
+
 	// Internal fields for processing (not stored in database)
-	OriginStreamID   string     `json:"-" db:"-"`  // Temporary field for UUID resolution
+	OriginStreamID string `json:"-" db:"-"` // Temporary field for UUID resolution
 }
 
 // InoreaderStreamResponse represents the Inoreader API response for stream contents
 type InoreaderStreamResponse struct {
-	Direction    string             `json:"direction"`
-	ID           string             `json:"id"`
-	Title        string             `json:"title"`
-	Description  string             `json:"description"`
-	Self         []InoreaderLink    `json:"self"`
-	Updated      int64              `json:"updated"`
-	Items        []InoreaderItem    `json:"items"`
-	Continuation string             `json:"continuation,omitempty"` // For pagination
+	Direction    string          `json:"direction"`
+	ID           string          `json:"id"`
+	Title        string          `json:"title"`
+	Description  string          `json:"description"`
+	Self         []InoreaderLink `json:"self"`
+	Updated      int64           `json:"updated"`
+	Items        []InoreaderItem `json:"items"`
+	Continuation string          `json:"continuation,omitempty"` // For pagination
 }
 
 // InoreaderItem represents a single article item from Inoreader API
 type InoreaderItem struct {
-	ID        string                `json:"id"`        // Unique article ID
-	Title     string                `json:"title"`     // Article title
-	Published int64                 `json:"published"` // Unix timestamp
-	Updated   int64                 `json:"updated"`   // Unix timestamp
-	Author    string                `json:"author"`    // Article author
-	Canonical []InoreaderLink       `json:"canonical"` // Article URL
-	Origin    InoreaderOrigin       `json:"origin"`    // Source feed information
-	Summary   InoreaderSummary      `json:"summary"`   // Article summary/content
-	Categories []string             `json:"categories"` // Tags/categories
+	ID         string           `json:"id"`         // Unique article ID
+	Title      string           `json:"title"`      // Article title
+	Published  int64            `json:"published"`  // Unix timestamp
+	Updated    int64            `json:"updated"`    // Unix timestamp
+	Author     string           `json:"author"`     // Article author
+	Canonical  []InoreaderLink  `json:"canonical"`  // Article URL
+	Origin     InoreaderOrigin  `json:"origin"`     // Source feed information
+	Summary    InoreaderSummary `json:"summary"`    // Article summary/content
+	Categories []string         `json:"categories"` // Tags/categories
 }
 
 // InoreaderLink represents a link in Inoreader API response
@@ -74,7 +74,7 @@ type InoreaderSummary struct {
 	Direction string `json:"direction"`
 }
 
-// NewArticle creates a new article from individual parameters  
+// NewArticle creates a new article from individual parameters
 func NewArticle(inoreaderID, subscriptionID, articleURL, title, author string, publishedAt time.Time) *Article {
 	now := time.Now()
 
@@ -89,16 +89,16 @@ func NewArticle(inoreaderID, subscriptionID, articleURL, title, author string, p
 		FetchedAt:      now,
 		Processed:      false,
 		// Phase 1: Initialize content fields with defaults
-		Content:        "",
-		ContentLength:  0,
-		ContentType:    "html",
+		Content:       "",
+		ContentLength: 0,
+		ContentType:   "html",
 	}
 }
 
 // NewArticleFromAPI creates a new article from Inoreader API data
 func NewArticleFromAPI(inoreaderItem InoreaderItem, subscriptionID uuid.UUID) *Article {
 	now := time.Now()
-	
+
 	// Extract article URL from canonical links
 	articleURL := ""
 	if len(inoreaderItem.Canonical) > 0 {
@@ -116,11 +116,11 @@ func NewArticleFromAPI(inoreaderItem InoreaderItem, subscriptionID uuid.UUID) *A
 	var content string
 	var contentLength int
 	var contentType string = "html"
-	
+
 	if inoreaderItem.Summary.Content != "" {
 		content = inoreaderItem.Summary.Content
 		contentLength = len(content)
-		
+
 		// Set content type based on direction
 		if inoreaderItem.Summary.Direction == "rtl" {
 			contentType = "html_rtl"
@@ -138,9 +138,9 @@ func NewArticleFromAPI(inoreaderItem InoreaderItem, subscriptionID uuid.UUID) *A
 		FetchedAt:      now,
 		Processed:      false,
 		// Phase 1: Store extracted content
-		Content:        content,
-		ContentLength:  contentLength,
-		ContentType:    contentType,
+		Content:       content,
+		ContentLength: contentLength,
+		ContentType:   contentType,
 	}
 }
 

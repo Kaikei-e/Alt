@@ -40,7 +40,7 @@ func (r *SubscriptionUUIDResolver) ResolveArticleUUIDs(
 
 	result := &UUIDResolutionResult{
 		TotalProcessed: len(articles),
-		Errors:        make([]ResolutionError, 0),
+		Errors:         make([]ResolutionError, 0),
 	}
 
 	// 各記事を処理
@@ -81,7 +81,7 @@ func (r *SubscriptionUUIDResolver) ResolveArticleUUIDs(
 		} else {
 			r.updateArticleSubscriptionID(article, newUUID)
 			result.AutoCreatedCount++
-			
+
 			// マッピングキャッシュを更新
 			mapping.SetMapping(article.OriginStreamID, newUUID)
 			r.logger.Info("Auto-created missing subscription",
@@ -170,7 +170,7 @@ func (r *SubscriptionUUIDResolver) addResolutionError(
 		ErrorCode:          errorCode,
 	}
 	result.Errors = append(result.Errors, resolutionError)
-	
+
 	r.logger.Error("Failed to resolve article UUID",
 		"inoreader_id", article.InoreaderID,
 		"origin_stream_id", article.OriginStreamID,

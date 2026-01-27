@@ -109,7 +109,7 @@ func TestUpdateTokenDirectly(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			
+
 			// Execute UpdateTokenDirectly
 			err := manager.UpdateTokenDirectly(ctx, tt.token)
 
@@ -128,7 +128,7 @@ func TestUpdateTokenDirectly(t *testing.T) {
 
 			// Verify token was updated correctly
 			status := manager.GetTokenStatus()
-			
+
 			// Check basic status fields
 			if !status.HasAccessToken {
 				t.Error("Token manager should have access token after UpdateTokenDirectly")
@@ -161,12 +161,12 @@ func TestUpdateTokenDirectly(t *testing.T) {
 			}
 
 			if retrievedToken.AccessToken != tt.token.AccessToken {
-				t.Errorf("Retrieved access token doesn't match. Expected %s, got %s", 
+				t.Errorf("Retrieved access token doesn't match. Expected %s, got %s",
 					tt.token.AccessToken, retrievedToken.AccessToken)
 			}
 
 			if retrievedToken.TokenType != expectedTokenType {
-				t.Errorf("Retrieved token type doesn't match. Expected %s, got %s", 
+				t.Errorf("Retrieved token type doesn't match. Expected %s, got %s",
 					expectedTokenType, retrievedToken.TokenType)
 			}
 		})
@@ -197,7 +197,7 @@ func TestUpdateTokenDirectly_ConflictAvoidance(t *testing.T) {
 	// Simulate auth-token-manager updating the Secret
 	authManagerToken := &models.OAuth2Token{
 		AccessToken:  "auth-manager-access-token",
-		RefreshToken: "auth-manager-refresh-token", 
+		RefreshToken: "auth-manager-refresh-token",
 		TokenType:    "Bearer",
 		ExpiresAt:    time.Now().Add(24 * time.Hour),
 		Scope:        "read write", // Fixed scope from auth-token-manager
@@ -218,7 +218,7 @@ func TestUpdateTokenDirectly_ConflictAvoidance(t *testing.T) {
 	}
 
 	if retrievedToken.AccessToken != authManagerToken.AccessToken {
-		t.Errorf("Access token not updated. Expected %s, got %s", 
+		t.Errorf("Access token not updated. Expected %s, got %s",
 			authManagerToken.AccessToken, retrievedToken.AccessToken)
 	}
 

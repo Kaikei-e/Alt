@@ -208,17 +208,17 @@ func TestMemoryRateLimiter_Stop(t *testing.T) {
 
 	// Add some data
 	limiter.RecordRequest("192.168.1.10", "/api/test")
-	
+
 	// Stop the limiter
 	limiter.Stop()
 
 	// Verify it's stopped and cleaned
 	assert.False(t, limiter.isRunning)
-	
+
 	limiter.mutex.RLock()
 	clientCount := len(limiter.clients)
 	limiter.mutex.RUnlock()
-	
+
 	assert.Equal(t, 0, clientCount)
 }
 
@@ -227,10 +227,10 @@ func TestMemoryRateLimiter_ConcurrentAccess(t *testing.T) {
 	defer limiter.Stop()
 
 	clientIP := "192.168.1.11"
-	
+
 	// Test concurrent access doesn't cause data races
 	done := make(chan bool, 10)
-	
+
 	// Start multiple goroutines
 	for i := 0; i < 10; i++ {
 		go func(id int) {
@@ -242,12 +242,12 @@ func TestMemoryRateLimiter_ConcurrentAccess(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	// Wait for all goroutines to complete
 	for i := 0; i < 10; i++ {
 		<-done
 	}
-	
+
 	// Verify final state is consistent
 	stats := limiter.GetClientStats(clientIP)
 	assert.Equal(t, clientIP, stats.ClientIP)
@@ -266,7 +266,7 @@ func TestMemoryRateLimiter_TimeBasedExpiry(t *testing.T) {
 	limiter.mutex.Lock()
 	limiter.clients[clientIP] = &ClientRateLimit{
 		requests: []RequestRecord{
-			{timestamp: now.Add(-2 * time.Hour), endpoint: "/old"},  // Should be filtered out
+			{timestamp: now.Add(-2 * time.Hour), endpoint: "/old"},       // Should be filtered out
 			{timestamp: now.Add(-30 * time.Minute), endpoint: "/recent"}, // Should remain
 		},
 		lastCleanup: now,
@@ -363,7 +363,7 @@ func TestMemoryRateLimiter_EdgeCases(t *testing.T) {
 
 		assert.True(t, limiter.IsAllowed("", "/api"))
 		limiter.RecordRequest("", "/api")
-		
+
 		stats := limiter.GetClientStats("")
 		assert.Equal(t, "", stats.ClientIP)
 		assert.Equal(t, 1, stats.RequestsInLastHour)
@@ -375,7 +375,7 @@ func TestMemoryRateLimiter_EdgeCases(t *testing.T) {
 
 		assert.True(t, limiter.IsAllowed("test", ""))
 		limiter.RecordRequest("test", "")
-		
+
 		stats := limiter.GetClientStats("test")
 		assert.Equal(t, 1, stats.EndpointBreakdown[""])
 	})

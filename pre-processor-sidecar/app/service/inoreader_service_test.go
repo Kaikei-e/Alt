@@ -12,8 +12,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-
-
 func TestInoreaderService_CheckAPIRateLimit(t *testing.T) {
 	tests := map[string]struct {
 		currentUsage    int
@@ -77,7 +75,6 @@ func TestInoreaderService_CheckAPIRateLimit(t *testing.T) {
 		})
 	}
 }
-
 
 func TestInoreaderService_GetCurrentAPIUsageInfo(t *testing.T) {
 	tests := map[string]struct {

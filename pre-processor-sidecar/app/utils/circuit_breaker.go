@@ -13,9 +13,9 @@ import (
 type CircuitBreakerState int
 
 const (
-	StateClosed CircuitBreakerState = iota // 正常状態：リクエストを通す
-	StateOpen                              // 障害状態：リクエストを遮断
-	StateHalfOpen                          // 回復テスト状態：限定的にリクエストを通す
+	StateClosed   CircuitBreakerState = iota // 正常状態：リクエストを通す
+	StateOpen                                // 障害状態：リクエストを遮断
+	StateHalfOpen                            // 回復テスト状態：限定的にリクエストを通す
 )
 
 func (s CircuitBreakerState) String() string {
@@ -23,7 +23,7 @@ func (s CircuitBreakerState) String() string {
 	case StateClosed:
 		return "CLOSED"
 	case StateOpen:
-		return "OPEN"  
+		return "OPEN"
 	case StateHalfOpen:
 		return "HALF_OPEN"
 	default:
@@ -42,10 +42,10 @@ type CircuitBreakerConfig struct {
 // DefaultCircuitBreakerConfig returns a default circuit breaker configuration
 func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
 	return &CircuitBreakerConfig{
-		FailureThreshold: 5,              // 5回連続失敗でOPEN
-		SuccessThreshold: 3,              // HALF_OPENで3回成功すればCLOSED
+		FailureThreshold: 5,                // 5回連続失敗でOPEN
+		SuccessThreshold: 3,                // HALF_OPENで3回成功すればCLOSED
 		Timeout:          30 * time.Second, // 30秒でHALF_OPENに移行
-		MaxRequests:      2,              // HALF_OPENで最大2つのリクエストを許可
+		MaxRequests:      2,                // HALF_OPENで最大2つのリクエストを許可
 	}
 }
 
@@ -111,7 +111,7 @@ func (cb *CircuitBreaker) Execute(ctx context.Context, operation func(ctx contex
 		cb.mu.Lock()
 		cb.totalRejections++
 		cb.mu.Unlock()
-		
+
 		cb.logger.Debug("Circuit breaker rejected request",
 			"state", cb.state.String(),
 			"failure_count", cb.failureCount)
@@ -178,7 +178,7 @@ func (cb *CircuitBreaker) onSuccess() {
 	case StateHalfOpen:
 		cb.successCount++
 		cb.halfOpenRequests--
-		
+
 		// If we have enough successes, close the circuit
 		if cb.successCount >= cb.config.SuccessThreshold {
 			cb.logger.Info("Circuit breaker closing - sufficient successes",

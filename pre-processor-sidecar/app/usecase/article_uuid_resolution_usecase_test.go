@@ -96,14 +96,14 @@ func TestArticleUUIDResolutionUseCase_ResolveArticleUUIDs(t *testing.T) {
 	testUUID2 := uuid.MustParse("550e8400-e29b-41d4-a716-446655440002")
 
 	tests := []struct {
-		name                    string
-		articles                []*models.Article
-		subscriptions           []models.InoreaderSubscription
-		resolverResult          *domain.UUIDResolutionResult
-		resolverError           error
-		subscriptionRepoError   error
-		expectedResult          *domain.UUIDResolutionResult
-		expectedError           bool
+		name                  string
+		articles              []*models.Article
+		subscriptions         []models.InoreaderSubscription
+		resolverResult        *domain.UUIDResolutionResult
+		resolverError         error
+		subscriptionRepoError error
+		expectedResult        *domain.UUIDResolutionResult
+		expectedError         bool
 	}{
 		{
 			name: "正常なUUID解決フロー",
@@ -136,7 +136,7 @@ func TestArticleUUIDResolutionUseCase_ResolveArticleUUIDs(t *testing.T) {
 				AutoCreatedCount: 0,
 				UnknownCount:     0,
 				TotalProcessed:   2,
-				Errors:          []domain.ResolutionError{},
+				Errors:           []domain.ResolutionError{},
 			},
 			resolverError:         nil,
 			subscriptionRepoError: nil,
@@ -145,7 +145,7 @@ func TestArticleUUIDResolutionUseCase_ResolveArticleUUIDs(t *testing.T) {
 				AutoCreatedCount: 0,
 				UnknownCount:     0,
 				TotalProcessed:   2,
-				Errors:          []domain.ResolutionError{},
+				Errors:           []domain.ResolutionError{},
 			},
 			expectedError: false,
 		},
@@ -234,7 +234,7 @@ func TestArticleUUIDResolutionUseCase_ResolveArticleUUIDs(t *testing.T) {
 				useCase.resolver = &domain.SubscriptionUUIDResolver{}
 				// For testing purposes, we'll call the resolver directly
 				ctx := context.Background()
-				
+
 				// Build mapping first
 				mapping, err := useCase.buildSubscriptionMapping(ctx)
 				if tt.subscriptionRepoError != nil {
@@ -242,7 +242,7 @@ func TestArticleUUIDResolutionUseCase_ResolveArticleUUIDs(t *testing.T) {
 					mockRepo.AssertExpectations(t)
 					return
 				}
-				
+
 				assert.NoError(t, err)
 				assert.NotNil(t, mapping)
 				assert.Equal(t, len(tt.subscriptions), mapping.Size())
@@ -269,12 +269,12 @@ func TestArticleUUIDResolutionUseCase_ResolveArticleUUIDs(t *testing.T) {
 
 func TestSubscriptionAutoCreatorAdapter_AutoCreateSubscription(t *testing.T) {
 	tests := []struct {
-		name             string
-		originStreamID   string
-		repoError        error
-		expectedError    bool
-		expectedFeedURL  string
-		expectedTitle    string
+		name            string
+		originStreamID  string
+		repoError       error
+		expectedError   bool
+		expectedFeedURL string
+		expectedTitle   string
 	}{
 		{
 			name:            "正常な自動作成 - feed/プレフィックス付きURL",
@@ -350,13 +350,13 @@ func TestSubscriptionAutoCreatorAdapter_AutoCreateSubscription(t *testing.T) {
 func TestSubscriptionAutoCreatorAdapter_extractFeedURLFromInoreaderID(t *testing.T) {
 	mockLogger := new(MockLogger)
 	mockLogger.On("Warn", mock.Anything, mock.Anything).Maybe()
-	
+
 	adapter := NewSubscriptionAutoCreatorAdapter(nil, mockLogger)
 
 	tests := []struct {
-		name           string
-		inoreaderID    string
-		expectedURL    string
+		name        string
+		inoreaderID string
+		expectedURL string
 	}{
 		{
 			name:        "feed/プレフィックス付きHTTPS URL",
@@ -364,7 +364,7 @@ func TestSubscriptionAutoCreatorAdapter_extractFeedURLFromInoreaderID(t *testing
 			expectedURL: "https://example.com/rss.xml",
 		},
 		{
-			name:        "feed/プレフィックス付きHTTP URL", 
+			name:        "feed/プレフィックス付きHTTP URL",
 			inoreaderID: "feed/http://example.com/feed",
 			expectedURL: "http://example.com/feed",
 		},

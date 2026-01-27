@@ -19,7 +19,7 @@ func TestCircuitBreakerIntegration_BasicFlow(t *testing.T) {
 		Timeout:          1000 * time.Millisecond, // 1 second timeout for testing
 		MaxRequests:      1,
 	}
-	
+
 	cb := utils.NewCircuitBreaker(config, slog.Default())
 	ctx := context.Background()
 
@@ -90,6 +90,6 @@ func TestCircuitBreakerIntegration_Statistics(t *testing.T) {
 		t.Errorf("Expected %d total failures, got %d", failureOps, stats.TotalFailures)
 	}
 
-	t.Logf("Statistics test completed - Requests: %d, Successes: %d, Failures: %d", 
+	t.Logf("Statistics test completed - Requests: %d, Successes: %d, Failures: %d",
 		stats.TotalRequests, stats.TotalSuccesses, stats.TotalFailures)
 }

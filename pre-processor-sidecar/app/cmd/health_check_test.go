@@ -15,9 +15,9 @@ import (
 func TestHealthCheckService_BasicHealth(t *testing.T) {
 	// Create a simple health check service
 	healthService := NewHealthCheckService()
-	
+
 	result := healthService.PerformHealthCheck(context.Background())
-	
+
 	// Basic assertions
 	assert.NotNil(t, result)
 	assert.Equal(t, "healthy", result["status"])
@@ -46,10 +46,10 @@ func TestHealthCheckService_TokenManagerHealth(t *testing.T) {
 			Port: "5432",
 		},
 	}
-	
+
 	healthService := NewHealthCheckServiceWithConfig(cfg)
 	result := healthService.PerformHealthCheck(context.Background())
-	
+
 	assert.Equal(t, "healthy", result["status"])
 	assert.Equal(t, true, result["token_manager_available"])
 }
@@ -65,10 +65,10 @@ func TestHealthCheckService_TokenManagerUnavailable(t *testing.T) {
 			// Empty credentials
 		},
 	}
-	
+
 	healthService := NewHealthCheckServiceWithConfig(cfg)
 	result := healthService.PerformHealthCheck(context.Background())
-	
+
 	assert.Equal(t, "degraded", result["status"])
 	assert.Equal(t, false, result["token_manager_available"])
 	assert.Contains(t, result, "error_details")
@@ -97,10 +97,10 @@ func TestHealthCheckService_OAuth2ClientHealth(t *testing.T) {
 			Port: "5432",
 		},
 	}
-	
+
 	healthService := NewHealthCheckServiceWithConfig(cfg)
 	result := healthService.PerformHealthCheck(context.Background())
-	
+
 	assert.Equal(t, "healthy", result["status"])
 	assert.Contains(t, result, "oauth2_client_configured")
 	assert.Equal(t, true, result["oauth2_client_configured"])
@@ -131,16 +131,16 @@ func TestHealthCheckService_DatabaseConnectivity(t *testing.T) {
 			SSLMode:  "disable",
 		},
 	}
-	
+
 	healthService := NewHealthCheckServiceWithConfig(cfg)
-	
+
 	// Override the database check with a mock
 	healthService.databaseHealthCheck = func(cfg *config.Config) bool {
 		return cfg.Database.Host != ""
 	}
-	
+
 	result := healthService.PerformHealthCheck(context.Background())
-	
+
 	assert.Equal(t, "healthy", result["status"])
 	assert.Contains(t, result, "database_configured")
 	assert.Equal(t, true, result["database_configured"])
@@ -231,17 +231,17 @@ func TestHealthCheckService_Timeout(t *testing.T) {
 	}
 
 	healthService := NewHealthCheckServiceWithConfig(cfg)
-	
+
 	// Override the token manager health check to simulate a slow response
 	healthService.tokenManagerHealthCheck = func(baseURL string) (bool, error) {
 		time.Sleep(1 * time.Second) // Simulate slow response
 		return true, nil
 	}
-	
+
 	// Set a short timeout for testing
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	
+
 	result := healthService.PerformHealthCheck(ctx)
 
 	// Should still complete as our current implementation doesn't check context timeout
@@ -253,10 +253,10 @@ func TestHealthCheckService_Timeout(t *testing.T) {
 func TestPerformHealthCheckCommand(t *testing.T) {
 	// This test verifies that the command-line health check works correctly
 	// We'll capture the output and verify it's structured properly
-	
+
 	// Create a basic health check that doesn't require external dependencies
 	result := performComprehensiveHealthCheck()
-	
+
 	assert.NotNil(t, result)
 	assert.Contains(t, result, "status")
 	assert.Contains(t, result, "timestamp")

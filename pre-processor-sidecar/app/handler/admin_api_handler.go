@@ -60,13 +60,11 @@ type AdminAPIMetricsCollector interface {
 	IncrementAdminAPIAuthenticationError(errorType string)
 }
 
-
-
 // TokenUpdateResponse はトークン更新レスポンス
 type TokenUpdateResponse struct {
-	Status         string    `json:"status"`
-	Message        string    `json:"message"`
-	Timestamp      time.Time `json:"timestamp"`
+	Status         string     `json:"status"`
+	Message        string     `json:"message"`
+	Timestamp      time.Time  `json:"timestamp"`
 	TokenExpiresAt *time.Time `json:"token_expires_at,omitempty"`
 }
 
@@ -114,7 +112,7 @@ func NewAdminAPIHandler(
 func (h *AdminAPIHandler) HandleRefreshTokenUpdate(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	clientIP := getClientIP(r)
-	
+
 	defer func() {
 		duration := time.Since(start)
 		h.metricsCollector.RecordAdminAPIRequestDuration("POST", "/admin/oauth2/refresh-token", duration)
@@ -142,7 +140,7 @@ func (h *AdminAPIHandler) HandleRefreshTokenUpdate(w http.ResponseWriter, r *htt
 		h.logger.Warn("Rate limit exceeded for admin API",
 			"client_ip", clientIP,
 			"endpoint", "/admin/oauth2/refresh-token")
-		
+
 		h.respondWithError(w, "RATE_LIMITED", "Rate limit exceeded", http.StatusTooManyRequests)
 		h.metricsCollector.IncrementAdminAPIRateLimitHit()
 		h.metricsCollector.IncrementAdminAPIRequest("POST", "/admin/oauth2/refresh-token", "rate_limited")
@@ -164,7 +162,7 @@ func (h *AdminAPIHandler) HandleRefreshTokenUpdate(w http.ResponseWriter, r *htt
 		h.logger.Error("ServiceAccount token validation failed",
 			"error", err,
 			"client_ip", clientIP)
-		
+
 		h.respondWithError(w, "INVALID_TOKEN", "Invalid authentication token", http.StatusUnauthorized)
 		h.metricsCollector.IncrementAdminAPIAuthenticationError("invalid_token")
 		h.metricsCollector.IncrementAdminAPIRequest("POST", "/admin/oauth2/refresh-token", "unauthorized")
@@ -177,7 +175,7 @@ func (h *AdminAPIHandler) HandleRefreshTokenUpdate(w http.ResponseWriter, r *htt
 			"subject", serviceAccountInfo.Subject,
 			"namespace", serviceAccountInfo.Namespace,
 			"client_ip", clientIP)
-		
+
 		h.respondWithError(w, "INSUFFICIENT_PERMISSIONS", "Insufficient permissions for this operation", http.StatusForbidden)
 		h.metricsCollector.IncrementAdminAPIAuthenticationError("insufficient_permissions")
 		h.metricsCollector.IncrementAdminAPIRequest("POST", "/admin/oauth2/refresh-token", "forbidden")
@@ -198,7 +196,7 @@ func (h *AdminAPIHandler) HandleRefreshTokenUpdate(w http.ResponseWriter, r *htt
 			"error", err,
 			"client_ip", clientIP,
 			"subject", serviceAccountInfo.Subject)
-		
+
 		h.respondWithError(w, "VALIDATION_ERROR", fmt.Sprintf("Input validation failed: %v", err), http.StatusBadRequest)
 		h.metricsCollector.IncrementAdminAPIRequest("POST", "/admin/oauth2/refresh-token", "validation_error")
 		return
@@ -227,7 +225,7 @@ func (h *AdminAPIHandler) HandleRefreshTokenUpdate(w http.ResponseWriter, r *htt
 			"error", err,
 			"subject", serviceAccountInfo.Subject,
 			"client_ip", clientIP)
-		
+
 		h.respondWithError(w, "TOKEN_UPDATE_FAILED", "Failed to update token", http.StatusInternalServerError)
 		h.metricsCollector.IncrementAdminAPIRequest("POST", "/admin/oauth2/refresh-token", "token_update_failed")
 		return
@@ -235,14 +233,14 @@ func (h *AdminAPIHandler) HandleRefreshTokenUpdate(w http.ResponseWriter, r *htt
 
 	// 更新されたトークンの状態を取得
 	status := h.tokenManager.GetTokenStatus()
-	
+
 	// 成功レスポンス
 	response := TokenUpdateResponse{
 		Status:    "success",
 		Message:   "Token updated successfully",
 		Timestamp: time.Now(),
 	}
-	
+
 	if !status.ExpiresAt.IsZero() {
 		response.TokenExpiresAt = &status.ExpiresAt
 	}
@@ -252,7 +250,7 @@ func (h *AdminAPIHandler) HandleRefreshTokenUpdate(w http.ResponseWriter, r *htt
 	json.NewEncoder(w).Encode(response)
 
 	h.metricsCollector.IncrementAdminAPIRequest("POST", "/admin/oauth2/refresh-token", "success")
-	
+
 	h.logger.Info("Token updated successfully via admin API",
 		"subject", serviceAccountInfo.Subject,
 		"client_ip", clientIP,
@@ -264,7 +262,7 @@ func (h *AdminAPIHandler) HandleRefreshTokenUpdate(w http.ResponseWriter, r *htt
 func (h *AdminAPIHandler) HandleTokenStatus(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	_ = getClientIP(r) // Get client IP but don't use it in this function
-	
+
 	defer func() {
 		duration := time.Since(start)
 		h.metricsCollector.RecordAdminAPIRequestDuration("GET", "/admin/oauth2/status", duration)
@@ -290,7 +288,7 @@ func (h *AdminAPIHandler) HandleTokenStatus(w http.ResponseWriter, r *http.Reque
 
 	// トークン状態取得
 	status := h.tokenManager.GetTokenStatus()
-	
+
 	response := TokenStatusResponse{
 		Status:           "success",
 		HasAccessToken:   status.HasAccessToken,
@@ -361,10 +359,10 @@ func getClientIP(r *http.Request) string {
 			return strings.TrimSpace(parts[0])
 		}
 	}
-	
+
 	if ip := r.Header.Get("X-Real-IP"); ip != "" {
 		return ip
 	}
-	
+
 	return r.RemoteAddr
 }

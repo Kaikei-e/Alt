@@ -15,7 +15,7 @@ import (
 
 func TestNewOWASPInputValidator(t *testing.T) {
 	validator := NewOWASPInputValidator()
-	
+
 	assert.NotNil(t, validator)
 	assert.NotNil(t, validator.refreshTokenPattern)
 	assert.NotNil(t, validator.clientIDPattern)
@@ -41,9 +41,9 @@ func TestValidateTokenUpdateRequest_ValidInput(t *testing.T) {
 	validator := NewOWASPInputValidator()
 
 	req := &models.TokenUpdateRequest{
-		RefreshToken:  "validtoken123456789012345678901234567890", // 40 chars
-		ClientID:      "1234567890", // 10 digits
-		ClientSecret:  "validSecret123456789012345678901234567890", // 44 chars
+		RefreshToken: "validtoken123456789012345678901234567890",  // 40 chars
+		ClientID:     "1234567890",                                // 10 digits
+		ClientSecret: "validSecret123456789012345678901234567890", // 44 chars
 	}
 
 	err := validator.ValidateTokenUpdateRequest(req)
@@ -61,7 +61,7 @@ func TestValidateTokenUpdateRequest_MissingRefreshToken(t *testing.T) {
 
 	err := validator.ValidateTokenUpdateRequest(req)
 	assert.Error(t, err)
-	
+
 	validationErr, ok := err.(*ValidationError)
 	require.True(t, ok)
 	assert.Equal(t, "refresh_token", validationErr.Field)

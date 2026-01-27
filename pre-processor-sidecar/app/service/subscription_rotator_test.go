@@ -24,13 +24,13 @@ func TestNewSubscriptionRotator(t *testing.T) {
 		}
 	}()
 	os.Unsetenv("ROTATION_INTERVAL_MINUTES")
-	
+
 	logger := slog.Default()
 	rotator := NewSubscriptionRotator(logger)
 
 	assert.NotNil(t, rotator)
 	assert.Equal(t, 30, rotator.intervalMinutes) // Changed from 20 to 30 minutes default
-	assert.Equal(t, 2, rotator.maxDaily) // Should be 2 by default (changed from 1)
+	assert.Equal(t, 2, rotator.maxDaily)         // Should be 2 by default (changed from 1)
 	assert.Equal(t, 0, rotator.currentIndex)
 	assert.Empty(t, rotator.subscriptions)
 	assert.Empty(t, rotator.lastProcessed)
@@ -55,7 +55,7 @@ func TestLoadSubscriptions(t *testing.T) {
 	err = rotator.LoadSubscriptions(ctx, subs)
 	assert.NoError(t, err)
 	assert.Equal(t, len(subs), len(rotator.subscriptions))
-	
+
 	// Verify all UUIDs are present (order may be different due to shuffle)
 	for _, originalSub := range subs {
 		found := false
@@ -188,9 +188,9 @@ func TestIsReadyForNext(t *testing.T) {
 		}
 	}()
 	os.Unsetenv("ROTATION_INTERVAL_MINUTES")
-	
+
 	rotator := NewSubscriptionRotator(slog.Default())
-	
+
 	// Should be ready when no previous processing
 	assert.True(t, rotator.IsReadyForNext())
 
@@ -277,7 +277,7 @@ func TestRotatorConcurrency(t *testing.T) {
 
 	// Test concurrent access
 	done := make(chan bool, 2)
-	
+
 	go func() {
 		for i := 0; i < 5; i++ {
 			rotator.GetNextSubscription()
@@ -316,7 +316,7 @@ func TestHasCompletedDailyRotationWithTwoRotations(t *testing.T) {
 		}
 	}()
 	os.Setenv("MAX_DAILY_ROTATIONS", "2")
-	
+
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()
 
@@ -363,13 +363,13 @@ func TestHasCompletedDailyRotationWithTwoRotations(t *testing.T) {
 // Test batch processing capacity validation
 func TestBatchProcessingCapacityValidation(t *testing.T) {
 	tests := []struct {
-		name                 string
-		subscriptions       int
-		maxDailyRotations   int
-		batchSize           int
-		intervalMinutes     int
-		expectedValidation  bool
-		description         string
+		name               string
+		subscriptions      int
+		maxDailyRotations  int
+		batchSize          int
+		intervalMinutes    int
+		expectedValidation bool
+		description        string
 	}{
 		{
 			name:               "Current problematic config",
@@ -405,13 +405,13 @@ func TestBatchProcessingCapacityValidation(t *testing.T) {
 			requiredProcessing := tt.subscriptions * tt.maxDailyRotations
 			dailyIntervals := (24 * 60) / tt.intervalMinutes
 			dailyCapacity := dailyIntervals * tt.batchSize
-			
+
 			isValid := dailyCapacity >= requiredProcessing
-			
-			assert.Equal(t, tt.expectedValidation, isValid, 
-				"Capacity validation failed: %s. Required: %d, Capacity: %d", 
+
+			assert.Equal(t, tt.expectedValidation, isValid,
+				"Capacity validation failed: %s. Required: %d, Capacity: %d",
 				tt.description, requiredProcessing, dailyCapacity)
-			
+
 			t.Logf("Test: %s", tt.name)
 			t.Logf("Required processing per day: %d", requiredProcessing)
 			t.Logf("Daily intervals (%d min): %d", tt.intervalMinutes, dailyIntervals)
@@ -448,7 +448,7 @@ func TestTwentyFourHourSimulation(t *testing.T) {
 	// Simulate 30-minute intervals for 24 hours (48 intervals)
 	totalIntervals := 48
 	batchSize := 2
-	
+
 	processedCount := 0
 	expectedTotal := len(subs) * 2 // 5 subs × 2 rotations = 10
 
@@ -460,7 +460,7 @@ func TestTwentyFourHourSimulation(t *testing.T) {
 			t.Logf("All processing completed at interval %d/%d", interval+1, totalIntervals)
 			break
 		}
-		
+
 		// Process the batch
 		for _, subID := range batch {
 			// Verify it's a valid subscription
@@ -474,17 +474,17 @@ func TestTwentyFourHourSimulation(t *testing.T) {
 			assert.True(t, found, "Invalid subscription ID in batch: %s", subID)
 			processedCount++
 		}
-		
-		t.Logf("Interval %d: processed batch of %d, total processed: %d/%d", 
+
+		t.Logf("Interval %d: processed batch of %d, total processed: %d/%d",
 			interval+1, len(batch), processedCount, expectedTotal)
 	}
-	
+
 	// Verify final results
 	stats := rotator.GetStats()
-	assert.Equal(t, expectedTotal, processedCount, 
+	assert.Equal(t, expectedTotal, processedCount,
 		"Should have processed all subscriptions twice")
 	assert.Equal(t, len(subs), stats.TotalSubscriptions)
-	assert.Equal(t, 0, stats.RemainingToday, 
+	assert.Equal(t, 0, stats.RemainingToday,
 		"Should have no remaining subscriptions")
 }
 
@@ -529,7 +529,7 @@ func TestValidateRotationConfiguration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateRotationConfiguration(tt.subscriptions, tt.maxDaily, tt.batchSize, tt.intervalMinutes)
-			
+
 			if tt.expectValid {
 				assert.NoError(t, err, "Configuration should be valid")
 			} else {
@@ -556,11 +556,11 @@ func TestConfigurableIntervalFromEnvironment(t *testing.T) {
 			}
 		}()
 		os.Unsetenv("ROTATION_INTERVAL_MINUTES")
-		
+
 		rotator := NewSubscriptionRotator(slog.Default())
 		assert.Equal(t, 30, rotator.intervalMinutes, "Default interval should be 30 minutes")
 	})
-	
+
 	// Test custom interval from environment
 	t.Run("custom_interval_from_env", func(t *testing.T) {
 		originalEnv := os.Getenv("ROTATION_INTERVAL_MINUTES")
@@ -571,13 +571,13 @@ func TestConfigurableIntervalFromEnvironment(t *testing.T) {
 				os.Unsetenv("ROTATION_INTERVAL_MINUTES")
 			}
 		}()
-		
+
 		// Test 25 minute interval
 		os.Setenv("ROTATION_INTERVAL_MINUTES", "25")
 		rotator := NewSubscriptionRotator(slog.Default())
 		assert.Equal(t, 25, rotator.intervalMinutes, "Should use environment variable interval")
 	})
-	
+
 	// Test invalid environment values
 	t.Run("invalid_env_values", func(t *testing.T) {
 		originalEnv := os.Getenv("ROTATION_INTERVAL_MINUTES")
@@ -588,7 +588,7 @@ func TestConfigurableIntervalFromEnvironment(t *testing.T) {
 				os.Unsetenv("ROTATION_INTERVAL_MINUTES")
 			}
 		}()
-		
+
 		cases := []struct {
 			name     string
 			envValue string
@@ -599,12 +599,12 @@ func TestConfigurableIntervalFromEnvironment(t *testing.T) {
 			{"negative", "-5", 30},
 			{"too_large", "500", 30},
 		}
-		
+
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
 				os.Setenv("ROTATION_INTERVAL_MINUTES", tc.envValue)
 				rotator := NewSubscriptionRotator(slog.Default())
-				assert.Equal(t, tc.expected, rotator.intervalMinutes, 
+				assert.Equal(t, tc.expected, rotator.intervalMinutes,
 					"Invalid environment value should fallback to default")
 			})
 		}
@@ -621,25 +621,25 @@ func TestTimingCalculationsWithConfigurableInterval(t *testing.T) {
 			os.Unsetenv("ROTATION_INTERVAL_MINUTES")
 		}
 	}()
-	
+
 	// Test with 30-minute interval
 	os.Setenv("ROTATION_INTERVAL_MINUTES", "30")
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()
-	
+
 	// Load test subscriptions
 	subs := []uuid.UUID{uuid.New(), uuid.New()}
 	err := rotator.LoadSubscriptions(ctx, subs)
 	require.NoError(t, err)
-	
+
 	// Process one subscription and check timing
 	beforeTime := time.Now()
 	_, hasNext := rotator.GetNextSubscription()
 	assert.True(t, hasNext)
-	
+
 	// Check if IsReadyForNext respects the new interval
 	assert.False(t, rotator.IsReadyForNext(), "Should not be ready immediately")
-	
+
 	// Simulate time passing (less than 30 minutes)
 	rotator.mu.Lock()
 	for uuid, _ := range rotator.lastProcessed {
@@ -648,7 +648,7 @@ func TestTimingCalculationsWithConfigurableInterval(t *testing.T) {
 	}
 	rotator.mu.Unlock()
 	assert.False(t, rotator.IsReadyForNext(), "Should not be ready before 30 minutes")
-	
+
 	// Simulate 30+ minutes passing
 	rotator.mu.Lock()
 	for uuid, _ := range rotator.lastProcessed {
@@ -676,16 +676,16 @@ func TestScheduleHandlerCompatibility(t *testing.T) {
 			os.Unsetenv("MAX_DAILY_ROTATIONS")
 		}
 	}()
-	
+
 	// Set to 30 minutes (matching schedule handler default)
 	os.Setenv("ROTATION_INTERVAL_MINUTES", "30")
 	// Set to 2 rotations per day (matching production config)
 	os.Setenv("MAX_DAILY_ROTATIONS", "2")
 	rotator := NewSubscriptionRotator(slog.Default())
-	
+
 	// Verify interval matches expected value
 	assert.Equal(t, 30, rotator.GetInterval(), "Rotator interval should match schedule handler")
-	
+
 	// Verify calculations work correctly for realistic setup
 	ctx := context.Background()
 	subs := make([]uuid.UUID, 46) // Realistic subscription count
@@ -694,7 +694,7 @@ func TestScheduleHandlerCompatibility(t *testing.T) {
 	}
 	err := rotator.LoadSubscriptions(ctx, subs)
 	require.NoError(t, err)
-	
+
 	stats := rotator.GetStats()
 	// With 46 subscriptions, 30-minute intervals, and batch size 2:
 	// Daily intervals: 24*60/30 = 48
@@ -710,12 +710,12 @@ func validateRotationConfiguration(subscriptions, maxDaily, batchSize, intervalM
 	requiredProcessing := subscriptions * maxDaily
 	dailyIntervals := (24 * 60) / intervalMinutes
 	dailyCapacity := dailyIntervals * batchSize
-	
+
 	if dailyCapacity < requiredProcessing {
-		return fmt.Errorf("insufficient daily capacity: need %d, have %d (intervals: %d, batch: %d)", 
+		return fmt.Errorf("insufficient daily capacity: need %d, have %d (intervals: %d, batch: %d)",
 			requiredProcessing, dailyCapacity, dailyIntervals, batchSize)
 	}
-	
+
 	return nil
 }
 
@@ -756,7 +756,7 @@ func TestDailyResetCurrentIndex(t *testing.T) {
 		assert.True(t, hasNext) // All should be true since we have 2 cycles (MAX_DAILY_ROTATIONS=2)
 	}
 	assert.Equal(t, 6, rotator.currentIndex) // After both cycles (3*2=6)
-	
+
 	// Verify no more subscriptions are available for today
 	subAfterCycles, hasNextAfterCycles := rotator.GetNextSubscription()
 	assert.Equal(t, uuid.Nil, subAfterCycles)
@@ -782,7 +782,7 @@ func TestDailyResetCurrentIndex(t *testing.T) {
 	currentIndexAfterReset := rotator.currentIndex
 	rotator.mu.RUnlock()
 
-	assert.Equal(t, 1, currentIndexAfterReset, 
+	assert.Equal(t, 1, currentIndexAfterReset,
 		"currentIndex should be reset to 1 after daily reset, but was %d", currentIndexAfterReset)
 
 	// Verify we can process full cycles again
@@ -842,10 +842,10 @@ func TestProduction46SubscriptionsTwiceDaily(t *testing.T) {
 	statsAfterFirstCycle := rotator.GetStats()
 	assert.Equal(t, 46, statsAfterFirstCycle.ProcessedToday)
 	assert.Equal(t, 46, statsAfterFirstCycle.RemainingToday) // Still 46 remaining for second cycle
-	
+
 	t.Logf("After first cycle: processed=%d, remaining=%d", statsAfterFirstCycle.ProcessedToday, statsAfterFirstCycle.RemainingToday)
 
-	// Process all subscriptions in the second cycle (another 46 subscriptions)  
+	// Process all subscriptions in the second cycle (another 46 subscriptions)
 	for i := 0; i < 46; i++ {
 		sub, hasNext := rotator.GetNextSubscription()
 		assert.NotEqual(t, uuid.Nil, sub, "Expected subscription at second cycle position %d", i)
@@ -858,9 +858,9 @@ func TestProduction46SubscriptionsTwiceDaily(t *testing.T) {
 	finalStats := rotator.GetStats()
 	assert.Equal(t, 92, finalStats.ProcessedToday) // 46 * 2 cycles
 	assert.Equal(t, 0, finalStats.RemainingToday)  // No more remaining
-	assert.Equal(t, 92, processedCount)             // Total processed count
+	assert.Equal(t, 92, processedCount)            // Total processed count
 
-	t.Logf("Final stats: processed=%d, remaining=%d, total_processed=%d", 
+	t.Logf("Final stats: processed=%d, remaining=%d, total_processed=%d",
 		finalStats.ProcessedToday, finalStats.RemainingToday, processedCount)
 
 	// Verify no more subscriptions are available for today
@@ -882,9 +882,9 @@ func TestProduction46SubscriptionsTwiceDaily(t *testing.T) {
 
 	// Stats should be reset
 	statsAfterReset := rotator.GetStats()
-	assert.Equal(t, 1, statsAfterReset.ProcessedToday)    // Just processed 1
-	assert.Equal(t, 91, statsAfterReset.RemainingToday)   // 92 - 1 = 91 remaining
+	assert.Equal(t, 1, statsAfterReset.ProcessedToday)  // Just processed 1
+	assert.Equal(t, 91, statsAfterReset.RemainingToday) // 92 - 1 = 91 remaining
 
-	t.Logf("After daily reset: processed=%d, remaining=%d", 
+	t.Logf("After daily reset: processed=%d, remaining=%d",
 		statsAfterReset.ProcessedToday, statsAfterReset.RemainingToday)
 }

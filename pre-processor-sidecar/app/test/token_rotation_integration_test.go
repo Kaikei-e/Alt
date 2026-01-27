@@ -37,12 +37,12 @@ func TestTokenRotation_WithRefreshTokenRotation(t *testing.T) {
 				"refresh_token": "new-refresh-token", // Simulated rotation
 				"scope":         "read",
 			}
-			
+
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(response)
 			return
 		}
-		
+
 		if r.URL.Path == "/user-info" {
 			// Mock token validation endpoint
 			auth := r.Header.Get("Authorization")
@@ -54,7 +54,7 @@ func TestTokenRotation_WithRefreshTokenRotation(t *testing.T) {
 			}
 			return
 		}
-		
+
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
@@ -118,12 +118,12 @@ func TestTokenRotation_WithoutRefreshTokenRotation(t *testing.T) {
 				// No refresh_token in response - simulates no rotation
 				"scope": "read",
 			}
-			
+
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(response)
 			return
 		}
-		
+
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
@@ -176,12 +176,12 @@ func TestTokenRotation_ErrorRecovery(t *testing.T) {
 			// Return error response
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{
-				"error": "invalid_grant",
+				"error":             "invalid_grant",
 				"error_description": "The provided authorization grant is invalid, expired, revoked, does not match the redirection URI used in the authorization request, or was issued to another client.",
 			})
 			return
 		}
-		
+
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
@@ -233,14 +233,14 @@ func createTestKubernetesSecretRepository(
 // Helper function to create test secret (reuse from main test)
 func createTestSecret(namespace, secretName string, token *models.OAuth2Token) *corev1.Secret {
 	tokenBytes, _ := json.Marshal(token)
-	
+
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":       "pre-processor-sidecar",
-				"app.kubernetes.io/component":  "oauth2-token",
+				"app.kubernetes.io/name":      "pre-processor-sidecar",
+				"app.kubernetes.io/component": "oauth2-token",
 			},
 		},
 		Type: corev1.SecretTypeOpaque,

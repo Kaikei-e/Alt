@@ -16,14 +16,14 @@ type MemoryRateLimiter struct {
 	cleanupInterval    time.Duration
 
 	// レート制限データ
-	mutex    sync.RWMutex
-	clients  map[string]*ClientRateLimit
-	
+	mutex   sync.RWMutex
+	clients map[string]*ClientRateLimit
+
 	// ログ
 	logger *slog.Logger
-	
+
 	// クリーンアップ制御
-	stopChan chan struct{}
+	stopChan  chan struct{}
 	isRunning bool
 }
 
@@ -48,9 +48,9 @@ func NewMemoryRateLimiter(maxRequestsPerHour int, logger *slog.Logger) *MemoryRa
 	limiter := &MemoryRateLimiter{
 		maxRequestsPerHour: maxRequestsPerHour,
 		cleanupInterval:    5 * time.Minute,
-		clients:           make(map[string]*ClientRateLimit),
-		logger:            logger,
-		stopChan:          make(chan struct{}),
+		clients:            make(map[string]*ClientRateLimit),
+		logger:             logger,
+		stopChan:           make(chan struct{}),
 	}
 
 	// 定期クリーンアップ開始
@@ -87,7 +87,7 @@ func (rl *MemoryRateLimiter) IsAllowed(clientIP string, endpoint string) bool {
 
 	// 現在のリクエスト数確認
 	currentRequests := len(client.requests)
-	
+
 	if currentRequests >= rl.maxRequestsPerHour {
 		rl.logger.Warn("Rate limit exceeded",
 			"client_ip", clientIP,
@@ -137,17 +137,17 @@ func (rl *MemoryRateLimiter) GetClientStats(clientIP string) ClientStats {
 	client, exists := rl.clients[clientIP]
 	if !exists {
 		return ClientStats{
-			ClientIP:                clientIP,
-			RequestsInLastHour:      0,
-			RemainingRequests:       rl.maxRequestsPerHour,
-			NextResetTime:           time.Now().Add(time.Hour),
+			ClientIP:           clientIP,
+			RequestsInLastHour: 0,
+			RemainingRequests:  rl.maxRequestsPerHour,
+			NextResetTime:      time.Now().Add(time.Hour),
 		}
 	}
 
 	now := time.Now()
 	oneHourAgo := now.Add(-time.Hour)
 	validRequests := rl.filterValidRequests(client.requests, oneHourAgo)
-	
+
 	requestsCount := len(validRequests)
 	remaining := rl.maxRequestsPerHour - requestsCount
 	if remaining < 0 {
@@ -162,21 +162,21 @@ func (rl *MemoryRateLimiter) GetClientStats(clientIP string) ClientStats {
 	}
 
 	return ClientStats{
-		ClientIP:                clientIP,
-		RequestsInLastHour:      requestsCount,
-		RemainingRequests:       remaining,
-		NextResetTime:           nextReset,
-		EndpointBreakdown:       rl.getEndpointBreakdown(validRequests),
+		ClientIP:           clientIP,
+		RequestsInLastHour: requestsCount,
+		RemainingRequests:  remaining,
+		NextResetTime:      nextReset,
+		EndpointBreakdown:  rl.getEndpointBreakdown(validRequests),
 	}
 }
 
 // ClientStats はクライアント統計情報
 type ClientStats struct {
-	ClientIP           string            `json:"client_ip"`
-	RequestsInLastHour int               `json:"requests_in_last_hour"`
-	RemainingRequests  int               `json:"remaining_requests"`
-	NextResetTime      time.Time         `json:"next_reset_time"`
-	EndpointBreakdown  map[string]int    `json:"endpoint_breakdown"`
+	ClientIP           string         `json:"client_ip"`
+	RequestsInLastHour int            `json:"requests_in_last_hour"`
+	RemainingRequests  int            `json:"remaining_requests"`
+	NextResetTime      time.Time      `json:"next_reset_time"`
+	EndpointBreakdown  map[string]int `json:"endpoint_breakdown"`
 }
 
 // GetAllClientsStats は全クライアントの統計情報を取得
@@ -190,7 +190,7 @@ func (rl *MemoryRateLimiter) GetAllClientsStats() []ClientStats {
 
 	for clientIP, client := range rl.clients {
 		validRequests := rl.filterValidRequests(client.requests, oneHourAgo)
-		
+
 		if len(validRequests) == 0 {
 			continue // 古いクライアントはスキップ
 		}
@@ -309,7 +309,7 @@ func (rl *MemoryRateLimiter) Stop() {
 
 	close(rl.stopChan)
 	rl.isRunning = false
-	
+
 	// メモリクリア
 	rl.mutex.Lock()
 	rl.clients = make(map[string]*ClientRateLimit)
@@ -333,18 +333,18 @@ func (rl *MemoryRateLimiter) GetGlobalStats() GlobalStats {
 	for _, client := range rl.clients {
 		validRequests := rl.filterValidRequests(client.requests, oneHourAgo)
 		totalRequests += len(validRequests)
-		
+
 		for _, req := range validRequests {
 			endpointStats[req.endpoint]++
 		}
 	}
 
 	return GlobalStats{
-		TotalActiveClients:   totalClients,
+		TotalActiveClients:    totalClients,
 		TotalRequestsLastHour: totalRequests,
-		MaxRequestsPerHour:   rl.maxRequestsPerHour,
-		EndpointBreakdown:    endpointStats,
-		LastCleanup:          time.Now(),
+		MaxRequestsPerHour:    rl.maxRequestsPerHour,
+		EndpointBreakdown:     endpointStats,
+		LastCleanup:           time.Now(),
 	}
 }
 

@@ -207,7 +207,7 @@ func TestOAuth2Token_UpdateFromRefresh(t *testing.T) {
 	assert.Equal(t, "Bearer", token.TokenType)
 	assert.Equal(t, 7200, token.ExpiresIn)
 	assert.Equal(t, "read write", token.Scope)
-	
+
 	// Verify times
 	assert.True(t, token.IssuedAt.After(beforeUpdate) || token.IssuedAt.Equal(beforeUpdate))
 	assert.True(t, token.IssuedAt.Before(afterUpdate) || token.IssuedAt.Equal(afterUpdate))
@@ -237,7 +237,7 @@ func TestOAuth2Token_TimeUntilExpiry(t *testing.T) {
 	}
 
 	duration := token.TimeUntilExpiry()
-	
+
 	// Should be approximately 30 minutes (allowing some test execution time)
 	assert.True(t, duration > 29*time.Minute)
 	assert.True(t, duration <= 30*time.Minute)

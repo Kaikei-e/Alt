@@ -398,25 +398,25 @@ func TestOAuth2Client_HandleRateLimitHeaders(t *testing.T) {
 // RED TEST: タイムアウト処理テスト - 失敗が期待される (SetTimeoutメソッド未実装)
 func TestOAuth2Client_TimeoutHandling(t *testing.T) {
 	tests := []struct {
-		name          string
-		serverDelay   time.Duration
+		name           string
+		serverDelay    time.Duration
 		contextTimeout time.Duration
-		expectTimeout bool
+		expectTimeout  bool
 	}{
 		{
-			name:          "リクエストがタイムアウト内完了",
-			serverDelay:   100 * time.Millisecond,
+			name:           "リクエストがタイムアウト内完了",
+			serverDelay:    100 * time.Millisecond,
 			contextTimeout: 1 * time.Second,
-			expectTimeout: false,
+			expectTimeout:  false,
 		},
 		{
-			name:          "リクエストがタイムアウト超過",
-			serverDelay:   2 * time.Second,
+			name:           "リクエストがタイムアウト超過",
+			serverDelay:    2 * time.Second,
 			contextTimeout: 500 * time.Millisecond,
-			expectTimeout: true,
+			expectTimeout:  true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// モックサーバーを指定遅延で設定 - 2025年のベストプラクティス
@@ -433,27 +433,27 @@ func TestOAuth2Client_TimeoutHandling(t *testing.T) {
 				} else {
 					time.Sleep(tt.serverDelay)
 				}
-				
+
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte(`{"access_token":"test_token","token_type":"Bearer","expires_in":3600,"refresh_token":"test_refresh"}`))
 			}))
 			defer server.Close()
 
 			client := NewOAuth2Client("test", "test", server.URL, slog.Default())
-			
+
 			// Context with timeout for proper timeout handling
 			ctx, cancel := context.WithTimeout(context.Background(), tt.contextTimeout)
 			defer cancel()
 
 			_, err := client.RefreshToken(ctx, "refresh_token")
-			
+
 			if tt.expectTimeout {
 				assert.Error(t, err)
 				// Check for context deadline exceeded or timeout-related errors
-				assert.True(t, 
-					strings.Contains(err.Error(), "deadline exceeded") || 
-					strings.Contains(err.Error(), "timeout") ||
-					strings.Contains(err.Error(), "context canceled"),
+				assert.True(t,
+					strings.Contains(err.Error(), "deadline exceeded") ||
+						strings.Contains(err.Error(), "timeout") ||
+						strings.Contains(err.Error(), "context canceled"),
 					"Expected timeout-related error, got: %v", err)
 			} else {
 				assert.NoError(t, err)

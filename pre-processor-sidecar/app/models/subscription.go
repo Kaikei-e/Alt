@@ -27,15 +27,15 @@ type InoreaderSubscriptionResponse struct {
 
 // InoreaderSubscription represents a single subscription from Inoreader API
 type InoreaderSubscription struct {
-	DatabaseID  uuid.UUID                 `json:"database_id" db:"id"`   // Database primary key UUID
-	InoreaderID string                    `json:"id"`                    // e.g., "feed/http://example.com/rss" from API
-	Title       string                    `json:"title"`                 // Feed title
-	Categories  []InoreaderCategory       `json:"categories"`            // Folder/label information
-	URL         string                    `json:"url"`                   // XML feed URL
-	HTMLURL     string                    `json:"htmlUrl"`               // Website URL
-	IconURL     string                    `json:"iconUrl"`               // Favicon URL
-	CreatedAt   time.Time                 `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time                 `json:"updated_at" db:"updated_at"`
+	DatabaseID  uuid.UUID           `json:"database_id" db:"id"` // Database primary key UUID
+	InoreaderID string              `json:"id"`                  // e.g., "feed/http://example.com/rss" from API
+	Title       string              `json:"title"`               // Feed title
+	Categories  []InoreaderCategory `json:"categories"`          // Folder/label information
+	URL         string              `json:"url"`                 // XML feed URL
+	HTMLURL     string              `json:"htmlUrl"`             // Website URL
+	IconURL     string              `json:"iconUrl"`             // Favicon URL
+	CreatedAt   time.Time           `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time           `json:"updated_at" db:"updated_at"`
 }
 
 // InoreaderCategory represents a category/folder in Inoreader
@@ -62,7 +62,7 @@ func NewSubscription(inoreaderID, feedURL, title, category string) *Subscription
 // NewSubscriptionFromAPI creates a new subscription from Inoreader API data
 func NewSubscriptionFromAPI(inoreaderSub InoreaderSubscription) *Subscription {
 	now := time.Now()
-	
+
 	// Extract category from categories slice (use first category if multiple)
 	category := ""
 	if len(inoreaderSub.Categories) > 0 {
@@ -84,11 +84,11 @@ func NewSubscriptionFromAPI(inoreaderSub InoreaderSubscription) *Subscription {
 func (s *Subscription) UpdateFromInoreader(inoreaderSub InoreaderSubscription) {
 	s.Title = inoreaderSub.Title
 	s.FeedURL = inoreaderSub.URL
-	
+
 	// Update category (use first category if multiple)
 	if len(inoreaderSub.Categories) > 0 {
 		s.Category = inoreaderSub.Categories[0].Label
 	}
-	
+
 	s.SyncedAt = time.Now()
 }

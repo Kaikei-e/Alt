@@ -16,40 +16,40 @@ import (
 
 // ArticleFetchHandler handles article fetching orchestration
 type ArticleFetchHandler struct {
-	inoreaderService       *service.InoreaderService
+	inoreaderService        *service.InoreaderService
 	subscriptionSyncService *service.SubscriptionSyncService
-	rateLimitManager       *service.RateLimitManager
-	articleRepo           repository.ArticleRepository
-	syncStateRepo         repository.SyncStateRepository
-	logger                *slog.Logger
-	maxArticlesPerRequest int
-	maxContinuationRounds int
+	rateLimitManager        *service.RateLimitManager
+	articleRepo             repository.ArticleRepository
+	syncStateRepo           repository.SyncStateRepository
+	logger                  *slog.Logger
+	maxArticlesPerRequest   int
+	maxContinuationRounds   int
 }
 
 // ArticleFetchResult represents the result of an article fetch operation
 type ArticleFetchResult struct {
-	SubscriptionID      string    `json:"subscription_id"`
-	StreamID           string    `json:"stream_id"`
-	ArticlesFetched    int       `json:"articles_fetched"`
-	ArticlesSaved      int       `json:"articles_saved"`
-	ArticlesSkipped    int       `json:"articles_skipped"`
-	ContinuationToken  string    `json:"continuation_token,omitempty"`
-	HasMorePages       bool      `json:"has_more_pages"`
-	ProcessingTime     time.Duration `json:"processing_time"`
-	Errors             []string  `json:"errors,omitempty"`
+	SubscriptionID    string        `json:"subscription_id"`
+	StreamID          string        `json:"stream_id"`
+	ArticlesFetched   int           `json:"articles_fetched"`
+	ArticlesSaved     int           `json:"articles_saved"`
+	ArticlesSkipped   int           `json:"articles_skipped"`
+	ContinuationToken string        `json:"continuation_token,omitempty"`
+	HasMorePages      bool          `json:"has_more_pages"`
+	ProcessingTime    time.Duration `json:"processing_time"`
+	Errors            []string      `json:"errors,omitempty"`
 }
 
 // BatchFetchResult represents the result of a batch article fetch
 type BatchFetchResult struct {
-	SubscriptionsProcessed int                   `json:"subscriptions_processed"`
-	TotalArticlesFetched   int                   `json:"total_articles_fetched"`
-	TotalArticlesSaved     int                   `json:"total_articles_saved"`
-	TotalArticlesSkipped   int                   `json:"total_articles_skipped"`
-	TotalProcessingTime    time.Duration         `json:"total_processing_time"`
-	SuccessfulFeeds        int                   `json:"successful_feeds"`
-	FailedFeeds            int                   `json:"failed_feeds"`
-	Results                []ArticleFetchResult  `json:"results"`
-	Errors                 []string              `json:"errors,omitempty"`
+	SubscriptionsProcessed int                  `json:"subscriptions_processed"`
+	TotalArticlesFetched   int                  `json:"total_articles_fetched"`
+	TotalArticlesSaved     int                  `json:"total_articles_saved"`
+	TotalArticlesSkipped   int                  `json:"total_articles_skipped"`
+	TotalProcessingTime    time.Duration        `json:"total_processing_time"`
+	SuccessfulFeeds        int                  `json:"successful_feeds"`
+	FailedFeeds            int                  `json:"failed_feeds"`
+	Results                []ArticleFetchResult `json:"results"`
+	Errors                 []string             `json:"errors,omitempty"`
 }
 
 // NewArticleFetchHandler creates a new article fetch handler
@@ -69,11 +69,11 @@ func NewArticleFetchHandler(
 		inoreaderService:        inoreaderService,
 		subscriptionSyncService: subscriptionSyncService,
 		rateLimitManager:        rateLimitManager,
-		articleRepo:            articleRepo,
-		syncStateRepo:          syncStateRepo,
-		logger:                 logger,
-		maxArticlesPerRequest:  100, // Inoreader API limit
-		maxContinuationRounds:  10,  // Maximum pagination rounds per subscription
+		articleRepo:             articleRepo,
+		syncStateRepo:           syncStateRepo,
+		logger:                  logger,
+		maxArticlesPerRequest:   100, // Inoreader API limit
+		maxContinuationRounds:   10,  // Maximum pagination rounds per subscription
 	}
 }
 

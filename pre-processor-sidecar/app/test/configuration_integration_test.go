@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"pre-processor-sidecar/config"
-	
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,23 +17,23 @@ func TestConfigurationIntegration(t *testing.T) {
 	// Backup original environment
 	originalEnv := make(map[string]string)
 	testEnvVars := map[string]string{
-		"SERVICE_NAME":                          "pre-processor-sidecar",
-		"SERVICE_VERSION":                       "2.0.0",
-		"ENVIRONMENT":                           "production",
-		"HTTP_PORT":                             "8080",
-		"PRE_PROCESSOR_SIDECAR_DB_PASSWORD":     "secure_password",
-		"INOREADER_CLIENT_ID":                   "production_client_id",
-		"INOREADER_CLIENT_SECRET":               "production_client_secret",
-		"INOREADER_REFRESH_TOKEN":               "production_refresh_token",
-		"HTTP_CLIENT_TIMEOUT":                   "90s",
-		"RETRY_MAX_RETRIES":                     "5",
-		"RETRY_INITIAL_DELAY":                   "10s",
-		"CIRCUIT_BREAKER_FAILURE_THRESHOLD":     "5",
-		"CIRCUIT_BREAKER_SUCCESS_THRESHOLD":     "3",
-		"MONITORING_ENABLE_METRICS":             "true",
-		"MONITORING_ENABLE_TRACING":             "true",
-		"ENABLE_SCHEDULE_MODE":                  "true",
-		"ENABLE_DEBUG_MODE":                     "false",
+		"SERVICE_NAME":                      "pre-processor-sidecar",
+		"SERVICE_VERSION":                   "2.0.0",
+		"ENVIRONMENT":                       "production",
+		"HTTP_PORT":                         "8080",
+		"PRE_PROCESSOR_SIDECAR_DB_PASSWORD": "secure_password",
+		"INOREADER_CLIENT_ID":               "production_client_id",
+		"INOREADER_CLIENT_SECRET":           "production_client_secret",
+		"INOREADER_REFRESH_TOKEN":           "production_refresh_token",
+		"HTTP_CLIENT_TIMEOUT":               "90s",
+		"RETRY_MAX_RETRIES":                 "5",
+		"RETRY_INITIAL_DELAY":               "10s",
+		"CIRCUIT_BREAKER_FAILURE_THRESHOLD": "5",
+		"CIRCUIT_BREAKER_SUCCESS_THRESHOLD": "3",
+		"MONITORING_ENABLE_METRICS":         "true",
+		"MONITORING_ENABLE_TRACING":         "true",
+		"ENABLE_SCHEDULE_MODE":              "true",
+		"ENABLE_DEBUG_MODE":                 "false",
 	}
 
 	for key := range testEnvVars {
@@ -96,9 +96,9 @@ func TestConfigurationIntegration(t *testing.T) {
 	t.Logf("Configuration loaded and validated successfully")
 	t.Logf("Service: %s v%s (%s)", cfg.ServiceName, cfg.ServiceVersion, cfg.Environment)
 	t.Logf("HTTP Client Timeout: %v", cfg.HTTPClient.Timeout)
-	t.Logf("Circuit Breaker: %d failures -> OPEN, %d successes -> CLOSED", 
+	t.Logf("Circuit Breaker: %d failures -> OPEN, %d successes -> CLOSED",
 		cfg.CircuitBreaker.FailureThreshold, cfg.CircuitBreaker.SuccessThreshold)
-	t.Logf("Monitoring: metrics=%v, tracing=%v", 
+	t.Logf("Monitoring: metrics=%v, tracing=%v",
 		cfg.Monitoring.EnableMetrics, cfg.Monitoring.EnableTracing)
 }
 
@@ -119,7 +119,7 @@ func TestConfigurationValidationEdgeCases(t *testing.T) {
 			errorMsg:    "HTTP_PORT must be between 1 and 65535",
 		},
 		{
-			name: "invalid_http_port_too_high", 
+			name: "invalid_http_port_too_high",
 			modifier: func(cfg *config.Config) {
 				cfg.HTTPPort = 99999
 			},

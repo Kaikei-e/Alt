@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"pre-processor-sidecar/models"
 	"github.com/google/uuid"
+	"pre-processor-sidecar/models"
 )
 
 // PostgreSQLArticleRepository implements ArticleRepository using PostgreSQL
@@ -92,7 +92,7 @@ func (r *PostgreSQLArticleRepository) CreateWithResult(ctx context.Context, arti
 			"inoreader_id", article.InoreaderID,
 			"subscription_id", article.SubscriptionID)
 	}
-	
+
 	return &UpsertResult{WasInserted: wasInserted}, nil
 }
 
@@ -213,7 +213,7 @@ func (r *PostgreSQLArticleRepository) isDuplicateError(err error) bool {
 		strings.Contains(errStr, "inoreader_articles_inoreader_id_key")
 }
 
-// isForeignKeyError checks if error is due to foreign key constraint violation  
+// isForeignKeyError checks if error is due to foreign key constraint violation
 func (r *PostgreSQLArticleRepository) isForeignKeyError(err error) bool {
 	if err == nil {
 		return false
@@ -371,7 +371,7 @@ func (r *PostgreSQLArticleRepository) Update(ctx context.Context, article *model
 // MarkAsProcessed marks an article as processed
 func (r *PostgreSQLArticleRepository) MarkAsProcessed(ctx context.Context, inoreaderID string) error {
 	query := `UPDATE inoreader_articles SET processed = true WHERE inoreader_id = $1`
-	
+
 	result, err := r.db.ExecContext(ctx, query, inoreaderID)
 	if err != nil {
 		return fmt.Errorf("failed to mark article as processed: %w", err)
@@ -438,7 +438,7 @@ func (r *PostgreSQLArticleRepository) MarkBatchAsProcessed(ctx context.Context, 
 // Delete deletes an article by ID
 func (r *PostgreSQLArticleRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM inoreader_articles WHERE id = $1`
-	
+
 	result, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete article: %w", err)
@@ -459,7 +459,7 @@ func (r *PostgreSQLArticleRepository) Delete(ctx context.Context, id uuid.UUID) 
 // DeleteByInoreaderID deletes an article by Inoreader ID
 func (r *PostgreSQLArticleRepository) DeleteByInoreaderID(ctx context.Context, inoreaderID string) error {
 	query := `DELETE FROM inoreader_articles WHERE inoreader_id = $1`
-	
+
 	result, err := r.db.ExecContext(ctx, query, inoreaderID)
 	if err != nil {
 		return fmt.Errorf("failed to delete article by inoreader_id: %w", err)
@@ -480,7 +480,7 @@ func (r *PostgreSQLArticleRepository) DeleteByInoreaderID(ctx context.Context, i
 // DeleteOld deletes articles older than specified time
 func (r *PostgreSQLArticleRepository) DeleteOld(ctx context.Context, olderThan time.Time) (int, error) {
 	query := `DELETE FROM inoreader_articles WHERE fetched_at < $1`
-	
+
 	result, err := r.db.ExecContext(ctx, query, olderThan)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete old articles: %w", err)
@@ -502,7 +502,7 @@ func (r *PostgreSQLArticleRepository) DeleteOld(ctx context.Context, olderThan t
 // CountTotal returns the total number of articles
 func (r *PostgreSQLArticleRepository) CountTotal(ctx context.Context) (int, error) {
 	query := `SELECT COUNT(*) FROM inoreader_articles`
-	
+
 	var count int
 	err := r.db.QueryRowContext(ctx, query).Scan(&count)
 	if err != nil {
@@ -515,7 +515,7 @@ func (r *PostgreSQLArticleRepository) CountTotal(ctx context.Context) (int, erro
 // CountUnprocessed returns the number of unprocessed articles
 func (r *PostgreSQLArticleRepository) CountUnprocessed(ctx context.Context) (int, error) {
 	query := `SELECT COUNT(*) FROM inoreader_articles WHERE processed = false`
-	
+
 	var count int
 	err := r.db.QueryRowContext(ctx, query).Scan(&count)
 	if err != nil {
@@ -528,7 +528,7 @@ func (r *PostgreSQLArticleRepository) CountUnprocessed(ctx context.Context) (int
 // CountBySubscriptionID returns the number of articles for a subscription
 func (r *PostgreSQLArticleRepository) CountBySubscriptionID(ctx context.Context, subscriptionID uuid.UUID) (int, error) {
 	query := `SELECT COUNT(*) FROM inoreader_articles WHERE subscription_id = $1`
-	
+
 	var count int
 	err := r.db.QueryRowContext(ctx, query, subscriptionID).Scan(&count)
 	if err != nil {

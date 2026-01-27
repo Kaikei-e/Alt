@@ -73,11 +73,11 @@ type MetricsCollector interface {
 // NoOpMetricsCollector はメトリクス収集のデフォルト実装
 type NoOpMetricsCollector struct{}
 
-func (n *NoOpMetricsCollector) IncrementTokenRefresh(status string)         {}
-func (n *NoOpMetricsCollector) RecordTokenExpiry(expiresInSeconds float64)  {}
-func (n *NoOpMetricsCollector) IncrementAutoRefresh()                       {}
+func (n *NoOpMetricsCollector) IncrementTokenRefresh(status string)           {}
+func (n *NoOpMetricsCollector) RecordTokenExpiry(expiresInSeconds float64)    {}
+func (n *NoOpMetricsCollector) IncrementAutoRefresh()                         {}
 func (n *NoOpMetricsCollector) IncrementAuthenticationError(errorType string) {}
-func (n *NoOpMetricsCollector) IncrementRecoveryAttempt(success bool)       {}
+func (n *NoOpMetricsCollector) IncrementRecoveryAttempt(success bool)         {}
 
 // NewInMemoryTokenManagerConfig は設定オプション
 type InMemoryTokenManagerConfig struct {
@@ -85,7 +85,7 @@ type InMemoryTokenManagerConfig struct {
 	ClientSecret     string
 	AccessToken      string
 	RefreshToken     string
-	ExpiresAt        time.Time     // 実際のトークン有効期限
+	ExpiresAt        time.Time // 実際のトークン有効期限
 	RefreshBuffer    time.Duration
 	CheckInterval    time.Duration
 	OAuth2Client     *driver.OAuth2Client
@@ -134,14 +134,14 @@ func NewInMemoryTokenManager(config InMemoryTokenManagerConfig) (*InMemoryTokenM
 	}
 
 	manager := &InMemoryTokenManager{
-		encryptionKey:     key,
-		gcm:               gcm,
-		refreshBuffer:     refreshBuffer,
-		checkInterval:     checkInterval,
-		oauth2Client:      config.OAuth2Client,
-		logger:            logger,
-		metricsCollector:  metricsCollector,
-		stopChan:          make(chan struct{}),
+		encryptionKey:    key,
+		gcm:              gcm,
+		refreshBuffer:    refreshBuffer,
+		checkInterval:    checkInterval,
+		oauth2Client:     config.OAuth2Client,
+		logger:           logger,
+		metricsCollector: metricsCollector,
+		stopChan:         make(chan struct{}),
 	}
 
 	// 初期認証情報を暗号化して保存
@@ -226,7 +226,7 @@ func (m *InMemoryTokenManager) setInitialAccessToken(accessToken string, expires
 	m.expiresAt = expiresAt
 	m.tokenType = "Bearer"
 
-	m.logger.Info("Access token encrypted and stored with expiry", 
+	m.logger.Info("Access token encrypted and stored with expiry",
 		"expires_at", expiresAt,
 		"expires_in_hours", time.Until(expiresAt).Hours())
 
@@ -306,21 +306,21 @@ func (m *InMemoryTokenManager) getDecryptedRefreshToken() (string, error) {
 // GetValidToken はスレッドセーフにアクセストークンを取得
 func (m *InMemoryTokenManager) GetValidToken(ctx context.Context) (*models.OAuth2Token, error) {
 	m.mutex.RLock()
-	
+
 	// トークンの期限確認
 	if time.Now().Add(m.refreshBuffer).After(m.expiresAt) {
 		m.mutex.RUnlock()
-		
+
 		// 期限切れ間近または期限切れ - リフレッシュを試行
 		m.logger.Info("Token refresh needed",
 			"expires_at", m.expiresAt,
 			"buffer_minutes", m.refreshBuffer.Minutes())
-		
+
 		if err := m.RefreshTokenIfNeeded(ctx); err != nil {
 			m.metricsCollector.IncrementAuthenticationError("refresh_failed")
 			return nil, fmt.Errorf("failed to refresh token: %w", err)
 		}
-		
+
 		m.mutex.RLock()
 	}
 
@@ -373,7 +373,7 @@ func (m *InMemoryTokenManager) RefreshTokenIfNeeded(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get current refresh token: %w", err)
 	}
-	
+
 	oauth2Token := models.NewOAuth2Token(*newToken, currentRefreshToken)
 	if err := m.storeNewTokenInfo(oauth2Token); err != nil {
 		m.metricsCollector.IncrementTokenRefresh("failure")
@@ -381,7 +381,7 @@ func (m *InMemoryTokenManager) RefreshTokenIfNeeded(ctx context.Context) error {
 	}
 
 	m.metricsCollector.IncrementTokenRefresh("success")
-	
+
 	m.logger.Info("Token refreshed successfully",
 		"new_expires_at", m.expiresAt,
 		"expires_in_seconds", int64(time.Until(m.expiresAt).Seconds()))
@@ -555,7 +555,7 @@ func (m *InMemoryTokenManager) Stop() {
 		m.mutex.Unlock()
 		return
 	}
-	
+
 	m.isRunning = false
 	if m.refreshTicker != nil {
 		m.refreshTicker.Stop()
@@ -636,11 +636,11 @@ func (m *InMemoryTokenManager) GetTokenStatus() TokenStatus {
 
 // TokenStatus はトークンの状態情報
 type TokenStatus struct {
-	HasAccessToken    bool      `json:"has_access_token"`
-	HasRefreshToken   bool      `json:"has_refresh_token"`
-	ExpiresAt         time.Time `json:"expires_at"`
-	ExpiresInSeconds  int64     `json:"expires_in_seconds"`
-	TokenType         string    `json:"token_type"`
-	NeedsRefresh      bool      `json:"needs_refresh"`
-	IsAutoRefreshing  bool      `json:"is_auto_refreshing"`
+	HasAccessToken   bool      `json:"has_access_token"`
+	HasRefreshToken  bool      `json:"has_refresh_token"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	ExpiresInSeconds int64     `json:"expires_in_seconds"`
+	TokenType        string    `json:"token_type"`
+	NeedsRefresh     bool      `json:"needs_refresh"`
+	IsAutoRefreshing bool      `json:"is_auto_refreshing"`
 }

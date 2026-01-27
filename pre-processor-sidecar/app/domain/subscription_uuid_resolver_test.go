@@ -58,12 +58,12 @@ var (
 
 func TestSubscriptionUUIDResolver_ResolveArticleUUIDs(t *testing.T) {
 	tests := []struct {
-		name                string
-		articles            []*models.Article
-		existingMapping     map[string]uuid.UUID
-		autoCreateSetup     func(*MockSubscriptionAutoCreator)
-		expectedResult      *UUIDResolutionResult
-		expectedError       error
+		name                 string
+		articles             []*models.Article
+		existingMapping      map[string]uuid.UUID
+		autoCreateSetup      func(*MockSubscriptionAutoCreator)
+		expectedResult       *UUIDResolutionResult
+		expectedError        error
 		validateArticleUUIDs func(t *testing.T, articles []*models.Article)
 	}{
 		{
@@ -75,7 +75,7 @@ func TestSubscriptionUUIDResolver_ResolveArticleUUIDs(t *testing.T) {
 					SubscriptionID: uuid.Nil,
 				},
 				{
-					InoreaderID:    "article_002", 
+					InoreaderID:    "article_002",
 					OriginStreamID: "feed/https://example2.com/rss",
 					SubscriptionID: uuid.Nil,
 				},
@@ -92,7 +92,7 @@ func TestSubscriptionUUIDResolver_ResolveArticleUUIDs(t *testing.T) {
 				AutoCreatedCount: 0,
 				UnknownCount:     0,
 				TotalProcessed:   2,
-				Errors:          []ResolutionError{},
+				Errors:           []ResolutionError{},
 			},
 			expectedError: nil,
 			validateArticleUUIDs: func(t *testing.T, articles []*models.Article) {
@@ -114,8 +114,8 @@ func TestSubscriptionUUIDResolver_ResolveArticleUUIDs(t *testing.T) {
 			},
 			existingMapping: map[string]uuid.UUID{},
 			autoCreateSetup: func(mockAutoCreator *MockSubscriptionAutoCreator) {
-				mockAutoCreator.On("AutoCreateSubscription", 
-					mock.Anything, 
+				mockAutoCreator.On("AutoCreateSubscription",
+					mock.Anything,
 					"feed/https://unknown.com/rss").Return(testUUID3, nil)
 			},
 			expectedResult: &UUIDResolutionResult{
@@ -123,7 +123,7 @@ func TestSubscriptionUUIDResolver_ResolveArticleUUIDs(t *testing.T) {
 				AutoCreatedCount: 1,
 				UnknownCount:     0,
 				TotalProcessed:   1,
-				Errors:          []ResolutionError{},
+				Errors:           []ResolutionError{},
 			},
 			expectedError: nil,
 			validateArticleUUIDs: func(t *testing.T, articles []*models.Article) {
@@ -333,10 +333,10 @@ func TestSubscriptionUUIDResolver_ResolveArticleUUIDs(t *testing.T) {
 
 func TestSubscriptionMapping_ThreadSafety(t *testing.T) {
 	mapping := NewSubscriptionMapping()
-	
+
 	// Concurrent access test
 	done := make(chan bool, 2)
-	
+
 	// Writer goroutine
 	go func() {
 		defer func() { done <- true }()
@@ -346,7 +346,7 @@ func TestSubscriptionMapping_ThreadSafety(t *testing.T) {
 			mapping.SetMapping(streamID, subscriptionUUID)
 		}
 	}()
-	
+
 	// Reader goroutine
 	go func() {
 		defer func() { done <- true }()
@@ -355,11 +355,11 @@ func TestSubscriptionMapping_ThreadSafety(t *testing.T) {
 			_, _ = mapping.GetUUID(streamID)
 		}
 	}()
-	
+
 	// Wait for completion
 	<-done
 	<-done
-	
+
 	// Verify final state
 	assert.True(t, mapping.Size() >= 0)
 	assert.True(t, mapping.Size() <= 100)
@@ -367,7 +367,7 @@ func TestSubscriptionMapping_ThreadSafety(t *testing.T) {
 
 func TestSubscriptionUUIDResolver_validateArticleForResolution(t *testing.T) {
 	resolver := NewSubscriptionUUIDResolver(nil, nil)
-	
+
 	tests := []struct {
 		name        string
 		article     *models.Article
@@ -395,7 +395,7 @@ func TestSubscriptionUUIDResolver_validateArticleForResolution(t *testing.T) {
 			expectedErr: nil,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := resolver.validateArticleForResolution(tt.article)

@@ -75,7 +75,7 @@ func (uc *ArticleUUIDResolutionUseCase) ResolveArticleUUIDs(
 // buildSubscriptionMapping はサブスクリプションのマッピングキャッシュを構築
 func (uc *ArticleUUIDResolutionUseCase) buildSubscriptionMapping(ctx context.Context) (*domain.SubscriptionMapping, error) {
 	uc.logger.Debug("Building subscription mapping cache")
-	
+
 	startTime := time.Now()
 
 	// データベースから全サブスクリプションを取得

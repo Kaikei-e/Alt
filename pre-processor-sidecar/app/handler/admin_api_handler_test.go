@@ -30,20 +30,20 @@ func (m *MockTokenManager) UpdateRefreshToken(ctx context.Context, refreshToken 
 func (m *MockTokenManager) GetTokenStatus() service.TokenStatus {
 	expiresAt, _ := time.Parse(time.RFC3339, "2024-01-01T00:00:00Z")
 	return service.TokenStatus{
-		HasAccessToken: true,
+		HasAccessToken:  true,
 		HasRefreshToken: true,
-		ExpiresAt: expiresAt,
-		TokenType: "bearer",
+		ExpiresAt:       expiresAt,
+		TokenType:       "bearer",
 	}
 }
 
 func (m *MockTokenManager) GetValidToken(ctx context.Context) (*service.TokenInfo, error) {
 	expiresAt, _ := time.Parse(time.RFC3339, "2024-01-01T00:00:00Z")
 	return &service.TokenInfo{
-		AccessToken: "test_token",
+		AccessToken:  "test_token",
 		RefreshToken: "test_refresh_token",
-		ExpiresAt: expiresAt,
-		TokenType: "bearer",
+		ExpiresAt:    expiresAt,
+		TokenType:    "bearer",
 	}, nil
 }
 
@@ -51,10 +51,10 @@ type MockAdminAuthenticator struct{}
 
 func (m *MockAdminAuthenticator) ValidateKubernetesServiceAccountToken(token string) (*security.ServiceAccountInfo, error) {
 	return &security.ServiceAccountInfo{
-		Subject: "system:serviceaccount:test:test",
+		Subject:   "system:serviceaccount:test:test",
 		Namespace: "test",
-		Name: "test",
-		UID: "test-uid",
+		Name:      "test",
+		UID:       "test-uid",
 	}, nil
 }
 
@@ -83,14 +83,15 @@ func (m *MockInputValidator) SanitizeString(input string) string {
 type MockAdminAPIMetricsCollector struct{}
 
 func (m *MockAdminAPIMetricsCollector) IncrementAdminAPIRequest(method, endpoint, status string) {}
-func (m *MockAdminAPIMetricsCollector) RecordAdminAPIRequestDuration(method, endpoint string, duration time.Duration) {}
-func (m *MockAdminAPIMetricsCollector) IncrementAdminAPIRateLimitHit() {}
+func (m *MockAdminAPIMetricsCollector) RecordAdminAPIRequestDuration(method, endpoint string, duration time.Duration) {
+}
+func (m *MockAdminAPIMetricsCollector) IncrementAdminAPIRateLimitHit()                        {}
 func (m *MockAdminAPIMetricsCollector) IncrementAdminAPIAuthenticationError(errorType string) {}
 
 func TestAdminAPIHandler_HandleTokenStatus(t *testing.T) {
 	tests := map[string]struct {
-		method       string
-		expectStatus int
+		method        string
+		expectStatus  int
 		checkResponse func(t *testing.T, body []byte)
 	}{
 		"successful_token_status": {
@@ -118,7 +119,7 @@ func TestAdminAPIHandler_HandleTokenStatus(t *testing.T) {
 			mockRateLimit := &MockRateLimiter{}
 			mockValidator := &MockInputValidator{}
 			mockMetrics := &MockAdminAPIMetricsCollector{}
-			
+
 			// Create handler
 			handler := NewAdminAPIHandler(
 				mockTokenManager,
@@ -128,20 +129,20 @@ func TestAdminAPIHandler_HandleTokenStatus(t *testing.T) {
 				slog.Default(),
 				mockMetrics,
 			)
-			
+
 			// Create request
 			req := httptest.NewRequest(tc.method, "/admin/token/status", nil)
 			req.Header.Set("Authorization", "Bearer test_token")
-			
+
 			// Create response recorder
 			recorder := httptest.NewRecorder()
-			
+
 			// Call handler method directly
 			handler.HandleTokenStatus(recorder, req)
-			
+
 			// Check status code
 			assert.Equal(t, tc.expectStatus, recorder.Code)
-			
+
 			// Check response if checker provided
 			if tc.checkResponse != nil {
 				tc.checkResponse(t, recorder.Body.Bytes())
@@ -157,7 +158,7 @@ func TestAdminAPIHandler_HandleRefreshTokenUpdate(t *testing.T) {
 	mockRateLimit := &MockRateLimiter{}
 	mockValidator := &MockInputValidator{}
 	mockMetrics := &MockAdminAPIMetricsCollector{}
-	
+
 	handler := NewAdminAPIHandler(
 		mockTokenManager,
 		mockAuth,
@@ -166,12 +167,12 @@ func TestAdminAPIHandler_HandleRefreshTokenUpdate(t *testing.T) {
 		slog.Default(),
 		mockMetrics,
 	)
-	
+
 	// Test GET method not allowed
 	req := httptest.NewRequest(http.MethodGet, "/admin/oauth2/refresh-token", nil)
 	recorder := httptest.NewRecorder()
-	
+
 	handler.HandleRefreshTokenUpdate(recorder, req)
-	
+
 	assert.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
 }

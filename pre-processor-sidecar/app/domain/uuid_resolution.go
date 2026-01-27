@@ -13,11 +13,11 @@ import (
 
 // UUIDResolutionResult はUUID解決処理の結果を表す不変オブジェクト
 type UUIDResolutionResult struct {
-	ResolvedCount     int                 `json:"resolved_count"`
-	AutoCreatedCount  int                 `json:"auto_created_count"`
-	UnknownCount      int                 `json:"unknown_count"`
-	TotalProcessed    int                 `json:"total_processed"`
-	Errors           []ResolutionError   `json:"errors,omitempty"`
+	ResolvedCount    int               `json:"resolved_count"`
+	AutoCreatedCount int               `json:"auto_created_count"`
+	UnknownCount     int               `json:"unknown_count"`
+	TotalProcessed   int               `json:"total_processed"`
+	Errors           []ResolutionError `json:"errors,omitempty"`
 }
 
 // ResolutionError はUUID解決処理中のエラー詳細

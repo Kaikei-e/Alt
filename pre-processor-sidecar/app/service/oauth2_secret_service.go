@@ -23,15 +23,15 @@ import (
 
 // OAuth2SecretService はOAuth2 Secretを管理するサービス
 type OAuth2SecretService struct {
-	logger      *slog.Logger
-	namespace   string
-	secretName  string
-	
+	logger     *slog.Logger
+	namespace  string
+	secretName string
+
 	// Kubernetes API設定
 	tokenPath   string
 	apiEndpoint string
 	httpClient  *http.Client
-	
+
 	// Watch機能追加 (恒久対応: 自律的Secret再読み込み) - HTTP API版
 	watcherMutex   sync.RWMutex
 	isWatching     bool
@@ -63,7 +63,7 @@ func NewOAuth2SecretService(config OAuth2SecretConfig) (*OAuth2SecretService, er
 	if config.Logger == nil {
 		config.Logger = slog.Default()
 	}
-	
+
 	// デフォルト値設定
 	if config.Namespace == "" {
 		config.Namespace = os.Getenv("KUBERNETES_NAMESPACE")
@@ -71,7 +71,7 @@ func NewOAuth2SecretService(config OAuth2SecretConfig) (*OAuth2SecretService, er
 			config.Namespace = "alt-processing"
 		}
 	}
-	
+
 	if config.SecretName == "" {
 		config.SecretName = os.Getenv("OAUTH2_TOKEN_SECRET_NAME")
 		if config.SecretName == "" {
@@ -85,7 +85,7 @@ func NewOAuth2SecretService(config OAuth2SecretConfig) (*OAuth2SecretService, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to read CA certificate: %w", err)
 	}
-	
+
 	caCertPool := x509.NewCertPool()
 	if !caCertPool.AppendCertsFromPEM(caCert) {
 		return nil, fmt.Errorf("failed to parse CA certificate")
@@ -132,15 +132,15 @@ func (s *OAuth2SecretService) LoadOAuth2Token(ctx context.Context) (*models.OAut
 	if err != nil {
 		return nil, fmt.Errorf("failed to read service account token: %w", err)
 	}
-	
+
 	serviceAccountToken := strings.TrimSpace(string(tokenBytes))
-	
+
 	// Kubernetes API経由でSecretを取得
 	secretData, err := s.getSecretFromKubernetesAPI(ctx, serviceAccountToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret from Kubernetes API: %w", err)
 	}
-	
+
 	// Secretデータを解析してOAuth2Tokenに変換
 	oauth2Token, err := s.parseOAuth2SecretData(secretData)
 	if err != nil {
@@ -160,48 +160,48 @@ func (s *OAuth2SecretService) LoadOAuth2Token(ctx context.Context) (*models.OAut
 // getSecretFromKubernetesAPI はKubernetes APIからSecretを取得
 func (s *OAuth2SecretService) getSecretFromKubernetesAPI(ctx context.Context, serviceAccountToken string) (map[string][]byte, error) {
 	// Kubernetes API endpoint URL構築
-	url := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/%s", 
+	url := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/%s",
 		s.apiEndpoint, s.namespace, s.secretName)
-	
+
 	// HTTPリクエスト作成
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
-	
+
 	// ServiceAccount tokenを認証ヘッダーに設定
 	req.Header.Set("Authorization", "Bearer "+serviceAccountToken)
 	req.Header.Set("Accept", "application/json")
-	
+
 	// HTTPリクエスト実行
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make HTTP request to Kubernetes API: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// レスポンス確認
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := ioutil.ReadAll(resp.Body)
-		return nil, fmt.Errorf("Kubernetes API request failed with status %d: %s", 
+		return nil, fmt.Errorf("Kubernetes API request failed with status %d: %s",
 			resp.StatusCode, string(bodyBytes))
 	}
-	
+
 	// レスポンスボディ読み込み
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
-	
+
 	// Kubernetes Secret構造をパース
 	var secretResponse struct {
 		Data map[string]string `json:"data"`
 	}
-	
+
 	if err := json.Unmarshal(bodyBytes, &secretResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse Kubernetes Secret response: %w", err)
 	}
-	
+
 	// Base64デコード
 	decodedData := make(map[string][]byte)
 	for key, value := range secretResponse.Data {
@@ -211,7 +211,7 @@ func (s *OAuth2SecretService) getSecretFromKubernetesAPI(ctx context.Context, se
 		}
 		decodedData[key] = decoded
 	}
-	
+
 	return decodedData, nil
 }
 
@@ -222,13 +222,13 @@ func (s *OAuth2SecretService) parseOAuth2SecretData(secretData map[string][]byte
 	if !exists {
 		return nil, fmt.Errorf("token_data key not found in secret")
 	}
-	
+
 	// JSONデータを解析
 	var oauth2Data OAuth2SecretData
 	if err := json.Unmarshal(tokenDataBytes, &oauth2Data); err != nil {
 		return nil, fmt.Errorf("failed to parse OAuth2 token JSON: %w", err)
 	}
-	
+
 	// 必須フィールドの検証
 	if oauth2Data.AccessToken == "" {
 		return nil, fmt.Errorf("access_token is missing or empty")
@@ -236,7 +236,7 @@ func (s *OAuth2SecretService) parseOAuth2SecretData(secretData map[string][]byte
 	if oauth2Data.RefreshToken == "" {
 		return nil, fmt.Errorf("refresh_token is missing or empty")
 	}
-	
+
 	// 有効期限の解析
 	var expiresAt time.Time
 	if oauth2Data.ExpiresAt != "" {
@@ -249,7 +249,7 @@ func (s *OAuth2SecretService) parseOAuth2SecretData(secretData map[string][]byte
 		// デフォルトの有効期限（24時間後）
 		expiresAt = time.Now().Add(24 * time.Hour)
 	}
-	
+
 	// OAuth2Token構造体に変換
 	token := &models.OAuth2Token{
 		AccessToken:  oauth2Data.AccessToken,
@@ -258,7 +258,7 @@ func (s *OAuth2SecretService) parseOAuth2SecretData(secretData map[string][]byte
 		ExpiresAt:    expiresAt,
 		Scope:        oauth2Data.Scope,
 	}
-	
+
 	// デフォルト値設定
 	if token.TokenType == "" {
 		token.TokenType = "Bearer"
@@ -266,7 +266,7 @@ func (s *OAuth2SecretService) parseOAuth2SecretData(secretData map[string][]byte
 	if token.Scope == "" {
 		token.Scope = "read"
 	}
-	
+
 	return token, nil
 }
 
@@ -275,7 +275,7 @@ func (s *OAuth2SecretService) IsTokenExpired(token *models.OAuth2Token, bufferMi
 	if token == nil {
 		return true
 	}
-	
+
 	buffer := time.Duration(bufferMinutes) * time.Minute
 	return time.Now().Add(buffer).After(token.ExpiresAt)
 }
@@ -289,7 +289,7 @@ func base64Decode(encoded string) ([]byte, error) {
 func (s *OAuth2SecretService) GetSecretInfo() map[string]interface{} {
 	s.watcherMutex.RLock()
 	defer s.watcherMutex.RUnlock()
-	
+
 	return map[string]interface{}{
 		"namespace":     s.namespace,
 		"secret_name":   s.secretName,
@@ -359,10 +359,10 @@ func (s *OAuth2SecretService) pollSecretChanges(onUpdate func(*models.OAuth2Toke
 
 			// 変更検出
 			if currentModifiedTime != lastModifiedTime {
-				s.logger.Info("Secret modification detected", 
+				s.logger.Info("Secret modification detected",
 					"previous_time", lastModifiedTime,
 					"current_time", currentModifiedTime)
-				
+
 				if err := s.handleSecretUpdate(onUpdate); err != nil {
 					s.logger.Error("Failed to handle secret update", "error", err)
 				} else {
@@ -406,52 +406,52 @@ func (s *OAuth2SecretService) getSecretModificationTime(ctx context.Context) (st
 	if err != nil {
 		return "", fmt.Errorf("failed to read service account token: %w", err)
 	}
-	
+
 	serviceAccountToken := strings.TrimSpace(string(tokenBytes))
-	
+
 	// Kubernetes API endpoint URL構築
-	url := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/%s", 
+	url := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/%s",
 		s.apiEndpoint, s.namespace, s.secretName)
-	
+
 	// HTTPリクエスト作成
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create HTTP request: %w", err)
 	}
-	
+
 	// ServiceAccount tokenを認証ヘッダーに設定
 	req.Header.Set("Authorization", "Bearer "+serviceAccountToken)
 	req.Header.Set("Accept", "application/json")
-	
+
 	// HTTPリクエスト実行
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to make HTTP request to Kubernetes API: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// レスポンス確認
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("Kubernetes API request failed with status %d", resp.StatusCode)
 	}
-	
+
 	// レスポンスボディ読み込み
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
-	
+
 	// metadata.resourceVersionを取得 (Secretの更新を検出するため)
 	var secretResponse struct {
 		Metadata struct {
 			ResourceVersion string `json:"resourceVersion"`
 		} `json:"metadata"`
 	}
-	
+
 	if err := json.Unmarshal(bodyBytes, &secretResponse); err != nil {
 		return "", fmt.Errorf("failed to parse Kubernetes Secret metadata: %w", err)
 	}
-	
+
 	return secretResponse.Metadata.ResourceVersion, nil
 }
 

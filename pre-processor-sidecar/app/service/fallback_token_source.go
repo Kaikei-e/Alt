@@ -53,7 +53,7 @@ func (e *EnvironmentFallbackTokenSource) IsAvailable() bool {
 	fallbackTokens := []string{
 		"INOREADER_FALLBACK_REFRESH_TOKEN",
 		"INOREADER_REFRESH_TOKEN",
-		"INOREADER_EMERGENCY_TOKEN", 
+		"INOREADER_EMERGENCY_TOKEN",
 		"EMERGENCY_REFRESH_TOKEN",
 	}
 
@@ -70,6 +70,7 @@ func (e *EnvironmentFallbackTokenSource) IsAvailable() bool {
 type NoOpAdminAPIMetrics struct{}
 
 func (n *NoOpAdminAPIMetrics) IncrementAdminAPIRequest(method, endpoint, status string) {}
-func (n *NoOpAdminAPIMetrics) RecordAdminAPIRequestDuration(method, endpoint string, duration time.Duration) {}
-func (n *NoOpAdminAPIMetrics) IncrementAdminAPIRateLimitHit() {}
+func (n *NoOpAdminAPIMetrics) RecordAdminAPIRequestDuration(method, endpoint string, duration time.Duration) {
+}
+func (n *NoOpAdminAPIMetrics) IncrementAdminAPIRateLimitHit()                        {}
 func (n *NoOpAdminAPIMetrics) IncrementAdminAPIAuthenticationError(errorType string) {}

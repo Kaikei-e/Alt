@@ -24,11 +24,11 @@ type KubernetesAuthenticator struct {
 	publicKey        *rsa.PublicKey
 	serviceAccountCA []byte
 	namespace        string
-	
+
 	// 設定
-	tokenPath        string
-	caPath           string
-	namespacePath    string
+	tokenPath     string
+	caPath        string
+	namespacePath string
 }
 
 // ServiceAccountClaims はServiceAccountトークンのクレーム
@@ -39,9 +39,9 @@ type ServiceAccountClaims struct {
 
 // KubernetesClaims はKubernetes固有のクレーム
 type KubernetesClaims struct {
-	Namespace      string                    `json:"namespace"`
-	ServiceAccount ServiceAccountReference   `json:"serviceaccount"`
-	Pod            *PodReference            `json:"pod,omitempty"`
+	Namespace      string                  `json:"namespace"`
+	ServiceAccount ServiceAccountReference `json:"serviceaccount"`
+	Pod            *PodReference           `json:"pod,omitempty"`
 }
 
 // ServiceAccountReference はServiceAccount参照
@@ -224,7 +224,7 @@ func (ka *KubernetesAuthenticator) validateTokenBasic(tokenString string) (*Serv
 
 	// ペイロード部分をデコード（検証なし）
 	payload := parts[1]
-	
+
 	// Base64 URLデコード
 	decoded, err := jwt.DecodeSegment(payload)
 	if err != nil {
@@ -277,11 +277,11 @@ func (ka *KubernetesAuthenticator) HasAdminPermissions(info *ServiceAccountInfo)
 	}
 
 	// 管理者権限の判定ロジック
-	
+
 	// 1. 特定のServiceAccount名による判定
 	adminServiceAccounts := []string{
 		"pre-processor-admin",
-		"pre-processor-sidecar-admin", 
+		"pre-processor-sidecar-admin",
 		"system:serviceaccount:" + ka.namespace + ":pre-processor-admin",
 		"default", // 開発環境用（本番では削除推奨）
 	}
@@ -364,12 +364,12 @@ func (ka *KubernetesAuthenticator) GetCurrentServiceAccount() (*ServiceAccountIn
 // GetAuthenticationInfo は認証情報の詳細を取得
 func (ka *KubernetesAuthenticator) GetAuthenticationInfo() AuthenticationInfo {
 	return AuthenticationInfo{
-		HasPublicKey:     ka.publicKey != nil,
-		HasCA:           len(ka.serviceAccountCA) > 0,
-		Namespace:       ka.namespace,
-		TokenPath:       ka.tokenPath,
-		CAPath:          ka.caPath,
-		IsDevelopment:   ka.isDevelopmentEnvironment(),
+		HasPublicKey:  ka.publicKey != nil,
+		HasCA:         len(ka.serviceAccountCA) > 0,
+		Namespace:     ka.namespace,
+		TokenPath:     ka.tokenPath,
+		CAPath:        ka.caPath,
+		IsDevelopment: ka.isDevelopmentEnvironment(),
 	}
 }
 
@@ -382,4 +382,3 @@ type AuthenticationInfo struct {
 	CAPath        string `json:"ca_path"`
 	IsDevelopment bool   `json:"is_development"`
 }
-
