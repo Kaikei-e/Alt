@@ -9,11 +9,11 @@ import {
   BatchLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
-import { Resource } from "@opentelemetry/resources";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-  SEMRESATTRS_DEPLOYMENT_ENVIRONMENT,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
 } from "@opentelemetry/semantic-conventions";
 
 /**
@@ -53,11 +53,11 @@ export function initOTelProvider(config?: OTelConfig): () => void {
     return () => {};
   }
 
-  // Create resource with service information
-  const resource = new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: cfg.serviceName,
-    [SEMRESATTRS_SERVICE_VERSION]: cfg.serviceVersion,
-    [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: cfg.environment,
+  // Create resource with service information (SDK v2 API)
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: cfg.serviceName,
+    [ATTR_SERVICE_VERSION]: cfg.serviceVersion,
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: cfg.environment,
   });
 
   // Create OTLP log exporter
@@ -65,14 +65,11 @@ export function initOTelProvider(config?: OTelConfig): () => void {
     url: `${cfg.otlpEndpoint}/v1/logs`,
   });
 
-  // Create logger provider
+  // Create logger provider (SDK v2: processors passed in constructor)
   loggerProvider = new LoggerProvider({
     resource,
+    logRecordProcessors: [new BatchLogRecordProcessor(logExporter)],
   });
-
-  loggerProvider.addLogRecordProcessor(
-    new BatchLogRecordProcessor(logExporter)
-  );
 
   // Set as global provider
   logs.setGlobalLoggerProvider(loggerProvider);
