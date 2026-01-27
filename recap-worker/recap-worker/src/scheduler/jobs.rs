@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use tracing::warn;
 use uuid::Uuid;
 
@@ -8,9 +8,17 @@ use crate::{
     clients::SubworkerClient,
     clients::subworker::evaluation::EvaluateRequest,
     config::Config,
-    pipeline::{PipelineOrchestrator, morning::MorningPipeline},
+    pipeline::{PipelineOrchestrator, morning::MorningPipeline, persist::PersistResult},
     store::dao::{JobStatus, RecapDao},
 };
+
+/// Result of evaluating whether a job succeeded or failed based on PersistResult.
+enum JobOutcome {
+    /// Job succeeded (at least some genres were stored, or no genres to process)
+    Success,
+    /// Job failed (no genres stored despite having genres to process)
+    Failed(String),
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct JobContext {
@@ -73,23 +81,66 @@ impl Scheduler {
         );
 
         match self.pipeline.execute(&context).await {
-            Ok(_) => {
-                self.recap_dao
-                    .update_job_status_with_history(context.job_id, JobStatus::Completed, None, None)
-                    .await?;
+            Ok(persist_result) => {
+                // Check if the job actually succeeded based on PersistResult contents
+                let job_outcome = Self::evaluate_job_outcome(&persist_result);
 
-                // Run classification evaluation after successful job completion
-                if self.config.classification_eval_enabled() {
-                    if let Err(e) = self.run_classification_evaluation(context.job_id).await {
-                        warn!(
+                match job_outcome {
+                    JobOutcome::Success => {
+                        self.recap_dao
+                            .update_job_status_with_history(context.job_id, JobStatus::Completed, None, None)
+                            .await?;
+
+                        // Run classification evaluation after successful job completion
+                        if self.config.classification_eval_enabled() {
+                            if let Err(e) = self.run_classification_evaluation(context.job_id).await {
+                                warn!(
+                                    job_id = %context.job_id,
+                                    error = %e,
+                                    "failed to run classification evaluation (job still marked as completed)"
+                                );
+                            }
+                        }
+
+                        Ok(())
+                    }
+                    JobOutcome::Failed(reason) => {
+                        // Pipeline completed but no genres were stored - this is a failure
+                        tracing::error!(
                             job_id = %context.job_id,
-                            error = %e,
-                            "failed to run classification evaluation (job still marked as completed)"
+                            genres_stored = persist_result.genres_stored,
+                            genres_failed = persist_result.genres_failed,
+                            genres_skipped = persist_result.genres_skipped,
+                            genres_no_evidence = persist_result.genres_no_evidence,
+                            total_genres = persist_result.total_genres,
+                            "job completed but no genres were stored - marking as failed"
                         );
+
+                        if let Err(dao_err) = self
+                            .recap_dao
+                            .update_job_status_with_history(
+                                context.job_id,
+                                JobStatus::Failed,
+                                None,
+                                Some(&reason),
+                            )
+                            .await
+                        {
+                            tracing::error!(job_id = %context.job_id, error = %dao_err, "failed to update job status to failed");
+                        }
+
+                        // Log failed task details
+                        if let Err(log_err) = self
+                            .recap_dao
+                            .insert_failed_task(context.job_id, "persist", None, Some(&reason))
+                            .await
+                        {
+                            tracing::error!(job_id = %context.job_id, error = %log_err, "failed to insert failed task log");
+                        }
+
+                        Err(anyhow!(reason))
                     }
                 }
-
-                Ok(())
             }
             Err(e) => {
                 tracing::error!(job_id = %context.job_id, error = %e, "job execution failed");
@@ -126,6 +177,45 @@ impl Scheduler {
                 Err(e)
             }
         }
+    }
+
+    /// Evaluates whether a job should be considered successful or failed based on PersistResult.
+    ///
+    /// Decision logic:
+    /// - genres_stored > 0: Success (partial success is still success)
+    /// - genres_stored == 0 && (genres_failed > 0 || genres_skipped > 0): Failed
+    /// - genres_stored == 0 && genres_no_evidence > 0 only: Success (no articles is a valid state)
+    /// - genres_stored == 0 && total_genres == 0: Success (empty job is valid)
+    fn evaluate_job_outcome(persist_result: &PersistResult) -> JobOutcome {
+        // If any genres were stored, the job succeeded (partial success is success)
+        if persist_result.genres_stored > 0 {
+            return JobOutcome::Success;
+        }
+
+        // If no genres to process, that's a valid completion
+        if persist_result.total_genres == 0 {
+            return JobOutcome::Success;
+        }
+
+        // If genres_stored == 0 but we have failures or skips, that's a failure
+        if persist_result.genres_failed > 0 || persist_result.genres_skipped > 0 {
+            let reason = format!(
+                "No genres were stored: failed={}, skipped={}, no_evidence={}",
+                persist_result.genres_failed,
+                persist_result.genres_skipped,
+                persist_result.genres_no_evidence
+            );
+            return JobOutcome::Failed(reason);
+        }
+
+        // If genres_stored == 0 but only genres_no_evidence > 0, that's valid
+        // (all genres had no articles assigned, which is a legitimate state)
+        if persist_result.genres_no_evidence > 0 {
+            return JobOutcome::Success;
+        }
+
+        // Fallback: if we get here, something unexpected happened
+        JobOutcome::Success
     }
 
     pub(crate) async fn run_morning_update(&self, context: JobContext) -> Result<()> {
@@ -211,5 +301,159 @@ impl Scheduler {
         );
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test: Job should be marked as Failed when genres_stored=0 but genres_failed>0
+    #[test]
+    fn test_job_marked_failed_when_no_genres_stored_with_failures() {
+        let persist_result = PersistResult {
+            job_id: Uuid::new_v4(),
+            genres_stored: 0,
+            genres_failed: 55,
+            genres_skipped: 0,
+            genres_no_evidence: 5,
+            total_genres: 60,
+        };
+
+        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+
+        match outcome {
+            JobOutcome::Failed(reason) => {
+                assert!(reason.contains("No genres were stored"));
+                assert!(reason.contains("failed=55"));
+            }
+            JobOutcome::Success => {
+                panic!("Expected job to be marked as Failed, but got Success");
+            }
+        }
+    }
+
+    /// Test: Job should be marked as Failed when genres_stored=0 but genres_skipped>0
+    #[test]
+    fn test_job_marked_failed_when_no_genres_stored_with_skipped() {
+        let persist_result = PersistResult {
+            job_id: Uuid::new_v4(),
+            genres_stored: 0,
+            genres_failed: 0,
+            genres_skipped: 10,
+            genres_no_evidence: 5,
+            total_genres: 15,
+        };
+
+        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+
+        match outcome {
+            JobOutcome::Failed(reason) => {
+                assert!(reason.contains("No genres were stored"));
+                assert!(reason.contains("skipped=10"));
+            }
+            JobOutcome::Success => {
+                panic!("Expected job to be marked as Failed, but got Success");
+            }
+        }
+    }
+
+    /// Test: Job should be marked as Completed when some genres are stored (partial success)
+    #[test]
+    fn test_job_marked_completed_when_some_genres_stored() {
+        let persist_result = PersistResult {
+            job_id: Uuid::new_v4(),
+            genres_stored: 5,
+            genres_failed: 10,
+            genres_skipped: 2,
+            genres_no_evidence: 3,
+            total_genres: 20,
+        };
+
+        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+
+        match outcome {
+            JobOutcome::Success => {
+                // Expected
+            }
+            JobOutcome::Failed(reason) => {
+                panic!("Expected job to be marked as Success, but got Failed: {}", reason);
+            }
+        }
+    }
+
+    /// Test: Job should be marked as Completed when all genres have no evidence
+    /// (this is a valid state - no articles in the time window)
+    #[test]
+    fn test_job_marked_completed_when_only_no_evidence() {
+        let persist_result = PersistResult {
+            job_id: Uuid::new_v4(),
+            genres_stored: 0,
+            genres_failed: 0,
+            genres_skipped: 0,
+            genres_no_evidence: 10,
+            total_genres: 10,
+        };
+
+        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+
+        match outcome {
+            JobOutcome::Success => {
+                // Expected - no evidence is a valid completion state
+            }
+            JobOutcome::Failed(reason) => {
+                panic!("Expected job to be marked as Success, but got Failed: {}", reason);
+            }
+        }
+    }
+
+    /// Test: Job should be marked as Completed when total_genres=0 (empty job)
+    #[test]
+    fn test_job_marked_completed_when_empty_job() {
+        let persist_result = PersistResult {
+            job_id: Uuid::new_v4(),
+            genres_stored: 0,
+            genres_failed: 0,
+            genres_skipped: 0,
+            genres_no_evidence: 0,
+            total_genres: 0,
+        };
+
+        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+
+        match outcome {
+            JobOutcome::Success => {
+                // Expected - empty job is valid
+            }
+            JobOutcome::Failed(reason) => {
+                panic!("Expected job to be marked as Success, but got Failed: {}", reason);
+            }
+        }
+    }
+
+    /// Test: Mixed scenario - genres_stored=0 with both failures and no_evidence
+    #[test]
+    fn test_job_marked_failed_with_mixed_failures_and_no_evidence() {
+        let persist_result = PersistResult {
+            job_id: Uuid::new_v4(),
+            genres_stored: 0,
+            genres_failed: 30,
+            genres_skipped: 5,
+            genres_no_evidence: 25,
+            total_genres: 60,
+        };
+
+        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+
+        match outcome {
+            JobOutcome::Failed(reason) => {
+                assert!(reason.contains("No genres were stored"));
+                assert!(reason.contains("failed=30"));
+                assert!(reason.contains("skipped=5"));
+            }
+            JobOutcome::Success => {
+                panic!("Expected job to be marked as Failed, but got Success");
+            }
+        }
     }
 }

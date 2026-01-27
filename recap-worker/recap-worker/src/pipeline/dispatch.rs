@@ -840,7 +840,46 @@ impl MlLlmDispatchStage {
             successful.into_iter().zip(request_results)
         {
             match req_result {
-                Ok(request) => {
+                Ok(mut request) => {
+                    // Filter out clusters with empty representative_sentences
+                    // This prevents 422 errors from the batch summary API
+                    let original_cluster_count = request.clusters.len();
+                    request.clusters.retain(|cluster| {
+                        !cluster.representative_sentences.is_empty()
+                    });
+
+                    let filtered_count = original_cluster_count - request.clusters.len();
+                    if filtered_count > 0 {
+                        debug!(
+                            job_id = %job.job_id,
+                            genre = %genre,
+                            filtered_count = filtered_count,
+                            remaining_count = request.clusters.len(),
+                            "filtered out clusters with empty representative_sentences"
+                        );
+                    }
+
+                    // If all clusters were filtered out, treat as error
+                    if request.clusters.is_empty() {
+                        warn!(
+                            job_id = %job.job_id,
+                            genre = %genre,
+                            original_cluster_count = original_cluster_count,
+                            "all clusters had empty representative_sentences"
+                        );
+                        genre_results.insert(
+                            genre.clone(),
+                            GenreResult {
+                                genre,
+                                clustering_response: Some(clustering_response),
+                                summary_response_id: None,
+                                summary_response: None,
+                                error: Some("All clusters had empty representative_sentences".to_string()),
+                            },
+                        );
+                        continue;
+                    }
+
                     genre_clustering_map.insert(genre, clustering_response);
                     valid_requests.push(request);
                 }
@@ -1075,6 +1114,7 @@ fn read_process_memory_kb() -> Option<(u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::clients::news_creator::models::{ClusterInput, RepresentativeSentence, SummaryRequest};
 
     #[test]
     fn genre_result_tracks_success_and_failure() {
@@ -1097,5 +1137,84 @@ mod tests {
         };
 
         assert!(failure.error.is_some());
+    }
+
+    /// Test: Clusters with empty representative_sentences should be filtered out
+    #[test]
+    fn test_filter_empty_representative_sentences() {
+        let mut request = SummaryRequest {
+            job_id: Uuid::new_v4(),
+            genre: "tech".to_string(),
+            clusters: vec![
+                ClusterInput {
+                    cluster_id: 0,
+                    representative_sentences: vec![
+                        RepresentativeSentence {
+                            text: "Valid sentence".to_string(),
+                            published_at: None,
+                            source_url: None,
+                            article_id: Some("article-1".to_string()),
+                            is_centroid: false,
+                        }
+                    ],
+                    top_terms: None,
+                },
+                ClusterInput {
+                    cluster_id: 1,
+                    representative_sentences: vec![], // Empty - should be filtered
+                    top_terms: None,
+                },
+                ClusterInput {
+                    cluster_id: 2,
+                    representative_sentences: vec![
+                        RepresentativeSentence {
+                            text: "Another valid sentence".to_string(),
+                            published_at: None,
+                            source_url: None,
+                            article_id: Some("article-2".to_string()),
+                            is_centroid: false,
+                        }
+                    ],
+                    top_terms: None,
+                },
+            ],
+            genre_highlights: None,
+            options: None,
+        };
+
+        let original_count = request.clusters.len();
+        request.clusters.retain(|cluster| !cluster.representative_sentences.is_empty());
+
+        assert_eq!(original_count, 3);
+        assert_eq!(request.clusters.len(), 2);
+        assert_eq!(request.clusters[0].cluster_id, 0);
+        assert_eq!(request.clusters[1].cluster_id, 2);
+    }
+
+    /// Test: All clusters empty should result in empty clusters vec
+    #[test]
+    fn test_all_clusters_empty_representative_sentences() {
+        let mut request = SummaryRequest {
+            job_id: Uuid::new_v4(),
+            genre: "tech".to_string(),
+            clusters: vec![
+                ClusterInput {
+                    cluster_id: 0,
+                    representative_sentences: vec![], // Empty
+                    top_terms: None,
+                },
+                ClusterInput {
+                    cluster_id: 1,
+                    representative_sentences: vec![], // Empty
+                    top_terms: None,
+                },
+            ],
+            genre_highlights: None,
+            options: None,
+        };
+
+        request.clusters.retain(|cluster| !cluster.representative_sentences.is_empty());
+
+        assert!(request.clusters.is_empty(), "All empty clusters should be filtered out");
     }
 }
