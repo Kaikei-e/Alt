@@ -163,25 +163,31 @@ async fn main() -> Result<(), AggregatorError> {
 /// Wait for SIGTERM or SIGINT (Ctrl+C) for graceful shutdown
 async fn shutdown_signal() {
     let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
+        if let Err(e) = signal::ctrl_c().await {
+            tracing::warn!("Failed to install Ctrl+C handler: {}", e);
+            std::future::pending::<()>().await;
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
-            .recv()
-            .await;
+        match signal::unix::signal(signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(e) => {
+                tracing::warn!("Failed to install SIGTERM handler: {}", e);
+                std::future::pending::<()>().await;
+            }
+        }
     };
 
     #[cfg(not(unix))]
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => info!("Received SIGINT, initiating graceful shutdown"),
-        _ = terminate => info!("Received SIGTERM, initiating graceful shutdown"),
+        () = ctrl_c => info!("Received SIGINT, initiating graceful shutdown"),
+        () = terminate => info!("Received SIGTERM, initiating graceful shutdown"),
     }
 }
 

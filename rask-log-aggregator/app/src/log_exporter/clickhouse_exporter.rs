@@ -12,6 +12,12 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tracing::error;
 
+// ClickHouse inserter configuration constants
+const INSERTER_SEND_TIMEOUT: Duration = Duration::from_secs(10);
+const INSERTER_END_TIMEOUT: Duration = Duration::from_secs(10);
+const INSERTER_MAX_BYTES: u64 = 50_000_000;
+const INSERTER_MAX_ROWS: u64 = 1000;
+
 #[derive(clickhouse::Row, Serialize, Deserialize, Clone, Debug)]
 pub struct LogRow {
     pub service_type: String, // LowCardinality(String)
@@ -94,6 +100,19 @@ impl ClickHouseExporter {
     pub fn new(client: Client) -> Self {
         Self { client }
     }
+
+    /// Create a configured inserter for the given table
+    fn create_inserter<T: clickhouse::Row>(
+        &self,
+        table: &str,
+    ) -> Result<clickhouse::inserter::Inserter<T>, clickhouse::error::Error> {
+        Ok(self
+            .client
+            .inserter::<T>(table)?
+            .with_timeouts(Some(INSERTER_SEND_TIMEOUT), Some(INSERTER_END_TIMEOUT))
+            .with_max_bytes(INSERTER_MAX_BYTES)
+            .with_max_rows(INSERTER_MAX_ROWS))
+    }
 }
 
 impl super::LogExporter for ClickHouseExporter {
@@ -103,26 +122,18 @@ impl super::LogExporter for ClickHouseExporter {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), AggregatorError>> + Send + '_>>
     {
         Box::pin(async move {
-            // 変換時に所有権を奪い clone を削減
+            // Take ownership during conversion to avoid cloning
             let rows: Vec<LogRow> = logs.into_iter().map(LogRow::from).collect();
 
-            // バッチを 1000 行単位で送信
-            let mut inserter = self
-                .client
-                .inserter::<LogRow>("logs")?
-                .with_timeouts(Some(Duration::from_secs(10)), Some(Duration::from_secs(10)))
-                .with_max_bytes(50_000_000)
-                .with_max_rows(1000);
+            // Send batch in chunks of 1000 rows
+            let mut inserter = self.create_inserter::<LogRow>("logs")?;
 
             for row in &rows {
-                match inserter.write(row) {
-                    Ok(()) => (),
-                    Err(e) => {
-                        error!("Failed to write row to ClickHouse: {e}");
-                    }
+                if let Err(e) = inserter.write(row) {
+                    error!("Failed to write row to ClickHouse: {e}");
                 }
             }
-            inserter.end().await?; // commit 相当
+            inserter.end().await?; // Equivalent to commit
 
             Ok(())
         })
@@ -325,12 +336,7 @@ impl ClickHouseExporter {
 
         let rows: Vec<OTelLogRow> = logs.into_iter().map(OTelLogRow::from).collect();
 
-        let mut inserter = self
-            .client
-            .inserter::<OTelLogRow>("otel_logs")?
-            .with_timeouts(Some(Duration::from_secs(10)), Some(Duration::from_secs(10)))
-            .with_max_bytes(50_000_000)
-            .with_max_rows(1000);
+        let mut inserter = self.create_inserter::<OTelLogRow>("otel_logs")?;
 
         for row in &rows {
             if let Err(e) = inserter.write(row) {
@@ -350,12 +356,7 @@ impl ClickHouseExporter {
 
         let rows: Vec<OTelTraceRow> = traces.into_iter().map(OTelTraceRow::from).collect();
 
-        let mut inserter = self
-            .client
-            .inserter::<OTelTraceRow>("otel_traces")?
-            .with_timeouts(Some(Duration::from_secs(10)), Some(Duration::from_secs(10)))
-            .with_max_bytes(50_000_000)
-            .with_max_rows(1000);
+        let mut inserter = self.create_inserter::<OTelTraceRow>("otel_traces")?;
 
         for row in &rows {
             if let Err(e) = inserter.write(row) {
