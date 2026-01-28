@@ -6,9 +6,10 @@ FROM gpt-oss:20b
 # Context window - 8K tokens for RAG workloads
 PARAMETER num_ctx 8192
 
-# Output limit - prevents runaway generation (critical for short queries)
-# Short queries were generating 2000+ tokens, causing 130s latency
-PARAMETER num_predict 512
+# Output limit - increased for gpt-oss thinking + JSON output
+# gpt-oss outputs thinking first, then JSON answer
+# 512 was too short, causing truncation before JSON generation
+PARAMETER num_predict 4096
 
 # Temperature - increased for reasoning models (per Ollama recommendations)
 # Lower values (0.2) can cause empty content issues with gpt-oss
