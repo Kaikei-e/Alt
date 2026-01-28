@@ -2,6 +2,11 @@ import type { Page } from "@playwright/test";
 import { injectAxe, getViolations, checkA11y } from "axe-playwright";
 import type { Result, RunOptions } from "axe-core";
 
+// Type workaround: axe-playwright depends on an older playwright-core version
+// which causes type incompatibility. Using 'any' cast is the standard workaround.
+// biome-ignore lint/suspicious/noExplicitAny: playwright version mismatch workaround
+type AxeCompatiblePage = any;
+
 /**
  * Accessibility testing helper using axe-playwright.
  */
@@ -60,13 +65,14 @@ export async function checkAccessibility(
 	page: Page,
 	options: A11yOptions = {},
 ): Promise<void> {
-	await injectAxe(page);
+	const axePage = page as AxeCompatiblePage;
+	await injectAxe(axePage);
 
 	const context = options.includeSelector || undefined;
 	const axeOptions = buildAxeOptions(options);
 
 	// checkA11y throws if there are violations
-	await checkA11y(page, context, { axeOptions }, false);
+	await checkA11y(axePage, context, { axeOptions }, false);
 }
 
 /**
@@ -77,12 +83,13 @@ export async function getAccessibilityViolations(
 	page: Page,
 	options: A11yOptions = {},
 ): Promise<A11yViolation[]> {
-	await injectAxe(page);
+	const axePage = page as AxeCompatiblePage;
+	await injectAxe(axePage);
 
 	const context = options.includeSelector || undefined;
 	const axeOptions = buildAxeOptions(options);
 
-	const violations = await getViolations(page, context, axeOptions);
+	const violations = await getViolations(axePage, context, axeOptions);
 
 	return violations.map((v: Result) => ({
 		id: v.id,

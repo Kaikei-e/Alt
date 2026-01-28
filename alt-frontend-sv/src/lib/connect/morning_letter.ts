@@ -6,8 +6,15 @@
  */
 
 import { createClient } from "@connectrpc/connect";
-import type { Transport } from "@connectrpc/connect";
-import { MorningLetterService } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
+import type { Client, Transport } from "@connectrpc/connect";
+import {
+	MorningLetterService,
+	type StreamChatEvent,
+	type Citation as ProtoCitation,
+} from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
+
+/** Type-safe MorningLetterService client */
+type MorningLetterClient = Client<typeof MorningLetterService>;
 
 // =============================================================================
 // Types
@@ -74,7 +81,7 @@ export interface MorningLetterStreamResult {
 /**
  * Creates a MorningLetterService client with the given transport.
  */
-export function createMorningLetterClient(transport: Transport) {
+export function createMorningLetterClient(transport: Transport): MorningLetterClient {
 	return createClient(MorningLetterService, transport);
 }
 
@@ -122,7 +129,8 @@ export function streamMorningLetterChat(
 				{ signal: abortController.signal },
 			);
 
-			for await (const event of stream) {
+			for await (const rawEvent of stream) {
+				const event = rawEvent as StreamChatEvent;
 				const { payload } = event;
 
 				switch (payload.case) {
@@ -137,11 +145,13 @@ export function streamMorningLetterChat(
 
 					case "meta":
 						if (payload.value) {
-							const citations = payload.value.citations.map((c) => ({
-								url: c.url,
-								title: c.title,
-								publishedAt: c.publishedAt,
-							}));
+							const citations = payload.value.citations.map(
+								(c: ProtoCitation) => ({
+									url: c.url,
+									title: c.title,
+									publishedAt: c.publishedAt,
+								}),
+							);
 							latestCitations = citations;
 							if (onMeta) {
 								onMeta({
@@ -160,11 +170,13 @@ export function streamMorningLetterChat(
 
 					case "done":
 						if (payload.value) {
-							const citations = payload.value.citations.map((c) => ({
-								url: c.url,
-								title: c.title,
-								publishedAt: c.publishedAt,
-							}));
+							const citations = payload.value.citations.map(
+								(c: ProtoCitation) => ({
+									url: c.url,
+									title: c.title,
+									publishedAt: c.publishedAt,
+								}),
+							);
 							const finalAnswer = payload.value.answer || accumulatedText;
 							if (onComplete) {
 								onComplete({

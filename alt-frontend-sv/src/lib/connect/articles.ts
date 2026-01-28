@@ -5,8 +5,18 @@
  */
 
 import { createClient } from "@connectrpc/connect";
-import type { Transport } from "@connectrpc/connect";
-import { ArticleService } from "$lib/gen/alt/articles/v2/articles_pb";
+import type { Client, Transport } from "@connectrpc/connect";
+import {
+	ArticleService,
+	type FetchArticleContentResponse,
+	type ArchiveArticleResponse,
+	type FetchArticlesCursorResponse,
+	type FetchArticleSummaryResponse,
+	type ArticleSummaryItem as ProtoArticleSummaryItem,
+} from "$lib/gen/alt/articles/v2/articles_pb";
+
+/** Type-safe ArticleService client */
+type ArticleClient = Client<typeof ArticleService>;
 
 // =============================================================================
 // Types
@@ -77,7 +87,7 @@ export interface FetchArticleSummaryResult {
 /**
  * Creates an ArticleService client with the given transport.
  */
-export function createArticleClient(transport: Transport) {
+export function createArticleClient(transport: Transport): ArticleClient {
 	return createClient(ArticleService, transport);
 }
 
@@ -99,10 +109,10 @@ export async function fetchArticleContent(
 	signal?: AbortSignal,
 ): Promise<FetchArticleContentResult> {
 	const client = createArticleClient(transport);
-	const response = await client.fetchArticleContent(
+	const response = (await client.fetchArticleContent(
 		{ url },
 		signal ? { signal } : undefined,
-	);
+	)) as FetchArticleContentResponse;
 
 	return {
 		url: response.url,
@@ -125,10 +135,10 @@ export async function archiveArticle(
 	title?: string,
 ): Promise<ArchiveArticleResult> {
 	const client = createArticleClient(transport);
-	const response = await client.archiveArticle({
+	const response = (await client.archiveArticle({
 		feedUrl,
 		title,
-	});
+	})) as ArchiveArticleResponse;
 
 	return {
 		message: response.message,
@@ -149,10 +159,10 @@ export async function fetchArticlesCursor(
 	limit: number = 20,
 ): Promise<ArticleCursorResponse> {
 	const client = createArticleClient(transport);
-	const response = await client.fetchArticlesCursor({
+	const response = (await client.fetchArticlesCursor({
 		cursor,
 		limit,
-	});
+	})) as FetchArticlesCursorResponse;
 
 	return {
 		data: response.data.map(convertProtoArticle),
@@ -173,17 +183,21 @@ export async function fetchArticleSummary(
 	feedUrls: string[],
 ): Promise<FetchArticleSummaryResult> {
 	const client = createArticleClient(transport);
-	const response = await client.fetchArticleSummary({ feedUrls });
+	const response = (await client.fetchArticleSummary({
+		feedUrls,
+	})) as FetchArticleSummaryResponse;
 
 	return {
-		matchedArticles: response.matchedArticles.map((item) => ({
-			title: item.title,
-			content: item.content,
-			author: item.author,
-			publishedAt: item.publishedAt,
-			fetchedAt: item.fetchedAt,
-			sourceId: item.sourceId,
-		})),
+		matchedArticles: response.matchedArticles.map(
+			(item: ProtoArticleSummaryItem) => ({
+				title: item.title,
+				content: item.content,
+				author: item.author,
+				publishedAt: item.publishedAt,
+				fetchedAt: item.fetchedAt,
+				sourceId: item.sourceId,
+			}),
+		),
 		totalMatched: response.totalMatched,
 		requestedCount: response.requestedCount,
 	};

@@ -6,13 +6,15 @@
  */
 
 import { createClient } from "@connectrpc/connect";
-import type { Transport } from "@connectrpc/connect";
-import { RecapService } from "$lib/gen/alt/recap/v2/recap_pb";
-import type {
-	RecapSummary,
-	RecapGenre,
-	EvidenceLink,
-} from "$lib/schema/recap";
+import type { Client, Transport } from "@connectrpc/connect";
+import {
+	RecapService,
+	type GetSevenDayRecapResponse,
+} from "$lib/gen/alt/recap/v2/recap_pb";
+import type { RecapSummary, RecapGenre, EvidenceLink } from "$lib/schema/recap";
+
+/** Type-safe RecapService client */
+type RecapClient = Client<typeof RecapService>;
 
 /**
  * Reference type from the recap response
@@ -41,7 +43,7 @@ export interface RecapSummaryWithReferences extends Omit<RecapSummary, "genres">
 /**
  * Creates a RecapService client with the given transport.
  */
-export function createRecapClient(transport: Transport) {
+export function createRecapClient(transport: Transport): RecapClient {
 	return createClient(RecapService, transport);
 }
 
@@ -57,9 +59,9 @@ export async function getSevenDayRecap(
 	genreDraftId?: string,
 ): Promise<RecapSummaryWithReferences> {
 	const client = createRecapClient(transport);
-	const response = await client.getSevenDayRecap({
+	const response = (await client.getSevenDayRecap({
 		genreDraftId,
-	});
+	})) as GetSevenDayRecapResponse;
 
 	return {
 		jobId: response.jobId,

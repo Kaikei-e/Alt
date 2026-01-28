@@ -5,8 +5,23 @@
  */
 
 import { createClient } from "@connectrpc/connect";
-import type { Transport } from "@connectrpc/connect";
-import { FeedService } from "$lib/gen/alt/feeds/v2/feeds_pb";
+import type { Client, Transport } from "@connectrpc/connect";
+import {
+	FeedService,
+	type GetFeedStatsResponse,
+	type GetDetailedFeedStatsResponse,
+	type GetUnreadCountResponse,
+	type GetUnreadFeedsResponse,
+	type GetReadFeedsResponse,
+	type GetFavoriteFeedsResponse,
+	type SearchFeedsResponse,
+	type StreamFeedStatsResponse,
+	type StreamSummarizeResponse,
+	type MarkAsReadResponse,
+} from "$lib/gen/alt/feeds/v2/feeds_pb";
+
+/** Type-safe FeedService client */
+type FeedClient = Client<typeof FeedService>;
 
 /**
  * Feed stats response (converted from bigint to number for convenience)
@@ -35,7 +50,7 @@ export interface UnreadCount {
 /**
  * Creates a FeedService client with the given transport.
  */
-export function createFeedClient(transport: Transport) {
+export function createFeedClient(transport: Transport): FeedClient {
 	return createClient(FeedService, transport);
 }
 
@@ -47,7 +62,7 @@ export function createFeedClient(transport: Transport) {
  */
 export async function getFeedStats(transport: Transport): Promise<FeedStats> {
 	const client = createFeedClient(transport);
-	const response = await client.getFeedStats({});
+	const response = (await client.getFeedStats({})) as GetFeedStatsResponse;
 
 	return {
 		feedAmount: Number(response.feedAmount),
@@ -65,7 +80,8 @@ export async function getDetailedFeedStats(
 	transport: Transport,
 ): Promise<DetailedFeedStats> {
 	const client = createFeedClient(transport);
-	const response = await client.getDetailedFeedStats({});
+	const response =
+		(await client.getDetailedFeedStats({})) as GetDetailedFeedStatsResponse;
 
 	return {
 		feedAmount: Number(response.feedAmount),
@@ -84,7 +100,7 @@ export async function getUnreadCount(
 	transport: Transport,
 ): Promise<UnreadCount> {
 	const client = createFeedClient(transport);
-	const response = await client.getUnreadCount({});
+	const response = (await client.getUnreadCount({})) as GetUnreadCountResponse;
 
 	return {
 		count: Number(response.count),
@@ -144,11 +160,11 @@ export async function getUnreadFeeds(
 	view?: "swipe",
 ): Promise<FeedCursorResponse> {
 	const client = createFeedClient(transport);
-	const response = await client.getUnreadFeeds({
+	const response = (await client.getUnreadFeeds({
 		cursor,
 		limit,
 		view,
-	});
+	})) as GetUnreadFeedsResponse;
 
 	return {
 		data: response.data.map(convertProtoFeed),
@@ -171,10 +187,10 @@ export async function getReadFeeds(
 	limit: number = 32,
 ): Promise<FeedCursorResponse> {
 	const client = createFeedClient(transport);
-	const response = await client.getReadFeeds({
+	const response = (await client.getReadFeeds({
 		cursor,
 		limit,
-	});
+	})) as GetReadFeedsResponse;
 
 	return {
 		data: response.data.map(convertProtoFeed),
@@ -197,10 +213,10 @@ export async function getFavoriteFeeds(
 	limit: number = 20,
 ): Promise<FeedCursorResponse> {
 	const client = createFeedClient(transport);
-	const response = await client.getFavoriteFeeds({
+	const response = (await client.getFavoriteFeeds({
 		cursor,
 		limit,
-	});
+	})) as GetFavoriteFeedsResponse;
 
 	return {
 		data: response.data.map(convertProtoFeed),
@@ -229,11 +245,11 @@ export async function searchFeeds(
 	limit: number = 20,
 ): Promise<FeedSearchResponse> {
 	const client = createFeedClient(transport);
-	const response = await client.searchFeeds({
+	const response = (await client.searchFeeds({
 		query,
 		cursor,
 		limit,
-	});
+	})) as SearchFeedsResponse;
 
 	return {
 		data: response.data.map(convertProtoFeed),
@@ -313,9 +329,13 @@ export async function streamFeedStats(
 			);
 
 			console.log("[streamFeedStats] Stream created, waiting for data...");
-			for await (const response of stream) {
+			for await (const rawResponse of stream) {
+				const response = rawResponse as StreamFeedStatsResponse;
 				const isHeartbeat = response.metadata?.isHeartbeat ?? false;
-				console.log("[streamFeedStats] Received response:", { isHeartbeat, feedAmount: response.feedAmount });
+				console.log("[streamFeedStats] Received response:", {
+					isHeartbeat,
+					feedAmount: response.feedAmount,
+				});
 
 				// Always call onData, even for heartbeats
 				// Components can decide whether to ignore heartbeats
@@ -424,7 +444,8 @@ export async function streamSummarize(
 			title: options.title,
 		});
 
-		for await (const response of stream) {
+		for await (const rawResponse of stream) {
+			const response = rawResponse as StreamSummarizeResponse;
 			// Update article ID if provided
 			if (response.articleId) {
 				articleId = response.articleId;
@@ -518,7 +539,8 @@ export function streamSummarizeWithAbort(
 				{ signal: abortController.signal },
 			);
 
-			for await (const response of stream) {
+			for await (const rawResponse of stream) {
+				const response = rawResponse as StreamSummarizeResponse;
 				// Update article ID if provided
 				if (response.articleId) {
 					articleId = response.articleId;
@@ -604,7 +626,9 @@ export async function markAsRead(
 	const normalizedUrl = normalizeUrl(articleUrl);
 
 	const client = createFeedClient(transport);
-	const response = await client.markAsRead({ articleUrl: normalizedUrl });
+	const response = (await client.markAsRead({
+		articleUrl: normalizedUrl,
+	})) as MarkAsReadResponse;
 
 	return {
 		message: response.message,

@@ -25,12 +25,11 @@ export interface AuthStore {
 class AuthStoreImpl implements AuthStore {
 	private _user = $state<Identity | null>(null);
 
+	/** Derived state for authentication status (Svelte 5 best practice) */
+	readonly isAuthenticated = $derived(this._user !== null);
+
 	get user(): Identity | null {
 		return this._user;
-	}
-
-	get isAuthenticated(): boolean {
-		return this._user !== null;
 	}
 
 	setUser(user: Identity | null): void {

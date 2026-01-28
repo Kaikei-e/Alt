@@ -5,8 +5,18 @@
  */
 
 import { createClient } from "@connectrpc/connect";
-import type { Transport } from "@connectrpc/connect";
-import { RSSService } from "$lib/gen/alt/rss/v2/rss_pb";
+import type { Client, Transport } from "@connectrpc/connect";
+import {
+	RSSService,
+	type RegisterRSSFeedResponse,
+	type ListRSSFeedLinksResponse,
+	type DeleteRSSFeedLinkResponse,
+	type RegisterFavoriteFeedResponse,
+	type RSSFeedLink as ProtoRSSFeedLink,
+} from "$lib/gen/alt/rss/v2/rss_pb";
+
+/** Type-safe RSSService client */
+type RSSClient = Client<typeof RSSService>;
 
 // =============================================================================
 // Types
@@ -55,7 +65,7 @@ export interface RegisterFavoriteFeedResult {
 /**
  * Creates an RSSService client with the given transport.
  */
-export function createRSSClient(transport: Transport) {
+export function createRSSClient(transport: Transport): RSSClient {
 	return createClient(RSSService, transport);
 }
 
@@ -75,7 +85,9 @@ export async function registerRSSFeed(
 	url: string,
 ): Promise<RegisterRSSFeedResult> {
 	const client = createRSSClient(transport);
-	const response = await client.registerRSSFeed({ url });
+	const response = (await client.registerRSSFeed({
+		url,
+	})) as RegisterRSSFeedResponse;
 
 	return {
 		message: response.message,
@@ -92,10 +104,12 @@ export async function listRSSFeedLinks(
 	transport: Transport,
 ): Promise<ListRSSFeedLinksResult> {
 	const client = createRSSClient(transport);
-	const response = await client.listRSSFeedLinks({});
+	const response = (await client.listRSSFeedLinks(
+		{},
+	)) as ListRSSFeedLinksResponse;
 
 	return {
-		links: response.links.map((link) => ({
+		links: response.links.map((link: ProtoRSSFeedLink) => ({
 			id: link.id,
 			url: link.url,
 		})),
@@ -114,7 +128,9 @@ export async function deleteRSSFeedLink(
 	id: string,
 ): Promise<DeleteRSSFeedLinkResult> {
 	const client = createRSSClient(transport);
-	const response = await client.deleteRSSFeedLink({ id });
+	const response = (await client.deleteRSSFeedLink({
+		id,
+	})) as DeleteRSSFeedLinkResponse;
 
 	return {
 		message: response.message,
@@ -133,7 +149,9 @@ export async function registerFavoriteFeed(
 	url: string,
 ): Promise<RegisterFavoriteFeedResult> {
 	const client = createRSSClient(transport);
-	const response = await client.registerFavoriteFeed({ url });
+	const response = (await client.registerFavoriteFeed({
+		url,
+	})) as RegisterFavoriteFeedResponse;
 
 	return {
 		message: response.message,

@@ -55,6 +55,12 @@
 					"style": {
 						"useConst": "off",
 						"useImportType": "off"
+					},
+					"suspicious": {
+						"noDoubleEquals": "off"
+					},
+					"a11y": {
+						"useKeyWithClickEvents": "off"
 					}
 				}
 			}

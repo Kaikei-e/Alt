@@ -5,8 +5,17 @@
  */
 
 import { createClient } from "@connectrpc/connect";
-import type { Transport } from "@connectrpc/connect";
-import { AugurService } from "$lib/gen/alt/augur/v2/augur_pb";
+import type { Client, Transport } from "@connectrpc/connect";
+import {
+	AugurService,
+	type StreamChatEvent,
+	type RetrieveContextResponse,
+	type Citation as ProtoCitation,
+	type ContextItem as ProtoContextItem,
+} from "$lib/gen/alt/augur/v2/augur_pb";
+
+/** Type-safe AugurService client */
+type AugurClient = Client<typeof AugurService>;
 
 // =============================================================================
 // Types
@@ -54,7 +63,7 @@ export interface AugurStreamResult {
 /**
  * Creates an AugurService client with the given transport.
  */
-export function createAugurClient(transport: Transport) {
+export function createAugurClient(transport: Transport): AugurClient {
 	return createClient(AugurService, transport);
 }
 
@@ -106,8 +115,9 @@ export function streamAugurChat(
 				{ signal: abortController.signal },
 			);
 
-			for await (const event of stream) {
-				const { kind, payload } = event;
+			for await (const rawEvent of stream) {
+				const event = rawEvent as StreamChatEvent;
+				const { payload } = event;
 
 				switch (payload.case) {
 					case "delta":
@@ -121,11 +131,13 @@ export function streamAugurChat(
 
 					case "meta":
 						if (payload.value?.citations) {
-							const citations = payload.value.citations.map((c) => ({
-								url: c.url,
-								title: c.title,
-								publishedAt: c.publishedAt,
-							}));
+							const citations = payload.value.citations.map(
+								(c: ProtoCitation) => ({
+									url: c.url,
+									title: c.title,
+									publishedAt: c.publishedAt,
+								}),
+							);
 							latestCitations = citations;
 							if (onMeta) {
 								onMeta(citations);
@@ -135,11 +147,13 @@ export function streamAugurChat(
 
 					case "done":
 						if (payload.value) {
-							const citations = payload.value.citations.map((c) => ({
-								url: c.url,
-								title: c.title,
-								publishedAt: c.publishedAt,
-							}));
+							const citations = payload.value.citations.map(
+								(c: ProtoCitation) => ({
+									url: c.url,
+									title: c.title,
+									publishedAt: c.publishedAt,
+								}),
+							);
 							// Use final answer from done payload if available
 							const finalAnswer = payload.value.answer || accumulatedText;
 							if (onComplete) {
@@ -249,12 +263,12 @@ export async function retrieveAugurContext(
 	options: RetrieveContextOptions,
 ): Promise<AugurContextItem[]> {
 	const client = createAugurClient(transport);
-	const response = await client.retrieveContext({
+	const response = (await client.retrieveContext({
 		query: options.query,
 		limit: options.limit ?? 5,
-	});
+	})) as RetrieveContextResponse;
 
-	return response.contexts.map((c) => ({
+	return response.contexts.map((c: ProtoContextItem) => ({
 		url: c.url,
 		title: c.title,
 		publishedAt: c.publishedAt,
