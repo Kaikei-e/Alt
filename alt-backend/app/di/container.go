@@ -30,6 +30,7 @@ import (
 	"alt/gateway/image_fetch_gateway"
 	"alt/gateway/morning_gateway"
 	"alt/gateway/morning_letter_connect_gateway"
+	"alt/gateway/rag_connect_gateway"
 	"alt/gateway/rag_gateway"
 	"alt/gateway/rate_limiter_gateway"
 	"alt/gateway/recap_articles_gateway"
@@ -96,6 +97,7 @@ type ApplicationComponents struct {
 	RobotsTxtGateway            *robots_txt_gateway.RobotsTxtGateway
 	FetchArticleGateway         *fetch_article_gateway.FetchArticleGateway
 	RagIntegration              rag_integration_port.RagIntegrationPort
+	RagConnectClient            *rag_connect_gateway.Client
 	MorningLetterConnectGateway *morning_letter_connect_gateway.Gateway
 	EventPublisher              event_publisher_port.EventPublisherPort
 
@@ -232,6 +234,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	ragRetrieveContextUsecase := retrieve_context_usecase.NewRetrieveContextUsecase(searchFeedMeilisearchGatewayImpl, ragAdapterImpl)
 	answerChatUsecase := answer_chat_usecase.NewAnswerChatUsecase(ragAdapterImpl)
 
+	// RAG Connect-RPC client (for direct Connect-RPC communication with rag-orchestrator)
+	ragConnectClient := rag_connect_gateway.NewClient(cfg.Rag.OrchestratorConnectURL, slog.Default())
+
 	fetchArticleGatewayImpl := fetch_article_gateway.NewFetchArticleGateway(rateLimiter, httpClient)
 	fetchArticleUsecase := fetch_article_usecase.NewArticleUsecase(fetchArticleGatewayImpl, robotsTxtGatewayImpl, altDBRepository, ragAdapterImpl)
 	archiveArticleGatewayImpl := archive_article_gateway.NewArchiveArticleGateway(altDBRepository)
@@ -310,6 +315,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		RobotsTxtGateway:            robotsTxtGatewayImpl,
 		FetchArticleGateway:         fetchArticleGatewayImpl,
 		RagIntegration:              ragAdapterImpl,
+		RagConnectClient:            ragConnectClient,
 		MorningLetterConnectGateway: morningLetterConnectGateway,
 		EventPublisher:              eventPublisherGatewayImpl,
 

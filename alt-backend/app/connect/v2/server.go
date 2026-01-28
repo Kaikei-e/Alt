@@ -54,8 +54,8 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	mux.Handle(rssPath, rssServiceHandler)
 	logger.Info("Registered Connect-RPC RSSService", "path", rssPath)
 
-	// Register Augur service
-	augurHandler := augur.NewHandler(container.RetrieveContextUsecase, container.AnswerChatUsecase, logger)
+	// Register Augur service (uses Connect-RPC to communicate with rag-orchestrator)
+	augurHandler := augur.NewHandler(container.RetrieveContextUsecase, container.RagConnectClient, logger)
 	augurPath, augurServiceHandler := augurv2connect.NewAugurServiceHandler(augurHandler, opts)
 	mux.Handle(augurPath, augurServiceHandler)
 	logger.Info("Registered Connect-RPC AugurService", "path", augurPath)

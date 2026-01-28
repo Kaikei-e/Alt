@@ -2,16 +2,13 @@ package augur
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
-	"strings"
 
 	"alt/connect/errorhandler"
 	"alt/domain"
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
-	"alt/port/rag_integration_port"
-	"alt/usecase/answer_chat_usecase"
+	"alt/port/rag_stream_port"
 	"alt/usecase/retrieve_context_usecase"
 
 	"connectrpc.com/connect"
@@ -20,7 +17,7 @@ import (
 // Handler implements augurv2connect.AugurServiceHandler
 type Handler struct {
 	retrieveContextUsecase retrieve_context_usecase.RetrieveContextUsecase
-	answerChatUsecase      answer_chat_usecase.AnswerChatUsecase
+	ragStreamPort          rag_stream_port.RagStreamPort
 	logger                 *slog.Logger
 }
 
@@ -30,17 +27,19 @@ var _ augurv2connect.AugurServiceHandler = (*Handler)(nil)
 // NewHandler creates a new AugurService handler
 func NewHandler(
 	retrieveContextUsecase retrieve_context_usecase.RetrieveContextUsecase,
-	answerChatUsecase answer_chat_usecase.AnswerChatUsecase,
+	ragStreamPort rag_stream_port.RagStreamPort,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
 		retrieveContextUsecase: retrieveContextUsecase,
-		answerChatUsecase:      answerChatUsecase,
+		ragStreamPort:          ragStreamPort,
 		logger:                 logger,
 	}
 }
 
-// StreamChat implements streaming chat with RAG context
+// StreamChat implements streaming chat with RAG context.
+// This method forwards requests directly to rag-orchestrator via Connect-RPC,
+// eliminating the need for SSE parsing.
 func (h *Handler) StreamChat(
 	ctx context.Context,
 	req *connect.Request[augurv2.StreamChatRequest],
@@ -53,7 +52,7 @@ func (h *Handler) StreamChat(
 		return connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	// Extract last user message as query
+	// Validate request has user message
 	var query string
 	for i := len(req.Msg.Messages) - 1; i >= 0; i-- {
 		if req.Msg.Messages[i].Role == "user" {
@@ -67,203 +66,66 @@ func (h *Handler) StreamChat(
 		return connect.NewError(connect.CodeInvalidArgument, nil)
 	}
 
-	h.logger.InfoContext(ctx, "starting stream chat", "query_length", len(query))
+	h.logger.InfoContext(ctx, "starting stream chat via Connect-RPC", "query_length", len(query))
 
-	// Call usecase to get SSE stream
-	input := rag_integration_port.AnswerInput{
-		Query:  query,
-		Stream: true,
-	}
-
-	answerChan, err := h.answerChatUsecase.Execute(ctx, input)
+	// Call rag-orchestrator directly via Connect-RPC
+	ragStream, err := h.ragStreamPort.StreamChat(ctx, req)
 	if err != nil {
-		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.ExecuteAnswerChat")
+		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.RagConnectClient")
+	}
+	defer ragStream.Close()
+
+	// Forward events from rag-orchestrator to client
+	for ragStream.Receive() {
+		event := ragStream.Msg()
+
+		// Sanitize meta payload to remove sensitive data
+		if event.Kind == "meta" {
+			if meta := event.GetMeta(); meta != nil {
+				event = h.sanitizeMetaEvent(event)
+			}
+		}
+
+		if err := stream.Send(event); err != nil {
+			return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.SendEvent")
+		}
 	}
 
-	// Process SSE stream and convert to Connect-RPC events
-	buffer := ""
-
-	for chunk := range answerChan {
-		// Check for context cancellation
-		select {
-		case <-ctx.Done():
-			h.logger.InfoContext(ctx, "stream chat cancelled by client")
-			return nil
-		default:
-		}
-
-		buffer += chunk
-
-		// Process complete events separated by double newline
-		for {
-			splitIdx := strings.Index(buffer, "\n\n")
-			if splitIdx == -1 {
-				break // No complete event yet
-			}
-
-			// Extract event string (without the double newline)
-			eventStr := buffer[:splitIdx]
-			buffer = buffer[splitIdx+2:]
-
-			// Parse SSE event
-			event, err := h.parseSSEEvent(eventStr)
-			if err != nil {
-				h.logger.WarnContext(ctx, "failed to parse SSE event", "error", err, "event", eventStr)
-				continue
-			}
-
-			// Send to stream
-			if err := stream.Send(event); err != nil {
-				return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.SendEvent")
-			}
-		}
+	if err := ragStream.Err(); err != nil {
+		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.RagStreamError")
 	}
 
 	h.logger.InfoContext(ctx, "stream chat completed")
 	return nil
 }
 
-// parseSSEEvent parses an SSE event string and returns a StreamChatEvent
-func (h *Handler) parseSSEEvent(eventStr string) (*augurv2.StreamChatEvent, error) {
-	lines := strings.Split(eventStr, "\n")
-
-	var eventType string
-	var dataPayload string
-
-	for _, line := range lines {
-		if strings.HasPrefix(line, "event:") {
-			eventType = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
-		} else if strings.HasPrefix(line, "data:") {
-			dataPayload = strings.TrimPrefix(line, "data:")
-		}
+// sanitizeMetaEvent creates a sanitized copy of the meta event,
+// keeping only safe fields (URL, Title, PublishedAt) in citations.
+func (h *Handler) sanitizeMetaEvent(event *augurv2.StreamChatEvent) *augurv2.StreamChatEvent {
+	meta := event.GetMeta()
+	if meta == nil {
+		return event
 	}
 
-	event := &augurv2.StreamChatEvent{
-		Kind: eventType,
-	}
-
-	switch eventType {
-	case "delta":
-		// Text chunk
-		event.Payload = &augurv2.StreamChatEvent_Delta{
-			Delta: dataPayload,
-		}
-
-	case "meta":
-		// Parse and sanitize meta event
-		meta, err := h.sanitizeMetaPayload(dataPayload)
-		if err != nil {
-			h.logger.Warn("failed to sanitize meta payload (no context available)", "error", err)
-			// Return empty meta on error
-			meta = &augurv2.MetaPayload{Citations: []*augurv2.Citation{}}
-		}
-		event.Payload = &augurv2.StreamChatEvent_Meta{
-			Meta: meta,
-		}
-
-	case "done":
-		// Parse done payload
-		done, err := h.parseDonePayload(dataPayload)
-		if err != nil {
-			h.logger.Warn("failed to parse done payload (no context available)", "error", err)
-			done = &augurv2.DonePayload{Answer: "", Citations: []*augurv2.Citation{}}
-		}
-		event.Payload = &augurv2.StreamChatEvent_Done{
-			Done: done,
-		}
-
-	case "fallback":
-		event.Payload = &augurv2.StreamChatEvent_FallbackCode{
-			FallbackCode: dataPayload,
-		}
-
-	case "error":
-		event.Payload = &augurv2.StreamChatEvent_ErrorMessage{
-			ErrorMessage: dataPayload,
-		}
-
-	default:
-		// Unknown event type, treat as delta
-		event.Kind = "delta"
-		event.Payload = &augurv2.StreamChatEvent_Delta{
-			Delta: dataPayload,
-		}
-	}
-
-	return event, nil
-}
-
-// sanitizeMetaPayload parses and sanitizes the meta payload, removing sensitive fields
-func (h *Handler) sanitizeMetaPayload(payload string) (*augurv2.MetaPayload, error) {
-	// Incoming structure from rag-orchestrator
-	type ContextItem struct {
-		ChunkText       string  `json:"ChunkText"` // Sensitive - remove
-		URL             string  `json:"URL"`
-		Title           string  `json:"Title"`
-		PublishedAt     string  `json:"PublishedAt"`
-		Score           float64 `json:"Score"`
-		DocumentVersion int     `json:"DocumentVersion"`
-		ChunkID         string  `json:"ChunkID"` // Internal - remove
-	}
-
-	type IncomingMeta struct {
-		Contexts []ContextItem `json:"Contexts"`
-		Debug    interface{}   `json:"Debug"` // Sensitive - remove
-	}
-
-	var in IncomingMeta
-	if err := json.Unmarshal([]byte(payload), &in); err != nil {
-		return nil, err
-	}
-
-	// Convert to safe protobuf structure
-	meta := &augurv2.MetaPayload{
-		Citations: make([]*augurv2.Citation, 0, len(in.Contexts)),
-	}
-
-	for _, ctx := range in.Contexts {
-		meta.Citations = append(meta.Citations, &augurv2.Citation{
-			Url:         ctx.URL,
-			Title:       ctx.Title,
-			PublishedAt: ctx.PublishedAt,
+	// Create sanitized citations (rag-orchestrator already sends Citation proto,
+	// but we re-create to ensure no extra fields leak through)
+	sanitizedCitations := make([]*augurv2.Citation, 0, len(meta.Citations))
+	for _, c := range meta.Citations {
+		sanitizedCitations = append(sanitizedCitations, &augurv2.Citation{
+			Url:         c.Url,
+			Title:       c.Title,
+			PublishedAt: c.PublishedAt,
 		})
 	}
 
-	return meta, nil
-}
-
-// parseDonePayload parses the done payload from SSE
-func (h *Handler) parseDonePayload(payload string) (*augurv2.DonePayload, error) {
-	type ContextItem struct {
-		URL         string `json:"URL"`
-		Title       string `json:"Title"`
-		PublishedAt string `json:"PublishedAt"`
+	return &augurv2.StreamChatEvent{
+		Kind: "meta",
+		Payload: &augurv2.StreamChatEvent_Meta{
+			Meta: &augurv2.MetaPayload{
+				Citations: sanitizedCitations,
+			},
+		},
 	}
-
-	type DoneResponse struct {
-		Answer   string        `json:"Answer"`
-		Contexts []ContextItem `json:"Contexts"`
-	}
-
-	var in DoneResponse
-	if err := json.Unmarshal([]byte(payload), &in); err != nil {
-		return nil, err
-	}
-
-	done := &augurv2.DonePayload{
-		Answer:    in.Answer,
-		Citations: make([]*augurv2.Citation, 0, len(in.Contexts)),
-	}
-
-	for _, ctx := range in.Contexts {
-		done.Citations = append(done.Citations, &augurv2.Citation{
-			Url:         ctx.URL,
-			Title:       ctx.Title,
-			PublishedAt: ctx.PublishedAt,
-		})
-	}
-
-	return done, nil
 }
 
 // RetrieveContext retrieves relevant context for a query without generating an answer
