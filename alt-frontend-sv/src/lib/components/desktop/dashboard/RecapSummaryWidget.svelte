@@ -95,7 +95,12 @@
 
 			{#if recapData?.executedAt}
 				<p class="text-xs text-[var(--text-muted)] text-center mt-4">
-					Updated: {new Date(recapData.executedAt).toLocaleDateString('en-US')}
+					Updated: {new Date(recapData.executedAt).toLocaleString('ja-JP', {
+					month: 'numeric',
+					day: 'numeric',
+					hour: '2-digit',
+					minute: '2-digit'
+				})}
 				</p>
 			{/if}
 		{/if}
