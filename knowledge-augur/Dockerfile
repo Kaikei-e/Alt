@@ -18,8 +18,9 @@ RUN groupadd -f -g 2000 ollama-user \
 
 WORKDIR /home/ollama-user
 
-# ---- Copy Modelfile ------------------------------------------------------
+# ---- Copy Modelfiles -----------------------------------------------------
 COPY --chown=ollama-user:ollama-user Modelfile.gpt-oss20b-cpu /home/ollama-user/
+COPY --chown=ollama-user:ollama-user Modelfile.gpt-oss20b-igpu /home/ollama-user/
 
 # ---- Environment configuration -------------------------------------------
 ENV OLLAMA_HOST=0.0.0.0:11434

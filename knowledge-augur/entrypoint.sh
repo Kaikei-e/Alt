@@ -68,10 +68,11 @@ else
   echo "  Model gpt-oss:20b already exists"
 fi
 
-# Create custom CPU model
-echo "Creating custom model gpt-oss20b-cpu..."
-echo "Creating/Updating custom model gpt-oss20b-cpu..."
+# Create custom models
 # Always try to create/update to capture Modelfile changes
+
+# CPU model (legacy, for CPU-only deployments)
+echo "Creating/Updating custom model gpt-oss20b-cpu..."
 if [ -f "/home/ollama-user/Modelfile.gpt-oss20b-cpu" ]; then
   if ollama create gpt-oss20b-cpu -f /home/ollama-user/Modelfile.gpt-oss20b-cpu; then
     echo "  Model gpt-oss20b-cpu created/updated successfully"
@@ -79,13 +80,27 @@ if [ -f "/home/ollama-user/Modelfile.gpt-oss20b-cpu" ]; then
     echo "  Error: Failed to create gpt-oss20b-cpu"
   fi
 else
-  echo "  Error: Modelfile not found"
+  echo "  Warning: Modelfile.gpt-oss20b-cpu not found, skipping"
 fi
 
-# Preload model to warm up
-echo "Preloading model..."
+# iGPU model (optimized for AMD iGPU with Vulkan)
+# - num_predict=512 prevents excessive token generation on short queries
+# - stop tokens for proper termination
+echo "Creating/Updating custom model gpt-oss20b-igpu..."
+if [ -f "/home/ollama-user/Modelfile.gpt-oss20b-igpu" ]; then
+  if ollama create gpt-oss20b-igpu -f /home/ollama-user/Modelfile.gpt-oss20b-igpu; then
+    echo "  Model gpt-oss20b-igpu created/updated successfully"
+  else
+    echo "  Error: Failed to create gpt-oss20b-igpu"
+  fi
+else
+  echo "  Warning: Modelfile.gpt-oss20b-igpu not found, skipping"
+fi
+
+# Preload iGPU model to warm up (preferred model for iGPU deployments)
+echo "Preloading model gpt-oss20b-igpu..."
 curl -s http://127.0.0.1:11434/api/chat \
-  -d '{"model":"gpt-oss20b-cpu","keep_alive":-1}' >/dev/null
+  -d '{"model":"gpt-oss20b-igpu","keep_alive":-1}' >/dev/null
 
 # Wait for server process
 wait "$SERVER_PID"
