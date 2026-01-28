@@ -53,6 +53,10 @@ onMount(() => {
 });
 </script>
 
+<svelte:head>
+	<title>7-Day Recap - Alt</title>
+</svelte:head>
+
 <div class="min-h-[100dvh] relative" style="background: var(--app-bg);">
 	{#if isInitialLoading}
 		<!-- Initial loading skeleton -->

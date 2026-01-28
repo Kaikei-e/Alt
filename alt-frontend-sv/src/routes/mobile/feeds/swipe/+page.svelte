@@ -14,6 +14,10 @@ $effect(() => {
 });
 </script>
 
+<svelte:head>
+	<title>Swipe - Alt</title>
+</svelte:head>
+
 <SwipeFeedScreen
 	initialFeeds={data.initialFeeds}
 	initialNextCursor={data.nextCursor}

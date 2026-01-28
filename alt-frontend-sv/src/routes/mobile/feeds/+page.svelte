@@ -12,6 +12,10 @@ interface PageData {
 const { data }: { data: PageData } = $props();
 </script>
 
+<svelte:head>
+	<title>Feeds - Alt</title>
+</svelte:head>
+
 <div
 	class="h-screen overflow-hidden flex flex-col"
 	style="background: var(--app-bg);"

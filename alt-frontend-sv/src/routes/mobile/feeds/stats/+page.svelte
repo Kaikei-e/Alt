@@ -66,6 +66,10 @@ function formatNumber(num: number): string {
 }
 </script>
 
+<svelte:head>
+	<title>Statistics - Alt</title>
+</svelte:head>
+
 <div
   class="h-screen overflow-hidden flex flex-col"
   style="background: var(--app-bg);"

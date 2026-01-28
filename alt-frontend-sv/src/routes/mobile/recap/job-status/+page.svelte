@@ -107,6 +107,10 @@
 	});
 </script>
 
+<svelte:head>
+	<title>Job Status - Alt</title>
+</svelte:head>
+
 <div class="min-h-[100dvh] pb-20 relative" style="background: var(--app-bg);">
 	{#if jobProgress.loading && !jobProgress.data}
 		<!-- Loading skeleton -->

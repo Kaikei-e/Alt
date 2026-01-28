@@ -34,6 +34,10 @@ function getError(node: UiNode | undefined): string {
 }
 </script>
 
+<svelte:head>
+	<title>Register - Alt</title>
+</svelte:head>
+
 <div class="flex items-center justify-center min-h-screen" style="background: var(--app-bg);">
   <Card class="w-[350px]">
     <CardHeader>

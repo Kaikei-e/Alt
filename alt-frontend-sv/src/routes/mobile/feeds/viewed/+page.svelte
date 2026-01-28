@@ -3,6 +3,10 @@ import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte
 import ViewedFeedsClient from "$lib/components/mobile/ViewedFeedsClient.svelte";
 </script>
 
+<svelte:head>
+	<title>History - Alt</title>
+</svelte:head>
+
 <div
 	class="h-screen overflow-hidden flex flex-col"
 	style="background: var(--app-bg);"

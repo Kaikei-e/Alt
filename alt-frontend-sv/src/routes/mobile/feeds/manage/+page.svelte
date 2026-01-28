@@ -157,6 +157,10 @@ function handleBackToHome() {
 }
 </script>
 
+<svelte:head>
+	<title>Manage Feeds - Alt</title>
+</svelte:head>
+
 <div class="min-h-[100dvh] flex flex-col" style="background: var(--app-bg);">
   <div class="w-full max-w-xl mx-auto px-4 py-6 flex-1">
     <div class="flex flex-col gap-6">

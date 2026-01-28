@@ -17,6 +17,10 @@ const loginPath = resolve("/login");
 const homePath = resolve("/");
 </script>
 
+<svelte:head>
+	<title>Error - Alt</title>
+</svelte:head>
+
 <div class="flex items-center justify-center min-h-screen" style="background: var(--app-bg);">
 	<Card class="w-[350px]">
 		<CardHeader>

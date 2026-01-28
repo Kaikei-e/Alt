@@ -47,6 +47,10 @@ $effect(() => {
 });
 </script>
 
+<svelte:head>
+	<title>Home - Alt</title>
+</svelte:head>
+
 <div class="p-8 max-w-4xl mx-auto" data-style="alt-paper">
 	<h1 class="text-3xl font-bold mb-6" style="color: var(--text-primary);">
 		Statistics
