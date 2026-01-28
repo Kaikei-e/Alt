@@ -3,6 +3,7 @@ package augur
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
@@ -11,6 +12,14 @@ import (
 
 	"connectrpc.com/connect"
 )
+
+// sanitizeUTF8 removes invalid UTF-8 sequences from a string.
+// This is necessary because Ollama LLM may return chunks containing
+// invalid UTF-8, which causes protobuf serialization to fail with
+// "string field contains invalid UTF-8" errors.
+func sanitizeUTF8(s string) string {
+	return strings.ToValidUTF8(s, "")
+}
 
 // Handler implements augurv2connect.AugurServiceHandler
 type Handler struct {
@@ -104,7 +113,7 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 		return &augurv2.StreamChatEvent{
 			Kind: "delta",
 			Payload: &augurv2.StreamChatEvent_Delta{
-				Delta: delta,
+				Delta: sanitizeUTF8(delta),
 			},
 		}, true
 
@@ -135,7 +144,7 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 			Kind: "done",
 			Payload: &augurv2.StreamChatEvent_Done{
 				Done: &augurv2.DonePayload{
-					Answer:    output.Answer,
+					Answer:    sanitizeUTF8(output.Answer),
 					Citations: citations,
 				},
 			},
@@ -146,7 +155,7 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 		return &augurv2.StreamChatEvent{
 			Kind: "fallback",
 			Payload: &augurv2.StreamChatEvent_FallbackCode{
-				FallbackCode: reason,
+				FallbackCode: sanitizeUTF8(reason),
 			},
 		}, false
 
@@ -155,9 +164,21 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 		return &augurv2.StreamChatEvent{
 			Kind: "error",
 			Payload: &augurv2.StreamChatEvent_ErrorMessage{
-				ErrorMessage: errMsg,
+				ErrorMessage: sanitizeUTF8(errMsg),
 			},
 		}, false
+
+	case usecase.StreamEventKindThinking:
+		thinking, ok := event.Payload.(string)
+		if !ok {
+			return nil, true
+		}
+		return &augurv2.StreamChatEvent{
+			Kind: "thinking",
+			Payload: &augurv2.StreamChatEvent_ThinkingDelta{
+				ThinkingDelta: sanitizeUTF8(thinking),
+			},
+		}, true
 
 	default:
 		h.logger.Warn("unknown stream event kind", slog.String("kind", string(event.Kind)))
@@ -171,8 +192,8 @@ func (h *Handler) convertContextsToCitations(contexts []usecase.ContextItem) []*
 	citations := make([]*augurv2.Citation, 0, len(contexts))
 	for _, ctx := range contexts {
 		citations = append(citations, &augurv2.Citation{
-			Url:         ctx.URL,
-			Title:       ctx.Title,
+			Url:         sanitizeUTF8(ctx.URL),
+			Title:       sanitizeUTF8(ctx.Title),
 			PublishedAt: ctx.PublishedAt,
 		})
 	}
@@ -185,8 +206,8 @@ func (h *Handler) convertCitationsToProtoCitations(citations []usecase.Citation)
 	result := make([]*augurv2.Citation, 0, len(citations))
 	for _, c := range citations {
 		result = append(result, &augurv2.Citation{
-			Url:   c.URL,
-			Title: c.Title,
+			Url:   sanitizeUTF8(c.URL),
+			Title: sanitizeUTF8(c.Title),
 		})
 	}
 	return result

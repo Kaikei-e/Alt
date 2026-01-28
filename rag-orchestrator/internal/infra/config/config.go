@@ -70,7 +70,8 @@ type Config struct {
 	DefaultLocale         string
 	KnowledgeAugurURL     string
 	KnowledgeAugurModel   string
-	OllamaTimeout         int // Seconds
+	OllamaTimeout         int // Seconds (deprecated, use EmbedderTimeout)
+	EmbedderTimeout       int // Seconds - timeout for embedder-external API calls
 	SearchIndexerURL      string
 	SearchIndexerTimeout  int // Seconds
 	AltBackendURL         string
@@ -122,8 +123,9 @@ func Load() *Config {
 		AnswerMaxTokens:       getEnvInt("RAG_DEFAULT_MAX_TOKENS", 2560),
 		DefaultLocale:         getEnv("RAG_DEFAULT_LOCALE", "ja"),
 		KnowledgeAugurURL:     getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "http://augur-external:11435"),
-		KnowledgeAugurModel:   getEnv("AUGUR_KNOWLEDGE_MODEL", "gpt-oss20b-cpu"),
+		KnowledgeAugurModel:   getEnv("AUGUR_KNOWLEDGE_MODEL", "gpt-oss20b-igpu"),
 		OllamaTimeout:         getEnvInt("OLLAMA_TIMEOUT", 300),
+		EmbedderTimeout:       getEnvInt("EMBEDDER_TIMEOUT", 30), // 30s default to stay under Cloudflare 100s timeout
 		SearchIndexerURL:      getEnv("SEARCH_INDEXER_URL", "http://search-indexer:8080"),
 		SearchIndexerTimeout:  getEnvInt("SEARCH_INDEXER_TIMEOUT", 10),
 		AltBackendURL:         getEnv("ALT_BACKEND_URL", "http://alt-backend:9000"),

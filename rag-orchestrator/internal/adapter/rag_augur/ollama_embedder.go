@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"rag-orchestrator/internal/domain"
 	"time"
@@ -38,6 +39,13 @@ type embedResponse struct {
 }
 
 func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float32, error) {
+	slog.Info("ollama_embed_started",
+		slog.Int("text_count", len(texts)),
+		slog.String("model", e.Model),
+		slog.String("url", e.BaseURL),
+	)
+	start := time.Now()
+
 	reqBody := embedRequest{
 		Model: e.Model,
 		Input: texts,
@@ -56,11 +64,19 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 
 	resp, err := e.Client.Do(req)
 	if err != nil {
+		slog.Error("ollama_embed_failed",
+			slog.String("error", err.Error()),
+			slog.Duration("elapsed", time.Since(start)),
+		)
 		return nil, fmt.Errorf("failed to call ollama: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
+		slog.Error("ollama_embed_bad_status",
+			slog.Int("status", resp.StatusCode),
+			slog.Duration("elapsed", time.Since(start)),
+		)
 		return nil, fmt.Errorf("ollama returned status: %d", resp.StatusCode)
 	}
 
@@ -68,6 +84,11 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
+
+	slog.Info("ollama_embed_completed",
+		slog.Int("embedding_count", len(respBody.Embeddings)),
+		slog.Duration("elapsed", time.Since(start)),
+	)
 
 	return respBody.Embeddings, nil
 }

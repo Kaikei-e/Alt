@@ -127,6 +127,15 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 					chunkStream = nil
 					continue
 				}
+				// Emit thinking chunk if present
+				if chunk.Thinking != "" {
+					if !u.sendStreamEvent(ctx, events, StreamEvent{
+						Kind:    StreamEventKindThinking,
+						Payload: chunk.Thinking,
+					}) {
+						return
+					}
+				}
 				if chunk.Response != "" {
 					hasData = true
 					builder.WriteString(chunk.Response)
@@ -260,6 +269,11 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		}
 
 		if parsedAnswer.Fallback {
+			u.logger.Warn("stream_answer_fallback_triggered",
+				slog.String("retrieval_set_id", promptData.retrievalSetID),
+				slog.String("reason", parsedAnswer.Reason),
+				slog.Int("contexts_available", len(promptData.contexts)),
+				slog.String("llm_raw_response", truncate(builder.String(), 500)))
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
 				Payload: parsedAnswer.Reason,

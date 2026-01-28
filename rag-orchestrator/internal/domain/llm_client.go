@@ -26,6 +26,7 @@ type LLMResponse struct {
 // LLMStreamChunk represents a single streaming response chunk returned by the LLM.
 type LLMStreamChunk struct {
 	Response        string
+	Thinking        string
 	Model           string
 	Done            bool
 	DoneReason      string

@@ -292,8 +292,10 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 
 			// Parse chat response format
 			var content string
+			var thinking string
 			if msg, ok := raw["message"].(map[string]interface{}); ok {
 				content = toString(msg["content"])
+				thinking = toString(msg["thinking"])
 			} else if response, ok := raw["response"]; ok {
 				// Fallback to legacy format if needed
 				content = toString(response)
@@ -301,6 +303,7 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 
 			chunk := domain.LLMStreamChunk{
 				Response:   content,
+				Thinking:   thinking,
 				Model:      toString(raw["model"]),
 				Done:       toBool(raw["done"]),
 				DoneReason: toString(raw["done_reason"]),
@@ -410,7 +413,7 @@ func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, m
 		KeepAlive: -1,
 		Stream:    false,
 		Format:    generationFormat,
-		Think:     "medium", // For complex knowledge synthesis tasks
+		// Think mode disabled - gpt-oss outputs thinking but leaves content empty
 		Options: map[string]interface{}{
 			"temperature": 0.2,
 		},
@@ -479,6 +482,13 @@ func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, m
 
 // ChatStream streams conversation history to Ollama.
 func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Message, maxTokens int) (<-chan domain.LLMStreamChunk, <-chan error, error) {
+	requestID := uuid.NewString()
+	g.logger.Info("ollama_chat_stream_started",
+		slog.String("request_id", requestID),
+		slog.String("model", g.Model),
+		slog.Int("message_count", len(messages)),
+		slog.Int("max_tokens", maxTokens))
+
 	if len(messages) == 0 {
 		return nil, nil, fmt.Errorf("messages are required for streaming chat")
 	}
@@ -490,7 +500,7 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 		KeepAlive: -1,
 		Stream:    true,
 		Format:    generationFormat,
-		Think:     "medium", // For complex knowledge synthesis tasks
+		// Think mode disabled - gpt-oss outputs thinking but leaves content empty
 		Options: map[string]interface{}{
 			"temperature": 0.2,
 		},
@@ -511,16 +521,29 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	g.logger.Info("ollama_chat_stream_request_sent",
+		slog.String("request_id", requestID),
+		slog.String("url", url))
+
 	resp, err := g.Client.Do(req)
 	if err != nil {
+		g.logger.Warn("ollama_chat_stream_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
 		return nil, nil, fmt.Errorf("failed to call stream endpoint: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
+		g.logger.Warn("ollama_chat_stream_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", fmt.Sprintf("status %d: %s", resp.StatusCode, string(body))))
 		return nil, nil, fmt.Errorf("stream endpoint returned %d: %s", resp.StatusCode, string(body))
 	}
+
+	g.logger.Info("ollama_chat_stream_connected",
+		slog.String("request_id", requestID))
 
 	chunkCh := make(chan domain.LLMStreamChunk)
 	errCh := make(chan error, 1)
@@ -530,12 +553,17 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 		defer close(chunkCh)
 		defer close(errCh)
 
+		chunkCount := 0
+		totalBytes := 0
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 		for scanner.Scan() {
 			select {
 			case <-ctx.Done():
+				g.logger.Warn("ollama_chat_stream_cancelled",
+					slog.String("request_id", requestID),
+					slog.Int("chunks_received", chunkCount))
 				return
 			default:
 			}
@@ -547,19 +575,37 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 
 			var raw map[string]interface{}
 			if err := json.Unmarshal([]byte(line), &raw); err != nil {
+				g.logger.Warn("ollama_chat_stream_decode_error",
+					slog.String("request_id", requestID),
+					slog.String("error", err.Error()),
+					slog.String("line_preview", truncateString(line, 200)))
 				errCh <- fmt.Errorf("failed to decode stream chunk: %w", err)
 				return
 			}
 
+			// Log first chunk structure for debugging
+			if chunkCount == 0 {
+				g.logger.Info("ollama_chat_stream_first_chunk",
+					slog.String("request_id", requestID),
+					slog.String("raw_preview", truncateString(line, 500)))
+			}
+
 			var content string
+			var thinking string
 			if msg, ok := raw["message"].(map[string]interface{}); ok {
+				// Extract content and thinking separately
 				content = toString(msg["content"])
+				thinking = toString(msg["thinking"])
 			} else if response, ok := raw["response"]; ok {
 				content = toString(response)
 			}
 
+			chunkCount++
+			totalBytes += len(content) + len(thinking)
+
 			chunk := domain.LLMStreamChunk{
 				Response:   content,
+				Thinking:   thinking,
 				Model:      toString(raw["model"]),
 				Done:       toBool(raw["done"]),
 				DoneReason: toString(raw["done_reason"]),
@@ -576,19 +622,36 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 
 			select {
 			case <-ctx.Done():
+				g.logger.Warn("ollama_chat_stream_cancelled",
+					slog.String("request_id", requestID),
+					slog.Int("chunks_received", chunkCount))
 				return
 			case chunkCh <- chunk:
 			}
 
 			if chunk.Done {
+				g.logger.Info("ollama_chat_stream_completed",
+					slog.String("request_id", requestID),
+					slog.Int("chunks_received", chunkCount),
+					slog.Int("total_bytes", totalBytes),
+					slog.String("done_reason", chunk.DoneReason))
 				return
 			}
 		}
 
 		if err := scanner.Err(); err != nil {
+			g.logger.Warn("ollama_chat_stream_read_error",
+				slog.String("request_id", requestID),
+				slog.String("error", err.Error()),
+				slog.Int("chunks_received", chunkCount))
 			errCh <- fmt.Errorf("failed to read stream: %w", err)
 			return
 		}
+
+		g.logger.Warn("ollama_chat_stream_ended_without_done",
+			slog.String("request_id", requestID),
+			slog.Int("chunks_received", chunkCount),
+			slog.Int("total_bytes", totalBytes))
 	}()
 
 	return chunkCh, errCh, nil
@@ -604,5 +667,6 @@ func toChatMessages(msgs []domain.Message) []chatMessage {
 	}
 	return out
 }
+
 
 var _ domain.LLMClient = (*OllamaGenerator)(nil)

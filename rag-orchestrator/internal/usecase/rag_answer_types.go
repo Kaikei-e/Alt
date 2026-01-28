@@ -53,6 +53,7 @@ type StreamEventKind string
 const (
 	StreamEventKindMeta     StreamEventKind = "meta"
 	StreamEventKindDelta    StreamEventKind = "delta"
+	StreamEventKindThinking StreamEventKind = "thinking"
 	StreamEventKindDone     StreamEventKind = "done"
 	StreamEventKindFallback StreamEventKind = "fallback"
 	StreamEventKindError    StreamEventKind = "error"

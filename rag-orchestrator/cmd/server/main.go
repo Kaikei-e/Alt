@@ -66,7 +66,7 @@ func main() {
 	docRepo := repository.NewRagDocumentRepository(dbPool)
 	jobRepo := repository.NewRagJobRepository(dbPool)
 	txManager := repository.NewPostgresTransactionManager(dbPool)
-	embedder := rag_augur.NewOllamaEmbedder(cfg.OllamaURL, cfg.EmbeddingModel, cfg.OllamaTimeout)
+	embedder := rag_augur.NewOllamaEmbedder(cfg.OllamaURL, cfg.EmbeddingModel, cfg.EmbedderTimeout)
 
 	// 5. Initialize Usecases
 	hasher := domain.NewSourceHashPolicy()
@@ -211,7 +211,7 @@ func main() {
 		indexUsecase,
 		jobRepo,
 		morningLetterUsecase,
-		rag_http.WithEmbedderOverride(embedderFactory, indexUsecaseFactory, cfg.EmbeddingModel, cfg.OllamaTimeout),
+		rag_http.WithEmbedderOverride(embedderFactory, indexUsecaseFactory, cfg.EmbeddingModel, cfg.EmbedderTimeout),
 	)
 
 	// 9. Register OpenAPI Handlers
