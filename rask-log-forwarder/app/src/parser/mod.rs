@@ -16,7 +16,8 @@ pub use simd::SimdParser;
 // New TASK2 exports
 pub use docker::{DockerJsonParser, DockerLogEntry, ParseError};
 pub use services::{
-    GoStructuredParser, LogLevel, NginxParser, ParsedLogEntry, PostgresParser, ServiceParser,
+    GoStructuredParser, LogLevel, MeilisearchParser, NginxParser, ParsedLogEntry, PostgresParser,
+    ServiceParser,
 };
 pub use universal::{EnrichedLogEntry, UniversalParser};
 

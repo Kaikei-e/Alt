@@ -243,33 +243,14 @@ impl Config {
 
         let mut config = Config::default();
 
-        // Load from individual environment variables
-        if let Ok(service) = std::env::var("TARGET_SERVICE") {
-            config.target_service = Some(service);
-        }
+        // Load from individual environment variables using helpers
+        load_env_string_opt("TARGET_SERVICE", &mut config.target_service);
+        load_env_string("RASK_ENDPOINT", &mut config.endpoint);
+        load_env_var("BATCH_SIZE", &mut config.batch_size)?;
+        load_env_var("FLUSH_INTERVAL_MS", &mut config.flush_interval_ms)?;
+        load_env_var("BUFFER_CAPACITY", &mut config.buffer_capacity)?;
 
-        if let Ok(endpoint) = std::env::var("RASK_ENDPOINT") {
-            config.endpoint = endpoint;
-        }
-
-        if let Ok(batch_size) = std::env::var("BATCH_SIZE") {
-            config.batch_size = batch_size
-                .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid BATCH_SIZE: {e}")))?;
-        }
-
-        if let Ok(flush_interval_ms) = std::env::var("FLUSH_INTERVAL_MS") {
-            config.flush_interval_ms = flush_interval_ms
-                .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid FLUSH_INTERVAL_MS: {e}")))?;
-        }
-
-        if let Ok(buffer_capacity) = std::env::var("BUFFER_CAPACITY") {
-            config.buffer_capacity = buffer_capacity
-                .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid BUFFER_CAPACITY: {e}")))?;
-        }
-
+        // LogLevel requires special handling for case-insensitive parsing
         if let Ok(log_level) = std::env::var("LOG_LEVEL") {
             config.log_level = match log_level.to_lowercase().as_str() {
                 "error" => LogLevel::Error,
@@ -285,55 +266,15 @@ impl Config {
             };
         }
 
-        if let Ok(enable_metrics) = std::env::var("ENABLE_METRICS") {
-            config.enable_metrics = enable_metrics
-                .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid ENABLE_METRICS: {e}")))?;
-        }
-
-        if let Ok(metrics_port) = std::env::var("METRICS_PORT") {
-            config.metrics_port = metrics_port
-                .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid METRICS_PORT: {e}")))?;
-        }
-
-        if let Ok(enable_disk_fallback) = std::env::var("ENABLE_DISK_FALLBACK") {
-            config.enable_disk_fallback = enable_disk_fallback
-                .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid ENABLE_DISK_FALLBACK: {e}")))?;
-        }
-
-        if let Ok(disk_fallback_path) = std::env::var("DISK_FALLBACK_PATH") {
-            config.disk_fallback_path = PathBuf::from(disk_fallback_path);
-        }
-
-        if let Ok(max_disk_usage_mb) = std::env::var("MAX_DISK_USAGE_MB") {
-            config.max_disk_usage_mb = max_disk_usage_mb
-                .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid MAX_DISK_USAGE_MB: {e}")))?;
-        }
-
-        if let Ok(connection_timeout_secs) = std::env::var("CONNECTION_TIMEOUT_SECS") {
-            config.connection_timeout_secs = connection_timeout_secs.parse().map_err(|e| {
-                ConfigError::EnvError(format!("Invalid CONNECTION_TIMEOUT_SECS: {e}"))
-            })?;
-        }
-
-        if let Ok(max_connections) = std::env::var("MAX_CONNECTIONS") {
-            config.max_connections = max_connections
-                .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid MAX_CONNECTIONS: {e}")))?;
-        }
-
-        if let Ok(config_file) = std::env::var("CONFIG_FILE") {
-            config.config_file = Some(PathBuf::from(config_file));
-        }
-
-        if let Ok(enable_compression) = std::env::var("ENABLE_COMPRESSION") {
-            config.enable_compression = enable_compression
-                .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid ENABLE_COMPRESSION: {e}")))?;
-        }
+        load_env_var("ENABLE_METRICS", &mut config.enable_metrics)?;
+        load_env_var("METRICS_PORT", &mut config.metrics_port)?;
+        load_env_var("ENABLE_DISK_FALLBACK", &mut config.enable_disk_fallback)?;
+        load_env_path("DISK_FALLBACK_PATH", &mut config.disk_fallback_path);
+        load_env_var("MAX_DISK_USAGE_MB", &mut config.max_disk_usage_mb)?;
+        load_env_var("CONNECTION_TIMEOUT_SECS", &mut config.connection_timeout_secs)?;
+        load_env_var("MAX_CONNECTIONS", &mut config.max_connections)?;
+        load_env_path_opt("CONFIG_FILE", &mut config.config_file);
+        load_env_var("ENABLE_COMPRESSION", &mut config.enable_compression)?;
 
         config.post_process()?;
         config.validate()?;
@@ -513,6 +454,49 @@ impl Config {
         config.post_process()?;
         config.validate()?;
         Ok(config)
+    }
+}
+
+/// Helper function to load and parse an environment variable.
+/// Returns Ok(()) if the variable doesn't exist (keeps default).
+fn load_env_var<T>(name: &str, target: &mut T) -> Result<(), ConfigError>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    if let Ok(value) = std::env::var(name) {
+        *target = value
+            .parse()
+            .map_err(|e| ConfigError::EnvError(format!("Invalid {name}: {e}")))?;
+    }
+    Ok(())
+}
+
+/// Helper function to load an optional string environment variable.
+fn load_env_string_opt(name: &str, target: &mut Option<String>) {
+    if let Ok(value) = std::env::var(name) {
+        *target = Some(value);
+    }
+}
+
+/// Helper function to load a string environment variable.
+fn load_env_string(name: &str, target: &mut String) {
+    if let Ok(value) = std::env::var(name) {
+        *target = value;
+    }
+}
+
+/// Helper function to load a PathBuf environment variable.
+fn load_env_path(name: &str, target: &mut PathBuf) {
+    if let Ok(value) = std::env::var(name) {
+        *target = PathBuf::from(value);
+    }
+}
+
+/// Helper function to load an optional PathBuf environment variable.
+fn load_env_path_opt(name: &str, target: &mut Option<PathBuf>) {
+    if let Ok(value) = std::env::var(name) {
+        *target = Some(PathBuf::from(value));
     }
 }
 

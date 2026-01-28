@@ -1,4 +1,4 @@
-#![warn(rust_2018_idioms)]
+#![warn(rust_2024_compatibility)]
 // Pedantic lints allowed at crate level with justification:
 // - must_use_candidate: Most internal functions don't require must_use; critical APIs annotated selectively
 // - missing_errors_doc: Internal APIs don't need exhaustive error documentation

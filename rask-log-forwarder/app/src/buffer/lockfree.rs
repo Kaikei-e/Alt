@@ -160,7 +160,7 @@ pub struct LogBufferReceiver {
 impl LogBufferReceiver {
     pub async fn recv(&mut self) -> Result<EnrichedLogEntry, BufferError> {
         loop {
-            match self.receiver.try_recv() {
+            match self.receiver.recv().await {
                 Ok(entry) => {
                     self.metrics
                         .messages_received
@@ -172,10 +172,12 @@ impl LogBufferReceiver {
                     }
                     return Ok(entry);
                 }
-                Err(_) => {
-                    // Wait a short time before trying again
-                    tokio::task::yield_now().await;
-                    sleep(Duration::from_micros(1)).await;
+                Err(broadcast::error::RecvError::Closed) => {
+                    return Err(BufferError::BufferClosed);
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!("Buffer receiver lagged by {} messages", n);
+                    // Continue to try receiving the next available message
                 }
             }
         }
