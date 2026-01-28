@@ -37,6 +37,16 @@ echo "Starting Ollama server as $(whoami)..."
 ollama serve &
 SERVER_PID=$!
 
+# Trap signals for graceful shutdown
+cleanup() {
+    echo "Received shutdown signal. Stopping Ollama server (PID $SERVER_PID)..."
+    kill -TERM "$SERVER_PID" 2>/dev/null
+    wait "$SERVER_PID"
+    echo "Ollama server stopped."
+    exit 0
+}
+trap cleanup SIGTERM SIGINT
+
 # Wait for Ollama to be ready
 echo "Waiting for Ollama server to start..."
 for i in $(seq 1 60); do
