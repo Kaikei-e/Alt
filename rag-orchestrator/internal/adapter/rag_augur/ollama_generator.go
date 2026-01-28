@@ -499,8 +499,9 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 		Messages:  chatMsgs,
 		KeepAlive: -1,
 		Stream:    true,
-		Format:    generationFormat,
-		// Think mode disabled - gpt-oss outputs thinking but leaves content empty
+		// Format removed: gpt-oss Harmony format + structured output = empty content
+		// JSON schema is enforced via prompt instead
+		// Think removed: Reasoning disabled in Modelfile to fix empty content issue
 		Options: map[string]interface{}{
 			"temperature": 0.2,
 		},

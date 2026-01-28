@@ -159,3 +159,67 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
+
+// TestStream_SendsThinkingEventFirst verifies that the Stream method sends an
+// immediate thinking event before the retrieval phase to prevent Cloudflare 524
+// timeout errors (60-second idle timeout on streaming connections).
+func TestStream_SendsThinkingEventFirst(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 10, 512, "alpha-v1", "ja", testLogger)
+
+	chunkID := uuid.New()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{
+				ChunkID:         chunkID,
+				ChunkText:       "Test chunk",
+				URL:             "http://example.com",
+				Title:           "Example",
+				PublishedAt:     "2025-12-25T00:00:00Z",
+				Score:           0.9,
+				DocumentVersion: 1,
+			},
+		},
+	}, nil)
+
+	// Prepare streaming response
+	chunkChan := make(chan domain.LLMStreamChunk, 2)
+	errChan := make(chan error)
+
+	llmResponse := `{"answer": "Hello world [chunk_1]", "citations": [{"chunk_id":"` + chunkID.String() + `","reason":"relevant"}], "fallback": false, "reason": ""}`
+	chunkChan <- domain.LLMStreamChunk{Response: llmResponse, Done: false}
+	chunkChan <- domain.LLMStreamChunk{Done: true}
+	close(chunkChan)
+	close(errChan)
+
+	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil)
+
+	// Execute Stream
+	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query"})
+
+	// Collect all events
+	var events []usecase.StreamEvent
+	for event := range eventChan {
+		events = append(events, event)
+	}
+
+	// Assert: first event must be thinking (Cloudflare 524 prevention)
+	assert.GreaterOrEqual(t, len(events), 2, "should have at least thinking and meta events")
+	assert.Equal(t, usecase.StreamEventKindThinking, events[0].Kind, "first event should be thinking for Cloudflare 524 prevention")
+	assert.Equal(t, "", events[0].Payload, "initial thinking event should be empty (signals processing started)")
+
+	// Assert: meta event should come after thinking
+	var metaIdx int
+	for i, e := range events {
+		if e.Kind == usecase.StreamEventKindMeta {
+			metaIdx = i
+			break
+		}
+	}
+	assert.Greater(t, metaIdx, 0, "meta event should come after thinking event")
+}

@@ -52,7 +52,19 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			}
 		}
 
-		// 2. Prepare Context
+		// 2. Send immediate thinking event (Cloudflare 524 prevention)
+		// This ensures HTTP response starts before long-running retrieval.
+		// Cloudflare has a 60-second idle timeout on streaming connections.
+		// Without this, buildPrompt (which can take 50+ seconds for retrieval + reranking)
+		// would leave the stream idle, risking RST_STREAM with INTERNAL_ERROR.
+		if !u.sendStreamEvent(ctx, events, StreamEvent{
+			Kind:    StreamEventKindThinking,
+			Payload: "", // Empty thinking = "processing started"
+		}) {
+			return
+		}
+
+		// 3. Prepare Context (may take 50+ seconds for retrieval + reranking)
 		promptData, err := u.buildPrompt(ctx, input)
 		if err != nil {
 			u.sendStreamEvent(ctx, events, StreamEvent{
@@ -73,7 +85,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			return
 		}
 
-		// 3. Single Stage Generation (Streaming)
+		// 4. Single Stage Generation (Streaming)
 		promptInput := PromptInput{
 			Query:         input.Query,
 			Locale:        u.defaultLocale,
@@ -250,7 +262,16 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			}
 		}
 
+		// Debug: Log stream loop exit state
+		u.logger.Info("stream_loop_exited",
+			slog.Bool("done", done),
+			slog.Bool("hasData", hasData),
+			slog.Int("builder_len", builder.Len()),
+			slog.Bool("answerCompletelyStreamed", answerCompletelyStreamed))
+
 		if !hasData {
+			u.logger.Warn("stream_no_data_fallback",
+				slog.String("retrieval_set_id", promptData.retrievalSetID))
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
 				Payload: "llm stream produced no data",
@@ -258,15 +279,36 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			return
 		}
 
+		u.logger.Info("stream_proceeding_to_validation",
+			slog.String("retrieval_set_id", promptData.retrievalSetID),
+			slog.Int("builder_len", builder.Len()))
+
 		// Final Validation
-		parsedAnswer, err := u.validator.Validate(builder.String(), promptData.contexts)
+		rawResponse := builder.String()
+		u.logger.Info("stream_validation_starting",
+			slog.String("retrieval_set_id", promptData.retrievalSetID),
+			slog.Int("raw_response_length", len(rawResponse)),
+			slog.String("raw_response_preview", truncate(rawResponse, 500)))
+
+		parsedAnswer, err := u.validator.Validate(rawResponse, promptData.contexts)
 		if err != nil {
+			u.logger.Error("stream_validation_failed",
+				slog.String("retrieval_set_id", promptData.retrievalSetID),
+				slog.String("error", err.Error()),
+				slog.String("raw_response", truncate(rawResponse, 1000)))
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
 				Payload: fmt.Sprintf("validation failed: %v", err),
 			})
 			return
 		}
+
+		u.logger.Info("stream_validation_completed",
+			slog.String("retrieval_set_id", promptData.retrievalSetID),
+			slog.Bool("fallback", parsedAnswer.Fallback),
+			slog.String("reason", parsedAnswer.Reason),
+			slog.Int("answer_length", len(parsedAnswer.Answer)),
+			slog.Int("citations_count", len(parsedAnswer.Citations)))
 
 		if parsedAnswer.Fallback {
 			u.logger.Warn("stream_answer_fallback_triggered",
