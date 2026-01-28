@@ -470,6 +470,19 @@ func (v *SSRFValidator) validateResolvedIP(ip net.IP, hostname string) error {
 
 // isPrivateOrDangerous checks if IP is private, loopback, or dangerous
 func (v *SSRFValidator) isPrivateOrDangerous(ip net.IP) bool {
+	return IsPrivateIPAddress(ip)
+}
+
+// IsPrivateIPAddress checks if an IP address is in private, loopback, or link-local ranges.
+// This function is exported for use by other packages that need IP validation.
+//
+// The following ranges are considered private/dangerous:
+//   - Loopback addresses (127.0.0.0/8, ::1)
+//   - Link-local unicast (169.254.0.0/16, fe80::/10)
+//   - Link-local multicast (224.0.0.0/24, ff02::/16)
+//   - Private IPv4 ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+//   - Private IPv6 ranges: fc00::/7 (unique local addresses)
+func IsPrivateIPAddress(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 		return true
 	}
@@ -494,6 +507,38 @@ func (v *SSRFValidator) isPrivateOrDangerous(ip net.IP) bool {
 	if ip.To16() != nil && ip.To4() == nil {
 		// Check for unique local addresses (fc00::/7)
 		if ip[0] == 0xfc || ip[0] == 0xfd {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IsPrivateHost checks if a hostname resolves to private IP addresses.
+// This function is exported for use by other packages.
+//
+// Returns true if:
+//   - The hostname is a direct IP address in private ranges
+//   - The hostname resolves to any private IP address (DNS rebinding protection)
+//   - DNS resolution fails (fails closed for security)
+func IsPrivateHost(hostname string) bool {
+	// Try to parse as IP first
+	ip := net.ParseIP(hostname)
+	if ip != nil {
+		return IsPrivateIPAddress(ip)
+	}
+
+	// If it's a hostname, resolve it to IPs
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		// Block on resolution failure as a security measure
+		return true
+	}
+
+	// Check ALL resolved IPs (both A and AAAA records) to prevent DNS rebinding
+	// If ANY resolved IP is private/dangerous, block the entire request
+	for _, resolvedIP := range ips {
+		if IsPrivateIPAddress(resolvedIP) {
 			return true
 		}
 	}

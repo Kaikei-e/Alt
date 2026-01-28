@@ -2,6 +2,7 @@ package utils
 
 import (
 	"alt/config"
+	"alt/utils/security"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -11,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"slices"
 	"strings"
 	"time"
 )
@@ -296,75 +296,30 @@ func validateTarget(host, port string) error {
 	return nil
 }
 
-// isPrivateHost checks if a hostname resolves to private IP addresses
+// isPrivateHost checks if a hostname resolves to private IP addresses.
+// This function provides additional internal domain blocking on top of security.IsPrivateHost.
 func isPrivateHost(hostname string) bool {
-	// Try to parse as IP first
-	ip := net.ParseIP(hostname)
-	if ip != nil {
-		return isPrivateIPAddress(ip)
-	}
-
-	// Block localhost variations
-	hostname = strings.ToLower(hostname)
-	if hostname == "localhost" || strings.HasPrefix(hostname, "127.") {
+	// Block localhost variations (string check for faster path)
+	hostnameLC := strings.ToLower(hostname)
+	if hostnameLC == "localhost" || strings.HasPrefix(hostnameLC, "127.") {
 		return true
 	}
 
 	// Block metadata endpoints
-	if hostname == "169.254.169.254" || hostname == "metadata.google.internal" {
+	if hostnameLC == "169.254.169.254" || hostnameLC == "metadata.google.internal" {
 		return true
 	}
 
 	// Block common internal domains
 	internalDomains := []string{".local", ".internal", ".corp", ".lan"}
 	for _, domain := range internalDomains {
-		if strings.HasSuffix(hostname, domain) {
+		if strings.HasSuffix(hostnameLC, domain) {
 			return true
 		}
 	}
 
-	// If it's a hostname, resolve it to IPs
-	ips, err := net.LookupIP(hostname)
-	if err != nil {
-		// Block on resolution failure as a security measure
-		return true
-	}
-
-	// Check if any resolved IP is private
-	return slices.ContainsFunc(ips, isPrivateIPAddress)
-}
-
-// isPrivateIPAddress checks if an IP address is in private ranges
-func isPrivateIPAddress(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-
-	// Check for private IPv4 ranges
-	if ip.To4() != nil {
-		// 10.0.0.0/8
-		if ip[0] == 10 {
-			return true
-		}
-		// 172.16.0.0/12
-		if ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31 {
-			return true
-		}
-		// 192.168.0.0/16
-		if ip[0] == 192 && ip[1] == 168 {
-			return true
-		}
-	}
-
-	// Check for private IPv6 ranges
-	if ip.To16() != nil && ip.To4() == nil {
-		// Check for unique local addresses (fc00::/7)
-		if ip[0] == 0xfc || ip[0] == 0xfd {
-			return true
-		}
-	}
-
-	return false
+	// Delegate to security.IsPrivateHost for IP validation and DNS resolution checks
+	return security.IsPrivateHost(hostname)
 }
 
 // ValidateURL validates a URL for SSRF protection

@@ -3,6 +3,7 @@ package alt_db
 import (
 	"alt/domain"
 	"alt/driver/models"
+	"alt/utils/constants"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -77,14 +78,12 @@ func (r *AltDBRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([
 }
 
 func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
-	const pageSize = 10
-
 	query := `
 		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT $1 OFFSET $2
 	`
 
 	var feeds []*models.Feed
-	rows, err := r.pool.Query(ctx, query, pageSize, pageSize*page)
+	rows, err := r.pool.Query(ctx, query, constants.DefaultPageSize, constants.DefaultPageSize*page)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "error fetching feeds list page", "error", err)
 		return nil, errors.New("error fetching feeds list page")
@@ -111,8 +110,6 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 		return nil, errors.New("authentication required")
 	}
 
-	const pageSize = 10
-
 	// For now, keeping the original OFFSET-based implementation for backward compatibility
 	// Consider migrating to cursor-based pagination (FetchUnreadFeedsListCursor) for better performance
 	query := `
@@ -129,7 +126,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 		LIMIT $1 OFFSET $2
 	`
 
-	rows, err := r.pool.Query(ctx, query, pageSize, pageSize*page, user.UserID)
+	rows, err := r.pool.Query(ctx, query, constants.DefaultPageSize, constants.DefaultPageSize*page, user.UserID)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "error fetching unread feeds list page", "error", err, "user_id", user.UserID)
 		return nil, errors.New("error fetching feeds list page")

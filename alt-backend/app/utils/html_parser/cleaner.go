@@ -2,6 +2,7 @@ package html_parser
 
 import (
 	"alt/domain"
+	"alt/utils/constants"
 	"encoding/json"
 	"strings"
 
@@ -10,7 +11,8 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 )
 
-const MinArticleLength = 100
+// MinArticleLength is re-exported for backward compatibility
+const MinArticleLength = constants.MinArticleLength
 
 // SanitizeHTML strips unsafe tags and scripts but preserves structural HTML using bluemonday.
 func SanitizeHTML(raw string) string {
@@ -290,17 +292,16 @@ func normalizeWhitespace(s string) string {
 
 // Truncate text to reasonable length for search results
 func truncateText(s string) string {
-	const maxLength = 300 // Shorter for search results
-	if len(s) <= maxLength {
+	if len(s) <= constants.MaxSearchResultLength {
 		return s
 	}
 
 	// Try to break at word boundary
-	if idx := strings.LastIndex(s[:maxLength], " "); idx > maxLength-50 {
+	if idx := strings.LastIndex(s[:constants.MaxSearchResultLength], " "); idx > constants.MaxSearchResultLength-50 {
 		return s[:idx] + "..."
 	}
 
-	return s[:maxLength] + "..."
+	return s[:constants.MaxSearchResultLength] + "..."
 }
 
 // ExtractArticleHTML extracts main article content and returns sanitized HTML.

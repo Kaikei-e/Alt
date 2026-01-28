@@ -718,3 +718,111 @@ func BenchmarkSSRFValidator_UnicodeValidation(b *testing.B) {
 		_ = validator.validateUnicodeAndPunycode(u)
 	}
 }
+
+// TestIsPrivateIPAddress tests the exported IsPrivateIPAddress function
+func TestIsPrivateIPAddress(t *testing.T) {
+	tests := []struct {
+		name     string
+		ip       string
+		expected bool
+	}{
+		// Private IPv4 ranges - 10.0.0.0/8
+		{"10.0.0.1 is private", "10.0.0.1", true},
+		{"10.255.255.255 is private", "10.255.255.255", true},
+
+		// Private IPv4 ranges - 172.16.0.0/12
+		{"172.16.0.1 is private", "172.16.0.1", true},
+		{"172.31.255.255 is private", "172.31.255.255", true},
+		{"172.15.0.1 is not private", "172.15.0.1", false},
+		{"172.32.0.1 is not private", "172.32.0.1", false},
+
+		// Private IPv4 ranges - 192.168.0.0/16
+		{"192.168.0.1 is private", "192.168.0.1", true},
+		{"192.168.255.255 is private", "192.168.255.255", true},
+
+		// Loopback addresses
+		{"127.0.0.1 is loopback", "127.0.0.1", true},
+		{"127.0.0.2 is loopback", "127.0.0.2", true},
+		{"127.255.255.255 is loopback", "127.255.255.255", true},
+
+		// Link-local addresses
+		{"169.254.0.1 is link-local", "169.254.0.1", true},
+		{"169.254.169.254 is link-local (AWS metadata)", "169.254.169.254", true},
+
+		// Public IPs
+		{"8.8.8.8 is public", "8.8.8.8", false},
+		{"1.1.1.1 is public", "1.1.1.1", false},
+		{"93.184.216.34 is public", "93.184.216.34", false},
+
+		// IPv6 loopback
+		{"::1 is loopback", "::1", true},
+
+		// IPv6 unique local (fc00::/7)
+		{"fc00::1 is unique local", "fc00::1", true},
+		{"fd00::1 is unique local", "fd00::1", true},
+
+		// IPv6 link-local
+		{"fe80::1 is link-local", "fe80::1", true},
+
+		// IPv6 public
+		{"2001:4860:4860::8888 is public", "2001:4860:4860::8888", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ip := net.ParseIP(tt.ip)
+			require.NotNil(t, ip, "failed to parse IP: %s", tt.ip)
+
+			result := IsPrivateIPAddress(ip)
+			assert.Equal(t, tt.expected, result, "IP: %s", tt.ip)
+		})
+	}
+}
+
+// TestIsPrivateHost tests the exported IsPrivateHost function
+func TestIsPrivateHost(t *testing.T) {
+	tests := []struct {
+		name     string
+		hostname string
+		expected bool
+	}{
+		// Direct IP addresses
+		{"10.0.0.1 IP is private", "10.0.0.1", true},
+		{"192.168.1.1 IP is private", "192.168.1.1", true},
+		{"127.0.0.1 IP is loopback", "127.0.0.1", true},
+		{"8.8.8.8 IP is public", "8.8.8.8", false},
+		{"1.1.1.1 IP is public", "1.1.1.1", false},
+
+		// IPv6 addresses
+		{"::1 is IPv6 loopback", "::1", true},
+		{"fc00::1 is IPv6 unique local", "fc00::1", true},
+
+		// Hostnames that fail DNS resolution (blocked by default)
+		{"invalid.nonexistent.domain blocks on DNS failure", "invalid.nonexistent.domain.invalid", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsPrivateHost(tt.hostname)
+			assert.Equal(t, tt.expected, result, "hostname: %s", tt.hostname)
+		})
+	}
+}
+
+// BenchmarkIsPrivateIPAddress benchmarks the exported function
+func BenchmarkIsPrivateIPAddress(b *testing.B) {
+	ip := net.ParseIP("192.168.1.1")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = IsPrivateIPAddress(ip)
+	}
+}
+
+// BenchmarkIsPrivateHost benchmarks the exported function
+func BenchmarkIsPrivateHost(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = IsPrivateHost("192.168.1.1")
+	}
+}

@@ -2,6 +2,7 @@ package alt_db
 
 import (
 	"alt/domain"
+	"alt/utils/constants"
 	"alt/utils/logger"
 	"context"
 	"database/sql"
@@ -28,9 +29,6 @@ ORDER BY a.created_at DESC, a.id DESC
 OFFSET $3
 LIMIT $4`
 
-const maxRecapArticleBytes = 2 * 1024 * 1024 // 2MB safeguard per PLAN5
-const maxRecapPageSize = 10000               // Maximum allowed page size to prevent DoS via excessive memory allocation
-
 // FetchRecapArticles retrieves recap-ready articles with deterministic ordering.
 func (r *AltDBRepository) FetchRecapArticles(ctx context.Context, query domain.RecapArticlesQuery) (*domain.RecapArticlesPage, error) {
 	if r == nil || r.pool == nil {
@@ -40,8 +38,8 @@ func (r *AltDBRepository) FetchRecapArticles(ctx context.Context, query domain.R
 		return nil, errors.New("page and page_size must be positive")
 	}
 	// Prevent DoS attack via excessive memory allocation (CWE-770)
-	if query.PageSize > maxRecapPageSize {
-		return nil, fmt.Errorf("page_size exceeds maximum allowed value of %d", maxRecapPageSize)
+	if query.PageSize > constants.MaxRecapPageSize {
+		return nil, fmt.Errorf("page_size exceeds maximum allowed value of %d", constants.MaxRecapPageSize)
 	}
 
 	offset := (query.Page - 1) * query.PageSize
@@ -141,13 +139,13 @@ func nullTimePtr(value sql.NullTime) *time.Time {
 }
 
 func clampFullText(ctx context.Context, articleID uuid.UUID, body string) string {
-	if len(body) <= maxRecapArticleBytes {
+	if len(body) <= constants.MaxRecapArticleBytes {
 		return body
 	}
 	logger.SafeWarnContext(ctx, "recap article truncated to max bytes",
 		"article_id", articleID.String(),
 		"original_bytes", len(body),
-		"max_bytes", maxRecapArticleBytes,
+		"max_bytes", constants.MaxRecapArticleBytes,
 	)
-	return body[:maxRecapArticleBytes]
+	return body[:constants.MaxRecapArticleBytes]
 }

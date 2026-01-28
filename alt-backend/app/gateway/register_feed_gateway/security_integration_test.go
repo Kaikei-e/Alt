@@ -1,6 +1,7 @@
 package register_feed_gateway
 
 import (
+	"alt/utils/proxy"
 	"context"
 	"errors"
 	"strings"
@@ -432,18 +433,14 @@ func TestDefaultRSSFeedFetcher_ConvertToProxyURL_URLConstruction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create mock fetcher and strategy
-			fetcher := &DefaultRSSFeedFetcher{
-				proxyConfig:      nil,
-				envoyProxyConfig: nil,
-				proxyStrategy:    nil,
-			}
-			strategy := &ProxyStrategy{
-				Mode:    ProxyModeEnvoy,
+			// Create strategy using proxy package
+			strategy := &proxy.Strategy{
+				Mode:    proxy.ModeEnvoy,
 				BaseURL: tt.baseURL,
+				Enabled: true,
 			}
 
-			result := fetcher.convertToProxyURL(tt.originalURL, strategy)
+			result := proxy.ConvertToProxyURL(tt.originalURL, strategy)
 
 			// This assertion will fail if URL construction has bugs
 			assert.Equal(t, tt.expected, result,

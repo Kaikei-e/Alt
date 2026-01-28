@@ -2,9 +2,11 @@ package register_feed_gateway
 
 import (
 	"alt/driver/alt_db"
+	"alt/utils/constants"
 	"alt/utils/errors"
 	"alt/utils/logger"
 	"alt/utils/metrics"
+	"alt/utils/proxy"
 	"alt/utils/resilience"
 	"alt/utils/security"
 	"context"
@@ -53,88 +55,10 @@ type EnvoyProxyConfig struct {
 	Enabled  bool
 }
 
-// ProxyMode represents different proxy operation modes
-type ProxyMode string
-
-const (
-	ProxyModeSidecar  ProxyMode = "sidecar"
-	ProxyModeEnvoy    ProxyMode = "envoy"
-	ProxyModeNginx    ProxyMode = "nginx"
-	ProxyModeDisabled ProxyMode = "disabled"
-)
-
-// ProxyStrategy represents the proxy configuration strategy
-type ProxyStrategy struct {
-	Mode         ProxyMode
-	BaseURL      string
-	PathTemplate string
-	Enabled      bool
-}
-
-// getProxyStrategy determines the appropriate proxy strategy based on environment configuration
-func getProxyStrategy() *ProxyStrategy {
-	// Priority order: SIDECAR > ENVOY > NGINX > DISABLED
-	if os.Getenv("SIDECAR_PROXY_ENABLED") == "true" {
-		baseURL := os.Getenv("SIDECAR_PROXY_URL")
-		if baseURL == "" {
-			baseURL = "http://envoy-proxy.alt-apps.svc.cluster.local:8085"
-		}
-		logger.SafeInfoContext(context.Background(), "Proxy strategy: SIDECAR mode selected",
-			"base_url", baseURL,
-			"path_template", "/proxy/{scheme}://{host}{path}")
-		return &ProxyStrategy{
-			Mode:         ProxyModeSidecar,
-			BaseURL:      baseURL,
-			PathTemplate: "/proxy/{scheme}://{host}{path}",
-			Enabled:      true,
-		}
-	}
-
-	if os.Getenv("ENVOY_PROXY_ENABLED") == "true" {
-		baseURL := os.Getenv("ENVOY_PROXY_URL")
-		if baseURL == "" {
-			baseURL = "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
-		}
-		logger.SafeInfoContext(context.Background(), "Proxy strategy: ENVOY mode selected",
-			"base_url", baseURL,
-			"path_template", "/proxy/{scheme}://{host}{path}")
-		return &ProxyStrategy{
-			Mode:         ProxyModeEnvoy,
-			BaseURL:      baseURL,
-			PathTemplate: "/proxy/{scheme}://{host}{path}",
-			Enabled:      true,
-		}
-	}
-
-	if os.Getenv("NGINX_PROXY_ENABLED") == "true" {
-		baseURL := os.Getenv("NGINX_PROXY_URL")
-		if baseURL == "" {
-			baseURL = "http://nginx-external.alt-ingress.svc.cluster.local:8889"
-		}
-		logger.SafeInfoContext(context.Background(), "Proxy strategy: NGINX mode selected",
-			"base_url", baseURL,
-			"path_template", "/rss-proxy/{scheme}://{host}{path}")
-		return &ProxyStrategy{
-			Mode:         ProxyModeNginx,
-			BaseURL:      baseURL,
-			PathTemplate: "/rss-proxy/{scheme}://{host}{path}",
-			Enabled:      true,
-		}
-	}
-
-	logger.SafeInfoContext(context.Background(), "Proxy strategy: DISABLED mode - direct connection will be used")
-	return &ProxyStrategy{
-		Mode:         ProxyModeDisabled,
-		BaseURL:      "",
-		PathTemplate: "",
-		Enabled:      false,
-	}
-}
-
 // getEnvoyProxyConfigFromEnv retrieves proxy configuration from environment variables
 // REFACTORED: Now uses flexible proxy strategy pattern
 func getEnvoyProxyConfigFromEnv() *EnvoyProxyConfig {
-	strategy := getProxyStrategy()
+	strategy := proxy.GetStrategy()
 
 	// Convert strategy to legacy EnvoyProxyConfig for backward compatibility
 	if !strategy.Enabled {
@@ -159,46 +83,17 @@ type RSSFeedFetcher interface {
 type DefaultRSSFeedFetcher struct {
 	proxyConfig      *ProxyConfig
 	envoyProxyConfig *EnvoyProxyConfig
-	proxyStrategy    *ProxyStrategy
+	proxyStrategy    *proxy.Strategy
 }
 
 // NewDefaultRSSFeedFetcher creates a new DefaultRSSFeedFetcher with proxy configuration
 func NewDefaultRSSFeedFetcher() *DefaultRSSFeedFetcher {
-	strategy := getProxyStrategy()
+	strategy := proxy.GetStrategy()
 	return &DefaultRSSFeedFetcher{
 		proxyConfig:      getProxyConfigFromEnv(),
 		envoyProxyConfig: getEnvoyProxyConfigFromEnv(),
 		proxyStrategy:    strategy,
 	}
-}
-
-// EnvoyProxyRoundTripper fixes Host header for Envoy Dynamic Forward Proxy
-type EnvoyProxyRoundTripper struct {
-	transport http.RoundTripper
-}
-
-func (ert *EnvoyProxyRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Check if this is an Envoy proxy request (/proxy/https://domain.com/path)
-	if strings.Contains(req.URL.Path, "/proxy/https://") || strings.Contains(req.URL.Path, "/proxy/http://") {
-		// Extract target domain from proxy path
-		// /proxy/https://zenn.dev/topics/typescript/feed -> zenn.dev
-		pathParts := strings.SplitN(req.URL.Path, "/proxy/", 2)
-		if len(pathParts) == 2 {
-			targetURL := pathParts[1]
-			if parsedTarget, err := url.Parse(targetURL); err == nil {
-				// Set Host header to target domain for proper TLS SNI
-				req.Host = parsedTarget.Host
-				req.Header.Set("Host", parsedTarget.Host)
-				// CRITICAL FIX: Add X-Target-Domain header required by Envoy proxy route matching
-				req.Header.Set("X-Target-Domain", parsedTarget.Host)
-				logger.SafeInfoContext(req.Context(), "Fixed Host header for Envoy Dynamic Forward Proxy",
-					"original_host", req.URL.Host,
-					"target_host", parsedTarget.Host,
-					"request_url", req.URL.String())
-			}
-		}
-	}
-	return ert.transport.RoundTrip(req)
 }
 
 // createHTTPClient creates an HTTP client with HTTPS direct connection (ROOT FIX)
@@ -228,10 +123,8 @@ func (f *DefaultRSSFeedFetcher) createHTTPClient() *http.Client {
 		// HTTPS URLs取得時にCONNECT method失敗（400 Bad Request）を回避
 	}
 
-	// Wrap transport with Envoy proxy Host header fixer
-	roundTripper := &EnvoyProxyRoundTripper{
-		transport: transport,
-	}
+	// Wrap transport with Envoy proxy Host header fixer using shared proxy package
+	roundTripper := proxy.WrapTransportForProxy(transport, f.proxyStrategy)
 
 	return &http.Client{
 		Timeout:   60 * time.Second, // タイムアウト延長
@@ -257,7 +150,7 @@ func (f *DefaultRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (
 
 	// ROOT SOLUTION: Use strategic proxy configuration based on environment
 	if f.proxyStrategy.Enabled {
-		proxyURL := f.convertToProxyURL(link, f.proxyStrategy)
+		proxyURL := proxy.ConvertToProxyURLWithContext(ctx, link, f.proxyStrategy)
 
 		// Extract expected upstream from original URL (without port 443 for HTTPS)
 		u, _ := url.Parse(link)
@@ -277,71 +170,6 @@ func (f *DefaultRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (
 		"original_url", link)
 
 	return f.fetchRSSFeedWithRetry(ctx, link)
-}
-
-// convertToProxyURL converts external RSS URLs to appropriate proxy routes based on strategy
-// SECURITY: This implements secure URL construction following CVE-2024-34155 mitigations
-// and Go 1.19.1 JoinPath security fixes to prevent directory traversal attacks
-func (f *DefaultRSSFeedFetcher) convertToProxyURL(originalURL string, strategy *ProxyStrategy) string {
-	// SECURITY: Parse original URL using net/url to prevent injection attacks
-	u, err := url.Parse(originalURL)
-	if err != nil {
-		logger.SafeErrorContext(context.Background(), "Failed to parse original URL for proxy conversion",
-			"url", originalURL,
-			"strategy_mode", string(strategy.Mode),
-			"error", err.Error())
-		return originalURL
-	}
-
-	// SECURITY: Validate URL components to prevent malicious inputs
-	if u.Scheme == "" || u.Host == "" {
-		logger.SafeErrorContext(context.Background(), "Invalid URL components detected",
-			"url", originalURL,
-			"scheme", u.Scheme,
-			"host", u.Host)
-		return originalURL
-	}
-
-	// SECURITY: Use proper URL construction with path.Clean for security
-	// Following Go security best practices for URL manipulation
-	baseURL, err := url.Parse(strategy.BaseURL)
-	if err != nil {
-		logger.SafeErrorContext(context.Background(), "Failed to parse base URL for proxy strategy",
-			"base_url", strategy.BaseURL,
-			"error", err.Error())
-		return originalURL
-	}
-
-	// SECURITY: Construct target URL components safely using url.PathEscape
-	// Format: /proxy/https://domain.com/path
-	targetURLStr := u.Scheme + "://" + u.Host + u.Path
-	if u.RawQuery != "" {
-		targetURLStr += "?" + u.RawQuery
-	}
-
-	// SECURITY: Manual path construction with security validation (CVE-2024-34155 safe)
-	// JoinPath treats URL schemes incorrectly, so we manually construct the path
-	proxyPath := "/proxy/" + targetURLStr
-
-	// SECURITY: Parse the complete proxy URL to ensure proper validation
-	proxyURL, err := url.Parse(baseURL.String() + proxyPath)
-	if err != nil {
-		logger.SafeErrorContext(context.Background(), "Failed to parse constructed proxy URL",
-			"base_url", strategy.BaseURL,
-			"proxy_path", proxyPath,
-			"error", err.Error())
-		return originalURL
-	}
-
-	logger.SafeInfoContext(context.Background(), "RSS URL converted using secure proxy strategy",
-		"strategy_mode", string(strategy.Mode),
-		"original_url", originalURL,
-		"proxy_url", proxyURL.String(),
-		"target_host", u.Host,
-		"base_url", strategy.BaseURL,
-		"security", "CVE-2024-34155_mitigated")
-
-	return proxyURL.String()
 }
 
 // convertToEgressGatewayURL converts external RSS URLs to nginx-external egress gateway routes
@@ -438,10 +266,6 @@ func isRetryableError(err error) bool {
 
 // fetchRSSFeedWithRetry performs RSS feed fetching with exponential backoff retry
 func (f *DefaultRSSFeedFetcher) fetchRSSFeedWithRetry(ctx context.Context, link string) (*gofeed.Feed, error) {
-	const maxRetries = 3
-	const initialDelay = 2 * time.Second
-	const maxDelay = 30 * time.Second
-
 	// Create HTTP client with proxy configuration if enabled
 	httpClient := f.createHTTPClient()
 
@@ -453,12 +277,12 @@ func (f *DefaultRSSFeedFetcher) fetchRSSFeedWithRetry(ctx context.Context, link 
 	defer cancel()
 
 	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := 0; attempt < constants.DefaultMaxRetries; attempt++ {
 		if attempt > 0 {
 			// Calculate exponential backoff delay
-			delay := time.Duration(float64(initialDelay) * math.Pow(2, float64(attempt-1)))
-			if delay > maxDelay {
-				delay = maxDelay
+			delay := time.Duration(float64(constants.DefaultInitialDelay) * math.Pow(2, float64(attempt-1)))
+			if delay > constants.DefaultMaxDelay {
+				delay = constants.DefaultMaxDelay
 			}
 
 			logger.SafeInfoContext(feedCtx, "Retrying RSS feed fetch",

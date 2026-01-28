@@ -4,37 +4,18 @@ import (
 	"alt/domain"
 	"alt/utils/errors"
 	"alt/utils/logger"
+	"alt/utils/proxy"
 	"alt/utils/security"
 	"context"
 	"fmt"
 	"io"
 	"math"
-	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 )
-
-// ProxyMode represents different proxy operation modes
-type ProxyMode string
-
-const (
-	ProxyModeSidecar  ProxyMode = "sidecar"
-	ProxyModeEnvoy    ProxyMode = "envoy"
-	ProxyModeNginx    ProxyMode = "nginx"
-	ProxyModeDisabled ProxyMode = "disabled"
-)
-
-// ProxyStrategy represents the proxy configuration strategy
-type ProxyStrategy struct {
-	Mode         ProxyMode
-	BaseURL      string
-	PathTemplate string
-	Enabled      bool
-}
 
 // allowedProxyHosts defines known safe proxy hosts that may be used for image fetching.
 // This prevents unexpected hosts from being targeted when proxy mode is enabled.
@@ -43,154 +24,17 @@ var allowedProxyHosts = map[string]struct{}{
 	"envoy-proxy.alt-apps.svc.cluster.local:8080": {},
 }
 
-// getProxyStrategy determines the appropriate proxy strategy based on environment configuration
-func getProxyStrategy() *ProxyStrategy {
-	// Priority order: SIDECAR > ENVOY > NGINX > DISABLED
-	if os.Getenv("SIDECAR_PROXY_ENABLED") == "true" {
-		baseURL := os.Getenv("SIDECAR_PROXY_URL")
-		if baseURL == "" {
-			baseURL = "http://envoy-proxy.alt-apps.svc.cluster.local:8085"
-		}
-		logger.SafeInfoContext(context.Background(), "Image proxy strategy: SIDECAR mode selected",
-			"base_url", baseURL,
-			"path_template", "/proxy/{scheme}://{host}{path}")
-		return &ProxyStrategy{
-			Mode:         ProxyModeSidecar,
-			BaseURL:      baseURL,
-			PathTemplate: "/proxy/{scheme}://{host}{path}",
-			Enabled:      true,
-		}
-	}
-
-	if os.Getenv("ENVOY_PROXY_ENABLED") == "true" {
-		baseURL := os.Getenv("ENVOY_PROXY_URL")
-		if baseURL == "" {
-			baseURL = "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
-		}
-		logger.SafeInfoContext(context.Background(), "Image proxy strategy: ENVOY mode selected",
-			"base_url", baseURL,
-			"path_template", "/proxy/{scheme}://{host}{path}")
-		return &ProxyStrategy{
-			Mode:         ProxyModeEnvoy,
-			BaseURL:      baseURL,
-			PathTemplate: "/proxy/{scheme}://{host}{path}",
-			Enabled:      true,
-		}
-	}
-
-	logger.SafeInfoContext(context.Background(), "Image proxy strategy: DISABLED mode - direct connection will be used")
-	return &ProxyStrategy{
-		Mode:         ProxyModeDisabled,
-		BaseURL:      "",
-		PathTemplate: "",
-		Enabled:      false,
-	}
-}
-
-// EnvoyProxyRoundTripper fixes Host header for Envoy Dynamic Forward Proxy
-type EnvoyProxyRoundTripper struct {
-	transport http.RoundTripper
-}
-
-func (ert *EnvoyProxyRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Check if this is an Envoy proxy request (/proxy/https://domain.com/path)
-	if strings.Contains(req.URL.Path, "/proxy/https://") || strings.Contains(req.URL.Path, "/proxy/http://") {
-		// Extract target domain from proxy path
-		// /proxy/https://example.com/image.jpg -> example.com
-		pathParts := strings.SplitN(req.URL.Path, "/proxy/", 2)
-		if len(pathParts) == 2 {
-			targetURL := pathParts[1]
-			if parsedTarget, err := url.Parse(targetURL); err == nil {
-				// Set Host header to target domain for proper TLS SNI
-				req.Host = parsedTarget.Host
-				req.Header.Set("Host", parsedTarget.Host)
-				// CRITICAL FIX: Add X-Target-Domain header required by Envoy proxy route matching
-				req.Header.Set("X-Target-Domain", parsedTarget.Host)
-				logger.SafeInfoContext(req.Context(), "Fixed Host header for Envoy Dynamic Forward Proxy (image fetch)",
-					"original_host", req.URL.Host,
-					"target_host", parsedTarget.Host,
-					"request_url", req.URL.String())
-			}
-		}
-	}
-	return ert.transport.RoundTrip(req)
-}
-
-// convertToProxyURL converts external image URLs to appropriate proxy routes based on strategy
-func convertToProxyURL(originalURL string, strategy *ProxyStrategy) string {
-	if strategy == nil || !strategy.Enabled {
-		return originalURL
-	}
-
-	// Parse original URL using net/url to prevent injection attacks
-	u, err := url.Parse(originalURL)
-	if err != nil {
-		logger.SafeErrorContext(context.Background(), "Failed to parse original URL for proxy conversion (image fetch)",
-			"url", originalURL,
-			"strategy_mode", string(strategy.Mode),
-			"error", err.Error())
-		return originalURL
-	}
-
-	// Validate URL components to prevent malicious inputs
-	if u.Scheme == "" || u.Host == "" {
-		logger.SafeErrorContext(context.Background(), "Invalid URL components detected (image fetch)",
-			"url", originalURL,
-			"scheme", u.Scheme,
-			"host", u.Host)
-		return originalURL
-	}
-
-	// Parse base URL for proxy strategy
-	baseURL, err := url.Parse(strategy.BaseURL)
-	if err != nil {
-		logger.SafeErrorContext(context.Background(), "Failed to parse base URL for proxy strategy (image fetch)",
-			"base_url", strategy.BaseURL,
-			"error", err.Error())
-		return originalURL
-	}
-
-	// Construct target URL components safely
-	// Format: /proxy/https://domain.com/image.jpg
-	targetURLStr := u.Scheme + "://" + u.Host + u.Path
-	if u.RawQuery != "" {
-		targetURLStr += "?" + u.RawQuery
-	}
-
-	// Manual path construction with security validation
-	proxyPath := "/proxy/" + targetURLStr
-
-	// Parse the complete proxy URL to ensure proper validation
-	proxyURL, err := url.Parse(baseURL.String() + proxyPath)
-	if err != nil {
-		logger.SafeErrorContext(context.Background(), "Failed to parse constructed proxy URL (image fetch)",
-			"base_url", strategy.BaseURL,
-			"proxy_path", proxyPath,
-			"error", err.Error())
-		return originalURL
-	}
-
-	logger.SafeInfoContext(context.Background(), "Image URL converted using secure proxy strategy",
-		"strategy_mode", string(strategy.Mode),
-		"original_url", originalURL,
-		"proxy_url", proxyURL.String(),
-		"target_host", u.Host,
-		"base_url", strategy.BaseURL)
-
-	return proxyURL.String()
-}
-
 // ImageFetchGateway implements the ImageFetchPort interface
 // It acts as an Anti-Corruption Layer between the domain and external HTTP APIs
 type ImageFetchGateway struct {
 	httpClient    *http.Client
-	proxyStrategy *ProxyStrategy
+	proxyStrategy *proxy.Strategy
 	ssrfValidator *security.SSRFValidator
 }
 
 // NewImageFetchGateway creates a new ImageFetchGateway
 func NewImageFetchGateway(httpClient *http.Client) *ImageFetchGateway {
-	strategy := getProxyStrategy()
+	strategy := proxy.GetStrategy()
 
 	// Create SSRF validator with comprehensive protection
 	ssrfValidator := security.NewSSRFValidator()
@@ -220,10 +64,8 @@ func NewImageFetchGateway(httpClient *http.Client) *ImageFetchGateway {
 		// Get the current secure transport
 		secureTransport := secureClient.Transport
 
-		// Wrap with Envoy proxy round tripper
-		secureClient.Transport = &EnvoyProxyRoundTripper{
-			transport: secureTransport,
-		}
+		// Wrap with Envoy proxy round tripper using shared proxy package
+		secureClient.Transport = proxy.WrapTransportForProxy(secureTransport, strategy)
 	}
 
 	return gateway
@@ -309,63 +151,9 @@ func validateImageURLWithTestOverride(u *url.URL, allowTestingLocalhost bool) er
 }
 
 // isPrivateIP checks if the hostname resolves to private IP addresses
-// Enhanced with DNS rebinding attack protection
+// This function delegates to security.IsPrivateHost for centralized IP validation
 func isPrivateIP(hostname string) bool {
-	// Try to parse as IP first
-	ip := net.ParseIP(hostname)
-	if ip != nil {
-		return isPrivateIPAddress(ip)
-	}
-
-	// If it's a hostname, resolve it to IPs
-	ips, err := net.LookupIP(hostname)
-	if err != nil {
-		// Block on resolution failure as a security measure
-		return true
-	}
-
-	// Enhanced: Check ALL resolved IPs (both A and AAAA records) to prevent DNS rebinding
-	// If ANY resolved IP is private/dangerous, block the entire request
-	for _, ip := range ips {
-		if isPrivateIPAddress(ip) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isPrivateIPAddress checks if an IP address is in private ranges
-func isPrivateIPAddress(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-
-	// Check for private IPv4 ranges
-	if ipv4 := ip.To4(); ipv4 != nil {
-		// 10.0.0.0/8
-		if ipv4[0] == 10 {
-			return true
-		}
-		// 172.16.0.0/12
-		if ipv4[0] == 172 && ipv4[1] >= 16 && ipv4[1] <= 31 {
-			return true
-		}
-		// 192.168.0.0/16
-		if ipv4[0] == 192 && ipv4[1] == 168 {
-			return true
-		}
-	}
-
-	// Check for private IPv6 ranges
-	if ip.To16() != nil && ip.To4() == nil {
-		// Check for unique local addresses (fc00::/7)
-		if ip[0] == 0xfc || ip[0] == 0xfd {
-			return true
-		}
-	}
-
-	return false
+	return security.IsPrivateHost(hostname)
 }
 
 // FetchImage fetches an image from external URL through HTTP client
@@ -411,10 +199,10 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 		)
 	}
 
-	// Convert to proxy URL if proxy strategy is enabled
+	// Convert to proxy URL if proxy strategy is enabled using shared proxy package
 	requestURL := imageURL.String()
 	if g.proxyStrategy != nil && g.proxyStrategy.Enabled {
-		requestURL = convertToProxyURL(imageURL.String(), g.proxyStrategy)
+		requestURL = proxy.ConvertToProxyURLWithContext(ctx, imageURL.String(), g.proxyStrategy)
 		logger.SafeInfoContext(ctx, "Using proxy strategy for image fetch",
 			"strategy_mode", string(g.proxyStrategy.Mode),
 			"original_url", imageURL.String(),
