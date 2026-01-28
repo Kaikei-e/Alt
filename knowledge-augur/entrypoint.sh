@@ -78,6 +78,19 @@ else
   echo "  Model gpt-oss:20b already exists"
 fi
 
+# Ensure qwen3:14b base model exists
+echo "Ensuring qwen3:14b model is available..."
+if ! ollama list 2>/dev/null | grep -q "qwen3:14b"; then
+  echo "Pulling qwen3:14b model (this will take a while)..."
+  if ollama pull qwen3:14b; then
+      echo "  Model qwen3:14b pulled successfully"
+  else
+      echo "  Error: Failed to pull qwen3:14b"
+  fi
+else
+  echo "  Model qwen3:14b already exists"
+fi
+
 # Create custom models
 # Always try to create/update to capture Modelfile changes
 
@@ -107,10 +120,23 @@ else
   echo "  Warning: Modelfile.gpt-oss20b-igpu not found, skipping"
 fi
 
-# Preload iGPU model to warm up (preferred model for iGPU deployments)
-echo "Preloading model gpt-oss20b-igpu..."
+# qwen3 RAG model
+echo "Creating/Updating custom model qwen3-14b-rag..."
+if [ -f "/home/ollama-user/Modelfile.qwen3-14b-rag" ]; then
+  if ollama create qwen3-14b-rag -f /home/ollama-user/Modelfile.qwen3-14b-rag; then
+    echo "  Model qwen3-14b-rag created/updated successfully"
+  else
+    echo "  Error: Failed to create qwen3-14b-rag"
+  fi
+else
+  echo "  Warning: Modelfile.qwen3-14b-rag not found, skipping"
+fi
+
+# Preload model based on environment variable (default: gpt-oss20b-igpu)
+PRELOAD_MODEL="${AUGUR_KNOWLEDGE_MODEL:-gpt-oss20b-igpu}"
+echo "Preloading model ${PRELOAD_MODEL}..."
 curl -s http://127.0.0.1:11434/api/chat \
-  -d '{"model":"gpt-oss20b-igpu","keep_alive":-1}' >/dev/null
+  -d "{\"model\":\"${PRELOAD_MODEL}\",\"keep_alive\":-1}" >/dev/null
 
 # Wait for server process
 wait "$SERVER_PID"
