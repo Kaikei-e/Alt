@@ -57,7 +57,7 @@ type chatRequest struct {
 	Format    map[string]interface{} `json:"format"`
 	Options   map[string]interface{} `json:"options,omitempty"`
 	MaxTokens *int                   `json:"max_tokens,omitempty"`
-	Think     string                 `json:"think,omitempty"`
+	Think     interface{}            `json:"think,omitempty"`
 }
 
 type chatResponse struct {
@@ -87,6 +87,23 @@ func NewOllamaGenerator(baseURL, model string, timeout int, logger *slog.Logger)
 	}
 }
 
+// getThinkParam returns the appropriate think parameter for the model.
+// qwen3 models require boolean false to disable thinking.
+// gpt-oss models use string levels ("low", "medium").
+func (g *OllamaGenerator) getThinkParam(maxTokens int) interface{} {
+	// qwen3 models: disable thinking with boolean false
+	if strings.Contains(strings.ToLower(g.Model), "qwen3") {
+		return false
+	}
+	// gpt-oss and other models: use string levels
+	// Short tasks (maxTokens < 300) use "low" - e.g., query expansion
+	// Longer tasks use "medium" - e.g., knowledge synthesis
+	if maxTokens > 0 && maxTokens < 300 {
+		return "low"
+	}
+	return "medium"
+}
+
 // Generate sends the prompt to Ollama and returns the assistant message.
 func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens int) (*domain.LLMResponse, error) {
 	requestID := uuid.NewString()
@@ -100,21 +117,13 @@ func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens
 	// Unused now as we use Options["num_predict"]
 	_ = maxTokensPtr
 
-	// Determine Think level based on task complexity
-	// Short tasks (maxTokens < 300) use "low" - e.g., query expansion
-	// Longer tasks use "medium" - e.g., knowledge synthesis
-	think := "medium"
-	if maxTokens > 0 && maxTokens < 300 {
-		think = "low"
-	}
-
 	reqBody := chatRequest{
 		Model:     g.Model,
 		Messages:  []chatMessage{{Role: "user", Content: prompt}},
 		KeepAlive: -1,
 		Stream:    true,
 		// Format:    nil, // Force generic
-		Think: think,
+		Think: g.getThinkParam(maxTokens),
 		Options: map[string]interface{}{
 			"temperature": 0.2,
 		},
@@ -216,20 +225,12 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 		return nil, nil, fmt.Errorf("prompt is required for streaming generation")
 	}
 
-	// Determine Think level based on task complexity
-	// Short tasks (maxTokens < 300) use "low" - e.g., query expansion
-	// Longer tasks use "medium" - e.g., knowledge synthesis
-	think := "medium"
-	if maxTokens > 0 && maxTokens < 300 {
-		think = "low"
-	}
-
 	reqBody := chatRequest{
 		Model:     g.Model,
 		Messages:  []chatMessage{{Role: "user", Content: prompt}},
 		KeepAlive: -1,
 		Stream:    true,
-		Think:     think,
+		Think:     g.getThinkParam(maxTokens),
 		Options: map[string]interface{}{
 			"temperature": 0.2,
 		},
@@ -413,7 +414,7 @@ func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, m
 		KeepAlive: -1,
 		Stream:    false,
 		Format:    generationFormat,
-		// Think mode disabled - gpt-oss outputs thinking but leaves content empty
+		Think:     g.getThinkParam(maxTokens),
 		Options: map[string]interface{}{
 			"temperature": 0.2,
 		},
@@ -501,7 +502,7 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 		Stream:    true,
 		// Format removed: gpt-oss Harmony format + structured output = empty content
 		// JSON schema is enforced via prompt instead
-		// Think removed: Reasoning disabled in Modelfile to fix empty content issue
+		Think: g.getThinkParam(maxTokens),
 		Options: map[string]interface{}{
 			"temperature": 0.2,
 		},
