@@ -26,10 +26,10 @@ func SanitizeHTML(raw string) string {
 }
 
 // ExtractArticleText converts raw article HTML into plain text paragraphs.
-// It removes non-content elements (script/style/navigation) and normalizes
-// whitespace so the returned string contains only readable sentences.
-// ExtractArticleText converts raw article HTML into plain text paragraphs.
-// It uses go-readability to extract the main content and then converts it to plain text.
+// It uses multiple extraction strategies in order of priority:
+// 1. Next.js __NEXT_DATA__ JSON extraction
+// 2. go-readability content extraction
+// 3. Fallback tag stripping
 func ExtractArticleText(raw string) string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -44,72 +44,13 @@ func ExtractArticleText(raw string) string {
 	// Prepare goquery document for further inspection
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(trimmed))
 	if err == nil {
-		// 1. Check for Next.js __NEXT_DATA__ script first (highest priority)
-		// Next.js sites often store the full article content in this JSON script
-		nextData := doc.Find("script[id='__NEXT_DATA__']")
-		if nextData.Length() > 0 {
-			jsonData := nextData.Text()
-			var data map[string]interface{}
-			if err := json.Unmarshal([]byte(jsonData), &data); err == nil {
-				// Traverse: props -> pageProps -> article -> bodyHtml
-				if props, ok := data["props"].(map[string]interface{}); ok {
-					if pageProps, ok := props["pageProps"].(map[string]interface{}); ok {
-						if articleData, ok := pageProps["article"].(map[string]interface{}); ok {
-							// Extract title
-							title, _ := articleData["title"].(string)
-
-							// Extract body
-							if bodyHtml, ok := articleData["bodyHtml"].(string); ok && len(bodyHtml) > 0 {
-								// Since we found the specific body HTML, we don't need full readability parsing.
-								// Just strip tags to get the text.
-								text := extractParagraphs(bodyHtml)
-								if len(text) > 0 {
-									if title != "" {
-										return checkLength(title + "\n\n" + text)
-									}
-									return checkLength(text)
-								}
-							}
-						}
-					}
-				}
-			}
+		// Strategy 1: Try Next.js __NEXT_DATA__ extraction (highest priority)
+		if text := extractFromNextData(doc); text != "" {
+			return checkLength(text)
 		}
 
-		// 2. Pre-process HTML: Remove non-content elements before go-readability
-		// Remove navigation, header, footer, aside
-		doc.Find("head, script, style, noscript, title, aside, nav, header, footer").Remove()
-
-		// Remove media and embedded content (ads, tracking, etc.)
-		doc.Find("iframe, embed, object, video, audio, canvas").Remove()
-
-		// Remove social media elements
-		doc.Find("[class*='social'], [class*='share'], [class*='twitter'], [class*='facebook'], [class*='instagram'], [class*='linkedin']").Remove()
-		doc.Find("[id*='social'], [id*='share'], [id*='twitter'], [id*='facebook']").Remove()
-
-		// Remove comment sections
-		doc.Find("[class*='comment'], [id*='comment'], [class*='discussion'], [id*='discussion']").Remove()
-
-		// Remove common non-content containers (menus, sidebars)
-		doc.Find("[class*='menu'], [id*='menu'], [class*='sidebar'], [id*='sidebar'], [class*='widget'], [id*='widget']").Remove()
-		doc.Find("[role='navigation'], [role='banner'], [role='contentinfo']").Remove()
-
-		// Remove metadata and resource links
-		doc.Find("meta, link[rel='stylesheet'], link[rel='preload'], link[rel='prefetch'], link[rel='dns-prefetch']").Remove()
-
-		// Remove inline styles and event handlers from all elements
-		doc.Find("*").Each(func(i int, s *goquery.Selection) {
-			s.RemoveAttr("style")
-			s.RemoveAttr("onclick")
-			s.RemoveAttr("onload")
-			s.RemoveAttr("onerror")
-			s.RemoveAttr("onmouseover")
-			s.RemoveAttr("onmouseout")
-			s.RemoveAttr("onfocus")
-			s.RemoveAttr("onblur")
-			s.RemoveAttr("onchange")
-			s.RemoveAttr("onsubmit")
-		})
+		// Pre-process: Remove non-content elements before go-readability
+		removeNonContentElements(doc)
 
 		cleanedHTML, _ := doc.Html()
 		if cleanedHTML != "" {
@@ -117,30 +58,132 @@ func ExtractArticleText(raw string) string {
 		}
 	}
 
-	// 3. Try go-readability on the cleaned document
-	article, err := readability.FromReader(strings.NewReader(trimmed), nil)
-	if err == nil {
-		// First, render plain text and ensure it's non-empty.
-		var textBuf strings.Builder
-		if err := article.RenderText(&textBuf); err == nil {
-			text := strings.TrimSpace(textBuf.String())
-			if len(text) > 0 {
-				// Prefer the cleaned-up HTML from go-readability to preserve structure,
-				// then fall back to plain text if needed.
-				var htmlBuf strings.Builder
-				if err := article.RenderHTML(&htmlBuf); err == nil {
-					html := strings.TrimSpace(htmlBuf.String())
-					if html != "" {
-						return checkLength(extractParagraphs(html))
-					}
-				}
-				return checkLength(normalizeWhitespace(text))
-			}
-		}
+	// Strategy 2: Try go-readability on the cleaned document
+	if text := extractWithReadability(trimmed); text != "" {
+		return checkLength(text)
 	}
 
-	// 4. Final fallback: Strip tags from the original HTML
+	// Strategy 3: Final fallback - strip tags from the original HTML
 	return checkLength(extractParagraphs(trimmed))
+}
+
+// extractFromNextData attempts to extract article content from Next.js __NEXT_DATA__ script.
+// Next.js sites often store the full article content in this JSON script.
+func extractFromNextData(doc *goquery.Document) string {
+	nextData := doc.Find("script[id='__NEXT_DATA__']")
+	if nextData.Length() == 0 {
+		return ""
+	}
+
+	jsonData := nextData.Text()
+	var data map[string]any
+	if err := json.Unmarshal([]byte(jsonData), &data); err != nil {
+		return ""
+	}
+
+	// Traverse: props -> pageProps -> article -> bodyHtml
+	props, ok := data["props"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	pageProps, ok := props["pageProps"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	articleData, ok := pageProps["article"].(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	title, _ := articleData["title"].(string)
+	bodyHtml, ok := articleData["bodyHtml"].(string)
+	if !ok || len(bodyHtml) == 0 {
+		return ""
+	}
+
+	text := extractParagraphs(bodyHtml)
+	if len(text) == 0 {
+		return ""
+	}
+
+	if title != "" {
+		return title + "\n\n" + text
+	}
+	return text
+}
+
+// removeNonContentElements removes common non-content elements from the HTML document.
+// This includes navigation, headers, footers, scripts, styles, social media widgets, etc.
+func removeNonContentElements(doc *goquery.Document) {
+	// Remove navigation, header, footer, aside
+	doc.Find("head, script, style, noscript, title, aside, nav, header, footer").Remove()
+
+	// Remove media and embedded content (ads, tracking, etc.)
+	doc.Find("iframe, embed, object, video, audio, canvas").Remove()
+
+	// Remove social media elements
+	doc.Find("[class*='social'], [class*='share'], [class*='twitter'], [class*='facebook'], [class*='instagram'], [class*='linkedin']").Remove()
+	doc.Find("[id*='social'], [id*='share'], [id*='twitter'], [id*='facebook']").Remove()
+
+	// Remove comment sections
+	doc.Find("[class*='comment'], [id*='comment'], [class*='discussion'], [id*='discussion']").Remove()
+
+	// Remove common non-content containers (menus, sidebars)
+	doc.Find("[class*='menu'], [id*='menu'], [class*='sidebar'], [id*='sidebar'], [class*='widget'], [id*='widget']").Remove()
+	doc.Find("[role='navigation'], [role='banner'], [role='contentinfo']").Remove()
+
+	// Remove metadata and resource links
+	doc.Find("meta, link[rel='stylesheet'], link[rel='preload'], link[rel='prefetch'], link[rel='dns-prefetch']").Remove()
+
+	// Remove inline styles and event handlers from all elements
+	removeEventHandlers(doc)
+}
+
+// removeEventHandlers strips inline styles and event handler attributes from all elements.
+func removeEventHandlers(doc *goquery.Document) {
+	doc.Find("*").Each(func(i int, s *goquery.Selection) {
+		s.RemoveAttr("style")
+		s.RemoveAttr("onclick")
+		s.RemoveAttr("onload")
+		s.RemoveAttr("onerror")
+		s.RemoveAttr("onmouseover")
+		s.RemoveAttr("onmouseout")
+		s.RemoveAttr("onfocus")
+		s.RemoveAttr("onblur")
+		s.RemoveAttr("onchange")
+		s.RemoveAttr("onsubmit")
+	})
+}
+
+// extractWithReadability uses go-readability to extract the main article content.
+// Returns the extracted text, or empty string if extraction fails.
+func extractWithReadability(html string) string {
+	article, err := readability.FromReader(strings.NewReader(html), nil)
+	if err != nil {
+		return ""
+	}
+
+	// First, render plain text and ensure it's non-empty.
+	var textBuf strings.Builder
+	if err := article.RenderText(&textBuf); err != nil {
+		return ""
+	}
+
+	text := strings.TrimSpace(textBuf.String())
+	if len(text) == 0 {
+		return ""
+	}
+
+	// Prefer the cleaned-up HTML from go-readability to preserve structure,
+	// then fall back to plain text if needed.
+	var htmlBuf strings.Builder
+	if err := article.RenderHTML(&htmlBuf); err == nil {
+		renderedHTML := strings.TrimSpace(htmlBuf.String())
+		if renderedHTML != "" {
+			return extractParagraphs(renderedHTML)
+		}
+	}
+	return normalizeWhitespace(text)
 }
 
 func checkLength(text string) string {

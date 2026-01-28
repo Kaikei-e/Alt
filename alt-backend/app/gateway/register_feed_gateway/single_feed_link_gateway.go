@@ -97,7 +97,7 @@ func NewDefaultRSSFeedFetcher() *DefaultRSSFeedFetcher {
 }
 
 // createHTTPClient creates an HTTP client with HTTPS direct connection (ROOT FIX)
-func (f *DefaultRSSFeedFetcher) createHTTPClient() *http.Client {
+func (f *DefaultRSSFeedFetcher) createHTTPClient(ctx context.Context) *http.Client {
 	transport := &http.Transport{
 		// ROOT FIX: 企業環境のHTTPSアクセス最適化
 		TLSClientConfig: &tls.Config{
@@ -115,7 +115,7 @@ func (f *DefaultRSSFeedFetcher) createHTTPClient() *http.Client {
 
 	// ULTRATHINK ROOT FIX: nginx-external proxyがCONNECTメソッド未サポートのため直接HTTPS接続使用
 	if f.proxyConfig != nil && f.proxyConfig.Enabled && f.proxyConfig.ProxyURL != "" {
-		logger.SafeInfoContext(context.Background(), "Using direct HTTPS connection due to proxy CONNECT method limitation",
+		logger.SafeInfoContext(ctx, "Using direct HTTPS connection due to proxy CONNECT method limitation",
 			"proxy_enabled", f.proxyConfig.Enabled,
 			"proxy_url", f.proxyConfig.ProxyURL,
 			"reason", "nginx-external does not support CONNECT method for HTTPS tunneling")
@@ -172,86 +172,6 @@ func (f *DefaultRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (
 	return f.fetchRSSFeedWithRetry(ctx, link)
 }
 
-// convertToEgressGatewayURL converts external RSS URLs to nginx-external egress gateway routes
-func (f *DefaultRSSFeedFetcher) convertToEgressGatewayURL(originalURL string) string {
-	// Parse original URL
-	u, err := url.Parse(originalURL)
-	if err != nil {
-		logger.SafeWarnContext(context.Background(), "Failed to parse RSS URL, using original",
-			"url", originalURL,
-			"error", err.Error())
-		return originalURL
-	}
-
-	// Only convert HTTP/HTTPS URLs (security requirement)
-	if u.Scheme != "https" && u.Scheme != "http" {
-		logger.SafeWarnContext(context.Background(), "Non-HTTP(S) RSS URL detected, using original",
-			"url", originalURL,
-			"scheme", u.Scheme)
-		return originalURL
-	}
-
-	// Get egress gateway base URL from environment variable
-	egressGatewayBase := os.Getenv("EGRESS_GATEWAY_URL")
-	if egressGatewayBase == "" {
-		egressGatewayBase = "http://nginx-external.alt-ingress.svc.cluster.local:8889"
-	}
-
-	egressPath := fmt.Sprintf("/rss-proxy/%s://%s%s", u.Scheme, u.Host, u.Path)
-	if u.RawQuery != "" {
-		egressPath += "?" + u.RawQuery
-	}
-
-	egressURL := egressGatewayBase + egressPath
-
-	logger.SafeInfoContext(context.Background(), "RSS URL converted to egress gateway route",
-		"original_url", originalURL,
-		"egress_url", egressURL,
-		"target_host", u.Host,
-		"egress_gateway_base", egressGatewayBase)
-
-	return egressURL
-}
-
-// convertToEnvoyProxyURL converts external RSS URLs to Envoy proxy routes
-func (f *DefaultRSSFeedFetcher) convertToEnvoyProxyURL(originalURL string) string {
-	// Parse original URL
-	u, err := url.Parse(originalURL)
-	if err != nil {
-		logger.SafeWarnContext(context.Background(), "Failed to parse RSS URL for Envoy proxy, using original",
-			"url", originalURL,
-			"error", err.Error())
-		return originalURL
-	}
-
-	// Only convert HTTP/HTTPS URLs (security requirement)
-	if u.Scheme != "https" && u.Scheme != "http" {
-		logger.SafeWarnContext(context.Background(), "Non-HTTP(S) RSS URL detected for Envoy proxy, using original",
-			"url", originalURL,
-			"scheme", u.Scheme)
-		return originalURL
-	}
-
-	// Get Envoy proxy base URL from environment variable
-	envoyProxyBase := f.envoyProxyConfig.EnvoyURL
-
-	// Envoy Dynamic Forward Proxy format: /proxy/https://domain.com/path
-	envoyPath := fmt.Sprintf("/proxy/%s://%s%s", u.Scheme, u.Host, u.Path)
-	if u.RawQuery != "" {
-		envoyPath += "?" + u.RawQuery
-	}
-
-	envoyURL := envoyProxyBase + envoyPath
-
-	logger.SafeInfoContext(context.Background(), "RSS URL converted to Envoy proxy route",
-		"original_url", originalURL,
-		"envoy_url", envoyURL,
-		"target_host", u.Host,
-		"envoy_proxy_base", envoyProxyBase)
-
-	return envoyURL
-}
-
 // isRetryableError determines if an error should trigger a retry
 func isRetryableError(err error) bool {
 	errStr := err.Error()
@@ -267,7 +187,7 @@ func isRetryableError(err error) bool {
 // fetchRSSFeedWithRetry performs RSS feed fetching with exponential backoff retry
 func (f *DefaultRSSFeedFetcher) fetchRSSFeedWithRetry(ctx context.Context, link string) (*gofeed.Feed, error) {
 	// Create HTTP client with proxy configuration if enabled
-	httpClient := f.createHTTPClient()
+	httpClient := f.createHTTPClient(ctx)
 
 	fp := gofeed.NewParser()
 	fp.Client = httpClient
