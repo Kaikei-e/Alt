@@ -19,6 +19,7 @@
 		role: "user" | "assistant";
 		timestamp: string;
 		citations?: Citation[];
+		thinking?: string;
 	};
 
 	let messages = $state<Message[]>([
@@ -31,6 +32,7 @@
 	]);
 
 	let isLoading = $state(false);
+	let isThinking = $state(false);
 	let chatContainer: HTMLDivElement;
 	let currentAbortController: AbortController | null = null;
 
@@ -85,7 +87,9 @@
 
 		// Throttling state for delta updates
 		let bufferedContent = "";
+		let bufferedThinking = "";
 		let lastUpdateTime = 0;
+		let lastThinkingUpdateTime = 0;
 		const THROTTLE_MS = 50;
 
 		try {
@@ -102,6 +106,10 @@
 				{ messages: chatHistory },
 				// onDelta: text chunk received
 				(text) => {
+					// Once we receive content, stop showing "thinking" spinner
+					if (isThinking) {
+						isThinking = false;
+					}
 					bufferedContent += text;
 
 					const now = Date.now();
@@ -111,6 +119,22 @@
 							message: bufferedContent,
 						};
 						lastUpdateTime = now;
+					}
+				},
+				// onThinking: reasoning chunk received
+				(text) => {
+					if (!isThinking) {
+						isThinking = true;
+					}
+					bufferedThinking += text;
+
+					const now = Date.now();
+					if (now - lastThinkingUpdateTime > THROTTLE_MS) {
+						messages[currentAssistantMessageIndex] = {
+							...messages[currentAssistantMessageIndex],
+							thinking: bufferedThinking,
+						};
+						lastThinkingUpdateTime = now;
 					}
 				},
 				// onMeta: citations received
@@ -126,11 +150,13 @@
 					messages[currentAssistantMessageIndex] = {
 						...messages[currentAssistantMessageIndex],
 						message: result.answer || bufferedContent,
+						thinking: bufferedThinking || messages[currentAssistantMessageIndex].thinking,
 						citations: result.citations.length > 0
 							? convertCitations(result.citations)
 							: messages[currentAssistantMessageIndex].citations,
 					};
 					isLoading = false;
+					isThinking = false;
 					currentAbortController = null;
 					scrollToBottom();
 				},
@@ -139,8 +165,10 @@
 					messages[currentAssistantMessageIndex] = {
 						...messages[currentAssistantMessageIndex],
 						message: "I apologize, but I couldn't find enough information in my knowledge base to answer that properly.",
+						thinking: bufferedThinking || messages[currentAssistantMessageIndex].thinking,
 					};
 					isLoading = false;
+					isThinking = false;
 					currentAbortController = null;
 					scrollToBottom();
 				},
@@ -150,8 +178,10 @@
 					messages[currentAssistantMessageIndex] = {
 						...messages[currentAssistantMessageIndex],
 						message: `Error: ${error.message}. Please try again.`,
+						thinking: bufferedThinking || messages[currentAssistantMessageIndex].thinking,
 					};
 					isLoading = false;
+					isThinking = false;
 					currentAbortController = null;
 					scrollToBottom();
 				},
@@ -182,16 +212,18 @@
 <div class="flex flex-col h-[calc(100vh-12rem)] max-w-4xl mx-auto border border-border bg-background rounded-lg overflow-hidden">
 	<!-- Chat messages -->
 	<div bind:this={chatContainer} class="flex-1 overflow-y-auto p-6">
-		{#each messages as msg (msg.id)}
+		{#each messages as msg, idx (msg.id)}
 			<ChatMessage
 				message={msg.message}
 				role={msg.role}
 				timestamp={msg.timestamp}
 				citations={msg.citations}
+				thinking={msg.thinking}
+				isThinking={isThinking && idx === messages.length - 1 && msg.role === "assistant"}
 			/>
 		{/each}
 
-		{#if isLoading}
+		{#if isLoading && messages[messages.length - 1]?.message === ""}
 			<div class="flex gap-3 mb-4">
 				<div class="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden bg-muted mt-1 shadow-sm border border-border/50 relative">
 					<img src={augurAvatar} alt="Augur" class="w-full h-full object-cover" />
@@ -200,7 +232,13 @@
 					</div>
 				</div>
 				<div class="bg-muted/50 p-3 text-sm rounded-2xl rounded-bl-none shadow-sm border border-border/50">
-					<p class="text-muted-foreground">Augur is thinking...</p>
+					<p class="text-muted-foreground">
+						{#if isThinking}
+							Augur is reasoning...
+						{:else}
+							Augur is thinking...
+						{/if}
+					</p>
 				</div>
 			</div>
 		{/if}

@@ -72,6 +72,7 @@ export function createAugurClient(transport: Transport): AugurClient {
  *
  * Provides fine-grained control over different event types:
  * - delta: Text chunks as they arrive
+ * - thinking: Reasoning/thinking chunks as they arrive
  * - meta: Citations/sources for the response
  * - done: Final complete response
  * - fallback: Fallback reason when RAG context is insufficient
@@ -80,6 +81,7 @@ export function createAugurClient(transport: Transport): AugurClient {
  * @param transport - The Connect transport to use
  * @param options - Chat options including message history
  * @param onDelta - Callback for text chunks (optional)
+ * @param onThinking - Callback for thinking/reasoning chunks (optional)
  * @param onMeta - Callback for citations (optional)
  * @param onComplete - Callback when streaming completes (optional)
  * @param onFallback - Callback for fallback events (optional)
@@ -90,6 +92,7 @@ export function streamAugurChat(
 	transport: Transport,
 	options: AugurStreamOptions,
 	onDelta?: (text: string) => void,
+	onThinking?: (text: string) => void,
 	onMeta?: (citations: AugurCitation[]) => void,
 	onComplete?: (result: AugurStreamResult) => void,
 	onFallback?: (code: string) => void,
@@ -126,6 +129,12 @@ export function streamAugurChat(
 							if (onDelta) {
 								onDelta(payload.value);
 							}
+						}
+						break;
+
+					case "thinkingDelta":
+						if (payload.value && onThinking) {
+							onThinking(payload.value);
 						}
 						break;
 
@@ -205,18 +214,21 @@ export function streamAugurChat(
  * @param transport - The Connect transport to use
  * @param options - Chat options including message history
  * @param onDelta - Optional callback for real-time text updates
+ * @param onThinking - Optional callback for reasoning/thinking updates
  * @returns Promise that resolves with the complete result
  */
 export async function streamAugurChatAsync(
 	transport: Transport,
 	options: AugurStreamOptions,
 	onDelta?: (text: string) => void,
+	onThinking?: (text: string) => void,
 ): Promise<AugurStreamResult> {
 	return new Promise((resolve, reject) => {
 		streamAugurChat(
 			transport,
 			options,
 			onDelta,
+			onThinking,
 			undefined, // onMeta
 			(result) => resolve(result), // onComplete
 			undefined, // onFallback

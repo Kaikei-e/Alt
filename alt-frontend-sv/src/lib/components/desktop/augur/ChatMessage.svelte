@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { User } from "@lucide/svelte";
+	import { User, Loader2, ChevronDown } from "@lucide/svelte";
 	import { cn } from "$lib/utils";
 	import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 	import augurAvatar from "$lib/assets/augur-chat.webp";
@@ -16,9 +16,11 @@
 		role: "user" | "assistant";
 		timestamp?: string;
 		citations?: Citation[];
+		thinking?: string;
+		isThinking?: boolean;
 	};
 
-	let { message, role, timestamp, citations }: Props = $props();
+	let { message, role, timestamp, citations, thinking, isThinking }: Props = $props();
 
 	let isUser = $derived(role === "user");
 </script>
@@ -36,6 +38,22 @@
 	{/if}
 
 	<div class="max-w-[70%] flex flex-col gap-2">
+		{#if !isUser && (isThinking || thinking)}
+			<details class="group" open={isThinking}>
+				<summary class="cursor-pointer text-muted-foreground text-xs flex items-center gap-1 select-none hover:text-foreground transition-colors">
+					{#if isThinking}
+						<Loader2 class="h-3 w-3 animate-spin" />
+						<span>Thinking...</span>
+					{:else}
+						<ChevronDown class="h-3 w-3 transition-transform group-open:rotate-180" />
+						<span>View reasoning</span>
+					{/if}
+				</summary>
+				<div class="mt-2 p-3 bg-muted/30 rounded-lg text-xs text-muted-foreground max-h-48 overflow-y-auto border border-border/30">
+					<pre class="whitespace-pre-wrap break-words font-sans leading-relaxed">{thinking}</pre>
+				</div>
+			</details>
+		{/if}
 		<div
 			class={cn(
 				"p-3 text-sm rounded-2xl shadow-sm",
