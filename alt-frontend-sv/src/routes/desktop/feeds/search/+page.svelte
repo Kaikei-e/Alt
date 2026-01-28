@@ -84,6 +84,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>Search - Alt</title>
+</svelte:head>
+
 <PageHeader title="Search Feeds" description="Search across all your feeds" />
 
 <!-- Search input -->

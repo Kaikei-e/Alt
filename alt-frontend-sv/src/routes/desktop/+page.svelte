@@ -5,6 +5,10 @@
 	import StatsBarWidget from "$lib/components/desktop/dashboard/StatsBarWidget.svelte";
 </script>
 
+<svelte:head>
+	<title>Dashboard - Alt</title>
+</svelte:head>
+
 <PageHeader title="Dashboard" description="Overview of Alt RSS Reader" />
 
 <div class="grid grid-cols-2 gap-6 mb-6">

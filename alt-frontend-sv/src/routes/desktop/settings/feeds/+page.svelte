@@ -148,6 +148,10 @@ function handleDialogOpenChange(open: boolean) {
 }
 </script>
 
+<svelte:head>
+	<title>Settings - Alt</title>
+</svelte:head>
+
 <PageHeader
 	title="Manage Feed Links"
 	description="Add, edit, or remove RSS feed sources"

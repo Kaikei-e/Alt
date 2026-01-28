@@ -102,6 +102,10 @@ function handleFeedGridReady(api: FeedGridApi) {
 }
 </script>
 
+<svelte:head>
+	<title>Feeds - Alt</title>
+</svelte:head>
+
 <PageHeader title="Feeds" description="Browse all RSS feeds" />
 
 <FeedFilters

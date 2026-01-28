@@ -46,6 +46,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>7-Day Recap - Alt</title>
+</svelte:head>
+
 <PageHeader title="7-Day Recap" description="Weekly news summary by genre" />
 
 {#if isLoading}

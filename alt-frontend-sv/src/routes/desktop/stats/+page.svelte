@@ -43,6 +43,10 @@
 	});
 </script>
 
+<svelte:head>
+	<title>Statistics - Alt</title>
+</svelte:head>
+
 <PageHeader title="Statistics" description="Overview of your RSS feed analytics" />
 
 <!-- Stats cards -->

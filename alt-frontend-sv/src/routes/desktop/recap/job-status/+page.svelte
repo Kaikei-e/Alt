@@ -124,6 +124,10 @@
 	});
 </script>
 
+<svelte:head>
+	<title>Job Status - Alt</title>
+</svelte:head>
+
 <PageHeader
 	title="Recap Job Status"
 	description="Monitor real-time job progress and pipeline status"

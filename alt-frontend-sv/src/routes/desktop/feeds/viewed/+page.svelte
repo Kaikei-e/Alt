@@ -111,6 +111,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>History - Alt</title>
+</svelte:head>
+
 <PageHeader title="Read History" description="Previously viewed feeds" />
 
 <div class="w-full">

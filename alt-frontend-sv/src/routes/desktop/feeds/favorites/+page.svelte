@@ -15,6 +15,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>Favorites - Alt</title>
+</svelte:head>
+
 <PageHeader title="Favorites" description="Your starred feeds" />
 
 <div class="text-center py-12">
