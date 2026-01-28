@@ -39,7 +39,7 @@ message ChatMessage {
 // StreamChatEvent is a single event in the streaming response.
 // Each event has a kind and a corresponding payload.
 message StreamChatEvent {
-  // Event kind: "delta", "meta", "done", "fallback", "error"
+  // Event kind: "delta", "meta", "done", "fallback", "error", "thinking"
   string kind = 1;
 
   // Payload based on kind (only one will be set)
@@ -54,6 +54,8 @@ message StreamChatEvent {
     string fallback_code = 5;
     // Error message (when kind = "error")
     string error_message = 6;
+    // Thinking/reasoning chunk (when kind = "thinking")
+    string thinking_delta = 7;
   }
 }
 
