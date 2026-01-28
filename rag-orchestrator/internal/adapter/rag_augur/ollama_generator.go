@@ -601,11 +601,19 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 				content = toString(response)
 			}
 
+			// gpt-oss workaround: model outputs to thinking instead of content
+			// Use thinking as content when content is empty
+			effectiveContent := content
+			if effectiveContent == "" && thinking != "" {
+				effectiveContent = thinking
+				thinking = "" // Don't duplicate in Thinking field
+			}
+
 			chunkCount++
-			totalBytes += len(content) + len(thinking)
+			totalBytes += len(effectiveContent) + len(thinking)
 
 			chunk := domain.LLMStreamChunk{
-				Response:   content,
+				Response:   effectiveContent,
 				Thinking:   thinking,
 				Model:      toString(raw["model"]),
 				Done:       toBool(raw["done"]),
@@ -668,6 +676,5 @@ func toChatMessages(msgs []domain.Message) []chatMessage {
 	}
 	return out
 }
-
 
 var _ domain.LLMClient = (*OllamaGenerator)(nil)
