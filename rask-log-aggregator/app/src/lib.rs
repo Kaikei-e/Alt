@@ -1,5 +1,6 @@
 #![deny(warnings)]
 #![deny(rust_2018_idioms)]
+#![deny(rust_2024_compatibility)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::missing_errors_doc)]
