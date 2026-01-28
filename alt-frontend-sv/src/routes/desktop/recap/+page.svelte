@@ -5,16 +5,19 @@
 	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 	import RecapGenreList from "$lib/components/desktop/recap/RecapGenreList.svelte";
 	import RecapDetail from "$lib/components/desktop/recap/RecapDetail.svelte";
-	import type { RecapGenre } from "$lib/schema/recap";
+	import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
 	import { createClientTransport, getSevenDayRecap } from "$lib/connect";
 	import { loadingStore } from "$lib/stores/loading.svelte";
 
 	let selectedGenre = $state<RecapGenre | null>(null);
 
 	// Simple state for recap
-	let genres = $state<RecapGenre[]>([]);
+	let recapData = $state<RecapSummary | null>(null);
 	let isLoading = $state(true);
 	let error = $state<Error | null>(null);
+
+	// Derived genres from recapData
+	let genres = $derived(recapData?.genres ?? []);
 
 	// Fetch 7-day recap on mount
 	onMount(async () => {
@@ -22,11 +25,10 @@
 			isLoading = true;
 			loadingStore.startLoading();
 			const transport = createClientTransport();
-			const result = await getSevenDayRecap(transport);
-			genres = result.genres ?? [];
+			recapData = await getSevenDayRecap(transport);
 			// Auto-select first genre
-			if (genres.length > 0) {
-				selectedGenre = genres[0];
+			if (recapData?.genres && recapData.genres.length > 0) {
+				selectedGenre = recapData.genres[0];
 			}
 		} catch (err) {
 			// Handle authentication error
@@ -44,6 +46,19 @@
 	function handleSelectGenre(genre: RecapGenre) {
 		selectedGenre = genre;
 	}
+
+	function formatExecutedAt(dateStr: string): string {
+		return new Date(dateStr).toLocaleString('ja-JP', {
+			month: 'numeric',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit'
+		});
+	}
+
+	function formatArticleCount(count: number): string {
+		return count.toLocaleString('ja-JP');
+	}
 </script>
 
 <svelte:head>
@@ -51,6 +66,14 @@
 </svelte:head>
 
 <PageHeader title="7-Day Recap" description="Weekly news summary by genre" />
+
+{#if recapData}
+	<div class="flex items-center gap-2 text-sm text-[var(--text-secondary)] mb-4 -mt-2">
+		<span>Generated: {formatExecutedAt(recapData.executedAt)}</span>
+		<span class="text-[var(--text-muted)]">·</span>
+		<span>{formatArticleCount(recapData.totalArticles)} articles</span>
+	</div>
+{/if}
 
 {#if isLoading}
 	<!-- Loading state handled by SystemLoader via loadingStore -->
