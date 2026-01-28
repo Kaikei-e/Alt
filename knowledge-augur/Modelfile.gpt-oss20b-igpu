@@ -20,3 +20,21 @@ PARAMETER num_batch 512
 PARAMETER stop "<|end|>"
 PARAMETER stop "<|eot_id|>"
 PARAMETER stop "<|im_end|>"
+
+# Custom TEMPLATE: Reasoning disabled to fix empty content issue
+# gpt-oss Harmony format outputs thinking but leaves content empty when Reasoning is enabled
+TEMPLATE """<|start|>system<|message|>You are GPT-OSS, a large language model trained by OpenAI.
+Knowledge cutoff: 2024-06
+Current date: {{ currentDate }}
+
+<|end|>
+{{- range .Messages }}
+{{- if eq .Role "user" }}
+<|start|>user<|message|>{{ .Content }}<|end|>
+{{- else if eq .Role "assistant" }}
+<|start|>assistant<|message|>{{ .Content }}<|end|>
+{{- else if eq .Role "system" }}
+<|start|>system<|message|>{{ .Content }}<|end|>
+{{- end }}
+{{- end }}
+<|start|>assistant<|message|>"""
