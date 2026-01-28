@@ -301,11 +301,7 @@ func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time
 
 		a.PublishedAt = publishedAt
 		a.CreatedAt = fetchedAt // Use fetched_at as CreatedAt for now
-		// We will resolve FeedID using feedURL later in logic or here if we want to add complexity.
-		// For now, let's attach feedURL to Article temporarily?
-		// models.Article doesn't have FeedURL field.
-		// I'll assume the caller handles it or we add FeedURL to model.
-		// I should add FeedURL to model to make this easier.
+		a.FeedURL = feedURL     // Set FeedURL for later FeedID resolution
 
 		articles = append(articles, &a)
 	}
@@ -315,10 +311,6 @@ func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time
 
 // UpsertArticlesBatch batches upsert articles
 func UpsertArticlesBatch(ctx context.Context, db *pgxpool.Pool, articles []*models.Article) (err error) {
-	if db == nil {
-		return fmt.Errorf("database connection is nil")
-	}
-
 	if len(articles) == 0 {
 		return nil
 	}
@@ -333,11 +325,20 @@ func UpsertArticlesBatch(ctx context.Context, db *pgxpool.Pool, articles []*mode
 	`
 
 	for _, a := range articles {
-		// Validations
-		if a.UserID == "" {
-			continue // Skip if no UserID
+		// Validations: skip articles with empty UserID or FeedID
+		if a.UserID == "" || a.FeedID == "" {
+			continue
 		}
 		batch.Queue(query, a.Title, a.Content, a.URL, a.FeedID, a.UserID, a.CreatedAt)
+	}
+
+	// After validation, check if batch is empty
+	if batch.Len() == 0 {
+		return nil
+	}
+
+	if db == nil {
+		return fmt.Errorf("database connection is nil")
 	}
 
 	br := db.SendBatch(ctx, batch)

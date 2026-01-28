@@ -194,24 +194,48 @@ func (r *articleRepository) FetchInoreaderArticles(ctx context.Context, since ti
 }
 
 // UpsertArticles batch upserts articles into the database.
+// It resolves FeedID from FeedURL for each article and skips articles with empty FeedURL.
 func (r *articleRepository) UpsertArticles(ctx context.Context, articles []*models.Article) error {
 	r.logger.InfoContext(ctx, "upserting articles", "count", len(articles))
-
-	if r.db == nil {
-		r.logger.ErrorContext(ctx, "database connection is nil")
-		return fmt.Errorf("failed to upsert articles: database connection is nil")
-	}
 
 	if len(articles) == 0 {
 		return nil
 	}
 
-	err := driver.UpsertArticlesBatch(ctx, r.db, articles)
+	// Resolve FeedID for each article using FeedURL
+	validArticles := make([]*models.Article, 0, len(articles))
+	for _, article := range articles {
+		if article.FeedURL == "" {
+			r.logger.WarnContext(ctx, "skipping article with empty FeedURL", "url", article.URL)
+			continue
+		}
+
+		if r.db == nil {
+			r.logger.ErrorContext(ctx, "database connection is nil")
+			return fmt.Errorf("failed to upsert articles: database connection is nil")
+		}
+
+		feedID, err := driver.GetFeedID(ctx, r.db, article.FeedURL)
+		if err != nil {
+			r.logger.WarnContext(ctx, "failed to resolve FeedID, skipping article",
+				"feedURL", article.FeedURL, "articleURL", article.URL, "error", err)
+			continue
+		}
+		article.FeedID = feedID
+		validArticles = append(validArticles, article)
+	}
+
+	if len(validArticles) == 0 {
+		r.logger.InfoContext(ctx, "no valid articles after FeedID resolution")
+		return nil
+	}
+
+	err := driver.UpsertArticlesBatch(ctx, r.db, validArticles)
 	if err != nil {
 		r.logger.ErrorContext(ctx, "failed to upsert articles", "error", err)
 		return fmt.Errorf("failed to upsert articles: %w", err)
 	}
 
-	r.logger.InfoContext(ctx, "articles upserted successfully", "count", len(articles))
+	r.logger.InfoContext(ctx, "articles upserted successfully", "count", len(validArticles))
 	return nil
 }
