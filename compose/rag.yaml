@@ -28,7 +28,10 @@ services:
     ports:
       - "5436:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${RAG_DB_USER:-rag_user} -d ${RAG_DB_NAME:-rag_db}"]
+      test: [
+        "CMD-SHELL",
+        "pg_isready -U ${RAG_DB_USER:-rag_user} -d ${RAG_DB_NAME:-rag_db}",
+      ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -82,10 +85,13 @@ services:
       - DB_PASSWORD_FILE=/run/secrets/rag_db_password
       - DB_NAME=${RAG_DB_NAME:-rag_db}
       - EMBEDDER_EXTERNAL=${EMBEDDER_EXTERNAL}
+      - EMBEDDER_TIMEOUT=30
       - AUGUR_EXTERNAL=${AUGUR_EXTERNAL}
       - SEARCH_INDEXER_URL=http://search-indexer:9300
       - QUERY_EXPANSION_URL=http://news-creator:11434
       - QUERY_EXPANSION_TIMEOUT=30
+      - RERANK_TIMEOUT=300
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
     secrets:
       - rag_db_password
     ports:
