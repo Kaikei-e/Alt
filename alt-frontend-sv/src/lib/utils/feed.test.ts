@@ -8,14 +8,16 @@ import {
 } from "./feed";
 
 describe("formatPublishedDate", () => {
-	it("formats ISO date string correctly", () => {
+	it("formats ISO date string with time correctly", () => {
 		const result = formatPublishedDate("2025-11-23T10:30:00Z");
-		expect(result).toBe("Nov 23, 2025");
+		// Should include date and time (timezone-dependent)
+		expect(result).toMatch(/^Nov 23, 2025,? \d{1,2}:\d{2}\s?(AM|PM)?$/);
 	});
 
 	it("formats date without time correctly", () => {
 		const result = formatPublishedDate("2024-01-15");
-		expect(result).toBe("Jan 15, 2024");
+		// Should include date and time (midnight in local timezone)
+		expect(result).toMatch(/^Jan 15, 2024,? \d{1,2}:\d{2}\s?(AM|PM)?$/);
 	});
 
 	it("returns empty string for null", () => {

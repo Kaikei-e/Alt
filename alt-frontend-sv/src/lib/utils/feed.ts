@@ -4,9 +4,9 @@
  */
 
 /**
- * Formats a date string to a human-readable format
+ * Formats a date string to a human-readable format with time
  * @param dateString - ISO date string or RFC3339 format
- * @returns Formatted date string (e.g., "Nov 23, 2025")
+ * @returns Formatted date string (e.g., "Nov 23, 2025, 2:30 PM")
  */
 export function formatPublishedDate(
 	dateString: string | undefined | null,
@@ -21,11 +21,13 @@ export function formatPublishedDate(
 			return "";
 		}
 
-		// Format as "Nov 23, 2025"
-		return date.toLocaleDateString("en-US", {
+		// Format as "Nov 23, 2025, 2:30 PM"
+		return date.toLocaleString("en-US", {
 			year: "numeric",
 			month: "short",
 			day: "numeric",
+			hour: "numeric",
+			minute: "2-digit",
 		});
 	} catch {
 		return "";
