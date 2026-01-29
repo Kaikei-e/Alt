@@ -11,53 +11,53 @@ import (
 // This is critical for Japanese content where 1 character = 3 bytes in UTF-8.
 func TestContentLengthMeasurement(t *testing.T) {
 	// Generate test strings with exact lengths
-	englishShort := strings.Repeat("a", 77)                   // 77 chars, 77 bytes
-	englishExact := strings.Repeat("a", 100)                  // 100 chars, 100 bytes
-	japaneseShort := strings.Repeat("あ", 34)                  // 34 chars, 102 bytes
-	japaneseExact := strings.Repeat("あ", 100)                 // 100 chars, 300 bytes
-	mixed := "Hello" + strings.Repeat("あ", 10) + "World"     // 15 ASCII + 10 Japanese = 25 chars, 45 bytes
+	englishShort := strings.Repeat("a", 77)              // 77 chars, 77 bytes
+	englishExact := strings.Repeat("a", 100)             // 100 chars, 100 bytes
+	japaneseShort := strings.Repeat("あ", 34)             // 34 chars, 102 bytes
+	japaneseExact := strings.Repeat("あ", 100)            // 100 chars, 300 bytes
+	mixed := "Hello" + strings.Repeat("あ", 10) + "World" // 15 ASCII + 10 Japanese = 25 chars, 45 bytes
 
 	tests := []struct {
-		name           string
-		content        string
-		expectedBytes  int
-		expectedRunes  int
-		shouldPassMin  bool // Should pass minContentLength=100 check
+		name          string
+		content       string
+		expectedBytes int
+		expectedRunes int
+		shouldPassMin bool // Should pass minContentLength=100 check
 	}{
 		{
-			name:           "English text under 100 chars",
-			content:        englishShort,
-			expectedBytes:  77,
-			expectedRunes:  77,
-			shouldPassMin:  false,
+			name:          "English text under 100 chars",
+			content:       englishShort,
+			expectedBytes: 77,
+			expectedRunes: 77,
+			shouldPassMin: false,
 		},
 		{
-			name:           "English text exactly 100 chars",
-			content:        englishExact,
-			expectedBytes:  100,
-			expectedRunes:  100,
-			shouldPassMin:  true,
+			name:          "English text exactly 100 chars",
+			content:       englishExact,
+			expectedBytes: 100,
+			expectedRunes: 100,
+			shouldPassMin: true,
 		},
 		{
-			name:           "Japanese text - 34 chars but 102 bytes",
-			content:        japaneseShort,
-			expectedBytes:  102,
-			expectedRunes:  34,
-			shouldPassMin:  false, // 34 runes < 100, should NOT pass
+			name:          "Japanese text - 34 chars but 102 bytes",
+			content:       japaneseShort,
+			expectedBytes: 102,
+			expectedRunes: 34,
+			shouldPassMin: false, // 34 runes < 100, should NOT pass
 		},
 		{
-			name:           "Japanese text - 100 chars (300 bytes)",
-			content:        japaneseExact,
-			expectedBytes:  300,
-			expectedRunes:  100,
-			shouldPassMin:  true, // 100 runes = 100, should pass
+			name:          "Japanese text - 100 chars (300 bytes)",
+			content:       japaneseExact,
+			expectedBytes: 300,
+			expectedRunes: 100,
+			shouldPassMin: true, // 100 runes = 100, should pass
 		},
 		{
-			name:           "Mixed Japanese and English - bytes misleading",
-			content:        mixed,
-			expectedBytes:  40,
-			expectedRunes:  20,
-			shouldPassMin:  false,
+			name:          "Mixed Japanese and English - bytes misleading",
+			content:       mixed,
+			expectedBytes: 40,
+			expectedRunes: 20,
+			shouldPassMin: false,
 		},
 	}
 
