@@ -12,7 +12,7 @@ func TestFeedProcessorService_ProcessFeeds(t *testing.T) {
 	// REFACTOR phase - Focus on the service logic structure and interface compliance
 	t.Run("service implements interface correctly", func(t *testing.T) {
 		// Test that our service properly implements the interface
-		service := NewFeedProcessorService(nil, nil, nil, testLogger())
+		service := NewFeedProcessorService(nil, nil, nil, nil, testLogger())
 
 		// Verify interface compliance
 		var _ = service
@@ -22,7 +22,7 @@ func TestFeedProcessorService_ProcessFeeds(t *testing.T) {
 
 	t.Run("service handles nil dependencies gracefully", func(t *testing.T) {
 		// Test service creation with nil dependencies (should not panic)
-		service := NewFeedProcessorService(nil, nil, nil, testLogger())
+		service := NewFeedProcessorService(nil, nil, nil, nil, testLogger())
 		assert.NotNil(t, service)
 
 		// Reset pagination should work even with nil deps
@@ -33,7 +33,7 @@ func TestFeedProcessorService_ProcessFeeds(t *testing.T) {
 
 func TestFeedProcessorService_GetProcessingStats(t *testing.T) {
 	t.Run("service implements GetProcessingStats method", func(t *testing.T) {
-		service := NewFeedProcessorService(nil, nil, nil, testLogger())
+		service := NewFeedProcessorService(nil, nil, nil, nil, testLogger())
 		assert.NotNil(t, service)
 
 		// Method exists and has correct signature
@@ -43,7 +43,7 @@ func TestFeedProcessorService_GetProcessingStats(t *testing.T) {
 
 func TestFeedProcessorService_ResetPagination(t *testing.T) {
 	t.Run("reset pagination works correctly", func(t *testing.T) {
-		service := NewFeedProcessorService(nil, nil, nil, testLogger())
+		service := NewFeedProcessorService(nil, nil, nil, nil, testLogger())
 
 		// Should not return error
 		err := service.ResetPagination()

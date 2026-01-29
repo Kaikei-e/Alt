@@ -47,13 +47,21 @@ func CheckArticleExists(ctx context.Context, db *pgxpool.Pool, urls []url.URL) (
 
 // CreateArticle creates a new article in the database.
 func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Article) error {
+	// Validate required UUID fields first (before nil db check to provide specific error messages)
+	if article.FeedID == "" {
+		return fmt.Errorf("article FeedID is required")
+	}
+	if article.UserID == "" {
+		return fmt.Errorf("article UserID is required")
+	}
+
 	if db == nil {
 		return fmt.Errorf("database connection is nil")
 	}
 
 	query := `
-		INSERT INTO articles (title, content, url, feed_id)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO articles (title, content, url, feed_id, user_id)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (url) DO UPDATE SET
 			title = EXCLUDED.title,
 			content = EXCLUDED.content,
@@ -78,7 +86,7 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 		return err
 	}
 
-	_, err = tx.Exec(ctx, query, article.Title, article.Content, article.URL, article.FeedID)
+	_, err = tx.Exec(ctx, query, article.Title, article.Content, article.URL, article.FeedID, article.UserID)
 	if err != nil {
 		err = tx.Rollback(ctx)
 		if err != nil {

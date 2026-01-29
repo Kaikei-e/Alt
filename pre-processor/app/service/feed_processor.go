@@ -17,18 +17,21 @@ import (
 type feedProcessorService struct {
 	feedRepo          repository.FeedRepository
 	articleRepo       repository.ArticleRepository
+	externalAPIRepo   repository.ExternalAPIRepository
 	fetcher           ArticleFetcherService
 	logger            *slog.Logger
 	contextLogger     *utilsLogger.ContextLogger
 	performanceLogger *utilsLogger.PerformanceLogger
 	cursor            *repository.Cursor
 	workerPool        *utils.FeedWorkerPool
+	cachedUserID      string // Cached system user ID
 }
 
 // NewFeedProcessorService creates a new feed processor service.
 func NewFeedProcessorService(
 	feedRepo repository.FeedRepository,
 	articleRepo repository.ArticleRepository,
+	externalAPIRepo repository.ExternalAPIRepository,
 	fetcher ArticleFetcherService,
 	logger *slog.Logger,
 ) FeedProcessorService {
@@ -49,6 +52,7 @@ func NewFeedProcessorService(
 	return &feedProcessorService{
 		feedRepo:          feedRepo,
 		articleRepo:       articleRepo,
+		externalAPIRepo:   externalAPIRepo,
 		fetcher:           fetcher,
 		logger:            logger,
 		contextLogger:     contextLogger,

@@ -9,6 +9,53 @@ import (
 	"pre-processor/models"
 )
 
+func TestCreateArticle_Validation(t *testing.T) {
+	t.Run("should return error when UserID is empty", func(t *testing.T) {
+		article := &models.Article{
+			Title:   "Test Article",
+			Content: "Some test content that is long enough to pass minimum length validation for article content.",
+			URL:     "https://example.com/test",
+			FeedID:  "feed-123",
+			UserID:  "", // Empty UserID - should be rejected
+		}
+
+		err := CreateArticle(context.Background(), nil, article)
+
+		assert.Error(t, err, "should return error when UserID is empty")
+		assert.Contains(t, err.Error(), "UserID", "error message should mention UserID")
+	})
+
+	t.Run("should return error when FeedID is empty", func(t *testing.T) {
+		article := &models.Article{
+			Title:   "Test Article",
+			Content: "Some test content that is long enough to pass minimum length validation for article content.",
+			URL:     "https://example.com/test",
+			FeedID:  "", // Empty FeedID - should be rejected
+			UserID:  "user-123",
+		}
+
+		err := CreateArticle(context.Background(), nil, article)
+
+		assert.Error(t, err, "should return error when FeedID is empty")
+		assert.Contains(t, err.Error(), "FeedID", "error message should mention FeedID")
+	})
+
+	t.Run("should return error when db is nil with valid article", func(t *testing.T) {
+		article := &models.Article{
+			Title:   "Test Article",
+			Content: "Some test content that is long enough to pass minimum length validation for article content.",
+			URL:     "https://example.com/test",
+			FeedID:  "feed-123",
+			UserID:  "user-123",
+		}
+
+		err := CreateArticle(context.Background(), nil, article)
+
+		assert.Error(t, err, "should return error when db is nil")
+		assert.Contains(t, err.Error(), "nil", "error message should mention nil connection")
+	})
+}
+
 func TestUpsertArticlesBatch_Validation(t *testing.T) {
 	t.Run("should skip articles with empty UserID", func(t *testing.T) {
 		articles := []*models.Article{

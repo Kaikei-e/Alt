@@ -143,6 +143,7 @@ func main() {
 	feedProcessorService := service.NewFeedProcessorService(
 		feedRepo,
 		articleRepo,
+		apiRepo,
 		service.NewArticleFetcherServiceWithFactory(cfg, logger.Logger),
 		logger.Logger,
 	)

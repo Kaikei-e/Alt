@@ -29,11 +29,13 @@ type FeedMetricsProcessorService interface {
 type FeedsProcessorService struct {
 	feedRepo          repository.FeedRepository
 	articleRepo       repository.ArticleRepository
+	externalAPIRepo   repository.ExternalAPIRepository
 	fetcher           ArticleFetcherService
 	logger            *slog.Logger
 	contextLogger     *utilsLogger.ContextLogger
 	performanceLogger *utilsLogger.PerformanceLogger
 	cursor            *repository.Cursor
+	cachedUserID      string // Cached system user ID
 
 	// Enhanced error handling components
 	retryPolicy     *operrors.RetryPolicy
@@ -46,6 +48,7 @@ type FeedsProcessorService struct {
 func NewFeedMetricsProcessorService(
 	feedRepo repository.FeedRepository,
 	articleRepo repository.ArticleRepository,
+	externalAPIRepo repository.ExternalAPIRepository,
 	fetcher ArticleFetcherService,
 	logger *slog.Logger,
 ) FeedMetricsProcessorService {
@@ -66,6 +69,7 @@ func NewFeedMetricsProcessorService(
 	return &FeedsProcessorService{
 		feedRepo:          feedRepo,
 		articleRepo:       articleRepo,
+		externalAPIRepo:   externalAPIRepo,
 		fetcher:           fetcher,
 		logger:            logger,
 		contextLogger:     contextLogger,
@@ -222,6 +226,16 @@ func (s *FeedsProcessorService) processSingleFeedWithRetry(ctx context.Context, 
 			s.logger.InfoContext(ctx, "Article was skipped", "url", url)
 			return nil
 		}
+
+		// Get system user ID (cached for efficiency)
+		if s.cachedUserID == "" {
+			userID, err := s.externalAPIRepo.GetSystemUserID(ctx)
+			if err != nil {
+				return operrors.NewOperationError("get_system_user_id", err, true).WithContext(ctx)
+			}
+			s.cachedUserID = userID
+		}
+		article.UserID = s.cachedUserID
 
 		// Save article
 		if err := s.articleRepo.Create(ctx, article); err != nil {

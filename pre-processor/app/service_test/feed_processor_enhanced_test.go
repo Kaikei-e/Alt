@@ -19,6 +19,26 @@ import (
 	"pre-processor/test/mocks"
 )
 
+// createTestService creates a FeedMetricsProcessorService with mocks for testing.
+func createTestService(
+	ctrl *gomock.Controller,
+) (service.FeedMetricsProcessorService, *mocks.MockFeedRepository, *mocks.MockArticleRepository, *mocks.MockExternalAPIRepository, *mocks.MockArticleFetcherService) {
+	mockFeedRepo := mocks.NewMockFeedRepository(ctrl)
+	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+	mockExternalAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
+	mockFetcher := mocks.NewMockArticleFetcherService(ctrl)
+	logger := slog.Default()
+
+	svc := service.NewFeedMetricsProcessorService(
+		mockFeedRepo,
+		mockArticleRepo,
+		mockExternalAPIRepo,
+		mockFetcher,
+		logger,
+	)
+	return svc, mockFeedRepo, mockArticleRepo, mockExternalAPIRepo, mockFetcher
+}
+
 func TestFeedMetricsProcessorService_GetProcessingStats(t *testing.T) {
 	// Test data setup
 	testStats := &repository.ProcessingStats{
@@ -67,21 +87,10 @@ func TestFeedMetricsProcessorService_GetProcessingStats(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockFeedRepo := mocks.NewMockFeedRepository(ctrl)
-			mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
-			mockFetcher := mocks.NewMockArticleFetcherService(ctrl)
-			logger := slog.Default()
+			serviceInstance, mockFeedRepo, _, _, _ := createTestService(ctrl)
 
 			// Setup test expectations
 			tc.setupMocks(mockFeedRepo)
-
-			// Create service
-			serviceInstance := service.NewFeedMetricsProcessorService(
-				mockFeedRepo,
-				mockArticleRepo,
-				mockFetcher,
-				logger,
-			)
 
 			// Execute test
 			ctx := context.Background()
@@ -120,17 +129,7 @@ func TestFeedMetricsProcessorService_ResetPagination(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockFeedRepo := mocks.NewMockFeedRepository(ctrl)
-			mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
-			mockFetcher := mocks.NewMockArticleFetcherService(ctrl)
-			logger := slog.Default()
-
-			serviceInstance := service.NewFeedMetricsProcessorService(
-				mockFeedRepo,
-				mockArticleRepo,
-				mockFetcher,
-				logger,
-			)
+			serviceInstance, _, _, _, _ := createTestService(ctrl)
 
 			// Execute test
 			err := serviceInstance.ResetPagination()
@@ -149,7 +148,7 @@ func TestFeedMetricsProcessorService_ResetPagination(t *testing.T) {
 func TestFeedMetricsProcessorService_ProcessFeeds_NoExternalCalls(t *testing.T) {
 	// Test case that focuses on business logic without external HTTP calls
 	tests := map[string]struct {
-		setupMocks    func(*mocks.MockFeedRepository, *mocks.MockArticleRepository, *mocks.MockArticleFetcherService)
+		setupMocks    func(*mocks.MockFeedRepository, *mocks.MockArticleRepository)
 		batchSize     int
 		expectedError string
 		description   string
@@ -157,7 +156,7 @@ func TestFeedMetricsProcessorService_ProcessFeeds_NoExternalCalls(t *testing.T) 
 		"success_case_no_feeds": {
 			description: "Should handle empty feed list gracefully",
 			batchSize:   10,
-			setupMocks: func(mockFeedRepo *mocks.MockFeedRepository, mockArticleRepo *mocks.MockArticleRepository, mockFetcher *mocks.MockArticleFetcherService) {
+			setupMocks: func(mockFeedRepo *mocks.MockFeedRepository, mockArticleRepo *mocks.MockArticleRepository) {
 				cursor := &repository.Cursor{}
 
 				// Mock empty feed list
@@ -171,7 +170,7 @@ func TestFeedMetricsProcessorService_ProcessFeeds_NoExternalCalls(t *testing.T) 
 		"error_case_get_feeds_failure": {
 			description: "Should fail when repository cannot get feeds",
 			batchSize:   10,
-			setupMocks: func(mockFeedRepo *mocks.MockFeedRepository, mockArticleRepo *mocks.MockArticleRepository, mockFetcher *mocks.MockArticleFetcherService) {
+			setupMocks: func(mockFeedRepo *mocks.MockFeedRepository, mockArticleRepo *mocks.MockArticleRepository) {
 				cursor := &repository.Cursor{}
 
 				mockFeedRepo.EXPECT().
@@ -184,7 +183,7 @@ func TestFeedMetricsProcessorService_ProcessFeeds_NoExternalCalls(t *testing.T) 
 		"success_case_articles_already_exist": {
 			description: "Should handle case where articles already exist",
 			batchSize:   5,
-			setupMocks: func(mockFeedRepo *mocks.MockFeedRepository, mockArticleRepo *mocks.MockArticleRepository, mockFetcher *mocks.MockArticleFetcherService) {
+			setupMocks: func(mockFeedRepo *mocks.MockFeedRepository, mockArticleRepo *mocks.MockArticleRepository) {
 				cursor := &repository.Cursor{}
 				testURL, _ := url.Parse("http://example.com/feed.rss")
 				feedURLs := []*url.URL{testURL}
@@ -205,7 +204,7 @@ func TestFeedMetricsProcessorService_ProcessFeeds_NoExternalCalls(t *testing.T) 
 		"error_case_check_exists_failure": {
 			description: "Should fail when article existence check fails",
 			batchSize:   5,
-			setupMocks: func(mockFeedRepo *mocks.MockFeedRepository, mockArticleRepo *mocks.MockArticleRepository, mockFetcher *mocks.MockArticleFetcherService) {
+			setupMocks: func(mockFeedRepo *mocks.MockFeedRepository, mockArticleRepo *mocks.MockArticleRepository) {
 				cursor := &repository.Cursor{}
 				testURL, _ := url.Parse("http://example.com/feed.rss")
 				feedURLs := []*url.URL{testURL}
@@ -231,21 +230,10 @@ func TestFeedMetricsProcessorService_ProcessFeeds_NoExternalCalls(t *testing.T) 
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockFeedRepo := mocks.NewMockFeedRepository(ctrl)
-			mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
-			mockFetcher := mocks.NewMockArticleFetcherService(ctrl)
-			logger := slog.Default()
+			serviceInstance, mockFeedRepo, mockArticleRepo, _, _ := createTestService(ctrl)
 
 			// Setup test expectations
-			tc.setupMocks(mockFeedRepo, mockArticleRepo, mockFetcher)
-
-			// Create service
-			serviceInstance := service.NewFeedMetricsProcessorService(
-				mockFeedRepo,
-				mockArticleRepo,
-				mockFetcher,
-				logger,
-			)
+			tc.setupMocks(mockFeedRepo, mockArticleRepo)
 
 			// Execute test
 			ctx := context.Background()
@@ -268,17 +256,7 @@ func TestFeedMetricsProcessorService_Interface_Compliance(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockFeedRepo := mocks.NewMockFeedRepository(ctrl)
-	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
-	mockFetcher := mocks.NewMockArticleFetcherService(ctrl)
-	logger := slog.Default()
-
-	serviceInstance := service.NewFeedMetricsProcessorService(
-		mockFeedRepo,
-		mockArticleRepo,
-		mockFetcher,
-		logger,
-	)
+	serviceInstance, _, _, _, _ := createTestService(ctrl)
 
 	// Verify interface compliance
 	var _ = serviceInstance
@@ -289,17 +267,7 @@ func TestFeedMetricsProcessorService_Constructor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockFeedRepo := mocks.NewMockFeedRepository(ctrl)
-	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
-	mockFetcher := mocks.NewMockArticleFetcherService(ctrl)
-	logger := slog.Default()
-
-	serviceInstance := service.NewFeedMetricsProcessorService(
-		mockFeedRepo,
-		mockArticleRepo,
-		mockFetcher,
-		logger,
-	)
+	serviceInstance, _, _, _, _ := createTestService(ctrl)
 
 	// Verify service is properly constructed
 	assert.NotNil(t, serviceInstance)
@@ -320,10 +288,7 @@ func TestFeedMetricsProcessorService_ProcessFeeds_Wrapper(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockFeedRepo := mocks.NewMockFeedRepository(ctrl)
-	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
-	mockFetcher := mocks.NewMockArticleFetcherService(ctrl)
-	logger := slog.Default()
+	serviceInstance, mockFeedRepo, _, _, _ := createTestService(ctrl)
 
 	// Setup expectation for empty feed list (safe test case)
 	cursor := &repository.Cursor{}
@@ -331,13 +296,6 @@ func TestFeedMetricsProcessorService_ProcessFeeds_Wrapper(t *testing.T) {
 		GetUnprocessedFeeds(gomock.Any(), cursor, 10).
 		Return([]*url.URL{}, nil, nil).
 		Times(1)
-
-	serviceInstance := service.NewFeedMetricsProcessorService(
-		mockFeedRepo,
-		mockArticleRepo,
-		mockFetcher,
-		logger,
-	)
 
 	// Execute test
 	ctx := context.Background()
@@ -357,10 +315,7 @@ func TestFeedMetricsProcessorService_EdgeCases(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mockFeedRepo := mocks.NewMockFeedRepository(ctrl)
-		mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
-		mockFetcher := mocks.NewMockArticleFetcherService(ctrl)
-		logger := slog.Default()
+		serviceInstance, mockFeedRepo, _, _, _ := createTestService(ctrl)
 
 		// Setup expectation for large batch
 		cursor := &repository.Cursor{}
@@ -368,13 +323,6 @@ func TestFeedMetricsProcessorService_EdgeCases(t *testing.T) {
 			GetUnprocessedFeeds(gomock.Any(), cursor, 1000).
 			Return([]*url.URL{}, nil, nil).
 			Times(1)
-
-		serviceInstance := service.NewFeedMetricsProcessorService(
-			mockFeedRepo,
-			mockArticleRepo,
-			mockFetcher,
-			logger,
-		)
 
 		result, err := serviceInstance.ProcessFeedsWithRetry(context.Background(), 1000)
 		require.NoError(t, err)
@@ -385,10 +333,7 @@ func TestFeedMetricsProcessorService_EdgeCases(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mockFeedRepo := mocks.NewMockFeedRepository(ctrl)
-		mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
-		mockFetcher := mocks.NewMockArticleFetcherService(ctrl)
-		logger := slog.Default()
+		serviceInstance, mockFeedRepo, _, _, _ := createTestService(ctrl)
 
 		// Setup expectation for zero batch
 		cursor := &repository.Cursor{}
@@ -396,13 +341,6 @@ func TestFeedMetricsProcessorService_EdgeCases(t *testing.T) {
 			GetUnprocessedFeeds(gomock.Any(), cursor, 0).
 			Return([]*url.URL{}, nil, nil).
 			Times(1)
-
-		serviceInstance := service.NewFeedMetricsProcessorService(
-			mockFeedRepo,
-			mockArticleRepo,
-			mockFetcher,
-			logger,
-		)
 
 		result, err := serviceInstance.ProcessFeedsWithRetry(context.Background(), 0)
 		require.NoError(t, err)
@@ -415,17 +353,7 @@ func TestFeedMetricsProcessorService_ProcessFailedItems_SafeScenario(t *testing.
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockFeedRepo := mocks.NewMockFeedRepository(ctrl)
-	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
-	mockFetcher := mocks.NewMockArticleFetcherService(ctrl)
-	logger := slog.Default()
-
-	serviceInstance := service.NewFeedMetricsProcessorService(
-		mockFeedRepo,
-		mockArticleRepo,
-		mockFetcher,
-		logger,
-	)
+	serviceInstance, _, _, _, _ := createTestService(ctrl)
 
 	// Execute test - with empty DLQ this should complete safely
 	ctx := context.Background()

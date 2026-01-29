@@ -2,16 +2,24 @@ package driver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
 
 	logger "pre-processor/utils/logger"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// GetFeedID retrieves the feed ID for a given feed URL.
+// Returns ("", nil) if the feed is not found (expected case for some subscriptions).
+// Returns ("", error) only for actual database errors.
 func GetFeedID(ctx context.Context, db *pgxpool.Pool, feedURL string) (string, error) {
+	if db == nil {
+		return "", fmt.Errorf("database connection is nil")
+	}
 
 	query := `
 		SELECT id FROM feeds WHERE link = $1
@@ -21,6 +29,12 @@ func GetFeedID(ctx context.Context, db *pgxpool.Pool, feedURL string) (string, e
 
 	err := db.QueryRow(ctx, query, feedURL).Scan(&id)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Feed not found - return empty string without error
+			// Let the caller decide how to handle this
+			return "", nil
+		}
+		// Actual database error
 		logger.Logger.ErrorContext(ctx, "Failed to get feed ID", "error", err)
 		return "", err
 	}

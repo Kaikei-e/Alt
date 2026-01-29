@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"pre-processor/config"
 	"pre-processor/domain"
@@ -75,15 +76,20 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 	}
 
 	// Check content length after extraction
+	// Use rune count (character count) instead of byte count for validation
+	// This ensures consistency with Python's len() which counts characters, not bytes
+	// Japanese: 1 char = 3 bytes in UTF-8, so byte count would be misleading
 	const minContentLength = 100
 	// 100KB = ~25K tokens (Japanese) = fits within 32K context with margin
 	// RTX 4060 (8GB VRAM) can process this stably without timeouts
 	const maxContentLength = 100_000
-	if extractedLength < minContentLength {
+	extractedRuneCount := utf8.RuneCountInString(extractedContent)
+	if extractedRuneCount < minContentLength {
 		logger.Info("Skipping summarization: content too short after extraction",
 			"article_id", article.ID,
 			"original_length", originalLength,
-			"extracted_length", extractedLength,
+			"extracted_length_bytes", extractedLength,
+			"extracted_length_chars", extractedRuneCount,
 			"min_required", minContentLength)
 		return nil, ErrContentTooShort
 	}
@@ -91,7 +97,8 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 		logger.Info("Skipping summarization: content too long after extraction",
 			"article_id", article.ID,
 			"original_length", originalLength,
-			"extracted_length", extractedLength,
+			"extracted_length_bytes", extractedLength,
+			"extracted_length_chars", extractedRuneCount,
 			"max_allowed", maxContentLength)
 		return nil, ErrContentTooLong
 	}
@@ -226,15 +233,20 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *models.Artic
 			"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
 	}
 
+	// Use rune count (character count) instead of byte count for validation
+	// This ensures consistency with Python's len() which counts characters, not bytes
+	// Japanese: 1 char = 3 bytes in UTF-8, so byte count would be misleading
 	const minContentLength = 100
 	// 100KB = ~25K tokens (Japanese) = fits within 32K context with margin
 	// RTX 4060 (8GB VRAM) can process this stably without timeouts
 	const maxContentLength = 100_000
-	if extractedLength < minContentLength {
+	extractedRuneCount := utf8.RuneCountInString(extractedContent)
+	if extractedRuneCount < minContentLength {
 		logger.Info("Skipping summarization: content too short after extraction",
 			"article_id", article.ID,
 			"original_length", originalLength,
-			"extracted_length", extractedLength,
+			"extracted_length_bytes", extractedLength,
+			"extracted_length_chars", extractedRuneCount,
 			"min_required", minContentLength)
 		return nil, ErrContentTooShort
 	}
@@ -242,7 +254,8 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *models.Artic
 		logger.Info("Skipping summarization: content too long after extraction",
 			"article_id", article.ID,
 			"original_length", originalLength,
-			"extracted_length", extractedLength,
+			"extracted_length_bytes", extractedLength,
+			"extracted_length_chars", extractedRuneCount,
 			"max_allowed", maxContentLength)
 		return nil, ErrContentTooLong
 	}

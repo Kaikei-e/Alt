@@ -42,6 +42,10 @@ func (r *articleRepository) Create(ctx context.Context, article *models.Article)
 		r.logger.ErrorContext(ctx, "failed to get feed ID", "error", err, "url", article.URL)
 		return fmt.Errorf("failed to get feed ID: %w", err)
 	}
+	if feedID == "" {
+		r.logger.WarnContext(ctx, "feed not found for article", "url", article.URL)
+		return fmt.Errorf("feed not found for URL: %s", article.URL)
+	}
 
 	article.FeedID = feedID
 
@@ -217,8 +221,15 @@ func (r *articleRepository) UpsertArticles(ctx context.Context, articles []*mode
 
 		feedID, err := driver.GetFeedID(ctx, r.db, article.FeedURL)
 		if err != nil {
-			r.logger.WarnContext(ctx, "failed to resolve FeedID, skipping article",
+			// Actual database error
+			r.logger.ErrorContext(ctx, "database error resolving FeedID, skipping article",
 				"feedURL", article.FeedURL, "articleURL", article.URL, "error", err)
+			continue
+		}
+		if feedID == "" {
+			// Feed not found - expected for some Inoreader subscriptions
+			r.logger.WarnContext(ctx, "feed not found, skipping article",
+				"feedURL", article.FeedURL, "articleURL", article.URL)
 			continue
 		}
 		article.FeedID = feedID
