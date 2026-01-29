@@ -21,11 +21,13 @@ pub enum SerializationError {
     EmptyBatch,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SerializationFormat {
     NDJSON,
     JsonArray,
     BatchWithMetadata,
+    #[cfg(feature = "otlp")]
+    OTLP,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -123,10 +125,18 @@ impl BatchSerializer {
         batch: &Batch,
         format: SerializationFormat,
     ) -> Result<Vec<u8>, SerializationError> {
+        // OTLP format is already binary (protobuf), so we handle it separately
+        #[cfg(feature = "otlp")]
+        if matches!(format, SerializationFormat::OTLP) {
+            return self.serialize_otlp_compressed(batch);
+        }
+
         let data = match format {
             SerializationFormat::NDJSON => self.serialize_ndjson(batch)?,
             SerializationFormat::JsonArray => self.serialize_json_array(batch)?,
             SerializationFormat::BatchWithMetadata => self.serialize_batch_with_metadata(batch)?,
+            #[cfg(feature = "otlp")]
+            SerializationFormat::OTLP => unreachable!(), // Handled above
         };
 
         // Compress using gzip
@@ -137,6 +147,32 @@ impl BatchSerializer {
         let compressed = encoder.finish()?;
 
         Ok(compressed)
+    }
+
+    /// Serialize batch to OTLP protobuf format (optionally compressed).
+    #[cfg(feature = "otlp")]
+    fn serialize_otlp_compressed(&self, batch: &Batch) -> Result<Vec<u8>, SerializationError> {
+        use crate::sender::otlp::OtlpSerializer;
+        use flate2::{Compression, write::GzEncoder};
+
+        let otlp_serializer = OtlpSerializer::new();
+        let protobuf_bytes = otlp_serializer.serialize_batch(batch)?;
+
+        // Compress using gzip
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(&protobuf_bytes)?;
+        let compressed = encoder.finish()?;
+
+        Ok(compressed)
+    }
+
+    /// Serialize batch to OTLP protobuf format (uncompressed).
+    #[cfg(feature = "otlp")]
+    pub fn serialize_otlp(&self, batch: &Batch) -> Result<Vec<u8>, SerializationError> {
+        use crate::sender::otlp::OtlpSerializer;
+
+        let otlp_serializer = OtlpSerializer::new();
+        otlp_serializer.serialize_batch(batch)
     }
 
     pub fn estimate_serialized_size(&self, batch: &Batch) -> usize {

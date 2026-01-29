@@ -5,3 +5,6 @@ mod test_new_http_client;
 mod test_performance;
 mod test_serialization;
 mod test_transmission;
+
+#[cfg(feature = "otlp")]
+mod test_otlp_serialization;

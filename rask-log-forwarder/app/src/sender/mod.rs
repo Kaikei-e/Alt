@@ -1,6 +1,8 @@
 pub mod client;
 pub mod http;
 pub mod metrics;
+#[cfg(feature = "otlp")]
+pub mod otlp;
 pub mod serialization;
 pub mod stats;
 pub mod transmission;
@@ -12,8 +14,12 @@ pub use stats::{AtomicConnectionStats, ConnectionStatsSnapshot};
 // Export new TASK4 interface
 pub use client::{ClientConfig, ClientError, ConnectionStats as NewConnectionStats, HttpClient};
 pub use metrics::{MetricsCollector, PerformanceMetrics};
+#[cfg(feature = "otlp")]
+pub use otlp::OtlpSerializer;
 pub use serialization::{BatchSerializer, SerializationError, SerializationFormat};
 pub use transmission::{BatchTransmitter, TransmissionError, TransmissionResult};
+#[cfg(feature = "otlp")]
+pub use transmission::OtlpBatchTransmitter;
 
 // High-level sender that combines all components
 #[derive(Clone)]

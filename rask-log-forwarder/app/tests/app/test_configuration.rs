@@ -145,6 +145,8 @@ max_disk_usage_mb = 500
 connection_timeout_secs = 20
 max_connections = 5
 enable_compression = true
+protocol = "ndjson"
+otlp_endpoint = "http://rask-log-aggregator:4318/v1/logs"
 "#;
 
     std::fs::write(&config_file, config_content).unwrap();
@@ -367,6 +369,8 @@ fn test_config_serialization() {
         max_connections: 10,
         config_file: None,
         enable_compression: false,
+        protocol: rask_log_forwarder::app::config::Protocol::Ndjson,
+        otlp_endpoint: "http://rask-log-aggregator:4318/v1/logs".to_string(),
         flush_interval: Duration::from_millis(1000),
         connection_timeout: Duration::from_secs(30),
         retry_config: Default::default(),

@@ -22,6 +22,8 @@ fn create_test_config() -> Config {
         max_connections: 10,
         config_file: None,
         enable_compression: false,
+        protocol: rask_log_forwarder::app::config::Protocol::Ndjson,
+        otlp_endpoint: "http://rask-log-aggregator:4318/v1/logs".to_string(),
         // Derived fields
         flush_interval: Duration::from_millis(500),
         connection_timeout: Duration::from_secs(30),

@@ -29,6 +29,17 @@ pub enum LogLevel {
     Trace,
 }
 
+/// Protocol for sending log data to the aggregator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Protocol {
+    /// NDJSON format (default, legacy)
+    #[default]
+    Ndjson,
+    /// OpenTelemetry Protocol (OTLP) over HTTP with protobuf encoding
+    Otlp,
+}
+
 impl From<LogLevel> for tracing::Level {
     fn from(level: LogLevel) -> Self {
         match level {
@@ -171,6 +182,18 @@ pub struct Config {
     #[arg(long, env = "ENABLE_COMPRESSION")]
     pub enable_compression: bool,
 
+    /// Protocol for sending logs (ndjson or otlp)
+    #[arg(long, env = "PROTOCOL", default_value = "ndjson")]
+    pub protocol: Protocol,
+
+    /// OTLP endpoint URL (used when protocol=otlp)
+    #[arg(
+        long,
+        env = "OTLP_ENDPOINT",
+        default_value = "http://rask-log-aggregator:4318/v1/logs"
+    )]
+    pub otlp_endpoint: String,
+
     /// Derived fields (not CLI arguments)
     #[serde(skip)]
     #[arg(skip)]
@@ -214,6 +237,8 @@ impl Default for Config {
             max_connections: 10,
             config_file: None,
             enable_compression: false,
+            protocol: Protocol::Ndjson,
+            otlp_endpoint: "http://rask-log-aggregator:4318/v1/logs".to_string(),
             flush_interval: Duration::from_millis(500),
             connection_timeout: Duration::from_secs(30),
             retry_config: RetryConfig::default(),
@@ -275,6 +300,20 @@ impl Config {
         load_env_var("MAX_CONNECTIONS", &mut config.max_connections)?;
         load_env_path_opt("CONFIG_FILE", &mut config.config_file);
         load_env_var("ENABLE_COMPRESSION", &mut config.enable_compression)?;
+
+        // Protocol requires special handling
+        if let Ok(protocol) = std::env::var("PROTOCOL") {
+            config.protocol = match protocol.to_lowercase().as_str() {
+                "ndjson" => Protocol::Ndjson,
+                "otlp" => Protocol::Otlp,
+                _ => {
+                    return Err(ConfigError::EnvError(format!(
+                        "Invalid PROTOCOL: {protocol}. Valid values: ndjson, otlp"
+                    )));
+                }
+            };
+        }
+        load_env_string("OTLP_ENDPOINT", &mut config.otlp_endpoint);
 
         config.post_process()?;
         config.validate()?;
@@ -399,6 +438,16 @@ impl Config {
         Url::parse(&self.endpoint).map_err(|e| {
             ConfigError::InvalidUrl(format!("Invalid endpoint URL '{}': {}", self.endpoint, e))
         })?;
+
+        // Validate OTLP endpoint URL if protocol is OTLP
+        if self.protocol == Protocol::Otlp {
+            Url::parse(&self.otlp_endpoint).map_err(|e| {
+                ConfigError::InvalidUrl(format!(
+                    "Invalid OTLP endpoint URL '{}': {}",
+                    self.otlp_endpoint, e
+                ))
+            })?;
+        }
 
         // Validate batch size
         if self.batch_size == 0 {

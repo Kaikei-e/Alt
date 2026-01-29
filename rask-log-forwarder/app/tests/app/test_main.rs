@@ -50,6 +50,8 @@ max_disk_usage_mb = 1000
 connection_timeout_secs = 30
 max_connections = 10
 enable_compression = false
+protocol = "ndjson"
+otlp_endpoint = "http://rask-log-aggregator:4318/v1/logs"
 "#;
 
     std::fs::write(&config_file, config_content).unwrap();
@@ -200,6 +202,8 @@ async fn test_config_validation() {
         max_connections: 10,
         config_file: None,
         enable_compression: false,
+        protocol: rask_log_forwarder::app::config::Protocol::Ndjson,
+        otlp_endpoint: "http://rask-log-aggregator:4318/v1/logs".to_string(),
         // Derived fields
         flush_interval: Duration::from_millis(500),
         connection_timeout: Duration::from_secs(30),
@@ -236,6 +240,8 @@ async fn test_service_specific_config() {
             max_connections: 10,
             config_file: None,
             enable_compression: false,
+            protocol: rask_log_forwarder::app::config::Protocol::Ndjson,
+            otlp_endpoint: "http://rask-log-aggregator:4318/v1/logs".to_string(),
             // Derived fields
             flush_interval: Duration::from_millis(500),
             connection_timeout: Duration::from_secs(30),
@@ -291,6 +297,8 @@ async fn test_log_level_configuration() {
             max_connections: 10,
             config_file: None,
             enable_compression: false,
+            protocol: rask_log_forwarder::app::config::Protocol::Ndjson,
+            otlp_endpoint: "http://rask-log-aggregator:4318/v1/logs".to_string(),
             // Derived fields
             flush_interval: Duration::from_millis(500),
             connection_timeout: Duration::from_secs(30),
@@ -334,6 +342,8 @@ async fn test_batch_size_limits() {
             max_connections: 10,
             config_file: None,
             enable_compression: false,
+            protocol: rask_log_forwarder::app::config::Protocol::Ndjson,
+            otlp_endpoint: "http://rask-log-aggregator:4318/v1/logs".to_string(),
             // Derived fields
             flush_interval: Duration::from_millis(500),
             connection_timeout: Duration::from_secs(30),
@@ -372,6 +382,8 @@ async fn test_endpoint_validation() {
             max_connections: 10,
             config_file: None,
             enable_compression: false,
+            protocol: rask_log_forwarder::app::config::Protocol::Ndjson,
+            otlp_endpoint: "http://rask-log-aggregator:4318/v1/logs".to_string(),
             // Derived fields
             flush_interval: Duration::from_millis(500),
             connection_timeout: Duration::from_secs(30),
