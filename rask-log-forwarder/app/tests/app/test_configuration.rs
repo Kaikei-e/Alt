@@ -454,9 +454,11 @@ fn test_protocol_configuration() {
 fn test_otlp_endpoint_validation() {
     use rask_log_forwarder::app::config::Protocol;
 
-    let mut config = Config::default();
-    config.protocol = Protocol::Otlp;
-    config.otlp_endpoint = "http://valid-endpoint:4318/v1/logs".to_string();
+    let mut config = Config {
+        protocol: Protocol::Otlp,
+        otlp_endpoint: "http://valid-endpoint:4318/v1/logs".to_string(),
+        ..Default::default()
+    };
 
     // Valid OTLP endpoint should pass
     assert!(config.validate().is_ok(), "Valid OTLP endpoint should pass validation");

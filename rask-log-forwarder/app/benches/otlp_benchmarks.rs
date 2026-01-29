@@ -4,7 +4,8 @@
 
 #![cfg(feature = "otlp")]
 
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use std::hint::black_box;
 use rask_log_forwarder::buffer::{Batch, BatchType};
 use rask_log_forwarder::parser::{EnrichedLogEntry, LogLevel};
 use rask_log_forwarder::sender::{BatchSerializer, OtlpSerializer, SerializationFormat};

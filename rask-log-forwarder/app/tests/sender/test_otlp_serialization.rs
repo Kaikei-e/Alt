@@ -2,8 +2,6 @@
 //!
 //! These tests verify the conversion of EnrichedLogEntry batches to OTLP protobuf format.
 
-#![cfg(feature = "otlp")]
-
 use rask_log_forwarder::buffer::{Batch, BatchType};
 use rask_log_forwarder::parser::{EnrichedLogEntry, LogLevel};
 use rask_log_forwarder::sender::otlp::OtlpSerializer;
