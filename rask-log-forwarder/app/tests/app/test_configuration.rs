@@ -21,6 +21,8 @@ fn clean_all_env_vars() {
         "METRICS_PORT",
         "DISK_FALLBACK_PATH",
         "CONFIG_FILE",
+        "PROTOCOL",
+        "OTLP_ENDPOINT",
     ];
 
     unsafe {
