@@ -5,7 +5,18 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "links": [],
+  "links": [
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": ["observability"],
+      "targetBlank": false,
+      "title": "Related Dashboards",
+      "type": "dashboards"
+    }
+  ],
   "panels": [
     {
       "datasource": {
@@ -78,20 +89,31 @@
             "lineWidth": 2,
             "pointSize": 5,
             "showPoints": "never",
-            "stacking": { "group": "A", "mode": "none" }
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
           },
           "thresholds": {
             "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 200 },
+              { "color": "red", "value": 500 }
+            ]
           },
           "unit": "ms"
         },
-        "overrides": []
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "p50" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "p95" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "p99" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "id": 2,
       "options": {
-        "legend": { "calcs": ["mean", "max", "p95"], "displayMode": "table", "placement": "bottom" },
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
@@ -100,11 +122,11 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "timeseries",
-          "rawSql": "SELECT toStartOfMinute(Timestamp) as time, ServiceName, avg(Duration / 1000000) as latency_ms FROM otel_traces WHERE $__timeFilter(Timestamp) GROUP BY time, ServiceName ORDER BY time",
+          "rawSql": "SELECT toStartOfMinute(Timestamp) as time, quantile(0.50)(Duration / 1000000) as p50, quantile(0.95)(Duration / 1000000) as p95, quantile(0.99)(Duration / 1000000) as p99 FROM otel_traces WHERE $__timeFilter(Timestamp) GROUP BY time ORDER BY time",
           "refId": "A"
         }
       ],
-      "title": "Average Latency by Service",
+      "title": "Latency Percentiles (p50/p95/p99)",
       "type": "timeseries"
     },
     {
@@ -200,8 +222,160 @@
       "type": "heatmap"
     },
     {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "DS_CLICKHOUSE"
+      },
+      "description": "Apdex (Application Performance Index) measures user satisfaction.\nSatisfied: <100ms, Tolerating: 100-500ms, Frustrated: >500ms\nScore: (Satisfied + Tolerating/2) / Total",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.7 },
+              { "color": "green", "value": 0.85 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 16 },
+      "id": 20,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "DS_CLICKHOUSE" },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT (countIf(Duration / 1000000 < 100) + countIf(Duration / 1000000 >= 100 AND Duration / 1000000 < 500) * 0.5) / count() as apdex FROM otel_traces WHERE $__timeFilter(Timestamp)",
+          "refId": "A"
+        }
+      ],
+      "title": "Apdex Score",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "DS_CLICKHOUSE"
+      },
+      "description": "Traces exceeding p95 threshold (>500ms)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "TraceId" }, "properties": [{ "id": "custom.width", "value": 280 }, { "id": "links", "value": [{ "title": "View Trace", "url": "/d/trace-explorer?var-traceId=${__value.text}&from=${__from}&to=${__to}" }] }] },
+          { "matcher": { "id": "byName", "options": "latency_ms" }, "properties": [{ "id": "unit", "value": "ms" }, { "id": "custom.width", "value": 100 }, { "id": "custom.cellOptions", "value": { "mode": "basic", "type": "color-background" } }] },
+          { "matcher": { "id": "byName", "options": "ServiceName" }, "properties": [{ "id": "custom.width", "value": 150 }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 18, "x": 6, "y": 16 },
+      "id": 21,
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "latency_ms" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "DS_CLICKHOUSE" },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT Timestamp, TraceId, ServiceName, SpanName, Duration / 1000000 as latency_ms, StatusCode FROM otel_traces WHERE $__timeFilter(Timestamp) AND Duration / 1000000 > 500 AND ParentSpanId = '0000000000000000' ORDER BY Duration DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "Slow Traces (>500ms)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "DS_CLICKHOUSE"
+      },
+      "description": "Apdex trend over time",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Apdex",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "fillOpacity": 30,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "never",
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": {
+              "mode": "area"
+            }
+          },
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.7 },
+              { "color": "green", "value": 0.85 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 20 },
+      "id": 22,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "DS_CLICKHOUSE" },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "timeseries",
+          "rawSql": "SELECT toStartOfMinute(Timestamp) as time, (countIf(Duration / 1000000 < 100) + countIf(Duration / 1000000 >= 100 AND Duration / 1000000 < 500) * 0.5) / count() as apdex FROM otel_traces WHERE $__timeFilter(Timestamp) GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Apdex Trend",
+      "type": "timeseries"
+    },
+    {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
       "id": 10,
       "panels": [],
       "title": "Trace Search",
@@ -232,7 +406,7 @@
           { "matcher": { "id": "byName", "options": "StatusCode" }, "properties": [{ "id": "custom.width", "value": 100 }] }
         ]
       },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 17 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 25 },
       "id": 5,
       "options": {
         "showHeader": true,
@@ -253,7 +427,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
       "id": 11,
       "panels": [],
       "title": "Trace Detail (by Trace ID)",
@@ -282,7 +456,7 @@
           { "matcher": { "id": "byName", "options": "Duration" }, "properties": [{ "id": "unit", "value": "ns" }, { "id": "custom.width", "value": 120 }] }
         ]
       },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 28 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 36 },
       "id": 6,
       "options": {
         "showHeader": true,
@@ -322,7 +496,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 38 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 46 },
       "id": 7,
       "options": {
         "showHeader": true,
@@ -357,7 +531,10 @@
         "multi": false,
         "name": "service",
         "options": [],
-        "query": "SELECT DISTINCT ServiceName FROM otel_traces WHERE Timestamp > now() - INTERVAL 1 DAY ORDER BY ServiceName",
+        "query": {
+          "editorType": "sql",
+          "rawSql": "SELECT DISTINCT ServiceName FROM otel_traces WHERE Timestamp > now() - INTERVAL 1 DAY ORDER BY ServiceName"
+        },
         "refresh": 2,
         "regex": "",
         "skipUrlSync": false,

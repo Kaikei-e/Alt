@@ -24,3 +24,21 @@ scrape_configs:
           service: 'nginx'
     scrape_interval: 10s
     metrics_path: /metrics
+
+  # cAdvisor for container resource metrics (CPU, memory, disk, network)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'cadvisor'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # alt-backend application metrics
+  - job_name: 'alt-backend'
+    static_configs:
+      - targets: ['alt-backend:9000']
+        labels:
+          service: 'alt-backend'
+    scrape_interval: 15s
+    metrics_path: /metrics
