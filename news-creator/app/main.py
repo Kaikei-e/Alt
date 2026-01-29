@@ -19,7 +19,7 @@ from fastapi import FastAPI
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.gateway.ollama_gateway import OllamaGateway
-from news_creator.otel import init_otel_provider, instrument_fastapi
+from news_creator.otel import init_otel_provider, instrument_fastapi, get_otel_logging_handler
 from news_creator.services.model_warmup import ModelWarmupService
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
@@ -59,6 +59,11 @@ handler.setLevel(log_level)
 handler.setFormatter(BusinessContextJSONFormatter(datefmt="%Y-%m-%dT%H:%M:%S%z"))
 handler.addFilter(BusinessContextFilter())
 root_logger.addHandler(handler)
+
+# Re-add OTel logging handler (it was removed when clearing handlers above)
+otel_handler = get_otel_logging_handler()
+if otel_handler is not None:
+    root_logger.addHandler(otel_handler)
 
 logger = logging.getLogger(__name__)
 
