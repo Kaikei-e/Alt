@@ -55,7 +55,7 @@ impl OtlpSerializer {
         let mut buf = Vec::with_capacity(request.encoded_len());
         request
             .encode(&mut buf)
-            .map_err(|e| SerializationError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| SerializationError::IoError(std::io::Error::other(e)))?;
 
         Ok(buf)
     }
