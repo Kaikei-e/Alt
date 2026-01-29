@@ -1,6 +1,6 @@
 # Knowledge Augur
 
-_Last reviewed: December 30, 2025_
+_Last reviewed: January 28, 2026_
 
 **Location:** `knowledge-augur/`
 **Port:** 11435 (external) → 11434 (internal Ollama)
@@ -21,7 +21,7 @@ flowchart LR
 
     subgraph knowledge-augur
         Ollama[Ollama Server<br/>Port 11434]
-        Model[gpt-oss20b-cpu<br/>Custom Model]
+        Model[qwen3-14b-rag<br/>Custom Model]
     end
 
     subgraph Hardware
@@ -35,20 +35,26 @@ flowchart LR
 
 ## Model Configuration
 
-### Base Model
+### Default Model
 
-- **Model**: `gpt-oss:20b` (pulled from Ollama registry)
-- **Custom Variant**: `gpt-oss20b-cpu` (created via Modelfile)
+- **Model**: `qwen3:14b` (pulled from Ollama registry)
+- **Custom Variant**: `qwen3-14b-rag` (RAG-optimized, created via Modelfile)
 
-### Modelfile Parameters (`Modelfile.gpt-oss20b-cpu`)
+### Modelfile Parameters (`Modelfile.qwen3-14b-rag`)
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
 | `num_ctx` | 8192 | Context window size (tokens) |
-| `num_predict` | 1296 | Maximum tokens to generate |
+| `num_predict` | 512 | Maximum tokens to generate |
 | `temperature` | 0.2 | Low temperature for deterministic outputs |
-| `num_thread` | 12 | CPU threads for computation |
+| `top_p` | 0.9 | Nucleus sampling parameter |
 | `num_batch` | 512 | Batch size for prompt evaluation |
+| `stop` | `<\|im_end\|>`, `<\|endoftext\|>` | qwen3-specific stop tokens |
+
+### Legacy Models (Available for Rollback)
+
+- `gpt-oss20b-igpu`: Previous default, iGPU-optimized
+- `gpt-oss20b-cpu`: CPU-only variant
 
 ### Environment Variables (Dockerfile)
 
@@ -68,7 +74,9 @@ flowchart LR
 ```
 knowledge-augur/
 ├── Dockerfile                  # Multi-stage build with Ollama base
-├── Modelfile.gpt-oss20b-cpu    # Custom model configuration
+├── Modelfile.qwen3-14b-rag     # RAG-optimized qwen3 configuration (default)
+├── Modelfile.gpt-oss20b-igpu   # iGPU-optimized gpt-oss configuration (legacy)
+├── Modelfile.gpt-oss20b-cpu    # CPU model configuration (legacy)
 └── entrypoint.sh               # Startup script with GPU setup
 ```
 
@@ -126,9 +134,9 @@ knowledge-augur-volume-init:
 3. Drop privileges from root to `ollama-user` using `gosu`
 4. Start Ollama server in background
 5. Wait for server readiness (up to 60 seconds)
-6. Pull `gpt-oss:20b` base model if not present
-7. Create custom `gpt-oss20b-cpu` model from Modelfile
-8. Preload model to warm up inference
+6. Pull base models (`gpt-oss:20b`, `qwen3:14b`) if not present
+7. Create custom models from Modelfiles (`qwen3-14b-rag`, `gpt-oss20b-igpu`, `gpt-oss20b-cpu`)
+8. Preload configured model (default: `qwen3-14b-rag`, configurable via `AUGUR_KNOWLEDGE_MODEL`)
 
 ## API Integration
 
@@ -139,7 +147,7 @@ The `OllamaGenerator` in rag-orchestrator consumes knowledge-augur:
 ```go
 // Configuration
 KnowledgeAugurURL:   getEnv("AUGUR_EXTERNAL", "http://augur-external:11435")
-KnowledgeAugurModel: getEnv("AUGUR_KNOWLEDGE_MODEL", "gpt-oss20b-cpu")
+KnowledgeAugurModel: getEnv("AUGUR_KNOWLEDGE_MODEL", "qwen3-14b-rag")
 
 // Initialization
 generator := rag_augur.NewOllamaGenerator(
@@ -177,7 +185,12 @@ For Chat methods, knowledge-augur returns structured JSON:
 
 ### Think Parameter
 
-The generator dynamically sets the "think" parameter based on task complexity:
+The generator dynamically sets the "think" parameter based on model type and task complexity:
+
+**qwen3 models:**
+- **`false`** (boolean): Thinking mode disabled to avoid `<think>` blocks in output
+
+**gpt-oss models:**
 - **`low`**: Short tasks (maxTokens < 300), e.g., query expansion
 - **`medium`**: Longer tasks, e.g., knowledge synthesis and answer generation
 
@@ -189,7 +202,7 @@ Configure via `.env` or `.env.template`:
 |----------|---------|-------------|
 | `AUGUR_EXTERNAL` | `http://augur-external:11435` | URL for rag-orchestrator to reach knowledge-augur |
 | `AUGUR_EXTERNAL_HOST` | `0.0.0.0` | Host binding for extra_hosts resolution |
-| `AUGUR_KNOWLEDGE_MODEL` | `gpt-oss20b-cpu` | Model name to use for generation |
+| `AUGUR_KNOWLEDGE_MODEL` | `qwen3-14b-rag` | Model name to use for generation |
 | `OLLAMA_TIMEOUT` | `300` | Request timeout in seconds |
 
 ## Health Check
@@ -214,7 +227,7 @@ curl http://localhost:11435/api/tags | jq '.models[].name'
 
 # Test generation
 curl http://localhost:11435/api/chat \
-  -d '{"model":"gpt-oss20b-cpu","messages":[{"role":"user","content":"Hello"}]}'
+  -d '{"model":"qwen3-14b-rag","messages":[{"role":"user","content":"Hello"}],"think":false}'
 ```
 
 ## Logging
@@ -264,6 +277,18 @@ docker compose -f compose.augur.yaml up --build knowledge-augur -d
 
 To update Modelfile parameters:
 
-1. Edit `knowledge-augur/Modelfile.gpt-oss20b-cpu`
+1. Edit `knowledge-augur/Modelfile.qwen3-14b-rag`
 2. Rebuild the container: `docker compose -f compose.augur.yaml up --build knowledge-augur -d`
 3. The entrypoint will recreate the custom model on startup
+
+### Rollback to Previous Model
+
+To rollback to the previous gpt-oss model:
+
+```bash
+# Set environment variable
+export AUGUR_KNOWLEDGE_MODEL=gpt-oss20b-igpu
+
+# Restart rag-orchestrator
+docker compose -f compose/compose.yaml -p alt up -d rag-orchestrator
+```
