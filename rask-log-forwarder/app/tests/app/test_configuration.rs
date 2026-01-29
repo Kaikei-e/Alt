@@ -411,3 +411,62 @@ fn test_hostname_detection() {
     // Clean up
     clean_all_env_vars();
 }
+
+#[test]
+#[serial]
+fn test_protocol_configuration() {
+    // Create temp directory for disk fallback
+    let _temp_dir = TempDir::new().unwrap();
+    std::fs::create_dir_all("/tmp/rask-log-forwarder").ok();
+
+    // Clean environment first
+    clean_all_env_vars();
+
+    // Test default protocol (NDJSON)
+    let config = Config::from_env().unwrap();
+    assert!(
+        matches!(config.protocol, rask_log_forwarder::app::config::Protocol::Ndjson),
+        "Default protocol should be NDJSON"
+    );
+
+    // Test OTLP protocol via environment
+    unsafe {
+        env::set_var("PROTOCOL", "otlp");
+    }
+    let config = Config::from_env().unwrap();
+    assert!(
+        matches!(config.protocol, rask_log_forwarder::app::config::Protocol::Otlp),
+        "Protocol should be OTLP"
+    );
+
+    // Test invalid protocol
+    unsafe {
+        env::set_var("PROTOCOL", "invalid_protocol");
+    }
+    let result = Config::from_env();
+    assert!(result.is_err(), "Invalid protocol should cause error");
+
+    // Clean up
+    clean_all_env_vars();
+}
+
+#[test]
+fn test_otlp_endpoint_validation() {
+    use rask_log_forwarder::app::config::Protocol;
+
+    let mut config = Config::default();
+    config.protocol = Protocol::Otlp;
+    config.otlp_endpoint = "http://valid-endpoint:4318/v1/logs".to_string();
+
+    // Valid OTLP endpoint should pass
+    assert!(config.validate().is_ok(), "Valid OTLP endpoint should pass validation");
+
+    // Invalid OTLP endpoint should fail when protocol is OTLP
+    config.otlp_endpoint = "not-a-valid-url".to_string();
+    assert!(config.validate().is_err(), "Invalid OTLP endpoint should fail validation");
+
+    // Invalid OTLP endpoint should NOT fail when protocol is NDJSON
+    config.protocol = Protocol::Ndjson;
+    config.otlp_endpoint = "not-a-valid-url".to_string();
+    assert!(config.validate().is_ok(), "OTLP endpoint validation should be skipped for NDJSON protocol");
+}
