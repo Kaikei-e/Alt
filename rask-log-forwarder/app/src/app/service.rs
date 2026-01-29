@@ -1,4 +1,8 @@
 use super::Config;
+#[cfg(feature = "otlp")]
+use super::config::Protocol;
+#[cfg(feature = "otlp")]
+use crate::buffer::{Batch, BatchType};
 use crate::{
     buffer::{BatchConfig, BufferConfig, BufferManager, MemoryConfig},
     collector::{CollectorConfig, LogCollector},
@@ -38,6 +42,18 @@ pub enum ServiceError {
     ComponentNotInitialized { component: String },
 }
 
+/// Sender configuration for protocol-aware log transmission.
+#[derive(Clone)]
+struct SenderConfig {
+    #[cfg(feature = "otlp")]
+    protocol: Protocol,
+    endpoint: String,
+    #[cfg(feature = "otlp")]
+    otlp_endpoint: String,
+    #[cfg(feature = "otlp")]
+    enable_compression: bool,
+}
+
 pub struct ServiceManager {
     config: Config,
     target_service: String,
@@ -49,6 +65,9 @@ pub struct ServiceManager {
     buffer_manager: Option<BufferManager>,
     sender: Option<LogSender>,
     reliability_manager: Option<ReliabilityManager>,
+
+    // Sender configuration (for protocol-aware sending)
+    sender_config: SenderConfig,
 
     // Runtime state
     running: Arc<RwLock<bool>>,
@@ -69,6 +88,23 @@ impl ServiceManager {
         // Initialize parser (stateless, can be shared)
         let parser = Arc::new(UniversalParser::new());
 
+        // Create sender configuration for protocol-aware sending
+        let sender_config = SenderConfig {
+            #[cfg(feature = "otlp")]
+            protocol: config.protocol,
+            endpoint: config.endpoint.clone(),
+            #[cfg(feature = "otlp")]
+            otlp_endpoint: config.otlp_endpoint.clone(),
+            #[cfg(feature = "otlp")]
+            enable_compression: config.enable_compression,
+        };
+
+        #[cfg(feature = "otlp")]
+        info!(
+            "Protocol: {:?}, Endpoint: {}, OTLP Endpoint: {}",
+            sender_config.protocol, sender_config.endpoint, sender_config.otlp_endpoint
+        );
+
         Ok(Self {
             config,
             target_service,
@@ -78,6 +114,7 @@ impl ServiceManager {
             buffer_manager: None,
             sender: None,
             reliability_manager: None,
+            sender_config,
             running: Arc::new(RwLock::new(false)),
             shutdown_tx: None,
         })
@@ -117,6 +154,7 @@ impl ServiceManager {
             }
         })?);
         let target_service = self.target_service.clone();
+        let sender_config = self.sender_config.clone();
 
         tokio::spawn(async move {
             Self::main_processing_loop(
@@ -126,6 +164,7 @@ impl ServiceManager {
                 running,
                 shutdown_rx,
                 target_service,
+                sender_config,
             )
             .await;
         });
@@ -255,6 +294,7 @@ impl ServiceManager {
         running: Arc<RwLock<bool>>,
         mut shutdown_rx: mpsc::UnboundedReceiver<()>,
         target_service: String,
+        sender_config: SenderConfig,
     ) {
         info!("Starting main processing loop");
 
@@ -350,7 +390,7 @@ impl ServiceManager {
 
                     // Send batch if it reaches the target size or flush interval has passed
                     if log_batch.len() >= batch_size || last_flush.elapsed() >= flush_interval {
-                        Self::send_log_batch(&log_batch, &reliability_manager).await;
+                        Self::send_log_batch(&log_batch, &reliability_manager, &sender_config, &target_service).await;
                         log_batch.clear();
                         last_flush = std::time::Instant::now();
                     }
@@ -359,7 +399,7 @@ impl ServiceManager {
                 // Periodic flush for any remaining logs
                 _ = tokio::time::sleep(flush_interval) => {
                     if !log_batch.is_empty() && last_flush.elapsed() >= flush_interval {
-                        Self::send_log_batch(&log_batch, &reliability_manager).await;
+                        Self::send_log_batch(&log_batch, &reliability_manager, &sender_config, &target_service).await;
                         log_batch.clear();
                         last_flush = std::time::Instant::now();
                     }
@@ -372,7 +412,7 @@ impl ServiceManager {
                     cancel_token.cancel();
                     // Send any remaining logs before shutting down
                     if !log_batch.is_empty() {
-                        Self::send_log_batch(&log_batch, &reliability_manager).await;
+                        Self::send_log_batch(&log_batch, &reliability_manager, &sender_config, &target_service).await;
                     }
                     break;
                 }
@@ -386,6 +426,8 @@ impl ServiceManager {
     async fn send_log_batch(
         log_batch: &[crate::parser::services::ParsedLogEntry],
         _reliability_manager: &Arc<ReliabilityManager>,
+        sender_config: &SenderConfig,
+        target_service: &str,
     ) {
         if log_batch.is_empty() {
             return;
@@ -393,40 +435,62 @@ impl ServiceManager {
 
         info!("Sending batch of {} log entries", log_batch.len());
 
-        // Convert ParsedLogEntry to EnrichedLogEntry format expected by rask-log-aggregator
+        // Convert ParsedLogEntry to EnrichedLogEntry
+        let enriched_entries: Vec<crate::parser::universal::EnrichedLogEntry> = log_batch
+            .iter()
+            .map(|entry| {
+                // Extract trace context from fields (if present from Go structured logs)
+                let mut fields = entry.fields.clone();
+                let trace_id = fields.remove("trace_id");
+                let span_id = fields.remove("span_id");
+
+                crate::parser::universal::EnrichedLogEntry {
+                    service_type: entry.service_type.clone(),
+                    log_type: entry.log_type.clone(),
+                    message: entry.message.clone(),
+                    level: entry.level.clone(),
+                    timestamp: entry
+                        .timestamp
+                        .map(|dt| dt.to_rfc3339())
+                        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+                    stream: entry.stream.clone(),
+                    method: entry.method.clone(),
+                    path: entry.path.clone(),
+                    status_code: entry.status_code,
+                    response_size: entry.response_size,
+                    ip_address: entry.ip_address.clone(),
+                    user_agent: entry.user_agent.clone(),
+                    container_id: "unknown".to_string(), // TODO: Pass real container ID
+                    service_name: target_service.to_string(),
+                    service_group: None,
+                    trace_id,
+                    span_id,
+                    fields,
+                }
+            })
+            .collect();
+
+        // Choose protocol based on configuration
+        #[cfg(feature = "otlp")]
+        {
+            if matches!(sender_config.protocol, Protocol::Otlp) {
+                Self::send_otlp_batch(&enriched_entries, sender_config).await;
+                return;
+            }
+        }
+
+        // Default: NDJSON protocol
+        Self::send_ndjson_batch(&enriched_entries, sender_config).await;
+    }
+
+    /// Send batch using NDJSON format (legacy).
+    async fn send_ndjson_batch(
+        enriched_entries: &[crate::parser::universal::EnrichedLogEntry],
+        sender_config: &SenderConfig,
+    ) {
         let mut ndjson_lines = Vec::new();
-        for entry in log_batch {
-            // Extract trace context from fields (if present from Go structured logs)
-            let mut fields = entry.fields.clone();
-            let trace_id = fields.remove("trace_id");
-            let span_id = fields.remove("span_id");
-
-            // Convert ParsedLogEntry to EnrichedLogEntry
-            let enriched_entry = crate::parser::universal::EnrichedLogEntry {
-                service_type: entry.service_type.clone(),
-                log_type: entry.log_type.clone(),
-                message: entry.message.clone(),
-                level: entry.level.clone(),
-                timestamp: entry
-                    .timestamp
-                    .map(|dt| dt.to_rfc3339())
-                    .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
-                stream: entry.stream.clone(),
-                method: entry.method.clone(),
-                path: entry.path.clone(),
-                status_code: entry.status_code,
-                response_size: entry.response_size,
-                ip_address: entry.ip_address.clone(),
-                user_agent: entry.user_agent.clone(),
-                container_id: "unknown".to_string(), // TODO: Pass real container ID
-                service_name: entry.service_type.clone(), // Use service_type as service_name
-                service_group: None,
-                trace_id,
-                span_id,
-                fields,
-            };
-
-            match serde_json::to_string(&enriched_entry) {
+        for entry in enriched_entries {
+            match serde_json::to_string(entry) {
                 Ok(json_line) => ndjson_lines.push(json_line),
                 Err(e) => {
                     error!("Failed to serialize log entry: {e}");
@@ -441,30 +505,91 @@ impl ServiceManager {
         }
 
         let ndjson_body = ndjson_lines.join("\n");
-
-        // Create a simple HTTP request to send the batch
         let client = reqwest::Client::new();
-        let endpoint = "http://rask-log-aggregator:9600/v1/aggregate";
 
         match client
-            .post(endpoint)
+            .post(&sender_config.endpoint)
             .header("Content-Type", "application/x-ndjson")
-            .header("x-batch-size", log_batch.len().to_string())
+            .header("x-batch-size", enriched_entries.len().to_string())
             .body(ndjson_body)
             .send()
             .await
         {
             Ok(response) => {
                 if response.status().is_success() {
-                    info!("Successfully sent batch of {} logs", log_batch.len());
+                    info!("Successfully sent NDJSON batch of {} logs", enriched_entries.len());
                 } else {
-                    error!("Failed to send logs, status: {}", response.status());
-                    // Here we could add retry logic via reliability_manager
+                    error!("Failed to send NDJSON logs, status: {}", response.status());
                 }
             }
             Err(e) => {
-                error!("Failed to send logs: {e}");
-                // Here we could add retry logic via reliability_manager
+                error!("Failed to send NDJSON logs: {e}");
+            }
+        }
+    }
+
+    /// Send batch using OTLP protobuf format.
+    #[cfg(feature = "otlp")]
+    async fn send_otlp_batch(
+        enriched_entries: &[crate::parser::universal::EnrichedLogEntry],
+        sender_config: &SenderConfig,
+    ) {
+        use crate::sender::OtlpSerializer;
+
+        // Create a Batch from enriched entries
+        let batch = Batch::new(enriched_entries.to_vec(), BatchType::SizeBased);
+
+        // Serialize to OTLP protobuf format
+        let otlp_serializer = OtlpSerializer::new();
+        let protobuf_bytes = match otlp_serializer.serialize_batch(&batch) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                error!("Failed to serialize OTLP batch: {e}");
+                return;
+            }
+        };
+
+        // Optionally compress the payload
+        let (body, content_encoding) = if sender_config.enable_compression && protobuf_bytes.len() > 1024 {
+            use flate2::{Compression, write::GzEncoder};
+            use std::io::Write;
+
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+            if let Err(e) = encoder.write_all(&protobuf_bytes) {
+                error!("Failed to compress OTLP batch: {e}");
+                return;
+            }
+            match encoder.finish() {
+                Ok(compressed) => (compressed, Some("gzip")),
+                Err(e) => {
+                    error!("Failed to finish compression: {e}");
+                    return;
+                }
+            }
+        } else {
+            (protobuf_bytes, None)
+        };
+
+        let client = reqwest::Client::new();
+        let mut request = client
+            .post(&sender_config.otlp_endpoint)
+            .header("Content-Type", "application/x-protobuf")
+            .header("x-batch-size", enriched_entries.len().to_string());
+
+        if let Some(encoding) = content_encoding {
+            request = request.header("Content-Encoding", encoding);
+        }
+
+        match request.body(body).send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    info!("Successfully sent OTLP batch of {} logs", enriched_entries.len());
+                } else {
+                    error!("Failed to send OTLP logs, status: {}", response.status());
+                }
+            }
+            Err(e) => {
+                error!("Failed to send OTLP logs: {e}");
             }
         }
     }

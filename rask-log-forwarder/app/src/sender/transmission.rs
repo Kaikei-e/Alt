@@ -7,6 +7,7 @@ use reqwest::header::{
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tracing::{debug, info, warn};
+#[cfg(feature = "otlp")]
 use url::Url;
 
 #[derive(Error, Debug)]
