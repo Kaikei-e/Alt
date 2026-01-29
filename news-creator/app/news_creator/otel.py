@@ -97,6 +97,26 @@ def init_otel_provider(config: OTelConfig | None = None) -> Callable[[], None]:
     return shutdown
 
 
+def get_otel_logging_handler() -> LoggingHandler | None:
+    """
+    Get an OTel logging handler for integration with standard logging.
+
+    This function should be called AFTER init_otel_provider() and AFTER
+    clearing any existing handlers on the root logger.
+
+    Returns:
+        LoggingHandler if OTel is enabled, None otherwise.
+    """
+    config = OTelConfig()
+    if not config.enabled:
+        return None
+
+    from opentelemetry._logs import get_logger_provider
+
+    logger_provider = get_logger_provider()
+    return LoggingHandler(logger_provider=logger_provider)
+
+
 def instrument_fastapi(app):
     """
     Instrument a FastAPI application with OpenTelemetry.
