@@ -390,3 +390,13 @@ services:
     stop_grace_period: 12s
 
   # NOTE: rag-db-logs removed - SQL query fragments provide low observability value
+
+  # Example OTLP-mode forwarder (opt-in via PROTOCOL=otlp)
+  # To enable OTLP for a service, override PROTOCOL and OTLP_ENDPOINT:
+  #
+  # alt-backend-logs-otlp:
+  #   extends:
+  #     service: alt-backend-logs
+  #   environment:
+  #     PROTOCOL: "otlp"
+  #     OTLP_ENDPOINT: "http://rask-log-aggregator:4318/v1/logs"

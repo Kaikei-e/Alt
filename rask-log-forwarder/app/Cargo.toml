@@ -87,6 +87,11 @@ hostname = "0.4.1"
 tonic = { version = "0.13.1", optional = true }
 prost = { version = "0.14.1", optional = true }
 
+# OTLP (optional)
+opentelemetry-proto = { version = "0.31", features = ["gen-tonic", "logs"], optional = true }
+prost-types = { version = "0.14.1", optional = true }
+hex = { version = "0.4", optional = true }
+
 [dev-dependencies]
 criterion = { version = "0.6.0", features = ["html_reports"] }
 tokio-test = "0.4.4"
@@ -105,6 +110,7 @@ default = ["disk-fallback", "metrics"]
 disk-fallback = ["sled"]
 metrics = ["prometheus", "warp"]
 grpc = ["tonic", "prost"]
+otlp = ["opentelemetry-proto", "prost", "prost-types", "hex"]
 
 [[bench]]
 name = "parser_benchmarks"
@@ -120,6 +126,12 @@ harness = false
 name = "memory_benchmarks"
 path = "benches/buffer/memory_benchmarks.rs"
 harness = false
+
+[[bench]]
+name = "otlp_benchmarks"
+path = "benches/otlp_benchmarks.rs"
+harness = false
+required-features = ["otlp"]
 
 [profile.release]
 lto = "fat"
