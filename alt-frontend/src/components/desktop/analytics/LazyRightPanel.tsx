@@ -75,7 +75,7 @@ const RightPanelError = ({
   error,
   resetErrorBoundary,
 }: {
-  error: Error;
+  error: unknown;
   resetErrorBoundary: () => void;
 }) => (
   <Box
@@ -102,7 +102,7 @@ const RightPanelError = ({
         Analytics Unavailable
       </Text>
       <Text color="var(--text-secondary)" fontSize="sm" mb={4}>
-        {error.message}
+        {error instanceof Error ? error.message : "Unknown error"}
       </Text>
       <button
         onClick={resetErrorBoundary}

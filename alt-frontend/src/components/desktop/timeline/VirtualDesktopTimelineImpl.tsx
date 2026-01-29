@@ -68,7 +68,7 @@ export const VirtualDesktopTimelineImpl: React.FC<
   }, [feeds.length, virtualizationError]);
 
   // Error handling
-  const handleVirtualizationError = (error: Error) => {
+  const handleVirtualizationError = (error: unknown) => {
     console.error("Desktop virtualization error:", error);
     setVirtualizationError(true);
     setUseVirtualization(false);

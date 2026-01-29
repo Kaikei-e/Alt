@@ -24,7 +24,7 @@ interface OptimizedDesktopFeedsProps {
 const MemoizedFeedCard = memo(DesktopFeedCard);
 
 // エラーフォールバック
-const ErrorFallback = ({ error }: { error: Error }) => (
+const ErrorFallback = ({ error }: { error: unknown }) => (
   <Box
     className="glass"
     p={8}
@@ -35,7 +35,7 @@ const ErrorFallback = ({ error }: { error: Error }) => (
       An error occurred
     </Text>
     <Text color="var(--text-secondary)" fontSize="sm">
-      {error.message}
+      {error instanceof Error ? error.message : "Unknown error"}
     </Text>
   </Box>
 );

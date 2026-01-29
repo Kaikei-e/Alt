@@ -20,8 +20,8 @@ interface VirtualizedFeedListProps {
 
 // Error boundary fallback component
 const VirtualizationErrorFallback: React.FC<{
-  error: Error;
-  resetErrorBoundary: () => void;
+  error: unknown;
+  resetErrorBoundary: (...args: unknown[]) => void;
   feeds: RenderFeed[];
   readFeeds: Set<string>;
   onMarkAsRead: (feedLink: string) => void;
@@ -53,7 +53,7 @@ const VirtualizationErrorFallback: React.FC<{
             仮想化でエラーが発生しました。通常表示にフォールバックします。
           </Text>
           <Text fontSize="xs" color="red.600">
-            {error.message}
+            {error instanceof Error ? error.message : "Unknown error"}
           </Text>
         </Box>
       )}

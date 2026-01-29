@@ -51,7 +51,7 @@ const DesktopTimelineError = ({
   error,
   resetErrorBoundary,
 }: {
-  error: Error;
+  error: unknown;
   resetErrorBoundary: () => void;
 }) => (
   <Box w="100%" minH="0" flex={1} bg="var(--app-bg)">
@@ -76,7 +76,7 @@ const DesktopTimelineError = ({
           Failed to load timeline
         </Text>
         <Text color="var(--text-secondary)" fontSize="sm" mb={4}>
-          {error.message}
+          {error instanceof Error ? error.message : "Unknown error"}
         </Text>
         <button
           onClick={resetErrorBoundary}
