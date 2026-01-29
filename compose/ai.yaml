@@ -121,6 +121,9 @@ services:
       # RT slot reserved for streaming requests, BE slot for batch processing
       - SCHEDULING_RT_RESERVED_SLOTS=${SCHEDULING_RT_RESERVED_SLOTS:-1}
       - SCHEDULING_AGING_THRESHOLD_SECONDS=${SCHEDULING_AGING_THRESHOLD_SECONDS:-60}
+      # OpenTelemetry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - OTEL_SERVICE_NAME=news-creator
     secrets:
       - service_secret
     restart: unless-stopped
@@ -182,6 +185,9 @@ services:
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=pre-processor-group
       - CONSUMER_NAME=pre-processor-1
+      # OpenTelemetry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - OTEL_SERVICE_NAME=pre-processor
     secrets:
       - pre_processor_db_password
     restart: always

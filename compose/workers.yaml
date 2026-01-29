@@ -117,6 +117,9 @@ services:
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=tag-generator-group
       - CONSUMER_NAME=tag-generator-1
+      # OpenTelemetry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - OTEL_SERVICE_NAME=tag-generator
     secrets:
       - tag_generator_db_password
       - service_secret

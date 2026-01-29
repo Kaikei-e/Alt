@@ -97,6 +97,38 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # cAdvisor for container resource metrics (CPU, memory, disk, network)
+  # Required for Saturation monitoring in Golden Signals dashboard
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.51.0
+    restart: unless-stopped
+    privileged: true
+    environment:
+      - DOCKER_API_VERSION=1.44
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8181:8080"
+    networks:
+      - alt-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      - rask.group=observability
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   grafana_data:
   prometheus_data:
