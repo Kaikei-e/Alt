@@ -13,17 +13,19 @@ RUN cargo chef prepare --recipe-path recipe.json
 # Stage 3: Dependency build (cached)
 FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
+# Cook with OTLP feature for proper dependency caching
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
-    cargo chef cook --release --recipe-path recipe.json
+    cargo chef cook --release --features otlp --recipe-path recipe.json
 
 # Stage 4: Application build
 COPY . .
+# Build with OTLP feature enabled
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
-    cargo build --release --bin rask-log-forwarder && \
+    cargo build --release --features otlp --bin rask-log-forwarder && \
     cp target/release/rask-log-forwarder /app/rask-log-forwarder
 
 # Stage 5: Runtime (distroless + nonroot)
