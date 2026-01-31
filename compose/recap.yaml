@@ -179,8 +179,14 @@ services:
     volumes:
       - ../recap-subworker/data/golden_classification.json:/app/data/golden_classification.json:ro
       - ../recap-subworker/data/genre_classifier.joblib:/app/data/genre_classifier.joblib:ro
+      - ../recap-subworker/data/genre_classifier_ja.joblib:/app/data/genre_classifier_ja.joblib:ro
+      - ../recap-subworker/data/genre_classifier_en.joblib:/app/data/genre_classifier_en.joblib:ro
       - ../recap-subworker/data/tfidf_vectorizer.joblib:/app/data/tfidf_vectorizer.joblib:ro
+      - ../recap-subworker/data/tfidf_vectorizer_ja.joblib:/app/data/tfidf_vectorizer_ja.joblib:ro
+      - ../recap-subworker/data/tfidf_vectorizer_en.joblib:/app/data/tfidf_vectorizer_en.joblib:ro
       - ../recap-subworker/data/genre_thresholds.json:/app/data/genre_thresholds.json:ro
+      - ../recap-subworker/data/genre_thresholds_ja.json:/app/data/genre_thresholds_ja.json:ro
+      - ../recap-subworker/data/genre_thresholds_en.json:/app/data/genre_thresholds_en.json:ro
       # Learning Machine model artifacts
       - ../recap-subworker/recap_subworker/learning_machine/artifacts:/app/recap_subworker/learning_machine/artifacts:ro
     depends_on:
