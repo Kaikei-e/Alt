@@ -1,8 +1,8 @@
 <script lang="ts">
-	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-	import UnreadFeedsWidget from "$lib/components/desktop/dashboard/UnreadFeedsWidget.svelte";
-	import RecapSummaryWidget from "$lib/components/desktop/dashboard/RecapSummaryWidget.svelte";
-	import StatsBarWidget from "$lib/components/desktop/dashboard/StatsBarWidget.svelte";
+import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
+import UnreadFeedsWidget from "$lib/components/desktop/dashboard/UnreadFeedsWidget.svelte";
+import RecapSummaryWidget from "$lib/components/desktop/dashboard/RecapSummaryWidget.svelte";
+import StatsBarWidget from "$lib/components/desktop/dashboard/StatsBarWidget.svelte";
 </script>
 
 <svelte:head>

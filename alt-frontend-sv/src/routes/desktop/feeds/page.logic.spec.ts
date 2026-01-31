@@ -38,14 +38,19 @@ class PageStateManager {
 
 	get selectedFeed(): RenderFeed | null {
 		if (!this.selectedFeedUrl) return null;
-		return this.visibleFeeds.find((f) => f.normalizedUrl === this.selectedFeedUrl) ?? null;
+		return (
+			this.visibleFeeds.find((f) => f.normalizedUrl === this.selectedFeedUrl) ??
+			null
+		);
 	}
 
 	// Simulates the new FeedGrid API
 	createApi(): FeedGridApi {
 		return {
 			removeFeedByUrl: (url: string): RemoveFeedResult => {
-				const currentIndex = this.visibleFeeds.findIndex((f) => f.normalizedUrl === url);
+				const currentIndex = this.visibleFeeds.findIndex(
+					(f) => f.normalizedUrl === url,
+				);
 				const wasLastItem = currentIndex === this.visibleFeeds.length - 1;
 				this.removedUrls.add(url);
 				const newFeeds = this.visibleFeeds;
@@ -67,7 +72,8 @@ class PageStateManager {
 				};
 			},
 			getVisibleFeeds: () => this.visibleFeeds,
-			getFeedByUrl: (url: string) => this.visibleFeeds.find((f) => f.normalizedUrl === url) ?? null,
+			getFeedByUrl: (url: string) =>
+				this.visibleFeeds.find((f) => f.normalizedUrl === url) ?? null,
 			fetchReplacementFeed: vi.fn(),
 		};
 	}
@@ -104,7 +110,9 @@ class PageStateManager {
 	// Old problematic implementation for comparison
 	async handleMarkAsReadOld(feedUrl: string): Promise<void> {
 		const hadNext = (() => {
-			const index = this.visibleFeeds.findIndex((f) => f.normalizedUrl === feedUrl);
+			const index = this.visibleFeeds.findIndex(
+				(f) => f.normalizedUrl === feedUrl,
+			);
 			return index < this.visibleFeeds.length - 1;
 		})();
 
@@ -178,7 +186,10 @@ describe("Desktop Feeds Page State Management", () => {
 			state.openModal("https://example.com/feed-2");
 
 			// Start first call
-			const firstCall = state.handleMarkAsRead("https://example.com/feed-2", api);
+			const firstCall = state.handleMarkAsRead(
+				"https://example.com/feed-2",
+				api,
+			);
 
 			// Second call should be ignored due to flag
 			expect(state.isProcessingMarkAsRead).toBe(true);

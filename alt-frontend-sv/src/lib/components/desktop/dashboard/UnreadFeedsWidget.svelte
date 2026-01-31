@@ -1,28 +1,28 @@
 <script lang="ts">
-	import { ArrowRight, Loader2 } from "@lucide/svelte";
-	import { getFeedsWithCursorClient } from "$lib/api/client/feeds";
-	import type { RenderFeed } from "$lib/schema/feed";
-	import { onMount } from "svelte";
+import { ArrowRight, Loader2 } from "@lucide/svelte";
+import { getFeedsWithCursorClient } from "$lib/api/client/feeds";
+import type { RenderFeed } from "$lib/schema/feed";
+import { onMount } from "svelte";
 
-	const svBasePath = "/sv";
+const svBasePath = "/sv";
 
-	// Simple state without TanStack Query
-	let feeds = $state<RenderFeed[]>([]);
-	let isLoading = $state(true);
-	let error = $state<Error | null>(null);
+// Simple state without TanStack Query
+let feeds = $state<RenderFeed[]>([]);
+let isLoading = $state(true);
+let error = $state<Error | null>(null);
 
-	// Fetch latest 5 unread feeds on mount
-	onMount(async () => {
-		try {
-			isLoading = true;
-			const result = await getFeedsWithCursorClient(undefined, 5);
-			feeds = result.data ?? [];
-		} catch (err) {
-			error = err as Error;
-		} finally {
-			isLoading = false;
-		}
-	});
+// Fetch latest 5 unread feeds on mount
+onMount(async () => {
+	try {
+		isLoading = true;
+		const result = await getFeedsWithCursorClient(undefined, 5);
+		feeds = result.data ?? [];
+	} catch (err) {
+		error = err as Error;
+	} finally {
+		isLoading = false;
+	}
+});
 </script>
 
 <div class="border border-[var(--surface-border)] bg-white p-6 flex flex-col h-full overflow-x-hidden">

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { renderFeedsFixture, createRenderFeed } from "../../../../../tests/fixtures/feeds";
+import {
+	renderFeedsFixture,
+	createRenderFeed,
+} from "../../../../../tests/fixtures/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
 
 /**
@@ -82,16 +85,24 @@ describe("FeedGrid Logic", () => {
 		});
 
 		it("returns null when the only item is removed", () => {
-			const singleFeed = [createRenderFeed("feed-1", "https://example.com/feed-1")];
+			const singleFeed = [
+				createRenderFeed("feed-1", "https://example.com/feed-1"),
+			];
 
-			const result = calculateNextFeedUrl(singleFeed, "https://example.com/feed-1");
+			const result = calculateNextFeedUrl(
+				singleFeed,
+				"https://example.com/feed-1",
+			);
 
 			expect(result.nextFeedUrl).toBeNull();
 			expect(result.totalCount).toBe(0);
 		});
 
 		it("returns unchanged when URL not found", () => {
-			const result = calculateNextFeedUrl(renderFeedsFixture, "https://example.com/non-existent");
+			const result = calculateNextFeedUrl(
+				renderFeedsFixture,
+				"https://example.com/non-existent",
+			);
 
 			expect(result.nextFeedUrl).toBeNull();
 			expect(result.totalCount).toBe(5);
@@ -103,23 +114,31 @@ describe("FeedGrid Logic", () => {
 			// Remove feed-2
 			let result = calculateNextFeedUrl(feeds, "https://example.com/feed-2");
 			expect(result.nextFeedUrl).toBe("https://example.com/feed-3");
-			feeds = feeds.filter((f) => f.normalizedUrl !== "https://example.com/feed-2");
+			feeds = feeds.filter(
+				(f) => f.normalizedUrl !== "https://example.com/feed-2",
+			);
 
 			// Remove feed-3 (now at index 1)
 			result = calculateNextFeedUrl(feeds, "https://example.com/feed-3");
 			expect(result.nextFeedUrl).toBe("https://example.com/feed-4");
-			feeds = feeds.filter((f) => f.normalizedUrl !== "https://example.com/feed-3");
+			feeds = feeds.filter(
+				(f) => f.normalizedUrl !== "https://example.com/feed-3",
+			);
 
 			// Remove feed-4 (now at index 1)
 			result = calculateNextFeedUrl(feeds, "https://example.com/feed-4");
 			expect(result.nextFeedUrl).toBe("https://example.com/feed-5");
-			feeds = feeds.filter((f) => f.normalizedUrl !== "https://example.com/feed-4");
+			feeds = feeds.filter(
+				(f) => f.normalizedUrl !== "https://example.com/feed-4",
+			);
 
 			// Remove feed-5 (now last, should return null to close modal)
 			result = calculateNextFeedUrl(feeds, "https://example.com/feed-5");
 			expect(result.nextFeedUrl).toBeNull(); // Close modal when removing last item
 			expect(result.totalCount).toBe(1);
-			feeds = feeds.filter((f) => f.normalizedUrl !== "https://example.com/feed-5");
+			feeds = feeds.filter(
+				(f) => f.normalizedUrl !== "https://example.com/feed-5",
+			);
 
 			// Remove last remaining feed
 			result = calculateNextFeedUrl(feeds, "https://example.com/feed-1");
@@ -130,14 +149,20 @@ describe("FeedGrid Logic", () => {
 
 	describe("getFeedByUrl", () => {
 		it("returns the correct feed when found", () => {
-			const feed = getFeedByUrl(renderFeedsFixture, "https://example.com/feed-3");
+			const feed = getFeedByUrl(
+				renderFeedsFixture,
+				"https://example.com/feed-3",
+			);
 
 			expect(feed).not.toBeNull();
 			expect(feed?.id).toBe("feed-3");
 		});
 
 		it("returns null when feed is not found", () => {
-			const feed = getFeedByUrl(renderFeedsFixture, "https://example.com/non-existent");
+			const feed = getFeedByUrl(
+				renderFeedsFixture,
+				"https://example.com/non-existent",
+			);
 
 			expect(feed).toBeNull();
 		});
@@ -160,7 +185,9 @@ describe("FeedGrid Logic", () => {
 			let feeds = [...renderFeedsFixture];
 
 			// Remove feed-2 (not the selected one)
-			feeds = feeds.filter((f) => f.normalizedUrl !== "https://example.com/feed-2");
+			feeds = feeds.filter(
+				(f) => f.normalizedUrl !== "https://example.com/feed-2",
+			);
 
 			// URL-based lookup should still find feed-3
 			const selectedFeed = getFeedByUrl(feeds, selectedFeedUrl);
@@ -185,7 +212,9 @@ describe("FeedGrid Logic", () => {
 			let feeds = [...renderFeedsFixture];
 
 			// Remove feed-2 (index 1)
-			feeds = feeds.filter((f) => f.normalizedUrl !== "https://example.com/feed-2");
+			feeds = feeds.filter(
+				(f) => f.normalizedUrl !== "https://example.com/feed-2",
+			);
 
 			// Index-based lookup now returns wrong feed!
 			const feedAtSameIndex = feeds[selectedIndex];

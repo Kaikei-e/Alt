@@ -80,8 +80,9 @@ export async function getDetailedFeedStats(
 	transport: Transport,
 ): Promise<DetailedFeedStats> {
 	const client = createFeedClient(transport);
-	const response =
-		(await client.getDetailedFeedStats({})) as GetDetailedFeedStatsResponse;
+	const response = (await client.getDetailedFeedStats(
+		{},
+	)) as GetDetailedFeedStatsResponse;
 
 	return {
 		feedAmount: Number(response.feedAmount),
@@ -580,7 +581,11 @@ export function streamSummarizeWithAbort(
 			});
 		} catch (error) {
 			// Only report error if not aborted
-			if (!abortController.signal.aborted && onError && error instanceof Error) {
+			if (
+				!abortController.signal.aborted &&
+				onError &&
+				error instanceof Error
+			) {
 				onError(error);
 			}
 		}
@@ -605,7 +610,7 @@ export interface MarkAsReadResult {
  * This ensures consistent URL comparison across frontend and backend.
  */
 function normalizeUrl(url: string): string {
-	if (url.endsWith('/') && url !== '/') {
+	if (url.endsWith("/") && url !== "/") {
 		return url.slice(0, -1);
 	}
 	return url;

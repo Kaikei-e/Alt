@@ -14,7 +14,10 @@ import {
 } from "$lib/api/client";
 import { Button, buttonVariants } from "$lib/components/ui/button";
 import * as Sheet from "$lib/components/ui/sheet";
-import { createClientTransport, streamSummarizeWithAbortAdapter } from "$lib/connect";
+import {
+	createClientTransport,
+	streamSummarizeWithAbortAdapter,
+} from "$lib/connect";
 import RenderFeedDetails from "./RenderFeedDetails.svelte";
 
 interface Props {

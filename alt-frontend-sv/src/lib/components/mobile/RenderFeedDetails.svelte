@@ -18,15 +18,17 @@ const { feedDetails, isLoading = false, error = null }: Props = $props();
 
 // Sanitize content for safe rendering with @html
 const safeArticleContent = $derived(
-	feedDetails && "matched_articles" in feedDetails && feedDetails.matched_articles?.[0]?.content
+	feedDetails &&
+		"matched_articles" in feedDetails &&
+		feedDetails.matched_articles?.[0]?.content
 		? sanitizeHtml(feedDetails.matched_articles[0].content)
-		: ""
+		: "",
 );
 
 const safeOnTheFlyContent = $derived(
 	feedDetails && "content" in feedDetails && feedDetails.content
 		? sanitizeHtml(feedDetails.content)
-		: ""
+		: "",
 );
 </script>
 

@@ -1,36 +1,36 @@
 <script lang="ts">
-	import { ArrowRight, Loader2, Tag } from "@lucide/svelte";
-	import { ConnectError, Code } from "@connectrpc/connect";
-	import { createClientTransport, getSevenDayRecap } from "$lib/connect";
-	import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
-	import { onMount } from "svelte";
+import { ArrowRight, Loader2, Tag } from "@lucide/svelte";
+import { ConnectError, Code } from "@connectrpc/connect";
+import { createClientTransport, getSevenDayRecap } from "$lib/connect";
+import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
+import { onMount } from "svelte";
 
-	const svBasePath = "/sv";
+const svBasePath = "/sv";
 
-	// Simple state without TanStack Query
-	let recapData = $state<RecapSummary | null>(null);
-	let isLoading = $state(true);
-	let error = $state<Error | null>(null);
+// Simple state without TanStack Query
+let recapData = $state<RecapSummary | null>(null);
+let isLoading = $state(true);
+let error = $state<Error | null>(null);
 
-	// Computed top genres
-	let topGenres = $derived(recapData?.genres?.slice(0, 3) ?? []);
+// Computed top genres
+let topGenres = $derived(recapData?.genres?.slice(0, 3) ?? []);
 
-	// Fetch 7-day recap on mount
-	onMount(async () => {
-		try {
-			isLoading = true;
-			const transport = createClientTransport();
-			recapData = await getSevenDayRecap(transport);
-		} catch (err) {
-			// Log authentication errors but don't redirect from widget
-			if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
-				console.warn("[RecapSummaryWidget] Not authenticated");
-			}
-			error = err as Error;
-		} finally {
-			isLoading = false;
+// Fetch 7-day recap on mount
+onMount(async () => {
+	try {
+		isLoading = true;
+		const transport = createClientTransport();
+		recapData = await getSevenDayRecap(transport);
+	} catch (err) {
+		// Log authentication errors but don't redirect from widget
+		if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
+			console.warn("[RecapSummaryWidget] Not authenticated");
 		}
-	});
+		error = err as Error;
+	} finally {
+		isLoading = false;
+	}
+});
 </script>
 
 <div class="border border-[var(--surface-border)] bg-white p-6 flex flex-col h-full">

@@ -82,7 +82,7 @@ export function createArticlesCursorQuery(limit: number = 20) {
 		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
 			fetchArticlesCursor(transport, pageParam, limit),
 		getNextPageParam: (lastPage: ArticleCursorResponse) =>
-			lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
+			lastPage.hasMore ? (lastPage.nextCursor ?? undefined) : undefined,
 		initialPageParam: undefined as string | undefined,
 	}));
 }

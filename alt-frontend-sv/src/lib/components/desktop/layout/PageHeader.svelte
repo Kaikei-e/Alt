@@ -1,5 +1,6 @@
 <script lang="ts">
-	let { title, description = "" }: { title: string; description?: string } = $props();
+let { title, description = "" }: { title: string; description?: string } =
+	$props();
 </script>
 
 <header class="mb-6">

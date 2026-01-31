@@ -1,35 +1,35 @@
 <script lang="ts">
-	import { Send } from "@lucide/svelte";
-	import { Button } from "$lib/components/ui/button";
-	import { Textarea } from "$lib/components/ui/textarea";
+import { Send } from "@lucide/svelte";
+import { Button } from "$lib/components/ui/button";
+import { Textarea } from "$lib/components/ui/textarea";
 
-	type Props = {
-		onSend: (message: string) => void;
-		disabled?: boolean;
-	};
+type Props = {
+	onSend: (message: string) => void;
+	disabled?: boolean;
+};
 
-	let { onSend, disabled = false }: Props = $props();
+let { onSend, disabled = false }: Props = $props();
 
-	let inputValue = $state("");
+let inputValue = $state("");
 
-	function handleSubmit() {
-		const trimmed = inputValue.trim();
-		if (!trimmed || disabled) return;
+function handleSubmit() {
+	const trimmed = inputValue.trim();
+	if (!trimmed || disabled) return;
 
-		onSend(trimmed);
-		inputValue = "";
+	onSend(trimmed);
+	inputValue = "";
+}
+
+function handleKeydown(event: KeyboardEvent) {
+	// Ignore Enter during IME composition (e.g., Japanese input)
+	if (event.isComposing) return;
+
+	// Send on Enter (without Shift)
+	if (event.key === "Enter" && !event.shiftKey) {
+		event.preventDefault();
+		handleSubmit();
 	}
-
-	function handleKeydown(event: KeyboardEvent) {
-		// Ignore Enter during IME composition (e.g., Japanese input)
-		if (event.isComposing) return;
-
-		// Send on Enter (without Shift)
-		if (event.key === "Enter" && !event.shiftKey) {
-			event.preventDefault();
-			handleSubmit();
-		}
-	}
+}
 </script>
 
 <div class="border-t border-border bg-background p-4">

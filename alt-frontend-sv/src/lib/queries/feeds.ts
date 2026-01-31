@@ -86,7 +86,7 @@ export function createUnreadFeedsQuery(limit: number = 20) {
 		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
 			getUnreadFeeds(transport, pageParam, limit),
 		getNextPageParam: (lastPage: FeedCursorResponse) =>
-			lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
+			lastPage.hasMore ? (lastPage.nextCursor ?? undefined) : undefined,
 		initialPageParam: undefined as string | undefined,
 	}));
 }
@@ -101,7 +101,7 @@ export function createReadFeedsQuery(limit: number = 32) {
 		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
 			getReadFeeds(transport, pageParam, limit),
 		getNextPageParam: (lastPage: FeedCursorResponse) =>
-			lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
+			lastPage.hasMore ? (lastPage.nextCursor ?? undefined) : undefined,
 		initialPageParam: undefined as string | undefined,
 	}));
 }
@@ -116,7 +116,7 @@ export function createFavoriteFeedsQuery(limit: number = 20) {
 		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
 			getFavoriteFeeds(transport, pageParam, limit),
 		getNextPageParam: (lastPage: FeedCursorResponse) =>
-			lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
+			lastPage.hasMore ? (lastPage.nextCursor ?? undefined) : undefined,
 		initialPageParam: undefined as string | undefined,
 	}));
 }
@@ -139,7 +139,7 @@ export function createSearchFeedsQuery(
 		queryFn: ({ pageParam }: { pageParam: number | undefined }) =>
 			searchFeeds(transport, query, pageParam, limit),
 		getNextPageParam: (lastPage: FeedSearchResponse) =>
-			lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
+			lastPage.hasMore ? (lastPage.nextCursor ?? undefined) : undefined,
 		initialPageParam: undefined as number | undefined,
 		enabled: enabled && query.length > 0,
 	}));

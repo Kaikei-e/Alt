@@ -1,28 +1,32 @@
 <script lang="ts">
-	import { Filter, ArrowUpDown } from "@lucide/svelte";
+import { Filter, ArrowUpDown } from "@lucide/svelte";
 
-	interface Props {
-		unreadOnly?: boolean;
-		sortBy?: string;
-		onFilterChange: (filters: { unreadOnly: boolean; sortBy: string }) => void;
-	}
+interface Props {
+	unreadOnly?: boolean;
+	sortBy?: string;
+	onFilterChange: (filters: { unreadOnly: boolean; sortBy: string }) => void;
+}
 
-	let { unreadOnly = false, sortBy = "date_desc", onFilterChange }: Props = $props();
+let {
+	unreadOnly = false,
+	sortBy = "date_desc",
+	onFilterChange,
+}: Props = $props();
 
-	let localUnreadOnly = $state(unreadOnly);
-	let localSortBy = $state(sortBy);
+let localUnreadOnly = $state(unreadOnly);
+let localSortBy = $state(sortBy);
 
-	function handleUnreadChange(event: Event) {
-		const target = event.target as HTMLInputElement;
-		localUnreadOnly = target.checked;
-		onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy });
-	}
+function handleUnreadChange(event: Event) {
+	const target = event.target as HTMLInputElement;
+	localUnreadOnly = target.checked;
+	onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy });
+}
 
-	function handleSortChange(event: Event) {
-		const target = event.target as HTMLSelectElement;
-		localSortBy = target.value;
-		onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy });
-	}
+function handleSortChange(event: Event) {
+	const target = event.target as HTMLSelectElement;
+	localSortBy = target.value;
+	onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy });
+}
 </script>
 
 <div class="flex items-center justify-between gap-4 mb-6 p-4 border border-[var(--surface-border)] bg-white">

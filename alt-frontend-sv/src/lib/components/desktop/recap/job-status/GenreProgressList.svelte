@@ -1,16 +1,16 @@
 <script lang="ts">
-	import type { GenreProgressInfo } from "$lib/schema/dashboard";
-	import { filterGenreProgress } from "$lib/utils/genreProgress";
-	import StatusBadge from "./StatusBadge.svelte";
-	import { Folder, Layers } from "@lucide/svelte";
+import type { GenreProgressInfo } from "$lib/schema/dashboard";
+import { filterGenreProgress } from "$lib/utils/genreProgress";
+import StatusBadge from "./StatusBadge.svelte";
+import { Folder, Layers } from "@lucide/svelte";
 
-	interface Props {
-		genreProgress: Record<string, GenreProgressInfo>;
-	}
+interface Props {
+	genreProgress: Record<string, GenreProgressInfo>;
+}
 
-	let { genreProgress }: Props = $props();
+let { genreProgress }: Props = $props();
 
-	const genres = $derived(filterGenreProgress(genreProgress));
+const genres = $derived(filterGenreProgress(genreProgress));
 </script>
 
 {#if genres.length > 0}

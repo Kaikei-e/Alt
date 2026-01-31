@@ -171,7 +171,12 @@ export function calculateStageDurations(
 			if (i > 0) {
 				const prevStage = stageOrder[i - 1];
 				const prevTiming = stageTiming.get(prevStage);
-				if (prevTiming && prevTiming.start && !prevTiming.end && inferredStart) {
+				if (
+					prevTiming &&
+					prevTiming.start &&
+					!prevTiming.end &&
+					inferredStart
+				) {
 					prevTiming.end = inferredStart;
 					if (prevTiming.status === "running") {
 						prevTiming.status = "completed";

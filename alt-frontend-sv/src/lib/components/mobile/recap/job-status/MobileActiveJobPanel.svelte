@@ -1,42 +1,44 @@
 <script lang="ts">
-	import type { ActiveJobInfo } from "$lib/schema/dashboard";
-	import MobilePipelineProgress from "./MobilePipelineProgress.svelte";
-	import MobileGenreProgressGrid from "./MobileGenreProgressGrid.svelte";
-	import { StatusBadge } from "$lib/components/desktop/recap/job-status";
-	import { Play, Clock, ChevronDown, ChevronUp, Activity } from "@lucide/svelte";
+import type { ActiveJobInfo } from "$lib/schema/dashboard";
+import MobilePipelineProgress from "./MobilePipelineProgress.svelte";
+import MobileGenreProgressGrid from "./MobileGenreProgressGrid.svelte";
+import { StatusBadge } from "$lib/components/desktop/recap/job-status";
+import { Play, Clock, ChevronDown, ChevronUp, Activity } from "@lucide/svelte";
 
-	interface Props {
-		job: ActiveJobInfo | null;
+interface Props {
+	job: ActiveJobInfo | null;
+}
+
+let { job }: Props = $props();
+
+let isExpanded = $state(true);
+
+const startedAt = $derived(
+	job
+		? new Date(job.kicked_at).toLocaleTimeString("ja-JP", {
+				hour: "2-digit",
+				minute: "2-digit",
+			})
+		: "",
+);
+
+const elapsedTime = $derived.by(() => {
+	if (!job) return "";
+	const start = new Date(job.kicked_at).getTime();
+	const now = Date.now();
+	const secs = Math.floor((now - start) / 1000);
+	if (secs < 60) return `${secs}s`;
+	const mins = Math.floor(secs / 60);
+	const remainingSecs = secs % 60;
+	return `${mins}m ${remainingSecs}s`;
+});
+
+// Auto-expand when job is running
+$effect(() => {
+	if (job) {
+		isExpanded = true;
 	}
-
-	let { job }: Props = $props();
-
-	let isExpanded = $state(true);
-
-	const startedAt = $derived(
-		job ? new Date(job.kicked_at).toLocaleTimeString("ja-JP", {
-			hour: "2-digit",
-			minute: "2-digit",
-		}) : ""
-	);
-
-	const elapsedTime = $derived.by(() => {
-		if (!job) return "";
-		const start = new Date(job.kicked_at).getTime();
-		const now = Date.now();
-		const secs = Math.floor((now - start) / 1000);
-		if (secs < 60) return `${secs}s`;
-		const mins = Math.floor(secs / 60);
-		const remainingSecs = secs % 60;
-		return `${mins}m ${remainingSecs}s`;
-	});
-
-	// Auto-expand when job is running
-	$effect(() => {
-		if (job) {
-			isExpanded = true;
-		}
-	});
+});
 </script>
 
 <div class="px-4 mb-4" data-testid="mobile-active-job-panel">

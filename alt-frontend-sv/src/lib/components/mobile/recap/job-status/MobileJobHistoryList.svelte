@@ -1,14 +1,14 @@
 <script lang="ts">
-	import type { RecentJobSummary } from "$lib/schema/dashboard";
-	import MobileJobCard from "./MobileJobCard.svelte";
-	import { Inbox } from "@lucide/svelte";
+import type { RecentJobSummary } from "$lib/schema/dashboard";
+import MobileJobCard from "./MobileJobCard.svelte";
+import { Inbox } from "@lucide/svelte";
 
-	interface Props {
-		jobs: RecentJobSummary[];
-		onJobSelect: (job: RecentJobSummary) => void;
-	}
+interface Props {
+	jobs: RecentJobSummary[];
+	onJobSelect: (job: RecentJobSummary) => void;
+}
 
-	let { jobs, onJobSelect }: Props = $props();
+let { jobs, onJobSelect }: Props = $props();
 </script>
 
 <div class="px-4">

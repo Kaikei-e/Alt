@@ -80,9 +80,7 @@ describe("SwipeFeedCard", () => {
 				props: defaultProps,
 			});
 
-			await expect
-				.element(page.getByTestId("swipe-card"))
-				.toBeInTheDocument();
+			await expect.element(page.getByTestId("swipe-card")).toBeInTheDocument();
 		});
 
 		it("renders the action footer with buttons", async () => {
@@ -245,9 +243,7 @@ describe("SwipeFeedCard", () => {
 			});
 
 			// The component should have the content ready without fetching
-			await expect
-				.element(page.getByTestId("swipe-card"))
-				.toBeInTheDocument();
+			await expect.element(page.getByTestId("swipe-card")).toBeInTheDocument();
 		});
 	});
 

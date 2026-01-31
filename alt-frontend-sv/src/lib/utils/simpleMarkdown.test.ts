@@ -105,7 +105,9 @@ describe("parseMarkdown", () => {
 
 	describe("list transitions", () => {
 		it("handles list followed by paragraph", () => {
-			const result = parseMarkdown("- Item 1\n- Item 2\n\nParagraph after list");
+			const result = parseMarkdown(
+				"- Item 1\n- Item 2\n\nParagraph after list",
+			);
 			expect(result).toContain("</ul>");
 			expect(result).toContain("<p");
 			expect(result).toContain("Paragraph after list");

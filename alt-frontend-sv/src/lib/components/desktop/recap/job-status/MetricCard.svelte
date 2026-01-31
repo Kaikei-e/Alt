@@ -1,25 +1,25 @@
 <script lang="ts">
-	import type { Component } from "svelte";
+import type { Component } from "svelte";
 
-	interface Props {
-		title: string;
-		value: string | number;
-		trend?: number | null;
-		icon: Component;
-		subtitle?: string;
-	}
+interface Props {
+	title: string;
+	value: string | number;
+	trend?: number | null;
+	icon: Component;
+	subtitle?: string;
+}
 
-	let { title, value, trend = null, icon: Icon, subtitle }: Props = $props();
+let { title, value, trend = null, icon: Icon, subtitle }: Props = $props();
 
-	const trendClass = $derived(() => {
-		if (!trend) return "";
-		return trend > 0 ? "text-green-600" : "text-red-600";
-	});
+const trendClass = $derived(() => {
+	if (!trend) return "";
+	return trend > 0 ? "text-green-600" : "text-red-600";
+});
 
-	const trendArrow = $derived(() => {
-		if (!trend) return "";
-		return trend > 0 ? "+" : "";
-	});
+const trendArrow = $derived(() => {
+	if (!trend) return "";
+	return trend > 0 ? "+" : "";
+});
 </script>
 
 <div

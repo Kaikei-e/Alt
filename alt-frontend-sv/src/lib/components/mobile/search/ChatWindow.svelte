@@ -7,7 +7,11 @@ import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte
 import { Button } from "$lib/components/ui/button";
 import { Input } from "$lib/components/ui/input";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
-import { createClientTransport, streamAugurChat, type AugurCitation } from "$lib/connect";
+import {
+	createClientTransport,
+	streamAugurChat,
+	type AugurCitation,
+} from "$lib/connect";
 
 type Citation = {
 	url: string;

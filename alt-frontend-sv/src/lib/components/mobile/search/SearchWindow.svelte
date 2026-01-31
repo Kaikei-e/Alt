@@ -114,7 +114,7 @@ const handleSearch = async () => {
 		// 4. Transform results
 		const transformedResults = transformFeedSearchResult(searchResult);
 
-		console.log('[SearchWindow:handleSearch] API response', {
+		console.log("[SearchWindow:handleSearch] API response", {
 			resultsCount: transformedResults.length,
 			nextCursor: searchResult.next_cursor,
 			hasMore: searchResult.has_more,
@@ -124,16 +124,18 @@ const handleSearch = async () => {
 		// 5. Update state
 		setFeedResults(transformedResults);
 		// Convert cursor to string for state management (offset as string)
-		const nextCursorStr = searchResult.next_cursor !== null &&
+		const nextCursorStr =
+			searchResult.next_cursor !== null &&
 			searchResult.next_cursor !== undefined
-			? String(searchResult.next_cursor)
-			: null;
+				? String(searchResult.next_cursor)
+				: null;
 		setCursor(nextCursorStr);
 		// Use has_more from response if available, otherwise fall back to next_cursor check
-		const hasMoreValue = searchResult.has_more ?? (searchResult.next_cursor !== null);
+		const hasMoreValue =
+			searchResult.has_more ?? searchResult.next_cursor !== null;
 		setHasMore(hasMoreValue);
 
-		console.log('[SearchWindow:handleSearch] State updated', {
+		console.log("[SearchWindow:handleSearch] State updated", {
 			cursor: nextCursorStr,
 			hasMore: hasMoreValue,
 		});

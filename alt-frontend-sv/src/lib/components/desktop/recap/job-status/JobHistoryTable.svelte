@@ -1,10 +1,20 @@
 <script lang="ts">
-import { ChevronDown, ChevronRight, Clock, Server, User, BarChart3 } from "@lucide/svelte";
+import {
+	ChevronDown,
+	ChevronRight,
+	Clock,
+	Server,
+	User,
+	BarChart3,
+} from "@lucide/svelte";
 import type { RecentJobSummary, JobStats } from "$lib/schema/dashboard";
 import { formatDuration } from "$lib/schema/dashboard";
 import StatusBadge from "./StatusBadge.svelte";
 import JobDetailMetrics from "./JobDetailMetrics.svelte";
-import { calculateStageDurations, formatDurationWithUnits } from "$lib/utils/stageMetrics";
+import {
+	calculateStageDurations,
+	formatDurationWithUnits,
+} from "$lib/utils/stageMetrics";
 
 interface Props {
 	jobs: RecentJobSummary[];
@@ -16,9 +26,16 @@ let { jobs, stats }: Props = $props();
 let expandedJobId = $state<string | null>(null);
 
 // Pre-calculate stage completion count for mini indicator
-function getStageCompletionCount(job: RecentJobSummary): { completed: number; total: number } {
-	const durations = calculateStageDurations(job.status_history, job.kicked_at, job.status);
-	const completed = durations.filter(s => s.status === "completed").length;
+function getStageCompletionCount(job: RecentJobSummary): {
+	completed: number;
+	total: number;
+} {
+	const durations = calculateStageDurations(
+		job.status_history,
+		job.kicked_at,
+		job.status,
+	);
+	const completed = durations.filter((s) => s.status === "completed").length;
 	return { completed, total: durations.length };
 }
 

@@ -32,8 +32,7 @@ export const articleKeys = {
 	all: ["articles"] as const,
 	content: (url: string) => [...articleKeys.all, "content", url] as const,
 	list: () => [...articleKeys.all, "list"] as const,
-	cursor: (cursor?: string) =>
-		[...articleKeys.list(), { cursor }] as const,
+	cursor: (cursor?: string) => [...articleKeys.list(), { cursor }] as const,
 };
 
 // =============================================================================

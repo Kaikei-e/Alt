@@ -1,87 +1,89 @@
 <script lang="ts">
-	import { Search, Loader2 } from "@lucide/svelte";
-	import { searchFeedsClient } from "$lib/api/client/feeds";
-	import { type RenderFeed, sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
-	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-	import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
-	import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
-	import { Input } from "$lib/components/ui/input";
-	import { Button } from "$lib/components/ui/button";
+import { Search, Loader2 } from "@lucide/svelte";
+import { searchFeedsClient } from "$lib/api/client/feeds";
+import { type RenderFeed, sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
+import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
+import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
+import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
+import { Input } from "$lib/components/ui/input";
+import { Button } from "$lib/components/ui/button";
 
-	let selectedFeed = $state<RenderFeed | null>(null);
-	let isModalOpen = $state(false);
-	let searchQuery = $state("");
-	let lastSearchedQuery = $state("");
+let selectedFeed = $state<RenderFeed | null>(null);
+let isModalOpen = $state(false);
+let searchQuery = $state("");
+let lastSearchedQuery = $state("");
 
-	// Simple state for search
-	let feeds = $state<RenderFeed[]>([]);
-	let isLoading = $state(false);
-	let error = $state<Error | null>(null);
+// Simple state for search
+let feeds = $state<RenderFeed[]>([]);
+let isLoading = $state(false);
+let error = $state<Error | null>(null);
 
-	async function handleSearch() {
-		if (!searchQuery.trim()) {
+async function handleSearch() {
+	if (!searchQuery.trim()) {
+		feeds = [];
+		error = null;
+		lastSearchedQuery = "";
+		return;
+	}
+
+	try {
+		isLoading = true;
+		error = null;
+		lastSearchedQuery = searchQuery.trim();
+		const result = await searchFeedsClient(searchQuery.trim(), undefined, 50);
+
+		// Check for API error (following mobile pattern)
+		if (result.error) {
+			error = new Error(result.error);
 			feeds = [];
-			error = null;
-			lastSearchedQuery = "";
+			isLoading = false;
 			return;
 		}
 
-		try {
-			isLoading = true;
-			error = null;
-			lastSearchedQuery = searchQuery.trim();
-			const result = await searchFeedsClient(searchQuery.trim(), undefined, 50);
-
-			// Check for API error (following mobile pattern)
-			if (result.error) {
-				error = new Error(result.error);
-				feeds = [];
-				isLoading = false;
-				return;
-			}
-
-			const rawResults = result.results ?? [];
-			feeds = rawResults.map(item => toRenderFeed(sanitizeFeed(item), item.tags));
-		} catch (err) {
-			error = err as Error;
-			feeds = [];
-		} finally {
-			isLoading = false;
-		}
+		const rawResults = result.results ?? [];
+		feeds = rawResults.map((item) =>
+			toRenderFeed(sanitizeFeed(item), item.tags),
+		);
+	} catch (err) {
+		error = err as Error;
+		feeds = [];
+	} finally {
+		isLoading = false;
 	}
+}
 
-	function handleKeyDown(event: KeyboardEvent) {
-		if (event.key === "Enter") {
-			event.preventDefault();
-			handleSearch();
-		}
+function handleKeyDown(event: KeyboardEvent) {
+	if (event.key === "Enter") {
+		event.preventDefault();
+		handleSearch();
 	}
+}
 
-	// Navigation state
-	let currentIndex = $state(-1);
+// Navigation state
+let currentIndex = $state(-1);
 
-	const hasPrevious = $derived(currentIndex > 0);
-	const hasNext = $derived(currentIndex >= 0 && currentIndex < feeds.length - 1);
+const hasPrevious = $derived(currentIndex > 0);
+const hasNext = $derived(currentIndex >= 0 && currentIndex < feeds.length - 1);
 
-	function handleSelectFeed(feed: RenderFeed, index: number) {
-		selectedFeed = feed;
-		currentIndex = index;
-		isModalOpen = true;
+function handleSelectFeed(feed: RenderFeed, index: number) {
+	selectedFeed = feed;
+	currentIndex = index;
+	isModalOpen = true;
+}
+
+function handlePrevious() {
+	if (currentIndex > 0) {
+		selectedFeed = feeds[currentIndex - 1];
+		currentIndex = currentIndex - 1;
 	}
+}
 
-	function handlePrevious() {
-		if (currentIndex > 0) {
-			selectedFeed = feeds[currentIndex - 1];
-			currentIndex = currentIndex - 1;
-		}
+function handleNext() {
+	if (currentIndex >= 0 && currentIndex < feeds.length - 1) {
+		selectedFeed = feeds[currentIndex + 1];
+		currentIndex = currentIndex + 1;
 	}
-
-	function handleNext() {
-		if (currentIndex >= 0 && currentIndex < feeds.length - 1) {
-			selectedFeed = feeds[currentIndex + 1];
-			currentIndex = currentIndex + 1;
-		}
-	}
+}
 </script>
 
 <svelte:head>

@@ -86,8 +86,9 @@ export function createDeleteRSSMutation() {
 			await queryClient.cancelQueries({ queryKey: rssKeys.links() });
 
 			// Snapshot previous value
-			const previousLinks =
-				queryClient.getQueryData<ListRSSFeedLinksResult>(rssKeys.links());
+			const previousLinks = queryClient.getQueryData<ListRSSFeedLinksResult>(
+				rssKeys.links(),
+			);
 
 			// Optimistically update: remove from list
 			if (previousLinks) {
@@ -101,11 +102,7 @@ export function createDeleteRSSMutation() {
 
 			return { previousLinks } as DeleteContext;
 		},
-		onError: (
-			_err: Error,
-			_id: string,
-			context: DeleteContext | undefined,
-		) => {
+		onError: (_err: Error, _id: string, context: DeleteContext | undefined) => {
 			// Rollback on error
 			if (context?.previousLinks) {
 				queryClient.setQueryData(rssKeys.links(), context.previousLinks);

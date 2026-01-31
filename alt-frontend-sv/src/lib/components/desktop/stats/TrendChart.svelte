@@ -1,138 +1,138 @@
 <script lang="ts">
-	import { onMount, onDestroy } from "svelte";
-	import {
-		Chart,
-		LineController,
-		LineElement,
-		PointElement,
-		LinearScale,
-		CategoryScale,
-		Title,
-		Tooltip,
-		Legend,
-		Filler,
-	} from "chart.js";
-	import type { TrendDataPoint } from "$lib/schema/stats";
+import { onMount, onDestroy } from "svelte";
+import {
+	Chart,
+	LineController,
+	LineElement,
+	PointElement,
+	LinearScale,
+	CategoryScale,
+	Title,
+	Tooltip,
+	Legend,
+	Filler,
+} from "chart.js";
+import type { TrendDataPoint } from "$lib/schema/stats";
 
-	// Register Chart.js components
-	Chart.register(
-		LineController,
-		LineElement,
-		PointElement,
-		LinearScale,
-		CategoryScale,
-		Title,
-		Tooltip,
-		Legend,
-		Filler,
-	);
+// Register Chart.js components
+Chart.register(
+	LineController,
+	LineElement,
+	PointElement,
+	LinearScale,
+	CategoryScale,
+	Title,
+	Tooltip,
+	Legend,
+	Filler,
+);
 
-	interface Props {
-		title: string;
-		dataPoints: TrendDataPoint[];
-		dataKey: "articles" | "summarized" | "feed_activity";
-		color: string;
-		loading?: boolean;
-	}
+interface Props {
+	title: string;
+	dataPoints: TrendDataPoint[];
+	dataKey: "articles" | "summarized" | "feed_activity";
+	color: string;
+	loading?: boolean;
+}
 
-	let { title, dataPoints, dataKey, color, loading = false }: Props = $props();
+let { title, dataPoints, dataKey, color, loading = false }: Props = $props();
 
-	let canvas: HTMLCanvasElement;
-	let chart: Chart | null = null;
+let canvas: HTMLCanvasElement;
+let chart: Chart | null = null;
 
-	function formatTimestamp(timestamp: string, granularity: string): string {
-		const date = new Date(timestamp);
-		if (granularity === "hourly") {
-			return date.toLocaleTimeString("ja-JP", {
-				hour: "2-digit",
-				minute: "2-digit",
-			});
-		}
-		return date.toLocaleDateString("ja-JP", {
-			month: "short",
-			day: "numeric",
+function formatTimestamp(timestamp: string, granularity: string): string {
+	const date = new Date(timestamp);
+	if (granularity === "hourly") {
+		return date.toLocaleTimeString("ja-JP", {
+			hour: "2-digit",
+			minute: "2-digit",
 		});
 	}
+	return date.toLocaleDateString("ja-JP", {
+		month: "short",
+		day: "numeric",
+	});
+}
 
-	function getDataValue(point: TrendDataPoint): number {
-		return point[dataKey];
+function getDataValue(point: TrendDataPoint): number {
+	return point[dataKey];
+}
+
+function createChart() {
+	if (!canvas || dataPoints.length === 0) return;
+
+	// Destroy existing chart if any
+	if (chart) {
+		chart.destroy();
 	}
 
-	function createChart() {
-		if (!canvas || dataPoints.length === 0) return;
+	const labels = dataPoints.map((p) =>
+		formatTimestamp(p.timestamp, dataPoints.length > 7 ? "hourly" : "daily"),
+	);
+	const data = dataPoints.map(getDataValue);
 
-		// Destroy existing chart if any
-		if (chart) {
-			chart.destroy();
-		}
-
-		const labels = dataPoints.map((p) =>
-			formatTimestamp(p.timestamp, dataPoints.length > 7 ? "hourly" : "daily"),
-		);
-		const data = dataPoints.map(getDataValue);
-
-		chart = new Chart(canvas, {
-			type: "line",
-			data: {
-				labels,
-				datasets: [
-					{
-						label: title,
-						data,
-						borderColor: color,
-						backgroundColor: `${color}20`,
-						fill: true,
-						tension: 0.3,
-						pointRadius: 3,
-						pointHoverRadius: 5,
-					},
-				],
+	chart = new Chart(canvas, {
+		type: "line",
+		data: {
+			labels,
+			datasets: [
+				{
+					label: title,
+					data,
+					borderColor: color,
+					backgroundColor: `${color}20`,
+					fill: true,
+					tension: 0.3,
+					pointRadius: 3,
+					pointHoverRadius: 5,
+				},
+			],
+		},
+		options: {
+			responsive: true,
+			maintainAspectRatio: false,
+			plugins: {
+				legend: {
+					display: false,
+				},
+				tooltip: {
+					mode: "index",
+					intersect: false,
+				},
 			},
-			options: {
-				responsive: true,
-				maintainAspectRatio: false,
-				plugins: {
-					legend: {
+			scales: {
+				x: {
+					grid: {
 						display: false,
 					},
-					tooltip: {
-						mode: "index",
-						intersect: false,
-					},
 				},
-				scales: {
-					x: {
-						grid: {
-							display: false,
-						},
-					},
-					y: {
-						beginAtZero: true,
-						grid: {
-							color: "rgba(0, 0, 0, 0.1)",
-						},
+				y: {
+					beginAtZero: true,
+					grid: {
+						color: "rgba(0, 0, 0, 0.1)",
 					},
 				},
 			},
-		});
+		},
+	});
+}
+
+onMount(() => {
+	createChart();
+});
+
+onDestroy(() => {
+	if (chart) {
+		chart.destroy();
 	}
+});
 
-	onMount(() => {
+// Reactively update chart when dataPoints change
+$effect(() => {
+	if (dataPoints && canvas) {
 		createChart();
-	});
-
-	onDestroy(() => {
-		if (chart) {
-			chart.destroy();
-		}
-	});
-
-	// Reactively update chart when dataPoints change
-	$effect(() => {
-		if (dataPoints && canvas) {
-			createChart();
-		}
-	});
+	}
+});
 </script>
 
 <div class="border border-[var(--surface-border)] bg-white p-4">

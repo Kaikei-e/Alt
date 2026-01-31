@@ -1,51 +1,47 @@
 <script lang="ts">
-	import {
-		Activity,
-		CheckCircle,
-		XCircle,
-		Clock,
-	} from "@lucide/svelte";
+import { Activity, CheckCircle, XCircle, Clock } from "@lucide/svelte";
 
-	interface Props {
-		successRate: string;
-		avgDuration: string;
-		totalJobs: number;
-		runningJobs: number;
-		failedJobs: number;
-	}
+interface Props {
+	successRate: string;
+	avgDuration: string;
+	totalJobs: number;
+	runningJobs: number;
+	failedJobs: number;
+}
 
-	let { successRate, avgDuration, totalJobs, runningJobs, failedJobs }: Props = $props();
+let { successRate, avgDuration, totalJobs, runningJobs, failedJobs }: Props =
+	$props();
 
-	const stats = $derived([
-		{
-			title: "Success Rate",
-			value: successRate,
-			subtitle: "24h",
-			icon: CheckCircle,
-			color: "text-green-600",
-		},
-		{
-			title: "Avg Duration",
-			value: avgDuration,
-			subtitle: "Per job",
-			icon: Clock,
-			color: "text-blue-600",
-		},
-		{
-			title: "Jobs Today",
-			value: totalJobs,
-			subtitle: `${runningJobs} running`,
-			icon: Activity,
-			color: "text-indigo-600",
-		},
-		{
-			title: "Failed",
-			value: failedJobs,
-			subtitle: "24h",
-			icon: XCircle,
-			color: "text-red-600",
-		},
-	]);
+const stats = $derived([
+	{
+		title: "Success Rate",
+		value: successRate,
+		subtitle: "24h",
+		icon: CheckCircle,
+		color: "text-green-600",
+	},
+	{
+		title: "Avg Duration",
+		value: avgDuration,
+		subtitle: "Per job",
+		icon: Clock,
+		color: "text-blue-600",
+	},
+	{
+		title: "Jobs Today",
+		value: totalJobs,
+		subtitle: `${runningJobs} running`,
+		icon: Activity,
+		color: "text-indigo-600",
+	},
+	{
+		title: "Failed",
+		value: failedJobs,
+		subtitle: "24h",
+		icon: XCircle,
+		color: "text-red-600",
+	},
+]);
 </script>
 
 <div

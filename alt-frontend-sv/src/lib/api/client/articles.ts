@@ -319,4 +319,3 @@ export async function registerFavoriteFeedClient(
 		message: response.message,
 	};
 }
-

@@ -1,19 +1,19 @@
 <script lang="ts">
-	import { Eye, ExternalLink } from "@lucide/svelte";
-	import type { RenderFeed } from "$lib/schema/feed";
-	import { cn } from "$lib/utils";
+import { Eye, ExternalLink } from "@lucide/svelte";
+import type { RenderFeed } from "$lib/schema/feed";
+import { cn } from "$lib/utils";
 
-	interface Props {
-		feed: RenderFeed;
-		onSelect: (feed: RenderFeed) => void;
-		isRead?: boolean;
-	}
+interface Props {
+	feed: RenderFeed;
+	onSelect: (feed: RenderFeed) => void;
+	isRead?: boolean;
+}
 
-	let { feed, onSelect, isRead = false }: Props = $props();
+let { feed, onSelect, isRead = false }: Props = $props();
 
-	function handleClick() {
-		onSelect(feed);
-	}
+function handleClick() {
+	onSelect(feed);
+}
 </script>
 
 <button

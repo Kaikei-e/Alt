@@ -85,10 +85,7 @@ export function useStreamingFeedStats(): StreamingFeedStatsState {
 	function scheduleReconnect() {
 		if (reconnectTimer) return; // Already scheduled
 
-		const delay = Math.min(
-			BASE_RETRY_DELAY * 2 ** retryCount,
-			MAX_RETRY_DELAY,
-		);
+		const delay = Math.min(BASE_RETRY_DELAY * 2 ** retryCount, MAX_RETRY_DELAY);
 
 		reconnectTimer = setTimeout(() => {
 			reconnectTimer = null;

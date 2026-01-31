@@ -2,281 +2,308 @@
 // @generated from file services/preprocessor/v2/preprocessor.proto (package services.preprocessor.v2, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type {
+	GenFile,
+	GenMessage,
+	GenService,
+} from "@bufbuild/protobuf/codegenv2";
+import {
+	fileDesc,
+	messageDesc,
+	serviceDesc,
+} from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file services/preprocessor/v2/preprocessor.proto.
  */
-export const file_services_preprocessor_v2_preprocessor: GenFile = /*@__PURE__*/
-  fileDesc("CitzZXJ2aWNlcy9wcmVwcm9jZXNzb3IvdjIvcHJlcHJvY2Vzc29yLnByb3RvEhhzZXJ2aWNlcy5wcmVwcm9jZXNzb3IudjIiRgoQU3VtbWFyaXplUmVxdWVzdBISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB2NvbnRlbnQYAyABKAkiSQoRU3VtbWFyaXplUmVzcG9uc2USDwoHc3VjY2VzcxgBIAEoCBIPCgdzdW1tYXJ5GAIgASgJEhIKCmFydGljbGVfaWQYAyABKAkiTAoWU3RyZWFtU3VtbWFyaXplUmVxdWVzdBISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB2NvbnRlbnQYAyABKAkiOgoXU3RyZWFtU3VtbWFyaXplUmVzcG9uc2USDQoFY2h1bmsYASABKAkSEAoIaXNfZmluYWwYAiABKAgiOgoVU3VtbWFyaXplUXVldWVSZXF1ZXN0EhIKCmFydGljbGVfaWQYASABKAkSDQoFdGl0bGUYAiABKAkiSQoWU3VtbWFyaXplUXVldWVSZXNwb25zZRIOCgZqb2JfaWQYASABKAkSDgoGc3RhdHVzGAIgASgJEg8KB21lc3NhZ2UYAyABKAkiKAoWU3VtbWFyaXplU3RhdHVzUmVxdWVzdBIOCgZqb2JfaWQYASABKAkidQoXU3VtbWFyaXplU3RhdHVzUmVzcG9uc2USDgoGam9iX2lkGAEgASgJEg4KBnN0YXR1cxgCIAEoCRIPCgdzdW1tYXJ5GAMgASgJEhUKDWVycm9yX21lc3NhZ2UYBCABKAkSEgoKYXJ0aWNsZV9pZBgFIAEoCTLlAwoTUHJlUHJvY2Vzc29yU2VydmljZRJkCglTdW1tYXJpemUSKi5zZXJ2aWNlcy5wcmVwcm9jZXNzb3IudjIuU3VtbWFyaXplUmVxdWVzdBorLnNlcnZpY2VzLnByZXByb2Nlc3Nvci52Mi5TdW1tYXJpemVSZXNwb25zZRJ4Cg9TdHJlYW1TdW1tYXJpemUSMC5zZXJ2aWNlcy5wcmVwcm9jZXNzb3IudjIuU3RyZWFtU3VtbWFyaXplUmVxdWVzdBoxLnNlcnZpY2VzLnByZXByb2Nlc3Nvci52Mi5TdHJlYW1TdW1tYXJpemVSZXNwb25zZTABEnMKDlF1ZXVlU3VtbWFyaXplEi8uc2VydmljZXMucHJlcHJvY2Vzc29yLnYyLlN1bW1hcml6ZVF1ZXVlUmVxdWVzdBowLnNlcnZpY2VzLnByZXByb2Nlc3Nvci52Mi5TdW1tYXJpemVRdWV1ZVJlc3BvbnNlEnkKEkdldFN1bW1hcml6ZVN0YXR1cxIwLnNlcnZpY2VzLnByZXByb2Nlc3Nvci52Mi5TdW1tYXJpemVTdGF0dXNSZXF1ZXN0GjEuc2VydmljZXMucHJlcHJvY2Vzc29yLnYyLlN1bW1hcml6ZVN0YXR1c1Jlc3BvbnNlQkFaP3ByZS1wcm9jZXNzb3IvZ2VuL3Byb3RvL3NlcnZpY2VzL3ByZXByb2Nlc3Nvci92MjtwcmVwcm9jZXNzb3J2MmIGcHJvdG8z");
+export const file_services_preprocessor_v2_preprocessor: GenFile =
+	/*@__PURE__*/
+	fileDesc(
+		"CitzZXJ2aWNlcy9wcmVwcm9jZXNzb3IvdjIvcHJlcHJvY2Vzc29yLnByb3RvEhhzZXJ2aWNlcy5wcmVwcm9jZXNzb3IudjIiRgoQU3VtbWFyaXplUmVxdWVzdBISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB2NvbnRlbnQYAyABKAkiSQoRU3VtbWFyaXplUmVzcG9uc2USDwoHc3VjY2VzcxgBIAEoCBIPCgdzdW1tYXJ5GAIgASgJEhIKCmFydGljbGVfaWQYAyABKAkiTAoWU3RyZWFtU3VtbWFyaXplUmVxdWVzdBISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB2NvbnRlbnQYAyABKAkiOgoXU3RyZWFtU3VtbWFyaXplUmVzcG9uc2USDQoFY2h1bmsYASABKAkSEAoIaXNfZmluYWwYAiABKAgiOgoVU3VtbWFyaXplUXVldWVSZXF1ZXN0EhIKCmFydGljbGVfaWQYASABKAkSDQoFdGl0bGUYAiABKAkiSQoWU3VtbWFyaXplUXVldWVSZXNwb25zZRIOCgZqb2JfaWQYASABKAkSDgoGc3RhdHVzGAIgASgJEg8KB21lc3NhZ2UYAyABKAkiKAoWU3VtbWFyaXplU3RhdHVzUmVxdWVzdBIOCgZqb2JfaWQYASABKAkidQoXU3VtbWFyaXplU3RhdHVzUmVzcG9uc2USDgoGam9iX2lkGAEgASgJEg4KBnN0YXR1cxgCIAEoCRIPCgdzdW1tYXJ5GAMgASgJEhUKDWVycm9yX21lc3NhZ2UYBCABKAkSEgoKYXJ0aWNsZV9pZBgFIAEoCTLlAwoTUHJlUHJvY2Vzc29yU2VydmljZRJkCglTdW1tYXJpemUSKi5zZXJ2aWNlcy5wcmVwcm9jZXNzb3IudjIuU3VtbWFyaXplUmVxdWVzdBorLnNlcnZpY2VzLnByZXByb2Nlc3Nvci52Mi5TdW1tYXJpemVSZXNwb25zZRJ4Cg9TdHJlYW1TdW1tYXJpemUSMC5zZXJ2aWNlcy5wcmVwcm9jZXNzb3IudjIuU3RyZWFtU3VtbWFyaXplUmVxdWVzdBoxLnNlcnZpY2VzLnByZXByb2Nlc3Nvci52Mi5TdHJlYW1TdW1tYXJpemVSZXNwb25zZTABEnMKDlF1ZXVlU3VtbWFyaXplEi8uc2VydmljZXMucHJlcHJvY2Vzc29yLnYyLlN1bW1hcml6ZVF1ZXVlUmVxdWVzdBowLnNlcnZpY2VzLnByZXByb2Nlc3Nvci52Mi5TdW1tYXJpemVRdWV1ZVJlc3BvbnNlEnkKEkdldFN1bW1hcml6ZVN0YXR1cxIwLnNlcnZpY2VzLnByZXByb2Nlc3Nvci52Mi5TdW1tYXJpemVTdGF0dXNSZXF1ZXN0GjEuc2VydmljZXMucHJlcHJvY2Vzc29yLnYyLlN1bW1hcml6ZVN0YXR1c1Jlc3BvbnNlQkFaP3ByZS1wcm9jZXNzb3IvZ2VuL3Byb3RvL3NlcnZpY2VzL3ByZXByb2Nlc3Nvci92MjtwcmVwcm9jZXNzb3J2MmIGcHJvdG8z",
+	);
 
 /**
  * SummarizeRequest is the request for synchronous article summarization
  *
  * @generated from message services.preprocessor.v2.SummarizeRequest
  */
-export type SummarizeRequest = Message<"services.preprocessor.v2.SummarizeRequest"> & {
-  /**
-   * Article ID (required)
-   *
-   * @generated from field: string article_id = 1;
-   */
-  articleId: string;
+export type SummarizeRequest =
+	Message<"services.preprocessor.v2.SummarizeRequest"> & {
+		/**
+		 * Article ID (required)
+		 *
+		 * @generated from field: string article_id = 1;
+		 */
+		articleId: string;
 
-  /**
-   * Article title
-   *
-   * @generated from field: string title = 2;
-   */
-  title: string;
+		/**
+		 * Article title
+		 *
+		 * @generated from field: string title = 2;
+		 */
+		title: string;
 
-  /**
-   * Article content (optional, will fetch from DB if empty)
-   *
-   * @generated from field: string content = 3;
-   */
-  content: string;
-};
+		/**
+		 * Article content (optional, will fetch from DB if empty)
+		 *
+		 * @generated from field: string content = 3;
+		 */
+		content: string;
+	};
 
 /**
  * Describes the message services.preprocessor.v2.SummarizeRequest.
  * Use `create(SummarizeRequestSchema)` to create a new message.
  */
-export const SummarizeRequestSchema: GenMessage<SummarizeRequest> = /*@__PURE__*/
-  messageDesc(file_services_preprocessor_v2_preprocessor, 0);
+export const SummarizeRequestSchema: GenMessage<SummarizeRequest> =
+	/*@__PURE__*/
+	messageDesc(file_services_preprocessor_v2_preprocessor, 0);
 
 /**
  * SummarizeResponse contains the summarization result
  *
  * @generated from message services.preprocessor.v2.SummarizeResponse
  */
-export type SummarizeResponse = Message<"services.preprocessor.v2.SummarizeResponse"> & {
-  /**
-   * Whether the summarization was successful
-   *
-   * @generated from field: bool success = 1;
-   */
-  success: boolean;
+export type SummarizeResponse =
+	Message<"services.preprocessor.v2.SummarizeResponse"> & {
+		/**
+		 * Whether the summarization was successful
+		 *
+		 * @generated from field: bool success = 1;
+		 */
+		success: boolean;
 
-  /**
-   * Generated summary
-   *
-   * @generated from field: string summary = 2;
-   */
-  summary: string;
+		/**
+		 * Generated summary
+		 *
+		 * @generated from field: string summary = 2;
+		 */
+		summary: string;
 
-  /**
-   * Article ID
-   *
-   * @generated from field: string article_id = 3;
-   */
-  articleId: string;
-};
+		/**
+		 * Article ID
+		 *
+		 * @generated from field: string article_id = 3;
+		 */
+		articleId: string;
+	};
 
 /**
  * Describes the message services.preprocessor.v2.SummarizeResponse.
  * Use `create(SummarizeResponseSchema)` to create a new message.
  */
-export const SummarizeResponseSchema: GenMessage<SummarizeResponse> = /*@__PURE__*/
-  messageDesc(file_services_preprocessor_v2_preprocessor, 1);
+export const SummarizeResponseSchema: GenMessage<SummarizeResponse> =
+	/*@__PURE__*/
+	messageDesc(file_services_preprocessor_v2_preprocessor, 1);
 
 /**
  * StreamSummarizeRequest is the request for streaming article summarization
  *
  * @generated from message services.preprocessor.v2.StreamSummarizeRequest
  */
-export type StreamSummarizeRequest = Message<"services.preprocessor.v2.StreamSummarizeRequest"> & {
-  /**
-   * Article ID (required)
-   *
-   * @generated from field: string article_id = 1;
-   */
-  articleId: string;
+export type StreamSummarizeRequest =
+	Message<"services.preprocessor.v2.StreamSummarizeRequest"> & {
+		/**
+		 * Article ID (required)
+		 *
+		 * @generated from field: string article_id = 1;
+		 */
+		articleId: string;
 
-  /**
-   * Article title
-   *
-   * @generated from field: string title = 2;
-   */
-  title: string;
+		/**
+		 * Article title
+		 *
+		 * @generated from field: string title = 2;
+		 */
+		title: string;
 
-  /**
-   * Article content (optional, will fetch from DB if empty)
-   *
-   * @generated from field: string content = 3;
-   */
-  content: string;
-};
+		/**
+		 * Article content (optional, will fetch from DB if empty)
+		 *
+		 * @generated from field: string content = 3;
+		 */
+		content: string;
+	};
 
 /**
  * Describes the message services.preprocessor.v2.StreamSummarizeRequest.
  * Use `create(StreamSummarizeRequestSchema)` to create a new message.
  */
-export const StreamSummarizeRequestSchema: GenMessage<StreamSummarizeRequest> = /*@__PURE__*/
-  messageDesc(file_services_preprocessor_v2_preprocessor, 2);
+export const StreamSummarizeRequestSchema: GenMessage<StreamSummarizeRequest> =
+	/*@__PURE__*/
+	messageDesc(file_services_preprocessor_v2_preprocessor, 2);
 
 /**
  * StreamSummarizeResponse contains a streaming chunk of the summary
  *
  * @generated from message services.preprocessor.v2.StreamSummarizeResponse
  */
-export type StreamSummarizeResponse = Message<"services.preprocessor.v2.StreamSummarizeResponse"> & {
-  /**
-   * Summary text chunk
-   *
-   * @generated from field: string chunk = 1;
-   */
-  chunk: string;
+export type StreamSummarizeResponse =
+	Message<"services.preprocessor.v2.StreamSummarizeResponse"> & {
+		/**
+		 * Summary text chunk
+		 *
+		 * @generated from field: string chunk = 1;
+		 */
+		chunk: string;
 
-  /**
-   * Whether this is the final chunk
-   *
-   * @generated from field: bool is_final = 2;
-   */
-  isFinal: boolean;
-};
+		/**
+		 * Whether this is the final chunk
+		 *
+		 * @generated from field: bool is_final = 2;
+		 */
+		isFinal: boolean;
+	};
 
 /**
  * Describes the message services.preprocessor.v2.StreamSummarizeResponse.
  * Use `create(StreamSummarizeResponseSchema)` to create a new message.
  */
-export const StreamSummarizeResponseSchema: GenMessage<StreamSummarizeResponse> = /*@__PURE__*/
-  messageDesc(file_services_preprocessor_v2_preprocessor, 3);
+export const StreamSummarizeResponseSchema: GenMessage<StreamSummarizeResponse> =
+	/*@__PURE__*/
+	messageDesc(file_services_preprocessor_v2_preprocessor, 3);
 
 /**
  * SummarizeQueueRequest is the request for async queue submission
  *
  * @generated from message services.preprocessor.v2.SummarizeQueueRequest
  */
-export type SummarizeQueueRequest = Message<"services.preprocessor.v2.SummarizeQueueRequest"> & {
-  /**
-   * Article ID (required)
-   *
-   * @generated from field: string article_id = 1;
-   */
-  articleId: string;
+export type SummarizeQueueRequest =
+	Message<"services.preprocessor.v2.SummarizeQueueRequest"> & {
+		/**
+		 * Article ID (required)
+		 *
+		 * @generated from field: string article_id = 1;
+		 */
+		articleId: string;
 
-  /**
-   * Article title
-   *
-   * @generated from field: string title = 2;
-   */
-  title: string;
-};
+		/**
+		 * Article title
+		 *
+		 * @generated from field: string title = 2;
+		 */
+		title: string;
+	};
 
 /**
  * Describes the message services.preprocessor.v2.SummarizeQueueRequest.
  * Use `create(SummarizeQueueRequestSchema)` to create a new message.
  */
-export const SummarizeQueueRequestSchema: GenMessage<SummarizeQueueRequest> = /*@__PURE__*/
-  messageDesc(file_services_preprocessor_v2_preprocessor, 4);
+export const SummarizeQueueRequestSchema: GenMessage<SummarizeQueueRequest> =
+	/*@__PURE__*/
+	messageDesc(file_services_preprocessor_v2_preprocessor, 4);
 
 /**
  * SummarizeQueueResponse contains the job creation result
  *
  * @generated from message services.preprocessor.v2.SummarizeQueueResponse
  */
-export type SummarizeQueueResponse = Message<"services.preprocessor.v2.SummarizeQueueResponse"> & {
-  /**
-   * Created job ID
-   *
-   * @generated from field: string job_id = 1;
-   */
-  jobId: string;
+export type SummarizeQueueResponse =
+	Message<"services.preprocessor.v2.SummarizeQueueResponse"> & {
+		/**
+		 * Created job ID
+		 *
+		 * @generated from field: string job_id = 1;
+		 */
+		jobId: string;
 
-  /**
-   * Job status (pending)
-   *
-   * @generated from field: string status = 2;
-   */
-  status: string;
+		/**
+		 * Job status (pending)
+		 *
+		 * @generated from field: string status = 2;
+		 */
+		status: string;
 
-  /**
-   * Status message
-   *
-   * @generated from field: string message = 3;
-   */
-  message: string;
-};
+		/**
+		 * Status message
+		 *
+		 * @generated from field: string message = 3;
+		 */
+		message: string;
+	};
 
 /**
  * Describes the message services.preprocessor.v2.SummarizeQueueResponse.
  * Use `create(SummarizeQueueResponseSchema)` to create a new message.
  */
-export const SummarizeQueueResponseSchema: GenMessage<SummarizeQueueResponse> = /*@__PURE__*/
-  messageDesc(file_services_preprocessor_v2_preprocessor, 5);
+export const SummarizeQueueResponseSchema: GenMessage<SummarizeQueueResponse> =
+	/*@__PURE__*/
+	messageDesc(file_services_preprocessor_v2_preprocessor, 5);
 
 /**
  * SummarizeStatusRequest is the request for checking job status
  *
  * @generated from message services.preprocessor.v2.SummarizeStatusRequest
  */
-export type SummarizeStatusRequest = Message<"services.preprocessor.v2.SummarizeStatusRequest"> & {
-  /**
-   * Job ID to check (required)
-   *
-   * @generated from field: string job_id = 1;
-   */
-  jobId: string;
-};
+export type SummarizeStatusRequest =
+	Message<"services.preprocessor.v2.SummarizeStatusRequest"> & {
+		/**
+		 * Job ID to check (required)
+		 *
+		 * @generated from field: string job_id = 1;
+		 */
+		jobId: string;
+	};
 
 /**
  * Describes the message services.preprocessor.v2.SummarizeStatusRequest.
  * Use `create(SummarizeStatusRequestSchema)` to create a new message.
  */
-export const SummarizeStatusRequestSchema: GenMessage<SummarizeStatusRequest> = /*@__PURE__*/
-  messageDesc(file_services_preprocessor_v2_preprocessor, 6);
+export const SummarizeStatusRequestSchema: GenMessage<SummarizeStatusRequest> =
+	/*@__PURE__*/
+	messageDesc(file_services_preprocessor_v2_preprocessor, 6);
 
 /**
  * SummarizeStatusResponse contains the job status
  *
  * @generated from message services.preprocessor.v2.SummarizeStatusResponse
  */
-export type SummarizeStatusResponse = Message<"services.preprocessor.v2.SummarizeStatusResponse"> & {
-  /**
-   * Job ID
-   *
-   * @generated from field: string job_id = 1;
-   */
-  jobId: string;
+export type SummarizeStatusResponse =
+	Message<"services.preprocessor.v2.SummarizeStatusResponse"> & {
+		/**
+		 * Job ID
+		 *
+		 * @generated from field: string job_id = 1;
+		 */
+		jobId: string;
 
-  /**
-   * Job status: pending, running, completed, failed
-   *
-   * @generated from field: string status = 2;
-   */
-  status: string;
+		/**
+		 * Job status: pending, running, completed, failed
+		 *
+		 * @generated from field: string status = 2;
+		 */
+		status: string;
 
-  /**
-   * Generated summary (populated when completed)
-   *
-   * @generated from field: string summary = 3;
-   */
-  summary: string;
+		/**
+		 * Generated summary (populated when completed)
+		 *
+		 * @generated from field: string summary = 3;
+		 */
+		summary: string;
 
-  /**
-   * Error message (populated when failed)
-   *
-   * @generated from field: string error_message = 4;
-   */
-  errorMessage: string;
+		/**
+		 * Error message (populated when failed)
+		 *
+		 * @generated from field: string error_message = 4;
+		 */
+		errorMessage: string;
 
-  /**
-   * Article ID
-   *
-   * @generated from field: string article_id = 5;
-   */
-  articleId: string;
-};
+		/**
+		 * Article ID
+		 *
+		 * @generated from field: string article_id = 5;
+		 */
+		articleId: string;
+	};
 
 /**
  * Describes the message services.preprocessor.v2.SummarizeStatusResponse.
  * Use `create(SummarizeStatusResponseSchema)` to create a new message.
  */
-export const SummarizeStatusResponseSchema: GenMessage<SummarizeStatusResponse> = /*@__PURE__*/
-  messageDesc(file_services_preprocessor_v2_preprocessor, 7);
+export const SummarizeStatusResponseSchema: GenMessage<SummarizeStatusResponse> =
+	/*@__PURE__*/
+	messageDesc(file_services_preprocessor_v2_preprocessor, 7);
 
 /**
  * PreProcessorService provides article summarization operations
@@ -284,46 +311,44 @@ export const SummarizeStatusResponseSchema: GenMessage<SummarizeStatusResponse> 
  * @generated from service services.preprocessor.v2.PreProcessorService
  */
 export const PreProcessorService: GenService<{
-  /**
-   * Summarize performs synchronous article summarization
-   *
-   * @generated from rpc services.preprocessor.v2.PreProcessorService.Summarize
-   */
-  summarize: {
-    methodKind: "unary";
-    input: typeof SummarizeRequestSchema;
-    output: typeof SummarizeResponseSchema;
-  },
-  /**
-   * StreamSummarize performs streaming article summarization
-   *
-   * @generated from rpc services.preprocessor.v2.PreProcessorService.StreamSummarize
-   */
-  streamSummarize: {
-    methodKind: "server_streaming";
-    input: typeof StreamSummarizeRequestSchema;
-    output: typeof StreamSummarizeResponseSchema;
-  },
-  /**
-   * QueueSummarize submits an article for async summarization
-   *
-   * @generated from rpc services.preprocessor.v2.PreProcessorService.QueueSummarize
-   */
-  queueSummarize: {
-    methodKind: "unary";
-    input: typeof SummarizeQueueRequestSchema;
-    output: typeof SummarizeQueueResponseSchema;
-  },
-  /**
-   * GetSummarizeStatus checks the status of a summarization job
-   *
-   * @generated from rpc services.preprocessor.v2.PreProcessorService.GetSummarizeStatus
-   */
-  getSummarizeStatus: {
-    methodKind: "unary";
-    input: typeof SummarizeStatusRequestSchema;
-    output: typeof SummarizeStatusResponseSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_services_preprocessor_v2_preprocessor, 0);
-
+	/**
+	 * Summarize performs synchronous article summarization
+	 *
+	 * @generated from rpc services.preprocessor.v2.PreProcessorService.Summarize
+	 */
+	summarize: {
+		methodKind: "unary";
+		input: typeof SummarizeRequestSchema;
+		output: typeof SummarizeResponseSchema;
+	};
+	/**
+	 * StreamSummarize performs streaming article summarization
+	 *
+	 * @generated from rpc services.preprocessor.v2.PreProcessorService.StreamSummarize
+	 */
+	streamSummarize: {
+		methodKind: "server_streaming";
+		input: typeof StreamSummarizeRequestSchema;
+		output: typeof StreamSummarizeResponseSchema;
+	};
+	/**
+	 * QueueSummarize submits an article for async summarization
+	 *
+	 * @generated from rpc services.preprocessor.v2.PreProcessorService.QueueSummarize
+	 */
+	queueSummarize: {
+		methodKind: "unary";
+		input: typeof SummarizeQueueRequestSchema;
+		output: typeof SummarizeQueueResponseSchema;
+	};
+	/**
+	 * GetSummarizeStatus checks the status of a summarization job
+	 *
+	 * @generated from rpc services.preprocessor.v2.PreProcessorService.GetSummarizeStatus
+	 */
+	getSummarizeStatus: {
+		methodKind: "unary";
+		input: typeof SummarizeStatusRequestSchema;
+		output: typeof SummarizeStatusResponseSchema;
+	};
+}> = /*@__PURE__*/ serviceDesc(file_services_preprocessor_v2_preprocessor, 0);

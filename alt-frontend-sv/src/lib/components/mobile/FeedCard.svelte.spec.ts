@@ -16,11 +16,15 @@ describe("FeedCard", () => {
 			},
 		});
 
-		await expect.element(page.getByText(renderFeedFixture.title)).toBeInTheDocument();
-		await expect.element(page.getByText(renderFeedFixture.excerpt)).toBeInTheDocument();
-		await expect.element(
-			page.getByRole("button", { name: /mark .* as read/i }),
-		).toBeInTheDocument();
+		await expect
+			.element(page.getByText(renderFeedFixture.title))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByText(renderFeedFixture.excerpt))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: /mark .* as read/i }))
+			.toBeInTheDocument();
 	});
 
 	it("calls setIsReadStatus with normalized URL when Mark as read is clicked", async () => {

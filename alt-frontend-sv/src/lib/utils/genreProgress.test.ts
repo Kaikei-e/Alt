@@ -3,7 +3,9 @@ import { filterGenreProgress } from "./genreProgress";
 import type { GenreProgressInfo } from "$lib/schema/dashboard";
 
 describe("filterGenreProgress", () => {
-	const createGenreInfo = (status: "pending" | "running" | "succeeded" | "failed"): GenreProgressInfo => ({
+	const createGenreInfo = (
+		status: "pending" | "running" | "succeeded" | "failed",
+	): GenreProgressInfo => ({
 		status,
 		cluster_count: null,
 		article_count: null,

@@ -1,71 +1,73 @@
 <script lang="ts">
-	import type {
-		RecentJobSummary,
-		JobStats,
-		StatusTransition,
-	} from "$lib/schema/dashboard";
-	import {
-		calculateJobMetrics,
-		getPerformanceLabel,
-		formatDurationWithUnits,
-	} from "$lib/utils/stageMetrics";
-	import StageDurationBar from "./StageDurationBar.svelte";
-	import StatusTransitionTimeline from "./StatusTransitionTimeline.svelte";
-	import {
-		Clock,
-		TrendingUp,
-		TrendingDown,
-		Minus,
-		BarChart3,
-		History,
-		Zap,
-	} from "@lucide/svelte";
+import type {
+	RecentJobSummary,
+	JobStats,
+	StatusTransition,
+} from "$lib/schema/dashboard";
+import {
+	calculateJobMetrics,
+	getPerformanceLabel,
+	formatDurationWithUnits,
+} from "$lib/utils/stageMetrics";
+import StageDurationBar from "./StageDurationBar.svelte";
+import StatusTransitionTimeline from "./StatusTransitionTimeline.svelte";
+import {
+	Clock,
+	TrendingUp,
+	TrendingDown,
+	Minus,
+	BarChart3,
+	History,
+	Zap,
+} from "@lucide/svelte";
 
-	interface Props {
-		job: RecentJobSummary;
-		stats?: JobStats;
-	}
+interface Props {
+	job: RecentJobSummary;
+	stats?: JobStats;
+}
 
-	let { job, stats }: Props = $props();
+let { job, stats }: Props = $props();
 
-	// Calculate metrics
-	const metrics = $derived(
-		calculateJobMetrics(
-			job.status_history,
-			job.kicked_at,
-			job.status,
-			job.duration_secs,
-			stats?.avg_duration_secs ?? null,
-		),
-	);
+// Calculate metrics
+const metrics = $derived(
+	calculateJobMetrics(
+		job.status_history,
+		job.kicked_at,
+		job.status,
+		job.duration_secs,
+		stats?.avg_duration_secs ?? null,
+	),
+);
 
-	const performance = $derived(getPerformanceLabel(metrics.performanceRatio));
+const performance = $derived(getPerformanceLabel(metrics.performanceRatio));
 
-	function getPerformanceIcon() {
-		if (!metrics.performanceRatio) return Minus;
-		if (metrics.performanceRatio <= 0.8) return TrendingUp;
-		if (metrics.performanceRatio > 1.2) return TrendingDown;
-		return Minus;
-	}
+function getPerformanceIcon() {
+	if (!metrics.performanceRatio) return Minus;
+	if (metrics.performanceRatio <= 0.8) return TrendingUp;
+	if (metrics.performanceRatio > 1.2) return TrendingDown;
+	return Minus;
+}
 
-	function getPerformanceColorClass(color: "green" | "amber" | "red" | "gray"): string {
-		const colorMap = {
-			green: "text-green-600 bg-green-50",
-			amber: "text-amber-600 bg-amber-50",
-			red: "text-red-600 bg-red-50",
-			gray: "text-gray-500 bg-gray-50",
-		};
-		return colorMap[color];
-	}
+function getPerformanceColorClass(
+	color: "green" | "amber" | "red" | "gray",
+): string {
+	const colorMap = {
+		green: "text-green-600 bg-green-50",
+		amber: "text-amber-600 bg-amber-50",
+		red: "text-red-600 bg-red-50",
+		gray: "text-gray-500 bg-gray-50",
+	};
+	return colorMap[color];
+}
 
-	// Calculate time delta from average
-	const timeDelta = $derived.by(() => {
-		if (!stats?.avg_duration_secs || !metrics.totalDurationSecs) return null;
-		const delta = metrics.totalDurationSecs - stats.avg_duration_secs;
-		return delta;
-	});
+// Calculate time delta from average
+const timeDelta = $derived.by(() => {
+	if (!stats?.avg_duration_secs || !metrics.totalDurationSecs) return null;
+	const delta = metrics.totalDurationSecs - stats.avg_duration_secs;
+	return delta;
+});
 
-	const PerformanceIcon = $derived(getPerformanceIcon());
+const PerformanceIcon = $derived(getPerformanceIcon());
 </script>
 
 <div class="space-y-6">

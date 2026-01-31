@@ -1,26 +1,26 @@
 <script lang="ts">
-	import type { ActiveJobInfo } from "$lib/schema/dashboard";
-	import PipelineProgress from "./PipelineProgress.svelte";
-	import GenreProgressList from "./GenreProgressList.svelte";
-	import StatusBadge from "./StatusBadge.svelte";
-	import { Play, Clock, FileText, Server, User } from "@lucide/svelte";
+import type { ActiveJobInfo } from "$lib/schema/dashboard";
+import PipelineProgress from "./PipelineProgress.svelte";
+import GenreProgressList from "./GenreProgressList.svelte";
+import StatusBadge from "./StatusBadge.svelte";
+import { Play, Clock, FileText, Server, User } from "@lucide/svelte";
 
-	interface Props {
-		job: ActiveJobInfo;
-	}
+interface Props {
+	job: ActiveJobInfo;
+}
 
-	let { job }: Props = $props();
+let { job }: Props = $props();
 
-	const startedAt = $derived(new Date(job.kicked_at).toLocaleString());
-	const elapsedTime = $derived(() => {
-		const start = new Date(job.kicked_at).getTime();
-		const now = Date.now();
-		const secs = Math.floor((now - start) / 1000);
-		if (secs < 60) return `${secs}s`;
-		const mins = Math.floor(secs / 60);
-		const remainingSecs = secs % 60;
-		return `${mins}m ${remainingSecs}s`;
-	});
+const startedAt = $derived(new Date(job.kicked_at).toLocaleString());
+const elapsedTime = $derived(() => {
+	const start = new Date(job.kicked_at).getTime();
+	const now = Date.now();
+	const secs = Math.floor((now - start) / 1000);
+	if (secs < 60) return `${secs}s`;
+	const mins = Math.floor(secs / 60);
+	const remainingSecs = secs % 60;
+	return `${mins}m ${remainingSecs}s`;
+});
 </script>
 
 <div

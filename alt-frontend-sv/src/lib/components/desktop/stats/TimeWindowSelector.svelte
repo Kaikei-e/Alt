@@ -1,25 +1,25 @@
 <script lang="ts">
-	import type { TimeWindow } from "$lib/schema/stats";
+import type { TimeWindow } from "$lib/schema/stats";
 
-	interface Props {
-		selected: TimeWindow;
-		onchange: (window: TimeWindow) => void;
+interface Props {
+	selected: TimeWindow;
+	onchange: (window: TimeWindow) => void;
+}
+
+let { selected, onchange }: Props = $props();
+
+const windows: { value: TimeWindow; label: string }[] = [
+	{ value: "4h", label: "4H" },
+	{ value: "24h", label: "24H" },
+	{ value: "3d", label: "3D" },
+	{ value: "7d", label: "7D" },
+];
+
+function handleClick(window: TimeWindow) {
+	if (window !== selected) {
+		onchange(window);
 	}
-
-	let { selected, onchange }: Props = $props();
-
-	const windows: { value: TimeWindow; label: string }[] = [
-		{ value: "4h", label: "4H" },
-		{ value: "24h", label: "24H" },
-		{ value: "3d", label: "3D" },
-		{ value: "7d", label: "7D" },
-	];
-
-	function handleClick(window: TimeWindow) {
-		if (window !== selected) {
-			onchange(window);
-		}
-	}
+}
 </script>
 
 <div class="flex gap-1">

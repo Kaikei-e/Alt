@@ -39,7 +39,7 @@ const getScrollRoot = $derived(browser ? null : null);
 
 // Load more results for infinite scroll
 const loadMore = async () => {
-	console.log('[SearchResults:loadMore] called', {
+	console.log("[SearchResults:loadMore] called", {
 		isLoading,
 		hasMore,
 		cursor,
@@ -47,11 +47,11 @@ const loadMore = async () => {
 	});
 
 	if (isLoading) {
-		console.log('[SearchResults:loadMore] skipped: isLoading=true');
+		console.log("[SearchResults:loadMore] skipped: isLoading=true");
 		return;
 	}
 	if (!hasMore) {
-		console.log('[SearchResults:loadMore] skipped: hasMore=false');
+		console.log("[SearchResults:loadMore] skipped: hasMore=false");
 		return;
 	}
 
@@ -72,7 +72,7 @@ const loadMore = async () => {
 
 		const searchResult = await searchFeedsClient(searchQuery, cursorOffset, 20);
 
-		console.log('[SearchResults:loadMore] API response', {
+		console.log("[SearchResults:loadMore] API response", {
 			resultsCount: searchResult.results?.length,
 			nextCursor: searchResult.next_cursor,
 			hasMore: searchResult.has_more,

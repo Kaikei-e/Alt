@@ -197,7 +197,11 @@ export function streamAugurChat(
 			}
 		} catch (error) {
 			// Only report error if not aborted
-			if (!abortController.signal.aborted && onError && error instanceof Error) {
+			if (
+				!abortController.signal.aborted &&
+				onError &&
+				error instanceof Error
+			) {
 				onError(error);
 			}
 		}

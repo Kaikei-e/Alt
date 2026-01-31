@@ -54,13 +54,17 @@ describe("swipe action", () => {
 		swipe(element);
 
 		// Simulate pointer down
-		element.dispatchEvent(createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }));
+		element.dispatchEvent(
+			createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+		);
 
 		// Wait for next animation frame
 		await new Promise((resolve) => requestAnimationFrame(resolve));
 
 		// Simulate pointer move
-		window.dispatchEvent(createPointerEvent("pointermove", { clientX: 50, clientY: 0 }));
+		window.dispatchEvent(
+			createPointerEvent("pointermove", { clientX: 50, clientY: 0 }),
+		);
 
 		// Wait for requestAnimationFrame
 		await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -76,10 +80,14 @@ describe("swipe action", () => {
 		swipe(element);
 
 		// Simulate pointer down
-		element.dispatchEvent(createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }));
+		element.dispatchEvent(
+			createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+		);
 
 		// Simulate pointer up
-		window.dispatchEvent(createPointerEvent("pointerup", { clientX: 50, clientY: 0 }));
+		window.dispatchEvent(
+			createPointerEvent("pointerup", { clientX: 50, clientY: 0 }),
+		);
 
 		expect(endHandler).toHaveBeenCalled();
 	});
@@ -91,10 +99,14 @@ describe("swipe action", () => {
 		swipe(element, { threshold: 50 });
 
 		// Simulate pointer down
-		element.dispatchEvent(createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }));
+		element.dispatchEvent(
+			createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+		);
 
 		// Simulate pointer up with enough distance
-		window.dispatchEvent(createPointerEvent("pointerup", { clientX: 100, clientY: 0 }));
+		window.dispatchEvent(
+			createPointerEvent("pointerup", { clientX: 100, clientY: 0 }),
+		);
 
 		expect(swipeHandler).toHaveBeenCalled();
 		const detail = (swipeHandler.mock.calls[0][0] as CustomEvent).detail;
@@ -109,10 +121,14 @@ describe("swipe action", () => {
 		swipe(element, { threshold: 50 });
 
 		// Simulate pointer down
-		element.dispatchEvent(createPointerEvent("pointerdown", { clientX: 100, clientY: 0 }));
+		element.dispatchEvent(
+			createPointerEvent("pointerdown", { clientX: 100, clientY: 0 }),
+		);
 
 		// Simulate pointer up with enough distance
-		window.dispatchEvent(createPointerEvent("pointerup", { clientX: 0, clientY: 0 }));
+		window.dispatchEvent(
+			createPointerEvent("pointerup", { clientX: 0, clientY: 0 }),
+		);
 
 		expect(swipeHandler).toHaveBeenCalled();
 		const detail = (swipeHandler.mock.calls[0][0] as CustomEvent).detail;
@@ -127,10 +143,14 @@ describe("swipe action", () => {
 		swipe(element, { threshold: 50 });
 
 		// Simulate pointer down
-		element.dispatchEvent(createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }));
+		element.dispatchEvent(
+			createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+		);
 
 		// Simulate pointer up with enough distance
-		window.dispatchEvent(createPointerEvent("pointerup", { clientX: 0, clientY: 100 }));
+		window.dispatchEvent(
+			createPointerEvent("pointerup", { clientX: 0, clientY: 100 }),
+		);
 
 		expect(swipeHandler).toHaveBeenCalled();
 		const detail = (swipeHandler.mock.calls[0][0] as CustomEvent).detail;
@@ -145,10 +165,14 @@ describe("swipe action", () => {
 		swipe(element, { threshold: 50 });
 
 		// Simulate pointer down
-		element.dispatchEvent(createPointerEvent("pointerdown", { clientX: 0, clientY: 100 }));
+		element.dispatchEvent(
+			createPointerEvent("pointerdown", { clientX: 0, clientY: 100 }),
+		);
 
 		// Simulate pointer up with enough distance
-		window.dispatchEvent(createPointerEvent("pointerup", { clientX: 0, clientY: 0 }));
+		window.dispatchEvent(
+			createPointerEvent("pointerup", { clientX: 0, clientY: 0 }),
+		);
 
 		expect(swipeHandler).toHaveBeenCalled();
 		const detail = (swipeHandler.mock.calls[0][0] as CustomEvent).detail;
@@ -163,10 +187,14 @@ describe("swipe action", () => {
 		swipe(element, { threshold: 100 });
 
 		// Simulate pointer down
-		element.dispatchEvent(createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }));
+		element.dispatchEvent(
+			createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+		);
 
 		// Simulate pointer up with not enough distance
-		window.dispatchEvent(createPointerEvent("pointerup", { clientX: 50, clientY: 0 }));
+		window.dispatchEvent(
+			createPointerEvent("pointerup", { clientX: 50, clientY: 0 }),
+		);
 
 		expect(swipeHandler).not.toHaveBeenCalled();
 	});
@@ -190,8 +218,12 @@ describe("swipe action", () => {
 		const swipeHandler = vi.fn();
 		element.addEventListener("swipe", swipeHandler as EventListener);
 
-		element.dispatchEvent(createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }));
-		window.dispatchEvent(createPointerEvent("pointerup", { clientX: 100, clientY: 0 }));
+		element.dispatchEvent(
+			createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+		);
+		window.dispatchEvent(
+			createPointerEvent("pointerup", { clientX: 100, clientY: 0 }),
+		);
 
 		expect(swipeHandler).not.toHaveBeenCalled();
 	});
@@ -203,8 +235,12 @@ describe("swipe action", () => {
 		swipe(element, { threshold: 50 });
 
 		// Simulate right swipe
-		element.dispatchEvent(createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }));
-		window.dispatchEvent(createPointerEvent("pointerup", { clientX: 100, clientY: 0 }));
+		element.dispatchEvent(
+			createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+		);
+		window.dispatchEvent(
+			createPointerEvent("pointerup", { clientX: 100, clientY: 0 }),
+		);
 
 		expect(swipeRightHandler).toHaveBeenCalled();
 	});

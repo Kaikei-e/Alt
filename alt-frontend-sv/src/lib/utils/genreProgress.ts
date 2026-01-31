@@ -6,7 +6,7 @@ import type { GenreProgressInfo } from "$lib/schema/dashboard";
  * items are being displayed.
  */
 export function filterGenreProgress(
-	genreProgress: Record<string, GenreProgressInfo>
+	genreProgress: Record<string, GenreProgressInfo>,
 ): [string, GenreProgressInfo][] {
 	const entries = Object.entries(genreProgress);
 

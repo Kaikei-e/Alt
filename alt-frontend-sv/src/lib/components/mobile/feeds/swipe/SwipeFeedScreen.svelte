@@ -168,10 +168,8 @@ async function loadMore() {
 
 							// Cache article_id if present
 							if (articleRes.article_id) {
-								const articleIdCache = (articlePrefetcher as any).articleIdCache as Map<
-									string,
-									string
-								>;
+								const articleIdCache = (articlePrefetcher as any)
+									.articleIdCache as Map<string, string>;
 								articleIdCache.set(cacheKey, articleRes.article_id);
 							}
 						})
@@ -253,9 +251,7 @@ function getCachedArticleId(url: string) {
  * Updates the feed data so UI reflects that the article is now saved.
  */
 function handleArticleIdResolved(feedLink: string, articleId: string) {
-	feeds = feeds.map(f =>
-		f.link === feedLink ? { ...f, articleId } : f
-	);
+	feeds = feeds.map((f) => (f.link === feedLink ? { ...f, articleId } : f));
 }
 </script>
 

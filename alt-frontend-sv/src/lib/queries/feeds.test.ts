@@ -5,7 +5,11 @@
  */
 import { describe, expect, it } from "vitest";
 import { flattenFeedPages, flattenSearchPages } from "./feeds";
-import type { FeedCursorResponse, FeedSearchResponse, ConnectFeedItem } from "$lib/connect/feeds";
+import type {
+	FeedCursorResponse,
+	FeedSearchResponse,
+	ConnectFeedItem,
+} from "$lib/connect/feeds";
 
 // Mock feed item
 const createMockFeedItem = (id: string): ConnectFeedItem => ({
@@ -178,7 +182,11 @@ describe("feedKeys", () => {
 		expect(feedKeys.lists()).toEqual(["feeds", "list"]);
 		expect(feedKeys.unread()).toEqual(["feeds", "list", { filter: "unread" }]);
 		expect(feedKeys.read()).toEqual(["feeds", "list", { filter: "read" }]);
-		expect(feedKeys.favorites()).toEqual(["feeds", "list", { filter: "favorites" }]);
+		expect(feedKeys.favorites()).toEqual([
+			"feeds",
+			"list",
+			{ filter: "favorites" },
+		]);
 		expect(feedKeys.search("test")).toEqual(["feeds", "search", "test"]);
 		expect(feedKeys.stats()).toEqual(["feeds", "stats"]);
 		expect(feedKeys.detailedStats()).toEqual(["feeds", "stats", "detailed"]);

@@ -31,7 +31,11 @@ describe("stageMetrics", () => {
 
 	describe("calculateStageDurations", () => {
 		it("returns pending stages for empty history", () => {
-			const result = calculateStageDurations([], "2025-01-20T10:00:00Z", "pending");
+			const result = calculateStageDurations(
+				[],
+				"2025-01-20T10:00:00Z",
+				"pending",
+			);
 			expect(result).toHaveLength(8); // PIPELINE_STAGES.length
 			expect(result.every((s) => s.status === "pending")).toBe(true);
 		});
@@ -72,7 +76,11 @@ describe("stageMetrics", () => {
 				},
 			];
 
-			const result = calculateStageDurations(history, "2025-01-20T10:00:00Z", "running");
+			const result = calculateStageDurations(
+				history,
+				"2025-01-20T10:00:00Z",
+				"running",
+			);
 
 			const fetchStage = result.find((s) => s.stage === "fetch");
 			const preprocessStage = result.find((s) => s.stage === "preprocess");
@@ -104,7 +112,11 @@ describe("stageMetrics", () => {
 				},
 			];
 
-			const result = calculateStageDurations(history, "2025-01-20T10:00:00Z", "running");
+			const result = calculateStageDurations(
+				history,
+				"2025-01-20T10:00:00Z",
+				"running",
+			);
 
 			const fetchStage = result.find((s) => s.stage === "fetch");
 			expect(fetchStage?.durationSecs).toBe(120); // 2 minutes (inferred from next stage)
@@ -183,7 +195,11 @@ describe("stageMetrics", () => {
 				},
 			];
 
-			const result = calculateStageDurations(history, "2025-01-20T10:00:00Z", "completed");
+			const result = calculateStageDurations(
+				history,
+				"2025-01-20T10:00:00Z",
+				"completed",
+			);
 
 			// All stages should be marked as completed for a completed job
 			const completedStages = result.filter((s) => s.status === "completed");
@@ -262,11 +278,17 @@ describe("stageMetrics", () => {
 				},
 			];
 
-			const result = calculateStageDurations(history, "2025-01-20T10:00:00Z", "completed");
+			const result = calculateStageDurations(
+				history,
+				"2025-01-20T10:00:00Z",
+				"completed",
+			);
 
 			// Even with missing status history for select and evidence,
 			// all 8 stages should be marked as completed when job is completed
-			const completedCount = result.filter((s) => s.status === "completed").length;
+			const completedCount = result.filter(
+				(s) => s.status === "completed",
+			).length;
 			expect(completedCount).toBe(8);
 
 			// Verify select stage is marked as completed even without explicit history
@@ -349,14 +371,29 @@ describe("stageMetrics", () => {
 
 	describe("getPerformanceLabel", () => {
 		it("returns green for fast performance", () => {
-			expect(getPerformanceLabel(0.5)).toEqual({ label: "Fast", color: "green" });
-			expect(getPerformanceLabel(0.8)).toEqual({ label: "Fast", color: "green" });
+			expect(getPerformanceLabel(0.5)).toEqual({
+				label: "Fast",
+				color: "green",
+			});
+			expect(getPerformanceLabel(0.8)).toEqual({
+				label: "Fast",
+				color: "green",
+			});
 		});
 
 		it("returns amber for normal performance", () => {
-			expect(getPerformanceLabel(0.9)).toEqual({ label: "Normal", color: "amber" });
-			expect(getPerformanceLabel(1.0)).toEqual({ label: "Normal", color: "amber" });
-			expect(getPerformanceLabel(1.2)).toEqual({ label: "Normal", color: "amber" });
+			expect(getPerformanceLabel(0.9)).toEqual({
+				label: "Normal",
+				color: "amber",
+			});
+			expect(getPerformanceLabel(1.0)).toEqual({
+				label: "Normal",
+				color: "amber",
+			});
+			expect(getPerformanceLabel(1.2)).toEqual({
+				label: "Normal",
+				color: "amber",
+			});
 		});
 
 		it("returns red for slow performance", () => {

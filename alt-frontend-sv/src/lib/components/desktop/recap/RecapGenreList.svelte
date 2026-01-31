@@ -1,44 +1,44 @@
 <script lang="ts">
-	import type { RecapGenre } from "$lib/schema/recap";
-	import { cn } from "$lib/utils";
-	import {
-		Sparkles,
-		Briefcase,
-		Clapperboard,
-		Globe,
-		Heart,
-		Cpu,
-		BookOpen,
-		TrendingUp,
-	} from "@lucide/svelte";
+import type { RecapGenre } from "$lib/schema/recap";
+import { cn } from "$lib/utils";
+import {
+	Sparkles,
+	Briefcase,
+	Clapperboard,
+	Globe,
+	Heart,
+	Cpu,
+	BookOpen,
+	TrendingUp,
+} from "@lucide/svelte";
 
-	interface Props {
-		genres: RecapGenre[];
-		selectedGenre: RecapGenre | null;
-		onSelectGenre: (genre: RecapGenre) => void;
-	}
+interface Props {
+	genres: RecapGenre[];
+	selectedGenre: RecapGenre | null;
+	onSelectGenre: (genre: RecapGenre) => void;
+}
 
-	let { genres, selectedGenre, onSelectGenre }: Props = $props();
+let { genres, selectedGenre, onSelectGenre }: Props = $props();
 
-	// Map genre names to icons
-	const genreIcons: Record<string, typeof Sparkles> = {
-		AI: Cpu,
-		Business: Briefcase,
-		Entertainment: Clapperboard,
-		Technology: Cpu,
-		Health: Heart,
-		Science: BookOpen,
-		Politics: Globe,
-		Sports: TrendingUp,
-	};
+// Map genre names to icons
+const genreIcons: Record<string, typeof Sparkles> = {
+	AI: Cpu,
+	Business: Briefcase,
+	Entertainment: Clapperboard,
+	Technology: Cpu,
+	Health: Heart,
+	Science: BookOpen,
+	Politics: Globe,
+	Sports: TrendingUp,
+};
 
-	function getIcon(genreName: string) {
-		return genreIcons[genreName] ?? Sparkles;
-	}
+function getIcon(genreName: string) {
+	return genreIcons[genreName] ?? Sparkles;
+}
 
-	function handleSelect(genre: RecapGenre) {
-		onSelectGenre(genre);
-	}
+function handleSelect(genre: RecapGenre) {
+	onSelectGenre(genre);
+}
 </script>
 
 <div class="border border-[var(--surface-border)] bg-white">

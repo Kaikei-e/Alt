@@ -16,7 +16,10 @@ import {
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
 import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
-import { createClientTransport, streamSummarizeWithRenderer } from "$lib/connect";
+import {
+	createClientTransport,
+	streamSummarizeWithRenderer,
+} from "$lib/connect";
 
 interface Props {
 	feed: RenderFeed;

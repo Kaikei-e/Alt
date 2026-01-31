@@ -1,46 +1,50 @@
 <script lang="ts">
-	import { BarChart3, TrendingUp, FileText, CheckCircle } from "@lucide/svelte";
-	import { onMount } from "svelte";
-	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-	import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
-	import { useTrendStats } from "$lib/hooks/useTrendStats.svelte";
-	import TrendChart from "$lib/components/desktop/stats/TrendChart.svelte";
-	import TimeWindowSelector from "$lib/components/desktop/stats/TimeWindowSelector.svelte";
+import { BarChart3, TrendingUp, FileText, CheckCircle } from "@lucide/svelte";
+import { onMount } from "svelte";
+import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
+import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
+import { useTrendStats } from "$lib/hooks/useTrendStats.svelte";
+import TrendChart from "$lib/components/desktop/stats/TrendChart.svelte";
+import TimeWindowSelector from "$lib/components/desktop/stats/TimeWindowSelector.svelte";
 
-	const stats = useFeedStats();
-	const trendStats = useTrendStats();
+const stats = useFeedStats();
+const trendStats = useTrendStats();
 
-	let feedAmount = $derived(stats.feedAmount);
-	let totalArticlesAmount = $derived(stats.totalArticlesAmount);
-	let unsummarizedArticlesAmount = $derived(stats.unsummarizedArticlesAmount);
-	let summarizedArticles = $derived(totalArticlesAmount - unsummarizedArticlesAmount);
-	let connectionStatus = $derived(stats.isConnected ? "Connected" : "Disconnected");
+let feedAmount = $derived(stats.feedAmount);
+let totalArticlesAmount = $derived(stats.totalArticlesAmount);
+let unsummarizedArticlesAmount = $derived(stats.unsummarizedArticlesAmount);
+let summarizedArticles = $derived(
+	totalArticlesAmount - unsummarizedArticlesAmount,
+);
+let connectionStatus = $derived(
+	stats.isConnected ? "Connected" : "Disconnected",
+);
 
-	let statCards = $derived([
-		{
-			label: "Feed Count",
-			value: feedAmount,
-			icon: FileText,
-			color: "text-blue-600",
-		},
-		{
-			label: "Total Articles",
-			value: totalArticlesAmount,
-			icon: BarChart3,
-			color: "text-green-600",
-		},
-		{
-			label: "Summarized",
-			value: summarizedArticles,
-			icon: CheckCircle,
-			color: "text-purple-600",
-		},
-	]);
+let statCards = $derived([
+	{
+		label: "Feed Count",
+		value: feedAmount,
+		icon: FileText,
+		color: "text-blue-600",
+	},
+	{
+		label: "Total Articles",
+		value: totalArticlesAmount,
+		icon: BarChart3,
+		color: "text-green-600",
+	},
+	{
+		label: "Summarized",
+		value: summarizedArticles,
+		icon: CheckCircle,
+		color: "text-purple-600",
+	},
+]);
 
-	// Fetch trend data on mount
-	onMount(() => {
-		trendStats.fetchData("24h");
-	});
+// Fetch trend data on mount
+onMount(() => {
+	trendStats.fetchData("24h");
+});
 </script>
 
 <svelte:head>

@@ -28,7 +28,9 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 	const token = locals.backendToken;
 
 	if (!token) {
-		console.error("[Connect-RPC Proxy] Authentication failed: no backend token");
+		console.error(
+			"[Connect-RPC Proxy] Authentication failed: no backend token",
+		);
 		return new Response(
 			JSON.stringify({
 				code: "unauthenticated",

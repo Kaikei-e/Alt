@@ -81,7 +81,9 @@ export interface MorningLetterStreamResult {
 /**
  * Creates a MorningLetterService client with the given transport.
  */
-export function createMorningLetterClient(transport: Transport): MorningLetterClient {
+export function createMorningLetterClient(
+	transport: Transport,
+): MorningLetterClient {
 	return createClient(MorningLetterService, transport);
 }
 
@@ -210,7 +212,11 @@ export function streamMorningLetterChat(
 			}
 		} catch (error) {
 			// Only report error if not aborted
-			if (!abortController.signal.aborted && onError && error instanceof Error) {
+			if (
+				!abortController.signal.aborted &&
+				onError &&
+				error instanceof Error
+			) {
 				onError(error);
 			}
 		}

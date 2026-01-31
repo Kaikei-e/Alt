@@ -1,24 +1,24 @@
 <script lang="ts">
-	import { ExternalLink } from "@lucide/svelte";
-	import type { EvidenceLink } from "$lib/schema/recap";
+import { ExternalLink } from "@lucide/svelte";
+import type { EvidenceLink } from "$lib/schema/recap";
 
-	interface Props {
-		evidenceLinks: EvidenceLink[];
+interface Props {
+	evidenceLinks: EvidenceLink[];
+}
+
+let { evidenceLinks }: Props = $props();
+
+function formatDate(isoDate: string): string {
+	try {
+		return new Date(isoDate).toLocaleDateString("en-US", {
+			month: "short",
+			day: "numeric",
+			year: "numeric",
+		});
+	} catch {
+		return isoDate;
 	}
-
-	let { evidenceLinks }: Props = $props();
-
-	function formatDate(isoDate: string): string {
-		try {
-			return new Date(isoDate).toLocaleDateString("en-US", {
-				month: "short",
-				day: "numeric",
-				year: "numeric",
-			});
-		} catch {
-			return isoDate;
-		}
-	}
+}
 </script>
 
 <div class="mt-6">

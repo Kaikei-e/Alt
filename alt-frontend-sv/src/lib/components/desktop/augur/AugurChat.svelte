@@ -1,212 +1,224 @@
 <script lang="ts">
-	import { onMount, tick } from "svelte";
-	import { Loader2 } from "@lucide/svelte";
-	import ChatMessage from "./ChatMessage.svelte";
-	import ChatInput from "./ChatInput.svelte";
-	import { createClientTransport, streamAugurChat, type AugurCitation } from "$lib/connect";
-	import augurAvatar from "$lib/assets/augur-chat.webp";
+import { onMount, tick } from "svelte";
+import { Loader2 } from "@lucide/svelte";
+import ChatMessage from "./ChatMessage.svelte";
+import ChatInput from "./ChatInput.svelte";
+import {
+	createClientTransport,
+	streamAugurChat,
+	type AugurCitation,
+} from "$lib/connect";
+import augurAvatar from "$lib/assets/augur-chat.webp";
 
-	type Citation = {
-		URL: string;
-		Title: string;
-		PublishedAt?: string;
-		Score?: number;
+type Citation = {
+	URL: string;
+	Title: string;
+	PublishedAt?: string;
+	Score?: number;
+};
+
+type Message = {
+	id: string;
+	message: string;
+	role: "user" | "assistant";
+	timestamp: string;
+	citations?: Citation[];
+	thinking?: string;
+};
+
+let messages = $state<Message[]>([
+	{
+		id: "welcome",
+		message: "Hello! I'm Augur. Ask me anything about your RSS feeds.",
+		role: "assistant",
+		timestamp: new Date().toLocaleTimeString(),
+	},
+]);
+
+let isLoading = $state(false);
+let isThinking = $state(false);
+let chatContainer: HTMLDivElement;
+let currentAbortController: AbortController | null = null;
+
+async function scrollToBottom() {
+	await tick();
+	if (chatContainer) {
+		setTimeout(() => {
+			chatContainer.scrollTop = chatContainer.scrollHeight;
+		}, 100);
+	}
+}
+
+/**
+ * Convert AugurCitation from Connect-RPC to component Citation format
+ */
+function convertCitations(citations: AugurCitation[]): Citation[] {
+	return citations.map((c) => ({
+		URL: c.url,
+		Title: c.title,
+		PublishedAt: c.publishedAt,
+	}));
+}
+
+async function handleSend(messageText: string) {
+	// Cancel any ongoing stream
+	if (currentAbortController) {
+		currentAbortController.abort();
+		currentAbortController = null;
+	}
+
+	// Add user message
+	const userMessage: Message = {
+		id: `user-${Date.now()}`,
+		message: messageText,
+		role: "user",
+		timestamp: new Date().toLocaleTimeString(),
 	};
 
-	type Message = {
-		id: string;
-		message: string;
-		role: "user" | "assistant";
-		timestamp: string;
-		citations?: Citation[];
-		thinking?: string;
-	};
+	messages = [...messages, userMessage];
+	await scrollToBottom();
 
-	let messages = $state<Message[]>([
+	isLoading = true;
+
+	// Add placeholder for assistant message
+	messages = [
+		...messages,
 		{
-			id: "welcome",
-			message: "Hello! I'm Augur. Ask me anything about your RSS feeds.",
-			role: "assistant",
-			timestamp: new Date().toLocaleTimeString(),
-		},
-	]);
-
-	let isLoading = $state(false);
-	let isThinking = $state(false);
-	let chatContainer: HTMLDivElement;
-	let currentAbortController: AbortController | null = null;
-
-	async function scrollToBottom() {
-		await tick();
-		if (chatContainer) {
-			setTimeout(() => {
-				chatContainer.scrollTop = chatContainer.scrollHeight;
-			}, 100);
-		}
-	}
-
-	/**
-	 * Convert AugurCitation from Connect-RPC to component Citation format
-	 */
-	function convertCitations(citations: AugurCitation[]): Citation[] {
-		return citations.map((c) => ({
-			URL: c.url,
-			Title: c.title,
-			PublishedAt: c.publishedAt,
-		}));
-	}
-
-	async function handleSend(messageText: string) {
-		// Cancel any ongoing stream
-		if (currentAbortController) {
-			currentAbortController.abort();
-			currentAbortController = null;
-		}
-
-		// Add user message
-		const userMessage: Message = {
-			id: `user-${Date.now()}`,
-			message: messageText,
-			role: "user",
-			timestamp: new Date().toLocaleTimeString(),
-		};
-
-		messages = [...messages, userMessage];
-		await scrollToBottom();
-
-		isLoading = true;
-
-		// Add placeholder for assistant message
-		messages = [...messages, {
 			id: `assistant-${Date.now()}`,
 			message: "",
 			role: "assistant",
 			timestamp: new Date().toLocaleTimeString(),
-		}];
-		const currentAssistantMessageIndex = messages.length - 1;
+		},
+	];
+	const currentAssistantMessageIndex = messages.length - 1;
 
-		// Throttling state for delta updates
-		let bufferedContent = "";
-		let bufferedThinking = "";
-		let lastUpdateTime = 0;
-		let lastThinkingUpdateTime = 0;
-		const THROTTLE_MS = 50;
+	// Throttling state for delta updates
+	let bufferedContent = "";
+	let bufferedThinking = "";
+	let lastUpdateTime = 0;
+	let lastThinkingUpdateTime = 0;
+	const THROTTLE_MS = 50;
 
-		try {
-			const transport = createClientTransport();
+	try {
+		const transport = createClientTransport();
 
-			// Build message history (excluding the empty placeholder)
-			const chatHistory = messages.slice(0, -1).map((m) => ({
-				role: m.role as "user" | "assistant",
-				content: m.message,
-			}));
+		// Build message history (excluding the empty placeholder)
+		const chatHistory = messages.slice(0, -1).map((m) => ({
+			role: m.role as "user" | "assistant",
+			content: m.message,
+		}));
 
-			currentAbortController = streamAugurChat(
-				transport,
-				{ messages: chatHistory },
-				// onDelta: text chunk received
-				(text) => {
-					// Once we receive content, stop showing "thinking" spinner
-					if (isThinking) {
-						isThinking = false;
-					}
-					bufferedContent += text;
+		currentAbortController = streamAugurChat(
+			transport,
+			{ messages: chatHistory },
+			// onDelta: text chunk received
+			(text) => {
+				// Once we receive content, stop showing "thinking" spinner
+				if (isThinking) {
+					isThinking = false;
+				}
+				bufferedContent += text;
 
-					const now = Date.now();
-					if (now - lastUpdateTime > THROTTLE_MS) {
-						messages[currentAssistantMessageIndex] = {
-							...messages[currentAssistantMessageIndex],
-							message: bufferedContent,
-						};
-						lastUpdateTime = now;
-					}
-				},
-				// onThinking: reasoning chunk received
-				(text) => {
-					if (!isThinking) {
-						isThinking = true;
-					}
-					bufferedThinking += text;
-
-					const now = Date.now();
-					if (now - lastThinkingUpdateTime > THROTTLE_MS) {
-						messages[currentAssistantMessageIndex] = {
-							...messages[currentAssistantMessageIndex],
-							thinking: bufferedThinking,
-						};
-						lastThinkingUpdateTime = now;
-					}
-				},
-				// onMeta: citations received
-				(citations) => {
+				const now = Date.now();
+				if (now - lastUpdateTime > THROTTLE_MS) {
 					messages[currentAssistantMessageIndex] = {
 						...messages[currentAssistantMessageIndex],
-						citations: convertCitations(citations),
+						message: bufferedContent,
 					};
-				},
-				// onComplete: streaming finished
-				(result) => {
-					// Ensure final content is rendered
+					lastUpdateTime = now;
+				}
+			},
+			// onThinking: reasoning chunk received
+			(text) => {
+				if (!isThinking) {
+					isThinking = true;
+				}
+				bufferedThinking += text;
+
+				const now = Date.now();
+				if (now - lastThinkingUpdateTime > THROTTLE_MS) {
 					messages[currentAssistantMessageIndex] = {
 						...messages[currentAssistantMessageIndex],
-						message: result.answer || bufferedContent,
-						thinking: bufferedThinking || messages[currentAssistantMessageIndex].thinking,
-						citations: result.citations.length > 0
+						thinking: bufferedThinking,
+					};
+					lastThinkingUpdateTime = now;
+				}
+			},
+			// onMeta: citations received
+			(citations) => {
+				messages[currentAssistantMessageIndex] = {
+					...messages[currentAssistantMessageIndex],
+					citations: convertCitations(citations),
+				};
+			},
+			// onComplete: streaming finished
+			(result) => {
+				// Ensure final content is rendered
+				messages[currentAssistantMessageIndex] = {
+					...messages[currentAssistantMessageIndex],
+					message: result.answer || bufferedContent,
+					thinking:
+						bufferedThinking || messages[currentAssistantMessageIndex].thinking,
+					citations:
+						result.citations.length > 0
 							? convertCitations(result.citations)
 							: messages[currentAssistantMessageIndex].citations,
-					};
-					isLoading = false;
-					isThinking = false;
-					currentAbortController = null;
-					scrollToBottom();
-				},
-				// onFallback: insufficient context
-				(code) => {
-					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex],
-						message: "I apologize, but I couldn't find enough information in my knowledge base to answer that properly.",
-						thinking: bufferedThinking || messages[currentAssistantMessageIndex].thinking,
-					};
-					isLoading = false;
-					isThinking = false;
-					currentAbortController = null;
-					scrollToBottom();
-				},
-				// onError: error occurred
-				(error) => {
-					console.error("Chat error:", error);
-					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex],
-						message: `Error: ${error.message}. Please try again.`,
-						thinking: bufferedThinking || messages[currentAssistantMessageIndex].thinking,
-					};
-					isLoading = false;
-					isThinking = false;
-					currentAbortController = null;
-					scrollToBottom();
-				},
-			);
-		} catch (error) {
-			console.error("Chat error:", error);
-			messages[currentAssistantMessageIndex] = {
-				...messages[currentAssistantMessageIndex],
-				message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
-			};
-			isLoading = false;
-			await scrollToBottom();
-		}
-	}
-
-	onMount(() => {
-		scrollToBottom();
-
-		// Cleanup on unmount
-		return () => {
-			if (currentAbortController) {
-				currentAbortController.abort();
-			}
+				};
+				isLoading = false;
+				isThinking = false;
+				currentAbortController = null;
+				scrollToBottom();
+			},
+			// onFallback: insufficient context
+			(code) => {
+				messages[currentAssistantMessageIndex] = {
+					...messages[currentAssistantMessageIndex],
+					message:
+						"I apologize, but I couldn't find enough information in my knowledge base to answer that properly.",
+					thinking:
+						bufferedThinking || messages[currentAssistantMessageIndex].thinking,
+				};
+				isLoading = false;
+				isThinking = false;
+				currentAbortController = null;
+				scrollToBottom();
+			},
+			// onError: error occurred
+			(error) => {
+				console.error("Chat error:", error);
+				messages[currentAssistantMessageIndex] = {
+					...messages[currentAssistantMessageIndex],
+					message: `Error: ${error.message}. Please try again.`,
+					thinking:
+						bufferedThinking || messages[currentAssistantMessageIndex].thinking,
+				};
+				isLoading = false;
+				isThinking = false;
+				currentAbortController = null;
+				scrollToBottom();
+			},
+		);
+	} catch (error) {
+		console.error("Chat error:", error);
+		messages[currentAssistantMessageIndex] = {
+			...messages[currentAssistantMessageIndex],
+			message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
 		};
-	});
+		isLoading = false;
+		await scrollToBottom();
+	}
+}
+
+onMount(() => {
+	scrollToBottom();
+
+	// Cleanup on unmount
+	return () => {
+		if (currentAbortController) {
+			currentAbortController.abort();
+		}
+	};
+});
 </script>
 
 <div class="flex flex-col h-[calc(100vh-12rem)] max-w-4xl mx-auto border border-border bg-background rounded-lg overflow-hidden">

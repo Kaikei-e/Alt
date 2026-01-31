@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { FileText, Tag, FileStack } from "@lucide/svelte";
-	import type { RecapGenre } from "$lib/schema/recap";
-	import EvidenceArticles from "./EvidenceArticles.svelte";
+import { FileText, Tag, FileStack } from "@lucide/svelte";
+import type { RecapGenre } from "$lib/schema/recap";
+import EvidenceArticles from "./EvidenceArticles.svelte";
 
-	interface Props {
-		genre: RecapGenre | null;
-	}
+interface Props {
+	genre: RecapGenre | null;
+}
 
-	let { genre }: Props = $props();
+let { genre }: Props = $props();
 </script>
 
 <div class="border border-[var(--surface-border)] bg-white">

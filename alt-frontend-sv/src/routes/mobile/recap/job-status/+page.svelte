@@ -1,110 +1,113 @@
 <script lang="ts">
-	import { onMount } from "svelte";
-	import { useJobProgress } from "$lib/hooks/useJobProgress.svelte";
-	import { triggerRecapJob } from "$lib/api/client/dashboard";
-	import { loadingStore } from "$lib/stores/loading.svelte";
-	import type { TimeWindow } from "$lib/schema/dashboard";
-	import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
-	import {
-		MobileJobStatusHeader,
-		MobileStatsRow,
-		MobileActiveJobPanel,
-		MobileJobHistoryList,
-		MobileControlBar,
-		MobileJobDetailSheet,
-	} from "$lib/components/mobile/recap/job-status";
-	import type { RecentJobSummary } from "$lib/schema/dashboard";
+import { onMount } from "svelte";
+import { useJobProgress } from "$lib/hooks/useJobProgress.svelte";
+import { triggerRecapJob } from "$lib/api/client/dashboard";
+import { loadingStore } from "$lib/stores/loading.svelte";
+import type { TimeWindow } from "$lib/schema/dashboard";
+import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
+import {
+	MobileJobStatusHeader,
+	MobileStatsRow,
+	MobileActiveJobPanel,
+	MobileJobHistoryList,
+	MobileControlBar,
+	MobileJobDetailSheet,
+} from "$lib/components/mobile/recap/job-status";
+import type { RecentJobSummary } from "$lib/schema/dashboard";
 
-	const jobProgress = useJobProgress({ initialWindow: "24h", pollInterval: 5000 });
+const jobProgress = useJobProgress({
+	initialWindow: "24h",
+	pollInterval: 5000,
+});
 
-	let triggering = $state(false);
-	let triggerError = $state<string | null>(null);
-	let triggerSuccess = $state<string | null>(null);
-	let justStartedJobId = $state<string | null>(null);
-	let selectedJob = $state<RecentJobSummary | null>(null);
-	let detailSheetOpen = $state(false);
+let triggering = $state(false);
+let triggerError = $state<string | null>(null);
+let triggerSuccess = $state<string | null>(null);
+let justStartedJobId = $state<string | null>(null);
+let selectedJob = $state<RecentJobSummary | null>(null);
+let detailSheetOpen = $state(false);
 
-	onMount(async () => {
-		loadingStore.startLoading();
-		await jobProgress.fetchData();
-		loadingStore.stopLoading();
-		jobProgress.startPolling();
-	});
+onMount(async () => {
+	loadingStore.startLoading();
+	await jobProgress.fetchData();
+	loadingStore.stopLoading();
+	jobProgress.startPolling();
+});
 
-	function handleWindowChange(window: TimeWindow) {
-		jobProgress.setWindow(window);
-	}
+function handleWindowChange(window: TimeWindow) {
+	jobProgress.setWindow(window);
+}
 
-	async function handleRefresh() {
-		await jobProgress.refresh();
-	}
+async function handleRefresh() {
+	await jobProgress.refresh();
+}
 
-	async function handleTriggerJob() {
-		if (triggering || justStartedJobId) return;
+async function handleTriggerJob() {
+	if (triggering || justStartedJobId) return;
 
-		triggering = true;
-		triggerError = null;
-		triggerSuccess = null;
+	triggering = true;
+	triggerError = null;
+	triggerSuccess = null;
 
-		try {
-			const result = await triggerRecapJob(fetch);
-			justStartedJobId = result.job_id;
-			triggerSuccess = `Job ${result.job_id.slice(0, 8)}... started`;
+	try {
+		const result = await triggerRecapJob(fetch);
+		justStartedJobId = result.job_id;
+		triggerSuccess = `Job ${result.job_id.slice(0, 8)}... started`;
 
-			// Refresh data after triggering
-			setTimeout(async () => {
-				await jobProgress.refresh();
-				if (jobProgress.data?.active_job) {
-					justStartedJobId = null;
-				}
-			}, 1000);
-
-			// Fallback: force clear optimistic lock
-			setTimeout(() => {
+		// Refresh data after triggering
+		setTimeout(async () => {
+			await jobProgress.refresh();
+			if (jobProgress.data?.active_job) {
 				justStartedJobId = null;
-			}, 10000);
+			}
+		}, 1000);
 
-			// Clear success message
-			setTimeout(() => {
-				triggerSuccess = null;
-			}, 5000);
-		} catch (e) {
-			triggerError = e instanceof Error ? e.message : "Failed to trigger job";
+		// Fallback: force clear optimistic lock
+		setTimeout(() => {
 			justStartedJobId = null;
-		} finally {
-			triggering = false;
-		}
+		}, 10000);
+
+		// Clear success message
+		setTimeout(() => {
+			triggerSuccess = null;
+		}, 5000);
+	} catch (e) {
+		triggerError = e instanceof Error ? e.message : "Failed to trigger job";
+		justStartedJobId = null;
+	} finally {
+		triggering = false;
 	}
+}
 
-	function handleJobSelect(job: RecentJobSummary) {
-		selectedJob = job;
-		detailSheetOpen = true;
-	}
+function handleJobSelect(job: RecentJobSummary) {
+	selectedJob = job;
+	detailSheetOpen = true;
+}
 
-	function handleCloseDetailSheet() {
-		detailSheetOpen = false;
-		selectedJob = null;
-	}
+function handleCloseDetailSheet() {
+	detailSheetOpen = false;
+	selectedJob = null;
+}
 
-	// Computed values
-	const successRate = $derived(
-		jobProgress.data?.stats.success_rate_24h
-			? `${(jobProgress.data.stats.success_rate_24h * 100).toFixed(1)}%`
-			: "-"
-	);
+// Computed values
+const successRate = $derived(
+	jobProgress.data?.stats.success_rate_24h
+		? `${(jobProgress.data.stats.success_rate_24h * 100).toFixed(1)}%`
+		: "-",
+);
 
-	const avgDuration = $derived.by(() => {
-		const secs = jobProgress.data?.stats.avg_duration_secs;
-		if (!secs) return "-";
-		if (secs < 60) return `${secs}s`;
-		const mins = Math.floor(secs / 60);
-		return `${mins}m`;
-	});
+const avgDuration = $derived.by(() => {
+	const secs = jobProgress.data?.stats.avg_duration_secs;
+	if (!secs) return "-";
+	if (secs < 60) return `${secs}s`;
+	const mins = Math.floor(secs / 60);
+	return `${mins}m`;
+});
 
-	const hasRunningJob = $derived.by(() => {
-		const d = jobProgress.data;
-		return d?.active_job != null;
-	});
+const hasRunningJob = $derived.by(() => {
+	const d = jobProgress.data;
+	return d?.active_job != null;
+});
 </script>
 
 <svelte:head>

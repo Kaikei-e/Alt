@@ -1,43 +1,43 @@
 <script lang="ts">
-	import {
-		PIPELINE_STAGES,
-		getStageLabel,
-		type PipelineStage,
-		type SubStageProgress,
-	} from "$lib/schema/dashboard";
-	import {
-		shouldShowSubStageProgress,
-		formatSubStageProgress,
-		inferStageCompletion,
-	} from "$lib/utils/pipelineProgress";
-	import { Check, Circle, Loader2 } from "@lucide/svelte";
+import {
+	PIPELINE_STAGES,
+	getStageLabel,
+	type PipelineStage,
+	type SubStageProgress,
+} from "$lib/schema/dashboard";
+import {
+	shouldShowSubStageProgress,
+	formatSubStageProgress,
+	inferStageCompletion,
+} from "$lib/utils/pipelineProgress";
+import { Check, Circle, Loader2 } from "@lucide/svelte";
 
-	interface Props {
-		currentStage: string | null;
-		stageIndex: number;
-		stagesCompleted: string[];
-		subStageProgress?: SubStageProgress | null;
-	}
+interface Props {
+	currentStage: string | null;
+	stageIndex: number;
+	stagesCompleted: string[];
+	subStageProgress?: SubStageProgress | null;
+}
 
-	let {
+let {
+	currentStage,
+	stageIndex,
+	stagesCompleted,
+	subStageProgress = null,
+}: Props = $props();
+
+function getStageStatus(
+	stage: PipelineStage,
+	index: number,
+): "completed" | "running" | "pending" {
+	return inferStageCompletion(
+		stage,
+		index,
+		stagesCompleted,
 		currentStage,
 		stageIndex,
-		stagesCompleted,
-		subStageProgress = null,
-	}: Props = $props();
-
-	function getStageStatus(
-		stage: PipelineStage,
-		index: number,
-	): "completed" | "running" | "pending" {
-		return inferStageCompletion(
-			stage,
-			index,
-			stagesCompleted,
-			currentStage,
-			stageIndex,
-		);
-	}
+	);
+}
 </script>
 
 <div class="py-2" data-testid="mobile-pipeline-progress">

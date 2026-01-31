@@ -1,28 +1,29 @@
 <script lang="ts">
-	import { User, Loader2, ChevronDown } from "@lucide/svelte";
-	import { cn } from "$lib/utils";
-	import { parseMarkdown } from "$lib/utils/simpleMarkdown";
-	import augurAvatar from "$lib/assets/augur-chat.webp";
+import { User, Loader2, ChevronDown } from "@lucide/svelte";
+import { cn } from "$lib/utils";
+import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+import augurAvatar from "$lib/assets/augur-chat.webp";
 
-	type Citation = {
-		URL: string;
-		Title: string;
-		PublishedAt?: string;
-		Score?: number;
-	};
+type Citation = {
+	URL: string;
+	Title: string;
+	PublishedAt?: string;
+	Score?: number;
+};
 
-	type Props = {
-		message: string;
-		role: "user" | "assistant";
-		timestamp?: string;
-		citations?: Citation[];
-		thinking?: string;
-		isThinking?: boolean;
-	};
+type Props = {
+	message: string;
+	role: "user" | "assistant";
+	timestamp?: string;
+	citations?: Citation[];
+	thinking?: string;
+	isThinking?: boolean;
+};
 
-	let { message, role, timestamp, citations, thinking, isThinking }: Props = $props();
+let { message, role, timestamp, citations, thinking, isThinking }: Props =
+	$props();
 
-	let isUser = $derived(role === "user");
+let isUser = $derived(role === "user");
 </script>
 
 <div

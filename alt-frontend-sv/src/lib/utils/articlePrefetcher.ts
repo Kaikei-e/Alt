@@ -21,7 +21,9 @@ export class ArticlePrefetcher {
 
 		// Skip if article is being dismissed
 		if (this.dismissedArticles.has(cacheKey)) {
-			console.log(`[ArticlePrefetcher] Skipping dismissed article: ${cacheKey}`);
+			console.log(
+				`[ArticlePrefetcher] Skipping dismissed article: ${cacheKey}`,
+			);
 			return;
 		}
 

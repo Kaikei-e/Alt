@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { Loader2 } from "@lucide/svelte";
-	import { cn } from "$lib/utils";
-	import altLogo from "$lib/assets/augur1.png";
+import { Loader2 } from "@lucide/svelte";
+import { cn } from "$lib/utils";
+import altLogo from "$lib/assets/augur1.png";
 
-	interface Props {
-		class?: string;
-		reduceMotion?: boolean;
-	}
+interface Props {
+	class?: string;
+	reduceMotion?: boolean;
+}
 
-	const { class: className, reduceMotion = false }: Props = $props();
+const { class: className, reduceMotion = false }: Props = $props();
 </script>
 
 <div

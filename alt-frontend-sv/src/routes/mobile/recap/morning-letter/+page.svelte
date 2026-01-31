@@ -1,6 +1,6 @@
 <script lang="ts">
-	import MorningLetterChat from "$lib/components/mobile/morning-letter/MorningLetterChat.svelte";
-	import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
+import MorningLetterChat from "$lib/components/mobile/morning-letter/MorningLetterChat.svelte";
+import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
 </script>
 
 <svelte:head>

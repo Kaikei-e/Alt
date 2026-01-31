@@ -1,51 +1,51 @@
 <script lang="ts">
-	import type { RecentJobSummary } from "$lib/schema/dashboard";
-	import { StatusBadge } from "$lib/components/desktop/recap/job-status";
-	import { formatDuration, PIPELINE_STAGES } from "$lib/schema/dashboard";
-	import { Clock, ChevronRight, Server, User } from "@lucide/svelte";
+import type { RecentJobSummary } from "$lib/schema/dashboard";
+import { StatusBadge } from "$lib/components/desktop/recap/job-status";
+import { formatDuration, PIPELINE_STAGES } from "$lib/schema/dashboard";
+import { Clock, ChevronRight, Server, User } from "@lucide/svelte";
 
-	interface Props {
-		job: RecentJobSummary;
-		onSelect: (job: RecentJobSummary) => void;
-	}
+interface Props {
+	job: RecentJobSummary;
+	onSelect: (job: RecentJobSummary) => void;
+}
 
-	let { job, onSelect }: Props = $props();
+let { job, onSelect }: Props = $props();
 
-	const startedAt = $derived(
-		new Date(job.kicked_at).toLocaleString("ja-JP", {
-			month: "numeric",
-			day: "numeric",
-			hour: "2-digit",
-			minute: "2-digit",
-		})
-	);
+const startedAt = $derived(
+	new Date(job.kicked_at).toLocaleString("ja-JP", {
+		month: "numeric",
+		day: "numeric",
+		hour: "2-digit",
+		minute: "2-digit",
+	}),
+);
 
-	const duration = $derived(formatDuration(job.duration_secs));
+const duration = $derived(formatDuration(job.duration_secs));
 
-	// Calculate completed stages count
-	const completedStages = $derived.by(() => {
-		const history = job.status_history || [];
-		const completedSet = new Set<string>();
-		for (const t of history) {
-			if (t.status === "completed" && t.stage) {
-				completedSet.add(t.stage);
-			}
+// Calculate completed stages count
+const completedStages = $derived.by(() => {
+	const history = job.status_history || [];
+	const completedSet = new Set<string>();
+	for (const t of history) {
+		if (t.status === "completed" && t.stage) {
+			completedSet.add(t.stage);
 		}
-		return completedSet.size;
-	});
+	}
+	return completedSet.size;
+});
 
-	const totalStages = PIPELINE_STAGES.length;
+const totalStages = PIPELINE_STAGES.length;
 
-	function handleClick() {
+function handleClick() {
+	onSelect(job);
+}
+
+function handleKeyDown(e: KeyboardEvent) {
+	if (e.key === "Enter" || e.key === " ") {
+		e.preventDefault();
 		onSelect(job);
 	}
-
-	function handleKeyDown(e: KeyboardEvent) {
-		if (e.key === "Enter" || e.key === " ") {
-			e.preventDefault();
-			onSelect(job);
-		}
-	}
+}
 </script>
 
 <div

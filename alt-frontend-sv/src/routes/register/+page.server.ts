@@ -64,7 +64,10 @@ export const load: PageServerLoad = async ({ url, locals, request }) => {
 	try {
 		// クッキーを渡してflowを取得（Kratosはクッキーでセッションを検証）
 		const cookie = request.headers.get("cookie") || undefined;
-		const { data: flowData } = await ory.getRegistrationFlow({ id: flow, cookie });
+		const { data: flowData } = await ory.getRegistrationFlow({
+			id: flow,
+			cookie,
+		});
 		return {
 			flow: flowData,
 		};

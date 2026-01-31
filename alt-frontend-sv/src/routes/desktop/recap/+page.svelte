@@ -1,64 +1,64 @@
 <script lang="ts">
-	import { onMount } from "svelte";
-	import { goto } from "$app/navigation";
-	import { ConnectError, Code } from "@connectrpc/connect";
-	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-	import RecapGenreList from "$lib/components/desktop/recap/RecapGenreList.svelte";
-	import RecapDetail from "$lib/components/desktop/recap/RecapDetail.svelte";
-	import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
-	import { createClientTransport, getSevenDayRecap } from "$lib/connect";
-	import { loadingStore } from "$lib/stores/loading.svelte";
+import { onMount } from "svelte";
+import { goto } from "$app/navigation";
+import { ConnectError, Code } from "@connectrpc/connect";
+import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
+import RecapGenreList from "$lib/components/desktop/recap/RecapGenreList.svelte";
+import RecapDetail from "$lib/components/desktop/recap/RecapDetail.svelte";
+import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
+import { createClientTransport, getSevenDayRecap } from "$lib/connect";
+import { loadingStore } from "$lib/stores/loading.svelte";
 
-	let selectedGenre = $state<RecapGenre | null>(null);
+let selectedGenre = $state<RecapGenre | null>(null);
 
-	// Simple state for recap
-	let recapData = $state<RecapSummary | null>(null);
-	let isLoading = $state(true);
-	let error = $state<Error | null>(null);
+// Simple state for recap
+let recapData = $state<RecapSummary | null>(null);
+let isLoading = $state(true);
+let error = $state<Error | null>(null);
 
-	// Derived genres from recapData
-	let genres = $derived(recapData?.genres ?? []);
+// Derived genres from recapData
+let genres = $derived(recapData?.genres ?? []);
 
-	// Fetch 7-day recap on mount
-	onMount(async () => {
-		try {
-			isLoading = true;
-			loadingStore.startLoading();
-			const transport = createClientTransport();
-			recapData = await getSevenDayRecap(transport);
-			// Auto-select first genre
-			if (recapData?.genres && recapData.genres.length > 0) {
-				selectedGenre = recapData.genres[0];
-			}
-		} catch (err) {
-			// Handle authentication error
-			if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
-				goto("/login");
-				return;
-			}
-			error = err as Error;
-		} finally {
-			isLoading = false;
-			loadingStore.stopLoading();
+// Fetch 7-day recap on mount
+onMount(async () => {
+	try {
+		isLoading = true;
+		loadingStore.startLoading();
+		const transport = createClientTransport();
+		recapData = await getSevenDayRecap(transport);
+		// Auto-select first genre
+		if (recapData?.genres && recapData.genres.length > 0) {
+			selectedGenre = recapData.genres[0];
 		}
+	} catch (err) {
+		// Handle authentication error
+		if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
+			goto("/login");
+			return;
+		}
+		error = err as Error;
+	} finally {
+		isLoading = false;
+		loadingStore.stopLoading();
+	}
+});
+
+function handleSelectGenre(genre: RecapGenre) {
+	selectedGenre = genre;
+}
+
+function formatExecutedAt(dateStr: string): string {
+	return new Date(dateStr).toLocaleString("ja-JP", {
+		month: "numeric",
+		day: "numeric",
+		hour: "2-digit",
+		minute: "2-digit",
 	});
+}
 
-	function handleSelectGenre(genre: RecapGenre) {
-		selectedGenre = genre;
-	}
-
-	function formatExecutedAt(dateStr: string): string {
-		return new Date(dateStr).toLocaleString('ja-JP', {
-			month: 'numeric',
-			day: 'numeric',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
-	}
-
-	function formatArticleCount(count: number): string {
-		return count.toLocaleString('ja-JP');
-	}
+function formatArticleCount(count: number): string {
+	return count.toLocaleString("ja-JP");
+}
 </script>
 
 <svelte:head>

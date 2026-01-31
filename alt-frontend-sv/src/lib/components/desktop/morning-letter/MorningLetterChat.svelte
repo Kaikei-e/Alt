@@ -1,215 +1,215 @@
 <script lang="ts">
-	import { onMount, tick } from "svelte";
-	import { Loader2, User, Clock, Newspaper } from "@lucide/svelte";
-	import { Button } from "$lib/components/ui/button";
-	import { Textarea } from "$lib/components/ui/textarea";
-	import { cn } from "$lib/utils";
-	import { parseMarkdown } from "$lib/utils/simpleMarkdown";
-	import {
-		createClientTransport,
-		streamMorningLetterChat,
-		type MorningLetterCitation,
-		type MorningLetterMeta,
-	} from "$lib/connect";
-	import augurAvatar from "$lib/assets/augur-chat.webp";
+import { onMount, tick } from "svelte";
+import { Loader2, User, Clock, Newspaper } from "@lucide/svelte";
+import { Button } from "$lib/components/ui/button";
+import { Textarea } from "$lib/components/ui/textarea";
+import { cn } from "$lib/utils";
+import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+import {
+	createClientTransport,
+	streamMorningLetterChat,
+	type MorningLetterCitation,
+	type MorningLetterMeta,
+} from "$lib/connect";
+import augurAvatar from "$lib/assets/augur-chat.webp";
 
-	type Citation = {
-		URL: string;
-		Title: string;
-		PublishedAt?: string;
+type Citation = {
+	URL: string;
+	Title: string;
+	PublishedAt?: string;
+};
+
+type Message = {
+	id: string;
+	message: string;
+	role: "user" | "assistant";
+	timestamp: string;
+	citations?: Citation[];
+	meta?: {
+		timeWindow?: { since: string; until: string };
+		articlesScanned?: number;
+	};
+};
+
+type Props = {
+	withinHours?: number;
+};
+
+let { withinHours = 24 }: Props = $props();
+
+let messages = $state<Message[]>([
+	{
+		id: "welcome",
+		message: `Hello! I'm your Morning Letter assistant. I can answer questions about news from the past ${withinHours} hours. What would you like to know?`,
+		role: "assistant",
+		timestamp: new Date().toLocaleTimeString(),
+	},
+]);
+
+let isLoading = $state(false);
+let inputValue = $state("");
+let chatContainer: HTMLDivElement;
+let currentAbortController: AbortController | null = null;
+
+async function scrollToBottom() {
+	await tick();
+	if (chatContainer) {
+		setTimeout(() => {
+			chatContainer.scrollTop = chatContainer.scrollHeight;
+		}, 100);
+	}
+}
+
+function convertCitations(citations: MorningLetterCitation[]): Citation[] {
+	return citations.map((c) => ({
+		URL: c.url,
+		Title: c.title,
+		PublishedAt: c.publishedAt,
+	}));
+}
+
+async function handleSend() {
+	const messageText = inputValue.trim();
+	if (!messageText || isLoading) return;
+
+	// Cancel any ongoing stream
+	if (currentAbortController) {
+		currentAbortController.abort();
+		currentAbortController = null;
+	}
+
+	inputValue = "";
+
+	// Add user message
+	const userMessage: Message = {
+		id: `user-${Date.now()}`,
+		message: messageText,
+		role: "user",
+		timestamp: new Date().toLocaleTimeString(),
 	};
 
-	type Message = {
-		id: string;
-		message: string;
-		role: "user" | "assistant";
-		timestamp: string;
-		citations?: Citation[];
-		meta?: {
-			timeWindow?: { since: string; until: string };
-			articlesScanned?: number;
-		};
-	};
+	messages = [...messages, userMessage];
+	await scrollToBottom();
 
-	type Props = {
-		withinHours?: number;
-	};
+	isLoading = true;
 
-	let { withinHours = 24 }: Props = $props();
-
-	let messages = $state<Message[]>([
+	// Add placeholder for assistant message
+	messages = [
+		...messages,
 		{
-			id: "welcome",
-			message: `Hello! I'm your Morning Letter assistant. I can answer questions about news from the past ${withinHours} hours. What would you like to know?`,
+			id: `assistant-${Date.now()}`,
+			message: "",
 			role: "assistant",
 			timestamp: new Date().toLocaleTimeString(),
 		},
-	]);
+	];
+	const currentAssistantMessageIndex = messages.length - 1;
 
-	let isLoading = $state(false);
-	let inputValue = $state("");
-	let chatContainer: HTMLDivElement;
-	let currentAbortController: AbortController | null = null;
+	// Throttling state for delta updates
+	let bufferedContent = "";
+	let lastUpdateTime = 0;
+	const THROTTLE_MS = 50;
 
-	async function scrollToBottom() {
-		await tick();
-		if (chatContainer) {
-			setTimeout(() => {
-				chatContainer.scrollTop = chatContainer.scrollHeight;
-			}, 100);
-		}
-	}
+	try {
+		const transport = createClientTransport();
 
-	function convertCitations(citations: MorningLetterCitation[]): Citation[] {
-		return citations.map((c) => ({
-			URL: c.url,
-			Title: c.title,
-			PublishedAt: c.publishedAt,
+		// Build message history (excluding the empty placeholder)
+		const chatHistory = messages.slice(0, -1).map((m) => ({
+			role: m.role as "user" | "assistant",
+			content: m.message,
 		}));
+
+		currentAbortController = streamMorningLetterChat(
+			transport,
+			{ messages: chatHistory, withinHours },
+			// onDelta: text chunk received
+			(text) => {
+				bufferedContent += text;
+
+				const now = Date.now();
+				if (now - lastUpdateTime > THROTTLE_MS) {
+					messages[currentAssistantMessageIndex] = {
+						...messages[currentAssistantMessageIndex],
+						message: bufferedContent,
+					};
+					lastUpdateTime = now;
+				}
+			},
+			// onMeta: metadata received
+			(meta: MorningLetterMeta) => {
+				messages[currentAssistantMessageIndex] = {
+					...messages[currentAssistantMessageIndex],
+					citations: convertCitations(meta.citations),
+					meta: {
+						timeWindow: meta.timeWindow,
+						articlesScanned: meta.articlesScanned,
+					},
+				};
+			},
+			// onComplete: streaming finished
+			(result) => {
+				messages[currentAssistantMessageIndex] = {
+					...messages[currentAssistantMessageIndex],
+					message: result.answer || bufferedContent,
+					citations:
+						result.citations.length > 0
+							? convertCitations(result.citations)
+							: messages[currentAssistantMessageIndex].citations,
+				};
+				isLoading = false;
+				currentAbortController = null;
+				scrollToBottom();
+			},
+			// onFallback: insufficient context
+			(code) => {
+				messages[currentAssistantMessageIndex] = {
+					...messages[currentAssistantMessageIndex],
+					message:
+						"I couldn't find enough recent news to answer that. Try asking about a different topic from today's news.",
+				};
+				isLoading = false;
+				currentAbortController = null;
+				scrollToBottom();
+			},
+			// onError: error occurred
+			(error) => {
+				console.error("Chat error:", error);
+				messages[currentAssistantMessageIndex] = {
+					...messages[currentAssistantMessageIndex],
+					message: `Error: ${error.message}. Please try again.`,
+				};
+				isLoading = false;
+				currentAbortController = null;
+				scrollToBottom();
+			},
+		);
+	} catch (error) {
+		console.error("Chat error:", error);
+		messages[currentAssistantMessageIndex] = {
+			...messages[currentAssistantMessageIndex],
+			message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
+		};
+		isLoading = false;
+		await scrollToBottom();
 	}
+}
 
-	async function handleSend() {
-		const messageText = inputValue.trim();
-		if (!messageText || isLoading) return;
+function handleKeydown(event: KeyboardEvent) {
+	if (event.key === "Enter" && !event.shiftKey) {
+		event.preventDefault();
+		handleSend();
+	}
+}
 
-		// Cancel any ongoing stream
+onMount(() => {
+	scrollToBottom();
+
+	return () => {
 		if (currentAbortController) {
 			currentAbortController.abort();
-			currentAbortController = null;
 		}
-
-		inputValue = "";
-
-		// Add user message
-		const userMessage: Message = {
-			id: `user-${Date.now()}`,
-			message: messageText,
-			role: "user",
-			timestamp: new Date().toLocaleTimeString(),
-		};
-
-		messages = [...messages, userMessage];
-		await scrollToBottom();
-
-		isLoading = true;
-
-		// Add placeholder for assistant message
-		messages = [
-			...messages,
-			{
-				id: `assistant-${Date.now()}`,
-				message: "",
-				role: "assistant",
-				timestamp: new Date().toLocaleTimeString(),
-			},
-		];
-		const currentAssistantMessageIndex = messages.length - 1;
-
-		// Throttling state for delta updates
-		let bufferedContent = "";
-		let lastUpdateTime = 0;
-		const THROTTLE_MS = 50;
-
-		try {
-			const transport = createClientTransport();
-
-			// Build message history (excluding the empty placeholder)
-			const chatHistory = messages.slice(0, -1).map((m) => ({
-				role: m.role as "user" | "assistant",
-				content: m.message,
-			}));
-
-			currentAbortController = streamMorningLetterChat(
-				transport,
-				{ messages: chatHistory, withinHours },
-				// onDelta: text chunk received
-				(text) => {
-					bufferedContent += text;
-
-					const now = Date.now();
-					if (now - lastUpdateTime > THROTTLE_MS) {
-						messages[currentAssistantMessageIndex] = {
-							...messages[currentAssistantMessageIndex],
-							message: bufferedContent,
-						};
-						lastUpdateTime = now;
-					}
-				},
-				// onMeta: metadata received
-				(meta: MorningLetterMeta) => {
-					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex],
-						citations: convertCitations(meta.citations),
-						meta: {
-							timeWindow: meta.timeWindow,
-							articlesScanned: meta.articlesScanned,
-						},
-					};
-				},
-				// onComplete: streaming finished
-				(result) => {
-					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex],
-						message: result.answer || bufferedContent,
-						citations:
-							result.citations.length > 0
-								? convertCitations(result.citations)
-								: messages[currentAssistantMessageIndex].citations,
-					};
-					isLoading = false;
-					currentAbortController = null;
-					scrollToBottom();
-				},
-				// onFallback: insufficient context
-				(code) => {
-					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex],
-						message:
-							"I couldn't find enough recent news to answer that. Try asking about a different topic from today's news.",
-					};
-					isLoading = false;
-					currentAbortController = null;
-					scrollToBottom();
-				},
-				// onError: error occurred
-				(error) => {
-					console.error("Chat error:", error);
-					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex],
-						message: `Error: ${error.message}. Please try again.`,
-					};
-					isLoading = false;
-					currentAbortController = null;
-					scrollToBottom();
-				},
-			);
-		} catch (error) {
-			console.error("Chat error:", error);
-			messages[currentAssistantMessageIndex] = {
-				...messages[currentAssistantMessageIndex],
-				message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
-			};
-			isLoading = false;
-			await scrollToBottom();
-		}
-	}
-
-	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === "Enter" && !event.shiftKey) {
-			event.preventDefault();
-			handleSend();
-		}
-	}
-
-	onMount(() => {
-		scrollToBottom();
-
-		return () => {
-			if (currentAbortController) {
-				currentAbortController.abort();
-			}
-		};
-	});
+	};
+});
 </script>
 
 <div

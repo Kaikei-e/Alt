@@ -1,31 +1,36 @@
 <script lang="ts">
-	import type { RecentJobSummary } from "$lib/schema/dashboard";
-	import { StatusBadge, StatusTransitionTimeline } from "$lib/components/desktop/recap/job-status";
-	import MobileStageDurationList from "./MobileStageDurationList.svelte";
-	import { formatDuration } from "$lib/schema/dashboard";
-	import * as Sheet from "$lib/components/ui/sheet";
-	import { Clock, Server, User, X } from "@lucide/svelte";
+import type { RecentJobSummary } from "$lib/schema/dashboard";
+import {
+	StatusBadge,
+	StatusTransitionTimeline,
+} from "$lib/components/desktop/recap/job-status";
+import MobileStageDurationList from "./MobileStageDurationList.svelte";
+import { formatDuration } from "$lib/schema/dashboard";
+import * as Sheet from "$lib/components/ui/sheet";
+import { Clock, Server, User, X } from "@lucide/svelte";
 
-	interface Props {
-		job: RecentJobSummary | null;
-		open: boolean;
-		onClose: () => void;
-	}
+interface Props {
+	job: RecentJobSummary | null;
+	open: boolean;
+	onClose: () => void;
+}
 
-	let { job, open, onClose }: Props = $props();
+let { job, open, onClose }: Props = $props();
 
-	const startedAt = $derived(
-		job ? new Date(job.kicked_at).toLocaleString("ja-JP", {
-			year: "numeric",
-			month: "numeric",
-			day: "numeric",
-			hour: "2-digit",
-			minute: "2-digit",
-			second: "2-digit",
-		}) : ""
-	);
+const startedAt = $derived(
+	job
+		? new Date(job.kicked_at).toLocaleString("ja-JP", {
+				year: "numeric",
+				month: "numeric",
+				day: "numeric",
+				hour: "2-digit",
+				minute: "2-digit",
+				second: "2-digit",
+			})
+		: "",
+);
 
-	const duration = $derived(job ? formatDuration(job.duration_secs) : "-");
+const duration = $derived(job ? formatDuration(job.duration_secs) : "-");
 </script>
 
 <Sheet.Root bind:open={open} onOpenChange={(value) => !value && onClose()}>

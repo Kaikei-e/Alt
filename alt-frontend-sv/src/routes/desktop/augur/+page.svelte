@@ -1,6 +1,6 @@
 <script lang="ts">
-	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-	import AugurChat from "$lib/components/desktop/augur/AugurChat.svelte";
+import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
+import AugurChat from "$lib/components/desktop/augur/AugurChat.svelte";
 </script>
 
 <svelte:head>

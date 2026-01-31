@@ -1,19 +1,19 @@
 <script lang="ts">
-	import type { TimeWindow } from "$lib/schema/dashboard";
+import type { TimeWindow } from "$lib/schema/dashboard";
 
-	interface Props {
-		currentWindow: TimeWindow;
-		onWindowChange: (window: TimeWindow) => void;
-	}
+interface Props {
+	currentWindow: TimeWindow;
+	onWindowChange: (window: TimeWindow) => void;
+}
 
-	let { currentWindow, onWindowChange }: Props = $props();
+let { currentWindow, onWindowChange }: Props = $props();
 
-	const timeWindows: { label: string; value: TimeWindow }[] = [
-		{ label: "4h", value: "4h" },
-		{ label: "24h", value: "24h" },
-		{ label: "3d", value: "3d" },
-		{ label: "7d", value: "7d" },
-	];
+const timeWindows: { label: string; value: TimeWindow }[] = [
+	{ label: "4h", value: "4h" },
+	{ label: "24h", value: "24h" },
+	{ label: "3d", value: "3d" },
+	{ label: "7d", value: "7d" },
+];
 </script>
 
 <div class="sticky top-0 z-10 px-4 py-3" style="background: var(--app-bg);">

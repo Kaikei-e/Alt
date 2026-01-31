@@ -163,10 +163,20 @@ export function useSSEFeedsStats() {
 
 	// Return as getters to maintain reactivity when accessed from components
 	return {
-		get feedAmount() { return feedAmount; },
-		get unsummarizedArticlesAmount() { return unsummarizedArticlesAmount; },
-		get totalArticlesAmount() { return totalArticlesAmount; },
-		get isConnected() { return isConnected; },
-		get retryCount() { return retryCount; },
+		get feedAmount() {
+			return feedAmount;
+		},
+		get unsummarizedArticlesAmount() {
+			return unsummarizedArticlesAmount;
+		},
+		get totalArticlesAmount() {
+			return totalArticlesAmount;
+		},
+		get isConnected() {
+			return isConnected;
+		},
+		get retryCount() {
+			return retryCount;
+		},
 	};
 }

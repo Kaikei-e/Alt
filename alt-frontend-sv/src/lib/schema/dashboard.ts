@@ -53,7 +53,11 @@ export interface RecapJob {
 export type JobStatus = "pending" | "running" | "completed" | "failed";
 export type TriggerSource = "system" | "user";
 export type GenreStatusType = "pending" | "running" | "succeeded" | "failed";
-export type StatusTransitionActor = "system" | "scheduler" | "manual_repair" | "migration_backfill";
+export type StatusTransitionActor =
+	| "system"
+	| "scheduler"
+	| "manual_repair"
+	| "migration_backfill";
 
 export const PIPELINE_STAGES = [
 	"fetch",
@@ -74,7 +78,10 @@ export interface GenreProgressInfo {
 	article_count: number | null;
 }
 
-export type SubStagePhase = "evidence_building" | "clustering" | "summarization";
+export type SubStagePhase =
+	| "evidence_building"
+	| "clustering"
+	| "summarization";
 
 export interface SubStageProgress {
 	phase: SubStagePhase;

@@ -1,130 +1,136 @@
 <script lang="ts">
-	import {
-		Home,
-		Rss,
-		Eye,
-		Star,
-		Search,
-		CalendarRange,
-		Newspaper,
-		BirdIcon,
-		ChartBar,
-		Settings,
-		LinkIcon,
-		Plus,
-		ChevronDown,
-		Activity,
-	} from "@lucide/svelte";
-	import { page } from "$app/state";
-	import { cn } from "$lib/utils";
+import {
+	Home,
+	Rss,
+	Eye,
+	Star,
+	Search,
+	CalendarRange,
+	Newspaper,
+	BirdIcon,
+	ChartBar,
+	Settings,
+	LinkIcon,
+	Plus,
+	ChevronDown,
+	Activity,
+	Sparkles,
+} from "@lucide/svelte";
+import { page } from "$app/state";
+import { cn } from "$lib/utils";
 
-	const svBasePath = "/sv";
+const svBasePath = "/sv";
 
-	const menuItems = [
-		{
-			label: "Dashboard",
-			href: `${svBasePath}/desktop`,
-			icon: Home,
-			category: "main",
-		},
-		{
-			label: "Feeds",
-			category: "feeds",
-			icon: Rss,
-			children: [
-				{
-					label: "Unread Feeds",
-					href: `${svBasePath}/desktop/feeds`,
-					icon: Rss,
-				},
-				{
-					label: "Read History",
-					href: `${svBasePath}/desktop/feeds/viewed`,
-					icon: Eye,
-				},
-				{
-					label: "Favorites",
-					href: `${svBasePath}/desktop/feeds/favorites`,
-					icon: Star,
-				},
-				{
-					label: "Search",
-					href: `${svBasePath}/desktop/feeds/search`,
-					icon: Search,
-				},
-			],
-		},
-		{
-			label: "Recap",
-			category: "recap",
-			icon: CalendarRange,
-			children: [
-				{
-					label: "7-Day Summary",
-					href: `${svBasePath}/desktop/recap`,
-					icon: CalendarRange,
-				},
-				{
-					label: "Morning Letter",
-					href: `${svBasePath}/desktop/recap/morning-letter`,
-					icon: Newspaper,
-				},
-				{
-					label: "Job Status",
-					href: `${svBasePath}/desktop/recap/job-status`,
-					icon: Activity,
-				},
-			],
-		},
-		{
-			label: "Ask Augur",
-			href: `${svBasePath}/desktop/augur`,
-			icon: BirdIcon,
-			category: "main",
-		},
-		{
-			label: "Settings",
-			category: "settings",
-			icon: Settings,
-			children: [
-				{
-					label: "Manage Feed Links",
-					href: `${svBasePath}/desktop/settings/feeds`,
-					icon: LinkIcon,
-				},
-				{
-					label: "Register Feed",
-					href: `${svBasePath}/desktop/feeds/register`,
-					icon: Plus,
-				},
-			],
-		},
-		{
-			label: "Statistics",
-			href: `${svBasePath}/desktop/stats`,
-			icon: ChartBar,
-			category: "main",
-		},
-	];
+const menuItems = [
+	{
+		label: "Dashboard",
+		href: `${svBasePath}/desktop`,
+		icon: Home,
+		category: "main",
+	},
+	{
+		label: "Feeds",
+		category: "feeds",
+		icon: Rss,
+		children: [
+			{
+				label: "Unread Feeds",
+				href: `${svBasePath}/desktop/feeds`,
+				icon: Rss,
+			},
+			{
+				label: "Read History",
+				href: `${svBasePath}/desktop/feeds/viewed`,
+				icon: Eye,
+			},
+			{
+				label: "Favorites",
+				href: `${svBasePath}/desktop/feeds/favorites`,
+				icon: Star,
+			},
+			{
+				label: "Search",
+				href: `${svBasePath}/desktop/feeds/search`,
+				icon: Search,
+			},
+		],
+	},
+	{
+		label: "Recap",
+		category: "recap",
+		icon: CalendarRange,
+		children: [
+			{
+				label: "7-Day Summary",
+				href: `${svBasePath}/desktop/recap`,
+				icon: CalendarRange,
+			},
+			{
+				label: "Morning Letter",
+				href: `${svBasePath}/desktop/recap/morning-letter`,
+				icon: Newspaper,
+			},
+			{
+				label: "Evening Pulse",
+				href: `${svBasePath}/desktop/recap/evening-pulse`,
+				icon: Sparkles,
+			},
+			{
+				label: "Job Status",
+				href: `${svBasePath}/desktop/recap/job-status`,
+				icon: Activity,
+			},
+		],
+	},
+	{
+		label: "Ask Augur",
+		href: `${svBasePath}/desktop/augur`,
+		icon: BirdIcon,
+		category: "main",
+	},
+	{
+		label: "Settings",
+		category: "settings",
+		icon: Settings,
+		children: [
+			{
+				label: "Manage Feed Links",
+				href: `${svBasePath}/desktop/settings/feeds`,
+				icon: LinkIcon,
+			},
+			{
+				label: "Register Feed",
+				href: `${svBasePath}/desktop/feeds/register`,
+				icon: Plus,
+			},
+		],
+	},
+	{
+		label: "Statistics",
+		href: `${svBasePath}/desktop/stats`,
+		icon: ChartBar,
+		category: "main",
+	},
+];
 
-	let expandedSections = $state<string[]>(["feeds", "recap", "settings"]);
+let expandedSections = $state<string[]>(["feeds", "recap", "settings"]);
 
-	function toggleSection(category: string) {
-		if (expandedSections.includes(category)) {
-			expandedSections = expandedSections.filter((c) => c !== category);
-		} else {
-			expandedSections = [...expandedSections, category];
-		}
+function toggleSection(category: string) {
+	if (expandedSections.includes(category)) {
+		expandedSections = expandedSections.filter((c) => c !== category);
+	} else {
+		expandedSections = [...expandedSections, category];
 	}
+}
 
-	function isActive(href: string): boolean {
-		return page.url.pathname === href;
-	}
+function isActive(href: string): boolean {
+	return page.url.pathname === href;
+}
 
-	function isParentActive(children?: { href: string }[]): boolean {
-		if (!children) return false;
-		return children.some((child) => page.url.pathname === child.href);
-	}
+function isParentActive(children?: { href: string }[]): boolean {
+	if (!children) return false;
+	return children.some((child) => page.url.pathname === child.href);
+}
 </script>
 
 <aside

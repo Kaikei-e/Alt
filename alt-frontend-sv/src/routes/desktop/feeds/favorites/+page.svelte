@@ -1,18 +1,18 @@
 <script lang="ts">
-	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-	import type { RenderFeed } from "$lib/schema/feed";
-	import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
+import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
+import type { RenderFeed } from "$lib/schema/feed";
+import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 
-	let selectedFeed = $state<RenderFeed | null>(null);
-	let isModalOpen = $state(false);
+let selectedFeed = $state<RenderFeed | null>(null);
+let isModalOpen = $state(false);
 
-	// TODO: Implement favorites API
-	const favorites = $state<RenderFeed[]>([]);
+// TODO: Implement favorites API
+const favorites = $state<RenderFeed[]>([]);
 
-	function handleSelectFeed(feed: RenderFeed) {
-		selectedFeed = feed;
-		isModalOpen = true;
-	}
+function handleSelectFeed(feed: RenderFeed) {
+	selectedFeed = feed;
+	isModalOpen = true;
+}
 </script>
 
 <svelte:head>

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-	import MorningLetterChat from "$lib/components/desktop/morning-letter/MorningLetterChat.svelte";
+import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
+import MorningLetterChat from "$lib/components/desktop/morning-letter/MorningLetterChat.svelte";
 </script>
 
 <svelte:head>

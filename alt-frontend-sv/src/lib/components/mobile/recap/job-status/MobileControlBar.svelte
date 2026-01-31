@@ -1,31 +1,33 @@
 <script lang="ts">
-	import { RefreshCw, Rocket } from "@lucide/svelte";
+import { RefreshCw, Rocket } from "@lucide/svelte";
 
-	interface Props {
-		onRefresh: () => void;
-		onTriggerJob: () => void;
-		loading: boolean;
-		triggering: boolean;
-		hasRunningJob: boolean;
-		justStartedJobId: string | null;
-	}
+interface Props {
+	onRefresh: () => void;
+	onTriggerJob: () => void;
+	loading: boolean;
+	triggering: boolean;
+	hasRunningJob: boolean;
+	justStartedJobId: string | null;
+}
 
-	let {
-		onRefresh,
-		onTriggerJob,
-		loading,
-		triggering,
-		hasRunningJob,
-		justStartedJobId,
-	}: Props = $props();
+let {
+	onRefresh,
+	onTriggerJob,
+	loading,
+	triggering,
+	hasRunningJob,
+	justStartedJobId,
+}: Props = $props();
 
-	const isStartDisabled = $derived(triggering || hasRunningJob || justStartedJobId !== null);
+const isStartDisabled = $derived(
+	triggering || hasRunningJob || justStartedJobId !== null,
+);
 
-	const startButtonTooltip = $derived.by(() => {
-		if (justStartedJobId) return "Job is starting...";
-		if (hasRunningJob) return "A job is already running";
-		return "Start a new recap job";
-	});
+const startButtonTooltip = $derived.by(() => {
+	if (justStartedJobId) return "Job is starting...";
+	if (hasRunningJob) return "A job is already running";
+	return "Start a new recap job";
+});
 </script>
 
 <div
