@@ -110,3 +110,6 @@ export {
 	type RecapGenreWithReferences,
 	type RecapSummaryWithReferences,
 } from "./recap";
+
+// Evening Pulse client
+export { getEveningPulse } from "./evening_pulse";
