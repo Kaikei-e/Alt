@@ -156,6 +156,7 @@ mod tests {
             representative_articles: Vec::new(),
             top_entities: Vec::new(),
             source_names: Vec::new(),
+            genre: None,
         }
     }
 
@@ -178,6 +179,7 @@ mod tests {
             syndication_status: None,
             representative_articles: Vec::new(),
             source_names: Vec::new(),
+            genre: None,
         }
     }
 
@@ -205,6 +207,7 @@ mod tests {
             syndication_status: None,
             representative_articles: Vec::new(),
             source_names: Vec::new(),
+            genre: None,
         }
     }
 

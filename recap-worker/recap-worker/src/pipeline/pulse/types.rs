@@ -227,6 +227,9 @@ pub struct ClusterWithMetrics {
     /// Unique source names in this cluster.
     #[serde(default)]
     pub source_names: Vec<String>,
+    /// Genre classification (e.g., "AI", "Business").
+    #[serde(default)]
+    pub genre: Option<String>,
 }
 
 impl Default for ClusterWithMetrics {
@@ -244,6 +247,7 @@ impl Default for ClusterWithMetrics {
             syndication_status: None,
             representative_articles: Vec::new(),
             source_names: Vec::new(),
+            genre: None,
         }
     }
 }
@@ -314,6 +318,9 @@ pub struct PulseTopic {
     /// Unique source names in this topic.
     #[serde(default)]
     pub source_names: Vec<String>,
+    /// Genre classification (e.g., "AI", "Business").
+    #[serde(default)]
+    pub genre: Option<String>,
 }
 
 /// Breakdown of individual score components for transparency.
@@ -495,6 +502,7 @@ mod tests {
             representative_articles: Vec::new(),
             top_entities: Vec::new(),
             source_names: Vec::new(),
+            genre: None,
         };
         let result_with_topic = PulseResult::new(job_id, PulseVersion::V4, vec![topic]);
         assert!(result_with_topic.is_success());
@@ -548,6 +556,7 @@ mod tests {
             }],
             top_entities: vec!["Entity1".to_string()],
             source_names: vec!["Example".to_string()],
+            genre: Some("Tech".to_string()),
         };
 
         let json = serde_json::to_string(&topic).unwrap();

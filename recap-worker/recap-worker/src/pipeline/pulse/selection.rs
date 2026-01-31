@@ -236,6 +236,7 @@ fn select_topics(
                 representative_articles: cluster.representative_articles.clone(),
                 top_entities: cluster.top_entities.clone(),
                 source_names: cluster.source_names.clone(),
+                genre: cluster.genre.clone(),
             });
 
             used_cluster_ids.insert(cluster.cluster_id);
@@ -309,6 +310,7 @@ mod tests {
             syndication_status: None,
             representative_articles: Vec::new(),
             source_names: Vec::new(),
+            genre: None,
         }
     }
 

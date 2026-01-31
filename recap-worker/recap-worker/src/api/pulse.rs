@@ -244,7 +244,7 @@ fn convert_topics(topics: &[PulseTopic]) -> Vec<PulseTopicResponse> {
                 } else {
                     None
                 },
-                genre: None, // Would require genre mapping
+                genre: topic.genre.clone(),
                 article_ids: topic.articles.clone(),
                 representative_articles,
                 top_entities: topic.top_entities.clone(),
@@ -359,6 +359,7 @@ mod tests {
             ],
             top_entities: vec!["Entity1".to_string(), "Entity2".to_string()],
             source_names: vec!["Reuters".to_string(), "BBC".to_string()],
+            genre: Some("Tech".to_string()),
         }
     }
 

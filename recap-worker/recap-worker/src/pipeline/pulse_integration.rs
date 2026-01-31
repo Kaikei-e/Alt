@@ -169,6 +169,7 @@ pub(super) fn build_pulse_input(
                         burst_score: None,
                         novelty_score: None,
                         recency_score: None,
+                        genre: Some(genre.clone()),
                     });
                 }
             }

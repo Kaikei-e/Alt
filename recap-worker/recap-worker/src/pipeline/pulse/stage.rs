@@ -51,6 +51,8 @@ pub struct ClusterInput {
     pub novelty_score: Option<f32>,
     /// Pre-computed recency score (if available).
     pub recency_score: Option<f32>,
+    /// Genre classification (e.g., "AI", "Business").
+    pub genre: Option<String>,
 }
 
 /// Input data for a single article.
@@ -299,6 +301,7 @@ impl DefaultPulseStage {
             syndication_status,
             representative_articles,
             source_names,
+            genre: cluster.genre.clone(),
         };
 
         Ok(Some(cluster_with_metrics))
@@ -456,6 +459,7 @@ mod tests {
             burst_score: Some(0.6),
             novelty_score: Some(0.5),
             recency_score: Some(0.8),
+            genre: None,
         }
     }
 
@@ -680,6 +684,7 @@ mod tests {
             burst_score: Some(0.6),
             novelty_score: Some(0.4),
             recency_score: Some(0.9),
+            genre: Some("Tech".to_string()),
         };
 
         let result = stage.process_cluster(&cluster).await.unwrap();
