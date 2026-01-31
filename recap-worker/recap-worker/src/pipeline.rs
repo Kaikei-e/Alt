@@ -423,6 +423,7 @@ impl PipelineOrchestrator {
     }
 
     /// Build PulseInput from dispatch results.
+    #[allow(clippy::unused_self)]
     fn build_pulse_input(
         &self,
         job_id: uuid::Uuid,
