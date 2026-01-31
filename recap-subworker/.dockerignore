@@ -74,8 +74,8 @@ docs/
 *.md
 !README.md
 
-# Development scripts (not needed in production)
-scripts/
+# Development scripts - KEEP for training builds (Dockerfile.training needs them)
+# scripts/
 
 # Tests (not needed in production image)
 tests/
