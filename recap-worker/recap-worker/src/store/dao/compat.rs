@@ -41,7 +41,21 @@ use crate::store::models::{
 #[allow(dead_code)]
 #[async_trait]
 pub trait RecapDao: Send + Sync {
-    /// Get the underlying connection pool (if available)
+    /// Get the underlying connection pool (if available).
+    ///
+    /// # Returns
+    ///
+    /// - `Some(&PgPool)` - If the implementation has a direct connection pool reference
+    /// - `None` - For mock implementations or blanket impl (default behavior)
+    ///
+    /// # Note (LSP Compliance)
+    ///
+    /// The blanket implementation returns `None` by default. This is intentional:
+    /// - Mock DAOs for testing don't have a real database connection
+    /// - Code that needs pool access should handle the `None` case gracefully
+    /// - For direct pool access, use `RecapDaoImpl::new(pool).pool()` pattern
+    ///
+    /// Callers should provide fallback behavior when `pool()` returns `None`.
     fn pool(&self) -> Option<&PgPool>;
 
     // === JobDao methods ===
@@ -53,7 +67,8 @@ pub trait RecapDao: Send + Sync {
 
     async fn job_exists(&self, job_id: Uuid) -> anyhow::Result<bool>;
 
-    async fn find_resumable_job(&self) -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>)>>;
+    async fn find_resumable_job(&self)
+    -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>)>>;
 
     async fn update_job_status(
         &self,
@@ -119,8 +134,11 @@ pub trait RecapDao: Send + Sync {
     ) -> anyhow::Result<()>;
 
     // === ArticleDao methods ===
-    async fn backup_raw_articles(&self, job_id: Uuid, articles: &[RawArticle])
-        -> anyhow::Result<()>;
+    async fn backup_raw_articles(
+        &self,
+        job_id: Uuid,
+        articles: &[RawArticle],
+    ) -> anyhow::Result<()>;
 
     async fn get_article_metadata(
         &self,
@@ -135,11 +153,15 @@ pub trait RecapDao: Send + Sync {
     ) -> anyhow::Result<Vec<FetchedArticleData>>;
 
     // === GenreLearningDao methods ===
-    async fn load_tag_label_graph(&self, window_label: &str)
-        -> anyhow::Result<Vec<GraphEdgeRecord>>;
+    async fn load_tag_label_graph(
+        &self,
+        window_label: &str,
+    ) -> anyhow::Result<Vec<GraphEdgeRecord>>;
 
-    async fn upsert_genre_learning_record(&self, record: &GenreLearningRecord)
-        -> anyhow::Result<()>;
+    async fn upsert_genre_learning_record(
+        &self,
+        record: &GenreLearningRecord,
+    ) -> anyhow::Result<()>;
 
     async fn upsert_genre_learning_records_bulk(
         &self,
@@ -147,8 +169,7 @@ pub trait RecapDao: Send + Sync {
     ) -> anyhow::Result<()>;
 
     // === ConfigDao methods ===
-    async fn get_latest_worker_config(&self, config_type: &str)
-        -> anyhow::Result<Option<Value>>;
+    async fn get_latest_worker_config(&self, config_type: &str) -> anyhow::Result<Option<Value>>;
 
     async fn insert_worker_config(
         &self,
@@ -185,7 +206,15 @@ pub trait RecapDao: Send + Sync {
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<Vec<(DateTime<Utc>, String, Option<String>, Option<String>, Option<String>)>>;
+    ) -> anyhow::Result<
+        Vec<(
+            DateTime<Utc>,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        )>,
+    >;
 
     async fn get_admin_jobs(
         &self,
@@ -241,8 +270,11 @@ pub trait RecapDao: Send + Sync {
         error_message: &str,
     ) -> anyhow::Result<()>;
 
-    async fn insert_clusters(&self, run_id: i64, clusters: &[PersistedCluster])
-        -> anyhow::Result<()>;
+    async fn insert_clusters(
+        &self,
+        run_id: i64,
+        clusters: &[PersistedCluster],
+    ) -> anyhow::Result<()>;
 
     async fn upsert_diagnostics(
         &self,
@@ -269,7 +301,10 @@ pub trait RecapDao: Send + Sync {
     ) -> anyhow::Result<Option<(GenreEvaluationRun, Vec<GenreEvaluationMetric>)>>;
 
     // === MorningDao methods ===
-    async fn save_morning_article_groups(&self, groups: &[(Uuid, Uuid, bool)]) -> anyhow::Result<()>;
+    async fn save_morning_article_groups(
+        &self,
+        groups: &[(Uuid, Uuid, bool)],
+    ) -> anyhow::Result<()>;
 
     async fn get_morning_article_groups(
         &self,
@@ -353,8 +388,9 @@ where
         + Sync,
 {
     fn pool(&self) -> Option<&PgPool> {
-        // Default implementation returns None
-        // Override in specific implementations if needed
+        // Default implementation returns None.
+        // This is intentional for the blanket impl - see trait documentation.
+        // For direct pool access, instantiate RecapDaoImpl directly.
         None
     }
 
@@ -370,7 +406,9 @@ where
         JobDao::job_exists(self, job_id).await
     }
 
-    async fn find_resumable_job(&self) -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>)>> {
+    async fn find_resumable_job(
+        &self,
+    ) -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>)>> {
         JobDao::find_resumable_job(self).await
     }
 
@@ -498,10 +536,7 @@ where
         GenreLearningDao::upsert_genre_learning_records_bulk(self, records).await
     }
 
-    async fn get_latest_worker_config(
-        &self,
-        config_type: &str,
-    ) -> anyhow::Result<Option<Value>> {
+    async fn get_latest_worker_config(&self, config_type: &str) -> anyhow::Result<Option<Value>> {
         ConfigDao::get_latest_worker_config(self, config_type).await
     }
 
@@ -549,8 +584,15 @@ where
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<Vec<(DateTime<Utc>, String, Option<String>, Option<String>, Option<String>)>>
-    {
+    ) -> anyhow::Result<
+        Vec<(
+            DateTime<Utc>,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        )>,
+    > {
         MetricsDao::get_log_errors(self, window_seconds, limit).await
     }
 

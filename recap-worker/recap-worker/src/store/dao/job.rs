@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-use super::types::{JobStatusTransition, StatusTransitionActor};
 use super::JobStatus;
+use super::types::{JobStatusTransition, StatusTransitionActor};
 use crate::util::idempotency::try_acquire_job_lock;
 
 pub(crate) struct RecapDao;
@@ -312,7 +312,10 @@ impl RecapDao {
 
     /// 指定されたジョブのステータス履歴を取得する。
     #[allow(dead_code)]
-    pub async fn get_status_history(pool: &PgPool, job_id: Uuid) -> Result<Vec<JobStatusTransition>> {
+    pub async fn get_status_history(
+        pool: &PgPool,
+        job_id: Uuid,
+    ) -> Result<Vec<JobStatusTransition>> {
         let rows = sqlx::query(
             r"
             SELECT id, job_id, status, stage, transitioned_at, reason, actor

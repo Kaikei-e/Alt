@@ -435,11 +435,7 @@ impl RecapDao for MockRecapDao {
         })
     }
 
-    async fn get_user_article_count_for_job(
-        &self,
-        _job_id: Uuid,
-        _user_id: Uuid,
-    ) -> Result<i32> {
+    async fn get_user_article_count_for_job(&self, _job_id: Uuid, _user_id: Uuid) -> Result<i32> {
         Ok(0)
     }
 
@@ -467,11 +463,7 @@ impl RecapDao for MockRecapDao {
         Ok(())
     }
 
-    async fn get_user_jobs_count(
-        &self,
-        _user_id: Uuid,
-        _window_seconds: i64,
-    ) -> Result<i32> {
+    async fn get_user_jobs_count(&self, _user_id: Uuid, _window_seconds: i64) -> Result<i32> {
         Ok(0)
     }
 

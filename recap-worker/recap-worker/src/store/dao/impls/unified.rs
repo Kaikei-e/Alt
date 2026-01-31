@@ -4,14 +4,11 @@
 //! It maintains backward compatibility while supporting the new focused trait system.
 
 use anyhow::Result;
-use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::Value;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use uuid::Uuid;
-
-use chrono::NaiveDate;
 
 use crate::pipeline::pulse::PulseResult;
 use crate::store::dao::article::FetchedArticleData;
@@ -47,13 +44,8 @@ impl UnifiedDao {
 }
 
 // JobDao implementation
-#[async_trait]
 impl JobDao for UnifiedDao {
-    async fn create_job_with_lock(
-        &self,
-        job_id: Uuid,
-        note: Option<&str>,
-    ) -> Result<Option<Uuid>> {
+    async fn create_job_with_lock(&self, job_id: Uuid, note: Option<&str>) -> Result<Option<Uuid>> {
         crate::store::dao::job::RecapDao::create_job_with_lock(&self.pool, job_id, note).await
     }
 
@@ -120,7 +112,6 @@ impl JobDao for UnifiedDao {
 }
 
 // StageDao implementation
-#[async_trait]
 impl StageDao for UnifiedDao {
     async fn insert_stage_log(
         &self,
@@ -135,12 +126,7 @@ impl StageDao for UnifiedDao {
         .await
     }
 
-    async fn save_stage_state(
-        &self,
-        job_id: Uuid,
-        stage: &str,
-        state_data: &Value,
-    ) -> Result<()> {
+    async fn save_stage_state(&self, job_id: Uuid, stage: &str, state_data: &Value) -> Result<()> {
         crate::store::dao::stage::RecapDao::save_stage_state(&self.pool, job_id, stage, state_data)
             .await
     }
@@ -164,7 +150,6 @@ impl StageDao for UnifiedDao {
 }
 
 // ArticleDao implementation
-#[async_trait]
 impl ArticleDao for UnifiedDao {
     async fn backup_raw_articles(&self, job_id: Uuid, articles: &[RawArticle]) -> Result<()> {
         crate::store::dao::article::RecapDao::backup_raw_articles(&self.pool, job_id, articles)
@@ -191,7 +176,6 @@ impl ArticleDao for UnifiedDao {
 }
 
 // GenreLearningDao implementation
-#[async_trait]
 impl GenreLearningDao for UnifiedDao {
     async fn load_tag_label_graph(&self, window_label: &str) -> Result<Vec<GraphEdgeRecord>> {
         crate::store::dao::genre_learning::RecapDao::load_tag_label_graph(&self.pool, window_label)
@@ -217,7 +201,6 @@ impl GenreLearningDao for UnifiedDao {
 }
 
 // ConfigDao implementation
-#[async_trait]
 impl ConfigDao for UnifiedDao {
     async fn get_latest_worker_config(&self, config_type: &str) -> Result<Option<Value>> {
         crate::store::dao::config::RecapDao::get_latest_worker_config(&self.pool, config_type).await
@@ -242,7 +225,6 @@ impl ConfigDao for UnifiedDao {
 }
 
 // MetricsDao implementation
-#[async_trait]
 impl MetricsDao for UnifiedDao {
     async fn save_preprocess_metrics(&self, metrics: &PreprocessMetrics) -> Result<()> {
         crate::store::dao::metrics::RecapDao::save_preprocess_metrics(&self.pool, metrics).await
@@ -255,7 +237,10 @@ impl MetricsDao for UnifiedDao {
         metrics: &Value,
     ) -> Result<()> {
         crate::store::dao::metrics::RecapDao::save_system_metrics(
-            &self.pool, job_id, metric_type, metrics,
+            &self.pool,
+            job_id,
+            metric_type,
+            metrics,
         )
         .await
     }
@@ -288,7 +273,15 @@ impl MetricsDao for UnifiedDao {
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> Result<Vec<(DateTime<Utc>, String, Option<String>, Option<String>, Option<String>)>> {
+    ) -> Result<
+        Vec<(
+            DateTime<Utc>,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        )>,
+    > {
         crate::store::dao::metrics::RecapDao::get_log_errors(&self.pool, window_seconds, limit)
             .await
     }
@@ -315,7 +308,6 @@ impl MetricsDao for UnifiedDao {
 }
 
 // OutputDao implementation
-#[async_trait]
 impl OutputDao for UnifiedDao {
     async fn save_final_section(&self, section: &RecapFinalSection) -> Result<i64> {
         crate::store::dao::output::RecapDao::save_final_section(&self.pool, section).await
@@ -325,11 +317,7 @@ impl OutputDao for UnifiedDao {
         crate::store::dao::output::RecapDao::upsert_recap_output(&self.pool, output).await
     }
 
-    async fn get_recap_output_body_json(
-        &self,
-        job_id: Uuid,
-        genre: &str,
-    ) -> Result<Option<Value>> {
+    async fn get_recap_output_body_json(&self, job_id: Uuid, genre: &str) -> Result<Option<Value>> {
         crate::store::dao::output::RecapDao::get_recap_output_body_json(&self.pool, job_id, genre)
             .await
     }
@@ -351,7 +339,6 @@ impl OutputDao for UnifiedDao {
 }
 
 // SubworkerDao implementation
-#[async_trait]
 impl SubworkerDao for UnifiedDao {
     async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> Result<i64> {
         crate::store::dao::subworker::RecapDao::insert_subworker_run(&self.pool, run).await
@@ -391,11 +378,7 @@ impl SubworkerDao for UnifiedDao {
         crate::store::dao::subworker::RecapDao::insert_clusters(&self.pool, run_id, clusters).await
     }
 
-    async fn upsert_diagnostics(
-        &self,
-        run_id: i64,
-        diagnostics: &[DiagnosticEntry],
-    ) -> Result<()> {
+    async fn upsert_diagnostics(&self, run_id: i64, diagnostics: &[DiagnosticEntry]) -> Result<()> {
         crate::store::dao::subworker::RecapDao::upsert_diagnostics(&self.pool, run_id, diagnostics)
             .await
     }
@@ -406,7 +389,6 @@ impl SubworkerDao for UnifiedDao {
 }
 
 // EvaluationDao implementation
-#[async_trait]
 impl EvaluationDao for UnifiedDao {
     async fn save_genre_evaluation(
         &self,
@@ -432,7 +414,6 @@ impl EvaluationDao for UnifiedDao {
 }
 
 // MorningDao implementation
-#[async_trait]
 impl MorningDao for UnifiedDao {
     async fn save_morning_article_groups(&self, groups: &[(Uuid, Uuid, bool)]) -> Result<()> {
         crate::store::dao::morning::RecapDao::save_morning_article_groups(&self.pool, groups).await
@@ -447,7 +428,6 @@ impl MorningDao for UnifiedDao {
 }
 
 // JobStatusDao implementation
-#[async_trait]
 impl JobStatusDao for UnifiedDao {
     async fn get_extended_jobs(
         &self,
@@ -469,7 +449,10 @@ impl JobStatusDao for UnifiedDao {
         limit: i64,
     ) -> Result<Vec<ExtendedRecapJob>> {
         crate::store::dao::job_status::JobStatusDao::get_user_jobs(
-            &self.pool, user_id, window_seconds, limit,
+            &self.pool,
+            user_id,
+            window_seconds,
+            limit,
         )
         .await
     }
@@ -518,14 +501,15 @@ impl JobStatusDao for UnifiedDao {
 
     async fn get_user_jobs_count(&self, user_id: Uuid, window_seconds: i64) -> Result<i32> {
         crate::store::dao::job_status::JobStatusDao::get_user_jobs_count(
-            &self.pool, user_id, window_seconds,
+            &self.pool,
+            user_id,
+            window_seconds,
         )
         .await
     }
 }
 
 // PulseDao implementation
-#[async_trait]
 impl PulseDao for UnifiedDao {
     async fn get_pulse_by_date(&self, date: NaiveDate) -> Result<Option<PulseGenerationRow>> {
         crate::store::dao::pulse::RecapDao::get_pulse_by_date(&self.pool, date).await

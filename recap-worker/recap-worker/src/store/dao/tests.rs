@@ -4,9 +4,9 @@
 
 #![allow(dead_code)]
 
-use super::impls::UnifiedDao;
-use super::compat::RecapDao;
 use super::JobStatus;
+use super::compat::RecapDao;
+use super::impls::UnifiedDao;
 use crate::store::models::{
     CoarseCandidateRecord, DiagnosticEntry, GenreEvaluationMetric, GenreEvaluationRun,
     GenreLearningRecord, LearningTimestamps, NewSubworkerRun, PersistedCluster, PersistedGenre,
@@ -587,11 +587,7 @@ async fn update_job_status_warns_on_nonexistent_job() -> anyhow::Result<()> {
 
     // Should succeed (returns Ok) but log a warning
     let result = dao
-        .update_job_status(
-            nonexistent_job_id,
-            JobStatus::Running,
-            Some("test_stage"),
-        )
+        .update_job_status(nonexistent_job_id, JobStatus::Running, Some("test_stage"))
         .await;
 
     assert!(
@@ -848,7 +844,10 @@ async fn update_job_status_with_history_is_atomic() -> anyhow::Result<()> {
 
     // Verify history was also recorded
     let history = dao.get_status_history(job_id).await?;
-    assert!(!history.is_empty(), "History should have at least one record");
+    assert!(
+        !history.is_empty(),
+        "History should have at least one record"
+    );
     assert_eq!(history.last().unwrap().status, JobStatus::Completed);
     assert_eq!(history.last().unwrap().stage.as_deref(), Some("persist"));
 

@@ -2,8 +2,9 @@
 //!
 //! This module defines the trait for retrieving and saving Evening Pulse generation results.
 
+use std::future::Future;
+
 use anyhow::Result;
-use async_trait::async_trait;
 use chrono::NaiveDate;
 
 use crate::pipeline::pulse::PulseResult;
@@ -13,17 +14,19 @@ use crate::store::models::PulseGenerationRow;
 ///
 /// Provides methods to retrieve pulse generation results,
 /// enabling the `/v1/pulse/latest` API endpoint.
-#[async_trait]
 pub trait PulseDao: Send + Sync {
     /// Get the pulse generation for a specific date.
     ///
     /// Returns the most recent successful pulse generation for the given date.
-    async fn get_pulse_by_date(&self, date: NaiveDate) -> Result<Option<PulseGenerationRow>>;
+    fn get_pulse_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> impl Future<Output = Result<Option<PulseGenerationRow>>> + Send;
 
     /// Get the latest successful pulse generation.
     ///
     /// Returns the most recent pulse generation regardless of date.
-    async fn get_latest_pulse(&self) -> Result<Option<PulseGenerationRow>>;
+    fn get_latest_pulse(&self) -> impl Future<Output = Result<Option<PulseGenerationRow>>> + Send;
 
     /// Save a pulse generation result.
     ///
@@ -33,17 +36,9 @@ pub trait PulseDao: Send + Sync {
     /// - Topics count
     ///
     /// Returns the database-assigned generation ID.
-    async fn save_pulse_generation(
+    fn save_pulse_generation(
         &self,
         result: &PulseResult,
         target_date: NaiveDate,
-    ) -> Result<i64>;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Trait definition test - ensure trait is object-safe
-    fn _assert_object_safe(_: &dyn PulseDao) {}
+    ) -> impl Future<Output = Result<i64>> + Send;
 }
