@@ -36,6 +36,9 @@ const (
 	// RecapServiceGetSevenDayRecapProcedure is the fully-qualified name of the RecapService's
 	// GetSevenDayRecap RPC.
 	RecapServiceGetSevenDayRecapProcedure = "/alt.recap.v2.RecapService/GetSevenDayRecap"
+	// RecapServiceGetEveningPulseProcedure is the fully-qualified name of the RecapService's
+	// GetEveningPulse RPC.
+	RecapServiceGetEveningPulseProcedure = "/alt.recap.v2.RecapService/GetEveningPulse"
 )
 
 // RecapServiceClient is a client for the alt.recap.v2.RecapService service.
@@ -43,6 +46,9 @@ type RecapServiceClient interface {
 	// GetSevenDayRecap returns 7-day recap summary (authentication required)
 	// Replaces GET /api/v1/recap/7days
 	GetSevenDayRecap(context.Context, *connect.Request[v2.GetSevenDayRecapRequest]) (*connect.Response[v2.GetSevenDayRecapResponse], error)
+	// GetEveningPulse returns Evening Pulse data (authentication required)
+	// Evening Pulse provides 3 key topics for quick daily catch-up
+	GetEveningPulse(context.Context, *connect.Request[v2.GetEveningPulseRequest]) (*connect.Response[v2.GetEveningPulseResponse], error)
 }
 
 // NewRecapServiceClient constructs a client for the alt.recap.v2.RecapService service. By default,
@@ -62,12 +68,19 @@ func NewRecapServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(recapServiceMethods.ByName("GetSevenDayRecap")),
 			connect.WithClientOptions(opts...),
 		),
+		getEveningPulse: connect.NewClient[v2.GetEveningPulseRequest, v2.GetEveningPulseResponse](
+			httpClient,
+			baseURL+RecapServiceGetEveningPulseProcedure,
+			connect.WithSchema(recapServiceMethods.ByName("GetEveningPulse")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // recapServiceClient implements RecapServiceClient.
 type recapServiceClient struct {
 	getSevenDayRecap *connect.Client[v2.GetSevenDayRecapRequest, v2.GetSevenDayRecapResponse]
+	getEveningPulse  *connect.Client[v2.GetEveningPulseRequest, v2.GetEveningPulseResponse]
 }
 
 // GetSevenDayRecap calls alt.recap.v2.RecapService.GetSevenDayRecap.
@@ -75,11 +88,19 @@ func (c *recapServiceClient) GetSevenDayRecap(ctx context.Context, req *connect.
 	return c.getSevenDayRecap.CallUnary(ctx, req)
 }
 
+// GetEveningPulse calls alt.recap.v2.RecapService.GetEveningPulse.
+func (c *recapServiceClient) GetEveningPulse(ctx context.Context, req *connect.Request[v2.GetEveningPulseRequest]) (*connect.Response[v2.GetEveningPulseResponse], error) {
+	return c.getEveningPulse.CallUnary(ctx, req)
+}
+
 // RecapServiceHandler is an implementation of the alt.recap.v2.RecapService service.
 type RecapServiceHandler interface {
 	// GetSevenDayRecap returns 7-day recap summary (authentication required)
 	// Replaces GET /api/v1/recap/7days
 	GetSevenDayRecap(context.Context, *connect.Request[v2.GetSevenDayRecapRequest]) (*connect.Response[v2.GetSevenDayRecapResponse], error)
+	// GetEveningPulse returns Evening Pulse data (authentication required)
+	// Evening Pulse provides 3 key topics for quick daily catch-up
+	GetEveningPulse(context.Context, *connect.Request[v2.GetEveningPulseRequest]) (*connect.Response[v2.GetEveningPulseResponse], error)
 }
 
 // NewRecapServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -95,10 +116,18 @@ func NewRecapServiceHandler(svc RecapServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(recapServiceMethods.ByName("GetSevenDayRecap")),
 		connect.WithHandlerOptions(opts...),
 	)
+	recapServiceGetEveningPulseHandler := connect.NewUnaryHandler(
+		RecapServiceGetEveningPulseProcedure,
+		svc.GetEveningPulse,
+		connect.WithSchema(recapServiceMethods.ByName("GetEveningPulse")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.recap.v2.RecapService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case RecapServiceGetSevenDayRecapProcedure:
 			recapServiceGetSevenDayRecapHandler.ServeHTTP(w, r)
+		case RecapServiceGetEveningPulseProcedure:
+			recapServiceGetEveningPulseHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -110,4 +139,8 @@ type UnimplementedRecapServiceHandler struct{}
 
 func (UnimplementedRecapServiceHandler) GetSevenDayRecap(context.Context, *connect.Request[v2.GetSevenDayRecapRequest]) (*connect.Response[v2.GetSevenDayRecapResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.recap.v2.RecapService.GetSevenDayRecap is not implemented"))
+}
+
+func (UnimplementedRecapServiceHandler) GetEveningPulse(context.Context, *connect.Request[v2.GetEveningPulseRequest]) (*connect.Response[v2.GetEveningPulseResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.recap.v2.RecapService.GetEveningPulse is not implemented"))
 }

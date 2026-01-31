@@ -216,6 +216,70 @@ func TestDOSProtectionMiddleware_CircuitBreaker(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, err.(*echo.HTTPError).Code)
 }
 
+func TestDOSProtectionMiddleware_CircuitBreaker_IgnoresClientErrors(t *testing.T) {
+	config := DOSProtectionConfig{
+		Enabled:       true,
+		RateLimit:     100,
+		BurstLimit:    100,
+		WindowSize:    time.Minute,
+		BlockDuration: 5 * time.Minute,
+		CircuitBreaker: CircuitBreakerConfig{
+			Enabled:          true,
+			FailureThreshold: 3,
+			TimeoutDuration:  time.Second,
+			RecoveryTimeout:  30 * time.Second,
+		},
+	}
+
+	middleware := DOSProtectionMiddleware(config)
+
+	// Handler that returns 4xx client errors (should NOT trip circuit breaker)
+	requestCount := 0
+	handler := middleware(func(c echo.Context) error {
+		requestCount++
+		// Return various 4xx errors - these should NOT trip the circuit breaker
+		switch requestCount {
+		case 1:
+			return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		case 2:
+			return echo.NewHTTPError(http.StatusForbidden, "Forbidden")
+		case 3:
+			return echo.NewHTTPError(http.StatusNotFound, "Not found")
+		case 4:
+			return echo.NewHTTPError(http.StatusBadRequest, "Bad request")
+		default:
+			return c.String(http.StatusOK, "OK")
+		}
+	})
+
+	e := echo.New()
+
+	// Send 4 requests with 4xx errors - circuit breaker should NOT trip
+	clientErrors := []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusBadRequest}
+	for i, expectedCode := range clientErrors {
+		req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+		req.Header.Set("X-Real-IP", "192.168.1.1")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := handler(c)
+		require.Error(t, err, "Request %d should return error", i+1)
+		httpErr, ok := err.(*echo.HTTPError)
+		require.True(t, ok, "Error should be echo.HTTPError")
+		assert.Equal(t, expectedCode, httpErr.Code, "Request %d should return %d", i+1, expectedCode)
+	}
+
+	// 5th request should succeed (circuit NOT tripped by 4xx errors)
+	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req.Header.Set("X-Real-IP", "192.168.1.1")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler(c)
+	require.NoError(t, err, "5th request should succeed - circuit should NOT be open")
+	assert.Equal(t, http.StatusOK, rec.Code, "Circuit breaker should not have been triggered by 4xx errors")
+}
+
 func TestDOSProtectionMiddleware_ConcurrentRequests(t *testing.T) {
 	config := DOSProtectionConfig{
 		Enabled:       true,

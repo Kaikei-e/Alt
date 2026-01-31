@@ -21,9 +21,24 @@ import (
 
 // Handler implements the RecapService Connect-RPC service.
 type Handler struct {
-	recapUsecase       *recap_usecase.RecapUsecase
-	clusterDraftLoader *recapinternal.ClusterDraftLoader
-	logger             *slog.Logger
+	recapUsecase          *recap_usecase.RecapUsecase
+	recapUsecaseInterface RecapUsecaseInterface
+	clusterDraftLoader    *recapinternal.ClusterDraftLoader
+	logger                *slog.Logger
+}
+
+// getRecapUsecase returns the usecase interface, preferring interface if set
+func (h *Handler) getRecapUsecase() RecapUsecaseInterface {
+	if h.recapUsecaseInterface != nil {
+		return h.recapUsecaseInterface
+	}
+	return h.recapUsecase
+}
+
+// RecapUsecaseInterface defines the interface for recap usecase (for testing)
+type RecapUsecaseInterface interface {
+	GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error)
+	GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error)
 }
 
 // NewHandler creates a new Recap service handler.
@@ -36,6 +51,21 @@ func NewHandler(
 		recapUsecase:       recapUsecase,
 		clusterDraftLoader: clusterDraftLoader,
 		logger:             logger,
+	}
+}
+
+// NewHandlerWithUsecase creates a new Recap service handler with interface (for testing)
+func NewHandlerWithUsecase(
+	recapUsecase RecapUsecaseInterface,
+	clusterDraftLoader *recapinternal.ClusterDraftLoader,
+	logger *slog.Logger,
+) *Handler {
+	// For testing, we use interface, but Handler stores concrete type
+	// We'll modify Handler to use interface
+	return &Handler{
+		recapUsecaseInterface: recapUsecase,
+		clusterDraftLoader:    clusterDraftLoader,
+		logger:                logger,
 	}
 }
 
@@ -56,7 +86,7 @@ func (h *Handler) GetSevenDayRecap(
 	h.logger.InfoContext(ctx, "GetSevenDayRecap called", "user_id", userCtx.UserID)
 
 	// Call usecase
-	recap, err := h.recapUsecase.GetSevenDayRecap(ctx)
+	recap, err := h.getRecapUsecase().GetSevenDayRecap(ctx)
 	if err != nil {
 		if errors.Is(err, domain.ErrRecapNotFound) {
 			return nil, errorhandler.HandleNotFoundError(ctx, h.logger, "No 7-day recap available yet", "GetSevenDayRecap")
@@ -195,4 +225,141 @@ func clusterArticlesToProto(articles []domain.ClusterArticle) []*recapv2.Cluster
 		}
 	}
 	return result
+}
+
+// GetEveningPulse returns Evening Pulse data (authentication required).
+func (h *Handler) GetEveningPulse(
+	ctx context.Context,
+	req *connect.Request[recapv2.GetEveningPulseRequest],
+) (*connect.Response[recapv2.GetEveningPulseResponse], error) {
+	// Authentication check
+	userCtx, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	h.logger.InfoContext(ctx, "GetEveningPulse called", "user_id", userCtx.UserID)
+
+	// Extract date parameter
+	date := ""
+	if req.Msg.Date != nil {
+		date = *req.Msg.Date
+	}
+
+	// Call usecase
+	pulse, err := h.getRecapUsecase().GetEveningPulse(ctx, date)
+	if err != nil {
+		if errors.Is(err, domain.ErrEveningPulseNotFound) {
+			return nil, errorhandler.HandleNotFoundError(ctx, h.logger, "Evening Pulse not available", "GetEveningPulse")
+		}
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetEveningPulse")
+	}
+
+	// Convert domain to proto
+	resp := eveningPulseDomainToProto(pulse)
+	return connect.NewResponse(resp), nil
+}
+
+// eveningPulseDomainToProto converts domain.EveningPulse to proto response.
+func eveningPulseDomainToProto(pulse *domain.EveningPulse) *recapv2.GetEveningPulseResponse {
+	topics := make([]*recapv2.PulseTopic, len(pulse.Topics))
+	for i, t := range pulse.Topics {
+		topics[i] = &recapv2.PulseTopic{
+			ClusterId:    t.ClusterID,
+			Role:         topicRoleToProto(t.Role),
+			Title:        t.Title,
+			Rationale:    rationaleToProto(t.Rationale),
+			ArticleCount: int32(t.ArticleCount),
+			SourceCount:  int32(t.SourceCount),
+			TimeAgo:      t.TimeAgo,
+			ArticleIds:   t.ArticleIDs,
+		}
+		if t.Tier1Count != nil {
+			tier1 := int32(*t.Tier1Count)
+			topics[i].Tier1Count = &tier1
+		}
+		if t.TrendMultiplier != nil {
+			topics[i].TrendMultiplier = t.TrendMultiplier
+		}
+		if t.Genre != nil {
+			topics[i].Genre = t.Genre
+		}
+	}
+
+	resp := &recapv2.GetEveningPulseResponse{
+		JobId:       pulse.JobID,
+		Date:        pulse.Date,
+		GeneratedAt: pulse.GeneratedAt.Format(time.RFC3339),
+		Status:      pulseStatusToProto(pulse.Status),
+		Topics:      topics,
+	}
+
+	if pulse.QuietDay != nil {
+		resp.QuietDay = quietDayToProto(pulse.QuietDay)
+	}
+
+	return resp
+}
+
+func topicRoleToProto(role domain.TopicRole) recapv2.TopicRole {
+	switch role {
+	case domain.TopicRoleNeedToKnow:
+		return recapv2.TopicRole_TOPIC_ROLE_NEED_TO_KNOW
+	case domain.TopicRoleTrend:
+		return recapv2.TopicRole_TOPIC_ROLE_TREND
+	case domain.TopicRoleSerendipity:
+		return recapv2.TopicRole_TOPIC_ROLE_SERENDIPITY
+	default:
+		return recapv2.TopicRole_TOPIC_ROLE_UNSPECIFIED
+	}
+}
+
+func pulseStatusToProto(status domain.PulseStatus) recapv2.PulseStatus {
+	switch status {
+	case domain.PulseStatusNormal:
+		return recapv2.PulseStatus_PULSE_STATUS_NORMAL
+	case domain.PulseStatusPartial:
+		return recapv2.PulseStatus_PULSE_STATUS_PARTIAL
+	case domain.PulseStatusQuietDay:
+		return recapv2.PulseStatus_PULSE_STATUS_QUIET_DAY
+	case domain.PulseStatusError:
+		return recapv2.PulseStatus_PULSE_STATUS_ERROR
+	default:
+		return recapv2.PulseStatus_PULSE_STATUS_UNSPECIFIED
+	}
+}
+
+func confidenceToProto(conf domain.Confidence) recapv2.Confidence {
+	switch conf {
+	case domain.ConfidenceHigh:
+		return recapv2.Confidence_CONFIDENCE_HIGH
+	case domain.ConfidenceMedium:
+		return recapv2.Confidence_CONFIDENCE_MEDIUM
+	case domain.ConfidenceLow:
+		return recapv2.Confidence_CONFIDENCE_LOW
+	default:
+		return recapv2.Confidence_CONFIDENCE_UNSPECIFIED
+	}
+}
+
+func rationaleToProto(r domain.PulseRationale) *recapv2.PulseRationale {
+	return &recapv2.PulseRationale{
+		Text:       r.Text,
+		Confidence: confidenceToProto(r.Confidence),
+	}
+}
+
+func quietDayToProto(qd *domain.QuietDayInfo) *recapv2.QuietDayInfo {
+	highlights := make([]*recapv2.WeeklyHighlight, len(qd.WeeklyHighlights))
+	for i, h := range qd.WeeklyHighlights {
+		highlights[i] = &recapv2.WeeklyHighlight{
+			Id:    h.ID,
+			Title: h.Title,
+			Date:  h.Date,
+			Role:  h.Role,
+		}
+	}
+	return &recapv2.QuietDayInfo{
+		Message:          qd.Message,
+		WeeklyHighlights: highlights,
+	}
 }

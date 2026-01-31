@@ -145,10 +145,17 @@ func DOSProtectionMiddleware(config DOSProtectionConfig) echo.MiddlewareFunc {
 			// Execute the request
 			err := next(c)
 
-			// Update circuit breaker
+			// Update circuit breaker - only count server errors (5xx) as failures
+			// Client errors (4xx) are not server-side issues and should not trip the circuit
 			if cb != nil {
 				if err != nil {
-					cb.recordFailure()
+					// Check if it's a server error (5xx)
+					if he, ok := err.(*echo.HTTPError); ok && he.Code >= 500 {
+						cb.recordFailure()
+					} else {
+						// Client errors (4xx) should not affect circuit breaker
+						cb.recordSuccess()
+					}
 				} else {
 					cb.recordSuccess()
 				}
