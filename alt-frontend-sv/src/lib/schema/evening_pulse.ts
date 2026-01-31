@@ -13,6 +13,14 @@ export type PulseRationale = {
 	confidence: Confidence;
 };
 
+export type RepresentativeArticle = {
+	articleId: string;
+	title: string;
+	sourceUrl: string;
+	sourceName: string;
+	publishedAt: string;
+};
+
 export type PulseTopic = {
 	clusterId: number;
 	role: TopicRole;
@@ -25,6 +33,9 @@ export type PulseTopic = {
 	trendMultiplier?: number;
 	genre?: string;
 	articleIds: string[];
+	representativeArticles: RepresentativeArticle[];
+	topEntities: string[];
+	sourceNames: string[];
 };
 
 export type WeeklyHighlight = {

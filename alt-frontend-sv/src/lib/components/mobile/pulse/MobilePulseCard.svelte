@@ -22,6 +22,13 @@ const cardBorderColor = $derived.by(() => {
 			return "var(--border)";
 	}
 });
+
+// Get the first headline for compact display
+const firstHeadline = $derived.by(() => {
+	const articles = topic.representativeArticles ?? [];
+	if (articles.length === 0) return null;
+	return articles[0];
+});
 </script>
 
 <button
@@ -31,7 +38,7 @@ const cardBorderColor = $derived.by(() => {
 	aria-labelledby="topic-title-{index}"
 	{onclick}
 >
-	<header class="flex items-start justify-between gap-2 mb-3">
+	<header class="flex items-start justify-between gap-2 mb-2">
 		<PulseRoleLabel role={topic.role} />
 		<span class="text-xs" style="color: var(--text-tertiary);">
 			{topic.timeAgo}
@@ -46,12 +53,36 @@ const cardBorderColor = $derived.by(() => {
 		{topic.title}
 	</h3>
 
-	<p
-		class="text-sm mb-3 leading-relaxed"
-		style="color: var(--text-secondary);"
-	>
-		{topic.rationale.text}
-	</p>
+	<!-- Top Entities (compact - max 3) -->
+	{#if topic.topEntities && topic.topEntities.length > 0}
+		<div class="flex flex-wrap gap-1 mb-2">
+			{#each topic.topEntities.slice(0, 3) as entity}
+				<span
+					class="text-[10px] px-1.5 py-0.5 rounded-full"
+					style="background: var(--surface-hover); color: var(--text-secondary);"
+				>
+					{entity}
+				</span>
+			{/each}
+		</div>
+	{/if}
+
+	<!-- First headline preview -->
+	{#if firstHeadline}
+		<p
+			class="text-sm mb-2 line-clamp-1"
+			style="color: var(--text-secondary);"
+		>
+			"{firstHeadline.title}" - <span class="text-xs" style="color: var(--text-muted);">{firstHeadline.sourceName}</span>
+		</p>
+	{:else}
+		<p
+			class="text-sm mb-2 leading-relaxed line-clamp-2"
+			style="color: var(--text-secondary);"
+		>
+			{topic.rationale.text}
+		</p>
+	{/if}
 
 	<footer class="flex items-center gap-3 text-xs" style="color: var(--text-tertiary);">
 		<span>{topic.articleCount} articles</span>

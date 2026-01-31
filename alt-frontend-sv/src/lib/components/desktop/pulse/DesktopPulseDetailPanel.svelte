@@ -24,13 +24,13 @@ const formattedSourceNames = $derived.by(() => {
 
 <Sheet.Root bind:open onOpenChange={(value) => !value && onClose()}>
 	<Sheet.Content
-		side="bottom"
-		class="max-h-[85vh] rounded-t-[24px] border-t border-[var(--border-glass)] shadow-lg w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
+		side="right"
+		class="w-[420px] max-w-[90vw] border-l border-[var(--border-glass)] shadow-lg p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
 		style="background: white !important;"
-		data-testid="mobile-pulse-topic-sheet"
+		data-testid="desktop-pulse-detail-panel"
 	>
 		<!-- Header -->
-		<Sheet.Header class="border-b border-[var(--border-glass)] px-4 py-4">
+		<Sheet.Header class="border-b border-[var(--border-glass)] px-6 py-5">
 			<div class="flex items-start justify-between gap-3">
 				<div class="flex-1 min-w-0">
 					{#if topic}
@@ -38,14 +38,14 @@ const formattedSourceNames = $derived.by(() => {
 							<PulseRoleLabel role={topic.role} />
 						</div>
 					{/if}
-					<Sheet.Title class="text-lg font-bold text-[var(--text-primary)] leading-tight">
+					<Sheet.Title class="text-xl font-bold text-[var(--text-primary)] leading-tight">
 						{topic?.title ?? "Topic Details"}
 					</Sheet.Title>
 					{#if topic}
-						<Sheet.Description class="text-xs text-[var(--text-secondary)] mt-1">
+						<Sheet.Description class="text-sm text-[var(--text-secondary)] mt-1">
 							{topic.timeAgo}
 							{#if topic.genre}
-								<span class="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-[var(--surface-hover)]">
+								<span class="ml-2 px-2 py-0.5 rounded text-xs bg-[var(--surface-hover)]">
 									{topic.genre}
 								</span>
 							{/if}
@@ -56,31 +56,31 @@ const formattedSourceNames = $derived.by(() => {
 		</Sheet.Header>
 
 		<!-- Scrollable content -->
-		<div class="overflow-y-auto flex-1 px-4 py-4">
+		<div class="overflow-y-auto flex-1 px-6 py-5">
 			{#if topic}
 				<!-- Stats -->
-				<div class="grid grid-cols-2 gap-3 mb-4">
+				<div class="grid grid-cols-2 gap-4 mb-5">
 					<div
-						class="p-3 rounded-lg border"
+						class="p-4 rounded-lg border"
 						style="background: var(--surface-bg); border-color: var(--surface-border);"
 					>
 						<div class="flex items-center gap-2 mb-1">
 							<Newspaper class="w-4 h-4" style="color: var(--text-muted);" />
-							<span class="text-xs" style="color: var(--text-muted);">Articles</span>
+							<span class="text-sm" style="color: var(--text-muted);">Articles</span>
 						</div>
-						<p class="text-sm font-medium" style="color: var(--text-primary);">
+						<p class="text-lg font-semibold" style="color: var(--text-primary);">
 							{topic.articleCount}
 						</p>
 					</div>
 					<div
-						class="p-3 rounded-lg border"
+						class="p-4 rounded-lg border"
 						style="background: var(--surface-bg); border-color: var(--surface-border);"
 					>
 						<div class="flex items-center gap-2 mb-1">
 							<Rss class="w-4 h-4" style="color: var(--text-muted);" />
-							<span class="text-xs" style="color: var(--text-muted);">Sources</span>
+							<span class="text-sm" style="color: var(--text-muted);">Sources</span>
 						</div>
-						<p class="text-sm font-medium" style="color: var(--text-primary);">
+						<p class="text-lg font-semibold" style="color: var(--text-primary);">
 							{topic.sourceCount}
 						</p>
 					</div>
@@ -88,8 +88,8 @@ const formattedSourceNames = $derived.by(() => {
 
 				<!-- Top Entities -->
 				{#if topic.topEntities && topic.topEntities.length > 0}
-					<div class="mb-4">
-						<div class="flex items-center gap-2 mb-2">
+					<div class="mb-5">
+						<div class="flex items-center gap-2 mb-3">
 							<Tag class="w-4 h-4" style="color: var(--text-muted);" />
 							<h4 class="text-sm font-semibold" style="color: var(--text-muted);">
 								Key Entities
@@ -98,7 +98,7 @@ const formattedSourceNames = $derived.by(() => {
 						<div class="flex flex-wrap gap-2">
 							{#each topic.topEntities as entity}
 								<span
-									class="text-xs px-2 py-1 rounded-full"
+									class="text-sm px-3 py-1 rounded-full"
 									style="background: var(--surface-hover); color: var(--text-secondary);"
 								>
 									{entity}
@@ -110,14 +110,14 @@ const formattedSourceNames = $derived.by(() => {
 
 				<!-- Representative Articles -->
 				{#if topic.representativeArticles && topic.representativeArticles.length > 0}
-					<div class="mb-4">
-						<h4 class="text-sm font-semibold mb-2" style="color: var(--text-muted);">
+					<div class="mb-5">
+						<h4 class="text-sm font-semibold mb-3" style="color: var(--text-muted);">
 							Headlines
 						</h4>
 						<ul class="space-y-3">
 							{#each topic.representativeArticles as article}
 								<li
-									class="p-3 rounded-lg border"
+									class="p-4 rounded-lg border"
 									style="background: var(--surface-bg); border-color: var(--surface-border);"
 								>
 									<a
@@ -145,7 +145,7 @@ const formattedSourceNames = $derived.by(() => {
 
 				<!-- Source Names -->
 				{#if formattedSourceNames}
-					<div class="mb-4">
+					<div class="mb-5">
 						<h4 class="text-sm font-semibold mb-2" style="color: var(--text-muted);">
 							All Sources
 						</h4>
@@ -156,7 +156,7 @@ const formattedSourceNames = $derived.by(() => {
 				{/if}
 
 				<!-- Rationale -->
-				<div class="mb-4">
+				<div class="mb-5">
 					<h4 class="text-sm font-semibold mb-2" style="color: var(--text-muted);">
 						Why this topic?
 					</h4>
@@ -179,7 +179,7 @@ const formattedSourceNames = $derived.by(() => {
 		</div>
 
 		<!-- Footer with action button -->
-		<div class="border-t border-[var(--border-glass)] px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+		<div class="border-t border-[var(--border-glass)] px-6 py-5">
 			{#if topic}
 				<Button
 					class="w-full"

@@ -36,7 +36,8 @@ export interface RecapGenreWithReferences extends RecapGenre {
 /**
  * Extended RecapSummary with references support (from Connect-RPC response)
  */
-export interface RecapSummaryWithReferences extends Omit<RecapSummary, "genres"> {
+export interface RecapSummaryWithReferences
+	extends Omit<RecapSummary, "genres"> {
 	genres: RecapGenreWithReferences[];
 }
 

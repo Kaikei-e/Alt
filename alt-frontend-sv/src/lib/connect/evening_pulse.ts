@@ -127,6 +127,15 @@ function convertProtoTopic(proto: {
 	trendMultiplier?: number;
 	genre?: string;
 	articleIds: string[];
+	representativeArticles: Array<{
+		articleId: string;
+		title: string;
+		sourceUrl: string;
+		sourceName: string;
+		publishedAt: string;
+	}>;
+	topEntities: string[];
+	sourceNames: string[];
 }): PulseTopic {
 	return {
 		clusterId: Number(proto.clusterId),
@@ -145,6 +154,15 @@ function convertProtoTopic(proto: {
 		trendMultiplier: proto.trendMultiplier,
 		genre: proto.genre,
 		articleIds: proto.articleIds,
+		representativeArticles: proto.representativeArticles.map((a) => ({
+			articleId: a.articleId,
+			title: a.title,
+			sourceUrl: a.sourceUrl,
+			sourceName: a.sourceName,
+			publishedAt: a.publishedAt,
+		})),
+		topEntities: proto.topEntities,
+		sourceNames: proto.sourceNames,
 	};
 }
 
