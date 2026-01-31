@@ -104,6 +104,10 @@ services:
       - RECAP_CLUSTERING_STUCK_THRESHOLD_SECS=${RECAP_CLUSTERING_STUCK_THRESHOLD_SECS:-1200}
       # Batch summary chunk size: reduced from 25 to 10 to prevent timeout with slow LLM
       - RECAP_BATCH_SUMMARY_CHUNK_SIZE=${RECAP_BATCH_SUMMARY_CHUNK_SIZE:-10}
+      # Evening Pulse configuration
+      - PULSE_ENABLED=true
+      - PULSE_ROLLOUT_PERCENT=100
+      - PULSE_VERSION=v4
     secrets:
       - recap_db_password
       - service_secret
