@@ -123,8 +123,10 @@ struct GoldenDatasetRoot {
 
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
+#[allow(dead_code)] // Schema 2.2 fields are for future use and backward compatibility
+#[allow(clippy::large_enum_variant)] // Bilingual variant is intentionally larger for extended metadata
 enum GoldenItem {
-    /// Bilingual format: content_ja and content_en
+    /// Schema 2.2 format: content_ja and content_en with extended metadata
     Bilingual {
         id: String,
         #[serde(default)]
@@ -134,6 +136,33 @@ enum GoldenItem {
         #[serde(default)]
         content: Option<String>, // レガシー対応
         expected_genres: Vec<String>,
+        #[serde(default)]
+        primary_genre: Option<String>,
+        /// Difficulty level: "baseline", "boundary", or "hard"
+        #[serde(default)]
+        difficulty: Option<String>,
+        /// Language pairing: "ja_only", "en_only", "parallel", "none", "same_story"
+        #[serde(default)]
+        language_pairing: Option<String>,
+        /// Secondary genres for multi-label (hard) cases
+        #[serde(default)]
+        secondary_genres: Option<Vec<String>>,
+        /// Boundary pair for boundary cases (e.g., `["ai_data", "software_dev"]`)
+        #[serde(default)]
+        boundary_pair: Option<Vec<String>>,
+        /// Content style: "headline", "lead", "long_form"
+        #[serde(default)]
+        style: Option<String>,
+        /// Terminology density: "low", "medium", "high"
+        #[serde(default)]
+        terminology_density: Option<String>,
+        /// Parallel pair ID for linking JA-EN pairs
+        #[serde(default)]
+        parallel_id: Option<String>,
+        #[serde(default)]
+        source: Option<String>,
+        #[serde(default)]
+        notes: Option<String>,
     },
     /// New format: single content field
     Simple {

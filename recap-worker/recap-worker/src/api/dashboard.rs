@@ -255,7 +255,10 @@ async fn build_active_job_info(
     job: ExtendedRecapJob,
     user_id: Option<Uuid>,
 ) -> ActiveJobInfo {
-    let completed_stages = dao.get_completed_stages(job.job_id).await.unwrap_or_default();
+    let completed_stages = dao
+        .get_completed_stages(job.job_id)
+        .await
+        .unwrap_or_default();
     let genre_progress_raw = dao.get_genre_progress(job.job_id).await.unwrap_or_default();
     let total_articles = dao.get_total_article_count_for_job(job.job_id).await.ok();
 
@@ -287,7 +290,9 @@ async fn build_active_job_info(
 
     // Get user article count if user_id provided
     let user_article_count = if let Some(uid) = user_id {
-        dao.get_user_article_count_for_job(job.job_id, uid).await.ok()
+        dao.get_user_article_count_for_job(job.job_id, uid)
+            .await
+            .ok()
     } else {
         None
     };
@@ -326,10 +331,14 @@ async fn build_active_job_info(
     // The database last_stage is only updated AFTER a stage completes, so during
     // evidence/dispatch execution, we need to infer the actual current stage.
     let (current_stage, effective_stage_index) = match sub_stage_phase {
-        Some("evidence_building") => (Some("evidence".to_string()), PipelineStage::Evidence.index()),
-        Some("clustering" | "summarization") => {
-            (Some("dispatch".to_string()), PipelineStage::Dispatch.index())
-        }
+        Some("evidence_building") => (
+            Some("evidence".to_string()),
+            PipelineStage::Evidence.index(),
+        ),
+        Some("clustering" | "summarization") => (
+            Some("dispatch".to_string()),
+            PipelineStage::Dispatch.index(),
+        ),
         _ => (job.last_stage.clone(), stage_index),
     };
 
@@ -400,8 +409,10 @@ pub(crate) async fn get_job_progress(
         (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
 
-    let mut recent_jobs: Vec<RecentJobSummary> =
-        recent_jobs_data.into_iter().map(|j| j.to_summary()).collect();
+    let mut recent_jobs: Vec<RecentJobSummary> = recent_jobs_data
+        .into_iter()
+        .map(|j| j.to_summary())
+        .collect();
 
     // Fetch status history for each recent job
     enrich_with_status_history(&dao, &mut recent_jobs).await;

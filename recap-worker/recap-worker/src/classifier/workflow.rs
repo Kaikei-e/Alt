@@ -39,6 +39,7 @@ struct GoldenDatasetRoot {
 }
 
 /// Golden Datasetのアイテム（JSON形式）
+/// Schema 2.2: Extended with difficulty, language_pairing, and multi-label support
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GoldenItem {
     pub id: String,
@@ -50,6 +51,36 @@ pub struct GoldenItem {
     pub content: Option<String>, // レガシー対応
     #[serde(rename = "expected_genres")]
     pub genres: Vec<String>,
+    /// Primary genre for the item
+    #[serde(default)]
+    pub primary_genre: Option<String>,
+    /// Difficulty level: "baseline", "boundary", or "hard"
+    #[serde(default)]
+    pub difficulty: Option<String>,
+    /// Language pairing: "ja_only", "en_only", "parallel", "none", "same_story"
+    #[serde(default)]
+    pub language_pairing: Option<String>,
+    /// Secondary genres for multi-label (hard) cases
+    #[serde(default)]
+    pub secondary_genres: Option<Vec<String>>,
+    /// Boundary pair for boundary cases (e.g., `["ai_data", "software_dev"]`)
+    #[serde(default)]
+    pub boundary_pair: Option<Vec<String>>,
+    /// Content style: "headline", "lead", "long_form"
+    #[serde(default)]
+    pub style: Option<String>,
+    /// Terminology density: "low", "medium", "high"
+    #[serde(default)]
+    pub terminology_density: Option<String>,
+    /// Parallel pair ID for linking JA-EN pairs
+    #[serde(default)]
+    pub parallel_id: Option<String>,
+    /// Data source identifier
+    #[serde(default)]
+    pub source: Option<String>,
+    /// Notes or metadata about the item
+    #[serde(default)]
+    pub notes: Option<String>,
 }
 
 impl GoldenItem {

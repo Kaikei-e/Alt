@@ -104,17 +104,14 @@ pub(crate) async fn get_latest(
 
     let result = match &query.date {
         Some(date_str) => {
-            let date = match NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
-                Ok(d) => d,
-                Err(_) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(ErrorResponse {
-                            error: format!("Invalid date format: {date_str}. Expected YYYY-MM-DD"),
-                        }),
-                    )
-                        .into_response();
-                }
+            let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") else {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: format!("Invalid date format: {date_str}. Expected YYYY-MM-DD"),
+                    }),
+                )
+                    .into_response();
             };
             dao.get_pulse_by_date(date).await
         }
@@ -124,10 +121,7 @@ pub(crate) async fn get_latest(
     match result {
         Ok(Some(row)) => match build_response(&row) {
             Ok(response) => {
-                info!(
-                    "Successfully fetched evening pulse for job {}",
-                    row.job_id
-                );
+                info!("Successfully fetched evening pulse for job {}", row.job_id);
                 (StatusCode::OK, Json(response)).into_response()
             }
             Err(e) => {
@@ -145,7 +139,7 @@ pub(crate) async fn get_latest(
             let date_msg = query
                 .date
                 .as_ref()
-                .map_or_else(|| "today".to_string(), |d| d.clone());
+                .map_or_else(|| "today".to_string(), Clone::clone);
             info!("No evening pulse found for date {}", date_msg);
             (
                 StatusCode::NOT_FOUND,
@@ -209,12 +203,12 @@ fn convert_topics(topics: &[PulseTopic]) -> Vec<PulseTopicResponse> {
                 title: generate_topic_title(topic),
                 rationale: PulseRationaleResponse {
                     text: topic.rationale.clone(),
-                    confidence: tier_to_confidence(&topic.quality_metrics.tier),
+                    confidence: tier_to_confidence(topic.quality_metrics.tier),
                 },
                 article_count,
                 source_count,
-                tier1_count: None, // Would require additional data
-                time_ago: "".to_string(), // Would require published_at from articles
+                tier1_count: None,       // Would require additional data
+                time_ago: String::new(), // Would require published_at from articles
                 trend_multiplier: if topic.role == TopicRole::Trend {
                     Some(f64::from(topic.score_breakdown.burst_score))
                 } else {
@@ -248,7 +242,7 @@ fn estimate_source_count(article_ids: &[String]) -> i32 {
     i32::try_from(prefixes.len().max(1)).unwrap_or(1)
 }
 
-fn tier_to_confidence(tier: &crate::pipeline::pulse::QualityTier) -> String {
+fn tier_to_confidence(tier: crate::pipeline::pulse::QualityTier) -> String {
     match tier {
         crate::pipeline::pulse::QualityTier::Ok => "high".to_string(),
         crate::pipeline::pulse::QualityTier::Caution => "medium".to_string(),
@@ -365,9 +359,9 @@ mod tests {
 
     #[test]
     fn test_tier_to_confidence() {
-        assert_eq!(tier_to_confidence(&QualityTier::Ok), "high");
-        assert_eq!(tier_to_confidence(&QualityTier::Caution), "medium");
-        assert_eq!(tier_to_confidence(&QualityTier::Ng), "low");
+        assert_eq!(tier_to_confidence(QualityTier::Ok), "high");
+        assert_eq!(tier_to_confidence(QualityTier::Caution), "medium");
+        assert_eq!(tier_to_confidence(QualityTier::Ng), "low");
     }
 
     #[test]
