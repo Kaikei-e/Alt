@@ -45,6 +45,10 @@ secrets:
     file: ../secrets/inoreader_client_id.txt
   inoreader_client_secret:
     file: ../secrets/inoreader_client_secret.txt
+  grafana_admin_password:
+    file: ../secrets/grafana_admin_password.txt
+  restic_password:
+    file: ../secrets/restic_password.txt
 
 networks:
   alt-network:
@@ -59,6 +63,9 @@ volumes:
   recap_db_data:
   rag_db_data:
   oauth_token_data:
+  prometheus_data:
+  grafana_data:
+  redis-streams-data:
 
 x-rask-env: &rask-env
   environment:

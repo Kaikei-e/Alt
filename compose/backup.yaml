@@ -1,0 +1,98 @@
+# compose/backup.yaml - Backup services for Alt platform
+# Provides Restic-based backup with 3-2-1 strategy
+#
+# Usage:
+#   docker compose -f compose/compose.yaml -p alt --profile backup up -d restic-backup
+#   docker compose -f compose/compose.yaml -p alt exec restic-backup restic snapshots
+
+include:
+  - base.yaml
+
+services:
+  restic-backup:
+    image: restic/restic:0.17.3
+    container_name: alt-backup
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Restic backup container ready"
+        echo "Use 'docker exec' to run backup commands"
+        tail -f /dev/null
+    environment:
+      - RESTIC_REPOSITORY=/backups/restic-repo
+      - RESTIC_PASSWORD_FILE=/run/secrets/restic_password
+      # Healthchecks.io integration (optional)
+      - HEALTHCHECK_HOURLY_URL=${HEALTHCHECK_HOURLY_URL:-}
+      - HEALTHCHECK_DAILY_URL=${HEALTHCHECK_DAILY_URL:-}
+      - HEALTHCHECK_OFFSITE_URL=${HEALTHCHECK_OFFSITE_URL:-}
+    secrets:
+      - restic_password
+    volumes:
+      # Backup destination
+      - /backups:/backups
+      # PostgreSQL logical backups
+      - /backups/postgres:/backups/postgres:ro
+      # Volume data (read-only)
+      - db_data_17:/data/db_data_17:ro
+      - kratos_db_data:/data/kratos_db_data:ro
+      - recap_db_data:/data/recap_db_data:ro
+      - rag_db_data:/data/rag_db_data:ro
+      - meili_data:/data/meili_data:ro
+      - clickhouse_data:/data/clickhouse_data:ro
+      - redis-streams-data:/data/redis-streams-data:ro
+      - oauth_token_data:/data/oauth_token_data:ro
+      - prometheus_data:/data/prometheus_data:ro
+      - grafana_data:/data/grafana_data:ro
+      # Backup scripts
+      - ../scripts/backup:/scripts:ro
+    networks:
+      - alt-network
+    profiles:
+      - backup
+    labels:
+      rask.group: backup
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "restic", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # PostgreSQL backup sidecar - runs pg_dump on schedule
+  postgres-backup:
+    image: postgres:17
+    container_name: alt-postgres-backup
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "PostgreSQL backup sidecar ready"
+        echo "Use scripts/backup/backup-all.sh to run backups"
+        tail -f /dev/null
+    environment:
+      - PGHOST=db
+      - PGUSER=postgres
+      - PGPASSWORD_FILE=/run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - /backups/postgres:/backups/postgres
+      - ../scripts/backup:/scripts:ro
+    networks:
+      - alt-network
+    profiles:
+      - backup
+    depends_on:
+      db:
+        condition: service_healthy
+    labels:
+      rask.group: backup
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
