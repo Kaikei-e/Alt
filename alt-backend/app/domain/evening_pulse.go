@@ -39,19 +39,31 @@ type PulseRationale struct {
 	Confidence Confidence `json:"confidence"`
 }
 
+// RepresentativeArticle represents a key article for display in topic cards
+type RepresentativeArticle struct {
+	ArticleID   string `json:"article_id"`
+	Title       string `json:"title"`
+	SourceURL   string `json:"source_url"`
+	SourceName  string `json:"source_name"`
+	PublishedAt string `json:"published_at"`
+}
+
 // PulseTopic represents a selected topic for Evening Pulse
 type PulseTopic struct {
-	ClusterID       int64          `json:"cluster_id"`
-	Role            TopicRole      `json:"role"`
-	Title           string         `json:"title"`
-	Rationale       PulseRationale `json:"rationale"`
-	ArticleCount    int            `json:"article_count"`
-	SourceCount     int            `json:"source_count"`
-	Tier1Count      *int           `json:"tier1_count,omitempty"`
-	TimeAgo         string         `json:"time_ago"`
-	TrendMultiplier *float64       `json:"trend_multiplier,omitempty"`
-	Genre           *string        `json:"genre,omitempty"`
-	ArticleIDs      []string       `json:"article_ids"`
+	ClusterID              int64                   `json:"cluster_id"`
+	Role                   TopicRole               `json:"role"`
+	Title                  string                  `json:"title"`
+	Rationale              PulseRationale          `json:"rationale"`
+	ArticleCount           int                     `json:"article_count"`
+	SourceCount            int                     `json:"source_count"`
+	Tier1Count             *int                    `json:"tier1_count,omitempty"`
+	TimeAgo                string                  `json:"time_ago"`
+	TrendMultiplier        *float64                `json:"trend_multiplier,omitempty"`
+	Genre                  *string                 `json:"genre,omitempty"`
+	ArticleIDs             []string                `json:"article_ids"`
+	RepresentativeArticles []RepresentativeArticle `json:"representative_articles"`
+	TopEntities            []string                `json:"top_entities"`
+	SourceNames            []string                `json:"source_names"`
 }
 
 // WeeklyHighlight represents a notable topic from the past week

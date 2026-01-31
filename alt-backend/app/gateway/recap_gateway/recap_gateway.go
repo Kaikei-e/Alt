@@ -119,17 +119,28 @@ type eveningPulseResponse struct {
 }
 
 type pulseTopicResponse struct {
-	ClusterID       int64            `json:"cluster_id"`
-	Role            string           `json:"role"`
-	Title           string           `json:"title"`
-	Rationale       rationaleResponse `json:"rationale"`
-	ArticleCount    int              `json:"article_count"`
-	SourceCount     int              `json:"source_count"`
-	Tier1Count      *int             `json:"tier1_count,omitempty"`
-	TimeAgo         string           `json:"time_ago"`
-	TrendMultiplier *float64         `json:"trend_multiplier,omitempty"`
-	Genre           *string          `json:"genre,omitempty"`
-	ArticleIDs      []string         `json:"article_ids"`
+	ClusterID              int64                          `json:"cluster_id"`
+	Role                   string                         `json:"role"`
+	Title                  string                         `json:"title"`
+	Rationale              rationaleResponse              `json:"rationale"`
+	ArticleCount           int                            `json:"article_count"`
+	SourceCount            int                            `json:"source_count"`
+	Tier1Count             *int                           `json:"tier1_count,omitempty"`
+	TimeAgo                string                         `json:"time_ago"`
+	TrendMultiplier        *float64                       `json:"trend_multiplier,omitempty"`
+	Genre                  *string                        `json:"genre,omitempty"`
+	ArticleIDs             []string                       `json:"article_ids"`
+	RepresentativeArticles []representativeArticleResponse `json:"representative_articles"`
+	TopEntities            []string                       `json:"top_entities"`
+	SourceNames            []string                       `json:"source_names"`
+}
+
+type representativeArticleResponse struct {
+	ArticleID   string `json:"article_id"`
+	Title       string `json:"title"`
+	SourceURL   string `json:"source_url"`
+	SourceName  string `json:"source_name"`
+	PublishedAt string `json:"published_at"`
 }
 
 type rationaleResponse struct {
@@ -157,6 +168,18 @@ func (r *eveningPulseResponse) toDomain() (*domain.EveningPulse, error) {
 
 	topics := make([]domain.PulseTopic, len(r.Topics))
 	for i, t := range r.Topics {
+		// Convert representative articles
+		repArticles := make([]domain.RepresentativeArticle, len(t.RepresentativeArticles))
+		for j, a := range t.RepresentativeArticles {
+			repArticles[j] = domain.RepresentativeArticle{
+				ArticleID:   a.ArticleID,
+				Title:       a.Title,
+				SourceURL:   a.SourceURL,
+				SourceName:  a.SourceName,
+				PublishedAt: a.PublishedAt,
+			}
+		}
+
 		topics[i] = domain.PulseTopic{
 			ClusterID:       t.ClusterID,
 			Role:            parseTopicRole(t.Role),
@@ -165,13 +188,16 @@ func (r *eveningPulseResponse) toDomain() (*domain.EveningPulse, error) {
 				Text:       t.Rationale.Text,
 				Confidence: parseConfidence(t.Rationale.Confidence),
 			},
-			ArticleCount:    t.ArticleCount,
-			SourceCount:     t.SourceCount,
-			Tier1Count:      t.Tier1Count,
-			TimeAgo:         t.TimeAgo,
-			TrendMultiplier: t.TrendMultiplier,
-			Genre:           t.Genre,
-			ArticleIDs:      t.ArticleIDs,
+			ArticleCount:           t.ArticleCount,
+			SourceCount:            t.SourceCount,
+			Tier1Count:             t.Tier1Count,
+			TimeAgo:                t.TimeAgo,
+			TrendMultiplier:        t.TrendMultiplier,
+			Genre:                  t.Genre,
+			ArticleIDs:             t.ArticleIDs,
+			RepresentativeArticles: repArticles,
+			TopEntities:            t.TopEntities,
+			SourceNames:            t.SourceNames,
 		}
 	}
 

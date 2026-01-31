@@ -264,14 +264,17 @@ func eveningPulseDomainToProto(pulse *domain.EveningPulse) *recapv2.GetEveningPu
 	topics := make([]*recapv2.PulseTopic, len(pulse.Topics))
 	for i, t := range pulse.Topics {
 		topics[i] = &recapv2.PulseTopic{
-			ClusterId:    t.ClusterID,
-			Role:         topicRoleToProto(t.Role),
-			Title:        t.Title,
-			Rationale:    rationaleToProto(t.Rationale),
-			ArticleCount: int32(t.ArticleCount),
-			SourceCount:  int32(t.SourceCount),
-			TimeAgo:      t.TimeAgo,
-			ArticleIds:   t.ArticleIDs,
+			ClusterId:              t.ClusterID,
+			Role:                   topicRoleToProto(t.Role),
+			Title:                  t.Title,
+			Rationale:              rationaleToProto(t.Rationale),
+			ArticleCount:           int32(t.ArticleCount),
+			SourceCount:            int32(t.SourceCount),
+			TimeAgo:                t.TimeAgo,
+			ArticleIds:             t.ArticleIDs,
+			RepresentativeArticles: representativeArticlesToProto(t.RepresentativeArticles),
+			TopEntities:            t.TopEntities,
+			SourceNames:            t.SourceNames,
 		}
 		if t.Tier1Count != nil {
 			tier1 := int32(*t.Tier1Count)
@@ -346,6 +349,24 @@ func rationaleToProto(r domain.PulseRationale) *recapv2.PulseRationale {
 		Text:       r.Text,
 		Confidence: confidenceToProto(r.Confidence),
 	}
+}
+
+// representativeArticlesToProto converts domain representative articles to proto.
+func representativeArticlesToProto(articles []domain.RepresentativeArticle) []*recapv2.RepresentativeArticle {
+	if articles == nil {
+		return nil
+	}
+	result := make([]*recapv2.RepresentativeArticle, len(articles))
+	for i, a := range articles {
+		result[i] = &recapv2.RepresentativeArticle{
+			ArticleId:   a.ArticleID,
+			Title:       a.Title,
+			SourceUrl:   a.SourceURL,
+			SourceName:  a.SourceName,
+			PublishedAt: a.PublishedAt,
+		}
+	}
+	return result
 }
 
 func quietDayToProto(qd *domain.QuietDayInfo) *recapv2.QuietDayInfo {
