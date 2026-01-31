@@ -68,6 +68,8 @@ pub struct ArticleInput {
     pub og_url: Option<String>,
     /// Named entities extracted from the article.
     pub entities: Vec<String>,
+    /// Published timestamp (RFC3339).
+    pub published_at: Option<String>,
 }
 
 impl ArticleInput {
@@ -90,6 +92,42 @@ impl ArticleInput {
             entities: self.entities.clone(),
         }
     }
+
+    /// Convert to representative article format for UI display.
+    fn to_representative_article(&self) -> super::types::RepresentativeArticle {
+        super::types::RepresentativeArticle {
+            article_id: self.id.clone(),
+            title: self.title.clone(),
+            source_url: self.source_url.clone(),
+            source_name: extract_source_name(&self.source_url),
+            published_at: self.published_at.clone().unwrap_or_default(),
+        }
+    }
+}
+
+/// Extract source name from URL (e.g., "https://www.reuters.com/..." -> "Reuters").
+fn extract_source_name(url: &str) -> String {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u: reqwest::Url| u.host_str().map(String::from))
+        .map(|host: String| {
+            // Remove common prefixes like "www."
+            let host = host.strip_prefix("www.").unwrap_or(&host);
+            // Extract domain name without TLD for common patterns
+            let parts: Vec<&str> = host.split('.').collect();
+            if parts.len() >= 2 {
+                // Capitalize first letter
+                let name = parts[0];
+                let mut chars: Vec<char> = name.chars().collect();
+                if let Some(first) = chars.first_mut() {
+                    *first = first.to_ascii_uppercase();
+                }
+                chars.into_iter().collect()
+            } else {
+                host.to_string()
+            }
+        })
+        .unwrap_or_else(|| "Unknown".to_string())
 }
 
 /// Trait for pulse pipeline stage execution.
@@ -216,6 +254,31 @@ impl DefaultPulseStage {
         top_entities.sort_by(|a, b| b.1.cmp(&a.1));
         let top_entities: Vec<String> = top_entities.into_iter().take(5).map(|(e, _)| e).collect();
 
+        // Build representative articles (top 3 from original articles after syndication removal)
+        let original_article_ids: std::collections::HashSet<String> = syndication_result
+            .original_articles
+            .iter()
+            .map(|a| a.id.clone())
+            .collect();
+        let representative_articles: Vec<super::types::RepresentativeArticle> = cluster
+            .articles
+            .iter()
+            .filter(|a| original_article_ids.contains(&a.id))
+            .take(3)
+            .map(ArticleInput::to_representative_article)
+            .collect();
+
+        // Collect unique source names
+        let mut source_names: Vec<String> = cluster
+            .articles
+            .iter()
+            .filter(|a| original_article_ids.contains(&a.id))
+            .map(|a| extract_source_name(&a.source_url))
+            .collect::<std::collections::HashSet<String>>()
+            .into_iter()
+            .collect();
+        source_names.sort();
+
         // Build ClusterWithMetrics
         let cluster_with_metrics = ClusterWithMetrics {
             cluster_id: cluster.cluster_id,
@@ -232,6 +295,8 @@ impl DefaultPulseStage {
             recency_score: cluster.recency_score.unwrap_or(0.5),
             top_entities,
             syndication_status,
+            representative_articles,
+            source_names,
         };
 
         Ok(Some(cluster_with_metrics))
@@ -374,6 +439,7 @@ mod tests {
             canonical_url: None,
             og_url: None,
             entities: vec!["Entity1".to_string()],
+            published_at: Some("2026-01-31T12:00:00Z".to_string()),
         }
     }
 
@@ -595,6 +661,7 @@ mod tests {
                     canonical_url: None,
                     og_url: None,
                     entities: vec!["Apple".to_string(), "iPhone".to_string()],
+                    published_at: Some("2026-01-31T12:00:00Z".to_string()),
                 },
                 ArticleInput {
                     id: "a2".to_string(),
@@ -603,6 +670,7 @@ mod tests {
                     canonical_url: None,
                     og_url: None,
                     entities: vec!["Apple".to_string(), "iPhone".to_string()],
+                    published_at: Some("2026-01-31T11:00:00Z".to_string()),
                 },
             ],
             embeddings: vec![vec![0.5; 128], vec![0.5; 128]],

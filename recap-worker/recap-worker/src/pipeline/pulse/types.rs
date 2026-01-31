@@ -221,6 +221,12 @@ pub struct ClusterWithMetrics {
     pub top_entities: Vec<String>,
     /// Syndication status after deduplication.
     pub syndication_status: Option<SyndicationStatus>,
+    /// Representative articles (top 3 headlines with sources).
+    #[serde(default)]
+    pub representative_articles: Vec<RepresentativeArticle>,
+    /// Unique source names in this cluster.
+    #[serde(default)]
+    pub source_names: Vec<String>,
 }
 
 impl Default for ClusterWithMetrics {
@@ -236,6 +242,8 @@ impl Default for ClusterWithMetrics {
             recency_score: 0.0,
             top_entities: Vec::new(),
             syndication_status: None,
+            representative_articles: Vec::new(),
+            source_names: Vec::new(),
         }
     }
 }
@@ -265,6 +273,21 @@ impl std::fmt::Display for SyndicationStatus {
     }
 }
 
+/// Representative article for display in topic cards.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RepresentativeArticle {
+    /// Article ID.
+    pub article_id: String,
+    /// Article title/headline.
+    pub title: String,
+    /// Source URL.
+    pub source_url: String,
+    /// Source name (e.g., "Reuters", "BBC").
+    pub source_name: String,
+    /// Published timestamp (RFC3339).
+    pub published_at: String,
+}
+
 /// Selected topic with rationale for Evening Pulse.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PulseTopic {
@@ -282,6 +305,15 @@ pub struct PulseTopic {
     pub quality_metrics: ClusterQualityMetrics,
     /// Individual score components for transparency.
     pub score_breakdown: ScoreBreakdown,
+    /// Representative articles (top 3 headlines with sources).
+    #[serde(default)]
+    pub representative_articles: Vec<RepresentativeArticle>,
+    /// Top entities extracted from the cluster.
+    #[serde(default)]
+    pub top_entities: Vec<String>,
+    /// Unique source names in this topic.
+    #[serde(default)]
+    pub source_names: Vec<String>,
 }
 
 /// Breakdown of individual score components for transparency.
@@ -460,6 +492,9 @@ mod tests {
             articles: vec!["art-1".to_string()],
             quality_metrics: ClusterQualityMetrics::default(),
             score_breakdown: ScoreBreakdown::default(),
+            representative_articles: Vec::new(),
+            top_entities: Vec::new(),
+            source_names: Vec::new(),
         };
         let result_with_topic = PulseResult::new(job_id, PulseVersion::V4, vec![topic]);
         assert!(result_with_topic.is_success());
@@ -504,6 +539,15 @@ mod tests {
                 novelty_score: 0.1,
                 recency_score: 0.05,
             },
+            representative_articles: vec![RepresentativeArticle {
+                article_id: "a1".to_string(),
+                title: "Test Article".to_string(),
+                source_url: "https://example.com/a1".to_string(),
+                source_name: "Example".to_string(),
+                published_at: "2026-01-31T12:00:00Z".to_string(),
+            }],
+            top_entities: vec!["Entity1".to_string()],
+            source_names: vec!["Example".to_string()],
         };
 
         let json = serde_json::to_string(&topic).unwrap();

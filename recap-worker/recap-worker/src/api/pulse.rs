@@ -50,6 +50,19 @@ pub(crate) struct PulseTopicResponse {
     trend_multiplier: Option<f64>,
     genre: Option<String>,
     article_ids: Vec<String>,
+    representative_articles: Vec<RepresentativeArticleResponse>,
+    top_entities: Vec<String>,
+    source_names: Vec<String>,
+}
+
+/// Representative article in the API response
+#[derive(Debug, Serialize)]
+pub(crate) struct RepresentativeArticleResponse {
+    article_id: String,
+    title: String,
+    source_url: String,
+    source_name: String,
+    published_at: String,
 }
 
 /// Rationale for topic selection
@@ -194,8 +207,25 @@ fn convert_topics(topics: &[PulseTopic]) -> Vec<PulseTopicResponse> {
         .iter()
         .map(|topic| {
             let article_count = i32::try_from(topic.articles.len()).unwrap_or(i32::MAX);
-            // Estimate source count from unique article prefixes (simplified)
-            let source_count = estimate_source_count(&topic.articles);
+            // Use actual source count if available, otherwise estimate
+            let source_count = if topic.source_names.is_empty() {
+                estimate_source_count(&topic.articles)
+            } else {
+                i32::try_from(topic.source_names.len()).unwrap_or(i32::MAX)
+            };
+
+            // Convert representative articles
+            let representative_articles: Vec<RepresentativeArticleResponse> = topic
+                .representative_articles
+                .iter()
+                .map(|a| RepresentativeArticleResponse {
+                    article_id: a.article_id.clone(),
+                    title: a.title.clone(),
+                    source_url: a.source_url.clone(),
+                    source_name: a.source_name.clone(),
+                    published_at: a.published_at.clone(),
+                })
+                .collect();
 
             PulseTopicResponse {
                 cluster_id: topic.cluster_id,
@@ -216,6 +246,9 @@ fn convert_topics(topics: &[PulseTopic]) -> Vec<PulseTopicResponse> {
                 },
                 genre: None, // Would require genre mapping
                 article_ids: topic.articles.clone(),
+                representative_articles,
+                top_entities: topic.top_entities.clone(),
+                source_names: topic.source_names.clone(),
             }
         })
         .collect()
@@ -225,9 +258,9 @@ fn generate_topic_title(topic: &PulseTopic) -> String {
     // In a real implementation, this would use the cluster label or generate from articles
     // For now, use a placeholder based on role
     match topic.role {
-        TopicRole::NeedToKnow => format!("重要ニュース (クラスタ {})", topic.cluster_id),
-        TopicRole::Trend => format!("トレンドトピック (クラスタ {})", topic.cluster_id),
-        TopicRole::Serendipity => format!("注目の発見 (クラスタ {})", topic.cluster_id),
+        TopicRole::NeedToKnow => format!("Key News (Cluster {})", topic.cluster_id),
+        TopicRole::Trend => format!("Trending Topic (Cluster {})", topic.cluster_id),
+        TopicRole::Serendipity => format!("Discovery (Cluster {})", topic.cluster_id),
     }
 }
 
@@ -292,6 +325,7 @@ mod tests {
     use uuid::Uuid;
 
     fn create_test_topic(role: TopicRole) -> PulseTopic {
+        use crate::pipeline::pulse::types::RepresentativeArticle;
         PulseTopic {
             cluster_id: 42,
             role,
@@ -314,6 +348,17 @@ mod tests {
                 novelty_score: 0.1,
                 recency_score: 0.1,
             },
+            representative_articles: vec![
+                RepresentativeArticle {
+                    article_id: "art-001".to_string(),
+                    title: "Breaking news article".to_string(),
+                    source_url: "https://reuters.com/article/1".to_string(),
+                    source_name: "Reuters".to_string(),
+                    published_at: "2026-01-31T12:00:00Z".to_string(),
+                },
+            ],
+            top_entities: vec!["Entity1".to_string(), "Entity2".to_string()],
+            source_names: vec!["Reuters".to_string(), "BBC".to_string()],
         }
     }
 

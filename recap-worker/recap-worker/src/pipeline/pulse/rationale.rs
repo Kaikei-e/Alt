@@ -153,6 +153,9 @@ mod tests {
             articles,
             quality_metrics: ClusterQualityMetrics::default(),
             score_breakdown: ScoreBreakdown::default(),
+            representative_articles: Vec::new(),
+            top_entities: Vec::new(),
+            source_names: Vec::new(),
         }
     }
 
@@ -173,6 +176,8 @@ mod tests {
             recency_score: 0.5,
             top_entities: vec![],
             syndication_status: None,
+            representative_articles: Vec::new(),
+            source_names: Vec::new(),
         }
     }
 
@@ -198,6 +203,8 @@ mod tests {
             recency_score: 0.5,
             top_entities: entities.into_iter().map(String::from).collect(),
             syndication_status: None,
+            representative_articles: Vec::new(),
+            source_names: Vec::new(),
         }
     }
 

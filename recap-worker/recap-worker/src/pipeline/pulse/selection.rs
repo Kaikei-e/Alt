@@ -233,6 +233,9 @@ fn select_topics(
                 articles: cluster.article_ids.clone(),
                 quality_metrics: cluster.quality_metrics.clone(),
                 score_breakdown: breakdown,
+                representative_articles: cluster.representative_articles.clone(),
+                top_entities: cluster.top_entities.clone(),
+                source_names: cluster.source_names.clone(),
             });
 
             used_cluster_ids.insert(cluster.cluster_id);
@@ -304,6 +307,8 @@ mod tests {
             recency_score: recency,
             top_entities: vec![],
             syndication_status: None,
+            representative_articles: Vec::new(),
+            source_names: Vec::new(),
         }
     }
 
