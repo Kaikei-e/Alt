@@ -7,6 +7,7 @@ pub mod job;
 pub mod metrics;
 pub mod morning;
 pub mod output;
+pub mod pulse;
 pub mod stage;
 pub mod subworker;
 pub mod types;
@@ -39,6 +40,6 @@ pub type RecapDaoImpl = UnifiedDao;
 #[allow(unused_imports)]
 pub use traits::{
     ArticleDao, ConfigDao, EvaluationDao, GenreLearningDao, JobDao, JobStatusDao as JobStatusDaoTrait,
-    MetricsDao, MorningDao, OutputDao, StageDao, SubworkerDao,
+    MetricsDao, MorningDao, OutputDao, PulseDao, StageDao, SubworkerDao,
 };
 

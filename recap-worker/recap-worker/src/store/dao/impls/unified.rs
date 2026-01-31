@@ -11,17 +11,20 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use chrono::NaiveDate;
+
+use crate::pipeline::pulse::PulseResult;
 use crate::store::dao::article::FetchedArticleData;
 use crate::store::dao::traits::{
     ArticleDao, ConfigDao, EvaluationDao, GenreLearningDao, JobDao, JobStatusDao, MetricsDao,
-    MorningDao, OutputDao, StageDao, SubworkerDao,
+    MorningDao, OutputDao, PulseDao, StageDao, SubworkerDao,
 };
 use crate::store::dao::types::{JobStatus, JobStatusTransition, StatusTransitionActor};
 use crate::store::models::{
     ClusterWithEvidence, DiagnosticEntry, ExtendedRecapJob, GenreEvaluationMetric,
     GenreEvaluationRun, GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, JobStats,
-    NewSubworkerRun, PersistedCluster, PersistedGenre, PreprocessMetrics, RawArticle,
-    RecapFinalSection, RecapJob, RecapOutput, SubworkerRunStatus,
+    NewSubworkerRun, PersistedCluster, PersistedGenre, PreprocessMetrics, PulseGenerationRow,
+    RawArticle, RecapFinalSection, RecapJob, RecapOutput, SubworkerRunStatus,
 };
 
 /// Unified DAO implementation that combines all DAO traits
@@ -518,5 +521,26 @@ impl JobStatusDao for UnifiedDao {
             &self.pool, user_id, window_seconds,
         )
         .await
+    }
+}
+
+// PulseDao implementation
+#[async_trait]
+impl PulseDao for UnifiedDao {
+    async fn get_pulse_by_date(&self, date: NaiveDate) -> Result<Option<PulseGenerationRow>> {
+        crate::store::dao::pulse::RecapDao::get_pulse_by_date(&self.pool, date).await
+    }
+
+    async fn get_latest_pulse(&self) -> Result<Option<PulseGenerationRow>> {
+        crate::store::dao::pulse::RecapDao::get_latest_pulse(&self.pool).await
+    }
+
+    async fn save_pulse_generation(
+        &self,
+        result: &PulseResult,
+        target_date: NaiveDate,
+    ) -> Result<i64> {
+        crate::store::dao::pulse::RecapDao::save_pulse_generation(&self.pool, result, target_date)
+            .await
     }
 }

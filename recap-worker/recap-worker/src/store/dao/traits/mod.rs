@@ -12,6 +12,7 @@ mod job_status;
 mod metrics;
 mod morning;
 mod output;
+mod pulse;
 mod stage;
 mod subworker;
 
@@ -24,5 +25,6 @@ pub use job_status::JobStatusDao;
 pub use metrics::MetricsDao;
 pub use morning::MorningDao;
 pub use output::OutputDao;
+pub use pulse::PulseDao;
 pub use stage::StageDao;
 pub use subworker::SubworkerDao;

@@ -4,7 +4,7 @@
 //! by defining it as a supertrait of all focused DAO traits.
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::Value;
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -13,14 +13,15 @@ use uuid::Uuid;
 use super::article::FetchedArticleData;
 use super::traits::{
     ArticleDao, ConfigDao, EvaluationDao, GenreLearningDao, JobDao, JobStatusDao, MetricsDao,
-    MorningDao, OutputDao, StageDao, SubworkerDao,
+    MorningDao, OutputDao, PulseDao, StageDao, SubworkerDao,
 };
 use super::types::{JobStatus, JobStatusTransition, StatusTransitionActor};
+use crate::pipeline::pulse::PulseResult;
 use crate::store::models::{
     ClusterWithEvidence, DiagnosticEntry, ExtendedRecapJob, GenreEvaluationMetric,
     GenreEvaluationRun, GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, JobStats,
-    NewSubworkerRun, PersistedCluster, PersistedGenre, PreprocessMetrics, RawArticle,
-    RecapFinalSection, RecapJob, RecapOutput, SubworkerRunStatus,
+    NewSubworkerRun, PersistedCluster, PersistedGenre, PreprocessMetrics, PulseGenerationRow,
+    RawArticle, RecapFinalSection, RecapJob, RecapOutput, SubworkerRunStatus,
 };
 
 /// RecapDao - Backward-compatible composite trait combining all focused DAO traits
@@ -316,6 +317,20 @@ pub trait RecapDao: Send + Sync {
     ) -> anyhow::Result<()>;
 
     async fn get_user_jobs_count(&self, user_id: Uuid, window_seconds: i64) -> anyhow::Result<i32>;
+
+    // === PulseDao methods ===
+    async fn get_pulse_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> anyhow::Result<Option<PulseGenerationRow>>;
+
+    async fn get_latest_pulse(&self) -> anyhow::Result<Option<PulseGenerationRow>>;
+
+    async fn save_pulse_generation(
+        &self,
+        result: &PulseResult,
+        target_date: NaiveDate,
+    ) -> anyhow::Result<i64>;
 }
 
 // Blanket implementation: any type implementing all focused traits also implements RecapDao
@@ -333,6 +348,7 @@ where
         + EvaluationDao
         + MorningDao
         + JobStatusDao
+        + PulseDao
         + Send
         + Sync,
 {
@@ -725,5 +741,24 @@ where
 
     async fn get_user_jobs_count(&self, user_id: Uuid, window_seconds: i64) -> anyhow::Result<i32> {
         JobStatusDao::get_user_jobs_count(self, user_id, window_seconds).await
+    }
+
+    async fn get_pulse_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> anyhow::Result<Option<PulseGenerationRow>> {
+        PulseDao::get_pulse_by_date(self, date).await
+    }
+
+    async fn get_latest_pulse(&self) -> anyhow::Result<Option<PulseGenerationRow>> {
+        PulseDao::get_latest_pulse(self).await
+    }
+
+    async fn save_pulse_generation(
+        &self,
+        result: &PulseResult,
+        target_date: NaiveDate,
+    ) -> anyhow::Result<i64> {
+        PulseDao::save_pulse_generation(self, result, target_date).await
     }
 }

@@ -13,10 +13,12 @@ use uuid::Uuid;
 use super::article;
 use super::compat::RecapDao;
 use super::types::{JobStatus, JobStatusTransition, StatusTransitionActor};
+use crate::pipeline::pulse::PulseResult;
 use crate::store::models::{
     ClusterWithEvidence, DiagnosticEntry, ExtendedRecapJob, GenreEvaluationMetric,
     GenreEvaluationRun, GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, JobStats,
-    NewSubworkerRun, PersistedCluster, PersistedGenre, RawArticle, RecapJob, SubworkerRunStatus,
+    NewSubworkerRun, PersistedCluster, PersistedGenre, PulseGenerationRow, RawArticle, RecapJob,
+    SubworkerRunStatus,
 };
 
 #[cfg(test)]
@@ -471,5 +473,25 @@ impl RecapDao for MockRecapDao {
         _window_seconds: i64,
     ) -> Result<i32> {
         Ok(0)
+    }
+
+    // Pulse
+    async fn get_pulse_by_date(
+        &self,
+        _date: chrono::NaiveDate,
+    ) -> Result<Option<PulseGenerationRow>> {
+        Ok(None)
+    }
+
+    async fn get_latest_pulse(&self) -> Result<Option<PulseGenerationRow>> {
+        Ok(None)
+    }
+
+    async fn save_pulse_generation(
+        &self,
+        _result: &PulseResult,
+        _target_date: chrono::NaiveDate,
+    ) -> Result<i64> {
+        Ok(1) // Return mock generation ID
     }
 }
