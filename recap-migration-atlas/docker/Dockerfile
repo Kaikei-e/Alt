@@ -1,5 +1,5 @@
 # Atlas Migration Container for Recap DB
-FROM arigaio/atlas:latest-alpine
+FROM arigaio/atlas:0.31.0-alpine
 
 RUN apk add --no-cache postgresql-client
 
