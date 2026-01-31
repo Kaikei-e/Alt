@@ -27,6 +27,17 @@ pub struct Metrics {
     pub clustering_poll_attempts: Counter,
     pub clustering_partial_success: Counter,
 
+    // Evening Pulse カウンター
+    pub pulse_generations_total: Counter,
+    pub pulse_generations_failed: Counter,
+    pub pulse_quality_tier_ok: Counter,
+    pub pulse_quality_tier_caution: Counter,
+    pub pulse_quality_tier_ng: Counter,
+    pub pulse_syndication_removed: Counter,
+    pub pulse_rollout_enabled: Counter,
+    pub pulse_rollout_skipped: Counter,
+    pub pulse_fallback_triggered: Counter,
+
     // ヒストグラム
     pub fetch_duration: Histogram,
     pub preprocess_duration: Histogram,
@@ -40,6 +51,11 @@ pub struct Metrics {
     pub job_duration: Histogram,
     pub api_latest_fetch_duration: Histogram,
     pub api_cluster_query_duration: Histogram,
+
+    // Evening Pulse ヒストグラム
+    pub pulse_generation_duration: Histogram,
+    pub pulse_quality_evaluation_duration: Histogram,
+    pub pulse_selection_duration: Histogram,
 
     // ゲージ
     pub active_jobs: Gauge,
@@ -136,6 +152,52 @@ impl Metrics {
                 "Number of jobs completed with partial success (some genres failed)",
                 registry
             )?,
+            // Evening Pulse counters
+            pulse_generations_total: register_counter_with_registry!(
+                "recap_pulse_generations_total",
+                "Total number of pulse generation runs",
+                registry
+            )?,
+            pulse_generations_failed: register_counter_with_registry!(
+                "recap_pulse_generations_failed_total",
+                "Number of pulse generation failures",
+                registry
+            )?,
+            pulse_quality_tier_ok: register_counter_with_registry!(
+                "recap_pulse_quality_tier_ok_total",
+                "Number of clusters with OK quality tier",
+                registry
+            )?,
+            pulse_quality_tier_caution: register_counter_with_registry!(
+                "recap_pulse_quality_tier_caution_total",
+                "Number of clusters with Caution quality tier",
+                registry
+            )?,
+            pulse_quality_tier_ng: register_counter_with_registry!(
+                "recap_pulse_quality_tier_ng_total",
+                "Number of clusters with NG quality tier",
+                registry
+            )?,
+            pulse_syndication_removed: register_counter_with_registry!(
+                "recap_pulse_syndication_removed_total",
+                "Number of articles removed due to syndication detection",
+                registry
+            )?,
+            pulse_rollout_enabled: register_counter_with_registry!(
+                "recap_pulse_rollout_enabled_total",
+                "Jobs where pulse v4 was enabled by rollout",
+                registry
+            )?,
+            pulse_rollout_skipped: register_counter_with_registry!(
+                "recap_pulse_rollout_skipped_total",
+                "Jobs where pulse v4 was skipped by rollout policy",
+                registry
+            )?,
+            pulse_fallback_triggered: register_counter_with_registry!(
+                "recap_pulse_fallback_triggered_total",
+                "Number of times pulse selection fell back to lower tiers",
+                registry
+            )?,
             fetch_duration: register_histogram_with_registry!(
                 "recap_fetch_duration_seconds",
                 "Duration of fetch operations",
@@ -194,6 +256,22 @@ impl Metrics {
             api_cluster_query_duration: register_histogram_with_registry!(
                 "recap_api_cluster_query_duration_seconds",
                 "Duration spent loading cluster evidence inside GET /v1/recaps/7days",
+                registry
+            )?,
+            // Evening Pulse histograms
+            pulse_generation_duration: register_histogram_with_registry!(
+                "recap_pulse_generation_duration_seconds",
+                "Duration of pulse generation",
+                registry
+            )?,
+            pulse_quality_evaluation_duration: register_histogram_with_registry!(
+                "recap_pulse_quality_evaluation_duration_seconds",
+                "Duration of cluster quality evaluation",
+                registry
+            )?,
+            pulse_selection_duration: register_histogram_with_registry!(
+                "recap_pulse_selection_duration_seconds",
+                "Duration of topic selection",
                 registry
             )?,
             active_jobs: register_gauge_with_registry!(

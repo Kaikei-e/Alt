@@ -29,6 +29,7 @@ pub mod minhash;
 pub mod morning;
 pub(crate) mod persist;
 pub mod preprocess;
+pub mod pulse;
 pub(crate) mod select;
 pub(crate) mod tag_signal;
 
@@ -40,6 +41,7 @@ use genre_refine::{DbTagLabelGraphSource, DefaultRefineEngine, RefineConfig, Tag
 use graph_override::GraphOverrideSettings;
 use persist::PersistStage;
 use preprocess::{PreprocessStage, TextPreprocessStage};
+use pulse::{DefaultPulseStage, PulseConfig, PulseRollout, PulseStage};
 use select::{SelectStage, SubgenreConfig, SummarySelectStage};
 
 pub(crate) struct PipelineOrchestrator {
@@ -49,6 +51,8 @@ pub(crate) struct PipelineOrchestrator {
     subworker_client: Arc<SubworkerClient>,
     #[allow(dead_code)]
     classification_queue: Arc<ClassificationJobQueue>,
+    pulse_stage: Arc<dyn PulseStage>,
+    pulse_rollout: PulseRollout,
 }
 
 impl PipelineOrchestrator {
@@ -80,6 +84,8 @@ pub(crate) struct PipelineBuilder {
     select: Option<Arc<dyn SelectStage>>,
     dispatch: Option<Arc<dyn DispatchStage>>,
     persist: Option<Arc<dyn PersistStage>>,
+    pulse_stage: Option<Arc<dyn PulseStage>>,
+    pulse_rollout: Option<PulseRollout>,
 }
 
 impl PipelineOrchestrator {
@@ -132,6 +138,12 @@ impl PipelineOrchestrator {
                 "Embedding service failed to initialize. Falling back to keyword-only filtering."
             );
         }
+
+        // Initialize Pulse stage and rollout
+        let pulse_config = PulseConfig::from_env();
+        let pulse_rollout = PulseRollout::from_env();
+        let pulse_stage: Arc<dyn PulseStage> =
+            Arc::new(DefaultPulseStage::new(pulse_config, pulse_rollout.clone()));
 
         use crate::pipeline::genre_remote::RemoteGenreStage;
         let coarse_stage = Arc::new(RemoteGenreStage::new(
@@ -209,6 +221,8 @@ impl PipelineOrchestrator {
             .with_persist_stage(Arc::new(persist::FinalSectionPersistStage::new(
                 Arc::clone(&recap_dao),
             )))
+            .with_pulse_stage(pulse_stage)
+            .with_pulse_rollout(pulse_rollout)
             .build(
                 Arc::clone(&recap_dao),
                 subworker_client,
@@ -260,6 +274,10 @@ impl PipelineOrchestrator {
         let dispatched = executor
             .execute_dispatch_stage(job, resume_stage_idx, evidence_bundle)
             .await?;
+
+        // Generate Evening Pulse after dispatch (before persist, so we have clustering data)
+        self.generate_pulse_if_enabled(job, &dispatched).await;
+
         let persisted = executor
             .execute_persist_stage(job, resume_stage_idx, dispatched)
             .await?;
@@ -335,6 +353,120 @@ impl PipelineOrchestrator {
             None => 0,
         }
     }
+
+    /// Generate Evening Pulse if enabled via rollout.
+    ///
+    /// Extracts cluster data from dispatch results and generates pulse topics.
+    /// Results are saved to the pulse_generations table.
+    async fn generate_pulse_if_enabled(
+        &self,
+        job: &JobContext,
+        dispatched: &dispatch::DispatchResult,
+    ) {
+        // Check if Pulse is enabled for this job
+        if !self.pulse_rollout.allows(job.job_id) {
+            tracing::debug!(
+                job_id = %job.job_id,
+                rollout_pct = self.pulse_rollout.percentage(),
+                "pulse generation skipped: not in rollout"
+            );
+            return;
+        }
+
+        tracing::info!(
+            job_id = %job.job_id,
+            version = %self.pulse_rollout.version(),
+            "starting pulse generation"
+        );
+
+        // Convert dispatch results to PulseInput
+        let pulse_input = self.build_pulse_input(job.job_id, dispatched);
+
+        // Generate pulse
+        match self.pulse_stage.generate(pulse_input).await {
+            Ok(result) => {
+                let topic_count = result.topic_count();
+                let target_date = chrono::Utc::now().date_naive();
+
+                // Save pulse generation result
+                match self
+                    .recap_dao
+                    .save_pulse_generation(&result, target_date)
+                    .await
+                {
+                    Ok(generation_id) => {
+                        tracing::info!(
+                            job_id = %job.job_id,
+                            generation_id = generation_id,
+                            topic_count = topic_count,
+                            version = %result.version,
+                            "pulse generation saved successfully"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            job_id = %job.job_id,
+                            error = ?e,
+                            "failed to save pulse generation"
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    job_id = %job.job_id,
+                    error = ?e,
+                    "pulse generation failed"
+                );
+            }
+        }
+    }
+
+    /// Build PulseInput from dispatch results.
+    fn build_pulse_input(
+        &self,
+        job_id: uuid::Uuid,
+        dispatched: &dispatch::DispatchResult,
+    ) -> pulse::PulseInput {
+        let mut clusters = Vec::new();
+
+        for (genre, genre_result) in &dispatched.genre_results {
+            if let Some(clustering_response) = &genre_result.clustering_response {
+                for cluster in &clustering_response.clusters {
+                    // Convert cluster representatives to articles
+                    let articles: Vec<pulse::ArticleInput> = cluster
+                        .representatives
+                        .iter()
+                        .map(|rep| pulse::ArticleInput {
+                            id: rep.article_id.clone(),
+                            title: rep.text.clone(),
+                            source_url: String::new(), // Not available in clustering response
+                            canonical_url: None,
+                            og_url: None,
+                            entities: Vec::new(), // Not available in clustering response
+                        })
+                        .collect();
+
+                    if !articles.is_empty() {
+                        clusters.push(pulse::ClusterInput {
+                            cluster_id: i64::from(cluster.cluster_id),
+                            label: cluster.label.clone().or_else(|| {
+                                Some(format!("{} Cluster {}", genre, cluster.cluster_id))
+                            }),
+                            articles,
+                            embeddings: Vec::new(), // Not available in clustering response
+                            impact_score: None,
+                            burst_score: None,
+                            novelty_score: None,
+                            recency_score: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        pulse::PulseInput { job_id, clusters }
+    }
 }
 
 impl PipelineBuilder {
@@ -348,6 +480,8 @@ impl PipelineBuilder {
             select: None,
             dispatch: None,
             persist: None,
+            pulse_stage: None,
+            pulse_rollout: None,
         }
     }
 
@@ -383,6 +517,16 @@ impl PipelineBuilder {
 
     pub(crate) fn with_persist_stage(mut self, stage: Arc<dyn PersistStage>) -> Self {
         self.persist = Some(stage);
+        self
+    }
+
+    pub(crate) fn with_pulse_stage(mut self, stage: Arc<dyn PulseStage>) -> Self {
+        self.pulse_stage = Some(stage);
+        self
+    }
+
+    pub(crate) fn with_pulse_rollout(mut self, rollout: PulseRollout) -> Self {
+        self.pulse_rollout = Some(rollout);
         self
     }
 
@@ -430,12 +574,23 @@ impl PipelineBuilder {
                 .unwrap_or_else(|| panic!("persist stage must be configured before build")),
         };
 
+        // Initialize pulse stage and rollout with defaults if not provided
+        let pulse_rollout = self.pulse_rollout.unwrap_or_default();
+        let pulse_stage = self.pulse_stage.unwrap_or_else(|| {
+            Arc::new(DefaultPulseStage::new(
+                PulseConfig::default(),
+                pulse_rollout.clone(),
+            ))
+        });
+
         PipelineOrchestrator {
             config: self.config,
             stages,
             recap_dao,
             subworker_client,
             classification_queue,
+            pulse_stage,
+            pulse_rollout,
         }
     }
 }

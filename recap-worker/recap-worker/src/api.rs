@@ -6,6 +6,7 @@ pub(crate) mod generate;
 pub(crate) mod health;
 pub(crate) mod learning;
 pub(crate) mod metrics;
+pub(crate) mod pulse;
 
 use axum::{
     Router,
@@ -43,5 +44,6 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/v1/dashboard/recap_jobs", get(dashboard::get_recap_jobs))
         .route("/v1/dashboard/job-progress", get(dashboard::get_job_progress))
         .route("/v1/dashboard/job-stats", get(dashboard::get_job_stats))
+        .route("/v1/pulse/latest", get(pulse::get_latest))
         .with_state(state)
 }
