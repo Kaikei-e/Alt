@@ -1,20 +1,74 @@
+"""
+Genre Classification Training Script.
 
+Trains a genre classifier with configurable hyperparameters.
+Can load optimal parameters from a JSON file (output of optimize_hyperparams.py).
+Supports loading augmented training data alongside original data.
+
+Usage:
+    uv run python -m recap_subworker.infra.classifier.train [--params data/optimal_params.json]
+    uv run python -m recap_subworker.infra.classifier.train --data data/training_data_augmented.csv
+"""
+
+import argparse
 import asyncio
 import joblib
 import json
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, f1_score
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from sklearn.pipeline import Pipeline, FeatureUnion
+from sklearn.preprocessing import StandardScaler
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from recap_subworker.services.embedder import Embedder
 from recap_subworker.infra.config import get_settings
+
+
+# Default hyperparameters (can be overridden by --params)
+DEFAULT_HYPERPARAMS = {
+    "C": 0.1,
+    "max_features": 1000,
+    "svd_components": 200,
+    "min_df": 2,
+    "max_df": 0.95,
+}
+
+
+def load_hyperparams(params_path: Path | None) -> dict:
+    """Load hyperparameters from JSON file or use defaults.
+
+    Args:
+        params_path: Path to optimal_params.json (from optimize_hyperparams.py)
+
+    Returns:
+        Dictionary of hyperparameters
+    """
+    if params_path is None or not params_path.exists():
+        print("Using default hyperparameters")
+        return DEFAULT_HYPERPARAMS.copy()
+
+    with open(params_path) as f:
+        data = json.load(f)
+
+    # Extract best_params if it's the output of optimize_hyperparams.py
+    if "best_params" in data:
+        params = data["best_params"]
+        print(f"Loaded optimal hyperparameters from {params_path}")
+        print(f"  CV F1: {data.get('best_cv_f1', 'N/A')}")
+        print(f"  Train/Test gap: {data.get('train_test_gap', 'N/A')}")
+    else:
+        params = data
+
+    # Merge with defaults for any missing keys
+    result = DEFAULT_HYPERPARAMS.copy()
+    result.update(params)
+    return result
 
 # --- Custom Transformer for Embeddings ---
 class EmbeddingTransformer(BaseEstimator, TransformerMixin):
@@ -39,16 +93,59 @@ class EmbeddingTransformer(BaseEstimator, TransformerMixin):
 
 # --- Training Script ---
 
-async def main():
+async def main(
+    params_path: Path | None = None,
+    data_path: Path | None = None,
+    augmented_paths: list[Path] | None = None,
+):
+    """Main training function.
+
+    Args:
+        params_path: Optional path to hyperparameters JSON file
+        data_path: Path to training data CSV (default: data/training_data.csv)
+        augmented_paths: Optional list of augmented data CSV files to merge
+    """
     settings = get_settings()
-    data_path = Path("data/training_data.csv")
+
+    # Determine data path
+    if data_path is None:
+        data_path = Path("data/training_data.csv")
+
     if not data_path.exists():
-        print("Data not found!")
+        print(f"Data not found: {data_path}")
         return
 
-    print("Loading data...")
+    # Load hyperparameters
+    hyperparams = load_hyperparams(params_path)
+    print("\nHyperparameters:")
+    for k, v in hyperparams.items():
+        print(f"  {k}: {v}")
+    print()
+
+    print(f"Loading data from {data_path}...")
     df = pd.read_csv(data_path)
     df = df.dropna(subset=['content', 'genre'])
+    print(f"  Loaded {len(df)} samples")
+
+    # Load and merge augmented data if provided
+    if augmented_paths:
+        aug_dfs = []
+        for aug_path in augmented_paths:
+            if aug_path.exists():
+                aug_df = pd.read_csv(aug_path)
+                aug_df = aug_df.dropna(subset=['content', 'genre'])
+                aug_dfs.append(aug_df)
+                print(f"  Loaded {len(aug_df)} augmented samples from {aug_path}")
+            else:
+                print(f"  WARNING: Augmented file not found: {aug_path}")
+
+        if aug_dfs:
+            # Combine all dataframes
+            all_dfs = [df] + aug_dfs
+            df = pd.concat(all_dfs, ignore_index=True)
+            # Keep only essential columns
+            df = df[['content', 'genre']]
+            print(f"  Total samples after merge: {len(df)}")
 
     # Filter out rare classes if any (less than 10 samples?)
     # genre distribution earlier showed many with 4 samples.
@@ -93,13 +190,32 @@ async def main():
     X_test_emb = emb_transformer.transform(X_test)
 
     print("Generating TF-IDF features...")
-    tfidf = TfidfVectorizer(max_features=5000)
+    tfidf = TfidfVectorizer(
+        max_features=hyperparams["max_features"],
+        sublinear_tf=True,
+        min_df=hyperparams["min_df"],
+        max_df=hyperparams["max_df"],
+        ngram_range=(1, 2),
+    )
     X_train_tfidf = tfidf.fit_transform(X_train)
     X_test_tfidf = tfidf.transform(X_test)
 
-    # Concatenate
-    X_train_combined = np.hstack((X_train_emb, X_train_tfidf.toarray()))
-    X_test_combined = np.hstack((X_test_emb, X_test_tfidf.toarray()))
+    # Apply TruncatedSVD to reduce TF-IDF dimensionality
+    print("Applying TruncatedSVD to TF-IDF features...")
+    svd = TruncatedSVD(n_components=hyperparams["svd_components"], random_state=42)
+    X_train_tfidf_svd = svd.fit_transform(X_train_tfidf)
+    X_test_tfidf_svd = svd.transform(X_test_tfidf)
+    print(f"SVD explained variance ratio: {svd.explained_variance_ratio_.sum():.4f}")
+
+    # Concatenate embeddings with SVD-reduced TF-IDF
+    X_train_combined_raw = np.hstack((X_train_emb, X_train_tfidf_svd))
+    X_test_combined_raw = np.hstack((X_test_emb, X_test_tfidf_svd))
+
+    # Apply StandardScaler to normalize combined features
+    print("Normalizing combined features...")
+    scaler = StandardScaler()
+    X_train_combined = scaler.fit_transform(X_train_combined_raw)
+    X_test_combined = scaler.transform(X_test_combined_raw)
 
     print(f"Features shape: {X_train_combined.shape}")
 
@@ -110,7 +226,8 @@ async def main():
 
     # We need a temporary classifier for cross-validation
     # Use a simpler/faster one or the same one? LR is fast enough.
-    clf_cv = LogisticRegression(max_iter=1000, multi_class='multinomial', solver='lbfgs', class_weight='balanced')
+    # Note: multi_class parameter was removed in sklearn 1.8
+    clf_cv = LogisticRegression(max_iter=1000, solver='lbfgs', class_weight='balanced')
 
     try:
         # Get out-of-sample predicted probabilities
@@ -154,15 +271,45 @@ async def main():
         X_train_final = X_train_combined
         y_train_final = y_train
 
-    # Train Model
-    print("Training Final Logistic Regression...")
-    clf = LogisticRegression(max_iter=1000, multi_class='multinomial', solver='lbfgs', class_weight='balanced')
+    # Train Model with Probability Calibration (Platt Scaling)
+    print("Training Logistic Regression with Platt Scaling calibration...")
+    # Note: multi_class parameter was removed in sklearn 1.8
+    base_clf = LogisticRegression(
+        max_iter=1000,
+        solver='lbfgs',
+        class_weight='balanced',
+        C=hyperparams["C"],
+    )
+    # Wrap with CalibratedClassifierCV for better probability estimates
+    clf = CalibratedClassifierCV(
+        estimator=base_clf,
+        method='sigmoid',  # Platt scaling
+        cv=3,
+    )
     clf.fit(X_train_final, y_train_final)
 
-    # Evaulate raw
+    # Evaluate on test set
     y_pred = clf.predict(X_test_combined)
-    print("Initial Classification Report:")
+    print("Test Set Classification Report:")
     print(classification_report(y_test, y_pred))
+
+    # Calculate Train/Test gap (overfitting indicator)
+    y_train_pred = clf.predict(X_train_final)
+    train_f1 = f1_score(y_train_final, y_train_pred, average='macro')
+    test_f1 = f1_score(y_test, y_pred, average='macro')
+    train_test_gap = train_f1 - test_f1
+
+    print("\n" + "=" * 50)
+    print("OVERFITTING ANALYSIS")
+    print("=" * 50)
+    print(f"Train Macro F1: {train_f1:.4f}")
+    print(f"Test Macro F1:  {test_f1:.4f}")
+    print(f"Train/Test Gap: {train_test_gap:.4f}")
+    if train_test_gap < 0.10:
+        print("Status: OK (gap < 0.10)")
+    else:
+        print("Status: WARNING - potential overfitting (gap >= 0.10)")
+    print("=" * 50 + "\n")
 
     # Validate/Optimize Thresholds
     print("Optimizing thresholds...")
@@ -204,16 +351,53 @@ async def main():
     # The GenericClassifierService will need:
     # 1. Embedder (already has)
     # 2. TfidfVectorizer (fit)
-    # 3. LogisticRegression (fit)
-    # 4. Thresholds
+    # 3. TruncatedSVD (fit) - for dimensionality reduction
+    # 4. StandardScaler (fit) - for feature normalization
+    # 5. CalibratedClassifierCV (fit) - calibrated classifier
+    # 6. Thresholds
 
     joblib.dump(tfidf, output_dir / "tfidf_vectorizer.joblib")
+    joblib.dump(svd, output_dir / "tfidf_svd.joblib")
+    joblib.dump(scaler, output_dir / "feature_scaler.joblib")
     joblib.dump(clf, output_dir / "genre_classifier.joblib")
 
     with open(output_dir / "genre_thresholds.json", "w") as f:
         json.dump(thresholds, f, indent=2)
 
+    print("Saved artifacts:")
+    print(f"  - {output_dir / 'tfidf_vectorizer.joblib'}")
+    print(f"  - {output_dir / 'tfidf_svd.joblib'}")
+    print(f"  - {output_dir / 'feature_scaler.joblib'}")
+    print(f"  - {output_dir / 'genre_classifier.joblib'}")
+    print(f"  - {output_dir / 'genre_thresholds.json'}")
     print("Done!")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(
+        description="Train genre classification model with configurable hyperparameters"
+    )
+    parser.add_argument(
+        "--params",
+        type=Path,
+        default=None,
+        help="Path to hyperparameters JSON (output of optimize_hyperparams.py)",
+    )
+    parser.add_argument(
+        "--data",
+        type=Path,
+        default=None,
+        help="Path to training data CSV (default: data/training_data.csv)",
+    )
+    parser.add_argument(
+        "--augmented",
+        type=Path,
+        nargs="*",
+        default=None,
+        help="Additional augmented data CSV files to merge with training data",
+    )
+    args = parser.parse_args()
+    asyncio.run(main(
+        params_path=args.params,
+        data_path=args.data,
+        augmented_paths=args.augmented,
+    ))

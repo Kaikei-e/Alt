@@ -255,8 +255,8 @@ def main():
     parser.add_argument(
         "--min-recall",
         type=float,
-        default=0.3,
-        help="Minimum recall constraint",
+        default=0.4,
+        help="Minimum recall constraint (default: 0.4 for more conservative thresholds)",
     )
     parser.add_argument(
         "--apply",

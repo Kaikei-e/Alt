@@ -101,6 +101,28 @@ def format_report(results: dict) -> str:
         lines.append(f"- **Macro F1**: {cv_macro.get('mean', 0):.4f} ± {cv_macro.get('std', 0):.4f}")
         lines.append(f"- **Micro F1**: {cv_micro.get('mean', 0):.4f} ± {cv_micro.get('std', 0):.4f}")
         lines.append(f"- **Number of Folds**: {results.get('n_folds', 0)}")
+
+        # CV std check (stability indicator)
+        cv_std = cv_macro.get("std", 0)
+        if cv_std < 0.03:
+            lines.append(f"- **Stability**: OK (CV std {cv_std:.4f} < 0.03)")
+        else:
+            lines.append(f"- **Stability**: WARNING - high variance (CV std {cv_std:.4f} >= 0.03)")
+        lines.append("")
+
+    # Train/Test Gap (Overfitting Indicator)
+    if "train_test_gap" in results:
+        lines.append("## Overfitting Analysis\n")
+        train_f1 = results.get("train_f1", 0)
+        test_f1 = results.get("test_f1", 0)
+        gap = results.get("train_test_gap", 0)
+        lines.append(f"- **Train Macro F1**: {train_f1:.4f}")
+        lines.append(f"- **Test Macro F1**: {test_f1:.4f}")
+        lines.append(f"- **Train/Test Gap**: {gap:.4f}")
+        if gap < 0.10:
+            lines.append("- **Status**: OK (gap < 0.10)")
+        else:
+            lines.append("- **Status**: WARNING - potential overfitting (gap >= 0.10)")
         lines.append("")
 
     # ジャンル別メトリクス

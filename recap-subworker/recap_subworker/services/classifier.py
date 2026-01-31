@@ -55,8 +55,14 @@ class GenreClassifierService:
         else:
             self.thresholds_path = self.model_path.parent / "genre_thresholds.json"
 
+        # New artifact paths for SVD and Scaler
+        self.svd_path = self.model_path.parent / "tfidf_svd.joblib"
+        self.scaler_path = self.model_path.parent / "feature_scaler.joblib"
+
         self.model = None
         self.tfidf = None
+        self.svd = None
+        self.scaler = None
         self.thresholds = None
         self._lock = Lock()
 
@@ -86,6 +92,20 @@ class GenreClassifierService:
                         logger.info("TF-IDF vectorizer loaded with re-attached tokenizer")
                     else:
                         logger.warning("TF-IDF vectorizer not found, will use embeddings only if model allows")
+
+                    # Load SVD for TF-IDF dimensionality reduction
+                    if self.svd_path.exists():
+                        self.svd = joblib.load(self.svd_path)
+                        logger.info("TF-IDF SVD loaded", n_components=self.svd.n_components)
+                    else:
+                        logger.warning("TF-IDF SVD not found, will use raw TF-IDF features")
+
+                    # Load feature scaler for normalization
+                    if self.scaler_path.exists():
+                        self.scaler = joblib.load(self.scaler_path)
+                        logger.info("Feature scaler loaded")
+                    else:
+                        logger.warning("Feature scaler not found, will use unnormalized features")
 
                     # Load base thresholds
                     if self.thresholds_path.exists():
@@ -162,39 +182,51 @@ class GenreClassifierService:
         if len(embeddings) == 0:
             return []
 
-        # 2. TF-IDF
+        # 2. TF-IDF with optional SVD reduction and scaling
         features = embeddings
         if self.tfidf:
             tfidf_start = time.time()
-            tfidf_features = self.tfidf.transform(texts) # Original texts for TF-IDF
-            # Concatenate
-            combined_features = np.hstack((embeddings, tfidf_features.toarray()))
+            tfidf_features = self.tfidf.transform(texts)  # Original texts for TF-IDF
+
+            # Apply SVD if available (dimensionality reduction)
+            if self.svd is not None:
+                tfidf_reduced = self.svd.transform(tfidf_features)
+                combined_features = np.hstack((embeddings, tfidf_reduced))
+                logger.debug("Applied SVD to TF-IDF features", reduced_dim=tfidf_reduced.shape[1])
+            else:
+                combined_features = np.hstack((embeddings, tfidf_features.toarray()))
+
+            # Apply scaler if available (feature normalization)
+            if self.scaler is not None:
+                combined_features = self.scaler.transform(combined_features)
+                logger.debug("Applied feature scaling")
+
             logger.info("TF-IDF extraction completed", seconds=round(time.time() - tfidf_start, 2))
 
             # Check what the model expects
             expected_features = getattr(self.model, "n_features_in_", None)
             if expected_features:
-                 if expected_features == combined_features.shape[1]:
-                     features = combined_features
-                 elif expected_features == embeddings.shape[1]:
-                     logger.warning(
-                         "Model expects fewer features than generated. Using embeddings only.",
-                         expected=expected_features,
-                         got=combined_features.shape[1]
-                     )
-                     features = embeddings
-                 else:
-                     logger.error(
-                         "Feature dimension mismatch",
-                         expected=expected_features,
-                         got_combined=combined_features.shape[1],
-                         got_embeddings=embeddings.shape[1]
-                     )
-                     # Fallback to combined and let it crash or raise clear error?
-                     # If we are here, probably crash is inevitable or we try combined.
-                     features = combined_features
+                if expected_features == combined_features.shape[1]:
+                    features = combined_features
+                elif expected_features == embeddings.shape[1]:
+                    logger.warning(
+                        "Model expects fewer features than generated. Using embeddings only.",
+                        expected=expected_features,
+                        got=combined_features.shape[1]
+                    )
+                    features = embeddings
+                else:
+                    logger.error(
+                        "Feature dimension mismatch",
+                        expected=expected_features,
+                        got_combined=combined_features.shape[1],
+                        got_embeddings=embeddings.shape[1]
+                    )
+                    # Fallback to combined and let it crash or raise clear error?
+                    # If we are here, probably crash is inevitable or we try combined.
+                    features = combined_features
             else:
-                 features = combined_features
+                features = combined_features
 
         # 3. Predict Probabilities
         predict_start = time.time()
