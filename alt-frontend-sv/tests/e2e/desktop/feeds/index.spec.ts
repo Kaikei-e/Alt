@@ -119,7 +119,7 @@ test.describe("Desktop Feeds", () => {
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
 			fulfillJson(route, {
 				...CONNECT_FEEDS_RESPONSE,
-				hasMore: false,  // Prevent infinite scroll from loading more
+				hasMore: false, // Prevent infinite scroll from loading more
 				nextCursor: "",
 			}),
 		);
@@ -184,7 +184,9 @@ test.describe("Desktop Feeds", () => {
 		).toBeVisible({ timeout: 10000 });
 	});
 
-	test("mark as read is always enabled regardless of articleId", async ({ page }) => {
+	test("mark as read is always enabled regardless of articleId", async ({
+		page,
+	}) => {
 		// Override feeds with feed that has no articleId (not saved)
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
 			fulfillJson(route, CONNECT_FEEDS_WITHOUT_ARTICLE_ID),
@@ -195,11 +197,17 @@ test.describe("Desktop Feeds", () => {
 
 		// Open modal - Mark as Read should be immediately available
 		await feedsPage.selectFeed("AI Trends");
-		await expect(page.getByRole("button", { name: /mark as read/i })).toBeVisible();
-		await expect(page.getByRole("button", { name: /mark as read/i })).toBeEnabled();
+		await expect(
+			page.getByRole("button", { name: /mark as read/i }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: /mark as read/i }),
+		).toBeEnabled();
 	});
 
-	test("displays feed grid with 3 columns on large screens", async ({ page }) => {
+	test("displays feed grid with 3 columns on large screens", async ({
+		page,
+	}) => {
 		await feedsPage.goto();
 		await feedsPage.waitForFeedsLoaded();
 

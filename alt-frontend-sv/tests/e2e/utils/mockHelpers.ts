@@ -78,7 +78,9 @@ export async function fulfillStream(
 	status = 200,
 ): Promise<void> {
 	// Build proper SSE format with event types
-	const body = chunks.map((chunk) => `event: delta\ndata: ${chunk}\n\n`).join("");
+	const body = chunks
+		.map((chunk) => `event: delta\ndata: ${chunk}\n\n`)
+		.join("");
 	await route.fulfill({
 		status,
 		contentType: "text/event-stream",

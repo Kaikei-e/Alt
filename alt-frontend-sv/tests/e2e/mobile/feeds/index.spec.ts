@@ -35,11 +35,15 @@ test.describe("mobile feeds routes", () => {
 		await expect(firstCard).toBeVisible();
 
 		// Verify it has the expected content
-		await expect(firstCard.getByText("Deep dive into the ecosystem")).toBeVisible();
+		await expect(
+			firstCard.getByText("Deep dive into the ecosystem"),
+		).toBeVisible();
 		await expect(firstCard.getByText("by Alice")).toBeVisible();
 
 		// Verify mark as read button exists and is clickable
-		const markAsReadButton = firstCard.getByRole("button", { name: /mark .* as read/i });
+		const markAsReadButton = firstCard.getByRole("button", {
+			name: /mark .* as read/i,
+		});
 		await expect(markAsReadButton).toBeVisible();
 		await expect(markAsReadButton).toBeEnabled();
 	});
@@ -62,9 +66,14 @@ test.describe("mobile feeds routes", () => {
 		await expect(firstCard).toBeVisible();
 
 		// Check the external link
-		const externalLink = firstCard.getByRole("link", { name: /Open AI Trends in external link/i });
+		const externalLink = firstCard.getByRole("link", {
+			name: /Open AI Trends in external link/i,
+		});
 		await expect(externalLink).toBeVisible();
-		await expect(externalLink).toHaveAttribute("href", "https://example.com/ai-trends");
+		await expect(externalLink).toHaveAttribute(
+			"href",
+			"https://example.com/ai-trends",
+		);
 		await expect(externalLink).toHaveAttribute("target", "_blank");
 	});
 
@@ -86,7 +95,9 @@ test.describe("mobile feeds routes", () => {
 		await expect(firstCard).toBeVisible();
 
 		// Verify show details button exists
-		const detailsButton = firstCard.getByRole("button", { name: /show details/i });
+		const detailsButton = firstCard.getByRole("button", {
+			name: /show details/i,
+		});
 		await expect(detailsButton).toBeVisible();
 	});
 });

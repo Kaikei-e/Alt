@@ -47,7 +47,9 @@ test.describe("desktop settings feeds - manage feed links", () => {
 		// Check that all feed URLs are displayed
 		await expect(page.getByText("https://example.com/feed.xml")).toBeVisible();
 		await expect(page.getByText("https://blog.example.org/rss")).toBeVisible();
-		await expect(page.getByText("https://news.site.com/atom.xml")).toBeVisible();
+		await expect(
+			page.getByText("https://news.site.com/atom.xml"),
+		).toBeVisible();
 	});
 
 	test("displays empty state when no feeds registered", async ({ page }) => {
@@ -62,7 +64,9 @@ test.describe("desktop settings feeds - manage feed links", () => {
 		await page.getByRole("button", { name: "Refresh feed list" }).click();
 
 		await expect(
-			page.getByText("No feeds registered yet. Add your first feed using the form."),
+			page.getByText(
+				"No feeds registered yet. Add your first feed using the form.",
+			),
 		).toBeVisible();
 	});
 
@@ -136,7 +140,11 @@ test.describe("desktop settings feeds - manage feed links", () => {
 	test("shows error message when registration fails", async ({ page }) => {
 		// Mock the register API to fail
 		await page.route(CONNECT_RSS_PATHS.registerRSSFeed, (route) =>
-			fulfillJson(route, { code: "already_exists", message: "Feed already exists" }, 400),
+			fulfillJson(
+				route,
+				{ code: "already_exists", message: "Feed already exists" },
+				400,
+			),
 		);
 
 		await gotoDesktopRoute(page, "settings/feeds");
@@ -158,16 +166,22 @@ test.describe("desktop settings feeds - manage feed links", () => {
 		await page.getByRole("button", { name: "Refresh feed list" }).click();
 
 		// Wait for feeds to load
-		await expect(page.getByText("https://example.com/feed.xml")).toBeVisible({ timeout: 10000 });
+		await expect(page.getByText("https://example.com/feed.xml")).toBeVisible({
+			timeout: 10000,
+		});
 
 		// Click delete button on first feed
-		const deleteButtons = page.getByRole("button", { name: "Delete feed link" });
+		const deleteButtons = page.getByRole("button", {
+			name: "Delete feed link",
+		});
 		await deleteButtons.first().click();
 
 		// Dialog should appear
 		await expect(page.getByText("Delete Feed Link?")).toBeVisible();
 		await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
-		await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Delete", exact: true }),
+		).toBeVisible();
 	});
 
 	test("cancels delete operation", async ({ page }) => {
@@ -177,8 +191,12 @@ test.describe("desktop settings feeds - manage feed links", () => {
 		await page.getByRole("button", { name: "Refresh feed list" }).click();
 
 		// Wait for feeds to load and click delete
-		await expect(page.getByText("https://example.com/feed.xml")).toBeVisible({ timeout: 10000 });
-		const deleteButtons = page.getByRole("button", { name: "Delete feed link" });
+		await expect(page.getByText("https://example.com/feed.xml")).toBeVisible({
+			timeout: 10000,
+		});
+		const deleteButtons = page.getByRole("button", {
+			name: "Delete feed link",
+		});
 		await deleteButtons.first().click();
 
 		// Cancel the dialog
@@ -198,10 +216,14 @@ test.describe("desktop settings feeds - manage feed links", () => {
 		await page.getByRole("button", { name: "Refresh feed list" }).click();
 
 		// Wait for feeds to load
-		await expect(page.getByText("https://example.com/feed.xml")).toBeVisible({ timeout: 10000 });
+		await expect(page.getByText("https://example.com/feed.xml")).toBeVisible({
+			timeout: 10000,
+		});
 
 		// Click delete button
-		const deleteButtons = page.getByRole("button", { name: "Delete feed link" });
+		const deleteButtons = page.getByRole("button", {
+			name: "Delete feed link",
+		});
 		await deleteButtons.first().click();
 
 		// Confirm delete

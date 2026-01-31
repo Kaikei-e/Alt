@@ -46,9 +46,15 @@ test.describe("Desktop Morning Letter Chat", () => {
 
 	test("sends user message and displays it", async ({ page }) => {
 		// Mock Connect-RPC streaming response
-		await page.route(CONNECT_RPC_PATHS.morningLetterStreamChat, async (route) => {
-			await fulfillConnectStream(route, CONNECT_MORNING_LETTER_STREAM_MESSAGES);
-		});
+		await page.route(
+			CONNECT_RPC_PATHS.morningLetterStreamChat,
+			async (route) => {
+				await fulfillConnectStream(
+					route,
+					CONNECT_MORNING_LETTER_STREAM_MESSAGES,
+				);
+			},
+		);
 
 		await morningLetterPage.goto();
 		await morningLetterPage.waitForWelcomeMessage();
@@ -60,12 +66,20 @@ test.describe("Desktop Morning Letter Chat", () => {
 		await expect(page.getByText(userMessage)).toBeVisible();
 	});
 
-	test("shows thinking indicator while waiting for response", async ({ page }) => {
+	test("shows thinking indicator while waiting for response", async ({
+		page,
+	}) => {
 		// Mock with longer delay to ensure loading state is observable
-		await page.route(CONNECT_RPC_PATHS.morningLetterStreamChat, async (route) => {
-			await new Promise((resolve) => setTimeout(resolve, 2000));
-			await fulfillConnectStream(route, CONNECT_MORNING_LETTER_STREAM_MESSAGES);
-		});
+		await page.route(
+			CONNECT_RPC_PATHS.morningLetterStreamChat,
+			async (route) => {
+				await new Promise((resolve) => setTimeout(resolve, 2000));
+				await fulfillConnectStream(
+					route,
+					CONNECT_MORNING_LETTER_STREAM_MESSAGES,
+				);
+			},
+		);
 
 		await morningLetterPage.goto();
 		await morningLetterPage.waitForWelcomeMessage();
@@ -73,13 +87,21 @@ test.describe("Desktop Morning Letter Chat", () => {
 		await morningLetterPage.sendMessage("Test question");
 
 		// Thinking indicator should appear (allow some time for state update)
-		await expect(morningLetterPage.thinkingIndicator).toBeVisible({ timeout: 3000 });
+		await expect(morningLetterPage.thinkingIndicator).toBeVisible({
+			timeout: 3000,
+		});
 	});
 
 	test("displays AI response after sending message", async ({ page }) => {
-		await page.route(CONNECT_RPC_PATHS.morningLetterStreamChat, async (route) => {
-			await fulfillConnectStream(route, CONNECT_MORNING_LETTER_STREAM_MESSAGES);
-		});
+		await page.route(
+			CONNECT_RPC_PATHS.morningLetterStreamChat,
+			async (route) => {
+				await fulfillConnectStream(
+					route,
+					CONNECT_MORNING_LETTER_STREAM_MESSAGES,
+				);
+			},
+		);
 
 		await morningLetterPage.goto();
 		await morningLetterPage.waitForWelcomeMessage();
@@ -90,15 +112,21 @@ test.describe("Desktop Morning Letter Chat", () => {
 		await morningLetterPage.waitForResponse();
 
 		// Verify response appears (content from CONNECT_MORNING_LETTER_STREAM_MESSAGES)
-		await expect(
-			page.getByText(/based on the past 24 hours/i),
-		).toBeVisible({ timeout: 10000 });
+		await expect(page.getByText(/based on the past 24 hours/i)).toBeVisible({
+			timeout: 10000,
+		});
 	});
 
 	test("displays citations in response", async ({ page }) => {
-		await page.route(CONNECT_RPC_PATHS.morningLetterStreamChat, async (route) => {
-			await fulfillConnectStream(route, CONNECT_MORNING_LETTER_STREAM_MESSAGES);
-		});
+		await page.route(
+			CONNECT_RPC_PATHS.morningLetterStreamChat,
+			async (route) => {
+				await fulfillConnectStream(
+					route,
+					CONNECT_MORNING_LETTER_STREAM_MESSAGES,
+				);
+			},
+		);
 
 		await morningLetterPage.goto();
 		await morningLetterPage.waitForWelcomeMessage();
@@ -109,16 +137,26 @@ test.describe("Desktop Morning Letter Chat", () => {
 		await morningLetterPage.waitForResponse();
 
 		// Verify citations appear
-		await expect(page.getByText(/AI Research Update/i)).toBeVisible({ timeout: 10000 });
-		await expect(page.getByText(/Tech Weekly/i)).toBeVisible({ timeout: 10000 });
+		await expect(page.getByText(/AI Research Update/i)).toBeVisible({
+			timeout: 10000,
+		});
+		await expect(page.getByText(/Tech Weekly/i)).toBeVisible({
+			timeout: 10000,
+		});
 	});
 
 	test("disables input while processing", async ({ page }) => {
 		// Mock with delay
-		await page.route(CONNECT_RPC_PATHS.morningLetterStreamChat, async (route) => {
-			await new Promise((resolve) => setTimeout(resolve, 1000));
-			await fulfillConnectStream(route, CONNECT_MORNING_LETTER_STREAM_MESSAGES);
-		});
+		await page.route(
+			CONNECT_RPC_PATHS.morningLetterStreamChat,
+			async (route) => {
+				await new Promise((resolve) => setTimeout(resolve, 1000));
+				await fulfillConnectStream(
+					route,
+					CONNECT_MORNING_LETTER_STREAM_MESSAGES,
+				);
+			},
+		);
 
 		await morningLetterPage.goto();
 		await morningLetterPage.waitForWelcomeMessage();
@@ -132,13 +170,16 @@ test.describe("Desktop Morning Letter Chat", () => {
 
 	test("handles error gracefully", async ({ page }) => {
 		// Mock error response
-		await page.route(CONNECT_RPC_PATHS.morningLetterStreamChat, async (route) => {
-			await route.fulfill({
-				status: 500,
-				contentType: "application/json",
-				body: JSON.stringify({ code: "internal", message: "Server error" }),
-			});
-		});
+		await page.route(
+			CONNECT_RPC_PATHS.morningLetterStreamChat,
+			async (route) => {
+				await route.fulfill({
+					status: 500,
+					contentType: "application/json",
+					body: JSON.stringify({ code: "internal", message: "Server error" }),
+				});
+			},
+		);
 
 		await morningLetterPage.goto();
 		await morningLetterPage.waitForWelcomeMessage();
@@ -154,9 +195,15 @@ test.describe("Desktop Morning Letter Chat - Conversation", () => {
 	test("maintains conversation history", async ({ page }) => {
 		const morningLetterPage = new DesktopMorningLetterPage(page);
 
-		await page.route(CONNECT_RPC_PATHS.morningLetterStreamChat, async (route) => {
-			await fulfillConnectStream(route, CONNECT_MORNING_LETTER_SIMPLE_RESPONSE);
-		});
+		await page.route(
+			CONNECT_RPC_PATHS.morningLetterStreamChat,
+			async (route) => {
+				await fulfillConnectStream(
+					route,
+					CONNECT_MORNING_LETTER_SIMPLE_RESPONSE,
+				);
+			},
+		);
 
 		await morningLetterPage.goto();
 		await morningLetterPage.waitForWelcomeMessage();

@@ -108,7 +108,7 @@ export class LoginPage extends BasePage {
 		const externalAuth = this.page.getByText(/send me a code|cloudflare/i);
 		try {
 			await expect(
-				this.emailInput.or(this.redirectingText).or(externalAuth).first()
+				this.emailInput.or(this.redirectingText).or(externalAuth).first(),
 			).toBeVisible({ timeout: 10000 });
 
 			// Check if external auth is detected

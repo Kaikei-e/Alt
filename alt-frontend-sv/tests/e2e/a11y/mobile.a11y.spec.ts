@@ -149,7 +149,9 @@ test.describe("Mobile Pages Accessibility", () => {
 
 			// Article button - using getByRole with name ensures it has an accessible name
 			// Button text may change: "Article" -> "Loading..." -> "Hide"
-			const articleButton = page.getByRole("button", { name: /article|loading|hide/i });
+			const articleButton = page.getByRole("button", {
+				name: /article|loading|hide/i,
+			});
 			await expect(articleButton).toBeVisible();
 			await expect(articleButton).toHaveAccessibleName(/article|loading|hide/i);
 
@@ -184,7 +186,9 @@ test.describe("Mobile Pages Accessibility", () => {
 			await gotoMobileRoute(page, "feeds/search");
 			await page.waitForLoadState("domcontentloaded");
 			// Wait for search input to be visible
-			await expect(page.getByRole("searchbox").or(page.getByRole("textbox")).first()).toBeVisible();
+			await expect(
+				page.getByRole("searchbox").or(page.getByRole("textbox")).first(),
+			).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
@@ -194,9 +198,9 @@ test.describe("Mobile Pages Accessibility", () => {
 			await page.waitForLoadState("domcontentloaded");
 
 			// Search input should have an accessible name
-			const searchInput = page.getByRole("searchbox").or(
-				page.getByRole("textbox"),
-			);
+			const searchInput = page
+				.getByRole("searchbox")
+				.or(page.getByRole("textbox"));
 
 			// If search input exists, check it's accessible and focusable
 			if (await searchInput.count()) {
@@ -284,7 +288,9 @@ test.describe("Keyboard Navigation", () => {
 		await expect(page.getByTestId("swipe-card")).toBeVisible();
 
 		// Focus on a button using Tab - button text may change: "Article" -> "Loading..." -> "Hide"
-		const articleButton = page.getByRole("button", { name: /article|loading|hide/i });
+		const articleButton = page.getByRole("button", {
+			name: /article|loading|hide/i,
+		});
 		await articleButton.focus();
 
 		// Activate with Enter

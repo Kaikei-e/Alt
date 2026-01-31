@@ -88,6 +88,8 @@ export class DesktopRecapPage extends BasePage {
 	 * Get cluster items in the recap detail
 	 */
 	getClusterItems(): Locator {
-		return this.recapDetail.locator("[class*='border']").filter({ hasText: /.+/ });
+		return this.recapDetail
+			.locator("[class*='border']")
+			.filter({ hasText: /.+/ });
 	}
 }

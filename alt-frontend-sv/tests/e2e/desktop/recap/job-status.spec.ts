@@ -20,7 +20,9 @@ test.describe("Desktop Recap Job Status", () => {
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for page title to be visible instead of networkidle
-		await expect(page.getByRole("heading", { name: "Recap Job Status" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Recap Job Status" }),
+		).toBeVisible();
 
 		// Verify stats cards
 		await expect(page.getByText("Success Rate")).toBeVisible();
@@ -34,12 +36,20 @@ test.describe("Desktop Recap Job Status", () => {
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for heading to be visible
-		await expect(page.getByRole("heading", { name: "Recent Jobs" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Recent Jobs" }),
+		).toBeVisible();
 
 		// Verify table headers
-		await expect(page.getByRole("columnheader", { name: "Job ID" })).toBeVisible();
-		await expect(page.getByRole("columnheader", { name: "Status" })).toBeVisible();
-		await expect(page.getByRole("columnheader", { name: "Stages" })).toBeVisible();
+		await expect(
+			page.getByRole("columnheader", { name: "Job ID" }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("columnheader", { name: "Status" }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("columnheader", { name: "Stages" }),
+		).toBeVisible();
 
 		// Verify job data appears
 		await expect(page.getByText("job-001-")).toBeVisible();
@@ -62,15 +72,22 @@ test.describe("Desktop Recap Job Status", () => {
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for first job to be visible
-		const firstJobRow = page.locator("tr").filter({ hasText: "job-001-" }).first();
+		const firstJobRow = page
+			.locator("tr")
+			.filter({ hasText: "job-001-" })
+			.first();
 		await expect(firstJobRow).toBeVisible();
 
 		// Click on the first job row to expand
 		await firstJobRow.click();
 
 		// Verify detailed metrics panel appears
-		await expect(page.getByRole("heading", { name: "Stage Duration Breakdown" })).toBeVisible();
-		await expect(page.getByRole("heading", { name: "Status History" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Stage Duration Breakdown" }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Status History" }),
+		).toBeVisible();
 
 		// Verify stage duration bars are present (use exact match to avoid matching status history)
 		await expect(page.getByText("Fetch", { exact: true })).toBeVisible();
@@ -78,12 +95,17 @@ test.describe("Desktop Recap Job Status", () => {
 		await expect(page.getByText("Total", { exact: true })).toBeVisible();
 	});
 
-	test("shows performance metrics summary cards in expanded view", async ({ page }) => {
+	test("shows performance metrics summary cards in expanded view", async ({
+		page,
+	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for first job to be visible
-		const firstJobRow = page.locator("tr").filter({ hasText: "job-001-" }).first();
+		const firstJobRow = page
+			.locator("tr")
+			.filter({ hasText: "job-001-" })
+			.first();
 		await expect(firstJobRow).toBeVisible();
 
 		// Click on the first job row to expand
@@ -94,7 +116,9 @@ test.describe("Desktop Recap Job Status", () => {
 
 		// Verify performance summary cards - use more specific selectors
 		// The expanded view should show summary cards with metrics
-		await expect(page.getByRole("heading", { name: "Stage Duration Breakdown" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Stage Duration Breakdown" }),
+		).toBeVisible();
 		await expect(page.getByText("Total")).toBeVisible();
 	});
 
@@ -110,7 +134,9 @@ test.describe("Desktop Recap Job Status", () => {
 		await expect(page.getByText("Success Rate")).toBeVisible();
 
 		// Wait for heading to be visible
-		await expect(page.getByRole("heading", { name: "Currently Running" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Currently Running" }),
+		).toBeVisible();
 
 		// Verify active job details - use first() since there might be multiple "Running" texts
 		await expect(page.getByText("Running").first()).toBeVisible();
@@ -121,7 +147,9 @@ test.describe("Desktop Recap Job Status", () => {
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for page to be loaded by checking for a key element
-		await expect(page.getByRole("heading", { name: "Recap Job Status" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Recap Job Status" }),
+		).toBeVisible();
 
 		// Verify no job running message
 		await expect(page.getByText("No job currently running")).toBeVisible();
@@ -136,10 +164,14 @@ test.describe("Desktop Recap Job Status", () => {
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for page title
-		await expect(page.getByRole("heading", { name: "Recap Job Status" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Recap Job Status" }),
+		).toBeVisible();
 
 		// Verify empty state message
-		await expect(page.getByText("No jobs found in the selected time window")).toBeVisible();
+		await expect(
+			page.getByText("No jobs found in the selected time window"),
+		).toBeVisible();
 	});
 
 	test("time window selector changes data", async ({ page }) => {
@@ -157,9 +189,13 @@ test.describe("Desktop Recap Job Status", () => {
 		await page.locator('[data-testid="time-window-7d"]').click();
 
 		// Verify the button is now pressed (selected state)
-		await expect(page.locator('[data-testid="time-window-7d"]')).toHaveAttribute("aria-pressed", "true");
+		await expect(
+			page.locator('[data-testid="time-window-7d"]'),
+		).toHaveAttribute("aria-pressed", "true");
 		// Verify the previously selected button is no longer pressed
-		await expect(page.locator('[data-testid="time-window-24h"]')).toHaveAttribute("aria-pressed", "false");
+		await expect(
+			page.locator('[data-testid="time-window-24h"]'),
+		).toHaveAttribute("aria-pressed", "false");
 	});
 
 	test("refresh button reloads data", async ({ page }) => {
@@ -181,7 +217,9 @@ test.describe("Desktop Recap Job Status", () => {
 		if (autoRefreshText?.includes("ON")) {
 			await autoRefreshBtn.click();
 			// Wait for auto-refresh to be turned off
-			await expect(page.getByRole("button", { name: /Auto-refresh OFF/i })).toBeVisible();
+			await expect(
+				page.getByRole("button", { name: /Auto-refresh OFF/i }),
+			).toBeVisible();
 		}
 
 		const initialCallCount = callCount;
@@ -204,7 +242,9 @@ test.describe("Desktop Recap Job Status", () => {
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for error message to appear with extended timeout
-		await expect(page.getByText(/Error loading job data/)).toBeVisible({ timeout: 5000 });
+		await expect(page.getByText(/Error loading job data/)).toBeVisible({
+			timeout: 5000,
+		});
 	});
 
 	test("failed job shows correct status and stage count", async ({ page }) => {
@@ -215,7 +255,10 @@ test.describe("Desktop Recap Job Status", () => {
 		await expect(page.getByText("job-001-")).toBeVisible();
 
 		// Find the failed job row
-		const failedJobRow = page.locator("tr").filter({ hasText: "job-002-" }).first();
+		const failedJobRow = page
+			.locator("tr")
+			.filter({ hasText: "job-002-" })
+			.first();
 		await expect(failedJobRow).toBeVisible();
 
 		// Verify Failed badge is shown

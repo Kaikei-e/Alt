@@ -32,10 +32,14 @@ export class DesktopMorningLetterPage extends BasePage {
 		this.pageTitle = page.getByRole("heading", { name: /morning letter/i });
 
 		// Chat container
-		this.chatContainer = page.locator(".flex.flex-col").filter({ hasText: /morning letter/i });
+		this.chatContainer = page
+			.locator(".flex.flex-col")
+			.filter({ hasText: /morning letter/i });
 
 		// Messages
-		this.welcomeMessage = page.getByText(/hello! i'm your morning letter assistant/i);
+		this.welcomeMessage = page.getByText(
+			/hello! i'm your morning letter assistant/i,
+		);
 		this.thinkingIndicator = page.getByText(/searching recent news/i);
 
 		// Metadata display
@@ -55,7 +59,9 @@ export class DesktopMorningLetterPage extends BasePage {
 	 * Get all chat messages
 	 */
 	getChatMessages(): Locator {
-		return this.page.locator('[class*="rounded-2xl"]').filter({ hasText: /.+/ });
+		return this.page
+			.locator('[class*="rounded-2xl"]')
+			.filter({ hasText: /.+/ });
 	}
 
 	/**

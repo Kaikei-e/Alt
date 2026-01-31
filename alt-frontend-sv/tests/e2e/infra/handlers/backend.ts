@@ -58,21 +58,30 @@ export function createBackendServer(): http.Server {
 		// =============================================================================
 
 		// Feeds - cursor-based pagination
-		if (path === "/api/v1/feeds/fetch/cursor" || path === "/v1/feeds/fetch/cursor") {
+		if (
+			path === "/api/v1/feeds/fetch/cursor" ||
+			path === "/v1/feeds/fetch/cursor"
+		) {
 			res.writeHead(200);
 			res.end(JSON.stringify(FEEDS_RESPONSE));
 			return;
 		}
 
 		// Viewed feeds
-		if (path === "/api/v1/feeds/fetch/viewed/cursor" || path === "/v1/feeds/fetch/viewed/cursor") {
+		if (
+			path === "/api/v1/feeds/fetch/viewed/cursor" ||
+			path === "/v1/feeds/fetch/viewed/cursor"
+		) {
 			res.writeHead(200);
 			res.end(JSON.stringify(VIEWED_FEEDS_RESPONSE));
 			return;
 		}
 
 		// RSS Feed Link List
-		if (path === "/api/v1/rss-feed-link/list" || path === "/v1/rss-feed-link/list") {
+		if (
+			path === "/api/v1/rss-feed-link/list" ||
+			path === "/v1/rss-feed-link/list"
+		) {
 			res.writeHead(200);
 			res.end(JSON.stringify(RSS_FEED_LINKS));
 			return;
@@ -86,14 +95,20 @@ export function createBackendServer(): http.Server {
 		}
 
 		// Stats detailed
-		if (path === "/api/v1/feeds/stats/detailed" || path === "/v1/feeds/stats/detailed") {
+		if (
+			path === "/api/v1/feeds/stats/detailed" ||
+			path === "/v1/feeds/stats/detailed"
+		) {
 			res.writeHead(200);
 			res.end(JSON.stringify(DETAILED_FEED_STATS));
 			return;
 		}
 
 		// Unread count
-		if (path === "/api/v1/feeds/count/unreads" || path === "/v1/feeds/count/unreads") {
+		if (
+			path === "/api/v1/feeds/count/unreads" ||
+			path === "/v1/feeds/count/unreads"
+		) {
 			res.writeHead(200);
 			res.end(JSON.stringify(UNREAD_COUNT));
 			return;
@@ -114,8 +129,12 @@ export function createBackendServer(): http.Server {
 		}
 
 		// Job progress dashboard (handles both /api/v1 and /v1 paths for recap-worker)
-		if (path === "/api/v1/dashboard/job-progress" || path.startsWith("/api/v1/dashboard/job-progress") ||
-			path === "/v1/dashboard/job-progress" || path.startsWith("/v1/dashboard/job-progress")) {
+		if (
+			path === "/api/v1/dashboard/job-progress" ||
+			path.startsWith("/api/v1/dashboard/job-progress") ||
+			path === "/v1/dashboard/job-progress" ||
+			path.startsWith("/v1/dashboard/job-progress")
+		) {
 			res.writeHead(200);
 			res.end(JSON.stringify(JOB_PROGRESS_RESPONSE));
 			return;
@@ -136,7 +155,10 @@ export function createBackendServer(): http.Server {
 		}
 
 		// Article content
-		if (path === "/api/v1/articles/content" || path === "/v1/articles/content") {
+		if (
+			path === "/api/v1/articles/content" ||
+			path === "/v1/articles/content"
+		) {
 			res.writeHead(200);
 			res.end(
 				JSON.stringify({
@@ -206,7 +228,9 @@ export function createBackendServer(): http.Server {
 			res.setHeader("Connect-Accept-Encoding", "identity");
 			res.writeHead(200);
 			// Connect-RPC streaming format: newline-delimited JSON
-			res.end(AUGUR_CONNECT_MESSAGES.map((m) => JSON.stringify(m)).join("\n") + "\n");
+			res.end(
+				AUGUR_CONNECT_MESSAGES.map((m) => JSON.stringify(m)).join("\n") + "\n",
+			);
 			return;
 		}
 

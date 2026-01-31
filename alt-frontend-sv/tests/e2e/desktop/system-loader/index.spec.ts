@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { DesktopRecapPage } from "../../pages/desktop/DesktopRecapPage";
 import { fulfillJson } from "../../utils/mockHelpers";
-import { CONNECT_RECAP_RESPONSE, CONNECT_RPC_PATHS } from "../../fixtures/mockData";
+import {
+	CONNECT_RECAP_RESPONSE,
+	CONNECT_RPC_PATHS,
+} from "../../fixtures/mockData";
 
 test.describe("System Loader", () => {
 	let recapPage: DesktopRecapPage;

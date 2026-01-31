@@ -76,8 +76,9 @@ test.describe("Desktop Pages Accessibility", () => {
 			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
 		);
 		// Favorite feeds uses same endpoint pattern
-		await page.route("**/api/v2/alt.feeds.v2.FeedService/GetFavoriteFeeds", (route) =>
-			fulfillJson(route, MOCK_FEEDS),
+		await page.route(
+			"**/api/v2/alt.feeds.v2.FeedService/GetFavoriteFeeds",
+			(route) => fulfillJson(route, MOCK_FEEDS),
 		);
 		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
 			fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE),
@@ -147,7 +148,12 @@ test.describe("Desktop Pages Accessibility", () => {
 			await gotoDesktopRoute(page, "feeds/search");
 			await page.waitForLoadState("domcontentloaded");
 			// Wait for search input to be visible
-			await expect(page.getByRole("searchbox").or(page.getByPlaceholder(/search/i)).first()).toBeVisible();
+			await expect(
+				page
+					.getByRole("searchbox")
+					.or(page.getByPlaceholder(/search/i))
+					.first(),
+			).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
@@ -157,9 +163,9 @@ test.describe("Desktop Pages Accessibility", () => {
 			await page.waitForLoadState("domcontentloaded");
 
 			// Search input should have accessible label
-			const searchInput = page.getByRole("searchbox").or(
-				page.getByPlaceholder(/search/i),
-			);
+			const searchInput = page
+				.getByRole("searchbox")
+				.or(page.getByPlaceholder(/search/i));
 
 			if (await searchInput.count()) {
 				// Should be keyboard focusable

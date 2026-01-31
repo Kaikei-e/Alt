@@ -27,7 +27,10 @@ const fulfillJson = async (
 test.describe("mobile feeds routes - stats", () => {
 	// Skip this test in CI - the mobile stats page uses Connect-RPC client-side calls
 	// that are difficult to mock reliably. The page works correctly in production.
-	test.skip(({ browserName }) => !!process.env.CI, "Skip in CI - Connect-RPC client mocking is unreliable");
+	test.skip(
+		({ browserName }) => !!process.env.CI,
+		"Skip in CI - Connect-RPC client mocking is unreliable",
+	);
 
 	test("stats page renders counters", async ({ page }) => {
 		// Mock EventSource to prevent SSE connections from interfering
@@ -73,11 +76,13 @@ test.describe("mobile feeds routes - stats", () => {
 		});
 
 		// Route Connect-RPC API calls - these will be intercepted before hitting the mock backend
-		await page.route("**/api/v2/alt.feeds.v2.FeedService/GetDetailedFeedStats", (route) =>
-			fulfillJson(route, CONNECT_STATS_RESPONSE),
+		await page.route(
+			"**/api/v2/alt.feeds.v2.FeedService/GetDetailedFeedStats",
+			(route) => fulfillJson(route, CONNECT_STATS_RESPONSE),
 		);
-		await page.route("**/api/v2/alt.feeds.v2.FeedService/GetUnreadCount", (route) =>
-			fulfillJson(route, CONNECT_UNREAD_RESPONSE),
+		await page.route(
+			"**/api/v2/alt.feeds.v2.FeedService/GetUnreadCount",
+			(route) => fulfillJson(route, CONNECT_UNREAD_RESPONSE),
 		);
 
 		await gotoMobileRoute(page, "feeds/stats");
@@ -90,11 +95,11 @@ test.describe("mobile feeds routes - stats", () => {
 
 		// Wait for the page to be in a known state
 		await expect(
-			pageTitle.or(errorIndicator).or(loadingIndicator).first()
+			pageTitle.or(errorIndicator).or(loadingIndicator).first(),
 		).toBeVisible({ timeout: 15000 });
 
 		// Skip if there's a server error (SSR issue in test environment)
-		if (await errorIndicator.count() > 0) {
+		if ((await errorIndicator.count()) > 0) {
 			test.skip(true, "Server error during SSR - skipping test");
 			return;
 		}
@@ -105,8 +110,11 @@ test.describe("mobile feeds routes - stats", () => {
 		await expect(statsOrError.first()).toBeVisible({ timeout: 15000 });
 
 		// Skip if component showed error (Connect-RPC mock might not work)
-		if (await componentError.count() > 0) {
-			test.skip(true, "Client-side stats fetch failed - Connect-RPC mock issue");
+		if ((await componentError.count()) > 0) {
+			test.skip(
+				true,
+				"Client-side stats fetch failed - Connect-RPC mock issue",
+			);
 			return;
 		}
 

@@ -33,9 +33,9 @@ test.describe("Mobile Recap 7-Days", () => {
 		await gotoMobileRoute(page, "recap/7days");
 
 		// Wait for loading to complete
-		await expect(
-			page.getByTestId("recap-skeleton-container"),
-		).not.toBeVisible({ timeout: 15000 });
+		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
+			timeout: 15000,
+		});
 
 		// Content should be visible (SwipeRecapScreen)
 		// The exact content depends on the component implementation
@@ -50,14 +50,17 @@ test.describe("Mobile Recap 7-Days", () => {
 		await gotoMobileRoute(page, "recap/7days");
 
 		// Wait for loading to complete
-		await expect(
-			page.getByTestId("recap-skeleton-container"),
-		).not.toBeVisible({ timeout: 15000 });
+		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
+			timeout: 15000,
+		});
 
 		// Empty state should be visible (EmptyFeedState component)
 		// Check for common empty state patterns
 		await expect(
-			page.getByText(/no feeds/i).or(page.getByText(/empty/i)).first(),
+			page
+				.getByText(/no feeds/i)
+				.or(page.getByText(/empty/i))
+				.first(),
 		).toBeVisible({ timeout: 5000 });
 	});
 
@@ -69,9 +72,9 @@ test.describe("Mobile Recap 7-Days", () => {
 		await gotoMobileRoute(page, "recap/7days");
 
 		// Wait for loading to complete
-		await expect(
-			page.getByTestId("recap-skeleton-container"),
-		).not.toBeVisible({ timeout: 15000 });
+		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
+			timeout: 15000,
+		});
 
 		// Error message should be visible
 		await expect(page.getByText("Error loading recap")).toBeVisible();
@@ -85,9 +88,9 @@ test.describe("Mobile Recap 7-Days", () => {
 		await gotoMobileRoute(page, "recap/7days");
 
 		// Wait for loading to complete
-		await expect(
-			page.getByTestId("recap-skeleton-container"),
-		).not.toBeVisible({ timeout: 15000 });
+		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
+			timeout: 15000,
+		});
 
 		// Retry button should be visible
 		const retryButton = page.getByRole("button", { name: /retry/i });
@@ -129,9 +132,9 @@ test.describe("Mobile Recap 7-Days", () => {
 		await gotoMobileRoute(page, "recap/7days");
 
 		// Wait for page to load
-		await expect(
-			page.getByTestId("recap-skeleton-container"),
-		).not.toBeVisible({ timeout: 15000 });
+		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
+			timeout: 15000,
+		});
 
 		// FloatingMenu component should be present
 		// Check for common floating menu patterns (FAB, bottom navigation, etc.)

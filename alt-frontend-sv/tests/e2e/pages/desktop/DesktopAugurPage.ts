@@ -27,7 +27,9 @@ export class DesktopAugurPage extends BasePage {
 		this.pageTitle = page.getByRole("heading", { name: /ask augur/i });
 
 		// Chat container
-		this.chatContainer = page.locator(".flex.flex-col").filter({ hasText: /augur/i });
+		this.chatContainer = page
+			.locator(".flex.flex-col")
+			.filter({ hasText: /augur/i });
 
 		// Messages
 		this.welcomeMessage = page.getByText(/hello! i'm augur/i);
@@ -47,7 +49,9 @@ export class DesktopAugurPage extends BasePage {
 	 */
 	getChatMessages(): Locator {
 		// Each ChatMessage component renders with message text
-		return this.page.locator('[class*="rounded-2xl"]').filter({ hasText: /.+/ });
+		return this.page
+			.locator('[class*="rounded-2xl"]')
+			.filter({ hasText: /.+/ });
 	}
 
 	/**

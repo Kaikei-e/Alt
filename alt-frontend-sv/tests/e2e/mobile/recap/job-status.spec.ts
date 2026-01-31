@@ -25,7 +25,9 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for page to load
-		await expect(page.getByRole("heading", { name: "Job Status" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Job Status" }),
+		).toBeVisible();
 
 		// Verify stats are visible (horizontally scrollable)
 		await expect(page.getByText("Success Rate")).toBeVisible();
@@ -117,7 +119,9 @@ test.describe("Mobile Recap Job Status", () => {
 		await collapseButton.click();
 
 		// Pipeline should be hidden when collapsed
-		await expect(page.getByTestId("mobile-pipeline-progress")).not.toBeVisible();
+		await expect(
+			page.getByTestId("mobile-pipeline-progress"),
+		).not.toBeVisible();
 
 		// Click again to expand
 		await collapseButton.click();
@@ -129,7 +133,9 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for page to load
-		await expect(page.getByRole("heading", { name: "Job Status" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Job Status" }),
+		).toBeVisible();
 
 		// Verify no active job message
 		await expect(page.getByText("No job currently running")).toBeVisible();
@@ -143,13 +149,17 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for page title
-		await expect(page.getByRole("heading", { name: "Job Status" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Job Status" }),
+		).toBeVisible();
 
 		// Verify empty state message
 		await expect(page.getByText("No jobs found")).toBeVisible();
 	});
 
-	test("time window selector works with horizontal scroll", async ({ page }) => {
+	test("time window selector works with horizontal scroll", async ({
+		page,
+	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./mobile/recap/job-status");
 
@@ -195,7 +205,9 @@ test.describe("Mobile Recap Job Status", () => {
 		).toBeVisible();
 
 		// Verify buttons are touch-friendly (at least 44px height)
-		const startButton = controlBar.getByRole("button", { name: /Start new recap job/i });
+		const startButton = controlBar.getByRole("button", {
+			name: /Start new recap job/i,
+		});
 		const height = await startButton.evaluate(
 			(el) => el.getBoundingClientRect().height,
 		);
@@ -276,7 +288,9 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for error message
-		await expect(page.getByText(/Error loading/i)).toBeVisible({ timeout: 5000 });
+		await expect(page.getByText(/Error loading/i)).toBeVisible({
+			timeout: 5000,
+		});
 	});
 
 	test("pipeline progress shows vertical stepper format", async ({ page }) => {

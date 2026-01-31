@@ -114,7 +114,7 @@ test.describe("Login Page", () => {
 		const formReady = await loginPage.waitForFormReady();
 
 		// Skip if external auth or redirecting
-		if (!formReady || await loginPage.isRedirecting()) {
+		if (!formReady || (await loginPage.isRedirecting())) {
 			test.skip(true, "External authentication or redirect");
 			return;
 		}
@@ -131,7 +131,7 @@ test.describe("Login Page", () => {
 		await loginPage.goto();
 		const formReady = await loginPage.waitForFormReady();
 
-		if (!formReady || await loginPage.isRedirecting()) {
+		if (!formReady || (await loginPage.isRedirecting())) {
 			test.skip(true, "External authentication or redirect");
 			return;
 		}
@@ -148,7 +148,7 @@ test.describe("Login Page", () => {
 		await loginPage.goto();
 		const formReady = await loginPage.waitForFormReady();
 
-		if (!formReady || await loginPage.isRedirecting()) {
+		if (!formReady || (await loginPage.isRedirecting())) {
 			test.skip(true, "External authentication or redirect");
 			return;
 		}
@@ -167,7 +167,7 @@ test.describe("Login Page", () => {
 		await loginPage.goto();
 		const formReady = await loginPage.waitForFormReady();
 
-		if (!formReady || await loginPage.isRedirecting()) {
+		if (!formReady || (await loginPage.isRedirecting())) {
 			test.skip(true, "External authentication or redirect");
 			return;
 		}
@@ -185,7 +185,7 @@ test.describe("Login Page", () => {
 		await loginPage.goto();
 		const formReady = await loginPage.waitForFormReady();
 
-		if (!formReady || await loginPage.isRedirecting()) {
+		if (!formReady || (await loginPage.isRedirecting())) {
 			test.skip(true, "External authentication or redirect");
 			return;
 		}
@@ -223,7 +223,7 @@ test.describe("Login Page - Error Handling", () => {
 		await loginPage.goto();
 		const formReady = await loginPage.waitForFormReady();
 
-		if (!formReady || await loginPage.isRedirecting()) {
+		if (!formReady || (await loginPage.isRedirecting())) {
 			test.skip(true, "External authentication or redirect");
 			return;
 		}
@@ -238,7 +238,7 @@ test.describe("Login Page - Error Handling", () => {
 		await page.reload();
 		const reloadFormReady = await loginPage.waitForFormReady();
 
-		if (!reloadFormReady || await loginPage.isRedirecting()) {
+		if (!reloadFormReady || (await loginPage.isRedirecting())) {
 			test.skip(true, "External authentication or redirect after reload");
 			return;
 		}
@@ -264,7 +264,7 @@ test.describe("Login Page - Accessibility", () => {
 		await loginPage.goto();
 		const formReady = await loginPage.waitForFormReady();
 
-		if (!formReady || await loginPage.isRedirecting()) {
+		if (!formReady || (await loginPage.isRedirecting())) {
 			test.skip(true, "External authentication or redirect");
 			return;
 		}

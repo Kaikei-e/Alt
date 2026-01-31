@@ -56,9 +56,7 @@ const KRATOS_REGISTRATION_FLOW_WITH_ERROR = {
 	ui: {
 		...KRATOS_REGISTRATION_FLOW.ui,
 		nodes: KRATOS_REGISTRATION_FLOW.ui.nodes.map((node) => {
-			if (
-				(node.attributes as { name?: string }).name === "traits.email"
-			) {
+			if ((node.attributes as { name?: string }).name === "traits.email") {
 				return {
 					...node,
 					messages: [{ text: "Email already exists", type: "error" }],
@@ -72,13 +70,17 @@ const KRATOS_REGISTRATION_FLOW_WITH_ERROR = {
 /**
  * Helper to wait for form or detect external auth
  */
-async function waitForRegisterForm(page: import("@playwright/test").Page): Promise<boolean> {
+async function waitForRegisterForm(
+	page: import("@playwright/test").Page,
+): Promise<boolean> {
 	const heading = page.getByRole("heading", { name: /register/i });
 	const redirecting = page.getByText("Redirecting...");
 	const externalAuth = page.getByText(/send me a code|cloudflare/i);
 
 	try {
-		await expect(heading.or(redirecting).or(externalAuth).first()).toBeVisible({ timeout: 10000 });
+		await expect(heading.or(redirecting).or(externalAuth).first()).toBeVisible({
+			timeout: 10000,
+		});
 
 		if (await externalAuth.isVisible()) {
 			return false;
@@ -216,10 +218,16 @@ test.describe("Register Page - Validation", () => {
 		// Check for error message if form is visible
 		// In SSR mode, the mock may not apply to server-side requests
 		const errorMessage = page.locator('[style*="color: #dc2626"]');
-		const hasError = await errorMessage.first().isVisible().catch(() => false);
+		const hasError = await errorMessage
+			.first()
+			.isVisible()
+			.catch(() => false);
 
 		if (!hasError) {
-			test.skip(true, "SSR environment - error mock not applied to server-side request");
+			test.skip(
+				true,
+				"SSR environment - error mock not applied to server-side request",
+			);
 			return;
 		}
 

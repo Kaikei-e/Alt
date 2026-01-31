@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { gotoMobileRoute } from "../../helpers/navigation";
 import { fulfillJson } from "../../utils/mockHelpers";
-import { CONNECT_SEARCH_RESPONSE, CONNECT_RPC_PATHS } from "../../fixtures/mockData";
+import {
+	CONNECT_SEARCH_RESPONSE,
+	CONNECT_RPC_PATHS,
+} from "../../fixtures/mockData";
 
 test.describe("mobile feeds routes - search", () => {
 	test("search page shows results for a valid query", async ({ page }) => {

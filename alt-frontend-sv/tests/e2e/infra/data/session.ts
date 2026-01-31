@@ -2,14 +2,20 @@
  * Session & Authentication Mock Data
  */
 
-import type { KratosSession, KratosFlow, KratosFlowNode, AuthHubSessionResponse } from "../types";
+import type {
+	KratosSession,
+	KratosFlow,
+	KratosFlowNode,
+	AuthHubSessionResponse,
+} from "../types";
 
 // =============================================================================
 // Constants
 // =============================================================================
 
 export const DEV_USER_ID = "00000000-0000-0000-0000-000000000001";
-export const DEV_JWT_SECRET = process.env.BACKEND_TOKEN_SECRET || "dev-secret-for-local";
+export const DEV_JWT_SECRET =
+	process.env.BACKEND_TOKEN_SECRET || "dev-secret-for-local";
 export const DEV_JWT_ISSUER = "auth-hub";
 export const DEV_JWT_AUDIENCE = "alt-backend";
 
@@ -219,5 +225,9 @@ export function hasSessionCookie(cookieHeader?: string): boolean {
 	return cookieHeader
 		.split(";")
 		.map((segment) => segment.trim())
-		.some((segment) => segment === `${KRATOS_SESSION_COOKIE_NAME}=${KRATOS_SESSION_COOKIE_VALUE}`);
+		.some(
+			(segment) =>
+				segment ===
+				`${KRATOS_SESSION_COOKIE_NAME}=${KRATOS_SESSION_COOKIE_VALUE}`,
+		);
 }

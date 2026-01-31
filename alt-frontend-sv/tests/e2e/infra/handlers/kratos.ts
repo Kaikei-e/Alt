@@ -73,7 +73,8 @@ export function createKratosServer(): http.Server {
 		// Login POST - handle form submission
 		if (req.method === "POST" && path.startsWith("/self-service/login")) {
 			log("POST login - setting session cookie");
-			const returnTo = url.searchParams.get("return_to") || "http://127.0.0.1:5173/sv/home";
+			const returnTo =
+				url.searchParams.get("return_to") || "http://127.0.0.1:5173/sv/home";
 
 			res.writeHead(303, {
 				Location: returnTo,
@@ -84,9 +85,13 @@ export function createKratosServer(): http.Server {
 		}
 
 		// Registration POST - handle form submission
-		if (req.method === "POST" && path.startsWith("/self-service/registration")) {
+		if (
+			req.method === "POST" &&
+			path.startsWith("/self-service/registration")
+		) {
 			log("POST registration - setting session cookie");
-			const returnTo = url.searchParams.get("return_to") || "http://127.0.0.1:5173/sv/home";
+			const returnTo =
+				url.searchParams.get("return_to") || "http://127.0.0.1:5173/sv/home";
 
 			res.writeHead(303, {
 				Location: returnTo,
@@ -104,7 +109,8 @@ export function createKratosServer(): http.Server {
 
 			// /self-service/login/browser - redirects to the app with flow parameter
 			if (path === "/self-service/login/browser") {
-				const returnTo = url.searchParams.get("return_to") || "http://127.0.0.1:4174/sv/home";
+				const returnTo =
+					url.searchParams.get("return_to") || "http://127.0.0.1:4174/sv/home";
 				const returnToUrl = new URL(returnTo);
 				const redirectUrl = `${returnToUrl.origin}/sv/auth/login?flow=${loginFlow.id}`;
 				log(`Redirecting to: ${redirectUrl}`);
@@ -134,7 +140,8 @@ export function createKratosServer(): http.Server {
 
 			// /self-service/registration/browser - redirects to the app with flow parameter
 			if (path === "/self-service/registration/browser") {
-				const returnTo = url.searchParams.get("return_to") || "http://127.0.0.1:4174/sv/home";
+				const returnTo =
+					url.searchParams.get("return_to") || "http://127.0.0.1:4174/sv/home";
 				const returnToUrl = new URL(returnTo);
 				const redirectUrl = `${returnToUrl.origin}/sv/register?flow=${registrationFlow.id}`;
 				log(`Redirecting to: ${redirectUrl}`);

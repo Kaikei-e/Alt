@@ -54,14 +54,22 @@ export class DesktopFeedsPage extends BasePage {
 		this.feedDetailModal = page.locator('[role="dialog"]');
 		this.modalTitle = this.feedDetailModal.locator("h2");
 		// Dialog.Close button - there are 2 close buttons (footer and X icon), use the one with text "Close"
-		this.modalCloseButton = this.feedDetailModal.getByRole("button", { name: "Close", exact: true }).first();
+		this.modalCloseButton = this.feedDetailModal
+			.getByRole("button", { name: "Close", exact: true })
+			.first();
 		this.markAsReadButton = page.getByRole("button", { name: /mark as read/i });
-		this.fullArticleButton = page.getByRole("button", { name: /full article/i });
+		this.fullArticleButton = page.getByRole("button", {
+			name: /full article/i,
+		});
 		this.summarizeButton = page.getByRole("button", { name: /summarize/i });
 
 		// Modal navigation arrows
-		this.prevFeedButton = this.feedDetailModal.getByRole("button", { name: /previous feed/i });
-		this.nextFeedButton = this.feedDetailModal.getByRole("button", { name: /next feed/i });
+		this.prevFeedButton = this.feedDetailModal.getByRole("button", {
+			name: /previous feed/i,
+		});
+		this.nextFeedButton = this.feedDetailModal.getByRole("button", {
+			name: /next feed/i,
+		});
 
 		// Infinite scroll elements
 		this.loadMoreTrigger = page.getByText("Scroll for more");
@@ -84,7 +92,9 @@ export class DesktopFeedsPage extends BasePage {
 	 * Get a specific feed card by title
 	 */
 	getFeedCardByTitle(title: string): Locator {
-		return this.page.getByRole("button", { name: new RegExp(`Open ${title}`, "i") });
+		return this.page.getByRole("button", {
+			name: new RegExp(`Open ${title}`, "i"),
+		});
 	}
 
 	/**
@@ -93,9 +103,9 @@ export class DesktopFeedsPage extends BasePage {
 	async waitForFeedsLoaded(): Promise<void> {
 		await expect(this.loadingSpinner).not.toBeVisible({ timeout: 15000 });
 		// Wait for either feeds to appear or empty state
-		await expect(
-			this.feedGrid.or(this.emptyState).first()
-		).toBeVisible({ timeout: 10000 });
+		await expect(this.feedGrid.or(this.emptyState).first()).toBeVisible({
+			timeout: 10000,
+		});
 	}
 
 	/**

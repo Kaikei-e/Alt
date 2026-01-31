@@ -33,7 +33,11 @@ import {
 	CONNECT_UNREAD_COUNT,
 	CONNECT_ARTICLE_CONTENT,
 } from "./data/feeds";
-import { RECAP_RESPONSE, AUGUR_SSE_CHUNKS, AUGUR_CONNECT_MESSAGES } from "./data/recap";
+import {
+	RECAP_RESPONSE,
+	AUGUR_SSE_CHUNKS,
+	AUGUR_CONNECT_MESSAGES,
+} from "./data/recap";
 
 // =============================================================================
 // Kratos Handlers
@@ -181,27 +185,41 @@ export const backendHandlers = [
 
 	// Feeds - cursor-based pagination
 	http.get("*/v1/feeds/fetch/cursor", () => HttpResponse.json(FEEDS_RESPONSE)),
-	http.get("*/api/v1/feeds/fetch/cursor", () => HttpResponse.json(FEEDS_RESPONSE)),
+	http.get("*/api/v1/feeds/fetch/cursor", () =>
+		HttpResponse.json(FEEDS_RESPONSE),
+	),
 
 	// Viewed feeds
-	http.get("*/v1/feeds/fetch/viewed/cursor", () => HttpResponse.json(VIEWED_FEEDS_RESPONSE)),
-	http.get("*/api/v1/feeds/fetch/viewed/cursor", () => HttpResponse.json(VIEWED_FEEDS_RESPONSE)),
+	http.get("*/v1/feeds/fetch/viewed/cursor", () =>
+		HttpResponse.json(VIEWED_FEEDS_RESPONSE),
+	),
+	http.get("*/api/v1/feeds/fetch/viewed/cursor", () =>
+		HttpResponse.json(VIEWED_FEEDS_RESPONSE),
+	),
 
 	// RSS Feed Link List
 	http.get("*/v1/rss-feed-link/list", () => HttpResponse.json(RSS_FEED_LINKS)),
-	http.get("*/api/v1/rss-feed-link/list", () => HttpResponse.json(RSS_FEED_LINKS)),
+	http.get("*/api/v1/rss-feed-link/list", () =>
+		HttpResponse.json(RSS_FEED_LINKS),
+	),
 
 	// Stats
 	http.get("*/v1/feeds/stats", () => HttpResponse.json(FEED_STATS)),
 	http.get("*/api/v1/feeds/stats", () => HttpResponse.json(FEED_STATS)),
 
 	// Stats detailed
-	http.get("*/v1/feeds/stats/detailed", () => HttpResponse.json(DETAILED_FEED_STATS)),
-	http.get("*/api/v1/feeds/stats/detailed", () => HttpResponse.json(DETAILED_FEED_STATS)),
+	http.get("*/v1/feeds/stats/detailed", () =>
+		HttpResponse.json(DETAILED_FEED_STATS),
+	),
+	http.get("*/api/v1/feeds/stats/detailed", () =>
+		HttpResponse.json(DETAILED_FEED_STATS),
+	),
 
 	// Unread count
 	http.get("*/v1/feeds/count/unreads", () => HttpResponse.json(UNREAD_COUNT)),
-	http.get("*/api/v1/feeds/count/unreads", () => HttpResponse.json(UNREAD_COUNT)),
+	http.get("*/api/v1/feeds/count/unreads", () =>
+		HttpResponse.json(UNREAD_COUNT),
+	),
 
 	// Mark as read
 	http.post("*/v1/feeds/read", () => HttpResponse.json({ ok: true })),
@@ -299,7 +317,8 @@ export const backendHandlers = [
 
 	// StreamChat (Augur) - Connect-RPC streaming
 	http.post("*/alt.augur.v2.AugurService/StreamChat", () => {
-		const body = AUGUR_CONNECT_MESSAGES.map((m) => JSON.stringify(m)).join("\n") + "\n";
+		const body =
+			AUGUR_CONNECT_MESSAGES.map((m) => JSON.stringify(m)).join("\n") + "\n";
 		return new HttpResponse(body, {
 			headers: {
 				"Content-Type": "application/connect+json",
@@ -314,4 +333,8 @@ export const backendHandlers = [
 // All Handlers
 // =============================================================================
 
-export const handlers = [...kratosHandlers, ...authHubHandlers, ...backendHandlers];
+export const handlers = [
+	...kratosHandlers,
+	...authHubHandlers,
+	...backendHandlers,
+];

@@ -96,13 +96,26 @@ export const RECAP_RESPONSE = {
 	genres: [
 		{
 			genre: "Technology",
-			summary: "Major developments in technology this week include AI advances and new web frameworks.",
+			summary:
+				"Major developments in technology this week include AI advances and new web frameworks.",
 			top_terms: ["AI", "Web", "Frameworks"],
 			article_count: 3,
 			cluster_count: 2,
 			evidence_links: [
-				{ article_id: "art-1", title: "GPT-5 Announced", source_url: "https://example.com/gpt5", published_at: "2025-12-20T10:00:00Z", lang: "en" },
-				{ article_id: "art-2", title: "Claude Gets Smarter", source_url: "https://example.com/claude", published_at: "2025-12-20T09:00:00Z", lang: "en" },
+				{
+					article_id: "art-1",
+					title: "GPT-5 Announced",
+					source_url: "https://example.com/gpt5",
+					published_at: "2025-12-20T10:00:00Z",
+					lang: "en",
+				},
+				{
+					article_id: "art-2",
+					title: "Claude Gets Smarter",
+					source_url: "https://example.com/claude",
+					published_at: "2025-12-20T09:00:00Z",
+					lang: "en",
+				},
 			],
 			bullets: ["AI advances continue", "New web frameworks emerging"],
 		},
@@ -113,7 +126,13 @@ export const RECAP_RESPONSE = {
 			article_count: 1,
 			cluster_count: 1,
 			evidence_links: [
-				{ article_id: "art-4", title: "New Transformer Architecture", source_url: "https://example.com/transformer", published_at: "2025-12-19T10:00:00Z", lang: "en" },
+				{
+					article_id: "art-4",
+					title: "New Transformer Architecture",
+					source_url: "https://example.com/transformer",
+					published_at: "2025-12-19T10:00:00Z",
+					lang: "en",
+				},
 			],
 			bullets: ["New transformer architecture proposed"],
 		},
@@ -188,7 +207,9 @@ export const MARK_AS_READ_RESPONSE = {
 };
 
 // Factory functions for creating custom mock data
-export const createFeed = (overrides: Partial<typeof FEEDS_RESPONSE.data[0]> = {}) => ({
+export const createFeed = (
+	overrides: Partial<(typeof FEEDS_RESPONSE.data)[0]> = {},
+) => ({
 	id: `feed-${Date.now()}`,
 	url: "https://example.com/feed",
 	title: "Mock Feed",
@@ -349,7 +370,8 @@ export const CONNECT_SEARCH_RESPONSE = {
 		{
 			id: "search-1",
 			title: "AI Weekly",
-			description: "A deep dive into AI research, tooling, and production learnings.",
+			description:
+				"A deep dive into AI research, tooling, and production learnings.",
 			link: "https://example.com/ai-weekly",
 			published: "3 days ago",
 			createdAt: new Date().toISOString(),
@@ -367,16 +389,20 @@ export const CONNECT_RPC_PATHS = {
 	markAsRead: "**/api/v2/alt.feeds.v2.FeedService/MarkAsRead",
 	searchFeeds: "**/api/v2/alt.feeds.v2.FeedService/SearchFeeds",
 	getFeedStats: "**/api/v2/alt.feeds.v2.FeedService/GetFeedStats",
-	getDetailedFeedStats: "**/api/v2/alt.feeds.v2.FeedService/GetDetailedFeedStats",
+	getDetailedFeedStats:
+		"**/api/v2/alt.feeds.v2.FeedService/GetDetailedFeedStats",
 	getUnreadCount: "**/api/v2/alt.feeds.v2.FeedService/GetUnreadCount",
 	streamSummarize: "**/api/v2/alt.feeds.v2.FeedService/StreamSummarize",
 	// Article service
-	fetchArticleContent: "**/api/v2/alt.articles.v2.ArticleService/FetchArticleContent",
-	fetchArticleSummary: "**/api/v2/alt.articles.v2.ArticleService/FetchArticleSummary",
+	fetchArticleContent:
+		"**/api/v2/alt.articles.v2.ArticleService/FetchArticleContent",
+	fetchArticleSummary:
+		"**/api/v2/alt.articles.v2.ArticleService/FetchArticleSummary",
 	// Augur service
 	augurStreamChat: "**/api/v2/alt.augur.v2.AugurService/StreamChat",
 	// MorningLetter service
-	morningLetterStreamChat: "**/api/v2/alt.morning_letter.v2.MorningLetterService/StreamChat",
+	morningLetterStreamChat:
+		"**/api/v2/alt.morning_letter.v2.MorningLetterService/StreamChat",
 	// Recap service
 	getSevenDayRecap: "**/alt.recap.v2.RecapService/GetSevenDayRecap",
 };
@@ -399,9 +425,14 @@ export const CONNECT_AUGUR_STREAM_MESSAGES = [
 	{
 		kind: "done",
 		done: {
-			answer: "Based on your recent feeds, here are the key trends: AI development is accelerating.",
+			answer:
+				"Based on your recent feeds, here are the key trends: AI development is accelerating.",
 			citations: [
-				{ url: "https://example.com/ai", title: "AI News", publishedAt: "2025-12-20T10:00:00Z" },
+				{
+					url: "https://example.com/ai",
+					title: "AI News",
+					publishedAt: "2025-12-20T10:00:00Z",
+				},
 			],
 		},
 	},
@@ -447,10 +478,19 @@ export const CONNECT_MORNING_LETTER_STREAM_MESSAGES = [
 	{
 		kind: "done",
 		done: {
-			answer: "Based on the past 24 hours of news, here are the key developments: AI research has made significant progress.",
+			answer:
+				"Based on the past 24 hours of news, here are the key developments: AI research has made significant progress.",
 			citations: [
-				{ url: "https://example.com/ai-news", title: "AI Research Update", publishedAt: "2025-12-31T08:00:00Z" },
-				{ url: "https://example.com/tech-weekly", title: "Tech Weekly", publishedAt: "2025-12-31T06:00:00Z" },
+				{
+					url: "https://example.com/ai-news",
+					title: "AI Research Update",
+					publishedAt: "2025-12-31T08:00:00Z",
+				},
+				{
+					url: "https://example.com/tech-weekly",
+					title: "Tech Weekly",
+					publishedAt: "2025-12-31T06:00:00Z",
+				},
 			],
 		},
 	},
@@ -573,22 +613,134 @@ export const JOB_PROGRESS_RESPONSE = {
 			trigger_source: "system",
 			user_id: null,
 			status_history: [
-				{ id: 1, status: "running", stage: "fetch", transitioned_at: "2025-12-20T10:00:00Z", reason: null, actor: "system" },
-				{ id: 2, status: "completed", stage: "fetch", transitioned_at: "2025-12-20T10:00:45Z", reason: null, actor: "system" },
-				{ id: 3, status: "running", stage: "preprocess", transitioned_at: "2025-12-20T10:00:45Z", reason: null, actor: "system" },
-				{ id: 4, status: "completed", stage: "preprocess", transitioned_at: "2025-12-20T10:01:30Z", reason: null, actor: "system" },
-				{ id: 5, status: "running", stage: "dedup", transitioned_at: "2025-12-20T10:01:30Z", reason: null, actor: "system" },
-				{ id: 6, status: "completed", stage: "dedup", transitioned_at: "2025-12-20T10:02:00Z", reason: null, actor: "system" },
-				{ id: 7, status: "running", stage: "genre", transitioned_at: "2025-12-20T10:02:00Z", reason: null, actor: "system" },
-				{ id: 8, status: "completed", stage: "genre", transitioned_at: "2025-12-20T10:02:30Z", reason: null, actor: "system" },
-				{ id: 9, status: "running", stage: "select", transitioned_at: "2025-12-20T10:02:30Z", reason: null, actor: "system" },
-				{ id: 10, status: "completed", stage: "select", transitioned_at: "2025-12-20T10:03:00Z", reason: null, actor: "system" },
-				{ id: 11, status: "running", stage: "evidence", transitioned_at: "2025-12-20T10:03:00Z", reason: null, actor: "system" },
-				{ id: 12, status: "completed", stage: "evidence", transitioned_at: "2025-12-20T10:04:00Z", reason: null, actor: "system" },
-				{ id: 13, status: "running", stage: "dispatch", transitioned_at: "2025-12-20T10:04:00Z", reason: null, actor: "system" },
-				{ id: 14, status: "completed", stage: "dispatch", transitioned_at: "2025-12-20T10:05:00Z", reason: null, actor: "system" },
-				{ id: 15, status: "running", stage: "persist", transitioned_at: "2025-12-20T10:05:00Z", reason: null, actor: "system" },
-				{ id: 16, status: "completed", stage: "persist", transitioned_at: "2025-12-20T10:05:30Z", reason: null, actor: "system" },
+				{
+					id: 1,
+					status: "running",
+					stage: "fetch",
+					transitioned_at: "2025-12-20T10:00:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 2,
+					status: "completed",
+					stage: "fetch",
+					transitioned_at: "2025-12-20T10:00:45Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 3,
+					status: "running",
+					stage: "preprocess",
+					transitioned_at: "2025-12-20T10:00:45Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 4,
+					status: "completed",
+					stage: "preprocess",
+					transitioned_at: "2025-12-20T10:01:30Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 5,
+					status: "running",
+					stage: "dedup",
+					transitioned_at: "2025-12-20T10:01:30Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 6,
+					status: "completed",
+					stage: "dedup",
+					transitioned_at: "2025-12-20T10:02:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 7,
+					status: "running",
+					stage: "genre",
+					transitioned_at: "2025-12-20T10:02:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 8,
+					status: "completed",
+					stage: "genre",
+					transitioned_at: "2025-12-20T10:02:30Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 9,
+					status: "running",
+					stage: "select",
+					transitioned_at: "2025-12-20T10:02:30Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 10,
+					status: "completed",
+					stage: "select",
+					transitioned_at: "2025-12-20T10:03:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 11,
+					status: "running",
+					stage: "evidence",
+					transitioned_at: "2025-12-20T10:03:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 12,
+					status: "completed",
+					stage: "evidence",
+					transitioned_at: "2025-12-20T10:04:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 13,
+					status: "running",
+					stage: "dispatch",
+					transitioned_at: "2025-12-20T10:04:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 14,
+					status: "completed",
+					stage: "dispatch",
+					transitioned_at: "2025-12-20T10:05:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 15,
+					status: "running",
+					stage: "persist",
+					transitioned_at: "2025-12-20T10:05:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 16,
+					status: "completed",
+					stage: "persist",
+					transitioned_at: "2025-12-20T10:05:30Z",
+					reason: null,
+					actor: "system",
+				},
 			],
 		},
 		{
@@ -601,12 +753,54 @@ export const JOB_PROGRESS_RESPONSE = {
 			trigger_source: "user",
 			user_id: "user-123",
 			status_history: [
-				{ id: 1, status: "running", stage: "fetch", transitioned_at: "2025-12-20T08:00:00Z", reason: null, actor: "system" },
-				{ id: 2, status: "completed", stage: "fetch", transitioned_at: "2025-12-20T08:00:30Z", reason: null, actor: "system" },
-				{ id: 3, status: "running", stage: "preprocess", transitioned_at: "2025-12-20T08:00:30Z", reason: null, actor: "system" },
-				{ id: 4, status: "completed", stage: "preprocess", transitioned_at: "2025-12-20T08:01:15Z", reason: null, actor: "system" },
-				{ id: 5, status: "running", stage: "genre", transitioned_at: "2025-12-20T08:01:15Z", reason: null, actor: "system" },
-				{ id: 6, status: "failed", stage: "genre", transitioned_at: "2025-12-20T08:02:15Z", reason: "Genre classification timeout", actor: "system" },
+				{
+					id: 1,
+					status: "running",
+					stage: "fetch",
+					transitioned_at: "2025-12-20T08:00:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 2,
+					status: "completed",
+					stage: "fetch",
+					transitioned_at: "2025-12-20T08:00:30Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 3,
+					status: "running",
+					stage: "preprocess",
+					transitioned_at: "2025-12-20T08:00:30Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 4,
+					status: "completed",
+					stage: "preprocess",
+					transitioned_at: "2025-12-20T08:01:15Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 5,
+					status: "running",
+					stage: "genre",
+					transitioned_at: "2025-12-20T08:01:15Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 6,
+					status: "failed",
+					stage: "genre",
+					transitioned_at: "2025-12-20T08:02:15Z",
+					reason: "Genre classification timeout",
+					actor: "system",
+				},
 			],
 		},
 	],

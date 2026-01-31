@@ -69,7 +69,9 @@ export async function startMockServers(): Promise<void> {
 export async function stopMockServers(): Promise<void> {
 	return new Promise((resolve) => {
 		let closed = 0;
-		const total = [kratosServer, authHubServer, backendServer].filter(Boolean).length;
+		const total = [kratosServer, authHubServer, backendServer].filter(
+			Boolean,
+		).length;
 
 		if (total === 0) {
 			resolve();

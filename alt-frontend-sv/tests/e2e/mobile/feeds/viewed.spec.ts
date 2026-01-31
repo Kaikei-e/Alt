@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { gotoMobileRoute } from "../../helpers/navigation";
 import { fulfillJson } from "../../utils/mockHelpers";
-import { CONNECT_READ_FEEDS_EMPTY_RESPONSE, CONNECT_RPC_PATHS } from "../../fixtures/mockData";
+import {
+	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
+	CONNECT_RPC_PATHS,
+} from "../../fixtures/mockData";
 
 test.describe("mobile feeds routes - viewed", () => {
 	test("viewed page shows empty history state", async ({ page }) => {

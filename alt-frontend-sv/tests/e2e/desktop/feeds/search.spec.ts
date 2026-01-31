@@ -37,7 +37,9 @@ test.describe("Desktop Feeds Search - Error Handling", () => {
 		await expect(searchButton).toBeDisabled();
 	});
 
-	test("shows error message when search API returns error", async ({ page }) => {
+	test("shows error message when search API returns error", async ({
+		page,
+	}) => {
 		// Mock error response (simulating search-indexer unavailable)
 		await page.route("**/SearchFeeds", (route) =>
 			route.fulfill({
@@ -45,7 +47,8 @@ test.describe("Desktop Feeds Search - Error Handling", () => {
 				contentType: "application/json",
 				body: JSON.stringify({
 					code: "internal",
-					message: "Unable to connect to external service. Please try again. (Error ID: test123)",
+					message:
+						"Unable to connect to external service. Please try again. (Error ID: test123)",
 				}),
 			}),
 		);
@@ -55,7 +58,9 @@ test.describe("Desktop Feeds Search - Error Handling", () => {
 		await page.getByRole("button", { name: "Search" }).click();
 
 		// Wait for error message - should show error text
-		await expect(page.getByText(/error searching/i)).toBeVisible({ timeout: 10000 });
+		await expect(page.getByText(/error searching/i)).toBeVisible({
+			timeout: 10000,
+		});
 	});
 
 	test("error message contains Error ID for debugging", async ({ page }) => {
@@ -66,7 +71,8 @@ test.describe("Desktop Feeds Search - Error Handling", () => {
 				contentType: "application/json",
 				body: JSON.stringify({
 					code: "internal",
-					message: "The request took too long. Please try again. (Error ID: abc12345)",
+					message:
+						"The request took too long. Please try again. (Error ID: abc12345)",
 				}),
 			}),
 		);
@@ -76,7 +82,9 @@ test.describe("Desktop Feeds Search - Error Handling", () => {
 		await page.getByRole("button", { name: "Search" }).click();
 
 		// Wait for error message with Error ID
-		await expect(page.getByText(/error searching/i)).toBeVisible({ timeout: 10000 });
+		await expect(page.getByText(/error searching/i)).toBeVisible({
+			timeout: 10000,
+		});
 		// The error message should be visible (contains the error text from API)
 		await expect(page.getByText(/Error ID/i)).toBeVisible({ timeout: 5000 });
 	});
