@@ -12,7 +12,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use uuid::Uuid;
 
-use super::cluster_quality::{ArticleEntities, ClusterQualityEvaluator, DefaultClusterQualityEvaluator};
+use super::cluster_quality::{
+    ArticleEntities, ClusterQualityEvaluator, DefaultClusterQualityEvaluator,
+};
 use super::config::{PulseConfig, PulseRollout};
 use super::rationale::{DefaultRationaleGenerator, RationaleGenerator};
 use super::selection::{DefaultTopicSelector, TopicSelector};
@@ -117,9 +119,8 @@ impl DefaultPulseStage {
     /// Create a new pulse stage with the given configuration.
     #[must_use]
     pub fn new(config: PulseConfig, rollout: PulseRollout) -> Self {
-        let quality_evaluator = Arc::new(DefaultClusterQualityEvaluator::new(
-            config.quality.clone(),
-        ));
+        let quality_evaluator =
+            Arc::new(DefaultClusterQualityEvaluator::new(config.quality.clone()));
         let syndication_remover =
             Arc::new(DefaultSyndicationRemover::new(config.syndication.clone()));
         let topic_selector = Arc::new(DefaultTopicSelector::new(config.selection.clone()));
@@ -284,7 +285,10 @@ impl PulseStage for DefaultPulseStage {
                 }
                 Ok(None) => {
                     // Empty cluster, skip
-                    tracing::debug!(cluster_id = cluster_input.cluster_id, "skipping empty cluster");
+                    tracing::debug!(
+                        cluster_id = cluster_input.cluster_id,
+                        "skipping empty cluster"
+                    );
                 }
                 Err(e) => {
                     tracing::warn!(

@@ -84,13 +84,37 @@ pub(crate) struct FeatureProfile {
     pub(crate) tag_overlap_count: usize,
 }
 
+/// Trait for genre classification stages in the pipeline.
+///
+/// This trait defines the contract for stages that assign genres to articles.
+/// Implementors must provide the `assign` method for genre classification.
+///
+/// # Configuration Updates (LSP Compliance)
+///
+/// The `update_config` method is OPTIONAL - stages that don't support runtime
+/// configuration updates will use the default no-op implementation. This is
+/// intentional: not all stages need configuration (e.g., `CoarseGenreStage`
+/// uses fixed parameters), while others like `TwoStageGenreStage` support
+/// dynamic configuration via the refine engine.
+///
+/// Callers should be aware that calling `update_config` may have no effect
+/// depending on the concrete implementation.
 #[async_trait]
 pub(crate) trait GenreStage: Send + Sync {
+    /// Assign genres to articles in the corpus.
     async fn assign(&self, job: &JobContext, corpus: DeduplicatedCorpus) -> Result<GenreBundle>;
 
-    /// 設定を更新する（デフォルト実装は何もしない）。
+    /// Update stage configuration at runtime.
+    ///
+    /// Default implementation is a no-op. Override in stages that support
+    /// dynamic configuration (e.g., `TwoStageGenreStage`).
+    ///
+    /// # Note
+    ///
+    /// This method may have no effect if the stage doesn't support runtime
+    /// configuration updates. This is by design - see trait documentation.
     async fn update_config(&self, _overrides: &super::graph_override::GraphOverrideSettings) {
-        // デフォルト実装は何もしない（既存の実装を壊さないため）
+        // No-op by default - stages like CoarseGenreStage don't need configuration updates
     }
 }
 

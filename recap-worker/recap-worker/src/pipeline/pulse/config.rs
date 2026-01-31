@@ -264,7 +264,10 @@ impl PulseRollout {
             .and_then(|v| v.parse().ok())
             .unwrap_or(PulseVersion::V4);
 
-        Self { percentage, version }
+        Self {
+            percentage,
+            version,
+        }
     }
 
     /// Check if the rollout allows this job to use the new version.
@@ -308,9 +311,9 @@ impl Default for PulseRollout {
 // Helper functions for environment variable parsing
 
 fn parse_bool_env(name: &str, default: bool) -> bool {
-    env::var(name)
-        .ok()
-        .map_or(default, |v| matches!(v.to_lowercase().as_str(), "true" | "1" | "yes" | "on"))
+    env::var(name).ok().map_or(default, |v| {
+        matches!(v.to_lowercase().as_str(), "true" | "1" | "yes" | "on")
+    })
 }
 
 fn parse_f32_env(name: &str, default: f32) -> f32 {

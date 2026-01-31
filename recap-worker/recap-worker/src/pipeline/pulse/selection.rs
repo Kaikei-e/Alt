@@ -42,11 +42,7 @@ pub trait TopicSelector: Send + Sync {
     /// # Returns
     ///
     /// Selected topics with roles and rationales.
-    async fn select(
-        &self,
-        clusters: &[ClusterWithMetrics],
-        max_topics: usize,
-    ) -> SelectionResult;
+    async fn select(&self, clusters: &[ClusterWithMetrics], max_topics: usize) -> SelectionResult;
 }
 
 /// Result of topic selection.
@@ -95,11 +91,7 @@ impl Default for DefaultTopicSelector {
 
 #[async_trait]
 impl TopicSelector for DefaultTopicSelector {
-    async fn select(
-        &self,
-        clusters: &[ClusterWithMetrics],
-        max_topics: usize,
-    ) -> SelectionResult {
+    async fn select(&self, clusters: &[ClusterWithMetrics], max_topics: usize) -> SelectionResult {
         select_topics_with_fallback(clusters, max_topics, &self.config)
     }
 }
@@ -183,7 +175,11 @@ fn select_topics(
         .count();
 
     // Role priority order
-    let roles = [TopicRole::NeedToKnow, TopicRole::Trend, TopicRole::Serendipity];
+    let roles = [
+        TopicRole::NeedToKnow,
+        TopicRole::Trend,
+        TopicRole::Serendipity,
+    ];
 
     for role in roles {
         if selected.len() >= max_topics {
@@ -340,7 +336,10 @@ mod tests {
 
         // Caution minimum
         assert!(tier_meets_minimum(QualityTier::Ok, QualityTier::Caution));
-        assert!(tier_meets_minimum(QualityTier::Caution, QualityTier::Caution));
+        assert!(tier_meets_minimum(
+            QualityTier::Caution,
+            QualityTier::Caution
+        ));
         assert!(!tier_meets_minimum(QualityTier::Ng, QualityTier::Caution));
 
         // Ng minimum (accepts all)

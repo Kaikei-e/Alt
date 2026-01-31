@@ -44,7 +44,6 @@ impl std::str::FromStr for PulseVersion {
     }
 }
 
-
 /// Quality diagnosis tier for cluster evaluation.
 ///
 /// Three-tier system based on cohesion, ambiguity, and entity consistency metrics.
@@ -69,7 +68,6 @@ impl std::fmt::Display for QualityTier {
         }
     }
 }
-
 
 /// Topic role for role-based selection.
 ///

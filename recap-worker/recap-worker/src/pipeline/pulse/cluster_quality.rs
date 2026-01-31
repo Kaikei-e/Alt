@@ -72,8 +72,9 @@ impl ClusterQualityEvaluator for DefaultClusterQualityEvaluator {
         articles: &[ArticleEntities],
     ) -> ClusterQualityMetrics {
         let cohesion = compute_cohesion(titles);
-        let ambiguity = embeddings
-            .map_or(0.0, |e| compute_ambiguity(e, self.config.embedding_similarity_threshold));
+        let ambiguity = embeddings.map_or(0.0, |e| {
+            compute_ambiguity(e, self.config.embedding_similarity_threshold)
+        });
         let entity_consistency = compute_entity_consistency(articles);
 
         let tier = diagnose_quality(cohesion, ambiguity, entity_consistency, &self.config);

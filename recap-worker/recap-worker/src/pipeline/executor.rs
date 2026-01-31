@@ -344,11 +344,7 @@ impl StageExecutor<'_> {
     ///
     /// evidenceステージのように実際の状態保存は不要だが、
     /// フロントエンドでの表示一貫性のためにStatus Historyへの記録が必要な場合に使用
-    pub(crate) async fn record_stage_transition(
-        &self,
-        job_id: Uuid,
-        stage: &str,
-    ) -> Result<()> {
+    pub(crate) async fn record_stage_transition(&self, job_id: Uuid, stage: &str) -> Result<()> {
         tracing::debug!(
             %job_id,
             %stage,

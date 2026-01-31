@@ -63,7 +63,9 @@ impl<S: Subscriber> Layer<S> for StructuredLogLayer {
         event.record(&mut visitor);
 
         // ADR 98: Always include ai_pipeline for recap-worker
-        visitor.values.insert("alt.ai.pipeline".to_string(), json!("recap-processing"));
+        visitor
+            .values
+            .insert("alt.ai.pipeline".to_string(), json!("recap-processing"));
 
         let log_entry = json!({
             "timestamp": chrono::Utc::now().to_rfc3339(),

@@ -310,9 +310,7 @@ fn extract_host(url: &str) -> Option<String> {
         .unwrap_or(url);
 
     // Split at first "/" or "?" or "#" to get host part
-    let host_part = without_scheme
-        .split(['/', '?', '#'])
-        .next()?;
+    let host_part = without_scheme.split(['/', '?', '#']).next()?;
 
     // Remove port if present
     let host = host_part.split(':').next()?;
@@ -473,16 +471,22 @@ mod tests {
         assert_eq!(originals.len(), 1);
         assert_eq!(originals[0].id, "2");
         assert_eq!(removed.len(), 2);
-        assert!(removed
-            .iter()
-            .all(|r| r.status == SyndicationStatus::WireSource));
+        assert!(
+            removed
+                .iter()
+                .all(|r| r.status == SyndicationStatus::WireSource)
+        );
     }
 
     #[test]
     fn test_remove_by_title_similarity() {
         let articles = vec![
             article("1", "Apple releases new iPhone 15 Pro", "https://a.com/1"),
-            article("2", "Apple releases new iPhone 15 Pro Max", "https://b.com/2"),
+            article(
+                "2",
+                "Apple releases new iPhone 15 Pro Max",
+                "https://b.com/2",
+            ),
             article("3", "Microsoft announces Windows 12", "https://c.com/3"),
         ];
 

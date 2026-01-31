@@ -128,11 +128,11 @@ impl MinHashLSH {
         let (num_bands, rows_per_band) = optimal_lsh_params(num_perm, threshold);
 
         // Generate deterministic seeds for reproducibility
-        let seeds: Vec<u64> = (0..num_perm as u64).map(|i| i.wrapping_mul(0x517c_c1b7_2722_0a95)).collect();
-
-        let buckets = (0..num_bands)
-            .map(|_| FxHashMap::default())
+        let seeds: Vec<u64> = (0..num_perm as u64)
+            .map(|i| i.wrapping_mul(0x517c_c1b7_2722_0a95))
             .collect();
+
+        let buckets = (0..num_bands).map(|_| FxHashMap::default()).collect();
 
         Self {
             num_perm,
@@ -394,15 +394,24 @@ mod tests {
 
         let sig1 = lsh.compute_signature("doc1", "The quick brown fox jumps over the lazy dog", 0);
         let sig2 = lsh.compute_signature("doc2", "The quick brown fox jumps over the lazy cat", 1);
-        let sig3 = lsh.compute_signature("doc3", "Completely different text about something else", 2);
+        let sig3 =
+            lsh.compute_signature("doc3", "Completely different text about something else", 2);
 
         // Similar documents should have high similarity
         let sim_1_2 = sig1.similarity(&sig2);
-        assert!(sim_1_2 > 0.5, "Similar docs should have similarity > 0.5, got {}", sim_1_2);
+        assert!(
+            sim_1_2 > 0.5,
+            "Similar docs should have similarity > 0.5, got {}",
+            sim_1_2
+        );
 
         // Different documents should have low similarity
         let sim_1_3 = sig1.similarity(&sig3);
-        assert!(sim_1_3 < 0.3, "Different docs should have similarity < 0.3, got {}", sim_1_3);
+        assert!(
+            sim_1_3 < 0.3,
+            "Different docs should have similarity < 0.3, got {}",
+            sim_1_3
+        );
     }
 
     #[test]
@@ -410,19 +419,43 @@ mod tests {
         let mut lsh = MinHashLSH::with_threshold(0.5);
 
         // Insert first document
-        let result1 = lsh.check_duplicate("doc1", "The quick brown fox jumps over the lazy dog", 0, 0.5, true);
+        let result1 = lsh.check_duplicate(
+            "doc1",
+            "The quick brown fox jumps over the lazy dog",
+            0,
+            0.5,
+            true,
+        );
         assert!(!result1.is_duplicate);
 
         // Check similar document
-        let _result2 = lsh.check_duplicate("doc2", "The quick brown fox jumps over the lazy cat", 1, 0.5, true);
+        let _result2 = lsh.check_duplicate(
+            "doc2",
+            "The quick brown fox jumps over the lazy cat",
+            1,
+            0.5,
+            true,
+        );
         // May or may not be detected as duplicate depending on threshold
 
         // Check completely different document
-        let result3 = lsh.check_duplicate("doc3", "Completely different text about something else entirely", 2, 0.5, true);
+        let result3 = lsh.check_duplicate(
+            "doc3",
+            "Completely different text about something else entirely",
+            2,
+            0.5,
+            true,
+        );
         assert!(!result3.is_duplicate);
 
         // Check exact duplicate
-        let result4 = lsh.check_duplicate("doc4", "The quick brown fox jumps over the lazy dog", 3, 0.5, false);
+        let result4 = lsh.check_duplicate(
+            "doc4",
+            "The quick brown fox jumps over the lazy dog",
+            3,
+            0.5,
+            false,
+        );
         assert!(result4.is_duplicate);
         assert_eq!(result4.original_doc_id, Some("doc1".to_string()));
     }
