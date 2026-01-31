@@ -8,13 +8,16 @@ import MobilePulseView from "$lib/components/mobile/pulse/MobilePulseView.svelte
 import MobilePulseSkeleton from "$lib/components/mobile/pulse/MobilePulseSkeleton.svelte";
 import MobilePulseQuietDay from "$lib/components/mobile/pulse/MobilePulseQuietDay.svelte";
 import MobilePulseError from "$lib/components/mobile/pulse/MobilePulseError.svelte";
+import MobilePulseTopicSheet from "$lib/components/mobile/pulse/MobilePulseTopicSheet.svelte";
 import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
-import type { EveningPulse } from "$lib/schema/evening_pulse";
+import type { EveningPulse, PulseTopic } from "$lib/schema/evening_pulse";
 
 let data = $state<EveningPulse | null>(null);
 let isLoading = $state(true);
 let error = $state<Error | null>(null);
 let isRetrying = $state(false);
+let selectedTopic = $state<PulseTopic | null>(null);
+let isSheetOpen = $state(false);
 
 const fetchData = async () => {
 	try {
@@ -57,6 +60,24 @@ const navigateToRecap = () => {
 	goto("/sv/mobile/recap/7days");
 };
 
+const handleTopicClick = (clusterId: number) => {
+	const topic = data?.topics.find((t) => t.clusterId === clusterId);
+	if (topic) {
+		selectedTopic = topic;
+		isSheetOpen = true;
+	}
+};
+
+const handleCloseSheet = () => {
+	isSheetOpen = false;
+	selectedTopic = null;
+};
+
+const handleNavigateToRecap = (clusterId: number) => {
+	isSheetOpen = false;
+	goto(`/sv/mobile/recap/7days?cluster=${clusterId}`);
+};
+
 onMount(() => {
 	if (browser) {
 		void fetchData();
@@ -80,7 +101,7 @@ onMount(() => {
 			onNavigateToRecap={navigateToRecap}
 		/>
 	{:else if data}
-		<MobilePulseView pulse={data} />
+		<MobilePulseView pulse={data} onTopicClick={handleTopicClick} />
 	{:else}
 		<!-- データが存在しない場合（NOT_FOUND） -->
 		<MobilePulseQuietDay
@@ -91,4 +112,11 @@ onMount(() => {
 	{/if}
 
 	<FloatingMenu />
+
+	<MobilePulseTopicSheet
+		topic={selectedTopic}
+		open={isSheetOpen}
+		onClose={handleCloseSheet}
+		onNavigateToRecap={handleNavigateToRecap}
+	/>
 </div>
