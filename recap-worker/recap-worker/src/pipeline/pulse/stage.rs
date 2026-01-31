@@ -110,24 +110,26 @@ fn extract_source_name(url: &str) -> String {
     reqwest::Url::parse(url)
         .ok()
         .and_then(|u: reqwest::Url| u.host_str().map(String::from))
-        .map(|host: String| {
-            // Remove common prefixes like "www."
-            let host = host.strip_prefix("www.").unwrap_or(&host);
-            // Extract domain name without TLD for common patterns
-            let parts: Vec<&str> = host.split('.').collect();
-            if parts.len() >= 2 {
-                // Capitalize first letter
-                let name = parts[0];
-                let mut chars: Vec<char> = name.chars().collect();
-                if let Some(first) = chars.first_mut() {
-                    *first = first.to_ascii_uppercase();
+        .map_or_else(
+            || "Unknown".to_string(),
+            |host: String| {
+                // Remove common prefixes like "www."
+                let host = host.strip_prefix("www.").unwrap_or(&host);
+                // Extract domain name without TLD for common patterns
+                let parts: Vec<&str> = host.split('.').collect();
+                if parts.len() >= 2 {
+                    // Capitalize first letter
+                    let name = parts[0];
+                    let mut chars: Vec<char> = name.chars().collect();
+                    if let Some(first) = chars.first_mut() {
+                        *first = first.to_ascii_uppercase();
+                    }
+                    chars.into_iter().collect()
+                } else {
+                    host.to_string()
                 }
-                chars.into_iter().collect()
-            } else {
-                host.to_string()
-            }
-        })
-        .unwrap_or_else(|| "Unknown".to_string())
+            },
+        )
 }
 
 /// Trait for pulse pipeline stage execution.
