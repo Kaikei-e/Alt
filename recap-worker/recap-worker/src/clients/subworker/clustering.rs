@@ -224,7 +224,13 @@ impl SubworkerClient {
 
         loop {
             // deadline/stuck検知
-            self.check_polling_constraints(run_id, start_time, deadline, &progress_tracker, stuck_threshold)?;
+            self.check_polling_constraints(
+                run_id,
+                start_time,
+                deadline,
+                &progress_tracker,
+                stuck_threshold,
+            )?;
 
             // 1回のpoll実行（リクエスト送信、検証、デシリアライズ）
             let run = self
