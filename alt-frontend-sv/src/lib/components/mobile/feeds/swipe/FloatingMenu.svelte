@@ -10,6 +10,7 @@ import {
 	Infinity as InfinityIcon,
 	Link as LinkIcon,
 	Menu,
+	Moon,
 	Newspaper,
 	Plus,
 	Rss,
@@ -132,6 +133,13 @@ const menuItems = [
 		category: "recap",
 		icon: Newspaper,
 		description: "Today's overnight updates",
+	},
+	{
+		label: "Evening Pulse",
+		href: `${svBasePath}/mobile/recap/evening-pulse`,
+		category: "recap",
+		icon: Moon,
+		description: "Tonight's key highlights",
 	},
 	{
 		label: "Job Status",

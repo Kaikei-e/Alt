@@ -37,9 +37,7 @@ const formattedDate = $derived.by(() => {
 		class="p-6 rounded-2xl text-center"
 		style="background: var(--surface-bg);"
 	>
-		<div class="text-4xl mb-4" aria-hidden="true">
-			\u263E
-		</div>
+		<div class="text-4xl mb-4" aria-hidden="true">☾</div>
 		<h2
 			class="text-xl font-semibold mb-2"
 			style="color: var(--text-primary);"

@@ -23,9 +23,17 @@ const fetchData = async () => {
 		const transport = createClientTransport();
 		data = await getEveningPulse(transport);
 	} catch (err) {
-		if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
-			goto("/login");
-			return;
+		if (err instanceof ConnectError) {
+			if (err.code === Code.Unauthenticated) {
+				goto("/login");
+				return;
+			}
+			// NOT_FOUND はデータなしとして扱う（エラーではない）
+			if (err.code === Code.NotFound) {
+				data = null;
+				error = null;
+				return;
+			}
 		}
 		error = err instanceof Error ? err : new Error("Unknown error");
 		data = null;
@@ -73,6 +81,13 @@ onMount(() => {
 		/>
 	{:else if data}
 		<MobilePulseView pulse={data} />
+	{:else}
+		<!-- データが存在しない場合（NOT_FOUND） -->
+		<MobilePulseQuietDay
+			date={new Date().toISOString()}
+			quietDay={{ message: "Evening Pulse is not yet available", weeklyHighlights: [] }}
+			onNavigateToRecap={navigateToRecap}
+		/>
 	{/if}
 
 	<FloatingMenu />
