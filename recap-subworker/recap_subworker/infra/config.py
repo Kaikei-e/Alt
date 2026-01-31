@@ -492,6 +492,16 @@ class Settings(BaseSettings):
         description="Path to the English genre thresholds file",
         validation_alias=AliasChoices("RECAP_GENRE_THRESHOLDS_PATH_EN", "RECAP_SUBWORKER_GENRE_THRESHOLDS_PATH_EN"),
     )
+    tfidf_vectorizer_path_ja: str = Field(
+        "data/tfidf_vectorizer_ja.joblib",
+        description="Path to the Japanese TF-IDF vectorizer",
+        validation_alias=AliasChoices("RECAP_TFIDF_VECTORIZER_PATH_JA", "RECAP_SUBWORKER_TFIDF_VECTORIZER_PATH_JA"),
+    )
+    tfidf_vectorizer_path_en: str = Field(
+        "data/tfidf_vectorizer_en.joblib",
+        description="Path to the English TF-IDF vectorizer",
+        validation_alias=AliasChoices("RECAP_TFIDF_VECTORIZER_PATH_EN", "RECAP_SUBWORKER_TFIDF_VECTORIZER_PATH_EN"),
+    )
     genre_subworker_threshold_overrides: str = Field(
         "{}",
         description="JSON string mapping genres to custom threshold values (overrides defaults and model-specific thresholds)",

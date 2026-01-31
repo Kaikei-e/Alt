@@ -161,6 +161,8 @@ async def evaluate_genres(
             weights_path=str(weights_path) if weights_path else None,
             weights_ja_path=settings.genre_classifier_model_path_ja,
             weights_en_path=settings.genre_classifier_model_path_en,
+            vectorizer_ja_path=settings.tfidf_vectorizer_path_ja,
+            vectorizer_en_path=settings.tfidf_vectorizer_path_en,
             thresholds_ja_path=settings.genre_thresholds_path_ja,
             thresholds_en_path=settings.genre_thresholds_path_en,
             use_bootstrap=request.use_bootstrap,
