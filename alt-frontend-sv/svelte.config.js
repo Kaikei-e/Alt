@@ -16,7 +16,7 @@ const config = {
 			base: "/sv",
 		},
 		version: {
-			name: Date.now().toString()
+			name: Date.now().toString(),
 		},
 	},
 };

@@ -17,7 +17,9 @@ export default defineConfig({
 	reporter: [
 		["list"],
 		["html", { open: "never" }],
-		...(process.env.CI ? [["json", { outputFile: "test-results/results.json" }] as const] : []),
+		...(process.env.CI
+			? [["json", { outputFile: "test-results/results.json" }] as const]
+			: []),
 	],
 
 	globalSetup: "./tests/e2e/global-setup",
