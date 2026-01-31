@@ -237,6 +237,26 @@ message PulseTopic {
   optional string genre = 10;
   // Article IDs for this topic
   repeated string article_ids = 11;
+  // Representative articles (top 3 headlines with sources)
+  repeated RepresentativeArticle representative_articles = 12;
+  // Top entities extracted from the cluster
+  repeated string top_entities = 13;
+  // Unique source names in this topic
+  repeated string source_names = 14;
+}
+
+// RepresentativeArticle represents a key article for display in topic cards
+message RepresentativeArticle {
+  // Article ID
+  string article_id = 1;
+  // Article title/headline
+  string title = 2;
+  // Source URL
+  string source_url = 3;
+  // Source name (e.g., "Reuters", "BBC")
+  string source_name = 4;
+  // Published timestamp (RFC3339)
+  string published_at = 5;
 }
 
 // TopicRole represents the role of a topic in Evening Pulse
