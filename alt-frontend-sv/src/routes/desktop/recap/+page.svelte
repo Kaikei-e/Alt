@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { goto } from "$app/navigation";
+import { page } from "$app/state";
 import { ConnectError, Code } from "@connectrpc/connect";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import RecapGenreList from "$lib/components/desktop/recap/RecapGenreList.svelte";
@@ -26,9 +27,15 @@ onMount(async () => {
 		loadingStore.startLoading();
 		const transport = createClientTransport();
 		recapData = await getSevenDayRecap(transport);
-		// Auto-select first genre
+		// Auto-select genre from URL param or first genre
 		if (recapData?.genres && recapData.genres.length > 0) {
-			selectedGenre = recapData.genres[0];
+			const genreParam = page.url.searchParams.get('genre');
+			if (genreParam) {
+				const matchingGenre = recapData.genres.find(g => g.genre === genreParam);
+				selectedGenre = matchingGenre ?? recapData.genres[0];
+			} else {
+				selectedGenre = recapData.genres[0];
+			}
 		}
 	} catch (err) {
 		// Handle authentication error

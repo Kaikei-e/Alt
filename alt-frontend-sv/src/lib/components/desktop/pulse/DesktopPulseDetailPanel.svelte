@@ -9,7 +9,7 @@ interface Props {
 	topic: PulseTopic | null;
 	open: boolean;
 	onClose: () => void;
-	onNavigateToRecap: (clusterId: number) => void;
+	onNavigateToRecap: (clusterId: number, genre?: string) => void;
 }
 
 let { topic, open, onClose, onNavigateToRecap }: Props = $props();
@@ -183,7 +183,7 @@ const formattedSourceNames = $derived.by(() => {
 			{#if topic}
 				<Button
 					class="w-full"
-					onclick={() => onNavigateToRecap(topic.clusterId)}
+					onclick={() => onNavigateToRecap(topic.clusterId, topic.genre)}
 				>
 					<ExternalLink class="w-4 h-4 mr-2" />
 					View in 7-Day Recap

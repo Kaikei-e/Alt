@@ -72,8 +72,13 @@ const handleClosePanel = () => {
 	isPanelOpen = false;
 };
 
-const handleNavigateToRecap = (clusterId: number) => {
-	goto(`/sv/desktop/recap?cluster=${clusterId}`);
+const handleNavigateToRecap = (clusterId: number, genre?: string) => {
+	const params = new URLSearchParams();
+	params.set('cluster', String(clusterId));
+	if (genre) {
+		params.set('genre', genre);
+	}
+	goto(`/sv/desktop/recap?${params.toString()}`);
 };
 
 const handleHighlightClick = (id: string) => {
