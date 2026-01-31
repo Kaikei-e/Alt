@@ -14,6 +14,16 @@ fn test_rescue_pass_integration() {
             content_en: Some("apple apple apple".to_string()),
             content: None,
             genres: vec!["tight_genre".to_string()],
+            primary_genre: None,
+            difficulty: None,
+            language_pairing: None,
+            secondary_genres: None,
+            boundary_pair: None,
+            style: None,
+            terminology_density: None,
+            parallel_id: None,
+            source: None,
+            notes: None,
         });
     }
 
@@ -87,6 +97,16 @@ fn test_rescue_pass_with_labeled_neighbor() {
         content_en: Some("apple".to_string()),
         content: None,
         genres: vec!["fruit".to_string()],
+        primary_genre: None,
+        difficulty: None,
+        language_pairing: None,
+        secondary_genres: None,
+        boundary_pair: None,
+        style: None,
+        terminology_density: None,
+        parallel_id: None,
+        source: None,
+        notes: None,
     }];
 
     let mut path = std::env::temp_dir();
@@ -178,6 +198,16 @@ fn test_predict_rescue_pass() {
         content_en: Some("apple".to_string()),
         content: None,
         genres: vec!["fruit".to_string()],
+        primary_genre: None,
+        difficulty: None,
+        language_pairing: None,
+        secondary_genres: None,
+        boundary_pair: None,
+        style: None,
+        terminology_density: None,
+        parallel_id: None,
+        source: None,
+        notes: None,
     }];
 
     let mut path = std::env::temp_dir();

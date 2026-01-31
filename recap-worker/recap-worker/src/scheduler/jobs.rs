@@ -88,12 +88,18 @@ impl Scheduler {
                 match job_outcome {
                     JobOutcome::Success => {
                         self.recap_dao
-                            .update_job_status_with_history(context.job_id, JobStatus::Completed, None, None)
+                            .update_job_status_with_history(
+                                context.job_id,
+                                JobStatus::Completed,
+                                None,
+                                None,
+                            )
                             .await?;
 
                         // Run classification evaluation after successful job completion
                         if self.config.classification_eval_enabled() {
-                            if let Err(e) = self.run_classification_evaluation(context.job_id).await {
+                            if let Err(e) = self.run_classification_evaluation(context.job_id).await
+                            {
                                 warn!(
                                     job_id = %context.job_id,
                                     error = %e,
@@ -377,7 +383,10 @@ mod tests {
                 // Expected
             }
             JobOutcome::Failed(reason) => {
-                panic!("Expected job to be marked as Success, but got Failed: {}", reason);
+                panic!(
+                    "Expected job to be marked as Success, but got Failed: {}",
+                    reason
+                );
             }
         }
     }
@@ -402,7 +411,10 @@ mod tests {
                 // Expected - no evidence is a valid completion state
             }
             JobOutcome::Failed(reason) => {
-                panic!("Expected job to be marked as Success, but got Failed: {}", reason);
+                panic!(
+                    "Expected job to be marked as Success, but got Failed: {}",
+                    reason
+                );
             }
         }
     }
@@ -426,7 +438,10 @@ mod tests {
                 // Expected - empty job is valid
             }
             JobOutcome::Failed(reason) => {
-                panic!("Expected job to be marked as Success, but got Failed: {}", reason);
+                panic!(
+                    "Expected job to be marked as Success, but got Failed: {}",
+                    reason
+                );
             }
         }
     }
