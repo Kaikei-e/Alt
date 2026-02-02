@@ -23,6 +23,9 @@ def mock_config():
     config.scheduling_rt_reserved_slots = 1
     config.scheduling_aging_threshold_seconds = 60.0
     config.scheduling_aging_boost = 0.5
+    # Preemption settings
+    config.scheduling_preemption_enabled = True
+    config.scheduling_preemption_wait_threshold_seconds = 2.0
     config.llm_num_ctx = 4096
     config.is_base_model_name = Mock(return_value=False)
     config.is_bucket_model_name = Mock(return_value=False)
@@ -539,4 +542,134 @@ async def test_streaming_high_priority_immediate_acquisition(mock_config, mock_d
                 pass
 
             await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_slow_generation_warning_uses_decode_speed(mock_config, mock_driver, caplog):
+    """Test that slow generation warning uses decode speed (eval_duration) not total_duration.
+
+    Previously, tokens_per_second was calculated as eval_count / total_duration, which
+    incorrectly included load_duration and prompt_eval_duration, leading to false positive
+    warnings. The fix uses eval_count / eval_duration (decode speed) for accurate detection.
+    """
+    import logging
+    caplog.set_level(logging.WARNING)
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        # Simulate response with:
+        # - Fast decode speed: 70 tok/s (eval_count=70, eval_duration=1s)
+        # - But slow total_duration due to load/prefill time
+        # This should NOT trigger a slow generation warning
+        normal_decode_response = {
+            "response": "Test response",
+            "model": "test-model",
+            "done": True,
+            "prompt_eval_count": 2000,
+            "eval_count": 70,  # 70 tokens generated
+            "total_duration": 70_000_000_000,  # 70 seconds total (includes queue, load, prefill)
+            "load_duration": 500_000_000,  # 0.5 seconds load
+            "prompt_eval_duration": 68_500_000_000,  # 68.5 seconds prefill (large prompt)
+            "eval_duration": 1_000_000_000,  # 1 second decode -> 70 tok/s (FAST!)
+        }
+        mock_driver.generate = AsyncMock(return_value=normal_decode_response)
+
+        await gateway.generate("Test prompt")
+
+        # Verify NO slow generation warning was logged
+        # Old calculation: 70 tokens / 70 seconds = 1 tok/s -> would warn (WRONG)
+        # New calculation: 70 tokens / 1 second = 70 tok/s -> no warning (CORRECT)
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        slow_gen_warnings = [r for r in warning_records if "Slow LLM generation detected" in r.message]
+        assert len(slow_gen_warnings) == 0, (
+            f"Should NOT warn when decode speed is fast (70 tok/s). "
+            f"Found warnings: {[r.message for r in slow_gen_warnings]}"
+        )
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_slow_generation_warning_triggers_on_slow_decode(mock_config, mock_driver, caplog):
+    """Test that slow generation warning triggers when decode speed is actually slow."""
+    import logging
+    caplog.set_level(logging.WARNING)
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        # Simulate response with truly slow decode speed: 10 tok/s
+        # and sufficient eval_count (>= 20) to trigger warning
+        slow_decode_response = {
+            "response": "Test response",
+            "model": "test-model",
+            "done": True,
+            "prompt_eval_count": 100,
+            "eval_count": 30,  # 30 tokens generated (>= 20 threshold)
+            "total_duration": 4_000_000_000,  # 4 seconds total
+            "load_duration": 100_000_000,  # 0.1 seconds load
+            "prompt_eval_duration": 900_000_000,  # 0.9 seconds prefill
+            "eval_duration": 3_000_000_000,  # 3 seconds decode -> 10 tok/s (SLOW!)
+        }
+        mock_driver.generate = AsyncMock(return_value=slow_decode_response)
+
+        await gateway.generate("Test prompt")
+
+        # Verify slow generation warning WAS logged
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        slow_gen_warnings = [r for r in warning_records if "Slow LLM generation detected" in r.message]
+        assert len(slow_gen_warnings) >= 1, (
+            f"Should warn when decode speed is slow (10 tok/s). "
+            f"Found warnings: {[r.message[:100] for r in warning_records]}"
+        )
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_slow_generation_warning_skipped_for_short_eval_count(mock_config, mock_driver, caplog):
+    """Test that slow generation warning is skipped when eval_count is too low.
+
+    Short generations (eval_count < 20) can have unstable speed measurements,
+    so we skip the warning to avoid false positives from rerank/expand-query calls.
+    """
+    import logging
+    caplog.set_level(logging.WARNING)
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        # Simulate response with low eval_count (typical for rerank/expand-query)
+        # Even if decode speed looks slow, we should NOT warn
+        short_response = {
+            "response": "yes",  # Short response
+            "model": "test-model",
+            "done": True,
+            "done_reason": "stop",  # Stop token triggered early termination
+            "prompt_eval_count": 100,
+            "eval_count": 7,  # Only 7 tokens (< 20 threshold)
+            "total_duration": 2_000_000_000,  # 2 seconds total
+            "load_duration": 100_000_000,  # 0.1 seconds load
+            "prompt_eval_duration": 1_200_000_000,  # 1.2 seconds prefill
+            "eval_duration": 700_000_000,  # 0.7 seconds decode -> 10 tok/s
+        }
+        mock_driver.generate = AsyncMock(return_value=short_response)
+
+        await gateway.generate("Test prompt")
+
+        # Verify NO slow generation warning was logged
+        # Old behavior: would warn because 7 / 2 = 3.5 tok/s < 30
+        # New behavior: skip warning because eval_count (7) < 20 threshold
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        slow_gen_warnings = [r for r in warning_records if "Slow LLM generation detected" in r.message]
+        assert len(slow_gen_warnings) == 0, (
+            f"Should NOT warn when eval_count is too low ({short_response['eval_count']} < 20). "
+            f"Found warnings: {[r.message for r in slow_gen_warnings]}"
+        )
+
+        await gateway.cleanup()
 

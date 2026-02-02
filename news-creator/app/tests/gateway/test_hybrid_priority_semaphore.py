@@ -484,3 +484,250 @@ class TestEdgeCases:
 
         # All should complete
         assert len(completed) == 10
+
+
+class TestPreemption:
+    """Tests for preemption mechanism."""
+
+    @pytest.fixture
+    def preempted_exception(self):
+        """Import PreemptedException for testing."""
+        from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
+        return PreemptedException
+
+    @pytest.mark.asyncio
+    async def test_preemption_disabled_by_default_false(self, hybrid_semaphore_module):
+        """Test preemption can be disabled."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=2, rt_reserved_slots=1, preemption_enabled=False
+        )
+        assert not semaphore._preemption_enabled
+
+    @pytest.mark.asyncio
+    async def test_preemption_enabled_by_default(self, hybrid_semaphore_module):
+        """Test preemption is enabled by default."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
+        assert semaphore._preemption_enabled
+
+    @pytest.mark.asyncio
+    async def test_register_active_request(self, hybrid_semaphore_module):
+        """Test registering an active request."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
+
+        cancel_event = asyncio.Event()
+        semaphore.register_active_request("task-1", cancel_event, is_high_priority=False)
+
+        assert "task-1" in semaphore._active_requests
+        assert semaphore._active_requests["task-1"].cancel_event is cancel_event
+        assert not semaphore._active_requests["task-1"].is_high_priority
+
+    @pytest.mark.asyncio
+    async def test_unregister_active_request(self, hybrid_semaphore_module):
+        """Test unregistering an active request."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
+
+        cancel_event = asyncio.Event()
+        semaphore.register_active_request("task-1", cancel_event, is_high_priority=False)
+        semaphore.unregister_active_request("task-1")
+
+        assert "task-1" not in semaphore._active_requests
+
+    @pytest.mark.asyncio
+    async def test_unregister_nonexistent_request(self, hybrid_semaphore_module):
+        """Test unregistering a non-existent request doesn't raise."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
+
+        # Should not raise
+        semaphore.unregister_active_request("nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_has_preemptable_be(self, hybrid_semaphore_module):
+        """Test checking for preemptable BE requests."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
+
+        # No active requests
+        assert not semaphore._has_preemptable_be()
+
+        # Only high priority request
+        cancel_event1 = asyncio.Event()
+        semaphore.register_active_request("rt-1", cancel_event1, is_high_priority=True)
+        assert not semaphore._has_preemptable_be()
+
+        # Add BE request
+        cancel_event2 = asyncio.Event()
+        semaphore.register_active_request("be-1", cancel_event2, is_high_priority=False)
+        assert semaphore._has_preemptable_be()
+
+    @pytest.mark.asyncio
+    async def test_rt_preempts_be_when_blocked(self, hybrid_semaphore_module):
+        """RT request triggers preemption when blocked by BE."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=2,
+            rt_reserved_slots=1,
+            preemption_enabled=True,
+            preemption_wait_threshold=0.1,
+        )
+
+        # Acquire RT slot (for an existing RT request)
+        await semaphore.acquire(high_priority=True)
+
+        # Acquire BE slot and register as active
+        await semaphore.acquire(high_priority=False)
+        be_cancel_event = asyncio.Event()
+        semaphore.register_active_request("be-1", be_cancel_event, is_high_priority=False)
+
+        # New RT request should trigger preemption
+        rt_acquired = asyncio.Event()
+
+        async def rt_worker():
+            await semaphore.acquire(high_priority=True)
+            rt_acquired.set()
+
+        rt_task = asyncio.create_task(rt_worker())
+        await asyncio.sleep(0.05)
+
+        # BE cancel event should be set
+        assert be_cancel_event.is_set(), "BE cancel event should be triggered for preemption"
+
+        # Simulate BE completion and slot release
+        semaphore.unregister_active_request("be-1")
+        semaphore.release(was_high_priority=False)
+
+        # RT should eventually acquire
+        await asyncio.wait_for(rt_acquired.wait(), timeout=2.0)
+        await rt_task
+
+    @pytest.mark.asyncio
+    async def test_preemption_not_triggered_when_disabled(self, hybrid_semaphore_module):
+        """Preemption is not triggered when disabled."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=2,
+            rt_reserved_slots=1,
+            preemption_enabled=False,
+        )
+
+        # Acquire both slots
+        await semaphore.acquire(high_priority=True)
+        await semaphore.acquire(high_priority=False)
+        be_cancel_event = asyncio.Event()
+        semaphore.register_active_request("be-1", be_cancel_event, is_high_priority=False)
+
+        # New RT request queues but does not preempt
+        rt_queued = asyncio.Event()
+
+        async def rt_worker():
+            rt_queued.set()
+            await semaphore.acquire(high_priority=True)
+
+        rt_task = asyncio.create_task(rt_worker())
+        await asyncio.sleep(0.05)
+
+        # BE cancel event should NOT be set
+        assert not be_cancel_event.is_set(), "BE should not be preempted when disabled"
+
+        # Cleanup
+        rt_task.cancel()
+        try:
+            await rt_task
+        except asyncio.CancelledError:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_preempt_oldest_be(self, hybrid_semaphore_module):
+        """Test that oldest BE request is preempted first."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=3,
+            rt_reserved_slots=1,
+            preemption_enabled=True,
+        )
+
+        # Register two BE requests with different start times
+        cancel_event1 = asyncio.Event()
+        cancel_event2 = asyncio.Event()
+
+        semaphore.register_active_request("be-old", cancel_event1, is_high_priority=False)
+        await asyncio.sleep(0.02)  # Ensure different timestamps
+        semaphore.register_active_request("be-new", cancel_event2, is_high_priority=False)
+
+        # Manually trigger preemption
+        await semaphore._preempt_oldest_be()
+
+        # Only the oldest should be cancelled
+        assert cancel_event1.is_set(), "Oldest BE should be preempted"
+        assert not cancel_event2.is_set(), "Newer BE should not be preempted"
+
+    @pytest.mark.asyncio
+    async def test_preempted_exception_raised(self, hybrid_semaphore_module, preempted_exception):
+        """Test that PreemptedException can be raised and caught."""
+        PreemptedException = preempted_exception
+
+        with pytest.raises(PreemptedException):
+            raise PreemptedException("task-123 preempted")
+
+    @pytest.mark.asyncio
+    async def test_no_preemption_when_rt_slot_available(self, hybrid_semaphore_module):
+        """RT request doesn't trigger preemption when RT slot is available."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=2,
+            rt_reserved_slots=1,
+            preemption_enabled=True,
+        )
+
+        # Only acquire BE slot, leave RT slot available
+        await semaphore.acquire(high_priority=False)
+        be_cancel_event = asyncio.Event()
+        semaphore.register_active_request("be-1", be_cancel_event, is_high_priority=False)
+
+        # New RT request gets RT slot immediately, no preemption
+        wait_time = await semaphore.acquire(high_priority=True)
+        assert wait_time == 0.0
+        assert not be_cancel_event.is_set(), "BE should not be preempted when RT slot available"
+
+    @pytest.mark.asyncio
+    async def test_rt_does_not_preempt_rt(self, hybrid_semaphore_module):
+        """RT requests should not preempt other RT requests."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=2,
+            rt_reserved_slots=2,  # All slots are RT
+            preemption_enabled=True,
+        )
+
+        # Acquire both RT slots
+        await semaphore.acquire(high_priority=True)
+        cancel_event = asyncio.Event()
+        semaphore.register_active_request("rt-1", cancel_event, is_high_priority=True)
+        await semaphore.acquire(high_priority=True)
+        cancel_event2 = asyncio.Event()
+        semaphore.register_active_request("rt-2", cancel_event2, is_high_priority=True)
+
+        # New RT request should queue, not preempt
+        rt_queued = asyncio.Event()
+
+        async def rt_worker():
+            rt_queued.set()
+            await semaphore.acquire(high_priority=True)
+
+        rt_task = asyncio.create_task(rt_worker())
+        await asyncio.sleep(0.05)
+
+        # Neither RT should be preempted
+        assert not cancel_event.is_set()
+        assert not cancel_event2.is_set()
+
+        # Cleanup
+        rt_task.cancel()
+        try:
+            await rt_task
+        except asyncio.CancelledError:
+            pass

@@ -237,3 +237,48 @@ def test_hierarchical_thresholds_can_be_customized(monkeypatch):
     assert config.hierarchical_threshold_chars == 20_000
     assert config.hierarchical_threshold_clusters == 10
     assert config.hierarchical_chunk_max_chars == 10_000
+
+
+# ============================================================================
+# Preemption Configuration Tests
+# ============================================================================
+
+
+def test_preemption_enabled_defaults_to_true(monkeypatch):
+    """Test that preemption is enabled by default."""
+    monkeypatch.delenv("SCHEDULING_PREEMPTION_ENABLED", raising=False)
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
+
+    config = NewsCreatorConfig()
+
+    assert config.scheduling_preemption_enabled is True
+
+
+def test_preemption_can_be_disabled(monkeypatch):
+    """Test that preemption can be disabled via environment variable."""
+    monkeypatch.setenv("SCHEDULING_PREEMPTION_ENABLED", "false")
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
+
+    config = NewsCreatorConfig()
+
+    assert config.scheduling_preemption_enabled is False
+
+
+def test_preemption_wait_threshold_defaults_to_2_seconds(monkeypatch):
+    """Test that preemption wait threshold defaults to 2.0 seconds."""
+    monkeypatch.delenv("SCHEDULING_PREEMPTION_WAIT_THRESHOLD_SECONDS", raising=False)
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
+
+    config = NewsCreatorConfig()
+
+    assert config.scheduling_preemption_wait_threshold_seconds == 2.0
+
+
+def test_preemption_wait_threshold_can_be_customized(monkeypatch):
+    """Test that preemption wait threshold can be customized."""
+    monkeypatch.setenv("SCHEDULING_PREEMPTION_WAIT_THRESHOLD_SECONDS", "10.0")
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
+
+    config = NewsCreatorConfig()
+
+    assert config.scheduling_preemption_wait_threshold_seconds == 10.0
