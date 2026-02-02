@@ -688,6 +688,8 @@ func (h *Handler) fetchArticleContent(ctx context.Context, urlStr string) (strin
 }
 
 // streamPreProcessorSummarize calls the pre-processor streaming API.
+// It creates an independent context to prevent client disconnection from cancelling the stream,
+// but also monitors the original context to propagate cancellation when client disconnects.
 func (h *Handler) streamPreProcessorSummarize(ctx context.Context, content, articleID, title string) (io.ReadCloser, error) {
 	if articleID == "" {
 		return nil, fmt.Errorf("article_id is required")
@@ -705,12 +707,34 @@ func (h *Handler) streamPreProcessorSummarize(ctx context.Context, content, arti
 	}
 
 	client := &http.Client{
-		Timeout: 0, // No timeout for streaming
+		Timeout: 0, // No timeout for streaming - context handles cancellation
 	}
 
+	// Create an independent context for the streaming request.
+	// This prevents client disconnection (e.g., butterfly-facade timeout) from cancelling
+	// the pre-processor stream mid-generation. Use 10-minute timeout for long articles.
+	streamCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+
+	// Monitor client context in a separate goroutine.
+	// When client disconnects, cancel the pre-processor request to prevent "zombie requests"
+	// that hold locks in pre-processor's processingArticles map.
+	go func() {
+		select {
+		case <-ctx.Done():
+			// Client disconnected - propagate cancellation to pre-processor
+			h.logger.InfoContext(ctx, "client disconnected, cancelling pre-processor stream",
+				"article_id", articleID,
+				"reason", ctx.Err())
+			cancel()
+		case <-streamCtx.Done():
+			// Stream completed normally or timed out - nothing to do
+		}
+	}()
+
 	apiURL := fmt.Sprintf("%s/api/v1/summarize/stream", h.cfg.PreProcessor.URL)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(jsonData))
+	req, err := http.NewRequestWithContext(streamCtx, http.MethodPost, apiURL, bytes.NewReader(jsonData))
 	if err != nil {
+		cancel()
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
@@ -718,10 +742,19 @@ func (h *Handler) streamPreProcessorSummarize(ctx context.Context, content, arti
 
 	resp, err := client.Do(req)
 	if err != nil {
+		cancel()
+		// Check if original context was cancelled
+		if ctx.Err() != nil {
+			h.logger.WarnContext(ctx, "pre-processor stream failed due to client context cancellation",
+				"article_id", articleID,
+				"error", err)
+			return nil, fmt.Errorf("client disconnected during stream setup: %w", ctx.Err())
+		}
 		return nil, fmt.Errorf("failed to call pre-processor stream: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		cancel() // Cancel context on error
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			// Log but don't fail - error response has been read
@@ -735,7 +768,22 @@ func (h *Handler) streamPreProcessorSummarize(ctx context.Context, content, arti
 		"status", resp.Status,
 		"content_type", resp.Header.Get("Content-Type"))
 
-	return resp.Body, nil
+	// Wrap the response body to cancel the context when closed
+	return &streamReaderWithCancel{
+		ReadCloser: resp.Body,
+		cancel:     cancel,
+	}, nil
+}
+
+// streamReaderWithCancel wraps an io.ReadCloser and cancels the context when closed.
+type streamReaderWithCancel struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (s *streamReaderWithCancel) Close() error {
+	s.cancel()
+	return s.ReadCloser.Close()
 }
 
 // streamAndCapture streams data from pre-processor to Connect stream and captures the full summary.
