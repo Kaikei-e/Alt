@@ -4,7 +4,7 @@
  * Provides type-safe methods to call FeedService endpoints.
  */
 
-import { createClient } from "@connectrpc/connect";
+import { createClient, ConnectError, Code } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
 import {
 	FeedService,
@@ -370,6 +370,34 @@ export async function streamFeedStats(
 // =============================================================================
 
 /**
+ * Default delay before retrying on 409 Conflict error (in milliseconds).
+ */
+const CONFLICT_RETRY_DELAY_MS = 3000;
+
+/**
+ * Maximum number of retries for 409 Conflict errors.
+ */
+const CONFLICT_MAX_RETRIES = 3;
+
+/**
+ * Checks if an error is a 409 Conflict (article already processing) error.
+ */
+function isConflictError(error: unknown): boolean {
+	if (error instanceof ConnectError) {
+		// Connect-RPC maps 409 Conflict to Code.AlreadyExists
+		return error.code === Code.AlreadyExists;
+	}
+	return false;
+}
+
+/**
+ * Delays execution for the specified number of milliseconds.
+ */
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Request options for streaming summarization.
  */
 export interface StreamSummarizeOptions {
@@ -381,6 +409,17 @@ export interface StreamSummarizeOptions {
 	content?: string;
 	/** Article title (optional) */
 	title?: string;
+	/**
+	 * Enable automatic retry on 409 Conflict errors.
+	 * When another request is processing the same article, this will wait and retry.
+	 * Default: true
+	 */
+	retryOnConflict?: boolean;
+	/**
+	 * Callback when waiting for retry due to 409 Conflict.
+	 * Can be used to show "processing in progress" message to user.
+	 */
+	onConflictRetry?: (retryCount: number, maxRetries: number) => void;
 }
 
 /**
@@ -413,6 +452,7 @@ export interface StreamSummarizeResult {
 
 /**
  * Stream article summarization in real-time via Connect-RPC Server Streaming.
+ * Automatically retries on 409 Conflict errors (article already processing).
  *
  * @param transport - The Connect transport to use
  * @param options - Request options (feedUrl or articleId required)
@@ -427,74 +467,95 @@ export async function streamSummarize(
 	onError?: (error: Error) => void,
 ): Promise<StreamSummarizeResult> {
 	const client = createFeedClient(transport);
+	const retryOnConflict = options.retryOnConflict ?? true;
 
 	// Validate options
 	if (!options.feedUrl && !options.articleId) {
 		throw new Error("Either feedUrl or articleId is required");
 	}
 
-	let articleId = "";
-	let fullSummary = "";
-	let wasCached = false;
+	// Retry loop for 409 Conflict errors
+	let retryCount = 0;
+	while (retryCount <= CONFLICT_MAX_RETRIES) {
+		let articleId = "";
+		let fullSummary = "";
+		let wasCached = false;
 
-	try {
-		const stream = client.streamSummarize({
-			feedUrl: options.feedUrl,
-			articleId: options.articleId,
-			content: options.content,
-			title: options.title,
-		});
+		try {
+			const stream = client.streamSummarize({
+				feedUrl: options.feedUrl,
+				articleId: options.articleId,
+				content: options.content,
+				title: options.title,
+			});
 
-		for await (const rawResponse of stream) {
-			const response = rawResponse as StreamSummarizeResponse;
-			// Update article ID if provided
-			if (response.articleId) {
-				articleId = response.articleId;
+			for await (const rawResponse of stream) {
+				const response = rawResponse as StreamSummarizeResponse;
+				// Update article ID if provided
+				if (response.articleId) {
+					articleId = response.articleId;
+				}
+
+				// Check if cached response
+				if (response.isCached && response.fullSummary) {
+					wasCached = true;
+					fullSummary = response.fullSummary;
+				}
+
+				// Accumulate chunks if not cached
+				if (!response.isCached && response.chunk) {
+					fullSummary += response.chunk;
+				}
+
+				// If final message with full summary, use that
+				if (response.isFinal && response.fullSummary) {
+					fullSummary = response.fullSummary;
+				}
+
+				// Call onChunk callback if provided
+				if (onChunk) {
+					onChunk({
+						chunk: response.chunk,
+						isFinal: response.isFinal,
+						articleId: response.articleId,
+						isCached: response.isCached,
+						fullSummary: response.fullSummary ?? null,
+					});
+				}
 			}
 
-			// Check if cached response
-			if (response.isCached && response.fullSummary) {
-				wasCached = true;
-				fullSummary = response.fullSummary;
+			return {
+				articleId,
+				summary: fullSummary,
+				wasCached,
+			};
+		} catch (error) {
+			// Handle 409 Conflict with retry
+			if (retryOnConflict && isConflictError(error) && retryCount < CONFLICT_MAX_RETRIES) {
+				retryCount++;
+				// Notify caller about retry
+				if (options.onConflictRetry) {
+					options.onConflictRetry(retryCount, CONFLICT_MAX_RETRIES);
+				}
+				// Wait before retrying
+				await delay(CONFLICT_RETRY_DELAY_MS);
+				continue;
 			}
 
-			// Accumulate chunks if not cached
-			if (!response.isCached && response.chunk) {
-				fullSummary += response.chunk;
+			if (onError && error instanceof Error) {
+				onError(error);
 			}
-
-			// If final message with full summary, use that
-			if (response.isFinal && response.fullSummary) {
-				fullSummary = response.fullSummary;
-			}
-
-			// Call onChunk callback if provided
-			if (onChunk) {
-				onChunk({
-					chunk: response.chunk,
-					isFinal: response.isFinal,
-					articleId: response.articleId,
-					isCached: response.isCached,
-					fullSummary: response.fullSummary ?? null,
-				});
-			}
+			throw error;
 		}
-
-		return {
-			articleId,
-			summary: fullSummary,
-			wasCached,
-		};
-	} catch (error) {
-		if (onError && error instanceof Error) {
-			onError(error);
-		}
-		throw error;
 	}
+
+	// Should never reach here, but TypeScript needs a return
+	throw new Error("Max retries exceeded for summarization");
 }
 
 /**
  * Stream article summarization with AbortController support.
+ * Automatically retries on 409 Conflict errors (article already processing).
  *
  * @param transport - The Connect transport to use
  * @param options - Request options (feedUrl or articleId required)
@@ -511,6 +572,7 @@ export function streamSummarizeWithAbort(
 	onError?: (error: Error) => void,
 ): AbortController {
 	const abortController = new AbortController();
+	const retryOnConflict = options.retryOnConflict ?? true;
 
 	// Validate options
 	if (!options.feedUrl && !options.articleId) {
@@ -523,8 +585,13 @@ export function streamSummarizeWithAbort(
 
 	const client = createFeedClient(transport);
 
-	// Start streaming in background
-	(async () => {
+	// Internal function to perform streaming with retry support
+	const performStream = async (retryCount: number) => {
+		// Check if aborted before starting
+		if (abortController.signal.aborted) {
+			return;
+		}
+
 		let articleId = "";
 		let fullSummary = "";
 		let wasCached = false;
@@ -580,16 +647,36 @@ export function streamSummarizeWithAbort(
 				wasCached,
 			});
 		} catch (error) {
-			// Only report error if not aborted
-			if (
-				!abortController.signal.aborted &&
-				onError &&
-				error instanceof Error
-			) {
+			// Check if aborted
+			if (abortController.signal.aborted) {
+				return;
+			}
+
+			// Handle 409 Conflict with retry
+			if (retryOnConflict && isConflictError(error) && retryCount < CONFLICT_MAX_RETRIES) {
+				const nextRetry = retryCount + 1;
+				// Notify caller about retry
+				if (options.onConflictRetry) {
+					options.onConflictRetry(nextRetry, CONFLICT_MAX_RETRIES);
+				}
+				// Wait before retrying
+				await delay(CONFLICT_RETRY_DELAY_MS);
+				// Retry if not aborted
+				if (!abortController.signal.aborted) {
+					await performStream(nextRetry);
+				}
+				return;
+			}
+
+			// Report error if not aborted
+			if (onError && error instanceof Error) {
 				onError(error);
 			}
 		}
-	})();
+	};
+
+	// Start streaming in background
+	performStream(0);
 
 	return abortController;
 }

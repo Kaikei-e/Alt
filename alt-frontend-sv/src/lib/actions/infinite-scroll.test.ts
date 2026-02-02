@@ -153,7 +153,8 @@ describe("infiniteScroll action", () => {
 
 		const action = infiniteScroll(element, { callback });
 		const observer = mockObserverInstances[0];
-		const disconnectSpy = vi.spyOn(observer!, "disconnect");
+		if (!observer) throw new Error("Observer should exist");
+		const disconnectSpy = vi.spyOn(observer, "disconnect");
 
 		action.destroy();
 

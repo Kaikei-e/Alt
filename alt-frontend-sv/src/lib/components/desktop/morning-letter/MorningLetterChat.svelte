@@ -37,14 +37,24 @@ type Props = {
 
 let { withinHours = 24 }: Props = $props();
 
-let messages = $state<Message[]>([
-	{
-		id: "welcome",
-		message: `Hello! I'm your Morning Letter assistant. I can answer questions about news from the past ${withinHours} hours. What would you like to know?`,
-		role: "assistant",
-		timestamp: new Date().toLocaleTimeString(),
-	},
-]);
+const welcomeMessage = $derived(
+	`Hello! I'm your Morning Letter assistant. I can answer questions about news from the past ${withinHours} hours. What would you like to know?`
+);
+
+let messages = $state<Message[]>([]);
+
+$effect(() => {
+	if (messages.length === 0) {
+		messages = [
+			{
+				id: "welcome",
+				message: welcomeMessage,
+				role: "assistant",
+				timestamp: new Date().toLocaleTimeString(),
+			},
+		];
+	}
+});
 
 let isLoading = $state(false);
 let inputValue = $state("");

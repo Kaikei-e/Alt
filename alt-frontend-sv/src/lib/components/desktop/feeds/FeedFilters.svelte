@@ -13,8 +13,13 @@ let {
 	onFilterChange,
 }: Props = $props();
 
-let localUnreadOnly = $state(unreadOnly);
-let localSortBy = $state(sortBy);
+let localUnreadOnly = $state(false);
+let localSortBy = $state("date_desc");
+
+$effect.pre(() => {
+	localUnreadOnly = unreadOnly;
+	localSortBy = sortBy;
+});
 
 function handleUnreadChange(event: Event) {
 	const target = event.target as HTMLInputElement;

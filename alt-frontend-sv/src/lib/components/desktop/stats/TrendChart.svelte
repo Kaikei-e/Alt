@@ -37,7 +37,7 @@ interface Props {
 
 let { title, dataPoints, dataKey, color, loading = false }: Props = $props();
 
-let canvas: HTMLCanvasElement;
+let canvas = $state<HTMLCanvasElement | undefined>(undefined);
 let chart: Chart | null = null;
 
 function formatTimestamp(timestamp: string, granularity: string): string {

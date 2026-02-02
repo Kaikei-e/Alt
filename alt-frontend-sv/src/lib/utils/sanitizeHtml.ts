@@ -88,8 +88,9 @@ export function sanitizeHtml(html: string): string {
 		ADD_ATTR: ["target", "rel"],
 		// Prevent data: URLs which can be used for XSS
 		ALLOW_DATA_ATTR: false,
-		// Allow only safe URL protocols
+		// Allow only safe URL protocols (https/http only, mailto excluded for RSS context)
+		// Note: hyphen escaped as \- to avoid ambiguous character range (CodeQL js/overly-large-range)
 		ALLOWED_URI_REGEXP:
-			/^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+			/^(?:https?:|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
 	});
 }
