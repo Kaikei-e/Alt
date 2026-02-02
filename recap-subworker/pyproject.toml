@@ -63,7 +63,7 @@ recap-subworker = "recap_subworker.__main__:main"
 
 [tool.uv]
 package = true
-constraint-dependencies = ["wheel>=0.46.2", "protobuf>=6.33.4"]
+constraint-dependencies = ["wheel>=0.46.2", "protobuf>=6.33.5"]
 
 [tool.setuptools]
 packages = ["recap_subworker"]
