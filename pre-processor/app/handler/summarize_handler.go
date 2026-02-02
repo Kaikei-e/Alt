@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"pre-processor/domain"
 	"pre-processor/models"
@@ -18,9 +19,48 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// processingLock holds lock metadata for timeout-based lock management.
+type processingLock struct {
+	startTime time.Time
+}
+
 // processingArticles tracks article IDs currently being processed to prevent duplicate requests.
 // This prevents the retry loop issue where timeout causes immediate retry which fills the queue.
 var processingArticles sync.Map
+
+// processingTimeout defines how long a lock can be held before it's considered stale.
+// This prevents "zombie locks" when the original request hangs or client disconnects
+// with context.Background() being used upstream.
+const processingTimeout = 5 * time.Minute
+
+// tryAcquireLock attempts to acquire a processing lock for the given article ID.
+// Returns true if lock was acquired, false if article is already being processed.
+// Stale locks (older than processingTimeout) are automatically released.
+func tryAcquireLock(articleID string) bool {
+	now := time.Now()
+	newLock := &processingLock{startTime: now}
+
+	// Try to store the lock
+	if actual, loaded := processingArticles.LoadOrStore(articleID, newLock); loaded {
+		// Lock exists - check if it's stale
+		existingLock := actual.(*processingLock)
+		if time.Since(existingLock.startTime) > processingTimeout {
+			// Stale lock - try to replace it with CompareAndSwap
+			if processingArticles.CompareAndSwap(articleID, existingLock, newLock) {
+				return true // Successfully replaced stale lock
+			}
+			// Another goroutine beat us - retry the whole operation
+			return tryAcquireLock(articleID)
+		}
+		return false // Lock is still valid
+	}
+	return true // Successfully acquired new lock
+}
+
+// releaseLock releases the processing lock for the given article ID.
+func releaseLock(articleID string) {
+	processingArticles.Delete(articleID)
+}
 
 // SummarizeRequest represents the request body for article summarization
 type SummarizeRequest struct {
@@ -81,7 +121,8 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 
 	// Check if this article is already being processed to prevent duplicate requests.
 	// This prevents the retry loop issue where timeout causes immediate retry which fills the queue.
-	if _, loaded := processingArticles.LoadOrStore(req.ArticleID, true); loaded {
+	// Uses timeout-based lock to prevent zombie locks when upstream uses context.Background().
+	if !tryAcquireLock(req.ArticleID) {
 		h.logger.WarnContext(ctx, "article is already being processed, rejecting duplicate request",
 			"article_id", req.ArticleID)
 		return apperrors.NewConflictContextError(
@@ -91,7 +132,7 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 		)
 	}
 	// Ensure we clean up the tracking entry when done
-	defer processingArticles.Delete(req.ArticleID)
+	defer releaseLock(req.ArticleID)
 
 	// Fetch article to get user_id (always needed for summary storage)
 	fetchedArticle, err := h.articleRepo.FindByID(ctx, req.ArticleID)
@@ -256,7 +297,8 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 
 	// Check if this article is already being processed to prevent duplicate requests.
 	// This prevents the retry loop issue where timeout causes immediate retry which fills the queue.
-	if _, loaded := processingArticles.LoadOrStore(req.ArticleID, true); loaded {
+	// Uses timeout-based lock to prevent zombie locks when upstream uses context.Background().
+	if !tryAcquireLock(req.ArticleID) {
 		h.logger.WarnContext(ctx, "article is already being processed (stream), rejecting duplicate request",
 			"article_id", req.ArticleID)
 		return apperrors.NewConflictContextError(
@@ -266,7 +308,7 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 		)
 	}
 	// Ensure we clean up the tracking entry when done
-	defer processingArticles.Delete(req.ArticleID)
+	defer releaseLock(req.ArticleID)
 
 	// If content is empty, try to fetch from DB
 	if req.Content == "" {
