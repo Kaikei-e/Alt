@@ -1,13 +1,18 @@
 """Ollama Gateway - implements LLMProviderPort."""
 
+import asyncio
 import logging
+import uuid
 from typing import Dict, Any, Optional, Union, AsyncIterator
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.driver.ollama_driver import OllamaDriver
 from news_creator.driver.ollama_stream_driver import OllamaStreamDriver
-from news_creator.gateway.hybrid_priority_semaphore import HybridPrioritySemaphore
+from news_creator.gateway.hybrid_priority_semaphore import (
+    HybridPrioritySemaphore,
+    PreemptedException,
+)
 from news_creator.gateway.model_router import ModelRouter
 from news_creator.gateway.oom_detector import OOMDetector
 from news_creator.port.llm_provider_port import LLMProviderPort
@@ -26,11 +31,14 @@ class OllamaGateway(LLMProviderPort):
         # Hybrid RT/BE semaphore for controlling concurrent requests to Ollama
         # RT (streaming) requests get reserved slots; BE (batch) uses remaining slots
         # Aging mechanism prevents starvation of low-priority batch requests
+        # Preemption allows RT to interrupt long-running BE requests
         self._semaphore = HybridPrioritySemaphore(
             total_slots=config.ollama_request_concurrency,
             rt_reserved_slots=config.scheduling_rt_reserved_slots,
             aging_threshold_seconds=config.scheduling_aging_threshold_seconds,
             aging_boost=config.scheduling_aging_boost,
+            preemption_enabled=config.scheduling_preemption_enabled,
+            preemption_wait_threshold=config.scheduling_preemption_wait_threshold_seconds,
         )
         # OOM detector and model router
         self.oom_detector = OOMDetector(enabled=config.oom_detection_enabled)
@@ -288,10 +296,20 @@ class OllamaGateway(LLMProviderPort):
             return response_generator()
 
         # Handle non-streaming requests
+        # For BE requests, create a cancel event for preemption support
+        task_id = str(uuid.uuid4()) if not is_high_priority else None
+        cancel_event = asyncio.Event() if not is_high_priority else None
+
         # Acquire semaphore based on priority
         wait_time = await self._semaphore.acquire(high_priority=is_high_priority)
         priority_label = "HIGH PRIORITY" if is_high_priority else "LOW PRIORITY"
         try:
+            # Register BE request as active for preemption tracking
+            if task_id and cancel_event:
+                self._semaphore.register_active_request(
+                    task_id, cancel_event, is_high_priority
+                )
+
             logger.info(
                 f"Acquired semaphore ({priority_label}), processing Ollama request (non-streaming)",
                 extra={
@@ -301,12 +319,16 @@ class OllamaGateway(LLMProviderPort):
                     "priority": priority,
                     "is_high_priority": is_high_priority,
                     "queue_wait_time_seconds": round(wait_time, 4),
+                    "task_id": task_id,
                 }
             )
             # Call appropriate driver based on stream flag
             try:
                 # Use regular driver for non-streaming requests
-                response_data = await self.driver.generate(payload)
+                # For BE requests, use cancellation-aware generation
+                response_data = await self._generate_with_cancellation(
+                    payload, cancel_event, task_id
+                )
 
                 # Non-streaming response handling (existing logic)
                 # Check for OOM in response
@@ -326,7 +348,16 @@ class OllamaGateway(LLMProviderPort):
                             f"Retrying with model {selected_model} (2-model mode)",
                             extra={"original_model": model, "new_model": selected_model},
                         )
-                        response_data = await self.driver.generate(payload)
+                        response_data = await self._generate_with_cancellation(
+                            payload, cancel_event, task_id
+                        )
+            except PreemptedException:
+                # BE request was preempted for RT priority
+                logger.info(
+                    f"Request {task_id} preempted, will retry later",
+                    extra={"task_id": task_id, "model": payload["model"]},
+                )
+                raise
             except Exception as e:
                 # Check if exception indicates OOM
                 if self.oom_detector.detect_oom_from_exception(e):
@@ -346,13 +377,18 @@ class OllamaGateway(LLMProviderPort):
                         )
                         # Ensure stream is False for retry to avoid complexity
                         payload["stream"] = False
-                        response_data = await self.driver.generate(payload)
+                        response_data = await self._generate_with_cancellation(
+                            payload, cancel_event, task_id
+                        )
                     else:
                         # Same model selected, re-raise original exception
                         raise
                 else:
                     raise
         finally:
+            # Unregister BE request from active tracking
+            if task_id:
+                self._semaphore.unregister_active_request(task_id)
             self._semaphore.release(was_high_priority=is_high_priority)
 
         # Validate response (Non-streaming only)
@@ -465,44 +501,44 @@ class OllamaGateway(LLMProviderPort):
         )
 
         # Performance monitoring: Warn if generation is slow
-        # RTX 4060 expected performance: 50-100 tokens/sec
+        # RTX 4060 expected performance: 50-100 tokens/sec (decode speed)
         # Threshold: <30 tokens/sec is considered slow for RTX 4060
+        #
+        # IMPORTANT: Use decode_tokens_per_second (eval_count / eval_duration), NOT
+        # tokens_per_second (eval_count / total_duration). The total_duration includes
+        # load_duration and prompt_eval_duration, which would cause false positive warnings
+        # when the actual decode speed is fast but prefill/load took a long time.
+        #
+        # Also require minimum eval_count >= 20 to avoid false positives from short
+        # generations (e.g., rerank/expand-query with early stop token termination).
         SLOW_GENERATION_THRESHOLD_TPS = 30  # tokens per second
-        SLOW_GENERATION_THRESHOLD_DURATION = 5_000_000_000  # 5 seconds in nanoseconds
+        MIN_EVAL_COUNT_FOR_SPEED_WARNING = 20  # Minimum tokens to trigger speed warning
 
-        is_slow_duration = total_duration and total_duration > SLOW_GENERATION_THRESHOLD_DURATION
-        is_slow_tps = tokens_per_second is not None and tokens_per_second < SLOW_GENERATION_THRESHOLD_TPS
+        is_slow_decode = (
+            decode_tokens_per_second is not None
+            and decode_tokens_per_second < SLOW_GENERATION_THRESHOLD_TPS
+            and eval_count is not None
+            and eval_count >= MIN_EVAL_COUNT_FOR_SPEED_WARNING
+        )
 
-        if is_slow_duration or is_slow_tps:
+        if is_slow_decode:
             warning_msg = (
-                f"Slow LLM generation detected: duration={duration_seconds}s, "
-                f"tokens_per_second={tokens_per_second} (expected: 50-100 for RTX 4060), "
-                f"prompt_eval_count={prompt_eval_count}, eval_count={eval_count}, "
+                f"Slow LLM generation detected: decode_speed={decode_tokens_per_second} tok/s "
+                f"(expected: 50-100 for RTX 4060), eval_count={eval_count}, "
+                f"eval_duration={eval_duration_seconds}s, "
+                f"prompt_eval_count={prompt_eval_count}, "
                 f"prompt_length={prompt_length} chars, estimated_tokens={estimated_tokens}, "
                 f"context_window={context_window}, requested_model={requested_model}, "
                 f"actual_model={actual_model}. "
+                f"Low decode speed detected. "
+                f"Possible causes: VRAM bandwidth bottleneck, suboptimal batch size, "
+                f"or model loading issues. Consider checking OLLAMA_NUM_BATCH and "
+                f"OLLAMA_MAX_LOADED_MODELS settings."
             )
 
-            # Add specific recommendations based on the issue
-            if is_slow_tps:
-                warning_msg += (
-                    f"Low token generation speed detected. "
-                    f"Possible causes: VRAM bandwidth bottleneck, suboptimal batch size, "
-                    f"or model loading issues. Consider checking OLLAMA_NUM_BATCH and "
-                    f"OLLAMA_MAX_LOADED_MODELS settings."
-                )
-            else:
-                warning_msg += (
-                    f"Long generation duration. "
-                    f"Possible causes: Large context window ({context_window}), "
-                    f"large prompt size ({estimated_tokens} tokens), "
-                    f"many tokens to generate ({llm_options.get('num_predict')} tokens), "
-                    f"or hardware resource constraints."
-                )
-
             logger.warning(warning_msg, extra={
-                "duration_seconds": duration_seconds,
-                "tokens_per_second": tokens_per_second,
+                "decode_tokens_per_second": decode_tokens_per_second,
+                "eval_duration_seconds": eval_duration_seconds,
                 "prompt_eval_count": prompt_eval_count,
                 "eval_count": eval_count,
                 "prompt_length": prompt_length,
@@ -510,8 +546,6 @@ class OllamaGateway(LLMProviderPort):
                 "context_window": context_window,
                 "requested_model": requested_model,
                 "actual_model": actual_model,
-                "is_slow_tps": is_slow_tps,
-                "is_slow_duration": is_slow_duration,
             })
 
         # Map to domain model (use actual model from response, not requested model)
@@ -528,6 +562,53 @@ class OllamaGateway(LLMProviderPort):
             prompt_eval_duration=prompt_eval_duration,
             eval_duration=eval_duration,
         )
+
+    async def _generate_with_cancellation(
+        self,
+        payload: Dict[str, Any],
+        cancel_event: Optional[asyncio.Event],
+        task_id: Optional[str],
+    ) -> Dict[str, Any]:
+        """
+        Generate with cancellation support for preemption.
+
+        For BE requests, this checks the cancel event periodically and raises
+        PreemptedException if the request is preempted.
+
+        For RT requests (cancel_event is None), this is a direct passthrough.
+
+        Args:
+            payload: Ollama API payload
+            cancel_event: Event signaling preemption (None for RT requests)
+            task_id: Task identifier for logging
+
+        Returns:
+            Ollama response dictionary
+
+        Raises:
+            PreemptedException: If the request is preempted
+        """
+        if cancel_event is None:
+            # RT request - no cancellation check needed
+            return await self.driver.generate(payload)
+
+        # BE request - check for preemption before and after generation
+        if cancel_event.is_set():
+            raise PreemptedException(f"Request {task_id} preempted before generation")
+
+        # Start generation
+        response_data = await self.driver.generate(payload)
+
+        # Check for preemption after generation (for logging purposes)
+        if cancel_event.is_set():
+            logger.info(
+                f"Request {task_id} was marked for preemption during generation",
+                extra={"task_id": task_id},
+            )
+            # Generation completed, so return the result anyway
+            # The preemption will take effect on the next BE request
+
+        return response_data
 
     async def list_models(self) -> list[Dict[str, Any]]:
         """

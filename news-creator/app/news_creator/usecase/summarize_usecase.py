@@ -282,6 +282,30 @@ class SummarizeUsecase:
             # Clean and validate summary
             raw_summary = llm_response.response
 
+            # Check for empty or whitespace-only response BEFORE cleaning
+            # LLM sometimes returns only whitespace (e.g., 60 spaces), which becomes empty after cleaning
+            raw_text_stripped = raw_summary.strip() if raw_summary else ""
+            if len(raw_text_stripped) < 10:
+                logger.warning(
+                    "LLM returned insufficient content (empty or whitespace-only)",
+                    extra={
+                        "article_id": article_id,
+                        "attempt": attempt + 1,
+                        "raw_length": len(raw_summary) if raw_summary else 0,
+                        "stripped_length": len(raw_text_stripped),
+                        "raw_preview": repr(raw_summary[:100]) if raw_summary else "None",
+                    }
+                )
+                if attempt < max_retries:
+                    last_error = f"LLM returned insufficient content (length: {len(raw_text_stripped)})"
+                    last_metadata = {
+                        "model": llm_response.model,
+                        "prompt_tokens": llm_response.prompt_eval_count,
+                        "completion_tokens": llm_response.eval_count,
+                        "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
+                    }
+                    continue  # Retry with adjusted temperature
+
             # Check for repetition
             has_repetition, rep_score, rep_patterns = detect_repetition(
                 raw_summary,

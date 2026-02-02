@@ -139,6 +139,15 @@ class NewsCreatorConfig:
         )
         self.scheduling_aging_boost = self._get_float("SCHEDULING_AGING_BOOST", 0.5)
 
+        # Preemption settings (application-level preemption for RT priority)
+        # See: https://arxiv.org/html/2503.09304v1 (QLLM Preemption)
+        self.scheduling_preemption_enabled = (
+            os.getenv("SCHEDULING_PREEMPTION_ENABLED", "true").lower() == "true"
+        )
+        self.scheduling_preemption_wait_threshold_seconds = self._get_float(
+            "SCHEDULING_PREEMPTION_WAIT_THRESHOLD_SECONDS", 2.0
+        )
+
         # Build bucket model names set for quick lookup
         self._bucket_model_names = {
             self.model_8k_name,

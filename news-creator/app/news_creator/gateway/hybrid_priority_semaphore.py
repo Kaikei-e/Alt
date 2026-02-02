@@ -4,9 +4,15 @@ Hybrid Real-Time / Best-Effort Priority Semaphore.
 Based on best practices:
 - https://arxiv.org/html/2504.09590v1 (Hybrid RT/BE Scheduling)
 - https://huggingface.co/blog/tngtech/llm-performance-request-queueing
+- https://arxiv.org/html/2503.09304v1 (QLLM Preemption)
 
 This semaphore implementation addresses TTFT latency issues caused by
 low-priority batch requests blocking high-priority streaming requests.
+
+Features:
+- Reserved slots for real-time (streaming) requests
+- Aging mechanism to prevent starvation of low-priority requests
+- Application-level preemption for RT priority
 """
 
 import asyncio
@@ -14,8 +20,25 @@ import heapq
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+class PreemptedException(Exception):
+    """Raised when a BE request is preempted for RT priority."""
+
+    pass
+
+
+@dataclass
+class CancellableRequest:
+    """Tracks an active request that can be preempted."""
+
+    task_id: str
+    cancel_event: asyncio.Event
+    start_time: float
+    is_high_priority: bool
 
 
 @dataclass(order=True)
@@ -50,6 +73,8 @@ class HybridPrioritySemaphore:
         rt_reserved_slots: int = 1,
         aging_threshold_seconds: float = 60.0,
         aging_boost: float = 0.5,
+        preemption_enabled: bool = True,
+        preemption_wait_threshold: float = 2.0,
     ):
         if total_slots < 1:
             raise ValueError("total_slots must be >= 1")
@@ -73,6 +98,11 @@ class HybridPrioritySemaphore:
         self._aging_threshold = aging_threshold_seconds
         self._aging_boost = aging_boost
 
+        # Preemption configuration
+        self._preemption_enabled = preemption_enabled
+        self._preemption_threshold = preemption_wait_threshold
+        self._active_requests: Dict[str, CancellableRequest] = {}
+
         self._lock = asyncio.Lock()
         self._last_wait_time: float = 0.0
 
@@ -83,6 +113,8 @@ class HybridPrioritySemaphore:
                 "rt_reserved": rt_reserved_slots,
                 "be_slots": self._be_slots,
                 "aging_threshold": aging_threshold_seconds,
+                "preemption_enabled": preemption_enabled,
+                "preemption_wait_threshold": preemption_wait_threshold,
             },
         )
 
@@ -106,6 +138,73 @@ class HybridPrioritySemaphore:
                 base_score = max(0.1, base_score - aging_factor)  # Don't go below 0.1
 
         return base_score
+
+    def register_active_request(
+        self, task_id: str, cancel_event: asyncio.Event, is_high_priority: bool
+    ) -> None:
+        """
+        Register an active request that can be preempted.
+
+        Args:
+            task_id: Unique identifier for the request
+            cancel_event: Event to signal cancellation
+            is_high_priority: Whether this is a high priority request
+        """
+        self._active_requests[task_id] = CancellableRequest(
+            task_id=task_id,
+            cancel_event=cancel_event,
+            start_time=time.monotonic(),
+            is_high_priority=is_high_priority,
+        )
+        logger.debug(
+            "Registered active request",
+            extra={"task_id": task_id, "is_high_priority": is_high_priority},
+        )
+
+    def unregister_active_request(self, task_id: str) -> None:
+        """
+        Unregister an active request.
+
+        Args:
+            task_id: Unique identifier for the request
+        """
+        if task_id in self._active_requests:
+            del self._active_requests[task_id]
+            logger.debug("Unregistered active request", extra={"task_id": task_id})
+
+    def _has_preemptable_be(self) -> bool:
+        """Check if there are any preemptable BE requests."""
+        return any(
+            not req.is_high_priority for req in self._active_requests.values()
+        )
+
+    async def _preempt_oldest_be(self) -> bool:
+        """
+        Preempt the oldest BE request to free up a slot for RT.
+
+        Returns:
+            True if preemption was triggered, False otherwise
+        """
+        # Find BE requests (non-high-priority)
+        be_requests = [
+            req for req in self._active_requests.values() if not req.is_high_priority
+        ]
+        if not be_requests:
+            return False
+
+        # Find the oldest BE request
+        oldest = min(be_requests, key=lambda r: r.start_time)
+        logger.warning(
+            "Preempting BE request for RT priority",
+            extra={
+                "task_id": oldest.task_id,
+                "running_time": time.monotonic() - oldest.start_time,
+            },
+        )
+
+        # Signal cancellation
+        oldest.cancel_event.set()
+        return True
 
     async def acquire(self, high_priority: bool = False) -> float:
         """
@@ -139,6 +238,14 @@ class HybridPrioritySemaphore:
                         extra={"be_available": self._be_available},
                     )
                     return 0.0
+
+                # No slot available for RT - try preemption
+                if self._preemption_enabled and self._has_preemptable_be():
+                    logger.info(
+                        "RT request blocked, triggering preemption",
+                        extra={"active_requests": len(self._active_requests)},
+                    )
+                    await self._preempt_oldest_be()
             else:
                 # Try BE slot
                 if self._be_available > 0:
