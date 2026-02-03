@@ -36,7 +36,9 @@ services:
     build:
       context: ../news-creator
       dockerfile: Dockerfile.backend
-    gpus: all
+    # GPU Configuration: runtime + deploy.resources for maximum compatibility
+    # See: https://docs.docker.com/compose/how-tos/gpu-support/
+    runtime: nvidia
     deploy:
       resources:
         reservations:
