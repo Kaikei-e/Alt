@@ -10,6 +10,7 @@ import type { Client, Transport } from "@connectrpc/connect";
 import {
 	RecapService,
 	type GetSevenDayRecapResponse,
+	type GetThreeDayRecapResponse,
 } from "$lib/gen/alt/recap/v2/recap_pb";
 import type { RecapSummary, RecapGenre, EvidenceLink } from "$lib/schema/recap";
 
@@ -63,6 +64,33 @@ export async function getSevenDayRecap(
 	const response = (await client.getSevenDayRecap({
 		genreDraftId,
 	})) as GetSevenDayRecapResponse;
+
+	return {
+		jobId: response.jobId,
+		executedAt: response.executedAt,
+		windowStart: response.windowStart,
+		windowEnd: response.windowEnd,
+		totalArticles: response.totalArticles,
+		genres: response.genres.map(convertProtoGenre),
+	};
+}
+
+/**
+ * Gets 3-day recap summary via Connect-RPC.
+ * Faster processing with smaller prompt sizes for daily use.
+ *
+ * @param transport - The Connect transport to use (must include auth)
+ * @param genreDraftId - Optional draft ID for cluster draft attachment
+ * @returns Recap summary with genres
+ */
+export async function getThreeDayRecap(
+	transport: Transport,
+	genreDraftId?: string,
+): Promise<RecapSummaryWithReferences> {
+	const client = createRecapClient(transport);
+	const response = (await client.getThreeDayRecap({
+		genreDraftId,
+	})) as GetThreeDayRecapResponse;
 
 	return {
 		jobId: response.jobId,

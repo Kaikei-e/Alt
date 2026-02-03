@@ -57,7 +57,7 @@ const retry = async () => {
 };
 
 const navigateToRecap = () => {
-	goto("/sv/mobile/recap/7days");
+	goto("/sv/mobile/recap/3days");
 };
 
 const handleTopicClick = (clusterId: number) => {
@@ -75,7 +75,7 @@ const handleCloseSheet = () => {
 
 const handleNavigateToRecap = (clusterId: number) => {
 	isSheetOpen = false;
-	goto(`/sv/mobile/recap/7days?cluster=${clusterId}`);
+	goto(`/sv/mobile/recap/3days?cluster=${clusterId}`);
 };
 
 onMount(() => {

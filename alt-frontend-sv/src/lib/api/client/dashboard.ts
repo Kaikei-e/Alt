@@ -166,8 +166,13 @@ export interface TriggerJobResponse {
 export async function triggerRecapJob(
 	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
 	genres?: string[],
+	windowDays: 3 | 7 = 3,
 ): Promise<TriggerJobResponse> {
-	const res = await fetch(`${base}/api/v1/generate/recaps/7days`, {
+	const endpoint =
+		windowDays === 3
+			? `${base}/api/v1/generate/recaps/3days`
+			: `${base}/api/v1/generate/recaps/7days`;
+	const res = await fetch(endpoint, {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
@@ -179,4 +184,18 @@ export async function triggerRecapJob(
 		throw new Error(`Failed to trigger job: ${error}`);
 	}
 	return res.json();
+}
+
+export async function trigger3DaysRecapJob(
+	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+	genres?: string[],
+): Promise<TriggerJobResponse> {
+	return triggerRecapJob(fetch, genres, 3);
+}
+
+export async function trigger7DaysRecapJob(
+	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+	genres?: string[],
+): Promise<TriggerJobResponse> {
+	return triggerRecapJob(fetch, genres, 7);
 }

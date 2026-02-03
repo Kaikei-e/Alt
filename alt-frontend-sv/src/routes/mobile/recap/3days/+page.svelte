@@ -3,7 +3,7 @@ import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import { goto } from "$app/navigation";
 import { ConnectError, Code } from "@connectrpc/connect";
-import { createClientTransport, getSevenDayRecap } from "$lib/connect";
+import { createClientTransport, getThreeDayRecap } from "$lib/connect";
 import RecapEmptyState from "$lib/components/mobile/recap/RecapEmptyState.svelte";
 import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
 import SwipeRecapScreen from "$lib/components/mobile/recap/SwipeRecapScreen.svelte";
@@ -20,7 +20,7 @@ const fetchData = async () => {
 		isInitialLoading = true;
 		error = null;
 		const transport = createClientTransport();
-		const recap = await getSevenDayRecap(transport);
+		const recap = await getThreeDayRecap(transport);
 		data = recap;
 	} catch (err) {
 		if (err instanceof ConnectError) {
@@ -62,7 +62,7 @@ onMount(() => {
 </script>
 
 <svelte:head>
-	<title>7-Day Recap - Alt</title>
+	<title>3-Day Recap - Alt</title>
 </svelte:head>
 
 <div class="min-h-[100dvh] relative" style="background: var(--app-bg);">
@@ -124,4 +124,3 @@ onMount(() => {
 
 	<FloatingMenu />
 </div>
-

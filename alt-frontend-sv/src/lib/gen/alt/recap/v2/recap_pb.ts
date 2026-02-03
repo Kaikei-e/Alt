@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/recap/v2/recap.proto.
  */
 export const file_alt_recap_v2_recap: GenFile = /*@__PURE__*/
-  fileDesc("ChhhbHQvcmVjYXAvdjIvcmVjYXAucHJvdG8SDGFsdC5yZWNhcC52MiJJChdHZXRTZXZlbkRheVJlY2FwUmVxdWVzdBIbCg5nZW5yZV9kcmFmdF9pZBgBIAEoCUgAiAEBQhEKD19nZW5yZV9kcmFmdF9pZCL1AQoYR2V0U2V2ZW5EYXlSZWNhcFJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRITCgtleGVjdXRlZF9hdBgCIAEoCRIUCgx3aW5kb3dfc3RhcnQYAyABKAkSEgoKd2luZG93X2VuZBgEIAEoCRIWCg50b3RhbF9hcnRpY2xlcxgFIAEoBRIoCgZnZW5yZXMYBiADKAsyGC5hbHQucmVjYXAudjIuUmVjYXBHZW5yZRI2Cg1jbHVzdGVyX2RyYWZ0GAcgASgLMhouYWx0LnJlY2FwLnYyLkNsdXN0ZXJEcmFmdEgAiAEBQhAKDl9jbHVzdGVyX2RyYWZ0It8BCgpSZWNhcEdlbnJlEg0KBWdlbnJlGAEgASgJEg8KB3N1bW1hcnkYAiABKAkSEQoJdG9wX3Rlcm1zGAMgAygJEhUKDWFydGljbGVfY291bnQYBCABKAUSFQoNY2x1c3Rlcl9jb3VudBgFIAEoBRIyCg5ldmlkZW5jZV9saW5rcxgGIAMoCzIaLmFsdC5yZWNhcC52Mi5FdmlkZW5jZUxpbmsSDwoHYnVsbGV0cxgHIAMoCRIrCgpyZWZlcmVuY2VzGAggAygLMhcuYWx0LnJlY2FwLnYyLlJlZmVyZW5jZSJpCgxFdmlkZW5jZUxpbmsSEgoKYXJ0aWNsZV9pZBgBIAEoCRINCgV0aXRsZRgCIAEoCRISCgpzb3VyY2VfdXJsGAMgASgJEhQKDHB1Ymxpc2hlZF9hdBgEIAEoCRIMCgRsYW5nGAUgASgJIlwKCVJlZmVyZW5jZRIKCgJpZBgBIAEoBRILCgN1cmwYAiABKAkSDgoGZG9tYWluGAMgASgJEhcKCmFydGljbGVfaWQYBCABKAlIAIgBAUINCgtfYXJ0aWNsZV9pZCKeAQoMQ2x1c3RlckRyYWZ0EhAKCGRyYWZ0X2lkGAEgASgJEhMKC2Rlc2NyaXB0aW9uGAIgASgJEg4KBnNvdXJjZRgDIAEoCRIUCgxnZW5lcmF0ZWRfYXQYBCABKAkSFQoNdG90YWxfZW50cmllcxgFIAEoBRIqCgZnZW5yZXMYBiADKAsyGi5hbHQucmVjYXAudjIuQ2x1c3RlckdlbnJlInkKDENsdXN0ZXJHZW5yZRINCgVnZW5yZRgBIAEoCRITCgtzYW1wbGVfc2l6ZRgCIAEoBRIVCg1jbHVzdGVyX2NvdW50GAMgASgFEi4KCGNsdXN0ZXJzGAQgAygLMhwuYWx0LnJlY2FwLnYyLkNsdXN0ZXJTZWdtZW50IqsCCg5DbHVzdGVyU2VnbWVudBISCgpjbHVzdGVyX2lkGAEgASgJEg0KBWxhYmVsGAIgASgJEg0KBWNvdW50GAMgASgFEhMKC21hcmdpbl9tZWFuGAQgASgBEhIKCm1hcmdpbl9zdGQYBSABKAESFgoOdG9wX2Jvb3N0X21lYW4YBiABKAESIwobZ3JhcGhfYm9vc3RfYXZhaWxhYmxlX3JhdGlvGAcgASgBEhYKDnRhZ19jb3VudF9tZWFuGAggASgBEhgKEHRhZ19lbnRyb3B5X21lYW4YCSABKAESEAoIdG9wX3RhZ3MYCiADKAkSPQoXcmVwcmVzZW50YXRpdmVfYXJ0aWNsZXMYCyADKAsyHC5hbHQucmVjYXAudjIuQ2x1c3RlckFydGljbGUilwEKDkNsdXN0ZXJBcnRpY2xlEhIKCmFydGljbGVfaWQYASABKAkSDgoGbWFyZ2luGAIgASgBEhEKCXRvcF9ib29zdBgDIAEoARIQCghzdHJhdGVneRgEIAEoCRIRCgl0YWdfY291bnQYBSABKAUSFwoPY2FuZGlkYXRlX2NvdW50GAYgASgFEhAKCHRvcF90YWdzGAcgAygJIjQKFkdldEV2ZW5pbmdQdWxzZVJlcXVlc3QSEQoEZGF0ZRgBIAEoCUgAiAEBQgcKBV9kYXRlIuQBChdHZXRFdmVuaW5nUHVsc2VSZXNwb25zZRIOCgZqb2JfaWQYASABKAkSDAoEZGF0ZRgCIAEoCRIUCgxnZW5lcmF0ZWRfYXQYAyABKAkSKQoGc3RhdHVzGAQgASgOMhkuYWx0LnJlY2FwLnYyLlB1bHNlU3RhdHVzEigKBnRvcGljcxgFIAMoCzIYLmFsdC5yZWNhcC52Mi5QdWxzZVRvcGljEjIKCXF1aWV0X2RheRgGIAEoCzIaLmFsdC5yZWNhcC52Mi5RdWlldERheUluZm9IAIgBAUIMCgpfcXVpZXRfZGF5IskDCgpQdWxzZVRvcGljEhIKCmNsdXN0ZXJfaWQYASABKAMSJQoEcm9sZRgCIAEoDjIXLmFsdC5yZWNhcC52Mi5Ub3BpY1JvbGUSDQoFdGl0bGUYAyABKAkSLwoJcmF0aW9uYWxlGAQgASgLMhwuYWx0LnJlY2FwLnYyLlB1bHNlUmF0aW9uYWxlEhUKDWFydGljbGVfY291bnQYBSABKAUSFAoMc291cmNlX2NvdW50GAYgASgFEhgKC3RpZXIxX2NvdW50GAcgASgFSACIAQESEAoIdGltZV9hZ28YCCABKAkSHQoQdHJlbmRfbXVsdGlwbGllchgJIAEoAUgBiAEBEhIKBWdlbnJlGAogASgJSAKIAQESEwoLYXJ0aWNsZV9pZHMYCyADKAkSRAoXcmVwcmVzZW50YXRpdmVfYXJ0aWNsZXMYDCADKAsyIy5hbHQucmVjYXAudjIuUmVwcmVzZW50YXRpdmVBcnRpY2xlEhQKDHRvcF9lbnRpdGllcxgNIAMoCRIUCgxzb3VyY2VfbmFtZXMYDiADKAlCDgoMX3RpZXIxX2NvdW50QhMKEV90cmVuZF9tdWx0aXBsaWVyQggKBl9nZW5yZSJ5ChVSZXByZXNlbnRhdGl2ZUFydGljbGUSEgoKYXJ0aWNsZV9pZBgBIAEoCRINCgV0aXRsZRgCIAEoCRISCgpzb3VyY2VfdXJsGAMgASgJEhMKC3NvdXJjZV9uYW1lGAQgASgJEhQKDHB1Ymxpc2hlZF9hdBgFIAEoCSJMCg5QdWxzZVJhdGlvbmFsZRIMCgR0ZXh0GAEgASgJEiwKCmNvbmZpZGVuY2UYAiABKA4yGC5hbHQucmVjYXAudjIuQ29uZmlkZW5jZSJZCgxRdWlldERheUluZm8SDwoHbWVzc2FnZRgBIAEoCRI4ChF3ZWVrbHlfaGlnaGxpZ2h0cxgCIAMoCzIdLmFsdC5yZWNhcC52Mi5XZWVrbHlIaWdobGlnaHQiSAoPV2Vla2x5SGlnaGxpZ2h0EgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEgwKBGRhdGUYAyABKAkSDAoEcm9sZRgEIAEoCSqSAQoLUHVsc2VTdGF0dXMSHAoYUFVMU0VfU1RBVFVTX1VOU1BFQ0lGSUVEEAASFwoTUFVMU0VfU1RBVFVTX05PUk1BTBABEhgKFFBVTFNFX1NUQVRVU19QQVJUSUFMEAISGgoWUFVMU0VfU1RBVFVTX1FVSUVUX0RBWRADEhYKElBVTFNFX1NUQVRVU19FUlJPUhAEKnYKCVRvcGljUm9sZRIaChZUT1BJQ19ST0xFX1VOU1BFQ0lGSUVEEAASGwoXVE9QSUNfUk9MRV9ORUVEX1RPX0tOT1cQARIUChBUT1BJQ19ST0xFX1RSRU5EEAISGgoWVE9QSUNfUk9MRV9TRVJFTkRJUElUWRADKmgKCkNvbmZpZGVuY2USGgoWQ09ORklERU5DRV9VTlNQRUNJRklFRBAAEhMKD0NPTkZJREVOQ0VfSElHSBABEhUKEUNPTkZJREVOQ0VfTUVESVVNEAISEgoOQ09ORklERU5DRV9MT1cQAzLRAQoMUmVjYXBTZXJ2aWNlEmEKEEdldFNldmVuRGF5UmVjYXASJS5hbHQucmVjYXAudjIuR2V0U2V2ZW5EYXlSZWNhcFJlcXVlc3QaJi5hbHQucmVjYXAudjIuR2V0U2V2ZW5EYXlSZWNhcFJlc3BvbnNlEl4KD0dldEV2ZW5pbmdQdWxzZRIkLmFsdC5yZWNhcC52Mi5HZXRFdmVuaW5nUHVsc2VSZXF1ZXN0GiUuYWx0LnJlY2FwLnYyLkdldEV2ZW5pbmdQdWxzZVJlc3BvbnNlQiRaImFsdC9nZW4vcHJvdG8vYWx0L3JlY2FwL3YyO3JlY2FwdjJiBnByb3RvMw");
+  fileDesc("ChhhbHQvcmVjYXAvdjIvcmVjYXAucHJvdG8SDGFsdC5yZWNhcC52MiJJChdHZXRTZXZlbkRheVJlY2FwUmVxdWVzdBIbCg5nZW5yZV9kcmFmdF9pZBgBIAEoCUgAiAEBQhEKD19nZW5yZV9kcmFmdF9pZCL1AQoYR2V0U2V2ZW5EYXlSZWNhcFJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRITCgtleGVjdXRlZF9hdBgCIAEoCRIUCgx3aW5kb3dfc3RhcnQYAyABKAkSEgoKd2luZG93X2VuZBgEIAEoCRIWCg50b3RhbF9hcnRpY2xlcxgFIAEoBRIoCgZnZW5yZXMYBiADKAsyGC5hbHQucmVjYXAudjIuUmVjYXBHZW5yZRI2Cg1jbHVzdGVyX2RyYWZ0GAcgASgLMhouYWx0LnJlY2FwLnYyLkNsdXN0ZXJEcmFmdEgAiAEBQhAKDl9jbHVzdGVyX2RyYWZ0IkkKF0dldFRocmVlRGF5UmVjYXBSZXF1ZXN0EhsKDmdlbnJlX2RyYWZ0X2lkGAEgASgJSACIAQFCEQoPX2dlbnJlX2RyYWZ0X2lkIvUBChhHZXRUaHJlZURheVJlY2FwUmVzcG9uc2USDgoGam9iX2lkGAEgASgJEhMKC2V4ZWN1dGVkX2F0GAIgASgJEhQKDHdpbmRvd19zdGFydBgDIAEoCRISCgp3aW5kb3dfZW5kGAQgASgJEhYKDnRvdGFsX2FydGljbGVzGAUgASgFEigKBmdlbnJlcxgGIAMoCzIYLmFsdC5yZWNhcC52Mi5SZWNhcEdlbnJlEjYKDWNsdXN0ZXJfZHJhZnQYByABKAsyGi5hbHQucmVjYXAudjIuQ2x1c3RlckRyYWZ0SACIAQFCEAoOX2NsdXN0ZXJfZHJhZnQi3wEKClJlY2FwR2VucmUSDQoFZ2VucmUYASABKAkSDwoHc3VtbWFyeRgCIAEoCRIRCgl0b3BfdGVybXMYAyADKAkSFQoNYXJ0aWNsZV9jb3VudBgEIAEoBRIVCg1jbHVzdGVyX2NvdW50GAUgASgFEjIKDmV2aWRlbmNlX2xpbmtzGAYgAygLMhouYWx0LnJlY2FwLnYyLkV2aWRlbmNlTGluaxIPCgdidWxsZXRzGAcgAygJEisKCnJlZmVyZW5jZXMYCCADKAsyFy5hbHQucmVjYXAudjIuUmVmZXJlbmNlImkKDEV2aWRlbmNlTGluaxISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEhIKCnNvdXJjZV91cmwYAyABKAkSFAoMcHVibGlzaGVkX2F0GAQgASgJEgwKBGxhbmcYBSABKAkiXAoJUmVmZXJlbmNlEgoKAmlkGAEgASgFEgsKA3VybBgCIAEoCRIOCgZkb21haW4YAyABKAkSFwoKYXJ0aWNsZV9pZBgEIAEoCUgAiAEBQg0KC19hcnRpY2xlX2lkIp4BCgxDbHVzdGVyRHJhZnQSEAoIZHJhZnRfaWQYASABKAkSEwoLZGVzY3JpcHRpb24YAiABKAkSDgoGc291cmNlGAMgASgJEhQKDGdlbmVyYXRlZF9hdBgEIAEoCRIVCg10b3RhbF9lbnRyaWVzGAUgASgFEioKBmdlbnJlcxgGIAMoCzIaLmFsdC5yZWNhcC52Mi5DbHVzdGVyR2VucmUieQoMQ2x1c3RlckdlbnJlEg0KBWdlbnJlGAEgASgJEhMKC3NhbXBsZV9zaXplGAIgASgFEhUKDWNsdXN0ZXJfY291bnQYAyABKAUSLgoIY2x1c3RlcnMYBCADKAsyHC5hbHQucmVjYXAudjIuQ2x1c3RlclNlZ21lbnQiqwIKDkNsdXN0ZXJTZWdtZW50EhIKCmNsdXN0ZXJfaWQYASABKAkSDQoFbGFiZWwYAiABKAkSDQoFY291bnQYAyABKAUSEwoLbWFyZ2luX21lYW4YBCABKAESEgoKbWFyZ2luX3N0ZBgFIAEoARIWCg50b3BfYm9vc3RfbWVhbhgGIAEoARIjChtncmFwaF9ib29zdF9hdmFpbGFibGVfcmF0aW8YByABKAESFgoOdGFnX2NvdW50X21lYW4YCCABKAESGAoQdGFnX2VudHJvcHlfbWVhbhgJIAEoARIQCgh0b3BfdGFncxgKIAMoCRI9ChdyZXByZXNlbnRhdGl2ZV9hcnRpY2xlcxgLIAMoCzIcLmFsdC5yZWNhcC52Mi5DbHVzdGVyQXJ0aWNsZSKXAQoOQ2x1c3RlckFydGljbGUSEgoKYXJ0aWNsZV9pZBgBIAEoCRIOCgZtYXJnaW4YAiABKAESEQoJdG9wX2Jvb3N0GAMgASgBEhAKCHN0cmF0ZWd5GAQgASgJEhEKCXRhZ19jb3VudBgFIAEoBRIXCg9jYW5kaWRhdGVfY291bnQYBiABKAUSEAoIdG9wX3RhZ3MYByADKAkiNAoWR2V0RXZlbmluZ1B1bHNlUmVxdWVzdBIRCgRkYXRlGAEgASgJSACIAQFCBwoFX2RhdGUi5AEKF0dldEV2ZW5pbmdQdWxzZVJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRIMCgRkYXRlGAIgASgJEhQKDGdlbmVyYXRlZF9hdBgDIAEoCRIpCgZzdGF0dXMYBCABKA4yGS5hbHQucmVjYXAudjIuUHVsc2VTdGF0dXMSKAoGdG9waWNzGAUgAygLMhguYWx0LnJlY2FwLnYyLlB1bHNlVG9waWMSMgoJcXVpZXRfZGF5GAYgASgLMhouYWx0LnJlY2FwLnYyLlF1aWV0RGF5SW5mb0gAiAEBQgwKCl9xdWlldF9kYXkiyQMKClB1bHNlVG9waWMSEgoKY2x1c3Rlcl9pZBgBIAEoAxIlCgRyb2xlGAIgASgOMhcuYWx0LnJlY2FwLnYyLlRvcGljUm9sZRINCgV0aXRsZRgDIAEoCRIvCglyYXRpb25hbGUYBCABKAsyHC5hbHQucmVjYXAudjIuUHVsc2VSYXRpb25hbGUSFQoNYXJ0aWNsZV9jb3VudBgFIAEoBRIUCgxzb3VyY2VfY291bnQYBiABKAUSGAoLdGllcjFfY291bnQYByABKAVIAIgBARIQCgh0aW1lX2FnbxgIIAEoCRIdChB0cmVuZF9tdWx0aXBsaWVyGAkgASgBSAGIAQESEgoFZ2VucmUYCiABKAlIAogBARITCgthcnRpY2xlX2lkcxgLIAMoCRJEChdyZXByZXNlbnRhdGl2ZV9hcnRpY2xlcxgMIAMoCzIjLmFsdC5yZWNhcC52Mi5SZXByZXNlbnRhdGl2ZUFydGljbGUSFAoMdG9wX2VudGl0aWVzGA0gAygJEhQKDHNvdXJjZV9uYW1lcxgOIAMoCUIOCgxfdGllcjFfY291bnRCEwoRX3RyZW5kX211bHRpcGxpZXJCCAoGX2dlbnJlInkKFVJlcHJlc2VudGF0aXZlQXJ0aWNsZRISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEhIKCnNvdXJjZV91cmwYAyABKAkSEwoLc291cmNlX25hbWUYBCABKAkSFAoMcHVibGlzaGVkX2F0GAUgASgJIkwKDlB1bHNlUmF0aW9uYWxlEgwKBHRleHQYASABKAkSLAoKY29uZmlkZW5jZRgCIAEoDjIYLmFsdC5yZWNhcC52Mi5Db25maWRlbmNlIlkKDFF1aWV0RGF5SW5mbxIPCgdtZXNzYWdlGAEgASgJEjgKEXdlZWtseV9oaWdobGlnaHRzGAIgAygLMh0uYWx0LnJlY2FwLnYyLldlZWtseUhpZ2hsaWdodCJICg9XZWVrbHlIaWdobGlnaHQSCgoCaWQYASABKAkSDQoFdGl0bGUYAiABKAkSDAoEZGF0ZRgDIAEoCRIMCgRyb2xlGAQgASgJKpIBCgtQdWxzZVN0YXR1cxIcChhQVUxTRV9TVEFUVVNfVU5TUEVDSUZJRUQQABIXChNQVUxTRV9TVEFUVVNfTk9STUFMEAESGAoUUFVMU0VfU1RBVFVTX1BBUlRJQUwQAhIaChZQVUxTRV9TVEFUVVNfUVVJRVRfREFZEAMSFgoSUFVMU0VfU1RBVFVTX0VSUk9SEAQqdgoJVG9waWNSb2xlEhoKFlRPUElDX1JPTEVfVU5TUEVDSUZJRUQQABIbChdUT1BJQ19ST0xFX05FRURfVE9fS05PVxABEhQKEFRPUElDX1JPTEVfVFJFTkQQAhIaChZUT1BJQ19ST0xFX1NFUkVORElQSVRZEAMqaAoKQ29uZmlkZW5jZRIaChZDT05GSURFTkNFX1VOU1BFQ0lGSUVEEAASEwoPQ09ORklERU5DRV9ISUdIEAESFQoRQ09ORklERU5DRV9NRURJVU0QAhISCg5DT05GSURFTkNFX0xPVxADMrQCCgxSZWNhcFNlcnZpY2USYQoQR2V0U2V2ZW5EYXlSZWNhcBIlLmFsdC5yZWNhcC52Mi5HZXRTZXZlbkRheVJlY2FwUmVxdWVzdBomLmFsdC5yZWNhcC52Mi5HZXRTZXZlbkRheVJlY2FwUmVzcG9uc2USYQoQR2V0VGhyZWVEYXlSZWNhcBIlLmFsdC5yZWNhcC52Mi5HZXRUaHJlZURheVJlY2FwUmVxdWVzdBomLmFsdC5yZWNhcC52Mi5HZXRUaHJlZURheVJlY2FwUmVzcG9uc2USXgoPR2V0RXZlbmluZ1B1bHNlEiQuYWx0LnJlY2FwLnYyLkdldEV2ZW5pbmdQdWxzZVJlcXVlc3QaJS5hbHQucmVjYXAudjIuR2V0RXZlbmluZ1B1bHNlUmVzcG9uc2VCJFoiYWx0L2dlbi9wcm90by9hbHQvcmVjYXAvdjI7cmVjYXB2MmIGcHJvdG8z");
 
 /**
  * GetSevenDayRecapRequest is the request for getting 7-day recap
@@ -97,6 +97,90 @@ export const GetSevenDayRecapResponseSchema: GenMessage<GetSevenDayRecapResponse
   messageDesc(file_alt_recap_v2_recap, 1);
 
 /**
+ * GetThreeDayRecapRequest is the request for getting 3-day recap
+ *
+ * @generated from message alt.recap.v2.GetThreeDayRecapRequest
+ */
+export type GetThreeDayRecapRequest = Message<"alt.recap.v2.GetThreeDayRecapRequest"> & {
+  /**
+   * Optional draft ID for cluster draft attachment (replaces X-Genre-Draft-Id header)
+   *
+   * @generated from field: optional string genre_draft_id = 1;
+   */
+  genreDraftId?: string;
+};
+
+/**
+ * Describes the message alt.recap.v2.GetThreeDayRecapRequest.
+ * Use `create(GetThreeDayRecapRequestSchema)` to create a new message.
+ */
+export const GetThreeDayRecapRequestSchema: GenMessage<GetThreeDayRecapRequest> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 2);
+
+/**
+ * GetThreeDayRecapResponse contains the 3-day recap summary
+ *
+ * @generated from message alt.recap.v2.GetThreeDayRecapResponse
+ */
+export type GetThreeDayRecapResponse = Message<"alt.recap.v2.GetThreeDayRecapResponse"> & {
+  /**
+   * Recap job ID
+   *
+   * @generated from field: string job_id = 1;
+   */
+  jobId: string;
+
+  /**
+   * Execution timestamp (RFC3339)
+   *
+   * @generated from field: string executed_at = 2;
+   */
+  executedAt: string;
+
+  /**
+   * Window start timestamp (RFC3339)
+   *
+   * @generated from field: string window_start = 3;
+   */
+  windowStart: string;
+
+  /**
+   * Window end timestamp (RFC3339)
+   *
+   * @generated from field: string window_end = 4;
+   */
+  windowEnd: string;
+
+  /**
+   * Total number of articles in the recap
+   *
+   * @generated from field: int32 total_articles = 5;
+   */
+  totalArticles: number;
+
+  /**
+   * Recap by genre
+   *
+   * @generated from field: repeated alt.recap.v2.RecapGenre genres = 6;
+   */
+  genres: RecapGenre[];
+
+  /**
+   * Optional cluster draft (populated if genre_draft_id provided)
+   *
+   * @generated from field: optional alt.recap.v2.ClusterDraft cluster_draft = 7;
+   */
+  clusterDraft?: ClusterDraft;
+};
+
+/**
+ * Describes the message alt.recap.v2.GetThreeDayRecapResponse.
+ * Use `create(GetThreeDayRecapResponseSchema)` to create a new message.
+ */
+export const GetThreeDayRecapResponseSchema: GenMessage<GetThreeDayRecapResponse> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 3);
+
+/**
  * RecapGenre represents a summary for a specific genre
  *
  * @generated from message alt.recap.v2.RecapGenre
@@ -164,7 +248,7 @@ export type RecapGenre = Message<"alt.recap.v2.RecapGenre"> & {
  * Use `create(RecapGenreSchema)` to create a new message.
  */
 export const RecapGenreSchema: GenMessage<RecapGenre> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 2);
+  messageDesc(file_alt_recap_v2_recap, 4);
 
 /**
  * EvidenceLink represents a link to a source article
@@ -213,7 +297,7 @@ export type EvidenceLink = Message<"alt.recap.v2.EvidenceLink"> & {
  * Use `create(EvidenceLinkSchema)` to create a new message.
  */
 export const EvidenceLinkSchema: GenMessage<EvidenceLink> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 3);
+  messageDesc(file_alt_recap_v2_recap, 5);
 
 /**
  * Reference represents a URL reference in the summary
@@ -255,7 +339,7 @@ export type Reference = Message<"alt.recap.v2.Reference"> & {
  * Use `create(ReferenceSchema)` to create a new message.
  */
 export const ReferenceSchema: GenMessage<Reference> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 4);
+  messageDesc(file_alt_recap_v2_recap, 6);
 
 /**
  * ClusterDraft contains clustering metadata for recap analysis
@@ -311,7 +395,7 @@ export type ClusterDraft = Message<"alt.recap.v2.ClusterDraft"> & {
  * Use `create(ClusterDraftSchema)` to create a new message.
  */
 export const ClusterDraftSchema: GenMessage<ClusterDraft> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 5);
+  messageDesc(file_alt_recap_v2_recap, 7);
 
 /**
  * ClusterGenre contains clustering data for a genre
@@ -353,7 +437,7 @@ export type ClusterGenre = Message<"alt.recap.v2.ClusterGenre"> & {
  * Use `create(ClusterGenreSchema)` to create a new message.
  */
 export const ClusterGenreSchema: GenMessage<ClusterGenre> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 6);
+  messageDesc(file_alt_recap_v2_recap, 8);
 
 /**
  * ClusterSegment represents a single cluster
@@ -444,7 +528,7 @@ export type ClusterSegment = Message<"alt.recap.v2.ClusterSegment"> & {
  * Use `create(ClusterSegmentSchema)` to create a new message.
  */
 export const ClusterSegmentSchema: GenMessage<ClusterSegment> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 7);
+  messageDesc(file_alt_recap_v2_recap, 9);
 
 /**
  * ClusterArticle represents an article in a cluster
@@ -507,7 +591,7 @@ export type ClusterArticle = Message<"alt.recap.v2.ClusterArticle"> & {
  * Use `create(ClusterArticleSchema)` to create a new message.
  */
 export const ClusterArticleSchema: GenMessage<ClusterArticle> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 8);
+  messageDesc(file_alt_recap_v2_recap, 10);
 
 /**
  * GetEveningPulseRequest is the request for getting Evening Pulse
@@ -528,7 +612,7 @@ export type GetEveningPulseRequest = Message<"alt.recap.v2.GetEveningPulseReques
  * Use `create(GetEveningPulseRequestSchema)` to create a new message.
  */
 export const GetEveningPulseRequestSchema: GenMessage<GetEveningPulseRequest> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 9);
+  messageDesc(file_alt_recap_v2_recap, 11);
 
 /**
  * GetEveningPulseResponse contains the Evening Pulse data
@@ -584,7 +668,7 @@ export type GetEveningPulseResponse = Message<"alt.recap.v2.GetEveningPulseRespo
  * Use `create(GetEveningPulseResponseSchema)` to create a new message.
  */
 export const GetEveningPulseResponseSchema: GenMessage<GetEveningPulseResponse> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 10);
+  messageDesc(file_alt_recap_v2_recap, 12);
 
 /**
  * PulseTopic represents a selected topic for Evening Pulse
@@ -696,7 +780,7 @@ export type PulseTopic = Message<"alt.recap.v2.PulseTopic"> & {
  * Use `create(PulseTopicSchema)` to create a new message.
  */
 export const PulseTopicSchema: GenMessage<PulseTopic> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 11);
+  messageDesc(file_alt_recap_v2_recap, 13);
 
 /**
  * RepresentativeArticle represents a key article for display in topic cards
@@ -745,7 +829,7 @@ export type RepresentativeArticle = Message<"alt.recap.v2.RepresentativeArticle"
  * Use `create(RepresentativeArticleSchema)` to create a new message.
  */
 export const RepresentativeArticleSchema: GenMessage<RepresentativeArticle> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 12);
+  messageDesc(file_alt_recap_v2_recap, 14);
 
 /**
  * PulseRationale explains why a topic was selected
@@ -773,7 +857,7 @@ export type PulseRationale = Message<"alt.recap.v2.PulseRationale"> & {
  * Use `create(PulseRationaleSchema)` to create a new message.
  */
 export const PulseRationaleSchema: GenMessage<PulseRationale> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 13);
+  messageDesc(file_alt_recap_v2_recap, 15);
 
 /**
  * QuietDayInfo provides fallback content when no topics are available
@@ -801,7 +885,7 @@ export type QuietDayInfo = Message<"alt.recap.v2.QuietDayInfo"> & {
  * Use `create(QuietDayInfoSchema)` to create a new message.
  */
 export const QuietDayInfoSchema: GenMessage<QuietDayInfo> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 14);
+  messageDesc(file_alt_recap_v2_recap, 16);
 
 /**
  * WeeklyHighlight represents a notable topic from the past week
@@ -843,7 +927,7 @@ export type WeeklyHighlight = Message<"alt.recap.v2.WeeklyHighlight"> & {
  * Use `create(WeeklyHighlightSchema)` to create a new message.
  */
 export const WeeklyHighlightSchema: GenMessage<WeeklyHighlight> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_recap, 15);
+  messageDesc(file_alt_recap_v2_recap, 17);
 
 /**
  * PulseStatus represents the status of Evening Pulse generation
@@ -991,6 +1075,17 @@ export const RecapService: GenService<{
     methodKind: "unary";
     input: typeof GetSevenDayRecapRequestSchema;
     output: typeof GetSevenDayRecapResponseSchema;
+  },
+  /**
+   * GetThreeDayRecap returns 3-day recap summary (authentication required)
+   * Faster processing with smaller prompt sizes for daily use
+   *
+   * @generated from rpc alt.recap.v2.RecapService.GetThreeDayRecap
+   */
+  getThreeDayRecap: {
+    methodKind: "unary";
+    input: typeof GetThreeDayRecapRequestSchema;
+    output: typeof GetThreeDayRecapResponseSchema;
   },
   /**
    * GetEveningPulse returns Evening Pulse data (authentication required)

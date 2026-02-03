@@ -61,7 +61,7 @@ const menuItems = [
 		icon: CalendarRange,
 		children: [
 			{
-				label: "7-Day Summary",
+				label: "3-Day Summary",
 				href: `${svBasePath}/desktop/recap`,
 				icon: CalendarRange,
 			},
@@ -97,12 +97,7 @@ const menuItems = [
 				label: "Manage Feed Links",
 				href: `${svBasePath}/desktop/settings/feeds`,
 				icon: LinkIcon,
-			},
-			{
-				label: "Register Feed",
-				href: `${svBasePath}/desktop/feeds/register`,
-				icon: Plus,
-			},
+			}
 		],
 	},
 	{

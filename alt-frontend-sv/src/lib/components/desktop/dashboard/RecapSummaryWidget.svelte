@@ -1,7 +1,7 @@
 <script lang="ts">
 import { ArrowRight, Loader2, Tag } from "@lucide/svelte";
 import { ConnectError, Code } from "@connectrpc/connect";
-import { createClientTransport, getSevenDayRecap } from "$lib/connect";
+import { createClientTransport, getThreeDayRecap } from "$lib/connect";
 import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
 import { onMount } from "svelte";
 
@@ -15,16 +15,24 @@ let error = $state<Error | null>(null);
 // Computed top genres
 let topGenres = $derived(recapData?.genres?.slice(0, 3) ?? []);
 
-// Fetch 7-day recap on mount
+// Fetch 3-day recap on mount
 onMount(async () => {
 	try {
 		isLoading = true;
 		const transport = createClientTransport();
-		recapData = await getSevenDayRecap(transport);
+		recapData = await getThreeDayRecap(transport);
 	} catch (err) {
-		// Log authentication errors but don't redirect from widget
-		if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
-			console.warn("[RecapSummaryWidget] Not authenticated");
+		if (err instanceof ConnectError) {
+			// Log authentication errors but don't redirect from widget
+			if (err.code === Code.Unauthenticated) {
+				console.warn("[RecapSummaryWidget] Not authenticated");
+			}
+			// NOT_FOUND はデータなしとして扱う（エラーではない）
+			if (err.code === Code.NotFound) {
+				recapData = null;
+				error = null;
+				return;
+			}
 		}
 		error = err as Error;
 	} finally {
@@ -36,7 +44,7 @@ onMount(async () => {
 <div class="border border-[var(--surface-border)] bg-white p-6 flex flex-col h-full">
 	<!-- Header -->
 	<div class="flex items-center justify-between mb-4">
-		<h3 class="text-lg font-semibold text-[var(--text-primary)]">7-Day Recap</h3>
+		<h3 class="text-lg font-semibold text-[var(--text-primary)]">3-Day Recap</h3>
 		<a
 			href="{svBasePath}/desktop/recap"
 			class="flex items-center gap-1 text-sm text-[var(--accent-primary)] hover:underline"

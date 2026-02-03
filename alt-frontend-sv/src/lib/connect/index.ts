@@ -106,6 +106,7 @@ export {
 export {
 	createRecapClient,
 	getSevenDayRecap,
+	getThreeDayRecap,
 	type RecapReference,
 	type RecapGenreWithReferences,
 	type RecapSummaryWithReferences,

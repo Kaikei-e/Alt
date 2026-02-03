@@ -57,7 +57,7 @@ const formattedDate = $derived.by(() => {
 				class="px-6 py-2 rounded-full"
 				style="background: var(--alt-primary); color: var(--text-primary);"
 			>
-				View 7-Day Recap
+				View 3-Day Recap
 			</Button>
 		{/if}
 	</div>

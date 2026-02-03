@@ -186,7 +186,7 @@ const formattedSourceNames = $derived.by(() => {
 					onclick={() => onNavigateToRecap(topic.clusterId)}
 				>
 					<ExternalLink class="w-4 h-4 mr-2" />
-					View in 7-Day Recap
+					View in 3-Day Recap
 				</Button>
 			{/if}
 		</div>

@@ -121,11 +121,11 @@ const menuItems = [
 		description: "Chat with your knowledge base",
 	},
 	{
-		label: "7-Day Recap",
-		href: `${svBasePath}/mobile/recap/7days`,
+		label: "3-Day Recap",
+		href: `${svBasePath}/mobile/recap/3days`,
 		category: "recap",
 		icon: CalendarRange,
-		description: "Review the weekly highlights",
+		description: "Review recent highlights",
 	},
 	{
 		label: "Morning Letter",
