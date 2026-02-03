@@ -90,6 +90,7 @@ services:
       - SEARCH_INDEXER_URL=http://search-indexer:9300
       - QUERY_EXPANSION_URL=http://news-creator:11434
       - QUERY_EXPANSION_TIMEOUT=30
+      - RERANK_URL=http://rerank-external:8080
       - RERANK_TIMEOUT=300
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
     secrets:
@@ -108,6 +109,7 @@ services:
     extra_hosts:
       - "embedder-external:${EMBEDDER_EXTERNAL_HOST}"
       - "augur-external:${AUGUR_EXTERNAL_HOST}"
+      - "rerank-external:${RERANK_EXTERNAL_HOST:-127.0.0.1}"
     logging:
       driver: "json-file"
       options:
