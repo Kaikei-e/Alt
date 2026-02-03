@@ -51,45 +51,68 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 	}
 
 	// 1. Build System Message (Instructions + Format)
+	// Best practices: Role-based prompting, explicit structure with minimum character counts
+	// Reference: Swallow official recommendation + long-form answer generation techniques
+	// Phase 2: Enhanced prompting with detailed section guides for 8B models
 	var sysSb strings.Builder
-	sysSb.WriteString("You are a helpful assistant.\n")
-	sysSb.WriteString("Reasoning: medium\n") // Implicitly setting reasoning level
-	sysSb.WriteString("Your task is to answer the User Query by synthesizing information from the provided context documents.\n")
-	sysSb.WriteString("Even if the context does not contain a direct answer, extract and combine relevant facts to provide the best possible response.\n\n")
+	sysSb.WriteString("あなたは誠実で優秀な日本人のリサーチアナリストです。質問に対して**非常に詳細で包括的な回答**を提供してください。\n\n")
 
-	sysSb.WriteString("### Instructions\n")
-	sysSb.WriteString("1. Analyze the context documents provided below (identified by [index]).\n")
-	sysSb.WriteString("2. Answer the <query> strictly using facts from the <context>.\n")
-	sysSb.WriteString("3. Provide a comprehensive answer (at least 800 words, aim for 1000-1500 words) that includes:\n")
-	sysSb.WriteString("   - Direct answer to the question with key facts\n")
-	sysSb.WriteString("   - Background context and explanations\n")
-	sysSb.WriteString("   - Supporting details, examples, or data from the sources\n")
-	sysSb.WriteString("   - Implications or related considerations when relevant\n")
-	sysSb.WriteString("4. If the query is in Japanese, answer in natural Japanese.\n")
-	sysSb.WriteString("5. Value the information in the documents regardless of their language. Translate facts if necessary.\n")
-	sysSb.WriteString("6. You MUST cite the source even if it is in a different language.\n")
-	sysSb.WriteString("7. Output MUST be valid JSON with keys: \"answer\", \"citations\", \"fallback\", \"reason\".\n")
-	sysSb.WriteString("8. \"answer\": A Markdown string. Use [index] at the end of sentences to cite sources.\n")
-	sysSb.WriteString("9. \"citations\": A list of { \"chunk_id\": \"index\", \"reason\": \"...\" } for every chunk used.\n")
-	sysSb.WriteString("10. \"fallback\": Set to true ONLY when the context documents are completely unrelated to the query topic.\n")
-	sysSb.WriteString("    If there is ANY tangentially related information, set fallback to false and provide a partial answer.\n")
-	sysSb.WriteString("11. CRITICAL: In the JSON answer field, use proper JSON escape sequences for newlines (\\n), not literal backslash-n characters.\n")
-	sysSb.WriteString("    For example: \"Line 1\\nLine 2\" is correct. \"Line 1\\\\nLine 2\" is WRONG.\n")
+	sysSb.WriteString("## 重要な注意事項\n")
+	sysSb.WriteString("- 回答は**必ず2000文字以上**で作成してください\n")
+	sysSb.WriteString("- 短い回答は不適切です。各セクションを十分に展開してください\n")
+	sysSb.WriteString("- コンテキストに記載された情報を最大限活用し、詳しく説明してください\n\n")
+
+	sysSb.WriteString("## 回答構造（全セクション必須）\n\n")
+
+	sysSb.WriteString("### 1. 概要（200文字以上）\n")
+	sysSb.WriteString("- トピックの全体像を説明\n")
+	sysSb.WriteString("- 主要な論点を3つ以上挙げる\n")
+	sysSb.WriteString("- 読者が何を学べるか示す\n\n")
+
+	sysSb.WriteString("### 2. 詳細説明（1000文字以上・4段落以上）\n")
+	sysSb.WriteString("- 第1段落: 基本的な事実と定義（誰が、何を、いつ、どこで）\n")
+	sysSb.WriteString("- 第2段落: 背景と経緯（なぜこれが重要か、どのような流れで起きたか）\n")
+	sysSb.WriteString("- 第3段落: 詳細な分析（具体的なデータ、数字、引用を含める）\n")
+	sysSb.WriteString("- 第4段落: 関連する要素（他の事象との関連、波及効果）\n\n")
+
+	sysSb.WriteString("### 3. 具体的な事例（500文字以上・2事例以上）\n")
+	sysSb.WriteString("- 各事例について: 何が起きたか、誰が関与したか、結果はどうなったか\n")
+	sysSb.WriteString("- コンテキストから具体的な名前、日付、数字を引用\n")
+	sysSb.WriteString("- 各事例は最低3文以上で説明\n\n")
+
+	sysSb.WriteString("### 4. 関連情報・背景（400文字以上）\n")
+	sysSb.WriteString("- 歴史的な文脈\n")
+	sysSb.WriteString("- 関連する人物や組織\n")
+	sysSb.WriteString("- 社会的な影響や意味\n\n")
+
+	sysSb.WriteString("### 5. まとめ（200文字以上）\n")
+	sysSb.WriteString("- 重要なポイントを3つ以上列挙\n")
+	sysSb.WriteString("- 今後の展望や示唆を含める\n\n")
+
+	sysSb.WriteString("## ルール\n")
+	sysSb.WriteString("- 各セクションは見出しだけでなく、十分な内容を含めること\n")
+	sysSb.WriteString("- ソースの引用は[番号]形式で記載（例: [1], [2]）\n")
+	sysSb.WriteString("- コンテキストから最低3つの異なるソースを引用すること\n")
+	sysSb.WriteString("- コンテキストが不十分な場合は fallback=true を設定し、理由を説明\n")
 
 	if len(b.additionalInstructions) > 0 {
-		sysSb.WriteString("\n### Additional Rules\n")
+		sysSb.WriteString("\n## Additional Rules\n")
 		for _, inst := range b.additionalInstructions {
 			sysSb.WriteString(fmt.Sprintf("- %s\n", inst))
 		}
 	}
 
-	sysSb.WriteString("\n### Response Format\n")
+	sysSb.WriteString("\n## Output Format (JSON only)\n")
+	sysSb.WriteString("Respond with ONLY valid JSON in this exact schema:\n")
 	sysSb.WriteString("```json\n")
 	sysSb.WriteString("{\n")
-	sysSb.WriteString("  \"answer\": \"Markdown answer... [1] [2]\",\n")
-	sysSb.WriteString("  \"citations\": [{\"chunk_id\": \"1\", \"reason\": \"Support point X\"}],\n")
+	sysSb.WriteString("  \"answer\": \"## 概要\\n...\\n\\n## 詳細説明\\n...\\n\\n## 具体的な事例\\n...\\n\\n## 関連情報・背景\\n...\\n\\n## まとめ\\n...\",\n")
+	sysSb.WriteString("  \"citations\": [\n")
+	sysSb.WriteString("    {\"chunk_id\": \"1\", \"reason\": \"Used for overview statistics\"},\n")
+	sysSb.WriteString("    {\"chunk_id\": \"3\", \"reason\": \"Source for example case\"}\n")
+	sysSb.WriteString("  ],\n")
 	sysSb.WriteString("  \"fallback\": false,\n")
-	sysSb.WriteString("  \"reason\": \"Explain why fallback is true or citation selection\"\n")
+	sysSb.WriteString("  \"reason\": \"Sufficient context available from sources 1, 3, 5\"\n")
 	sysSb.WriteString("}\n")
 	sysSb.WriteString("```\n")
 

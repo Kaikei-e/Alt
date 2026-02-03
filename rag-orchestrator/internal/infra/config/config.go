@@ -120,10 +120,10 @@ func Load() *Config {
 		EmbeddingModel:        getEnv("EMBEDDING_MODEL", "embeddinggemma"), // Default to gemma3:4b if not specified, assuming it supports embedding
 		PromptVersion:         getEnv("RAG_PROMPT_VERSION", "alpha-v1"),
 		AnswerMaxChunks:       getEnvInt("RAG_DEFAULT_MAX_CHUNKS", 10),
-		AnswerMaxTokens:       getEnvInt("RAG_DEFAULT_MAX_TOKENS", 2560),
+		AnswerMaxTokens:       getEnvInt("RAG_DEFAULT_MAX_TOKENS", 4096),
 		DefaultLocale:         getEnv("RAG_DEFAULT_LOCALE", "ja"),
 		KnowledgeAugurURL:     getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "http://augur-external:11435"),
-		KnowledgeAugurModel:   getEnv("AUGUR_KNOWLEDGE_MODEL", "qwen3-14b-rag"),
+		KnowledgeAugurModel:   getEnv("AUGUR_KNOWLEDGE_MODEL", "swallow-8b-rag"),
 		OllamaTimeout:         getEnvInt("OLLAMA_TIMEOUT", 300),
 		EmbedderTimeout:       getEnvInt("EMBEDDER_TIMEOUT", 30), // 30s default to stay under Cloudflare 100s timeout
 		SearchIndexerURL:      getEnv("SEARCH_INDEXER_URL", "http://search-indexer:8080"),

@@ -89,11 +89,17 @@ func NewOllamaGenerator(baseURL, model string, timeout int, logger *slog.Logger)
 
 // getThinkParam returns the appropriate think parameter for the model.
 // qwen3 models require boolean false to disable thinking.
+// swallow/llama models: thinking not supported, return nil.
 // gpt-oss models use string levels ("low", "medium").
 func (g *OllamaGenerator) getThinkParam(maxTokens int) interface{} {
+	modelLower := strings.ToLower(g.Model)
 	// qwen3 models: disable thinking with boolean false
-	if strings.Contains(strings.ToLower(g.Model), "qwen3") {
+	if strings.Contains(modelLower, "qwen3") {
 		return false
+	}
+	// swallow/llama models: do not support thinking, skip parameter
+	if strings.Contains(modelLower, "swallow") || strings.Contains(modelLower, "llama") {
+		return nil
 	}
 	// gpt-oss and other models: use string levels
 	// Short tasks (maxTokens < 300) use "low" - e.g., query expansion
@@ -102,6 +108,40 @@ func (g *OllamaGenerator) getThinkParam(maxTokens int) interface{} {
 		return "low"
 	}
 	return "medium"
+}
+
+// buildOptions returns the appropriate options map for the model.
+// Different models require different sampling parameters.
+func (g *OllamaGenerator) buildOptions(maxTokens int) map[string]interface{} {
+	opts := map[string]interface{}{}
+	modelLower := strings.ToLower(g.Model)
+
+	switch {
+	case strings.Contains(modelLower, "qwen3"):
+		// Qwen3: 繰り返し防止パラメータ（公式推奨値）
+		opts["temperature"] = 0.7
+		opts["top_p"] = 0.8
+		opts["repeat_penalty"] = 1.15
+	case strings.Contains(modelLower, "swallow") || strings.Contains(modelLower, "llama"):
+		// Swallow/Llama 3.1: 詳細な回答生成向け設定
+		// Swallow公式推奨: temperature=0.6 for detailed responses
+		// Reference: https://swallow-llm.github.io/llama3.1-swallow.en.html
+		opts["temperature"] = 0.6
+		opts["top_p"] = 0.9
+		// コンテキストウィンドウを明示的に設定（Modelfile依存を排除）
+		opts["num_ctx"] = 8192
+		// 長い回答のためのrepeat_penalty（繰り返し防止）
+		opts["repeat_penalty"] = 1.1
+	default:
+		// gpt-oss and other models
+		opts["temperature"] = 0.2
+	}
+
+	if maxTokens > 0 {
+		opts["num_predict"] = maxTokens
+	}
+
+	return opts
 }
 
 // Generate sends the prompt to Ollama and returns the assistant message.
@@ -117,19 +157,16 @@ func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens
 	// Unused now as we use Options["num_predict"]
 	_ = maxTokensPtr
 
+	opts := g.buildOptions(maxTokens)
+
 	reqBody := chatRequest{
 		Model:     g.Model,
 		Messages:  []chatMessage{{Role: "user", Content: prompt}},
 		KeepAlive: -1,
 		Stream:    true,
 		// Format:    nil, // Force generic
-		Think: g.getThinkParam(maxTokens),
-		Options: map[string]interface{}{
-			"temperature": 0.2,
-		},
-	}
-	if maxTokens > 0 {
-		reqBody.Options["num_predict"] = maxTokens
+		Think:   g.getThinkParam(maxTokens),
+		Options: opts,
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)
@@ -225,18 +262,15 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 		return nil, nil, fmt.Errorf("prompt is required for streaming generation")
 	}
 
+	opts := g.buildOptions(maxTokens)
+
 	reqBody := chatRequest{
 		Model:     g.Model,
 		Messages:  []chatMessage{{Role: "user", Content: prompt}},
 		KeepAlive: -1,
 		Stream:    true,
-		Think:     g.getThinkParam(maxTokens),
-		Options: map[string]interface{}{
-			"temperature": 0.2,
-		},
-	}
-	if maxTokens > 0 {
-		reqBody.Options["num_predict"] = maxTokens
+		Think:   g.getThinkParam(maxTokens),
+		Options: opts,
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)
@@ -408,19 +442,16 @@ func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, m
 		slog.Int("max_tokens", maxTokens))
 
 	chatMsgs := toChatMessages(messages)
+	opts := g.buildOptions(maxTokens)
+
 	reqBody := chatRequest{
 		Model:     g.Model,
 		Messages:  chatMsgs,
 		KeepAlive: -1,
 		Stream:    false,
 		Format:    generationFormat,
-		Think:     g.getThinkParam(maxTokens),
-		Options: map[string]interface{}{
-			"temperature": 0.2,
-		},
-	}
-	if maxTokens > 0 {
-		reqBody.Options["num_predict"] = maxTokens
+		Think:   g.getThinkParam(maxTokens),
+		Options: opts,
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)
@@ -495,20 +526,24 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 	}
 
 	chatMsgs := toChatMessages(messages)
+	opts := g.buildOptions(maxTokens)
+
+	// Swallow/Llama models support structured output via Format
+	// gpt-oss: Format causes empty content, skip
+	var format map[string]interface{}
+	modelLower := strings.ToLower(g.Model)
+	if strings.Contains(modelLower, "swallow") || strings.Contains(modelLower, "llama") {
+		format = generationFormat
+	}
+
 	reqBody := chatRequest{
 		Model:     g.Model,
 		Messages:  chatMsgs,
 		KeepAlive: -1,
 		Stream:    true,
-		// Format removed: gpt-oss Harmony format + structured output = empty content
-		// JSON schema is enforced via prompt instead
-		Think: g.getThinkParam(maxTokens),
-		Options: map[string]interface{}{
-			"temperature": 0.2,
-		},
-	}
-	if maxTokens > 0 {
-		reqBody.Options["num_predict"] = maxTokens
+		Format:    format,
+		Think:     g.getThinkParam(maxTokens),
+		Options:   opts,
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)

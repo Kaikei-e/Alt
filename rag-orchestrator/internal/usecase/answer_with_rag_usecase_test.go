@@ -101,10 +101,9 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 
 	// Expect Single Call
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		// Check for specific instruction (updated prompt)
+		// Check for specific instruction (updated Japanese prompt)
 		return len(msgs) > 0 && msgs[0].Role == "system" &&
-			contains(msgs[0].Content, "synthesizing information from the provided context documents") &&
-			contains(msgs[0].Content, "Value the information in the documents regardless of their language")
+			contains(msgs[0].Content, "非常に詳細で包括的な回答")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})
@@ -144,9 +143,9 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
   "reason": "insufficient evidence"
 }`
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
+		// Check for specific instruction (updated Japanese prompt)
 		return len(msgs) > 0 && msgs[0].Role == "system" &&
-			contains(msgs[0].Content, "synthesizing information from the provided context documents") &&
-			contains(msgs[0].Content, "Value the information in the documents regardless of their language")
+			contains(msgs[0].Content, "非常に詳細で包括的な回答")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: fallbackResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})
