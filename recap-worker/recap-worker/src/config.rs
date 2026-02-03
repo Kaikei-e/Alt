@@ -80,6 +80,7 @@ pub struct Config {
     otel_exporter_endpoint: Option<String>,
     otel_sampling_ratio: f64,
     recap_window_days: u32,
+    recap_3days_window_days: u32,
     recap_genres: Vec<String>,
     genre_classifier_weights_path: Option<String>,
     genre_classifier_weights_path_ja: Option<String>,
@@ -160,6 +161,7 @@ struct ExternalServiceConfig {
 
 struct BatchConfig {
     recap_window_days: u32,
+    recap_3days_window_days: u32,
     recap_genres: Vec<String>,
     genre_classifier_weights_path: Option<String>,
     genre_classifier_weights_path_ja: Option<String>,
@@ -320,6 +322,7 @@ impl Config {
             otel_exporter_endpoint: external_services.otel_exporter_endpoint,
             otel_sampling_ratio: external_services.otel_sampling_ratio,
             recap_window_days: batch.recap_window_days,
+            recap_3days_window_days: batch.recap_3days_window_days,
             recap_genres: batch.recap_genres,
             genre_classifier_weights_path: batch.genre_classifier_weights_path,
             genre_classifier_weights_path_ja: batch.genre_classifier_weights_path_ja,
@@ -446,6 +449,11 @@ impl Config {
     #[must_use]
     pub fn recap_window_days(&self) -> u32 {
         self.recap_window_days
+    }
+
+    #[must_use]
+    pub fn recap_3days_window_days(&self) -> u32 {
+        self.recap_3days_window_days
     }
 
     #[must_use]
@@ -780,6 +788,7 @@ fn load_observability_config() -> Result<(Option<String>, f64), ConfigError> {
 
 fn load_batch_config() -> Result<BatchConfig, ConfigError> {
     let window_days = parse_u32("RECAP_WINDOW_DAYS", 7)?;
+    let window_3days = parse_u32("RECAP_3DAYS_WINDOW_DAYS", 3)?;
     let genres = parse_csv(
         "RECAP_GENRES",
         "ai_data,climate_environment,consumer_products,consumer_tech,culture_arts,cybersecurity,diplomacy_security,economics_macro,education,energy_transition,film_tv,food_cuisine,games_esports,health_medicine,home_living,industry_logistics,internet_platforms,labor_workplace,law_crime,life_science,markets_finance,mobility_automotive,music_audio,politics_government,society_demographics,software_dev,space_astronomy,sports,startups_innovation,travel_places",
@@ -798,6 +807,7 @@ fn load_batch_config() -> Result<BatchConfig, ConfigError> {
     let lang_detect_min_confidence = parse_f64("RECAP_LANG_DETECT_MIN_CONFIDENCE", 0.65)?;
     Ok(BatchConfig {
         recap_window_days: window_days,
+        recap_3days_window_days: window_3days,
         recap_genres: genres,
         genre_classifier_weights_path: classifier_weights_path,
         genre_classifier_weights_path_ja: classifier_weights_path_ja,
@@ -1081,6 +1091,7 @@ mod tests {
         remove_env("OTEL_EXPORTER_ENDPOINT");
         remove_env("OTEL_SAMPLING_RATIO");
         remove_env("RECAP_WINDOW_DAYS");
+        remove_env("RECAP_3DAYS_WINDOW_DAYS");
         remove_env("RECAP_GENRES");
         remove_env("LLM_SUMMARY_TIMEOUT_SECS");
     }

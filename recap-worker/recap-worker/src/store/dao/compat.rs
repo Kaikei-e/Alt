@@ -65,6 +65,13 @@ pub trait RecapDao: Send + Sync {
         note: Option<&str>,
     ) -> anyhow::Result<Option<Uuid>>;
 
+    async fn create_job_with_lock_and_window(
+        &self,
+        job_id: Uuid,
+        note: Option<&str>,
+        window_days: u32,
+    ) -> anyhow::Result<Option<Uuid>>;
+
     async fn job_exists(&self, job_id: Uuid) -> anyhow::Result<bool>;
 
     async fn find_resumable_job(&self)
@@ -400,6 +407,15 @@ where
         note: Option<&str>,
     ) -> anyhow::Result<Option<Uuid>> {
         JobDao::create_job_with_lock(self, job_id, note).await
+    }
+
+    async fn create_job_with_lock_and_window(
+        &self,
+        job_id: Uuid,
+        note: Option<&str>,
+        window_days: u32,
+    ) -> anyhow::Result<Option<Uuid>> {
+        JobDao::create_job_with_lock_and_window(self, job_id, note, window_days).await
     }
 
     async fn job_exists(&self, job_id: Uuid) -> anyhow::Result<bool> {

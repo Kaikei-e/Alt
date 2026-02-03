@@ -54,6 +54,16 @@ impl RecapDao for MockRecapDao {
     }
 
     #[allow(dead_code)]
+    async fn create_job_with_lock_and_window(
+        &self,
+        _job_id: Uuid,
+        _note: Option<&str>,
+        _window_days: u32,
+    ) -> Result<Option<Uuid>> {
+        Ok(None)
+    }
+
+    #[allow(dead_code)]
     async fn job_exists(&self, _job_id: Uuid) -> Result<bool> {
         Ok(false)
     }

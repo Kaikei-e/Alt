@@ -29,6 +29,22 @@ pub(crate) async fn trigger_7days(
     State(state): State<AppState>,
     Json(payload): Json<GenerateRecapRequest>,
 ) -> impl IntoResponse {
+    trigger_recap(state, payload, 7, "7days").await
+}
+
+pub(crate) async fn trigger_3days(
+    State(state): State<AppState>,
+    Json(payload): Json<GenerateRecapRequest>,
+) -> impl IntoResponse {
+    trigger_recap(state, payload, 3, "3days").await
+}
+
+async fn trigger_recap(
+    state: AppState,
+    payload: GenerateRecapRequest,
+    window_days: u32,
+    label: &'static str,
+) -> axum::response::Response {
     state.telemetry().record_manual_generate_invocation();
 
     let (genres, provided) = match payload.genres {
@@ -48,14 +64,14 @@ pub(crate) async fn trigger_7days(
     let job_id = Uuid::new_v4();
     let response_genres = genres.clone();
     let scheduled_genre_count = response_genres.len();
-    let job = JobContext::new(job_id, genres);
+    let job = JobContext::new_with_window(job_id, genres, window_days);
     let scheduler = state.scheduler().clone();
 
     tokio::spawn(async move {
         if let Err(error) = scheduler.run_job(job).await {
-            error!(%job_id, error = ?error, provided, "manual 7days recap job failed");
+            error!(%job_id, error = ?error, provided, label, "manual recap job failed");
         } else {
-            info!(%job_id, provided, genres = scheduled_genre_count, "manual 7days recap job scheduled");
+            info!(%job_id, provided, genres = scheduled_genre_count, label, "manual recap job scheduled");
         }
     });
 

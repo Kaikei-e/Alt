@@ -27,6 +27,8 @@ pub(crate) fn router(state: AppState) -> Router {
         )
         .route("/v1/generate/recaps/7days", post(generate::trigger_7days))
         .route("/v1/recaps/7days", get(fetch::get_7days_recap))
+        .route("/v1/generate/recaps/3days", post(generate::trigger_3days))
+        .route("/v1/recaps/3days", get(fetch::get_3days_recap))
         .route("/v1/morning/updates", get(fetch::get_morning_updates))
         .route("/v1/evaluation/genres", post(evaluation::evaluate_genres))
         .route(

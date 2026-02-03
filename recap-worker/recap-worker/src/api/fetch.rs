@@ -209,23 +209,38 @@ struct ErrorResponse {
 
 /// GET /v1/recaps/7days
 /// 最新の7日間Recapデータを取得する
-#[allow(clippy::too_many_lines)]
 pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoResponse {
-    info!("Fetching latest 7-day recap");
+    get_recap_by_window(state, 7, "7-day").await
+}
+
+/// GET /v1/recaps/3days
+/// 最新の3日間Recapデータを取得する
+pub(crate) async fn get_3days_recap(State(state): State<AppState>) -> impl IntoResponse {
+    get_recap_by_window(state, 3, "3-day").await
+}
+
+/// 指定されたウィンドウ日数のRecapデータを取得する
+#[allow(clippy::too_many_lines)]
+async fn get_recap_by_window(
+    state: AppState,
+    window_days: i32,
+    label: &str,
+) -> axum::response::Response {
+    info!("Fetching latest {} recap", label);
     let metrics = state.telemetry().metrics();
     let handler_start = Instant::now();
 
     // 最新のジョブを取得
     let dao = state.dao();
 
-    let job = match dao.get_latest_completed_job(7).await {
+    let job = match dao.get_latest_completed_job(window_days).await {
         Ok(Some(job)) => job,
         Ok(None) => {
-            info!("No completed 7-day recap found");
+            info!("No completed {} recap found", label);
             return (
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
-                    error: "No 7-day recap found".to_string(),
+                    error: format!("No {} recap found", label),
                 }),
             )
                 .into_response();
@@ -372,7 +387,7 @@ pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoR
         genres: genre_responses,
     };
 
-    info!("Successfully fetched 7-day recap for job {}", job.job_id);
+    info!("Successfully fetched {} recap for job {}", label, job.job_id);
     metrics
         .api_latest_fetch_duration
         .observe(handler_start.elapsed().as_secs_f64());

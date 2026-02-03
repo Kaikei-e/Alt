@@ -23,6 +23,24 @@ impl RecapDao {
         job_id: Uuid,
         note: Option<&str>,
     ) -> Result<Option<Uuid>> {
+        Self::create_job_with_lock_and_window(pool, job_id, note, 7).await
+    }
+
+    /// アドバイザリロックを取得し、新しいジョブを作成する（ウィンドウ日数指定あり）。
+    ///
+    /// ロックが取得できない場合は、既に他のワーカーがそのジョブを実行中であることを示します。
+    ///
+    /// # Returns
+    /// - `Ok(Some(job_id))`: ロック取得成功、ジョブ作成完了
+    /// - `Ok(None)`: ロック取得失敗、他のワーカーが実行中
+    /// - `Err`: データベースエラー
+    #[allow(dead_code)]
+    pub async fn create_job_with_lock_and_window(
+        pool: &PgPool,
+        job_id: Uuid,
+        note: Option<&str>,
+        window_days: u32,
+    ) -> Result<Option<Uuid>> {
         let mut tx = pool.begin().await.context("failed to begin transaction")?;
 
         // Try to acquire advisory lock
@@ -38,16 +56,17 @@ impl RecapDao {
             return Ok(None);
         }
 
-        // Create job record
+        // Create job record with window_days
         sqlx::query(
             r"
-            INSERT INTO recap_jobs (job_id, kicked_at, note)
-            VALUES ($1, NOW(), $2)
+            INSERT INTO recap_jobs (job_id, kicked_at, note, window_days)
+            VALUES ($1, NOW(), $2, $3)
             ON CONFLICT (job_id) DO NOTHING
             ",
         )
         .bind(job_id)
         .bind(note)
+        .bind(i32::try_from(window_days).unwrap_or(7))
         .execute(&mut *tx)
         .await
         .context("failed to insert recap_jobs record")?;

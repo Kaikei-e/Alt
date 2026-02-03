@@ -49,6 +49,18 @@ impl JobDao for UnifiedDao {
         crate::store::dao::job::RecapDao::create_job_with_lock(&self.pool, job_id, note).await
     }
 
+    async fn create_job_with_lock_and_window(
+        &self,
+        job_id: Uuid,
+        note: Option<&str>,
+        window_days: u32,
+    ) -> Result<Option<Uuid>> {
+        crate::store::dao::job::RecapDao::create_job_with_lock_and_window(
+            &self.pool, job_id, note, window_days,
+        )
+        .await
+    }
+
     async fn job_exists(&self, job_id: Uuid) -> Result<bool> {
         crate::store::dao::job::RecapDao::job_exists(&self.pool, job_id).await
     }

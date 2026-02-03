@@ -113,7 +113,6 @@ impl PipelineOrchestrator {
         let subworker_client = Arc::new(subworker);
         let cpu_count = num_cpus::get();
         let max_concurrent = (cpu_count * 3) / 2;
-        let window_days = config.recap_window_days();
 
         let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
             crate::pipeline::embedding::EmbeddingService::new()
@@ -177,7 +176,6 @@ impl PipelineOrchestrator {
                 tag_generator_client,
                 Arc::clone(&recap_dao),
                 retry_config,
-                window_days,
             )))
             .with_preprocess_stage(Arc::new(TextPreprocessStage::new(
                 max_concurrent.max(2),

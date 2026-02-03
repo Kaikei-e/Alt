@@ -64,7 +64,6 @@ pub(crate) struct AltBackendFetchStage {
     tag_generator_client: Option<Arc<TagGeneratorClient>>,
     dao: Arc<dyn RecapDao>,
     retry_config: RetryConfig,
-    window_days: u32,
 }
 
 impl AltBackendFetchStage {
@@ -73,14 +72,12 @@ impl AltBackendFetchStage {
         tag_generator_client: Option<Arc<TagGeneratorClient>>,
         dao: Arc<dyn RecapDao>,
         retry_config: RetryConfig,
-        window_days: u32,
     ) -> Self {
         Self {
             client,
             tag_generator_client,
             dao,
             retry_config,
-            window_days,
         }
     }
 
@@ -155,9 +152,12 @@ impl AltBackendFetchStage {
 #[async_trait]
 impl FetchStage for AltBackendFetchStage {
     async fn fetch(&self, job: &JobContext) -> Result<FetchedCorpus> {
+        // JobContext からウィンドウ日数を取得
+        let window_days = job.window_days();
+
         let lock_result = self
             .dao
-            .create_job_with_lock(job.job_id, None)
+            .create_job_with_lock_and_window(job.job_id, None, window_days)
             .await
             .map_err(|err| {
                 tracing::error!(job_id = %job.job_id, error = ?err, "failed to create recap job record");
@@ -171,13 +171,13 @@ impl FetchStage for AltBackendFetchStage {
 
         // 取得期間を計算（現在時刻からwindow_days日前まで）
         let to = Utc::now();
-        let from = to - Duration::days(i64::from(self.window_days));
+        let from = to - Duration::days(i64::from(window_days));
 
         info!(
             job_id = %job.job_id,
             from = %from.to_rfc3339(),
             to = %to.to_rfc3339(),
-            window_days = self.window_days,
+            window_days,
             "fetching articles from alt-backend"
         );
 

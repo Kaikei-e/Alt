@@ -11,11 +11,19 @@ use crate::store::dao::types::{JobStatus, JobStatusTransition, StatusTransitionA
 /// JobDao - ジョブ管理のためのデータアクセス層
 #[allow(dead_code, clippy::type_complexity)]
 pub trait JobDao: Send + Sync {
-    /// アドバイザリロックを取得し、新しいジョブを作成する
+    /// アドバイザリロックを取得し、新しいジョブを作成する（デフォルト7日間）
     fn create_job_with_lock(
         &self,
         job_id: Uuid,
         note: Option<&str>,
+    ) -> impl Future<Output = Result<Option<Uuid>>> + Send;
+
+    /// アドバイザリロックを取得し、新しいジョブを作成する（ウィンドウ日数指定あり）
+    fn create_job_with_lock_and_window(
+        &self,
+        job_id: Uuid,
+        note: Option<&str>,
+        window_days: u32,
     ) -> impl Future<Output = Result<Option<Uuid>>> + Send;
 
     /// 指定されたjob_idのジョブが存在するかチェックする

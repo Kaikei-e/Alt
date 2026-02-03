@@ -40,13 +40,12 @@ impl MorningPipeline {
         let cpu_count = num_cpus::get();
         let max_concurrent = (cpu_count * 3) / 2;
 
-        // Morning Update uses a 1-day window
+        // Morning Update uses a 1-day window (window_days is now taken from JobContext)
         let fetch = Arc::new(AltBackendFetchStage::new(
             alt_backend_client,
             None, // No tag generator needed for just grouping
             Arc::clone(&recap_dao),
             retry_config,
-            1, // 1 day window
         ));
 
         let subworker_client = Arc::new(

@@ -25,6 +25,7 @@ pub(crate) struct JobContext {
     pub(crate) job_id: Uuid,
     pub(crate) genres: Vec<String>,
     pub(crate) current_stage: Option<String>,
+    pub(crate) window_days: u32,
 }
 
 impl JobContext {
@@ -33,6 +34,16 @@ impl JobContext {
             job_id,
             genres,
             current_stage: None,
+            window_days: 7, // Default to 7 days for backward compatibility
+        }
+    }
+
+    pub(crate) fn new_with_window(job_id: Uuid, genres: Vec<String>, window_days: u32) -> Self {
+        Self {
+            job_id,
+            genres,
+            current_stage: None,
+            window_days,
         }
     }
 
@@ -43,6 +54,10 @@ impl JobContext {
 
     pub(crate) fn genres(&self) -> &[String] {
         &self.genres
+    }
+
+    pub(crate) fn window_days(&self) -> u32 {
+        self.window_days
     }
 }
 
