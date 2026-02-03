@@ -17,20 +17,45 @@ type RedisDriver struct {
 	client *redis.Client
 }
 
+// RedisDriverOptions contains configuration for Redis driver.
+type RedisDriverOptions struct {
+	PoolSize int
+}
+
 // NewRedisDriver creates a new Redis driver.
 func NewRedisDriver(addr string) (*RedisDriver, error) {
-	client := redis.NewClient(&redis.Options{
+	return NewRedisDriverWithOptions(addr, nil)
+}
+
+// NewRedisDriverWithOptions creates a new Redis driver with options.
+func NewRedisDriverWithOptions(addr string, opts *RedisDriverOptions) (*RedisDriver, error) {
+	redisOpts := &redis.Options{
 		Addr: addr,
-	})
+	}
+
+	if opts != nil && opts.PoolSize > 0 {
+		redisOpts.PoolSize = opts.PoolSize
+	}
+
+	client := redis.NewClient(redisOpts)
 
 	return &RedisDriver{client: client}, nil
 }
 
 // NewRedisDriverWithURL creates a new Redis driver from a URL.
 func NewRedisDriverWithURL(url string) (*RedisDriver, error) {
+	return NewRedisDriverWithURLAndOptions(url, nil)
+}
+
+// NewRedisDriverWithURLAndOptions creates a new Redis driver from a URL with options.
+func NewRedisDriverWithURLAndOptions(url string, driverOpts *RedisDriverOptions) (*RedisDriver, error) {
 	opts, err := redis.ParseURL(url)
 	if err != nil {
 		return nil, err
+	}
+
+	if driverOpts != nil && driverOpts.PoolSize > 0 {
+		opts.PoolSize = driverOpts.PoolSize
 	}
 
 	client := redis.NewClient(opts)

@@ -3,11 +3,16 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"mq-hub/domain"
+	"mq-hub/metrics"
 	"mq-hub/port"
 )
+
+// ErrBatchTooLarge is returned when batch size exceeds the limit.
+var ErrBatchTooLarge = errors.New("batch size exceeds maximum allowed")
 
 // PublishResult contains the result of publishing an event.
 type PublishResult struct {
@@ -36,30 +41,54 @@ type HealthStatus struct {
 	UptimeSeconds int64
 }
 
-// PublishUsecase handles event publishing operations.
-type PublishUsecase struct {
-	streamPort port.StreamPort
-	startTime  time.Time
+// PublishUsecaseOptions contains configuration for PublishUsecase.
+type PublishUsecaseOptions struct {
+	MaxBatchSize int
 }
 
-// NewPublishUsecase creates a new PublishUsecase.
+// PublishUsecase handles event publishing operations.
+type PublishUsecase struct {
+	streamPort   port.StreamPort
+	startTime    time.Time
+	maxBatchSize int
+}
+
+// NewPublishUsecase creates a new PublishUsecase with default options.
 func NewPublishUsecase(streamPort port.StreamPort) *PublishUsecase {
+	return NewPublishUsecaseWithOptions(streamPort, nil)
+}
+
+// NewPublishUsecaseWithOptions creates a new PublishUsecase with options.
+func NewPublishUsecaseWithOptions(streamPort port.StreamPort, opts *PublishUsecaseOptions) *PublishUsecase {
+	maxBatchSize := 1000 // default
+	if opts != nil && opts.MaxBatchSize > 0 {
+		maxBatchSize = opts.MaxBatchSize
+	}
+
 	return &PublishUsecase{
-		streamPort: streamPort,
-		startTime:  time.Now(),
+		streamPort:   streamPort,
+		startTime:    time.Now(),
+		maxBatchSize: maxBatchSize,
 	}
 }
 
 // Publish publishes a single event to a stream.
 func (u *PublishUsecase) Publish(ctx context.Context, stream domain.StreamKey, event *domain.Event) (*PublishResult, error) {
+	start := time.Now()
+
 	messageID, err := u.streamPort.Publish(ctx, stream, event)
+	duration := time.Since(start).Seconds()
+
 	if err != nil {
+		metrics.RecordPublish(stream.String(), "error", duration)
+		metrics.RecordError("publish", "redis_error")
 		return &PublishResult{
 			MessageID: "",
 			Success:   false,
 		}, err
 	}
 
+	metrics.RecordPublish(stream.String(), "success", duration)
 	return &PublishResult{
 		MessageID: messageID,
 		Success:   true,
@@ -68,15 +97,34 @@ func (u *PublishUsecase) Publish(ctx context.Context, stream domain.StreamKey, e
 
 // PublishBatch publishes multiple events to a stream.
 func (u *PublishUsecase) PublishBatch(ctx context.Context, stream domain.StreamKey, events []*domain.Event) (*PublishBatchResult, error) {
-	messageIDs, err := u.streamPort.PublishBatch(ctx, stream, events)
-	if err != nil {
+	batchSize := len(events)
+
+	// Check batch size limit
+	if batchSize > u.maxBatchSize {
+		metrics.RecordError("publish_batch", "batch_too_large")
 		return &PublishBatchResult{
 			MessageIDs:   nil,
 			SuccessCount: 0,
-			FailureCount: int32(len(events)),
+			FailureCount: int32(batchSize),
+		}, ErrBatchTooLarge
+	}
+
+	start := time.Now()
+
+	messageIDs, err := u.streamPort.PublishBatch(ctx, stream, events)
+	duration := time.Since(start).Seconds()
+
+	if err != nil {
+		metrics.RecordBatchPublish(stream.String(), "error", batchSize, duration)
+		metrics.RecordError("publish_batch", "redis_error")
+		return &PublishBatchResult{
+			MessageIDs:   nil,
+			SuccessCount: 0,
+			FailureCount: int32(batchSize),
 		}, err
 	}
 
+	metrics.RecordBatchPublish(stream.String(), "success", batchSize, duration)
 	return &PublishBatchResult{
 		MessageIDs:   messageIDs,
 		SuccessCount: int32(len(messageIDs)),
@@ -105,9 +153,11 @@ func (u *PublishUsecase) HealthCheck(ctx context.Context) *HealthStatus {
 	if err != nil {
 		status.Healthy = false
 		status.RedisStatus = err.Error()
+		metrics.SetRedisDisconnected()
 	} else {
 		status.Healthy = true
 		status.RedisStatus = "connected"
+		metrics.SetRedisConnected()
 	}
 
 	return status

@@ -125,6 +125,61 @@ func TestPublishUsecase_PublishBatch(t *testing.T) {
 		assert.Equal(t, int32(0), result.FailureCount)
 		mockPort.AssertExpectations(t)
 	})
+
+	t.Run("returns error when batch size exceeds limit", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := NewPublishUsecaseWithOptions(mockPort, &PublishUsecaseOptions{
+			MaxBatchSize: 2,
+		})
+
+		ctx := context.Background()
+		events := make([]*domain.Event, 3) // 3 events, limit is 2
+		for i := range events {
+			events[i] = &domain.Event{
+				EventID:   "test-" + string(rune('1'+i)),
+				EventType: domain.EventTypeArticleCreated,
+				Source:    "alt-backend",
+				CreatedAt: time.Now(),
+			}
+		}
+
+		result, err := uc.PublishBatch(ctx, domain.StreamKeyArticles, events)
+
+		require.Error(t, err)
+		assert.Equal(t, ErrBatchTooLarge, err)
+		assert.Nil(t, result.MessageIDs)
+		assert.Equal(t, int32(0), result.SuccessCount)
+		assert.Equal(t, int32(3), result.FailureCount)
+		// Should not call the underlying port
+		mockPort.AssertNotCalled(t, "PublishBatch")
+	})
+
+	t.Run("respects custom max batch size", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := NewPublishUsecaseWithOptions(mockPort, &PublishUsecaseOptions{
+			MaxBatchSize: 5,
+		})
+
+		ctx := context.Background()
+		events := make([]*domain.Event, 5) // exactly at limit
+		for i := range events {
+			events[i] = &domain.Event{
+				EventID:   "test-" + string(rune('1'+i)),
+				EventType: domain.EventTypeArticleCreated,
+				Source:    "alt-backend",
+				CreatedAt: time.Now(),
+			}
+		}
+
+		mockPort.On("PublishBatch", ctx, domain.StreamKeyArticles, events).
+			Return([]string{"1-0", "1-1", "1-2", "1-3", "1-4"}, nil)
+
+		result, err := uc.PublishBatch(ctx, domain.StreamKeyArticles, events)
+
+		require.NoError(t, err)
+		assert.Len(t, result.MessageIDs, 5)
+		mockPort.AssertExpectations(t)
+	})
 }
 
 func TestPublishUsecase_CreateConsumerGroup(t *testing.T) {

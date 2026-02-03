@@ -7,8 +7,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"connectrpc.com/connect"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"mq-hub/config"
 	"mq-hub/connect/v1/mqhub"
@@ -28,8 +32,10 @@ func main() {
 	// Load configuration
 	cfg := config.NewConfig()
 
-	// Initialize Redis driver
-	redisDriver, err := driver.NewRedisDriverWithURL(cfg.RedisURL)
+	// Initialize Redis driver with connection pool
+	redisDriver, err := driver.NewRedisDriverWithURLAndOptions(cfg.RedisURL, &driver.RedisDriverOptions{
+		PoolSize: cfg.RedisPoolSize,
+	})
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to connect to Redis", "error", err)
 		os.Exit(1)
@@ -39,8 +45,10 @@ func main() {
 	// Initialize gateway
 	streamGateway := gateway.NewStreamGateway(redisDriver)
 
-	// Initialize usecase
-	publishUsecase := usecase.NewPublishUsecase(streamGateway)
+	// Initialize usecase with batch size limit
+	publishUsecase := usecase.NewPublishUsecaseWithOptions(streamGateway, &usecase.PublishUsecaseOptions{
+		MaxBatchSize: cfg.MaxBatchSize,
+	})
 
 	// Initialize handler
 	handler := mqhub.NewHandler(publishUsecase)
@@ -66,14 +74,49 @@ func main() {
 		}
 	})
 
-	// Start server
-	addr := fmt.Sprintf(":%d", cfg.ConnectPort)
-	slog.InfoContext(ctx, "starting mq-hub server", "addr", addr)
+	// Prometheus metrics endpoint
+	mux.Handle("/metrics", promhttp.Handler())
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		slog.ErrorContext(ctx, "server failed", "error", err)
+	// Start server with graceful shutdown
+	addr := fmt.Sprintf(":%d", cfg.ConnectPort)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	// Channel to signal server startup errors
+	serverErr := make(chan error, 1)
+
+	go func() {
+		slog.InfoContext(ctx, "starting mq-hub server", "addr", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
+		}
+	}()
+
+	// Graceful shutdown on SIGTERM/SIGINT
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+
+	select {
+	case sig := <-sigCh:
+		slog.InfoContext(ctx, "received shutdown signal", "signal", sig.String())
+	case err := <-serverErr:
+		slog.ErrorContext(ctx, "server failed to start", "error", err)
 		os.Exit(1)
 	}
+
+	// Create shutdown context with timeout
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	slog.InfoContext(ctx, "shutting down server gracefully")
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.ErrorContext(ctx, "server shutdown failed", "error", err)
+		os.Exit(1)
+	}
+
+	slog.InfoContext(ctx, "server shutdown complete")
 }
 
 // loggingInterceptor creates a Connect interceptor for logging.

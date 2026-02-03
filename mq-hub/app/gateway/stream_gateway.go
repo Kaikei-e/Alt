@@ -3,6 +3,7 @@ package gateway
 
 import (
 	"context"
+	"log/slog"
 
 	"mq-hub/domain"
 	"mq-hub/port"
@@ -20,10 +21,11 @@ func NewStreamGateway(driver port.StreamPort) *StreamGateway {
 
 // Publish publishes an event to a stream.
 func (g *StreamGateway) Publish(ctx context.Context, stream domain.StreamKey, event *domain.Event) (string, error) {
-	// Validate stream key
+	// Validate stream key - log warning for unknown keys but allow for flexibility
 	if !stream.IsValid() {
-		// Allow any stream key for flexibility
-		// but log a warning for unknown keys
+		slog.WarnContext(ctx, "publishing to unknown stream key",
+			"stream", stream.String(),
+		)
 	}
 
 	// Validate event
@@ -38,6 +40,14 @@ func (g *StreamGateway) Publish(ctx context.Context, stream domain.StreamKey, ev
 
 // PublishBatch publishes multiple events to a stream.
 func (g *StreamGateway) PublishBatch(ctx context.Context, stream domain.StreamKey, events []*domain.Event) ([]string, error) {
+	// Validate stream key - log warning for unknown keys but allow for flexibility
+	if !stream.IsValid() {
+		slog.WarnContext(ctx, "publishing batch to unknown stream key",
+			"stream", stream.String(),
+			"batch_size", len(events),
+		)
+	}
+
 	// Validate all events before publishing
 	for _, event := range events {
 		if event != nil {
