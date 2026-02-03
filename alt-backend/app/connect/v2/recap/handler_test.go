@@ -32,6 +32,14 @@ func (m *MockRecapUsecase) GetSevenDayRecap(ctx context.Context) (*domain.RecapS
 	return args.Get(0).(*domain.RecapSummary), args.Error(1)
 }
 
+func (m *MockRecapUsecase) GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.RecapSummary), args.Error(1)
+}
+
 func (m *MockRecapUsecase) GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error) {
 	args := m.Called(ctx, date)
 	if args.Get(0) == nil {

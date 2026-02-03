@@ -38,6 +38,7 @@ func (h *Handler) getRecapUsecase() RecapUsecaseInterface {
 // RecapUsecaseInterface defines the interface for recap usecase (for testing)
 type RecapUsecaseInterface interface {
 	GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error)
+	GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error)
 	GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error)
 }
 
@@ -108,6 +109,69 @@ func (h *Handler) GetSevenDayRecap(
 	}
 
 	return connect.NewResponse(resp), nil
+}
+
+// GetThreeDayRecap returns 3-day recap summary (authentication required).
+func (h *Handler) GetThreeDayRecap(
+	ctx context.Context,
+	req *connect.Request[recapv2.GetThreeDayRecapRequest],
+) (*connect.Response[recapv2.GetThreeDayRecapResponse], error) {
+	// Authentication check
+	userCtx, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	h.logger.InfoContext(ctx, "GetThreeDayRecap called", "user_id", userCtx.UserID)
+
+	// Call usecase
+	recap, err := h.getRecapUsecase().GetThreeDayRecap(ctx)
+	if err != nil {
+		if errors.Is(err, domain.ErrRecapNotFound) {
+			return nil, errorhandler.HandleNotFoundError(ctx, h.logger, "No 3-day recap available yet", "GetThreeDayRecap")
+		}
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetThreeDayRecap")
+	}
+
+	// Convert domain to proto
+	resp := domainToProtoThreeDays(recap)
+
+	// Attach cluster draft if requested
+	if req.Msg.GenreDraftId != nil && *req.Msg.GenreDraftId != "" && h.clusterDraftLoader != nil {
+		draft, err := h.clusterDraftLoader.LoadDraft(*req.Msg.GenreDraftId)
+		if err != nil {
+			h.logger.WarnContext(ctx, "cluster draft loader failed", "error", err, "draft_id", *req.Msg.GenreDraftId)
+		} else if draft != nil {
+			resp.ClusterDraft = clusterDraftToProto(draft)
+		}
+	}
+
+	return connect.NewResponse(resp), nil
+}
+
+// domainToProtoThreeDays converts domain.RecapSummary to 3-day proto response.
+func domainToProtoThreeDays(recap *domain.RecapSummary) *recapv2.GetThreeDayRecapResponse {
+	genres := make([]*recapv2.RecapGenre, len(recap.Genres))
+	for i, g := range recap.Genres {
+		genres[i] = &recapv2.RecapGenre{
+			Genre:         g.Genre,
+			Summary:       g.Summary,
+			TopTerms:      g.TopTerms,
+			ArticleCount:  int32(g.ArticleCount),
+			ClusterCount:  int32(g.ClusterCount),
+			EvidenceLinks: evidenceLinksToProto(g.EvidenceLinks),
+			Bullets:       g.Bullets,
+			References:    referencesToProto(g.References),
+		}
+	}
+
+	return &recapv2.GetThreeDayRecapResponse{
+		JobId:         recap.JobID,
+		ExecutedAt:    recap.ExecutedAt.Format(time.RFC3339),
+		WindowStart:   recap.WindowStart.Format(time.RFC3339),
+		WindowEnd:     recap.WindowEnd.Format(time.RFC3339),
+		TotalArticles: int32(recap.TotalArticles),
+		Genres:        genres,
+	}
 }
 
 // domainToProto converts domain.RecapSummary to proto response.

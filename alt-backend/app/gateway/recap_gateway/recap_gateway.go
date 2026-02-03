@@ -33,8 +33,16 @@ func NewRecapGateway() recap_port.RecapPort {
 }
 
 func (g *RecapGateway) GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error) {
+	return g.getRecapByWindow(ctx, 7)
+}
+
+func (g *RecapGateway) GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error) {
+	return g.getRecapByWindow(ctx, 3)
+}
+
+func (g *RecapGateway) getRecapByWindow(ctx context.Context, windowDays int) (*domain.RecapSummary, error) {
 	// recap-workerのAPIエンドポイントにリクエスト
-	url := fmt.Sprintf("%s/v1/recaps/7days", g.recapWorkerURL)
+	url := fmt.Sprintf("%s/v1/recaps/%ddays", g.recapWorkerURL, windowDays)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
