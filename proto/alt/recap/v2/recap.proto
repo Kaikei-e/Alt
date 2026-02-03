@@ -14,6 +14,10 @@ service RecapService {
   // Replaces GET /api/v1/recap/7days
   rpc GetSevenDayRecap(GetSevenDayRecapRequest) returns (GetSevenDayRecapResponse);
 
+  // GetThreeDayRecap returns 3-day recap summary (authentication required)
+  // Faster processing with smaller prompt sizes for daily use
+  rpc GetThreeDayRecap(GetThreeDayRecapRequest) returns (GetThreeDayRecapResponse);
+
   // GetEveningPulse returns Evening Pulse data (authentication required)
   // Evening Pulse provides 3 key topics for quick daily catch-up
   rpc GetEveningPulse(GetEveningPulseRequest) returns (GetEveningPulseResponse);
@@ -31,6 +35,30 @@ message GetSevenDayRecapRequest {
 
 // GetSevenDayRecapResponse contains the 7-day recap summary
 message GetSevenDayRecapResponse {
+  // Recap job ID
+  string job_id = 1;
+  // Execution timestamp (RFC3339)
+  string executed_at = 2;
+  // Window start timestamp (RFC3339)
+  string window_start = 3;
+  // Window end timestamp (RFC3339)
+  string window_end = 4;
+  // Total number of articles in the recap
+  int32 total_articles = 5;
+  // Recap by genre
+  repeated RecapGenre genres = 6;
+  // Optional cluster draft (populated if genre_draft_id provided)
+  optional ClusterDraft cluster_draft = 7;
+}
+
+// GetThreeDayRecapRequest is the request for getting 3-day recap
+message GetThreeDayRecapRequest {
+  // Optional draft ID for cluster draft attachment (replaces X-Genre-Draft-Id header)
+  optional string genre_draft_id = 1;
+}
+
+// GetThreeDayRecapResponse contains the 3-day recap summary
+message GetThreeDayRecapResponse {
   // Recap job ID
   string job_id = 1;
   // Execution timestamp (RFC3339)
