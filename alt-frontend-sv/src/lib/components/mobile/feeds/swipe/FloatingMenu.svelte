@@ -4,6 +4,7 @@ import {
 	BirdIcon,
 	CalendarRange,
 	ChartBar,
+	Compass,
 	Eye,
 	Globe,
 	Home,
@@ -15,6 +16,7 @@ import {
 	Plus,
 	Rss,
 	Search,
+	Shuffle,
 	Star,
 	X,
 } from "@lucide/svelte";
@@ -114,6 +116,13 @@ const menuItems = [
 		description: "Find specific feeds",
 	},
 	{
+		label: "Tag Trail",
+		href: `${svBasePath}/mobile/feeds/tag-trail`,
+		category: "explore",
+		icon: Shuffle,
+		description: "Discover feeds by exploring tags",
+	},
+	{
 		label: "Ask Augur",
 		href: `${svBasePath}/mobile/retrieve/ask-augur`,
 		category: "augur",
@@ -190,6 +199,11 @@ const categories = [
 		title: "Feeds",
 		items: menuItems.filter((i) => i.category === "feeds"),
 		icon: Rss,
+	},
+	{
+		title: "Explore",
+		items: menuItems.filter((i) => i.category === "explore"),
+		icon: Compass,
 	},
 	{
 		title: "Recap",

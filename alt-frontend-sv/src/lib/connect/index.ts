@@ -51,6 +51,18 @@ export {
 	type ArchiveArticleResult,
 	type ConnectArticleItem,
 	type ArticleCursorResponse,
+	// Tag Trail (ADR-169)
+	fetchArticlesByTag,
+	fetchArticleTags,
+	fetchRandomFeed,
+	// Streaming Tag Trail
+	streamArticleTags,
+	type ArticleTagEventType,
+	type StreamingArticleTagEvent,
+	type TagTrailArticle,
+	type TagTrailTag,
+	type RandomFeed,
+	type TagTrailArticlesResponse,
 } from "./articles";
 
 // RSSService client (Phase 5)

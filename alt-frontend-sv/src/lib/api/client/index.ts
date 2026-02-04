@@ -32,3 +32,10 @@ export {
 	updateFeedReadStatusClient,
 } from "./feeds";
 // NOTE: Recap API migrated to Connect-RPC (see $lib/connect/recap.ts)
+// Tag Trail関連のAPI
+export {
+	getArticlesByTagClient,
+	getArticleTagsClient,
+	getFeedTagsByIdClient,
+	getRandomSubscriptionClient,
+} from "./tagTrail";
