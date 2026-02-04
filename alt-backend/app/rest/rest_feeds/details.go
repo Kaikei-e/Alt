@@ -250,3 +250,88 @@ func RestHandleFetchFeedTags(container *di.ApplicationComponents) echo.HandlerFu
 		return c.JSON(http.StatusOK, response)
 	}
 }
+
+// RestHandleFetchFeedTagsByID handles GET /feeds/:id/tags requests.
+// Returns tags associated with a feed by its ID.
+// Used by Tag Trail feature to fetch tags for a random feed.
+func RestHandleFetchFeedTagsByID(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ctx := c.Request().Context()
+
+		// Get feed ID from path parameter
+		feedID := c.Param("id")
+		if feedID == "" {
+			logger.Logger.ErrorContext(ctx, "Feed ID is required")
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Feed ID is required"})
+		}
+
+		// Parse limit from query parameter (optional)
+		limit := 20 // Default limit
+		if limitStr := c.QueryParam("limit"); limitStr != "" {
+			parsedLimit, err := parseInt(limitStr)
+			if err != nil || parsedLimit <= 0 {
+				logger.Logger.ErrorContext(ctx, "Invalid limit parameter", "limit", limitStr)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid limit parameter"})
+			}
+			if parsedLimit > 100 {
+				parsedLimit = 100 // Cap at 100
+			}
+			limit = parsedLimit
+		}
+
+		// Parse cursor from query parameter (optional)
+		var cursor *time.Time
+		if cursorStr := c.QueryParam("cursor"); cursorStr != "" {
+			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
+			if err != nil {
+				logger.Logger.ErrorContext(ctx, "Invalid cursor parameter", "error", err, "cursor", cursorStr)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid cursor format. Use RFC3339 format"})
+			}
+			cursor = &parsedCursor
+		}
+
+		// Add caching headers (tags update infrequently)
+		c.Response().Header().Set("Cache-Control", "public, max-age=3600") // 1 hour
+
+		logger.Logger.InfoContext(ctx, "Fetching feed tags by ID", "feedID", feedID, "cursor", cursor, "limit", limit)
+
+		// Fetch tags directly by feed ID using the gateway
+		tags, err := container.AltDBRepository.FetchFeedTags(ctx, feedID, cursor, limit)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "Error fetching feed tags", "error", err, "feedID", feedID)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feed tags"})
+		}
+
+		// Convert domain tags to response format
+		tagResponses := make([]FeedTagResponse, len(tags))
+		for i, tag := range tags {
+			tagResponses[i] = FeedTagResponse{
+				ID:        tag.ID,
+				Name:      tag.TagName,
+				CreatedAt: tag.CreatedAt.Format(time.RFC3339),
+			}
+		}
+
+		// Create response
+		response := map[string]interface{}{
+			"feed_id": feedID,
+			"tags":    tagResponses,
+		}
+
+		// Add next cursor if there are results
+		if len(tags) > 0 {
+			lastTag := tags[len(tags)-1]
+			response["next_cursor"] = lastTag.CreatedAt.Format(time.RFC3339)
+		}
+
+		logger.Logger.InfoContext(ctx, "Feed tags by ID retrieved successfully", "feedID", feedID, "count", len(tags))
+		return c.JSON(http.StatusOK, response)
+	}
+}
+
+// parseInt parses an integer from a string
+func parseInt(s string) (int, error) {
+	var result int
+	_, err := fmt.Sscanf(s, "%d", &result)
+	return result, err
+}

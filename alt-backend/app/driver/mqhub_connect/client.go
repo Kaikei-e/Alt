@@ -25,9 +25,11 @@ const (
 
 // EventType constants matching mq-hub domain.
 const (
-	EventTypeArticleCreated     = "ArticleCreated"
-	EventTypeSummarizeRequested = "SummarizeRequested"
-	EventTypeIndexArticle       = "IndexArticle"
+	EventTypeArticleCreated            = "ArticleCreated"
+	EventTypeSummarizeRequested        = "SummarizeRequested"
+	EventTypeIndexArticle              = "IndexArticle"
+	EventTypeTagGenerationRequested    = "TagGenerationRequested"
+	EventTypeTagGenerationCompleted    = "TagGenerationCompleted"
 )
 
 // Client provides Connect-RPC client for mq-hub.
@@ -173,4 +175,76 @@ func (c *Client) PublishIndexArticle(ctx context.Context, payload IndexArticlePa
 	}
 
 	return resp.Msg.MessageId, nil
+}
+
+// GenerateTagsRequest represents a request for synchronous tag generation.
+type GenerateTagsRequest struct {
+	ArticleID string
+	Title     string
+	Content   string
+	FeedID    string
+	TimeoutMs int32
+}
+
+// GeneratedTag represents a generated tag with confidence.
+type GeneratedTag struct {
+	ID         string
+	Name       string
+	Confidence float32
+}
+
+// GenerateTagsResponse represents the response from tag generation.
+type GenerateTagsResponse struct {
+	Success      bool
+	ArticleID    string
+	Tags         []GeneratedTag
+	InferenceMs  float32
+	ErrorMessage string
+}
+
+// GenerateTagsForArticle synchronously generates tags for an article via mq-hub.
+// Returns the generated tags or an error if the operation fails.
+func (c *Client) GenerateTagsForArticle(ctx context.Context, req GenerateTagsRequest) (*GenerateTagsResponse, error) {
+	if !c.enabled {
+		return &GenerateTagsResponse{
+			Success:      false,
+			ArticleID:    req.ArticleID,
+			ErrorMessage: "mq-hub client is disabled",
+		}, nil
+	}
+
+	protoReq := &mqhubv1.GenerateTagsRequest{
+		ArticleId: req.ArticleID,
+		Title:     req.Title,
+		Content:   req.Content,
+		FeedId:    req.FeedID,
+		TimeoutMs: req.TimeoutMs,
+	}
+
+	resp, err := c.client.GenerateTagsForArticle(ctx, connect.NewRequest(protoReq))
+	if err != nil {
+		return &GenerateTagsResponse{
+			Success:      false,
+			ArticleID:    req.ArticleID,
+			ErrorMessage: err.Error(),
+		}, err
+	}
+
+	// Convert proto tags to domain tags
+	tags := make([]GeneratedTag, len(resp.Msg.Tags))
+	for i, protoTag := range resp.Msg.Tags {
+		tags[i] = GeneratedTag{
+			ID:         protoTag.Id,
+			Name:       protoTag.Name,
+			Confidence: protoTag.Confidence,
+		}
+	}
+
+	return &GenerateTagsResponse{
+		Success:      resp.Msg.Success,
+		ArticleID:    resp.Msg.ArticleId,
+		Tags:         tags,
+		InferenceMs:  resp.Msg.InferenceMs,
+		ErrorMessage: resp.Msg.ErrorMessage,
+	}, nil
 }

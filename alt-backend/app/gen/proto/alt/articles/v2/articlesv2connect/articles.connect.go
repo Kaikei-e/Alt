@@ -45,6 +45,18 @@ const (
 	// ArticleServiceFetchArticleSummaryProcedure is the fully-qualified name of the ArticleService's
 	// FetchArticleSummary RPC.
 	ArticleServiceFetchArticleSummaryProcedure = "/alt.articles.v2.ArticleService/FetchArticleSummary"
+	// ArticleServiceFetchArticlesByTagProcedure is the fully-qualified name of the ArticleService's
+	// FetchArticlesByTag RPC.
+	ArticleServiceFetchArticlesByTagProcedure = "/alt.articles.v2.ArticleService/FetchArticlesByTag"
+	// ArticleServiceFetchArticleTagsProcedure is the fully-qualified name of the ArticleService's
+	// FetchArticleTags RPC.
+	ArticleServiceFetchArticleTagsProcedure = "/alt.articles.v2.ArticleService/FetchArticleTags"
+	// ArticleServiceFetchRandomFeedProcedure is the fully-qualified name of the ArticleService's
+	// FetchRandomFeed RPC.
+	ArticleServiceFetchRandomFeedProcedure = "/alt.articles.v2.ArticleService/FetchRandomFeed"
+	// ArticleServiceStreamArticleTagsProcedure is the fully-qualified name of the ArticleService's
+	// StreamArticleTags RPC.
+	ArticleServiceStreamArticleTagsProcedure = "/alt.articles.v2.ArticleService/StreamArticleTags"
 )
 
 // ArticleServiceClient is a client for the alt.articles.v2.ArticleService service.
@@ -61,6 +73,18 @@ type ArticleServiceClient interface {
 	// FetchArticleSummary fetches article summaries for multiple URLs
 	// Replaces POST /v1/articles/summary
 	FetchArticleSummary(context.Context, *connect.Request[v2.FetchArticleSummaryRequest]) (*connect.Response[v2.FetchArticleSummaryResponse], error)
+	// FetchArticlesByTag fetches articles by tag (ID or name)
+	// Replaces GET /v1/articles/by-tag
+	FetchArticlesByTag(context.Context, *connect.Request[v2.FetchArticlesByTagRequest]) (*connect.Response[v2.FetchArticlesByTagResponse], error)
+	// FetchArticleTags fetches tags for an article
+	// Replaces GET /v1/articles/:id/tags
+	FetchArticleTags(context.Context, *connect.Request[v2.FetchArticleTagsRequest]) (*connect.Response[v2.FetchArticleTagsResponse], error)
+	// FetchRandomFeed fetches a random feed for Tag Trail
+	// Replaces GET /v1/rss-feed-link/random
+	FetchRandomFeed(context.Context, *connect.Request[v2.FetchRandomFeedRequest]) (*connect.Response[v2.FetchRandomFeedResponse], error)
+	// StreamArticleTags streams real-time tag updates for an article
+	// Returns cached tags immediately if available, otherwise streams generation progress
+	StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest]) (*connect.ServerStreamForClient[v2.ArticleTagEvent], error)
 }
 
 // NewArticleServiceClient constructs a client for the alt.articles.v2.ArticleService service. By
@@ -98,6 +122,30 @@ func NewArticleServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(articleServiceMethods.ByName("FetchArticleSummary")),
 			connect.WithClientOptions(opts...),
 		),
+		fetchArticlesByTag: connect.NewClient[v2.FetchArticlesByTagRequest, v2.FetchArticlesByTagResponse](
+			httpClient,
+			baseURL+ArticleServiceFetchArticlesByTagProcedure,
+			connect.WithSchema(articleServiceMethods.ByName("FetchArticlesByTag")),
+			connect.WithClientOptions(opts...),
+		),
+		fetchArticleTags: connect.NewClient[v2.FetchArticleTagsRequest, v2.FetchArticleTagsResponse](
+			httpClient,
+			baseURL+ArticleServiceFetchArticleTagsProcedure,
+			connect.WithSchema(articleServiceMethods.ByName("FetchArticleTags")),
+			connect.WithClientOptions(opts...),
+		),
+		fetchRandomFeed: connect.NewClient[v2.FetchRandomFeedRequest, v2.FetchRandomFeedResponse](
+			httpClient,
+			baseURL+ArticleServiceFetchRandomFeedProcedure,
+			connect.WithSchema(articleServiceMethods.ByName("FetchRandomFeed")),
+			connect.WithClientOptions(opts...),
+		),
+		streamArticleTags: connect.NewClient[v2.StreamArticleTagsRequest, v2.ArticleTagEvent](
+			httpClient,
+			baseURL+ArticleServiceStreamArticleTagsProcedure,
+			connect.WithSchema(articleServiceMethods.ByName("StreamArticleTags")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -107,6 +155,10 @@ type articleServiceClient struct {
 	archiveArticle      *connect.Client[v2.ArchiveArticleRequest, v2.ArchiveArticleResponse]
 	fetchArticlesCursor *connect.Client[v2.FetchArticlesCursorRequest, v2.FetchArticlesCursorResponse]
 	fetchArticleSummary *connect.Client[v2.FetchArticleSummaryRequest, v2.FetchArticleSummaryResponse]
+	fetchArticlesByTag  *connect.Client[v2.FetchArticlesByTagRequest, v2.FetchArticlesByTagResponse]
+	fetchArticleTags    *connect.Client[v2.FetchArticleTagsRequest, v2.FetchArticleTagsResponse]
+	fetchRandomFeed     *connect.Client[v2.FetchRandomFeedRequest, v2.FetchRandomFeedResponse]
+	streamArticleTags   *connect.Client[v2.StreamArticleTagsRequest, v2.ArticleTagEvent]
 }
 
 // FetchArticleContent calls alt.articles.v2.ArticleService.FetchArticleContent.
@@ -129,6 +181,26 @@ func (c *articleServiceClient) FetchArticleSummary(ctx context.Context, req *con
 	return c.fetchArticleSummary.CallUnary(ctx, req)
 }
 
+// FetchArticlesByTag calls alt.articles.v2.ArticleService.FetchArticlesByTag.
+func (c *articleServiceClient) FetchArticlesByTag(ctx context.Context, req *connect.Request[v2.FetchArticlesByTagRequest]) (*connect.Response[v2.FetchArticlesByTagResponse], error) {
+	return c.fetchArticlesByTag.CallUnary(ctx, req)
+}
+
+// FetchArticleTags calls alt.articles.v2.ArticleService.FetchArticleTags.
+func (c *articleServiceClient) FetchArticleTags(ctx context.Context, req *connect.Request[v2.FetchArticleTagsRequest]) (*connect.Response[v2.FetchArticleTagsResponse], error) {
+	return c.fetchArticleTags.CallUnary(ctx, req)
+}
+
+// FetchRandomFeed calls alt.articles.v2.ArticleService.FetchRandomFeed.
+func (c *articleServiceClient) FetchRandomFeed(ctx context.Context, req *connect.Request[v2.FetchRandomFeedRequest]) (*connect.Response[v2.FetchRandomFeedResponse], error) {
+	return c.fetchRandomFeed.CallUnary(ctx, req)
+}
+
+// StreamArticleTags calls alt.articles.v2.ArticleService.StreamArticleTags.
+func (c *articleServiceClient) StreamArticleTags(ctx context.Context, req *connect.Request[v2.StreamArticleTagsRequest]) (*connect.ServerStreamForClient[v2.ArticleTagEvent], error) {
+	return c.streamArticleTags.CallServerStream(ctx, req)
+}
+
 // ArticleServiceHandler is an implementation of the alt.articles.v2.ArticleService service.
 type ArticleServiceHandler interface {
 	// FetchArticleContent fetches and extracts compliant article content
@@ -143,6 +215,18 @@ type ArticleServiceHandler interface {
 	// FetchArticleSummary fetches article summaries for multiple URLs
 	// Replaces POST /v1/articles/summary
 	FetchArticleSummary(context.Context, *connect.Request[v2.FetchArticleSummaryRequest]) (*connect.Response[v2.FetchArticleSummaryResponse], error)
+	// FetchArticlesByTag fetches articles by tag (ID or name)
+	// Replaces GET /v1/articles/by-tag
+	FetchArticlesByTag(context.Context, *connect.Request[v2.FetchArticlesByTagRequest]) (*connect.Response[v2.FetchArticlesByTagResponse], error)
+	// FetchArticleTags fetches tags for an article
+	// Replaces GET /v1/articles/:id/tags
+	FetchArticleTags(context.Context, *connect.Request[v2.FetchArticleTagsRequest]) (*connect.Response[v2.FetchArticleTagsResponse], error)
+	// FetchRandomFeed fetches a random feed for Tag Trail
+	// Replaces GET /v1/rss-feed-link/random
+	FetchRandomFeed(context.Context, *connect.Request[v2.FetchRandomFeedRequest]) (*connect.Response[v2.FetchRandomFeedResponse], error)
+	// StreamArticleTags streams real-time tag updates for an article
+	// Returns cached tags immediately if available, otherwise streams generation progress
+	StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest], *connect.ServerStream[v2.ArticleTagEvent]) error
 }
 
 // NewArticleServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -176,6 +260,30 @@ func NewArticleServiceHandler(svc ArticleServiceHandler, opts ...connect.Handler
 		connect.WithSchema(articleServiceMethods.ByName("FetchArticleSummary")),
 		connect.WithHandlerOptions(opts...),
 	)
+	articleServiceFetchArticlesByTagHandler := connect.NewUnaryHandler(
+		ArticleServiceFetchArticlesByTagProcedure,
+		svc.FetchArticlesByTag,
+		connect.WithSchema(articleServiceMethods.ByName("FetchArticlesByTag")),
+		connect.WithHandlerOptions(opts...),
+	)
+	articleServiceFetchArticleTagsHandler := connect.NewUnaryHandler(
+		ArticleServiceFetchArticleTagsProcedure,
+		svc.FetchArticleTags,
+		connect.WithSchema(articleServiceMethods.ByName("FetchArticleTags")),
+		connect.WithHandlerOptions(opts...),
+	)
+	articleServiceFetchRandomFeedHandler := connect.NewUnaryHandler(
+		ArticleServiceFetchRandomFeedProcedure,
+		svc.FetchRandomFeed,
+		connect.WithSchema(articleServiceMethods.ByName("FetchRandomFeed")),
+		connect.WithHandlerOptions(opts...),
+	)
+	articleServiceStreamArticleTagsHandler := connect.NewServerStreamHandler(
+		ArticleServiceStreamArticleTagsProcedure,
+		svc.StreamArticleTags,
+		connect.WithSchema(articleServiceMethods.ByName("StreamArticleTags")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.articles.v2.ArticleService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ArticleServiceFetchArticleContentProcedure:
@@ -186,6 +294,14 @@ func NewArticleServiceHandler(svc ArticleServiceHandler, opts ...connect.Handler
 			articleServiceFetchArticlesCursorHandler.ServeHTTP(w, r)
 		case ArticleServiceFetchArticleSummaryProcedure:
 			articleServiceFetchArticleSummaryHandler.ServeHTTP(w, r)
+		case ArticleServiceFetchArticlesByTagProcedure:
+			articleServiceFetchArticlesByTagHandler.ServeHTTP(w, r)
+		case ArticleServiceFetchArticleTagsProcedure:
+			articleServiceFetchArticleTagsHandler.ServeHTTP(w, r)
+		case ArticleServiceFetchRandomFeedProcedure:
+			articleServiceFetchRandomFeedHandler.ServeHTTP(w, r)
+		case ArticleServiceStreamArticleTagsProcedure:
+			articleServiceStreamArticleTagsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -209,4 +325,20 @@ func (UnimplementedArticleServiceHandler) FetchArticlesCursor(context.Context, *
 
 func (UnimplementedArticleServiceHandler) FetchArticleSummary(context.Context, *connect.Request[v2.FetchArticleSummaryRequest]) (*connect.Response[v2.FetchArticleSummaryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.FetchArticleSummary is not implemented"))
+}
+
+func (UnimplementedArticleServiceHandler) FetchArticlesByTag(context.Context, *connect.Request[v2.FetchArticlesByTagRequest]) (*connect.Response[v2.FetchArticlesByTagResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.FetchArticlesByTag is not implemented"))
+}
+
+func (UnimplementedArticleServiceHandler) FetchArticleTags(context.Context, *connect.Request[v2.FetchArticleTagsRequest]) (*connect.Response[v2.FetchArticleTagsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.FetchArticleTags is not implemented"))
+}
+
+func (UnimplementedArticleServiceHandler) FetchRandomFeed(context.Context, *connect.Request[v2.FetchRandomFeedRequest]) (*connect.Response[v2.FetchRandomFeedResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.FetchRandomFeed is not implemented"))
+}
+
+func (UnimplementedArticleServiceHandler) StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest], *connect.ServerStream[v2.ArticleTagEvent]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.StreamArticleTags is not implemented"))
 }

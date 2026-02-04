@@ -221,6 +221,325 @@ func convertArticlesToProto(articles []*domain.Article) []*articlesv2.ArticleIte
 	return result
 }
 
+// FetchArticlesByTag fetches articles by tag (ID or name).
+// Replaces GET /v1/articles/by-tag
+// ADR-169: tag_name で横断検索、tag_id は後方互換性
+func (h *Handler) FetchArticlesByTag(
+	ctx context.Context,
+	req *connect.Request[articlesv2.FetchArticlesByTagRequest],
+) (*connect.Response[articlesv2.FetchArticlesByTagResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	// Parse and validate limit
+	limit := int(req.Msg.Limit)
+	if limit <= 0 {
+		limit = 20 // default
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Parse cursor if provided
+	var cursor *time.Time
+	if req.Msg.Cursor != nil && *req.Msg.Cursor != "" {
+		parsed, err := time.Parse(time.RFC3339, *req.Msg.Cursor)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("invalid cursor format, expected RFC3339: %w", err))
+		}
+		cursor = &parsed
+	}
+
+	// Request limit+1 to determine hasMore
+	var articles []*domain.TagTrailArticle
+
+	// Prefer tag_name (ADR-169 cross-feed discovery), fallback to tag_id
+	if req.Msg.TagName != nil && *req.Msg.TagName != "" {
+		articles, err = h.container.FetchArticlesByTagUsecase.ExecuteByTagName(ctx, *req.Msg.TagName, cursor, limit+1)
+	} else if req.Msg.TagId != nil && *req.Msg.TagId != "" {
+		articles, err = h.container.FetchArticlesByTagUsecase.Execute(ctx, *req.Msg.TagId, cursor, limit+1)
+	} else {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("either tag_id or tag_name is required"))
+	}
+
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticlesByTag")
+	}
+
+	// Determine hasMore and trim result
+	hasMore := len(articles) > limit
+	if hasMore {
+		articles = articles[:limit]
+	}
+
+	// Convert to proto
+	protoArticles := make([]*articlesv2.TagTrailArticleItem, 0, len(articles))
+	for _, article := range articles {
+		protoArticles = append(protoArticles, &articlesv2.TagTrailArticleItem{
+			Id:          article.ID,
+			Title:       article.Title,
+			Link:        article.Link,
+			PublishedAt: article.PublishedAt.Format(time.RFC3339),
+			FeedTitle:   article.FeedTitle,
+		})
+	}
+
+	// Derive next cursor
+	var nextCursor *string
+	if hasMore && len(articles) > 0 {
+		lastArticle := articles[len(articles)-1]
+		cursorStr := lastArticle.PublishedAt.Format(time.RFC3339)
+		nextCursor = &cursorStr
+	}
+
+	return connect.NewResponse(&articlesv2.FetchArticlesByTagResponse{
+		Articles:   protoArticles,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	}), nil
+}
+
+// FetchArticleTags fetches tags for an article.
+// Replaces GET /v1/articles/:id/tags
+func (h *Handler) FetchArticleTags(
+	ctx context.Context,
+	req *connect.Request[articlesv2.FetchArticleTagsRequest],
+) (*connect.Response[articlesv2.FetchArticleTagsResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	articleID := req.Msg.ArticleId
+	if articleID == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("article_id is required"))
+	}
+
+	tags, err := h.container.FetchArticleTagsUsecase.Execute(ctx, articleID)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticleTags")
+	}
+
+	// Convert to proto
+	protoTags := make([]*articlesv2.ArticleTagItem, 0, len(tags))
+	for _, tag := range tags {
+		protoTags = append(protoTags, &articlesv2.ArticleTagItem{
+			Id:        tag.ID,
+			Name:      tag.TagName,
+			CreatedAt: tag.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	return connect.NewResponse(&articlesv2.FetchArticleTagsResponse{
+		ArticleId: articleID,
+		Tags:      protoTags,
+	}), nil
+}
+
+// FetchRandomFeed fetches a random feed for Tag Trail.
+// Replaces GET /v1/rss-feed-link/random
+// ADR-173: Includes tags for the feed's latest article (generated on-the-fly if not in DB)
+func (h *Handler) FetchRandomFeed(
+	ctx context.Context,
+	req *connect.Request[articlesv2.FetchRandomFeedRequest],
+) (*connect.Response[articlesv2.FetchRandomFeedResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	feed, err := h.container.FetchRandomSubscriptionUsecase.Execute(ctx)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchRandomFeed")
+	}
+
+	// Fetch tags for the feed's latest article (ADR-173)
+	var protoTags []*articlesv2.ArticleTagItem
+
+	if h.container.AltDBRepository != nil {
+		// Get the latest article for this feed
+		latestArticle, err := h.container.AltDBRepository.FetchLatestArticleByFeedID(ctx, feed.ID)
+		if err != nil {
+			h.logger.WarnContext(ctx, "failed to fetch latest article for feed", "feedID", feed.ID, "error", err)
+			// Continue without tags - fail-open
+		} else if latestArticle != nil {
+			h.logger.InfoContext(ctx, "found latest article for feed", "feedID", feed.ID, "articleID", latestArticle.ID)
+
+			// Use FetchArticleTagsGateway for on-the-fly generation (ADR-168)
+			if h.container.FetchArticleTagsGateway != nil {
+				tags, err := h.container.FetchArticleTagsGateway.FetchArticleTags(ctx, latestArticle.ID)
+				if err != nil {
+					h.logger.WarnContext(ctx, "failed to fetch/generate tags for article", "articleID", latestArticle.ID, "error", err)
+					// Continue without tags - fail-open
+				} else {
+					protoTags = convertTagsToProto(tags)
+					h.logger.InfoContext(ctx, "fetched tags for feed's latest article",
+						"feedID", feed.ID,
+						"articleID", latestArticle.ID,
+						"tagCount", len(protoTags))
+				}
+			}
+		} else {
+			h.logger.InfoContext(ctx, "no articles found for feed, triggering async fetch", "feedID", feed.ID)
+
+			// Capture user before goroutine (user context will be lost after response)
+			user, _ := middleware.GetUserContext(ctx)
+			if user != nil {
+				userCopy := *user
+				feedIDCopy := feed.ID
+				feedLinkCopy := feed.Link
+
+				// Async article fetch + tag generation (non-blocking)
+				go func() {
+					bgCtx := context.Background()
+					parsedURL, err := url.Parse(feedLinkCopy)
+					if err != nil {
+						h.logger.Warn("failed to parse feed link for async fetch", "feedID", feedIDCopy, "error", err)
+						return
+					}
+					if err := rest.IsAllowedURL(parsedURL); err != nil {
+						h.logger.Warn("feed link not allowed for async fetch", "feedID", feedIDCopy, "error", err)
+						return
+					}
+					if h.container.ArticleUsecase == nil {
+						return
+					}
+					_, newArticleID, fetchErr := h.container.ArticleUsecase.FetchCompliantArticle(bgCtx, parsedURL, userCopy)
+					if fetchErr != nil {
+						h.logger.Warn("async article fetch failed", "feedID", feedIDCopy, "error", fetchErr)
+						return
+					}
+					h.logger.Info("async article fetch succeeded", "feedID", feedIDCopy, "articleID", newArticleID)
+					if newArticleID != "" && h.container.FetchArticleTagsGateway != nil {
+						_, tagErr := h.container.FetchArticleTagsGateway.FetchArticleTags(bgCtx, newArticleID)
+						if tagErr != nil {
+							h.logger.Warn("async tag fetch failed", "feedID", feedIDCopy, "articleID", newArticleID, "error", tagErr)
+						} else {
+							h.logger.Info("async tag fetch succeeded", "feedID", feedIDCopy, "articleID", newArticleID)
+						}
+					}
+				}()
+			}
+		}
+	}
+
+	return connect.NewResponse(&articlesv2.FetchRandomFeedResponse{
+		Id:          feed.ID.String(),
+		Url:         feed.Link, // Site URL (feeds.link)
+		Title:       feed.Title,
+		Description: feed.Description,
+		Tags:        protoTags,
+	}), nil
+}
+
+// StreamArticleTags streams real-time tag updates for an article.
+// Returns cached tags immediately if available, otherwise triggers on-the-fly generation via mq-hub.
+// ADR-168: On-the-fly tag generation for Tag Trail initial feed card.
+func (h *Handler) StreamArticleTags(
+	ctx context.Context,
+	req *connect.Request[articlesv2.StreamArticleTagsRequest],
+	stream *connect.ServerStream[articlesv2.ArticleTagEvent],
+) error {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	articleID := req.Msg.ArticleId
+	if articleID == "" {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("article_id is required"))
+	}
+
+	h.logger.InfoContext(ctx, "starting article tags stream", "articleID", articleID)
+
+	// 1. Check DB directly for existing tags (no on-the-fly generation)
+	// This allows us to distinguish between CACHED (from DB) and COMPLETED (generated)
+	if h.container.AltDBRepository != nil {
+		cachedTags, err := h.container.AltDBRepository.FetchArticleTags(ctx, articleID)
+		if err != nil {
+			h.logger.WarnContext(ctx, "failed to check DB for cached tags", "error", err, "articleID", articleID)
+			// Continue to try on-the-fly generation
+		} else if len(cachedTags) > 0 {
+			// Tags found in DB - return as CACHED
+			h.logger.InfoContext(ctx, "returning cached tags from DB", "articleID", articleID, "tagCount", len(cachedTags))
+			return stream.Send(&articlesv2.ArticleTagEvent{
+				ArticleId: articleID,
+				Tags:      convertTagsToProto(cachedTags),
+				EventType: articlesv2.ArticleTagEvent_EVENT_TYPE_CACHED,
+			})
+		}
+	}
+
+	// 2. No tags in DB - trigger on-the-fly generation via gateway
+	// The gateway handles mq-hub integration for tag generation (ADR-168)
+	h.logger.InfoContext(ctx, "no tags in DB, triggering on-the-fly generation", "articleID", articleID)
+
+	if h.container.FetchArticleTagsGateway == nil {
+		// Fallback: gateway not available, return empty
+		h.logger.WarnContext(ctx, "FetchArticleTagsGateway not available, returning empty tags", "articleID", articleID)
+		return stream.Send(&articlesv2.ArticleTagEvent{
+			ArticleId: articleID,
+			Tags:      []*articlesv2.ArticleTagItem{},
+			EventType: articlesv2.ArticleTagEvent_EVENT_TYPE_COMPLETED,
+			Message:   stringPtr("Tag generation not available"),
+		})
+	}
+
+	// Call gateway to trigger on-the-fly generation
+	generatedTags, err := h.container.FetchArticleTagsGateway.FetchArticleTags(ctx, articleID)
+	if err != nil {
+		// Fail-open: return empty tags instead of error to keep UI functional
+		h.logger.WarnContext(ctx, "on-the-fly tag generation failed", "articleID", articleID, "error", err)
+		return stream.Send(&articlesv2.ArticleTagEvent{
+			ArticleId: articleID,
+			Tags:      []*articlesv2.ArticleTagItem{},
+			EventType: articlesv2.ArticleTagEvent_EVENT_TYPE_COMPLETED,
+			Message:   stringPtr("Tag generation temporarily unavailable"),
+		})
+	}
+
+	if len(generatedTags) == 0 {
+		h.logger.InfoContext(ctx, "on-the-fly generation returned no tags", "articleID", articleID)
+		return stream.Send(&articlesv2.ArticleTagEvent{
+			ArticleId: articleID,
+			Tags:      []*articlesv2.ArticleTagItem{},
+			EventType: articlesv2.ArticleTagEvent_EVENT_TYPE_COMPLETED,
+			Message:   stringPtr("No tags generated"),
+		})
+	}
+
+	h.logger.InfoContext(ctx, "returning generated tags", "articleID", articleID, "tagCount", len(generatedTags))
+	return stream.Send(&articlesv2.ArticleTagEvent{
+		ArticleId: articleID,
+		Tags:      convertTagsToProto(generatedTags),
+		EventType: articlesv2.ArticleTagEvent_EVENT_TYPE_COMPLETED,
+	})
+}
+
+// convertTagsToProto converts domain tags to proto format.
+func convertTagsToProto(tags []*domain.FeedTag) []*articlesv2.ArticleTagItem {
+	result := make([]*articlesv2.ArticleTagItem, 0, len(tags))
+	for _, tag := range tags {
+		result = append(result, &articlesv2.ArticleTagItem{
+			Id:        tag.ID,
+			Name:      tag.TagName,
+			CreatedAt: tag.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return result
+}
+
+// stringPtr returns a pointer to a string.
+func stringPtr(s string) *string {
+	return &s
+}
+
 // FetchArticleSummary fetches article summaries for multiple URLs.
 // Replaces POST /v1/articles/summary
 // Priority: 1) AI-generated summaries from article_summaries table

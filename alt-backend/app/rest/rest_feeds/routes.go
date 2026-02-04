@@ -39,6 +39,7 @@ func RegisterFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	feedsGroup.GET("/stats/detailed", RestHandleDetailedFeedStats(container, cfg))
 	feedsGroup.GET("/stats/trends", RestHandleTrendStats(container, cfg))
 	feedsGroup.POST("/tags", RestHandleFetchFeedTags(container))
+	feedsGroup.GET("/:id/tags", RestHandleFetchFeedTagsByID(container))
 	feedsGroup.POST("/fetch/summary/provided", RestHandleFetchInoreaderSummary(container))
 	feedsGroup.POST("/fetch/summary", RestHandleFetchArticleSummary(container, cfg))
 
@@ -52,5 +53,6 @@ func RegisterFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	rss := v1.Group("/rss-feed-link", authMiddleware.RequireAuth())
 	rss.POST("/register", RestHandleRegisterRSSFeed(container))
 	rss.GET("/list", RestHandleListRSSFeedLinks(container))
+	rss.GET("/random", RestHandleFetchRandomSubscription(container))
 	rss.DELETE("/:id", RestHandleDeleteRSSFeedLink(container))
 }

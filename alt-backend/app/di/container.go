@@ -59,6 +59,12 @@ import (
 	"alt/usecase/fetch_feed_tags_usecase"
 	"alt/usecase/fetch_feed_usecase"
 	"alt/usecase/fetch_inoreader_summary_usecase"
+	"alt/usecase/fetch_random_subscription_usecase"
+	"alt/usecase/fetch_articles_by_tag_usecase"
+	"alt/usecase/fetch_article_tags_usecase"
+	"alt/gateway/fetch_random_subscription_gateway"
+	"alt/gateway/fetch_articles_by_tag_gateway"
+	"alt/gateway/fetch_article_tags_gateway"
 	"alt/usecase/fetch_recent_articles_usecase"
 	"alt/usecase/fetch_trend_stats_usecase"
 	"alt/usecase/image_fetch_usecase"
@@ -138,6 +144,12 @@ type ApplicationComponents struct {
 	BatchArticleFetcher                 *batch_article_fetcher.BatchArticleFetcher
 	RetrieveContextUsecase              retrieve_context_usecase.RetrieveContextUsecase
 	AnswerChatUsecase                   answer_chat_usecase.AnswerChatUsecase
+	FetchRandomSubscriptionUsecase      *fetch_random_subscription_usecase.FetchRandomSubscriptionUsecase
+	FetchArticlesByTagUsecase           *fetch_articles_by_tag_usecase.FetchArticlesByTagUsecase
+	FetchArticleTagsUsecase             *fetch_article_tags_usecase.FetchArticleTagsUsecase
+
+	// Gateways exposed for handler use (on-the-fly tag generation)
+	FetchArticleTagsGateway             *fetch_article_tags_gateway.FetchArticleTagsGateway
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -299,6 +311,24 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	// Auth-hub client for identity management (abstracts Kratos)
 	kratosClientImpl := kratos_client.NewKratosClient(cfg.AuthHub.URL)
 
+	// Random subscription components (for Tag Trail feature)
+	fetchRandomSubscriptionGatewayImpl := fetch_random_subscription_gateway.NewFetchRandomSubscriptionGateway(altDBRepository)
+	fetchRandomSubscriptionUsecase := fetch_random_subscription_usecase.NewFetchRandomSubscriptionUsecase(fetchRandomSubscriptionGatewayImpl)
+
+	// Articles by tag components (for Tag Trail feature)
+	fetchArticlesByTagGatewayImpl := fetch_articles_by_tag_gateway.NewFetchArticlesByTagGateway(altDBRepository)
+	fetchArticlesByTagUsecase := fetch_articles_by_tag_usecase.NewFetchArticlesByTagUsecase(fetchArticlesByTagGatewayImpl)
+
+	// Article tags components (for Tag Trail feature)
+	// Use gateway with mq-hub client to enable on-the-fly tag generation (ADR-168)
+	fetchArticleTagsConfig := fetch_article_tags_gateway.DefaultConfig()
+	fetchArticleTagsGatewayImpl := fetch_article_tags_gateway.NewFetchArticleTagsGatewayWithMQHub(
+		altDBRepository,
+		mqhubClient,
+		fetchArticleTagsConfig,
+	)
+	fetchArticleTagsUsecase := fetch_article_tags_usecase.NewFetchArticleTagsUsecase(fetchArticleTagsGatewayImpl)
+
 	return &ApplicationComponents{
 		// Ports
 		ConfigPort:       configPort,
@@ -356,5 +386,11 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		BatchArticleFetcher:                 batchArticleFetcher,
 		RetrieveContextUsecase:              ragRetrieveContextUsecase,
 		AnswerChatUsecase:                   answerChatUsecase,
+		FetchRandomSubscriptionUsecase:      fetchRandomSubscriptionUsecase,
+		FetchArticlesByTagUsecase:           fetchArticlesByTagUsecase,
+		FetchArticleTagsUsecase:             fetchArticleTagsUsecase,
+
+		// Gateways exposed for handler use (on-the-fly tag generation)
+		FetchArticleTagsGateway:             fetchArticleTagsGatewayImpl,
 	}
 }
