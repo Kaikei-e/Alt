@@ -310,6 +310,67 @@ class ArticleFetcher:
             logger.error("Failed to count untagged articles", error=str(e))
             raise ArticleFetchError("Failed to fetch articles") from e
 
+    def fetch_all_articles_for_regeneration(
+        self,
+        conn: Connection,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch all articles for full regeneration.
+
+        Uses offset-based pagination for sequential processing of all articles.
+        This method is optimized for batch regeneration tasks where we need to
+        process every article in the database.
+
+        Args:
+            conn: Database connection
+            offset: Number of articles to skip (for pagination)
+            limit: Maximum number of articles to fetch (default: batch_size from config)
+
+        Returns:
+            List of article dictionaries with id, title, content, created_at
+
+        Raises:
+            ArticleFetchError: If database operations fail
+        """
+        batch_size = limit or self.config.batch_size
+
+        query = """
+            SELECT
+                a.id::text AS id,
+                a.title,
+                a.content,
+                a.created_at
+            FROM articles a
+            WHERE a.content IS NOT NULL AND a.content != ''
+            ORDER BY a.id
+            OFFSET %s
+            LIMIT %s
+        """
+
+        try:
+            with conn.cursor(cursor_factory=DictCursor) as cursor:
+                cursor.execute(query, (offset, batch_size))
+                rows = cursor.fetchall()
+
+                logger.info(
+                    "Fetched articles for regeneration",
+                    count=len(rows),
+                    offset=offset,
+                    limit=batch_size,
+                )
+
+                return [dict(row) for row in rows]
+
+        except psycopg2.Error as e:
+            logger.error(
+                "Failed to fetch articles for regeneration",
+                error=str(e),
+                offset=offset,
+            )
+            raise ArticleFetchError("Failed to fetch articles for regeneration") from e
+
     def fetch_low_confidence_articles(
         self,
         conn: Connection,
