@@ -29,17 +29,17 @@ pub(crate) async fn trigger_7days(
     State(state): State<AppState>,
     Json(payload): Json<GenerateRecapRequest>,
 ) -> impl IntoResponse {
-    trigger_recap(state, payload, 7, "7days").await
+    trigger_recap(state, payload, 7, "7days")
 }
 
 pub(crate) async fn trigger_3days(
     State(state): State<AppState>,
     Json(payload): Json<GenerateRecapRequest>,
 ) -> impl IntoResponse {
-    trigger_recap(state, payload, 3, "3days").await
+    trigger_recap(state, payload, 3, "3days")
 }
 
-async fn trigger_recap(
+fn trigger_recap(
     state: AppState,
     payload: GenerateRecapRequest,
     window_days: u32,

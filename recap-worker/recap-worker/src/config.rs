@@ -788,7 +788,7 @@ fn load_observability_config() -> Result<(Option<String>, f64), ConfigError> {
 
 fn load_batch_config() -> Result<BatchConfig, ConfigError> {
     let window_days = parse_u32("RECAP_WINDOW_DAYS", 7)?;
-    let window_3days = parse_u32("RECAP_3DAYS_WINDOW_DAYS", 3)?;
+    let three_day_window = parse_u32("RECAP_3DAYS_WINDOW_DAYS", 3)?;
     let genres = parse_csv(
         "RECAP_GENRES",
         "ai_data,climate_environment,consumer_products,consumer_tech,culture_arts,cybersecurity,diplomacy_security,economics_macro,education,energy_transition,film_tv,food_cuisine,games_esports,health_medicine,home_living,industry_logistics,internet_platforms,labor_workplace,law_crime,life_science,markets_finance,mobility_automotive,music_audio,politics_government,society_demographics,software_dev,space_astronomy,sports,startups_innovation,travel_places",
@@ -807,7 +807,7 @@ fn load_batch_config() -> Result<BatchConfig, ConfigError> {
     let lang_detect_min_confidence = parse_f64("RECAP_LANG_DETECT_MIN_CONFIDENCE", 0.65)?;
     Ok(BatchConfig {
         recap_window_days: window_days,
-        recap_3days_window_days: window_3days,
+        recap_3days_window_days: three_day_window,
         recap_genres: genres,
         genre_classifier_weights_path: classifier_weights_path,
         genre_classifier_weights_path_ja: classifier_weights_path_ja,
