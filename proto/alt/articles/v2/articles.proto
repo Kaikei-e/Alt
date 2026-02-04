@@ -117,6 +117,128 @@ message FetchArticleSummaryResponse {
 }
 
 // =============================================================================
+// Tag Trail Messages (ADR-167, ADR-168, ADR-169)
+// =============================================================================
+
+// FetchArticlesByTagRequest is the request for fetching articles by tag
+message FetchArticlesByTagRequest {
+  // Tag ID for backward compatibility (optional)
+  optional string tag_id = 1;
+  // Tag name for cross-feed discovery (preferred, ADR-169)
+  optional string tag_name = 2;
+  // Cursor for pagination (RFC3339 timestamp)
+  optional string cursor = 3;
+  // Maximum number of items to return (default: 20, max: 100)
+  int32 limit = 4;
+}
+
+// TagTrailArticleItem represents an article in Tag Trail
+message TagTrailArticleItem {
+  // Article UUID
+  string id = 1;
+  // Article title
+  string title = 2;
+  // Article URL (link)
+  string link = 3;
+  // Published timestamp (RFC3339)
+  string published_at = 4;
+  // Feed title (source)
+  string feed_title = 5;
+}
+
+// FetchArticlesByTagResponse contains articles matching the tag
+message FetchArticlesByTagResponse {
+  // Matching articles
+  repeated TagTrailArticleItem articles = 1;
+  // Next cursor for pagination
+  optional string next_cursor = 2;
+  // Whether there are more items
+  bool has_more = 3;
+}
+
+// FetchArticleTagsRequest is the request for fetching tags of an article
+message FetchArticleTagsRequest {
+  // Article ID (required)
+  string article_id = 1;
+}
+
+// ArticleTagItem represents a tag on an article
+message ArticleTagItem {
+  // Tag ID
+  string id = 1;
+  // Tag name
+  string name = 2;
+  // Created timestamp (RFC3339)
+  string created_at = 3;
+}
+
+// FetchArticleTagsResponse contains tags for an article
+message FetchArticleTagsResponse {
+  // Article ID
+  string article_id = 1;
+  // Article tags
+  repeated ArticleTagItem tags = 2;
+}
+
+// FetchRandomFeedRequest is the request for getting a random feed
+message FetchRandomFeedRequest {}
+
+// FetchRandomFeedResponse contains a random feed
+message FetchRandomFeedResponse {
+  // Feed ID
+  string id = 1;
+  // Site URL (feeds.link)
+  string url = 2;
+  // Feed title
+  string title = 3;
+  // Feed description
+  string description = 4;
+  // Tags for the feed (generated on-the-fly if not in DB, ADR-173)
+  repeated ArticleTagItem tags = 5;
+}
+
+// =============================================================================
+// Tag Trail Streaming Messages (Real-time tag generation)
+// =============================================================================
+
+// StreamArticleTagsRequest is the request for streaming tag updates
+message StreamArticleTagsRequest {
+  // Article ID (required)
+  string article_id = 1;
+  // Article title (optional, for on-the-fly generation)
+  optional string title = 2;
+  // Article content (optional, for on-the-fly generation)
+  optional string content = 3;
+  // Feed ID (optional, for on-the-fly generation)
+  optional string feed_id = 4;
+}
+
+// ArticleTagEvent represents a streaming event for tag updates
+message ArticleTagEvent {
+  // Article ID
+  string article_id = 1;
+  // Current tags (empty during generation)
+  repeated ArticleTagItem tags = 2;
+  // Event type
+  EventType event_type = 3;
+  // Status message (optional)
+  optional string message = 4;
+
+  // EventType indicates the type of tag event
+  enum EventType {
+    EVENT_TYPE_UNSPECIFIED = 0;
+    // Tags retrieved from cache/DB (immediate completion)
+    EVENT_TYPE_CACHED = 1;
+    // Tags are being generated (heartbeat)
+    EVENT_TYPE_GENERATING = 2;
+    // Tag generation completed
+    EVENT_TYPE_COMPLETED = 3;
+    // Error occurred during generation
+    EVENT_TYPE_ERROR = 4;
+  }
+}
+
+// =============================================================================
 // ArticleService Definition
 // =============================================================================
 
@@ -137,4 +259,20 @@ service ArticleService {
   // FetchArticleSummary fetches article summaries for multiple URLs
   // Replaces POST /v1/articles/summary
   rpc FetchArticleSummary(FetchArticleSummaryRequest) returns (FetchArticleSummaryResponse);
+
+  // FetchArticlesByTag fetches articles by tag (ID or name)
+  // Replaces GET /v1/articles/by-tag
+  rpc FetchArticlesByTag(FetchArticlesByTagRequest) returns (FetchArticlesByTagResponse);
+
+  // FetchArticleTags fetches tags for an article
+  // Replaces GET /v1/articles/:id/tags
+  rpc FetchArticleTags(FetchArticleTagsRequest) returns (FetchArticleTagsResponse);
+
+  // FetchRandomFeed fetches a random feed for Tag Trail
+  // Replaces GET /v1/rss-feed-link/random
+  rpc FetchRandomFeed(FetchRandomFeedRequest) returns (FetchRandomFeedResponse);
+
+  // StreamArticleTags streams real-time tag updates for an article
+  // Returns cached tags immediately if available, otherwise streams generation progress
+  rpc StreamArticleTags(StreamArticleTagsRequest) returns (stream ArticleTagEvent);
 }

@@ -148,6 +148,48 @@ message HealthCheckResponse {
 }
 
 // =============================================================================
+// Tag Generation (Request-Reply Pattern)
+// =============================================================================
+
+// GenerateTagsRequest requests synchronous tag generation for an article.
+message GenerateTagsRequest {
+  // Article ID to generate tags for
+  string article_id = 1;
+  // Article title
+  string title = 2;
+  // Article content
+  string content = 3;
+  // Feed ID the article belongs to
+  string feed_id = 4;
+  // Timeout in milliseconds (default: 30000ms)
+  int32 timeout_ms = 5;
+}
+
+// GeneratedTag represents a single generated tag with confidence.
+message GeneratedTag {
+  // Tag ID (UUID)
+  string id = 1;
+  // Tag name
+  string name = 2;
+  // Confidence score (0.0 to 1.0)
+  float confidence = 3;
+}
+
+// GenerateTagsResponse contains the result of tag generation.
+message GenerateTagsResponse {
+  // Whether tag generation was successful
+  bool success = 1;
+  // Article ID that was processed
+  string article_id = 2;
+  // Generated tags
+  repeated GeneratedTag tags = 3;
+  // Inference time in milliseconds
+  float inference_ms = 4;
+  // Error message if unsuccessful
+  string error_message = 5;
+}
+
+// =============================================================================
 // MQHubService Definition
 // =============================================================================
 
@@ -167,4 +209,8 @@ service MQHubService {
 
   // HealthCheck checks the health of the service.
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // GenerateTagsForArticle synchronously generates tags for an article.
+  // Uses request-reply pattern over Redis Streams with tag-generator service.
+  rpc GenerateTagsForArticle(GenerateTagsRequest) returns (GenerateTagsResponse);
 }
