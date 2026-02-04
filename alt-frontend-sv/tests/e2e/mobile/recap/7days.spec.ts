@@ -54,14 +54,8 @@ test.describe("Mobile Recap 7-Days", () => {
 			timeout: 15000,
 		});
 
-		// Empty state should be visible (EmptyFeedState component)
-		// Check for common empty state patterns
-		await expect(
-			page
-				.getByText(/no feeds/i)
-				.or(page.getByText(/empty/i))
-				.first(),
-		).toBeVisible({ timeout: 5000 });
+		// Empty state should be visible (RecapEmptyState component)
+		await expect(page.getByText("No Recap Yet")).toBeVisible({ timeout: 5000 });
 	});
 
 	test("shows error state on API failure", async ({ page }) => {

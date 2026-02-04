@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { DesktopRecapPage } from "../../pages/desktop/DesktopRecapPage";
-import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
+import { fulfillJson, fulfillConnectError } from "../../utils/mockHelpers";
 import {
 	CONNECT_RECAP_RESPONSE,
 	CONNECT_RECAP_EMPTY_RESPONSE,
@@ -87,7 +87,7 @@ test.describe("Desktop Recap", () => {
 
 	test("shows error state on API failure", async ({ page }) => {
 		await page.route(CONNECT_RPC_PATHS.getThreeDayRecap, (route) =>
-			fulfillError(route, "Server error", 500),
+			fulfillConnectError(route, "Server error", "internal"),
 		);
 
 		await recapPage.goto();

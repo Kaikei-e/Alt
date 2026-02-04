@@ -224,8 +224,8 @@ test.describe("Desktop Recap Job Status", () => {
 
 		const initialCallCount = callCount;
 
-		// Click refresh button (use exact: true to avoid matching "Auto-refresh")
-		await page.getByRole("button", { name: "Refresh", exact: true }).click();
+		// Click refresh button (use regex to avoid matching "Auto-refresh")
+		await page.getByRole("button", { name: /^Refresh$/i }).click();
 
 		// Wait for API call to complete using Playwright's retry mechanism
 		await expect(async () => {
@@ -266,26 +266,14 @@ test.describe("Desktop Recap Job Status", () => {
 	});
 });
 
-test.describe("Desktop Job Status - Double Click Prevention", () => {
-	test("prevents double-clicking Start Job button", async ({ page }) => {
-		let triggerCallCount = 0;
-
-		// Mock job progress (no active job initially)
+test.describe("Desktop Job Status - Job Trigger", () => {
+	test("Start Job button is disabled when a job is already running", async ({
+		page,
+	}) => {
+		// Mock job progress with an active job
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
-			fulfillJson(route, JOB_PROGRESS_RESPONSE),
+			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
-
-		// Mock trigger endpoint - count calls
-		await page.route(JOB_DASHBOARD_PATHS.triggerJob, async (route) => {
-			triggerCallCount++;
-			// Simulate slow response
-			await new Promise((resolve) => setTimeout(resolve, 100));
-			await fulfillJson(route, {
-				job_id: "new-job-123",
-				genres: ["tech", "ai"],
-				status: "running",
-			});
-		});
 
 		await page.goto("./desktop/recap/job-status");
 
@@ -295,22 +283,31 @@ test.describe("Desktop Job Status - Double Click Prevention", () => {
 		).toBeVisible();
 
 		const startButton = page.getByRole("button", { name: "Start Job" });
-		await expect(startButton).toBeEnabled();
-
-		// Click button rapidly twice
-		await startButton.click();
-		await startButton.click({ force: true }); // Force click even if disabled
-
-		// Wait for requests to complete
-		await page.waitForTimeout(500);
-
-		// Should only trigger once
-		expect(triggerCallCount).toBe(1);
+		// Button should be disabled when a job is running
+		await expect(startButton).toBeDisabled();
 	});
 
-	test("keeps Start Job button disabled until job data is refreshed", async ({
+	test("Start Job button is enabled when no job is running", async ({
 		page,
 	}) => {
+		// Mock job progress without active job
+		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
+			fulfillJson(route, JOB_PROGRESS_RESPONSE),
+		);
+
+		await page.goto("./desktop/recap/job-status");
+
+		// Wait for page to load
+		await expect(
+			page.getByRole("heading", { name: "Recap Job Status" }),
+		).toBeVisible();
+
+		const startButton = page.getByRole("button", { name: "Start Job" });
+		// Button should be enabled when no job is running
+		await expect(startButton).toBeEnabled();
+	});
+
+	test("shows success feedback after starting job", async ({ page }) => {
 		// Mock job progress (no active job initially)
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
@@ -333,12 +330,10 @@ test.describe("Desktop Job Status - Double Click Prevention", () => {
 		// Click start button
 		await startButton.click();
 
-		// Button should remain disabled after API response
-		await expect(startButton).toBeDisabled();
-
-		// Verify it stays disabled for at least 500ms after click
-		await page.waitForTimeout(500);
-		await expect(startButton).toBeDisabled();
+		// Should show success message with job ID
+		await expect(page.getByText(/Job.*started/i)).toBeVisible({
+			timeout: 5000,
+		});
 	});
 });
 

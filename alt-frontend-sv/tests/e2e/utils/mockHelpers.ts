@@ -108,6 +108,28 @@ export async function fulfillError(
 }
 
 /**
+ * Fulfill a route with a Connect-RPC error response.
+ * Connect-RPC expects errors as JSON with code and message, using appropriate HTTP status.
+ * See: https://connectrpc.com/docs/web/errors/
+ */
+export async function fulfillConnectError(
+	route: Route,
+	message: string,
+	code = "internal",
+	httpStatus = 500,
+): Promise<void> {
+	// Connect-RPC error format - uses HTTP error status with JSON body
+	await route.fulfill({
+		status: httpStatus,
+		contentType: "application/json",
+		body: JSON.stringify({
+			code,
+			message,
+		}),
+	});
+}
+
+/**
  * Create a mock EventSource class for browser injection.
  * Useful for testing pages that use EventSource (SSE).
  */

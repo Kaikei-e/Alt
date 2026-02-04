@@ -242,8 +242,8 @@ test.describe("Mobile Recap Job Status", () => {
 	test("start job button triggers job and shows feedback", async ({ page }) => {
 		await setupDefaultMock(page);
 
-		// Mock trigger endpoint
-		await page.route(JOB_DASHBOARD_PATHS.triggerJob, (route) =>
+		// Mock trigger endpoint (default is 3days endpoint)
+		await page.route("**/api/v1/generate/recaps/3days", (route) =>
 			fulfillJson(route, {
 				job_id: "new-job-123",
 				genres: ["tech", "ai"],
@@ -262,8 +262,10 @@ test.describe("Mobile Recap Job Status", () => {
 		// Click start job
 		await startButton.click();
 
-		// Verify success feedback appears
-		await expect(page.getByText(/Job.*started/i)).toBeVisible();
+		// Verify success feedback appears (format: "Job XXXXXXXX... started")
+		await expect(page.getByText(/Job.*started/i)).toBeVisible({
+			timeout: 5000,
+		});
 	});
 
 	test("start job button disabled when job is running", async ({ page }) => {

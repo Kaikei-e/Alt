@@ -33,7 +33,7 @@ export class DesktopAugurPage extends BasePage {
 
 		// Messages
 		this.welcomeMessage = page.getByText(/hello! i'm augur/i);
-		this.thinkingIndicator = page.getByText(/augur is thinking/i);
+		this.thinkingIndicator = page.getByText(/augur is (thinking|reasoning)/i);
 
 		// Input - ChatInput component uses a textarea or input
 		this.chatInput = page.getByRole("textbox");

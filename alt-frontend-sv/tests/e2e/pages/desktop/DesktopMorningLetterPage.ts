@@ -36,10 +36,8 @@ export class DesktopMorningLetterPage extends BasePage {
 			.locator(".flex.flex-col")
 			.filter({ hasText: /morning letter/i });
 
-		// Messages
-		this.welcomeMessage = page.getByText(
-			/hello! i'm your morning letter assistant/i,
-		);
+		// Messages - use partial match for dynamic content
+		this.welcomeMessage = page.getByText(/i'm your morning letter assistant/i);
 		this.thinkingIndicator = page.getByText(/searching recent news/i);
 
 		// Metadata display

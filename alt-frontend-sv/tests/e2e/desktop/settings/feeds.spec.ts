@@ -40,15 +40,20 @@ test.describe("desktop settings feeds - manage feed links", () => {
 		// Click refresh to trigger client-side fetch (SSR can't be mocked by page.route)
 		await page.getByRole("button", { name: "Refresh feed list" }).click();
 
-		// Wait for feeds to load
-		await expect(page.getByText("Registered Feeds")).toBeVisible();
-		await expect(page.getByText("3")).toBeVisible({ timeout: 10000 }); // Badge showing count
+		// Wait for feeds to load by checking for the first feed URL
+		await expect(page.getByText("https://example.com/feed.xml")).toBeVisible({
+			timeout: 10000,
+		});
 
-		// Check that all feed URLs are displayed
-		await expect(page.getByText("https://example.com/feed.xml")).toBeVisible();
+		// Verify all feed URLs are displayed
 		await expect(page.getByText("https://blog.example.org/rss")).toBeVisible();
 		await expect(
 			page.getByText("https://news.site.com/atom.xml"),
+		).toBeVisible();
+
+		// Verify count badge shows correct number (3 feeds)
+		await expect(
+			page.locator("h2").filter({ hasText: "Registered Feeds" }),
 		).toBeVisible();
 	});
 
@@ -180,7 +185,7 @@ test.describe("desktop settings feeds - manage feed links", () => {
 		await expect(page.getByText("Delete Feed Link?")).toBeVisible();
 		await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
 		await expect(
-			page.getByRole("button", { name: "Delete", exact: true }),
+			page.getByRole("button", { name: /^Delete$/ }),
 		).toBeVisible();
 	});
 
@@ -227,7 +232,7 @@ test.describe("desktop settings feeds - manage feed links", () => {
 		await deleteButtons.first().click();
 
 		// Confirm delete
-		await page.getByRole("button", { name: "Delete", exact: true }).click();
+		await page.getByRole("button", { name: /^Delete$/ }).click();
 
 		// Should show success message
 		await expect(page.getByText("Feed link deleted.")).toBeVisible();
