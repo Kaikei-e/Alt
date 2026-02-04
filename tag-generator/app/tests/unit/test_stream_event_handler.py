@@ -62,13 +62,9 @@ class TestTagGeneratorEventHandler:
     """Tests for TagGeneratorEventHandler."""
 
     @pytest.mark.anyio
-    async def test_handle_event_routes_tag_generation_requested(
-        self, handler, tag_generation_request_event
-    ):
+    async def test_handle_event_routes_tag_generation_requested(self, handler, tag_generation_request_event):
         """Test that TagGenerationRequested events are routed correctly."""
-        with patch.object(
-            handler, "_handle_tag_generation_requested", new_callable=AsyncMock
-        ) as mock_handle:
+        with patch.object(handler, "_handle_tag_generation_requested", new_callable=AsyncMock) as mock_handle:
             await handler.handle_event(tag_generation_request_event)
             mock_handle.assert_called_once_with(tag_generation_request_event)
 
@@ -99,9 +95,7 @@ class TestTagGeneratorEventHandler:
         assert event_data["payload"]["tags"][0]["name"] == "technology"
 
     @pytest.mark.anyio
-    async def test_handle_tag_generation_requested_missing_reply_to(
-        self, handler, mock_stream_consumer
-    ):
+    async def test_handle_tag_generation_requested_missing_reply_to(self, handler, mock_stream_consumer):
         """Test that missing reply_to is handled gracefully."""
         event = Event(
             message_id="msg-1",
@@ -119,9 +113,7 @@ class TestTagGeneratorEventHandler:
         mock_stream_consumer.publish_reply.assert_not_called()
 
     @pytest.mark.anyio
-    async def test_handle_tag_generation_requested_no_consumer(
-        self, mock_service, tag_generation_request_event
-    ):
+    async def test_handle_tag_generation_requested_no_consumer(self, mock_service, tag_generation_request_event):
         """Test that missing stream consumer is handled gracefully."""
         handler = TagGeneratorEventHandler(mock_service, stream_consumer=None)
 
@@ -134,9 +126,7 @@ class TestTagGeneratorEventHandler:
         self, handler, mock_service, mock_stream_consumer, tag_generation_request_event
     ):
         """Test error handling during tag extraction."""
-        mock_service.tag_extractor.extract_tags_with_metrics.side_effect = Exception(
-            "Model inference failed"
-        )
+        mock_service.tag_extractor.extract_tags_with_metrics.side_effect = Exception("Model inference failed")
 
         await handler._handle_tag_generation_requested(tag_generation_request_event)
 

@@ -310,6 +310,71 @@ class ArticleFetcher:
             logger.error("Failed to count untagged articles", error=str(e))
             raise ArticleFetchError("Failed to fetch articles") from e
 
+    def fetch_low_confidence_articles(
+        self,
+        conn: Connection,
+        confidence_threshold: float = 0.5,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch articles with average tag confidence below the threshold.
+
+        This method retrieves articles that have been tagged but have low-quality
+        tags based on the average confidence score. These articles are candidates
+        for tag regeneration.
+
+        Args:
+            conn: Database connection
+            confidence_threshold: Maximum average confidence to include (default: 0.5)
+            limit: Maximum number of articles to fetch (default: batch_size from config)
+
+        Returns:
+            List of article dictionaries including avg_confidence
+
+        Raises:
+            ArticleFetchError: If database operations fail
+        """
+        batch_size = limit or self.config.batch_size
+
+        query = """
+            SELECT
+                a.id::text AS id,
+                a.title,
+                a.content,
+                a.created_at,
+                COALESCE(a.feed_id::text, NULL) AS feed_id,
+                a.url,
+                AVG(ft.confidence) AS avg_confidence
+            FROM articles a
+            INNER JOIN article_tags at ON a.id = at.article_id
+            INNER JOIN feed_tags ft ON at.feed_tag_id = ft.id
+            GROUP BY a.id, a.title, a.content, a.created_at, a.feed_id, a.url
+            HAVING AVG(ft.confidence) < %s
+            ORDER BY AVG(ft.confidence) ASC
+            LIMIT %s
+        """
+
+        try:
+            with conn.cursor(cursor_factory=DictCursor) as cursor:
+                cursor.execute(query, (confidence_threshold, batch_size))
+                rows = cursor.fetchall()
+
+                logger.info(
+                    "Fetched low-confidence articles",
+                    count=len(rows),
+                    threshold=confidence_threshold,
+                )
+
+                return [dict(row) for row in rows]
+
+        except psycopg2.Error as e:
+            logger.error(
+                "Failed to fetch low-confidence articles",
+                error=str(e),
+                threshold=confidence_threshold,
+            )
+            raise ArticleFetchError("Failed to fetch low-confidence articles") from e
+
 
 # Maintain backward compatibility
 def fetch_articles(conn: Connection, last_created_at: str, last_id: str) -> list[dict[str, Any]]:

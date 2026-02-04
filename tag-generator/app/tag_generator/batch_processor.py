@@ -485,3 +485,177 @@ class BatchProcessor:
         # If backfill is not completed, do backfill processing
         # This will also check for new articles in hybrid mode
         return self.process_article_batch_backfill(conn, cursor_manager)
+
+    def process_regeneration_batch(
+        self,
+        conn: Connection,
+        confidence_threshold: float = 0.5,
+    ) -> dict[str, Any]:
+        """
+        Process a batch of low-confidence articles for tag regeneration.
+
+        This method fetches articles with average tag confidence below the threshold
+        and regenerates their tags. Tags are only updated when the new confidence
+        is higher than the existing one.
+
+        Args:
+            conn: Database connection
+            confidence_threshold: Maximum average confidence to include (default: 0.5)
+
+        Returns:
+            Dictionary with batch processing results including regeneration stats
+        """
+        batch_stats: dict[str, Any] = {
+            "total_processed": 0,
+            "successful": 0,
+            "failed": 0,
+            "regeneration_mode": True,
+            "confidence_threshold": confidence_threshold,
+        }
+
+        # Fetch articles with low-confidence tags
+        try:
+            articles = self.article_fetcher.fetch_low_confidence_articles(
+                conn,
+                confidence_threshold=confidence_threshold,
+                limit=self.config.batch_limit,
+            )
+        except Exception as e:
+            logger.error("Failed to fetch low-confidence articles", error=str(e))
+            batch_stats["failed"] = 1
+            batch_stats["error"] = str(e)
+            return batch_stats
+
+        if not articles:
+            logger.info(
+                "No low-confidence articles found for regeneration",
+                threshold=confidence_threshold,
+            )
+            return batch_stats
+
+        logger.info(
+            "Processing regeneration batch",
+            article_count=len(articles),
+            threshold=confidence_threshold,
+        )
+
+        # Prepare batch data for tag regeneration
+        article_tags_batch = []
+        cascade_refine_requests = 0
+
+        # Extract tags for all articles
+        for i, article in enumerate(articles):
+            try:
+                article_id = article["id"]
+                title = article["title"]
+                content = article["content"]
+
+                # Extract tags with the current logic
+                outcome = self.tag_extractor.extract_tags_with_metrics(title, content)
+
+                if not outcome.tags:
+                    logger.debug(
+                        "No tags extracted for article during regeneration",
+                        article_id=article_id,
+                    )
+                    continue
+
+                decision = self.cascade_controller.evaluate(outcome)
+                if decision.needs_refine:
+                    cascade_refine_requests += 1
+
+                article_tags_batch.append(
+                    {
+                        "article_id": article_id,
+                        "tags": outcome.tags,
+                        "tag_confidences": outcome.tag_confidences,
+                        "cascade": decision.as_dict(),
+                        "old_avg_confidence": article.get("avg_confidence"),
+                        "new_confidence": outcome.confidence,
+                    }
+                )
+
+                logger.debug(
+                    "Regeneration cascade decision recorded",
+                    article_id=article_id,
+                    old_confidence=article.get("avg_confidence"),
+                    new_confidence=outcome.confidence,
+                    **decision.as_dict(),
+                )
+
+                # Log progress during tag extraction
+                if (i + 1) % self.config.progress_log_interval == 0:
+                    logger.debug(f"Regenerated tags for {i + 1}/{len(articles)} articles...")
+
+                # Periodic memory cleanup during batch processing
+                if (i + 1) % self.config.memory_cleanup_interval == 0:
+                    self._cleanup_memory()
+
+            except Exception as e:
+                logger.error(
+                    "Error extracting tags for article during regeneration",
+                    article_id=article.get("id", "unknown"),
+                    error=str(e),
+                )
+                batch_stats["failed"] += 1
+                continue
+
+        logger.info(
+            "Prepared regeneration batch with cascade metrics",
+            batch_articles=len(article_tags_batch),
+            refine_candidates=cascade_refine_requests,
+        )
+
+        # Perform batch upsert with confidence comparison
+        if article_tags_batch:
+            try:
+                # Start transaction
+                if conn.autocommit:
+                    conn.autocommit = False
+
+                logger.info(f"Upserting regenerated tags for {len(article_tags_batch)} articles...")
+
+                # Use the comparison-based batch upsert method
+                result = self.tag_inserter.batch_upsert_tags_with_comparison(conn, article_tags_batch)
+
+                batch_stats["successful"] = result.get("processed_articles", 0)
+                batch_stats["failed"] += result.get("failed_articles", 0)
+                batch_stats["total_processed"] = len(articles)
+                batch_stats["skipped_lower_confidence"] = result.get("skipped_lower_confidence", 0)
+                batch_stats["updated_higher_confidence"] = result.get("updated_higher_confidence", 0)
+
+                if result.get("success"):
+                    conn.commit()
+                    logger.info(
+                        "Successfully regenerated tags",
+                        processed=batch_stats["successful"],
+                        updated=batch_stats.get("updated_higher_confidence", 0),
+                        skipped=batch_stats.get("skipped_lower_confidence", 0),
+                    )
+                else:
+                    conn.rollback()
+                    logger.warning(
+                        "Regeneration batch completed with failures",
+                        failed=batch_stats["failed"],
+                    )
+
+            except Exception as e:
+                logger.error(f"Regeneration batch upsert failed: {e}")
+                try:
+                    conn.rollback()
+                except Exception as rollback_error:
+                    logger.error(f"Failed to rollback transaction: {rollback_error}")
+                batch_stats["failed"] = len(articles)
+                batch_stats["total_processed"] = len(articles)
+                batch_stats["error"] = str(e)
+            finally:
+                try:
+                    if not conn.autocommit:
+                        conn.autocommit = True
+                except Exception as e:
+                    logger.warning(f"Failed to restore autocommit mode: {e}")
+        else:
+            logger.warning("No articles with regenerated tags to process")
+            batch_stats["total_processed"] = len(articles)
+
+        return batch_stats

@@ -785,6 +785,262 @@ class TagInserter:
         )
         return results
 
+    def get_existing_tag_confidence(self, conn: Connection, article_id: str, tag_id: str) -> float | None:
+        """
+        Get the existing confidence for an article-tag relationship.
+
+        Args:
+            conn: Database connection
+            article_id: Article UUID as string
+            tag_id: Feed tag UUID as string
+
+        Returns:
+            Confidence value (0.0-1.0) or None if not found
+        """
+        try:
+            with self._get_cursor(conn) as cursor:
+                cursor.execute(
+                    """
+                    SELECT ft.confidence
+                    FROM article_tags at
+                    INNER JOIN feed_tags ft ON at.feed_tag_id = ft.id
+                    WHERE at.article_id = %s::uuid AND at.feed_tag_id = %s::uuid
+                    """,
+                    (article_id, tag_id),
+                )
+                result = cursor.fetchone()
+                return float(result[0]) if result else None
+        except Exception as e:
+            logger.warning(
+                "Failed to get existing tag confidence",
+                article_id=article_id,
+                tag_id=tag_id,
+                error=str(e),
+            )
+            return None
+
+    def batch_upsert_tags_with_comparison(self, conn: Connection, article_tags: list[dict[str, Any]]) -> BatchResult:
+        """
+        Batch process article-tag operations with confidence comparison.
+
+        Only updates tags when the new confidence is higher than existing.
+        Used for tag regeneration to ensure quality improvement.
+
+        Args:
+            conn: Database connection (caller manages transaction)
+            article_tags: List of dictionaries with 'article_id', 'tags', and 'tag_confidences' keys
+
+        Returns:
+            Dictionary with batch operation results including skipped_lower_confidence count
+        """
+        if not article_tags:
+            return {
+                "success": True,
+                "processed_articles": 0,
+                "failed_articles": 0,
+                "errors": [],
+                "message": "No articles to process",
+            }
+
+        logger.info(
+            "Starting batch processing with confidence comparison",
+            count=len(article_tags),
+        )
+
+        results: BatchResult = {
+            "success": True,
+            "processed_articles": 0,
+            "failed_articles": 0,
+            "errors": [],
+            "message": None,
+        }
+        skipped_lower_confidence = 0
+        updated_higher_confidence = 0
+
+        try:
+            with self._get_cursor(conn) as cursor:
+                # Process all articles
+                for item in article_tags:
+                    try:
+                        article_id = item.get("article_id")
+                        if not article_id:
+                            raise ValueError("Missing article_id in batch item")
+
+                        tags = item.get("tags", [])
+                        tag_confidences = item.get("tag_confidences", {})
+
+                        if not tags or not isinstance(tags, list):
+                            continue
+
+                        # Clean and validate tags
+                        clean_tags = [tag.strip() for tag in tags if isinstance(tag, str) and tag.strip()]
+                        if not clean_tags:
+                            continue
+
+                        # Get feed_id for this article
+                        cursor.execute(
+                            "SELECT feed_id, url FROM articles WHERE id = %s::uuid",
+                            (article_id,),
+                        )
+                        result = cursor.fetchone()
+                        feed_id = None
+                        article_url = None
+
+                        if result:
+                            feed_id = result[0]
+                            article_url = result[1]
+
+                        # If feed_id is NULL, try to get it from article URL
+                        if not feed_id and article_url:
+                            cursor.execute(
+                                """
+                                SELECT id
+                                FROM feeds
+                                WHERE link = %s
+                                ORDER BY created_at DESC, id DESC
+                                LIMIT 1
+                                """,
+                                (article_url,),
+                            )
+                            feed_result = cursor.fetchone()
+                            if feed_result:
+                                feed_id = feed_result[0]
+
+                        if not feed_id:
+                            logger.warning(
+                                "Skipping article: feed_id not found",
+                                article_id=article_id,
+                            )
+                            continue
+
+                        # Get existing tag IDs and confidences for this article
+                        cursor.execute(
+                            """
+                            SELECT ft.tag_name, ft.id, ft.confidence
+                            FROM article_tags at
+                            INNER JOIN feed_tags ft ON at.feed_tag_id = ft.id
+                            WHERE at.article_id = %s::uuid
+                            """,
+                            (article_id,),
+                        )
+                        existing_tags = {row[0]: {"id": row[1], "confidence": row[2]} for row in cursor.fetchall()}
+
+                        # Process each tag with confidence comparison
+                        tags_to_insert = []
+                        tags_to_update = []
+
+                        for tag in clean_tags:
+                            new_confidence = tag_confidences.get(tag, 0.5)
+
+                            if tag in existing_tags:
+                                existing_conf = existing_tags[tag]["confidence"]
+                                if new_confidence > existing_conf:
+                                    # Update with higher confidence
+                                    tags_to_update.append((new_confidence, feed_id, tag))
+                                    updated_higher_confidence += 1
+                                    logger.debug(
+                                        "Updating tag with higher confidence",
+                                        article_id=article_id,
+                                        tag=tag,
+                                        old_confidence=existing_conf,
+                                        new_confidence=new_confidence,
+                                    )
+                                else:
+                                    # Skip - existing confidence is higher or equal
+                                    skipped_lower_confidence += 1
+                                    logger.debug(
+                                        "Skipping tag with lower confidence",
+                                        article_id=article_id,
+                                        tag=tag,
+                                        existing_confidence=existing_conf,
+                                        new_confidence=new_confidence,
+                                    )
+                            else:
+                                # New tag - insert it
+                                tags_to_insert.append((feed_id, tag, new_confidence))
+
+                        # Insert new tags
+                        if tags_to_insert:
+                            psycopg2.extras.execute_batch(
+                                cursor,
+                                """
+                                INSERT INTO feed_tags (feed_id, tag_name, confidence)
+                                VALUES (%s::uuid, %s, %s)
+                                ON CONFLICT (feed_id, tag_name) DO UPDATE SET
+                                    confidence = GREATEST(feed_tags.confidence, EXCLUDED.confidence)
+                                """,
+                                tags_to_insert,
+                                page_size=self.config.page_size,
+                            )
+
+                            # Get IDs for newly inserted tags
+                            new_tag_names = [t[1] for t in tags_to_insert]
+                            tag_id_map = self._get_tag_ids(cursor, new_tag_names, feed_id)
+
+                            # Insert article-tag relationships
+                            relationships = [(article_id, tag_id) for tag_id in tag_id_map.values()]
+                            if relationships:
+                                psycopg2.extras.execute_batch(
+                                    cursor,
+                                    """
+                                    INSERT INTO article_tags (article_id, feed_tag_id)
+                                    VALUES (%s::uuid, %s::uuid)
+                                    ON CONFLICT (article_id, feed_tag_id) DO NOTHING
+                                    """,
+                                    relationships,
+                                    page_size=self.config.page_size,
+                                )
+
+                        # Update existing tags with higher confidence
+                        if tags_to_update:
+                            psycopg2.extras.execute_batch(
+                                cursor,
+                                """
+                                UPDATE feed_tags
+                                SET confidence = %s
+                                WHERE feed_id = %s::uuid AND tag_name = %s
+                                """,
+                                tags_to_update,
+                                page_size=self.config.page_size,
+                            )
+
+                        results["processed_articles"] += 1
+
+                    except Exception as e:
+                        results["failed_articles"] += 1
+                        error_msg = f"Failed to process article {item.get('article_id', 'unknown')}: {e}"
+                        results["errors"].append(error_msg)
+                        logger.error(
+                            "Failed to process article in comparison batch",
+                            article_id=item.get("article_id", "unknown"),
+                            error=str(e),
+                        )
+
+                logger.info(
+                    "Batch comparison processing completed",
+                    processed=results["processed_articles"],
+                    failed=results["failed_articles"],
+                    updated_higher=updated_higher_confidence,
+                    skipped_lower=skipped_lower_confidence,
+                )
+
+        except Exception as e:
+            results["success"] = False
+            results["failed_articles"] = len(article_tags)
+            error_msg = f"Batch comparison processing failed: {e}"
+            results["errors"].append(error_msg)
+            logger.error("Batch comparison processing failed", error=str(e))
+            raise
+
+        if results["failed_articles"] > 0:
+            results["success"] = False
+
+        # Add comparison stats to results
+        results["skipped_lower_confidence"] = skipped_lower_confidence  # type: ignore
+        results["updated_higher_confidence"] = updated_higher_confidence  # type: ignore
+
+        return results
+
 
 # Maintain backward compatibility - requires feed_id now
 def upsert_tags(conn: Connection, article_id: str, tags: list[str], feed_id: str) -> None:

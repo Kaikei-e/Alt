@@ -84,6 +84,25 @@ ml = [
     "onnxruntime>=1.21.0",
 ]
 
+# Extended ML dependencies including GiNZA for improved Japanese NLP
+# Install with: uv sync --group ml-extended
+# GiNZA provides better noun phrase extraction and named entity recognition
+ml-extended = [
+    # Include all base ML dependencies
+    "sentence-transformers>=3.3.0",
+    "keybert>=0.8.5",
+    "transformers>=4.40.0",
+    "torch>=2.1.0",
+    "scikit-learn>=1.5.2",
+    "numpy>=1.26.0",
+    "onnxruntime>=1.21.0",
+    # GiNZA: Japanese NLP library built on spaCy
+    # Provides: noun phrase chunking, dependency parsing, NER
+    "ginza>=5.2.0",
+    "ja-ginza>=5.2.0",
+    "spacy>=3.8.0",
+]
+
 # NOTE: ML dependencies are in a separate group to allow flexible installation
 # In Dockerfile: Install PyTorch from custom index first, then other ML deps
 # For development: uv sync --group ml

@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import redis.asyncio as redis
 import structlog
@@ -213,7 +213,7 @@ class StreamConsumer:
 
         try:
             # Build the message fields
-            fields = {
+            fields: dict[str, str] = {
                 "event_id": event_data.get("event_id", ""),
                 "event_type": event_data.get("event_type", "TagGenerationCompleted"),
                 "source": "tag-generator",
@@ -224,7 +224,8 @@ class StreamConsumer:
                 fields["metadata"] = json.dumps(event_data["metadata"])
 
             # Publish to stream with maxlen to avoid unbounded growth
-            message_id = await self.client.xadd(stream_key, fields, maxlen=1)
+            # Cast to satisfy Pyrefly's generic type inference for redis xadd
+            message_id = await self.client.xadd(stream_key, cast(dict[Any, Any], fields), maxlen=1)
             logger.info(
                 "reply_published",
                 stream_key=stream_key,

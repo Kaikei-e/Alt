@@ -155,9 +155,7 @@ class TagGeneratorEventHandler(EventHandler):
 
         try:
             # Generate tags inline using title and content from the request
-            tags, inference_ms = await self._generate_tags_inline(
-                article_id, title, content, feed_id
-            )
+            tags, inference_ms = await self._generate_tags_inline(article_id, title, content, feed_id)
 
             # Publish success reply
             await self._publish_reply(
@@ -214,11 +212,13 @@ class TagGeneratorEventHandler(EventHandler):
             tags = []
             for tag_name in outcome.tags:
                 confidence = outcome.tag_confidences.get(tag_name, 0.5)
-                tags.append({
-                    "id": str(uuid.uuid4()),
-                    "name": tag_name,
-                    "confidence": confidence,
-                })
+                tags.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "name": tag_name,
+                        "confidence": confidence,
+                    }
+                )
 
             return tags, inference_ms
 

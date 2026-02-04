@@ -45,6 +45,9 @@ class ModelConfig:
     onnx_batch_size: int = 16
     onnx_max_length: int = 256
     use_fp16: bool = False  # Enable FP16 for ~50% memory reduction (GPU recommended)
+    # GiNZA configuration (requires ml-extended dependencies)
+    use_ginza: bool = False
+    ginza_model_name: str = "ja_ginza"
 
 
 class ModelManager:
@@ -72,11 +75,13 @@ class ModelManager:
             self._embedder: Any = None
             self._keybert: Any = None
             self._ja_tagger: Any = None
+            self._ginza_nlp: Any = None  # GiNZA spaCy model
             self._ja_stopwords: set[str] | None = None
             self._en_stopwords: set[str] | None = None
             self._config: ModelConfig | None = None
             self._embedder_backend: str | None = None
             self._embedder_metadata: dict[str, Any] = {}
+            self._ginza_available: bool | None = None
             self._initialized = True
             logger.info("ModelManager singleton initialized")
 
@@ -218,6 +223,10 @@ class ModelManager:
             self._ja_tagger = Tagger()
             logger.info("Japanese tagger loaded successfully")
 
+            # Load GiNZA if configured
+            if config.use_ginza:
+                self._load_ginza(config.ginza_model_name)
+
             logger.info("All models loaded successfully")
 
         except ImportError as e:
@@ -281,6 +290,50 @@ class ModelManager:
         except Exception as e:
             logger.warning("Could not load NLTK English stopwords", error=e)
 
+    def _load_ginza(self, model_name: str) -> None:
+        """Load GiNZA spaCy model for Japanese NLP."""
+        try:
+            import spacy
+
+            logger.info("Loading GiNZA model", model_name=model_name)
+            self._ginza_nlp = spacy.load(model_name)
+            self._ginza_available = True
+            logger.info(
+                "GiNZA model loaded successfully",
+                model_name=model_name,
+                pipeline=self._ginza_nlp.pipe_names if self._ginza_nlp else [],
+            )
+        except ImportError as e:
+            logger.warning(
+                "GiNZA/spaCy not available",
+                error=str(e),
+                help="Install with: uv sync --group ml-extended",
+            )
+            self._ginza_available = False
+        except OSError as e:
+            logger.warning(
+                "GiNZA model not found",
+                model_name=model_name,
+                error=str(e),
+                help="Install model with: python -m spacy download ja_ginza",
+            )
+            self._ginza_available = False
+
+    def get_ginza(self) -> Any | None:
+        """
+        Get the GiNZA spaCy model if available.
+
+        Returns:
+            spaCy Language model or None if not available
+        """
+        with self._models_lock:
+            return self._ginza_nlp
+
+    def is_ginza_available(self) -> bool:
+        """Check if GiNZA model is available."""
+        with self._models_lock:
+            return self._ginza_available is True
+
     def is_loaded(self) -> bool:
         """Check if models are loaded."""
         with self._models_lock:
@@ -292,11 +345,13 @@ class ModelManager:
             self._embedder = None
             self._keybert = None
             self._ja_tagger = None
+            self._ginza_nlp = None
             self._ja_stopwords = None
             self._en_stopwords = None
             self._config = None
             self._embedder_backend = None
             self._embedder_metadata = {}
+            self._ginza_available = None
             logger.info("Models cleared")
 
     def get_runtime_metadata(self) -> dict[str, Any]:
