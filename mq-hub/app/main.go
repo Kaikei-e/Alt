@@ -45,13 +45,14 @@ func main() {
 	// Initialize gateway
 	streamGateway := gateway.NewStreamGateway(redisDriver)
 
-	// Initialize usecase with batch size limit
+	// Initialize usecases with batch size limit
 	publishUsecase := usecase.NewPublishUsecaseWithOptions(streamGateway, &usecase.PublishUsecaseOptions{
 		MaxBatchSize: cfg.MaxBatchSize,
 	})
+	generateTagsUsecase := usecase.NewGenerateTagsUsecase(streamGateway)
 
-	// Initialize handler
-	handler := mqhub.NewHandler(publishUsecase)
+	// Initialize handler with tag generation support
+	handler := mqhub.NewHandlerWithGenerateTags(publishUsecase, generateTagsUsecase)
 
 	// Create HTTP mux
 	mux := http.NewServeMux()

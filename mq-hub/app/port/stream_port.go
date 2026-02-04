@@ -3,6 +3,7 @@ package port
 
 import (
 	"context"
+	"time"
 
 	"mq-hub/domain"
 )
@@ -24,4 +25,11 @@ type StreamPort interface {
 
 	// Ping checks if Redis is available.
 	Ping(ctx context.Context) error
+
+	// SubscribeWithTimeout waits for a message on a reply stream with timeout.
+	// Returns the first message received or an error if timeout expires.
+	SubscribeWithTimeout(ctx context.Context, stream domain.StreamKey, timeout time.Duration) (*domain.Event, error)
+
+	// DeleteStream removes a stream (used for cleanup of temporary reply streams).
+	DeleteStream(ctx context.Context, stream domain.StreamKey) error
 }

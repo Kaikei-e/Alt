@@ -23,6 +23,10 @@ const (
 	EventTypeTagsGenerated EventType = "TagsGenerated"
 	// EventTypeIndexArticle is emitted to trigger article indexing.
 	EventTypeIndexArticle EventType = "IndexArticle"
+	// EventTypeTagGenerationRequested is emitted for synchronous tag generation requests.
+	EventTypeTagGenerationRequested EventType = "TagGenerationRequested"
+	// EventTypeTagGenerationCompleted is the reply event for tag generation.
+	EventTypeTagGenerationCompleted EventType = "TagGenerationCompleted"
 )
 
 // Event represents a domain event to be published to Redis Streams.

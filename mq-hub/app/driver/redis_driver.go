@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 
@@ -204,4 +205,75 @@ func (d *RedisDriver) eventToValues(event *domain.Event) map[string]interface{} 
 	}
 
 	return values
+}
+
+// SubscribeWithTimeout waits for a message on a reply stream with timeout.
+// Uses XREAD with blocking to wait for messages.
+func (d *RedisDriver) SubscribeWithTimeout(ctx context.Context, stream domain.StreamKey, timeout time.Duration) (*domain.Event, error) {
+	// Use XREAD with block timeout to wait for messages
+	streams, err := d.client.XRead(ctx, &redis.XReadArgs{
+		Streams: []string{stream.String(), "0"},
+		Count:   1,
+		Block:   timeout,
+	}).Result()
+
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, errors.New("timeout waiting for reply")
+		}
+		return nil, err
+	}
+
+	if len(streams) == 0 || len(streams[0].Messages) == 0 {
+		return nil, errors.New("no messages received")
+	}
+
+	msg := streams[0].Messages[0]
+	return d.parseEventFromMessage(msg), nil
+}
+
+// DeleteStream removes a stream (used for cleanup of temporary reply streams).
+func (d *RedisDriver) DeleteStream(ctx context.Context, stream domain.StreamKey) error {
+	return d.client.Del(ctx, stream.String()).Err()
+}
+
+// parseEventFromMessage converts a Redis stream message to a domain Event.
+func (d *RedisDriver) parseEventFromMessage(msg redis.XMessage) *domain.Event {
+	event := &domain.Event{
+		EventID:  getStringValue(msg.Values, "event_id"),
+		Source:   getStringValue(msg.Values, "source"),
+		Metadata: make(map[string]string),
+	}
+
+	if eventType := getStringValue(msg.Values, "event_type"); eventType != "" {
+		event.EventType = domain.EventType(eventType)
+	}
+
+	if createdAtStr := getStringValue(msg.Values, "created_at"); createdAtStr != "" {
+		if t, err := time.Parse("2006-01-02T15:04:05.000Z07:00", createdAtStr); err == nil {
+			event.CreatedAt = t
+		} else if t, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
+			event.CreatedAt = t
+		}
+	}
+
+	if payload := getStringValue(msg.Values, "payload"); payload != "" {
+		event.Payload = []byte(payload)
+	}
+
+	if metadataStr := getStringValue(msg.Values, "metadata"); metadataStr != "" {
+		_ = json.Unmarshal([]byte(metadataStr), &event.Metadata)
+	}
+
+	return event
+}
+
+// getStringValue safely extracts a string value from a map.
+func getStringValue(values map[string]interface{}, key string) string {
+	if v, ok := values[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }

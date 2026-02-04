@@ -15,12 +15,21 @@ import (
 
 // Handler implements the MQHubService Connect-RPC interface.
 type Handler struct {
-	publishUsecase *usecase.PublishUsecase
+	publishUsecase      *usecase.PublishUsecase
+	generateTagsUsecase *usecase.GenerateTagsUsecase
 }
 
 // NewHandler creates a new Handler.
 func NewHandler(publishUsecase *usecase.PublishUsecase) *Handler {
 	return &Handler{publishUsecase: publishUsecase}
+}
+
+// NewHandlerWithGenerateTags creates a new Handler with tag generation support.
+func NewHandlerWithGenerateTags(publishUsecase *usecase.PublishUsecase, generateTagsUsecase *usecase.GenerateTagsUsecase) *Handler {
+	return &Handler{
+		publishUsecase:      publishUsecase,
+		generateTagsUsecase: generateTagsUsecase,
+	}
 }
 
 // Publish sends a single event to a Redis Stream.
@@ -156,6 +165,48 @@ func protoEventToDomain(protoEvent *mqhubv1.Event) *domain.Event {
 		Payload:   protoEvent.Payload,
 		Metadata:  protoEvent.Metadata,
 	}
+}
+
+// GenerateTagsForArticle synchronously generates tags for an article.
+func (h *Handler) GenerateTagsForArticle(ctx context.Context, req *connect.Request[mqhubv1.GenerateTagsRequest]) (*connect.Response[mqhubv1.GenerateTagsResponse], error) {
+	if h.generateTagsUsecase == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, nil)
+	}
+
+	ucReq := &usecase.GenerateTagsRequest{
+		ArticleID: req.Msg.ArticleId,
+		Title:     req.Msg.Title,
+		Content:   req.Msg.Content,
+		FeedID:    req.Msg.FeedId,
+		TimeoutMs: req.Msg.TimeoutMs,
+	}
+
+	result, err := h.generateTagsUsecase.GenerateTagsForArticle(ctx, ucReq)
+	if err != nil {
+		return connect.NewResponse(&mqhubv1.GenerateTagsResponse{
+			Success:      false,
+			ArticleId:    req.Msg.ArticleId,
+			ErrorMessage: err.Error(),
+		}), err
+	}
+
+	// Convert tags to proto format
+	protoTags := make([]*mqhubv1.GeneratedTag, len(result.Tags))
+	for i, t := range result.Tags {
+		protoTags[i] = &mqhubv1.GeneratedTag{
+			Id:         t.ID,
+			Name:       t.Name,
+			Confidence: t.Confidence,
+		}
+	}
+
+	return connect.NewResponse(&mqhubv1.GenerateTagsResponse{
+		Success:      result.Success,
+		ArticleId:    result.ArticleID,
+		Tags:         protoTags,
+		InferenceMs:  result.InferenceMs,
+		ErrorMessage: result.ErrorMessage,
+	}), nil
 }
 
 // domainEventToProto converts a domain Event to a proto Event.

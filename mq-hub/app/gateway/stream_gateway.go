@@ -4,6 +4,7 @@ package gateway
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"mq-hub/domain"
 	"mq-hub/port"
@@ -73,4 +74,14 @@ func (g *StreamGateway) GetStreamInfo(ctx context.Context, stream domain.StreamK
 // Ping checks if Redis is available.
 func (g *StreamGateway) Ping(ctx context.Context) error {
 	return g.driver.Ping(ctx)
+}
+
+// SubscribeWithTimeout waits for a message on a reply stream with timeout.
+func (g *StreamGateway) SubscribeWithTimeout(ctx context.Context, stream domain.StreamKey, timeout time.Duration) (*domain.Event, error) {
+	return g.driver.SubscribeWithTimeout(ctx, stream, timeout)
+}
+
+// DeleteStream removes a stream.
+func (g *StreamGateway) DeleteStream(ctx context.Context, stream domain.StreamKey) error {
+	return g.driver.DeleteStream(ctx, stream)
 }

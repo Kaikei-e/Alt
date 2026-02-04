@@ -46,6 +46,19 @@ func (m *MockStreamPort) Ping(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *MockStreamPort) SubscribeWithTimeout(ctx context.Context, stream domain.StreamKey, timeout time.Duration) (*domain.Event, error) {
+	args := m.Called(ctx, stream, timeout)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Event), args.Error(1)
+}
+
+func (m *MockStreamPort) DeleteStream(ctx context.Context, stream domain.StreamKey) error {
+	args := m.Called(ctx, stream)
+	return args.Error(0)
+}
+
 func TestPublishUsecase_Publish(t *testing.T) {
 	t.Run("publishes event successfully", func(t *testing.T) {
 		mockPort := new(MockStreamPort)

@@ -53,6 +53,19 @@ func (m *MockStreamPort) Ping(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *MockStreamPort) SubscribeWithTimeout(ctx context.Context, stream domain.StreamKey, timeout time.Duration) (*domain.Event, error) {
+	args := m.Called(ctx, stream, timeout)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Event), args.Error(1)
+}
+
+func (m *MockStreamPort) DeleteStream(ctx context.Context, stream domain.StreamKey) error {
+	args := m.Called(ctx, stream)
+	return args.Error(0)
+}
+
 func TestHandler_Publish(t *testing.T) {
 	t.Run("publishes event successfully", func(t *testing.T) {
 		mockPort := new(MockStreamPort)
@@ -348,6 +361,81 @@ func TestHandler_HealthCheck(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, resp.Msg.Healthy)
 		assert.Equal(t, "connection refused", resp.Msg.RedisStatus)
+		mockPort.AssertExpectations(t)
+	})
+}
+
+func TestHandler_GenerateTagsForArticle(t *testing.T) {
+	t.Run("returns unimplemented when usecase is nil", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := usecase.NewPublishUsecase(mockPort)
+		handler := NewHandler(uc) // No generate tags usecase
+
+		ctx := context.Background()
+
+		req := connect.NewRequest(&mqhubv1.GenerateTagsRequest{
+			ArticleId: "article-123",
+			Title:     "Test Article",
+			Content:   "Test content",
+			FeedId:    "feed-456",
+			TimeoutMs: 5000,
+		})
+
+		_, err := handler.GenerateTagsForArticle(ctx, req)
+
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
+	})
+
+	t.Run("generates tags successfully", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := usecase.NewPublishUsecase(mockPort)
+		genUc := usecase.NewGenerateTagsUsecase(mockPort)
+		handler := NewHandlerWithGenerateTags(uc, genUc)
+
+		ctx := context.Background()
+
+		// Mock the publish
+		mockPort.On("Publish", ctx, domain.StreamKeyArticles, mock.AnythingOfType("*domain.Event")).
+			Return("123-0", nil)
+
+		// Create reply event with tags
+		replyPayload := []byte(`{
+			"success": true,
+			"article_id": "article-123",
+			"inference_ms": 150.5,
+			"tags": [
+				{"id": "tag-1", "name": "technology", "confidence": 0.95},
+				{"id": "tag-2", "name": "testing", "confidence": 0.85}
+			]
+		}`)
+		replyEvent := &domain.Event{
+			EventID:   "reply-1",
+			EventType: domain.EventTypeTagGenerationCompleted,
+			Payload:   replyPayload,
+		}
+
+		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 5*time.Second).
+			Return(replyEvent, nil)
+
+		mockPort.On("DeleteStream", ctx, mock.AnythingOfType("domain.StreamKey")).Return(nil)
+
+		req := connect.NewRequest(&mqhubv1.GenerateTagsRequest{
+			ArticleId: "article-123",
+			Title:     "Test Article",
+			Content:   "Test content",
+			FeedId:    "feed-456",
+			TimeoutMs: 5000,
+		})
+
+		resp, err := handler.GenerateTagsForArticle(ctx, req)
+
+		require.NoError(t, err)
+		assert.True(t, resp.Msg.Success)
+		assert.Equal(t, "article-123", resp.Msg.ArticleId)
+		assert.Len(t, resp.Msg.Tags, 2)
+		assert.Equal(t, "technology", resp.Msg.Tags[0].Name)
+		assert.InDelta(t, 0.95, float64(resp.Msg.Tags[0].Confidence), 0.01)
 		mockPort.AssertExpectations(t)
 	})
 }
