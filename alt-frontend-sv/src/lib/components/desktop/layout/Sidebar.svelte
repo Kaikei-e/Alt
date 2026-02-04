@@ -15,6 +15,8 @@ import {
 	ChevronDown,
 	Activity,
 	Sparkles,
+	Shuffle,
+	Compass,
 } from "@lucide/svelte";
 import { page } from "$app/state";
 import { cn } from "$lib/utils";
@@ -83,6 +85,18 @@ const menuItems = [
 		],
 	},
 	{
+		label: "Explore",
+		category: "explore",
+		icon: Compass,
+		children: [
+			{
+				label: "Tag Trail",
+				href: `${svBasePath}/desktop/feeds/tag-trail`,
+				icon: Shuffle,
+			},
+		],
+	},
+	{
 		label: "Ask Augur",
 		href: `${svBasePath}/desktop/augur`,
 		icon: BirdIcon,
@@ -108,7 +122,7 @@ const menuItems = [
 	},
 ];
 
-let expandedSections = $state<string[]>(["feeds", "recap", "settings"]);
+let expandedSections = $state<string[]>(["feeds", "explore", "recap", "settings"]);
 
 function toggleSection(category: string) {
 	if (expandedSections.includes(category)) {

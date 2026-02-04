@@ -163,7 +163,7 @@ function loadArticleTags(articleId: string) {
 		(event) => {
 			switch (event.eventType) {
 				case "cached":
-				case "completed":
+				case "completed": {
 					// Update cache with received tags
 					articleTagsCache = new Map([...articleTagsCache, [articleId, event.tags]]);
 					// Remove from loading state
@@ -173,11 +173,12 @@ function loadArticleTags(articleId: string) {
 					// Remove controller from active list
 					activeStreamControllers.delete(articleId);
 					break;
+				}
 				case "generating":
 					// Keep loading state - tags are being generated
 					// Could add UI feedback here if needed (e.g., "Generating...")
 					break;
-				case "error":
+				case "error": {
 					console.error("Failed to load article tags:", event.message);
 					// Set empty tags on error
 					articleTagsCache = new Map([...articleTagsCache, [articleId, []]]);
@@ -186,6 +187,7 @@ function loadArticleTags(articleId: string) {
 					loadingArticleTags = newLoadingSetErr;
 					activeStreamControllers.delete(articleId);
 					break;
+				}
 			}
 		},
 		(error) => {
