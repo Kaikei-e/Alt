@@ -283,11 +283,50 @@ def _run_background_tag_generation():
     """Run tag generation service in background thread."""
     global _background_tag_service
     try:
-        from main import TagGeneratorConfig, TagGeneratorService
+        import asyncio
+
+        from tag_generator.config import TagGeneratorConfig
+        from tag_generator.service import TagGeneratorService
+        from tag_generator.stream_consumer import ConsumerConfig, StreamConsumer
+        from tag_generator.stream_event_handler import TagGeneratorEventHandler
 
         logger.info("Starting background tag generation service")
         config = TagGeneratorConfig()
         _background_tag_service = TagGeneratorService(config)
+
+        # Initialize Redis Streams consumer for on-the-fly tag generation (ADR-168)
+        consumer_config = ConsumerConfig.from_env()
+        if consumer_config.enabled:
+            logger.info(
+                "initializing_redis_streams_consumer",
+                stream=consumer_config.stream_key,
+                group=consumer_config.group_name,
+                consumer=consumer_config.consumer_name,
+            )
+            event_handler = TagGeneratorEventHandler(_background_tag_service)
+            consumer = StreamConsumer(consumer_config, event_handler)
+
+            # Inject stream_consumer into event_handler for reply functionality
+            event_handler.stream_consumer = consumer
+
+            # Run consumer in separate thread
+            def run_consumer() -> None:
+                try:
+                    asyncio.run(consumer.start())
+                except Exception as e:
+                    logger.error("Consumer thread error", error=str(e))
+
+            consumer_thread = threading.Thread(
+                target=run_consumer,
+                daemon=True,
+                name="redis-streams-consumer",
+            )
+            consumer_thread.start()
+            logger.info("redis_streams_consumer_started")
+        else:
+            logger.info("redis_streams_consumer_disabled")
+
+        # Run batch processing service (blocking)
         _background_tag_service.run_service()
     except Exception as e:
         logger.error("Background tag generation service failed", error=str(e), exc_info=True)

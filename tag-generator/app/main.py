@@ -51,6 +51,9 @@ def main() -> int:
             event_handler = TagGeneratorEventHandler(service)
             consumer = StreamConsumer(consumer_config, event_handler)
 
+            # Set stream_consumer reference for reply publishing (ADR-168)
+            event_handler.stream_consumer = consumer
+
             # Run consumer in background thread (since service.run_service is blocking)
             consumer_thread = threading.Thread(
                 target=run_consumer,

@@ -81,7 +81,8 @@ class StreamConsumer:
             logger.info("consumer_disabled", message="Consumer is disabled, not starting")
             return
 
-        self.client = redis.from_url(self.config.redis_url)
+        # decode_responses=True to get string keys instead of bytes
+        self.client = redis.from_url(self.config.redis_url, decode_responses=True)
 
         # Ensure consumer group exists
         await self._ensure_consumer_group()
@@ -195,3 +196,45 @@ class StreamConsumer:
             payload=payload,
             metadata=metadata,
         )
+
+    async def publish_reply(self, stream_key: str, event_data: dict[str, Any]) -> str | None:
+        """Publish a reply event to a stream.
+
+        Args:
+            stream_key: The Redis stream key to publish to
+            event_data: Event data to publish (will be JSON-encoded for payload)
+
+        Returns:
+            Message ID if successful, None otherwise
+        """
+        if self.client is None:
+            logger.warning("Cannot publish reply: client not initialized")
+            return None
+
+        try:
+            # Build the message fields
+            fields = {
+                "event_id": event_data.get("event_id", ""),
+                "event_type": event_data.get("event_type", "TagGenerationCompleted"),
+                "source": "tag-generator",
+                "created_at": datetime.now().isoformat(),
+                "payload": json.dumps(event_data.get("payload", {})),
+            }
+            if "metadata" in event_data:
+                fields["metadata"] = json.dumps(event_data["metadata"])
+
+            # Publish to stream with maxlen to avoid unbounded growth
+            message_id = await self.client.xadd(stream_key, fields, maxlen=1)
+            logger.info(
+                "reply_published",
+                stream_key=stream_key,
+                message_id=message_id,
+            )
+            return message_id
+        except Exception as e:
+            logger.error(
+                "reply_publish_failed",
+                stream_key=stream_key,
+                error=str(e),
+            )
+            return None

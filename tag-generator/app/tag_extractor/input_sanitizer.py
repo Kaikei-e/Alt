@@ -323,12 +323,44 @@ class InputSanitizer:
 
         return False
 
+    def _is_cjk_text(self, text: str) -> bool:
+        """
+        Check if text contains significant CJK characters.
+
+        Uses standard Unicode ranges for CJK detection:
+        - CJK Unified Ideographs (U+4E00-U+9FFF)
+        - Hiragana (U+3040-U+309F)
+        - Katakana (U+30A0-U+30FF)
+        - Korean Hangul (U+AC00-U+D7AF)
+        - CJK Punctuation (U+3000-U+303F)
+        """
+        if not text:
+            return False
+        # Count CJK characters (Chinese, Japanese, Korean)
+        cjk_count = sum(
+            1
+            for c in text
+            if "\u4e00" <= c <= "\u9fff"  # CJK Unified Ideographs
+            or "\u3040" <= c <= "\u309f"  # Hiragana
+            or "\u30a0" <= c <= "\u30ff"  # Katakana
+            or "\uac00" <= c <= "\ud7af"  # Korean Hangul
+            or "\u3000" <= c <= "\u303f"  # CJK Punctuation
+        )
+        # If more than 10% of text is CJK, treat as CJK text
+        return cjk_count > len(text) * 0.1
+
     def _has_unusual_character_frequency(self, text: str) -> bool:
         """Check for unusual character frequency patterns."""
         if not text:
             return False
 
-        # Check for excessive special characters
+        # Skip this check for CJK text (Japanese, Chinese, Korean)
+        # CJK text naturally has many "special" characters (punctuation, particles)
+        # that would trigger false positives in Latin-based sanitization rules
+        if self._is_cjk_text(text):
+            return False
+
+        # Check for excessive special characters (Latin/ASCII text only)
         special_chars = sum(1 for c in text if not c.isalnum() and not c.isspace())
         if special_chars > len(text) * 0.3:  # More than 30% special characters
             return True

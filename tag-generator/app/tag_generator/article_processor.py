@@ -29,7 +29,10 @@ class ArticleProcessor:
 
     def get_feed_id_from_url(self, conn: Connection, article_url: str) -> str | None:
         """
-        Get feed_id from article URL by matching with feed.link.
+        Get feed_id from article URL by matching domain with feed.link domain.
+
+        Article URLs differ from feed URLs (e.g., article at https://example.com/articles/123
+        may belong to feed at https://example.com/feed.xml), so we match by domain.
 
         Args:
             conn: Database connection
@@ -39,16 +42,26 @@ class ArticleProcessor:
             Feed ID as string if found, None otherwise
         """
         try:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(article_url)
+            domain = parsed.netloc
+
+            if not domain:
+                logger.warning("Could not parse domain from article URL", url=article_url)
+                return None
+
             with conn.cursor() as cursor:
+                # Match by domain (netloc) instead of exact URL
                 cursor.execute(
                     """
                     SELECT id::text
                     FROM feeds
-                    WHERE link = %s
+                    WHERE link LIKE %s
                     ORDER BY created_at DESC, id DESC
                     LIMIT 1
                     """,
-                    (article_url,),
+                    (f"%{domain}%",),
                 )
                 result = cursor.fetchone()
                 if result:
