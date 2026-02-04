@@ -269,8 +269,8 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 		Messages:  []chatMessage{{Role: "user", Content: prompt}},
 		KeepAlive: -1,
 		Stream:    true,
-		Think:   g.getThinkParam(maxTokens),
-		Options: opts,
+		Think:     g.getThinkParam(maxTokens),
+		Options:   opts,
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)
@@ -450,8 +450,8 @@ func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, m
 		KeepAlive: -1,
 		Stream:    false,
 		Format:    generationFormat,
-		Think:   g.getThinkParam(maxTokens),
-		Options: opts,
+		Think:     g.getThinkParam(maxTokens),
+		Options:   opts,
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)
