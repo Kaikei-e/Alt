@@ -1,15 +1,15 @@
 {
-	"cookies": [
-		{
-			"name": "ory_kratos_session",
-			"value": "e2e-session",
-			"domain": "127.0.0.1",
-			"path": "/",
-			"expires": -1,
-			"httpOnly": true,
-			"secure": false,
-			"sameSite": "Lax"
-		}
-	],
-	"origins": []
+  "cookies": [
+    {
+      "name": "ory_kratos_session",
+      "value": "e2e-session",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
 }

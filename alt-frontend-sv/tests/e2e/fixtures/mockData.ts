@@ -405,6 +405,7 @@ export const CONNECT_RPC_PATHS = {
 		"**/api/v2/alt.morning_letter.v2.MorningLetterService/StreamChat",
 	// Recap service
 	getSevenDayRecap: "**/alt.recap.v2.RecapService/GetSevenDayRecap",
+	getThreeDayRecap: "**/alt.recap.v2.RecapService/GetThreeDayRecap",
 };
 
 // Connect-RPC Article Content response

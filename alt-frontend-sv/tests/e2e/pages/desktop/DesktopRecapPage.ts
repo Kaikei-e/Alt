@@ -23,11 +23,11 @@ export class DesktopRecapPage extends BasePage {
 	constructor(page: Page) {
 		super(page);
 
-		// Page elements
-		this.pageTitle = page.getByRole("heading", { name: /7-day recap/i });
+		// Page elements - PageHeader has static title "Recap"
+		this.pageTitle = page.getByRole("heading", { name: /Recap/i });
 		this.loadingSpinner = page.locator(".animate-spin").first();
 		this.emptyState = page.getByText("No recap data available");
-		this.errorMessage = page.getByText(/error loading recap/i);
+		this.errorMessage = page.getByText(/No recap data available yet/i);
 
 		// Layout sections
 		this.genreList = page.locator(".col-span-1");

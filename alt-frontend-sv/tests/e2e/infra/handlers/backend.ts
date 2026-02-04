@@ -242,6 +242,14 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
+		// GetThreeDayRecap (Connect-RPC)
+		if (path === "/alt.recap.v2.RecapService/GetThreeDayRecap") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify(CONNECT_RECAP_RESPONSE));
+			return;
+		}
+
 		// Default response for unknown endpoints
 		res.writeHead(200);
 		res.end(JSON.stringify({}));
