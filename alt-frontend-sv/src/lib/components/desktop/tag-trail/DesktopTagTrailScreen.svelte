@@ -273,7 +273,7 @@ const formatDate = (dateStr: string) => {
 };
 </script>
 
-<div class="flex flex-col h-full py-6 pr-6">
+<div class="flex flex-col h-full">
 	<!-- Header with Actions -->
 	<PageHeader title="Tag Trail" description="Discover content through tag exploration">
 		{#snippet actions()}

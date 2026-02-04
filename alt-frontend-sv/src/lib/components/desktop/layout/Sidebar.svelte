@@ -143,7 +143,7 @@ function isParentActive(children?: { href: string }[]): boolean {
 </script>
 
 <aside
-	class="fixed left-0 top-0 h-screen w-60 border-r border-[var(--surface-border)] bg-[var(--surface-bg)] overflow-y-auto"
+	class="sticky top-0 self-start h-screen w-60 flex-shrink-0 border-r border-[var(--surface-border)] bg-[var(--surface-bg)] overflow-y-auto"
 >
 	<!-- Logo/Brand -->
 	<div class="p-6 border-b border-[var(--surface-border)]">
