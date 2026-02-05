@@ -145,3 +145,27 @@ func TestConfig_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestNewConfig_BFFFeatureFlags_Defaults(t *testing.T) {
+	os.Clearenv()
+
+	cfg := NewConfig()
+
+	// All features enabled by default
+	assert.True(t, cfg.EnableCache)
+	assert.True(t, cfg.EnableCircuitBreaker)
+	assert.True(t, cfg.EnableDedup)
+	assert.True(t, cfg.EnableErrorNormalization)
+
+	// Hardcoded cache configuration
+	assert.Equal(t, 1000, cfg.CacheMaxSize)
+	assert.Equal(t, 30*time.Second, cfg.CacheDefaultTTL)
+
+	// Hardcoded circuit breaker configuration
+	assert.Equal(t, 5, cfg.CBFailureThreshold)
+	assert.Equal(t, 2, cfg.CBSuccessThreshold)
+	assert.Equal(t, 30*time.Second, cfg.CBOpenTimeout)
+
+	// Hardcoded dedup configuration
+	assert.Equal(t, 100*time.Millisecond, cfg.DedupWindow)
+}

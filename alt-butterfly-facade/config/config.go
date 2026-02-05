@@ -28,6 +28,34 @@ type Config struct {
 	RequestTimeout time.Duration
 	// StreamingTimeout is the timeout for streaming RPC requests
 	StreamingTimeout time.Duration
+
+	// BFF Feature Flags
+	// EnableCache enables response caching
+	EnableCache bool
+	// EnableCircuitBreaker enables circuit breaker pattern
+	EnableCircuitBreaker bool
+	// EnableDedup enables request deduplication
+	EnableDedup bool
+	// EnableErrorNormalization enables error response normalization
+	EnableErrorNormalization bool
+
+	// Cache Configuration
+	// CacheMaxSize is the maximum number of entries in the cache
+	CacheMaxSize int
+	// CacheDefaultTTL is the default TTL for cached responses
+	CacheDefaultTTL time.Duration
+
+	// Circuit Breaker Configuration
+	// CBFailureThreshold is the number of failures before opening the circuit
+	CBFailureThreshold int
+	// CBSuccessThreshold is the number of successes before closing the circuit
+	CBSuccessThreshold int
+	// CBOpenTimeout is how long the circuit stays open
+	CBOpenTimeout time.Duration
+
+	// Dedup Configuration
+	// DedupWindow is the time window for deduplicating requests
+	DedupWindow time.Duration
 }
 
 // NewConfig creates a new Config from environment variables with defaults.
@@ -42,6 +70,24 @@ func NewConfig() *Config {
 		BackendTokenAudience:   getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
 		RequestTimeout:         getDurationEnv("BFF_REQUEST_TIMEOUT", 30*time.Second),
 		StreamingTimeout:       getDurationEnv("BFF_STREAMING_TIMEOUT", 5*time.Minute),
+
+		// BFF Feature Flags (all enabled by default)
+		EnableCache:              true,
+		EnableCircuitBreaker:     true,
+		EnableDedup:              true,
+		EnableErrorNormalization: true,
+
+		// Cache Configuration (hardcoded defaults)
+		CacheMaxSize:    1000,
+		CacheDefaultTTL: 30 * time.Second,
+
+		// Circuit Breaker Configuration (hardcoded defaults)
+		CBFailureThreshold: 5,
+		CBSuccessThreshold: 2,
+		CBOpenTimeout:      30 * time.Second,
+
+		// Dedup Configuration (hardcoded defaults)
+		DedupWindow: 100 * time.Millisecond,
 	}
 }
 
@@ -92,3 +138,4 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	}
 	return defaultValue
 }
+
