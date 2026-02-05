@@ -2,6 +2,7 @@
 Unit tests for hybrid tag extractor.
 """
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +14,27 @@ from tag_extractor.hybrid_extractor import (
     HybridExtractor,
     get_hybrid_extractor,
 )
+
+
+# Mock sklearn.feature_extraction.text.CountVectorizer for test environments
+# that don't have sklearn installed (same as test_keybert_japanese_scoring.py)
+class MockCountVectorizer:
+    """Mock CountVectorizer that tracks initialization parameters."""
+
+    def __init__(self, lowercase=True, token_pattern=None, analyzer=None, **kwargs):
+        self.lowercase = lowercase
+        self.token_pattern = token_pattern
+        self.analyzer = analyzer
+        self._kwargs = kwargs
+
+
+# Install mock module before tests if sklearn is not available
+if "sklearn" not in sys.modules:
+    mock_sklearn = MagicMock()
+    mock_sklearn.feature_extraction.text.CountVectorizer = MockCountVectorizer
+    sys.modules["sklearn"] = mock_sklearn
+    sys.modules["sklearn.feature_extraction"] = mock_sklearn.feature_extraction
+    sys.modules["sklearn.feature_extraction.text"] = mock_sklearn.feature_extraction.text
 
 
 class TestHybridConfig:
@@ -277,3 +299,290 @@ class TestGetHybridExtractor:
         config = HybridConfig(top_k=3)
         extractor = get_hybrid_extractor(config)
         assert extractor.config.top_k == 3
+
+
+class TestHybridExtractorKeyBERTScoring:
+    """Tests for HybridExtractor KeyBERT scoring with CountVectorizer fix."""
+
+    @pytest.fixture
+    def extractor_with_keybert(self):
+        """Create extractor with mocked KeyBERT."""
+        config = HybridConfig(use_ginza=False, use_keybert_scoring=True)
+        extractor = HybridExtractor(config)
+
+        # Mock KeyBERT
+        mock_keybert = MagicMock()
+        extractor._keybert = mock_keybert
+        extractor._models_loaded = True
+
+        return extractor
+
+    def test_keybert_scoring_uses_vectorizer(self, extractor_with_keybert):
+        """Test that KeyBERT scoring passes a custom vectorizer."""
+        candidates = [
+            CandidateTag(text="GitHub", source="fugashi"),
+            CandidateTag(text="AWS", source="fugashi"),
+        ]
+
+        # Capture the vectorizer passed to KeyBERT
+        captured_args = {}
+
+        def mock_extract(*args, **kwargs):
+            captured_args.update(kwargs)
+            return [("GitHub", 0.8), ("AWS", 0.7)]
+
+        extractor_with_keybert._keybert.extract_keywords = mock_extract
+
+        extractor_with_keybert._score_with_keybert("GitHubとAWS", candidates)
+
+        # Verify vectorizer was passed
+        assert "vectorizer" in captured_args, "vectorizer parameter should be passed to KeyBERT"
+        vectorizer = captured_args["vectorizer"]
+        assert vectorizer is not None, "vectorizer should not be None"
+
+    def test_keybert_vectorizer_has_lowercase_false(self, extractor_with_keybert):
+        """Test that the vectorizer has lowercase=False for uppercase matching."""
+        candidates = [CandidateTag(text="API", source="fugashi")]
+
+        captured_vectorizer = {}
+
+        def mock_extract(*args, **kwargs):
+            captured_vectorizer["instance"] = kwargs.get("vectorizer")
+            return [("API", 0.9)]
+
+        extractor_with_keybert._keybert.extract_keywords = mock_extract
+
+        extractor_with_keybert._score_with_keybert("API連携", candidates)
+
+        vectorizer = captured_vectorizer.get("instance")
+        assert vectorizer is not None, "Vectorizer should be provided"
+        assert hasattr(vectorizer, "lowercase"), "Vectorizer should have lowercase attribute"
+        assert vectorizer.lowercase is False, (
+            "Vectorizer must have lowercase=False to match uppercase candidates (ADR-176 fix)"
+        )
+
+    def test_uppercase_candidates_get_scored(self, extractor_with_keybert):
+        """Test that uppercase candidates are scored correctly after the fix."""
+        candidates = [
+            CandidateTag(text="GitHub", source="fugashi"),
+            CandidateTag(text="TensorFlow", source="fugashi"),
+            CandidateTag(text="コード", source="fugashi"),
+        ]
+
+        def mock_extract(*args, **kwargs):
+            vectorizer = kwargs.get("vectorizer")
+            # Simulate proper behavior when vectorizer has lowercase=False
+            if vectorizer and hasattr(vectorizer, "lowercase") and not vectorizer.lowercase:
+                return [("GitHub", 0.85), ("TensorFlow", 0.75), ("コード", 0.65)]
+            # Simulate the bug: no results when vectorizer not properly configured
+            return []
+
+        extractor_with_keybert._keybert.extract_keywords = mock_extract
+
+        extractor_with_keybert._score_with_keybert("GitHubでコードを管理", candidates)
+
+        # After fix, uppercase candidates should have non-zero semantic scores
+        github_candidate = next(c for c in candidates if c.text == "GitHub")
+        assert github_candidate.semantic_score > 0, "GitHub should have a semantic score after fix"
+
+
+class TestHybridExtractorTagValidation:
+    """Tests for _is_valid_tag method in HybridExtractor."""
+
+    @pytest.fixture
+    def extractor(self):
+        """Create HybridExtractor for testing."""
+        config = HybridConfig(use_ginza=False, use_keybert_scoring=False)
+        return HybridExtractor(config)
+
+    # Verb ending tests
+    def test_rejects_desu_ending(self, extractor):
+        """Tags ending with です should be rejected."""
+        assert extractor._is_valid_tag("便利です") is False
+
+    def test_rejects_masu_ending(self, extractor):
+        """Tags ending with ます should be rejected."""
+        assert extractor._is_valid_tag("使います") is False
+
+    def test_rejects_mashita_ending(self, extractor):
+        """Tags ending with ました should be rejected."""
+        assert extractor._is_valid_tag("完了しました") is False
+
+    def test_rejects_teiru_ending(self, extractor):
+        """Tags ending with ている should be rejected."""
+        assert extractor._is_valid_tag("動いている") is False
+
+    def test_rejects_shita_ending(self, extractor):
+        """Tags ending with した should be rejected."""
+        assert extractor._is_valid_tag("実装した") is False
+
+    def test_rejects_suru_ending(self, extractor):
+        """Tags ending with する should be rejected."""
+        assert extractor._is_valid_tag("実行する") is False
+
+    # Number-only tests
+    def test_rejects_number_only(self, extractor):
+        """Tags that are numbers only should be rejected."""
+        assert extractor._is_valid_tag("2025") is False
+        assert extractor._is_valid_tag("12") is False
+        assert extractor._is_valid_tag("100") is False
+
+    def test_accepts_number_with_text(self, extractor):
+        """Tags with numbers and text should be accepted."""
+        assert extractor._is_valid_tag("Web3") is True
+        assert extractor._is_valid_tag("5G通信") is True
+        assert extractor._is_valid_tag("iOS17") is True
+
+    # Valid tag tests
+    def test_accepts_valid_tags(self, extractor):
+        """Valid tags should be accepted."""
+        valid_tags = [
+            "機械学習",
+            "TensorFlow",
+            "GitHub",
+            "AWS",
+            "API",
+            "Python",
+        ]
+        for tag in valid_tags:
+            assert extractor._is_valid_tag(tag) is True, f"Tag '{tag}' should be valid"
+
+
+class TestHybridExtractorFugashiFiltering:
+    """Tests for Fugashi candidate filtering with _is_valid_tag."""
+
+    @pytest.fixture
+    def extractor_with_fugashi(self):
+        """Create extractor with mocked Fugashi."""
+        config = HybridConfig(use_ginza=False, use_keybert_scoring=False)
+        extractor = HybridExtractor(config)
+
+        # Mock Fugashi tagger
+        mock_tagger = MagicMock()
+        extractor._fugashi_tagger = mock_tagger
+        extractor._stopwords = set()
+        extractor._models_loaded = True
+
+        return extractor
+
+    def _make_token(self, surface: str, pos1: str) -> MagicMock:
+        """Helper to create a mock token."""
+        token = MagicMock()
+        token.surface = surface
+        token.feature = MagicMock()
+        token.feature.pos1 = pos1
+        return token
+
+    def test_filters_verb_ending_compounds(self, extractor_with_fugashi):
+        """Compounds ending with verbs should be filtered."""
+        # Mock tokens that would produce "実装した"
+        tokens = [
+            self._make_token("実装", "名詞"),
+            self._make_token("した", "動詞"),
+        ]
+        extractor_with_fugashi._fugashi_tagger.return_value = tokens
+
+        candidates = extractor_with_fugashi._extract_candidates_fugashi("実装した")
+
+        # Verb-ending compounds should not appear
+        texts = [c.text for c in candidates]
+        assert not any("した" in t for t in texts)
+
+    def test_filters_number_only_candidates(self, extractor_with_fugashi):
+        """Number-only candidates should be filtered."""
+        tokens = [
+            self._make_token("2025", "名詞-数詞"),
+        ]
+        extractor_with_fugashi._fugashi_tagger.return_value = tokens
+
+        candidates = extractor_with_fugashi._extract_candidates_fugashi("2025")
+
+        texts = [c.text for c in candidates]
+        assert "2025" not in texts
+
+
+class TestHybridExtractorGinzaPostProcessing:
+    """Tests for GiNZA noun_chunks post-processing.
+
+    GiNZA's noun_chunks can extract phrases with trailing particles or verbs.
+    These should be cleaned and validated before being used as tags.
+    """
+
+    @pytest.fixture
+    def extractor_with_mock_ginza(self):
+        """Create extractor with mocked GiNZA."""
+        config = HybridConfig(use_ginza=True, use_keybert_scoring=False)
+        extractor = HybridExtractor(config)
+
+        # Mock GiNZA extractor
+        mock_ginza = MagicMock()
+        extractor._ginza = mock_ginza
+        extractor._stopwords = set()
+        extractor._models_loaded = True
+
+        return extractor
+
+    def test_cleans_particle_endings_from_ginza(self, extractor_with_mock_ginza):
+        """Noun phrases with particle endings should be cleaned."""
+        # Mock GiNZA returning phrases with particles
+        extractor_with_mock_ginza._ginza.extract_noun_phrases.return_value = [
+            "Databricksのセキュリティは",
+            "Unity Catalog",
+            "データガバナンス",
+        ]
+        extractor_with_mock_ginza._ginza.extract_named_entities.return_value = []
+
+        candidates = extractor_with_mock_ginza._extract_candidates_ginza("test")
+        texts = [c.text for c in candidates]
+
+        # Particle endings should not appear in final candidates
+        assert not any(t.endswith("は") for t in texts)
+
+    def test_cleans_verb_endings_from_ginza(self, extractor_with_mock_ginza):
+        """Noun phrases with verb endings should be cleaned."""
+        extractor_with_mock_ginza._ginza.extract_noun_phrases.return_value = [
+            "TablesはDatabricksが管理する",
+            "セキュリティ設計",
+        ]
+        extractor_with_mock_ginza._ginza.extract_named_entities.return_value = []
+
+        candidates = extractor_with_mock_ginza._extract_candidates_ginza("test")
+        texts = [c.text for c in candidates]
+
+        # Verb endings should not appear in final candidates
+        assert not any(t.endswith("する") for t in texts)
+
+    def test_preserves_valid_noun_phrases(self, extractor_with_mock_ginza):
+        """Valid noun phrases should be preserved unchanged."""
+        extractor_with_mock_ginza._ginza.extract_noun_phrases.return_value = [
+            "Databricks",
+            "セキュリティ",
+            "Unity Catalog",
+            "データガバナンス",
+        ]
+        extractor_with_mock_ginza._ginza.extract_named_entities.return_value = []
+
+        candidates = extractor_with_mock_ginza._extract_candidates_ginza("test")
+        texts = [c.text for c in candidates]
+
+        # Valid terms should be preserved
+        assert "Databricks" in texts
+        assert "セキュリティ" in texts
+        assert "Unity Catalog" in texts
+
+    def test_filters_sentence_fragments(self, extractor_with_mock_ginza):
+        """Long sentence fragments should be filtered out."""
+        extractor_with_mock_ginza._ginza.extract_noun_phrases.return_value = [
+            "Databricks運用の重要ポイントを網羅する内容になっています",
+            "がセキュリティ設計の鉄則です",
+            "セキュリティ",
+        ]
+        extractor_with_mock_ginza._ginza.extract_named_entities.return_value = []
+
+        candidates = extractor_with_mock_ginza._extract_candidates_ginza("test")
+        texts = [c.text for c in candidates]
+
+        # Long sentence fragments should be filtered
+        assert not any(len(t) > 15 for t in texts)
+        # But valid short terms should remain
+        assert "セキュリティ" in texts

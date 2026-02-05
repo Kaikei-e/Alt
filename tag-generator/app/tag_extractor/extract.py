@@ -37,8 +37,13 @@ except ImportError:
 # Local imports depending on re-export must come after alias definitions for consistency
 from .input_sanitizer import InputSanitizer, SanitizationConfig
 from .model_manager import ModelConfig, get_model_manager
+from .tag_validator import is_valid_japanese_tag as _shared_is_valid_japanese_tag
 
 logger = structlog.get_logger(__name__)
+
+# Maximum tag length for quality filtering (tags longer than this are likely sentence fragments)
+# Reduced from 20 to 15 for consistency with hybrid_extractor and to prevent sentence fragments
+MAX_TAG_LENGTH = 15
 
 
 @dataclass
@@ -380,6 +385,20 @@ class TagExtractor:
         else:
             return text.lower()
 
+    def _is_valid_japanese_tag(self, tag: str) -> bool:
+        """Filter out grammatically invalid or low-quality Japanese tags.
+
+        This method delegates to the shared tag validator for consistent
+        filtering across all extractors.
+
+        Args:
+            tag: The candidate tag to validate
+
+        Returns:
+            True if the tag is valid, False otherwise
+        """
+        return _shared_is_valid_japanese_tag(tag, max_length=MAX_TAG_LENGTH)
+
     def _extract_compound_nouns_fugashi(self, text: str) -> list[str]:
         """
         Extract compound nouns by chaining consecutive noun tokens.
@@ -493,7 +512,8 @@ class TagExtractor:
 
         for pattern in patterns:
             matches = re.findall(pattern, text)
-            compound_words.extend(matches)
+            # Filter by max length to avoid sentence fragments
+            compound_words.extend(m for m in matches if len(m) <= MAX_TAG_LENGTH)
 
         # Phase 3: Use fugashi for proper noun sequence extraction
         if self._ja_tagger is None:
@@ -530,7 +550,7 @@ class TagExtractor:
                         else:
                             break
 
-                    if len(compound) >= 3:  # Minimum length for compound words
+                    if 3 <= len(compound) <= MAX_TAG_LENGTH:  # Length bounds for compound words
                         compound_words.append(compound)
                     i = j
                 else:
@@ -593,12 +613,13 @@ class TagExtractor:
             if term not in combined_freq:
                 combined_freq[term] = freq
 
-        # Filter candidates by frequency or length
+        # Filter candidates by frequency, length, and quality validation
+        # Get more candidates initially to account for filtering
         candidates = [
             term
-            for term, freq in combined_freq.most_common(self.config.top_keywords * 3)
-            if freq >= 2 or len(term) >= 4
-        ]
+            for term, freq in combined_freq.most_common(self.config.top_keywords * 5)
+            if (freq >= 2 or len(term) >= 4) and self._is_valid_japanese_tag(term)
+        ][: self.config.top_keywords * 3]  # Limit after filtering
 
         if not candidates:
             return [], {}
@@ -612,6 +633,36 @@ class TagExtractor:
 
         # Fallback: frequency-based scoring
         return self._score_candidates_by_frequency(candidates, combined_freq)
+
+    def _make_japanese_analyzer(self):
+        """Create a custom analyzer for CountVectorizer that uses Fugashi.
+
+        The default token_pattern in CountVectorizer uses word boundaries (\\b)
+        which don't work for Japanese text (no spaces between words). This
+        method returns a callable that uses Fugashi to properly tokenize
+        Japanese text, extracting nouns and English words.
+
+        Returns:
+            A callable that takes a string and returns a list of tokens.
+        """
+        tagger = self._ja_tagger
+
+        def analyzer(text: str) -> list[str]:
+            if tagger is None:
+                # Fallback to simple split if tagger not available
+                return text.split()
+
+            tokens = []
+            for word in tagger(text):
+                # Extract nouns (名詞) for matching candidates
+                if word.feature.pos1.startswith("名詞"):
+                    tokens.append(word.surface)
+                # Also preserve English words (ASCII alphabetic)
+                elif word.surface.isascii() and word.surface.isalpha():
+                    tokens.append(word.surface)
+            return tokens
+
+        return analyzer
 
     def _score_japanese_candidates_with_keybert(
         self, text: str, candidates: list[str], freq_counter: Counter[str]
@@ -634,6 +685,17 @@ class TagExtractor:
         if self._keybert is None:
             raise RuntimeError("KeyBERT not initialized")
 
+        # CRITICAL FIX (ADR-176, Phase 2): Use custom CountVectorizer with:
+        # 1. lowercase=False - Preserve case to match uppercase candidates (GitHub, AWS, etc.)
+        # 2. analyzer=_make_japanese_analyzer() - Use Fugashi for Japanese tokenization
+        #    (the default token_pattern uses word boundaries \\b which don't work for Japanese)
+        from sklearn.feature_extraction.text import CountVectorizer
+
+        vectorizer = CountVectorizer(
+            analyzer=self._make_japanese_analyzer(),
+            lowercase=False,  # Preserve case to match uppercase candidates
+        )
+
         # Use KeyBERT with candidate list for semantic scoring
         keywords = self._keybert.extract_keywords(
             text,
@@ -641,6 +703,7 @@ class TagExtractor:
             top_n=min(len(candidates), self.config.top_keywords * 2),
             use_mmr=self.config.use_mmr,
             diversity=self.config.japanese_mmr_diversity,
+            vectorizer=vectorizer,
         )
 
         # Build result with combined scores

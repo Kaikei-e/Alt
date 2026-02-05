@@ -39,7 +39,8 @@ class GinzaConfig:
     # Minimum noun phrase length (characters)
     min_phrase_length: int = 2
     # Maximum noun phrase length (characters)
-    max_phrase_length: int = 30
+    # Reduced from 30 to 15 to prevent sentence fragments
+    max_phrase_length: int = 15
     # Entity types to extract (None = all types)
     entity_types: list[str] | None = None
     # Enable caching of parsed documents

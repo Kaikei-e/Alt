@@ -23,7 +23,7 @@ class TestGinzaConfig:
         assert config.model_name == "ja_ginza"
         assert config.max_text_length == 50000
         assert config.min_phrase_length == 2
-        assert config.max_phrase_length == 30
+        assert config.max_phrase_length == 15  # Reduced from 30 to prevent sentence fragments
         assert config.entity_types is None
         assert config.enable_cache is True
         assert config.max_cache_size == 100

@@ -26,6 +26,7 @@ from typing import Any
 import structlog
 
 from .ginza_extractor import GinzaConfig, GinzaExtractor, get_ginza_extractor
+from .tag_validator import clean_noun_phrase, is_valid_japanese_tag
 
 logger = structlog.get_logger(__name__)
 
@@ -54,8 +55,8 @@ class HybridConfig:
     semantic_weight: float = 0.4
     # Minimum phrase length
     min_phrase_length: int = 2
-    # Maximum phrase length
-    max_phrase_length: int = 30
+    # Maximum phrase length (reduced from 30 to 15 to prevent sentence fragments)
+    max_phrase_length: int = 15
     # GiNZA-specific configuration
     ginza_config: GinzaConfig = field(default_factory=GinzaConfig)
 
@@ -171,11 +172,18 @@ class HybridExtractor:
         # Get noun phrases
         noun_phrases = self._ginza.extract_noun_phrases(text)
         for i, phrase in enumerate(noun_phrases):
-            if phrase.lower() not in seen and phrase not in self._stopwords:
-                seen.add(phrase.lower())
+            # Clean the phrase to remove trailing particles/verbs
+            cleaned = clean_noun_phrase(phrase)
+
+            # Validate the cleaned phrase
+            if not is_valid_japanese_tag(cleaned, max_length=self.config.max_phrase_length):
+                continue
+
+            if cleaned.lower() not in seen and cleaned not in self._stopwords:
+                seen.add(cleaned.lower())
                 candidates.append(
                     CandidateTag(
-                        text=phrase,
+                        text=cleaned,
                         source="ginza",
                         frequency=1,
                         position=i,
@@ -185,12 +193,19 @@ class HybridExtractor:
         # Get named entities (higher priority)
         entities = self._ginza.extract_named_entities(text)
         for entity in entities:
-            if entity.lower() not in seen and entity not in self._stopwords:
-                seen.add(entity.lower())
+            # Clean the entity
+            cleaned = clean_noun_phrase(entity)
+
+            # Validate the cleaned entity
+            if not is_valid_japanese_tag(cleaned, max_length=self.config.max_phrase_length):
+                continue
+
+            if cleaned.lower() not in seen and cleaned not in self._stopwords:
+                seen.add(cleaned.lower())
                 # Named entities get a frequency boost
                 candidates.append(
                     CandidateTag(
-                        text=entity,
+                        text=cleaned,
                         source="ginza",
                         frequency=2,
                         position=0,  # Entities are prioritized
@@ -198,6 +213,20 @@ class HybridExtractor:
                 )
 
         return candidates
+
+    def _is_valid_tag(self, tag: str) -> bool:
+        """Filter out grammatically invalid or low-quality tags.
+
+        This method delegates to the shared tag validator for consistent
+        filtering across all extractors.
+
+        Args:
+            tag: The candidate tag to validate
+
+        Returns:
+            True if the tag is valid, False otherwise
+        """
+        return is_valid_japanese_tag(tag, max_length=self.config.max_phrase_length)
 
     def _extract_candidates_fugashi(self, text: str) -> list[CandidateTag]:
         """Extract candidate tags using Fugashi morphological analysis."""
@@ -262,16 +291,17 @@ class HybridExtractor:
                 if single not in term_positions:
                     term_positions[single] = position
 
-        # Convert to candidates
+        # Convert to candidates, filtering out invalid tags
         for term, freq in term_freq.items():
-            candidates.append(
-                CandidateTag(
-                    text=term,
-                    source="fugashi",
-                    frequency=freq,
-                    position=term_positions.get(term, 0),
+            if self._is_valid_tag(term):
+                candidates.append(
+                    CandidateTag(
+                        text=term,
+                        source="fugashi",
+                        frequency=freq,
+                        position=term_positions.get(term, 0),
+                    )
                 )
-            )
 
         return candidates
 
@@ -284,6 +314,17 @@ class HybridExtractor:
             # Extract candidate strings
             candidate_texts = [c.text for c in candidates]
 
+            # CRITICAL FIX (ADR-176): Use custom CountVectorizer with lowercase=False
+            # By default, sklearn's CountVectorizer uses lowercase=True, which lowercases
+            # the input text but NOT the candidates list. This causes uppercase candidates
+            # (e.g., "GitHub", "AWS", "API") to never match the lowercased text.
+            from sklearn.feature_extraction.text import CountVectorizer
+
+            vectorizer = CountVectorizer(
+                lowercase=False,  # Preserve case to match uppercase candidates
+                token_pattern=r"(?u)\b\w+\b",  # noqa: S106 - Unicode regex, not password
+            )
+
             # Use KeyBERT with candidate list
             keywords = self._keybert.extract_keywords(
                 text,
@@ -291,6 +332,7 @@ class HybridExtractor:
                 top_n=len(candidate_texts),
                 use_mmr=True,
                 diversity=0.5,
+                vectorizer=vectorizer,
             )
 
             # Map scores back to candidates
