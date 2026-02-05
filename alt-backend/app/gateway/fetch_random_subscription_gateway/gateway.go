@@ -3,7 +3,6 @@ package fetch_random_subscription_gateway
 import (
 	"alt/domain"
 	"alt/driver/alt_db"
-	"alt/usecase/fetch_random_subscription_usecase"
 	"context"
 )
 
@@ -27,7 +26,7 @@ func (g *FetchRandomSubscriptionGateway) FetchRandomSubscription(ctx context.Con
 		return nil, err
 	}
 	if feed == nil {
-		return nil, fetch_random_subscription_usecase.ErrNoSubscriptions
+		return nil, domain.ErrNoSubscriptions
 	}
 	return feed, nil
 }

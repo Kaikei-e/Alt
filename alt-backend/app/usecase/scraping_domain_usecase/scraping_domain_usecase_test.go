@@ -408,13 +408,13 @@ func TestScrapingDomainUsecase_EnsureDomainsFromFeedLinks_NoRepository(t *testin
 
 	mockDomainPort := mocks.NewMockScrapingDomainPort(ctrl)
 	mockRobotsTxtPort := mocks.NewMockRobotsTxtPort(ctrl)
-	usecase := NewScrapingDomainUsecaseWithRobotsTxt(mockDomainPort, mockRobotsTxtPort) // Without repository
+	usecase := NewScrapingDomainUsecaseWithRobotsTxt(mockDomainPort, mockRobotsTxtPort) // Without feed link domain port
 
 	ctx := context.Background()
 	err := usecase.EnsureDomainsFromFeedLinks(ctx)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "altDBRepository not available")
+	assert.Contains(t, err.Error(), "feedLinkDomainPort not available")
 }
 
 // Helper function

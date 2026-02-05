@@ -1,7 +1,7 @@
 package feed_url_link_gateway
 
 import (
-	"alt/driver/models"
+	"alt/domain"
 	"alt/mocks"
 	"context"
 	"errors"
@@ -16,7 +16,7 @@ func TestFeedURLLinkGateway_GetFeedURLsByArticleIDs(t *testing.T) {
 		name           string
 		articleIDs     []string
 		mockSetup      func(*mocks.MockFeedURLLinkDriver)
-		expectedURLMap []models.FeedAndArticle
+		expectedURLMap []domain.FeedAndArticle
 		expectedError  bool
 		errorMessage   string
 	}{
@@ -26,13 +26,13 @@ func TestFeedURLLinkGateway_GetFeedURLsByArticleIDs(t *testing.T) {
 			mockSetup: func(m *mocks.MockFeedURLLinkDriver) {
 				m.EXPECT().
 					GetFeedURLsByArticleIDs(gomock.Any(), []string{"1", "2", "3"}).
-					Return([]models.FeedAndArticle{
+					Return([]domain.FeedAndArticle{
 						{FeedID: "1", ArticleID: "1", URL: "https://example1.com/rss"},
 						{FeedID: "2", ArticleID: "2", URL: "https://example2.com/rss"},
 						{FeedID: "3", ArticleID: "3", URL: "https://example3.com/rss"},
 					}, nil)
 			},
-			expectedURLMap: []models.FeedAndArticle{
+			expectedURLMap: []domain.FeedAndArticle{
 				{FeedID: "1", ArticleID: "1", URL: "https://example1.com/rss"},
 				{FeedID: "2", ArticleID: "2", URL: "https://example2.com/rss"},
 				{FeedID: "3", ArticleID: "3", URL: "https://example3.com/rss"},
@@ -45,11 +45,11 @@ func TestFeedURLLinkGateway_GetFeedURLsByArticleIDs(t *testing.T) {
 			mockSetup: func(m *mocks.MockFeedURLLinkDriver) {
 				m.EXPECT().
 					GetFeedURLsByArticleIDs(gomock.Any(), []string{"1", "999"}).
-					Return([]models.FeedAndArticle{
+					Return([]domain.FeedAndArticle{
 						{FeedID: "1", ArticleID: "1", URL: "https://example1.com/rss"},
 					}, nil)
 			},
-			expectedURLMap: []models.FeedAndArticle{
+			expectedURLMap: []domain.FeedAndArticle{
 				{FeedID: "1", ArticleID: "1", URL: "https://example1.com/rss"},
 			},
 			expectedError: false,
@@ -60,9 +60,9 @@ func TestFeedURLLinkGateway_GetFeedURLsByArticleIDs(t *testing.T) {
 			mockSetup: func(m *mocks.MockFeedURLLinkDriver) {
 				m.EXPECT().
 					GetFeedURLsByArticleIDs(gomock.Any(), []string{}).
-					Return([]models.FeedAndArticle{}, nil)
+					Return([]domain.FeedAndArticle{}, nil)
 			},
-			expectedURLMap: []models.FeedAndArticle{},
+			expectedURLMap: []domain.FeedAndArticle{},
 			expectedError:  false,
 		},
 		{
@@ -71,9 +71,9 @@ func TestFeedURLLinkGateway_GetFeedURLsByArticleIDs(t *testing.T) {
 			mockSetup: func(m *mocks.MockFeedURLLinkDriver) {
 				m.EXPECT().
 					GetFeedURLsByArticleIDs(gomock.Any(), []string{"1", "2"}).
-					Return([]models.FeedAndArticle{}, errors.New("database connection failed"))
+					Return([]domain.FeedAndArticle{}, errors.New("database connection failed"))
 			},
-			expectedURLMap: []models.FeedAndArticle{},
+			expectedURLMap: []domain.FeedAndArticle{},
 			expectedError:  true,
 			errorMessage:   "database connection failed",
 		},

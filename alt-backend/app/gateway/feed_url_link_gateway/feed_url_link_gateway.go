@@ -1,14 +1,14 @@
 package feed_url_link_gateway
 
 import (
-	"alt/driver/models"
+	"alt/domain"
 	"alt/port/feed_url_link_port"
 	"context"
 	"log/slog"
 )
 
 type FeedURLLinkDriver interface {
-	GetFeedURLsByArticleIDs(ctx context.Context, articleIDs []string) ([]models.FeedAndArticle, error)
+	GetFeedURLsByArticleIDs(ctx context.Context, articleIDs []string) ([]domain.FeedAndArticle, error)
 }
 
 type FeedURLLinkGateway struct {
@@ -23,7 +23,7 @@ func NewFeedURLLinkGateway(driver FeedURLLinkDriver) feed_url_link_port.FeedURLL
 	}
 }
 
-func (g *FeedURLLinkGateway) GetFeedURLsByArticleIDs(ctx context.Context, articleIDs []string) ([]models.FeedAndArticle, error) {
+func (g *FeedURLLinkGateway) GetFeedURLsByArticleIDs(ctx context.Context, articleIDs []string) ([]domain.FeedAndArticle, error) {
 	g.logger.Info("getting feed URLs by article IDs",
 		"article_count", len(articleIDs))
 
@@ -32,7 +32,7 @@ func (g *FeedURLLinkGateway) GetFeedURLsByArticleIDs(ctx context.Context, articl
 		g.logger.Error("failed to get feed URLs by article IDs",
 			"error", err,
 			"article_count", len(articleIDs))
-		return []models.FeedAndArticle{}, err
+		return []domain.FeedAndArticle{}, err
 	}
 
 	g.logger.Info("successfully retrieved feed URLs",

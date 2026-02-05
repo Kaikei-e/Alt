@@ -9,6 +9,7 @@ import (
 	"alt/driver/csrf_token_driver"
 	"alt/driver/kratos_client"
 	"alt/driver/mqhub_connect"
+	"alt/driver/recap_job_driver"
 	"alt/driver/search_indexer_connect"
 	"alt/gateway/archive_article_gateway"
 	"alt/gateway/article_gateway"
@@ -16,6 +17,7 @@ import (
 	"alt/gateway/csrf_token_gateway"
 	"alt/gateway/error_handler_gateway"
 	"alt/gateway/event_publisher_gateway"
+	"alt/gateway/feed_link_domain_gateway"
 	"alt/gateway/feed_link_gateway"
 	"alt/gateway/feed_search_gateway"
 	"alt/gateway/feed_stats_gateway"
@@ -51,6 +53,7 @@ import (
 	"alt/usecase/answer_chat_usecase"
 	"alt/usecase/archive_article_usecase"
 	"alt/usecase/csrf_token_usecase"
+	dashboard_usecase "alt/usecase/dashboard"
 	"alt/usecase/feed_link_usecase"
 	"alt/usecase/fetch_article_usecase"
 	"alt/usecase/fetch_articles_usecase"
@@ -147,6 +150,7 @@ type ApplicationComponents struct {
 	FetchRandomSubscriptionUsecase      *fetch_random_subscription_usecase.FetchRandomSubscriptionUsecase
 	FetchArticlesByTagUsecase           *fetch_articles_by_tag_usecase.FetchArticlesByTagUsecase
 	FetchArticleTagsUsecase             *fetch_article_tags_usecase.FetchArticleTagsUsecase
+	GetRecapJobsUsecase                 dashboard_usecase.GetRecapJobsUsecase
 
 	// Gateways exposed for handler use (on-the-fly tag generation)
 	FetchArticleTagsGateway             *fetch_article_tags_gateway.FetchArticleTagsGateway
@@ -299,7 +303,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	// Scraping domain components
 	scrapingDomainGatewayImpl := scraping_domain_gateway.NewScrapingDomainGateway(altDBRepository)
-	scrapingDomainUsecase := scraping_domain_usecase.NewScrapingDomainUsecaseWithRepository(scrapingDomainGatewayImpl, robotsTxtGatewayImpl, altDBRepository)
+	feedLinkDomainGatewayImpl := feed_link_domain_gateway.NewFeedLinkDomainGateway(altDBRepository)
+	scrapingDomainUsecase := scraping_domain_usecase.NewScrapingDomainUsecaseWithFeedLinkDomain(scrapingDomainGatewayImpl, robotsTxtGatewayImpl, feedLinkDomainGatewayImpl)
 
 	// MorningLetter Connect-RPC gateway (calls rag-orchestrator)
 	morningLetterConnectGateway := morning_letter_connect_gateway.NewGateway(cfg.Rag.OrchestratorConnectURL, slog.Default())
@@ -328,6 +333,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		fetchArticleTagsConfig,
 	)
 	fetchArticleTagsUsecase := fetch_article_tags_usecase.NewFetchArticleTagsUsecase(fetchArticleTagsGatewayImpl)
+
+	// Dashboard recap jobs components
+	recapJobDriver := recap_job_driver.NewRecapJobGateway(cfg.Recap.WorkerURL)
+	getRecapJobsUsecase := dashboard_usecase.NewGetRecapJobsUsecase(recapJobDriver)
 
 	return &ApplicationComponents{
 		// Ports
@@ -389,6 +398,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchRandomSubscriptionUsecase:      fetchRandomSubscriptionUsecase,
 		FetchArticlesByTagUsecase:           fetchArticlesByTagUsecase,
 		FetchArticleTagsUsecase:             fetchArticleTagsUsecase,
+		GetRecapJobsUsecase:                 getRecapJobsUsecase,
 
 		// Gateways exposed for handler use (on-the-fly tag generation)
 		FetchArticleTagsGateway:             fetchArticleTagsGatewayImpl,

@@ -10,7 +10,7 @@
 package mocks
 
 import (
-	models "alt/driver/models"
+	domain "alt/domain"
 	context "context"
 	reflect "reflect"
 
@@ -42,10 +42,10 @@ func (m *MockFeedURLLinkPort) EXPECT() *MockFeedURLLinkPortMockRecorder {
 }
 
 // GetFeedURLsByArticleIDs mocks base method.
-func (m *MockFeedURLLinkPort) GetFeedURLsByArticleIDs(ctx context.Context, articleIDs []string) ([]models.FeedAndArticle, error) {
+func (m *MockFeedURLLinkPort) GetFeedURLsByArticleIDs(ctx context.Context, articleIDs []string) ([]domain.FeedAndArticle, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetFeedURLsByArticleIDs", ctx, articleIDs)
-	ret0, _ := ret[0].([]models.FeedAndArticle)
+	ret0, _ := ret[0].([]domain.FeedAndArticle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

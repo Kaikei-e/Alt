@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+// Note: ErrNoSubscriptions is now aliased from domain.ErrNoSubscriptions
+
 func init() {
 	logger.InitLogger()
 }

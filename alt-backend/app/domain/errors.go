@@ -24,6 +24,7 @@ var (
 	ErrFeedNotFound      = errors.New("feed not found")
 	ErrFeedAlreadyExists = errors.New("feed already exists")
 	ErrFeedInvalid       = errors.New("feed is invalid")
+	ErrNoSubscriptions   = errors.New("no feeds found")
 
 	// 記事関連エラー
 	ErrArticleNotFound      = errors.New("article not found")

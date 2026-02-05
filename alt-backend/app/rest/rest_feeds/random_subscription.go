@@ -2,7 +2,7 @@ package rest_feeds
 
 import (
 	"alt/di"
-	"alt/usecase/fetch_random_subscription_usecase"
+	"alt/domain"
 	"alt/utils/logger"
 	"errors"
 	"net/http"
@@ -32,7 +32,7 @@ func RestHandleFetchRandomSubscription(container *di.ApplicationComponents) echo
 
 		feed, err := container.FetchRandomSubscriptionUsecase.Execute(ctx)
 		if err != nil {
-			if errors.Is(err, fetch_random_subscription_usecase.ErrNoSubscriptions) {
+			if errors.Is(err, domain.ErrNoSubscriptions) {
 				logger.Logger.WarnContext(ctx, "no subscriptions found")
 				return c.JSON(http.StatusNotFound, map[string]string{
 					"error": "no subscriptions found",

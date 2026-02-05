@@ -2,7 +2,7 @@ package scraping_domain_usecase
 
 import (
 	"alt/domain"
-	"alt/driver/alt_db"
+	"alt/port/feed_link_domain_port"
 	"alt/port/robots_txt_port"
 	"alt/port/scraping_domain_port"
 	"alt/utils/logger"
@@ -15,9 +15,9 @@ import (
 
 // ScrapingDomainUsecase handles scraping domain business logic
 type ScrapingDomainUsecase struct {
-	scrapingDomainPort scraping_domain_port.ScrapingDomainPort
-	robotsTxtPort      robots_txt_port.RobotsTxtPort
-	altDBRepository    *alt_db.AltDBRepository
+	scrapingDomainPort   scraping_domain_port.ScrapingDomainPort
+	robotsTxtPort        robots_txt_port.RobotsTxtPort
+	feedLinkDomainPort   feed_link_domain_port.FeedLinkDomainPort
 }
 
 // NewScrapingDomainUsecase creates a new ScrapingDomainUsecase
@@ -35,12 +35,12 @@ func NewScrapingDomainUsecaseWithRobotsTxt(scrapingDomainPort scraping_domain_po
 	}
 }
 
-// NewScrapingDomainUsecaseWithRepository creates a new ScrapingDomainUsecase with repository access
-func NewScrapingDomainUsecaseWithRepository(scrapingDomainPort scraping_domain_port.ScrapingDomainPort, robotsTxtPort robots_txt_port.RobotsTxtPort, altDBRepository *alt_db.AltDBRepository) *ScrapingDomainUsecase {
+// NewScrapingDomainUsecaseWithFeedLinkDomain creates a new ScrapingDomainUsecase with feed link domain port
+func NewScrapingDomainUsecaseWithFeedLinkDomain(scrapingDomainPort scraping_domain_port.ScrapingDomainPort, robotsTxtPort robots_txt_port.RobotsTxtPort, feedLinkDomainPort feed_link_domain_port.FeedLinkDomainPort) *ScrapingDomainUsecase {
 	return &ScrapingDomainUsecase{
 		scrapingDomainPort: scrapingDomainPort,
 		robotsTxtPort:      robotsTxtPort,
-		altDBRepository:    altDBRepository,
+		feedLinkDomainPort: feedLinkDomainPort,
 	}
 }
 
@@ -157,12 +157,12 @@ func (u *ScrapingDomainUsecase) RefreshAllRobotsTxt(ctx context.Context) error {
 // EnsureDomainsFromFeedLinks ensures that all domains from feed_links exist in scraping_domains
 // It extracts unique domains from feed_links and creates missing entries in scraping_domains
 func (u *ScrapingDomainUsecase) EnsureDomainsFromFeedLinks(ctx context.Context) error {
-	if u.altDBRepository == nil {
-		return fmt.Errorf("altDBRepository not available")
+	if u.feedLinkDomainPort == nil {
+		return fmt.Errorf("feedLinkDomainPort not available")
 	}
 
 	// Get unique domains from feed_links
-	feedLinkDomains, err := u.altDBRepository.ListFeedLinkDomains(ctx)
+	feedLinkDomains, err := u.feedLinkDomainPort.ListFeedLinkDomains(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list feed link domains: %w", err)
 	}

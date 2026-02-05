@@ -4,10 +4,10 @@ import (
 	"context"
 	"log/slog"
 
-	"alt/driver/models"
+	"alt/domain"
 )
 
-func (a *AltDBRepository) GetFeedURLsByArticleIDs(ctx context.Context, articleIDs []string) ([]models.FeedAndArticle, error) {
+func (a *AltDBRepository) GetFeedURLsByArticleIDs(ctx context.Context, articleIDs []string) ([]domain.FeedAndArticle, error) {
 	if len(articleIDs) == 0 {
 		slog.InfoContext(ctx, "no article IDs provided, returning empty map")
 		return nil, nil
@@ -32,10 +32,10 @@ func (a *AltDBRepository) GetFeedURLsByArticleIDs(ctx context.Context, articleID
 	}
 	defer rows.Close()
 
-	feedAndArticles := []models.FeedAndArticle{}
+	feedAndArticles := []domain.FeedAndArticle{}
 
 	for rows.Next() {
-		var feedAndArticle models.FeedAndArticle
+		var feedAndArticle domain.FeedAndArticle
 		err := rows.Scan(&feedAndArticle.FeedID, &feedAndArticle.ArticleID, &feedAndArticle.URL, &feedAndArticle.FeedTitle, &feedAndArticle.ArticleTitle)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to scan feed URL row",

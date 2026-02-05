@@ -134,3 +134,18 @@ type ArticleFilter struct {
 	Limit           int        `json:"limit"`
 	Offset          int        `json:"offset"`
 }
+
+// FeedAndArticle represents a join result between feeds and articles
+type FeedAndArticle struct {
+	FeedID       string `json:"feed_id" db:"feed_id"`
+	ArticleID    string `json:"article_id" db:"article_id"`
+	URL          string `json:"url" db:"url"`
+	FeedTitle    string `json:"feed_title" db:"feed_title"`
+	ArticleTitle string `json:"article_title" db:"article_title"`
+}
+
+// FeedLinkDomain represents a unique domain extracted from feed_links
+type FeedLinkDomain struct {
+	Domain string `json:"domain"`
+	Scheme string `json:"scheme"`
+}

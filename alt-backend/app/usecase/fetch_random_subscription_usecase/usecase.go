@@ -8,8 +8,9 @@ import (
 	"errors"
 )
 
-// ErrNoSubscriptions is returned when there are no feeds available.
-var ErrNoSubscriptions = errors.New("no feeds found")
+// ErrNoSubscriptions is an alias for domain.ErrNoSubscriptions for backwards compatibility.
+// Deprecated: Use domain.ErrNoSubscriptions directly.
+var ErrNoSubscriptions = domain.ErrNoSubscriptions
 
 // FetchRandomSubscriptionUsecase handles fetching a random feed.
 type FetchRandomSubscriptionUsecase struct {

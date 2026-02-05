@@ -2,7 +2,6 @@ package search_feed_usecase
 
 import (
 	"alt/domain"
-	"alt/driver/models"
 	"alt/mocks"
 	"context"
 	"errors"
@@ -92,7 +91,7 @@ func TestSearchFeedMeilisearchUsecase_Execute(t *testing.T) {
 				for i, hit := range tt.mockResponse {
 					articleIDs[i] = hit.ID
 				}
-				mockURLPort.EXPECT().GetFeedURLsByArticleIDs(ctx, articleIDs).Return([]models.FeedAndArticle{}, nil)
+				mockURLPort.EXPECT().GetFeedURLsByArticleIDs(ctx, articleIDs).Return([]domain.FeedAndArticle{}, nil)
 			}
 
 			usecase := NewSearchFeedMeilisearchUsecase(mockSearchPort, mockURLPort)
@@ -139,7 +138,7 @@ func TestSearchFeedMeilisearchUsecase_Execute_DataMapping(t *testing.T) {
 			},
 		}
 
-		expectedURLMap := []models.FeedAndArticle{
+		expectedURLMap := []domain.FeedAndArticle{
 			{FeedID: "feed-123", ArticleID: "article-123", URL: "https://example1.com/rss"},
 			{FeedID: "feed-456", ArticleID: "article-456", URL: "https://example2.com/rss"},
 		}
@@ -191,7 +190,7 @@ func TestSearchFeedMeilisearchUsecase_Execute_DataMapping(t *testing.T) {
 			},
 		}
 
-		expectedURLMap := []models.FeedAndArticle{} // No URLs found
+		expectedURLMap := []domain.FeedAndArticle{} // No URLs found
 
 		mockSearchPort := mocks.NewMockSearchFeedPort(ctrl)
 		mockURLPort := mocks.NewMockFeedURLLinkPort(ctrl)
@@ -340,7 +339,7 @@ func TestSearchFeedMeilisearchUsecase_ExecuteWithPagination(t *testing.T) {
 					for i, hit := range tt.mockResponse {
 						articleIDs[i] = hit.ID
 					}
-					mockURLPort.EXPECT().GetFeedURLsByArticleIDs(ctx, articleIDs).Return([]models.FeedAndArticle{}, nil)
+					mockURLPort.EXPECT().GetFeedURLsByArticleIDs(ctx, articleIDs).Return([]domain.FeedAndArticle{}, nil)
 				}
 			}
 

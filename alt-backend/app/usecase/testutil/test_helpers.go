@@ -2,10 +2,11 @@ package testutil
 
 import (
 	"alt/domain"
-	"alt/driver/models"
 	"context"
 	"errors"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Common test data generators
@@ -91,18 +92,17 @@ func CommonSuccessTestCases() []TestCase {
 	}
 }
 
-// Models.Feed test data generators
-func CreateMockFeeds(count int) []*models.Feed {
+// Domain Feed test data generators
+func CreateMockDomainFeeds(count int) []*domain.Feed {
 	now := time.Now()
-	feeds := make([]*models.Feed, count)
+	feeds := make([]*domain.Feed, count)
 
 	for i := 0; i < count; i++ {
-		feeds[i] = &models.Feed{
-			ID:          "test-feed-id-" + string(rune('0'+i)),
+		feeds[i] = &domain.Feed{
+			ID:          uuid.New(),
 			Title:       "Test Feed " + string(rune('0'+i+1)),
 			Description: "Test Description " + string(rune('0'+i+1)),
 			Link:        "https://test.com/feed" + string(rune('0'+i+1)),
-			PubDate:     now,
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}
@@ -111,6 +111,6 @@ func CreateMockFeeds(count int) []*models.Feed {
 	return feeds
 }
 
-func CreateEmptyFeeds() []*models.Feed {
-	return []*models.Feed{}
+func CreateEmptyDomainFeeds() []*domain.Feed {
+	return []*domain.Feed{}
 }

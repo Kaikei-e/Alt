@@ -1,9 +1,7 @@
 package rest
 
 import (
-	"alt/config"
 	"alt/di"
-	"alt/driver/recap_job_driver"
 	"alt/gateway/dashboard_gateway"
 	dashboard_usecase "alt/usecase/dashboard"
 	"net/http"
@@ -12,17 +10,14 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func registerDashboardRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+func registerDashboardRoutes(v1 *echo.Group, container *di.ApplicationComponents) {
 	dashboardGateway := dashboard_gateway.NewDashboardGateway()
 
 	v1.GET("/dashboard/metrics", handleGetMetrics(dashboardGateway))
 	v1.GET("/dashboard/overview", handleGetOverview(dashboardGateway))
 	v1.GET("/dashboard/logs", handleGetLogs(dashboardGateway))
 	v1.GET("/dashboard/jobs", handleGetJobs(dashboardGateway))
-
-	recapDriver := recap_job_driver.NewRecapJobGateway(cfg.Recap.WorkerURL)
-	recapUsecase := dashboard_usecase.NewGetRecapJobsUsecase(recapDriver)
-	v1.GET("/dashboard/recap_jobs", handleGetRecapJobs(recapUsecase))
+	v1.GET("/dashboard/recap_jobs", handleGetRecapJobs(container.GetRecapJobsUsecase))
 }
 
 func handleGetMetrics(gateway *dashboard_gateway.DashboardGateway) echo.HandlerFunc {
