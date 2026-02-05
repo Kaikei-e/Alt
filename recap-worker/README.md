@@ -1,6 +1,6 @@
 # Recap Worker
 
-Recap Worker is Alt's Rust 2024 batch processor that turns seven days of raw articles into curated Japanese summaries. It orchestrates every hop—from fetching source material to clustering, LLM summarization, and JSONB persistence—while exposing an Axum control plane for health probes, manual runs, metrics, and admin tooling.
+Recap Worker is Alt's Rust 2024 batch processor that turns articles into curated Japanese summaries. It supports both **7-day** (weekly deep-dive) and **3-day** (daily quick-catch) recap windows. It orchestrates every hop—from fetching source material to clustering, LLM summarization, and JSONB persistence—while exposing an Axum control plane for health probes, manual runs, metrics, and admin tooling.
 
 ## At a Glance
 - **End-to-end pipeline**: Fetch → Preprocess → Dedup → Genre tagging → Select → Evidence building → ML clustering → LLM summarization → Persistence.
@@ -66,8 +66,10 @@ flowchart TD
 | `GET /health/live` | Liveness probe (internal counter + telemetry tick). |
 | `GET /health/ready` | Readiness probe; pings recap-subworker + news-creator before returning `200`. |
 | `GET /metrics` | Prometheus exposition containing pipeline counters, histograms, and gauges. |
-| `POST /v1/generate/recaps/7days` | Manually enqueue a recap job (optionally pass custom `genres`). Returns `202 Accepted` + `job_id`. |
-| `GET /v1/recaps/7days` | Fetch latest persisted recap (job metadata + per-genre sections + evidence links). |
+| `POST /v1/generate/recaps/7days` | Manually enqueue a 7-day recap job (optionally pass custom `genres`). Returns `202 Accepted` + `job_id`. |
+| `GET /v1/recaps/7days` | Fetch latest persisted 7-day recap (job metadata + per-genre sections + evidence links). |
+| `POST /v1/generate/recaps/3days` | Manually enqueue a 3-day recap job (faster processing, smaller prompts). Returns `202 Accepted` + `job_id`. |
+| `GET /v1/recaps/3days` | Fetch latest persisted 3-day recap (job metadata + per-genre sections + evidence links). |
 | `GET /v1/morning/updates` | Fetch morning article groups (deduplication relationships). |
 | `POST /v1/evaluation/genres` | Run genre classification evaluation on Golden Dataset. Returns `run_id`. |
 | `GET /v1/evaluation/genres/latest` | Get latest evaluation run results. |
@@ -125,7 +127,7 @@ flowchart TD
 ## Scheduling & Job Lifecycle
 - **Automatic daily batch**: `scheduler::daemon::spawn_jst_batch_daemon` fires at 04:00 JST using `RECAP_GENRES` defaults. Missing defaults result in a warning and skip auto runs.
 - **Morning update daemon**: `scheduler::daemon::spawn_morning_update_daemon` runs independently for article grouping.
-- **Manual generation**: Invoke `POST /v1/generate/recaps/7days` with optional `{"genres": ["ai", ...]}`; the handler dedupes/normalizes input before queueing the job.
+- **Manual generation**: Invoke `POST /v1/generate/recaps/7days` or `POST /v1/generate/recaps/3days` with optional `{"genres": ["ai", ...]}`; the handler dedupes/normalizes input before queueing the job. The 3-day window is recommended for daily use (faster processing, reduced prompt sizes).
 - **Admin retries**: `POST /admin/jobs/retry` triggers a best-effort rerun using the existing scheduler (useful after fixing upstream outages).
 - **Job context**: `JobContext` carries `job_id` + genre list throughout the pipeline for logging and persistence.
 
@@ -141,7 +143,7 @@ flowchart TD
 Full reference lives in [ENVIRONMENT.md](./ENVIRONMENT.md). Highlights:
 - **Database**: `RECAP_DB_DSN` (PostgreSQL 18). Connection pooling via `sqlx::postgres::PgPoolOptions`.
 - **External endpoints**: `ALT_BACKEND_BASE_URL`, `TAG_GENERATOR_BASE_URL`, `SUBWORKER_BASE_URL`, `NEWS_CREATOR_BASE_URL`.
-- **Batch parameters**: `RECAP_WINDOW_DAYS`, `RECAP_GENRES`, `LLM_MAX_CONCURRENCY`, `LLM_PROMPT_VERSION`, `LLM_SUMMARY_TIMEOUT_SECS`.
+- **Batch parameters**: `RECAP_WINDOW_DAYS`, `RECAP_3DAYS_WINDOW_DAYS`, `RECAP_GENRES`, `LLM_MAX_CONCURRENCY`, `LLM_PROMPT_VERSION`, `LLM_SUMMARY_TIMEOUT_SECS`.
 - **HTTP resiliency**: `HTTP_MAX_RETRIES`, `HTTP_BACKOFF_BASE_MS`, `HTTP_BACKOFF_CAP_MS`, per-client timeout overrides.
 - **Classification**: `RECAP_GENRE_MODEL_WEIGHTS`, `RECAP_GENRE_MODEL_THRESHOLD`, `RECAP_GENRE_REFINE_ENABLED`, `RECAP_GENRE_REFINE_ROLLOUT_PERCENT`, `RECAP_GENRE_REFINE_REQUIRE_TAGS`.
 - **Graph cache**: `TAG_LABEL_GRAPH_WINDOW`, `TAG_LABEL_GRAPH_TTL_SECONDS`, `RECAP_PRE_REFRESH_GRAPH_ENABLED`, `RECAP_PRE_REFRESH_TIMEOUT_SECS`.
@@ -225,8 +227,13 @@ See [IMPLEMENTATION.md](./IMPLEMENTATION.md) for detailed architecture and imple
 curl http://localhost:9005/health/ready
 curl http://localhost:9005/metrics | grep recap_jobs
 
-# Manual trigger
+# Manual trigger (7-day - weekly deep-dive)
 curl -X POST http://localhost:9005/v1/generate/recaps/7days \
+  -H "Content-Type: application/json" \
+  -d '{"genres":["tech","ai"]}'
+
+# Manual trigger (3-day - daily quick-catch, recommended)
+curl -X POST http://localhost:9005/v1/generate/recaps/3days \
   -H "Content-Type: application/json" \
   -d '{"genres":["tech","ai"]}'
 
