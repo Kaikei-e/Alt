@@ -2,7 +2,7 @@
 
 import os
 import logging
-from typing import List, Union
+from typing import Union
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +148,21 @@ class NewsCreatorConfig:
             "SCHEDULING_PREEMPTION_WAIT_THRESHOLD_SECONDS", 2.0
         )
 
+        # Priority promotion settings (BE -> RT after long wait)
+        # After this threshold, BE requests are promoted to RT queue to prevent starvation
+        # Default: 10 minutes (600 seconds) - ensures batch requests complete before timeout
+        self.scheduling_priority_promotion_threshold_seconds = self._get_float(
+            "SCHEDULING_PRIORITY_PROMOTION_THRESHOLD_SECONDS", 600.0
+        )
+
+        # Guaranteed bandwidth settings (anti-starvation for BE requests)
+        # BE request is guaranteed to be processed after this many consecutive RT releases
+        # Default: 5 (80% RT, 20% BE guaranteed bandwidth)
+        # Set to 0 to disable guaranteed bandwidth
+        self.scheduling_guaranteed_be_ratio = self._get_int(
+            "SCHEDULING_GUARANTEED_BE_RATIO", 5
+        )
+
         # Build bucket model names set for quick lookup
         self._bucket_model_names = {
             self.model_8k_name,
@@ -166,6 +181,8 @@ class NewsCreatorConfig:
                 "ollama_num_parallel": os.getenv("OLLAMA_NUM_PARALLEL"),
                 "scheduling_rt_reserved_slots": self.scheduling_rt_reserved_slots,
                 "scheduling_aging_threshold_seconds": self.scheduling_aging_threshold_seconds,
+                "scheduling_priority_promotion_threshold_seconds": self.scheduling_priority_promotion_threshold_seconds,
+                "scheduling_guaranteed_be_ratio": self.scheduling_guaranteed_be_ratio,
             },
         )
 

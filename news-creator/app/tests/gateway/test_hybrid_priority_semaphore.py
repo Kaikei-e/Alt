@@ -731,3 +731,321 @@ class TestPreemption:
             await rt_task
         except asyncio.CancelledError:
             pass
+
+
+class TestGuaranteedBandwidth:
+    """Tests for guaranteed bandwidth mechanism to prevent BE starvation."""
+
+    @pytest.mark.asyncio
+    async def test_guaranteed_be_ratio_default(self, hybrid_semaphore_module):
+        """Test default guaranteed BE ratio is set."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(total_slots=1, rt_reserved_slots=1)
+
+        # Default should guarantee BE slot after 5 consecutive RT releases
+        assert semaphore._guaranteed_be_ratio == 5
+
+    @pytest.mark.asyncio
+    async def test_guaranteed_be_ratio_custom(self, hybrid_semaphore_module):
+        """Test custom guaranteed BE ratio is respected."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            guaranteed_be_ratio=3,
+        )
+
+        assert semaphore._guaranteed_be_ratio == 3
+
+    @pytest.mark.asyncio
+    async def test_be_guaranteed_after_consecutive_rt_releases(self, hybrid_semaphore_module):
+        """BE request gets slot after guaranteed_be_ratio consecutive RT releases."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            guaranteed_be_ratio=3,  # BE guaranteed after 3 RT releases
+        )
+
+        processing_order = []
+
+        # Acquire the only slot
+        await semaphore.acquire(high_priority=True)
+
+        async def be_worker():
+            await semaphore.acquire(high_priority=False)
+            processing_order.append("be")
+            semaphore.release(was_high_priority=False)
+
+        async def rt_worker(idx: int):
+            await semaphore.acquire(high_priority=True)
+            processing_order.append(f"rt_{idx}")
+            semaphore.release(was_high_priority=True)
+
+        # Queue BE first
+        be_task = asyncio.create_task(be_worker())
+        await asyncio.sleep(0.01)
+
+        # Queue multiple RT requests
+        rt_tasks = []
+        for i in range(5):
+            rt_task = asyncio.create_task(rt_worker(i))
+            rt_tasks.append(rt_task)
+            await asyncio.sleep(0.01)
+
+        # Release initial slot
+        semaphore.release(was_high_priority=True)
+
+        # Wait for all to complete
+        await asyncio.gather(be_task, *rt_tasks)
+
+        # BE should be processed after at most 3 RT releases due to guaranteed bandwidth
+        # Find BE position in processing order
+        be_position = processing_order.index("be")
+        assert be_position <= 3, f"BE should be processed within 3 releases, got position {be_position}"
+
+    @pytest.mark.asyncio
+    async def test_consecutive_rt_counter_resets_after_be(self, hybrid_semaphore_module):
+        """Consecutive RT counter resets after BE is processed."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            guaranteed_be_ratio=3,
+        )
+
+        # Acquire initial slot
+        await semaphore.acquire(high_priority=True)
+
+        # Simulate 2 RT releases (counter at 2)
+        semaphore._consecutive_rt_releases = 2
+
+        # Queue BE
+        be_completed = asyncio.Event()
+
+        async def be_worker():
+            await semaphore.acquire(high_priority=False)
+            be_completed.set()
+            semaphore.release(was_high_priority=False)
+
+        be_task = asyncio.create_task(be_worker())
+        await asyncio.sleep(0.01)
+
+        # Force BE release via guaranteed bandwidth by incrementing counter
+        semaphore._consecutive_rt_releases = 3  # Hits threshold
+        semaphore.release(was_high_priority=True)
+
+        await asyncio.wait_for(be_completed.wait(), timeout=1.0)
+        await be_task
+
+        # Counter should be reset after BE processed
+        assert semaphore._consecutive_rt_releases == 0
+
+    @pytest.mark.asyncio
+    async def test_guaranteed_bandwidth_disabled_when_ratio_zero(self, hybrid_semaphore_module):
+        """Guaranteed bandwidth is disabled when ratio is 0."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            guaranteed_be_ratio=0,  # Disabled
+        )
+
+        processing_order = []
+
+        # Acquire the only slot
+        await semaphore.acquire(high_priority=True)
+
+        async def be_worker():
+            await semaphore.acquire(high_priority=False)
+            processing_order.append("be")
+            semaphore.release(was_high_priority=False)
+
+        async def rt_worker(idx: int):
+            await semaphore.acquire(high_priority=True)
+            processing_order.append(f"rt_{idx}")
+            semaphore.release(was_high_priority=True)
+
+        # Queue BE first
+        be_task = asyncio.create_task(be_worker())
+        await asyncio.sleep(0.01)
+
+        # Queue multiple RT requests
+        rt_tasks = []
+        for i in range(3):
+            rt_task = asyncio.create_task(rt_worker(i))
+            rt_tasks.append(rt_task)
+            await asyncio.sleep(0.01)
+
+        # Release initial slot
+        semaphore.release(was_high_priority=True)
+
+        # Wait for all to complete
+        await asyncio.gather(be_task, *rt_tasks)
+
+        # RT should be processed before BE (normal priority behavior)
+        assert processing_order[:3] == ["rt_0", "rt_1", "rt_2"]
+        assert processing_order[3] == "be"
+
+
+class TestEnhancedAging:
+    """Tests for enhanced aging mechanism with priority promotion."""
+
+    @pytest.mark.asyncio
+    async def test_priority_promotion_threshold_default(self, hybrid_semaphore_module):
+        """Test default priority promotion threshold is set."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(total_slots=2)
+
+        # Default promotion threshold: 600 seconds (10 minutes)
+        assert semaphore._priority_promotion_threshold == 600.0
+
+    @pytest.mark.asyncio
+    async def test_priority_promotion_threshold_custom(self, hybrid_semaphore_module):
+        """Test custom priority promotion threshold is respected."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=2,
+            priority_promotion_threshold_seconds=300.0,  # 5 minutes
+        )
+
+        assert semaphore._priority_promotion_threshold == 300.0
+
+    @pytest.mark.asyncio
+    async def test_be_promoted_to_rt_queue_after_threshold(self, hybrid_semaphore_module):
+        """BE request is promoted to RT queue after priority promotion threshold."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            priority_promotion_threshold_seconds=0.05,  # 50ms for testing
+        )
+
+        processing_order = []
+
+        # Acquire the only slot
+        await semaphore.acquire(high_priority=True)
+
+        async def be_worker():
+            await semaphore.acquire(high_priority=False)
+            processing_order.append("be_promoted")
+            semaphore.release(was_high_priority=False)
+
+        async def rt_worker():
+            await semaphore.acquire(high_priority=True)
+            processing_order.append("rt_fresh")
+            semaphore.release(was_high_priority=True)
+
+        # Queue BE first
+        be_task = asyncio.create_task(be_worker())
+        await asyncio.sleep(0.1)  # Wait for promotion threshold
+
+        # Queue RT after BE has aged past promotion threshold
+        rt_task = asyncio.create_task(rt_worker())
+        await asyncio.sleep(0.01)
+
+        # Release slot - promoted BE should be processed like RT
+        semaphore.release(was_high_priority=True)
+
+        await asyncio.gather(be_task, rt_task)
+
+        # Promoted BE should be processed first (it was queued first and now has RT priority)
+        assert processing_order[0] == "be_promoted"
+
+    @pytest.mark.asyncio
+    async def test_promotion_moves_be_to_rt_queue(self, hybrid_semaphore_module):
+        """Test that promotion actually moves request from BE queue to RT queue."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            priority_promotion_threshold_seconds=0.05,  # 50ms
+        )
+
+        # Acquire slot
+        await semaphore.acquire(high_priority=True)
+
+        # Queue BE request
+        be_completed = asyncio.Event()
+
+        async def be_worker():
+            await semaphore.acquire(high_priority=False)
+            be_completed.set()
+            semaphore.release(was_high_priority=False)
+
+        be_task = asyncio.create_task(be_worker())
+        await asyncio.sleep(0.01)
+
+        # Verify BE is in BE queue
+        assert len(semaphore._be_queue) == 1
+        assert len(semaphore._rt_queue) == 0
+
+        # Wait for promotion threshold
+        await asyncio.sleep(0.06)
+
+        # Trigger aging check via release
+        semaphore.release(was_high_priority=True)
+
+        # BE should be processed
+        await asyncio.wait_for(be_completed.wait(), timeout=1.0)
+        await be_task
+
+    @pytest.mark.asyncio
+    async def test_compute_priority_score_with_promotion(self, hybrid_semaphore_module):
+        """Test priority score computation accounts for promotion."""
+        import time
+
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=2,
+            aging_threshold_seconds=0.02,  # 20ms for aging
+            priority_promotion_threshold_seconds=0.05,  # 50ms for promotion
+            aging_boost=0.5,
+        )
+
+        # Fresh BE request has score 1.0
+        now = time.monotonic()
+        score_fresh = semaphore._compute_priority_score(high_priority=False, enqueue_time=now)
+        assert score_fresh == 1.0
+
+        # Aged BE request (past aging threshold) has reduced score
+        aged_time = now - 0.03  # 30ms ago
+        score_aged = semaphore._compute_priority_score(high_priority=False, enqueue_time=aged_time)
+        assert score_aged < 1.0
+
+        # Promoted BE request (past promotion threshold) has RT-like score
+        promoted_time = now - 0.06  # 60ms ago (past promotion threshold)
+        score_promoted = semaphore._compute_priority_score(high_priority=False, enqueue_time=promoted_time)
+        # Promoted should have priority close to or at RT level (0.0)
+        assert score_promoted <= 0.1, f"Promoted BE should have RT-like priority, got {score_promoted}"
+
+    @pytest.mark.asyncio
+    async def test_aging_and_promotion_work_together(self, hybrid_semaphore_module):
+        """Test that aging gradually reduces priority and promotion caps it at RT level."""
+        import time
+
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=2,
+            aging_threshold_seconds=60.0,  # Standard 60s aging
+            priority_promotion_threshold_seconds=600.0,  # 10 min promotion
+            aging_boost=0.5,
+        )
+
+        now = time.monotonic()
+
+        # At 0s: score = 1.0
+        score_0 = semaphore._compute_priority_score(False, now)
+        assert score_0 == 1.0
+
+        # At 120s (1 minute past aging): score should be reduced
+        score_120 = semaphore._compute_priority_score(False, now - 120)
+        assert score_120 < score_0
+
+        # At 300s (4 minutes past aging): score should be further reduced
+        score_300 = semaphore._compute_priority_score(False, now - 300)
+        assert score_300 < score_120
+
+        # At 660s (past promotion threshold): score should be at RT level
+        score_660 = semaphore._compute_priority_score(False, now - 660)
+        assert score_660 <= 0.1

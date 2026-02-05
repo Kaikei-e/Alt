@@ -20,7 +20,7 @@ import heapq
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -43,21 +43,27 @@ class CancellableRequest:
 
 @dataclass(order=True)
 class QueuedRequest:
-    """Request with aging-aware priority."""
+    """Request with aging-aware priority.
+
+    Sorting order: priority_score (ascending), then enqueue_time (ascending).
+    This ensures FIFO ordering among requests with the same priority score.
+    """
 
     priority_score: float  # Lower = higher priority
-    enqueue_time: float = field(compare=False)
+    enqueue_time: float  # Used for FIFO ordering within same priority
     future: asyncio.Future = field(compare=False)
     is_high_priority: bool = field(compare=False)
 
 
 class HybridPrioritySemaphore:
     """
-    Hybrid RT/BE semaphore with reserved slots and aging.
+    Hybrid RT/BE semaphore with reserved slots, aging, and guaranteed bandwidth.
 
     Features:
     - Reserved slot for real-time (streaming) requests
     - Aging mechanism to prevent starvation of low-priority requests
+    - Priority promotion: BE requests promoted to RT after threshold
+    - Guaranteed bandwidth: BE requests guaranteed processing every N RT releases
     - Fair scheduling within priority levels
 
     Args:
@@ -65,6 +71,8 @@ class HybridPrioritySemaphore:
         rt_reserved_slots: Slots reserved for real-time requests (default: 1)
         aging_threshold_seconds: Time after which BE priority is boosted (default: 60)
         aging_boost: Priority boost applied after threshold (default: 0.5)
+        priority_promotion_threshold_seconds: Time after which BE is promoted to RT (default: 600)
+        guaranteed_be_ratio: BE guaranteed after this many consecutive RT releases (default: 5, 0 to disable)
     """
 
     def __init__(
@@ -75,6 +83,8 @@ class HybridPrioritySemaphore:
         aging_boost: float = 0.5,
         preemption_enabled: bool = True,
         preemption_wait_threshold: float = 2.0,
+        priority_promotion_threshold_seconds: float = 600.0,
+        guaranteed_be_ratio: int = 5,
     ):
         if total_slots < 1:
             raise ValueError("total_slots must be >= 1")
@@ -98,6 +108,13 @@ class HybridPrioritySemaphore:
         self._aging_threshold = aging_threshold_seconds
         self._aging_boost = aging_boost
 
+        # Priority promotion configuration (BE -> RT after threshold)
+        self._priority_promotion_threshold = priority_promotion_threshold_seconds
+
+        # Guaranteed bandwidth configuration
+        self._guaranteed_be_ratio = guaranteed_be_ratio
+        self._consecutive_rt_releases = 0
+
         # Preemption configuration
         self._preemption_enabled = preemption_enabled
         self._preemption_threshold = preemption_wait_threshold
@@ -113,6 +130,8 @@ class HybridPrioritySemaphore:
                 "rt_reserved": rt_reserved_slots,
                 "be_slots": self._be_slots,
                 "aging_threshold": aging_threshold_seconds,
+                "priority_promotion_threshold": priority_promotion_threshold_seconds,
+                "guaranteed_be_ratio": guaranteed_be_ratio,
                 "preemption_enabled": preemption_enabled,
                 "preemption_wait_threshold": preemption_wait_threshold,
             },
@@ -122,14 +141,26 @@ class HybridPrioritySemaphore:
         self, high_priority: bool, enqueue_time: float
     ) -> float:
         """
-        Compute priority score with aging.
+        Compute priority score with aging and priority promotion.
         Lower score = higher priority.
+
+        Priority progression for BE requests:
+        - Fresh (0 - aging_threshold): score = 1.0
+        - Aging (aging_threshold - promotion_threshold): score gradually decreases
+        - Promoted (> promotion_threshold): score = 0.0 (RT level)
         """
         base_score = 0.0 if high_priority else 1.0
 
-        # Apply aging for BE requests
+        # Apply aging and promotion for BE requests
         if not high_priority:
             wait_time = time.monotonic() - enqueue_time
+
+            # Priority promotion: BE becomes RT-like after promotion threshold
+            if wait_time > self._priority_promotion_threshold:
+                # Promote to RT level (score = 0.0)
+                return 0.0
+
+            # Standard aging: gradually reduce score after aging threshold
             if wait_time > self._aging_threshold:
                 # Boost priority based on excess wait time
                 aging_factor = (
@@ -321,30 +352,37 @@ class HybridPrioritySemaphore:
         """
         Release a slot and wake up next waiter.
 
+        Implements guaranteed bandwidth for BE requests:
+        - After guaranteed_be_ratio consecutive RT releases, force BE processing
+        - This prevents BE starvation even when RT requests are continuous
+
         Args:
             was_high_priority: Whether the released slot was RT
         """
-        # Recompute priorities with aging before selecting next
+        # Recompute priorities with aging and handle promotions
         self._apply_aging()
 
-        # Priority order: RT queue first, then BE queue
+        # Check guaranteed bandwidth: force BE after N consecutive RT releases
+        force_be = False
+        if self._guaranteed_be_ratio > 0 and self._be_queue:
+            if was_high_priority:
+                self._consecutive_rt_releases += 1
+                if self._consecutive_rt_releases >= self._guaranteed_be_ratio:
+                    force_be = True
+                    logger.info(
+                        "Guaranteed bandwidth triggered: forcing BE request",
+                        extra={
+                            "consecutive_rt_releases": self._consecutive_rt_releases,
+                            "guaranteed_be_ratio": self._guaranteed_be_ratio,
+                            "be_queue_size": len(self._be_queue),
+                        },
+                    )
+
         woke_up = False
 
-        # Try RT queue first
-        while self._rt_queue and not woke_up:
-            request = heapq.heappop(self._rt_queue)
-            if not request.future.done() and not request.future.cancelled():
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.call_soon_threadsafe(request.future.set_result, True)
-                else:
-                    request.future.set_result(True)
-                woke_up = True
-                logger.debug("Woke up RT waiter")
-
-        # Try BE queue if no RT waiters
-        if not woke_up:
-            while self._be_queue:
+        # If guaranteed bandwidth triggered, process BE first
+        if force_be:
+            while self._be_queue and not woke_up:
                 request = heapq.heappop(self._be_queue)
                 if not request.future.done() and not request.future.cancelled():
                     loop = asyncio.get_event_loop()
@@ -353,8 +391,38 @@ class HybridPrioritySemaphore:
                     else:
                         request.future.set_result(True)
                     woke_up = True
-                    logger.debug("Woke up BE waiter")
+                    self._consecutive_rt_releases = 0  # Reset counter after BE processed
+                    logger.debug("Woke up BE waiter (guaranteed bandwidth)")
                     break
+
+        # Standard priority order: RT queue first, then BE queue
+        if not woke_up:
+            # Try RT queue first
+            while self._rt_queue and not woke_up:
+                request = heapq.heappop(self._rt_queue)
+                if not request.future.done() and not request.future.cancelled():
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.call_soon_threadsafe(request.future.set_result, True)
+                    else:
+                        request.future.set_result(True)
+                    woke_up = True
+                    logger.debug("Woke up RT waiter")
+
+            # Try BE queue if no RT waiters
+            if not woke_up:
+                while self._be_queue:
+                    request = heapq.heappop(self._be_queue)
+                    if not request.future.done() and not request.future.cancelled():
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            loop.call_soon_threadsafe(request.future.set_result, True)
+                        else:
+                            request.future.set_result(True)
+                        woke_up = True
+                        self._consecutive_rt_releases = 0  # Reset counter after BE processed
+                        logger.debug("Woke up BE waiter")
+                        break
 
         # No waiters, return slot to pool
         if not woke_up:
@@ -364,28 +432,62 @@ class HybridPrioritySemaphore:
                 self._be_available = min(self._be_available + 1, self._be_slots)
 
     def _apply_aging(self) -> None:
-        """Recompute BE queue priorities with aging."""
+        """Recompute BE queue priorities with aging and handle promotions.
+
+        Priority promotion: BE requests waiting longer than promotion threshold
+        are promoted to the RT queue, ensuring they get processed with RT priority.
+        This is a key mechanism to prevent starvation of batch requests.
+        """
         if not self._be_queue:
             return
 
         current_time = time.monotonic()
-        new_queue: list[QueuedRequest] = []
+        new_be_queue: list[QueuedRequest] = []
+        promoted_count = 0
 
         for request in self._be_queue:
+            wait_time = current_time - request.enqueue_time
             new_score = self._compute_priority_score(False, request.enqueue_time)
-            if new_score != request.priority_score:
-                logger.debug(
-                    "Aging applied to BE request",
+
+            # Check for priority promotion (BE -> RT)
+            if wait_time > self._priority_promotion_threshold:
+                # Promote to RT queue
+                request.priority_score = 0.0  # RT priority
+                request.is_high_priority = True  # Mark as promoted
+                heapq.heappush(self._rt_queue, request)
+                promoted_count += 1
+                logger.warning(
+                    "BE request promoted to RT queue due to long wait",
                     extra={
-                        "old_score": request.priority_score,
-                        "new_score": new_score,
-                        "wait_time": current_time - request.enqueue_time,
+                        "wait_time_seconds": round(wait_time, 2),
+                        "promotion_threshold": self._priority_promotion_threshold,
                     },
                 )
-            request.priority_score = new_score
-            heapq.heappush(new_queue, request)
+            else:
+                # Apply normal aging
+                if new_score != request.priority_score:
+                    logger.debug(
+                        "Aging applied to BE request",
+                        extra={
+                            "old_score": request.priority_score,
+                            "new_score": new_score,
+                            "wait_time": wait_time,
+                        },
+                    )
+                request.priority_score = new_score
+                heapq.heappush(new_be_queue, request)
 
-        self._be_queue = new_queue
+        self._be_queue = new_be_queue
+
+        if promoted_count > 0:
+            logger.info(
+                "BE requests promoted to RT queue",
+                extra={
+                    "promoted_count": promoted_count,
+                    "remaining_be_queue": len(self._be_queue),
+                    "rt_queue_size": len(self._rt_queue),
+                },
+            )
 
     @property
     def last_wait_time(self) -> float:

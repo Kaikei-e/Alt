@@ -26,6 +26,9 @@ def mock_config():
     # Preemption settings
     config.scheduling_preemption_enabled = True
     config.scheduling_preemption_wait_threshold_seconds = 2.0
+    # Priority promotion and guaranteed bandwidth settings
+    config.scheduling_priority_promotion_threshold_seconds = 600.0
+    config.scheduling_guaranteed_be_ratio = 5
     config.llm_num_ctx = 4096
     config.is_base_model_name = Mock(return_value=False)
     config.is_bucket_model_name = Mock(return_value=False)

@@ -31,6 +31,8 @@ class OllamaGateway(LLMProviderPort):
         # Hybrid RT/BE semaphore for controlling concurrent requests to Ollama
         # RT (streaming) requests get reserved slots; BE (batch) uses remaining slots
         # Aging mechanism prevents starvation of low-priority batch requests
+        # Priority promotion: BE is promoted to RT after long wait (prevents starvation)
+        # Guaranteed bandwidth: BE gets guaranteed slot after N consecutive RT releases
         # Preemption allows RT to interrupt long-running BE requests
         self._semaphore = HybridPrioritySemaphore(
             total_slots=config.ollama_request_concurrency,
@@ -39,6 +41,8 @@ class OllamaGateway(LLMProviderPort):
             aging_boost=config.scheduling_aging_boost,
             preemption_enabled=config.scheduling_preemption_enabled,
             preemption_wait_threshold=config.scheduling_preemption_wait_threshold_seconds,
+            priority_promotion_threshold_seconds=config.scheduling_priority_promotion_threshold_seconds,
+            guaranteed_be_ratio=config.scheduling_guaranteed_be_ratio,
         )
         # OOM detector and model router
         self.oom_detector = OOMDetector(enabled=config.oom_detection_enabled)
