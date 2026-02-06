@@ -52,7 +52,7 @@ var defaultStacks = []Stack{
 		Description: "AI/LLM services (Ollama, news-creator, pre-processor)",
 		ComposeFile: "ai.yaml",
 		Services:    []string{"redis-cache", "news-creator-backend", "news-creator", "news-creator-volume-init", "pre-processor"},
-		DependsOn:   []string{"base", "db", "core"},
+		DependsOn:   []string{"base", "db", "mq", "core"},
 		Profile:     "ollama",
 		RequiresGPU: true,
 		Optional:    true,
@@ -64,7 +64,7 @@ var defaultStacks = []Stack{
 		Description: "Background worker services",
 		ComposeFile: "workers.yaml",
 		Services:    []string{"pre-processor-sidecar", "search-indexer", "tag-generator", "oauth-token-init", "auth-token-manager"},
-		DependsOn:   []string{"base", "db", "core"},
+		DependsOn:   []string{"base", "db", "mq", "core"},
 		Optional:    false,
 		Provides:    []Feature{FeatureSearch}, // search-indexer provides search functionality
 	},

@@ -110,6 +110,36 @@ func TestGetDependencyGraph(t *testing.T) {
 	}
 }
 
+func TestResolve_WorkersIncludesMQ(t *testing.T) {
+	registry := NewRegistry()
+	resolver := NewDependencyResolver(registry)
+
+	stacks, err := resolver.Resolve([]string{"workers"})
+	if err != nil {
+		t.Fatalf("Resolve(workers) failed: %v", err)
+	}
+
+	names := stackNames(stacks)
+	if !contains(names, "mq") {
+		t.Errorf("resolving 'workers' must include 'mq' (provides redis-streams), got: %v", names)
+	}
+}
+
+func TestResolve_AIIncludesMQ(t *testing.T) {
+	registry := NewRegistry()
+	resolver := NewDependencyResolver(registry)
+
+	stacks, err := resolver.Resolve([]string{"ai"})
+	if err != nil {
+		t.Fatalf("Resolve(ai) failed: %v", err)
+	}
+
+	names := stackNames(stacks)
+	if !contains(names, "mq") {
+		t.Errorf("resolving 'ai' must include 'mq' (provides redis-streams), got: %v", names)
+	}
+}
+
 // Helper functions
 
 func stackNames(stacks []*Stack) []string {
