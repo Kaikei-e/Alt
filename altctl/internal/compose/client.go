@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -205,11 +206,21 @@ func (c *Client) Exec(ctx context.Context, service string, command []string, std
 	return c.executor.RunWithPipes(ctx, "docker", args, stdout, stderr)
 }
 
-// buildFileArgs constructs the -f arguments for compose files
+// buildFileArgs constructs the -f arguments for compose files.
+// When .env exists in the project root, --env-file is prepended so that
+// variable interpolation works regardless of the compose file location.
 func (c *Client) buildFileArgs(files []string) []string {
 	var args []string
+
+	// Explicitly point to the project root .env for variable interpolation.
+	// When -f is used, Docker Compose resolves .env relative to the first
+	// compose file's directory, which may not be the project root.
+	envFile := filepath.Join(c.projectDir, ".env")
+	if _, err := os.Stat(envFile); err == nil {
+		args = append(args, "--env-file", envFile)
+	}
+
 	for _, file := range files {
-		// Convert to absolute path if needed
 		if !filepath.IsAbs(file) {
 			file = filepath.Join(c.composeDir, file)
 		}
