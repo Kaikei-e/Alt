@@ -104,6 +104,10 @@ jobs:
       matrix: ${{ fromJson(needs.changes.outputs.matrix) }}
 
     steps:
+      - name: Set lowercase owner
+        id: repo
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+
       - name: Get workspace parent GID
         if: runner.environment == 'self-hosted'
         id: get-gid
@@ -153,7 +157,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/alt-${{ matrix.service }}
+          images: ghcr.io/${{ steps.repo.outputs.owner }}/alt-${{ matrix.service }}
           tags: |
             type=sha,prefix=sha-
             type=ref,event=branch
@@ -188,6 +192,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Registry cache: サイズ制限なし、マルチステージビルドの中間レイヤーもキャッシュ
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/alt-${{ matrix.service }}:buildcache
-          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache,mode=max', github.repository_owner, matrix.service) || '' }}
+          cache-from: type=registry,ref=ghcr.io/${{ steps.repo.outputs.owner }}/alt-${{ matrix.service }}:buildcache
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache,mode=max', steps.repo.outputs.owner, matrix.service) || '' }}
 
