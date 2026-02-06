@@ -29,6 +29,7 @@ def mock_config():
     # Priority promotion and guaranteed bandwidth settings
     config.scheduling_priority_promotion_threshold_seconds = 600.0
     config.scheduling_guaranteed_be_ratio = 5
+    config.max_queue_depth = 0
     config.llm_num_ctx = 4096
     config.is_base_model_name = Mock(return_value=False)
     config.is_bucket_model_name = Mock(return_value=False)
@@ -673,6 +674,120 @@ async def test_slow_generation_warning_skipped_for_short_eval_count(mock_config,
             f"Should NOT warn when eval_count is too low ({short_response['eval_count']} < 20). "
             f"Found warnings: {[r.message for r in slow_gen_warnings]}"
         )
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_generate_propagates_queue_full_error(mock_config, mock_driver):
+    """Test that QueueFullError from semaphore propagates through generate()."""
+    from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+
+    mock_config.ollama_request_concurrency = 1
+    mock_config.max_queue_depth = 1
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        async def slow_generate(payload):
+            await asyncio.sleep(10)  # Hold the slot
+            return {"response": "ok", "model": "test", "done": True,
+                    "prompt_eval_count": 10, "eval_count": 10, "total_duration": 100}
+
+        mock_driver.generate = slow_generate
+
+        # Acquire slot with first request
+        task1 = asyncio.create_task(gateway.generate("Prompt 1"))
+        await asyncio.sleep(0.05)
+
+        # Queue one request (fills max_queue_depth=1)
+        task2 = asyncio.create_task(gateway.generate("Prompt 2"))
+        await asyncio.sleep(0.05)
+
+        # Third request should get QueueFullError
+        with pytest.raises(QueueFullError):
+            await gateway.generate("Prompt 3")
+
+        # Cleanup
+        task1.cancel()
+        task2.cancel()
+        try:
+            await asyncio.gather(task1, task2, return_exceptions=True)
+        except Exception:
+            pass
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_hold_slot_context_manager_acquires_and_releases(mock_config, mock_driver):
+    """Test that hold_slot acquires semaphore on enter and releases on exit."""
+    mock_config.ollama_request_concurrency = 1
+    mock_config.max_queue_depth = 0
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        initial_rt = gateway._semaphore._rt_available
+
+        async with gateway.hold_slot(is_high_priority=True) as (wait_time, cancel_event, task_id):
+            # Slot should be acquired
+            assert gateway._semaphore._rt_available < initial_rt
+            assert wait_time == 0.0
+            # High priority: no cancel_event or task_id
+            assert cancel_event is None
+            assert task_id is None
+
+        # Slot should be released
+        assert gateway._semaphore._rt_available == initial_rt
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_hold_slot_be_provides_cancel_event(mock_config, mock_driver):
+    """Test that hold_slot for BE (low priority) provides cancel_event and task_id."""
+    mock_config.ollama_request_concurrency = 2
+    mock_config.scheduling_rt_reserved_slots = 0  # All BE
+    mock_config.max_queue_depth = 0
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        async with gateway.hold_slot(is_high_priority=False) as (wait_time, cancel_event, task_id):
+            assert wait_time == 0.0
+            assert cancel_event is not None
+            assert task_id is not None
+            # Should be registered as active
+            assert task_id in gateway._semaphore._active_requests
+
+        # Should be unregistered after exit
+        assert len(gateway._semaphore._active_requests) == 0
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_generate_raw_skips_semaphore(mock_config, mock_driver):
+    """Test that generate_raw does not acquire semaphore."""
+    mock_config.ollama_request_concurrency = 1
+    mock_config.max_queue_depth = 0
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        initial_rt = gateway._semaphore._rt_available
+
+        # generate_raw should work without acquiring semaphore
+        result = await gateway.generate_raw("Test prompt")
+
+        # Semaphore state should be unchanged
+        assert gateway._semaphore._rt_available == initial_rt
+        assert isinstance(result, LLMGenerateResponse)
+        assert result.response == "Test response"
 
         await gateway.cleanup()
 

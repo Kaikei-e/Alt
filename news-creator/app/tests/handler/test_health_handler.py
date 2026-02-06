@@ -13,6 +13,16 @@ def mock_ollama_gateway():
     """Create a mock Ollama gateway."""
     mock = Mock()
     mock.list_models = AsyncMock()
+    # Add semaphore mock with queue_status
+    mock._semaphore = Mock()
+    mock._semaphore.queue_status.return_value = {
+        "rt_queue": 0,
+        "be_queue": 0,
+        "total_slots": 2,
+        "available_slots": 2,
+        "accepting": True,
+        "max_queue_depth": 20,
+    }
     return mock
 
 
@@ -80,6 +90,39 @@ def test_health_check_handles_ollama_unavailable(client, mock_ollama_gateway):
     assert len(data["models"]) == 0
     assert "error" in data
     assert "Ollama service unavailable" in data["error"]
+
+
+def test_queue_status_returns_correct_state(client, mock_ollama_gateway):
+    """Test that /queue/status returns correct queue state."""
+    response = client.get("/queue/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["rt_queue"] == 0
+    assert data["be_queue"] == 0
+    assert data["total_slots"] == 2
+    assert data["available_slots"] == 2
+    assert data["accepting"] is True
+    assert data["max_queue_depth"] == 20
+
+
+def test_queue_status_with_saturated_queue(client, mock_ollama_gateway):
+    """Test queue status when queue is saturated."""
+    mock_ollama_gateway._semaphore.queue_status.return_value = {
+        "rt_queue": 10,
+        "be_queue": 10,
+        "total_slots": 2,
+        "available_slots": 0,
+        "accepting": False,
+        "max_queue_depth": 20,
+    }
+
+    response = client.get("/queue/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["accepting"] is False
+    assert data["rt_queue"] == 10
+    assert data["be_queue"] == 10
 
 
 def test_health_check_handles_network_timeout(client, mock_ollama_gateway):

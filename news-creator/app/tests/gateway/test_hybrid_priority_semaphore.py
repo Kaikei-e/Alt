@@ -1049,3 +1049,147 @@ class TestEnhancedAging:
         # At 660s (past promotion threshold): score should be at RT level
         score_660 = semaphore._compute_priority_score(False, now - 660)
         assert score_660 <= 0.1
+
+
+class TestQueueDepthLimit:
+    """Tests for queue depth limiting and QueueFullError."""
+
+    @pytest.fixture
+    def queue_full_error(self):
+        """Import QueueFullError for testing."""
+        from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+        return QueueFullError
+
+    @pytest.mark.asyncio
+    async def test_acquire_raises_queue_full_when_depth_exceeded(self, hybrid_semaphore_module, queue_full_error):
+        """Test that acquire raises QueueFullError when max_queue_depth is exceeded."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        QueueFullError = queue_full_error
+
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            max_queue_depth=2,
+        )
+
+        # Acquire the only slot
+        await semaphore.acquire(high_priority=True)
+
+        # Queue 2 requests (fills max_queue_depth)
+        async def queued_worker():
+            await semaphore.acquire(high_priority=False)
+            semaphore.release(was_high_priority=False)
+
+        task1 = asyncio.create_task(queued_worker())
+        await asyncio.sleep(0.01)
+        task2 = asyncio.create_task(queued_worker())
+        await asyncio.sleep(0.01)
+
+        # Third request should raise QueueFullError
+        with pytest.raises(QueueFullError):
+            await semaphore.acquire(high_priority=False)
+
+        # Cleanup
+        semaphore.release(was_high_priority=True)
+        await asyncio.gather(task1, task2)
+
+    @pytest.mark.asyncio
+    async def test_acquire_succeeds_when_under_depth_limit(self, hybrid_semaphore_module):
+        """Test that acquire succeeds when under max_queue_depth."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            max_queue_depth=5,
+        )
+
+        # Acquire the only slot
+        await semaphore.acquire(high_priority=True)
+
+        # Queue 1 request (under depth limit of 5)
+        completed = asyncio.Event()
+
+        async def queued_worker():
+            await semaphore.acquire(high_priority=False)
+            completed.set()
+            semaphore.release(was_high_priority=False)
+
+        task = asyncio.create_task(queued_worker())
+        await asyncio.sleep(0.01)
+
+        # Should not raise
+        assert len(semaphore._rt_queue) + len(semaphore._be_queue) <= 5
+
+        # Cleanup
+        semaphore.release(was_high_priority=True)
+        await asyncio.wait_for(completed.wait(), timeout=1.0)
+        await task
+
+    @pytest.mark.asyncio
+    async def test_queue_full_error_includes_rt_and_be_queues(self, hybrid_semaphore_module, queue_full_error):
+        """Test that QueueFullError considers both RT and BE queues for depth check."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        QueueFullError = queue_full_error
+
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            max_queue_depth=2,
+        )
+
+        # Acquire the only slot
+        await semaphore.acquire(high_priority=True)
+
+        # Queue 1 RT and 1 BE (total = 2 = max_queue_depth)
+        async def rt_worker():
+            await semaphore.acquire(high_priority=True)
+            semaphore.release(was_high_priority=True)
+
+        async def be_worker():
+            await semaphore.acquire(high_priority=False)
+            semaphore.release(was_high_priority=False)
+
+        rt_task = asyncio.create_task(rt_worker())
+        await asyncio.sleep(0.01)
+        be_task = asyncio.create_task(be_worker())
+        await asyncio.sleep(0.01)
+
+        # Third request (either priority) should raise QueueFullError
+        with pytest.raises(QueueFullError):
+            await semaphore.acquire(high_priority=True)
+
+        # Cleanup
+        semaphore.release(was_high_priority=True)
+        await asyncio.gather(rt_task, be_task)
+
+    @pytest.mark.asyncio
+    async def test_default_max_queue_depth_is_zero_unlimited(self, hybrid_semaphore_module):
+        """Test that default max_queue_depth=0 means unlimited."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(total_slots=2)
+        assert semaphore._max_queue_depth == 0
+
+    @pytest.mark.asyncio
+    async def test_queue_status_returns_correct_state(self, hybrid_semaphore_module):
+        """Test that queue_status() returns correct queue state."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=2,
+            rt_reserved_slots=1,
+            max_queue_depth=20,
+        )
+
+        status = semaphore.queue_status()
+        assert status["rt_queue"] == 0
+        assert status["be_queue"] == 0
+        assert status["total_slots"] == 2
+        assert status["available_slots"] == 2
+        assert status["accepting"] is True
+        assert status["max_queue_depth"] == 20
+
+        # Acquire one slot
+        await semaphore.acquire(high_priority=True)
+        status = semaphore.queue_status()
+        assert status["available_slots"] == 1
+        assert status["accepting"] is True

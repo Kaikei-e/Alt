@@ -221,6 +221,9 @@ class SummarizeUsecase:
             )
 
         # Retry loop with repetition detection
+        # IMPORTANT: Use hold_slot to acquire semaphore ONCE for all retries.
+        # Previously, generate() was called per retry, re-acquiring the semaphore each time,
+        # causing retries to wait 3500s+ in the queue again.
         max_retries = self.config.max_repetition_retries
         last_error = None
         last_metadata = None
@@ -231,109 +234,114 @@ class SummarizeUsecase:
         raw_summary = ""
         llm_response = None
 
-        for attempt in range(max_retries + 1):
-            # Adjust temperature and repetition penalty for retries
-            current_temp = self.config.summary_temperature
-            current_repeat_penalty = self.config.llm_repeat_penalty
+        is_high_priority = priority == "high"
 
-            if attempt > 0:
-                # Progressively lower temperature and increase repetition penalty
-                current_temp = max(0.05, current_temp - (0.05 * attempt))
-                current_repeat_penalty = min(1.2, current_repeat_penalty + (0.05 * attempt))
+        import time
 
-                logger.warning(
-                    "Retrying summary generation due to repetition",
-                    extra={
-                        "article_id": article_id,
-                        "attempt": attempt + 1,
-                        "max_retries": max_retries + 1,
-                        "temperature": current_temp,
-                        "repeat_penalty": current_repeat_penalty,
-                    }
+        async with self.llm_provider.hold_slot(is_high_priority=is_high_priority) as (wait_time, cancel_event, task_id):
+            for attempt in range(max_retries + 1):
+                # Adjust temperature and repetition penalty for retries
+                current_temp = self.config.summary_temperature
+                current_repeat_penalty = self.config.llm_repeat_penalty
+
+                if attempt > 0:
+                    # Progressively lower temperature and increase repetition penalty
+                    current_temp = max(0.05, current_temp - (0.05 * attempt))
+                    current_repeat_penalty = min(1.2, current_repeat_penalty + (0.05 * attempt))
+
+                    logger.warning(
+                        "Retrying summary generation due to repetition",
+                        extra={
+                            "article_id": article_id,
+                            "attempt": attempt + 1,
+                            "max_retries": max_retries + 1,
+                            "temperature": current_temp,
+                            "repeat_penalty": current_repeat_penalty,
+                        }
+                    )
+
+                # Call LLM provider with adjusted parameters (no semaphore re-acquisition)
+                llm_options = {
+                    "temperature": current_temp,
+                    "repeat_penalty": current_repeat_penalty,
+                }
+
+                start_time = time.time()
+
+                llm_response = await self.llm_provider.generate_raw(
+                    prompt,
+                    cancel_event=cancel_event,
+                    task_id=task_id,
+                    num_predict=self.config.summary_num_predict,
+                    options=llm_options,
                 )
 
-            # Call LLM provider with adjusted parameters
-            llm_options = {
-                "temperature": current_temp,
-                "repeat_penalty": current_repeat_penalty,
-            }
+                elapsed_time = time.time() - start_time
 
-            import time
-            start_time = time.time()
-
-            llm_response = await self.llm_provider.generate(
-                prompt,
-                num_predict=self.config.summary_num_predict,
-                options=llm_options,
-                priority=priority,
-            )
-
-            elapsed_time = time.time() - start_time
-
-            # Log generation performance
-            tokens_per_second = round(llm_response.eval_count / elapsed_time, 2) if llm_response.eval_count and elapsed_time > 0 else None
-            logger.info(
-                f"LLM generation completed: article_id={article_id}, elapsed={round(elapsed_time, 2)}s, "
-                f"prompt_eval_count={llm_response.prompt_eval_count}, eval_count={llm_response.eval_count}, "
-                f"prompt_length={prompt_length} chars, estimated_tokens={estimated_prompt_tokens}, "
-                f"num_predict={self.config.summary_num_predict}, tokens_per_second={tokens_per_second}"
-            )
-
-            # Clean and validate summary
-            raw_summary = llm_response.response
-
-            # Check for empty or whitespace-only response BEFORE cleaning
-            # LLM sometimes returns only whitespace (e.g., 60 spaces), which becomes empty after cleaning
-            raw_text_stripped = raw_summary.strip() if raw_summary else ""
-            if len(raw_text_stripped) < 10:
-                logger.warning(
-                    "LLM returned insufficient content (empty or whitespace-only)",
-                    extra={
-                        "article_id": article_id,
-                        "attempt": attempt + 1,
-                        "raw_length": len(raw_summary) if raw_summary else 0,
-                        "stripped_length": len(raw_text_stripped),
-                        "raw_preview": repr(raw_summary[:100]) if raw_summary else "None",
-                    }
+                # Log generation performance
+                tokens_per_second = round(llm_response.eval_count / elapsed_time, 2) if llm_response.eval_count and elapsed_time > 0 else None
+                logger.info(
+                    f"LLM generation completed: article_id={article_id}, elapsed={round(elapsed_time, 2)}s, "
+                    f"prompt_eval_count={llm_response.prompt_eval_count}, eval_count={llm_response.eval_count}, "
+                    f"prompt_length={prompt_length} chars, estimated_tokens={estimated_prompt_tokens}, "
+                    f"num_predict={self.config.summary_num_predict}, tokens_per_second={tokens_per_second}"
                 )
-                if attempt < max_retries:
-                    last_error = f"LLM returned insufficient content (length: {len(raw_text_stripped)})"
+
+                # Clean and validate summary
+                raw_summary = llm_response.response
+
+                # Check for empty or whitespace-only response BEFORE cleaning
+                # LLM sometimes returns only whitespace (e.g., 60 spaces), which becomes empty after cleaning
+                raw_text_stripped = raw_summary.strip() if raw_summary else ""
+                if len(raw_text_stripped) < 10:
+                    logger.warning(
+                        "LLM returned insufficient content (empty or whitespace-only)",
+                        extra={
+                            "article_id": article_id,
+                            "attempt": attempt + 1,
+                            "raw_length": len(raw_summary) if raw_summary else 0,
+                            "stripped_length": len(raw_text_stripped),
+                            "raw_preview": repr(raw_summary[:100]) if raw_summary else "None",
+                        }
+                    )
+                    if attempt < max_retries:
+                        last_error = f"LLM returned insufficient content (length: {len(raw_text_stripped)})"
+                        last_metadata = {
+                            "model": llm_response.model,
+                            "prompt_tokens": llm_response.prompt_eval_count,
+                            "completion_tokens": llm_response.eval_count,
+                            "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
+                        }
+                        continue  # Retry with adjusted temperature
+
+                # Check for repetition
+                has_repetition, rep_score, rep_patterns = detect_repetition(
+                    raw_summary,
+                    threshold=self.config.repetition_threshold
+                )
+
+                if has_repetition and attempt < max_retries:
+                    logger.warning(
+                        "Repetition detected in generated summary, will retry",
+                        extra={
+                            "article_id": article_id,
+                            "attempt": attempt + 1,
+                            "repetition_score": rep_score,
+                            "patterns": rep_patterns,
+                            "raw_summary_preview": raw_summary[:200],
+                        }
+                    )
+                    last_error = f"Repetition detected (score: {rep_score:.2f})"
                     last_metadata = {
                         "model": llm_response.model,
                         "prompt_tokens": llm_response.prompt_eval_count,
                         "completion_tokens": llm_response.eval_count,
                         "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
                     }
-                    continue  # Retry with adjusted temperature
+                    continue  # Retry
 
-            # Check for repetition
-            has_repetition, rep_score, rep_patterns = detect_repetition(
-                raw_summary,
-                threshold=self.config.repetition_threshold
-            )
-
-            if has_repetition and attempt < max_retries:
-                logger.warning(
-                    "Repetition detected in generated summary, will retry",
-                    extra={
-                        "article_id": article_id,
-                        "attempt": attempt + 1,
-                        "repetition_score": rep_score,
-                        "patterns": rep_patterns,
-                        "raw_summary_preview": raw_summary[:200],
-                    }
-                )
-                last_error = f"Repetition detected (score: {rep_score:.2f})"
-                last_metadata = {
-                    "model": llm_response.model,
-                    "prompt_tokens": llm_response.prompt_eval_count,
-                    "completion_tokens": llm_response.eval_count,
-                    "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
-                }
-                continue  # Retry
-
-            # No repetition detected or max retries reached, proceed with cleaning
-            break
+                # No repetition detected or max retries reached, proceed with cleaning
+                break
 
         # Log raw summary for debugging
         if attempt > 0:

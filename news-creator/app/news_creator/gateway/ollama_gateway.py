@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from typing import Dict, Any, Optional, Union, AsyncIterator
 
 from news_creator.config.config import NewsCreatorConfig
@@ -43,6 +44,7 @@ class OllamaGateway(LLMProviderPort):
             preemption_wait_threshold=config.scheduling_preemption_wait_threshold_seconds,
             priority_promotion_threshold_seconds=config.scheduling_priority_promotion_threshold_seconds,
             guaranteed_be_ratio=config.scheduling_guaranteed_be_ratio,
+            max_queue_depth=config.max_queue_depth,
         )
         # OOM detector and model router
         self.oom_detector = OOMDetector(enabled=config.oom_detection_enabled)
@@ -565,6 +567,138 @@ class OllamaGateway(LLMProviderPort):
             load_duration=load_duration,
             prompt_eval_duration=prompt_eval_duration,
             eval_duration=eval_duration,
+        )
+
+    @asynccontextmanager
+    async def hold_slot(self, is_high_priority: bool = False):
+        """Hold a semaphore slot for the duration of the context.
+
+        Use this when you need to make multiple LLM calls (e.g., retries)
+        while holding the same slot, avoiding re-queuing between retries.
+
+        Args:
+            is_high_priority: Whether to use high priority queue
+
+        Yields:
+            Tuple of (wait_time, cancel_event, task_id)
+        """
+        task_id = str(uuid.uuid4()) if not is_high_priority else None
+        cancel_event = asyncio.Event() if not is_high_priority else None
+
+        wait_time = await self._semaphore.acquire(high_priority=is_high_priority)
+        if task_id and cancel_event:
+            self._semaphore.register_active_request(
+                task_id, cancel_event, is_high_priority
+            )
+        try:
+            yield wait_time, cancel_event, task_id
+        finally:
+            if task_id:
+                self._semaphore.unregister_active_request(task_id)
+            self._semaphore.release(was_high_priority=is_high_priority)
+
+    async def generate_raw(
+        self,
+        prompt: str,
+        *,
+        cancel_event=None,
+        task_id=None,
+        model: Optional[str] = None,
+        num_predict: Optional[int] = None,
+        keep_alive: Optional[Union[int, str]] = None,
+        format: Optional[Union[str, Dict[str, Any]]] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> LLMGenerateResponse:
+        """Generate text without acquiring semaphore (for use inside hold_slot).
+
+        This performs model routing, payload construction, OOM detection, and
+        TTFT logging, but skips semaphore acquisition.
+
+        Args:
+            prompt: Input prompt
+            cancel_event: Optional cancel event for preemption
+            task_id: Optional task ID for tracking
+            model: Optional model name override
+            num_predict: Optional max tokens override
+            keep_alive: Keep-alive duration
+            format: Optional output format
+            options: Additional generation options
+
+        Returns:
+            LLMGenerateResponse with generated text
+        """
+        if not prompt or not prompt.strip():
+            raise ValueError("prompt cannot be empty")
+
+        # Model routing
+        if self.config.model_routing_enabled:
+            if model is None:
+                selected_model, _ = self.model_router.select_model(
+                    prompt, max_new_tokens=num_predict
+                )
+                model = selected_model
+            elif self.config.is_base_model_name(model):
+                selected_model, _ = self.model_router.select_model(
+                    prompt, max_new_tokens=num_predict
+                )
+                model = selected_model
+        else:
+            model = model or self.config.model_name
+
+        # Build options
+        llm_options = self.config.get_llm_options()
+        if options:
+            options_filtered = {k: v for k, v in options.items() if k != "num_ctx"}
+            llm_options.update(options_filtered)
+        if num_predict is not None:
+            llm_options["num_predict"] = num_predict
+
+        # Keep-alive
+        if keep_alive is not None:
+            final_keep_alive = keep_alive
+        else:
+            final_keep_alive = self.config.get_keep_alive_for_model(model)
+
+        payload: Dict[str, Any] = {
+            "model": model,
+            "prompt": prompt.strip(),
+            "stream": False,
+            "keep_alive": final_keep_alive,
+            "options": llm_options,
+        }
+        if format is not None:
+            payload["format"] = format
+
+        # Call driver with cancellation support
+        response_data = await self._generate_with_cancellation(
+            payload, cancel_event, task_id
+        )
+
+        # OOM detection and retry
+        if self.oom_detector.detect_oom_from_response(response_data):
+            selected_model, _ = self.model_router.select_model(
+                prompt, max_new_tokens=num_predict
+            )
+            if selected_model != model:
+                payload["model"] = selected_model
+                response_data = await self._generate_with_cancellation(
+                    payload, cancel_event, task_id
+                )
+
+        if "response" not in response_data:
+            raise RuntimeError("Invalid Ollama response format")
+
+        return LLMGenerateResponse(
+            response=response_data.get("response", ""),
+            model=response_data.get("model", payload["model"]),
+            done=response_data.get("done"),
+            done_reason=response_data.get("done_reason"),
+            prompt_eval_count=response_data.get("prompt_eval_count"),
+            eval_count=response_data.get("eval_count"),
+            total_duration=response_data.get("total_duration"),
+            load_duration=response_data.get("load_duration"),
+            prompt_eval_duration=response_data.get("prompt_eval_duration"),
+            eval_duration=response_data.get("eval_duration"),
         )
 
     async def _generate_with_cancellation(

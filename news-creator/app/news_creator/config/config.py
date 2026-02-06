@@ -89,7 +89,7 @@ class NewsCreatorConfig:
         self.summary_temperature = self._get_float("SUMMARY_TEMPERATURE", 0.5)  # 0.1 → 0.5 (Gemma3 CJK対応)
 
         # Repetition detection and retry settings
-        self.max_repetition_retries = self._get_int("MAX_REPETITION_RETRIES", 3)
+        self.max_repetition_retries = self._get_int("MAX_REPETITION_RETRIES", 2)
         self.repetition_threshold = self._get_float("REPETITION_THRESHOLD", 0.3)
 
         # 60K model enable/disable flag (8K-only mode by default)
@@ -162,6 +162,11 @@ class NewsCreatorConfig:
         self.scheduling_guaranteed_be_ratio = self._get_int(
             "SCHEDULING_GUARANTEED_BE_RATIO", 5
         )
+
+        # Queue depth limit (backpressure)
+        # When set > 0, reject new requests with QueueFullError when queue exceeds this depth
+        # Default: 20 (prevents unbounded memory growth from queued requests)
+        self.max_queue_depth = self._get_int("MAX_QUEUE_DEPTH", 20)
 
         # Build bucket model names set for quick lookup
         self._bucket_model_names = {

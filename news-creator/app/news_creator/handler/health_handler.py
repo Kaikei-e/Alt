@@ -19,6 +19,25 @@ def create_health_router(ollama_gateway: Optional[Any] = None) -> APIRouter:
     """
     router = APIRouter()
 
+    @router.get("/queue/status")
+    async def queue_status() -> Dict[str, Any]:
+        """
+        Queue status endpoint for backpressure monitoring.
+
+        Returns:
+            Dict with queue depths, available slots, and accepting state
+        """
+        if ollama_gateway is not None and hasattr(ollama_gateway, "_semaphore"):
+            return ollama_gateway._semaphore.queue_status()
+        return {
+            "rt_queue": 0,
+            "be_queue": 0,
+            "total_slots": 0,
+            "available_slots": 0,
+            "accepting": True,
+            "max_queue_depth": 0,
+        }
+
     @router.get("/health")
     async def health_check() -> Dict[str, Any]:
         """

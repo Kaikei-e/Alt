@@ -31,6 +31,12 @@ class PreemptedException(Exception):
     pass
 
 
+class QueueFullError(Exception):
+    """Raised when the queue depth limit is exceeded."""
+
+    pass
+
+
 @dataclass
 class CancellableRequest:
     """Tracks an active request that can be preempted."""
@@ -85,6 +91,7 @@ class HybridPrioritySemaphore:
         preemption_wait_threshold: float = 2.0,
         priority_promotion_threshold_seconds: float = 600.0,
         guaranteed_be_ratio: int = 5,
+        max_queue_depth: int = 0,
     ):
         if total_slots < 1:
             raise ValueError("total_slots must be >= 1")
@@ -94,6 +101,7 @@ class HybridPrioritySemaphore:
         self._total_slots = total_slots
         self._rt_reserved = rt_reserved_slots
         self._be_slots = total_slots - rt_reserved_slots
+        self._max_queue_depth = max_queue_depth
 
         # Slot counters
         self._rt_available = rt_reserved_slots
@@ -134,6 +142,7 @@ class HybridPrioritySemaphore:
                 "guaranteed_be_ratio": guaranteed_be_ratio,
                 "preemption_enabled": preemption_enabled,
                 "preemption_wait_threshold": preemption_wait_threshold,
+                "max_queue_depth": max_queue_depth,
             },
         )
 
@@ -246,10 +255,40 @@ class HybridPrioritySemaphore:
 
         Returns:
             Wait time in seconds
+
+        Raises:
+            QueueFullError: If max_queue_depth is set and queue is full
         """
         start_time = time.monotonic()
 
         async with self._lock:
+            # Check queue depth limit before allowing queuing
+            if self._max_queue_depth > 0:
+                current_depth = len(self._rt_queue) + len(self._be_queue)
+                if current_depth >= self._max_queue_depth:
+                    # Check if a slot is immediately available (no queuing needed)
+                    slot_available = False
+                    if high_priority:
+                        slot_available = self._rt_available > 0 or (
+                            self._rt_reserved == 0 and self._be_available > 0
+                        )
+                    else:
+                        slot_available = self._be_available > 0 or (
+                            self._be_slots == 0 and self._rt_available > 0
+                        )
+
+                    if not slot_available:
+                        logger.warning(
+                            "Queue full, rejecting request",
+                            extra={
+                                "current_depth": current_depth,
+                                "max_queue_depth": self._max_queue_depth,
+                                "high_priority": high_priority,
+                            },
+                        )
+                        raise QueueFullError(
+                            f"Queue depth {current_depth} >= max {self._max_queue_depth}"
+                        )
             if high_priority:
                 # Try RT reserved slot first
                 if self._rt_available > 0:
@@ -493,6 +532,24 @@ class HybridPrioritySemaphore:
     def last_wait_time(self) -> float:
         """Get the wait time from the last acquire operation."""
         return self._last_wait_time
+
+    def queue_status(self) -> dict:
+        """Get current queue status for monitoring."""
+        available = self._rt_available + self._be_available
+        current_depth = len(self._rt_queue) + len(self._be_queue)
+        accepting = (
+            self._max_queue_depth == 0
+            or current_depth < self._max_queue_depth
+            or available > 0
+        )
+        return {
+            "rt_queue": len(self._rt_queue),
+            "be_queue": len(self._be_queue),
+            "total_slots": self._total_slots,
+            "available_slots": available,
+            "accepting": accepting,
+            "max_queue_depth": self._max_queue_depth,
+        }
 
     def __repr__(self) -> str:
         return (

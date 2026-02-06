@@ -4,9 +4,10 @@ import asyncio
 import json
 import logging
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from news_creator.domain.models import SummarizeRequest, SummarizeResponse
+from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.utils.context_logger import (
     set_article_id,
@@ -295,6 +296,17 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                 prompt_tokens=metadata.get("prompt_tokens"),
                 completion_tokens=metadata.get("completion_tokens"),
                 total_duration_ms=metadata.get("total_duration_ms"),
+            )
+
+        except QueueFullError as exc:
+            logger.warning(
+                "Queue full, returning 429",
+                extra={"article_id": request.article_id, "error": str(exc)},
+            )
+            return JSONResponse(
+                status_code=429,
+                content={"error": "queue full"},
+                headers={"Retry-After": "30"},
             )
 
         except ValueError as exc:
