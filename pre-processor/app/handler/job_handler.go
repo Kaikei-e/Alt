@@ -181,9 +181,9 @@ func (h *jobHandler) StartSummarizeQueueWorker(ctx context.Context) error {
 // runSummarizeQueueLoop runs the summarize queue processing loop.
 func (h *jobHandler) runSummarizeQueueLoop() {
 	const (
-		normalInterval  = 10 * time.Second
-		initialBackoff  = 30 * time.Second
-		maxBackoff      = 5 * time.Minute
+		normalInterval = 10 * time.Second
+		initialBackoff = 30 * time.Second
+		maxBackoff     = 5 * time.Minute
 	)
 
 	ticker := time.NewTicker(normalInterval)
