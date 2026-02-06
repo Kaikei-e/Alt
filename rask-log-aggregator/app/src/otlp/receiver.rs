@@ -21,8 +21,8 @@ use opentelemetry_proto::tonic::collector::{
 use prost::Message;
 use tracing::{error, info, instrument};
 
-use crate::log_exporter::OTelExporter;
 use crate::otlp::converter::{convert_log_records, convert_spans};
+use crate::port::OTelExporter;
 
 /// Application state for OTLP handlers
 #[derive(Clone)]

@@ -133,7 +133,7 @@ impl JsonFileExporter {
     }
 }
 
-impl super::LogExporter for JsonFileExporter {
+impl crate::port::LogExporter for JsonFileExporter {
     fn export_batch(
         &self,
         logs: Vec<EnrichedLogEntry>,

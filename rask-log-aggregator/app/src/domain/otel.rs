@@ -205,4 +205,35 @@ mod tests {
         assert_eq!(StatusCode::from(2), StatusCode::Error);
         assert_eq!(StatusCode::from(99), StatusCode::Unset);
     }
+
+    // =========================================================================
+    // Property-based tests
+    // =========================================================================
+
+    mod prop {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn span_kind_from_i32_never_panics(value: i32) {
+                let _ = SpanKind::from(value);
+            }
+
+            #[test]
+            fn status_code_from_i32_never_panics(value: i32) {
+                let _ = StatusCode::from(value);
+            }
+
+            #[test]
+            fn span_kind_out_of_range_returns_unspecified(value in 6..=i32::MAX) {
+                prop_assert_eq!(SpanKind::from(value), SpanKind::Unspecified);
+            }
+
+            #[test]
+            fn status_code_out_of_range_returns_unset(value in 3..=i32::MAX) {
+                prop_assert_eq!(StatusCode::from(value), StatusCode::Unset);
+            }
+        }
+    }
 }

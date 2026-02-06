@@ -11,6 +11,7 @@ use opentelemetry_proto::tonic::{
 use crate::domain::{OTelLog, OTelTrace, SpanEvent, SpanKind, SpanLink, StatusCode};
 
 /// Convert OTLP log request to internal log structures
+#[must_use]
 pub fn convert_log_records(request: &ExportLogsServiceRequest) -> Vec<OTelLog> {
     let mut logs = Vec::new();
 
@@ -88,10 +89,10 @@ fn convert_single_log(
         observed_timestamp: record.observed_time_unix_nano,
         trace_id,
         span_id,
-        trace_flags: record.flags as u8,
+        trace_flags: u8::try_from(record.flags).unwrap_or(u8::MAX),
         severity_text: record.severity_text.clone(),
-        severity_number: record.severity_number as u8,
-        body: extract_body(&record.body),
+        severity_number: u8::try_from(record.severity_number).unwrap_or(u8::MAX),
+        body: extract_body(record.body.as_ref()),
         resource_schema_url: resource_schema_url.to_string(),
         resource_attributes: resource_attrs.clone(),
         scope_schema_url: scope_schema_url.to_string(),
@@ -104,6 +105,7 @@ fn convert_single_log(
 }
 
 /// Convert OTLP trace request to internal trace structures
+#[must_use]
 pub fn convert_spans(request: &ExportTraceServiceRequest) -> Vec<OTelTrace> {
     let mut traces = Vec::new();
 
@@ -168,14 +170,14 @@ fn convert_single_span(
         service_name: service_name.to_string(),
         resource_attributes: resource_attrs.clone(),
         span_attributes: convert_attributes(&span.attributes),
-        duration: (span
+        #[allow(clippy::cast_possible_wrap)]
+        duration: span
             .end_time_unix_nano
-            .saturating_sub(span.start_time_unix_nano)) as i64,
+            .saturating_sub(span.start_time_unix_nano) as i64,
         status_code: span
             .status
             .as_ref()
-            .map(|s| StatusCode::from(s.code))
-            .unwrap_or(StatusCode::Unset),
+            .map_or(StatusCode::Unset, |s| StatusCode::from(s.code)),
         status_message: span
             .status
             .as_ref()
@@ -225,10 +227,8 @@ fn extract_string_value(value: &AnyValue) -> Option<String> {
     }
 }
 
-fn extract_body(body: &Option<AnyValue>) -> String {
-    body.as_ref()
-        .and_then(extract_string_value)
-        .unwrap_or_default()
+fn extract_body(body: Option<&AnyValue>) -> String {
+    body.and_then(extract_string_value).unwrap_or_default()
 }
 
 /// Encode trace_id bytes to 32-char hex string
@@ -424,5 +424,46 @@ mod tests {
 
         assert_eq!(log.trace_id, "00000000000000000000000000000000");
         assert_eq!(log.span_id, "0000000000000000");
+    }
+
+    // =========================================================================
+    // Property-based tests
+    // =========================================================================
+
+    mod prop {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn encode_trace_id_always_32_hex_chars(bytes in proptest::collection::vec(any::<u8>(), 0..32)) {
+                let result = encode_trace_id(&bytes);
+                prop_assert_eq!(result.len(), 32, "trace_id must be 32 hex chars");
+                prop_assert!(result.chars().all(|c| c.is_ascii_hexdigit()),
+                    "trace_id must be valid hex: {result}");
+            }
+
+            #[test]
+            fn encode_span_id_always_16_hex_chars(bytes in proptest::collection::vec(any::<u8>(), 0..16)) {
+                let result = encode_span_id(&bytes);
+                prop_assert_eq!(result.len(), 16, "span_id must be 16 hex chars");
+                prop_assert!(result.chars().all(|c| c.is_ascii_hexdigit()),
+                    "span_id must be valid hex: {result}");
+            }
+
+            #[test]
+            fn encode_trace_id_exact_16_bytes_roundtrips(bytes in proptest::collection::vec(any::<u8>(), 16..=16)) {
+                let hex_str = encode_trace_id(&bytes);
+                let decoded = hex::decode(&hex_str).unwrap();
+                prop_assert_eq!(decoded, bytes);
+            }
+
+            #[test]
+            fn encode_span_id_exact_8_bytes_roundtrips(bytes in proptest::collection::vec(any::<u8>(), 8..=8)) {
+                let hex_str = encode_span_id(&bytes);
+                let decoded = hex::decode(&hex_str).unwrap();
+                prop_assert_eq!(decoded, bytes);
+            }
+        }
     }
 }

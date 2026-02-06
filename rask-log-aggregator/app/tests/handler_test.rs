@@ -1,11 +1,12 @@
 use axum::{
     Router,
-    extract::State,
     routing::{get, post},
 };
 use axum_test::TestServer;
 use rask::domain::EnrichedLogEntry;
 use rask::error::AggregatorError;
+use rask::handler::aggregate::aggregate_handler;
+use rask::handler::health::health_handler;
 use rask::log_exporter::LogExporter;
 use std::future::Future;
 use std::pin::Pin;
@@ -43,29 +44,13 @@ impl LogExporter for MockExporter {
 }
 
 fn create_test_app(exporter: Arc<dyn LogExporter>) -> Router {
-    let health_router = Router::new().route("/v1/health", get(|| async { "Healthy" }));
+    let health_router = Router::new().route("/v1/health", get(health_handler));
 
     let aggregate_router = Router::new()
         .route("/v1/aggregate", post(aggregate_handler))
         .with_state(exporter);
 
     Router::new().merge(health_router).merge(aggregate_router)
-}
-
-async fn aggregate_handler(
-    State(exporter): State<Arc<dyn LogExporter>>,
-    body: String,
-) -> &'static str {
-    let logs: Vec<EnrichedLogEntry> = body
-        .lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .collect();
-
-    if let Err(_e) = exporter.export_batch(logs).await {
-        // Log error silently for tests
-    }
-
-    "OK"
 }
 
 #[tokio::test]
