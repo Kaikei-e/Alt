@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -13,7 +13,7 @@ import (
 
 func TestCreateArticleSummary_NilDatabase(t *testing.T) {
 	ctx := context.Background()
-	articleSummary := &models.ArticleSummary{
+	articleSummary := &domain.ArticleSummary{
 		ArticleID:       uuid.New().String(),
 		ArticleTitle:    "Test",
 		SummaryJapanese: "テスト",

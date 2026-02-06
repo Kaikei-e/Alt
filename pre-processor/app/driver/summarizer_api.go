@@ -12,7 +12,6 @@ import (
 
 	"pre-processor/config"
 	"pre-processor/domain"
-	"pre-processor/models"
 	"pre-processor/utils"
 	"pre-processor/utils/html_parser"
 )
@@ -49,7 +48,7 @@ var ErrContentTooShort = domain.ErrContentTooShort
 // Deprecated: Use domain.ErrContentTooLong directly
 var ErrContentTooLong = domain.ErrContentTooLong
 
-func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cfg *config.Config, logger *slog.Logger, priority string) (*SummarizedContent, error) {
+func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cfg *config.Config, logger *slog.Logger, priority string) (*SummarizedContent, error) {
 	// Zero Trust: Always extract text from content before sending to news-creator
 	// This ensures we never send raw HTML, even if it was already extracted upstream
 	originalLength := len(article.Content)
@@ -217,7 +216,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 }
 
 // StreamArticleSummarizerAPIClient streams the summary generation from news-creator
-func StreamArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cfg *config.Config, logger *slog.Logger, priority string) (io.ReadCloser, error) {
+func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cfg *config.Config, logger *slog.Logger, priority string) (io.ReadCloser, error) {
 	// Zero Trust: Always extract text from content before sending to news-creator
 	originalLength := len(article.Content)
 	logger.Info("extracting text from content before streaming summary (Zero Trust validation)",

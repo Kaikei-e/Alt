@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 	logger "pre-processor/utils/logger"
 
 	"github.com/jackc/pgx/v5"
@@ -20,7 +20,7 @@ type DatabaseInterface interface {
 }
 
 // BatchInsertArticles inserts multiple articles in a single transaction for better performance
-func BatchInsertArticles(ctx context.Context, db interface{}, articles []models.Article) error {
+func BatchInsertArticles(ctx context.Context, db interface{}, articles []domain.Article) error {
 	if len(articles) == 0 {
 		return nil
 	}
@@ -99,7 +99,7 @@ func BatchInsertArticles(ctx context.Context, db interface{}, articles []models.
 }
 
 // BatchUpdateArticles updates multiple articles in a single transaction
-func BatchUpdateArticles(ctx context.Context, db interface{}, articles []models.Article) error {
+func BatchUpdateArticles(ctx context.Context, db interface{}, articles []domain.Article) error {
 	if len(articles) == 0 {
 		return nil
 	}
@@ -176,13 +176,13 @@ func BatchUpdateArticles(ctx context.Context, db interface{}, articles []models.
 }
 
 // Mock implementations for testing
-func batchInsertMock(ctx context.Context, db *MockDB, articles []models.Article) error {
+func batchInsertMock(ctx context.Context, db *MockDB, articles []domain.Article) error {
 	// Simulate some processing time
 	time.Sleep(10 * time.Millisecond)
 	return nil
 }
 
-func batchUpdateMock(ctx context.Context, db *MockDB, articles []models.Article) error {
+func batchUpdateMock(ctx context.Context, db *MockDB, articles []domain.Article) error {
 	// Simulate some processing time
 	time.Sleep(10 * time.Millisecond)
 	return nil

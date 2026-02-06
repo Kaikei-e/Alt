@@ -13,7 +13,6 @@ import (
 
 	"pre-processor/config"
 	"pre-processor/domain"
-	"pre-processor/models"
 )
 
 // TestContentLengthMeasurement verifies that we use rune count (character count)
@@ -39,7 +38,7 @@ func TestArticleSummarizerAPIClient_Returns429(t *testing.T) {
 			},
 		}
 
-		article := &models.Article{
+		article := &domain.Article{
 			ID:      "test-article-429",
 			Content: strings.Repeat("Test content for summarization. ", 10),
 		}

@@ -8,13 +8,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 )
 
 func TestBatchInsertArticles(t *testing.T) {
 	tests := []struct {
 		name     string
-		articles []models.Article
+		articles []domain.Article
 		want     struct {
 			shouldSucceed bool
 			errorContains string
@@ -22,7 +22,7 @@ func TestBatchInsertArticles(t *testing.T) {
 	}{
 		{
 			name: "should insert multiple articles in batch",
-			articles: []models.Article{
+			articles: []domain.Article{
 				{
 					Title:   "Article 1",
 					Content: "Content 1",
@@ -51,7 +51,7 @@ func TestBatchInsertArticles(t *testing.T) {
 		},
 		{
 			name:     "should handle empty articles slice",
-			articles: []models.Article{},
+			articles: []domain.Article{},
 			want: struct {
 				shouldSucceed bool
 				errorContains string
@@ -61,7 +61,7 @@ func TestBatchInsertArticles(t *testing.T) {
 		},
 		{
 			name: "should handle single article",
-			articles: []models.Article{
+			articles: []domain.Article{
 				{
 					Title:   "Single Article",
 					Content: "Single Content",
@@ -99,14 +99,14 @@ func TestBatchInsertArticles(t *testing.T) {
 func TestBatchUpdateArticles(t *testing.T) {
 	tests := []struct {
 		name     string
-		articles []models.Article
+		articles []domain.Article
 		want     struct {
 			shouldSucceed bool
 		}
 	}{
 		{
 			name: "should update multiple articles in batch",
-			articles: []models.Article{
+			articles: []domain.Article{
 				{
 					ID:      "1",
 					Title:   "Updated Article 1",
@@ -151,9 +151,9 @@ func TestBatchOperations_Performance(t *testing.T) {
 		}
 
 		// Generate test articles
-		articles := make([]models.Article, 100)
+		articles := make([]domain.Article, 100)
 		for i := 0; i < 100; i++ {
-			articles[i] = models.Article{
+			articles[i] = domain.Article{
 				Title:   "Performance Test Article",
 				Content: "Performance test content",
 				URL:     "https://example.com/perf/" + string(rune(i)),
@@ -175,9 +175,9 @@ func TestBatchOperations_Performance(t *testing.T) {
 		assert.Less(t, batchDuration.Milliseconds(), int64(100))
 
 		// Test that batch operations can handle large numbers of articles
-		largeArticles := make([]models.Article, 1000)
+		largeArticles := make([]domain.Article, 1000)
 		for i := 0; i < 1000; i++ {
-			largeArticles[i] = models.Article{
+			largeArticles[i] = domain.Article{
 				Title:   "Large Test Article",
 				Content: "Large test content",
 				URL:     "https://example.com/large/" + string(rune(i)),

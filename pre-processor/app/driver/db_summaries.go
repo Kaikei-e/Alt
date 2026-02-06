@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 
 	logger "pre-processor/utils/logger"
 
@@ -23,7 +23,7 @@ type ArticleWithSummary struct {
 }
 
 // CreateArticleSummary creates a new article summary.
-func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary *models.ArticleSummary) error {
+func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary *domain.ArticleSummary) error {
 	if db == nil {
 		return fmt.Errorf("database connection is nil")
 	}
@@ -77,7 +77,7 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 }
 
 // GetArticleSummaryByArticleID retrieves an article summary by article ID.
-func GetArticleSummaryByArticleID(ctx context.Context, db *pgxpool.Pool, articleID string) (*models.ArticleSummary, error) {
+func GetArticleSummaryByArticleID(ctx context.Context, db *pgxpool.Pool, articleID string) (*domain.ArticleSummary, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database connection is nil")
 	}
@@ -88,7 +88,7 @@ func GetArticleSummaryByArticleID(ctx context.Context, db *pgxpool.Pool, article
 		WHERE article_id = $1
 	`
 
-	var summary models.ArticleSummary
+	var summary domain.ArticleSummary
 
 	err := db.QueryRow(ctx, query, articleID).Scan(
 		&summary.ID, &summary.ArticleID, &summary.ArticleTitle,

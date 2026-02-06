@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 
 	logger "pre-processor/utils/logger"
 
@@ -46,7 +46,7 @@ func CheckArticleExists(ctx context.Context, db *pgxpool.Pool, urls []url.URL) (
 }
 
 // CreateArticle creates a new article in the database.
-func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Article) error {
+func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *domain.Article) error {
 	// Validate required UUID fields first (before nil db check to provide specific error messages)
 	if article.FeedID == "" {
 		return fmt.Errorf("article FeedID is required")
@@ -142,12 +142,12 @@ func HasUnsummarizedArticles(ctx context.Context, db *pgxpool.Pool) (bool, error
 }
 
 // Returns: articles, lastCreatedAt, lastID, error for cursor tracking.
-func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCreatedAt *time.Time, lastID string, limit int) ([]*models.Article, *time.Time, string, error) {
+func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error) {
 	if db == nil {
 		return nil, nil, "", fmt.Errorf("database connection is nil")
 	}
 
-	var articles []*models.Article
+	var articles []*domain.Article
 
 	var finalCreatedAt *time.Time
 
@@ -199,7 +199,7 @@ func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCrea
 		articles = nil // Reset articles slice for retry
 
 		for rows.Next() {
-			var article models.Article
+			var article domain.Article
 
 			err = rows.Scan(&article.ID, &article.Title, &article.Content, &article.URL, &article.CreatedAt, &article.UserID)
 			if err != nil {
@@ -226,7 +226,7 @@ func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCrea
 }
 
 // GetArticleByID fetches an article by its ID.
-func GetArticleByID(ctx context.Context, db *pgxpool.Pool, articleID string) (*models.Article, error) {
+func GetArticleByID(ctx context.Context, db *pgxpool.Pool, articleID string) (*domain.Article, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database connection is nil")
 	}
@@ -237,7 +237,7 @@ func GetArticleByID(ctx context.Context, db *pgxpool.Pool, articleID string) (*m
 		WHERE id = $1
 	`
 
-	var article models.Article
+	var article domain.Article
 	err := db.QueryRow(ctx, query, articleID).Scan(
 		&article.ID,
 		&article.Title,
@@ -259,7 +259,7 @@ func GetArticleByID(ctx context.Context, db *pgxpool.Pool, articleID string) (*m
 }
 
 // GetInoreaderArticles fetches articles from inoreader_articles table
-func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time) ([]*models.Article, error) {
+func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time) ([]*domain.Article, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database connection is nil")
 	}
@@ -287,9 +287,9 @@ func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time
 	}
 	defer rows.Close()
 
-	var articles []*models.Article
+	var articles []*domain.Article
 	for rows.Next() {
-		var a models.Article
+		var a domain.Article
 		var feedURL string
 		var publishedAt time.Time
 		var fetchedAt time.Time
@@ -318,7 +318,7 @@ func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time
 }
 
 // UpsertArticlesBatch batches upsert articles
-func UpsertArticlesBatch(ctx context.Context, db *pgxpool.Pool, articles []*models.Article) (err error) {
+func UpsertArticlesBatch(ctx context.Context, db *pgxpool.Pool, articles []*domain.Article) (err error) {
 	if len(articles) == 0 {
 		return nil
 	}

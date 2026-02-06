@@ -6,12 +6,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 )
 
 func TestCreateArticle_Validation(t *testing.T) {
 	t.Run("should return error when UserID is empty", func(t *testing.T) {
-		article := &models.Article{
+		article := &domain.Article{
 			Title:   "Test Article",
 			Content: "Some test content that is long enough to pass minimum length validation for article content.",
 			URL:     "https://example.com/test",
@@ -26,7 +26,7 @@ func TestCreateArticle_Validation(t *testing.T) {
 	})
 
 	t.Run("should return error when FeedID is empty", func(t *testing.T) {
-		article := &models.Article{
+		article := &domain.Article{
 			Title:   "Test Article",
 			Content: "Some test content that is long enough to pass minimum length validation for article content.",
 			URL:     "https://example.com/test",
@@ -41,7 +41,7 @@ func TestCreateArticle_Validation(t *testing.T) {
 	})
 
 	t.Run("should return error when db is nil with valid article", func(t *testing.T) {
-		article := &models.Article{
+		article := &domain.Article{
 			Title:   "Test Article",
 			Content: "Some test content that is long enough to pass minimum length validation for article content.",
 			URL:     "https://example.com/test",
@@ -58,7 +58,7 @@ func TestCreateArticle_Validation(t *testing.T) {
 
 func TestUpsertArticlesBatch_Validation(t *testing.T) {
 	t.Run("should skip articles with empty UserID", func(t *testing.T) {
-		articles := []*models.Article{
+		articles := []*domain.Article{
 			{
 				Title:   "Article without UserID",
 				Content: "Some content",
@@ -77,7 +77,7 @@ func TestUpsertArticlesBatch_Validation(t *testing.T) {
 
 	t.Run("should skip articles with empty FeedID", func(t *testing.T) {
 		// RED PHASE: This test should fail until we add FeedID validation
-		articles := []*models.Article{
+		articles := []*domain.Article{
 			{
 				Title:   "Article without FeedID",
 				Content: "Some content",
@@ -99,13 +99,13 @@ func TestUpsertArticlesBatch_Validation(t *testing.T) {
 	})
 
 	t.Run("should return nil for empty articles slice", func(t *testing.T) {
-		err := UpsertArticlesBatch(context.Background(), nil, []*models.Article{})
+		err := UpsertArticlesBatch(context.Background(), nil, []*domain.Article{})
 
 		assert.NoError(t, err, "empty slice should return nil")
 	})
 
 	t.Run("should return error for nil db with valid articles", func(t *testing.T) {
-		articles := []*models.Article{
+		articles := []*domain.Article{
 			{
 				Title:   "Valid Article",
 				Content: "Some content",
