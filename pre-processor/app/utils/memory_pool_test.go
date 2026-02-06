@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -18,11 +18,11 @@ func TestObjectPool(t *testing.T) {
 			name: "should create and use object pool",
 			test: func(t *testing.T) {
 				pool := NewObjectPool(
-					func() *models.Article {
-						return &models.Article{}
+					func() *domain.Article {
+						return &domain.Article{}
 					},
-					func(a *models.Article) {
-						*a = models.Article{}
+					func(a *domain.Article) {
+						*a = domain.Article{}
 					},
 				)
 
@@ -52,11 +52,11 @@ func TestObjectPool(t *testing.T) {
 			name: "should handle concurrent access safely",
 			test: func(t *testing.T) {
 				pool := NewObjectPool(
-					func() *models.Article {
-						return &models.Article{}
+					func() *domain.Article {
+						return &domain.Article{}
 					},
-					func(a *models.Article) {
-						*a = models.Article{}
+					func(a *domain.Article) {
+						*a = domain.Article{}
 					},
 				)
 
@@ -90,11 +90,11 @@ func TestObjectPool(t *testing.T) {
 			name: "should track pool metrics",
 			test: func(t *testing.T) {
 				pool := NewObjectPool(
-					func() *models.Article {
-						return &models.Article{}
+					func() *domain.Article {
+						return &domain.Article{}
 					},
-					func(a *models.Article) {
-						*a = models.Article{}
+					func(a *domain.Article) {
+						*a = domain.Article{}
 					},
 				)
 
@@ -406,7 +406,7 @@ func TestMemoryOptimizer(t *testing.T) {
 
 				// Append up to capacity without reallocations
 				for i := 0; i < 5; i++ {
-					articles = append(articles, models.Article{
+					articles = append(articles, domain.Article{
 						Title: "Article " + string(rune(i+'0')),
 					})
 				}
@@ -429,11 +429,11 @@ func TestMemoryOptimizer(t *testing.T) {
 func BenchmarkMemoryPools(b *testing.B) {
 	b.Run("ObjectPool_ArticleGet", func(b *testing.B) {
 		pool := NewObjectPool(
-			func() *models.Article {
-				return &models.Article{}
+			func() *domain.Article {
+				return &domain.Article{}
 			},
-			func(a *models.Article) {
-				*a = models.Article{}
+			func(a *domain.Article) {
+				*a = domain.Article{}
 			},
 		)
 
@@ -488,7 +488,7 @@ func BenchmarkMemoryPools(b *testing.B) {
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				article := &models.Article{}
+				article := &domain.Article{}
 				_ = article // Use the variable
 			}
 		})

@@ -5,12 +5,12 @@ import (
 	"log/slog"
 	"sync"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 )
 
 // ArticleFetcher interface for dependency injection
 type ArticleFetcher interface {
-	FetchArticle(ctx context.Context, url string) (*models.Article, error)
+	FetchArticle(ctx context.Context, url string) (*domain.Article, error)
 	ValidateURL(url string) error
 }
 
@@ -22,7 +22,7 @@ type FeedJob struct {
 // FeedResult represents the result of processing a feed
 type FeedResult struct {
 	Job     FeedJob
-	Article *models.Article
+	Article *domain.Article
 	Error   error
 }
 

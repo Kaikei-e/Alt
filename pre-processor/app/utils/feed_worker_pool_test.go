@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 )
 
 // Mock ArticleFetcher for testing
@@ -24,7 +24,7 @@ type MockArticleFetcher struct {
 	shouldFail bool
 }
 
-func (m *MockArticleFetcher) FetchArticle(ctx context.Context, urlStr string) (*models.Article, error) {
+func (m *MockArticleFetcher) FetchArticle(ctx context.Context, urlStr string) (*domain.Article, error) {
 	atomic.AddInt64(&m.fetchCount, 1)
 
 	if m.fetchDelay > 0 {
@@ -39,7 +39,7 @@ func (m *MockArticleFetcher) FetchArticle(ctx context.Context, urlStr string) (*
 		return nil, errors.New("fetch failed")
 	}
 
-	return &models.Article{
+	return &domain.Article{
 		Title:   "Test Article",
 		Content: "Test content",
 		URL:     urlStr,

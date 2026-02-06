@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 )
 
 // PoolMetrics tracks pool usage statistics
@@ -189,13 +189,13 @@ func NewMemoryOptimizer(articleBatchSize, summaryBatchSize int) *MemoryOptimizer
 }
 
 // PreallocateArticleBatch creates a pre-allocated slice for articles
-func (m *MemoryOptimizer) PreallocateArticleBatch() []models.Article {
-	return make([]models.Article, 0, m.articleBatchSize)
+func (m *MemoryOptimizer) PreallocateArticleBatch() []domain.Article {
+	return make([]domain.Article, 0, m.articleBatchSize)
 }
 
 // PreallocateSummaryBatch creates a pre-allocated slice for summaries
-func (m *MemoryOptimizer) PreallocateSummaryBatch() []models.ArticleSummary {
-	return make([]models.ArticleSummary, 0, m.summaryBatchSize)
+func (m *MemoryOptimizer) PreallocateSummaryBatch() []domain.ArticleSummary {
+	return make([]domain.ArticleSummary, 0, m.summaryBatchSize)
 }
 
 // nextPowerOfTwo returns the next power of 2 greater than or equal to n
@@ -219,7 +219,7 @@ func nextPowerOfTwo(n int) int {
 
 // Global pool instances for common use cases
 var (
-	globalArticlePool       *ObjectPool[models.Article]
+	globalArticlePool       *ObjectPool[domain.Article]
 	globalBufferPool        *BufferPool
 	globalStringBuilderPool *StringBuilderPool
 	globalSlicePool         *SlicePool
@@ -231,11 +231,11 @@ var (
 func InitGlobalPools() {
 	poolInitOnce.Do(func() {
 		globalArticlePool = NewObjectPool(
-			func() *models.Article {
-				return &models.Article{}
+			func() *domain.Article {
+				return &domain.Article{}
 			},
-			func(a *models.Article) {
-				*a = models.Article{} // Reset all fields
+			func(a *domain.Article) {
+				*a = domain.Article{} // Reset all fields
 			},
 		)
 
@@ -246,7 +246,7 @@ func InitGlobalPools() {
 }
 
 // GetGlobalArticlePool returns the global article pool
-func GetGlobalArticlePool() *ObjectPool[models.Article] {
+func GetGlobalArticlePool() *ObjectPool[domain.Article] {
 	InitGlobalPools()
 	return globalArticlePool
 }
@@ -272,12 +272,12 @@ func GetGlobalSlicePool() *SlicePool {
 // Helper functions for easy access to global pools
 
 // GetArticle gets an article from the global pool
-func GetArticle() *models.Article {
+func GetArticle() *domain.Article {
 	return GetGlobalArticlePool().Get()
 }
 
 // PutArticle returns an article to the global pool
-func PutArticle(article *models.Article) {
+func PutArticle(article *domain.Article) {
 	GetGlobalArticlePool().Put(article)
 }
 
