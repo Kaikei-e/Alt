@@ -78,17 +78,17 @@ else
   echo "  Model gpt-oss:20b already exists"
 fi
 
-# Ensure qwen3:14b base model exists
-echo "Ensuring qwen3:14b model is available..."
-if ! ollama list 2>/dev/null | grep -q "qwen3:14b"; then
-  echo "Pulling qwen3:14b model (this will take a while)..."
-  if ollama pull qwen3:14b; then
-      echo "  Model qwen3:14b pulled successfully"
+# Ensure qwen3:8b base model exists
+echo "Ensuring qwen3:8b model is available..."
+if ! ollama list 2>/dev/null | grep -q "qwen3:8b"; then
+  echo "Pulling qwen3:8b model (this will take a while)..."
+  if ollama pull qwen3:8b; then
+      echo "  Model qwen3:8b pulled successfully"
   else
-      echo "  Error: Failed to pull qwen3:14b"
+      echo "  Error: Failed to pull qwen3:8b"
   fi
 else
-  echo "  Model qwen3:14b already exists"
+  echo "  Model qwen3:8b already exists"
 fi
 
 # Create custom models
@@ -121,15 +121,15 @@ else
 fi
 
 # qwen3 RAG model
-echo "Creating/Updating custom model qwen3-14b-rag..."
-if [ -f "/home/ollama-user/Modelfile.qwen3-14b-rag" ]; then
-  if ollama create qwen3-14b-rag -f /home/ollama-user/Modelfile.qwen3-14b-rag; then
-    echo "  Model qwen3-14b-rag created/updated successfully"
+echo "Creating/Updating custom model qwen3-8b-rag..."
+if [ -f "/home/ollama-user/Modelfile.qwen3-8b-rag" ]; then
+  if ollama create qwen3-8b-rag -f /home/ollama-user/Modelfile.qwen3-8b-rag; then
+    echo "  Model qwen3-8b-rag created/updated successfully"
   else
-    echo "  Error: Failed to create qwen3-14b-rag"
+    echo "  Error: Failed to create qwen3-8b-rag"
   fi
 else
-  echo "  Warning: Modelfile.qwen3-14b-rag not found, skipping"
+  echo "  Warning: Modelfile.qwen3-8b-rag not found, skipping"
 fi
 
 # Preload model based on environment variable (default: gpt-oss20b-igpu)

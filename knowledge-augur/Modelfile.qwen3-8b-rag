@@ -1,0 +1,25 @@
+FROM qwen3:8b
+
+# Thinkingモード無効化
+# 注意: /no_think はchatテンプレート経由でのみ動作
+# API呼び出し時は think: false パラメータを使用すること
+SYSTEM """You are a helpful assistant that answers questions based on the provided context. Be concise and accurate."""
+
+# RAG用パラメータ
+PARAMETER num_ctx 8192
+PARAMETER num_predict 512
+PARAMETER num_batch 512
+
+# Qwen3推奨サンプリングパラメータ（繰り返し防止）
+# 参考: https://huggingface.co/Qwen/Qwen3-30B-A3B/discussions/23
+# 量子化モデルでは presence_penalty=1.5 が特に重要
+PARAMETER temperature 0.7
+PARAMETER top_p 0.8
+PARAMETER top_k 20
+PARAMETER min_p 0
+PARAMETER repeat_penalty 1.3
+PARAMETER presence_penalty 1.5
+
+# qwen3用stopトークン
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"

@@ -1,0 +1,23 @@
+FROM schroneko/llama-3.1-swallow-8b-instruct-v0.1:q5_k_s
+
+# Llama-3.1-Swallow-8B: 日本語性能が8B以下で最高クラス
+# Japanese MT-Benchでstate-of-the-art
+# Qwen3のような繰り返し問題の報告なし
+# ライセンス: Llama 3.1 Community License (商用利用可能)
+
+# システムプロンプトはAPI側(prompt_builder.go)で送信するため削除
+# Ollama API使用時、messages形式のsystemロールがModelfileのSYSTEMを上書きする
+
+# RAG用パラメータ
+PARAMETER num_ctx 8192
+PARAMETER num_predict 4096
+PARAMETER num_batch 512
+
+# Swallow公式推奨サンプリングパラメータ
+# Reference: https://swallow-llm.github.io/llama3.1-swallow.en.html
+PARAMETER temperature 0.6
+PARAMETER top_p 0.9
+
+# Llama 3.1 stopトークン
+PARAMETER stop "<|eot_id|>"
+PARAMETER stop "<|end_of_text|>"
