@@ -116,7 +116,7 @@ impl RecapDao {
             let status_str: String = row.try_get("status")?;
             let last_stage: Option<String> = row.try_get("last_stage")?;
             let window_days: Option<i32> = row.try_get("window_days")?;
-            let window_days = window_days.unwrap_or(7) as u32;
+            let window_days = window_days.unwrap_or(7).cast_unsigned();
 
             let status = match status_str.as_str() {
                 "pending" => JobStatus::Pending,
