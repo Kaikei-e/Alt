@@ -31,7 +31,7 @@ pub struct LogEntry {
     pub time: String,
     pub id: String,
     pub container_id: String,
-    pub raw_bytes: Vec<u8>,
+    pub raw_bytes: Bytes,
 }
 
 #[derive(Debug)]
@@ -119,19 +119,16 @@ impl LogCollector {
 
     async fn start_docker_api_streaming(
         &self,
-        _docker_collector: DockerCollector,
+        docker_collector: DockerCollector,
         container_id: &str,
         tx: mpsc::UnboundedSender<LogEntry>,
         cancel_token: CancellationToken,
     ) -> Result<(), CollectorError> {
-        use bollard::Docker;
         use bollard::query_parameters::LogsOptions;
         use futures::StreamExt;
 
-        // Create new Docker client since DockerCollector's docker field is private
-        let docker = Docker::connect_with_unix_defaults().map_err(|e| {
-            CollectorError::DiscoveryError(discovery::DiscoveryError::DockerError(e))
-        })?;
+        // Reuse the DockerCollector's existing Docker client
+        let docker = docker_collector.docker();
 
         // IMPORTANT: Set timestamps to false to avoid Docker adding timestamps to log messages
         let options = LogsOptions {
@@ -166,7 +163,7 @@ impl LogCollector {
                                 time: chrono::Utc::now().to_rfc3339(), // Default timestamp
                                 id: container_id.to_string(),
                                 container_id: container_id.to_string(),
-                                raw_bytes: log_bytes.to_vec(),
+                                raw_bytes: log_bytes,
                             };
 
                             if tx.send(entry).is_err() {

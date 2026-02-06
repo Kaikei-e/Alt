@@ -7,7 +7,6 @@ pub mod memory;
 pub mod metrics;
 pub mod queue;
 
-// New TASK3 exports
 pub use batch::{Batch, BatchConfig, BatchFormer, BatchType};
 pub use concurrency::{ConcurrencyError, RecoveryStrategy, RobustMutex, RobustRwLock};
 pub use error::{

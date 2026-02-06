@@ -6,4 +6,4 @@ mod test_high_throughput;
 mod test_lockfree_queue;
 mod test_memory_management;
 mod test_metrics;
-mod test_task3_integration;
+mod test_buffer_integration;

@@ -1,4 +1,4 @@
-// TASK5 Phase 2: TDD tests for lock-free buffer operations
+// TDD tests for lock-free buffer operations
 use rask_log_forwarder::buffer::{BufferError, LogBuffer};
 use rask_log_forwarder::parser::{EnrichedLogEntry, LogLevel};
 use std::sync::Arc;
@@ -29,7 +29,7 @@ fn create_test_entry(message: &str) -> EnrichedLogEntry {
 }
 
 #[test]
-fn test_task5_buffer_error_handling() {
+fn test_buffer_error_handling() {
     // Test that BufferError creation doesn't panic
     let errors = vec![
         BufferError::BufferClosed,
@@ -50,7 +50,7 @@ fn test_task5_buffer_error_handling() {
 }
 
 #[tokio::test]
-async fn test_task5_lock_free_buffer_creation() {
+async fn test_lock_free_buffer_creation() {
     // Test buffer creation with various capacities
     let test_cases = vec![
         (0, true),       // Should fail
@@ -91,7 +91,7 @@ async fn test_task5_lock_free_buffer_creation() {
 }
 
 #[tokio::test]
-async fn test_task5_safe_buffer_split() {
+async fn test_safe_buffer_split() {
     // Test that buffer split operations handle closed buffers safely
     let buffer = LogBuffer::new(100).expect("Should create buffer");
 
@@ -118,7 +118,7 @@ async fn test_task5_safe_buffer_split() {
 }
 
 #[tokio::test]
-async fn test_task5_zero_expect_buffer_operations() {
+async fn test_zero_expect_buffer_operations() {
     // This test specifically verifies that buffer operations don't use expect()
     let buffer = LogBuffer::new(10).expect("Should create buffer");
     let (sender, mut receiver) = buffer.split().expect("Should split buffer");
@@ -164,7 +164,7 @@ async fn test_task5_zero_expect_buffer_operations() {
 }
 
 #[tokio::test]
-async fn test_task5_concurrent_buffer_safety() {
+async fn test_concurrent_buffer_safety() {
     // Test high-concurrency operations to ensure no expect() panics occur
     let buffer = Arc::new(LogBuffer::new(1000).expect("Should create buffer"));
     let (sender, mut receiver) = buffer.split().expect("Should split buffer");
@@ -257,7 +257,7 @@ async fn test_task5_concurrent_buffer_safety() {
 }
 
 #[tokio::test]
-async fn test_task5_buffer_edge_cases() {
+async fn test_buffer_edge_cases() {
     // Test various edge cases that might trigger expect() calls
 
     // Test 1: Very small buffer
@@ -319,7 +319,7 @@ async fn test_task5_buffer_edge_cases() {
 }
 
 #[test]
-fn test_task5_buffer_metrics_safety() {
+fn test_buffer_metrics_safety() {
     // Test that buffer metrics operations don't panic
     let buffer = LogBuffer::new(100).expect("Should create buffer");
 
@@ -341,7 +341,7 @@ fn test_task5_buffer_metrics_safety() {
     println!("✓ Buffer metrics safety test passed");
 }
 
-// Note: Individual test functions above test all TASK5 requirements:
+// Note: Individual test functions above test all lock-free buffer requirements:
 // ✓ Lock-free buffer operations implemented
 // ✓ All expect() calls eliminated
 // ✓ Comprehensive error handling added

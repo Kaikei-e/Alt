@@ -13,7 +13,7 @@ mod postgres;
 
 use super::docker::ParseError;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 // Re-export all parsers
 pub use go::GoStructuredParser;
@@ -21,14 +21,8 @@ pub use meilisearch::MeilisearchParser;
 pub use nginx::NginxParser;
 pub use postgres::PostgresParser;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum LogLevel {
-    Debug,
-    Info,
-    Warn,
-    Error,
-    Fatal,
-}
+// Re-export domain LogLevel for backward compatibility
+pub use crate::domain::LogLevel;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ParsedLogEntry {

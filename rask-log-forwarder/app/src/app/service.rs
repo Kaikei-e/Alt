@@ -1,8 +1,7 @@
 use super::Config;
-#[cfg(feature = "otlp")]
-use super::config::Protocol;
-#[cfg(feature = "otlp")]
-use crate::buffer::{Batch, BatchType};
+use super::pipeline::{ProcessingLoopParams, run_processing_loop};
+use super::protocol::SenderConfig;
+use super::shutdown::{ShutdownHandle, SignalHandler};
 use crate::{
     buffer::{BatchConfig, BufferConfig, BufferManager, MemoryConfig},
     collector::{CollectorConfig, LogCollector},
@@ -10,17 +9,11 @@ use crate::{
     reliability::{HealthReport, ReliabilityManager},
     sender::{ClientConfig, LogSender},
 };
-use reqwest;
-use serde_json;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
-use tokio::signal;
-#[cfg(unix)]
-use tokio::signal::unix::{signal as unix_signal, SignalKind};
 use tokio::sync::{RwLock, mpsc};
-use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 #[derive(Error, Debug)]
 pub enum ServiceError {
@@ -40,18 +33,6 @@ pub enum ServiceError {
     ShutdownTimeout,
     #[error("Service component not initialized: {component}")]
     ComponentNotInitialized { component: String },
-}
-
-/// Sender configuration for protocol-aware log transmission.
-#[derive(Clone)]
-struct SenderConfig {
-    #[cfg(feature = "otlp")]
-    protocol: Protocol,
-    endpoint: String,
-    #[cfg(feature = "otlp")]
-    otlp_endpoint: String,
-    #[cfg(feature = "otlp")]
-    enable_compression: bool,
 }
 
 pub struct ServiceManager {
@@ -92,17 +73,14 @@ impl ServiceManager {
         let sender_config = SenderConfig {
             #[cfg(feature = "otlp")]
             protocol: config.protocol,
-            endpoint: config.endpoint.clone(),
             #[cfg(feature = "otlp")]
             otlp_endpoint: config.otlp_endpoint.clone(),
-            #[cfg(feature = "otlp")]
-            enable_compression: config.enable_compression,
         };
 
         #[cfg(feature = "otlp")]
         info!(
             "Protocol: {:?}, Endpoint: {}, OTLP Endpoint: {}",
-            sender_config.protocol, sender_config.endpoint, sender_config.otlp_endpoint
+            sender_config.protocol, config.endpoint, sender_config.otlp_endpoint
         );
 
         Ok(Self {
@@ -147,43 +125,45 @@ impl ServiceManager {
                 component: "collector".to_string(),
             },
         )?));
-        let _parser = self.parser.clone();
+        let parser = self.parser.clone();
         let reliability_manager = Arc::new(self.reliability_manager.take().ok_or_else(|| {
             ServiceError::ComponentNotInitialized {
                 component: "reliability_manager".to_string(),
             }
         })?);
-        let target_service = self.target_service.clone();
-        let sender_config = self.sender_config.clone();
+        let sender = Arc::new(self.sender.take().ok_or_else(|| {
+            ServiceError::ComponentNotInitialized {
+                component: "sender".to_string(),
+            }
+        })?);
+
+        let params = ProcessingLoopParams {
+            collector,
+            parser,
+            reliability_manager,
+            sender,
+            running,
+            shutdown_rx,
+            target_service: self.target_service.clone(),
+            sender_config: self.sender_config.clone(),
+            batch_size: self.config.batch_size,
+            flush_interval: self.config.flush_interval,
+        };
 
         tokio::spawn(async move {
-            Self::main_processing_loop(
-                collector,
-                _parser,
-                reliability_manager,
-                running,
-                shutdown_rx,
-                target_service,
-                sender_config,
-            )
-            .await;
+            run_processing_loop(params).await;
         });
-
-        // Start background tasks
-        if let Some(reliability_manager) = &self.reliability_manager {
-            reliability_manager.start_background_tasks().await;
-        }
 
         info!(
             "rask-log-forwarder started successfully for service: {}",
             self.target_service
         );
 
-        Ok(ShutdownHandle {
+        Ok(ShutdownHandle::new(
             shutdown_tx,
             signal_handler,
-            running: self.running.clone(),
-        })
+            self.running.clone(),
+        ))
     }
 
     async fn initialize_components(&mut self) -> Result<(), ServiceError> {
@@ -287,313 +267,6 @@ impl ServiceManager {
         Ok(())
     }
 
-    async fn main_processing_loop(
-        collector: Arc<tokio::sync::Mutex<LogCollector>>,
-        parser: Arc<UniversalParser>,
-        reliability_manager: Arc<ReliabilityManager>,
-        running: Arc<RwLock<bool>>,
-        mut shutdown_rx: mpsc::UnboundedReceiver<()>,
-        target_service: String,
-        sender_config: SenderConfig,
-    ) {
-        info!("Starting main processing loop");
-
-        // Create cancellation token for graceful shutdown of collector
-        let cancel_token = CancellationToken::new();
-
-        // Create log collection channel
-        let (log_tx, mut log_rx) = tokio::sync::mpsc::unbounded_channel();
-
-        // Start log collection in background with cancellation support
-        let collector_clone = collector.clone();
-        let collector_cancel_token = cancel_token.clone();
-        tokio::spawn(async move {
-            let mut collector_guard = collector_clone.lock().await;
-            if let Err(e) = collector_guard.start_collection(log_tx, collector_cancel_token).await {
-                error!("Log collection failed: {}", e);
-            }
-        });
-
-        // Buffer for batching logs
-        let mut log_batch = Vec::new();
-        let batch_size = 1; // Using minimal batch size for immediate processing
-        let mut last_flush = std::time::Instant::now();
-        let flush_interval = std::time::Duration::from_millis(500);
-
-        // Main processing loop
-        loop {
-            tokio::select! {
-                // Process incoming log entries
-                Some(log_entry) = log_rx.recv() => {
-                    // Create container info for the parser
-                    let container_info = crate::collector::ContainerInfo {
-                        id: log_entry.id.clone(),
-                        service_name: target_service.clone(),
-                        group: None, // Will be set by the parser if available
-                        labels: std::collections::HashMap::new(),
-                    };
-
-                    // Use UniversalParser to properly parse the Docker log
-                    match parser.parse_docker_log(log_entry.raw_bytes.as_ref(), &container_info).await {
-                        Ok(enriched_entry) => {
-                            // Convert EnrichedLogEntry to format expected by send_log_batch
-                            // Preserve trace_id/span_id by inserting them back into fields
-                            let mut fields = enriched_entry.fields;
-                            if let Some(ref trace_id) = enriched_entry.trace_id {
-                                fields.insert("trace_id".to_string(), trace_id.clone());
-                            }
-                            if let Some(ref span_id) = enriched_entry.span_id {
-                                fields.insert("span_id".to_string(), span_id.clone());
-                            }
-
-                            let parsed_entry = crate::parser::services::ParsedLogEntry {
-                                service_type: enriched_entry.service_type,
-                                log_type: enriched_entry.log_type,
-                                message: enriched_entry.message,
-                                level: enriched_entry.level,
-                                timestamp: Some(chrono::DateTime::parse_from_rfc3339(&enriched_entry.timestamp)
-                                    .unwrap_or_else(|_| chrono::Utc::now().into())
-                                    .with_timezone(&chrono::Utc)),
-                                stream: enriched_entry.stream,
-                                method: enriched_entry.method,
-                                path: enriched_entry.path,
-                                status_code: enriched_entry.status_code,
-                                response_size: enriched_entry.response_size,
-                                ip_address: enriched_entry.ip_address,
-                                user_agent: enriched_entry.user_agent,
-                                fields,
-                            };
-
-                            log_batch.push(parsed_entry);
-                        }
-                        Err(e) => {
-                            error!("Failed to parse log entry: {}", e);
-                            // Fallback: create a plain text entry
-                            let fallback_entry = crate::parser::services::ParsedLogEntry {
-                                service_type: target_service.clone(),
-                                log_type: "plain".to_string(),
-                                    message: log_entry.log.clone(),
-                                level: Some(crate::parser::services::LogLevel::Info),
-                                timestamp: Some(chrono::Utc::now()),
-                                stream: "stdout".to_string(),
-                                method: None,
-                                path: None,
-                                status_code: None,
-                                response_size: None,
-                                ip_address: None,
-                                user_agent: None,
-                                fields: std::collections::HashMap::new(),
-                            };
-                            log_batch.push(fallback_entry);
-                        }
-                    }
-
-                    // Send batch if it reaches the target size or flush interval has passed
-                    if log_batch.len() >= batch_size || last_flush.elapsed() >= flush_interval {
-                        Self::send_log_batch(&log_batch, &reliability_manager, &sender_config, &target_service).await;
-                        log_batch.clear();
-                        last_flush = std::time::Instant::now();
-                    }
-                }
-
-                // Periodic flush for any remaining logs
-                _ = tokio::time::sleep(flush_interval) => {
-                    if !log_batch.is_empty() && last_flush.elapsed() >= flush_interval {
-                        Self::send_log_batch(&log_batch, &reliability_manager, &sender_config, &target_service).await;
-                        log_batch.clear();
-                        last_flush = std::time::Instant::now();
-                    }
-                }
-
-                // Handle shutdown signal
-                _ = shutdown_rx.recv() => {
-                    info!("Received shutdown signal, stopping processing loop");
-                    // Cancel the collector to stop log streaming
-                    cancel_token.cancel();
-                    // Send any remaining logs before shutting down
-                    if !log_batch.is_empty() {
-                        Self::send_log_batch(&log_batch, &reliability_manager, &sender_config, &target_service).await;
-                    }
-                    break;
-                }
-            }
-        }
-
-        *running.write().await = false;
-        info!("Main processing loop stopped");
-    }
-
-    async fn send_log_batch(
-        log_batch: &[crate::parser::services::ParsedLogEntry],
-        _reliability_manager: &Arc<ReliabilityManager>,
-        sender_config: &SenderConfig,
-        target_service: &str,
-    ) {
-        if log_batch.is_empty() {
-            return;
-        }
-
-        info!("Sending batch of {} log entries", log_batch.len());
-
-        // Convert ParsedLogEntry to EnrichedLogEntry
-        let enriched_entries: Vec<crate::parser::universal::EnrichedLogEntry> = log_batch
-            .iter()
-            .map(|entry| {
-                // Extract trace context from fields (if present from Go structured logs)
-                let mut fields = entry.fields.clone();
-                let trace_id = fields.remove("trace_id");
-                let span_id = fields.remove("span_id");
-
-                crate::parser::universal::EnrichedLogEntry {
-                    service_type: entry.service_type.clone(),
-                    log_type: entry.log_type.clone(),
-                    message: entry.message.clone(),
-                    level: entry.level.clone(),
-                    timestamp: entry
-                        .timestamp
-                        .map(|dt| dt.to_rfc3339())
-                        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
-                    stream: entry.stream.clone(),
-                    method: entry.method.clone(),
-                    path: entry.path.clone(),
-                    status_code: entry.status_code,
-                    response_size: entry.response_size,
-                    ip_address: entry.ip_address.clone(),
-                    user_agent: entry.user_agent.clone(),
-                    container_id: "unknown".to_string(), // TODO: Pass real container ID
-                    service_name: target_service.to_string(),
-                    service_group: None,
-                    trace_id,
-                    span_id,
-                    fields,
-                }
-            })
-            .collect();
-
-        // Choose protocol based on configuration
-        #[cfg(feature = "otlp")]
-        {
-            if matches!(sender_config.protocol, Protocol::Otlp) {
-                Self::send_otlp_batch(&enriched_entries, sender_config).await;
-                return;
-            }
-        }
-
-        // Default: NDJSON protocol
-        Self::send_ndjson_batch(&enriched_entries, sender_config).await;
-    }
-
-    /// Send batch using NDJSON format (legacy).
-    async fn send_ndjson_batch(
-        enriched_entries: &[crate::parser::universal::EnrichedLogEntry],
-        sender_config: &SenderConfig,
-    ) {
-        let mut ndjson_lines = Vec::new();
-        for entry in enriched_entries {
-            match serde_json::to_string(entry) {
-                Ok(json_line) => ndjson_lines.push(json_line),
-                Err(e) => {
-                    error!("Failed to serialize log entry: {e}");
-                    continue;
-                }
-            }
-        }
-
-        if ndjson_lines.is_empty() {
-            warn!("No valid log entries to send");
-            return;
-        }
-
-        let ndjson_body = ndjson_lines.join("\n");
-        let client = reqwest::Client::new();
-
-        match client
-            .post(&sender_config.endpoint)
-            .header("Content-Type", "application/x-ndjson")
-            .header("x-batch-size", enriched_entries.len().to_string())
-            .body(ndjson_body)
-            .send()
-            .await
-        {
-            Ok(response) => {
-                if response.status().is_success() {
-                    info!("Successfully sent NDJSON batch of {} logs", enriched_entries.len());
-                } else {
-                    error!("Failed to send NDJSON logs, status: {}", response.status());
-                }
-            }
-            Err(e) => {
-                error!("Failed to send NDJSON logs: {e}");
-            }
-        }
-    }
-
-    /// Send batch using OTLP protobuf format.
-    #[cfg(feature = "otlp")]
-    async fn send_otlp_batch(
-        enriched_entries: &[crate::parser::universal::EnrichedLogEntry],
-        sender_config: &SenderConfig,
-    ) {
-        use crate::sender::OtlpSerializer;
-
-        // Create a Batch from enriched entries
-        let batch = Batch::new(enriched_entries.to_vec(), BatchType::SizeBased);
-
-        // Serialize to OTLP protobuf format
-        let otlp_serializer = OtlpSerializer::new();
-        let protobuf_bytes = match otlp_serializer.serialize_batch(&batch) {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                error!("Failed to serialize OTLP batch: {e}");
-                return;
-            }
-        };
-
-        // Optionally compress the payload
-        let (body, content_encoding) = if sender_config.enable_compression && protobuf_bytes.len() > 1024 {
-            use flate2::{Compression, write::GzEncoder};
-            use std::io::Write;
-
-            let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
-            if let Err(e) = encoder.write_all(&protobuf_bytes) {
-                error!("Failed to compress OTLP batch: {e}");
-                return;
-            }
-            match encoder.finish() {
-                Ok(compressed) => (compressed, Some("gzip")),
-                Err(e) => {
-                    error!("Failed to finish compression: {e}");
-                    return;
-                }
-            }
-        } else {
-            (protobuf_bytes, None)
-        };
-
-        let client = reqwest::Client::new();
-        let mut request = client
-            .post(&sender_config.otlp_endpoint)
-            .header("Content-Type", "application/x-protobuf")
-            .header("x-batch-size", enriched_entries.len().to_string());
-
-        if let Some(encoding) = content_encoding {
-            request = request.header("Content-Encoding", encoding);
-        }
-
-        match request.body(body).send().await {
-            Ok(response) => {
-                if response.status().is_success() {
-                    info!("Successfully sent OTLP batch of {} logs", enriched_entries.len());
-                } else {
-                    error!("Failed to send OTLP logs, status: {}", response.status());
-                }
-            }
-            Err(e) => {
-                error!("Failed to send OTLP logs: {e}");
-            }
-        }
-    }
-
     pub async fn setup_signal_handlers(&self) -> Result<SignalHandler, ServiceError> {
         let shutdown_tx = self
             .shutdown_tx
@@ -633,146 +306,11 @@ impl ServiceManager {
     }
 
     pub async fn simulate_component_failure(&mut self, component: &str) {
-        // For testing purposes only
         if let Some(_reliability_manager) = &self.reliability_manager {
-            // This would be implemented in the reliability manager for testing
             warn!("Simulating failure for component: {}", component);
         }
     }
 }
-
-// Note: Clone implementations would be added to the respective modules
-// For now, we'll use Arc to share instances instead of cloning
-
-#[derive(Debug)]
-pub struct ShutdownHandle {
-    shutdown_tx: mpsc::UnboundedSender<()>,
-    signal_handler: SignalHandler,
-    running: Arc<RwLock<bool>>,
-}
-
-impl ShutdownHandle {
-    pub async fn shutdown(self) -> Result<(), ServiceError> {
-        info!("Initiating graceful shutdown...");
-
-        // Send shutdown signal
-        if self.shutdown_tx.send(()).is_err() {
-            warn!("Shutdown channel already closed");
-        }
-
-        // Wait for service to stop
-        // Note: 4 seconds is chosen to fit within Docker's stop_grace_period (12s)
-        // while leaving buffer time for cleanup operations
-        let timeout_duration = Duration::from_secs(4);
-        let start = Instant::now();
-
-        while *self.running.read().await && start.elapsed() < timeout_duration {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-
-        if *self.running.read().await {
-            error!("Shutdown timeout exceeded");
-            return Err(ServiceError::ShutdownTimeout);
-        }
-
-        info!("Graceful shutdown completed");
-        Ok(())
-    }
-
-    pub async fn wait_for_shutdown(self) {
-        self.signal_handler.wait().await;
-        if let Err(e) = self.shutdown().await {
-            error!("Shutdown error: {}", e);
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct SignalHandler {
-    shutdown_tx: mpsc::UnboundedSender<()>,
-    active: Arc<RwLock<bool>>,
-}
-
-impl SignalHandler {
-    async fn new(shutdown_tx: mpsc::UnboundedSender<()>) -> Self {
-        let handler = Self {
-            shutdown_tx,
-            active: Arc::new(RwLock::new(true)),
-        };
-
-        handler.setup_handlers().await;
-        handler
-    }
-
-    async fn setup_handlers(&self) {
-        let shutdown_tx = self.shutdown_tx.clone();
-        let active = self.active.clone();
-
-        tokio::spawn(async move {
-            if *active.read().await {
-                #[cfg(unix)]
-                {
-                    let mut sigterm = unix_signal(SignalKind::terminate())
-                        .expect("Failed to create SIGTERM handler");
-
-                    tokio::select! {
-                        result = signal::ctrl_c() => {
-                            match result {
-                                Ok(()) => {
-                                    info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
-                                }
-                                Err(err) => {
-                                    error!("Failed to listen for SIGINT: {}", err);
-                                    return;
-                                }
-                            }
-                        }
-                        _ = sigterm.recv() => {
-                            info!("Received SIGTERM, initiating graceful shutdown");
-                        }
-                    }
-
-                    if shutdown_tx.send(()).is_err() {
-                        error!("Failed to send shutdown signal");
-                    }
-                }
-
-                #[cfg(not(unix))]
-                {
-                    match signal::ctrl_c().await {
-                        Ok(()) => {
-                            info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
-                            if shutdown_tx.send(()).is_err() {
-                                error!("Failed to send shutdown signal");
-                            }
-                        }
-                        Err(err) => {
-                            error!("Failed to listen for SIGINT: {}", err);
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    pub async fn is_active(&self) -> bool {
-        *self.active.read().await
-    }
-
-    pub async fn wait(&self) {
-        while *self.active.read().await {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-    }
-}
-
-// Helper: remove ANSI escape sequences for easier log parsing
-// fn strip_ansi_codes(input: &str) -> String {
-//     lazy_static! {
-//         static ref ANSI_RE: Regex = Regex::new(r"\x1B\[[0-9;?]*[ -/]*[@-~]").unwrap();
-//     }
-//     ANSI_RE.replace_all(input, "").to_string()
-// }
 
 #[cfg(test)]
 mod tests {
@@ -788,14 +326,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_component_initialization_error_handling() {
-        // Test error handling without requiring Docker
         let config = create_test_config();
         let service = ServiceManager::new(config).await.unwrap();
 
-        // Test that service starts in uninitialized state
         assert!(!service.is_initialized());
 
-        // Test error handling for missing components
         let error = ServiceError::ComponentNotInitialized {
             component: "test_component".to_string(),
         };
@@ -808,7 +343,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_service_error_types() {
-        // Test that our error types work correctly
         let error = ServiceError::ComponentNotInitialized {
             component: "test_component".to_string(),
         };
@@ -821,18 +355,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_service_initialization_state() {
-        // Test the initialization state checking without Docker dependencies
         let config = create_test_config();
         let service = ServiceManager::new(config).await.unwrap();
 
-        // Should not be initialized initially
         assert!(!service.is_initialized());
         assert!(!service.is_running().await);
-
-        // Test that we can check the target service
         assert_eq!(service.get_target_service(), "test-service");
 
-        // Test health report for uninitialized service
         let health_report = service.get_health_report().await;
         assert_eq!(
             health_report.overall_status,

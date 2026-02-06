@@ -1,4 +1,3 @@
-// TASK5 Phase 1: Comprehensive buffer error types for lock-free operations
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone, PartialEq)]

@@ -1,8 +1,6 @@
 use bollard::Docker;
 use std::collections::HashMap;
 use std::env;
-use std::future::Future;
-use std::pin::Pin;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -41,11 +39,12 @@ pub struct ContainerInfo {
     pub group: Option<String>,
 }
 
+#[allow(async_fn_in_trait)]
 pub trait ServiceDiscoveryTrait: Send + Sync {
-    fn find_container_by_service(
+    async fn find_container_by_service(
         &self,
         service_name: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<ContainerInfo, DiscoveryError>> + Send + '_>>;
+    ) -> Result<ContainerInfo, DiscoveryError>;
     fn get_target_service(&self) -> Result<String, DiscoveryError>;
     fn detect_target_service_from_hostname(&self, hostname: &str)
     -> Result<String, DiscoveryError>;
@@ -96,12 +95,11 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
         }
     }
 
-    fn find_container_by_service(
+    async fn find_container_by_service(
         &self,
         service_name: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<ContainerInfo, DiscoveryError>> + Send + '_>> {
+    ) -> Result<ContainerInfo, DiscoveryError> {
         let service_name = service_name.to_string();
-        Box::pin(async move {
         let options = bollard::query_parameters::ListContainersOptions {
             all: false, // Only running containers
             ..Default::default()
@@ -192,7 +190,6 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
         }
 
         Err(DiscoveryError::ContainerNotFound(service_name.to_string()))
-        })
     }
 }
 

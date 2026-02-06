@@ -86,7 +86,7 @@ struct MetricsState {
 }
 
 impl MetricsCollector {
-    /// TASK5: Memory-safe metrics initialization with zero expect() calls
+    /// Memory-safe metrics initialization with zero expect() calls.
     pub fn new(config: MetricsConfig) -> Result<Self, MetricsError> {
         #[cfg(feature = "metrics")]
         {

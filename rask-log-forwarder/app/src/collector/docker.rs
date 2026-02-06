@@ -50,6 +50,13 @@ pub struct DockerCollector {
 }
 
 impl DockerCollector {
+    /// Expose the Docker client for reuse by other components.
+    pub fn docker(&self) -> &Docker {
+        &self.docker
+    }
+}
+
+impl DockerCollector {
     pub async fn new() -> Result<Self, CollectorError> {
         let docker = Docker::connect_with_socket_defaults()?;
         Ok(Self { docker })

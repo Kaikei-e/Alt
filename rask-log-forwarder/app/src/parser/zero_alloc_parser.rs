@@ -1,4 +1,3 @@
-// TASK5 Phase 4: Zero-allocation number parser for high-performance parsing
 use crate::buffer::{ParseError, safe_parse_operation};
 
 /// Zero-allocation number parser that avoids memory allocations

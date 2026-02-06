@@ -1,4 +1,4 @@
-// Concurrency test for TASK3 validation
+// Concurrency test for parser validation
 use rask_log_forwarder::collector::ContainerInfo;
 use rask_log_forwarder::parser::universal::UniversalParser;
 use std::collections::HashMap;

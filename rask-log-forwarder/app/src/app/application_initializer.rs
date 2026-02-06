@@ -1,4 +1,3 @@
-// TASK4: Complete memory-safe application initialization system
 use super::config::{Config, LogLevel};
 use super::initialization::InitializationError;
 use super::logging_system::setup_logging_safe;

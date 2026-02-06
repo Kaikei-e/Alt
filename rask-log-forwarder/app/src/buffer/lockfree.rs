@@ -237,7 +237,7 @@ impl LogBuffer {
         })
     }
 
-    /// TASK5: Memory-safe buffer split with zero expect() calls
+    /// Memory-safe buffer split with zero expect() calls.
     pub fn split(&self) -> Result<(LogBufferSender, LogBufferReceiver), BufferError> {
         safe_buffer_operation(|| {
             // Safe sender access with explicit error handling

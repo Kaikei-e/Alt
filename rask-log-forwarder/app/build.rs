@@ -1,4 +1,4 @@
-// Build-time regex pattern validation for TASK3
+// Build-time regex pattern validation
 use regex::Regex;
 use std::fmt::Write as FmtWrite;
 use std::fs::File;

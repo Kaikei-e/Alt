@@ -3,7 +3,10 @@ pub mod config;
 pub mod docker;
 pub mod initialization;
 pub mod logging_system;
+pub mod pipeline;
+pub mod protocol;
 pub mod service;
+pub mod shutdown;
 
 pub use application_initializer::{
     ApplicationInitializer, InitializationResult, InitializationStrategy,
@@ -11,7 +14,8 @@ pub use application_initializer::{
 pub use config::{Config, ConfigError, LogLevel};
 pub use initialization::InitializationError;
 pub use logging_system::{LoggingSystem, setup_logging_safe};
-pub use service::{ServiceError, ServiceManager, ShutdownHandle};
+pub use service::{ServiceError, ServiceManager};
+pub use shutdown::ShutdownHandle;
 
 use clap::Parser;
 use std::process;

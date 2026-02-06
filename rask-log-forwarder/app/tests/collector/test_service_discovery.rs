@@ -1,7 +1,5 @@
 use rask_log_forwarder::collector::{ContainerInfo, DiscoveryError, ServiceDiscoveryTrait};
 use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
 
 // Mock implementation for testing
 pub struct MockServiceDiscovery {
@@ -29,19 +27,15 @@ impl MockServiceDiscovery {
 }
 
 impl ServiceDiscoveryTrait for MockServiceDiscovery {
-    fn find_container_by_service(
+    async fn find_container_by_service(
         &self,
         service_name: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<ContainerInfo, DiscoveryError>> + Send + '_>> {
-        let service_name = service_name.to_string();
-        let containers = self.available_containers.clone();
-        Box::pin(async move {
-            containers
-                .iter()
-                .find(|container| container.service_name == service_name)
-                .cloned()
-                .ok_or_else(|| DiscoveryError::ContainerNotFound(service_name.to_string()))
-        })
+    ) -> Result<ContainerInfo, DiscoveryError> {
+        self.available_containers
+            .iter()
+            .find(|container| container.service_name == service_name)
+            .cloned()
+            .ok_or_else(|| DiscoveryError::ContainerNotFound(service_name.to_string()))
     }
 
     fn get_target_service(&self) -> Result<String, DiscoveryError> {

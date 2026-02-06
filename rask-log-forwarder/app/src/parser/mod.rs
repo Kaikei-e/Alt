@@ -9,26 +9,17 @@ pub mod simd;
 pub mod universal;
 pub mod zero_alloc_parser;
 
-// Legacy exports (keep for compatibility)
 pub use schema::{LogEntry, NginxLogEntry};
 pub use simd::SimdParser;
-
-// New TASK2 exports
 pub use docker::{DockerJsonParser, DockerLogEntry, ParseError};
 pub use services::{
     GoStructuredParser, LogLevel, MeilisearchParser, NginxParser, ParsedLogEntry, PostgresParser,
     ServiceParser,
 };
 pub use universal::{EnrichedLogEntry, UniversalParser};
-
-// TASK3 exports - Memory-safe regex patterns
 pub use regex_error::{FallbackStrategy, RegexError};
 pub use regex_patterns::{NginxAccessMatch, SimplePatternParser, StaticRegexSet};
-
-// TASK5 exports - Zero-allocation parsing
 pub use zero_alloc_parser::{ImprovedNginxParser, ZeroAllocParser};
-
-// Plugin architecture exports
 pub use registry::ServiceParserRegistry;
 
 #[cfg(test)]

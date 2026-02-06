@@ -1,115 +1,12 @@
-use clap::{Parser, ValueEnum};
+use super::groups::{DiskFallbackConfig, MetricsConfig, RetryConfig};
+use super::serde_helpers::{
+    load_env_path, load_env_path_opt, load_env_string, load_env_string_opt, load_env_var,
+};
+use super::{ConfigError, LogLevel, Protocol};
+use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use thiserror::Error;
-use url::Url;
-
-#[derive(Error, Debug)]
-pub enum ConfigError {
-    #[error("Invalid URL: {0}")]
-    InvalidUrl(String),
-    #[error("Invalid configuration: {0}")]
-    InvalidConfig(String),
-    #[error("File error: {0}")]
-    FileError(#[from] std::io::Error),
-    #[error("Parse error: {0}")]
-    ParseError(#[from] toml::de::Error),
-    #[error("Environment error: {0}")]
-    EnvError(String),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LogLevel {
-    Error,
-    Warn,
-    Info,
-    Debug,
-    Trace,
-}
-
-/// Protocol for sending log data to the aggregator.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Protocol {
-    /// NDJSON format (default, legacy)
-    #[default]
-    Ndjson,
-    /// OpenTelemetry Protocol (OTLP) over HTTP with protobuf encoding
-    Otlp,
-}
-
-impl From<LogLevel> for tracing::Level {
-    fn from(level: LogLevel) -> Self {
-        match level {
-            LogLevel::Error => tracing::Level::ERROR,
-            LogLevel::Warn => tracing::Level::WARN,
-            LogLevel::Info => tracing::Level::INFO,
-            LogLevel::Debug => tracing::Level::DEBUG,
-            LogLevel::Trace => tracing::Level::TRACE,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RetryConfig {
-    pub max_attempts: u32,
-    #[serde(with = "duration_serde")]
-    pub base_delay: Duration,
-    #[serde(with = "duration_serde")]
-    pub max_delay: Duration,
-    pub jitter: bool,
-}
-
-impl Default for RetryConfig {
-    fn default() -> Self {
-        Self {
-            max_attempts: 5,
-            base_delay: Duration::from_millis(500),
-            max_delay: Duration::from_secs(60),
-            jitter: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiskFallbackConfig {
-    pub enabled: bool,
-    pub storage_path: PathBuf,
-    pub max_disk_usage_mb: u64,
-    pub retention_hours: u64,
-    pub compression: bool,
-}
-
-impl Default for DiskFallbackConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            storage_path: PathBuf::from("/tmp/rask-log-forwarder/fallback"),
-            max_disk_usage_mb: 1000, // 1GB
-            retention_hours: 24,
-            compression: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MetricsConfig {
-    pub enabled: bool,
-    pub port: u16,
-    pub path: String,
-}
-
-impl Default for MetricsConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            port: 9090,
-            path: "/metrics".to_string(),
-        }
-    }
-}
 
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 #[command(author, version, about, long_about = None)]
@@ -433,65 +330,6 @@ impl Config {
         Ok(())
     }
 
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        // Validate endpoint URL
-        Url::parse(&self.endpoint).map_err(|e| {
-            ConfigError::InvalidUrl(format!("Invalid endpoint URL '{}': {}", self.endpoint, e))
-        })?;
-
-        // Validate OTLP endpoint URL if protocol is OTLP
-        if self.protocol == Protocol::Otlp {
-            Url::parse(&self.otlp_endpoint).map_err(|e| {
-                ConfigError::InvalidUrl(format!(
-                    "Invalid OTLP endpoint URL '{}': {}",
-                    self.otlp_endpoint, e
-                ))
-            })?;
-        }
-
-        // Validate batch size
-        if self.batch_size == 0 {
-            return Err(ConfigError::InvalidConfig(
-                "Batch size must be greater than 0".to_string(),
-            ));
-        }
-
-        // Validate buffer capacity
-        if self.buffer_capacity < self.batch_size {
-            return Err(ConfigError::InvalidConfig(format!(
-                "Buffer capacity ({}) must be at least as large as batch size ({})",
-                self.buffer_capacity, self.batch_size
-            )));
-        }
-
-        // Validate disk fallback path if enabled
-        if self.enable_disk_fallback
-            && let Some(parent) = self.disk_fallback_path.parent()
-            && !parent.exists()
-        {
-            return Err(ConfigError::InvalidConfig(format!(
-                "Disk fallback parent directory does not exist: {}",
-                parent.display()
-            )));
-        }
-
-        // Validate timeouts
-        if self.connection_timeout_secs == 0 {
-            return Err(ConfigError::InvalidConfig(
-                "Connection timeout must be greater than 0".to_string(),
-            ));
-        }
-
-        // Validate retry config
-        if self.retry_config.max_attempts == 0 {
-            return Err(ConfigError::InvalidConfig(
-                "Retry max attempts must be greater than 0".to_string(),
-            ));
-        }
-
-        Ok(())
-    }
-
     pub fn get_target_service(&self) -> Result<String, ConfigError> {
         self.target_service
             .clone()
@@ -503,69 +341,5 @@ impl Config {
         config.post_process()?;
         config.validate()?;
         Ok(config)
-    }
-}
-
-/// Helper function to load and parse an environment variable.
-/// Returns Ok(()) if the variable doesn't exist (keeps default).
-fn load_env_var<T>(name: &str, target: &mut T) -> Result<(), ConfigError>
-where
-    T: std::str::FromStr,
-    T::Err: std::fmt::Display,
-{
-    if let Ok(value) = std::env::var(name) {
-        *target = value
-            .parse()
-            .map_err(|e| ConfigError::EnvError(format!("Invalid {name}: {e}")))?;
-    }
-    Ok(())
-}
-
-/// Helper function to load an optional string environment variable.
-fn load_env_string_opt(name: &str, target: &mut Option<String>) {
-    if let Ok(value) = std::env::var(name) {
-        *target = Some(value);
-    }
-}
-
-/// Helper function to load a string environment variable.
-fn load_env_string(name: &str, target: &mut String) {
-    if let Ok(value) = std::env::var(name) {
-        *target = value;
-    }
-}
-
-/// Helper function to load a PathBuf environment variable.
-fn load_env_path(name: &str, target: &mut PathBuf) {
-    if let Ok(value) = std::env::var(name) {
-        *target = PathBuf::from(value);
-    }
-}
-
-/// Helper function to load an optional PathBuf environment variable.
-fn load_env_path_opt(name: &str, target: &mut Option<PathBuf>) {
-    if let Ok(value) = std::env::var(name) {
-        *target = Some(PathBuf::from(value));
-    }
-}
-
-// Helper module for duration serialization
-mod duration_serde {
-    use serde::{Deserialize, Deserializer, Serializer};
-    use std::time::Duration;
-
-    pub fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_u64(duration.as_millis() as u64)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let millis = u64::deserialize(deserializer)?;
-        Ok(Duration::from_millis(millis))
     }
 }

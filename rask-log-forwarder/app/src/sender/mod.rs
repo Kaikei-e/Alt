@@ -7,11 +7,8 @@ pub mod serialization;
 pub mod stats;
 pub mod transmission;
 
-// Export old interface for compatibility
 pub use http::{BatchSender, ConnectionStats, SenderConfig, SenderError};
 pub use stats::{AtomicConnectionStats, ConnectionStatsSnapshot};
-
-// Export new TASK4 interface
 pub use client::{ClientConfig, ClientError, ConnectionStats as NewConnectionStats, HttpClient};
 pub use metrics::{MetricsCollector, PerformanceMetrics};
 #[cfg(feature = "otlp")]
@@ -81,5 +78,10 @@ impl LogSender {
 
     pub async fn health_check(&self) -> Result<(), ClientError> {
         self.transmitter.client.health_check().await
+    }
+
+    /// Expose the underlying HTTP client for protocol-specific transmitters (e.g., OTLP).
+    pub fn transmitter_client(&self) -> &HttpClient {
+        &self.transmitter.client
     }
 }
