@@ -13,11 +13,19 @@ type Table struct {
 	table  *tablewriter.Table
 	header []string
 	rows   [][]string
+	quiet  bool
 }
 
 // NewTable creates a new table with default styling
 func NewTable(headers []string) *Table {
 	return NewTableWithWriter(os.Stdout, headers)
+}
+
+// NewQuietTable creates a table that suppresses output when quiet is true
+func NewQuietTable(headers []string, quiet bool) *Table {
+	t := NewTableWithWriter(os.Stdout, headers)
+	t.quiet = quiet
+	return t
 }
 
 // NewTableWithWriter creates a new table with a custom writer
@@ -66,6 +74,9 @@ func (t *Table) AddRows(rows [][]string) {
 
 // Render outputs the table
 func (t *Table) Render() {
+	if t.quiet {
+		return
+	}
 	t.table.Header(t.header)
 	t.table.Bulk(t.rows)
 	t.table.Render()

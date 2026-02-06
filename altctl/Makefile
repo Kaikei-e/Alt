@@ -4,9 +4,10 @@
 BINARY_NAME := altctl
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS := -ldflags "-X main.version=$(VERSION)"
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+LDFLAGS := -ldflags "-X main.version=$(VERSION) -X main.commit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME)"
 
-.PHONY: all build clean test lint install help
+.PHONY: all build clean test lint install help docs-man docs-markdown
 
 ## Build targets
 
@@ -62,6 +63,14 @@ completion-zsh: build ## Generate zsh completion script
 completion-fish: build ## Generate fish completion script
 	./$(BINARY_NAME) completion fish > $(BINARY_NAME).fish
 	@echo "Move to: mv $(BINARY_NAME).fish ~/.config/fish/completions/"
+
+## Documentation targets
+
+docs-man: build ## Generate man pages
+	mkdir -p docs/man && ./$(BINARY_NAME) docs --format man --output docs/man
+
+docs-markdown: build ## Generate markdown CLI reference
+	mkdir -p docs/cli && ./$(BINARY_NAME) docs --format markdown --output docs/cli
 
 ## Help
 

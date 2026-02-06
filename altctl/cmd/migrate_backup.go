@@ -40,7 +40,7 @@ func init() {
 }
 
 func runMigrateBackup(cmd *cobra.Command, args []string) error {
-	printer := output.NewPrinter(cfg.Output.Colors)
+	printer := newPrinter()
 
 	outputDir, _ := cmd.Flags().GetString("output")
 	force, _ := cmd.Flags().GetBool("force")
@@ -48,7 +48,11 @@ func runMigrateBackup(cmd *cobra.Command, args []string) error {
 	// Get absolute path
 	absOutput, err := filepath.Abs(outputDir)
 	if err != nil {
-		return fmt.Errorf("invalid output path: %w", err)
+		return &output.CLIError{
+			Summary:  "invalid output path",
+			Detail:   err.Error(),
+			ExitCode: output.ExitUsageError,
+		}
 	}
 
 	printer.Header("Creating Backup")
@@ -94,6 +98,7 @@ func runMigrateBackup(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	printer.Info("Total size: %s", migrate.FormatSize(totalSize))
 	printer.Info("Manifest checksum: %s", manifest.Checksum)
+	printer.PrintHints("migrate backup")
 
 	return nil
 }

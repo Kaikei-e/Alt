@@ -9,14 +9,66 @@ import (
 	"github.com/fatih/color"
 )
 
+// ColorMode represents color output mode
+type ColorMode int
+
+const (
+	// ColorAuto enables colors based on environment (default)
+	ColorAuto ColorMode = iota
+	// ColorAlways forces colors on
+	ColorAlways
+	// ColorNever forces colors off
+	ColorNever
+)
+
+// PrinterOptions configures the Printer
+type PrinterOptions struct {
+	ColorMode    ColorMode
+	ConfigColors bool // .altctl.yaml output.colors value
+	Quiet        bool
+}
+
 // Printer handles formatted output to the terminal
 type Printer struct {
 	out       io.Writer
 	err       io.Writer
 	useColors bool
+	quiet     bool
 }
 
-// NewPrinter creates a new printer with the specified options
+// ParseColorMode parses a string into a ColorMode
+func ParseColorMode(s string) (ColorMode, error) {
+	switch s {
+	case "auto":
+		return ColorAuto, nil
+	case "always":
+		return ColorAlways, nil
+	case "never":
+		return ColorNever, nil
+	default:
+		return ColorAuto, fmt.Errorf("invalid color mode %q: must be auto, always, or never", s)
+	}
+}
+
+// ResolveColors determines whether to use colors based on mode and environment
+func ResolveColors(mode ColorMode, configColors bool) bool {
+	switch mode {
+	case ColorAlways:
+		return true
+	case ColorNever:
+		return false
+	default: // ColorAuto
+		if _, ok := os.LookupEnv("NO_COLOR"); ok {
+			return false
+		}
+		if os.Getenv("TERM") == "dumb" {
+			return false
+		}
+		return configColors
+	}
+}
+
+// NewPrinter creates a new printer with the specified color setting (backwards compatible)
 func NewPrinter(useColors bool) *Printer {
 	return &Printer{
 		out:       os.Stdout,
@@ -25,8 +77,26 @@ func NewPrinter(useColors bool) *Printer {
 	}
 }
 
+// NewPrinterWithOptions creates a new printer with full options
+func NewPrinterWithOptions(opts PrinterOptions) *Printer {
+	return &Printer{
+		out:       os.Stdout,
+		err:       os.Stderr,
+		useColors: ResolveColors(opts.ColorMode, opts.ConfigColors),
+		quiet:     opts.Quiet,
+	}
+}
+
+// IsQuiet returns whether the printer is in quiet mode
+func (p *Printer) IsQuiet() bool {
+	return p.quiet
+}
+
 // Info prints an informational message
 func (p *Printer) Info(format string, args ...interface{}) {
+	if p.quiet {
+		return
+	}
 	if p.useColors {
 		color.New(color.FgCyan).Fprintf(p.out, format+"\n", args...)
 	} else {
@@ -36,6 +106,9 @@ func (p *Printer) Info(format string, args ...interface{}) {
 
 // Success prints a success message
 func (p *Printer) Success(format string, args ...interface{}) {
+	if p.quiet {
+		return
+	}
 	if p.useColors {
 		color.New(color.FgGreen).Fprintf(p.out, "✓ "+format+"\n", args...)
 	} else {
@@ -45,6 +118,9 @@ func (p *Printer) Success(format string, args ...interface{}) {
 
 // Warning prints a warning message
 func (p *Printer) Warning(format string, args ...interface{}) {
+	if p.quiet {
+		return
+	}
 	if p.useColors {
 		color.New(color.FgYellow).Fprintf(p.err, "⚠ "+format+"\n", args...)
 	} else {
@@ -63,11 +139,17 @@ func (p *Printer) Error(format string, args ...interface{}) {
 
 // Print prints a plain message
 func (p *Printer) Print(format string, args ...interface{}) {
+	if p.quiet {
+		return
+	}
 	fmt.Fprintf(p.out, format+"\n", args...)
 }
 
 // Header prints a section header
 func (p *Printer) Header(title string) {
+	if p.quiet {
+		return
+	}
 	if p.useColors {
 		color.New(color.FgWhite, color.Bold).Fprintf(p.out, "\n%s\n", title)
 		color.New(color.FgWhite).Fprintf(p.out, "%s\n", repeatChar('─', len(title)))

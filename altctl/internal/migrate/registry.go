@@ -90,32 +90,43 @@ func (r *VolumeRegistry) Get(name string) (VolumeSpec, bool) {
 }
 
 // defaultVolumes contains all Alt platform persistent volumes
-// All volumes use tar backup for consistency (works with stopped containers)
 var defaultVolumes = []VolumeSpec{
-	// PostgreSQL databases (tar backup of data directory)
+	// PostgreSQL databases (logical backup via pg_dump)
 	{
 		Name:        "db_data_17",
 		Service:     "db",
-		BackupType:  BackupTypeTar,
+		BackupType:  BackupTypePostgreSQL,
 		Description: "Main application database (PostgreSQL 17)",
+		DBName:      "alt",
+		DBUser:      "alt_db_user",
+		DBPort:      5432,
 	},
 	{
 		Name:        "kratos_db_data",
 		Service:     "kratos-db",
-		BackupType:  BackupTypeTar,
+		BackupType:  BackupTypePostgreSQL,
 		Description: "Kratos identity database (PostgreSQL 16)",
+		DBName:      "kratos",
+		DBUser:      "kratos_user",
+		DBPort:      5432,
 	},
 	{
 		Name:        "recap_db_data",
 		Service:     "recap-db",
-		BackupType:  BackupTypeTar,
+		BackupType:  BackupTypePostgreSQL,
 		Description: "Recap worker database (PostgreSQL 18)",
+		DBName:      "recap",
+		DBUser:      "recap_user",
+		DBPort:      5432,
 	},
 	{
 		Name:        "rag_db_data",
 		Service:     "rag-db",
-		BackupType:  BackupTypeTar,
+		BackupType:  BackupTypePostgreSQL,
 		Description: "RAG orchestrator database (PostgreSQL)",
+		DBName:      "rag_db",
+		DBUser:      "rag_user",
+		DBPort:      5432,
 	},
 	// Other volumes
 	{
@@ -147,5 +158,23 @@ var defaultVolumes = []VolumeSpec{
 		Service:     "auth-token-manager",
 		BackupType:  BackupTypeTar,
 		Description: "OAuth2 token storage",
+	},
+	{
+		Name:        "redis-streams-data",
+		Service:     "redis-streams",
+		BackupType:  BackupTypeTar,
+		Description: "Redis Streams message queue data",
+	},
+	{
+		Name:        "prometheus_data",
+		Service:     "prometheus",
+		BackupType:  BackupTypeTar,
+		Description: "Prometheus monitoring data",
+	},
+	{
+		Name:        "grafana_data",
+		Service:     "grafana",
+		BackupType:  BackupTypeTar,
+		Description: "Grafana dashboards and configuration",
 	},
 }

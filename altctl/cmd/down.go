@@ -39,7 +39,7 @@ func init() {
 }
 
 func runDown(cmd *cobra.Command, args []string) error {
-	printer := output.NewPrinter(cfg.Output.Colors)
+	printer := newPrinter()
 	registry := stack.NewRegistry()
 	resolver := stack.NewDependencyResolver(registry)
 
@@ -61,14 +61,23 @@ func runDown(cmd *cobra.Command, args []string) error {
 		// Get stacks in reverse order (dependents first)
 		stacks, err = resolver.ResolveWithDependents(stackNames)
 		if err != nil {
-			return fmt.Errorf("resolving dependencies: %w", err)
+			return &output.CLIError{
+				Summary:    "failed resolving dependencies",
+				Detail:     err.Error(),
+				Suggestion: "Check stack definitions with 'altctl list --deps'",
+				ExitCode:   output.ExitUsageError,
+			}
 		}
 	} else {
 		// Default: only stop the specified stacks
 		for _, name := range stackNames {
 			s, ok := registry.Get(name)
 			if !ok {
-				return fmt.Errorf("unknown stack: %s", name)
+				return &output.CLIError{
+					Summary:    fmt.Sprintf("unknown stack: %s", name),
+					Suggestion: "Run 'altctl list' to see available stacks",
+					ExitCode:   output.ExitUsageError,
+				}
 			}
 			stacks = append(stacks, s)
 		}
@@ -128,5 +137,6 @@ func runDown(cmd *cobra.Command, args []string) error {
 	} else {
 		printer.Success("Stacks stopped successfully")
 	}
+	printer.PrintHints("down")
 	return nil
 }

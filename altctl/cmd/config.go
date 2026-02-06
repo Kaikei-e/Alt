@@ -31,7 +31,7 @@ func init() {
 }
 
 func runConfig(cmd *cobra.Command, args []string) error {
-	printer := output.NewPrinter(cfg.Output.Colors)
+	printer := newPrinter()
 
 	showPath, _ := cmd.Flags().GetBool("path")
 	jsonOutput, _ := cmd.Flags().GetBool("json")

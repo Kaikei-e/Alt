@@ -80,15 +80,34 @@ func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
 	return nil
 }
 
-// restoreVolume restores a single volume using tar
+// restoreVolume restores a single volume, dispatching to the appropriate strategy
 func (m *Migrator) restoreVolume(ctx context.Context, spec VolumeSpec, backupDir string, vb VolumeBackup) error {
 	inputPath := filepath.Join(backupDir, vb.Filename)
 
 	m.logger.Info("restoring volume",
 		"volume", spec.Name,
+		"type", vb.TypeString,
 	)
 
-	return m.volumeBackup.Restore(ctx, spec, inputPath)
+	// Determine restore strategy based on the backup file type.
+	// This supports backward compatibility: if a PG volume was backed up as tar
+	// (old format), restore it as tar regardless of current registry type.
+	backupType := vb.Type
+	if strings.HasSuffix(vb.Filename, ".tar.gz") {
+		backupType = BackupTypeTar
+	} else if strings.HasSuffix(vb.Filename, ".dump") {
+		backupType = BackupTypePostgreSQL
+	}
+
+	switch backupType {
+	case BackupTypePostgreSQL:
+		return m.pgBackup.Restore(ctx, spec, inputPath)
+	default:
+		// For tar restore, we need the spec to have BackupTypeTar
+		tarSpec := spec
+		tarSpec.BackupType = BackupTypeTar
+		return m.volumeBackup.Restore(ctx, tarSpec, inputPath)
+	}
 }
 
 // stopContainers stops all project containers

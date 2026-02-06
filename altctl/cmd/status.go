@@ -48,7 +48,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 }
 
 func showStatus(jsonOutput bool) error {
-	printer := output.NewPrinter(cfg.Output.Colors)
+	printer := newPrinter()
 	registry := stack.NewRegistry()
 
 	// Create compose client
@@ -166,6 +166,7 @@ func outputStatusTable(printer *output.Printer, registry *stack.Registry, status
 		printer.Info("Total: %d service(s) running", totalRunning)
 	}
 
+	printer.PrintHints("status")
 	return nil
 }
 

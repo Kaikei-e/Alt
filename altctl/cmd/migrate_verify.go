@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alt-project/altctl/internal/migrate"
-	"github.com/alt-project/altctl/internal/output"
 )
 
 var migrateVerifyCmd = &cobra.Command{
@@ -32,7 +31,7 @@ func init() {
 }
 
 func runMigrateVerify(cmd *cobra.Command, args []string) error {
-	printer := output.NewPrinter(cfg.Output.Colors)
+	printer := newPrinter()
 
 	backupDir, _ := cmd.Flags().GetString("backup")
 

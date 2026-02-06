@@ -51,7 +51,7 @@ var defaultStacks = []Stack{
 		Name:        "ai",
 		Description: "AI/LLM services (Ollama, news-creator, pre-processor)",
 		ComposeFile: "ai.yaml",
-		Services:    []string{"news-creator", "news-creator-volume-init", "pre-processor"},
+		Services:    []string{"redis-cache", "news-creator-backend", "news-creator", "news-creator-volume-init", "pre-processor"},
 		DependsOn:   []string{"base", "db", "core"},
 		Profile:     "ollama",
 		RequiresGPU: true,
@@ -63,7 +63,7 @@ var defaultStacks = []Stack{
 		Name:        "workers",
 		Description: "Background worker services",
 		ComposeFile: "workers.yaml",
-		Services:    []string{"pre-processor-sidecar", "search-indexer", "tag-generator", "auth-token-manager"},
+		Services:    []string{"pre-processor-sidecar", "search-indexer", "tag-generator", "oauth-token-init", "auth-token-manager"},
 		DependsOn:   []string{"base", "db", "core"},
 		Optional:    false,
 		Provides:    []Feature{FeatureSearch}, // search-indexer provides search functionality
@@ -84,10 +84,11 @@ var defaultStacks = []Stack{
 		ComposeFile: "logging.yaml",
 		Services: []string{
 			"rask-log-aggregator",
-			"nginx-logs", "alt-backend-logs", "tag-generator-logs",
-			"pre-processor-logs", "search-indexer-logs", "news-creator-logs",
-			"news-creator-backend-logs", // ADR-091: Ollama分離対応
-			"meilisearch-logs", "db-logs",
+			"nginx-logs", "alt-backend-logs", "auth-hub-logs",
+			"tag-generator-logs", "pre-processor-logs", "search-indexer-logs",
+			"news-creator-logs", "news-creator-backend-logs",
+			"recap-worker-logs", "recap-subworker-logs",
+			"dashboard-logs", "recap-evaluator-logs", "rag-orchestrator-logs",
 		},
 		DependsOn: []string{"base", "db"},
 		Profile:   "logging",
@@ -117,7 +118,7 @@ var defaultStacks = []Stack{
 		Name:        "observability",
 		Description: "Observability infrastructure (Grafana dashboards)",
 		ComposeFile: "observability.yaml",
-		Services:    []string{"nginx-exporter", "prometheus", "grafana"},
+		Services:    []string{"nginx-exporter", "prometheus", "grafana", "cadvisor"},
 		DependsOn:   []string{"base", "db", "core"},
 		Profile:     "observability",
 		Optional:    true,
@@ -159,6 +160,15 @@ var defaultStacks = []Stack{
 		Services:    []string{"mock-auth", "alt-frontend-sv"},
 		DependsOn:   []string{}, // No dependencies - standalone
 		Profile:     "frontend-dev",
+		Optional:    true,
+	},
+	{
+		Name:        "backup",
+		Description: "Backup services (Restic, PostgreSQL dump)",
+		ComposeFile: "backup.yaml",
+		Services:    []string{"restic-backup"},
+		DependsOn:   []string{"base", "db"},
+		Profile:     "backup",
 		Optional:    true,
 	},
 }

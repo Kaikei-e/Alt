@@ -2,17 +2,30 @@
 package main
 
 import (
+	"errors"
 	"os"
 
 	"github.com/alt-project/altctl/cmd"
+	"github.com/alt-project/altctl/internal/output"
 )
 
-// version is set at build time via ldflags
-var version = "dev"
+// Build-time variables set via ldflags
+var (
+	version   = "dev"
+	commit    = "unknown"
+	buildTime = "unknown"
+)
 
 func main() {
 	cmd.SetVersion(version)
+	cmd.SetBuildInfo(commit, buildTime)
 	if err := cmd.Execute(); err != nil {
+		var cliErr *output.CLIError
+		if errors.As(err, &cliErr) {
+			printer := output.NewPrinter(false)
+			printer.FormatError(cliErr)
+			os.Exit(cliErr.ExitCode)
+		}
 		os.Stderr.WriteString("Error: " + err.Error() + "\n")
 		os.Exit(1)
 	}

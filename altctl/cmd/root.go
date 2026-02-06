@@ -11,12 +11,16 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/alt-project/altctl/internal/config"
+	"github.com/alt-project/altctl/internal/output"
 )
 
 var (
 	cfgFile    string
 	verbose    bool
 	dryRun     bool
+	quiet      bool
+	colorFlag  string
+	colorMode  output.ColorMode
 	projectDir string
 	cfg        *config.Config
 	logger     *slog.Logger
@@ -37,7 +41,15 @@ Example usage:
   altctl up ai                 # Start AI stack with dependencies
   altctl down                  # Stop all running stacks
   altctl status                # Show service status by stack
-  altctl list                  # List available stacks`,
+  altctl list                  # List available stacks
+
+Exit Codes:
+  0  Success
+  1  General error
+  2  Usage error (invalid arguments or unknown stack)
+  3  Docker Compose error
+  4  Configuration error
+  5  Timeout`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -61,6 +73,8 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "show commands without executing")
 	rootCmd.PersistentFlags().StringVar(&projectDir, "project-dir", "", "Alt project directory (default: auto-detect)")
+	rootCmd.PersistentFlags().StringVar(&colorFlag, "color", "auto", "color output: always, auto, never")
+	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress non-error output")
 
 	// Bind flags to viper
 	_ = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
@@ -71,6 +85,17 @@ func init() {
 // initConfig reads in config file and ENV variables if set.
 func initConfig() error {
 	var err error
+
+	// Validate --quiet and --verbose are not both set
+	if quiet && verbose {
+		return fmt.Errorf("--quiet and --verbose are mutually exclusive")
+	}
+
+	// Parse --color flag
+	colorMode, err = output.ParseColorMode(colorFlag)
+	if err != nil {
+		return err
+	}
 
 	// Setup logger
 	logLevel := slog.LevelInfo
@@ -84,8 +109,16 @@ func initConfig() error {
 	// Load configuration
 	cfg, err = config.Load(cfgFile, projectDir)
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return &output.CLIError{
+			Summary:    "failed to load configuration",
+			Detail:     err.Error(),
+			Suggestion: "Check .altctl.yaml syntax or use --config flag",
+			ExitCode:   output.ExitConfigError,
+		}
 	}
+
+	// Override config colors based on --color flag
+	cfg.Output.Colors = output.ResolveColors(colorMode, cfg.Output.Colors)
 
 	// Update logger based on config
 	if cfg.Logging.Level == "debug" || verbose {
@@ -101,6 +134,15 @@ func initConfig() error {
 	)
 
 	return nil
+}
+
+// newPrinter creates a Printer using resolved color/quiet settings
+func newPrinter() *output.Printer {
+	return output.NewPrinterWithOptions(output.PrinterOptions{
+		ColorMode:    colorMode,
+		ConfigColors: cfg.Output.Colors,
+		Quiet:        quiet,
+	})
 }
 
 // getProjectRoot returns the project root directory

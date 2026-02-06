@@ -30,14 +30,18 @@ func init() {
 }
 
 func runMigrateList(cmd *cobra.Command, args []string) error {
-	printer := output.NewPrinter(cfg.Output.Colors)
+	printer := newPrinter()
 
 	backupPath, _ := cmd.Flags().GetString("path")
 
 	// Get absolute path
 	absPath, err := filepath.Abs(backupPath)
 	if err != nil {
-		return fmt.Errorf("invalid path: %w", err)
+		return &output.CLIError{
+			Summary:  "invalid path",
+			Detail:   err.Error(),
+			ExitCode: output.ExitUsageError,
+		}
 	}
 
 	printer.Header("Available Backups")
@@ -46,7 +50,12 @@ func runMigrateList(cmd *cobra.Command, args []string) error {
 
 	backups, err := migrate.ListBackups(absPath)
 	if err != nil {
-		return fmt.Errorf("listing backups: %w", err)
+		return &output.CLIError{
+			Summary:    "failed listing backups",
+			Detail:     err.Error(),
+			Suggestion: "Check backup directory path and permissions",
+			ExitCode:   output.ExitGeneral,
+		}
 	}
 
 	if len(backups) == 0 {

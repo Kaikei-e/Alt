@@ -22,6 +22,7 @@ type BackupOptions struct {
 type Migrator struct {
 	registry     *VolumeRegistry
 	volumeBackup *VolumeBackuper
+	pgBackup     *PostgresBackuper
 	composeDir   string
 	projectName  string
 	logger       *slog.Logger
@@ -33,6 +34,7 @@ func NewMigrator(composeDir, projectName string, logger *slog.Logger, dryRun boo
 	return &Migrator{
 		registry:     NewVolumeRegistry(),
 		volumeBackup: NewVolumeBackuper(projectName, logger, dryRun),
+		pgBackup:     NewPostgresBackuper(projectName, logger, dryRun),
 		composeDir:   composeDir,
 		projectName:  projectName,
 		logger:       logger,
@@ -113,20 +115,35 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*Manifest, e
 	return manifest, nil
 }
 
-// backupVolume backs up a single volume using tar
+// backupVolume backs up a single volume, dispatching to the appropriate strategy
 func (m *Migrator) backupVolume(ctx context.Context, spec VolumeSpec, outputDir string, manifest *Manifest) error {
-	filename := spec.Name + ".tar.gz"
-	outputPath := filepath.Join(outputDir, filename)
+	var filename string
+	switch spec.BackupType {
+	case BackupTypePostgreSQL:
+		filename = spec.Name + ".dump"
+	default:
+		filename = spec.Name + ".tar.gz"
+	}
 
+	outputPath := filepath.Join(outputDir, filename)
 	startTime := time.Now()
-	if err := m.volumeBackup.Backup(ctx, spec, outputPath); err != nil {
-		return err
+
+	// Dispatch to appropriate backup strategy
+	switch spec.BackupType {
+	case BackupTypePostgreSQL:
+		if err := m.pgBackup.Backup(ctx, spec, outputPath); err != nil {
+			return err
+		}
+	default:
+		if err := m.volumeBackup.Backup(ctx, spec, outputPath); err != nil {
+			return err
+		}
 	}
 
 	if m.dryRun {
 		manifest.AddVolume(VolumeBackup{
 			Name:       spec.Name,
-			Type:       BackupTypeTar,
+			Type:       spec.BackupType,
 			Filename:   filepath.Join("volumes", filename),
 			Size:       0,
 			Checksum:   "sha256:dry-run",
@@ -149,7 +166,7 @@ func (m *Migrator) backupVolume(ctx context.Context, spec VolumeSpec, outputDir 
 
 	manifest.AddVolume(VolumeBackup{
 		Name:       spec.Name,
-		Type:       BackupTypeTar,
+		Type:       spec.BackupType,
 		Filename:   filepath.Join("volumes", filename),
 		Size:       info.Size(),
 		Checksum:   checksum,

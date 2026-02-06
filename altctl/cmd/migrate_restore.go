@@ -42,7 +42,7 @@ func init() {
 }
 
 func runMigrateRestore(cmd *cobra.Command, args []string) error {
-	printer := output.NewPrinter(cfg.Output.Colors)
+	printer := newPrinter()
 
 	backupDir, _ := cmd.Flags().GetString("from")
 	force, _ := cmd.Flags().GetBool("force")
@@ -54,7 +54,12 @@ func runMigrateRestore(cmd *cobra.Command, args []string) error {
 	// Show backup summary
 	summary, err := migrate.GetBackupSummary(backupDir)
 	if err != nil {
-		return fmt.Errorf("reading backup: %w", err)
+		return &output.CLIError{
+			Summary:    "failed reading backup",
+			Detail:     err.Error(),
+			Suggestion: "Check the backup directory path and permissions",
+			ExitCode:   output.ExitGeneral,
+		}
 	}
 
 	fmt.Println()
@@ -64,7 +69,11 @@ func runMigrateRestore(cmd *cobra.Command, args []string) error {
 	if !force && !dryRun {
 		printer.Warning("This will OVERWRITE existing data!")
 		printer.Warning("Use --force to proceed without confirmation")
-		return fmt.Errorf("restore aborted: use --force to proceed")
+		return &output.CLIError{
+			Summary:    "restore aborted",
+			Suggestion: "Use --force to proceed",
+			ExitCode:   output.ExitUsageError,
+		}
 	}
 
 	// Create migrator
@@ -90,6 +99,7 @@ func runMigrateRestore(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	printer.Success("Restore complete!")
 	printer.Info("You may now start the services with: altctl up")
+	printer.PrintHints("migrate restore")
 
 	return nil
 }

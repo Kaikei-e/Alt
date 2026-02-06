@@ -7,22 +7,22 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alt-project/altctl/internal/compose"
-	"github.com/alt-project/altctl/internal/output"
 	"github.com/alt-project/altctl/internal/stack"
 )
 
 var logsCmd = &cobra.Command{
-	Use:   "logs <service>",
-	Short: "Tail logs for a service",
-	Long: `Stream logs from a specific service.
+	Use:   "logs <service|stack>",
+	Short: "Tail logs for a service or stack",
+	Long: `Stream logs from a specific service or all services in a stack.
 
 Examples:
   altctl logs alt-backend      # Tail backend logs
   altctl logs alt-backend -f   # Follow log output
   altctl logs alt-backend -n 100  # Show last 100 lines
-  altctl logs db --since 1h    # Show logs from last hour`,
+  altctl logs db --since 1h    # Show logs from last hour
+  altctl logs recap            # Tail all recap stack services`,
 	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeServiceNames,
+	ValidArgsFunction: completeServiceAndStackNames,
 	RunE:              runLogs,
 }
 
@@ -36,14 +36,20 @@ func init() {
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
-	service := args[0]
-	printer := output.NewPrinter(cfg.Output.Colors)
+	target := args[0]
+	printer := newPrinter()
 
-	// Validate service exists
+	// Check if target is a stack name
 	registry := stack.NewRegistry()
-	s := registry.FindByService(service)
-	if s == nil {
-		printer.Warning("Service '%s' not found in any stack", service)
+	var services []string
+	if s, ok := registry.Get(target); ok {
+		services = s.Services
+		printer.Info("Showing logs for stack '%s' (%d services)", target, len(services))
+	} else if registry.FindByService(target) != nil {
+		services = []string{target}
+	} else {
+		printer.Warning("'%s' not found as a service or stack name", target)
+		services = []string{target} // Pass through to docker compose
 	}
 
 	// Get flags
@@ -55,7 +61,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	// Create compose client
 	client := compose.NewClient(
 		getProjectRoot(),
-		getProjectRoot(), // Use project root for logs, not compose dir
+		getComposeDir(),
 		logger,
 		dryRun,
 	)
@@ -70,13 +76,20 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	}
 	defer cancel()
 
-	// Stream logs
-	return client.Logs(ctx, service, compose.LogsOptions{
-		Follow:     follow,
-		Tail:       tail,
-		Timestamps: timestamps,
-		Since:      since,
-	})
+	// Stream logs for each service
+	for _, svc := range services {
+		if err := client.Logs(ctx, svc, compose.LogsOptions{
+			Follow:     follow,
+			Tail:       tail,
+			Timestamps: timestamps,
+			Since:      since,
+		}); err != nil {
+			return err
+		}
+	}
+
+	printer.PrintHints("logs")
+	return nil
 }
 
 // completeServiceNames provides shell completion for service names
@@ -92,4 +105,20 @@ func completeServiceNames(cmd *cobra.Command, args []string, toComplete string) 
 	}
 
 	return services, cobra.ShellCompDirectiveNoFileComp
+}
+
+// completeServiceAndStackNames provides shell completion for both service and stack names
+func completeServiceAndStackNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	registry := stack.NewRegistry()
+	var completions []string
+	completions = append(completions, registry.Names()...)
+	for _, s := range registry.All() {
+		completions = append(completions, s.Services...)
+	}
+
+	return completions, cobra.ShellCompDirectiveNoFileComp
 }

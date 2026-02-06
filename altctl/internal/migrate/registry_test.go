@@ -36,13 +36,25 @@ func TestNewVolumeRegistry(t *testing.T) {
 	}
 }
 
-func TestVolumeRegistry_AllAreTar(t *testing.T) {
+func TestVolumeRegistry_BackupTypes(t *testing.T) {
 	r := NewVolumeRegistry()
 
-	// All volumes should now be tar type
+	pgNames := map[string]bool{
+		"db_data_17":     true,
+		"kratos_db_data": true,
+		"recap_db_data":  true,
+		"rag_db_data":    true,
+	}
+
 	for _, v := range r.All() {
-		if v.BackupType != BackupTypeTar {
-			t.Errorf("Volume %s should be Tar type, got %s", v.Name, v.BackupType.String())
+		if pgNames[v.Name] {
+			if v.BackupType != BackupTypePostgreSQL {
+				t.Errorf("Volume %s should be PostgreSQL type, got %s", v.Name, v.BackupType.String())
+			}
+		} else {
+			if v.BackupType != BackupTypeTar {
+				t.Errorf("Volume %s should be Tar type, got %s", v.Name, v.BackupType.String())
+			}
 		}
 	}
 }
@@ -51,21 +63,20 @@ func TestVolumeRegistry_Tar(t *testing.T) {
 	r := NewVolumeRegistry()
 	tarVolumes := r.Tar()
 
-	// Should have all 9 volumes as tar
-	if len(tarVolumes) != 9 {
-		t.Errorf("Expected 9 tar volumes, got %d", len(tarVolumes))
+	// Should have 8 tar volumes (12 total - 4 PG)
+	if len(tarVolumes) != 8 {
+		t.Errorf("Expected 8 tar volumes, got %d", len(tarVolumes))
 	}
 
 	expectedNames := map[string]bool{
-		"db_data_17":               true,
-		"kratos_db_data":           true,
-		"recap_db_data":            true,
-		"rag_db_data":              true,
 		"meili_data":               true,
 		"clickhouse_data":          true,
 		"news_creator_models":      true,
 		"rask_log_aggregator_data": true,
 		"oauth_token_data":         true,
+		"redis-streams-data":       true,
+		"prometheus_data":          true,
+		"grafana_data":             true,
 	}
 
 	for _, v := range tarVolumes {
@@ -101,9 +112,9 @@ func TestVolumeRegistry_All(t *testing.T) {
 	r := NewVolumeRegistry()
 	all := r.All()
 
-	// Should have 9 total volumes (4 PostgreSQL + 5 tar)
-	if len(all) != 9 {
-		t.Errorf("Expected 9 total volumes, got %d", len(all))
+	// Should have 12 total volumes
+	if len(all) != 12 {
+		t.Errorf("Expected 12 total volumes, got %d", len(all))
 	}
 
 	// Verify each volume has required fields

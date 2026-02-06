@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -35,7 +36,7 @@ func init() {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	printer := output.NewPrinter(cfg.Output.Colors)
+	printer := newPrinter()
 	registry := stack.NewRegistry()
 
 	jsonOutput, _ := cmd.Flags().GetBool("json")
@@ -100,6 +101,7 @@ func outputStackList(printer *output.Printer, registry *stack.Registry, showServ
 
 	// Show default stacks
 	printer.Info("Default stacks: %s", strings.Join(cfg.Defaults.Stacks, ", "))
+	printer.PrintHints("list")
 	return nil
 }
 
@@ -109,32 +111,92 @@ func outputDependencyGraph(printer *output.Printer, registry *stack.Registry) er
 	resolver := stack.NewDependencyResolver(registry)
 	graph := resolver.GetDependencyGraph()
 
-	// Print ASCII dependency graph
+	// Build children map (reverse of DependsOn)
+	children := make(map[string][]string)
+	for _, s := range registry.All() {
+		for _, dep := range s.DependsOn {
+			children[dep] = append(children[dep], s.Name)
+		}
+	}
+	// Sort children for consistent output
+	for k := range children {
+		sort.Strings(children[k])
+	}
+
+	// Find roots (stacks with no dependencies)
+	roots := findRoots(graph)
+
+	// Print tree from each root, tracking visited nodes to avoid duplication
 	fmt.Println()
-	fmt.Println("                    base")
-	fmt.Println("                      │")
-	fmt.Println("       ┌──────────────┴──────────────┐")
-	fmt.Println("       │                             │")
-	fmt.Println("      db                           auth")
-	fmt.Println("       │                             │")
-	fmt.Println("       └──────────────┬──────────────┘")
-	fmt.Println("                      │")
-	fmt.Println("                    core")
-	fmt.Println("                      │")
-	fmt.Println("   ┌──────┬───────────┼───────────┬──────┐")
-	fmt.Println("   │      │           │           │      │")
-	fmt.Println("  ai   workers     recap        rag  logging")
+	visited := make(map[string]bool)
+	for i, root := range roots {
+		isLast := i == len(roots)-1
+		printTree(printer, root, children, visited, "", isLast)
+	}
 	fmt.Println()
 
 	// Detailed dependencies
 	printer.Header("Detailed Dependencies")
-	for name, deps := range graph {
+	for _, s := range registry.All() {
+		deps := graph[s.Name]
 		if len(deps) == 0 {
-			printer.Print("%s: %s", printer.Bold(name), printer.Dim("(no dependencies)"))
+			printer.Print("%s: %s", printer.Bold(s.Name), printer.Dim("(no dependencies)"))
 		} else {
-			printer.Print("%s: %s", printer.Bold(name), strings.Join(deps, " → "))
+			printer.Print("%s: %s", printer.Bold(s.Name), strings.Join(deps, " → "))
 		}
 	}
 
 	return nil
+}
+
+// findRoots returns stacks that have no dependencies (tree roots).
+func findRoots(graph map[string][]string) []string {
+	var roots []string
+	for name, deps := range graph {
+		if len(deps) == 0 {
+			roots = append(roots, name)
+		}
+	}
+	sort.Strings(roots)
+	return roots
+}
+
+// printTree recursively prints a tree representation of the dependency graph.
+// Tracks visited nodes to avoid duplicating subtrees.
+func printTree(printer *output.Printer, name string, children map[string][]string, visited map[string]bool, prefix string, isLast bool) {
+	isRoot := prefix == "" && !isLast && !visited[name+"_printed"]
+
+	if isRoot {
+		printer.Print("%s", printer.Bold(name))
+	} else if prefix == "" {
+		// Non-first root
+		printer.Print("%s", printer.Bold(name))
+	} else {
+		connector := "├── "
+		if isLast {
+			connector = "└── "
+		}
+		printer.Print("%s%s%s", prefix, connector, printer.Bold(name))
+	}
+
+	// Skip children if already visited (prevents duplication)
+	if visited[name] {
+		return
+	}
+	visited[name] = true
+
+	var childPrefix string
+	if prefix == "" {
+		// Children of root get standard indent
+		childPrefix = "  "
+	} else if isLast {
+		childPrefix = prefix + "    "
+	} else {
+		childPrefix = prefix + "│   "
+	}
+
+	kids := children[name]
+	for i, child := range kids {
+		printTree(printer, child, children, visited, childPrefix, i == len(kids)-1)
+	}
 }

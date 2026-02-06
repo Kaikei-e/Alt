@@ -43,9 +43,11 @@ altctl list
 |---------|-------------|
 | `altctl up [stacks...]` | Start stacks with dependency resolution |
 | `altctl down [stacks...]` | Stop running stacks |
+| `altctl restart [stacks...]` | Restart stacks (down then up) |
 | `altctl status` | Show service status by stack |
 | `altctl list` | List available stacks |
-| `altctl logs <service>` | Stream logs from a service |
+| `altctl logs <service\|stack>` | Stream logs from a service or stack |
+| `altctl exec <service> -- <cmd>` | Execute a command in a running container |
 | `altctl config` | Show effective configuration |
 
 ### Migration (Backup/Restore)
@@ -59,18 +61,24 @@ altctl list
 
 ## Stack Reference
 
-| Stack | Services | Dependencies |
-|-------|----------|--------------|
-| base | (shared resources) | - |
-| db | db, meilisearch, clickhouse | base |
-| auth | kratos-db, kratos, auth-hub | base |
-| core | nginx, alt-frontend, alt-backend | base, db, auth |
-| ai | news-creator, pre-processor | base, db, core |
-| workers | search-indexer, tag-generator | base, db, core |
-| recap | recap-worker, recap-subworker | base, db, core |
-| logging | rask-log-aggregator | base, db |
-| rag | rag-orchestrator | base, db, core, workers |
-| perf | alt-perf | base, db, auth, core |
+| Stack | Services | Dependencies | Optional |
+|-------|----------|--------------|----------|
+| base | (shared resources) | - | no |
+| db | db, meilisearch, clickhouse | base | no |
+| auth | kratos-db, kratos-migrate, kratos, auth-hub | base | no |
+| core | nginx, alt-frontend, alt-frontend-sv, alt-backend, migrate | base, db, auth | no |
+| workers | pre-processor-sidecar, search-indexer, tag-generator, oauth-token-init, auth-token-manager | base, db, core | no |
+| ai | redis-cache, news-creator-backend, news-creator, news-creator-volume-init, pre-processor | base, db, core | yes (GPU) |
+| recap | recap-db, recap-db-migrator, recap-worker, recap-subworker, dashboard, recap-evaluator | base, db, core | yes |
+| logging | rask-log-aggregator, nginx-logs, alt-backend-logs, auth-hub-logs, + 10 forwarders | base, db | yes |
+| rag | rag-db, rag-db-migrator, rag-orchestrator | base, db, core, workers | yes |
+| observability | nginx-exporter, prometheus, grafana, cadvisor | base, db, core | yes |
+| mq | redis-streams, mq-hub | base | yes |
+| bff | alt-butterfly-facade | base, db, auth, core | yes |
+| perf | alt-perf | base, db, auth, core | yes |
+| backup | restic-backup, postgres-backup | base, db | yes |
+| dev | mock-auth, alt-frontend-sv, alt-backend, db, migrate | base | yes |
+| frontend-dev | mock-auth, alt-frontend-sv | - | yes |
 
 ## Migration Guide
 
@@ -134,6 +142,27 @@ output:
 | `--project-dir` | Alt project directory (default: auto-detect) |
 | `--dry-run` | Show commands without executing |
 | `-v, --verbose` | Verbose output |
+| `-q, --quiet` | Suppress non-error output (mutually exclusive with `--verbose`) |
+| `--color` | Color output: `always`, `auto` (default), `never`. Respects `NO_COLOR` env |
+
+## Version Info
+
+```bash
+altctl version              # Full version info with commit hash and build time
+altctl version --short      # Version string only
+altctl version --json       # JSON format (useful for CI/CD)
+```
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Usage error (invalid arguments, unknown stack) |
+| 3 | Docker Compose error |
+| 4 | Configuration error |
+| 5 | Timeout |
 
 ## License
 
