@@ -3,18 +3,17 @@ package preprocessor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"connectrpc.com/connect"
 
 	"pre-processor/domain"
 	preprocessorv2 "pre-processor/gen/proto/services/preprocessor/v2"
 	"pre-processor/gen/proto/services/preprocessor/v2/preprocessorv2connect"
-	"pre-processor/models"
 	"pre-processor/repository"
-	"pre-processor/utils/html_parser"
+	summarizeuc "pre-processor/usecase/summarize"
 )
 
 // Handler implements the PreProcessorService Connect-RPC handler.
@@ -23,6 +22,7 @@ type Handler struct {
 	summaryRepo repository.SummaryRepository
 	articleRepo repository.ArticleRepository
 	jobRepo     repository.SummarizeJobRepository
+	onDemand    *summarizeuc.OnDemandService
 	logger      *slog.Logger
 }
 
@@ -39,6 +39,7 @@ func NewHandler(
 		summaryRepo: summaryRepo,
 		articleRepo: articleRepo,
 		jobRepo:     jobRepo,
+		onDemand:    summarizeuc.NewOnDemandService(articleRepo, summaryRepo, apiRepo, logger),
 		logger:      logger,
 	}
 }
@@ -52,84 +53,26 @@ func (h *Handler) Summarize(
 	req *connect.Request[preprocessorv2.SummarizeRequest],
 ) (*connect.Response[preprocessorv2.SummarizeResponse], error) {
 	articleID := req.Msg.ArticleId
-	title := req.Msg.Title
-	content := req.Msg.Content
 
 	// Validate required fields
 	if articleID == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("article_id is required"))
 	}
 
-	// Fetch article to get user_id (always needed for summary storage)
-	fetchedArticle, err := h.articleRepo.FindByID(ctx, articleID)
+	// Delegate to shared on-demand summarization usecase
+	result, err := h.onDemand.Summarize(ctx, summarizeuc.SummarizeRequest{
+		ArticleID: articleID,
+		Content:   req.Msg.Content,
+		Title:     req.Msg.Title,
+		Priority:  "high", // UI-triggered requests
+	})
 	if err != nil {
-		h.logger.ErrorContext(ctx, "failed to fetch article", "error", err, "article_id", articleID)
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch article"))
-	}
-	if fetchedArticle == nil {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("article not found"))
-	}
-
-	// If content is empty, use article content from DB
-	if content == "" {
-		h.logger.InfoContext(ctx, "content is empty, using content from DB", "article_id", articleID)
-		if fetchedArticle.Content == "" {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("article content is empty"))
-		}
-		content = html_parser.ExtractArticleText(fetchedArticle.Content)
-		if content == "" {
-			content = fetchedArticle.Content
-		}
-		if title == "" {
-			title = fetchedArticle.Title
-		}
-	}
-
-	// Zero Trust re-extraction
-	if strings.Contains(content, "<") && strings.Contains(content, ">") {
-		content = html_parser.ExtractArticleText(content)
-	}
-
-	h.logger.InfoContext(ctx, "processing summarization request", "article_id", articleID, "content_length", len(content))
-
-	// Create article model for summarization
-	article := &models.Article{
-		ID:      articleID,
-		Content: content,
-	}
-
-	// Call summarization service with HIGH priority for UI-triggered requests
-	summarized, err := h.apiRepo.SummarizeArticle(ctx, article, "high")
-	if err != nil {
-		h.logger.ErrorContext(ctx, "failed to generate summary", "error", err, "article_id", articleID)
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to generate summary"))
-	}
-
-	h.logger.InfoContext(ctx, "article summarized successfully", "article_id", articleID)
-
-	// Save summary to database
-	articleTitle := title
-	if articleTitle == "" {
-		articleTitle = "Untitled"
-	}
-
-	articleSummary := &models.ArticleSummary{
-		ArticleID:       articleID,
-		UserID:          fetchedArticle.UserID,
-		ArticleTitle:    articleTitle,
-		SummaryJapanese: summarized.SummaryJapanese,
-	}
-
-	if err := h.summaryRepo.Create(ctx, articleSummary); err != nil {
-		h.logger.ErrorContext(ctx, "failed to save summary to database", "error", err, "article_id", articleID)
-		// Don't fail the request if DB save fails
-	} else {
-		h.logger.InfoContext(ctx, "summary saved to database successfully", "article_id", articleID)
+		return nil, mapDomainError(err, articleID)
 	}
 
 	return connect.NewResponse(&preprocessorv2.SummarizeResponse{
 		Success:   true,
-		Summary:   summarized.SummaryJapanese,
+		Summary:   result.Summary,
 		ArticleId: articleID,
 	}), nil
 }
@@ -141,54 +84,32 @@ func (h *Handler) StreamSummarize(
 	stream *connect.ServerStream[preprocessorv2.StreamSummarizeResponse],
 ) error {
 	articleID := req.Msg.ArticleId
-	content := req.Msg.Content
 
 	// Validate required fields
 	if articleID == "" {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("article_id is required"))
 	}
 
-	// If content is empty, fetch from DB
-	if content == "" {
-		h.logger.InfoContext(ctx, "content is empty, fetching from DB for stream", "article_id", articleID)
-		fetchedArticle, err := h.articleRepo.FindByID(ctx, articleID)
-		if err != nil {
-			return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch article"))
-		}
-		if fetchedArticle == nil {
-			return connect.NewError(connect.CodeNotFound, fmt.Errorf("article not found"))
-		}
-
-		content = html_parser.ExtractArticleText(fetchedArticle.Content)
-		if content == "" {
-			content = fetchedArticle.Content
-		}
+	// Resolve article content using shared usecase
+	resolved, err := h.onDemand.ResolveArticle(ctx, summarizeuc.SummarizeRequest{
+		ArticleID: articleID,
+		Content:   req.Msg.Content,
+	})
+	if err != nil {
+		return mapDomainError(err, articleID)
 	}
 
-	// Zero Trust re-extraction
-	if strings.Contains(content, "<") && strings.Contains(content, ">") {
-		content = html_parser.ExtractArticleText(content)
-	}
+	h.logger.InfoContext(ctx, "processing streaming summarization request", "article_id", articleID, "content_length", len(resolved.Content))
 
-	if content == "" {
-		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("content is empty"))
-	}
-
-	h.logger.InfoContext(ctx, "processing streaming summarization request", "article_id", articleID, "content_length", len(content))
-
-	article := &models.Article{
+	article := &domain.Article{
 		ID:      articleID,
-		Content: content,
+		Content: resolved.Content,
 	}
 
 	// Call streaming service with HIGH priority for UI-triggered requests
 	ioStream, err := h.apiRepo.StreamSummarizeArticle(ctx, article, "high")
 	if err != nil {
-		if err == domain.ErrContentTooShort {
-			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("content too short"))
-		}
-		h.logger.ErrorContext(ctx, "failed to generate summary stream", "error", err, "article_id", articleID)
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to generate summary stream"))
+		return mapDomainError(err, articleID)
 	}
 	defer func() { _ = ioStream.Close() }()
 
@@ -225,6 +146,22 @@ func (h *Handler) StreamSummarize(
 
 	h.logger.InfoContext(ctx, "stream completed successfully", "article_id", articleID)
 	return nil
+}
+
+// mapDomainError converts domain errors to Connect-RPC errors.
+func mapDomainError(err error, articleID string) error {
+	switch {
+	case errors.Is(err, domain.ErrArticleNotFound):
+		return connect.NewError(connect.CodeNotFound, fmt.Errorf("article not found"))
+	case errors.Is(err, domain.ErrArticleContentEmpty), errors.Is(err, domain.ErrEmptyContent):
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("article content is empty"))
+	case errors.Is(err, domain.ErrContentTooShort):
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("content too short"))
+	case errors.Is(err, domain.ErrContentTooLong):
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("content too long"))
+	default:
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to process article %s", articleID))
+	}
 }
 
 // QueueSummarize submits an article for async summarization.
@@ -284,12 +221,12 @@ func (h *Handler) GetSummarizeStatus(
 	}
 
 	// Include summary if completed
-	if job.Status == models.SummarizeJobStatusCompleted && job.Summary != nil {
+	if job.Status == domain.SummarizeJobStatusCompleted && job.Summary != nil {
 		response.Summary = *job.Summary
 	}
 
 	// Include error message if failed
-	if job.Status == models.SummarizeJobStatusFailed && job.ErrorMessage != nil {
+	if job.Status == domain.SummarizeJobStatusFailed && job.ErrorMessage != nil {
 		response.ErrorMessage = *job.ErrorMessage
 	}
 
