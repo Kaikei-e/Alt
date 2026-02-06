@@ -3,6 +3,7 @@
 
 include:
   - base.yaml
+  - bff.yaml
 
 services:
   nginx:

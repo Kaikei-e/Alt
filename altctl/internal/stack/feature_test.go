@@ -40,6 +40,38 @@ func TestCheckMissingFeatures_CoreWithoutWorkers(t *testing.T) {
 	}
 }
 
+func TestCheckMissingFeatures_CoreWithoutBFF(t *testing.T) {
+	registry := NewRegistry()
+	resolver := NewFeatureResolver(registry)
+
+	// Starting core + workers but not bff
+	warnings := resolver.CheckMissingFeatures([]string{"base", "db", "auth", "core", "workers"})
+
+	found := false
+	for _, w := range warnings {
+		if w.Stack == "core" && w.MissingFeature == FeatureBFF {
+			found = true
+			if len(w.ProvidedBy) == 0 {
+				t.Error("expected providers list to be non-empty")
+			}
+			hasBFF := false
+			for _, p := range w.ProvidedBy {
+				if p == "bff" {
+					hasBFF = true
+					break
+				}
+			}
+			if !hasBFF {
+				t.Error("expected bff to be in providers list")
+			}
+		}
+	}
+
+	if !found {
+		t.Error("expected BFF feature warning for core stack")
+	}
+}
+
 func TestCheckMissingFeatures_CoreWithWorkers(t *testing.T) {
 	registry := NewRegistry()
 	resolver := NewFeatureResolver(registry)

@@ -45,7 +45,7 @@ var defaultStacks = []Stack{
 		Services:         []string{"nginx", "alt-frontend", "alt-frontend-sv", "alt-backend", "migrate"},
 		DependsOn:        []string{"base", "db", "auth"},
 		Optional:         false,
-		RequiresFeatures: []Feature{FeatureSearch}, // Search UI requires search-indexer from workers stack
+		RequiresFeatures: []Feature{FeatureSearch, FeatureBFF}, // Search UI requires search-indexer; frontend depends on alt-butterfly-facade
 	},
 	{
 		Name:        "ai",

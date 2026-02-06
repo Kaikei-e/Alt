@@ -98,6 +98,27 @@ func TestDevStackProfile(t *testing.T) {
 	}
 }
 
+func TestCoreStackRequiresBFF(t *testing.T) {
+	registry := NewRegistry()
+	core, ok := registry.Get("core")
+
+	if !ok {
+		t.Fatal("expected core stack to exist in registry")
+	}
+
+	hasBFF := false
+	for _, f := range core.RequiresFeatures {
+		if f == FeatureBFF {
+			hasBFF = true
+			break
+		}
+	}
+
+	if !hasBFF {
+		t.Error("expected core stack RequiresFeatures to include FeatureBFF")
+	}
+}
+
 func TestObservabilityStackExists(t *testing.T) {
 	registry := NewRegistry()
 	obs, ok := registry.Get("observability")
