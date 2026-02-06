@@ -15,16 +15,25 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        echo "Restic backup container ready"
-        echo "Use 'docker exec' to run backup commands"
-        tail -f /dev/null
+        set -e
+        apk add --no-cache curl bash jq >/dev/null 2>&1
+        SC_URL="https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-linux-amd64"
+        if [ "$$(uname -m)" = "aarch64" ]; then
+          SC_URL="https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-linux-arm64"
+        fi
+        curl -fsSL "$$SC_URL" -o /usr/local/bin/supercronic
+        chmod +x /usr/local/bin/supercronic
+        echo "Starting supercronic scheduler..."
+        exec /usr/local/bin/supercronic /scripts/crontab
     environment:
       - RESTIC_REPOSITORY=/backups/restic-repo
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_password
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-rask_user}
       # Healthchecks.io integration (optional)
       - HEALTHCHECK_HOURLY_URL=${HEALTHCHECK_HOURLY_URL:-}
       - HEALTHCHECK_DAILY_URL=${HEALTHCHECK_DAILY_URL:-}
       - HEALTHCHECK_OFFSITE_URL=${HEALTHCHECK_OFFSITE_URL:-}
+      - HEALTHCHECK_URL=${HEALTHCHECK_URL:-}
     secrets:
       - restic_password
     volumes:
@@ -62,37 +71,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-
-  # PostgreSQL backup sidecar - runs pg_dump on schedule
-  postgres-backup:
-    image: postgres:17
-    container_name: alt-postgres-backup
-    entrypoint: ["/bin/bash", "-c"]
-    command:
-      - |
-        echo "PostgreSQL backup sidecar ready"
-        echo "Use scripts/backup/backup-all.sh to run backups"
-        tail -f /dev/null
-    environment:
-      - PGHOST=db
-      - PGUSER=postgres
-      - PGPASSWORD_FILE=/run/secrets/postgres_password
-    secrets:
-      - postgres_password
-    volumes:
-      - /backups/postgres:/backups/postgres
-      - ../scripts/backup:/scripts:ro
-    networks:
-      - alt-network
-    profiles:
-      - backup
-    depends_on:
-      db:
-        condition: service_healthy
-    labels:
-      rask.group: backup
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
