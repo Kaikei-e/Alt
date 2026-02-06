@@ -11,13 +11,32 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.status import HTTP_413_REQUEST_ENTITY_TOO_LARGE
 
 from ..infra.config import get_settings
 from ..infra.logging import configure_logging
 from ..infra.telemetry import setup_metrics
 from . import deps
 from .routers import admin, evaluation, health, runs, classification, classification_runs, preprocessing
+
+# 10 MB request body limit
+_MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
+
+
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """Reject request bodies exceeding the configured size limit."""
+
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > _MAX_REQUEST_BODY_BYTES:
+            return Response(
+                content='{"detail":"Request body too large"}',
+                status_code=HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                media_type="application/json",
+            )
+        return await call_next(request)
 
 
 def create_app() -> FastAPI:
@@ -40,6 +59,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
+    app.add_middleware(RequestSizeLimitMiddleware)
     setup_metrics(app, settings)
 
     app.include_router(health.router)

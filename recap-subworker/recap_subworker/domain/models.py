@@ -78,8 +78,10 @@ class ClusterDocument(BaseModel):
 class ClusterJobPayload(BaseModel):
     """Request body for POST /v1/runs."""
 
+    model_config = ConfigDict(extra="forbid")
+
     params: ClusterJobParams
-    documents: list[ClusterDocument] = Field(..., min_length=3)
+    documents: list[ClusterDocument] = Field(..., min_length=3, max_length=5000)
     metadata: Optional["CorpusMetadata"] = Field(default=None)
 
 
@@ -176,11 +178,11 @@ class TelemetryEnvelope(BaseModel):
 class EvidenceRequest(BaseModel):
     """HTTP request payload for the evidence generation endpoint."""
 
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     job_id: str = Field(..., max_length=64)
     genre: str = Field(..., max_length=32)
-    documents: list[ClusterDocument] = Field(..., min_length=1)
+    documents: list[ClusterDocument] = Field(..., min_length=1, max_length=5000)
     constraints: EvidenceConstraints = Field(default_factory=EvidenceConstraints)
     telemetry: Optional[TelemetryEnvelope] = Field(default=None)
     metadata: Optional["CorpusMetadata"] = Field(default=None)

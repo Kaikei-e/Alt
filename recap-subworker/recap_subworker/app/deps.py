@@ -1,143 +1,75 @@
-"""Dependency wiring for FastAPI routes."""
+"""Dependency wiring for FastAPI routes.
+
+This module delegates to ServiceContainer for actual instance creation,
+while preserving the existing FastAPI Depends() API surface so that
+routers do not need changes.
+"""
 
 from __future__ import annotations
 
-from concurrent.futures import ProcessPoolExecutor
-from typing import AsyncIterator
 import asyncio
+from typing import AsyncIterator
 
 from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.session import get_session, get_session_factory
 from ..infra.config import Settings, get_settings
-from ..services.embedder import Embedder, EmbedderConfig
+from ..services.async_jobs import AdminJobService
+from ..services.classification import CoarseClassifier
+from ..services.classification_runner import ClassificationRunner
+from ..services.classifier import GenreClassifierService
+from ..services.embedder import Embedder
+from ..services.extraction import ContentExtractor
 from ..services.genre_learning import GenreLearningService
 from ..services.learning_client import LearningClient
 from ..services.learning_scheduler import LearningScheduler
 from ..services.pipeline import EvidencePipeline
 from ..services.pipeline_runner import PipelineTaskRunner
 from ..services.run_manager import RunManager
-from ..services.classifier import GenreClassifierService
-from ..services.classification_runner import ClassificationRunner
-from ..services.extraction import ContentExtractor
-from ..services.classification import CoarseClassifier
-from ..services.async_jobs import AdminJobService
-from sqlalchemy.ext.asyncio import AsyncSession
+from .container import ServiceContainer
 
-# Module-level singletons to avoid lru_cache issues with unhashable Settings
-_process_pool: ProcessPoolExecutor | None = None
-_embedder: Embedder | None = None
-_pipeline: EvidencePipeline | None = None
-_pipeline_runner: PipelineTaskRunner | None = None
-_run_manager: RunManager | None = None
-_learning_client: LearningClient | None = None
-_learning_scheduler: LearningScheduler | None = None
-_classifier: GenreClassifierService | None = None
-_classification_runner: ClassificationRunner | None = None
-_content_extractor: ContentExtractor | None = None
-_coarse_classifier: CoarseClassifier | None = None
-_admin_job_service: AdminJobService | None = None
+# Module-level container singleton
+_container: ServiceContainer | None = None
 _extract_semaphore: asyncio.Semaphore | None = None
 
 
-def _get_process_pool(settings: Settings) -> ProcessPoolExecutor:
-    """Get or create the process pool for CPU-heavy tasks (e.g., topic extraction).
-
-    Note: This process pool is separate from the pipeline_runner pool and is used
-    for in-process pipeline tasks. ProcessPoolExecutor doesn't support max_tasks_per_child
-    in Python < 3.13, so worker processes may accumulate memory over time. The pool is
-    properly cleaned up during shutdown in register_lifecycle.
-    """
-    import sys
-    import structlog
-
-    logger = structlog.get_logger(__name__)
-    global _process_pool
-    if _process_pool is None:
-        # Python 3.13+ supports max_tasks_per_child in ProcessPoolExecutor
-        # For earlier versions, we rely on proper shutdown cleanup
-        pool_kwargs: dict[str, int] = {"max_workers": settings.process_pool_size}
-        if sys.version_info >= (3, 13):
-            # Set max_tasks_per_child to prevent memory leaks
-            # This is a reasonable default - workers will be replaced after 100 tasks
-            pool_kwargs["max_tasks_per_child"] = 100
-            logger.info(
-                "creating process pool with max_tasks_per_child",
-                max_workers=settings.process_pool_size,
-                max_tasks_per_child=100,
-            )
-        else:
-            logger.info(
-                "creating process pool (Python < 3.13, max_tasks_per_child not available)",
-                max_workers=settings.process_pool_size,
-            )
-        import multiprocessing  # Added for spawn context
-
-        mp_context = multiprocessing.get_context("spawn")
-        _process_pool = ProcessPoolExecutor(mp_context=mp_context, **pool_kwargs)
-    return _process_pool
-
-
-def _get_embedder(settings: Settings) -> Embedder:
-    global _embedder
-    if _embedder is None:
-        config = EmbedderConfig(
-            model_id=settings.model_id,
-            distill_model_id=settings.distill_model_id,
-            backend=settings.model_backend,
-            device=settings.device,
-            batch_size=settings.batch_size,
-            cache_size=settings.embed_cache_size,
-            onnx_model_path=settings.onnx_model_path,
-            onnx_tokenizer_name=settings.onnx_tokenizer_name,
-            onnx_pooling=settings.onnx_pooling,
-            onnx_max_length=settings.onnx_max_length,
-            ollama_embed_url=settings.ollama_embed_url,
-            ollama_embed_model=settings.ollama_embed_model,
-            ollama_embed_timeout=settings.ollama_embed_timeout,
-        )
-        _embedder = Embedder(config)
-    return _embedder
-
-
-def _get_pipeline(settings: Settings) -> EvidencePipeline:
-    global _pipeline
-    if _pipeline is None:
-        _pipeline = EvidencePipeline(
-            settings=settings,
-            embedder=_get_embedder(settings),
-            process_pool=_get_process_pool(settings),
-        )
-    return _pipeline
-
-
-def _get_pipeline_runner(settings: Settings) -> PipelineTaskRunner | None:
-    global _pipeline_runner
-    if settings.pipeline_mode != "processpool":
-        return None
-    if _pipeline_runner is None:
-        _pipeline_runner = PipelineTaskRunner(settings)
-    return _pipeline_runner
-
-
-def _get_run_manager(settings: Settings) -> RunManager:
-    global _run_manager
-    if _run_manager is None:
-        session_factory = get_session_factory(settings)
-        pipeline = None if settings.pipeline_mode == "processpool" else _get_pipeline(settings)
-        _run_manager = RunManager(
-            settings,
-            session_factory,
-            pipeline=pipeline,
-            pipeline_runner=_get_pipeline_runner(settings),
-            classifier=_get_classifier(settings),  # Kept for backward compatibility
-            classification_runner=_get_classification_runner(settings),
-        )
-    return _run_manager
+def _get_container() -> ServiceContainer:
+    global _container
+    if _container is None:
+        settings = get_settings()
+        _container = ServiceContainer(settings)
+    return _container
 
 
 def get_settings_dep() -> Settings:
     return get_settings()
+
+
+def get_pipeline_dep(settings: Settings = Depends(get_settings_dep)) -> EvidencePipeline:
+    return _get_container().pipeline
+
+
+def get_embedder_dep(settings: Settings = Depends(get_settings_dep)) -> Embedder:
+    return _get_container().embedder
+
+
+def get_run_manager_dep(settings: Settings = Depends(get_settings_dep)) -> RunManager:
+    return _get_container().run_manager
+
+
+def get_pipeline_runner_dep(
+    settings: Settings = Depends(get_settings_dep),
+) -> PipelineTaskRunner | None:
+    return _get_container().pipeline_runner
+
+
+def get_classifier_dep(settings: Settings = Depends(get_settings_dep)) -> GenreClassifierService:
+    return _get_container().classifier
+
+
+def get_classification_runner_dep(settings: Settings = Depends(get_settings_dep)) -> ClassificationRunner:
+    return _get_container().classification_runner
 
 
 def get_learning_service(
@@ -147,7 +79,6 @@ def get_learning_service(
     import structlog
 
     logger = structlog.get_logger(__name__)
-    # Check if auto-detect is enabled or if cluster_genres is empty/"*"
     should_auto_detect = (
         settings.learning_auto_detect_genres
         or not settings.learning_cluster_genres.strip()
@@ -166,9 +97,8 @@ def get_learning_service(
         "creating learning service",
         cluster_genres=genres if not should_auto_detect else "auto-detect",
         auto_detect=should_auto_detect,
-        graph_margin=settings.learning_graph_margin,
     )
-    service = GenreLearningService(
+    return GenreLearningService(
         session=session,
         graph_margin=settings.learning_graph_margin,
         cluster_genres=genres if genres else None,
@@ -177,56 +107,18 @@ def get_learning_service(
         bayes_iterations=settings.learning_bayes_iterations,
         bayes_seed=settings.learning_bayes_seed,
         bayes_min_samples=settings.learning_bayes_min_samples,
-        tag_label_graph_window="7d",  # Use 7d window for learning
+        tag_label_graph_window="7d",
     )
-    logger.debug(
-        "learning service created",
-        genres=genres if not should_auto_detect else "auto-detect",
-        auto_detect=should_auto_detect,
-    )
-    return service
 
 
 def get_learning_client(settings: Settings = Depends(get_settings_dep)) -> LearningClient:
-    global _learning_client
-    if _learning_client is None:
-        _learning_client = LearningClient.create(
-            settings.recap_worker_learning_url,
-            settings.learning_request_timeout_seconds,
-        )
-    return _learning_client
-
-
-def get_pipeline_dep(settings: Settings = Depends(get_settings_dep)) -> EvidencePipeline:
-    return _get_pipeline(settings)
-
-
-def get_embedder_dep(settings: Settings = Depends(get_settings_dep)) -> Embedder:
-    return _get_embedder(settings)
-
-
-def get_run_manager_dep(settings: Settings = Depends(get_settings_dep)) -> RunManager:
-    return _get_run_manager(settings)
-
-
-def get_pipeline_runner_dep(
-    settings: Settings = Depends(get_settings_dep),
-) -> PipelineTaskRunner | None:
-    return _get_pipeline_runner(settings)
+    return _get_container().learning_client
 
 
 def get_admin_job_service_dep(
     settings: Settings = Depends(get_settings_dep),
 ) -> AdminJobService:
-    global _admin_job_service
-    if _admin_job_service is None:
-        session_factory = get_session_factory(settings)
-        _admin_job_service = AdminJobService(
-            settings=settings,
-            session_factory=session_factory,
-            learning_client=get_learning_client(settings),
-        )
-    return _admin_job_service
+    return _get_container().admin_job_service
 
 
 def get_extract_semaphore_dep(
@@ -238,229 +130,22 @@ def get_extract_semaphore_dep(
     return _extract_semaphore
 
 
-def _get_learning_scheduler(settings: Settings) -> LearningScheduler | None:
-    global _learning_scheduler
-    if not settings.learning_scheduler_enabled:
-        return None
-    if _learning_scheduler is None:
-        _learning_scheduler = LearningScheduler(
-            settings,
-            interval_hours=settings.learning_scheduler_interval_hours,
-        )
-    return _learning_scheduler
-
-
-def _get_classifier(settings: Settings) -> GenreClassifierService:
-    import structlog
-    from pathlib import Path
-
-    logger = structlog.get_logger(__name__)
-    global _classifier
-    if _classifier is None:
-        model_path = Path(settings.genre_classifier_model_path)
-        # Early validation: check if model file exists
-        if not model_path.exists():
-            logger.error(
-                "classifier.model_not_found",
-                model_path=str(model_path),
-                message="Classification model file not found during initialization",
-            )
-            raise FileNotFoundError(
-                f"Classification model not found at {model_path}. "
-                "Please ensure the model file exists and the path is correct."
-            )
-        try:
-            _classifier = GenreClassifierService(
-                model_path=settings.genre_classifier_model_path,
-                embedder=_get_embedder(settings),
-            )
-            logger.info(
-                "classifier.initialized",
-                model_path=str(model_path),
-                message="Classification service initialized successfully",
-            )
-        except Exception as exc:
-            logger.exception(
-                "classifier.initialization_failed",
-                model_path=str(model_path),
-                error_type=type(exc).__name__,
-                error=str(exc),
-                message="Failed to initialize classification service",
-            )
-            raise
-    return _classifier
-
-
-def _get_classification_runner(settings: Settings) -> ClassificationRunner:
-    import structlog
-
-    logger = structlog.get_logger(__name__)
-    global _classification_runner
-    if _classification_runner is None:
-        try:
-            _classification_runner = ClassificationRunner(settings)
-            logger.info(
-                "classification_runner.initialized",
-                message="Classification runner initialized successfully",
-            )
-        except Exception as exc:
-            logger.exception(
-                "classification_runner.initialization_failed",
-                error_type=type(exc).__name__,
-                error=str(exc),
-                message="Failed to initialize classification runner",
-            )
-            raise
-    return _classification_runner
-
-
-def get_classifier_dep(settings: Settings = Depends(get_settings_dep)) -> GenreClassifierService:
-    return _get_classifier(settings)
-
-
-def get_classification_runner_dep(settings: Settings = Depends(get_settings_dep)) -> ClassificationRunner:
-    return _get_classification_runner(settings)
-
-
 def get_content_extractor_dep() -> ContentExtractor:
-    global _content_extractor
-    if _content_extractor is None:
-        _content_extractor = ContentExtractor()
-    return _content_extractor
+    return _get_container().content_extractor
 
 
 def get_coarse_classifier_dep(settings: Settings = Depends(get_settings_dep)) -> CoarseClassifier:
-    global _coarse_classifier
-    if _coarse_classifier is None:
-        _coarse_classifier = CoarseClassifier(embedder=_get_embedder(settings))
-    return _coarse_classifier
+    return _get_container().coarse_classifier
 
 
 def register_lifecycle(app) -> None:
     """Attach startup/shutdown hooks for globally shared resources."""
 
     @app.on_event("startup")
-    async def startup_event() -> None:  # pragma: no cover - FastAPI runtime hook
-        # Note: Learning scheduler is now started in Gunicorn master process
-        # (see recap_subworker/infra/gunicorn_conf.py on_starting hook)
-        # Workers should not start the scheduler to avoid duplicate execution
+    async def startup_event() -> None:  # pragma: no cover
         pass
 
     @app.on_event("shutdown")
-    async def shutdown_event() -> None:  # pragma: no cover - FastAPI runtime hook
-        # Note: Learning scheduler is stopped in Gunicorn master process
-        # (see recap_subworker/infra/gunicorn_conf.py on_exit hook)
-        import structlog
-
-        logger = structlog.get_logger(__name__)
-        logger.info("shutting down recap-subworker resources")
-
-        # Shutdown RunManager first to cancel pending tasks and prevent memory leaks
-        if _run_manager is not None:
-            try:
-                await _run_manager.shutdown()
-            except Exception as exc:
-                logger.warning(
-                    "error shutting down RunManager",
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                )
-
-        # Shutdown pipeline runner (this will properly clean up ProcessPoolExecutor)
-        if _pipeline_runner is not None:
-            try:
-                _pipeline_runner.shutdown()
-            except Exception as exc:
-                logger.warning(
-                    "error shutting down pipeline runner",
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                )
-
-        # Shutdown classification runner (this will properly clean up ProcessPoolExecutor)
-        if _classification_runner is not None:
-            try:
-                _classification_runner.shutdown()
-            except Exception as exc:
-                logger.warning(
-                    "error shutting down classification runner",
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                )
-
-        # Shutdown process pool with wait=True to ensure proper cleanup
-        # This prevents memory leaks from orphaned worker processes
-        # Use a timeout to prevent hanging during shutdown
-        if _process_pool is not None:
-            try:
-                import threading
-
-                shutdown_complete = threading.Event()
-                shutdown_error = [None]
-
-                def shutdown_with_timeout():
-                    try:
-                        _process_pool.shutdown(wait=True)
-                        shutdown_complete.set()
-                    except Exception as exc:
-                        shutdown_error[0] = exc
-                        shutdown_complete.set()
-
-                shutdown_thread = threading.Thread(target=shutdown_with_timeout, daemon=True)
-                shutdown_thread.start()
-
-                # Wait up to 10 seconds for shutdown to complete
-                if not shutdown_complete.wait(timeout=10.0):
-                    logger.warning(
-                        "process pool shutdown timed out, forcing shutdown",
-                        timeout_seconds=10.0,
-                    )
-                    # Force shutdown if timeout
-                    _process_pool.shutdown(wait=False)
-                elif shutdown_error[0] is not None:
-                    logger.warning(
-                        "error during process pool shutdown",
-                        error=str(shutdown_error[0]),
-                        error_type=type(shutdown_error[0]).__name__,
-                    )
-            except Exception as exc:
-                logger.warning(
-                    "error shutting down process pool",
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                )
-
-        # Close embedder to release model memory
-        if _embedder is not None:
-            try:
-                _embedder.close()
-            except Exception as exc:
-                logger.warning(
-                    "error closing embedder",
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                )
-
-        # Close learning client
-        if _learning_client is not None:
-            try:
-                await _learning_client.close()
-            except Exception as exc:
-                logger.warning(
-                    "error closing learning client",
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                )
-
-        # Shutdown admin job service background tasks
-        if _admin_job_service is not None:
-            try:
-                await _admin_job_service.shutdown()
-            except Exception as exc:
-                logger.warning(
-                    "error shutting down admin job service",
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                )
-
-        logger.info("recap-subworker shutdown complete")
+    async def shutdown_event() -> None:  # pragma: no cover
+        container = _get_container()
+        await container.shutdown()

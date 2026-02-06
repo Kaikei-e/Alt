@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlparse, urlunparse
 
-from pydantic import Field, AliasChoices, model_validator
+from pydantic import Field, AliasChoices, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
         secrets_dir="/run/secrets"
     )
 
-    recap_db_password: str | None = Field(default=None)
+    recap_db_password: SecretStr | None = Field(default=None)
 
     @model_validator(mode='after')
     def inject_db_password(self) -> 'Settings':
@@ -29,22 +29,24 @@ class Settings(BaseSettings):
         if password_file and not self.recap_db_password:
             try:
                 with open(password_file, "r") as f:
-                    self.recap_db_password = f.read().strip()
+                    self.recap_db_password = SecretStr(f.read().strip())
             except Exception:
                 pass  # Fall back to secrets_dir or default
 
         if self.recap_db_password:
-            u = urlparse(self.db_url)
+            db_url_str = self.db_url.get_secret_value() if isinstance(self.db_url, SecretStr) else self.db_url
+            u = urlparse(db_url_str)
             # u.netloc is "user:pass@host:port"
             if '@' in u.netloc:
                 user_pass, host_port = u.netloc.rsplit('@', 1)
+                password_val = self.recap_db_password.get_secret_value()
                 if ':' in user_pass:
                     user, _ = user_pass.split(':', 1)
-                    new_netloc = f"{user}:{self.recap_db_password}@{host_port}"
+                    new_netloc = f"{user}:{password_val}@{host_port}"
                 else:
-                    new_netloc = f"{user_pass}:{self.recap_db_password}@{host_port}"
+                    new_netloc = f"{user_pass}:{password_val}@{host_port}"
 
-                self.db_url = urlunparse((u.scheme, new_netloc, u.path, u.params, u.query, u.fragment))
+                self.db_url = SecretStr(urlunparse((u.scheme, new_netloc, u.path, u.params, u.query, u.fragment)))
 
         # classification_device defaults to device if not explicitly set
         if self.classification_device is None:
@@ -53,13 +55,20 @@ class Settings(BaseSettings):
         return self
 
     @property
+    def db_url_str(self) -> str:
+        """Return the DB URL as a plain string for SQLAlchemy."""
+        if isinstance(self.db_url, SecretStr):
+            return self.db_url.get_secret_value()
+        return self.db_url
+
+    @property
     def db_url_sync(self) -> str:
         """Return synchronous connection string (for logging)."""
-        return self.db_url.replace("postgresql+asyncpg://", "postgresql://")
+        return self.db_url_str.replace("postgresql+asyncpg://", "postgresql://")
 
-    db_url: str = Field(
-        "postgresql+asyncpg://recap_user:recap@recap-db:5432/recap",
-        description="Async SQLAlchemy connection string",
+    db_url: SecretStr = Field(
+        default=SecretStr("postgresql+asyncpg://recap_user:recap@recap-db:5432/recap"),
+        description="Async SQLAlchemy connection string (SecretStr to prevent log leakage)",
         validation_alias=AliasChoices("RECAP_DB_URL", "RECAP_SUBWORKER_DB_URL"),
     )
     enable_umap_auto: bool = Field(True, validation_alias=AliasChoices("RECAP_ENABLE_UMAP_AUTO", "RECAP_SUBWORKER_ENABLE_UMAP_AUTO"))
