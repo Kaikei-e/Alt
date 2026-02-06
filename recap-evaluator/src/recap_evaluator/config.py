@@ -1,80 +1,25 @@
 """Configuration settings for recap-evaluator service."""
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class AlertThreshold(BaseSettings):
-    """Alert threshold configuration."""
+class EvaluatorWeights(BaseSettings):
+    """Weight distribution for composite summary quality score."""
 
-    warn: float
-    critical: float
+    model_config = SettingsConfigDict(env_prefix="WEIGHT_")
 
+    geval: float = Field(default=0.40, description="G-Eval weight (40%)")
+    bertscore: float = Field(default=0.25, description="BERTScore weight (25%)")
+    faithfulness: float = Field(default=0.25, description="Faithfulness weight (25%)")
+    rouge_l: float = Field(default=0.10, description="ROUGE-L weight (10%)")
 
-class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
-    # Database
-    recap_db_dsn: str = Field(
-        default="postgres://recap_user:recap_pass@localhost:5432/recap",
-        description="PostgreSQL connection string for recap-db",
-    )
-    db_pool_min_size: int = Field(default=5, description="Minimum database pool size")
-    db_pool_max_size: int = Field(default=20, description="Maximum database pool size")
-
-    # Ollama
-    ollama_url: str = Field(
-        default="http://localhost:11434",
-        description="Ollama API base URL",
-    )
-    ollama_model: str = Field(
-        default="gemma3-4b-8k",
-        description="Ollama model to use for G-Eval (shares with news-creator)",
-    )
-    ollama_timeout: int = Field(
-        default=120,
-        description="Ollama request timeout in seconds",
-    )
-
-    # Recap Worker API (for genre evaluation)
-    recap_worker_url: str = Field(
-        default="http://localhost:8081",
-        description="Recap worker API base URL",
-    )
-
-    # Evaluation Settings
-    evaluation_window_days: int = Field(
-        default=14,
-        description="Number of days to look back for job history",
-    )
-    geval_sample_size: int = Field(
-        default=50,
-        description="Number of summaries to sample for G-Eval",
-    )
-
-    # Scheduler
-    evaluation_schedule: str = Field(
-        default="0 6 * * *",
-        description="Cron expression for scheduled evaluation (default: daily at 6am)",
-    )
-    enable_scheduler: bool = Field(
-        default=True,
-        description="Enable scheduled evaluation runs",
-    )
-
-    # Logging
-    log_level: str = Field(default="INFO", description="Logging level")
-    log_format: str = Field(default="json", description="Log format (json or console)")
-
-    # Server
-    host: str = Field(default="0.0.0.0", description="Server host")
-    port: int = Field(default=8080, description="Server port")
+    @model_validator(mode="after")
+    def validate_sum(self) -> "EvaluatorWeights":
+        total = self.geval + self.bertscore + self.faithfulness + self.rouge_l
+        if abs(total - 1.0) > 0.001:
+            raise ValueError(f"Weights must sum to 1.0, got {total}")
+        return self
 
 
 class AlertThresholds(BaseSettings):
@@ -124,19 +69,61 @@ class AlertThresholds(BaseSettings):
     pipeline_success_rate_warn: float = Field(default=0.95)
     pipeline_success_rate_critical: float = Field(default=0.90)
 
-    def get_threshold(self, metric_name: str) -> AlertThreshold | None:
-        """Get alert threshold for a given metric."""
-        warn_attr = f"{metric_name}_warn"
-        critical_attr = f"{metric_name}_critical"
+    def get_warn(self, metric_name: str) -> float | None:
+        """Get warn threshold for a given metric."""
+        attr = f"{metric_name}_warn"
+        return getattr(self, attr, None)
 
-        if hasattr(self, warn_attr) and hasattr(self, critical_attr):
-            return AlertThreshold(
-                warn=getattr(self, warn_attr),
-                critical=getattr(self, critical_attr),
-            )
-        return None
+    def get_critical(self, metric_name: str) -> float | None:
+        """Get critical threshold for a given metric."""
+        attr = f"{metric_name}_critical"
+        return getattr(self, attr, None)
 
 
-# Singleton instances
-settings = Settings()
-alert_thresholds = AlertThresholds()
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # Database — no default credentials
+    recap_db_dsn: str = Field(description="PostgreSQL connection string for recap-db")
+    db_pool_min_size: int = Field(default=5, ge=1, le=50)
+    db_pool_max_size: int = Field(default=20, ge=1, le=100)
+
+    # Ollama
+    ollama_url: str = Field(default="http://localhost:11434")
+    ollama_model: str = Field(default="gemma3-4b-8k")
+    ollama_timeout: int = Field(default=120, ge=10, le=600)
+    ollama_concurrency: int = Field(default=5, ge=1, le=20)
+
+    # Recap Worker API
+    recap_worker_url: str = Field(default="http://localhost:8081")
+
+    # Evaluation Settings
+    evaluation_window_days: int = Field(default=14, ge=1, le=90)
+    geval_sample_size: int = Field(default=50, ge=1, le=200)
+
+    # Scheduler
+    evaluation_schedule: str = Field(
+        default="0 6 * * *",
+        description="Cron expression for scheduled evaluation",
+    )
+    enable_scheduler: bool = Field(default=True)
+
+    # Performance
+    evaluation_thread_pool_size: int = Field(default=4, ge=1, le=16)
+
+    # CORS
+    cors_allowed_origins: list[str] = Field(default=["http://localhost:3000"])
+
+    # Logging
+    log_level: str = Field(default="INFO")
+    log_format: str = Field(default="json")
+
+    # Server
+    host: str = Field(default="0.0.0.0")
+    port: int = Field(default=8080)

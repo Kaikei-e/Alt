@@ -18,11 +18,15 @@ from contextvars import ContextVar
 import structlog
 from structlog.typing import EventDict, WrappedLogger
 
-from recap_evaluator.config import settings
 from recap_evaluator.utils.otel import OTelConfig, init_otel_provider
 
+
 # Global shutdown function for OTel provider
-_otel_shutdown: Callable[[], None] = lambda: None
+def _noop_shutdown() -> None:
+    pass
+
+
+_otel_shutdown: Callable[[], None] = _noop_shutdown
 
 # Context variables for ADR 98 business context (thread-safe for async)
 _alt_job_id: ContextVar[str | None] = ContextVar("alt.job.id", default=None)
@@ -83,7 +87,10 @@ def clear_context() -> None:
     _alt_processing_stage.set(None)
 
 
-def configure_logging() -> None:
+def configure_logging(
+    log_level: str = "INFO",
+    log_format: str = "json",
+) -> None:
     """
     Configure structured logging for the application.
 
@@ -106,7 +113,7 @@ def configure_logging() -> None:
             sys.stderr.write(f"Failed to initialize OTel LoggingInstrumentor: {e}\n")
 
     # Determine processors based on format
-    if settings.log_format == "json":
+    if log_format == "json":
         renderer = structlog.processors.JSONRenderer()
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
@@ -122,7 +129,7 @@ def configure_logging() -> None:
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, settings.log_level.upper())
+            getattr(logging, log_level.upper())
         ),
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
@@ -143,7 +150,7 @@ def configure_logging() -> None:
     root_logger = logging.getLogger()
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
-    root_logger.setLevel(getattr(logging, settings.log_level.upper()))
+    root_logger.setLevel(getattr(logging, log_level.upper()))
 
     # Reduce noise from third-party libraries
     logging.getLogger("httpx").setLevel(logging.WARNING)
