@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,12 +36,12 @@ func TestSummaryRepository_InterfaceCompliance(t *testing.T) {
 
 func TestSummaryRepository_Create(t *testing.T) {
 	tests := map[string]struct {
-		summary     *models.ArticleSummary
+		summary     *domain.ArticleSummary
 		errContains string
 		wantErr     bool
 	}{
 		"should handle nil database gracefully": {
-			summary: &models.ArticleSummary{
+			summary: &domain.ArticleSummary{
 				ArticleID:       "test-article-123",
 				ArticleTitle:    "Test Article",
 				SummaryJapanese: "テスト記事の要約",
@@ -57,7 +57,7 @@ func TestSummaryRepository_Create(t *testing.T) {
 			errContains: "summary cannot be nil",
 		},
 		"should handle empty article ID": {
-			summary: &models.ArticleSummary{
+			summary: &domain.ArticleSummary{
 				ArticleID:       "",
 				ArticleTitle:    "Test Article",
 				SummaryJapanese: "テスト記事の要約",
@@ -91,7 +91,7 @@ func TestSummaryRepository_Create(t *testing.T) {
 
 func TestSummaryRepository_FindArticlesWithSummaries(t *testing.T) {
 	tests := map[string]struct {
-		cursor      *Cursor
+		cursor      *domain.Cursor
 		errContains string
 		limit       int
 		wantErr     bool
@@ -104,7 +104,7 @@ func TestSummaryRepository_FindArticlesWithSummaries(t *testing.T) {
 			errContains: "failed to find articles with summaries",
 		},
 		"should handle with cursor": {
-			cursor: &Cursor{
+			cursor: &domain.Cursor{
 				LastCreatedAt: &time.Time{},
 				LastID:        "last-123",
 			},
@@ -250,7 +250,7 @@ func TestSummaryRepository_ErrorHandling(t *testing.T) {
 		cancel() // Cancel context immediately
 
 		// Test Create
-		err := repo.Create(ctx, &models.ArticleSummary{
+		err := repo.Create(ctx, &domain.ArticleSummary{
 			ArticleID: "test-123",
 		})
 		assert.Error(t, err)
@@ -289,7 +289,7 @@ func TestSummaryRepository_EdgeCases(t *testing.T) {
 
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
-		cursor := &Cursor{
+		cursor := &domain.Cursor{
 			LastCreatedAt: nil,
 			LastID:        "test-123",
 		}
@@ -306,7 +306,7 @@ func TestSummaryRepository_EdgeCases(t *testing.T) {
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
 		now := time.Now()
-		cursor := &Cursor{
+		cursor := &domain.Cursor{
 			LastCreatedAt: &now,
 			LastID:        "",
 		}
@@ -334,7 +334,7 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 			operation: "create",
 			setup: func() (SummaryRepository, interface{}) {
 				repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
-				summary := &models.ArticleSummary{
+				summary := &domain.ArticleSummary{
 					ArticleID:       "article-456",
 					ArticleTitle:    "Test Article Title",
 					SummaryJapanese: "これはテスト記事の要約です",
@@ -352,7 +352,7 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 			setup: func() (SummaryRepository, interface{}) {
 				repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 				params := struct {
-					cursor *Cursor
+					cursor *domain.Cursor
 					limit  int
 				}{
 					cursor: nil,
@@ -403,20 +403,20 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 
 			switch tc.operation {
 			case "create":
-				err = repo.Create(ctx, input.(*models.ArticleSummary))
+				err = repo.Create(ctx, input.(*domain.ArticleSummary))
 			case "find":
 				params := input.(struct {
-					cursor *Cursor
+					cursor *domain.Cursor
 					limit  int
 				})
 
-				var articles []*models.ArticleWithSummary
+				var articles []*domain.ArticleWithSummary
 
-				var cursor *Cursor
+				var cursor *domain.Cursor
 				articles, cursor, err = repo.FindArticlesWithSummaries(ctx, params.cursor, params.limit)
 				result = struct {
-					cursor   *Cursor
-					articles []*models.ArticleWithSummary
+					cursor   *domain.Cursor
+					articles []*domain.ArticleWithSummary
 				}{cursor, articles}
 			case "delete":
 				err = repo.Delete(ctx, input.(string))

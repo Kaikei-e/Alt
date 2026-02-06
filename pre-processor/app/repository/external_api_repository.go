@@ -15,7 +15,6 @@ import (
 	"pre-processor/config"
 	"pre-processor/domain"
 	"pre-processor/driver"
-	"pre-processor/models"
 )
 
 // ExternalAPIRepository implementation.
@@ -37,7 +36,7 @@ func NewExternalAPIRepository(cfg *config.Config, logger *slog.Logger) ExternalA
 }
 
 // SummarizeArticle summarizes an article using external API.
-func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *models.Article, priority string) (*models.SummarizedContent, error) {
+func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *domain.Article, priority string) (*domain.SummarizedContent, error) {
 	// Input validation
 	if article == nil {
 		r.logger.ErrorContext(ctx, "article cannot be nil")
@@ -74,7 +73,7 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 	}
 
 	// Convert driver type to models type
-	summarizedContent := &models.SummarizedContent{
+	summarizedContent := &domain.SummarizedContent{
 		ArticleID:       driverSummary.ArticleID,
 		SummaryJapanese: driverSummary.SummaryJapanese,
 	}
@@ -85,7 +84,7 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 }
 
 // StreamSummarizeArticle streams the summary for an article using external API.
-func (r *externalAPIRepository) StreamSummarizeArticle(ctx context.Context, article *models.Article, priority string) (io.ReadCloser, error) {
+func (r *externalAPIRepository) StreamSummarizeArticle(ctx context.Context, article *domain.Article, priority string) (io.ReadCloser, error) {
 	// Input validation
 	if article == nil {
 		r.logger.ErrorContext(ctx, "article cannot be nil")

@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -71,7 +71,7 @@ func TestSummarizeJobRepository_UpdateJobStatus(t *testing.T) {
 	t.Run("should handle nil database gracefully", func(t *testing.T) {
 		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
 
-		err := repo.UpdateJobStatus(context.Background(), "test-job-id", models.SummarizeJobStatusRunning, "", "")
+		err := repo.UpdateJobStatus(context.Background(), "test-job-id", domain.SummarizeJobStatusRunning, "", "")
 
 		assert.Error(t, err)
 	})
@@ -79,7 +79,7 @@ func TestSummarizeJobRepository_UpdateJobStatus(t *testing.T) {
 	t.Run("should reject empty job ID", func(t *testing.T) {
 		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
 
-		err := repo.UpdateJobStatus(context.Background(), "", models.SummarizeJobStatusRunning, "", "")
+		err := repo.UpdateJobStatus(context.Background(), "", domain.SummarizeJobStatusRunning, "", "")
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "job ID cannot be empty")

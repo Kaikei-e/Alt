@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -60,7 +60,7 @@ func (r *summarizeJobRepository) CreateJob(ctx context.Context, articleID string
 }
 
 // GetJob retrieves a summarization job by job ID.
-func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*models.SummarizeJob, error) {
+func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*domain.SummarizeJob, error) {
 	if jobID == "" {
 		r.logger.ErrorContext(ctx, "job ID cannot be empty")
 		return nil, fmt.Errorf("job ID cannot be empty")
@@ -83,7 +83,7 @@ func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*mod
 		WHERE job_id = $1
 	`
 
-	var job models.SummarizeJob
+	var job domain.SummarizeJob
 	var jobIDUUID uuid.UUID
 	var summary sql.NullString
 	var errorMessage sql.NullString
@@ -128,7 +128,7 @@ func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*mod
 }
 
 // UpdateJobStatus updates the status of a summarization job.
-func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID string, status models.SummarizeJobStatus, summary string, errorMessage string) error {
+func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID string, status domain.SummarizeJobStatus, summary string, errorMessage string) error {
 	if jobID == "" {
 		r.logger.ErrorContext(ctx, "job ID cannot be empty")
 		return fmt.Errorf("job ID cannot be empty")
@@ -146,21 +146,21 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 	var args []interface{}
 
 	switch status {
-	case models.SummarizeJobStatusRunning:
+	case domain.SummarizeJobStatusRunning:
 		query = `
 			UPDATE summarize_job_queue
 			SET status = $1, started_at = $2
 			WHERE job_id = $3
 		`
 		args = []interface{}{string(status), now, jobID}
-	case models.SummarizeJobStatusCompleted:
+	case domain.SummarizeJobStatusCompleted:
 		query = `
 			UPDATE summarize_job_queue
 			SET status = $1, summary = $2, completed_at = $3
 			WHERE job_id = $4
 		`
 		args = []interface{}{string(status), summary, now, jobID}
-	case models.SummarizeJobStatusFailed:
+	case domain.SummarizeJobStatusFailed:
 		// When a job fails:
 		// - If retry_count + 1 >= max_retries: move to dead_letter (permanent failure)
 		// - Otherwise: set status to pending (will be retried)
@@ -232,7 +232,7 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 }
 
 // GetPendingJobs retrieves pending jobs from the queue.
-func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) ([]*models.SummarizeJob, error) {
+func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) ([]*domain.SummarizeJob, error) {
 	if limit <= 0 {
 		r.logger.ErrorContext(ctx, "limit must be positive", "limit", limit)
 		return nil, fmt.Errorf("limit must be positive")
@@ -262,9 +262,9 @@ func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) 
 	}
 	defer rows.Close()
 
-	jobs := make([]*models.SummarizeJob, 0, limit)
+	jobs := make([]*domain.SummarizeJob, 0, limit)
 	for rows.Next() {
-		var job models.SummarizeJob
+		var job domain.SummarizeJob
 		var jobIDUUID uuid.UUID
 		var summary sql.NullString
 		var errorMessage sql.NullString

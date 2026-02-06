@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
+	"pre-processor/domain"
 	"pre-processor/driver"
-	"pre-processor/models"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -27,7 +27,7 @@ func NewSummaryRepository(db *pgxpool.Pool, logger *slog.Logger) SummaryReposito
 }
 
 // Create creates a new article summary.
-func (r *summaryRepository) Create(ctx context.Context, summary *models.ArticleSummary) error {
+func (r *summaryRepository) Create(ctx context.Context, summary *domain.ArticleSummary) error {
 	// Validate input
 	if summary == nil {
 		r.logger.ErrorContext(ctx, "summary cannot be nil")
@@ -53,7 +53,7 @@ func (r *summaryRepository) Create(ctx context.Context, summary *models.ArticleS
 }
 
 // FindArticlesWithSummaries finds articles with summaries for quality checking.
-func (r *summaryRepository) FindArticlesWithSummaries(ctx context.Context, cursor *Cursor, limit int) ([]*models.ArticleWithSummary, *Cursor, error) {
+func (r *summaryRepository) FindArticlesWithSummaries(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.ArticleWithSummary, *domain.Cursor, error) {
 	// Validate limit
 	if limit <= 0 {
 		r.logger.ErrorContext(ctx, "limit must be positive", "limit", limit)
@@ -78,10 +78,10 @@ func (r *summaryRepository) FindArticlesWithSummaries(ctx context.Context, curso
 		return nil, nil, fmt.Errorf("failed to find articles with summaries: %w", err)
 	}
 
-	// Convert driver.ArticleWithSummary to models.ArticleWithSummary
-	result := make([]*models.ArticleWithSummary, len(articlesWithSummaries))
+	// Convert driver.ArticleWithSummary to domain.ArticleWithSummary
+	result := make([]*domain.ArticleWithSummary, len(articlesWithSummaries))
 	for i, item := range articlesWithSummaries {
-		result[i] = &models.ArticleWithSummary{
+		result[i] = &domain.ArticleWithSummary{
 			ArticleID:       item.ArticleID,
 			ArticleContent:  item.Content,
 			SummaryJapanese: item.SummaryJapanese,
@@ -90,7 +90,7 @@ func (r *summaryRepository) FindArticlesWithSummaries(ctx context.Context, curso
 	}
 
 	// Create new cursor
-	newCursor := &Cursor{
+	newCursor := &domain.Cursor{
 		LastCreatedAt: finalCreatedAt,
 		LastID:        finalID,
 	}

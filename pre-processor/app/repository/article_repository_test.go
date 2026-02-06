@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -35,7 +35,7 @@ func TestArticleRepository_Create(t *testing.T) {
 
 		repo := NewArticleRepository(nil, testLoggerRepo())
 
-		err := repo.Create(context.Background(), &models.Article{})
+		err := repo.Create(context.Background(), &domain.Article{})
 
 		// Should return error due to nil database
 		assert.Error(t, err)
@@ -89,7 +89,7 @@ func TestArticleRepository_UpsertArticles(t *testing.T) {
 	t.Run("should handle nil database gracefully", func(t *testing.T) {
 		repo := NewArticleRepository(nil, testLoggerRepo())
 
-		err := repo.UpsertArticles(context.Background(), []*models.Article{
+		err := repo.UpsertArticles(context.Background(), []*domain.Article{
 			{
 				Title:   "Test",
 				Content: "Content",
@@ -106,7 +106,7 @@ func TestArticleRepository_UpsertArticles(t *testing.T) {
 	t.Run("should return nil for empty articles slice", func(t *testing.T) {
 		repo := NewArticleRepository(nil, testLoggerRepo())
 
-		err := repo.UpsertArticles(context.Background(), []*models.Article{})
+		err := repo.UpsertArticles(context.Background(), []*domain.Article{})
 
 		assert.NoError(t, err)
 	})
@@ -116,7 +116,7 @@ func TestArticleRepository_UpsertArticles(t *testing.T) {
 		repo := NewArticleRepository(nil, testLoggerRepo())
 
 		// Article with empty FeedURL should be skipped
-		articles := []*models.Article{
+		articles := []*domain.Article{
 			{
 				Title:   "Article without FeedURL",
 				Content: "Content",

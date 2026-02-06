@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"pre-processor/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +27,7 @@ func TestFeedRepository_InterfaceCompliance(t *testing.T) {
 
 func TestFeedRepository_GetUnprocessedFeeds(t *testing.T) {
 	tests := map[string]struct {
-		cursor   *Cursor
+		cursor   *domain.Cursor
 		limit    int
 		wantErr  bool
 		wantURLs int
@@ -37,7 +39,7 @@ func TestFeedRepository_GetUnprocessedFeeds(t *testing.T) {
 			wantURLs: 0,
 		},
 		"nil database with valid cursor": {
-			cursor: &Cursor{
+			cursor: &domain.Cursor{
 				LastCreatedAt: &time.Time{},
 				LastID:        "test-id",
 			},
@@ -198,7 +200,7 @@ func TestFeedRepository_CursorHandling(t *testing.T) {
 
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
-		cursor := &Cursor{
+		cursor := &domain.Cursor{
 			LastCreatedAt: &time.Time{}, // Zero time
 			LastID:        "",
 		}
@@ -218,7 +220,7 @@ func TestFeedRepository_CursorHandling(t *testing.T) {
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
 		now := time.Now()
-		cursor := &Cursor{
+		cursor := &domain.Cursor{
 			LastCreatedAt: &now,
 			LastID:        "", // Empty ID
 		}

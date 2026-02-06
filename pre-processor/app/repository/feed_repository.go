@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"time"
 
+	"pre-processor/domain"
 	"pre-processor/driver"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,7 +28,7 @@ func NewFeedRepository(db *pgxpool.Pool, logger *slog.Logger) FeedRepository {
 }
 
 // GetUnprocessedFeeds gets unprocessed feeds using cursor-based pagination.
-func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *Cursor, limit int) ([]*url.URL, *Cursor, error) {
+func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *domain.Cursor, limit int) ([]*url.URL, *domain.Cursor, error) {
 	r.logger.InfoContext(ctx, "getting unprocessed feeds", "limit", limit)
 
 	var lastCreatedAt *time.Time
@@ -53,7 +54,7 @@ func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *Cursor
 	}
 
 	// Create new cursor
-	newCursor := &Cursor{
+	newCursor := &domain.Cursor{
 		LastCreatedAt: finalCreatedAt,
 		LastID:        finalID,
 	}
@@ -64,7 +65,7 @@ func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *Cursor
 }
 
 // GetProcessingStats returns feed processing statistics.
-func (r *feedRepository) GetProcessingStats(ctx context.Context) (*ProcessingStats, error) {
+func (r *feedRepository) GetProcessingStats(ctx context.Context) (*domain.ProcessingStatistics, error) {
 	r.logger.InfoContext(ctx, "getting processing statistics")
 
 	// Use existing driver function
@@ -74,7 +75,7 @@ func (r *feedRepository) GetProcessingStats(ctx context.Context) (*ProcessingSta
 		return nil, fmt.Errorf("failed to get processing statistics: %w", err)
 	}
 
-	stats := &ProcessingStats{
+	stats := &domain.ProcessingStatistics{
 		TotalFeeds:     totalFeeds,
 		ProcessedFeeds: processedFeeds,
 		RemainingFeeds: totalFeeds - processedFeeds,

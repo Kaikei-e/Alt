@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"time"
 
+	"pre-processor/domain"
 	"pre-processor/driver"
-	"pre-processor/models"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -28,7 +28,7 @@ func NewArticleRepository(db *pgxpool.Pool, logger *slog.Logger) ArticleReposito
 }
 
 // Create creates a new article.
-func (r *articleRepository) Create(ctx context.Context, article *models.Article) error {
+func (r *articleRepository) Create(ctx context.Context, article *domain.Article) error {
 	r.logger.InfoContext(ctx, "creating article", "url", article.URL)
 
 	// Check for nil database
@@ -96,7 +96,7 @@ func (r *articleRepository) CheckExists(ctx context.Context, urls []string) (boo
 }
 
 // FindForSummarization finds articles that need summarization.
-func (r *articleRepository) FindForSummarization(ctx context.Context, cursor *Cursor, limit int) ([]*models.Article, *Cursor, error) {
+func (r *articleRepository) FindForSummarization(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.Article, *domain.Cursor, error) {
 	r.logger.InfoContext(ctx, "finding articles for summarization", "limit", limit)
 
 	// Check for nil database
@@ -122,7 +122,7 @@ func (r *articleRepository) FindForSummarization(ctx context.Context, cursor *Cu
 	}
 
 	// Create new cursor
-	newCursor := &Cursor{
+	newCursor := &domain.Cursor{
 		LastCreatedAt: finalCreatedAt,
 		LastID:        finalID,
 	}
@@ -155,7 +155,7 @@ func (r *articleRepository) HasUnsummarizedArticles(ctx context.Context) (bool, 
 }
 
 // FindByID finds an article by its ID.
-func (r *articleRepository) FindByID(ctx context.Context, articleID string) (*models.Article, error) {
+func (r *articleRepository) FindByID(ctx context.Context, articleID string) (*domain.Article, error) {
 	r.logger.InfoContext(ctx, "finding article by ID", "article_id", articleID)
 
 	if r.db == nil {
@@ -179,7 +179,7 @@ func (r *articleRepository) FindByID(ctx context.Context, articleID string) (*mo
 }
 
 // FetchInoreaderArticles fetches articles from Inoreader source.
-func (r *articleRepository) FetchInoreaderArticles(ctx context.Context, since time.Time) ([]*models.Article, error) {
+func (r *articleRepository) FetchInoreaderArticles(ctx context.Context, since time.Time) ([]*domain.Article, error) {
 	r.logger.InfoContext(ctx, "fetching inoreader articles", "since", since)
 
 	if r.db == nil {
@@ -199,7 +199,7 @@ func (r *articleRepository) FetchInoreaderArticles(ctx context.Context, since ti
 
 // UpsertArticles batch upserts articles into the database.
 // It resolves FeedID from FeedURL for each article and skips articles with empty FeedURL.
-func (r *articleRepository) UpsertArticles(ctx context.Context, articles []*models.Article) error {
+func (r *articleRepository) UpsertArticles(ctx context.Context, articles []*domain.Article) error {
 	r.logger.InfoContext(ctx, "upserting articles", "count", len(articles))
 
 	if len(articles) == 0 {
@@ -207,7 +207,7 @@ func (r *articleRepository) UpsertArticles(ctx context.Context, articles []*mode
 	}
 
 	// Resolve FeedID for each article using FeedURL
-	validArticles := make([]*models.Article, 0, len(articles))
+	validArticles := make([]*domain.Article, 0, len(articles))
 	for _, article := range articles {
 		if article.FeedURL == "" {
 			r.logger.WarnContext(ctx, "skipping article with empty FeedURL", "url", article.URL)

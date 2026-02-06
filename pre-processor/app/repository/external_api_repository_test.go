@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"pre-processor/config"
-	"pre-processor/models"
+	"pre-processor/domain"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -98,8 +98,8 @@ func TestExternalAPIRepository_InterfaceCompliance(t *testing.T) {
 
 func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 	tests := map[string]struct {
-		article      *models.Article
-		validateResp func(t *testing.T, resp *models.SummarizedContent)
+		article      *domain.Article
+		validateResp func(t *testing.T, resp *domain.SummarizedContent)
 		errContains  string
 		wantErr      bool
 	}{
@@ -110,7 +110,7 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 			errContains: "article cannot be nil",
 		},
 		"should handle article with empty ID": {
-			article: &models.Article{
+			article: &domain.Article{
 				ID:      "",
 				Title:   "Test Article",
 				Content: "Test content",
@@ -121,7 +121,7 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 			errContains: "article ID cannot be empty",
 		},
 		"should handle article with empty content": {
-			article: &models.Article{
+			article: &domain.Article{
 				ID:      "test-123",
 				Title:   "Test Article",
 				Content: "",
@@ -132,7 +132,7 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 			errContains: "article content cannot be empty",
 		},
 		"should handle valid article but expect driver error": {
-			article: &models.Article{
+			article: &domain.Article{
 				ID:      "test-123",
 				Title:   "Test Article",
 				Content: "This is a test article content that needs to be summarized. It contains enough characters to pass the minimum length validation of 100 characters. The content should be long enough to trigger an actual API call error rather than a validation error.",
@@ -264,7 +264,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel context immediately
 
-		article := &models.Article{
+		article := &domain.Article{
 			ID:      "test-123",
 			Title:   "Test Article",
 			Content: "Test content",
@@ -318,7 +318,7 @@ func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 			longContent[i] = 'a'
 		}
 
-		article := &models.Article{
+		article := &domain.Article{
 			ID:      "test-long",
 			Title:   "Test Article with Long Content",
 			Content: string(longContent),
@@ -389,7 +389,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			operation: "summarize",
 			setup: func() (ExternalAPIRepository, interface{}) {
 				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
-				article := &models.Article{
+				article := &domain.Article{
 					ID:        "article-456",
 					Title:     "Complete Article",
 					Content:   "This is a complete article with all fields populated. It contains enough characters to pass the minimum length validation of 100 characters. The content should be long enough to trigger an actual API call error rather than a validation error.",
@@ -422,7 +422,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			operation: "summarize",
 			setup: func() (ExternalAPIRepository, interface{}) {
 				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
-				article := &models.Article{
+				article := &domain.Article{
 					ID:      "minimal-123",
 					Content: "Minimal content",
 				}
@@ -459,7 +459,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 
 			switch tc.operation {
 			case "summarize":
-				result, err = repo.SummarizeArticle(context.Background(), input.(*models.Article), "low")
+				result, err = repo.SummarizeArticle(context.Background(), input.(*domain.Article), "low")
 			case "health":
 				err = repo.CheckHealth(context.Background(), input.(string))
 			}
@@ -474,7 +474,7 @@ func BenchmarkExternalAPIRepository_SummarizeArticle(b *testing.B) {
 
 	repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
-	article := &models.Article{
+	article := &domain.Article{
 		ID:      "bench-test",
 		Title:   "Benchmark Article",
 		Content: strings.Repeat("This is test content. ", 100),
